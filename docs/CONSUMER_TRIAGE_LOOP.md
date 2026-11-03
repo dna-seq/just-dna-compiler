@@ -51,14 +51,14 @@ anywhere else either, so the only way to find out whether an item had been consi
 ## 1. Setup
 
 The triage seat's watchers, declared in `.blueprints.toml`, notice that a consumer has written (below).
-Three scripts do the rest. The first two are the `Sn` loop and are the kit's; the third allocates the `RMn`
-that the loop's route **(a)** files, and is still this repository's own:
+Three scripts do the rest, all the kit's. The first two are the `Sn` loop; the third allocates the `RMn`
+that the loop's route **(a)** files:
 
 | | |
 |---|---|
 | ledger | the kit's `classes/triage/triage-state.py`: which sections are new, revised, or already answered. Takes a path, so it reads the history file too; `--next` prints the next unclaimed `Sn`. Also prints `STRUCTURE` lines when a fenced block breaks the section boundaries |
 | archiver | the kit's `classes/triage/triage-archive.py`: moves answered sections into the history file and **verifies** each fingerprint survived the move, before either file is replaced. **Refuses outright** on a `STRUCTURE` finding, since a span that ends at the wrong line moves the wrong bytes and the fingerprint check cannot see it |
-| `.claude/rm-next.py` | the `RMn` allocator: scans `docs/` for every number, and **reserves** the next one by appending a `🔷 reserved` row to [RM_TOC.md](RM_TOC.md) under an advisory `flock`. `--dry-run` reads without claiming, `--list` shows standing reservations, `--release RMn` drops one |
+| allocator | the kit's `classes/triage/item-next.py`, the `RMn` allocator: scans `docs/` for every number that a line owns, and **reserves** the next one by appending a `🔷 reserved` row to [RM_TOC.md](RM_TOC.md) under an advisory `flock`. `--dry-run` reads without claiming, `--list` shows standing reservations, `--release RMn` drops one |
 
 Since kit v0.1.118 they read this tree's documents from `.blueprints.toml`'s `[triage]` table (inbox,
 history, prefix, and the `RM` index with its scan root and reservations heading), so they run bare; the
@@ -71,15 +71,16 @@ sh "$BLUEPRINTS_KIT/bin/py.sh" "$BLUEPRINTS_KIT/classes/triage/triage-archive.py
 
 **`.claude/triage-state.py`, `.claude/triage-archive.py` and `.claude/triage_conf.py` are byte-identical copies of the kit's**, kept
 only so CI, which has no kit, can lint the real documents (`schema/tests/test_triage_tools.py`). A test
-fails when one drifts from the kit a session runs; after the pin moves, copy the kit's over them. Never
+fails when one drifts from the kit the clone pins; after the pin moves, copy the kit's over them. Never
 patch them: a change goes to the kit. They are outside `ruff` (`pyproject.toml`), since formatting them
 would be the drift.
 
-**The allocator stays local until the kit's `item-next.py` can replace it here**, measured again at
-v0.1.118. It now reads the index from the table and reserves the same next number, but it counts entry
-rows only in the index file itself, and this index is paged: its rows live in `RM_TOC_000_099.md` and the
-pages after it. So it still misses RM3, RM18 and RM19, and an item whose reservation was replaced by its
-page row before its heading was written would be invisible to it. Filed on the kit.
+**The allocator moved to the kit on 2026-11-04**, at v0.1.120. Before it, `.claude/rm-next.py` was this
+repository's own; the kit's counted only the lines that own an id, and in this paged index it missed
+RM3, RM18 and RM19 (kit #243 and #247 fixed that). Measured at the move: the two scanned the same set of
+ids and reserved the same next number. The local tool and its tests are at
+`git show 04b5a1c:.claude/rm-next.py` and `schema/tests/test_rm_allocator.py` there; the kit tests its
+own (`tests/test_item_next.py`).
 
 **Run every one under Python, never `bash` it.** They carried a `.sh` extension until 2026-08-16 and
 the mismatch had a cost; §6 has it.
@@ -94,7 +95,7 @@ carried two RM159 entries pointing at different items — git `741ec59` renumber
 the one that was cheaper to move because the other pair was contiguous and already referenced from
 three probe documents.
 
-**Grepping cannot fix it; the claim has to be an atomic write.** So `rm-next.py` does both halves in
+**Grepping cannot fix it; the claim has to be an atomic write.** So the allocator does both halves in
 one critical section: scan, then append the reservation, with the whole window under the lock. Reading
 the maximum outside the lock and appending inside it is the same race with a smaller window.
 
@@ -404,7 +405,7 @@ rejected if one changed. Do this by hand only if the tool cannot (it prints what
 
 ### Step 5 — hygiene
 
-- **Serial, one item at a time, and claim the `RMn` with the allocator** — `.claude/rm-next.py`,
+- **Serial, one item at a time, and claim the `RMn` with the allocator** — the seats kit's `item-next.py`,
   which scans and *reserves* in one locked write. Never keep the number in your head across a long
   pass, and **never read it off [RM_TOC.md](RM_TOC.md) by eye**: this bullet said to do exactly that
   until 2026-09-01, and it is how two sessions in one tree both filed RM159 (§1 has the incident). The

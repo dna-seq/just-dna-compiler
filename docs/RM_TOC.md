@@ -24,7 +24,7 @@ once with `grep -n 'RM47' docs/RM_TOC*.md`. **Page labels never spell an unfiled
 "up to 299" that way once made it skip to 301. If you find yourself wanting a second index somewhere
 else, don't: two partial lists of the same 35 items is what caused this one.
 
-**Claim the number with `.claude/rm-next.py`, never by reading the highest one off this file.** An
+**Claim the number with the seats kit's `item-next.py` (`sh "$BLUEPRINTS_KIT/bin/py.sh" "$BLUEPRINTS_KIT/classes/triage/item-next.py" --note "…"`), never by reading the highest one off this file.** An
 index is not an allocator: reading a number claims nothing, so two sessions a minute apart read the
 same answer and both write it — which happened on 2026-09-01, when two sessions sharing one working
 tree filed different work as RM159 (git `741ec59` renumbered one to RM161). The allocator scans every

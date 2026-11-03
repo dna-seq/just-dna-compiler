@@ -31,6 +31,11 @@ them would be the drift. `rm-next.py` still stays: the fix counts entry rows onl
 `RM_TOC` is paged, so filed as kit #247 (medium). A shell started before `/reload-plugins` still runs the
 old kit, and the parity test fails there on purpose.
 
+**Kit v0.1.120 closed #247 (2026-11-04)**: `item-next.py` counts a paged index's page rows. Measured: the
+same id set as `.claude/rm-next.py` and the same next number (RM345), so the local allocator and its
+tests are removed and every live reference names the kit's. Triage's consolidation is complete: all
+three scripts are the kit's, two of them copied into `.claude/` for CI.
+
 **First pass**: S125–S127 answered and archived (`5e2cc18`), after committing the items alone
 (`1ee5925`). Filed RM337–RM340.
 

@@ -41,7 +41,7 @@ An entry that moves to [ROADMAP_HISTORY.md](ROADMAP_HISTORY.md) states what it d
 Items are separated by ` · `. Each one is an `RMn` or `won't fix — <reason>`, and nothing else:
 
 - **An `RMn` counts only if that item's own entry mentions this one**, by number or by this entry's
-  motivating `Sn`. File the residual first, with `.claude/rm-next.py`, and write the back-reference
+  motivating `Sn`. File the residual first, with the seats kit's `item-next.py`, and write the back-reference
   into it. Pointing at an item that is merely open is not enough, and pointing at one that is closed
   never was. RM38 pointed at RM27 and RM50's tracker line pointed at RM50; both targets closed without
   a word about what pointed at them.
