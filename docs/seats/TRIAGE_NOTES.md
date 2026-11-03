@@ -25,6 +25,12 @@ priority: #241 (high, bare `--next` answers S1), #242 (high, paths only from the
 `item-next.py` bare reserves into `docs/ROADMAP.md`), #243 (medium, index rows own no id), #244 (low,
 malformed marker sha), #245 (low, link-checker gotcha; notes-file wording).
 
+**Kit v0.1.118 closed all five (2026-11-04, `e8c68b3`).** The scripts read `.blueprints.toml` `[triage]`;
+`.claude/` re-took the kit's three files (`triage_conf.py` is new); they are outside ruff, since formatting
+them would be the drift. `rm-next.py` still stays: the fix counts entry rows only in the index file, and
+`RM_TOC` is paged, so filed as kit #247 (medium). A shell started before `/reload-plugins` still runs the
+old kit, and the parity test fails there on purpose.
+
 **First pass**: S125–S127 answered and archived (`5e2cc18`), after committing the items alone
 (`1ee5925`). Filed RM337–RM340.
 
