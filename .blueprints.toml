@@ -60,5 +60,18 @@ wake_from = "just-dna-compiler/lead just-dna-compiler/triage just-dna-compiler/p
 [seat.liaison.watch.desk]
 cmd = "sh kit:bin/py.sh kit:classes/desk/watch-answers.py just-dna-compiler liaison"
 
+# The upstreams' clones, one line each in the liaison state file (docs/seats/LIAISON.md). vrs-python's trunk
+# is quiet (17 commits in 30 days), so it is watched as is. polars (126 a week) and duckdb-python (211 in 30
+# days) are polled once a day: their releases are tags, and duckdb-python tags its patches on a version
+# branch (v1.5.6 on v1.5-variegata), which a --path watcher on main would miss, since --path drops tag lines.
+[seat.liaison.watch.ga4gh-vrs]
+cmd = "sh kit:classes/liaison/watch-upstream.sh ga4gh-vrs"
+
+[seat.liaison.watch.polars]
+cmd = "sh kit:classes/liaison/watch-upstream.sh polars --every 86400"
+
+[seat.liaison.watch.duckdb-python]
+cmd = "sh kit:classes/liaison/watch-upstream.sh duckdb-python --every 86400"
+
 [seat.liaison.zulip]
 pool = "~/.config/agent-seat-blueprints/zulip/pool"
