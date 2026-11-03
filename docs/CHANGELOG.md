@@ -41,6 +41,12 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-03 — RM327, in part: `tradeoff` is a reserved column name (patch, on `main`)
+
+**format** — `tradeoff` joins `vocab.RESERVED_NAMES_0_4`. The maintainer decided that a trade-off (an allele `protective` on one trait and `risk` on another) is **computed** from a per-trait benefit/harm table, never authored. That table is RM327's minor half and is not built yet. Reserving the name keeps a hand-set column out before the computed one lands. longevitymap v2 has trade-off loci to write, and this is the word an author would reach for.
+
+**What changes for you.** A `tradeoff` column on any authored table was already refused by `extra="forbid"`. It is now refused with a specific reason that points to `negatives` for describing a trade-off today, and says that `direction: contested` means something else. Every reserved-name error now lists four names instead of three. No module's acceptance changes, and no digest moves.
+
 ## 2026-10-02 — RM320: PubMind's table is CC BY-NC-ND 4.0, so a module carrying it compiles only as non-commercial (patch, on `main`)
 
 **enricher** — WGLab answered in writing ([WGLab/PubMind#5](https://github.com/WGLab/PubMind/issues/5)) that the PubMind table ANNOVAR and Zenodo distribute is CC BY-NC-ND 4.0. `PUBMIND_TERMS` now records `commercial_use=False`, `share_alike=False` and `redistribution=True`, with NoDerivatives in `notice`. Before, every axis was `None`.

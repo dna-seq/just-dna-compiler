@@ -412,6 +412,13 @@ RESERVED_NAMES_0_4: frozenset[str] = frozenset(
         # name is held for, not the generic stray-column message.
         "callable_element",
         "quality_element",
+        # The trade-off verdict RM327 decided to COMPUTE (2026-11-03): true when an allele carries a
+        # `protective` and a `risk` judgement across traits, read off a per-trait benefit/harm table
+        # that does not exist yet. Unlike the names above it will never be an authored column, so when
+        # the derived column ships the name does not simply leave this set: it moves to
+        # `MISPLACED_COLUMN_REASONS`, which names a column real on a generated table. Reserved now
+        # because longevitymap v2 has trade-off loci to write and an obvious word for them.
+        "tradeoff",
     }
 )
 # NOTE: `requires_callable`, `acmg_sf`, `actionability` were reserved here and are now BUILT as
@@ -443,6 +450,13 @@ RESERVED_NAME_REASONS: dict[str, str] = {
     "quality_element": (
         "would say which element of a multi-valued `quality_from` the `min_quality` floor is stated "
         "against — reserved on the same grounds as `callable_element`"
+    ),
+    "tradeoff": (
+        "is a verdict a release will compute from per-trait benefit/harm rows (an allele with a "
+        "`protective` judgement on one trait and a `risk` judgement on another), never an authored "
+        "cell — a hand-set one could disagree with the rows it summarises. Until that table exists, "
+        "describe a trade-off in `negatives`; `direction: contested` means the sources disagree about "
+        "the sign, which a trade-off is not"
     ),
 }
 

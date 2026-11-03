@@ -333,7 +333,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
   the disease id and must not invent phenotype ids from names.
 
 - **Reserved namespace (`vocab.RESERVED_NAMES_0_4`).** Only names expected to become real module
-  columns later (P5) — today `{reference_db, callable_element, quality_element}`, each with a reason
+  columns later (P5) — today `{reference_db, callable_element, quality_element, tradeoff}`, each with a reason
   in `RESERVED_NAME_REASONS`. It is *not* a catalogue of barred names (`extra="forbid"` already
   rejects any unknown column). (`callable_from` was reserved for RM6 and is now **built**, so it left
   the set: a reserved name is refused at author time, which would make the built column unwritable.)

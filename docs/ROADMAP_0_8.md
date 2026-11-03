@@ -229,7 +229,10 @@ in `negatives` until this table exists.
   row across traits. Kleene: false only when every trait's judgement is present and none of them is
   opposite, and unknown otherwise, unless both signs are already present. A derived column, near-zero.
 - **Reserve the name `tradeoff`** in `RESERVED_NAMES_0_4` with a reason, so nobody authors it before
-  the computed one lands. A patch, about 30 minutes; not done yet, it is a `schema/src` edit.
+  the computed one lands. **Done 2026-11-03, on `main`** as a patch: every authored model now refuses
+  the column with that reason rather than the generic stray-column message. When the derived column
+  ships, the name moves from the reserved set to `MISPLACED_COLUMN_REASONS`, since it will then be real
+  on a generated table and still never authored.
 
 ## RM328 — no study row can name the ancestry it was measured in, so "European-only evidence" is a hand-set flag
 
