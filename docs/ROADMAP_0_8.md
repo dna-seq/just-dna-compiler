@@ -157,6 +157,8 @@ modelling it (`@probe-the-real-file`).
 
 ## RM326 — a study row cannot say which outcome it measured, so the definition of "pro-longevity" lives in a `study_design` prefix
 
+**2026-11-04: the measurement first, as the entry asks.** The maintainer asked for it before deciding the column's vocabulary; it runs as a subagent.
+
 **Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format + compiler (derived columns) · **Motivating case** longevitymap v2 requirements §4.5, R-DEF-1 · *for* longevitymap v2 · *related* RM323, RM325
 
 **Need.** v2 sorts every study into one of twelve phenotype classes (`EXTREME_SURVIVAL_CC`,
@@ -210,6 +212,8 @@ in `negatives` until this table exists.
   on a generated table and still never authored.
 
 ## RM328 — no study row can name the ancestry it was measured in, so "European-only evidence" is a hand-set flag
+
+**Decided 2026-11-04 by the maintainer: the 1000G superpopulation codes** (AFR, AMR, EAS, EUR, SAS), the binding `PgsRow.training_ancestry` already uses.
 
 **Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format + compiler (derived) · **Motivating case** longevitymap v2 requirements §5.4 (R-ANC-1, R-ANC-2) · *for* longevitymap v2 · *related* RM188 (axis 2)
 
@@ -339,6 +343,8 @@ effect, and the direction concordance with the human allele (`concordant`, `disc
 (R-ANIMAL-1). Full, a new table kind.
 
 ## RM336 — a DOI written into `pmid` parses as five or six PubMed ids, and the literature pass looks each one up
+
+**Decided 2026-11-04 by the maintainer: a refusal, like RM50's PMCID arm.** `validate_pmid_cell` refuses a cell whose only token is a DOI, and names it. Principle 3 says a module that validated keeps validating, so before the build, check the published modules (the registry's catalogue and the reference examples) for a DOI in `pmid`. None found: the refusal breaks no published module. Any found: they go back to the maintainer before the arm ships.
 
 **Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**; a refusal or a warning is the decision · **Owner** format (`spec.validate_pmid_cell`) · **Motivating case** longevitymap v2 requirements §6.3 ("`pmid`, or `doi` for preprints") · *for* longevitymap v2 · *related* RM50, RM263, [ROADMAP § `StudyRow.pmid` required + PMID-shaped](ROADMAP.md#studyrowpmid-required--pmid-shaped)
 
