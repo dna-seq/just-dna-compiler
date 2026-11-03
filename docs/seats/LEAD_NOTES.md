@@ -4,12 +4,8 @@ The lead's working state, rewritten to the present before each reset. Last rewri
 
 ## First seating (2026-11-03): the handout's first work
 
-1. **Old triage waker retires**: open, `after triage's message`. Waits for triage to say its kit watcher
-   (`[seat.triage.watch.inbox]`) fired. Then, in one commit with a changelog line: `git rm`
-   `.claude/wake-on-suggestions.sh`, `.claude/watch-suggestions.sh`, `.claude/hooks/arm_triage_watcher.py`,
-   `schema/tests/test_triage_watcher.py`; drop the `UserPromptSubmit` entry from `.claude/settings.json`; reword
-   `CLAUDE.md` and `docs/CONSUMER_TRIAGE_LOOP.md` to "the triage seat's watchers, `.blueprints.toml`". Leave
-   `docs/history/CHANGELOG_0_6.md` as it is.
+1. **Old triage waker retired**: done, 8c010c0, after triage's message that `watch.inbox` fired on the real
+   S125–S127 edit.
 2. **The seats in the docs**: done, 17b9a3a (RELEASE_CYCLE § Seats, the CLAUDE.md doc map, `seats/` in
    `not_in_nav`, which the seat PRs had left red).
 3. **The id scripts stay**: kept. `.claude/triage-state.py`, `.claude/triage-archive.py`, `.claude/rm-next.py` are the
@@ -29,4 +25,8 @@ The lead's working state, rewritten to the present before each reset. Last rewri
 
 ## Open decisions
 
-None of the lead's own yet. The plan's states have not been read against what exists; that is the next start's first step.
+- **RM338** (which files under `logs/` ship), handed over by triage: the person's call, put to them in chat
+  2026-11-03 with options and a recommendation. RM337 (the warning for what is left behind) is triage's
+  patch and legal whatever RM338 decides.
+
+The lead's own, none yet. The plan's states have not been read against what exists; that is the next start's first step.
