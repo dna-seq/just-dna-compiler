@@ -52,16 +52,11 @@ _HISTORY = _DOCS / "ROADMAP_HISTORY.md"
 _LEGACY = Path(__file__).parent / "data" / "residuals_legacy.txt"
 
 #: Every file that holds an authoritative `RMn` entry, open or closed. An item may have more than one
-#: section (an open half and a shipped half); a target is read as the union of its sections.
-_ENTRY_FILES = (
-    "ROADMAP.md",
-    "ROADMAP_0_8.md",
-    "ROADMAP_0_9.md",
-    "ROADMAP_1_0.md",
-    "ROADMAP_HISTORY.md",
-    "history/ROADMAP_HISTORY_0_6.md",
-    "history/ROADMAP_HISTORY_PRE_0_6.md",
-    "history/ROADMAP_0_7.md",
+#: section (an open half and a shipped half); a target is read as the union of its sections. Found by
+#: name, `ROADMAP*.md` in `docs/` and `docs/history/`, so the next minor's or major's file is read the
+#: day it is created; `test_every_roadmap_file_holds_an_entry` makes a stray match fail loudly.
+_ENTRY_FILES = tuple(
+    sorted(p.relative_to(_DOCS).as_posix() for d in (_DOCS, _DOCS / "history") for p in d.glob("ROADMAP*.md"))
 )
 
 #: Closures owed a line by another seat, each with who owes it. Not the legacy list: these closed
@@ -361,3 +356,10 @@ def test_a_cut_release_heading_does_not_claim_to_be_uncut() -> None:
         if (version in recorded or version < newest) and (claim := _UNCUT_CLAIM.search(lead))
     ]
     assert not stale, "\n".join(stale)
+
+
+def test_every_roadmap_file_holds_an_entry() -> None:
+    """The glob is the registry: a `ROADMAP*.md` with no `## RMn` heading is a misnamed file, not a roadmap."""
+    assert _ENTRY_FILES, "no ROADMAP*.md found under docs/"
+    empty = [name for name in _ENTRY_FILES if not _sections(_DOCS / name)]
+    assert not empty, f"named like a roadmap but holding no `## RMn` entry: {empty}"
