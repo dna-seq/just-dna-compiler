@@ -8,8 +8,8 @@ The lead's working state, rewritten to the present before each reset. Last rewri
    S125–S127 edit.
 2. **The seats in the docs**: done, 17b9a3a (RELEASE_CYCLE § Seats, the CLAUDE.md doc map, `seats/` in
    `not_in_nav`, which the seat PRs had left red).
-3. **The id scripts stay**: kept. `.claude/triage-state.py`, `.claude/triage-archive.py`, `.claude/rm-next.py` are the
-   repo's own and tested. Moving to the kit's `classes/triage/` copies would be an RM item, not filed.
+3. **The id scripts**: kept at seating; triage then moved to the kit's copies (150d916). Claim an `RMn` with
+   the kit's `classes/triage/item-next.py --note`.
 4. **Trust register** (`docs/TRUST.md`): asked the person once, in chat. No answer yet.
 5. **Scope files are the pm's**: noted. `docs/ROADMAP_0_8.md`, `docs/ROADMAP_1_0.md`, `docs/proposals/`.
 6. **The kit pin**: this seat moves it (`bin/move-to-tag.py`), on a release announcement that needs it or a fix waited on.
@@ -23,11 +23,8 @@ The lead's working state, rewritten to the present before each reset. Last rewri
 
 ## In flight
 
-- **Push of `main` waits on the person.** Kit v0.1.117's auto-mode rule 11 lets a seat with a push grant push its
-  own origin (kit #238 fixed). The person pastes rules 10 and 11 (`bin/automode.py` prints them), then this seat
-  pushes. Not routed around meanwhile.
-- Kit #239/#240 fixed in v0.1.117. The clone pins v0.1.118 (moved by triage).
-- Avatar set (a polar bear).
+- `main` pushed 2026-11-04 by the pm at the person's word (…150d916), the lead's commits included. Auto-mode rule
+  11 (kit v0.1.117) is what lets this seat push its own; the person pastes it.
 - Leftover local branches `build/RM341` and `build/RM343`: cherry-picked onto `main`, so `-d` refuses them;
   `-D` is the person's.
 
