@@ -204,6 +204,26 @@ The count is a log line, not a `MissBuildResult` field (minor-class). The three 
 Principle 2 (the lane docstring, the `mitomap miss` CLI note, the drafter note) and ENRICHER.md's
 bucket table now say what happens instead.
 
+## RM343 — duckdb 2.0 spells the hash join `Hash Join`, so a query-shape test goes red on a fresh install
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-11-04 on `main`, uncut — a patch** (a test's assertion; no
+package change) · **Owner** enricher (tests) · **Motivating case** the liaison's run of the enricher suite
+under duckdb 2.0.0, `docs/UPSTREAM_DUCKDB.md` (2026-11-03)
+
+**Measured.** Under duckdb 2.0.0 the enricher suite gives 2280 passed and 1 failed:
+`test_query_shapes.py` asserts `"HASH_JOIN"` in the `EXPLAIN` text, and 2.0 prints `Hash Join`. The plan is the
+same hash join, and the timing test passes. `duckdb>=1.1.0` is uncapped, so a fresh install takes 2.0.
+
+**The patch.** The assertion reads the operator name in either spelling. No cap, since nothing else in the suite
+moved. Capping a runtime dependency to keep one test's string would hold every consumer back for a test.
+
+**Residuals** none. The liaison's ledger (`docs/UPSTREAM_DUCKDB.md`) keeps the rest of 2.0's read.
+
+**What shipped.** `test_lookup_clin_sig_is_a_hash_join_not_an_or_chain` upper-cases the plan text and turns
+spaces into underscores before looking for `HASH_JOIN`. The old assertion was run under
+`uv run --isolated --with duckdb==2.0.0` and failed on a plan whose operator box reads `Hash Join`. The new
+one passes under the locked 1.x and under 2.0.0.
+
 ## RM341 — polars 2.x writes its version into every parquet footer, so one `compiler_version` mints a digest per polars release
 
 **Severity** high · **Status** ✅ **SHIPPED 2026-11-04 on `main`, uncut — a patch** (a dependency cap and a

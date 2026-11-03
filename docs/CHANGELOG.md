@@ -41,6 +41,13 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM343: a query-shape test reads duckdb 2.0's `Hash Join` (patch, on `main`)
+
+**enricher (tests)** — duckdb 2.0 prints the join operator as `Hash Join` where 1.x printed `HASH_JOIN`, so on
+a fresh install, which takes 2.0 under `duckdb>=1.1.0`, one test failed although the plan is the same hash join.
+The assertion now reads the name in either spelling. The rest of the enricher suite passed under 2.0.0 (the
+liaison's run), so duckdb stays uncapped. No package changes.
+
 ## 2026-11-04 — RM341: polars is capped below 2, because 2.x writes its version into every parquet (patch, on `main`)
 
 **compiler** — `polars>=1.42.0,<2`. From 2.0, polars puts its version and build hash in each parquet footer's
