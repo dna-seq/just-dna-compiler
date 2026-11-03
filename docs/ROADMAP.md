@@ -1128,6 +1128,12 @@ quietly: once the version is recorded, an upgrade becomes a declared re-id inste
    insertion to pin, behind `JUST_DNA_NETWORK_TESTS=1` since indel minting reads the SeqRepo proxy.
    The test is what turns a future rule change red.
 
+**Addendum, 2026-11-04 (the liaison, `docs/UPSTREAM_GA4GH_VRS.md`).** vrs-python PR #665, still open, adds
+`normalize(rle_subunit_mode=...)` with a default of `LARGEST`, the VRS 2.0 rule. Its text says the `vrs/2.1` branch
+will default to `SMALLEST`. Through 2.4.0-a6, no digest we compute moves (the liaison diffed and measured it). Once
+the keyword is released, the cap can be lifted with the id rule chosen on purpose: our call passes the mode
+explicitly, and question 1's recorded version says which rule minted each id.
+
 ## RM305 — ClinVar-GKM's allele table is an offline, independent witness for where an indel sits, and nothing reads it
 
 **Severity** medium · **Status** open — **a minor, release undecided** (a new cache lane and a check)
@@ -1418,6 +1424,59 @@ argues against the second themselves, and `@answered-is-not-absent` is the house
 `VALID_RESOLUTION_STATUS` is a wire vocabulary every reader of a published `resolution.csv` shares, and
 the row was never the untruth. Only the reason it gives is missing, and the reason already exists in the
 attestation.
+
+**Residuals** none yet.
+
+## RM341 — polars 2.x writes its version into every parquet footer, so one `compiler_version` mints a digest per polars release
+
+**Severity** high · **Status** open — **a patch**, `urgent` (a cap, under ten minutes), built 2026-11-04 by the
+lead · **Owner** compiler (packaging) · **Motivating case** the liaison's measurement, `docs/UPSTREAM_POLARS.md`
+(2026-11-03) · *related* RM342, RM304
+
+**Measured.** `polars>=1.42.0` has no upper bound. polars 2.0 writes `created_by = 'Polars (python) version
+<v> (build <hash>)'` into the parquet footer (pola-rs/polars#29106, following the parquet spec). The liaison
+compiled three reference examples twice under 1.44.2 and once under 2.1.0. The tables, schema, codec and row
+groups are equal, but every parquet's sha256 and every `artifact.digest` differ, while 1.44.2 reproduces itself
+byte for byte. P4 pins reproducibility to `compiler_version`, so one compiler release installed beside two polars
+releases would mint two digests for one spec, with nothing in the manifest saying why.
+
+**The patch.** Cap `polars<2` in the compiler, which the enricher inherits, the way RM304's `ga4gh.vrs<2.4`
+mitigation was shipped. Add a test that reads the footer of every parquet a real compile writes and fails when
+the installed polars version appears there, so the cap cannot be lifted quietly. It is lifted only by RM342.
+
+**Residuals** none yet.
+
+## RM342 — the manifest does not record the toolchain that wrote the bytes, so a digest that moves cannot say why
+
+**Severity** medium · **Status** open — **a minor** (a new optional manifest field), release undecided: **the pm
+sizes it** · **Owner** format + compiler · **Motivating case** RM341 · *related* RM304, RM341
+
+**Why it is filed.** RM341's cap is a stopgap, the way RM304's cap on `ga4gh.vrs` is. polars 2.x will be needed
+eventually (a security fix, a dependency's floor), and from 2.0 the parquet bytes name the polars release. The
+three repairs the liaison named are: keep the cap (it only postpones the problem); record the polars version (and
+the parquet writer's `created_by`) in the manifest beside `compiler_version`; or decide that the digest names the
+toolchain and say so in P4. The second is additive and minor-legal. The third is a charter amendment. Lifting the
+cap after either is an announced change, never a silent one.
+
+**Open questions.** Whether the record is one manifest field or a toolchain block (polars, arrow if it ever
+appears, Python); whether `verify` reports a digest mismatch whose recorded toolchain differs from the running
+one as its own reason (`@vrs-three-outcomes` asks for that); and whether P4's sentence on reproducibility needs
+an amendment once the toolchain is recorded.
+
+**Residuals** none yet.
+
+## RM343 — duckdb 2.0 spells the hash join `Hash Join`, so a query-shape test goes red on a fresh install
+
+**Severity** low · **Status** open — **a patch**, `urgent` (a test's spelling, under ten minutes), built
+2026-11-04 by the lead · **Owner** enricher (tests) · **Motivating case** the liaison's run of the enricher suite
+under duckdb 2.0.0, `docs/UPSTREAM_DUCKDB.md` (2026-11-03)
+
+**Measured.** Under duckdb 2.0.0 the enricher suite gives 2280 passed and 1 failed:
+`test_query_shapes.py` asserts `"HASH_JOIN"` in the `EXPLAIN` text, and 2.0 prints `Hash Join`. The plan is the
+same hash join, and the timing test passes. `duckdb>=1.1.0` is uncapped, so a fresh install takes 2.0.
+
+**The patch.** The assertion reads the operator name in either spelling. No cap, since nothing else in the suite
+moved. Capping a runtime dependency to keep one test's string would hold every consumer back for a test.
 
 **Residuals** none yet.
 
