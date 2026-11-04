@@ -39,16 +39,6 @@ the `0.8` branch lane by lane. Newest first.
 
 **Placement settled 2026-11-04.** The effector-confidence label is never authored (RM323's cut). This lane's derived table is one of its inputs, beside coloc and the coding consequence.
 
-**Grain widened 2026-11-04 (pm, on the lead's measurement).** `locus_to_gene.csv` covers every study locus a
-module variant is a **member** of, not only the ones it leads. Measured on the full 26.09 build: rs1800562
-(HFE C282Y) sits in 82 credible sets and leads none, and rs646776 leads 205 of the 2,061 it is in. A lead-only
-table is empty for an HFE module, so it fails the case the lane exists for. `variant_key` joins the key
-`(study_locus_id, gene_id, variant_key)` and means the module variant asked about. `lead_variant_id` still
-names the source's lead, and the member's weight is its posterior on `gwas_effects.csv` (RM239). The cost is
-one row per member variant and no new column, in a machine-written table. `colocalisations.csv` takes the
-same rule if it is lead-only too. Chosen over two alternatives: lead-only, which fails HFE, and a
-`study_locus_id` column on `gwas_effects.csv`, which adds a column.
-
 **Licence probed 2026-11-04 (all claims checked at the source); decided by the maintainer: build, under Open
 Targets' own terms plus its notice.**
 
@@ -92,7 +82,17 @@ once the inputs exist, never authored.
 
 **Built 2026-11-04 on `0.8` (build/RM333).** The lane `opentargets` (`opentargets build`, `opentargets_build.py`) mirrors release 26.09 from EBI's FTP over https and flattens it; `opentargets enrich` (`opentargets.py`) fills `locus_to_gene.csv` at Open Targets' own grain, one row per (study locus, gene) a module variant **leads**, and `colocalisations.csv` at the source's (left, right) study-locus grain, the sibling the probe chose: one (study locus, gene) pair colocalises with up to 1,738 right-hand loci (2,308,572 of 10,326,986 pairs have more than one), so `h4`/`clpp` on the L2G row would have picked a tissue. Several study loci per variant are kept. The `SourceRow` is `OPENTARGETS_TERMS` (CC0-1.0, `commercial_use=True`, `share_alike=False`, `redistribution=True`, `notice` = Data Services items 2 and 4 of the terms of use, verbatim). No C or E label is computed. The hand-run build and its counts are [probes/LANES_0_8.md § 5](probes/LANES_0_8.md#5-built-2026-11-04-the-opentargets-lane). **The lead-only predicate is the contract's and it is narrow:** measured over the whole release, rs1800562 sits in 82 GWAS credible sets and leads none, rs646776 leads 205 of 2,061; a members-wide L2G table would need `variant_key` in its key, a decision left to the pm.
 
-**Members, not lead-only: built 2026-11-04 on `0.8` (build/RM333-members), on the pm's grain decision above.** `opentargets enrich` now writes the L2G and coloc rows of every GWAS credible set a module variant is a member of, read off `credible_set_members`, which the snapshot already held for the posterior. `LocusToGeneRow` is keyed `(study_locus_id, gene_id, variant_key)` and `ColocalisationRow` `(study_locus_id, right_study_locus_id, variant_key)`, since coloc was lead-only too; both models are new in 0.8 and unreleased, so re-keying them breaks no reader. No new column: `lead_variant_id` still names the source's lead and now names another variant whenever the module's is a member only. Over the whole release no GWAS set's lead is missing from its own member list, so the member-wide table holds every lead-only row. On the HFE example C282Y now gets 121 L2G rows over its 82 sets and 13 coloc rows (it had none). Measured against the full snapshot, rs646776 gets 6,182 L2G rows over its 2,061 sets (615 over 205 lead-only) and 309,634 coloc rows (29,885 lead-only), so a module with a heavily fine-mapped variant now carries a coloc table in the hundreds of thousands of rows. The overlay stays keyed `(study_locus_id, gene_id)` / `(study_locus_id, right_study_locus_id)`: a score is the set's fact whichever member asked, so a correction reaches every member's row of the pair. `lead_key_ambiguous` is kept as it was (two module keys on one release allele have their rows withheld and are named), although its old reason, a key collision, no longer holds under the wider key. `subset_snapshot` cuts member loci, and the committed slice was recut from the full build with one more allele, `6_26072764_C_T`, a member of all 82 of C282Y's sets, so two module variants share study loci in a test.
+**Addendum 2026-11-04 — grain widened to members (pm, on the lead's measurement, decided on `main` after this entry shipped).** `locus_to_gene.csv` covers every study locus a
+module variant is a **member** of, not only the ones it leads. Measured on the full 26.09 build: rs1800562
+(HFE C282Y) sits in 82 credible sets and leads none, and rs646776 leads 205 of the 2,061 it is in. A lead-only
+table is empty for an HFE module, so it fails the case the lane exists for. `variant_key` joins the key
+`(study_locus_id, gene_id, variant_key)` and means the module variant asked about. `lead_variant_id` still
+names the source's lead, and the member's weight is its posterior on `gwas_effects.csv` (RM239). The cost is
+one row per member variant and no new column, in a machine-written table. `colocalisations.csv` takes the
+same rule if it is lead-only too. Chosen over two alternatives: lead-only, which fails HFE, and a
+`study_locus_id` column on `gwas_effects.csv`, which adds a column.
+
+**Members, not lead-only: built 2026-11-04 on `0.8` (build/RM333-members), on the addendum above.** `opentargets enrich` now writes the L2G and coloc rows of every GWAS credible set a module variant is a member of, read off `credible_set_members`, which the snapshot already held for the posterior. `LocusToGeneRow` is keyed `(study_locus_id, gene_id, variant_key)` and `ColocalisationRow` `(study_locus_id, right_study_locus_id, variant_key)`, since coloc was lead-only too; both models are new in 0.8 and unreleased, so re-keying them breaks no reader. No new column: `lead_variant_id` still names the source's lead and now names another variant whenever the module's is a member only. Over the whole release no GWAS set's lead is missing from its own member list, so the member-wide table holds every lead-only row. On the HFE example C282Y now gets 121 L2G rows over its 82 sets and 13 coloc rows (it had none). Measured against the full snapshot, rs646776 gets 6,182 L2G rows over its 2,061 sets (615 over 205 lead-only) and 309,634 coloc rows (29,885 lead-only), so a module with a heavily fine-mapped variant now carries a coloc table in the hundreds of thousands of rows. The overlay stays keyed `(study_locus_id, gene_id)` / `(study_locus_id, right_study_locus_id)`: a score is the set's fact whichever member asked, so a correction reaches every member's row of the pair. `lead_key_ambiguous` is kept as it was (two module keys on one release allele have their rows withheld and are named), although its old reason, a key collision, no longer holds under the wider key. `subset_snapshot` cuts member loci, and the committed slice was recut from the full build with one more allele, `6_26072764_C_T`, a member of all 82 of C282Y's sets, so two module variants share study loci in a test.
 
 **Residuals** RM238 · RM345
 
@@ -2445,6 +2445,53 @@ and a compiler-shipped `logs/fig[1].png` unescaped selected `logs/fig1.png` inst
 escaping and hidden spellings plus an unresolvable one (a NUL, on which `Path.resolve` raises), and what
 huggingface_hub's own filter, default ignore list included, selects from the files on disk; each derivation was
 mutated once to watch its test go red.
+
+**Residuals** none
+
+## RM353 — the module publisher diverges from what the manifest declares: provenance is never uploaded, snapshot names are not glob-escaped, and a logs-only republish overwrites a version
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `main`, uncut — a patch** (filed 2026-11-04 by the lead) · **Owner** enricher (`upload._declared_files`, `upload.plan_upload`, `upload._versioned_conflict`, `upload._literal_patterns`) · **Motivating case** found while building RM347 · *related* RM347
+
+**One class: the publisher's plan and guard are not derived from what the manifest says it holds.** Three instances:
+
+1. `provenance.json` is named with a sha256 in `manifest.provenance.file`, and no allowlist includes it, so it is
+   never uploaded;
+2. `publish_reference_snapshot` passes file names to the hub as glob patterns unescaped (RM347 escaped the module
+   publisher's), so a name with `[` selects a different file;
+3. the overwrite guard for `data/<name>/v<version>/` compares only `artifact.digest`, which excludes logs by design,
+   so a second publish with changed logs replaces them without `--force`.
+
+The fix derives the upload set from every file entry the manifest declares (artifact, logs, provenance, logo, readme),
+escapes every pattern in both publishers through one helper, and widens the guard's comparison to the declared
+files' hashes. Not in scope, under the existing rule: the flat `data/<name>/` path keeps stale files, since a publish
+deletes only what was declared (`@a-publish-may-not-orphan-the-bytes-it-stops-describing`).
+
+**Shipped.** One helper, `_declared_files`, reads every file the manifest declares in the module directory out
+of the JSON `_manifest_document` returns: `artifact.files`, `logo`, `readme`, `provenance` (a summary carrying
+`file` and `sha256`, which is why a `FileEntry` walk never saw it) and `logs`. `inputs` and `derived` are left
+out, since they describe files beside the spec. `plan_upload` sends `manifest.json` plus those files when
+`artifact.files` is legible, and **nothing else**: a parquet an earlier compile left in the directory, or a logo
+the manifest does not name, now stays behind (the old allowlist sent both, and a stale parquet on the flat path
+reads to discovery as part of the module). RM347's path guard, renamed `_declared_refusal_reason`, reads every
+declared name, so a hand-edited `provenance.file` of `../x` is skipped with a warning; an attested parquet
+refused or absent still raises rule 1, and an optional one absent is skipped quietly. A declared file whose
+bytes on disk no longer hash to the stated sha256 refuses the plan (found in review: the guard compares
+manifests, so a log appended to after the compile would otherwise pass it). With no readable manifest
+or no `artifact.files` list the plan falls back to `_ALLOW_PATTERNS` on disk, as before. `_literal_patterns` is
+the one escaping helper, applied to the module publisher's `allow_patterns`, both of the snapshot publisher's,
+the declared retirement's `delete_patterns` (`LayoutShift.retires` is one name, never a glob) and, beyond the
+two publishers the item named, `prune_repo`'s `delete_patterns`, where an unescaped listed name would delete a
+file nobody was shown. The guard, `_versioned_conflict`, compares `artifact.digest` and then every declared
+file's sha256; a hash that differs, or a file declared on one side only, is a `PublishCollisionError` whose
+message says *the same compiled data but different declared files* and names each one. A declaration with no
+legible hash is not compared. `PublishCollisionError` stays the type on `main`. One test fixture changed with
+it: the RM199 retirement test passed `retires="data/old-*.parquet"`, a glob the field forbids, and now passes a
+name. Tests compile copies of `apoe_epsilon` carrying a `provenance.json`, a logo, a README and a log, and check
+the plan against the declared set, an undeclared stale parquet and logo, an escaping `provenance.file`, a
+snapshot file `data/chr[1].parquet` beside a `data/chr1.parquet` decoy, a retirement and a prune of a `[` name,
+a logs-only recompile at the same version (digest equal, refused, then sent under `force`), and a log declared
+on one side only. Each derivation was mutated once to watch its tests go red: the provenance arm, the derived
+plan (back to the allowlist union), the escaping helper, and the declared-hash comparison.
 
 **Residuals** none
 
