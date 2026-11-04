@@ -3214,7 +3214,10 @@ would be empty for it. `variant_key` is the module's own key for the member aske
 keys, because two module variants in one set each get its rows; the rows join the weights directly.
 `lead_variant_id` keeps the source's spelling of the set's lead, which names another variant when the
 module's is a member only. The member's own weight in the set is its posterior on `gwas_effects.csv`. A
-heavily fine-mapped variant makes coloc large: rs646776's 2,061 sets carry 309,634 coloc rows.
+heavily fine-mapped variant makes coloc large: rs646776's 2,061 sets carry 309,634 coloc rows. An
+`overrides.csv` correction keys on `(study_locus_id, gene_id)` / `(study_locus_id, right_study_locus_id)` and
+reaches every member's row of the pair; it may not `update` `variant_key`, an `insert` matches on the
+`variant_key` it supplies, and a `suppress` removes every member's row.
 
 **Coloc is a sibling table, not columns on the L2G row**, because the probe found many right-hand study
 loci per `(study locus, gene)` pair (one per tissue and QTL kind): `h4` on the L2G row would have to pick a

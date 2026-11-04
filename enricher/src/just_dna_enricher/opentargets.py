@@ -131,11 +131,11 @@ class OpenTargetsResult:
     off_build: list[str] = field(default_factory=list)
     #: Resolved to several of the release's alleles, so its per-transcript rows would collide: withheld.
     allele_ambiguous: list[str] = field(default_factory=list)
-    #: Module keys sharing one release allele with another key: the rows of the study loci that allele
-    #: is a member of are withheld for those keys and the keys are named. With `variant_key` in the key
+    #: Module keys sharing one release allele with another key: their L2G and coloc rows are withheld in
+    #: every set they are in, and the keys are named. With `variant_key` in the key
     #: the two keys' rows would no longer collide; the arm is kept because one release allele stated
     #: twice under two module keys is a module defect to name, not a fact to write twice.
-    lead_key_ambiguous: list[str] = field(default_factory=list)
+    shared_allele_keys: list[str] = field(default_factory=list)
     #: Datasets the snapshot read only some parts of, `{dataset: (read, total)}`.
     partial: dict[str, tuple[int, int]] = field(default_factory=dict)
 
@@ -395,24 +395,21 @@ def enrich_opentargets(
             "JOIN credible_sets cs ON cs.study_locus_id = m.study_locus_id "
             "ORDER BY m.study_locus_id, m.variant_id"
         ).fetchall()
-        # `locus_info` is `{study locus: (study, lead)}`, `member_keys` `{study locus: module keys that are
-        # members}`. A key whose two release alleles sit in one set is one member of it, not two.
-        locus_info: dict[str, tuple[str | None, str]] = {}
-        member_keys: dict[str, set[str]] = {}
-        shared: set[str] = set()
-        for locus, variant_id, study, lead_id in memberships_by_locus:
-            keys = keys_by_id.get(variant_id, [])
-            if len(keys) > 1:
-                shared.update(keys)
-            locus_info[locus] = (study, lead_id)
-            member_keys.setdefault(locus, set()).update(keys)
         # Two module keys naming one release allele are withheld rather than written twice, and counted,
-        # in every set (a multi-ALT key's other allele included); the other keys of a set keep their rows.
-        for locus in list(member_keys):
-            member_keys[locus] -= shared
-            if not member_keys[locus]:
-                del member_keys[locus], locus_info[locus]
-        result.lead_key_ambiguous = sorted(shared)
+        # whether or not that allele is in any set: in every set either key is in (a multi-ALT key's
+        # other allele included). The other keys of a set keep their rows.
+        shared = {key for keys in keys_by_id.values() if len(keys) > 1 for key in keys}
+        # `locus_info` is `{study locus: (study, lead)}`, `member_keys` `{study locus: module keys that are
+        # members, sorted}`. A key whose two release alleles sit in one set is one member of it, not two.
+        locus_info: dict[str, tuple[str | None, str]] = {}
+        member_sets: dict[str, set[str]] = {}
+        for locus, variant_id, study, lead_id in memberships_by_locus:
+            keys = set(keys_by_id.get(variant_id, [])) - shared
+            if keys:
+                locus_info[locus] = (study, lead_id)
+                member_sets.setdefault(locus, set()).update(keys)
+        member_keys = {locus: sorted(keys) for locus, keys in member_sets.items()}
+        result.shared_allele_keys = sorted(shared)
         if locus_info:
             probe_table(
                 con, "loci", [("study_locus_id", "VARCHAR")], [(locus,) for locus in sorted(locus_info)]
@@ -422,7 +419,7 @@ def enrich_opentargets(
                 "JOIN loci ON loci.study_locus_id = l.study_locus_id ORDER BY l.study_locus_id, l.gene_id"
             ).fetchall():
                 study, lead_id = locus_info[locus]
-                for key in sorted(member_keys[locus]):
+                for key in member_keys[locus]:
                     result.locus_to_gene.append(
                         LocusToGeneRow(
                             study_locus_id=locus,
@@ -455,7 +452,7 @@ def enrich_opentargets(
                     colocalising,
                 ) = row
                 study, _lead_id = locus_info[locus]
-                for key in sorted(member_keys[locus]):
+                for key in member_keys[locus]:
                     result.colocalisations.append(
                         ColocalisationRow(
                             study_locus_id=locus,
@@ -559,13 +556,13 @@ def enrich_opentargets(
             counts.no_study,
             counts.not_looked_up,
         )
-    if result.lead_key_ambiguous:
+    if result.shared_allele_keys:
         logger.warning(
             "Open Targets pass withheld the L2G and coloc rows of %d module key(s) that share one "
             "release allele with another key: one allele stated under two keys is a module defect to "
             "name, not a fact to write twice. Examples: %s",
-            len(result.lead_key_ambiguous),
-            result.lead_key_ambiguous[:3],
+            len(result.shared_allele_keys),
+            result.shared_allele_keys[:3],
         )
     if result.allele_ambiguous:
         logger.warning(
@@ -580,8 +577,8 @@ def enrich_opentargets(
         # withheld is not answered for that table, so its existing rows are not replaced with nothing.
         asked = set(result.asked)
         answered = {
-            "locus_to_gene.csv": asked - set(result.lead_key_ambiguous),
-            "colocalisations.csv": asked - set(result.lead_key_ambiguous),
+            "locus_to_gene.csv": asked - set(result.shared_allele_keys),
+            "colocalisations.csv": asked - set(result.shared_allele_keys),
             "consequences.csv": asked - set(result.allele_ambiguous),
         }
         fresh = {
@@ -633,7 +630,7 @@ def summarise(result: OpenTargetsResult) -> dict:
         "not_in_release": len(result.not_in_release),
         "off_build": len(result.off_build),
         "allele_ambiguous": len(result.allele_ambiguous),
-        "lead_key_ambiguous": len(result.lead_key_ambiguous),
+        "shared_allele_keys": len(result.shared_allele_keys),
         "locus_to_gene": len(result.locus_to_gene),
         "colocalisations": len(result.colocalisations),
         "consequences": len(result.consequences),

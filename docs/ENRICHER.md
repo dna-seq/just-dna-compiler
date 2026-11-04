@@ -3358,7 +3358,7 @@ look up (unresolved, off-build) keeps what it had (`@rederive-never-shortens`). 
 pass writes nothing and says nobody asked. It never fetches, so it has no `--offline`; `--strict`
 refuses a snapshot built from part of the release, and one that does not record its part totals (unknown
 completeness is not completeness). Two module keys on one release allele have that allele's L2G and coloc
-rows withheld and the keys named (`lead_key_ambiguous`): one allele stated under two keys is a module
+rows withheld and the keys named (`shared_allele_keys`): one allele stated under two keys is a module
 defect to name, not a fact to write twice. The member-wide grain (decided 2026-11-04) makes coloc large for
 a heavily fine-mapped variant: rs646776's 2,061 sets carry 309,634 coloc rows.
 

@@ -504,10 +504,9 @@ def subset_snapshot(
     ids = variants.select("variant_id")
     members = pl.scan_parquet(str(src / MEMBERS_GLOB)).join(ids.lazy(), on="variant_id", how="semi").collect()
     sets = pl.read_parquet(src / CREDIBLE_SETS_FILE)
-    led = sets.join(ids.rename({"variant_id": "lead_variant_id"}), on="lead_variant_id", how="semi")
     of_studies = sets.filter(pl.col("study_id").is_in(studies or [])).select("study_locus_id")
     kept_sets = sets.join(
-        pl.concat([members.select("study_locus_id"), led.select("study_locus_id"), of_studies]).unique(),
+        pl.concat([members.select("study_locus_id"), of_studies]).unique(),
         on="study_locus_id",
         how="semi",
     ).sort("study_locus_id")

@@ -127,8 +127,11 @@ def _keys_by_variant_id(spec: Path, data: Path) -> dict[str, set[str]]:
 def _member_loci(spec: Path, data: Path) -> set[tuple[str, str]]:
     """`(study_locus_id, variant_key)` for every GWAS credible set a module allele is a member of."""
     keys = _keys_by_variant_id(spec, data)
-    members = pl.read_parquet(data / "credible_set_members-*.parquet").filter(
-        pl.col("variant_id").is_in(list(keys))
+    sets = pl.read_parquet(data / "credible_sets.parquet").select("study_locus_id")
+    members = (
+        pl.read_parquet(data / "credible_set_members-*.parquet")
+        .filter(pl.col("variant_id").is_in(list(keys)))
+        .join(sets, on="study_locus_id", how="semi")
     )
     return {
         (locus, key)
@@ -419,8 +422,8 @@ def test_two_module_keys_on_one_release_allele_withhold_its_study_loci_and_say_s
     """A module naming one release allele under two keys has that allele's study-locus rows withheld, both keys named."""
     _append(module / "resolution.csv", [{**LEAD_ROW, "variant_key": "19:44892362:A:G", "rsid": ""}])
     result = enrich_opentargets(module, snapshot=SLICE, write=False)
-    assert result.lead_key_ambiguous == ["19:44892362:A:G", "rs2075650"]
-    withheld = set(result.lead_key_ambiguous)
+    assert result.shared_allele_keys == ["19:44892362:A:G", "rs2075650"]
+    withheld = set(result.shared_allele_keys)
     assert not any(r.variant_key in withheld for r in result.locus_to_gene + result.colocalisations)
     # Every other module variant keeps its rows: the withholding is per key, not per run.
     assert any(r.variant_key == "rs1800562" for r in result.locus_to_gene)
@@ -517,6 +520,55 @@ def test_an_overlay_correction_of_a_pair_reaches_every_members_row(module: Path,
     assert set(table["l2g_score"]) == {0.5}
 
 
+def test_an_overlay_may_not_update_variant_key_and_an_insert_adds_a_second_members_row(
+    module: Path, tmp_path: Path
+) -> None:
+    """`variant_key` is a key column the overlay does not key on: an update of it is refused, and an
+    insert naming it matches on it, so a pair already present for one member takes a row for another."""
+    result = enrich_opentargets(module, snapshot=SLICE)
+    row = min(result.locus_to_gene, key=lambda r: (r.study_locus_id, r.gene_id))
+    fieldnames = ["table", "subject", "member", "field", "operation", "value", "reason"]
+
+    def overlay(rows: list[dict]) -> None:
+        with (module / "overrides.csv").open("w", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fieldnames)
+            writer.writeheader()
+            for r in rows:
+                writer.writerow(
+                    {
+                        "table": "locus_to_gene.csv",
+                        "subject": row.study_locus_id,
+                        "member": row.gene_id,
+                        "reason": "a curator's call",
+                        **r,
+                    }
+                )
+
+    overlay([{"field": "variant_key", "operation": "update", "value": "rs111033563"}])
+    refused = compile_module(module, tmp_path / "refused")
+    assert not refused.success
+    assert any("part of locus_to_gene.csv's row key" in e for e in refused.errors)
+
+    inserted = {"variant_key": "rs111033563", "dataset": row.dataset, "l2g_score": "0.25"}
+    overlay([{"field": name, "operation": "insert", "value": value} for name, value in inserted.items()])
+    built = compile_module(module, tmp_path / "out")
+    assert built.success, built.errors
+    table = pl.read_parquet(tmp_path / "out" / "locus_to_gene.parquet").filter(
+        (pl.col("study_locus_id") == row.study_locus_id) & (pl.col("gene_id") == row.gene_id)
+    )
+    assert dict(zip(table["variant_key"], table["l2g_score"], strict=True)) == {
+        row.variant_key: row.l2g_score,
+        "rs111033563": 0.25,
+    }
+    # The insert is a fixed point through the round trip: lap 2 finds the row and adds nothing.
+    reverse_module(tmp_path / "out", tmp_path / "spec2")
+    again = compile_module(tmp_path / "spec2", tmp_path / "out2")
+    assert again.success, again.errors
+    m1 = json.loads((tmp_path / "out" / "manifest.json").read_text())
+    m2 = json.loads((tmp_path / "out2" / "manifest.json").read_text())
+    assert m1["artifact"]["digest"] == m2["artifact"]["digest"]
+
+
 #: rs646776 (CELSR2/SORT1), the release's `1_109275908_C_T`: a member of far more sets than it leads.
 RS646776_ROW = {
     **LEAD_ROW,
@@ -559,7 +611,7 @@ def test_rs646776_gets_rows_for_every_set_it_is_a_member_of(tmp_path: Path) -> N
         .select("study_locus_id")
         .collect()["study_locus_id"]
     )
-    assert scored > led & scored, "the member-wide table holds sets the lead-only one did not"
+    assert scored - led, "the member-wide table holds scored sets the lead-only one did not"
 
     result = enrich_opentargets(spec, snapshot=cut, write=False)
     rows = [r for r in result.locus_to_gene if r.variant_key == "rs646776"]

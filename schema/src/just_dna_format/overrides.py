@@ -163,9 +163,10 @@ _MERGED = (
 #:   a correction names the credible set it corrects; the corrected value is an input to the module's
 #:   effector rubric, never a label (RM323's cut). Both tables also key on `variant_key` (members, not
 #:   lead-only, 2026-11-04), and the overlay deliberately does not: a score or a colocalisation is a
-#:   fact of the set and gene, whichever member asked, so a correction reaches every member's row of
-#:   that pair. The limit is `insert`: a pair already present for one member counts as present, so an
-#:   insert cannot add a second member's row to it (the pass writes those).
+#:   fact of the set and gene, whichever member asked, so an `update` reaches every member's row of
+#:   that pair and may not write `variant_key` itself (it is a key column). An `insert` matches on the
+#:   `variant_key` it supplies too, so it can add a second member's row to a pair. The limit is
+#:   `suppress`: it removes every member's row of the pair, and cannot withdraw one member's.
 #: * `consequences.csv` — `transcript`. One variant carries a row per transcript (RM236).
 #:
 #: **`clin_sig_authority_calls.csv` is deliberately outside, and it is the pair's second decision.**
@@ -494,6 +495,14 @@ class OverrideRow(AuthoredModel):
                 f"a correction — writing it here would leave this overlay row matching nothing the "
                 f"moment it applied."
             )
+        # A key column the overlay does not key on (`variant_key` on the two study-locus tables, RM333)
+        # is re-keying too: an update reaching several members' rows would give them one key.
+        if self.operation == "update" and field in getattr(target.model, "_KEY_FIELDS", ()):
+            raise ValueError(
+                f"{field!r} is part of {self.table}'s row key, so writing it re-keys the rows the "
+                f"update reaches (every row under subject and member, possibly several) rather than "
+                f"correcting them. Re-keying a derived row is a suppress plus an insert."
+            )
         return self
 
 
@@ -758,6 +767,22 @@ def apply_overrides(
             for index in reversed(matched):
                 del result[index]
         else:  # insert
+            # A key column beyond subject and member (`variant_key` on the study-locus tables) narrows
+            # the match, so an insert of a second member's row of a pair is not taken for the first's.
+            extra_keys = {
+                row.field or "": row.value or ""
+                for row in group
+                if (row.field or "") in getattr(target.model, "_KEY_FIELDS", ())
+                and (row.field or "") not in {target.subject_field, target.member_field}
+            }
+            matched = [
+                index
+                for index in matched
+                if all(
+                    _cell(result[index], name) == _canonical_key_cell(sample, name, value)
+                    for name, value in extra_keys.items()
+                )
+            ]
             if matched:
                 continue  # already present — the idempotent no-op the round trip depends on
             data: dict[str, Any] = {target.subject_field: subject}
