@@ -3,6 +3,7 @@
 from typing import Any
 
 import polars as pl
+from just_dna_format.base import derive_variant_key
 from just_dna_format.frequency import FrequencyRow
 from just_dna_format.spec import ModuleSpecConfig, StudyRow, VariantRow
 
@@ -11,13 +12,54 @@ from just_dna_compiler.compiler.tables import _polars_type, _split_genotype
 # ── Parquet builders ───────────────────────────────────────────────────────────
 
 
-def _build_weights(variants: list[VariantRow], config: ModuleSpecConfig) -> pl.DataFrame:
-    """Build the weights.parquet DataFrame from validated variant rows."""
+def _supporting_studies(variant: VariantRow, studies: list[StudyRow]) -> list[StudyRow]:
+    """The study rows that support `variant`'s locus, matched on any shared identifier (0.8).
+
+    The rule `_cross_validate_studies` uses to decide a study is not an orphan: the same rsid, or the
+    same `chrom:start:ref`. Frozen-key equality would contribute nothing for an rsid-authored study of
+    a coordinate-keyed variant, and silently, since a locus with no supporting rows reads as unknown.
+    `variant` is the post-resolution row, so a coordinate the enricher filled matches a coordinate-
+    authored study too. Authored order is kept, which is what makes every derivation below stable.
+    """
+    coord = derive_variant_key(None, variant.chrom, variant.start, variant.ref) if variant.chrom else None
+    return [
+        s
+        for s in studies
+        if (s.rsid is not None and s.rsid == variant.rsid)
+        or (
+            coord is not None
+            and s.chrom is not None
+            and derive_variant_key(None, s.chrom, s.start, s.ref) == coord
+        )
+    ]
+
+
+def _locus_study_facts(variant: VariantRow, studies: list[StudyRow]) -> dict[str, Any]:
+    """The locus-level columns `weights.parquet` derives from a variant's study rows (0.8).
+
+    Repeated on every genotype row of the locus: a parquet column is approximately free (P9), and a
+    consumer reading one row then needs no second join.
+
+    * `effect_unit` (RM332): the unit of the variant's effect, when every supporting study row that
+      states a unit states the same one. `VariantRow` names no study, so "the matching study row" is
+      undefined; unanimity is the rule that never guesses (PT2 §3 item 17). Null when none states one,
+      and null when two disagree — never the first, never the most common.
+    """
+    units = {s.effect_unit for s in studies if s.effect_unit is not None}
+    return {"effect_unit": units.pop() if len(units) == 1 else None}
+
+
+def _build_weights(
+    variants: list[VariantRow], config: ModuleSpecConfig, studies: list[StudyRow] | None = None
+) -> pl.DataFrame:
+    """Build the weights.parquet DataFrame from validated variant rows, and the locus-level columns
+    derived from the module's study rows (`_locus_study_facts`)."""
     defaults = config.defaults
     module_name = config.module.name
     records: list[dict[str, Any]] = []
     for v in variants:
         priority = v.priority if v.priority is not None else defaults.priority
+        derived = _locus_study_facts(v, _supporting_studies(v, studies or []))
         records.append(
             {
                 "rsid": v.rsid,
@@ -89,6 +131,10 @@ def _build_weights(variants: list[VariantRow], config: ModuleSpecConfig) -> pl.D
                 # floor. Both-or-neither is a model rule, so the pair is always whole here.
                 "quality_from": v.quality_from,
                 "min_quality": v.min_quality,
+                # ── 0.8: derived from the study rows, never authored on a variant; after every 0.7
+                # column so none moves, and `reverse` reads none of them back. Named one by one, not
+                # spread, so the two-halves guard in test_compiler_regression still sees each key. ──
+                "effect_unit": derived["effect_unit"],
             }
         )
     schema = {
@@ -133,6 +179,7 @@ def _build_weights(variants: list[VariantRow], config: ModuleSpecConfig) -> pl.D
         "actionability": pl.Utf8,
         "quality_from": pl.Utf8,
         "min_quality": pl.Float64,
+        "effect_unit": pl.Utf8,
     }
     return pl.DataFrame(records, schema=schema)
 
@@ -291,6 +338,8 @@ def _build_studies(studies: list[StudyRow], module_name: str) -> pl.DataFrame:
                 "stratum_level": s.stratum_level,
                 # RM331: the LD proxy the study measured, when it was not the lead itself.
                 "proxy_rsid": s.proxy_rsid,
+                # RM332: the unit of `effect_size`, verbatim.
+                "effect_unit": s.effect_unit,
             }
         )
     schema = {
@@ -331,5 +380,6 @@ def _build_studies(studies: list[StudyRow], module_name: str) -> pl.DataFrame:
         "stratum": pl.Utf8,
         "stratum_level": pl.Utf8,
         "proxy_rsid": pl.Utf8,
+        "effect_unit": pl.Utf8,
     }
     return pl.DataFrame(records, schema=schema)

@@ -27,6 +27,7 @@ import polars as pl
 import pytest
 from just_dna_compiler.compiler import compile_module, content_signature, reverse_module, validate_spec
 from just_dna_format.base import field_first_seen, field_vocabularies
+from just_dna_format.gwas import GwasEffectRow
 from just_dna_format.pgs import VALID_TRAINING_ANCESTRY, PgsRow
 from just_dna_format.spec import StudyRow
 from just_dna_format.vocab import VALID_SUPERPOPULATIONS
@@ -141,6 +142,27 @@ def _fill_proxy(i: int, row: dict[str, str]) -> None:
             row["proxy_rsid"] = "rs4970836" if row["rsid"] else row["proxy_rsid"]
 
 
+#: Units by variant, so the weights join meets every case: all stating rows agree, two disagree, one
+#: states and the rest do not, and none states (the variants left out of this map).
+_UNITS: dict[str, tuple[str, ...]] = {
+    "rs776994377": ("log-odds per allele", "log-odds per allele", "log-odds per allele"),
+    "rs759524388": ("log-odds per allele", "-ln HR per allele", ""),
+    "rs1800562": ("", "years of parental lifespan per allele", ""),
+}
+
+
+def _fill_effect_unit(i: int, row: dict[str, str]) -> None:
+    units = _UNITS.get(row["rsid"])
+    if units is not None:
+        row["effect_unit"] = units[_nth_for_variant(i, row["rsid"])]
+
+
+def _nth_for_variant(i: int, rsid: str) -> int:
+    """Which of its variant's study rows row `i` is (the example lists each variant's rows together)."""
+    _, rows = _read_rows(_EXAMPLE / "studies.csv")
+    return sum(1 for row in rows[:i] if row["rsid"] == rsid)
+
+
 #: Each column group this batch adds, with a fill that gives it distinct stated values and empty
 #: cells, and how a parquet cell reads back as the CSV cell it came from.
 _GROUPS: dict[str, tuple[tuple[str, ...], Fill]] = {
@@ -150,6 +172,7 @@ _GROUPS: dict[str, tuple[tuple[str, ...], Fill]] = {
     "RM329": (("age_min", "age_max", "age_of"), _fill_age_band),
     "RM330": (("stratum", "stratum_level"), _fill_stratum),
     "RM331": (("proxy_rsid",), _fill_proxy),
+    "RM332": (("effect_unit",), _fill_effect_unit),
 }
 
 
@@ -454,3 +477,62 @@ def test_a_proxy_is_an_rsid_and_never_the_row_itself() -> None:
     # A proxy is a proxy OF something: a row naming no variant cannot carry one.
     with pytest.raises(ValidationError, match="proxy_rsid"):
         StudyRow(pmid="29227965", proxy_rsid="rs4970836")
+
+
+# ── RM332: an effect's unit, on the study row and joined onto the variant ──────────────────────
+
+
+def _unanimous(units: list[str | None]) -> str | None:
+    stated = {u for u in units if u}
+    return stated.pop() if len(stated) == 1 else None
+
+
+def _weights_column(tmp_path: Path, spec: Path, column: str) -> dict[str, set[object]]:
+    """The values `weights.parquet` carries in `column`, per rsID (a locus repeats on every genotype row)."""
+    result = compile_module(spec, tmp_path / f"w_{spec.name}")
+    assert result.success, result.errors
+    df = pl.read_parquet(tmp_path / f"w_{spec.name}" / "weights.parquet")
+    out: dict[str, set[object]] = {}
+    for row in df.iter_rows(named=True):
+        out.setdefault(row["rsid"], set()).add(row[column])
+    return out
+
+
+def test_effect_unit_is_free_text_as_on_gwas_effects() -> None:
+    assert (
+        StudyRow.model_fields["effect_unit"].annotation
+        == GwasEffectRow.model_fields["effect_unit"].annotation
+    )
+    assert "effect_unit" not in field_vocabularies(StudyRow)
+    assert _study(effect_unit="-ln HR per allele").effect_unit == "-ln HR per allele"
+
+
+def test_weights_parquet_joins_the_unit_only_when_every_stating_study_agrees(tmp_path: Path) -> None:
+    columns, fill = _GROUPS["RM332"]
+    spec = _spec(tmp_path, "units", columns, fill)
+    _, studies = _read_rows(spec / "studies.csv")
+    expected: dict[str, str | None] = {}
+    for row in studies:
+        if row["rsid"]:
+            expected.setdefault(row["rsid"], None)
+    for rsid in expected:
+        expected[rsid] = _unanimous([r["effect_unit"] or None for r in studies if r["rsid"] == rsid])
+    # The fixture meets all four cases, or the join is asserted over fewer than it claims.
+    assert expected["rs776994377"] and expected["rs1800562"]
+    assert expected["rs759524388"] is None
+
+    joined = _weights_column(tmp_path, spec, "effect_unit")
+    assert {rsid: values for rsid, values in joined.items() if rsid in expected} == {
+        rsid: {unit} for rsid, unit in expected.items() if rsid in joined
+    }
+
+
+def test_the_joined_unit_never_reaches_variants_csv(tmp_path: Path) -> None:
+    columns, fill = _GROUPS["RM332"]
+    spec = _spec(tmp_path, "units", columns, fill)
+    assert compile_module(spec, tmp_path / "a1").success
+    reverse_module(tmp_path / "a1", tmp_path / "rev")
+    header, _ = _read_rows(tmp_path / "rev" / "variants.csv")
+    assert "effect_unit" not in header
+    weights = pl.read_parquet_schema(tmp_path / "a1" / "weights.parquet")
+    assert list(weights)[list(weights).index("min_quality") + 1] == "effect_unit"

@@ -1032,6 +1032,7 @@ def _write_studies_csv(studies_df: pl.DataFrame, output_path: Path) -> None:
         "stratum",
         "stratum_level",
         "proxy_rsid",
+        "effect_unit",
     ]
     with open(output_path, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -1076,5 +1077,6 @@ def _write_studies_csv(studies_df: pl.DataFrame, output_path: Path) -> None:
                     "stratum": _scalar_cell(row.get("stratum")),
                     "stratum_level": _scalar_cell(row.get("stratum_level")),
                     "proxy_rsid": _scalar_cell(row.get("proxy_rsid")),
+                    "effect_unit": _scalar_cell(row.get("effect_unit")),
                 }
             )

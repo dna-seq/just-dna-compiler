@@ -650,7 +650,7 @@ def compile_module(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # SNP core: weights/annotations only when the module actually has variants.
-    weights_df = _build_weights(variants, config) if variants else None
+    weights_df = _build_weights(variants, config, studies) if variants else None
     annotations_df = _build_annotations(variants, module_name) if variants else None
     studies_df = _build_studies(studies, module_name) if studies else None
     # Names taken from `SNP_CORE_PARQUETS` rather than spelled again: this is the site the binding was

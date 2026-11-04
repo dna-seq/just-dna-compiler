@@ -41,6 +41,15 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM332: an effect states its unit on the study row, and `weights.parquet` carries it when the studies agree (0.8, uncut)
+
+**format, compiler** — `studies.csv` gains `effect_unit`, free text and verbatim, the column
+`gwas_effects.csv` has carried since 0.6. `weights.parquet` gains a derived `effect_unit` per variant:
+the unit every supporting study row that states one agrees on, null when none states one or two
+disagree. It is not authored on `variants.csv` (the maintainer cut that half) and `reverse` never writes
+it back. Every module carrying `variants.csv` gets a new `artifact.digest` on a 0.8 recompile, since
+`weights.parquet` gains a column; `content_signature` does not move.
+
 ## 2026-11-04 — RM331 (the author's half): a study measured on an LD proxy says so, and its allele is checked against the proxy (0.8, uncut)
 
 **format, compiler, enricher** — `studies.csv` gains `proxy_rsid`, the variant a study measured when it

@@ -35,6 +35,37 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM332 — a `beta` has no unit on authored rows, while `gwas_effects.csv` has carried one since 0.6
+
+**Cut 2026-11-04 by the maintainer, after the final measuring run** (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §3): the `VariantRow` half, which reverses the morning's "both tables". `effect_unit` is on `StudyRow` only, and the parquet joins it onto a variant's effect from the matching study row.
+
+**Decided 2026-11-04 by the maintainer: both tables.** `effect_unit` goes on `StudyRow` and on `VariantRow`, free text and verbatim, mirroring `gwas_effects.csv`: wherever an effect size is authored, its unit sits beside it.
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** ([PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §5 A5), taken into 0.8 on 2026-11-03 as a priority · **Owner** format · **Motivating case** longevitymap v2 requirements §6.2 (`effect_measure`), §9 step 3 (sign conventions) · *for* longevitymap v2 · *related* `@weight-has-no-unit`
+
+**What shipped.** `StudyRow` gains `effect_unit`, optional free text kept verbatim, first release 0.8.0,
+the annotation `GwasEffectRow.effect_unit` has; it reaches `studies.parquet` and `reverse` writes it back.
+The `VariantRow` half was cut by the maintainer before the build. `weights.parquet` gains a derived
+`effect_unit` per variant, repeated on each genotype row: the unit every supporting study row (same rsid
+or same `chrom:start:ref`, the orphan check's rule) that states one agrees on, and null when none states
+one or two disagree — PT2 §3 item 17's unanimity default for the undefined "matching study row",
+accepted by the pm. It is appended after every 0.7 column and `reverse` never reads it back, so
+`content_signature` does not move and every module with `variants.csv` gets a new `artifact.digest` on a
+0.8 recompile. Tests: `compiler/tests/test_studyrow_0_8.py` (the column's round trip, the join over a
+variant whose rows agree, one whose rows disagree, one where one row of three states a unit, and the
+variants with none; `variants.csv` after `reverse` carries no `effect_unit`).
+
+**Residuals** none
+
+**What was confirmed.** `GwasEffectRow.effect_unit` (0.6) records the unit of a `beta` verbatim.
+`VariantRow` and `StudyRow` have only `effect_measure`. v2's betas come in years per allele (sometimes
+doubled from a parental estimate), in Martingale residuals (Pilling) and in healthspan hazards (Zenin),
+so the plan writes the unit into `statistical_test` prose.
+
+**Shape.** `effect_unit` on `StudyRow` (and on `VariantRow`, which is a decision), free text and verbatim,
+mirroring the derived table. Full ×1–2. A sign convention ("positive = shorter life") is not a unit:
+`effect_allele` with `direction` already says it.
+
 ## RM325 — `studies.csv` has no sample size, and v2's tier A rule is stated in N
 
 **Decided 2026-11-04 by the maintainer: `sample_size`, a closed `sample_unit` beside it (individuals / lives), and `n_cases`.** A magnitude carries its unit beside it (`@weight-has-no-unit`), so v2's "N ≥ 100k lives" is checkable from the artifact. The names still get the P5 audit in the proposal.

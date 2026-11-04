@@ -1528,6 +1528,19 @@ class StudyRow(CitationPair, AuthoredModel):
             "computed, never authored."
         ),
     )
+    # RM332: the unit `effect_size` is in, verbatim — `gwas_effects.csv` has carried the same column
+    # since 0.6. `effect_measure` names the KIND of estimate (beta, OR); this names what one unit of it is
+    # (years of parental lifespan per allele, -ln HR per allele). On `StudyRow` only (the maintainer cut
+    # the `VariantRow` half); `weights.parquet` joins it onto a variant when its study rows agree.
+    effect_unit: str | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description=(
+            "The unit of `effect_size`, verbatim as the paper states it, e.g. `years of parental "
+            "lifespan per allele`, `-ln HR per allele`. Free text. A sign convention is not a unit: "
+            "`effect_allele` with `direction` already says which way."
+        ),
+    )
 
     @property
     def variant_key(self) -> str | None:

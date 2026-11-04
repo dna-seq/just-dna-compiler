@@ -459,6 +459,18 @@ authored table changes what an identity key means, which is major-only under Pri
 restates `(variant_key, pmid)` rather than reading `_KEY_FIELDS`, so splitting it here splits nothing
 else.
 
+### Locus-level columns `weights.parquet` derives from the study rows (0.8)
+
+`VariantRow` names no study, so a fact that lives on `studies.csv` reaches a variant only by a rule.
+`_build_weights` collects each variant's **supporting** study rows — any shared identifier, the same rsid
+or the same `chrom:start:ref`, which is the rule the orphan check uses — and derives each column below
+from them, repeating it on every genotype row of the locus (a parquet column is approximately free, P9).
+None is authored on a variant, and `reverse` reads none back. All are appended after every 0.7 column.
+
+- **`effect_unit`** (RM332) — the unit of the variant's effect, when every supporting study row that
+  states a unit states the same one. Null when none states one, and null when two disagree: never the
+  first, never the most common (PT2 §3 item 17's default, accepted by the pm).
+
 ### Three more schema limits, made legible the same way (0.6, the VCF 4.4 audit)
 
 Same class as the bin-boundary gap above — limits of the **schema**, not of the tier — and they are here

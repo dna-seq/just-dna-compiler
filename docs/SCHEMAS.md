@@ -576,7 +576,9 @@ written both or neither (`sex`/`male`, `parent_sex`/`father`). A conclusion that
 variant the study measured when it is an LD proxy of the row's lead; the row stays filed under the lead,
 `effect_allele` is the proxy's allele, and the compiler checks it against the proxy's resolved alleles.
 A proxy on a row naming no variant, or equal to the row's own `rsid`, is refused. Authors never write
-the r² or its population: that pair is computed.
+the r² or its population: that pair is computed. **`effect_unit?`** (RM332) — the unit of `effect_size`,
+free text and verbatim, as on `gwas_effects.csv`; `StudyRow` only (the `VariantRow` half was cut), and
+`weights.parquet` carries it per variant when every supporting study row that states one agrees.
 
 **The pmid/doi pair (0.8, RM336) — one rule on every table that cites.** `pmid` never holds a DOI: a
 cell whose only identifier is a DOI is refused, naming the DOI, the way RM50 refuses a PMC id, because

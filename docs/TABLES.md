@@ -257,6 +257,11 @@ pair holds one modifier, so "hypertensive men" keeps its second modifier in `sta
 under the proxy's own rsID instead, the row would be an orphan. Write only the rsID: r² means nothing
 without its population, so it is computed rather than typed.
 
+**`effect_measure` is the kind of estimate, `effect_unit` what one unit of it is.** A `beta` can be in
+years of parental lifespan per allele, Martingale residuals or a hazard; write the unit as the paper does.
+A variant's row in `weights.parquet` carries it only when every study row of that variant that states a
+unit states the same one, so two units for one variant leave it empty rather than picking one.
+
 **The symptom of confusing it with `literature.csv` is a dropped row.** `literature.csv` is
 machine-produced and keeps every article it found; the compiler **discards an uncited literature row**
 when nothing references it. `studies.csv` is the authored side and is never dropped. If a citation
