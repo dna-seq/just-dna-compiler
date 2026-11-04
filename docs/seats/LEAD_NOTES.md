@@ -34,6 +34,15 @@ None open.
 
 ## Plan
 
+- **In flight, 2026-11-04 night (the person asleep, "build unattended"):** the /batch run building all of 0.8
+  (plan `~/.claude/plans/glimmering-greeting-sketch.md`, contracts in PT2). Integration worktree
+  `/tmp/claude-1000/-data-sources-just-dna-format/cb39872f-9ac8-49ad-96ce-7354acea34da/scratchpad/wt-08sync` (0.8).
+  Merged on 0.8: wave 0 (sync, polars 2.1.0), RM337, RM342, probes; a merge agent is landing RM304, RM336,
+  RM322+RM334, RM253, RM303, meta-core, RM348. Building: RM352 (blocks the cut). On main: RM338, RM347 merged.
+  Filed: RM348–RM353. Next: wave 2 (StudyRow batch, RM335, RM292, Open Targets lane, B2, RM349, RM351), wave 3–5,
+  four-leaf audit, cut subagent (its brief items in the scratchpad's `cut_brief_notes.md`). Charter wording
+  vetted by the person. Never `git branch -D` (classifier).
+
 - **0.8's build** (the pm's handout, 2026-11-04): the plan is `docs/proposals/PROPOSAL_0_8_PT2.md`
   (3d5adcd), critic-read. Seven pm questions in its §4, each with a default the build takes. Wave 0 is
   the lead's: push `0.8` (150 unpushed commits; auto mode refused the push, the person must unblock),

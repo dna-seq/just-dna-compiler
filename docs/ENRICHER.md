@@ -2395,7 +2395,7 @@ publish_reference_snapshot(snapshot_dir, repo_id=None, token=None, commit_messag
 ```
 
 `upload_module` uploads **every parquet the compiled artifact carries** + `manifest.json` + optional
-logo and readme to `datasets/<repo>/data/<name>/` (default repo `just-dna-seq/annotators`), matching
+logo and readme + **every log `manifest.logs` names** (RM347) to `datasets/<repo>/data/<name>/` (default repo `just-dna-seq/annotators`), matching
 just-dna-lite's discovery layout, **and the same files again to `data/<name>/v<version>/`** (RM84 —
 see below). The parquet half of the allowlist is `just_dna_compiler.compiler.ARTIFACT_PARQUETS`,
 imported rather than restated — see *what publishes, and what refuses* below for why that is a rule
@@ -2454,6 +2454,27 @@ because the table carrying them was dropped at upload.
 - **Nothing that published before stops publishing.** The change is a widening on both axes — more
   module shapes accepted, more files sent — and the only new refusals are the two shapes that were
   never a publishable module (weights alone; no lead table at all).
+- **The logs travel by the manifest's own list (RM347).** Until 2026-11-04 no `logs/` path was in the
+  allowlist, so a published manifest named logs the repository did not hold, and `verify --check-logs`
+  skips an absent log by design, so nothing said so. The plan now appends each path `manifest.logs`
+  names, read field by field out of the same JSON the attestation check reads; it is never a glob,
+  because the compiler already decided which files under `logs/` ship (RM338) and a pattern here would
+  be a second statement of that decision. Three edges, each a default rather than a refusal:
+  - a file under `logs/` that the manifest does **not** name is **not uploaded** — nothing the
+    published manifest says covers it, and a published file is permanent;
+  - a named path that is absolute, climbs out with `..`, or resolves outside the module directory (a
+    symlink) is skipped with a warning naming the reason, and the rest of the publish goes ahead. So is
+    a hidden path the compiler would not have shipped: RM338's discovery skips a hidden path for every
+    kind except `*.log`, so a hidden `.log` uploads and a hidden `.env` does not. Anything
+    `upload_folder`'s own default ignore list drops (`.git`, `.cache/huggingface`, read from
+    `huggingface_hub`) is skipped even when it is a `.log`, since the hub would never send it and the
+    dry run would promise a file that does not arrive;
+  - a named log absent from disk is skipped quietly (logs are optional), and an absent or unreadable
+    manifest plans no logs, exactly as before.
+
+  `upload_module` passes the plan itself to `upload_folder` as its allowlist, each path glob-escaped
+  (the hub matches with `fnmatch`, so `logs/fig[1].png` unescaped would select `logs/fig1.png`), so the
+  dry run lists exactly what is sent — the rule `publish_reference_snapshot` already followed.
 
 ### A module is published twice, and the second path is the one that can name a release (RM84)
 

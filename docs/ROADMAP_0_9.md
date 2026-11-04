@@ -1663,6 +1663,18 @@ v46 lane too (about one more day)? And the answering surface: `gene_exons(symbol
 constrains both: an exon lookup answers *where*, and AlphaGenome's own per-record gene remains the
 attribution.
 
+## RM350 — HLA allele names are checked for grammar only; whether the allele exists is IPD-IMGT/HLA's list, and no lane reads it
+
+**0.9, filed 2026-11-04 by the lead**: RM334's residual, placed in 0.9 by the maintainer's RM334 decision ("grammar now, the list in 0.9").
+
+**Severity** low · **Status** open — **a minor**, 0.9, licence unprobed · **Owner** enricher (a new lane) · **Motivating case** RM334 · *related* RM334
+
+RM334 refuses a malformed HLA name on `allele_function.csv`; a well-formed name that IPD-IMGT/HLA never assigned
+passes. The list is the witness. Its terms are unprobed, so the first step is the licence probe
+(`@probe-the-real-file`), then a lane through CACHE_SURFACE.md's checklist.
+
+**Residuals** none yet.
+
 ## RM345 — `SourceRow` cannot state five licence shapes: AlphaGenome's four, and a host licence that defers to owners a row cannot name
 
 **Severity** medium · **Status** open — **a minor** (new optional `sources.csv` columns or a sibling table;

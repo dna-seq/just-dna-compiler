@@ -1599,6 +1599,45 @@ to the lead, unfiled): a symlinked `*.log` ships, and so does everything under a
 symlink; text has no size ceiling; and an unreadable file under `logs/` raises out of the compile rather
 than staying behind.
 
+## RM347 — the HuggingFace module publisher uploads no logs, although `manifest.logs` lists them
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-11-04 on `main`, uncut — a patch** (filed 2026-11-04 by the lead)
+· **Owner** enricher (`upload._manifest_logs`, `upload.plan_upload`) · **Motivating case** found while building RM338 · *related* RM338, RM337, S125
+
+**Reproduced by reading the code (2026-11-04).** `upload._ALLOW_PATTERNS` is the artifact parquets,
+`manifest.json`, the logo and the README candidates. No `logs/` path is in it, not even `*.log`, so a module
+published through the enricher's HuggingFace publisher carries a manifest whose `logs` names files the repository
+does not hold. `verify --check-logs` skips an absent log by design, so nothing reports the gap. RM338 widened what
+`logs/` ships at compile, which makes the difference larger: an author who sees `log ships: …` at compile then
+publishes a module without it.
+
+**The patch.** The allowlist takes every path `manifest.logs` names, derived from the manifest the directory
+carries rather than restated as a pattern (`@publisher-allowlist-derived`). A test publishes (plans the upload of)
+a module with `.log`, `.jsonl` and `.png` logs and asserts each is in the plan. Not decided here: whether a log
+the manifest does not name, present on disk, is uploaded; the default is no.
+
+**Shipped.** `plan_upload` appends every path `manifest.logs` names to `UploadPlan.files`, read field by
+field out of the manifest JSON by the reader the attestation check already used (now one helper,
+`_manifest_document`), never a glob. The open default is decided as filed: a file under `logs/` the manifest
+does not name is **not** uploaded. A named path that is absolute, contains `..`, resolves outside the module
+directory through a symlink is skipped with a warning naming the reason, and the publish goes on; there was no
+path-escape guard elsewhere to match, so this one checks both the spelling and the resolved path. A hidden
+path is refused on the compiler's terms rather than a second rule: discovery ships a hidden `*.log` and no
+other hidden kind, so the publisher does the same. A blanket hidden refusal was written first and withdrawn,
+because it recreated this item's defect for a hidden `.log` the manifest names. Whatever `upload_folder`'s
+default ignore list drops (`.git`, `.cache/huggingface`, read from `huggingface_hub`) is refused even as a
+`.log`, since the hub would never send it. A named log
+absent from disk is skipped quietly, and an absent or unreadable manifest plans no logs, as before.
+`upload_module` now passes the plan itself, glob-escaped, as `upload_folder`'s allowlist rather than
+`_ALLOW_PATTERNS`, so the dry run is the upload (the snapshot publisher's rule): the hub matches with `fnmatch`,
+and a compiler-shipped `logs/fig[1].png` unescaped selected `logs/fig1.png` instead. Tests compile a copy of
+`apoe_epsilon` with a `.log`, a nested `.jsonl` and two `.png` logs, and check the plan, the unnamed file, the
+escaping and hidden spellings plus an unresolvable one (a NUL, on which `Path.resolve` raises), and what
+huggingface_hub's own filter, default ignore list included, selects from the files on disk; each derivation was
+mutated once to watch its test go red.
+
+**Residuals** none
+
 ## RM338 — which files under `logs/` ship: `*.log` only, a text allowlist, content-checked text, or images too
 
 **Severity** low · **Status** ✅ **SHIPPED 2026-11-04 on `main`, uncut — a patch** (decided 2026-11-03,

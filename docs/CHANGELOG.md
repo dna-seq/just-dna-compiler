@@ -41,6 +41,20 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM347: the HuggingFace publisher uploads the logs a module's manifest names (patch, on `main`)
+
+**enricher** — `upload_module` (and `just-dna-enricher upload`) now sends every path `manifest.logs`
+names, so a published module's manifest no longer names logs the repository lacks. The list is read from
+the manifest the directory carries, never from a glob, and `UploadPlan.files` lists the logs as paths
+relative to the module (`logs/authoring.log`), so `--dry-run` shows them. A file under `logs/` that the
+manifest does not name is not uploaded. A named path that is absolute, uses `..`, resolves outside the
+module directory, is hidden and not a `*.log` (the compiler's own discovery rule), or is one
+`upload_folder`'s default ignore list drops (`.git`, `.cache/huggingface`) is skipped with a warning, and
+the publish goes on. `UploadPlan.files` entries were basenames until now; a caller that joins or compares them as
+basenames should expect a `/` in a log's entry. An absent or unreadable manifest
+behaves as before. The upload's allowlist is now the plan itself, glob-escaped, so the dry run is exactly
+what is sent. No format or compiler change, and no identity moves.
+
 ## 2026-11-04 — RM348: `logs/` discovery stops trusting the filesystem (0.8, uncut)
 
 **compiler** — Every path log discovery considers, the top-level `*.log` included, must resolve to
