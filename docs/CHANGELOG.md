@@ -41,6 +41,22 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM362 (amended): a fact row at the resolved spelling of an identity the module carries is not an orphan (0.8, uncut)
+
+- **A position is every spelling the module's own `resolution.csv` gives a carried identity.** A row authored at one
+  spelling of an indel (CPIC's right-shifted NUDT15 allele) and the table placing its rsID at another (Ensembl's
+  left-aligned one) are one place, and the frequency pass asks gnomAD at the table's. `module_subjects` now joins every
+  usable locus the injected table files under a row's `variant_key` or `rsid`, on the module's build, so
+  `frequencies.csv`, `clinical_assertions.csv` and `studies.csv` rows there are no longer orphans. Only the injected
+  table counts, only where the fill reads it (GRCh38, resolution on), and a `not_found` row places nothing.
+- **BA1 and the study facts reach the same spelling.** `clin_sig_contradicts_frequency` now fires for a pathogenic
+  variant whose common frequency sits at the table's spelling, and a coordinate-only study there feeds the variant's
+  `weights.parquet` study columns (a variant `strict` refuses for the contradiction). A row the table placed keeps its
+  own locus only, and one the table places at several other positions keeps its own only, so no row is handed a
+  locus it may not mean. BA1 reports a variant once per ALT when both spellings carry a frequency.
+- New in `just_dna_compiler.compiler.subjects`: `identity_placements`, `row_positions`, `position_key`,
+  `ModuleSubjects.resolved_positions`; `resolution.usable_loci` is public. No reference example gains or loses a warning.
+
 ## 2026-11-04 — RM368: a module publish sends exactly the bytes it checked, and every dry run runs the real run's checks (0.8, uncut)
 
 **enricher** — what the publisher plans, checks and sends is now one reading of the disk.

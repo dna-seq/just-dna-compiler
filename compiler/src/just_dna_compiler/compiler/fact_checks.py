@@ -6,7 +6,7 @@ from collections.abc import Callable
 from typing import Any
 
 from just_dna_format.assertions import CLINICAL_ASSERTION_FACT_FIELDS, ClinicalAssertionRow
-from just_dna_format.base import coordinate_key, derive_variant_key, merge_key
+from just_dna_format.base import DEFAULT_GENOME_BUILD, coordinate_key, derive_variant_key, merge_key
 from just_dna_format.consequences import CONSEQUENCE_FACT_FIELDS, ConsequenceRow
 from just_dna_format.expression import EXPRESSION_FACT_FIELDS, ExpressionEffectRow
 from just_dna_format.findings import CodedWarning
@@ -37,7 +37,7 @@ from just_dna_format.spec import StudyRow, VariantRow, extract_pmids
 from just_dna_format.spelling import distinct_spellings
 
 from just_dna_compiler.compiler.load import table_citations
-from just_dna_compiler.compiler.subjects import ModuleSubjects
+from just_dna_compiler.compiler.subjects import ModuleSubjects, ResolutionTable, row_positions
 from just_dna_compiler.compiler.tables import BA1_ALLELE_FREQUENCY_THRESHOLD
 
 # Relative tolerance for the float redundancy checks. These are published numbers rendered through a
@@ -510,11 +510,21 @@ def _check_quoted_article_licenses(rows: list[LiteratureRow], studies: list[Stud
     ]
 
 
+def _stronger(candidate: tuple[float, str, str], held: tuple[float, str, str]) -> bool:
+    """BA1's evidence order: `faf95` wins over a raw AF regardless of magnitude (it is the rule's own
+    statistic); among like measures the larger one is the one BA1 would be evaluated on."""
+    return (candidate[1] == "faf95" and held[1] != "faf95") or (
+        candidate[1] == held[1] and candidate[0] > held[0]
+    )
+
+
 def _check_ba1_lint(
     rows: list[FrequencyRow],
     variants: list[VariantRow],
     *,
     threshold: float = BA1_ALLELE_FREQUENCY_THRESHOLD,
+    resolution: ResolutionTable | None = None,
+    genome_build: str = DEFAULT_GENOME_BUILD,
 ) -> list[str]:
     """Warn when a variant the module calls pathogenic is common in a general population.
 
@@ -532,15 +542,20 @@ def _check_ba1_lint(
     filter actually uses, a 95% CI lower bound on the group with the highest frequency, and it is
     deliberately conservative. Otherwise the maximum per-group `allele_frequency`, which is the same
     quantity without the confidence discount. Matched at position level, like `_cross_check_frequencies`.
+
+    **At every spelling the variant sits at (RM362, 2026-11-04)**: `subjects.row_positions`, its own
+    and, where its own is not one the injected `resolution` gives its identity, the table's. gnomAD is
+    asked at the table's spelling, so an rsID authored beside another spelling of the same indel was
+    never matched and the finding stayed silent. `resolution` is `None` where none may be consulted.
     """
     if not rows or not variants:
         return []
     pathogenic_at: dict[str, list[VariantRow]] = {}
     for variant in variants:
-        if variant.chrom is None or not variant.effective_pathogenic:
+        if not variant.effective_pathogenic:
             continue
-        key = derive_variant_key(None, variant.chrom, variant.start, variant.ref)
-        pathogenic_at.setdefault(key, []).append(variant)
+        for key in sorted(row_positions(variant, resolution, genome_build)):
+            pathogenic_at.setdefault(key, []).append(variant)
     if not pathogenic_at:
         return []
 
@@ -562,29 +577,34 @@ def _check_ba1_lint(
         # faf95 wins over a raw AF regardless of magnitude (it is the rule's own statistic); among
         # like measures the larger one is the one BA1 would be evaluated on.
         held = strongest.get(slot)
-        if (
-            held is None
-            or (candidate[1] == "faf95" and held[1] != "faf95")
-            or (candidate[1] == held[1] and candidate[0] > held[0])
-        ):
+        if held is None or _stronger(candidate, held):
             strongest[slot] = candidate
 
+    # One finding per (variant, ALT), at its strongest evidence: a variant filed under two spellings of
+    # one place (RM362, 2026-11-04) may meet a frequency row at each, and that is one claim, not two.
+    per_variant: dict[tuple[int, str], tuple[VariantRow, tuple[float, str, str]]] = {}
+    for (key, alt), candidate in sorted(strongest.items()):
+        for variant in pathogenic_at[key]:
+            slot_v = (id(variant), alt)
+            held_v = per_variant.get(slot_v)
+            if held_v is None or _stronger(candidate, held_v[1]):
+                per_variant[slot_v] = (variant, candidate)
+
     findings: list[str] = []
-    for (key, alt), (value, measure, population) in sorted(strongest.items()):
+    for (_vid, alt), (variant, (value, measure, population)) in per_variant.items():
         if value <= threshold:
             continue
-        for variant in pathogenic_at[key]:
-            findings.append(
-                CodedWarning(
-                    "clin_sig_contradicts_frequency",
-                    f"{variant.variant_key} genotype {variant.genotype}: clin_sig "
-                    f"{variant.effective_clin_sig!r} but the {measure} of ALT {alt!r} in "
-                    f"{population!r} is {value:.4g}, above the ACMG BA1 threshold of {threshold:.4g} — "
-                    f"BA1 treats that as stand-alone evidence of benign impact. The threshold is "
-                    f"disease-specific (a common recessive carrier allele sits above it legitimately), so "
-                    f"this is a prompt to check, not a verdict.",
-                )
+        findings.append(
+            CodedWarning(
+                "clin_sig_contradicts_frequency",
+                f"{variant.variant_key} genotype {variant.genotype}: clin_sig "
+                f"{variant.effective_clin_sig!r} but the {measure} of ALT {alt!r} in "
+                f"{population!r} is {value:.4g}, above the ACMG BA1 threshold of {threshold:.4g} — "
+                f"BA1 treats that as stand-alone evidence of benign impact. The threshold is "
+                f"disease-specific (a common recessive carrier allele sits above it legitimately), so "
+                f"this is a prompt to check, not a verdict.",
             )
+        )
     return findings
 
 

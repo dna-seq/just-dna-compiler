@@ -813,7 +813,11 @@ and still publishes `manifest.sources`. Both of those are renames only a major m
    answer, `subjects.module_subjects` (RM362): a gene any of `variants.csv` and the gene-bearing table
    kinds names (the set `manifest.stats.genes` publishes and the enricher's gene scope asks about), and
    a locus or rsID any of `variants.csv` and the positional table kinds names. A module without
-   `variants.csv` is checked the same way.
+   `variants.csv` is checked the same way. A locus is also every place the injected `resolution.csv`
+   puts an identity those rows carry (`subjects.identity_placements`: by `variant_key` or `rsid`, the
+   fill's `usable_loci` predicate, GRCh38 and resolution on only), so an indel authored in one spelling
+   and resolved in another is one place; BA1 and the study join behind `weights.parquet` ask the same
+   per row (`subjects.row_positions`).
 10. **Collect** logs / `provenance.json` / logo / readme — copy and hash only; a malformed one was
    refused at step 8, and by `validate_spec` before that. Log discovery takes `*.log` beside the spec and, under `logs/` at any depth, every `*.log`
    unchecked for content, plus each file whose content matches its name (RM338): `.txt`/`.md`
