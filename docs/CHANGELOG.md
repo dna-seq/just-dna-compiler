@@ -41,6 +41,18 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM338: `logs/` ships checked text and images, not only `*.log` (patch, on `main`)
+
+**compiler** — Under a module's `logs/`, discovery now ships `.txt`, `.md`, `.json` and `.jsonl` when the
+content agrees with the name (UTF-8 text; `.json` parses; every non-blank `.jsonl` line parses), and
+`.png`/`.jpg`/`.jpeg` when the file starts with its format's magic and is at most 5 MiB
+(`LOG_IMAGE_MAX_BYTES`). SVG never ships. `*.log` ships unchecked, as before, and the top level is unchanged.
+Each newly shipped file is listed in `manifest.logs` like any log and named by an info line on
+`just_dna_compiler.compiler`, so an author sees it before publishing. A file that fails its check stays
+behind as before, with no warning: that warning is RM337, a minor. An explicit `log_files` list is
+unaffected. Neither identity moves, since logs are outside `artifact.digest` and `content_signature`. A
+module with a stray `notes.md` under `logs/` ships it at its next recompile (S125).
+
 ## 2026-11-04 — RM340: the VRS-coverage warning points at the record that explains its no-ALT rows (patch, on `main`)
 
 **compiler, enricher** — When an attested `verification.json` carries an `rsid_coordinate_agreement` record

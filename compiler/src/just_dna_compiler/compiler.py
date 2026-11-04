@@ -16,6 +16,7 @@ The DSL/manifest schema comes from `just-dna-format`; this package is the transf
 
 import csv
 import difflib
+import json
 import logging
 import math
 import re
@@ -708,13 +709,61 @@ def _now_iso() -> str:
     return now_utc_iso()
 
 
+# What discovery ships from under a module's `logs/` (RM338, decided 2026-11-03), keyed by lowercase
+# extension without the dot. Text ships when its content agrees with its name (`_log_content_agrees`);
+# an image ships when its leading bytes are the format's magic and it is no larger than the ceiling.
+# SVG is in neither set on purpose: it is XML that can carry script, so it never ships by discovery.
+LOG_TEXT_EXTENSIONS: frozenset[str] = frozenset({"log", "txt", "md", "json", "jsonl"})
+LOG_IMAGE_MAGIC: dict[str, bytes] = {
+    "png": b"\x89PNG\r\n\x1a\n",
+    "jpg": b"\xff\xd8\xff",
+    "jpeg": b"\xff\xd8\xff",
+}
+# 5 MiB: the line this repository already draws for anything that travels (a larger asset goes
+# through Git LFS), and far above a figure or screenshot, so an image over it is not a log.
+LOG_IMAGE_MAX_BYTES: int = 5 * 1024 * 1024
+
+
+def _log_content_agrees(path: Path, ext: str) -> bool:
+    """Whether a file under `logs/` with lowercase extension `ext` holds what its name says.
+
+    `.txt`/`.md`/`.log` decode as UTF-8, `.json` parses, every non-blank `.jsonl` line parses, and a
+    png/jpg/jpeg is at most `LOG_IMAGE_MAX_BYTES` and starts with its format's magic. Any other
+    extension, SVG included, is refused. The size is read before any byte, so an oversized image is
+    never loaded."""
+    magic = LOG_IMAGE_MAGIC.get(ext)
+    if magic is not None:
+        if path.stat().st_size > LOG_IMAGE_MAX_BYTES:
+            return False
+        with path.open("rb") as handle:
+            return handle.read(len(magic)) == magic
+    if ext not in LOG_TEXT_EXTENSIONS:
+        return False
+    try:
+        text = path.read_bytes().decode("utf-8")
+    except UnicodeDecodeError:
+        return False
+    if ext not in {"json", "jsonl"}:
+        return True
+    documents = [text] if ext == "json" else [line for line in text.splitlines() if line.strip()]
+    try:
+        for document in documents:
+            json.loads(document)
+    except ValueError:
+        return False
+    return True
+
+
 def _collect_logs(spec_dir: Path, output_dir: Path, explicit: list[Path] | None) -> list[FileEntry]:
     """Gather optional run/provenance logs into the module dir and hash them.
 
-    Auto-discovers a top-level aggregate log (`*.log` in `spec_dir`) plus per-role files under a
-    `spec_dir/logs/` folder, preserving each file's path relative to the module. An explicit
-    `log_files` list overrides discovery. Files are copied into `output_dir` (so they ship with the
-    module) and returned as hashed `FileEntry` rows. No logs → empty list (a valid module).
+    Auto-discovers a top-level aggregate log (`*.log` in `spec_dir`) plus files under a
+    `spec_dir/logs/` folder, preserving each file's path relative to the module. Under `logs/`, a
+    `*.log` ships as it always has, unchecked; a `.txt`/`.md`/`.json`/`.jsonl`/`.png`/`.jpg`/`.jpeg`
+    ships when `_log_content_agrees` (RM338), and is named by an info line so an author sees it
+    before publishing; anything else stays behind. An explicit `log_files` list overrides discovery
+    and ships what it names. Files are copied into `output_dir` (so they ship with the module) and
+    returned as hashed `FileEntry` rows. No logs → empty list (a valid module).
     """
     pairs: list[tuple[str, Path]] = []  # (relative name in module dir, source file)
     if explicit is not None:
@@ -729,8 +778,18 @@ def _collect_logs(spec_dir: Path, output_dir: Path, explicit: list[Path] | None)
             pairs.append((path.name, path))
         logs_dir = spec_dir / "logs"
         if logs_dir.is_dir():
-            for path in sorted(logs_dir.rglob("*.log")):
-                pairs.append((path.relative_to(spec_dir).as_posix(), path))
+            for path in sorted(logs_dir.rglob("*")):
+                if not path.is_file():
+                    continue
+                rel = path.relative_to(spec_dir).as_posix()
+                # `*.log` keeps shipping unchecked, exactly as before RM338: checking it now would
+                # silently drop a `.log` that shipped yesterday, and the warning for a file left
+                # behind is RM337's, a minor.
+                if path.suffix == ".log":
+                    pairs.append((rel, path))
+                elif _log_content_agrees(path, path.suffix.lower().lstrip(".")):
+                    logger.info("%s ships with the module (its content matches its name)", rel)
+                    pairs.append((rel, path))
 
     seen: set[str] = set()
     names: list[str] = []
@@ -4931,7 +4990,9 @@ def compile_module(
             a local compile leaves it None, so downloaders treat it as untrusted).
         ensembl_reference: Pinned reference id recorded in the manifest for reproducibility.
         log_files: Explicit run/provenance log files to record. If None, auto-discovers a top-level
-            `*.log` plus per-role files under `spec_dir/logs/`. Logs are optional.
+            `*.log` plus, under `spec_dir/logs/`, every `*.log` and each `.txt`/`.md`/`.json`/
+            `.jsonl`/`.png`/`.jpg`/`.jpeg` whose content matches its name (`_collect_logs`, RM338).
+            Logs are optional.
         provenance_file: Explicit structured-provenance document. If None, auto-discovers
             `spec_dir/provenance.json`. Optional; summarized into `manifest.provenance`.
         logo_file: Explicit module logo image. If None, auto-discovers `spec_dir/logo.{png,jpg,jpeg}`.

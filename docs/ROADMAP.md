@@ -952,40 +952,6 @@ it here.
 
 **Residuals** none yet.
 
-## RM338 — which files under `logs/` ship: `*.log` only, a text allowlist, content-checked text, or images too
-
-**Severity** low · **Status** open — **a patch**, decided 2026-11-03, `unattended`; no longer `after RM337`,
-which is a minor since 2026-11-04 (see RM337) · **Owner** compiler (`_collect_logs`); built by the lead · **Motivating case** S125 in
-CONSUMER_SUGGESTIONS_HISTORY.md (just-module-creator `F116`, 2026-10-05) · *related* RM337, RM147
-
-**The ask.** The reporter wants a JSON Lines session ledger (search receipts, fetch receipts, decisions)
-to travel with a module, and offers, in order: decide on content rather than the name (`.log`, `.txt`
-and `.md` decode as UTF-8, `.json` parses, every non-blank `.jsonl` line parses); failing that, the
-allowlist `.log .txt .md .json .jsonl`; and images as a question rather than a request (`png`/`jpg` can
-be checked by magic bytes as `LOGO_EXTENSIONS` already is; SVG is XML that can carry script).
-
-**Legality.** No schema moves. `manifest.logs` is a list of `FileEntry`, and `artifact_digest` hashes
-`manifest.artifact.files` only, so no module's byte or content identity changes. P3 and P8 do not reach
-it. What it changes is exposure: a module that already has a stray `notes.md` under `logs/` starts
-shipping it at its next recompile, and a published file is permanent. That is why this waits for a
-decision instead of being built unasked.
-
-**Decided (the maintainer, 2026-11-03): content-checked text, plus images.** Of four options put to them, they chose
-"Text checked + images". Under `logs/`, `.log .txt .md .json .jsonl` ship when the content agrees: text decodes
-as UTF-8, `.json` parses, and every non-blank `.jsonl` line parses. `png`/`jpg`/`jpeg` ship when their magic bytes
-match, as `LOGO_EXTENSIONS` is checked, and under a size ceiling. **SVG never ships**, since it can carry script.
-A file that fails its check stays behind with RM337's warning, naming the reason. Each file that ships and is
-not `*.log` is named in the compile output, so an author sees it before publishing. The size ceiling is the
-lead's constant to pick. The rejected options: `*.log` only (the reporter's ledger would never reach a published
-module, because the registry compiles by discovery); an allowlist by extension alone (a binary named `.json`
-ships); and text without images (images were raised as a question, and the maintainer took them in).
-Whether a failed check refuses under `strict` was not put to the maintainer. The default is a warning in both
-modes, since this changes no verdict. RM147's advice against a `logs/` *writer* still stands
-and is not reopened: this carries the consumer's own ledger, it does not give the format a ledger
-schema.
-
-**Residuals** none yet.
-
 ## RM344 — a `.duckdb` Ensembl cache written by duckdb 2.0 crashes a 1.x enricher instead of falling back to the parquet beside it
 
 **Severity** low · **Status** open — **a patch**, `unattended` (about 15 minutes) · **Owner** enricher

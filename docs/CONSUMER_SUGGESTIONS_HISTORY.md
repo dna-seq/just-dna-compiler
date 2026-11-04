@@ -5971,7 +5971,7 @@ location), and 0.27.1 changes it to `usecwd=True`. Our SDK imports no dotenv at 
 **Status — accepted, filed as two items: the silent drop as
 [RM337](ROADMAP_0_8.md#rm337--a-file-under-logs-that-is-not-log-is-dropped-from-the-compile-and-nothing-says-so)
 (a patch), and which files ship as
-[RM338](ROADMAP.md#rm338--which-files-under-logs-ship-log-only-a-text-allowlist-content-checked-text-or-images-too)
+[RM338](ROADMAP_HISTORY.md#rm338--which-files-under-logs-ship-log-only-a-text-allowlist-content-checked-text-or-images-too)
 (undecided); the addendum's contradiction is fixed in `docs/TABLES.md`.** Reproduced on 2026-11-03 with
 compiler 0.7.2 against a copy of `reference_examples/apoe_epsilon` carrying your six files under
 `logs/`: `success=True`, no warning mentions a log, and `manifest.logs` and the output's `logs/` hold
