@@ -586,15 +586,11 @@ class _Rest:
 
     def __init__(self, status: int = 200) -> None:
         self.requested: list[str] = []
-        self.graphql = 0
         self.status = status
 
     def resolver(self) -> EnsemblResolver:
         def handler(request: httpx.Request) -> httpx.Response:
-            if "graphql" in str(request.url):
-                # The beta endpoint answers a redirect today (RM268); the witness never asks it.
-                self.graphql += 1
-                return httpx.Response(301, headers={"Location": "https://beta.ensembl.org/"})
+            assert request.url.host == "rest.ensembl.org", f"asked {request.url}, not Ensembl REST"
             rsid = request.url.path.rsplit("/", 1)[-1]
             self.requested.append(rsid)
             if self.status != 200:
@@ -625,9 +621,8 @@ def test_rest_withholds_s117_when_no_loaded_witness_holds_it(
         clinvar_gkm_cache=_gkm_snapshot(tmp_path),
         resolver=rest.resolver(),
     )
-    # Asked about the one indel nobody loaded holds: not the SNV, not the indels ClinVar holds — and
-    # asked of REST's own mapping, never the GraphQL surface first.
-    assert rest.requested == ["rs8176719"] and rest.graphql == 0
+    # Asked about the one indel nobody loaded holds: not the SNV, not the indels ClinVar holds.
+    assert rest.requested == ["rs8176719"]
     rows = {r.rsid: r for r in result.rows}
     assert "rs8176719" not in rows and "rs8176719" in result.unresolved
     assert result.placement is not None and result.placement.withheld == ["rs8176719"]
@@ -690,6 +685,47 @@ def test_rest_unreachable_is_not_asked_and_counted_never_agreement(
     record = _record(spec)
     assert record["skipped"] == "nothing_to_check"
     assert "1 rsID(s) Ensembl REST could not be asked about" in record["detail"]
+
+
+class _ResolverBeforeTheRestWitness:
+    """An injected resolver written before `resolve_rsid_rest` existed: the shape a host hands `enrich`
+    (just-dna-marketplace's test fake is exactly this, `resolve_rsid` and `close` only). Every rsID here
+    is in the snapshot, so the live link must not ask it either."""
+
+    def resolve_rsid(self, rsid: str):
+        raise AssertionError(f"live Ensembl asked about {rsid}")
+
+    def close(self) -> None:
+        return None
+
+
+def test_an_injected_resolver_without_the_rest_method_leaves_rest_not_asked_and_says_why(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_ambient_caches: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The REST witness is an optional capability of an injected resolver. A resolver without it is a
+    witness this run could not ask: the run completes, the snapshot's placement is written as it would
+    have been with REST unreachable, the rsID is counted as not asked, and one warning names why."""
+    spec = _spec(tmp_path, {"rs8176719": "T/TC", "rs77944059": "G/GAAAC"})
+    with caplog.at_level("WARNING", logger="just_dna_enricher.enrich"):
+        result = _enrich(
+            spec,
+            tmp_path,
+            monkeypatch,
+            clinvar_cache=_clinvar_snapshot(tmp_path, _without("rs8176719", "rs77944059")),
+            resolver=_ResolverBeforeTheRestWitness(),
+        )
+    rows = {r.rsid: r for r in result.rows}
+    assert set(rows) == {"rs8176719", "rs77944059"}
+    assert all(row.placement_witness != "ensembl" for row in rows.values())
+    assert result.placement is not None
+    assert result.placement.not_asked == ["rs77944059", "rs8176719"]
+    assert result.placement.not_asked_reason is not None
+    (warning,) = [r for r in caplog.records if "resolve_rsid_rest" in r.getMessage()]
+    assert "2 snapshot indel(s)" in warning.getMessage()
+    record = _record(spec)
+    assert "2 rsID(s) Ensembl REST could not be asked about" in record["detail"]
+    assert "resolve_rsid_rest" in record["detail"]
+    assert "unreachable after retries" not in record["detail"]
 
 
 def test_offline_asks_rest_nothing(

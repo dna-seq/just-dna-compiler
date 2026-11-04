@@ -391,7 +391,7 @@ def _lookup_from_cache(
 
 
 def _lookup_live_loci(hint: VariantHint, rsid: str | None, clients: LookupClients) -> None:
-    """Live Ensembl (V2 GraphQL → V1 REST) for an rsID no local snapshot resolved.
+    """Live Ensembl (REST) for an rsID no local snapshot resolved.
 
     Runs **only** on a cache miss, so a provisioned snapshot still answers without egress and the
     order matches `enrich()`'s. Reports the source it came from, because a locus from the network and

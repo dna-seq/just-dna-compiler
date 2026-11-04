@@ -2,7 +2,7 @@
 
 The **network tier** of the just-dna workspace. It fills the source-independent resolution table
 (`resolution.csv`) that `just-dna-compiler` consumes — Ensembl cache → HuggingFace snapshot → ClinVar
-cache → live Ensembl (V2 GraphQL, with a V1 REST fallback on 500/503, and tenacity retries) — then
+cache → live Ensembl (REST, paced, with tenacity retries that honour `Retry-After`) — then
 hands off to a deterministic, offline compile. The ClinVar link sits **after** the Ensembl cache so a
 variant both references know keeps its Ensembl `alts`/`source` and no already-compiled module's digest
 moves; it is a complementary reference that makes an offline clinical enrich possible without the

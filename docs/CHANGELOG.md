@@ -80,9 +80,36 @@ side `ensembl` once REST answered, so `independence` reads `self_consistent` (RE
 unanswered after its retries is *not asked* for that rsID and counted in `detail`; `--offline` asks
 nothing. The REST leg of `EnsemblResolver.resolve_rsid` now retries a 5xx and a 429, and a 429 left
 after the retries is unreachable rather than "no record". New: `verification.ran(reported_by=)` and
-`skipped(reported_by=)`, `EnsemblResolver.resolve_rsid_rest` (REST's half of `resolve_rsid`; an injected
-resolver must provide it), `PlacementCheck.self_consistent`/`not_asked`/`reported_by`/`placed_by`,
+`skipped(reported_by=)`, `EnsemblResolver.resolve_rsid_rest` (REST's half of `resolve_rsid`),
+`PlacementCheck.self_consistent`/`not_asked`/`reported_by`/`placed_by`,
 `placement.live_witness_subjects` and `ask_live_witness`. No new column, no warning code. INTEGRATION_0_8 § 1.18.
+
+- **An injected resolver without `resolve_rsid_rest` no longer kills the run.** `enrich(resolver=)` asks
+  for `resolve_rsid` only (`ensembl.RsidResolver`); REST's mapping is an optional capability
+  (`ensembl.RestWitness`), asked where the resolver has it. A host resolver written before 0.8 (the
+  shape just-dna-marketplace's own test fake has) raised `AttributeError` at the first eligible indel;
+  now REST is not asked for that run, the rsIDs are counted (`PlacementCheck.not_asked`, with
+  `not_asked_reason` naming the missing method in `detail`), and one warning says why. The class was
+  hunted across `enrich`'s other injected collaborators: `gnomad_client.resolve_rsids`,
+  `grch37_client.reference_bases`/`variants_at` and the `release_probes` callables are each their
+  parameter's original contract, and `non_nucleotide_rsids` was already read by `getattr` (RM272).
+- **`resolve_rsid` no longer asks the retired beta GraphQL surface before REST.** Probed 2026-11-04:
+  `beta.ensembl.org/api/graphql/variation` answers 301 to `www.ensembl.org`, where the query no longer
+  validates and a bare rsID is `VARIANT_ID_NOT_FOUND`; it never answered one, so it cost a request per
+  rsID. The leg is removed with `EnsemblSettings.graphql_endpoint` and `human_genome_id`;
+  `resolve_rsid` is REST alone and every row it writes says `ensembl-rest`. `ensembl-graphql` stays a
+  readable `source` value (rows written before 0.8) and keeps its `ensembl` authority. The other
+  clients' endpoints were probed the same day, redirects unfollowed: GenCC's bulk download answered 301
+  (`search.thegencc.org` → `thegencc.org`) and `gene_validity.DEFAULT_GENCC_URL` now names the new
+  host; every other one answers where it is named (ClinPGx's 303 and ClinVar-GKM's directory 302 are
+  hops to files that answer 200).
+- **The REST rung is paced and honours `Retry-After`.** `EnsemblResolver` holds a `PacingGate`
+  (`EnsemblSettings.interval`, 0.1 s against Ensembl's published 15 req/s; injectable as `gate=`) and
+  waits on it once per attempt, so a host's shared resolver is really paced (just-dna-marketplace's
+  pacing table already said it was). A retried 5xx or 429 waits at least the answer's `Retry-After`
+  (`net.wait_retry_after`, `net.retry_after_seconds`: delta-seconds or an HTTP-date); one past
+  `net.RETRY_AFTER_CEILING` (10 s) is not retried (`net.retry_if_transient_within`), and the resolver
+  asks nothing, answering could-not-ask, until the time the server named.
 
 ## 2026-11-04 — RM361: a failed, retired, unread or undecided answer is never recorded as a definite one (0.8, uncut)
 

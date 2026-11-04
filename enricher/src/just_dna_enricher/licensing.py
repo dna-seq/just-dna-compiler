@@ -311,6 +311,8 @@ RESOLUTION_AUTHORITY_BY_LINK: dict[str, str] = {
     "cache": "ensembl",  # the Ensembl snapshot — same data, offline
     "ensembl": "ensembl",
     "ensembl-rest": "ensembl",
+    # No longer written (the beta GraphQL leg was retired on 2026-11-04); a row written before 0.8 may
+    # still carry it, and its authority does not change because the link stopped being asked.
     "ensembl-graphql": "ensembl",
     "clinvar": "clinvar",
     "gnomad": "gnomad",

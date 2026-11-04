@@ -13,7 +13,7 @@ from pathlib import Path
 import httpx
 import polars as pl
 import pytest
-from just_dna_enricher.ensembl import EnsemblResolver, _loci_from_graphql, _loci_from_rest, _placeable_alleles
+from just_dna_enricher.ensembl import EnsemblResolver, _loci_from_rest, _placeable_alleles
 from just_dna_enricher.resolver import lookup_loci
 
 
@@ -60,8 +60,6 @@ def test_rest_withholds_novariation_and_counts_it_apart_from_an_unreadable_ancho
 
 def _rest_only(payload: dict) -> httpx.MockTransport:
     def handler(request: httpx.Request) -> httpx.Response:
-        if "graphql" in str(request.url):
-            return httpx.Response(200, json={"data": {"variant": None}})
         return httpx.Response(200, json=payload)
 
     return httpx.MockTransport(handler)
@@ -74,17 +72,6 @@ def test_an_rsid_with_no_placeable_mapping_is_an_answered_empty() -> None:
         transport=_rest_only({"mappings": [_mapping("1", 94108691, "G/TTTTTTTTTTTNNNNNNNNNNN")]})
     )
     assert resolver.resolve_rsid("rs2101156061") == ([], "ensembl-rest")
-
-
-def test_a_graphql_node_with_no_nucleotide_alt_is_handed_to_rest() -> None:
-    node = {
-        "alleles": [
-            {"allele_type": {"value": "reference"}, "reference_sequence": "G"},
-            {"allele_type": {"value": "alt"}, "reference_sequence": "TTTTTNNNN"},
-        ],
-        "slice": {"location": {"region_name": "1", "start": 94108691}},
-    }
-    assert _loci_from_graphql(node) == []
 
 
 @pytest.fixture

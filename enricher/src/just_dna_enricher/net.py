@@ -15,9 +15,12 @@ Two of these look trivial and are not:
 """
 
 import dataclasses
+import datetime
+import email.utils
 import hashlib
 import itertools
 import logging
+import math
 import os
 import threading
 import time
@@ -26,9 +29,16 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
-from tenacity import retry, retry_if_exception, retry_if_exception_type, wait_exponential_jitter
+from tenacity import (
+    RetryCallState,
+    retry,
+    retry_if_exception,
+    retry_if_exception_type,
+    wait_exponential_jitter,
+)
 from tenacity.retry import retry_base
 from tenacity.stop import stop_base
+from tenacity.wait import wait_base
 
 logger = logging.getLogger(__name__)
 
@@ -477,3 +487,78 @@ def stream_to_file(
     tmp.replace(dest)
     logger.info("Downloaded %s (sha256 %s)", dest, streamed.sha256)
     return dataclasses.replace(streamed, path=dest)
+
+
+# ── a throttle that says when to come back (RM267) ──────────────────────────────────────────────
+#
+# A 429 (or a 503) may carry `Retry-After`: the server's own statement of when a request may be made
+# again, in seconds or as an HTTP-date. Every retried client here waited on tenacity's backoff instead,
+# which starts at half a second, so a throttled client asked again before it was allowed to. Ensembl
+# REST was the first client found doing it; it was also unpaced.
+
+#: The longest `Retry-After` a retry sleeps through: about the longest backoff a retry here already
+#: waits (8 s). Ensembl's per-second budget asks for a fraction of a second; its hourly one answers
+#: with the time to its reset, which can be most of an hour, and a maintenance 503 may ask for minutes.
+#: Past this the request is not retried, and a client that honours the header asks nothing until the
+#: time passes — so a long ask costs a batch one request, not two long sleeps per subject.
+RETRY_AFTER_CEILING: float = 10.0
+
+
+def retry_after_seconds(exc: BaseException | None, *, now: Callable[[], float] = time.time) -> float | None:
+    """How long a throttled answer asked the client to wait, or `None` when it did not say.
+
+    Read only off a status a retry can change (`is_transient_status`: a 5xx or a 429), in either of
+    RFC 9110's forms — delta-seconds (Ensembl sends a fraction, `40.0`) or an HTTP-date, measured
+    against `now` (wall clock, since the date is one). A date already past is `0.0`. No header, an
+    unreadable one, or any other exception is `None`: unknown, never a wait of zero.
+    """
+    if not isinstance(exc, httpx.HTTPStatusError) or not is_transient_status(exc):
+        return None
+    raw = (exc.response.headers.get("Retry-After") or "").strip()
+    if not raw:
+        return None
+    try:
+        seconds = float(raw)
+    except ValueError:
+        try:
+            when = email.utils.parsedate_to_datetime(raw)
+        except (TypeError, ValueError):
+            return None
+        if when.tzinfo is None:
+            # `-0000` parses naive; an HTTP-date is GMT by definition, never the host's local time.
+            when = when.replace(tzinfo=datetime.UTC)
+        seconds = when.timestamp() - now()
+    if not math.isfinite(seconds):
+        return None
+    return max(seconds, 0.0)
+
+
+def asks_past_ceiling(exc: BaseException | None, ceiling: float = RETRY_AFTER_CEILING) -> bool:
+    """Whether `exc` asked for a wait longer than `ceiling` — a request not to retry now."""
+    asked = retry_after_seconds(exc)
+    return asked is not None and asked > ceiling
+
+
+def retry_if_transient_within(*also: type[BaseException], ceiling: float = RETRY_AFTER_CEILING) -> retry_base:
+    """`retry_if_transient`, except a throttle whose `Retry-After` exceeds `ceiling` is not retried."""
+    return retry_if_transient(*also) & retry_if_exception(lambda exc: not asks_past_ceiling(exc, ceiling))
+
+
+class wait_retry_after(wait_base):
+    """A tenacity wait that is at least what the server's `Retry-After` asked for, else `fallback`'s.
+
+    Never shorter than the fallback, so a server asking for less than the backoff does not shorten it;
+    capped at `ceiling`, which `retry_if_transient_within` keeps a retry from ever reaching.
+    """
+
+    def __init__(self, fallback: wait_base, ceiling: float = RETRY_AFTER_CEILING) -> None:
+        self.fallback = fallback
+        self.ceiling = ceiling
+
+    def __call__(self, retry_state: RetryCallState) -> float:
+        backoff = self.fallback(retry_state)
+        outcome = retry_state.outcome
+        asked = retry_after_seconds(outcome.exception() if outcome is not None and outcome.failed else None)
+        if asked is None:
+            return backoff
+        return max(backoff, min(asked, self.ceiling))

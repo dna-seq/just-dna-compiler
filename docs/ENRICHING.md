@@ -32,7 +32,7 @@ The chain is **first-hit-wins**, in this order:
    resolution fact that flows into the artifact digest, and Ensembl carries every dbSNP allele where
    ClinVar carries only its submitted ones. A variant both know keeps the Ensembl answer, so no
    already-compiled module's digest moves.
-5. **Live Ensembl** — V2 GraphQL, falling back to V1 REST.
+5. **Live Ensembl** — REST, paced under Ensembl's published budget.
 6. **gnomAD** — last.
 
 ### Three outcomes, not two

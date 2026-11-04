@@ -7,11 +7,15 @@ naive reader, and a tidy CSV would prove nothing about the files actually read. 
 transcribed from the 2026-08-13 downloads.
 """
 
+import os
 from pathlib import Path
 
+import httpx
 import pytest
 from just_dna_compiler.compiler import load_csv_rows
 from just_dna_enricher.gene_validity import (
+    DEFAULT_CLINGEN_VALIDITY_URL,
+    DEFAULT_GENCC_URL,
     GeneValidityError,
     enrich_gene_validity,
     map_classification,
@@ -338,3 +342,13 @@ def test_an_unknown_submitter_refuses_and_names_the_ones_it_has(tmp_path: Path) 
     spec = _spec(tmp_path, ["RYR1"])
     with pytest.raises(GeneValidityError, match="hpo"):
         enrich_gene_validity(spec, source="hpo", export_text=_CLINGEN_CSV)
+
+
+@pytest.mark.skipif(os.environ.get("JUST_DNA_NETWORK_TESTS") != "1", reason="set JUST_DNA_NETWORK_TESTS=1")
+@pytest.mark.parametrize("url", [DEFAULT_CLINGEN_VALIDITY_URL, DEFAULT_GENCC_URL], ids=["clingen", "gencc"])
+def test_each_default_download_answers_where_it_is_named_not_through_a_redirect(url: str) -> None:
+    """A default URL that answers 301 is a surface the source moved away from: the download still works
+    through `follow_redirects`, until the old host stops redirecting. GenCC's `search.thegencc.org`
+    answered 301 to `thegencc.org` on 2026-11-04, so the default names the host the bytes come from."""
+    with httpx.stream("GET", url, follow_redirects=False, timeout=60.0) as response:
+        assert response.status_code == 200, (response.status_code, response.headers.get("location"))
