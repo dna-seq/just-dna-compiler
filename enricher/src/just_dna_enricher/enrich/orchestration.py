@@ -66,6 +66,7 @@ from just_dna_enricher.enrich.subjects import (
     _authored_alt,
     _check_authored_pairs,
     collect_subjects,
+    meta_member_rsids,
     select_par_representative,
 )
 from just_dna_enricher.enrich.verification_records import _verification_records
@@ -1238,7 +1239,11 @@ def _run_enrichment(
     stale_rsids: list[RsidStatus] = []
     rsid_subjects = 0
     if verify_rsids and not offline:
-        asked = sorted({r.rsid for r in out if r.rsid})
+        # The rows the table carries, and every rsID a meta.csv member names (0.8): one variant under
+        # two keys is a meta-table disagreement hidden as a difference, and NCBI is the merge oracle.
+        # The members' ids are asked and reported, never resolved — a verdict is stamped only on a row
+        # `resolution.csv` already carries.
+        asked = sorted({r.rsid for r in out if r.rsid} | set(meta_member_rsids(spec_dir)))
         rsid_subjects = len(asked)
         try:
             statuses = check_rsids(asked)
