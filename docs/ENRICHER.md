@@ -1000,9 +1000,13 @@ RM43.
 
 ### Multi-allelic snapshot rows
 
-The Ensembl snapshot stores a multi-allelic site as **one row whose `alt` is pipe-joined** (`A|C|T`),
-while live Ensembl, ClinVar and gnomAD all emit comma-separated lists. `resolver._snapshot_alleles`
-normalizes at that one boundary so a locus dict's `alts` has a single canonical shape.
+The Ensembl snapshot has **two published spellings** of a multi-allelic site. The old repo
+(`just-dna-seq/ensembl_variations`) stores it as **one row whose `alt` is pipe-joined** (`A|C|T`); the
+split repo 0.8 reads (`just-dna-seq/ensembl_variations_split`, RM372) stores **one row per ALT**, which
+the lookup's `string_agg` groups back into one locus. Live Ensembl, ClinVar and gnomAD all emit
+comma-separated lists. `resolver._snapshot_alleles` normalizes at that one boundary so a locus dict's
+`alts` has a single canonical shape whichever spelling the cache holds; `test_enrich.py` runs the
+multi-allelic tests over both.
 
 This is load-bearing, not tidying. The hosting predicate splits alleles on commas, so an un-normalized `A|C|T`
 collapsed into one opaque "allele", no genotype was ever a subset of `{ref} ∪ alts`, and the
@@ -1427,7 +1431,7 @@ service* below). Pre-provisioning is therefore a deployment step, not an optimiz
 
 | Cache | Subdir | Override | `ensure_*` | Published at | Serves |
 |---|---|---|---|---|---|
-| **Ensembl** | `ensembl_variations/` | `$JUST_DNA_ENSEMBL_CACHE` | `ensure_snapshot` | `just-dna-seq/ensembl_variations` | rsID → coordinate (`enrich`) |
+| **Ensembl** | `ensembl_variations/` | `$JUST_DNA_ENSEMBL_CACHE` | `ensure_snapshot` | `just-dna-seq/ensembl_variations_split` (since 0.8; built by prepare-annotations) | rsID → coordinate (`enrich`) |
 | **ClinVar** | `clinvar/` | `$JUST_DNA_CLINVAR_CACHE` | `ensure_clinvar_snapshot` | `just-dna-seq/clinvar` | records + `citations/` (`enrich`, `draft-panel`) |
 | **gnomAD constraint** | `gnomad_constraint/` | `$JUST_DNA_GNOMAD_CONSTRAINT_CACHE` | `ensure_constraint_snapshot` | `just-dna-seq/gnomad_constraint` | v4.1 gene constraint (`gene-metrics`) |
 | **ClinPGx** 🔒 | `clinpgx/` | `$JUST_DNA_CLINPGX_CACHE` | `ensure_clinpgx_snapshot` | `just-dna-seq/clinpgx` | clinical annotations (`clinpgx check`) |
@@ -1742,7 +1746,7 @@ Three things about it are worth reading before a deployment runs it nightly.
   deployment passes its own absolute path and none of this applies.
 - **The outcome is three-valued, and *not run* is not a failure.** ACMG needs a workbook that is
   Elsevier supplementary material, PharmVar a personal key, CIViC a release date to pin, Ensembl is
-  built by just-dna-pipelines, and a derived lane whose parents are not on disk (`mitomap_miss`, RM171)
+  built by prepare-annotations, and a derived lane whose parents are not on disk (`mitomap_miss`, RM171)
   names the parent it lacks rather than reporting an empty result. Each prints its own reason — taken from the registry field, not composed
   here — and the exit code counts only real failures, so a nightly run does not alarm on lanes
   behaving exactly as designed.
@@ -1830,6 +1834,41 @@ so `draft-panel --source pubmind` is not gated. It writes a `pubmind` licence ro
 declaration. Until the answer every axis was `None`, the gate skipped under every declaration, and the
 command carried no flag. **A module drafted before RM320 keeps its all-null `pubmind` row**, because
 `sources.csv` merges never clobber a recorded row: delete that row and re-draft to record the terms.
+
+### The Ensembl snapshot's new repo, and a cache that mixes releases (RM372)
+
+prepare-annotations published dbSNP 157 / VEP 116 on 2026-11-04 as a **separate** repo,
+`just-dna-seq/ensembl_variations_split` (tag `ensembl-variation-2026_07_13-vep116.0`): the same
+`data/homo_sapiens-chr*.parquet` names as the old repo, one row per ALT, left-aligned indels, `groups/*`
+sidecars outside `data/` (not pulled), and a `manifest.json` with the release id and every file's size
+and sha256 in place of a `release.json`. Since the names did not change, three rules keep the two
+releases apart:
+
+- **A pull record naming another repo is not this snapshot.** `ensure_snapshot` returns a warm cache
+  only when its pull record names the lane's current repo (`download.SNAPSHOT_REPO_PREFIXES`), and
+  `cache pull` / `cache prepare` send a cache recorded from the old repo down the pull route. The
+  resolver still **serves** such a cache: it is a whole snapshot of an older release, and an offline
+  machine keeps it until someone pulls. `enrich` alone never migrates it.
+- **A switch is recorded until it finishes.** The pull record written before the first byte names the
+  new repo and, under `replacing`, the old one; `pull_record_repo` reads `replacing` first and the key is
+  dropped once every file is the new repo's, so an interrupted switch is still the old repo's cache. A
+  sidecar or root file of the old repo is refetched or removed, never kept.
+- **A file the manifest does not attest is never kept, and a cache holding one is withheld.** The
+  manifest is fetched first and placed before the first byte (it only ever refuses, so an interrupted
+  pull leaves a cache whose old files it disowns). A file of unknown origin is kept only if its size and
+  sha256 match; one this repo's own pull placed was hashed on its way in, so its size is compared; a
+  download is renamed into place only if it matches. A manifest that could not be fetched (a timeout, a
+  refused connection) is not one the repo lacks: the pull stops before anything is written. At read time `manifest_coverage` checks both directions, by size (a
+  `stat`, since hashing 14.5 GB per enrich is not a read): a `data/*.parquet` the manifest does not name,
+  or names at another size, is a mixed release; a `data/` file the manifest attests that is not there is
+  an incomplete snapshot (12 of 25 files with no pull record was served before). Either makes the
+  resolver return `None` for the whole directory, before a prebuilt `.duckdb` is considered, with its own
+  warning: "mixes releases" and "the snapshot is incomplete" name different fixes. Withheld whole rather than per file, because a dropped chromosome would read
+  as asked-and-absent under `--offline`. An unreadable manifest attests nothing. No manifest (the old
+  repo) is the unknown arm: the cache is read as it always was.
+- **The release has a label.** `cache status` prints the manifest's `release_id` for the lane
+  (`CacheLane.release_label = ensembl_release_label`), and the `rsid_coordinate_agreement` record carries
+  it as `release`.
 
 ### Snapshot-first, live second, `--offline` first-only
 
@@ -2252,8 +2291,9 @@ every lap (`@a-set-that-silences-is-narrower-than-one-that-raises`, taken the ot
   for both absence and corruption on purpose: a caller must not be able to mistake "this snapshot does
   not say" for a release id.
 - **`download.py`** — `ensure_snapshot`, `ensure_clinvar_snapshot` and `ensure_constraint_snapshot` pull
-  the parquet slice from the HF datasets (`just-dna-seq/ensembl_variations` / `just-dna-seq/clinvar` /
-  `just-dna-seq/gnomad_constraint`) via one shared footer-checked/atomic body. A complete parquet
+  the parquet slice from the HF datasets (`just-dna-seq/ensembl_variations_split` / `just-dna-seq/clinvar` /
+  `just-dna-seq/gnomad_constraint`) via one shared footer-checked/atomic body; every lane's repo is a
+  row of `download.SNAPSHOT_REPO_PREFIXES`, keyed like `SNAPSHOT_FILE_GLOBS`. A complete parquet
   begins/ends with the `PAR1` magic; downloads go to a `.part` temp and rename only after the footer
   verifies, and a corrupt/truncated file is removed and refetched rather than skipped forever.
   `huggingface_hub` is a **guarded lazy import** — a missing wheel fails with a clear diagnosis pointing
@@ -5997,12 +6037,12 @@ Written down because each was reached for and not found, and a reader who reache
 deserves to know it is absent rather than hidden. None is a defect with a filed `RMn` — a defect is a
 place where the code and a stated rule disagree, and these are places where nothing states a rule.
 
-- **The Ensembl snapshot's builder and its `release.json`.** `download.ensure_snapshot` provisions
-  `datasets/just-dna-seq/ensembl_variations/data/homo_sapiens-*.parquet` and `resolver.py` reads a fixed
-  column set from it (`id`, `chrom`, `start`, `ref`, `alt`), but **nothing in this package builds that
-  snapshot**, unlike the ClinVar and gnomAD ones. `enrich._snapshot_release` reads a `dataset` key no
-  builder here writes, so `rsid_coordinate_agreement.release` is `None` in practice unless something
-  outside this repo produces one. Worth knowing before treating that field as provenance.
+- **The Ensembl snapshot's builder.** `download.ensure_snapshot` provisions
+  `datasets/just-dna-seq/ensembl_variations_split/data/homo_sapiens-*.parquet` and `resolver.py` reads a
+  fixed column set from it (`id`, `chrom`, `start`, `ref`, `alt`), but **nothing in this package builds
+  that snapshot**, unlike the ClinVar and gnomAD ones: prepare-annotations does. Since RM372 its release
+  is read from the `manifest.json` it carries (`locations.ensembl_release_label`), so
+  `rsid_coordinate_agreement.release` names it; a cache of the old repo states none and stays `None`.
 - **What the ClinVar snapshot's `cache status` label should be.** `clinvar_build._write_release_json`
   writes no `dataset` key and `cache status` prints `release.get("dataset") or ""`, so a correctly built
   ClinVar snapshot shows a blank label. Whether that is intended — ClinVar has its own richer

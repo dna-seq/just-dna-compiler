@@ -290,6 +290,10 @@ def test_a_read_timeout_names_the_knob_and_leaves_no_part_file(fake_hub, tmp_pat
     fs = fake_hub(_THREE)
 
     def get(remote_path: str, local_path: str) -> None:
+        if not remote_path.endswith(".parquet"):
+            # The repo publishes no manifest. Asked before any parquet since RM372, and a timeout
+            # there is could-not-ask, refused before the record (pinned separately below).
+            raise FileNotFoundError(remote_path)
         Path(local_path).write_bytes(b"PAR1partial")
         raise httpx.ReadTimeout("The read operation timed out")
 
@@ -299,6 +303,28 @@ def test_a_read_timeout_names_the_knob_and_leaves_no_part_file(fake_hub, tmp_pat
         dl.ensure_clinvar_snapshot(cache)
     assert list((cache / "data").glob("*.part")) == []
     assert snapshot_record_missing(cache) == [f"data/{name}" for name in sorted(_THREE)]
+
+
+def test_a_manifest_that_could_not_be_fetched_is_not_a_manifest_that_is_absent(
+    fake_hub, tmp_path: Path, monkeypatch
+) -> None:
+    """RM372: a timeout on `manifest.json` is could-not-ask. Pulling on as if the repo published none
+    would accept every byte unverified, so nothing is downloaded and no record is written."""
+    monkeypatch.delenv("HF_HUB_DOWNLOAD_TIMEOUT", raising=False)
+    fs = fake_hub(_THREE)
+
+    def get(remote_path: str, local_path: str) -> None:
+        raise httpx.ReadTimeout("The read operation timed out")
+
+    fs.get = get
+    cache = tmp_path / "cv"
+    with pytest.raises(
+        dl.ClinVarReferenceError, match=r"manifest\.json could not be fetched.*HF_HUB_DOWNLOAD_TIMEOUT"
+    ):
+        dl.ensure_clinvar_snapshot(cache)
+    assert snapshot_record_missing(cache) is None
+    assert not list(cache.glob("*.part"))
+    assert not list(cache.glob("data/*.parquet"))
 
 
 def test_the_pull_record_is_never_published(tmp_path: Path) -> None:

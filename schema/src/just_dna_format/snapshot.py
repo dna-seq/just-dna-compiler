@@ -49,12 +49,19 @@ SNAPSHOT_LICENSE_FILENAME = "LICENSE.txt"
 #: The AlphaGenome AVI lane's reconstruction curve: a root-level file beside `data/`, not optional.
 ALPHAGENOME_KNOTS_FILENAME = "avi_knots.parquet"
 
+#: The per-file manifest a snapshot built outside this workspace may carry instead of `release.json`
+#: (RM372): prepare-annotations' Ensembl release states its release id and every file's size and
+#: sha256 here. Named in this tier because it is a root file every party moves; what it says is read
+#: by the enricher, the only tier that judges a cache against it.
+SNAPSHOT_MANIFEST_FILENAME = "manifest.json"
+
 #: Every file a snapshot may carry at its root beside `data/` and its sidecar directories. **The
 #: order is the publish order, and `RELEASE_FILENAME` is last**: the description must never arrive
 #: before the bytes it describes.
 SNAPSHOT_ROOT_FILENAMES: tuple[str, ...] = (
     SNAPSHOT_LICENSE_FILENAME,
     ALPHAGENOME_KNOTS_FILENAME,
+    SNAPSHOT_MANIFEST_FILENAME,
     RELEASE_FILENAME,
 )
 

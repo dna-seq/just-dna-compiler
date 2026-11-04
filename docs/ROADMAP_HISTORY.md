@@ -35,6 +35,164 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM372 — the Ensembl snapshot moved to a new Hugging Face repo, and a warm cache never migrates
+
+**SHIPPED 2026-11-04 on `0.8`, uncut — a minor.** Owner enricher + format, severity medium.
+
+**Residuals** won't fix — `enrich` alone never migrates a cache pulled from the old repo: the resolver
+serves it as the whole older release it is, so an offline machine keeps its snapshot, and `cache pull`
+/ `cache prepare` re-pull it · won't fix — the read-time check compares the manifest's `bytes`, not its
+sha256, because hashing 14.5 GB per enrich is not a read; the sha256 is checked where the bytes are
+already paid for, by the provisioner · won't fix — the `groups/*` sidecars (consequence, clinical,
+predictors, CADD, frequencies, transcripts; 37 GB) are not pulled: nothing here reads them, and CADD's
+are non-commercial
+
+**What shipped.**
+
+- **The prefix.** `download._ENSEMBL_HF_PREFIX` is `datasets/just-dna-seq/ensembl_variations_split/data`,
+  and every provisioned lane's repo is a row of `download.SNAPSHOT_REPO_PREFIXES`, asserted equal in keys
+  to `SNAPSHOT_FILE_GLOBS`.
+- **Fix 1, a warm cache from another repo.** `_provision_snapshot` returns a cache untouched only when its
+  pull record names this repo (`locations.pull_record_repo`) and its manifest attests it. A record naming
+  another repo sends it down the pull route, where a file is kept only if the new manifest attests it by
+  size and sha256 (`locations.manifest_attests`); with no manifest after a switch, every file is
+  refetched. `caches._present_or_completed` sends a recorded cache from another repo to `ensure`, so
+  `cache pull` re-pulls the old-repo cache rather than calling it present. The same keep-rule closes the
+  case the entry did not name: a cache with **no** record (just-dna-lite's downloader writes none) holding
+  old bytes was compared with the listing by name and would have been recorded as the new release.
+- **Fix 2, a cache mixing releases.** `manifest.json` joins `SNAPSHOT_ROOT_FILENAMES`
+  (`snapshot.SNAPSHOT_MANIFEST_FILENAME`, before `release.json`) and is read by the enricher's
+  `SnapshotManifest` (typed `release_id`, `layout_version`, `built_at`, `files[path, group, chrom, rows,
+  bytes, sha256]`; every other key dropped, never carried). The provisioner fetches it **first** into a
+  staged `.part`, checks every kept and every downloaded file against it, refuses a published `data/`
+  file it does not name before downloading anything, and places it last. `manifest_coverage` is the
+  read-time check, in both directions: a `data/*.parquet` the manifest does not name or names at another
+  size (a mixed release), or a `data/` file it attests that is absent (an incomplete snapshot, found by
+  the lead's migration probe on `cc1fea4f`: 12 of 25 attested files and no pull record were served
+  silently), makes
+  `resolve_ensembl_reference` (before the prebuilt `.duckdb` is considered: this machine's is a view over
+  the same glob) and `_resolve_parquet_cache` return `None` for the whole directory, with a warning naming
+  the files and `cache pull`. Whole rather than per file, because a dropped chromosome would read as
+  asked-and-absent under `--offline`. An unreadable manifest attests nothing; no manifest is the unknown
+  arm, read as before.
+- **The label.** `locations.ensembl_release_label` (`release.json`'s `dataset`, else the manifest's
+  `release_id`) is the Ensembl lane's `CacheLane.release_label` and the `rsid_coordinate_agreement`
+  record's `release`.
+- **Fix 3, tests and docs.** `test_enrich.py`'s `multiallelic_cache` is parametrized over the pipe-joined
+  and the one-row-per-ALT spelling; `@snapshot-pipe-alt` names both; the builder is prepare-annotations
+  in `caches.py`, `download.py` and ENRICHER.md. `test_ensembl_split_release.py` pins the rest; each
+  check was broken once and its test went red.
+
+**Hand-run (2026-11-04).** `HfApi.list_repo_files`: the new repo holds 203 files (`.gitattributes`,
+`README.md`, `manifest.json`, 25 `data/homo_sapiens-chr*.parquet`, 175 `groups/<group>/…`), tag
+`ensembl-variation-2026_07_13-vep116.0`, sha `ee964d71b249197f9f943915b2d596286291a90e`; the old one 27
+(`.gitattributes`, `README.md`, 25 data files), no tag, sha `2205d5ed…`, last modified 2026-01-15. The
+manifest: `release_id` `ensembl-variation-2026_07_13-vep116.0`, `layout_version` 1, built
+2026-11-04T10:04:28Z, 200 files in 8 groups, 25 `core` files of 14,539.7 MB, core columns `chrom, start,
+ref, alt, id, row_idx`. Every core file differs in size from the old repo's. Two runs of
+`ensure_snapshot` against the live repo, on scratch caches: the 25 core files fetched beforehand with no
+pull record were hashed and all 25 kept as attested (214 s, nothing downloaded: the whole-genome check
+the entry left unverified, for the bytes rather than the claims about them); and a switch, 23 new files
+beside the old repo's chr21 and chrMT under the old repo's pull record, re-pulled exactly those two (112 s),
+dropped `replacing`, and resolved with the label `ensembl-variation-2026_07_13-vep116.0`.
+
+**The incident this build caused, and its fence.** On 2026-11-04 the neighbour suite on this branch ran
+`test_rebuild_caches_and_prepare_caches_are_the_cli_loops`, which called `prepare_caches` on the real
+Ensembl lane. The developer's cache was recorded from the old repo, so the new route re-pulled it into the
+shared base: six chromosomes were replaced with the new release before the run was stopped. Restored
+the same evening from the old repo (all 25 files match just-dna-lite's `.sha256` sidecars, the record
+names the old repo again). The fix is a class fence rather than one test: the autouse `_fenced_hub`
+(`@no-test-reaches-the-real-hub`) refuses the real `HfFileSystem` and `hf_hub_download` without
+`JUST_DNA_NETWORK_TESTS=1`, and any fetch into the real cache base with it; `test_the_hub_is_fenced.py`
+asserts it covers every fetching name the enricher imports. A suite run with
+`JUST_DNA_HUB_GUARD_LOG` listed every test that reached the hub, and each now arranges its own:
+`test_cache_lanes.py::test_rebuild_caches_and_prepare_caches_are_the_cli_loops` (the incident: it
+provisioned the real base; its lane's `resolve`/`ensure` are stubbed now),
+`test_enrich.py::test_gnomad_link_never_overrides_an_earlier_link` and
+`::test_gnomad_link_fills_only_what_nothing_else_could` (an online `enrich` with no ClinVar snapshot
+downloaded ClinVar from HuggingFace into `tmp_path` on every run; `download=False` now), and
+`test_upload.py::test_upload_module_calls_hf_api` and
+`::test_the_default_commit_messages_name_which_copy_they_are` (a bare `MagicMock` answered `file_exists`
+truthily, so the collision check called the real `hf_hub_download` with a fake token; `False` now). The
+fence also wraps the two provisioning bodies, so no real cache directory (the base, or a lane's own
+override) is provisioned under any setting: `_provision_snapshot` writes its pull record before its
+first fetch.
+
+**The placement verdicts on the new snapshot (measured 2026-11-04).** Every GRCh38 reference example
+that resolves anything (15) was enriched `--offline` twice from a copy with `resolution.csv` deleted,
+once against the old snapshot and once against the new, with the ClinVar snapshot (2026-06-27) as the
+only placement witness: ClinVar-GKM is not provisioned on this machine, and the run predates RM267-rest's
+REST witness on this branch. Of 490 resolution rows (subject × locus), **180 change** (the 113 + 48 + 19 below, disjoint): 129 in
+`pathogenic_clinvar`, 18 `cpic_gene_pairs`, 10 `cyp2c19_star_alleles`, 8 `hboc_palb2`, 6
+`hfe_hemochromatosis`, 4 `shox_par1`, 2 `apoe_klvs_meta`, one each in `hfe_compound_het`,
+`longevity_studies`, `model_organisms`. No row appears on one side only.
+
+- **113 move their spelling** (`start`/`ref`, with `alts` where the anchor base changed): the left-aligned
+  release respells indels, and RM267's class moves onto the other event.
+- **48 gain an allele** (`alts` alone; none loses one): dbSNP 157 and one row per ALT.
+- **19 change only `source`**: a position the new snapshot answers that an authored or ClinVar row filled before.
+- **2 of the 113 are rsIDs newly resolved**, `not_found` before: `rs1256311452` (`hfe_hemochromatosis`) and `rs281864532`
+  (`pathogenic_clinvar`).
+- **134 `placement_verdict`s change**: `undecided → same_event` 94 (the new spelling matches ClinVar's, so the
+  comparison settles), `same_event → unplaced` 24 (a gained allele ClinVar does not hold, so not every ALT is
+  placed), `undecided → unplaced` 2, and 14 rows gain a verdict where the old run wrote none (11 `same_event`,
+  2 `undecided`, 1 `unplaced`). No row is withheld as a disagreement in either run.
+
+RM267's own cases, through `lookup_loci` on both snapshots: `rs8176719` `9:133257520 G>GC` → `9:133257521
+T>TC`, `rs546596010` `2:26455248 C>CA` → `2:26455249 T>TA`, `rs1553364018` `1:224434031 G>GT` →
+`1:224434032 C>CT`. All three insertions of the −1 class now land on the event dbSNP and ClinVar name.
+`rs72613567`, `rs77944059` and `rs333` (CCR5-Δ32, RM270) move one base left, the same event respelled;
+`rs4988235` is unchanged.
+
+**The entry as filed.**
+
+**Taken into 0.8 on 2026-11-04 by the maintainer**: "check compatibility and take action to be compatible if
+needed", after prepare-annotations published a new Ensembl variation release overnight. Measured the same day
+by a read-only pm subagent on a detached `0.8` worktree, reading chr21 and chrMT bytes of both repos.
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** · **Owner** enricher (`download`, the Ensembl lane)
+\+ format (`locations`, `snapshot`) · **Motivating case** prepare-annotations 1019891 and 8044abf (2026-11-04) ·
+*related* RM303, RM267, RM270, RM304
+
+**What was published.** A **separate** dataset, `just-dna-seq/ensembl_variations_split` (tag
+`ensembl-variation-2026_07_13-vep116.0`), dbSNP 157 + VEP 116, written by DuckDB. The repo 0.8 reads,
+`just-dna-seq/ensembl_variations` (`download.py` `_ENSEMBL_HF_PREFIX`), has had no commit since 2026-01-15, so 0.8
+is not broken today. In the new release:
+
+- 25 flat files, `data/homo_sapiens-chr*.parquet` (the old glob still matches), plus `groups/*` sidecars outside
+  `data/`, a `manifest.json` (release id, per-file sha256) and no `release.json`.
+- The core columns are `chrom, start, ref, alt, id, row_idx`. `start` is still the 1-based POS, and chrom is
+  spelled as before.
+- **One row per ALT.** `alt` is never pipe-joined, which retires `@snapshot-pipe-alt` for this repo. `id` is
+  always an `rs…`.
+- Indels are left-aligned: 301 of 400 sampled indel loci move one base left, so RM267's class disappears from
+  the source.
+
+**What the 0.8 reader does with it.** It reads the new bytes correctly. `test_resolver_integration.py` passes
+against the real files, offline `enrich` gives byte-identical `resolution.csv` on two MT examples, and the
+compiler suite passes under polars 1.44.2.
+
+**The build (decided):** switch `_ENSEMBL_HF_PREFIX` to the new repo, plus three fixes.
+
+1. **A warm cache must not serve the old repo's bytes.** `snapshot_record_missing` (`locations.py`) checks only that
+   the files exist, never the pull record's `repo`. The file names are identical across the two repos, so a
+   switched prefix silently keeps the old bytes. A record naming another repo is not this snapshot.
+2. **A mixed-release cache must not serve without a word.** Old chrMT beside new chr21 answered 100 rsIDs and nothing
+   complained. just-dna-lite's downloader writes the same names into the same `<base>/ensembl_variations/data/`.
+   Read `manifest.json`'s release id (add it to `SNAPSHOT_ROOT_FILENAMES`) and its per-file sha256. A file the
+   manifest does not attest is withheld as a different release, never merged.
+3. **Tests and docs.** Every fixture uses the old pipe-joined `alt` and none pins one row per ALT: add one. `caches.py`
+   names just-dna-pipelines as the lane's builder, but prepare-annotations builds it. Rewrite `@snapshot-pipe-alt`
+   as two spellings, the old repo's and the new one's.
+
+**What moves for a module (INTEGRATION_0_8 owes a line).** Resolutions move as data, not as code. Indel loci change
+spelling, some rsIDs gain or lose an allele (which can flip a hosting verdict), and two chr21 rsIDs are absent.
+An existing `resolution.csv` keeps the old spelling until it is deleted (`@sidecar-authoritative`). The RM267/RM270
+placement verdicts against ClinVar were **not** re-run against the new snapshot, so the build re-runs them.
+
+**Not verified:** whole-genome claims, since only chr21 and chrMT were read. Also unknown: whether the two missing
+rsIDs moved in dbSNP or were dropped by the builder.
+
 ## RM365 — registry guards that are floors or subsets, and registries that omit what they describe
 
 **SHIPPED 2026-11-04 on `0.8`, uncut — a minor (the 0.8 audit, round 1).** Owner format + compiler +

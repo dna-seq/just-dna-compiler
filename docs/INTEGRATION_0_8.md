@@ -529,6 +529,16 @@ round-trip gates make, lap against lap.
 | `reverse`, a module that read no table | Writes no `resolution.csv` when the manifest records no `resolution_signature`, its `derived` list names none, and no parquet row carries a filled identity cell. It used to rebuild one from the authored coordinates, and the second lap's manifest then published a `resolution_signature`, VRS coverage and expansion counts the first did not. A spec that carried a table with no rows gets a header-only one back. |
 | `reference_examples/cpic_gene_pairs` | The NUDT15 `*1` row `rs1457579126` (removed while the example was built, for this defect) is back in `haplotypes.csv`, with its `resolution.csv` row and a ClinVar `licensing.csv` row (the placement's witness). The module was re-enriched and re-closed. |
 
+## 1.29 The Ensembl snapshot moved repos, and resolutions move as data (RM372, no new code)
+
+| Surface | What changed | What to do |
+| --- | --- | --- |
+| `download.ensure_snapshot`, `cache pull`, `cache prepare` | The Ensembl lane pulls `just-dna-seq/ensembl_variations_split` (dbSNP 157 / VEP 116). A cache whose pull record names the old repo `just-dna-seq/ensembl_variations` is re-pulled; a file is kept only where the new `manifest.json` attests it by size and sha256. | Run `just-dna-enricher cache pull` (or `--only ensembl`) once to move a deployment's cache. `enrich` alone keeps reading the old one. Budget 14.5 GB. |
+| The Ensembl and the parquet-snapshot resolvers | A cache carrying a `manifest.json` and a `data/*.parquet` it does not attest (another release's file, written by another downloader into the same directory), or lacking a `data/` file it attests, resolves to `None`, with a warning naming the files: "mixes releases" or "the snapshot is incomplete". | If `enrich` reports no Ensembl reference after this release, read the warning; `cache pull` repairs it. |
+| `resolution.csv` after `--rederive` or a deleted sidecar | Resolutions move as data. The new release spells indels left-aligned and stores one row per ALT, so a re-derived row can change `start`/`ref`/`alts` (RM267's insertions now land on dbSNP's event: `rs8176719` is `9:133257521 T>TC`, was `9:133257520 G>GC`), an rsID can gain or lose an allele, and a hosting verdict can flip. An existing `resolution.csv` keeps its rows until re-derived (`@sidecar-authoritative`). | Re-derive deliberately, read the diff, and expect `artifact.digest` to move where a fill changed; `content_signature` does not move (a fill is `authored_ident`). |
+| `locations` | New public names: `SnapshotManifest`, `SnapshotManifestFile`, `read_snapshot_manifest`, `manifest_coverage`, `ManifestCoverage`, `manifest_attests`, `pull_record_repo`, `ensembl_release_label`; `download.SNAPSHOT_REPO_PREFIXES`, `download.pulled_from_elsewhere`; `just_dna_format.snapshot.SNAPSHOT_MANIFEST_FILENAME`, now in `SNAPSHOT_ROOT_FILENAMES` before `release.json`. | A publisher walking `SNAPSHOT_ROOT_FILENAMES` uploads a snapshot's `manifest.json` when one is present; no builder here writes one. |
+| `cache status`, the `rsid_coordinate_agreement` record | The Ensembl lane's label is the manifest's `release_id`; the old repo's cache still shows none. | None. |
+
 ## 2. What to change
 
 1. If you parse `manifest.json` with `just-dna-format`, move your pin to 0.8 when you start reading

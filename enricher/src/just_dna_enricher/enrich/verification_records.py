@@ -20,6 +20,7 @@ from just_dna_enricher.clinvar import clinvar_dataset_label
 from just_dna_enricher.currency import CurrencyCheck, summarize_currency
 from just_dna_enricher.grch37 import BuildDiagnosisResult
 from just_dna_enricher.identifiers import RsidStatus
+from just_dna_enricher.locations import ensembl_release_label
 from just_dna_enricher.placement import PlacementCheck
 from just_dna_enricher.resolver import PairCheck
 from just_dna_enricher.sequences import RefCheck, summarize_ref_mismatches
@@ -436,7 +437,7 @@ def _verification_records(
                 subjects=pairs.subjects,
                 findings=len(pairs.disagreements),
                 source="ensembl",
-                release=_snapshot_release(ensembl_ref),
+                release=ensembl_release_label(ensembl_ref) if ensembl_ref is not None else None,
                 detail=" ".join(notes) or None,
                 # RM292 / `@tautology-zero`: the RM31 tolerance abstains on every indel position
                 # difference, so the abstentions are counted here rather than left to read as agreement.

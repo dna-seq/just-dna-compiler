@@ -430,8 +430,9 @@ def _lookup_rsid_candidates(
 def _snapshot_alleles(cell: object) -> list[str]:
     """The alleles named by one snapshot `alt` cell.
 
-    The Ensembl snapshot records a multi-allelic site as a **single row whose `alt` is pipe-joined**
-    (`A|C|T`), whereas every other link in the chain — live Ensembl (`_loci_from_rest`), ClinVar,
+    The old Ensembl repo records a multi-allelic site as a **single row whose `alt` is pipe-joined**
+    (`A|C|T`); the split repo read since RM372 writes one row per ALT, which the lookup's `string_agg`
+    groups back into a comma list. Every other link in the chain — live Ensembl (`_loci_from_rest`), ClinVar,
     gnomAD — emits a comma-separated list, and that is the shape `ResolutionRow.alts` is written in.
     Normalizing here, at the one boundary where the snapshot is read, keeps a locus dict's `alts` in
     exactly one canonical form no matter which link produced it.

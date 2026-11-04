@@ -201,7 +201,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 
 - `compile → reverse → compile` reproduces the module or `strict` refuses; `authored_ident` is why. `@resolution-reversible`
 - Allele membership compares the union of every locus a key resolves to, before expansion. `@membership-union`
-- The Ensembl snapshot pipe-joins `alt`; every other link uses commas. `@snapshot-pipe-alt`
+- The Ensembl snapshot spells a multi-allelic site two ways (old repo pipe-joins `alt`, split repo one row per ALT); every other link uses commas. `@snapshot-pipe-alt`
 - Resolution reads the PGx tables too; subjects dedupe with `variants.csv` first. `@resolution-reads-pgx-tables`
 - Reverse dropping `rsid_alternates` is closed, not a bug — don't re-flag it. `@rsid-alternates-closed`
 - A round-trip gate made of digests cannot see a value that lives only in the manifest; compare the authored projection. `@a-digest-gate-cannot-see-the-manifest`
@@ -604,6 +604,7 @@ questions vs answers. A blocker is never a dead end: dissolved, closed additivel
   `.env` leaks into `os.environ` from any unrelated test, so neutralize with `setenv(VAR, "")`, never
   `delenv`. Suspect ordering whenever a test passes alone and fails in the suite. `@test-no-credential`
 - A test meaning "no snapshot" must arrange it: request `no_ambient_caches` (enricher conftest, walked off `CACHE_LANES`). Ten tests read a real answer the day the developer's base gained every snapshot. `@test-no-credential`
+- No test reaches the real hub or fetches into the real cache base: the autouse `_fenced_hub` refuses both; install a fake hub or stub the lane's `ensure`. `@no-test-reaches-the-real-hub`
 
 ## Documentation & prose style
 
