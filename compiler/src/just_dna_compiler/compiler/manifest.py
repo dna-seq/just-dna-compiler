@@ -905,7 +905,10 @@ def _check_license_gate(rows: list[SourceRow]) -> list[str]:
 
 #: The `sources.csv` layers no fact table's `source` column can ever corroborate, so a declaration at
 #: one of them is uncorroborable rather than stale. See `_source_checks` for why each is here.
-_UNCORROBORABLE_LAYERS: frozenset[str] = frozenset({"annotation", "literature"})
+#: `clin_sig_authority_call` (RM379) joins for its own reason: the table it describes names an annotation
+#: authority in an open `authority` column that admits `manual`, which no licensed source is, so a string
+#: match cannot tell a licensed authority from a hand's; the row is the enricher's record of whom it asked.
+_UNCORROBORABLE_LAYERS: frozenset[str] = frozenset({"annotation", "literature", "clin_sig_authority_call"})
 
 
 def sources_in_use(resolution_rows: list[ResolutionRow], fact_rows: dict[type, list]) -> set[str]:

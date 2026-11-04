@@ -41,6 +41,14 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-05 — RM379: every authority the concordance record names has its licence row (0.8, uncut)
+
+- **`enrich` records ClinVar's and PubMind's terms at the new `clin_sig_authority_call` layer** for each
+  authority a `clin_sig_authority_calls.csv` row names and that was consulted, inside that table's commit,
+  `dataset` labelled by the release the rows state. An authority nobody asked writes none; CIViC, whose
+  checks write no table row, writes none. The compiler does not corroborate the layer (its `authority`
+  column admits `manual`), so the new rows raise no `source_row_unused`.
+
 ## 2026-11-04 — RM373: every resolution row names the release that answered it, and no label speaks for a table two releases answered (0.8, uncut)
 
 - **`resolution.csv` gains `source_release`**: the release of the link that answered the row, as the lane

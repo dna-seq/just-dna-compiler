@@ -1977,7 +1977,9 @@ def _run_enrichment(
             # the archive caught up with them. A run where nobody could be consulted returns `None`
             # above and writes nothing, so a previous run's record survives a run that could not
             # replace it.
-            write_concordance_tables(spec_dir, clin_sig_record.parents, clin_sig_record.calls)
+            write_concordance_tables(
+                spec_dir, clin_sig_record.parents, clin_sig_record.calls, error=EnrichmentError
+            )
         # The attestation (RM45), written once for the whole run — the proof-of-work binds the
         # document, so recording per check would pay it once per check for one guarantee. It goes after
         # `resolution.csv` and before the licence rows for no reason but reading order; the binding is

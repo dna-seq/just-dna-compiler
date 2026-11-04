@@ -35,6 +35,42 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM379 — `enrich` consults PubMind and ClinVar for the concordance record and writes no licence row for either
+
+**SHIPPED 2026-11-05 on `0.8`, uncut — a minor (the 0.8 Ensembl migration probe, RM373's review).**
+Owner enricher + format + compiler, severity low.
+
+**Residuals** won't fix — CIViC writes no licence row, correctly: its two checks compare authored cells
+and write no row of any table, so it contributes nothing (`@write-the-sourcerow`'s second half) · won't
+fix — a licence row an authority stops earning keeps its old label, because the record is rewritten whole
+and an absent authority is not re-stamped; the compiler does not corroborate this layer, so it warns
+nothing either
+
+**The class (RM373's, one rule over).** A pass that consults a source writes its `SourceRow`, and one
+that contributes nothing writes none. `enrich` read the `pubmind` lane (and ClinVar's) for the
+clinical-significance concordance, wrote `clin_sig_authority_calls.csv` naming each authority per row,
+and recorded no licence row for either at any layer. RM373's guard listed `("enrich", "pubmind")` as an
+exemption with that reason; this removes it.
+
+**What shipped.** `VALID_SOURCE_LAYERS` gains `clin_sig_authority_call` (P5 audit: named for the table
+whose rows the licence row describes, singular as every layer is; no collision; fact class, so it never
+taints). `concordance.write_concordance_tables` records one row per authority a written call row names
+with a status other than `unchecked`, inside the calls table's atomic commit (`before_commit`,
+`@licence-row-inside-the-commit`) and through `licensing.record_table_sources` (RM373), so `dataset` is
+the release every such row states, read through `net.stated_release`. A `manual` authority has no terms
+constant and gets no row. The compiler adds the layer to `_UNCORROBORABLE_LAYERS`: the table's
+`authority` column is open and admits `manual`, so a string match cannot tell a licensed authority from a
+hand's, and a PubMind row would otherwise read as `source_row_unused` on every module carrying one.
+
+**The guards.** `test_producers.py`'s lane walk is grouped by **command** (the checks walk beside it
+already was): `enrich` reads PubMind's lane in `enrich/` and writes its row in `concordance.py`, one
+run. The concordance producer declares `release_lanes` for ClinVar and PubMind, and the walk's equality
+holds with only CIViC exempt. `test_pubmind_concordance.py` asserts the two rows and their releases equal
+each lane's `release_label`, that a run with no PubMind snapshot writes no PubMind row, and that the
+compile raises no `source_row_unused` for them (watched red with the compiler line removed).
+`test_licence_row_inside_the_commit.py` names `concordance.py` among the passes that commit their row
+with their table.
+
 ## RM373 — provenance names the link, never the release: a derived fact's answering release is missing, blank or the run's
 
 **SHIPPED 2026-11-04 on `0.8`, uncut — a minor (the 0.8 Ensembl migration probe).** Owner format +
@@ -106,9 +142,9 @@ a release that moves a fact moves a fact column the signature already reads. Rev
 `authority`'s reason: a reversed table's facts came out of parquet, so no source answered them.
 
 **The guards.** `DerivedProducer.release_lanes` names, per pass, the lane whose release reaches its
-licence row; `test_producers.py` asserts, per producer module, that the lanes its code reads (an AST walk
-over each `CacheLane.resolve`) **equal** that field plus `LANES_READ_WITHOUT_A_LICENCE_ROW` (two, with
-reasons), and that no derived pass writes a licence row except through `record_table_sources`. Each
+licence row; `test_producers.py` asserts, per command (per module until RM379), that the lanes its code
+reads (an AST walk over each `CacheLane.resolve`) **equal** that field plus `LANES_READ_WITHOUT_A_LICENCE_ROW`
+(CIViC's, with its reason; PubMind's was the second until RM379 gave it its row), and that no derived pass writes a licence row except through `record_table_sources`. Each
 declared lane has a behavioural test asserting the licence row equals `LANES_BY_NAME[lane].release_label`
 of the snapshot the pass read (`test_source_release.py`, `test_placement_witness.py`,
 `test_clinical_assertions.py`, `test_fact_passes.py`, `test_opentargets.py`). The probe's case is

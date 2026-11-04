@@ -295,7 +295,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
   | `VALID_SAMPLE_UNITS` | 2 (closed) | what a `StudyRow.sample_size` counts — people, or lives where a study counts each participant's parents (RM325) |
   | `VALID_SIGNIFICANCE` | 4 (closed) |  |
   | `VALID_SUPERPOPULATIONS` | 5 (closed) | the 1000 Genomes superpopulation codes: what `StudyRow.ancestry` binds, and — plus `multi` — `pgs.VALID_TRAINING_ANCESTRY`, derived from it so the codes are one list (RM328) |
-  | `VALID_SOURCE_LAYERS` | 13 (closed) |  |
+  | `VALID_SOURCE_LAYERS` | 14 (closed) | `clin_sig_authority_call` since 0.8 (RM379): each consulted authority of the concordance record |
   | `VALID_VERIFICATION_CHECKS` | 27 (closed) |  |
   | `VALID_VERIFICATION_SKIPS` | 9 (closed) |  |
   | `VALID_VERIFICATION_INDEPENDENCE` | 2 (closed) | `VerificationRecord.independence`, derived from the record's two sources and never typed (RM292) |

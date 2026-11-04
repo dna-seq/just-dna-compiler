@@ -217,6 +217,8 @@ DERIVED_PRODUCERS: dict[str, tuple[DerivedProducer, ...]] = {
             module="concordance",
             sources=(CLINVAR_TERMS.source, CIVIC_TERMS.source, PUBMIND_TERMS.source),
             checks=("clinical_significance",),
+            # RM379: each authority a written call row names, consulted, has its licence row.
+            release_lanes=((CLINVAR_TERMS.source, "clinvar"), (PUBMIND_TERMS.source, "pubmind")),
             shares_table_because=(
                 "the per-authority calls are the detail rows behind each concordance verdict, written by "
                 "the same pass so a verdict and the calls it was computed from cannot disagree"
@@ -286,17 +288,13 @@ SOURCES_WITHOUT_TERMS: dict[str, str] = {
     ),
 }
 
-#: `(producer module, lane)` pairs where a pass reads a cache lane and writes no licence row for it, each
-#: with the reason (RM373). The complement of `DerivedProducer.release_lanes` in the walk over each
+#: `(command, lane)` pairs where a pass reads a cache lane and writes no licence row for it, each with
+#: the reason (RM373; keyed by command since RM379, because one run reads in one module and writes in another). The complement of `DerivedProducer.release_lanes` in the walk over each
 #: module's lane reads, so a lane a pass starts reading is named in one place or the other.
 LANES_READ_WITHOUT_A_LICENCE_ROW: dict[tuple[str, str], str] = {
     ("enrich", "civic"): (
         "read for two checks (`published_refutation`, `evidence_status_currency`) that compare authored "
         "cells with CIViC and write no row of any table, so no licence row is owed for a derived fact"
-    ),
-    ("enrich", "pubmind"): (
-        "the clinical-significance concordance's second authority (RM134 § B); the concordance tables "
-        "name it per row, and `enrich` records no licence row for it at any layer"
     ),
 }
 

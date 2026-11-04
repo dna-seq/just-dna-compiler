@@ -177,7 +177,7 @@ def test_every_pass_that_records_a_licence_row_does_so_inside_its_tables_commit(
     )
     named = set(_NO_TABLE_OF_ITS_OWN) | set(_IS_THE_CALLBACK)
     assert named <= set(recorders), f"exemptions naming no recorder: {named - set(recorders)}"
-    # The ten, by name, so the walk cannot silently shrink. RM231's eight, plus `civic_citations`
+    # The eleven, by name, so the walk cannot silently shrink. RM231's eight, plus `civic_citations`
     # — which was one of that round's two exemptions until the compiler's writer took the parameter
     # (RM232) and it could hand its merge to the append that lands `studies.csv`.
     assert {key[0] for key in committing} == {
@@ -191,6 +191,7 @@ def test_every_pass_that_records_a_licence_row_does_so_inside_its_tables_commit(
         "expression.py",
         "civic_citations.py",
         "ld_pairs.py",  # RM331 (0.8): Ensembl's (ensembl, ld_pair) row commits with `ld_pairs.csv`
+        "concordance.py",  # RM379 (0.8): each consulted authority's row commits with its call rows
     }
     for key in committing:
         assert _preflight_precedes_the_write(recorders[key]), (

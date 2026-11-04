@@ -506,6 +506,13 @@ names, `sex` and rsIDs compare as written; each already has one rule.
 | Row `dataset` of `gwas_effects.csv`, `expression_effects.csv`, `clinical_assertions.csv`, `gene_metrics.csv` | Labelled by the source's own release, never the run's date: the Catalog's `/api/search/stats` date (`gwas_catalog_2026-10-29`), the atlas's none (`alphagenome_atlas`), `clinvar_dataset_label` (unstated: `clinvar`, was `clinvar_unknown`), the constraint snapshot's `release.json`. | A consumer matching `clinvar_unknown` or a dated atlas label reads the bare lane as "no release stated". |
 | `licensing.table_release`, `table_datasets`, `record_table_sources`, `DRAFTED_LAYERS`; `net.stated_release`; `GwasCatalogClient.release`; `enrich.releases`; `EnsemblResolver.data_release`, `ensembl.ENSEMBL_RELEASE_PREFIX`, `ensembl_data_release`; `DerivedProducer.release_lanes`, `producers.LANES_READ_WITHOUT_A_LICENCE_ROW` | New public names. `_verification_records` takes `pair_release=(label, withheld)` in place of `ensembl_ref`. | A host's injected Ensembl resolver without `data_release` records no REST release, and works as before. |
 
+## 1.29 The concordance record's authorities have licence rows (RM379, no new code)
+
+| Surface | What changed | What to do |
+| --- | --- | --- |
+| `licensing.csv`, `manifest.sources` | New rows at the new `clin_sig_authority_call` layer (`VALID_SOURCE_LAYERS`, 14 members) for ClinVar and PubMind when a run writes `clin_sig_authority_calls.csv` naming them, consulted. `sources.signature` and `artifact.digest` move on the next enrich and compile of a module with a concordance record. Fact class: never taints. | A reader closed over the 13 layers accepts the new member. |
+| `concordance.write_concordance_tables` | Takes `error=` (the caller's type for a licence table that will not merge), and reads the licence table before it writes. | None. |
+
 ## 2. What to change
 
 1. If you parse `manifest.json` with `just-dna-format`, move your pin to 0.8 when you start reading

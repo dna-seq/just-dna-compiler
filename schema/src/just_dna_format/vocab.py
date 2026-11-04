@@ -660,6 +660,11 @@ VALID_SOURCE_LAYERS: frozenset[str] = frozenset(
         # a public reference panel is a value the reference computes identically for everyone. Written by
         # `ld-pairs`, from Ensembl's pairwise LD.
         "ld_pair",
+        # 0.8 (RM379) — the clinical-significance calls `clin_sig_authority_calls.csv` records per
+        # authority, same fact class: a ClinVar or PubMind call is a value the source publishes
+        # identically to everyone. Written by `enrich` with the concordance record, for each authority
+        # a call row names that was consulted.
+        "clin_sig_authority_call",
         "annotation",
     }
 )

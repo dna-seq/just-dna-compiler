@@ -233,24 +233,32 @@ def _lanes_read(path: Path) -> set[str]:
 _MODULES = sorted({p.module for group in DERIVED_PRODUCERS.values() for p in group})
 
 
-@pytest.mark.parametrize("module", _MODULES)
-def test_every_lane_a_pass_reads_is_declared_or_named_as_owing_no_licence_row(module: str) -> None:
-    """**An equality.** The lanes a pass's code reads, against `release_lanes` plus the stated exemptions.
+def _command_reads(command: str) -> set[str]:
+    """The lanes a command's code reads: every module its producers name, since one run reads for all."""
+    modules = {p.module for group in DERIVED_PRODUCERS.values() for p in group if p.command == command}
+    return set().union(*(_lanes_read(_module_source(module)) for module in modules))
+
+
+@pytest.mark.parametrize("command", sorted(ALL_PRODUCER_COMMANDS))
+def test_every_lane_a_pass_reads_is_declared_or_named_as_owing_no_licence_row(command: str) -> None:
+    """**An equality.** The lanes a command's code reads, against `release_lanes` plus the stated exemptions.
 
     A pass that starts reading a lane fails here until it says whether that lane's release reaches its
     licence row, which is the question the 0.8 Ensembl migration probe found nobody had asked: the
-    resolution pass read three lanes and its licence rows named no release at all.
+    resolution pass read three lanes and its licence rows named no release at all. Grouped by command,
+    as the checks walk above is (RM379): `enrich` reads PubMind's lane in `enrich/` and writes its licence
+    row with the concordance record in `concordance.py`, and both are one run.
     """
     declared = {
         lane
         for group in DERIVED_PRODUCERS.values()
         for p in group
-        if p.module == module
+        if p.command == command
         for _, lane in p.release_lanes
     }
-    exempt = {lane for (owner, lane) in LANES_READ_WITHOUT_A_LICENCE_ROW if owner == module}
-    assert not declared & exempt, f"{module}: a lane both declared and exempted: {sorted(declared & exempt)}"
-    assert _lanes_read(_module_source(module)) == declared | exempt
+    exempt = {lane for (owner, lane) in LANES_READ_WITHOUT_A_LICENCE_ROW if owner == command}
+    assert not declared & exempt, f"{command}: a lane both declared and exempted: {sorted(declared & exempt)}"
+    assert _command_reads(command) == declared | exempt
 
 
 def test_every_release_lane_names_a_real_lane_and_a_declared_source() -> None:

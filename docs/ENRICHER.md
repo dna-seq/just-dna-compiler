@@ -1279,8 +1279,9 @@ the day the run asked: `gwas` reads the Catalog's from `/api/search/stats` (`gwa
 the AlphaGenome atlas states none (`alphagenome_atlas`), `assertions` uses `clinvar_dataset_label`, and
 `gene-metrics` reads the constraint snapshot's `release.json`. `DerivedProducer.release_lanes`
 names the lane each pass reads whose release reaches its licence row; `test_producers.py` asserts the
-lanes each module's code reads equal that field plus `LANES_READ_WITHOUT_A_LICENCE_ROW`, and that no
-derived pass writes a licence row any other way.
+lanes each command's code reads equal that field plus `LANES_READ_WITHOUT_A_LICENCE_ROW`, and that
+no derived pass writes a licence row any other way. Since RM379 the concordance record writes one per
+consulted authority its call rows name, at the `clin_sig_authority_call` layer.
 
 **A derived table's release moving never makes `strict` refuse.** A filled `clinvar`/`clinvar_gkm`
 licence row is a release `--verify-datasets` compares, and both have a currency probe. A source
