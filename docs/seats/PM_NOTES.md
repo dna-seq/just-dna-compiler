@@ -57,6 +57,10 @@ purpose; normalization is the compiled parquet's job (RM346, 1.0).
   columns): no drift. RM253's repeat rows carry no rsID and key on the coordinate, which fits "must not rely
   on rs3064744". RM342 keeps the `polars>=1.42.0` floor and locks 2.1.0, because polars-bio still caps <2.
   The next read starts after c3ac4d8.
+- **RM253's precedent, from just-vcf's lead (2026-11-04)**: the short-read callers they read (GATK,
+  DeepVariant, DRAGEN, freeBayes, CGI) all write a repeat-length change as a left-aligned sequence indel,
+  so 0.8's spelling matches. The repeat-count forms (ExpansionHunter `<STRn>` + REPCN, TRGT AL/MC,
+  VCF 4.4 `<CNV:TR>`) are a second, rarer form. A 0.9 candidate only if a consumer meets one; no `RMn`.
 - **The `0.8` push is the lead's, under its grant**, not the person's. I said otherwise in chat on
   2026-11-04 and withdrew it in `#just-dna-compiler>scope`.
 - **Charter wording before the cut: settled.** The person read each changed sentence old → new in the
