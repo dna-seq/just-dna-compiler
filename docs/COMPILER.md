@@ -1529,15 +1529,16 @@ at least one recognized table".
   `reverse` writes back), the stamped `members_key`, `match_count`, `matches` (a list of
   `{member, table, key}` structs, `key` in the table's `_KEY_FIELDS` order), `replaces` (true on a row of
   two or more members stating a finding: a matching combination replaces the findings of exactly the
-  rows in `matches`), and `withheld` (`direction`, when a bare-locus member on a direction row fixes no
+  rows in `matches`, within the row's own `sex` and `drug` scope), and `withheld` (`direction`, when a bare-locus member on a direction row fixes no
   allele).
 - `meta_resolved.parquet`: one row per (row reached, `sex` scope, `drug` scope), with `table`, `key`,
   `sex`, `drug`, the four fact columns after precedence, `tradeoff`, `withheld` and `meta_rows` (the
   0-based `meta.parquet` rows that apply in that scope, an outranked one included). The scopes of one row
   reached are **every** pair `({none} ∪ the sexes stated) × ({none} ∪ the drugs stated)` by the rows
   reaching it, skipping a pair no row applies in. The product rather than only the pairs some row
-  states, so a consumer looks up its own `(sex, drug)` and finds one answer: with a `male` row and an
-  `azathioprine` row, the `(male, azathioprine)` row exists and holds both.
+  states, so a consumer's lookup has one answer: per axis it takes its own value where the target has
+  rows for it and `none` otherwise, and with a `male` row and an `azathioprine` row the
+  `(male, azathioprine)` row exists and holds both. No row for the pair means no row applies.
 
 **`tradeoff` (RM327), computed and never authored.** A nullable boolean, `true` or null and never
 `false`. A per-trait judgement is a one-member row with `trait_efo_id` and a `direction`; the verdict is

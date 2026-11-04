@@ -292,7 +292,8 @@ def _resolve(
     each axis with `None` beside them: `({None} ∪ sexes) × ({None} ∪ drugs)`. The product, not only the
     scopes some row states, so a consumer who is male and prescribed azathioprine finds one row for
     that pair even when only a `male` row and an `azathioprine` row exist; a scope no candidate applies
-    in is skipped.
+    in is skipped. A consumer builds its lookup per axis: its own value where the target has rows for
+    it, else `None` (a female consumer at a target only `male` rows scope reads the `None` sex scope).
     """
     reach: dict[tuple[int, int], dict[int, _Candidate]] = {}
 

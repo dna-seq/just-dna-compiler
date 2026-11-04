@@ -78,10 +78,15 @@ replaces it (the accepted cost, RM28).
 
 The table's key is `(members_key, trait_efo_id, sex, drug)`: `sex` and `drug` each scope a whole row, so one
 member set may state one finding per sex and per drug (CPIC's TPMT × NUDT15 pair, once per thiopurine). A
-consumer looks up `meta_resolved.parquet` by its own `(sex, drug)`, each `null` where it does not condition
-on that axis: the compile writes every combination of the values the rows reaching a target state, so a
-`male` row and an `azathioprine` row also yield a `(male, azathioprine)` row, where a disagreeing column
-between the two is withheld.
+consumer looks up a target in `meta_resolved.parquet` by a `(sex, drug)` pair it builds per axis: its own
+value where the target has rows for that value, and `null` where it has none (a `female` consumer at a
+target only `male` rows scope, or a drug no row names) or the consumer does not condition on the axis. The
+compile writes every combination of the values the rows reaching a target state, so that pair exists
+whenever any row applies in it: a `male` row and an `azathioprine` row also yield a `(male, azathioprine)`
+row, where a disagreeing column between the two is withheld. No row for the pair means no row applies.
+A `meta.parquet` row's `replaces` holds within that row's own scope: a combination scoped to
+`mercaptopurine` replaces the rows it matches for a consumer on mercaptopurine, not for one on another drug
+or on none.
 
 A `variants` match is keyed by the authored `(variant_key, genotype)`; for an rsID that resolution expands
 onto several loci, `weights.parquet` keys those rows by coordinate, and they are reached through `rsid`.
@@ -368,7 +373,8 @@ contradicting another; check the spelling against the reference and record the o
 6. If you read a snapshot's `release.json`, through `locations.read_release` or by hand, read § 1.9:
    the reader returns a model, and three keys are spelled differently in a snapshot built by 0.8.
 7. If you read a module's findings, read `meta.parquet` too: a row with `replaces` true whose members all
-   match the sample replaces the findings of the rows in its `matches` (§ 1.2.1).
+   match the sample replaces the findings of the rows in its `matches` (§ 1.2.1), within the row's own
+   `sex` and `drug` scope.
 8. **Release-record readers (RM352).** If you switch on `DeclaredChange.kind`, add the third arm,
    `toolchain` (§ 1.11), or read `RecompileAnswer.corrections` / `additions` / `toolchain_moves` rather
    than the raw kind. `SweepMeasurement` gains `before_toolchain` / `after_toolchain` (the one toolchain

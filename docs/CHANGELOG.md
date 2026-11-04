@@ -52,8 +52,10 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   incomparable where both apply, so a column they disagree on is withheld.
 - **`meta_resolved.parquet` gains a `drug` column, and its grain is (row reached, sex, drug).** The scopes
   of one row are every combination of the sexes and drugs the rows reaching it state, `none` included on
-  each axis, so a consumer finds exactly one row for its own `(sex, drug)`. A module stating no `drug`
-  writes the same rows as before, with `drug` null.
+  each axis, so a consumer taking, per axis, its own value where the target has rows for it and null
+  otherwise finds at most one row, and none means nothing applies. A module stating no `drug` writes the
+  same rows as before, with `drug` null. A combination's `replaces` holds within its own sex and drug
+  scope.
 - `meta.parquet` carries the authored cell, `reverse` writes it back, and the round trip is a fixed point.
 - **`reference_examples/cpic_gene_pairs/` carries all three thiopurines**: 27 rows, CPIC's nine TPMT × NUDT15
   phenotype pairs for azathioprine, mercaptopurine and thioguanine, from the CPIC API call its README
