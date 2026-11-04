@@ -91,7 +91,7 @@ onto several loci, `weights.parquet` keys those rows by coordinate, and they are
 
 | Key | Item | What it holds |
 | --- | --- | --- |
-| `archive_last_modified` in the ClinPGx snapshot's `release.json` | RM283 | `Last-Modified` of the lane's archive and its sibling archives at build time (name → ISO date, `null` where the `HEAD` did not answer). Absent on a snapshot built from a local archive. Carried by `SnapshotRelease` as an extra key (§ 1.5). |
+| `archive_last_modified` in the ClinPGx snapshot's `release.json` | RM283 | `Last-Modified` of the lane's archive and its sibling archives at build time (name → ISO date, `null` where the `HEAD` did not answer). Absent on a snapshot built from a local archive. Carried by `SnapshotRelease` as an extra key (§ 1.9). |
 
 ## 1.5 The pmid/doi pair on every citing table (RM336)
 
