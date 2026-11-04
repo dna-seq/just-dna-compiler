@@ -41,6 +41,20 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM28: a study on a `pharm_variants.csv` variant is not an orphan, and a module with no `variants.csv` is checked (0.8, uncut)
+
+- **`pharm_variants.csv` is an arm of the study-orphan check of its own** (the lead's decision,
+  reversible until the cut). A study on a `pharm_variants.csv` row's variant is carried whether or not
+  a `meta.csv` member reaches it; before, only a member's reach counted.
+- **The check no longer waits for a `variants.csv`.** A diplotype-only or PGx-only module's
+  `studies.csv` is checked against the arms it has, so a study on a variant in no table now draws
+  `study_variant_orphan`, and `duplicate_study_citation`, computed in the same pass, runs there too
+  (`@roster-is-as-wide-as-the-tables-it-reads`). Measured on the 16 `reference_examples/`: none gains or
+  loses a warning.
+- The message keeps its pinned prefix and its tail now names the new arm: ` — nor among haplotypes.csv's
+  defining variants, pharm_variants.csv's rows or the rows a meta.csv member reaches.`
+  ([INTEGRATION_0_8 § 1.15](INTEGRATION_0_8.md#115-which-study-rows-study_variant_orphan-reports-rm28-no-new-code)).
+
 ## 2026-11-04 — RM359: under `--strict` an escalated finding is an error only, and the docs state no registry totals (0.8, uncut)
 
 - **One finding, one channel.** A `compile --strict` used to publish every mode-ladder finding twice: once

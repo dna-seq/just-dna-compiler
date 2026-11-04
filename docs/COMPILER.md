@@ -501,14 +501,18 @@ from them, repeating it on every genotype row of the locus (a parquet column is 
 None is authored on a variant, and `reverse` reads none back. All are appended after every 0.7 column.
 
 The orphan check matches by that rule against a **wider set** since 0.8 (RM28's study-orphan widening): a
-study's variant is carried when it is a `variants.csv` row's, a defining variant in `haplotypes.csv`, or
-the variant of a `variants.csv` / `pharm_variants.csv` row a `meta.csv` member reached (read off the
-meta expansion, so a selector covers exactly the rows it matched). A module scoring APOE only as
-diplotypes therefore draws no `study_variant_orphan` for its studies on rs429358 and rs7412, and those
-studies feed no `weights.parquet` row, since there is none. A `pharm_variants.csv` row no member reaches
-is not carried, and the check still runs only when the module has a `variants.csv`. The message keeps
-its pinned prefix, `Studies reference variants not in variants.csv`, and names the wider search after
-the keys.
+study's variant is carried when it is a `variants.csv` row's, a defining variant in `haplotypes.csv`, a
+`pharm_variants.csv` row's (whether or not a meta member reaches it), or the variant of a row a
+`meta.csv` member reached (read off the meta expansion, so a selector covers exactly the rows it
+matched; a member reaches only `variants.csv` and `pharm_variants.csv` rows today, so this arm adds
+nothing the others miss). A module scoring APOE only as diplotypes therefore draws no
+`study_variant_orphan` for its studies on rs429358 and rs7412, and those studies feed no
+`weights.parquet` row, since there is none. The check runs whenever the module has a `studies.csv`, with
+or without a `variants.csv`: a diplotype-only or PGx-only module is checked against the arms it has, and
+`duplicate_study_citation`, computed in the same pass, now runs there too. When an arm's file is present
+but no row of it could be read, the orphan half withholds: what the module carries is unknown, and the
+load errors are the report. The message keeps its pinned prefix, `Studies reference variants not in
+variants.csv`, and names the wider search after the keys.
 
 - **`effect_unit`** (RM332) — the unit of the variant's effect, when every supporting study row that
   states a unit states the same one. Null when none states one, and null when two disagree: never the

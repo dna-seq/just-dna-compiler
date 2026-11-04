@@ -1646,7 +1646,20 @@ variant in `haplotypes.csv`, or the variant of a `variants.csv` / `pharm_variant
 reached (`compiler/meta.py` `member_variant_rows`, read off `build_meta`'s matches, so a selector covers
 exactly what it matched). APOE scored only as diplotypes, longevitymap v2's R-APOE-1, draws no orphan for
 its 14 study links on rs429358/rs7412 (`compiler/tests/test_study_orphan_widening.py`). The check still
-runs only beside a `variants.csv`, as before; the message keeps its pinned prefix.
+runs only beside a `variants.csv`, as before (until the decision below); the message keeps its pinned
+prefix.
+
+**2026-11-04, the lead's decision (reversible until the cut; keeping the gate was the rejected
+alternative).** `pharm_variants.csv` is a fourth arm: a study on a `pharm_variants.csv` row's variant is
+not an orphan whether or not a meta member reaches it. The `if variants:` gate is gone, so a
+diplotype-only or PGx-only module is checked too, and `duplicate_study_citation`, computed in the same
+pass, runs there with it (`@roster-is-as-wide-as-the-tables-it-reads`). An arm whose file is present
+but loaded no row withholds the orphan half, since what the module carries is then unknown; the gate
+had withheld that case for `variants.csv` by accident. Measured on the 16
+`reference_examples/` before and after: none gains or loses a warning (`fmr1_cgg_repeat`, the one with
+`studies.csv` and no `variants.csv`, names no variant on any study row). The meta arm now reaches only
+rows the two table arms already carry; it is kept, not removed, so a future member table that is not an
+arm stays covered.
 
 **What stays open, and where.** RM28's open section in ROADMAP_0_8.md keeps only the predicate half's
 remainder: open-world negation, OR and *trans* phase, all out of bounds by the maintainer's decision. RM327 computes `tradeoff` over the per-trait rows this table now holds.

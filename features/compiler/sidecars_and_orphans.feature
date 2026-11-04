@@ -161,11 +161,23 @@ Feature: Derived sidecars, their arithmetic, and their orphans
     Then no orphan is reported
     # Since 0.8 (RM28). A module scoring APOE as diplotypes cites rs429358 and rs7412, which define the
     # alleles and are no variants.csv row. A meta member's reach is read off the meta expansion, so a
-    # selector covers exactly the rows it matched; a pharm_variants.csv row no member reaches still warns.
+    # selector covers exactly the rows it matched; a pharm_variants.csv row is carried whether or not a
+    # member reaches it (the lead, 2026-11-04).
     Examples:
       | variant                                                           |
       | a defining variant of a haplotypes.csv allele                     |
+      | the variant of a pharm_variants.csv row                           |
       | the variant of a pharm_variants.csv row a meta.csv member reached |
+
+  # source: compiler/src/just_dna_compiler/compiler/table_checks.py
+  # anchor: _cross_validate_studies
+  @code:study_variant_orphan @actionable @both_modes
+  Scenario: a module with no variants.csv is checked too
+    Given a diplotype-only module whose studies.csv names a variant in no table
+    When the module is compiled
+    Then a warning fires whose text contains "Studies reference variants not in variants.csv"
+    # Since 0.8. The check used to run only beside a variants.csv, so a diplotype-only or PGx-only
+    # module's stray study passed in silence.
 
   # source: compiler/src/just_dna_compiler/compiler/table_checks.py
   # anchor: _cross_validate_studies
