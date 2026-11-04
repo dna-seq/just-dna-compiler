@@ -200,8 +200,11 @@ marketplace all accept 9.2.1, and dagster does not depend on tenacity. prepare-a
 `<9.3` cap, which would trade a future import failure for a future resolve conflict with every consumer
 that moves on, and would still leave the warning.
 
-**Residuals** none. The `0.8` branch carries 21 such calls, 3 more than `main` (one of them in `ld_pairs.py`). The guard below goes red there
-when `main` merges in, which is the guard working, and the lead was told.
+**Residuals** none
+
+**On the `0.8` branch.** It carries 21 such calls, 3 more than `main` (one of them in `ld_pairs.py`).
+The guard below goes red there when `main` merges in, which is the guard working: the merge renames
+them, and the lead was told.
 
 **What shipped.** All 18 calls pass `multiplier=`, including `cpic.py` and `pharmvar.py`, whose
 `initial=1` never warned but would break the same way. In 9.2.1 `initial` is only copied into
