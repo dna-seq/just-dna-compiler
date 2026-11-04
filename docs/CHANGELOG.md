@@ -51,7 +51,8 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   older release it is.
 - **The release's `manifest.json` is pulled first and attests every file**: a kept or downloaded file whose
   size and sha256 differ is refetched or refused. A cache holding a `data/` file its manifest does not attest
-  (old chrMT beside new chr21) is withheld whole by the resolvers, with a warning naming the files.
+  (old chrMT beside new chr21), or lacking one it attests, is withheld whole by the resolvers, with a
+  warning naming the files and which of the two it is.
 - **`cache status` and `rsid_coordinate_agreement.release` name the release** (`ensembl-variation-2026_07_13-vep116.0`),
   read from the manifest by `locations.ensembl_release_label`.
 - **No test reaches the real HuggingFace hub unasked** (`@no-test-reaches-the-real-hub`): an autouse fence in the

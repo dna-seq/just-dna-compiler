@@ -36,8 +36,9 @@ from just_dna_enricher.locations import (
     DUCKDB_NAME,
     PULL_RECORD_FILENAME,
     SNAPSHOT_MANIFEST_FILENAME,
+    ManifestCoverage,
     ensembl_release_label,
-    manifest_unattested,
+    manifest_coverage,
     pull_record_repo,
     resolve_ensembl_reference,
 )
@@ -45,6 +46,7 @@ from just_dna_enricher.locations import (
 _NEW = dl.SNAPSHOT_REPO_PREFIXES["ensembl"]
 _OLD = "datasets/just-dna-seq/ensembl_variations/data"
 _RELEASE = "ensembl-variation-2026_07_13-vep116.0"
+_WHOLE = ManifestCoverage((), ())
 
 
 def _parquet(frame: pl.DataFrame) -> bytes:
@@ -189,7 +191,7 @@ def test_a_cache_pulled_from_the_old_repo_is_repulled_from_the_new_one(hub, tmp_
     for name in _NAMES:
         assert (cache / "data" / name).read_bytes() == new[name]
     assert pull_record_repo(cache) == _NEW
-    assert manifest_unattested(cache) == []
+    assert manifest_coverage(cache) == _WHOLE
 
 
 def test_a_new_repo_pull_is_trusted_warm_and_never_listed_again(hub, tmp_path: Path) -> None:
@@ -218,7 +220,7 @@ def test_an_unrecorded_cache_of_old_bytes_is_not_recorded_as_the_new_release(hub
     dl.ensure_snapshot(cache)
 
     assert sorted(f for f in fs.fetched if f.startswith("data/")) == [f"data/{n}" for n in sorted(_NAMES)]
-    assert manifest_unattested(cache) == []
+    assert manifest_coverage(cache) == _WHOLE
 
 
 def test_an_unrecorded_cache_the_manifest_attests_is_kept(hub, tmp_path: Path) -> None:
@@ -279,7 +281,7 @@ def test_an_interrupted_switch_is_still_the_old_repos_cache(hub, tmp_path: Path)
     with pytest.raises(KeyboardInterrupt):
         dl.ensure_snapshot(cache)
     assert pull_record_repo(cache) == _OLD, "an unfinished switch is still the old repo's cache"
-    assert manifest_unattested(cache) == ["data/homo_sapiens-chrMT.parquet"]
+    assert manifest_coverage(cache) == ManifestCoverage(("data/homo_sapiens-chrMT.parquet",), ())
     assert resolve_ensembl_reference(cache, load_dotenv_file=False) is None
 
     fs = hub(_NEW, new, _manifest(new))
@@ -409,10 +411,36 @@ def test_old_chrmt_beside_new_chr21_is_withheld(tmp_path: Path, caplog) -> None:
     new = _new_release()
     mixed = {**new, "homo_sapiens-chrMT.parquet": _old_rows("MT")}
     cache = _cache_with(tmp_path, mixed, _manifest(new))
-    assert manifest_unattested(cache) == ["data/homo_sapiens-chrMT.parquet"]
+    assert manifest_coverage(cache) == ManifestCoverage(("data/homo_sapiens-chrMT.parquet",), ())
     with caplog.at_level("WARNING"):
         assert resolve_ensembl_reference(cache, load_dotenv_file=False) is None
     assert "homo_sapiens-chrMT.parquet" in caplog.text and "cache pull" in caplog.text
+
+
+def test_a_cache_lacking_files_its_manifest_attests_is_withheld_as_incomplete(tmp_path: Path, caplog) -> None:
+    """The converse of a mixed cache, measured by the migration probe on cc1fea4f: NEW's manifest with
+    12 of its 25 attested files and no pull record was served with no warning. Every file present was
+    attested, so a check that only asks about the files present could not fail.
+    """
+    new = _new_release()
+    present = {"homo_sapiens-chr21.parquet": new["homo_sapiens-chr21.parquet"]}
+    cache = _cache_with(tmp_path, present, _manifest(new))
+    assert manifest_coverage(cache) == ManifestCoverage((), ("data/homo_sapiens-chrMT.parquet",))
+    with caplog.at_level("WARNING"):
+        assert resolve_ensembl_reference(cache, load_dotenv_file=False) is None
+    assert "homo_sapiens-chrMT.parquet" in caplog.text
+    assert "the snapshot is incomplete" in caplog.text and "mixes releases" not in caplog.text
+
+
+def test_incomplete_and_mixed_are_two_reasons(tmp_path: Path, caplog) -> None:
+    """Pairwise distinct: fetch what is missing is not the same remedy as drop the other release."""
+    new = _new_release()
+    mixed = _cache_with(
+        tmp_path / "mixed", {**new, "homo_sapiens-chrMT.parquet": _old_rows("MT")}, _manifest(new)
+    )
+    with caplog.at_level("WARNING"):
+        resolve_ensembl_reference(mixed, load_dotenv_file=False)
+    assert "mixes releases" in caplog.text and "the snapshot is incomplete" not in caplog.text
 
 
 def test_a_prebuilt_duckdb_does_not_bypass_the_check(tmp_path: Path) -> None:
@@ -426,14 +454,14 @@ def test_a_prebuilt_duckdb_does_not_bypass_the_check(tmp_path: Path) -> None:
 def test_a_file_the_manifest_does_not_name_is_withheld(tmp_path: Path) -> None:
     new = _new_release()
     cache = _cache_with(tmp_path, {**new, "homo_sapiens-chr22.parquet": _new_rows("22")}, _manifest(new))
-    assert manifest_unattested(cache) == ["data/homo_sapiens-chr22.parquet"]
+    assert manifest_coverage(cache) == ManifestCoverage(("data/homo_sapiens-chr22.parquet",), ())
     assert resolve_ensembl_reference(cache, load_dotenv_file=False) is None
 
 
 def test_an_unreadable_manifest_attests_nothing(tmp_path: Path) -> None:
     """Present and unreadable is the refusal, never the unknown arm (it is not an absent manifest)."""
     cache = _cache_with(tmp_path, _new_release(), "{not json")
-    assert manifest_unattested(cache) == [f"data/{n}" for n in sorted(_NAMES)]
+    assert manifest_coverage(cache) == ManifestCoverage(tuple(f"data/{n}" for n in sorted(_NAMES)), ())
     assert resolve_ensembl_reference(cache, load_dotenv_file=False) is None
 
 
@@ -441,10 +469,10 @@ def test_an_attested_cache_and_a_cache_with_no_manifest_both_serve(tmp_path: Pat
     """No manifest is the old repo's snapshot, an unknown release: served as it always was."""
     new = _new_release()
     attested = _cache_with(tmp_path / "a", new, _manifest(new))
-    assert manifest_unattested(attested) == []
+    assert manifest_coverage(attested) == _WHOLE
     assert resolve_ensembl_reference(attested, load_dotenv_file=False) == attested
     bare = _cache_with(tmp_path / "b", _old_release(), None)
-    assert manifest_unattested(bare) is None
+    assert manifest_coverage(bare) is None
     assert resolve_ensembl_reference(bare, load_dotenv_file=False) == bare
 
 

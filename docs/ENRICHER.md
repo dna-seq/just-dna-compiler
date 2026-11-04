@@ -1822,10 +1822,12 @@ releases apart:
   pull leaves a cache whose old files it disowns). A file of unknown origin is kept only if its size and
   sha256 match; one this repo's own pull placed was hashed on its way in, so its size is compared; a
   download is renamed into place only if it matches. A manifest that could not be fetched (a timeout, a
-  refused connection) is not one the repo lacks: the pull stops before anything is written. At read time `manifest_unattested` compares sizes (a `stat`,
-  since hashing 14.5 GB per enrich is not a read); a `data/*.parquet` the manifest does not name, or
-  names at another size, makes the resolver return `None` for the whole directory, before a prebuilt
-  `.duckdb` is considered. Withheld whole rather than per file, because a dropped chromosome would read
+  refused connection) is not one the repo lacks: the pull stops before anything is written. At read time `manifest_coverage` checks both directions, by size (a
+  `stat`, since hashing 14.5 GB per enrich is not a read): a `data/*.parquet` the manifest does not name,
+  or names at another size, is a mixed release; a `data/` file the manifest attests that is not there is
+  an incomplete snapshot (12 of 25 files with no pull record was served before). Either makes the
+  resolver return `None` for the whole directory, before a prebuilt `.duckdb` is considered, with its own
+  warning: "mixes releases" and "the snapshot is incomplete" name different fixes. Withheld whole rather than per file, because a dropped chromosome would read
   as asked-and-absent under `--offline`. An unreadable manifest attests nothing. No manifest (the old
   repo) is the unknown arm: the cache is read as it always was.
 - **The release has a label.** `cache status` prints the manifest's `release_id` for the lane

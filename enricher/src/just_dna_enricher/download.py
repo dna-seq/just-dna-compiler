@@ -46,7 +46,7 @@ from just_dna_enricher.locations import (
     default_strchive_cache_dir,
     env_value,
     manifest_attests,
-    manifest_unattested,
+    manifest_coverage,
     parquet_footer_ok,
     pull_record_repo,
     pulled_from,
@@ -359,7 +359,8 @@ def _provision_snapshot(
     recorded_repo = pull_record_repo(cache_dir)
     switched_from = pulled_from(cache_dir, hf_repo_prefix)
     switched = switched_from is not None
-    if existing and not corrupt and missing == [] and not switched and not manifest_unattested(cache_dir):
+    coverage = manifest_coverage(cache_dir)
+    if existing and not corrupt and missing == [] and not switched and (coverage is None or coverage.whole):
         return cache_dir
     # Nothing on disk says this cache is unfinished: the one state that may still serve, as it is,
     # when the published listing cannot be read. Since RM372 that includes a whole cache of another
@@ -619,7 +620,7 @@ def _stage_manifest(fs, remote_path: str, staged: Path, label: str) -> SnapshotM
     failure (a timeout, a 429, a 401/403, a 5xx) is could-not-ask and propagates as an `OSError`,
     because pulling on as if there were none would accept every byte unverified. An unreadable one is
     `None` and is not left staged: placing it would make the resolver withhold the cache it describes
-    (`manifest_unattested` attests nothing under an unreadable manifest).
+    (`manifest_coverage` attests nothing under an unreadable manifest).
     """
     try:
         fs.get(remote_path, str(staged))

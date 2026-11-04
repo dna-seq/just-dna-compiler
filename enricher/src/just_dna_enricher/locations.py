@@ -19,6 +19,7 @@ resolver skips with a warning. Provisioning the reference is the deployment's jo
 import json
 import logging
 import os
+from dataclasses import dataclass
 from pathlib import Path
 
 from dotenv import dotenv_values, find_dotenv, load_dotenv
@@ -371,7 +372,7 @@ def read_snapshot_manifest(path: Path) -> SnapshotManifest | None:
     """The manifest at `path` (a file), or `None` when it is absent or cannot be read whole.
 
     A caller that has to tell the two apart checks `path.is_file()`: present and unreadable is a
-    refusal (`manifest_unattested` attests nothing under it), absent is the unknown arm.
+    refusal (`manifest_coverage` attests nothing under it), absent is the unknown arm.
     """
     path = Path(path)
     if not path.is_file():
@@ -397,15 +398,43 @@ def manifest_attests(manifest: SnapshotManifest, relative: str, local: Path) -> 
     return sha256_file(local).removeprefix("sha256:") == entry.sha256.removeprefix("sha256:").lower()
 
 
-def manifest_unattested(cache_dir: Path) -> list[str] | None:
-    """The `data/*.parquet` files in `cache_dir` its `manifest.json` does not attest, or `None` with no manifest.
+#: Why a cache its manifest disagrees with is withheld, one sentence per direction (RM372). Pairwise
+#: distinct on purpose: a file of another release is removed or re-fetched, a missing one is fetched,
+#: and an operator told the wrong one does the wrong thing (`@answered-is-not-absent`).
+MANIFEST_MIXED_REASON = "it mixes releases or holds a file of another one"
+MANIFEST_INCOMPLETE_REASON = "the snapshot is incomplete"
+
+
+@dataclass(frozen=True)
+class ManifestCoverage:
+    """How a cache's `data/` meets its own `manifest.json`, in both directions (RM372).
+
+    `unattested`: payload files present that the manifest does not name, or names at another size,
+    so another release's. `absent`: files the manifest attests under `data/` that are not there, so
+    the snapshot is incomplete. Either one withholds the whole cache; neither is a guess about the
+    other. Files outside `data/` (prepare-annotations' `groups/*`) are the manifest's and not pulled,
+    so they are not counted as absent.
+    """
+
+    unattested: tuple[str, ...]
+    absent: tuple[str, ...]
+
+    @property
+    def whole(self) -> bool:
+        """Every payload file is attested and every attested `data/` file is present."""
+        return not self.unattested and not self.absent
+
+
+def manifest_coverage(cache_dir: Path) -> ManifestCoverage | None:
+    """How `cache_dir`'s `data/*.parquet` meets its `manifest.json`, or `None` with no manifest.
 
     Three answers (RM372). `None`: no manifest, so nothing here can say which release each file is
-    (the old repo published none) and a reader treats the cache as it always did. `[]`: every
-    payload file is one the manifest names, at the size it states. A non-empty list: these files are
-    not this release's, and **a cache holding one is withheld whole**, never merged: old chrMT beside
-    new chr21 answered rsIDs and nothing complained. A manifest present and unreadable attests
-    nothing, so every payload file is listed.
+    (the old repo published none) and a reader treats the cache as it always did. `whole`: every
+    payload file is one the manifest names at the size it states, and every file it attests under
+    `data/` is present. Otherwise the cache is **withheld whole**, never merged and never read in
+    part: old chrMT beside new chr21 answered rsIDs and nothing complained, and 12 of 25 attested
+    files with no pull record were served as the release. A manifest present and unreadable attests
+    nothing, so every payload file is unattested and none is counted absent.
 
     **Read time compares the manifest's `bytes`, never its sha256.** Hashing 14.5 GB on every enrich
     is not a read; a size is a `stat`, and every core file of the two releases differs in size. The
@@ -425,23 +454,45 @@ def manifest_unattested(cache_dir: Path) -> list[str] | None:
         entry = manifest.entry(relative) if manifest is not None else None
         if entry is None or entry.size is None or local.stat().st_size != entry.size:
             unattested.append(relative)
-    return unattested
-
-
-def _withheld_as_mixed(cache_dir: Path) -> bool:
-    """Whether `cache_dir` holds payload its own manifest does not attest; logs which and what fixes it."""
-    unattested = manifest_unattested(cache_dir)
-    if not unattested:
-        return False
-    logger.warning(
-        "The snapshot at %s holds %d file(s) its %s does not attest (%s), so it mixes releases or "
-        "holds a file of another one. Withheld whole rather than read: run `just-dna-enricher cache "
-        "pull` to re-fetch what the manifest names.",
-        cache_dir,
-        len(unattested),
-        SNAPSHOT_MANIFEST_FILENAME,
-        ", ".join(unattested[:5]) + (", …" if len(unattested) > 5 else ""),
+    attested = (
+        sorted(f.path for f in (manifest.files or ()) if f.path.startswith(f"{SNAPSHOT_DATA_DIRNAME}/"))
+        if manifest is not None
+        else []
     )
+    absent = [relative for relative in attested if not (cache_dir / relative).is_file()]
+    return ManifestCoverage(tuple(unattested), tuple(absent))
+
+
+def _named(files: tuple[str, ...]) -> str:
+    return ", ".join(files[:5]) + (", …" if len(files) > 5 else "")
+
+
+def _withheld_by_manifest(cache_dir: Path) -> bool:
+    """Whether `cache_dir`'s own manifest withholds it; logs each direction with its own reason and fix."""
+    coverage = manifest_coverage(cache_dir)
+    if coverage is None or coverage.whole:
+        return False
+    if coverage.unattested:
+        logger.warning(
+            "The snapshot at %s holds %d file(s) its %s does not attest (%s): %s. Withheld whole "
+            "rather than read: run `just-dna-enricher cache pull` to re-fetch what the manifest names.",
+            cache_dir,
+            len(coverage.unattested),
+            SNAPSHOT_MANIFEST_FILENAME,
+            _named(coverage.unattested),
+            MANIFEST_MIXED_REASON,
+        )
+    if coverage.absent:
+        logger.warning(
+            "The snapshot at %s lacks %d file(s) its %s attests (%s): %s. Withheld whole rather than "
+            "read in part, which would answer the missing files' rsIDs as absent: run `just-dna-enricher "
+            "cache pull` to fetch them.",
+            cache_dir,
+            len(coverage.absent),
+            SNAPSHOT_MANIFEST_FILENAME,
+            _named(coverage.absent),
+            MANIFEST_INCOMPLETE_REASON,
+        )
     return True
 
 
@@ -564,7 +615,7 @@ def resolve_ensembl_reference(
     if search_dir.is_dir():
         # A cache mixing releases is withheld whole (RM372), and before the prebuilt `.duckdb` is
         # considered: just-dna-lite's db is a view over this same `data/*.parquet` glob.
-        if _withheld_as_mixed(search_dir):
+        if _withheld_by_manifest(search_dir):
             return None
         data_dir = search_dir / "data"
         has_db = (search_dir / DUCKDB_NAME).is_file()
@@ -646,7 +697,7 @@ def _resolve_parquet_cache(
     if (
         holds_snapshot_payload(search_dir)
         and not snapshot_record_missing(search_dir)
-        and not _withheld_as_mixed(search_dir)
+        and not _withheld_by_manifest(search_dir)
     ):
         return search_dir
     return None

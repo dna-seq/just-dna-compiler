@@ -65,8 +65,11 @@ are non-commercial
   `SnapshotManifest` (typed `release_id`, `layout_version`, `built_at`, `files[path, group, chrom, rows,
   bytes, sha256]`; every other key dropped, never carried). The provisioner fetches it **first** into a
   staged `.part`, checks every kept and every downloaded file against it, refuses a published `data/`
-  file it does not name before downloading anything, and places it last. `manifest_unattested` is the
-  read-time check: a `data/*.parquet` the manifest does not name or names at another size makes
+  file it does not name before downloading anything, and places it last. `manifest_coverage` is the
+  read-time check, in both directions: a `data/*.parquet` the manifest does not name or names at another
+  size (a mixed release), or a `data/` file it attests that is absent (an incomplete snapshot, found by
+  the lead's migration probe on `cc1fea4f`: 12 of 25 attested files and no pull record were served
+  silently), makes
   `resolve_ensembl_reference` (before the prebuilt `.duckdb` is considered: this machine's is a view over
   the same glob) and `_resolve_parquet_cache` return `None` for the whole directory, with a warning naming
   the files and `cache pull`. Whole rather than per file, because a dropped chromosome would read as
