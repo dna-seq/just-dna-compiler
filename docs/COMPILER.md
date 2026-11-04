@@ -1267,11 +1267,14 @@ Not on `annotations.parquet`, which carries `variant_key` but no allele to be pa
 
 **Copied, never minted** (`compiler/vrs_columns.py`): the compiler has no sequence to justify an indel
 (P2), and an id minted here would reach `resolution.csv` on reverse and make the second lap count more
-identified alleles than the first. **By allele, not by position in a cell**: a row's list follows its
-own `alts`, looked up by `(chrom, start, ref, alt)` on the module's build, so a coordinate-keyed row and
-an expansion member find theirs the same way. Two `resolution.csv` rows recording one allele with two
-different ids withhold it (null), since one of them is wrong. `vrs_spec` is stated only when every id
-on the row was minted under the same stated version. Under `--no-resolve` both columns are null.
+identified alleles than the first. **From the row's own `resolution.csv` row, by allele, not by position
+in a cell**: a parquet row reads the rows filed under the key `reverse` files it under
+(`vrs_columns.resolution_key`, the authored key, so an expansion member finds its rsID's rows) at its own
+`(chrom, start, ref)`, and its list follows its own `alts`. Never another subject's id for the same
+spelling: true of the allele, but reverse would write it under this row's key and the round trip would
+gain ids the table never held. Two rows of one key recording one allele with two different ids withhold
+it (null), since one of them is wrong. `vrs_spec` is the cell as recorded, stated only when every id on
+the row came from rows stating the same one. Under `--no-resolve` both columns are null.
 
 ### `resolve_from_table` (`compiler/resolution.py`)
 

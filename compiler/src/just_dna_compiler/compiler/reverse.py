@@ -31,6 +31,7 @@ from just_dna_compiler.compiler.tables import (
     _scalar_cell,
     _write_table_csv,
 )
+from just_dna_compiler.compiler.vrs_columns import resolution_key as _resolution_key
 
 # `validate_spec`/`compile_module` return their findings on a result object, which is the right shape
 # for anything a caller must act on. `reverse_module` returns a bare `Path` and has none, so the one
@@ -754,39 +755,6 @@ def _smallest_free(used: set[int]) -> int:
     while index in used:
         index += 1
     return index
-
-
-def _resolution_key(
-    row: dict[str, Any],
-    chrom: str,
-    start: int,
-    alts_cell: str | None,
-    genome_build: str,
-) -> str:
-    """The key a reversed `resolution.csv` row is filed under: the identity the AUTHOR wrote.
-
-    Recomputed from `authored_ident` rather than read off the parquet's own `variant_key`, because on
-    the weights side those two differ exactly where it matters: a one-to-many rsID expansion re-keys
-    each emitted row onto its own locus, so the stored key names a locus while the injected table
-    named the rsID. Reading the stored column there would file N rows under N keys and leave the
-    collapsed authored row joining to none of them.
-
-    Falls back to the stored key, then to a fresh derivation, for an artifact compiled before
-    `authored_ident` existed.
-    """
-    if (authored := row.get("authored_ident")) is not None:
-        authored_set = set(authored)
-        return derive_variant_key(
-            row.get("rsid") if "rsid" in authored_set else None,
-            chrom if "chrom" in authored_set else None,
-            start if "start" in authored_set else None,
-            row.get("ref") if "ref" in authored_set else None,
-            alts_cell if "alts" in authored_set else None,
-            build=genome_build,
-        )
-    return row.get("variant_key") or derive_variant_key(
-        row.get("rsid"), chrom, start, row.get("ref"), alts_cell, build=genome_build
-    )
 
 
 def _resolution_record(

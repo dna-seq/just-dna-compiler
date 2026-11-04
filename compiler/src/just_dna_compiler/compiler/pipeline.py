@@ -746,7 +746,7 @@ def compile_module(
             continue
         table_df = _build_table(rows, model, module_name)
         if csv_name in _VRS_BEARING_TABLES:
-            table_df = with_vrs_columns(table_df, vrs_ids)
+            table_df = with_vrs_columns(table_df, vrs_ids, config.genome_build)
         table_df.write_parquet(output_dir / parquet_name, compression=compression)
         table_rows[parquet_name] = table_df.height
 

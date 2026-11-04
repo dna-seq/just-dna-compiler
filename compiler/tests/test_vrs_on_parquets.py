@@ -11,9 +11,10 @@ pair minted by `ga4gh.vrs` over real GRCh38 bases (the enricher's `test_placemen
 six through the run's own proxy). The substitution ids are minted here at runtime by the format tier's
 stdlib, which the compiler's verify pass recomputes.
 
-**The carry is by allele, never by position in a cell.** A row's id list follows that row's own `alts`;
-an allele no `resolution.csv` row names is a hole, and two rows naming one allele with two ids withhold
-it rather than pick one.
+**The carry is from the row's own `resolution.csv` row, by allele, never by position in a cell.** A row's
+id list follows that row's own `alts`; an allele its row records no id for is a hole, even when another
+subject's row records one for the same spelling, and two rows of one key naming one allele with two ids
+withhold it rather than pick one.
 """
 
 import csv
@@ -116,17 +117,51 @@ def test_the_positional_parquet_and_the_proxy_carry_the_id_in_their_own_shape(tm
     )
 
 
-def test_an_allele_two_rows_name_with_two_ids_is_withheld(tmp_path: Path) -> None:
-    """The id is content-addressed, so two ids for one allele means one of them is wrong; the parquet
-    carries neither rather than the first one read."""
+def test_a_row_carries_only_the_ids_its_own_resolution_row_recorded(tmp_path: Path) -> None:
+    """Another subject's id for the same spelling is true of the allele, but `reverse` would write it
+    under this row's key and the round trip would gain an id the table never held. So a row whose own
+    `resolution.csv` row records no id has none on the parquet, and the round trip counts the same."""
+    spec = _spec(tmp_path)
+    variants = spec / "variants.csv"
+    variants.write_text(
+        variants.read_text(encoding="utf-8") + ",4,87310240,T,TA,T/TA,risk,the filled spelling authored\n",
+        encoding="utf-8",
+    )
+    resolution = spec / "resolution.csv"
+    resolution.write_text(
+        resolution.read_text(encoding="utf-8")
+        + "4:87310240:T:TA,,4,87310240,T,TA,GRCh38,0,,,authored,resolved\n",
+        encoding="utf-8",
+    )
+    first = compile_module(spec, tmp_path / "out")
+    assert first.success, first.errors
+    by_key = {
+        r["variant_key"]: r["vrs_id"]
+        for r in pl.read_parquet(tmp_path / "out" / "weights.parquet").iter_rows(named=True)
+    }
+    assert by_key["rs72613567"] == [HSD17B13_ID]
+    assert by_key["4:87310240:T:TA"] is None
+    reverse_module(tmp_path / "out", tmp_path / "reversed")
+    second = compile_module(tmp_path / "reversed", tmp_path / "out2")
+    assert second.success
+    assert (
+        second.manifest.compilation.vrs_alleles_identified
+        == first.manifest.compilation.vrs_alleles_identified
+    )
+
+
+def test_one_key_recording_one_allele_with_two_ids_is_withheld(tmp_path: Path) -> None:
+    """The id is content-addressed, so two ids for one allele under one key means one of them is wrong;
+    the parquet carries neither rather than the first one read."""
     spec = _spec(tmp_path)
     resolution = spec / "resolution.csv"
     resolution.write_text(
         resolution.read_text(encoding="utf-8")
-        + f"rs999,rs999,4,87310241,A,AA,GRCh38,0,{RS8176719_CLINVAR_ID},2.0,cache,resolved\n",
+        + f"4:87310241:A:AA,,4,87310241,A,AA,GRCh38,1,{RS8176719_CLINVAR_ID},2.0,authored,resolved\n",
         encoding="utf-8",
     )
-    assert compile_module(spec, tmp_path / "out").success
+    result = compile_module(spec, tmp_path / "out")
+    assert result.success, result.errors
     assert _weights(tmp_path / "out")[("4", 87310241, "A", ("AA",))] == (None, None)
 
 

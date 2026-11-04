@@ -9,7 +9,7 @@ from just_dna_format.spec import ModuleSpecConfig, StudyRow, VariantRow
 from just_dna_format.vocab import OUTCOME_STRIP_CELLS
 
 from just_dna_compiler.compiler.tables import _polars_type, _split_genotype, study_coordinate_key
-from just_dna_compiler.compiler.vrs_columns import VrsIds
+from just_dna_compiler.compiler.vrs_columns import VrsIds, resolution_key
 
 # ── Parquet builders ───────────────────────────────────────────────────────────
 
@@ -104,7 +104,24 @@ def _build_weights(
         priority = v.priority if v.priority is not None else defaults.priority
         derived = _locus_study_facts(index.supporting(v))
         alts = v.alts.split(",") if v.alts else None
-        vrs_ids, vrs_spec = vrs.lookup(v.chrom, v.start, v.ref, alts)
+        vrs_ids, vrs_spec = vrs.lookup(
+            resolution_key(
+                {
+                    "authored_ident": v.authored_ident,
+                    "rsid": v.rsid,
+                    "ref": v.ref,
+                    "variant_key": v.variant_key,
+                },
+                v.chrom,  # type: ignore[arg-type]
+                v.start,  # type: ignore[arg-type]
+                v.alts,
+                config.genome_build,
+            ),
+            v.chrom,
+            v.start,
+            v.ref,
+            alts,
+        )
         records.append(
             {
                 "rsid": v.rsid,
