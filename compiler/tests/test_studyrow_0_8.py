@@ -27,7 +27,9 @@ import polars as pl
 import pytest
 from just_dna_compiler.compiler import compile_module, content_signature, reverse_module, validate_spec
 from just_dna_format.base import field_first_seen, field_vocabularies
+from just_dna_format.pgs import VALID_TRAINING_ANCESTRY, PgsRow
 from just_dna_format.spec import StudyRow
+from just_dna_format.vocab import VALID_SUPERPOPULATIONS
 from pydantic import ValidationError
 
 _EXAMPLE = Path(__file__).resolve().parents[2] / "reference_examples" / "hfe_hemochromatosis"
@@ -108,11 +110,17 @@ def _fill_phenotype_class(i: int, row: dict[str, str]) -> None:
         row["phenotype_class"] = sorted(_V2_CLASSES)[i % len(_V2_CLASSES)]
 
 
+def _fill_ancestry(i: int, row: dict[str, str]) -> None:
+    """One code, two codes (a trans-ethnic study lists both, in the authored order), or nothing."""
+    row["ancestry"] = ("EUR", "EAS|EUR", "AFR", "", "EUR|AMR|SAS")[i % 5]
+
+
 #: Each column group this batch adds, with a fill that gives it distinct stated values and empty
 #: cells, and how a parquet cell reads back as the CSV cell it came from.
 _GROUPS: dict[str, tuple[tuple[str, ...], Fill]] = {
     "RM325": (("sample_size", "sample_unit", "n_cases"), _fill_sample_size),
     "RM326": (("phenotype_class",), _fill_phenotype_class),
+    "RM328": (("ancestry",), _fill_ancestry),
 }
 
 
@@ -284,3 +292,32 @@ def test_only_recommended_classes_draw_no_warning(tmp_path: Path) -> None:
     columns, fill = _GROUPS["RM326"]
     spec = _spec(tmp_path, "clean", columns, fill)
     assert "phenotype_class_unrecognized" not in _summary(tmp_path, spec, strict=False)
+
+
+# ── RM328: the ancestry a study was measured in ──────────────────────────────────────────────────
+
+
+def test_ancestry_is_closed_over_the_1000g_superpopulations() -> None:
+    assert VALID_SUPERPOPULATIONS == {"AFR", "AMR", "EAS", "EUR", "SAS"}
+    marker = field_vocabularies(StudyRow)["ancestry"]
+    assert marker["closed"] is True and set(marker["options"]) == VALID_SUPERPOPULATIONS
+    assert _study(ancestry="EAS|EUR").ancestry == ["EAS", "EUR"]
+    assert _study(ancestry="EUR").ancestry == ["EUR"]
+    # Free text stays in `population`; a code list is not a description.
+    for refused in ("European", "multi", "EUR|Ashkenazi"):
+        with pytest.raises(ValidationError, match="ancestry"):
+            _study(ancestry=refused)
+
+
+def test_the_pgs_vocabulary_is_the_same_five_plus_multi() -> None:
+    """One vocabulary, not two: `training_ancestry` is derived from the superpopulations."""
+    assert VALID_TRAINING_ANCESTRY == VALID_SUPERPOPULATIONS | {"multi"}
+    assert set(field_vocabularies(PgsRow)["training_ancestry"]["options"]) == VALID_TRAINING_ANCESTRY
+    assert PgsRow(pgs_id="PGS000906", training_ancestry="multi").training_ancestry == ["multi"]
+
+
+def test_ancestry_is_a_list_column_in_studies_parquet(tmp_path: Path) -> None:
+    columns, fill = _GROUPS["RM328"]
+    result = compile_module(_spec(tmp_path, "filled", columns, fill), tmp_path / "out")
+    assert result.success, result.errors
+    assert pl.read_parquet_schema(tmp_path / "out" / "studies.parquet")["ancestry"] == pl.List(pl.Utf8)

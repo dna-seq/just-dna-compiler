@@ -687,6 +687,14 @@ VALID_SAMPLE_UNITS: frozenset[str] = frozenset({"individuals", "lives"})
 # `phenotype_class_unrecognized`, which catches a second spelling without refusing a new class. The
 # trait term cannot stand in for it: measured on 2026-11-04, it separates 0 of the 12 classes in real
 # rows, and OBA_VT0005372 alone covers at least four.
+# The 1000 Genomes superpopulation codes (RM328): the ancestry a study was measured in, and — with
+# `multi` added — the ancestry a PGS was trained in (`pgs.VALID_TRAINING_ANCESTRY` is derived from this,
+# so the five codes are one vocabulary, not two). Closed. A multi-ancestry study lists its codes rather
+# than writing `multi`. NOT `RECOMMENDED_ANCESTRY_GROUPS` below, which is gnomAD's population list and a
+# different axis (see the note beside it); a sub-superpopulation cohort (Ashkenazi, Finnish) stays in the
+# free-text `population` beside the code.
+VALID_SUPERPOPULATIONS: frozenset[str] = frozenset({"AFR", "AMR", "EAS", "EUR", "SAS"})
+
 RECOMMENDED_PHENOTYPE_CLASSES: frozenset[str] = frozenset(
     {
         "EXTREME_SURVIVAL_CC",

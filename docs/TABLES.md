@@ -239,6 +239,11 @@ centenarians and a Cox model of parental lifespan are both "GWAS" in `study_desi
 what separates them. The recommended twelve are v2's; a token outside them is kept and warned about
 once, because the commonest cause is a second spelling of one of them.
 
+**`ancestry` is a code, `population` is a description.** `ancestry` takes the 1000 Genomes
+superpopulation codes and nothing else, listing each one a trans-ethnic study pooled; the cohort's own
+name (an Ashkenazi study is `EUR` there) goes in `population`. An unstated `ancestry` is unknown, which
+is why a locus whose evidence is partly unstated is never reported as European-only.
+
 **The symptom of confusing it with `literature.csv` is a dropped row.** `literature.csv` is
 machine-produced and keeps every article it found; the compiler **discards an uncited literature row**
 when nothing references it. `studies.csv` is the authored side and is never dropped. If a citation

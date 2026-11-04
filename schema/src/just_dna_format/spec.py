@@ -58,6 +58,7 @@ from just_dna_format.vocab import (
     VALID_DIRECTIONS,  # noqa: F401 — re-exported for backward compat
     VALID_SAMPLE_UNITS,
     VALID_SIGNIFICANCE,  # noqa: F401 — re-exported for backward compat
+    VALID_SUPERPOPULATIONS,
     check_vocab,
     reject_template_placeholders,
     validate_allele,
@@ -1461,6 +1462,18 @@ class StudyRow(CitationPair, AuthoredModel):
             "describes the study; this describes what it measured, and one paper may measure several."
         ),
     )
+    # RM328: the 1000G superpopulation(s) the estimate was measured in, closed and multi-valued. Beside
+    # `population`, which stays free text for what a code cannot say (an Ashkenazi cohort is `EUR` here
+    # and named there). `eur_only_evidence` on `weights.parquet` is derived from it.
+    ancestry: list[str] | None = Field(
+        default=None,
+        json_schema_extra={**vocabulary("superpopulation", VALID_SUPERPOPULATIONS), **since("0.8.0")},
+        description=(
+            "The 1000 Genomes superpopulation(s) this estimate was measured in (AFR, AMR, EAS, EUR, "
+            "SAS; multi-valued — a trans-ethnic study lists each code). `population` beside it stays "
+            "free text for the cohort. Absent means unstated, never 'any'."
+        ),
+    )
 
     @property
     def variant_key(self) -> str | None:
@@ -1541,6 +1554,23 @@ class StudyRow(CitationPair, AuthoredModel):
     @classmethod
     def _validate_sample_unit(cls, v: str | None) -> str | None:
         return check_vocab(v, VALID_SAMPLE_UNITS, "sample_unit")
+
+    @field_validator("ancestry", mode="before")
+    @classmethod
+    def _split_ancestry(cls, v: object) -> object:
+        # A CSV cell arrives as a string; split it as `PgsRow.training_ancestry` does.
+        if isinstance(v, str):
+            tokens = [t.strip() for t in _MULTI_SEP.split(v) if t.strip()]
+            return tokens or None
+        return v
+
+    @field_validator("ancestry")
+    @classmethod
+    def _validate_ancestry(cls, v: list[str] | None) -> list[str] | None:
+        # Rebuilt from `check_vocab`'s returns, never validated and discarded (RM95).
+        if v is None:
+            return v
+        return [check_vocab(tok, VALID_SUPERPOPULATIONS, "ancestry") or tok for tok in v]
 
     @model_validator(mode="after")
     def _refuse_a_count_with_no_unit_or_more_cases_than_analysed(self) -> "StudyRow":

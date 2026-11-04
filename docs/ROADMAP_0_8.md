@@ -165,6 +165,8 @@ in `negatives` until this table exists.
 
 ## RM328 — no study row can name the ancestry it was measured in, so "European-only evidence" is a hand-set flag
 
+**Built on 0.8, 2026-11-04: the column.** `StudyRow.ancestry`, closed and multi-valued over `vocab.VALID_SUPERPOPULATIONS`, reaches `studies.parquet` and `reverse`; `pgs.VALID_TRAINING_ANCESTRY` is derived from the same constant plus `multi`. Still open: `eur_only_evidence` on `weights.parquet`, the last commit of the same `StudyRow` batch.
+
 **Decided 2026-11-04 by the maintainer: the 1000G superpopulation codes** (AFR, AMR, EAS, EUR, SAS), the binding `PgsRow.training_ancestry` already uses.
 
 **Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format + compiler (derived) · **Motivating case** longevitymap v2 requirements §5.4 (R-ANC-1, R-ANC-2) · *for* longevitymap v2 · *related* RM188 (axis 2)

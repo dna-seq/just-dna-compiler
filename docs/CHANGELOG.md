@@ -41,6 +41,14 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM328: a study row names the ancestry it was measured in (0.8, uncut)
+
+**format, compiler** — `studies.csv` gains `ancestry`, optional, multi-valued and closed over the 1000
+Genomes superpopulation codes (`vocab.VALID_SUPERPOPULATIONS`: `AFR`, `AMR`, `EAS`, `EUR`, `SAS`). A
+trans-ethnic study lists its codes; `population` stays free text. `pgs.VALID_TRAINING_ANCESTRY` is now
+derived from the same constant plus `multi`, so the five codes are one vocabulary; its members are
+unchanged. The column reaches `studies.parquet` as a list and `reverse` writes it back `|`-joined.
+
 ## 2026-11-04 — RM326: a study row states which outcome it measured (0.8, uncut)
 
 **format, compiler** — `studies.csv` gains `phenotype_class`, optional and open, with longevitymap v2's
