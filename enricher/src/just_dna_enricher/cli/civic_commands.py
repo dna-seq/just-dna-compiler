@@ -5,6 +5,7 @@ single-file `cli.py`).
 from pathlib import Path
 
 import typer
+from just_dna_format.base import coordinate_key
 
 from just_dna_enricher.cli._shared import _DRAFT_PRECONDITION_ERRORS
 from just_dna_enricher.locations import repro_out
@@ -482,7 +483,7 @@ def civic_reproduce_(
         placed = frame.filter(pl.col("chrom").is_not_null() & pl.col("ref").is_not_null())
         rows = [
             ResolutionRow(
-                variant_key=f"{r['chrom']}:{r['start']}:{r['ref']}",
+                variant_key=coordinate_key(r["chrom"], r["start"], r["ref"]),
                 status="resolved",
                 chrom=r["chrom"],
                 start=r["start"],

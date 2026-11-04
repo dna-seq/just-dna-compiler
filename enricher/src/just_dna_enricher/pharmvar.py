@@ -36,6 +36,7 @@ from typing import Any
 
 import duckdb
 import httpx
+from just_dna_format.base import coordinate_key
 from just_dna_format.snapshot import SnapshotRelease, read_release
 from tenacity import (
     retry,
@@ -187,7 +188,7 @@ def _merge_variants(
         parsed = parse_genomic_variant(entry, build=build)
         if parsed.rsid is None and not parsed.usable:
             continue
-        key = parsed.rsid or f"{parsed.chrom}:{parsed.start}:{parsed.ref}"
+        key = parsed.rsid or coordinate_key(parsed.chrom, parsed.start, parsed.ref)
         existing = merged.get(key)
         if existing is None or (not existing.usable and parsed.usable):
             merged[key] = parsed

@@ -49,6 +49,7 @@ from datetime import date
 from pathlib import Path
 
 import httpx
+from just_dna_format.base import coordinate_key
 from just_dna_format.snapshot import SNAPSHOT_DATA_DIRNAME, SnapshotRelease, read_release
 from just_dna_format.vrs import vrs_spec_release
 from tenacity import retry, wait_exponential_jitter
@@ -487,7 +488,7 @@ class WitnessPlacement:
     @property
     def vcf_key(self) -> str:
         """`chrom:pos:ref:alt`, the coordinate form `variant_key` uses for one ALT."""
-        return f"{self.chrom}:{self.pos}:{self.ref}:{self.alt}"
+        return coordinate_key(self.chrom, self.pos, self.ref, self.alt)
 
 
 def normalize_chrom(chrom: str) -> str:

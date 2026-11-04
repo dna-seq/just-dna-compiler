@@ -391,7 +391,7 @@ def derive_variant_key(
        identity could be reconsidered. Byte-identical to the ids gnomAD and ClinGen serve, so it joins
        against them directly instead of needing a translation table.
     3. **Everything else** — the coordinate key `chrom:start:ref`, or `chrom:start:ref:alts` when an
-       alt is given, so two distinct alleles at one locus (an insertion `C>CAAAG` beside a deletion
+       alt is given (`coordinate_key`: an absent cell is an empty segment, RM361), so two distinct alleles at one locus (an insertion `C>CAAAG` beside a deletion
        `C>CA`, a benign `C>G` beside a pathogenic `C>A`) do not collide. `alts` is normalized (its
        comma-separated alleles sorted) so the key is stable regardless of authored order.
 
@@ -419,9 +419,26 @@ def derive_variant_key(
         vrs_id = _mint_vrs_key(chrom, start, ref, alts.strip(), build)
         if vrs_id is not None:
             return vrs_id
-    base = f"{chrom}:{start}:{ref}"
-    alts_norm = ",".join(sorted(a.strip() for a in alts.split(",") if a.strip())) if alts else ""
-    return f"{base}:{alts_norm}" if alts_norm else base
+    alts_norm = ",".join(sorted(a.strip() for a in alts.split(",") if a.strip())) if alts else None
+    return coordinate_key(chrom, start, ref, alts_norm or None)
+
+
+def coordinate_key(chrom: str | None, start: int | None, ref: str | None, alts: str | None = None) -> str:
+    """`chrom:start:ref[:alts]`, with an absent cell as an **empty** segment, never the word `None`.
+
+    The one place a coordinate becomes a key (RM361). An f-string over the four cells wrote an absent
+    `ref` as the Python literal (`13:48037749:None`, nine keys in `reference_examples/cpic_gene_pairs`),
+    an identifier that names a reference base called "None". An absent segment is empty, and trailing
+    empty segments are dropped: a row with no `ref` keys as `13:48037749`, and one with no `ref` and an
+    ALT as `13:48037749::A`, which cannot collide with the `13:48037749:A` of a row whose `ref` is `A`.
+    A row naming no place at all has no coordinate key: `ValueError`, never `"None:None:None"`.
+    """
+    if chrom is None and start is None:
+        raise ValueError("a coordinate key needs a chrom or a start; this row names no place")
+    cells = ["" if value is None else str(value) for value in (chrom, start, ref, alts)]
+    while cells and cells[-1] == "":
+        cells.pop()
+    return ":".join(cells)
 
 
 # ── Stamped positional identity (RM43) ──────────────────────────────────────────────────────────
