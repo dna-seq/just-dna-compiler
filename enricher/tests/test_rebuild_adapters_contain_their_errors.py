@@ -17,6 +17,8 @@ from just_dna_enricher import (
     civic_build,
     clinpgx_build,
     clinvar_build,
+    clinvar_gkm,
+    clinvar_gkm_build,
     constraint_build,
     cpic,
     cpic_build,
@@ -51,6 +53,10 @@ _FAILURES: dict[str, list[tuple[object, str, Exception]]] = {
     "mitomap_miss": [(mitomap_miss_build, "build_miss_snapshot", mitomap.MitomapError("x"))],
     "mane": [(mane_build, "download_mane_file", mane_build.ManeBuildError("x"))],
     "acmg": [(acmg_build, "build_acmg_snapshot", acmg_build.AcmgSfError("x"))],
+    "clinvar_gkm": [
+        (clinvar_gkm_build, "download_and_build", clinvar_gkm.ClinVarGkmUnavailable("R2 answered 503")),
+        (clinvar_gkm_build, "download_and_build", clinvar_gkm.ClinVarGkmMismatch("x")),
+    ],
 }
 
 _ADAPTED = {lane.name: lane for lane in CACHE_LANES if lane.rebuild is not None}
@@ -85,7 +91,9 @@ def test_a_failing_builder_is_a_failed_outcome_never_a_raise(
     request = RebuildRequest(
         out_dir=tmp_path / lane_name,
         declared_use="non_commercial",
-        pin="2026-01-01" if lane_name != "mane" else "1.4",
+        # ClinVar-GKM checks a pin against the live manifest before building, so it gets none here:
+        # the call under test is the build, and a pin would reach the network first.
+        pin=None if lane_name == "clinvar_gkm" else ("2026-01-01" if lane_name != "mane" else "1.4"),
         source=workbook if lane_name == "acmg" else None,
         parents={"mitomap": tmp_path / "mitomap", "clinvar": tmp_path / "clinvar"},
     )

@@ -32,6 +32,8 @@ import httpx
 import just_dna_enricher.gene_metrics as gene_metrics_module
 import pytest
 from just_dna_enricher.clingen import ClinGenError, ClinGenUnavailable
+from just_dna_enricher.clinvar_gkm import ClinVarGkmClient, ClinVarGkmError, ClinVarGkmUnavailable
+from just_dna_enricher.clinvar_gkm_build import download_and_build
 from just_dna_enricher.eutils import EutilsError
 from just_dna_enricher.expression import (
     ExpressionError,
@@ -120,6 +122,13 @@ class _StubOntology:
     def close(self) -> None: ...
 
 
+class _StubGkm(ClinVarGkmClient):
+    """ClinVar-GKM with R2 down: the manifest read is retried and translated inside the client."""
+
+    def parquet_manifest(self):  # type: ignore[override]
+        raise ClinVarGkmUnavailable("could not read ClinVar-GKM's Parquet manifest: 503")
+
+
 @dataclass(frozen=True)
 class Case:
     """One pass, and what a caller of it is entitled to.
@@ -149,6 +158,15 @@ def _no_constraint_snapshot(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 PASSES: list[Case] = [
+    Case(
+        # RM305. The client raises this module family's own `*Unavailable`, so the builder propagates
+        # it and owes no `__cause__` (`translates=False`), the `check_identifiers` shape.
+        "clinvar_gkm_build.download_and_build",
+        lambda spec: download_and_build(spec / "clinvar_gkm", client=_StubGkm()),
+        ClinVarGkmError,
+        ClinVarGkmUnavailable,
+        translates=False,
+    ),
     Case(
         "frequencies.enrich_frequencies",
         lambda spec: enrich_frequencies(spec, write=False, client=_StubGnomad()),
@@ -319,6 +337,10 @@ def test_every_pass_taking_an_injected_client_is_covered() -> None:
         # `CivicApiClient` is covered in `test_client_exception_contract.py`, where the translation
         # really does happen.
         "civic_citations.draft_civic_citations",
+        # RM305, the withhold once more: `lane_currency` catches `ClinVarGkmUnavailable` and answers
+        # `unchecked="unreachable (…)"`, so a caller never sees the client's type. The client's own
+        # translation is asserted in `test_clinvar_gkm.py`.
+        "clinvar_gkm.lane_currency",
         "civic_citations.check_evidence_status_currency",
         # RM193, and the same shape a fifth time. `check_variant_impact` catches every `AtlasError`
         # arm per variant and records that variant's own reason — `unreachable` for a transport
