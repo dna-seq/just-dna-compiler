@@ -112,10 +112,12 @@ the **fourteen** derived-fact sidecars `frequencies.csv` / `gene_metrics.csv` / 
 from the table below. **The number is `len(_FACT_TABLES)`** — stated here so a release that lands a
 sidecar moves it by one, rather than left to be recounted off a list that has gone stale twice.
 Since 0.7 an author corrects them through `overrides.csv`, which *is* authored and therefore *is* in
-the table — **except two**. `sources.csv` the overlay deliberately does not cover: it has its own
+the table — **except three**. `sources.csv` the overlay deliberately does not cover: it has its own
 merge path and is the one derived table a human is told to write. `clin_sig_authority_calls.csv` is
 excluded for the opposite reason: it records what each archive published, and an author answers the
-question a conflict asks rather than rewriting the answer an archive gave. `resolution.csv` *is*
+question a conflict asks rather than rewriting the answer an archive gave. `ld_pairs.csv` (0.8, RM331)
+is out because there is nothing of the author's to correct: it is a reference panel's r², and a wrong
+`ancestry` is fixed on the study row, after which the pass asks again. `resolution.csv` *is*
 covered — see [§ the authored overlay](#the-authored-overlay-07-rm124--overridescsv).
 
 **`sources.csv` is the one of those fourteen a human is expected to write, and 0.5.4 stopped pretending
@@ -1463,7 +1465,8 @@ contributed nothing records no source (RM142), and the consultation is a fact ab
 than about the service the author reached it through. Nothing is owed to the licensing table for
 reading an abstract.
 
-All but two are machine-produced and human-*overridable* through `overrides.csv`. `sources.csv` is
+All but three are machine-produced and human-*overridable* through `overrides.csv` (the third,
+`ld_pairs.csv`, is a reference panel's r², with nothing of the author's in it; § the LD-pair table). `sources.csv` is
 machine-produced and human-**authored**, because a source a curator read by hand has no pass to write
 its row (see above) — which is why it is the only one with a `draft`/`template` route and a natural
 key. `clin_sig_authority_calls.csv` is the other exception and a different one: it records what an
