@@ -4,6 +4,7 @@ keys, and misspelled table names.
 
 import difflib
 from collections import defaultdict
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -306,9 +307,9 @@ def _examples(groups: list[str], limit: int = 3) -> str:
 
 
 def _cross_validate_studies(
-    studies: list[StudyRow], variants: list[VariantRow]
+    studies: list[StudyRow], variants: list[VariantRow], carried: Sequence[Any] = ()
 ) -> tuple[list[str], list[str]]:
-    """Validate study rows against the variants. Returns (errors, warnings).
+    """Validate study rows against the variants the module carries. Returns (errors, warnings).
 
     A study matches a variant on **any shared identifier** — same rsid or same `chrom:start:ref` —
     not on frozen-key equality. Keying strictly on `variant_key` would false-orphan a study that
@@ -324,10 +325,20 @@ def _cross_validate_studies(
     **Since RM140 a stated `statistical_test` splits that key for this check** (S75). One paper often
     reports several analyses of one association with different statistics, and those rows are not one
     claim written twice. Only *both stated and different* suppresses: an absent analysis is unknown,
-    and unknown cannot establish distinctness."""
+    and unknown cannot establish distinctness.
+
+    **Since 0.8 a variant is carried by more than `variants.csv`** (RM28, the study-orphan widening).
+    `carried` is every other row naming a variant the module carries: a defining variant in
+    `haplotypes.csv`, and each `variants.csv` / `pharm_variants.csv` row a `meta.csv` member reached
+    (`meta.member_variant_rows`, read off `build_meta`'s expansion, never a second matcher). A module
+    that scores APOE as diplotypes cites rs429358 and rs7412, the SNPs that define the ε alleles; they
+    are `haplotypes.csv` rows and no `variants.csv` row, and every such link used to draw this warning.
+    The match is the same "any shared identifier" rule over the wider set. The message keeps its
+    pinned prefix (`@warning-text-is-api`) and names the wider search after the keys."""
     warnings: list[str] = []
-    variant_rsids = {v.rsid for v in variants if v.rsid is not None}
-    variant_coords = {study_coordinate_key(v.chrom, v.start, v.ref) for v in variants if v.chrom is not None}
+    subjects: list[Any] = [*variants, *carried]
+    variant_rsids = {v.rsid for v in subjects if v.rsid is not None}
+    variant_coords = {study_coordinate_key(v.chrom, v.start, v.ref) for v in subjects if v.chrom is not None}
     orphans: list[str] = []
     for row in studies:
         if row.variant_key is None:
@@ -342,7 +353,8 @@ def _cross_validate_studies(
         warnings.append(
             CodedWarning(
                 "study_variant_orphan",
-                f"Studies reference variants not in variants.csv: {sorted(set(orphans))}",
+                f"Studies reference variants not in variants.csv: {sorted(set(orphans))} — nor among "
+                f"haplotypes.csv's defining variants or the rows a meta.csv member reaches.",
             )
         )
     # `(variant_key, pmid)` is the dedup key, and since RM140 a *stated* `statistical_test` splits it

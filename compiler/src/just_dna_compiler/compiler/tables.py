@@ -102,9 +102,11 @@ def study_coordinate_key(chrom: str | None, start: int | None, ref: str | None) 
     """The `chrom:start:ref` half of "a study names a variant by ANY shared identifier", or `None`.
 
     One expression for the two places that ask the question — `_cross_validate_studies`' orphan check
-    and the study facts `weights.parquet` derives (0.8) — so a study the check counts as naming a
-    variant is the study that variant's derived columns read, and the two cannot drift apart. The other
-    half is plain `rsid` equality.
+    and the study facts `weights.parquet` derives (0.8) — so the two match a study to a variant by the
+    same rule. The other half is plain `rsid` equality. They match against different SETS, by design:
+    the orphan check also counts `haplotypes.csv`'s defining variants and the rows a `meta.csv` member
+    reached (RM28), while `weights.parquet` has a row only for a `variants.csv` variant. So a study on
+    an ε-defining SNP of a diplotype-scored APOE is not an orphan and feeds no `weights.parquet` row.
     """
     return derive_variant_key(None, chrom, start, ref) if chrom is not None else None
 

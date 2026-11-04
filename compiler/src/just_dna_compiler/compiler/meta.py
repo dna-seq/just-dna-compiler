@@ -426,6 +426,22 @@ def build_meta(rows: list[MetaRow], tables: dict[str, list[Any]], tier_scale: st
     )
 
 
+def member_variant_rows(build: MetaBuild, tables: Mapping[str, list[Any]]) -> list[Any]:
+    """Every row of a variant-keyed member table (`LOCUS_TABLES`) some member reached, once each.
+
+    The study-orphan check's meta arm (RM28): a variant a meta member reaches is one the module carries.
+    Read off `build.matches`, the expansion `build_meta` already did, so a selector covers exactly the
+    rows it matched and nothing re-implements matching. `tables` is the dict `build_meta` was given.
+    A `diplotypes` or `allele_function` match names a haplotype rather than a variant; its defining
+    variants reach the check through `haplotypes.csv`, which is an arm of its own.
+    """
+    reached = sorted(
+        {(m.table, m.index) for row in build.matches for m in row if m.table in LOCUS_TABLES},
+        key=lambda hit: (_TABLE_ORDER.index(hit[0]), hit[1]),
+    )
+    return [tables[table][index] for table, index in reached]
+
+
 def meta_frame(build: MetaBuild, module_name: str) -> pl.DataFrame:
     """`meta.parquet`: one row per authored row, in authored order — every authored cell verbatim (what
     `reverse` writes back), the stamped key, and what the compile derived: the match count, the matches

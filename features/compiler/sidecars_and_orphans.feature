@@ -155,6 +155,20 @@ Feature: Derived sidecars, their arithmetic, and their orphans
 
   # source: compiler/src/just_dna_compiler/compiler/table_checks.py
   # anchor: _cross_validate_studies
+  Scenario Outline: a study's variant is carried by more than variants.csv
+    Given a studies.csv row naming <variant>
+    When the module is compiled
+    Then no orphan is reported
+    # Since 0.8 (RM28). A module scoring APOE as diplotypes cites rs429358 and rs7412, which define the
+    # alleles and are no variants.csv row. A meta member's reach is read off the meta expansion, so a
+    # selector covers exactly the rows it matched; a pharm_variants.csv row no member reaches still warns.
+    Examples:
+      | variant                                                           |
+      | a defining variant of a haplotypes.csv allele                     |
+      | the variant of a pharm_variants.csv row a meta.csv member reached |
+
+  # source: compiler/src/just_dna_compiler/compiler/table_checks.py
+  # anchor: _cross_validate_studies
   Scenario: a study matches on any shared identifier, not on frozen-key equality
     Given a coordinate-keyed variant and a study referencing it by rsID
     When the module is compiled

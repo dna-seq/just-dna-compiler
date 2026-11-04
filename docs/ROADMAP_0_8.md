@@ -101,7 +101,7 @@ population), with `effect_allele` checked against the proxy's alleles rather tha
 
 ## RM28 — Meta-conclusions (the predicate half)
 
-**Built on 0.8, 2026-11-04: the combination half** (the meta-table; its shipped record is [ROADMAP_HISTORY § RM28](ROADMAP_HISTORY.md#rm28--the-combination-half-the-meta-table)). Still open here: the study-orphan widening (wave 3, after the `StudyRow` batch), and the predicate half's remainder, which the maintainer put out of bounds.
+**Built on 0.8, 2026-11-04: the combination half** (the meta-table; its shipped record is [ROADMAP_HISTORY § RM28](ROADMAP_HISTORY.md#rm28--the-combination-half-the-meta-table)). The study-orphan widening (B1 step 4) shipped on `0.8` the same day, in wave 3, recorded in the same history entry. Still open here: only the predicate half's remainder (open-world negation, OR, *trans* phase), which the maintainer put out of bounds on 2026-11-04 and 0.8 does not build; it stays parked on the corpus below.
 
 **The name and grammar, accepted 2026-11-04 by the maintainer, as written in `proposals/PROPOSAL_0_8_PT2.md`
 §3 items 1–4.**

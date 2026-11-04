@@ -41,6 +41,21 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM28: a study on a variant `haplotypes.csv` defines, or a `meta.csv` member reaches, is not an orphan (0.8, uncut)
+
+- **`study_variant_orphan` counts what the module carries, not `variants.csv` alone** (PROPOSAL_0_8_PT2 §5 B1
+  step 4). A study's variant is carried when it is a `variants.csv` row's, a defining variant in
+  `haplotypes.csv`, or the variant of a `variants.csv` / `pharm_variants.csv` row a `meta.csv` member
+  reached. The meta arm reads the rows `build_meta` already expanded each member to
+  (`compiler/meta.py` `member_variant_rows`), so a selector covers exactly the rows it matched.
+- **The case it was for:** APOE scored only as diplotypes (longevitymap v2's R-APOE-1). Its 14 study links on
+  rs429358 and rs7412, the SNPs that define the ε alleles, drew the warning because neither is a
+  `variants.csv` row. They no longer do, and a study on a variant in no table still warns.
+- The warning fires less often, never more, and keeps its pinned prefix; the sentence gains a tail naming
+  the wider search (INTEGRATION_0_8 § 1.15). The check still runs only in a module with a `variants.csv`.
+- That closes RM28's 0.8 part. Its predicate half (open-world negation, OR, *trans* phase) stays parked in
+  ROADMAP_0_8, out of bounds by the maintainer's 2026-11-04 decision.
+
 ## 2026-11-04 — RM333, RM239, RM236: the Open Targets lane fills a locus-to-gene table, its colocalisations, per-transcript consequences and a fine-mapping posterior (0.8, uncut)
 
 - **A new snapshot lane, `opentargets`.** `just-dna-enricher opentargets build` mirrors Open Targets Platform
