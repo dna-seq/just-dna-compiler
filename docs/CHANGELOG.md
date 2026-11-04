@@ -41,6 +41,16 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM376: why one rsID fills three ALTs offline and one online on the same snapshot (0.8, uncut)
+
+- **No code change.** The 0.8 migration probe saw `rs746071566` filled with three ALTs offline and one
+  online from one split snapshot. The snapshot, Ensembl REST and dbSNP 157 all carry the same three
+  alleles at one site, and the resolver groups them correctly. The difference is RM270's rule: online,
+  each ALT is left-aligned against the reference and the piece the row's genotype names is written;
+  offline there are no reference bases, so the locus is written whole with `left_aligned` left unknown.
+  `enrich --rederive` online respells such a row. Closed in
+  [ROADMAP_HISTORY § RM376](ROADMAP_HISTORY.md#rm376--one-rsid-three-alts-offline-and-one-online-on-the-same-snapshot-not-a-misread-rm270s-reference-dependent-spelling-rule).
+
 ## 2026-11-04 — RM377: the two refusals only `strict` adds have published phrases (patch, on `main`)
 
 **compiler** — `errors` carries no code, so a consumer telling one strict refusal from another reads its
