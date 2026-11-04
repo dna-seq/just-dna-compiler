@@ -34,6 +34,12 @@ None open.
 
 ## Plan
 
+- **0.8's build** (the pm's handout, 2026-11-04): the plan is `docs/proposals/PROPOSAL_0_8_PT2.md`
+  (3d5adcd), critic-read. Seven pm questions in its §4, each with a default the build takes. Wave 0 is
+  the lead's: push `0.8` (150 unpushed commits; auto mode refused the push, the person must unblock),
+  merge `main` into it in `wt-08sync` (13 conflicts, rules in §1), the polars 2 lock, RM338's patch on
+  `main`. Then four lanes (A schema adds, B meta-table, C indel, D derived inputs), one builder each.
+
 - **RM338**: decided 2026-11-03 (content-checked text plus png/jpg, no SVG). `unattended`, a patch on `main`,
   no longer after RM337: triage re-sized RM337 to a minor on 2026-11-04 (172a215), because its warning needs a
   new `VALID_WARNING_CODES` member. Split, told to triage the same day: the patch ships only what needs no
