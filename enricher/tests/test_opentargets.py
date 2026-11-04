@@ -1,9 +1,10 @@
 """The Open Targets lane and its pass (RM333, RM239, RM236), over a slice cut from the real 26.09 release.
 
 The slice (`assets/opentargets_slice/`) is `opentargets_build.subset_snapshot` run on a full build of the
-release (`probes/LANES_0_8.md` § built) for the alleles of `reference_examples/hfe_hemochromatosis`.
-`subset_snapshot` keeps exactly the rows the pass reads for those alleles, so the pass over the slice
-answers as it does over the whole release for that module. Every expected value below is computed at
+release (`probes/LANES_0_8.md` § built) for the alleles of `reference_examples/hfe_hemochromatosis`, plus
+rs2075650, `6_26072764_C_T` and rs35589214's two alleles at `8:78193100 C`. `subset_snapshot` keeps exactly
+the rows the pass reads for those alleles, and every other allele at their loci in the allele table, so
+the pass over the slice answers as it does over the whole release for that module. Every expected value below is computed at
 run time from the slice's own parquet, never copied from it.
 """
 
@@ -631,3 +632,505 @@ def test_an_unreachable_ftp_is_this_lanes_error_not_httpx(tmp_path: Path) -> Non
     """`@client-exception-contract`: a transport failure leaves the builder as `OpenTargetsUnavailable`."""
     with pytest.raises(OpenTargetsUnavailable):
         list_parts("study", tmp_path, base_url="https://127.0.0.1:9")
+
+
+# ── a resolution row that states no ALT (RM333, 2026-11-04) ─────────────────────────────────────────
+
+
+def _blank_alts(spec: Path, key: str) -> None:
+    """Rewrite `spec`'s `resolution.csv` with `key`'s `alts` empty, the authored rsID-only shape.
+
+    Its VRS id goes too: a VA names one allele, and the compiler refuses one recorded against no ALT.
+    """
+    path = spec / "resolution.csv"
+    with path.open(newline="") as handle:
+        reader = csv.DictReader(handle)
+        fieldnames, rows = reader.fieldnames, list(reader)
+    assert any(row["variant_key"] == key for row in rows)
+    with path.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            blank = {"alts": "", "vrs_id": "", "vrs_spec": ""}
+            writer.writerow({**row, **blank} if row["variant_key"] == key else row)
+
+
+def _locus_alleles(data: Path, chrom: str, position: int, ref: str) -> pl.DataFrame:
+    """Every allele the snapshot holds at one `(chrom, position, ref)`, with its rsIDs."""
+    return pl.read_parquet(data / "variants.parquet").filter(
+        (pl.col("chrom") == chrom) & (pl.col("position") == position) & (pl.col("ref") == ref)
+    )
+
+
+def _facts(rows: list) -> list[dict]:
+    return [r.model_dump(exclude={"fetched_at"}) for r in rows]
+
+
+def test_the_slice_carries_every_allele_at_a_wanted_locus_with_its_rsids() -> None:
+    """`subset_snapshot` keeps a wanted allele's siblings, so a no-ALT lookup sees the locus as the release does."""
+    variants = pl.read_parquet(SLICE / "data" / "variants.parquet")
+    assert variants.schema["rs_ids"] == pl.List(pl.Utf8)
+    record = read_release(SLICE)
+    assert record is not None
+    wanted = {tuple(v.split("_", 3)) for v in record.model_dump()["subset_of"]}
+    loci = {(c, int(p)) for c, p, _r, _a in wanted}
+    held = set(variants.select("chrom", "position").iter_rows())
+    assert held == loci, "the allele table holds the wanted positions and nothing else"
+    assert variants.height > len(wanted), "some wanted locus has a sibling allele in the release"
+    full = resolve_opentargets_reference()
+    if full is None or full.resolve() == SLICE.resolve():
+        return
+    every = pl.read_parquet(full / "data" / "variants.parquet")
+    if "rs_ids" not in every.columns:
+        return
+    on_release = every.join(
+        variants.select("chrom", "position").unique(), on=["chrom", "position"], how="semi"
+    ).sort("variant_id")
+    assert on_release.equals(variants.sort("variant_id"))
+
+
+def test_subset_snapshot_keeps_a_wanted_alleles_siblings_whole(tmp_path: Path) -> None:
+    """Cut from the slice itself: wanting `6_26091590_G_T` keeps `G_A`, with its consequence rows too."""
+    cut = tmp_path / "cut"
+    subset_snapshot(SLICE, cut, [("6", 26091590, "G", "T")])
+    variants = pl.read_parquet(cut / "data" / "variants.parquet")
+    assert variants.sort("variant_id").equals(
+        _locus_alleles(SLICE / "data", "6", 26091590, "G").sort("variant_id")
+    )
+    assert variants.height == 2
+    (sibling,) = variants.filter(pl.col("alt") == "A")["variant_id"]
+    on_slice = pl.read_parquet(SLICE / "data" / "consequences-00000.parquet").filter(
+        pl.col("variant_id") == sibling
+    )
+    on_cut = pl.read_parquet(cut / "data" / "consequences-00000.parquet").filter(
+        pl.col("variant_id") == sibling
+    )
+    assert on_slice.height and on_cut.equals(on_slice)
+
+
+def test_a_row_with_no_alt_takes_the_one_allele_carrying_its_rsid(module: Path, tmp_path: Path) -> None:
+    """rs1800562 with `alts` empty gets exactly the rows its authored allele gets, and is named as supplied.
+
+    The expected rows are the pass's own answer for the same module with the allele stated, so the
+    fallback is checked against the authored path rather than against a copied number.
+    """
+    (only,) = _locus_alleles(SLICE / "data", "6", 26092913, "G").iter_rows(named=True)
+    assert only["rs_ids"] == ["rs1800562"], "one allele at the locus, carrying the rsID"
+    stated = tmp_path / "stated"
+    shutil.copytree(module, stated)
+    authored = enrich_opentargets(stated, snapshot=SLICE, write=False)
+    _blank_alts(module, "rs1800562")
+    before = (module / "resolution.csv").read_bytes()
+
+    result = enrich_opentargets(module, snapshot=SLICE)
+    for name in ("locus_to_gene", "colocalisations", "consequences"):
+        want = [r for r in _facts(getattr(authored, name)) if r["variant_key"] == "rs1800562"]
+        assert want, f"the authored allele has {name} rows to compare against"
+        assert [r for r in _facts(getattr(result, name)) if r["variant_key"] == "rs1800562"] == want
+    assert "rs1800562" in result.asked and "rs1800562" not in result.not_in_release
+    assert result.allele_supplied == ["rs1800562"]
+    # Report, never repair: the supplied ALT is not written back.
+    assert (module / "resolution.csv").read_bytes() == before
+
+
+def test_a_row_with_no_alt_fills_the_posterior_through_the_supplied_allele(module: Path) -> None:
+    """The fourth table: rs2075650's GWAS rows get the posterior its authored allele gets."""
+    authored = enrich_opentargets(module, snapshot=SLICE, write=False)
+    _blank_alts(module, "rs2075650")
+    result = enrich_opentargets(module, snapshot=SLICE, write=False)
+    assert result.allele_supplied == ["rs2075650"]
+    assert authored.posterior.filled > 0
+    assert result.posterior == authored.posterior
+    assert _facts(result.gwas_effects) == _facts(authored.gwas_effects)
+
+
+def test_a_row_with_no_alt_at_a_locus_of_two_alleles_carrying_its_rsid_is_withheld(module: Path) -> None:
+    """rs35589214 at 8:78193100 C: the release holds C>G and C>T, both under the rsID. Neither is picked."""
+    alleles = _locus_alleles(SLICE / "data", "8", 78193100, "C")
+    assert alleles.height == 2 and all("rs35589214" in ids for ids in alleles["rs_ids"].to_list())
+    # First lap with the allele stated, so the key has rows a withheld lap must not shorten.
+    _append(
+        module / "resolution.csv",
+        [
+            {
+                **LEAD_ROW,
+                "variant_key": "rs35589214",
+                "rsid": "rs35589214",
+                "chrom": "8",
+                "start": "78193100",
+                "ref": "C",
+                "alts": "T",
+            }
+        ],
+    )
+    first = enrich_opentargets(module, snapshot=SLICE)
+    kept = {
+        name: [r for r in _facts(getattr(first, name)) if r["variant_key"] == "rs35589214"]
+        for name in ("locus_to_gene", "colocalisations", "consequences")
+    }
+    assert all(kept.values()), "the stated allele has rows in every table"
+    _blank_alts(module, "rs35589214")
+
+    result = enrich_opentargets(module, snapshot=SLICE)
+    assert result.allele_unstated_withheld == ["rs35589214"]
+    assert "rs35589214" not in result.asked and "rs35589214" not in result.allele_supplied
+    assert "rs35589214" not in result.not_in_release, "withheld is not absent"
+    # `@rederive-never-shortens`: the rows the stated lap wrote stay, and this lap added none.
+    for name, rows in kept.items():
+        assert [r for r in _facts(getattr(result, name)) if r["variant_key"] == "rs35589214"] == rows
+
+
+def test_a_sibling_stating_no_rsid_is_a_candidate_not_a_refusal(module: Path) -> None:
+    """rs773443949 at 6:26091590 G: the release states it on G>T and nothing on G>A, which ClinVar also
+    names under it. The rsID-less allele may be the one, so the key is withheld rather than given G>T."""
+    alleles = dict(_locus_alleles(SLICE / "data", "6", 26091590, "G").select("alt", "rs_ids").iter_rows())
+    assert sorted(alleles) == ["A", "T"]
+    assert alleles["T"] == ["rs773443949"] and alleles["A"] == []
+    _append(
+        module / "resolution.csv",
+        [
+            {
+                **LEAD_ROW,
+                "variant_key": "rs773443949",
+                "rsid": "rs773443949",
+                "chrom": "6",
+                "start": "26091590",
+                "ref": "G",
+                "alts": "",
+            }
+        ],
+    )
+    result = enrich_opentargets(module, snapshot=SLICE, write=False)
+    assert result.allele_unstated_withheld == ["rs773443949"]
+    assert not result.allele_supplied
+    assert not any(
+        r.variant_key == "rs773443949"
+        for r in result.locus_to_gene + result.colocalisations + result.consequences
+    )
+
+
+def test_a_row_with_no_alt_and_an_rsid_no_allele_carries_is_not_in_the_release(module: Path) -> None:
+    """Every allele at the locus carries another rsID: a definite no, the ordinary not-in-release answer."""
+    alleles = _locus_alleles(SLICE / "data", "6", 26092913, "G")
+    assert alleles.height >= 1 and all(ids and "rs7412" not in ids for ids in alleles["rs_ids"].to_list())
+    _append(
+        module / "resolution.csv",
+        [
+            {
+                **LEAD_ROW,
+                "variant_key": "6:26092913:G",
+                "rsid": "rs7412",
+                "chrom": "6",
+                "start": "26092913",
+                "ref": "G",
+                "alts": "",
+            }
+        ],
+    )
+    result = enrich_opentargets(module, snapshot=SLICE, write=False)
+    assert "6:26092913:G" in result.asked and "6:26092913:G" in result.not_in_release
+    assert not result.allele_unstated_withheld and not result.allele_supplied
+
+
+def test_a_row_with_neither_alt_nor_rsid_is_withheld_and_counted(module: Path) -> None:
+    """A position alone is not an identity (`@rsid-not-per-allele`), even where the release holds one allele."""
+    assert _locus_alleles(SLICE / "data", "6", 26092913, "G").height == 1
+    _append(
+        module / "resolution.csv",
+        [
+            {
+                **LEAD_ROW,
+                "variant_key": "6:26092913:G",
+                "rsid": "",
+                "chrom": "6",
+                "start": "26092913",
+                "ref": "G",
+                "alts": "",
+            }
+        ],
+    )
+    result = enrich_opentargets(module, snapshot=SLICE, write=False)
+    assert result.allele_unstated_no_rsid == ["6:26092913:G"]
+    assert "6:26092913:G" not in result.asked and "6:26092913:G" not in result.not_in_release
+    assert not any(r.variant_key == "6:26092913:G" for r in result.consequences + result.locus_to_gene)
+
+
+def test_a_snapshot_without_rsids_cannot_answer_a_row_with_no_alt(module: Path, tmp_path: Path) -> None:
+    """A snapshot built before `rs_ids`: nobody asked (best effort, counted), and strict refuses."""
+    old = tmp_path / "old"
+    shutil.copytree(SLICE, old)
+    path = old / "data" / "variants.parquet"
+    pl.read_parquet(path).drop("rs_ids").write_parquet(path)
+    _blank_alts(module, "rs1800562")
+    with pytest.raises(OpenTargetsError, match="carried rsIDs"):
+        enrich_opentargets(module, snapshot=old, mode="strict", write=False)
+    result = enrich_opentargets(module, snapshot=old, write=False)
+    assert result.allele_unstated_unasked == ["rs1800562"]
+    assert "rs1800562" not in result.asked and "rs1800562" not in result.not_in_release
+    # Every authored allele is still answered on the old snapshot.
+    assert any(r.variant_key == "rs2075650" for r in result.locus_to_gene)
+    assert sum(result.posterior.__dict__.values()) == len(result.gwas_effects)
+    # The unasked key's GWAS rows keep their values, counted as withheld rather than as not looked up.
+    unasked_rows = [r for r in result.gwas_effects if r.variant_key == "rs1800562" and r.study_accession]
+    assert unasked_rows and result.posterior.allele_withheld == len(unasked_rows)
+
+
+def _slice_with_allele(tmp_path: Path, row: dict) -> Path:
+    """A copy of the slice whose allele table holds one more row (every other byte is the release's)."""
+    copy = tmp_path / "with_allele"
+    shutil.copytree(SLICE, copy)
+    path = copy / "data" / "variants.parquet"
+    variants = pl.read_parquet(path)
+    pl.concat([variants, pl.DataFrame([row], schema=variants.schema)]).write_parquet(path)
+    return copy
+
+
+def test_a_carrier_on_another_ref_at_the_position_withholds(module: Path, tmp_path: Path) -> None:
+    """One rsID can name a SNV and an indel at one position: a carrier on another REF is a candidate too."""
+    snapshot = _slice_with_allele(
+        tmp_path,
+        {
+            "variant_id": "6_26092913_GA_G",
+            "chrom": "6",
+            "position": 26092913,
+            "ref": "GA",
+            "alt": "G",
+            "rs_ids": ["rs1800562"],
+        },
+    )
+    _blank_alts(module, "rs1800562")
+    result = enrich_opentargets(module, snapshot=snapshot, write=False)
+    assert result.allele_unstated_withheld == ["rs1800562"] and not result.allele_supplied
+    # An rsID-less allele on another REF is not a candidate: the row's REF already excludes it.
+    snapshot = _slice_with_allele(
+        tmp_path / "b",
+        {
+            "variant_id": "6_26092913_GA_G",
+            "chrom": "6",
+            "position": 26092913,
+            "ref": "GA",
+            "alt": "G",
+            "rs_ids": [],
+        },
+    )
+    assert enrich_opentargets(module, snapshot=snapshot, write=False).allele_supplied == ["rs1800562"]
+
+
+def test_one_allele_listed_under_two_ids_is_one_candidate(module: Path, tmp_path: Path) -> None:
+    """The release keys some long alleles by an `OTVAR_` hash: the same (ref, alt) twice is one allele."""
+    snapshot = _slice_with_allele(
+        tmp_path,
+        {
+            "variant_id": "OTVAR_test",
+            "chrom": "6",
+            "position": 26092913,
+            "ref": "G",
+            "alt": "A",
+            "rs_ids": ["rs1800562"],
+        },
+    )
+    _blank_alts(module, "rs1800562")
+    result = enrich_opentargets(module, snapshot=snapshot, write=False)
+    assert result.allele_supplied == ["rs1800562"] and not result.allele_unstated_withheld
+
+
+def test_the_merged_rsids_current_number_matches(module: Path) -> None:
+    """A row whose rsID dbSNP merged away is matched by `rsid_current`, the number the release states."""
+    _append(
+        module / "resolution.csv",
+        [
+            {
+                **LEAD_ROW,
+                "variant_key": "rs000merged",
+                "rsid": "rs1",
+                "rsid_current": "rs1800562",
+                "chrom": "6",
+                "start": "26092913",
+                "ref": "G",
+                "alts": "",
+            }
+        ],
+    )
+    result = enrich_opentargets(module, snapshot=SLICE, write=False)
+    assert "rs000merged" in result.allele_supplied
+
+
+def test_a_row_whose_rsid_is_itself_a_pick_is_withheld(module: Path) -> None:
+    """`status="ambiguous"`: the back-fill picked the lowest of several rsIDs, so the rsID is no identity."""
+    _blank_alts(module, "rs1800562")
+    path = module / "resolution.csv"
+    with path.open(newline="") as handle:
+        reader = csv.DictReader(handle)
+        fieldnames, rows = reader.fieldnames, list(reader)
+    with path.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            if row["variant_key"] == "rs1800562":
+                row = {**row, "status": "ambiguous", "rsid_alternates": "rs1800562,rs1800563"}
+            writer.writerow(row)
+    result = enrich_opentargets(module, snapshot=SLICE, write=False)
+    assert result.allele_unstated_withheld == ["rs1800562"] and not result.allele_supplied
+
+
+def test_a_key_with_a_stated_allele_is_still_answered_beside_a_no_alt_row(module: Path) -> None:
+    """A second, unanswerable row of a key does not take the key's stated allele down with it."""
+    authored = enrich_opentargets(module, snapshot=SLICE, write=False)
+    _append(
+        module / "resolution.csv",
+        [
+            {
+                **LEAD_ROW,
+                "variant_key": "rs1800562",
+                "rsid": "",
+                "chrom": "6",
+                "start": "26092913",
+                "ref": "G",
+                "alts": "",
+                "locus_index": "1",
+            }
+        ],
+    )
+    result = enrich_opentargets(module, snapshot=SLICE, write=False)
+    assert result.allele_unstated_no_rsid == ["rs1800562"]
+    for name in ("locus_to_gene", "consequences"):
+        assert [r for r in _facts(getattr(result, name)) if r["variant_key"] == "rs1800562"] == [
+            r for r in _facts(getattr(authored, name)) if r["variant_key"] == "rs1800562"
+        ]
+    assert result.posterior == authored.posterior
+
+
+#: APOE ε, as `reference_examples/apoe_epsilon` authors it: two rsID-only rows, `alts` empty.
+APOE = _ROOT / "reference_examples" / "apoe_epsilon"
+
+
+def test_apoe_rows_with_no_alt_get_rows_against_the_whole_release(tmp_path: Path) -> None:
+    """The motivating case, against the whole release (skipped where it is not provisioned with rsIDs).
+
+    Not in the committed slice: rs429358 and rs7412 sit in some 4,400 GWAS credible sets with about
+    150,000 coloc rows between them. The expected rows are read off the release at run time.
+    """
+    full = resolve_opentargets_reference()
+    if full is None or full.resolve() == SLICE.resolve():
+        pytest.skip("the whole Open Targets snapshot is not provisioned on this machine")
+    variants = pl.read_parquet(full / "data" / "variants.parquet")
+    if "rs_ids" not in variants.columns:
+        pytest.skip("the provisioned Open Targets snapshot predates `rs_ids`; rebuild it")
+    spec = tmp_path / "apoe"
+    shutil.copytree(APOE, spec)
+    with (spec / "resolution.csv").open(newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    assert rows and all(not r["alts"] and r["rsid"] for r in rows), "the example states no ALT"
+    result = enrich_opentargets(spec, snapshot=full, write=False)
+    for row in rows:
+        carrying = variants.filter(
+            (pl.col("chrom") == row["chrom"])
+            & (pl.col("position") == int(row["start"]))
+            & (pl.col("ref") == row["ref"])
+            & pl.col("rs_ids").list.contains(row["rsid"])
+        )
+        (variant_id,) = carrying["variant_id"]
+        transcripts = set(
+            pl.scan_parquet(full / "data" / "consequences-*.parquet")
+            .filter(pl.col("variant_id") == variant_id)
+            .select("transcript")
+            .collect()["transcript"]
+        )
+        assert transcripts
+        assert {
+            r.transcript for r in result.consequences if r.variant_key == row["variant_key"]
+        } == transcripts
+        loci = set(
+            pl.scan_parquet(full / "data" / "credible_set_members-*.parquet")
+            .filter(pl.col("variant_id") == variant_id)
+            .select("study_locus_id")
+            .collect()["study_locus_id"]
+        )
+        assert loci
+        assert {r.study_locus_id for r in result.locus_to_gene if r.variant_key == row["variant_key"]} <= loci
+        assert any(r.variant_key == row["variant_key"] for r in result.locus_to_gene)
+        assert any(r.variant_key == row["variant_key"] for r in result.colocalisations)
+    assert result.allele_supplied == sorted(r["variant_key"] for r in rows)
+
+
+def test_an_author_corrects_the_supplied_allele_and_fills_a_withheld_site_through_the_overlay(
+    module: Path, tmp_path: Path
+) -> None:
+    """`overrides.csv` reaches what the no-ALT fallback wrote, and what it withheld, compiled and round-tripped.
+
+    rs1800562 (alts empty) is supplied by the release; one of its consequence rows is suppressed and
+    another corrected. rs35589214 (alts empty) is withheld at a two-allele site, and the author, who
+    knows the allele is C>T, inserts that allele's consequence and one of its L2G rows, values read off
+    the slice.
+    """
+    _blank_alts(module, "rs1800562")
+    _append(
+        module / "resolution.csv",
+        [
+            {
+                **LEAD_ROW,
+                "variant_key": "rs35589214",
+                "rsid": "rs35589214",
+                "chrom": "8",
+                "start": "78193100",
+                "ref": "C",
+                "alts": "",
+            }
+        ],
+    )
+    result = enrich_opentargets(module, snapshot=SLICE)
+    assert result.allele_supplied == ["rs1800562"] and result.allele_unstated_withheld == ["rs35589214"]
+    supplied = sorted(
+        (r for r in result.consequences if r.variant_key == "rs1800562"), key=lambda r: r.transcript
+    )
+    assert len(supplied) >= 2
+    gone, corrected = supplied[0], supplied[1]
+    new_impact = min({"HIGH", "MODERATE", "LOW", "MODIFIER"} - {corrected.impact})
+    (variant_id,) = _locus_alleles(SLICE / "data", "8", 78193100, "C").filter(pl.col("alt") == "T")[
+        "variant_id"
+    ]
+    transcript, impact = _query(
+        f"SELECT transcript, impact FROM cons WHERE variant_id = '{variant_id}' ORDER BY transcript LIMIT 1"
+    )[0]
+    locus, gene, score = _query(
+        "SELECT l.study_locus_id, l.gene_id, l.l2g_score FROM l2g l JOIN members m USING (study_locus_id) "
+        f"WHERE m.variant_id = '{variant_id}' ORDER BY l.study_locus_id, l.gene_id LIMIT 1"
+    )[0]
+    reason = "a curator's call"
+    overlay = [
+        ("consequences.csv", "rs1800562", gone.transcript, "", "suppress", ""),
+        ("consequences.csv", "rs1800562", corrected.transcript, "impact", "update", new_impact),
+        ("consequences.csv", "rs35589214", transcript, "dataset", "insert", result.dataset),
+        ("consequences.csv", "rs35589214", transcript, "impact", "insert", impact),
+        ("locus_to_gene.csv", locus, gene, "variant_key", "insert", "rs35589214"),
+        ("locus_to_gene.csv", locus, gene, "dataset", "insert", result.dataset),
+        ("locus_to_gene.csv", locus, gene, "l2g_score", "insert", str(score)),
+    ]
+    with (module / "overrides.csv").open("w", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["table", "subject", "member", "field", "operation", "value", "reason"])
+        writer.writerows([(*row, reason) for row in overlay])
+
+    built = compile_module(module, tmp_path / "out")
+    assert built.success, built.errors
+    cons = pl.read_parquet(tmp_path / "out" / "consequences.parquet")
+    c282y = cons.filter(pl.col("variant_key") == "rs1800562")
+    assert gone.transcript not in set(c282y["transcript"])
+    assert set(c282y.filter(pl.col("transcript") == corrected.transcript)["impact"]) == {new_impact}
+    assert c282y.height == len(supplied) - 1
+    filled = cons.filter(pl.col("variant_key") == "rs35589214")
+    assert list(zip(filled["transcript"], filled["impact"], strict=True)) == [(transcript, impact)]
+    l2g = pl.read_parquet(tmp_path / "out" / "locus_to_gene.parquet").filter(
+        pl.col("variant_key") == "rs35589214"
+    )
+    assert list(zip(l2g["study_locus_id"], l2g["gene_id"], l2g["l2g_score"], strict=True)) == [
+        (locus, gene, score)
+    ]
+    # The overlay is a fixed point through the round trip.
+    reverse_module(tmp_path / "out", tmp_path / "spec2")
+    again = compile_module(tmp_path / "spec2", tmp_path / "out2")
+    assert again.success, again.errors
+    m1 = json.loads((tmp_path / "out" / "manifest.json").read_text())
+    m2 = json.loads((tmp_path / "out2" / "manifest.json").read_text())
+    assert m1["artifact"]["digest"] == m2["artifact"]["digest"]
+    assert m1["content_signature"] == m2["content_signature"]

@@ -273,6 +273,17 @@ compiler change, and no identity moves.
   `update` of `variant_key` is refused as re-keying, an `insert` matches on the `variant_key` it supplies, and
   a `suppress` removes every member's row. Two module keys naming one release allele have these rows withheld
   and are named in the pass's `shared_allele_keys`.
+- **A `resolution.csv` row that states an rsID and no ALT now gets rows** (added 2026-11-04, build/RM333-noalt).
+  It was skipped silently, so `apoe_epsilon`'s rs429358 and rs7412 had no L2G, coloc or consequence row. The
+  pass reads every allele the release holds at the row's position: one allele carrying the rsID (or its
+  `rsid_current`) on the row's REF, beside no other candidate, supplies the ALT for all four tables, and the key is named in
+  `allele_supplied`; several candidates are withheld and named in `allele_unstated_withheld`, never one
+  picked. An allele with an empty `rsIds` counts as a candidate, since the release leaves some alleles
+  unlabelled: at `6:26091590 G` it names rs773443949 on `G>T` only, while ClinVar puts it on `G>A` too. A row
+  with neither ALT nor rsID is withheld (`allele_unstated_no_rsid`). The supplied ALT is never written back
+  to `resolution.csv`, and no derived row says which ALT it used. The snapshot's `variants.parquet` gains
+  `rs_ids` for this, so **a snapshot built earlier must be rebuilt**: against one, those rows are
+  `allele_unstated_unasked` and `--strict` refuses.
 - **`gwas_effects.csv` gains `posterior_probability` and `fine_mapping_method` (RM239)**, filled by the same
   pass when exactly one fine-mapping value answers for a row's variant and study, and left empty and counted
   when the study has no credible set, the variant is not in it, or several sets disagree. No credible-set
