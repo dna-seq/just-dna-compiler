@@ -480,6 +480,17 @@ None is authored on a variant, and `reverse` reads none back. All are appended a
 - **`effect_unit`** (RM332) — the unit of the variant's effect, when every supporting study row that
   states a unit states the same one. Null when none states one, and null when two disagree: never the
   first, never the most common (PT2 §3 item 17's default, accepted by the pm).
+- **`eur_only_evidence`** (RM328) — Kleene over the supporting rows' `ancestry`: false when any row
+  states a code other than `EUR` (`EAS|EUR` included), whatever else is unstated; otherwise null when any
+  row states none, or when the locus has no supporting row; otherwise true. A `Boolean` column, null
+  meaning unknown.
+- **The outcome strip** (RM326) — `outcome_healthspan`, `outcome_lifespan`, `outcome_exceptional`. A
+  cell is true when a supporting row's `phenotype_class` maps to it in `vocab.OUTCOME_STRIP_CELLS`
+  (`HEALTHSPAN` → healthspan; `PARENTAL_LIFESPAN`, `OWN_SURVIVAL` → lifespan; `EXTREME_SURVIVAL_CC`,
+  `FAMILIAL` → exceptional) and **null otherwise, never false**: a locus with no study of an outcome is
+  untested, not "no effect". True says the outcome was *studied* at this locus, not that an effect was
+  found; the study rows carry the finding. Every other class, `MULTIVARIATE_AGEING` included, maps to no
+  cell. v2's requirements §5.1 name the three cells and state no class map, so the map is PT2's.
 
 ### Three more schema limits, made legible the same way (0.6, the VCF 4.4 audit)
 

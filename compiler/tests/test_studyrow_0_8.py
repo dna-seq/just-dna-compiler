@@ -36,7 +36,11 @@ from just_dna_format.base import field_first_seen, field_vocabularies
 from just_dna_format.gwas import GwasEffectRow
 from just_dna_format.pgs import VALID_TRAINING_ANCESTRY, PgsRow
 from just_dna_format.spec import StudyRow, VariantRow
-from just_dna_format.vocab import VALID_SUPERPOPULATIONS
+from just_dna_format.vocab import (
+    OUTCOME_STRIP_CELLS,
+    RECOMMENDED_PHENOTYPE_CLASSES,
+    VALID_SUPERPOPULATIONS,
+)
 from pydantic import ValidationError
 
 _EXAMPLE = Path(__file__).resolve().parents[2] / "reference_examples" / "hfe_hemochromatosis"
@@ -638,3 +642,111 @@ def test_a_module_with_none_of_the_new_columns_warns_exactly_as_before(tmp_path:
     found = [w for w in validation.warnings if _DUP in w]
     loaded = [StudyRow(**{k: v for k, v in row.items() if v}) for row in rows]
     assert found == [f"{_DUP}: ({s.variant_key}, {s.pmid})" for s in loaded]
+
+
+# ── the locus-level derived columns on weights.parquet (PT2 §3 item 10) ─────────────────────────
+
+#: Per variant, the (ancestry, phenotype_class) of each of its study rows in file order. Each variant
+#: meets one case of each derivation; a variant left out keeps its rows unstated.
+_LOCUS_CASES: dict[str, tuple[tuple[str, str], ...]] = {
+    # every row EUR → true; healthspan and lifespan studied
+    "rs776994377": (("EUR", "HEALTHSPAN"), ("EUR", "OWN_SURVIVAL"), ("EUR", "PARENTAL_LIFESPAN")),
+    # one row states another code → false; exceptional studied twice over
+    "rs759524388": (("EUR", "EXTREME_SURVIVAL_CC"), ("EAS|EUR", "FAMILIAL"), ("EUR", "")),
+    # EUR and unstated → null (unknown); only a class mapped to no cell
+    "rs765804978": (("EUR", "MULTIVARIATE_AGEING"), ("", "MR"), ("EUR", "BIOMARKER")),
+    # another code beside an unstated one → false, Kleene: unknown AND false is false
+    "rs199916850": (("AFR", "NOVEL_CLASS"), ("", ""), ("", "")),
+}
+
+
+def _fill_locus_cases(i: int, row: dict[str, str]) -> None:
+    cases = _LOCUS_CASES.get(row["rsid"])
+    if cases is not None:
+        row["ancestry"], row["phenotype_class"] = cases[_nth_for_variant(i, row["rsid"])]
+
+
+def _eur_only(ancestries: list[list[str] | None]) -> bool | None:
+    """The expectation, stated as the contract words it: false beats unknown, unknown beats true."""
+    if any(codes and set(codes) != {"EUR"} for codes in ancestries):
+        return False
+    if not ancestries or any(not codes for codes in ancestries):
+        return None
+    return True
+
+
+def _locus_spec(tmp_path: Path) -> Path:
+    return _spec(tmp_path, "locus", ("ancestry", "phenotype_class"), _fill_locus_cases)
+
+
+def _studies_by_rsid(spec: Path) -> dict[str, list[dict[str, str]]]:
+    _, rows = _read_rows(spec / "studies.csv")
+    out: dict[str, list[dict[str, str]]] = {}
+    for row in rows:
+        if row["rsid"]:
+            out.setdefault(row["rsid"], []).append(row)
+    return out
+
+
+def test_the_strip_map_covers_recommended_classes_only() -> None:
+    assert set(OUTCOME_STRIP_CELLS) <= RECOMMENDED_PHENOTYPE_CLASSES
+    assert set(OUTCOME_STRIP_CELLS.values()) == {"healthspan", "lifespan", "exceptional"}
+    assert OUTCOME_STRIP_CELLS == {
+        "HEALTHSPAN": "healthspan",
+        "PARENTAL_LIFESPAN": "lifespan",
+        "OWN_SURVIVAL": "lifespan",
+        "EXTREME_SURVIVAL_CC": "exceptional",
+        "FAMILIAL": "exceptional",
+    }
+
+
+def test_eur_only_evidence_is_kleene_over_the_supporting_rows(tmp_path: Path) -> None:
+    spec = _locus_spec(tmp_path)
+    by_rsid = _studies_by_rsid(spec)
+    expected = {
+        rsid: _eur_only([row["ancestry"].split("|") if row["ancestry"] else None for row in rows])
+        for rsid, rows in by_rsid.items()
+    }
+    # The fixture meets every arm, or the derivation is asserted over fewer than it claims.
+    assert {expected[r] for r in _LOCUS_CASES} == {True, False, None}
+    assert expected["rs199916850"] is False
+
+    joined = _weights_column(tmp_path, spec, "eur_only_evidence")
+    for rsid, values in joined.items():
+        assert values == {expected.get(rsid)}, rsid
+
+
+@pytest.mark.parametrize("cell", ["healthspan", "lifespan", "exceptional"])
+def test_an_outcome_cell_is_true_when_studied_and_null_otherwise(tmp_path: Path, cell: str) -> None:
+    spec = _locus_spec(tmp_path)
+    classes = {cls for cls, mapped in OUTCOME_STRIP_CELLS.items() if mapped == cell}
+    expected = {
+        rsid: (True if any(row["phenotype_class"] in classes for row in rows) else None)
+        for rsid, rows in _studies_by_rsid(spec).items()
+    }
+    assert True in expected.values() and None in expected.values()
+    joined = _weights_column(tmp_path, spec, f"outcome_{cell}")
+    for rsid, values in joined.items():
+        # Never false: a locus with no study of the class is untested, not "no effect".
+        assert values == {expected.get(rsid)}, rsid
+
+
+def test_the_derived_columns_come_last_and_never_reach_variants_csv(tmp_path: Path) -> None:
+    spec = _locus_spec(tmp_path)
+    assert compile_module(spec, tmp_path / "a1").success
+    schema = pl.read_parquet_schema(tmp_path / "a1" / "weights.parquet")
+    derived = [
+        "effect_unit",
+        "eur_only_evidence",
+        "outcome_healthspan",
+        "outcome_lifespan",
+        "outcome_exceptional",
+    ]
+    assert list(schema)[-len(derived) :] == derived
+    assert all(schema[c] == pl.Boolean for c in derived[1:])
+    reverse_module(tmp_path / "a1", tmp_path / "rev")
+    header, _ = _read_rows(tmp_path / "rev" / "variants.csv")
+    assert not set(derived) & set(header)
+    second = compile_module(tmp_path / "rev", tmp_path / "a2")
+    assert second.success, second.errors
+    assert second.manifest.artifact.digest == compile_module(spec, tmp_path / "a3").manifest.artifact.digest

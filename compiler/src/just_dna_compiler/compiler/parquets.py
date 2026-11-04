@@ -6,6 +6,7 @@ import polars as pl
 from just_dna_format.base import derive_variant_key
 from just_dna_format.frequency import FrequencyRow
 from just_dna_format.spec import ModuleSpecConfig, StudyRow, VariantRow
+from just_dna_format.vocab import OUTCOME_STRIP_CELLS
 
 from just_dna_compiler.compiler.tables import _polars_type, _split_genotype
 
@@ -34,7 +35,7 @@ def _supporting_studies(variant: VariantRow, studies: list[StudyRow]) -> list[St
     ]
 
 
-def _locus_study_facts(variant: VariantRow, studies: list[StudyRow]) -> dict[str, Any]:
+def _locus_study_facts(studies: list[StudyRow]) -> dict[str, Any]:
     """The locus-level columns `weights.parquet` derives from a variant's study rows (0.8).
 
     Repeated on every genotype row of the locus: a parquet column is approximately free (P9), and a
@@ -44,9 +45,32 @@ def _locus_study_facts(variant: VariantRow, studies: list[StudyRow]) -> dict[str
       states a unit states the same one. `VariantRow` names no study, so "the matching study row" is
       undefined; unanimity is the rule that never guesses (PT2 §3 item 17). Null when none states one,
       and null when two disagree — never the first, never the most common.
+    * `eur_only_evidence` (RM328): Kleene over the supporting rows' `ancestry`. False when any row states
+      a code other than `EUR` (a decisive counter-example, whatever else is unstated); otherwise null
+      when any row states none, or when the locus has no supporting row at all (no evidence is not
+      European-only evidence); otherwise true.
+    * the outcome strip (RM326): `outcome_<cell>` is true when a supporting row's `phenotype_class`
+      maps to that cell in `vocab.OUTCOME_STRIP_CELLS`, and null otherwise. Never false: a locus with no
+      study of an outcome is untested, not "no effect".
     """
     units = {s.effect_unit for s in studies if s.effect_unit is not None}
-    return {"effect_unit": units.pop() if len(units) == 1 else None}
+    eur_only: bool | None
+    if any(s.ancestry and set(s.ancestry) != {"EUR"} for s in studies):
+        eur_only = False
+    elif not studies or any(not s.ancestry for s in studies):
+        eur_only = None
+    else:
+        eur_only = True
+    studied = {OUTCOME_STRIP_CELLS.get(s.phenotype_class or "") for s in studies}
+    return {
+        "effect_unit": units.pop() if len(units) == 1 else None,
+        "eur_only_evidence": eur_only,
+        **{f"outcome_{cell}": (True if cell in studied else None) for cell in _OUTCOME_CELLS},
+    }
+
+
+#: The strip's cells in column order, read off the format constant once (insertion order, deduped).
+_OUTCOME_CELLS: tuple[str, ...] = tuple(dict.fromkeys(OUTCOME_STRIP_CELLS.values()))
 
 
 def _build_weights(
@@ -59,7 +83,7 @@ def _build_weights(
     records: list[dict[str, Any]] = []
     for v in variants:
         priority = v.priority if v.priority is not None else defaults.priority
-        derived = _locus_study_facts(v, _supporting_studies(v, studies or []))
+        derived = _locus_study_facts(_supporting_studies(v, studies or []))
         records.append(
             {
                 "rsid": v.rsid,
@@ -135,6 +159,10 @@ def _build_weights(
                 # column so none moves, and `reverse` reads none of them back. Named one by one, not
                 # spread, so the two-halves guard in test_compiler_regression still sees each key. ──
                 "effect_unit": derived["effect_unit"],
+                "eur_only_evidence": derived["eur_only_evidence"],
+                "outcome_healthspan": derived["outcome_healthspan"],
+                "outcome_lifespan": derived["outcome_lifespan"],
+                "outcome_exceptional": derived["outcome_exceptional"],
             }
         )
     schema = {
@@ -180,6 +208,10 @@ def _build_weights(
         "quality_from": pl.Utf8,
         "min_quality": pl.Float64,
         "effect_unit": pl.Utf8,
+        "eur_only_evidence": pl.Boolean,
+        "outcome_healthspan": pl.Boolean,
+        "outcome_lifespan": pl.Boolean,
+        "outcome_exceptional": pl.Boolean,
     }
     return pl.DataFrame(records, schema=schema)
 

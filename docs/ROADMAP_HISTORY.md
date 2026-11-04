@@ -35,6 +35,104 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM328 — no study row can name the ancestry it was measured in, so "European-only evidence" is a hand-set flag
+
+**Built on 0.8, 2026-11-04: the column.** `StudyRow.ancestry`, closed and multi-valued over `vocab.VALID_SUPERPOPULATIONS`, reaches `studies.parquet` and `reverse`; `pgs.VALID_TRAINING_ANCESTRY` is derived from the same constant plus `multi`. Still open: `eur_only_evidence` on `weights.parquet`, the last commit of the same `StudyRow` batch.
+
+**Decided 2026-11-04 by the maintainer: the 1000G superpopulation codes** (AFR, AMR, EAS, EUR, SAS), the binding `PgsRow.training_ancestry` already uses.
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** ([PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §5 A5), taken into 0.8 on 2026-11-03 as a priority · **Owner** format + compiler (derived) · **Motivating case** longevitymap v2 requirements §5.4 (R-ANC-1, R-ANC-2) · *for* longevitymap v2 · *related* RM188 (axis 2)
+
+**What shipped.** `StudyRow` gains `ancestry`, optional, multi-valued and closed over
+`vocab.VALID_SUPERPOPULATIONS` (`AFR`, `AMR`, `EAS`, `EUR`, `SAS`), first release 0.8.0; a trans-ethnic
+study lists its codes, and `population` stays free text. `pgs.VALID_TRAINING_ANCESTRY` is now derived
+as that constant plus `multi`, so the codes are one vocabulary; the gnomAD list stays apart. The column
+reaches `studies.parquet` as a list and `reverse` writes it back `|`-joined. `eur_only_evidence` is
+derived on `weights.parquet`, Kleene over the supporting study rows: false when one states a code other
+than `EUR`, null when any states none or there are none, otherwise true. The ancestry banner (R-ANC-3)
+is just-dna-lite's. Tests: `compiler/tests/test_studyrow_0_8.py` (the round trip, the closed list, the
+PGS set equality, and `eur_only_evidence` over a fixture meeting all three arms, including unknown AND
+false = false).
+
+**Residuals** none
+
+**What was confirmed.** `StudyRow.population` is free text. `GwasEffectRow.ancestry` and
+`PgsRow.training_ancestry` exist but each is scoped to its own table. RM188 sighted this axis three times
+in other projects (dna-engine's `transferability`, kaiseki, OmniGenis). This is the first in-house
+module that needs it.
+
+**Shape.** A multi-valued `ancestry` on `StudyRow` bound to a vocabulary. **Which one is the decision**:
+the 1000G superpopulation codes behind `training_ancestry`, or the gnomAD population list, and
+`vocab.py` forbids merging the two. Full ×1. Then `eur_only_evidence` is **derived** (near-zero): every
+supporting row says EUR. Kleene again: a row with no ancestry makes the answer unknown, never false.
+The ancestry banner (R-ANC-3) is just-dna-lite's half.
+
+## RM326 — a study row cannot say which outcome it measured, so the definition of "pro-longevity" lives in a `study_design` prefix
+
+**Built on 0.8, 2026-11-04: the narrowing by class.** `duplicate_study_citation` treats two rows for one `(variant_key, pmid)` as two claims when both state `phenotype_class` and the values differ. Still open: the outcome strip.
+
+**Built on 0.8, 2026-11-04: the column and its warning.** `StudyRow.phenotype_class`, open over `RECOMMENDED_PHENOTYPE_CLASSES` (v2's twelve), reaches `studies.parquet` and `reverse`; a token outside the twelve draws `phenotype_class_unrecognized`, once per module. Still open: the duplicate-citation narrowing by class and the outcome strip on `weights.parquet`, both later in the same `StudyRow` batch.
+
+**Measured 2026-11-04, then decided by the maintainer.**
+
+The measurement was run by a subagent against both ported longevitymap `studies.csv` files, v2's
+`evidence/K_definitions_comparison.csv`, and OLS4. The trait term separates **0 of the 12 classes in
+real rows**. Neither ported file fills `trait_efo_id`. The one longevity term in real use, OBA_VT0005372
+(EFO_0004300 "longevity" is obsolete and points to it), covers at least four classes. In principle a
+term separates only PARENTAL_LIFESPAN (EFO_0007796) and HEALTHSPAN (EFO_0009762). Other findings:
+
+- `study_design` is free text and does not separate the classes either.
+- 15 of the K file's 63 PMIDs carry two or three classes.
+- v2 spells three class names two ways (FAMILIAL/FAMILIAL_LONGEVITY, MR/MR_MEDIATOR,
+  BIOMARKER/BIOMARKER_CLOCK).
+- Three real studies fit none of the twelve.
+
+Decided:
+
+- **The column is built:** `phenotype_class` on `StudyRow`, **open, with v2's twelve as the recommended
+  members**. A token outside them draws a warning, which catches spelling drift without refusing a
+  study that fits no class.
+- **One paper, several classes: RM140's rule.** Two rows for one `(variant_key, pmid)` are not duplicate
+  citations when both state `phenotype_class` and the values differ. The key stays as it is, and the
+  duplicate check narrows (`@absent-is-not-different`).
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** ([PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §5 A5), taken into 0.8 on 2026-11-03 as a priority · **Owner** format + compiler (derived columns) · **Motivating case** longevitymap v2 requirements §4.5, R-DEF-1 · *for* longevitymap v2 · *related* RM323, RM325
+
+**What shipped.** `StudyRow` gains `phenotype_class`, optional and open, first release 0.8.0,
+with v2's twelve classes as `RECOMMENDED_PHENOTYPE_CLASSES` spelled as this entry lists them; a token
+outside them is kept and draws the new warning `phenotype_class_unrecognized`, once per module, naming
+each token with its row count, in both modes. It reaches `studies.parquet` and `reverse`. Two rows for
+one `(variant_key, pmid)` stating different classes are not a duplicate citation (RM140's rule). The
+outcome strip is derived on `weights.parquet`: `outcome_healthspan`, `outcome_lifespan`,
+`outcome_exceptional`, true when a supporting study row's class maps to the cell in
+`vocab.OUTCOME_STRIP_CELLS` (`HEALTHSPAN`; `PARENTAL_LIFESPAN`, `OWN_SURVIVAL`; `EXTREME_SURVIVAL_CC`,
+`FAMILIAL`) and null otherwise, never false. v2's requirements §5.1 name the three cells and state no
+class map, so the map is PT2 §3 item 10's; every other class maps to no cell. The evidence role stays
+the module's README policy, as decided. Tests: `compiler/tests/test_studyrow_0_8.py` (the round trip,
+the warning in both modes with v2's own long spellings, the narrowing, and each strip cell over a fixture
+whose loci meet studied, unstudied and unmapped classes).
+
+**Residuals** none
+
+**Need.** v2 sorts every study into one of twelve phenotype classes (`EXTREME_SURVIVAL_CC`,
+`PARENTAL_LIFESPAN`, `OWN_SURVIVAL`, `VIABILITY_AF`, `HEALTHSPAN`, `MULTIVARIATE_AGEING`, `FAMILIAL`,
+`DISEASE_DEPLETION`, `RARE_BURDEN`, `EVOLUTIONARY`, `MR`, `BIOMARKER`), and the class decides what a row
+may do. The plan writes it as a prefix in `study_design`. But `study_design` describes the study
+(case-control, GWAS, meta-analysis) and the class describes the outcome, so a prefix puts two axes in
+one cell (P5).
+
+**Ask first whether it is derivable.** `StudyRow.trait_efo_id` already distinguishes some classes
+(OBA life span against EFO parental longevity). Measure how many of the twelve an ontology term
+separates before adding a column.
+
+**Shape.** One optional column with a vocabulary (closed or recommended-open is a decision). Full ×1.
+Two things become **derived, near-zero**, once it exists:
+
+- *evidence role* (score or annotate). This is the module's own policy over classes, so it belongs in
+  the module's README, never a column.
+- *the outcome strip* per locus (healthspan / lifespan / exceptional survival). Kleene, never
+  two-valued: a locus with no study row of a class is **untested** and withheld, never "no effect".
+
 ## RM330 — an effect measured in one sex, one smoking stratum or one genotype has no row
 
 **Built on 0.8, 2026-11-04: the narrowing by stratum.** `duplicate_study_citation` treats two rows for one `(variant_key, pmid)` as two claims when both state the stratum pair and it differs.

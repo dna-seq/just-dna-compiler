@@ -45,9 +45,9 @@ land wherever RM323 puts per-locus facts. RM322 next, since APOE is the lead loc
 | [RM322](ROADMAP_HISTORY.md#rm322--diplotypescsv-carries-none-of-the-axes-a-scored-finding-needs-so-apoe-the-modules-headline-result-cannot-state-its-tier-mechanism-or-trade-off) | `DiplotypeRow` gains `negatives` and `category` (`priority`, `actionability`, `flags` cut) | full ×2 | ✅ shipped 2026-11-04 |
 | [RM324](ROADMAP_HISTORY.md#rm324--there-is-no-evidence-tier-column-so-the-axis-that-gates-visibility-is-a-flags-tiera-token) | evidence tier as value + scheme | full ×2 | home from RM323 |
 | [RM325](ROADMAP_HISTORY.md#rm325--studiescsv-has-no-sample-size-and-v2s-tier-a-rule-is-stated-in-n) | `StudyRow` sample size, its unit, and cases | full ×3 | ✅ shipped 2026-11-04 |
-| [RM326](#rm326--a-study-row-cannot-say-which-outcome-it-measured-so-the-definition-of-pro-longevity-lives-in-a-study_design-prefix) | `StudyRow` phenotype class; evidence role and the outcome strip derived from it | full ×1, derived near-zero | check EFO first |
+| [RM326](ROADMAP_HISTORY.md#rm326--a-study-row-cannot-say-which-outcome-it-measured-so-the-definition-of-pro-longevity-lives-in-a-study_design-prefix) | `StudyRow` phenotype class; the outcome strip derived from it | full ×1, derived near-zero | ✅ shipped 2026-11-04 |
 | [RM327](#rm327--pleiotropy-has-no-per-trait-row-so-a-trade-off-can-only-be-prose-and-tradeoff-is-computed-rather-than-authored) | per-trait benefit/harm table (mediator folds in); `tradeoff` computed; reserve the name | full (new kind), derived near-zero, reservation a patch | `tradeoff` decided |
-| [RM328](#rm328--no-study-row-can-name-the-ancestry-it-was-measured-in-so-european-only-evidence-is-a-hand-set-flag) | `StudyRow` ancestry on a vocabulary; `eur_only_evidence` derived | full ×1, derived near-zero | RM188 axis 2 |
+| [RM328](ROADMAP_HISTORY.md#rm328--no-study-row-can-name-the-ancestry-it-was-measured-in-so-european-only-evidence-is-a-hand-set-flag) | `StudyRow` ancestry on a vocabulary; `eur_only_evidence` derived | full ×1, derived near-zero | ✅ shipped 2026-11-04 |
 | [RM329](ROADMAP_HISTORY.md#rm329--an-age-stratified-estimate-has-no-age-band-so-age-of-action-is-reconstructed-from-statistical_test-prose) | `StudyRow` age band and whose age | full ×3 | ✅ shipped 2026-11-04 |
 | [RM330](ROADMAP_HISTORY.md#rm330--an-effect-measured-in-one-sex-one-smoking-stratum-or-one-genotype-has-no-row) | the stratum an estimate was measured in; sex as the first query-time modifier | full ×2 | ✅ shipped 2026-11-04 |
 | [RM331](#rm331--a-study-measured-on-an-ld-proxy-cannot-say-so-and-filing-it-under-the-lead-checks-the-proxys-allele-against-the-leads) | `StudyRow` proxy variant + r²; the allele check follows the proxy | full ×2–3 |  |
@@ -75,56 +75,6 @@ scope decision put each in 0.8 or 0.9, as marked):
 
 The authored `report:` block in [ROADMAP.md's idea-book](ROADMAP.md) is the unnumbered half of RM248 and
 answers v2's §8 consumer requests 1 and 2 (category prose from the module, no "Net weight").
-
-## RM326 — a study row cannot say which outcome it measured, so the definition of "pro-longevity" lives in a `study_design` prefix
-
-**Built on 0.8, 2026-11-04: the narrowing by class.** `duplicate_study_citation` treats two rows for one `(variant_key, pmid)` as two claims when both state `phenotype_class` and the values differ. Still open: the outcome strip.
-
-**Built on 0.8, 2026-11-04: the column and its warning.** `StudyRow.phenotype_class`, open over `RECOMMENDED_PHENOTYPE_CLASSES` (v2's twelve), reaches `studies.parquet` and `reverse`; a token outside the twelve draws `phenotype_class_unrecognized`, once per module. Still open: the duplicate-citation narrowing by class and the outcome strip on `weights.parquet`, both later in the same `StudyRow` batch.
-
-**Measured 2026-11-04, then decided by the maintainer.**
-
-The measurement was run by a subagent against both ported longevitymap `studies.csv` files, v2's
-`evidence/K_definitions_comparison.csv`, and OLS4. The trait term separates **0 of the 12 classes in
-real rows**. Neither ported file fills `trait_efo_id`. The one longevity term in real use, OBA_VT0005372
-(EFO_0004300 "longevity" is obsolete and points to it), covers at least four classes. In principle a
-term separates only PARENTAL_LIFESPAN (EFO_0007796) and HEALTHSPAN (EFO_0009762). Other findings:
-
-- `study_design` is free text and does not separate the classes either.
-- 15 of the K file's 63 PMIDs carry two or three classes.
-- v2 spells three class names two ways (FAMILIAL/FAMILIAL_LONGEVITY, MR/MR_MEDIATOR,
-  BIOMARKER/BIOMARKER_CLOCK).
-- Three real studies fit none of the twelve.
-
-Decided:
-
-- **The column is built:** `phenotype_class` on `StudyRow`, **open, with v2's twelve as the recommended
-  members**. A token outside them draws a warning, which catches spelling drift without refusing a
-  study that fits no class.
-- **One paper, several classes: RM140's rule.** Two rows for one `(variant_key, pmid)` are not duplicate
-  citations when both state `phenotype_class` and the values differ. The key stays as it is, and the
-  duplicate check narrows (`@absent-is-not-different`).
-
-**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format + compiler (derived columns) · **Motivating case** longevitymap v2 requirements §4.5, R-DEF-1 · *for* longevitymap v2 · *related* RM323, RM325
-
-**Need.** v2 sorts every study into one of twelve phenotype classes (`EXTREME_SURVIVAL_CC`,
-`PARENTAL_LIFESPAN`, `OWN_SURVIVAL`, `VIABILITY_AF`, `HEALTHSPAN`, `MULTIVARIATE_AGEING`, `FAMILIAL`,
-`DISEASE_DEPLETION`, `RARE_BURDEN`, `EVOLUTIONARY`, `MR`, `BIOMARKER`), and the class decides what a row
-may do. The plan writes it as a prefix in `study_design`. But `study_design` describes the study
-(case-control, GWAS, meta-analysis) and the class describes the outcome, so a prefix puts two axes in
-one cell (P5).
-
-**Ask first whether it is derivable.** `StudyRow.trait_efo_id` already distinguishes some classes
-(OBA life span against EFO parental longevity). Measure how many of the twelve an ontology term
-separates before adding a column.
-
-**Shape.** One optional column with a vocabulary (closed or recommended-open is a decision). Full ×1.
-Two things become **derived, near-zero**, once it exists:
-
-- *evidence role* (score or annotate). This is the module's own policy over classes, so it belongs in
-  the module's README, never a column.
-- *the outcome strip* per locus (healthspan / lifespan / exceptional survival). Kleene, never
-  two-valued: a locus with no study row of a class is **untested** and withheld, never "no effect".
 
 ## RM327 — pleiotropy has no per-trait row, so a trade-off can only be prose, and `tradeoff` is computed rather than authored
 
@@ -164,25 +114,6 @@ in `negatives` until this table exists.
   the column with that reason rather than the generic stray-column message. When the derived column
   ships, the name moves from the reserved set to `MISPLACED_COLUMN_REASONS`, since it will then be real
   on a generated table and still never authored.
-
-## RM328 — no study row can name the ancestry it was measured in, so "European-only evidence" is a hand-set flag
-
-**Built on 0.8, 2026-11-04: the column.** `StudyRow.ancestry`, closed and multi-valued over `vocab.VALID_SUPERPOPULATIONS`, reaches `studies.parquet` and `reverse`; `pgs.VALID_TRAINING_ANCESTRY` is derived from the same constant plus `multi`. Still open: `eur_only_evidence` on `weights.parquet`, the last commit of the same `StudyRow` batch.
-
-**Decided 2026-11-04 by the maintainer: the 1000G superpopulation codes** (AFR, AMR, EAS, EUR, SAS), the binding `PgsRow.training_ancestry` already uses.
-
-**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format + compiler (derived) · **Motivating case** longevitymap v2 requirements §5.4 (R-ANC-1, R-ANC-2) · *for* longevitymap v2 · *related* RM188 (axis 2)
-
-**What was confirmed.** `StudyRow.population` is free text. `GwasEffectRow.ancestry` and
-`PgsRow.training_ancestry` exist but each is scoped to its own table. RM188 sighted this axis three times
-in other projects (dna-engine's `transferability`, kaiseki, OmniGenis). This is the first in-house
-module that needs it.
-
-**Shape.** A multi-valued `ancestry` on `StudyRow` bound to a vocabulary. **Which one is the decision**:
-the 1000G superpopulation codes behind `training_ancestry`, or the gnomAD population list, and
-`vocab.py` forbids merging the two. Full ×1. Then `eur_only_evidence` is **derived** (near-zero): every
-supporting row says EUR. Kleene again: a row with no ancestry makes the answer unknown, never false.
-The ancestry banner (R-ANC-3) is just-dna-lite's half.
 
 ## RM331 — a study measured on an LD proxy cannot say so, and filing it under the lead checks the proxy's allele against the lead's
 

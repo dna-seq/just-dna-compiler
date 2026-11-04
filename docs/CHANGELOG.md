@@ -41,6 +41,17 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM326, RM328: `weights.parquet` says whether a locus's evidence is European-only, and which outcomes were studied (0.8, uncut)
+
+**format, compiler** — `weights.parquet` gains four derived columns, repeated on each genotype row of a
+locus and read off its supporting study rows (same rsid or same `chrom:start:ref`). `eur_only_evidence`
+is true when every row states only `EUR`, false when one states another code, and null when any states
+none or there are none. The outcome strip `outcome_healthspan`, `outcome_lifespan`,
+`outcome_exceptional` is true when a row's `phenotype_class` maps to the cell
+(`vocab.OUTCOME_STRIP_CELLS`: `HEALTHSPAN`; `PARENTAL_LIFESPAN` and `OWN_SURVIVAL`;
+`EXTREME_SURVIVAL_CC` and `FAMILIAL`) and null otherwise, never false. None is authored and `reverse`
+writes none back. Closes RM326 and RM328.
+
 ## 2026-11-04 — RM326, RM329, RM330: one paper's several outcomes, bands and strata are not duplicate citations (0.8, uncut)
 
 **compiler** — `duplicate_study_citation` reads the 0.8 study columns by RM140's rule: two rows for one
