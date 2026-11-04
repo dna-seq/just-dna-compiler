@@ -2271,7 +2271,9 @@ does not carry a coordinate, and it is the wrong one — RM43 (0.6) is the right
   cell is *unstated*, never the current version, because merge-not-clobber forbids a later pass writing
   into an earlier pass's row. The module-wide half is the pin, `manifest.compilation.vrs_version`:
   the rule this compiler verifies against, `None` when no allele carries an id. A row whose `vrs_spec`
-  differs from the pin is reported as `vrs_version_differs` and not recomputed, never as a mismatch.
+  differs from the pin is reported as `vrs_version_differs`, beside each allele's own verdict; only a
+  substitution under another VRS **major**, whose digest serialization differs, is counted there instead
+  of being a mismatch.
   Both halves exist because a pin alone cannot describe a table mixing runs, and a per-row value alone
   cannot say which version is intended. RM304 was filed believing nothing recorded a version; the
   per-row half had shipped in 0.5 under this name, and 0.8 added the pin, the comparison and the

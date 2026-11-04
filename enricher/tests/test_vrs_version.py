@@ -51,9 +51,9 @@ def test_an_id_recorded_under_another_version_is_reported_and_left_alone() -> No
     assert result.version_differs == {_OTHER: 1}
     assert result.mismatches == []
     lines = result.version_warnings()
-    assert len(lines) == 1
-    assert lines[0].startswith("vrs_version_differs")
-    assert _OTHER in lines[0] and MINTER_VRS_VERSION in lines[0]
+    assert [line.code for line in lines] == ["vrs_version_differs"]
+    assert "minted under VRS" in lines[0]  # the compiler's words for the same finding
+    assert repr(_OTHER) in lines[0] and repr(MINTER_VRS_VERSION) in lines[0]
 
 
 def test_an_id_recorded_with_no_version_is_unstated_and_never_stamped() -> None:
@@ -93,3 +93,14 @@ def test_the_pinned_insertion_mints_its_recorded_id() -> None:
     assert result.minted_normalized == 1
     assert row.vrs_id == "ga4gh:VA.Jml7SNku3QQBCVIj78BGiFvR21bNkos7"
     assert row.vrs_spec == MINTER_VRS_VERSION
+
+
+def test_an_all_substitution_row_is_stamped_with_the_rule_that_minted_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The stdlib mints substitutions under `VRS_SPEC_VERSION`; a library on another minor does not
+    change what minted them, so the stamp follows the route, not the library."""
+    monkeypatch.setattr("just_dna_enricher.vrs.MINTER_VRS_VERSION", _OTHER)
+    row = ResolutionRow(variant_key="k", chrom="11", start=5227002, ref="T", alts="A")
+    mint_resolution_rows([row], offline=True)
+    assert row.vrs_spec == VRS_SPEC_VERSION

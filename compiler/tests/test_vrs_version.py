@@ -94,20 +94,60 @@ def test_the_reason_is_a_published_actionable_code() -> None:
     assert "vrs_version_differs" in ACTIONABLE_WARNING_CODES
 
 
-def test_an_id_under_another_version_is_its_own_reason_and_never_the_mismatch_error() -> None:
-    """The stored id differs from what this tier recomputes, and that is NOT corruption here.
+def test_another_version_is_reported_beside_a_verified_id() -> None:
+    """A correct id under another minor verifies, and the row's version is still reported."""
+    errors, warnings = _verify_vrs_ids([_row(vrs_id=_SICKLE, vrs_spec=_OTHER)])
+    assert errors == []
+    assert _codes(warnings) == ["vrs_version_differs"]
+    assert repr(_OTHER) in str(warnings[0]) and repr(VRS_SPEC_VERSION) in str(warnings[0])
 
-    The control row beside it is the same id stated under this compiler's version: that one is a
-    mismatch and stays an error, which is what proves the version arm is what changed the outcome.
+
+def test_a_stated_version_never_silences_a_corrupt_substitution_within_the_major() -> None:
+    """A substitution needs no normalization, so its id does not move inside a VRS major.
+
+    The 2.1 change is an ambiguous insertion's repeat-unit factor, which this tier never recomputes. A
+    substitution that recomputes differently under a same-major version is corruption, and writing
+    another version into `vrs_spec` is not a way to turn that error into a warning.
     """
-    differs_errors, differs_warnings = _verify_vrs_ids([_row(vrs_id=_MTHFR, vrs_spec=_OTHER)])
-    assert differs_errors == []
-    assert _codes(differs_warnings) == ["vrs_version_differs"]
-    assert _OTHER in str(differs_warnings[0]) and VRS_SPEC_VERSION in str(differs_warnings[0])
-    assert "does not match" not in str(differs_warnings[0])
+    errors, warnings = _verify_vrs_ids([_row(vrs_id=_MTHFR, vrs_spec=_OTHER)])
+    assert any("does not match the id recomputed" in e for e in errors)
+    assert _codes(warnings) == ["vrs_version_differs"]
+
+
+def test_across_a_major_a_different_substitution_id_is_the_version_reason_and_never_the_mismatch_error() -> (
+    None
+):
+    """The serialization a substitution's digest is taken over changed at VRS 2.0 (BRAF V600E has a
+    1.3 id and a 2.0 id), so a difference under another major is expected, counted in the line.
+
+    The control is the same id stated under this compiler's version: a mismatch error, which is what
+    proves the version arm is what changed the outcome.
+    """
+    other_major = f"{int(_major) - 1}.3"
+    errors, warnings = _verify_vrs_ids([_row(vrs_id=_MTHFR, vrs_spec=other_major)])
+    assert errors == []
+    assert _codes(warnings) == ["vrs_version_differs"]
+    assert "1 of their allele id(s) recompute differently" in str(warnings[0])
+    assert "does not match" not in str(warnings[0])
 
     control_errors, _ = _verify_vrs_ids([_row(vrs_id=_MTHFR, vrs_spec=VRS_SPEC_VERSION)])
     assert any("does not match the id recomputed" in e for e in control_errors)
+
+
+def test_an_indel_under_another_version_is_still_counted_unverifiable() -> None:
+    """The version is a fact about the row, reported BESIDE the allele's own outcome, never instead."""
+    errors, warnings = _verify_vrs_ids(
+        [_row(ref="C", alts="CA", vrs_id="ga4gh:VA.LNB3XTeT4xdXxnKyg_RjJhLp5RnUlMpL", vrs_spec=_OTHER)]
+    )
+    assert errors == []
+    assert sorted(_codes(warnings)) == ["vrs_id_unverifiable", "vrs_version_differs"]
+
+
+def test_rows_sharing_a_key_are_counted_as_rows() -> None:
+    """A one-to-many rsID is two rows with one `variant_key`; the line counts rows, as the enricher does."""
+    rows = [_row(variant_key="rs1", locus_index=i, vrs_id=_SICKLE, vrs_spec=_OTHER) for i in range(2)]
+    _, warnings = _verify_vrs_ids(rows)
+    assert str(warnings[0]).startswith("2 row(s)")
 
 
 def test_one_line_per_stated_version_not_per_row() -> None:
@@ -135,11 +175,14 @@ def test_the_same_rule_spelled_with_a_patch_is_not_a_difference(stated: str) -> 
 
 
 def test_an_unreadable_version_differs_and_is_quoted_whole() -> None:
-    """A stated value this grammar cannot read is not the unknown arm (that is `None`) and not the pin."""
+    """A stated value this grammar cannot read is not the pin: it is reported, quoted whole, and the
+    row is verified as unstated — so garbage in the cell cannot launder a corrupt id."""
     errors, warnings = _verify_vrs_ids([_row(vrs_id=_SICKLE, vrs_spec="vrs two")])
     assert errors == []
     assert _codes(warnings) == ["vrs_version_differs"]
     assert "'vrs two'" in str(warnings[0])
+    corrupt_errors, _ = _verify_vrs_ids([_row(vrs_id=_MTHFR, vrs_spec="vrs two")])
+    assert any("does not match the id recomputed" in e for e in corrupt_errors)
 
 
 def test_a_row_stating_no_version_is_verified_exactly_as_before() -> None:
@@ -153,7 +196,7 @@ def test_a_row_stating_no_version_is_verified_exactly_as_before() -> None:
 
 
 def test_compile_reports_the_reason_in_both_modes_and_validate_agrees(tmp_path: Path) -> None:
-    spec = _spec(tmp_path, "differs", _resolution(_MTHFR, _OTHER))
+    spec = _spec(tmp_path, "differs", _resolution(_SICKLE, _OTHER))
     for strict in (False, True):
         result = compile_module(spec, tmp_path / f"out_{strict}", strict=strict)
         assert result.success, result.errors

@@ -54,10 +54,11 @@ version that minted it and the manifest pins the version a module's ids are mean
   means *unstated*.
 - **The pin, `manifest.compilation.vrs_version`**, is the VRS minor the compiler verifies against
   (`"2.0"`), or `null` when no allele in `resolution.csv` carries an id.
-- **New warning code `vrs_version_differs`**: a row whose `vrs_spec` names another minor is not
-  recomputed and never reported as the mismatch error. It is one line per stated version, a warning in
-  both modes, and actionable (re-mint). `vrs mint` and `enrich` report the same reason for recorded ids
-  that differ from the running minter's version.
+- **New warning code `vrs_version_differs`**: a row whose `vrs_spec` names another version is reported
+  beside each allele's own verdict. A substitution that recomputes differently is still the mismatch
+  error within the pin's major, and is counted in this line only under another major, where the digest
+  serialization differs. One line per stated version, a warning in both modes, actionable (re-mint).
+  `vrs mint` and `enrich` report the same code for recorded ids under a version other than the minter's.
 - `ga4gh.vrs` stays capped `<2.4`. The insertion `rs72613567` is pinned to
   `ga4gh:VA.Jml7SNku3QQBCVIj78BGiFvR21bNkos7` behind `JUST_DNA_NETWORK_TESTS=1`. No parquet carries the
   version yet; RM270 carries the minted id and its version onto the artifact.

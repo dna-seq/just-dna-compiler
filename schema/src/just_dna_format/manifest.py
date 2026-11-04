@@ -446,7 +446,7 @@ class Compilation(BaseModel):
         description=(
             "The VRS spec version, at its minor ('2.0'), this module's `vrs_id`s are pinned to: the rule "
             "this compiler verifies against. A `resolution.csv` row stating another version in "
-            "`vrs_spec` is reported as `vrs_version_differs` and not recomputed. None = no allele in "
+            "`vrs_spec` is reported as `vrs_version_differs`. None = no allele in "
             "resolution.csv carries an id, so there is nothing to pin (RM304)."
         ),
     )

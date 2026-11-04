@@ -757,7 +757,7 @@ is the point of the whole design, and conflating them would be a lie about what 
 | **mismatch** | recomputed, and **different** | **error** | **error** |
 | **unverifiable**, the *tier's* limit | could not be recomputed **here**, and no edit would change that | **warning** | **warning** |
 | **unverifiable**, the *row's* contradiction | an id recorded against nothing to check it with | **error** | **error** |
-| **minted under another VRS version** (0.8, RM304) | the row's `vrs_spec` states a VRS minor other than the pin; not recomputed | **warning** `vrs_version_differs` | **warning** |
+| **minted under another VRS version** (0.8, RM304) | the row's `vrs_spec` states a version other than the pin; reported *beside* each allele's own outcome | **warning** `vrs_version_differs` | **warning** |
 
 Note what the mode column does here: **nothing**. This pass is not a mode ladder. Severity comes from
 *whose limit the finding is*, and both answers are the same on both rungs.
@@ -766,19 +766,22 @@ Note what the mode column does here: **nothing**. This pass is not a mode ladder
 inputs, same 20 lines of `hashlib`, same answer — so a disagreement cannot be a difference of opinion
 between implementations. It is corruption, and there is no mode in which carrying it is right.
 
-**An id minted under another VRS version is not compared either (0.8, RM304).** The id rule can change
-at a VRS minor: VRS 2.1 picks the smallest repeat-unit factor for an ambiguous insertion where 2.0 picked
-the greatest, which moves that allele's digest. So a row whose `vrs_spec` names a minor other than the
-one this tier implements (`VRS_SPEC_VERSION`, published as the module's pin
-`manifest.compilation.vrs_version`) is reported as `vrs_version_differs`, one line per stated version,
-and never recomputed — recomputing it under this tier's rule would call a correct id corrupt. A patch
-spelling (`"2.0.1"`, the library's own) reads as its minor through `vrs.vrs_spec_release`, the one
-normalizer both the enricher's stamp and this comparison use. An empty `vrs_spec` is *unstated*, the
-unknown arm, and the row is verified exactly as before: a `resolution.csv` written before the enricher
-recorded versions, or an id a person typed, is not an id under another version. The row's own
-contradiction (no coordinate, no ALT, a symbolic allele) is still an error first; no version excuses it.
-Re-minting clears the warning, so it is actionable rather than carried. The pin is `None` when no allele
-in `resolution.csv` carries an id.
+**An id minted under another VRS version is reported, and changes one verdict (0.8, RM304).** The id
+rule can change at a VRS minor: VRS 2.1 picks the smallest repeat-unit factor for an ambiguous insertion
+where 2.0 picked the greatest, which moves that allele's digest. So a row whose `vrs_spec` names a
+version other than the one this tier implements (`VRS_SPEC_VERSION`, published as the module's pin
+`manifest.compilation.vrs_version`) is reported as `vrs_version_differs`, one line per stated version.
+The line sits **beside** each allele's own outcome, never instead of it: an indel under 2.1 is still
+counted in `vrs_id_unverifiable`, and a substitution is still recomputed. A substitution needs no
+normalization and this tier never recomputes an insertion, so inside the pin's major a substitution that
+recomputes differently is still the corruption error, whatever the cell says; a stated version is not a
+way to silence one. The one verdict it changes is a substitution under another **major** (`"1.3"`),
+whose digest is taken over a different serialization: that difference is expected and is counted in the
+line rather than refused. A patch spelling (`"2.0.1"`, the library's own) reads as its minor through
+`vrs.vrs_spec_release`, the one normalizer the enricher's stamp and this comparison share. An empty
+`vrs_spec` is *unstated*, the unknown arm, and an unreadable one is quoted in the line; both rows are
+verified exactly as before. Re-minting clears the warning, so it is actionable rather than carried. The
+pin is `None` when no allele in `resolution.csv` carries an id.
 
 **An indel is never reported as a mismatch, because it is never compared.** This tier cannot recompute
 an indel's id (justification needs the reference sequence), so it can only report that it *did not

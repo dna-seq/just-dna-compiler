@@ -86,14 +86,24 @@ kept both for the rest of the major. The name `vrs_version` went to the pin, as 
   pass: the enricher never recomputes a stored id, and the pass that does is the compiler's
   `_verify_vrs_ids` (run by `validate` and `compile`). The reason is reported at both places that see
   a stored id: there as warning code `vrs_version_differs`, and at the enricher's `already_present`
-  branch as above. In `_verify_vrs_ids` a row whose stated version differs from the pin is not
-  recomputed. It is reported once per stated version, as a warning in both modes, never as the
-  mismatch error. A row's own contradiction (no coordinate, no ALT, a symbolic allele) is decided
-  first and still errors. A row with no version is verified as before. Because re-minting clears it,
-  the code is actionable, not carried.
-- **Tests.** `compiler/tests/test_vrs_version.py`: the reason against a same-version control that
-  stays a mismatch error; patch spellings and whitespace that are not a difference; the unreadable
-  arm; a table with no `vrs_spec` column that still verifies and still refuses a tampered id; both
+  branch as a `CodedWarning` with the same code and words. In `_verify_vrs_ids` the version is a fact
+  about the row, reported beside each allele's own verdict, never instead of it. The first build put it
+  instead, skipping the recompute, and the code review caught what that did: a substitution needs no
+  normalization and this tier never recomputes an insertion, so the skip removed no false mismatch, and
+  writing `2.1` (or garbage) into `vrs_spec` silenced the corruption error on a substitution. Now:
+  within the pin's major a substitution that recomputes differently is still the corruption error. Only
+  under another major (`1.3`, where the digest serialization differs) is the difference counted in the
+  version line instead. An unreadable version is quoted, and the row is verified as unstated. An indel
+  under another version stays in `vrs_id_unverifiable` too. A warning in both modes, actionable because
+  re-minting clears it.
+- **Stamped by route.** An all-substitution row is stamped with the format tier's `VRS_SPEC_VERSION`,
+  the rule its stdlib minted under. A row with any normalized allele gets the library's version. They are
+  one minor today, so nothing written changes; stamping by route keeps the stamp true if they split.
+- **Tests.** `compiler/tests/test_vrs_version.py`: the reason beside a verified id; a same-major
+  corrupt substitution still refused; a cross-major one counted, against a same-version control that
+  stays a mismatch error; an indel counted in both lines; rows sharing a key counted as rows; patch
+  spellings and whitespace that are not a difference; the unreadable arm, which still refuses a corrupt
+  id; a table with no `vrs_spec` column that still verifies and still refuses a tampered id; both
   modes through `compile_module`, with `validate_spec` agreeing; the pin present, and absent with no
   table or no id; a compile → reverse → compile fixed point. `enricher/tests/test_vrs_version.py`: the
   minter's version read off the library; the library's minor equal to `VRS_SPEC_VERSION` (red the

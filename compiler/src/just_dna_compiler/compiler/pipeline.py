@@ -333,8 +333,10 @@ def compile_module(
             if w not in all_warnings
         )
         vrs_alleles, vrs_identified, _gaps = _vrs_coverage(resolution_rows)
-        # The pin (RM304): the rule `_verify_vrs_ids` just compared every row against, published only
-        # when there is an id to pin — `None` on a table naming no allele, never a version nobody used.
+        # The pin (RM304): the rule `_verify_vrs_ids` just compared every row against — the version
+        # this compiler holds the module's ids to, which rows minted under another version are reported
+        # against (`vrs_version_differs`), not a census of what minted them. `None` when no allele
+        # carries an id, since there is then nothing to pin.
         vrs_version = VRS_SPEC_VERSION if vrs_identified else None
         # The table's identity is stamped **here**, where the table was read, rather than inside the
         # `variants`-gated resolution block below — which is where it used to sit, and which meant a

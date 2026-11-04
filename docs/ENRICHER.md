@@ -2340,12 +2340,15 @@ point of a content-addressed identity is that it does not depend on which source
 **Each minted row records which VRS minted it (0.8, RM304).** `vrs.MINTER_VRS_VERSION` is read off the
 library, `ga4gh.vrs.VRS_VERSION` (`"2.0.1"` under `ga4gh.vrs` 2.3.3), and stored at the spec's minor
 through `just_dna_format.vrs.vrs_spec_release`, so the `vrs_spec` cell reads `"2.0"` as every table
-written since 0.5 already does. The minor is the grain because VRS 2.1 changes the repeat-unit factor
+written since 0.5 already does. A row is stamped with the rule of the route that minted it: the
+library's version if any allele was normalized, else the format tier's `VRS_SPEC_VERSION` for an
+all-substitution row (the stdlib minted it). The minor is the grain because VRS 2.1 changes the repeat-unit factor
 an ambiguous insertion is normalized with, which moves that allele's id; a patch never does. Only a
 row this pass mints is stamped. A row whose id was already recorded keeps its `vrs_spec` as it is, an
 empty one included (this run did not mint that id, so it may not claim its version), and one stating a
 minor other than the minter's is counted in `MintResult.version_differs` and reported as
-`vrs_version_differs: …` by `enrich` and `vrs mint` — never re-minted over, never called a mismatch.
+`vrs_version_differs` (a `CodedWarning`, in the compiler's words) by `enrich` and `vrs mint` — never
+re-minted over, never called a mismatch.
 `enricher/tests/test_vrs_version.py` asserts the library's minor equals the format tier's
 `VRS_SPEC_VERSION` (the stdlib mints the substitutions, the library the indels, and one row may hold
 both), and pins the insertion `rs72613567` (`4-87310240-T-TA` → `ga4gh:VA.Jml7SNku3QQBCVIj78BGiFvR21bNkos7`)

@@ -129,7 +129,8 @@ class ResolutionRow(BaseModel):
             "id rule can change at a minor (VRS 2.1 re-ids some ambiguous insertions), so this is "
             "what tells an id minted under another rule from a corrupt one: a stated version that "
             "differs from the module's pin (`manifest.compilation.vrs_version`) is reported as "
-            "`vrs_version_differs` and never recomputed. Written only by the run that minted the id; "
+            "`vrs_version_differs`; a substitution that recomputes differently under another VRS major is counted "
+            "there, never as a mismatch. Written only by the run that minted the id; "
             "empty means unstated, never the current version (RM304)."
         ),
     )

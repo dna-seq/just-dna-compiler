@@ -10,9 +10,9 @@
 
 Feature: Identity and the VRS verify pass
   A `ga4gh:VA.…` is content-addressed, which makes it the one column in the artifact checkable against
-  itself with no reference, no network and no dependency. Every allele lands in exactly one of four
-  outcomes, and the difference between mismatch and unverifiable is the one that matters; the fourth,
-  an id minted under another VRS version, is decided before either (RM304).
+  itself with no reference, no network and no dependency. Every allele lands in exactly one of three
+  outcomes, and the difference between the last two is the one that matters. A row minted under
+  another VRS version is reported beside them, never instead (RM304).
 
   # source: compiler/src/just_dna_compiler/compiler/variant_checks.py
   # anchor: _restamp_for_build
@@ -78,18 +78,19 @@ Feature: Identity and the VRS verify pass
   # source: compiler/src/just_dna_compiler/compiler/vrs_checks.py
   # anchor: _other_version_warnings
   @code:vrs_version_differs @actionable @both_modes
-  Scenario: an id minted under another VRS version is its own reason, never a mismatch
-    Given a resolution.csv row whose vrs_spec states a VRS minor other than the pinned one
+  Scenario: an id minted under another VRS version is its own reason, reported beside the verdict
+    Given a resolution.csv row whose vrs_spec states a VRS version other than the pinned one
     When the module is compiled in either mode
-    Then a warning fires saying the row's id was "minted under VRS" another version and is "not recomputed"
+    Then a warning fires saying the rows carry a vrs_id "minted under VRS" that version
     And the pinned version is named as manifest.compilation.vrs_version
     And one line is emitted per stated version with a row count and named examples
-    And the compile does not refuse, and nothing calls it a mismatch
-    But a row whose vrs_spec is empty is verified exactly as before, since no version is not another version
-    # RM304. VRS 2.1 re-ids some ambiguous insertions, so recomputing a 2.1 id under this tier's 2.0 rule
-    # gives a difference that is neither corruption nor a wrong event (`@vrs-three-outcomes`). A patch
-    # spelling ("2.0.1", the library's own) is the same rule as "2.0". Re-minting clears it, so it is
-    # actionable, never carried.
+    And each allele still reaches its own outcome: verified, unverifiable, or a mismatch error
+    But under another VRS major a substitution that "recompute differently" is counted in the line, not refused
+    And a row whose vrs_spec is empty or unreadable is verified as unstated
+    # RM304. VRS 2.1 re-ids some ambiguous insertions, which this tier never recomputes; a substitution
+    # needs no normalization, so inside one major its id does not move and a mismatch stays corruption
+    # whatever the cell says. A patch spelling ("2.0.1", the library's own) is the same rule as "2.0".
+    # Re-minting clears it, so it is actionable, never carried.
 
   # source: compiler/src/just_dna_compiler/compiler/vrs_checks.py
   # anchor: _verify_vrs_ids

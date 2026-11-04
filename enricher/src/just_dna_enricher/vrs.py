@@ -51,8 +51,10 @@ from dataclasses import dataclass, field
 from ga4gh.core.identifiers import ga4gh_identify
 from ga4gh.vrs import VRS_VERSION, models, normalize
 from just_dna_format.alleles import MISSING_ALLELE, is_symbolic_allele, is_unobservable_allele
+from just_dna_format.findings import CodedWarning
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.vrs import (
+    VRS_SPEC_VERSION,
     UnsupportedBuildError,
     derive_vrs_allele_id,
     is_substitution,
@@ -222,13 +224,16 @@ class MintResult:
     def version_warnings(self) -> list[str]:
         """One `vrs_version_differs` line per stated version, or nothing (RM304).
 
-        The reason leads the line, so a caller grouping the run's output keys on it rather than on
-        prose; the same name is the compiler's warning code for the same finding at compile.
+        A `CodedWarning`, so the code survives to a caller filtering on `.code`; the compiler emits the
+        same code, in the same words, for the same rows at compile.
         """
         return [
-            f"vrs_version_differs: {count} row(s) carry a vrs_id recorded under VRS {stated!r}, and this "
-            f"minter implements VRS {MINTER_VRS_VERSION!r}; left as recorded — clear vrs_id and "
-            f"vrs_spec on those rows and re-run to re-mint them"
+            CodedWarning(
+                "vrs_version_differs",
+                f"{count} row(s) carry a vrs_id minted under VRS {stated!r}, and this minter implements "
+                f"VRS {MINTER_VRS_VERSION!r}; left as recorded. Clear vrs_id and vrs_spec on those rows "
+                f"and re-run `just-dna-enricher vrs mint` to re-mint them.",
+            )
             for stated, count in sorted(self.version_differs.items(), key=lambda kv: (-kv[1], kv[0]))
         ]
 
@@ -439,6 +444,7 @@ def mint_resolution_rows(
                     )
         else:
             minted: list[str | None] = []
+            routes: set[str] = set()
             for alt in alts:
                 vrs_id, how = minter.mint(row.chrom, row.start, row.ref, alt, build=row.genome_build)
                 minted.append(vrs_id)
@@ -448,6 +454,7 @@ def mint_resolution_rows(
                     result.unmintable_reasons[reason] = result.unmintable_reasons.get(reason, 0) + 1
                     continue
                 result.identified += 1
+                routes.add(how or "")
                 if how == "stdlib":
                     result.minted_stdlib += 1
                 else:
@@ -457,7 +464,10 @@ def mint_resolution_rows(
             # would be the same abstention this function was just fixed for, one level down.
             row.vrs_id = join_vrs_ids(minted)
             if row.vrs_id is not None:
-                row.vrs_spec = MINTER_VRS_VERSION
+                # The rule that minted the row: the library's for any normalized allele, else the format
+                # tier's stdlib. They are one minor today (a test asserts it); stamping by route keeps
+                # an all-substitution row truthful the day a library upgrade makes them two.
+                row.vrs_spec = MINTER_VRS_VERSION if "normalized" in routes else VRS_SPEC_VERSION
         reported = (source_ids or {}).get(row.variant_key)
         # A source serves one id per allele, so it is compared against the member for *its* allele,
         # never against the whole cell — on a multi-allelic row the joined value could not match any
