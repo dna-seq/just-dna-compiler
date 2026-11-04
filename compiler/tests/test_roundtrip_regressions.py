@@ -458,6 +458,7 @@ def test_every_column_the_studies_writer_declares_is_actually_written(tmp_path: 
         "age_of": "parent",
         "stratum": "parent_sex",
         "stratum_level": "father",
+        "proxy_rsid": "rs4970836",
     }
     # Derived from the model, so a column added to StudyRow without a value here fails loudly rather
     # than being quietly excluded from the guard.

@@ -133,6 +133,14 @@ def _fill_stratum(i: int, row: dict[str, str]) -> None:
     row["stratum"], row["stratum_level"] = pair[i % len(pair)]
 
 
+def _fill_proxy(i: int, row: dict[str, str]) -> None:
+    """A proxy on every other row, two different ones, never the row's own rsID."""
+    if i % 2 == 0:
+        row["proxy_rsid"] = "rs111033563" if row["rsid"] != "rs111033563" else "rs1800562"
+        if i % 4 == 2:
+            row["proxy_rsid"] = "rs4970836" if row["rsid"] else row["proxy_rsid"]
+
+
 #: Each column group this batch adds, with a fill that gives it distinct stated values and empty
 #: cells, and how a parquet cell reads back as the CSV cell it came from.
 _GROUPS: dict[str, tuple[tuple[str, ...], Fill]] = {
@@ -141,6 +149,7 @@ _GROUPS: dict[str, tuple[tuple[str, ...], Fill]] = {
     "RM328": (("ancestry",), _fill_ancestry),
     "RM329": (("age_min", "age_max", "age_of"), _fill_age_band),
     "RM330": (("stratum", "stratum_level"), _fill_stratum),
+    "RM331": (("proxy_rsid",), _fill_proxy),
 }
 
 
@@ -376,3 +385,72 @@ def test_a_stratum_and_its_level_are_written_both_or_neither() -> None:
             _study(**cells)
     # Free text: no vocabulary on either half.
     assert not {"stratum", "stratum_level"} & set(field_vocabularies(StudyRow))
+
+
+# ── RM331: a study measured on an LD proxy ──────────────────────────────────────────────────────
+
+
+def _one_study(tmp_path: Path, name: str, cells: dict[str, str]) -> Path:
+    """The HFE example with one extra study row on rs1800562, carrying `cells`.
+
+    rs1800562 resolves to G/A in the example's own `resolution.csv` and rs111033563 to A/C, so an
+    effect allele of `C` is the proxy's and not the lead's, and `G` is the lead's and not the proxy's.
+    """
+    columns = tuple(c for c in sorted(cells) if c != "effect_allele")
+
+    def fill(i: int, row: dict[str, str]) -> None:
+        return None
+
+    spec = _spec(tmp_path, name, ("effect_allele", *columns), fill)
+    header, rows = _read_rows(spec / "studies.csv")
+    extra = dict.fromkeys(header, "")
+    extra.update({"rsid": "rs1800562", "pmid": "29227965", **cells})
+    _write_rows(spec / "studies.csv", header, [*rows, extra])
+    return spec
+
+
+def _proxy_findings(tmp_path: Path, spec: Path, *, strict: bool) -> tuple[bool, list[str]]:
+    result = compile_module(spec, tmp_path / f"out_{spec.name}_{strict}", strict=strict)
+    # A refused compile carries the finding in `errors` and in the inherited validation warnings, so the
+    # same sentence can arrive twice; the claim here is about distinct findings.
+    found = sorted(
+        {m for m in (*result.errors, *result.warnings) if "effect_allele" in m and "29227965" in m}
+    )
+    return result.success, found
+
+
+def test_the_allele_check_reads_the_proxys_alleles_when_one_is_stated(tmp_path: Path) -> None:
+    """Filed under the lead, the proxy's allele used to be checked against the lead's and refused."""
+    lead_only = _one_study(tmp_path, "lead", {"effect_allele": "C"})
+    ok, found = _proxy_findings(tmp_path, lead_only, strict=True)
+    assert not ok and len(found) == 1  # the 0.7 behaviour, kept for a row with no proxy
+
+    proxied = _one_study(tmp_path, "proxied", {"effect_allele": "C", "proxy_rsid": "rs111033563"})
+    ok, found = _proxy_findings(tmp_path, proxied, strict=True)
+    assert ok and found == []
+
+
+def test_a_wrong_allele_for_the_proxy_is_refused_and_names_the_proxy(tmp_path: Path) -> None:
+    spec = _one_study(tmp_path, "wrong", {"effect_allele": "G", "proxy_rsid": "rs111033563"})
+    ok, found = _proxy_findings(tmp_path, spec, strict=True)
+    assert not ok and len(found) == 1
+    assert "proxy rs111033563" in found[0] and "A/C" in found[0]
+    ok, found = _proxy_findings(tmp_path, spec, strict=False)
+    assert ok and len(found) == 1
+
+
+def test_an_unresolved_proxy_withholds_rather_than_refuses(tmp_path: Path) -> None:
+    """No `resolution.csv` row for the proxy is unknown: never the lead's alleles, never a refusal."""
+    spec = _one_study(tmp_path, "unresolved", {"effect_allele": "T", "proxy_rsid": "rs4970836"})
+    ok, found = _proxy_findings(tmp_path, spec, strict=True)
+    assert ok and found == []
+
+
+def test_a_proxy_is_an_rsid_and_never_the_row_itself() -> None:
+    assert _study(proxy_rsid="rs4970836").proxy_rsid == "rs4970836"
+    for proxy in ("4970836", "rs1800562"):
+        with pytest.raises(ValidationError, match="proxy_rsid"):
+            _study(proxy_rsid=proxy)
+    # A proxy is a proxy OF something: a row naming no variant cannot carry one.
+    with pytest.raises(ValidationError, match="proxy_rsid"):
+        StudyRow(pmid="29227965", proxy_rsid="rs4970836")

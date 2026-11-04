@@ -54,6 +54,20 @@ Feature: Alleles, genotypes and contig ploidy
     # `StudyRow` has `ref` but no `alts`, so `{ref}` alone would flag every study of a non-reference
     # allele, which is most of them. Silent under `--no-resolve` for the same reason, which is correct.
 
+  # source: compiler/src/just_dna_compiler/compiler/allele_checks.py
+  # anchor: _check_study_effect_alleles
+  @code:study_effect_allele_not_at_locus @actionable @ladder
+  Scenario: a study measured on an LD proxy is checked against the proxy
+    Given a studies.csv row filed under its lead rsID with a proxy_rsid
+    And an effect_allele that is the lead's allele and not the proxy's
+    When the module is compiled in strict mode
+    Then the compile is refused naming the lead "via proxy" and the proxy's alleles
+    And an effect_allele that is the proxy's allele and not the lead's compiles
+    And a proxy with no resolution.csv row withholds rather than refuses
+    # RM331: filed under the lead, the proxy's allele used to be checked against the lead's alleles —
+    # refused when the loci differ, passed with the wrong meaning when they match. The lead's alleles
+    # are never a fallback for an unresolved proxy: unknown withholds.
+
   # source: compiler/src/just_dna_compiler/compiler/variant_checks.py
   # anchor: _check_conclusion_genotypes
   @code:conclusion_names_other_genotype @actionable @both_modes

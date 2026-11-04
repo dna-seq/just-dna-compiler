@@ -451,13 +451,17 @@ def _module_subjects(spec_dir: Path) -> list[tuple[str, str]]:
 
     `studies.csv` carries `rsid` too and is deliberately not a subject: a study row *references* the
     variant it grounds, which the module already carries as a row of its own, so admitting it would
-    add no rsID and change which table an identity came from.
+    add no rsID and change which table an identity came from. Its `proxy_rsid` (RM331) is a resolution
+    subject but not one of these: an association for an LD proxy is not an association for the module's
+    variant, so this pass asks without proxies.
     """
     variants, errors, _ = load_spec_variants(spec_dir)
     if errors and (spec_dir / "variants.csv").exists():
         raise GwasError(f"variants.csv is invalid: {errors[0]}")
     try:
-        subjects = collect_subjects(spec_dir, variants, spec_genome_build(spec_dir))
+        subjects = collect_subjects(
+            spec_dir, variants, spec_genome_build(spec_dir), include_study_proxies=False
+        )
     except EnrichmentError as exc:
         # A pass owes its caller its own exception type — the same re-raise `gene_validity` performs
         # around `module_genes`, and for the same reason: nothing up this stack catches the other

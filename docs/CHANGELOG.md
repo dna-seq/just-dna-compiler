@@ -41,6 +41,16 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM331 (the author's half): a study measured on an LD proxy says so, and its allele is checked against the proxy (0.8, uncut)
+
+**format, compiler, enricher** — `studies.csv` gains `proxy_rsid`, the variant a study measured when it
+stood in for the row's lead. A proxy on a row naming no variant, or equal to its own `rsid`, is refused.
+`study_effect_allele_not_at_locus` checks `effect_allele` against the proxy's resolved alleles when one is
+stated, never the lead's, and names both in its text; a proxy with no `resolution.csv` row withholds.
+`enrich` resolves each stated proxy as a subject (after every table naming a module variant), so the
+row exists; the GWAS pass leaves proxies out. The r² between proxy and lead, computed in the study's
+`ancestry`, is still to come on 0.8.
+
 ## 2026-11-04 — RM330: a study row states the stratum its estimate was measured in (0.8, uncut)
 
 **format, compiler** — `studies.csv` gains `stratum` and `stratum_level`, free text and written both or

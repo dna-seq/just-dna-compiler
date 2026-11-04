@@ -252,6 +252,11 @@ age it is: a parental-lifespan study bands by the parent's age at death, not the
 `stratum_level` the level (`sex`/`male`, `parent_sex`/`father`); one without the other is refused. One
 pair holds one modifier, so "hypertensive men" keeps its second modifier in `statistical_test`.
 
+**A study measured on an LD proxy is filed under the lead, with the proxy in `proxy_rsid`.** The
+`effect_allele` is then the proxy's allele, and that is what the compiler checks it against; filed
+under the proxy's own rsID instead, the row would be an orphan. Write only the rsID: r² means nothing
+without its population, so it is computed rather than typed.
+
 **The symptom of confusing it with `literature.csv` is a dropped row.** `literature.csv` is
 machine-produced and keeps every article it found; the compiler **discards an uncited literature row**
 when nothing references it. `studies.csv` is the authored side and is never dropped. If a citation

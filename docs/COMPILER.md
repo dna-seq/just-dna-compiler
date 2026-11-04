@@ -437,6 +437,14 @@ the rows stand; the warning exists for the second spelling, since v2 writes `FAM
 `FAMILIAL` and `MR_MEDIATOR` beside `MR`. Text: `studies.csv phenotype_class outside the recommended
 set: 'FAMILIAL_LONGEVITY' (2 rows), … — the set is open, so the rows stand; …`.
 
+**A proxied study is checked against the proxy (0.8, RM331).** `study_effect_allele_not_at_locus` reads
+the resolved alleles of `proxy_rsid` when a row states one, never the lead's: filed under the lead, a
+proxy's allele used to be refused when the two loci differ and passed with the wrong meaning when they
+happen to match. The text names both (`rs646776 via proxy rs4970836 (PMID …): effect_allele 'T' is not
+among the resolved alleles at the proxy (A/C/G)`); a row with no proxy reads exactly as before. A proxy
+with no `resolution.csv` row withholds, as an unresolved lead does — the enricher resolves proxies as
+subjects so the row exists.
+
 **Only *both stated and different* suppresses the warning.** The rule is Kleene rather than `a != b`:
 an absent `statistical_test` is **unknown**, and unknown against a stated value cannot establish that
 two rows describe separate work. So a pair where neither row names an analysis, where both name the

@@ -289,6 +289,8 @@ def _build_studies(studies: list[StudyRow], module_name: str) -> pl.DataFrame:
                 # RM330: the stratum the estimate was measured in, and its level.
                 "stratum": s.stratum,
                 "stratum_level": s.stratum_level,
+                # RM331: the LD proxy the study measured, when it was not the lead itself.
+                "proxy_rsid": s.proxy_rsid,
             }
         )
     schema = {
@@ -328,5 +330,6 @@ def _build_studies(studies: list[StudyRow], module_name: str) -> pl.DataFrame:
         "age_of": pl.Utf8,
         "stratum": pl.Utf8,
         "stratum_level": pl.Utf8,
+        "proxy_rsid": pl.Utf8,
     }
     return pl.DataFrame(records, schema=schema)

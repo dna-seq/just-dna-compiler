@@ -14,7 +14,7 @@ from just_dna_format.base import derive_variant_key
 from just_dna_format.binning import HeteroplasmyRow
 from just_dna_format.meta import MetaRow, parse_members
 from just_dna_format.pgx import HaplotypeRow, PharmVariantRow
-from just_dna_format.spec import VariantRow
+from just_dna_format.spec import StudyRow, VariantRow
 from just_dna_format.vrs import normalize_chrom, par_partner
 
 from just_dna_enricher.enrich.outcome import EnrichmentError
@@ -65,7 +65,11 @@ def _subject_of_variant(v: VariantRow, genome_build: str = "GRCh38") -> Subject:
 
 
 def collect_subjects(
-    spec_dir: Path, variants: list[VariantRow], genome_build: str = "GRCh38"
+    spec_dir: Path,
+    variants: list[VariantRow],
+    genome_build: str = "GRCh38",
+    *,
+    include_study_proxies: bool = True,
 ) -> list[Subject]:
     """Every row in the spec that needs a coordinate, `variants.csv` first, deduped by `variant_key`.
 
@@ -85,6 +89,16 @@ def collect_subjects(
     inline. The stamped value is the same expression, frozen at load from the authored columns, so
     nothing here changes; and `PharmVariantRow.alts`, added by the same item, is deliberately not read
     here because it is compiler-filled data rather than an authored fact.
+
+    **A study's LD proxy is a subject too, last** (RM331, 0.8). `StudyRow.proxy_rsid` names the variant a
+    study measured in place of the row's lead, and the compiler checks the row's `effect_allele` against
+    the proxy's resolved alleles — which exist only if this asks for them. A proxy is usually not a
+    module variant, so it is admitted here, after every table above: one that is also a module variant
+    keeps that row's subject, and the precedence above is untouched. It carries no `constraint`: the
+    compile check is what judges the allele, and filtering loci by it here would drop the very loci that
+    check needs. `include_study_proxies=False` is for a pass about the module's own variants (the GWAS
+    Catalog pass), which a proxy is not. The study rows themselves stay out, as before: a study row
+    *references* a variant the module already carries.
     """
     subjects: list[Subject] = [_subject_of_variant(v, genome_build) for v in variants]
 
@@ -149,6 +163,17 @@ def collect_subjects(
                 "heteroplasmy.csv",
             )
             for r in rows
+        )
+
+    studies_path = spec_dir / "studies.csv"
+    if include_study_proxies and studies_path.exists():
+        rows, errors, _ = load_csv_rows(studies_path, StudyRow, "studies.csv")
+        if errors:
+            raise EnrichmentError(f"studies.csv is invalid: {errors[0]}")
+        subjects.extend(
+            Subject(r.proxy_rsid, r.proxy_rsid, None, None, None, None, None, "studies.csv")
+            for r in rows
+            if r.proxy_rsid is not None
         )
 
     deduped: dict[str, Subject] = {}

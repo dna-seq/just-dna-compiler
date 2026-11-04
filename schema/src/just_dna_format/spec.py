@@ -55,6 +55,7 @@ from just_dna_format.vocab import (
     ALLELE_PATTERN,  # noqa: F401 — re-exported for backward compat (genotype grammar moved to base)
     RECOMMENDED_EFFECT_MEASURES,
     RECOMMENDED_PHENOTYPE_CLASSES,
+    RSID_PATTERN,
     VALID_AGE_OF,
     VALID_CLIN_SIG,  # noqa: F401 — re-exported for backward compat (see note below)
     VALID_DIRECTIONS,  # noqa: F401 — re-exported for backward compat
@@ -1514,6 +1515,19 @@ class StudyRow(CitationPair, AuthoredModel):
         default=None,
         description="The level of `stratum` this estimate was measured in, e.g. `male`, `father`, `never`.",
     )
+    # RM331, the author's half: the variant the study actually MEASURED, when it is an LD proxy of the
+    # row's own (lead) variant. The row stays filed under the lead; `effect_allele` is then the proxy's
+    # allele, and the compiler checks it against the proxy's alleles. Authors write only the rsID: r²
+    # means nothing without its population, so the pair is computed by the enricher, never typed.
+    proxy_rsid: str | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description=(
+            "The dbSNP id of the variant this study measured, when it is an LD proxy of the row's "
+            "variant. `effect_allele` is then an allele of the proxy. r² and its population are "
+            "computed, never authored."
+        ),
+    )
 
     @property
     def variant_key(self) -> str | None:
@@ -1587,6 +1601,31 @@ class StudyRow(CitationPair, AuthoredModel):
                 f"confidence={self.confidence!r} names a magnitude with no instrument beside it — "
                 f"set confidence_unit (e.g. 'civic_evidence_status'), because two sources publish "
                 f"values on scales that are not the same quantity"
+            )
+        return self
+
+    @field_validator("proxy_rsid")
+    @classmethod
+    def _validate_proxy_rsid(cls, v: str | None) -> str | None:
+        if v is not None and not RSID_PATTERN.match(v):
+            raise ValueError(f"proxy_rsid must match rs<digits>, got: {v!r}")
+        return v
+
+    @model_validator(mode="after")
+    def _refuse_a_proxy_of_nothing_or_of_itself(self) -> "StudyRow":
+        # RM331. A proxy stands in for the row's own variant, so a row naming no variant has nothing it
+        # could be a proxy of, and a proxy equal to the row's rsID is the lead itself, written twice.
+        if self.proxy_rsid is None:
+            return self
+        if self.rsid is None and self.chrom is None:
+            raise ValueError(
+                f"proxy_rsid={self.proxy_rsid!r} on a row that names no variant — a proxy stands in "
+                f"for the row's own variant, so set rsid (or chrom/start/ref) to the lead it proxies"
+            )
+        if self.proxy_rsid == self.rsid:
+            raise ValueError(
+                f"proxy_rsid={self.proxy_rsid!r} is the row's own rsid — leave proxy_rsid empty when "
+                f"the study measured the lead itself"
             )
         return self
 
