@@ -407,6 +407,16 @@ mirroring the derived table. Full ×1–2. A sign convention ("positive = shorte
 
 **Placement settled 2026-11-04.** The effector-confidence label is never authored (RM323's cut). This lane's derived table is one of its inputs, beside coloc and the coding consequence.
 
+**Grain widened 2026-11-04 (pm, on the lead's measurement).** `locus_to_gene.csv` covers every study locus a
+module variant is a **member** of, not only the ones it leads. Measured on the full 26.09 build: rs1800562
+(HFE C282Y) sits in 82 credible sets and leads none, and rs646776 leads 205 of the 2,061 it is in. A lead-only
+table is empty for an HFE module, so it fails the case the lane exists for. `variant_key` joins the key
+`(study_locus_id, gene_id, variant_key)` and means the module variant asked about. `lead_variant_id` still
+names the source's lead, and the member's weight is its posterior on `gwas_effects.csv` (RM239). The cost is
+one row per member variant and no new column, in a machine-written table. `colocalisations.csv` takes the
+same rule if it is lead-only too. Chosen over two alternatives: lead-only, which fails HFE, and a
+`study_locus_id` column on `gwas_effects.csv`, which adds a column.
+
 **Licence probed 2026-11-04 (all claims checked at the source); decided by the maintainer: build, under Open
 Targets' own terms plus its notice.**
 
