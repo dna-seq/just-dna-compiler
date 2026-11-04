@@ -1,0 +1,51 @@
+{
+ "10.1101/2025.11.27.690701": {
+  "hitCount": 1,
+  "resultList": {
+   "result": [
+    {
+     "id": "PPR1129025",
+     "source": "PPR",
+     "doi": "10.1101/2025.11.27.690701",
+     "title": "Unraveling single-molecule reactions via multiplexed in-situ DNA sequencing",
+     "isOpenAccess": "Y",
+     "inEPMC": "Y",
+     "inPMC": "N",
+     "license": "cc by",
+     "fullTextIdList": {
+      "fullTextId": [
+       "PPR1129025"
+      ]
+     },
+     "abstractText": "DNA sequence regulates complex reactions and protein-DNA interactions, yet sequence effects remain poorly understood due to the lack of direct, high-throughput approaches to study sequence-dependence at the single-molecule level. Here, we introduce Single-molecule Phenotyping and In-Situ Sequencing (SPIN-Seq), a DNA-based, protein-free method that links functional and structural properties of a single DNA molecule with the sequence of that same molecule. After performing functional assays on immobilized DNA molecules, SPIN-Seq uses sequencing-by-transient-hybridization on the same surface and instrument to read sequences in each immobilized DNA molecule, directly linking phenotype and genotype. Applying SPIN-Seq, we dissected the interaction of a transcription factor with its target sequence, and revealed the sequence-dependence of RNA polymerase pausing and reaction-path branching during initial transcription. Our method provides powerful, systematic ways to understand complex molecular mechanisms and their sequence dependence.",
+     "firstPublicationDate": "2025-12-02"
+    }
+   ]
+  }
+ },
+ "10.1101/2024.06.17.599351": {
+  "hitCount": 1,
+  "resultList": {
+   "result": [
+    {
+     "id": "PPR1146237",
+     "source": "PPR",
+     "doi": "10.1101/2024.06.17.599351",
+     "title": "Aberrant Transitional Alveolar Epithelial Cells Promote Pathogenic Activation of Lung Fibroblasts in Preclinical Fibrosis Modeling",
+     "isOpenAccess": "N",
+     "inEPMC": "N",
+     "inPMC": "N",
+     "license": "cc by-nc-nd",
+     "abstractText": "Pulmonary fibrosis (PF) is a chronic progressive lung disease histopathologically characterized by fibrotic remodeling and the presence of pathological epithelial and mesenchymal cell populations in the distal lung parenchyma. Within the epithelial compartment, a subset of alveolar type 2 cells (AT2s) enter and persist in an aberrant transitional state. Whether and how these aberrant transitional cells participate in lung fibrosis is not known. To address this, we exploited the  Sftpc  C121G mouse model, where we previously demonstrated that chronic expression of a PF-associated point mutation (  C121G ) in the AT2-specific surfactant protein C (  Sftpc ) gene results in spontaneous and progressive fibrosis driven by intrinsic AT2 dysfunction. We utilized single cell RNA sequencing to demonstrate the emergence of pathologic epithelial and mesenchymal cells in the  Sftpc  C121G murine lung fibrosis model, including aberrant transitional alveolar epithelial cells as well as transitional and fibrotic fibroblasts. Aberrant transitional alveolar epithelial cells share similar transcriptional profiles to human aberrant basaloid cells, including the upregulation of profibrotic gene markers (  Fn1, Ctgf, Tgfb2, Pdgfb, Spp1 ), and develop a unique interactome with pathogenic lung fibroblasts. We developed a method to reliably flow sort aberrant transitional alveolar epithelial cells, and we highlight their ability to cause fibrotic activation of fibroblasts in  ex vivo organoid assays and using conditioned supernatant, suggesting a profibrotic secretome. We conclude that aberrant transitional alveolar epithelial cells actively contribute to fibrotic lung remodeling through pathogenic activation of alveolar fibroblasts.",
+     "firstPublicationDate": "2024-06-18"
+    }
+   ]
+  }
+ },
+ "10.9999/definitely-not-a-real-doi": {
+  "hitCount": 0,
+  "resultList": {
+   "result": []
+  }
+ }
+}

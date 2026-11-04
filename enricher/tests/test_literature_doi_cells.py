@@ -10,7 +10,9 @@ import csv
 import io
 from pathlib import Path
 
-from just_dna_enricher.literature import _citations, enrich_literature
+import httpx
+from just_dna_enricher.literature import CrossrefClient, _citations, enrich_literature
+from just_dna_enricher.net import PacingGate
 from just_dna_format.layout import VERIFICATION_JSON
 from just_dna_format.spec import PMID_NONE, StudyRow
 from just_dna_format.verification import read_verification
@@ -53,8 +55,8 @@ def _quote_record(spec: Path):
 
 def test_a_quote_on_a_preprint_row_is_never_reported_as_no_quote(tmp_path: Path) -> None:
     """`_citations` has no key for a `NONE` row, so its quote sat in none of the pass's counts and the
-    record said "no provenance quote or regex on any citation" about a module carrying one. It is a
-    question this pass cannot put (it reads text by PubMed id), so `unsupported`, said with the count."""
+    record said "no provenance quote or regex on any citation" about a module carrying one. Since RM349
+    an online run matches it by DOI, so offline the reason is `offline`, said with the count."""
     spec = _spec(
         tmp_path / "s",
         f"rsid,pmid,doi,provenance_quote\nrs4988235,{PMID_NONE},{_DOI},lactase persistence\n",
@@ -63,7 +65,7 @@ def test_a_quote_on_a_preprint_row_is_never_reported_as_no_quote(tmp_path: Path)
     assert result.quotes_authored == 0
     assert result.quotes_without_pmid == 1
     record = _quote_record(spec)
-    assert record.skipped == "unsupported"
+    assert record.skipped == "offline"
     assert "1 authored quote(s) sit on citation(s) whose pmid is NONE" in (record.detail or "")
 
 
@@ -114,20 +116,40 @@ def _existence_record(spec: Path):
     return {r.check: r for r in read_verification(spec / VERIFICATION_JSON).records}["citation_existence"]
 
 
+def _crossref_knowing(doi: str) -> CrossrefClient:
+    """A Crossref double that holds one record, for `doi`, and 404s every other request."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        client.requested.append(str(request.url))
+        if str(request.url).endswith(f"/works/{doi}"):
+            return httpx.Response(200, json={"message": {"DOI": doi, "title": ["A preprint"]}})
+        return httpx.Response(404)
+
+    client = CrossrefClient(contact_email=None)
+    client.requested = []  # type: ignore[attr-defined]
+    client._client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.gate = PacingGate(interval=0.0, clock=lambda: 0.0, sleeper=lambda _s: None)
+    return client
+
+
 def test_a_module_citing_only_by_doi_is_not_a_module_citing_nothing(tmp_path: Path) -> None:
     """The pass used to refuse with "no citations in …", false for a module whose every citation is a
     `NONE`+`doi` pharm row, and past that would record `ran(0, 0)`, the clean-looking pass the
-    identifier check already refuses to emit. The question was never put, so: `unsupported`, counted."""
+    identifier check already refuses to emit. Since RM349 the one DOI they cite is asked of Crossref
+    (once, however many rows cite it), and PubMed and Europe PMC still have no question: a pharm row
+    carries no quote."""
     spec = _pharm_spec_citing_by_doi(tmp_path / "s")
     expected = sum(
         1 for r in csv.DictReader(io.StringIO((spec / "pharm_variants.csv").read_text())) if r["doi"]
     )
     never = _NeverAsked()
-    result = enrich_literature(spec, eutils=never, europepmc=never, crossref=never)
+    crossref = _crossref_knowing(_DOI)
+    result = enrich_literature(spec, eutils=never, europepmc=never, crossref=crossref, bioc=never)
     assert result.cited == []
     assert result.citations_without_pmid == expected
+    assert crossref.requested == [f"https://api.crossref.org/works/{_DOI}"]  # type: ignore[attr-defined]
     record = _existence_record(spec)
-    assert record.skipped == "unsupported"
+    assert (record.skipped, record.subjects, record.findings, record.source) == (None, 1, 0, "crossref")
     assert f"{expected} citation(s) have pmid NONE" in (record.detail or "")
 
 

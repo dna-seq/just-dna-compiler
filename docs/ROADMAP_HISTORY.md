@@ -35,6 +35,73 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM349 — a `pmid=NONE` row's DOI is never checked to exist, and its quote is never matched against the paper
+
+**0.8, filed 2026-11-04 by the lead** as a second-pass item: RM336's residual.
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** · **Owner** enricher (`literature`, `lookup`) · **Motivating case** the RM336 builder's report · *related* RM336, RM263
+
+RM336 lets a study cite a DOI-only preprint through `pmid=NONE` + `doi`. The literature pass then has nothing to look
+up: a `NONE` row's quote or citation is recorded as an `unsupported` skip, so a fabricated DOI and a real one read the
+same, and `provenance_quote` is never matched against the preprint's text. The DOI is the only identifier the row
+carries, so it is the one the pass must check: existence through Crossref (`CrossrefClient.exists`, which already
+answers three-valued) and, where a full text is reachable (bioRxiv/medRxiv), the quote. `@existence-not-identity`
+applies: the check names the title it found.
+
+**Residuals** won't fix — a DOI-only citation's answers are not pinned in `literature.csv`, so the compiler's quote-counter, licence and title-as-quote checks never see them; reported to the lead to file · won't fix — bioRxiv's own API publishes a `jatsxml` link for every preprint, a wider route than Europe PMC's subset, and is a new source rather than an existing client; reported to the lead to file
+
+**What shipped.**
+
+- **One question set per distinct DOI** (`spec.doi_key`, so a bare DOI and a doi.org URL in another case
+  are one citation), put by `literature._check_doi_citation` and returned as `LiteratureResult.doi_citations`,
+  one `DoiCitation` each: Crossref's tri-state `exists`, whether it was asked, the `title` and `agency`
+  Crossref returned, and the quote half with `LiteratureRow`'s meanings (`quotes_authored`,
+  `quotes_found`, `quote_source`, `fulltext_status`, and `quotes_checked()` through the new
+  `just_dna_format.literature.settled_quotes`, which `LiteratureRow.quotes_checked` now calls, so the
+  two cannot disagree about what an abstract settled).
+- **Existence names its work.** No citing table carries a stated title, so the contract's comparison
+  branch has nothing to compare: the title is recorded and named in the `citation_existence` detail
+  (`Crossref names <doi> as '<title>'`, a bounded few) and on the CLI (`NONE doi <doi>: names '…'`). A
+  DOI no agency knows joins `doi_missing`, so `--strict` refuses it and the CLI names it in red.
+- **A Crossref 404 is not the registries' answer.** Probed 2026-11-04: `/works` answers 404 for a real
+  DataCite DOI (`10.5281/zenodo.3360392`), the kind of work a `NONE` row cites. `CrossrefWork` gained
+  `agency`, and after a 404 `CrossrefClient.work` asks `/works/{doi}/agency`: another agency is
+  `exists=True` with no title, a 404 there is `False`, and a failed or contradicting answer withholds.
+  This reaches every caller of `work`/`exists`: an authored DOI on a PubMed row, and `hint citation
+  --doi`, whose finding now says who registered the DOI rather than "Crossref has a record".
+- **The text by DOI.** `EuropePmcClient.record_for_doi` searches `DOI:"…"` over every source and takes
+  only a record whose own `doi` matches. A record with a PMC id goes the RM257 rungs; a preprint goes to
+  `fetch_preprint_fulltext` (`europepmc.org/api/fulltextRepo`: the file list, then the JATS file it
+  names), and only when its search record lists a full text. Probed by hand first: the documented
+  `/{id}/fullTextXML` answered 500 for all four `PPR` ids tried, with and without a full text; the
+  repository served `PPR1129025`'s JATS, and answers 500 too for a preprint with none (`PPR1146237`),
+  which is why the search record gates the request. The abstract is the fallback (a hit settles, a miss
+  does not), and `fulltext_status` is `retrieved | absent | unreachable` with RM258's meaning.
+- **The records.** Settled DOI-only quotes join `provenance_quote`'s denominator and DOI verdicts join
+  `citation_existence`'s, each gap named in its own clause. A module citing only by DOI records
+  `citation_existence` with `source="crossref"`, or skips it as `not_requested` or `unreachable`. Offline
+  nothing is asked (`@unreachable-not-absent`) and both records say `offline`; the quote record used to
+  say `unsupported`, which after this item would claim no run could ask. `unsupported` is left for a row
+  whose `doi` carries no DOI token, which `check_citation_pair` keeps out of any loaded module.
+- **Not persisted.** `literature.csv` is keyed on a PubMed id and feeds `literature.parquet`, which the
+  compiler reads by PMID (`split_cited_literature`, the RM275 duplicate rule, `manifest.literature`), so
+  a `NONE` row there would widen a published column's grammar, a decision this item was not given.
+  `verification.json` is the durable half, and RM72's merge keeps an online `ran` over a later offline
+  skip while the authored bytes stand still. Every online run asks again. Never writes a PMID anywhere
+  (RM263 reports; it never fills).
+
+**Tests.** `enricher/tests/test_literature_doi_only.py`, off responses recorded 2026-11-04 (a CC BY bioRxiv
+preprint's Crossref record, Europe PMC search, repository file list and trimmed JATS, in `assets/`): an
+existing DOI checked and its title named; a fabricated DOI a finding, refused under `strict`; an unreachable
+Crossref `unreachable`, never absent; `--no-doi` asking nothing; a DataCite DOI not absent, and every failure
+leg of the agency, DOI-search and repository requests; a quote found in, and missing from, the preprint body;
+a preprint with no text asking no repository and settling on the abstract; an unanswered repository
+`unreachable`; one preprint in two spellings asked once; a preprint beside a PMID adding to both
+denominators; offline asking nothing; the `hint` finding; and one live test under `JUST_DNA_NETWORK_TESTS=1`
+against that preprint. `test_literature_doi_cells.py`'s two RM336 expectations moved with the behaviour
+(offline quote → `offline`; a DOI-only pharm module asks Crossref once and records `ran`). Each new arm was
+broken once and its test went red.
+
 ## RM303 — the snapshot layout is a contract with six parties and no model, so it belongs in `just-dna-format`
 
 **0.8, confirmed 2026-11-03** by the maintainer when scoping 0.8.
@@ -397,7 +464,7 @@ PubMed Central number and naming it. A DOI is the next registry whose digits rea
 (P3/P8), while a new warning code is minor-class (RM308's rule). The real fix for preprints stays the 1.0
 doi-first demotion. RM263 is the route from a DOI to its PMID.
 
-**Residuals** won't fix — a `NONE` row's DOI is never existence-checked and its quote never matched, because the literature pass keys `literature.csv` on PubMed ids; a DOI lane there is new scope, reported to the lead to file
+**Residuals** RM349
 
 **The published-module scan, run before the refusal was built (2026-11-04).** The prod registry, all
 24 modules and every one of their 47 versions (inputs, parquets and derived sidecars, fetched read-only

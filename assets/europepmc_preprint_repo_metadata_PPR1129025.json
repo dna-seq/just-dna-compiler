@@ -1,0 +1,65 @@
+{
+ "id": "PPR1129025",
+ "clientId": "EMS211391",
+ "source": "ppr",
+ "files": [
+  {
+   "filename": "EMS211391.nxml",
+   "type": "xml",
+   "mimeType": "application/xml",
+   "length": 89599
+  },
+  {
+   "filename": "EMS211391-f005.jpg",
+   "type": "image",
+   "mimeType": "image/jpeg",
+   "length": 322985
+  },
+  {
+   "filename": "EMS211391-f004.jpg",
+   "type": "image",
+   "mimeType": "image/jpeg",
+   "length": 321583
+  },
+  {
+   "filename": "EMS211391-f003.jpg",
+   "type": "image",
+   "mimeType": "image/jpeg",
+   "length": 272904
+  },
+  {
+   "filename": "EMS211391-f002.jpg",
+   "type": "image",
+   "mimeType": "image/jpeg",
+   "length": 310214
+  },
+  {
+   "filename": "EMS211391-f001.jpg",
+   "type": "image",
+   "mimeType": "image/jpeg",
+   "length": 125603
+  },
+  {
+   "filename": "EMS211391-pdf.pdf",
+   "type": "pdf",
+   "mimeType": "application/pdf",
+   "length": 1037383
+  },
+  {
+   "filename": "EMS211391-supplement-Supplemental_table_and_figures.docx",
+   "type": "supplement",
+   "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+   "length": 20025816
+  }
+ ],
+ "metadata": {
+  "availabilityStatus": "O",
+  "fullTextType": "XML",
+  "hasPDF": true,
+  "hasSupplements": true,
+  "indexOnly": false,
+  "funderInitiative": "EPMCfunders"
+ },
+ "pmcid": "PPR1129025",
+ "success": true
+}

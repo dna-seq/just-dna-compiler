@@ -24,11 +24,11 @@ the mode** (`best_effort` warns and carries on; `strict` refuses). What exists t
 | **Clinical significance** | authored `clin_sig` vs **every annotation authority** consulted — ClinVar and, since 0.7, PubMind — allele-exactly | `clinical.verify_clin_sig` (**warns in both modes**), persisted as the N-authority concordance record by `clinical.clin_sig_concordance` (0.7, RM130 + RM134 § B) | `clinical_significance` |
 | **Answered-call currency** | an authority's call **now** vs what it said when the author's `overrides.csv` answer was written (0.7, RM151) | `clinical.answered_call_shift` → `concordance.shifted_authority_calls` (**warns in both modes**; the baseline is the previous run's `clin_sig_authority_calls.csv`, so it is read before the commit rewrites it and a move is observable exactly once) | — *(logged; the record it reads is the attestation)* |
 | **PGx evidence level** | authored `evidence_level` vs ClinPGx's own for that annotation | `clinpgx.enrich_clinpgx` (**refuses in `strict`** — the only enricher cross-check that does — on a row's own cited annotation only; RM297) | `pgx_evidence_level` |
-| **Citation existence** | a cited `pmid` vs PubMed | `literature.enrich_literature` | `citation_existence` |
+| **Citation existence** | a cited `pmid` vs PubMed; a `pmid=NONE` row's `doi` vs Crossref's registration agencies (0.8, RM349) | `literature.enrich_literature` | `citation_existence` |
 | **Identifier agreement** | an authored `doi` vs the registry's for that PMID | `literature.enrich_literature` | `citation_identifier` |
 | **PMC id agreement** | an authored `PMC…` in the `pmid` cell vs PubMed's for that record (0.6) | `literature._pmcid_conflicts` (attested under `citation_identifier`, the same question one registry over) | `citation_identifier` |
 | **Article licence** | the cited article's own terms, recorded per article (0.6) | `literature.enrich_literature` → `licensing.article_terms` | — *(a recording pass: it writes a source's answer and compares nothing)* |
-| **Provenance quote** | `provenance_quote`/`provenance_regex` vs the article's fulltext (Europe PMC's open-access subset, then PMC's BioC service), else its abstract | `literature.enrich_literature` (warning; partial coverage) | `provenance_quote` |
+| **Provenance quote** | `provenance_quote`/`provenance_regex` vs the article's fulltext (Europe PMC's open-access subset, then PMC's BioC service; for a `pmid=NONE` row, the text Europe PMC holds for its DOI, RM349), else its abstract | `literature.enrich_literature` (warning; partial coverage) | `provenance_quote` |
 | **rsID currency** | an authored rsID vs dbSNP (live / merged / absent) | `identifiers.check_rsids` | `rsid_currency` |
 | **Trait currency** | `trait_efo_id` vs OLS4 (obsolete + replacement) | `identifiers.OntologyClient.trait` (attested by `check-identifiers` since RM72) | `trait_currency` |
 | **Gene symbol currency** | `gene` vs HGNC approved / previous symbols | `identifiers.OntologyClient.gene` (attested by `check-identifiers` since RM72) | `gene_symbol_currency` |
@@ -200,15 +200,17 @@ stale, one function does not. Four things to hold onto when wiring a new pass in
   reached only by the citations having changed, which is the case the merge rule above deliberately
   lets a skip win. (This bullet used to argue the silence from the merge replacing per check. That was
   the merge's defect rather than an argument, and RM72 fixed it.)
-- **A quote on a `pmid=NONE` study row is counted apart, and never as "no quote" (0.8, RM336).** Such a
-  row cites by DOI alone, the pass reaches an article's text through its PubMed id, and so the quote is
-  in none of the denominators below (`LiteratureResult.quotes_without_pmid` counts it). When it is the
-  only kind there is, `provenance_quote` is skipped as `unsupported` and the detail says how many;
-  otherwise the same clause is appended to the record's detail. The DOI itself is not existence-checked
-  either: `literature.csv` is keyed on PubMed ids. So `citation_existence` counts the DOI-only citations
-  on every citing table (`citations_without_pmid`) the same way, an `unsupported` skip when they are
-  all there is (never `ran(0, 0)`), and a module citing only by DOI is no longer refused as citing
-  nothing.
+- **A `pmid=NONE` citation is asked about by its DOI, and never read as "no citation" or "no quote"
+  (0.8, RM336, RM349).** Such a row cites by DOI alone, so `_citations` has no PubMed key for it;
+  `LiteratureResult.citations_without_pmid` and `quotes_without_pmid` count those rows, and a module
+  citing only by DOI is not refused as citing nothing. Online, each distinct DOI (`spec.doi_key`) is put
+  to Crossref and its quotes to the text Europe PMC holds for it (*The literature pack* below), and the
+  answers join both records' denominators: `citation_existence` counts a DOI with a verdict as a
+  subject and one no agency knows as a finding (`source="crossref"` when every citation is DOI-only,
+  never `ran(0, 0)`), and `provenance_quote` counts what a retrieved text settled. Each way of not having
+  an answer is its own skip when it is all there is: `not_requested` (`--no-doi`, `--no-fulltext`),
+  `unreachable` (Crossref never answered), `no_reference` (no text could be read), `offline`.
+  `unsupported` is left for a row whose `doi` carries no DOI token, which a loaded `NONE` row cannot be.
 - **`literature` puts three questions with three different denominators, and one record cannot carry
   them.** Every citation gets an existence verdict; only some carry an authored DOI or PMC id to
   compare; fewer still carry a quote whose article could be read. So `provenance_quote` counts the
@@ -485,7 +487,7 @@ per service, put a semaphore around your call site; the gate will not give you t
 | **NCBI E-utilities** | `eutils` → literature + rsID currency | **3 req/s** without a key; **10 req/s** with `NCBI_API_KEY` | `1/3 s` or `1/10 s` from whether the key is present; esummary batches of **200** | `tool=just-dna-enricher`; `email` from `JUST_DNA_CONTACT_EMAIL` when set; key optional |
 | **PharmVar** | `pharmvar` / `pgx` | **2 req/s** (OpenAPI “Limitations”) | `PHARMVAR_MIN_INTERVAL=0.5` | `Api-Key` header from `PHARMVAR_API_KEY` (personal; never written to a module) |
 | **Crossref** | `literature.CrossrefClient` (DOI existence, and the work it names since RM262) | **polite pool**: 10 req/s single-DOI (5 public); concurrency 3 polite / 1 public (Crossref docs, Dec 2025 revision) | `min_request_interval=0.1` (10/s — polite single-DOI ceiling) | User-Agent `just-dna-enricher (mailto:…)` when `JUST_DNA_CONTACT_EMAIL` is set → polite pool; omitted rather than invented |
-| **Europe PMC** | `literature.EuropePmcClient` (OA fulltext + abstracts + per-article licence) | no durable official figure on the developer pages (community reports vary) | `min_request_interval=0.5` (2/s), batches of **25** on `search` | none |
+| **Europe PMC** | `literature.EuropePmcClient` (OA fulltext + abstracts + per-article licence; a preprint's JATS through `europepmc.org/api/fulltextRepo`, RM349, on the same gate) | no durable official figure on the developer pages (community reports vary) | `min_request_interval=0.5` (2/s), batches of **25** on `search` | none |
 | **PMC ID converter** | `literature.PmcIdConverterClient` (PMCID → PMID, reporting only) | no published figure; the service documents a **200-id** batch ceiling | `min_request_interval=0.5` (2/s), batches of **200** | `tool=just-dna-enricher`; `email` from `JUST_DNA_CONTACT_EMAIL` when set |
 | **OLS4 + HGNC** | `identifiers.OntologyClient` | neither publishes a documented limit | `min_request_interval=0.2` (courtesy — GET-per-id, unbatched) | `Accept: application/json` |
 | **PGS Catalog REST** (`www.pgscatalog.org/rest`) | `pgs.PgsCatalogClient` → identifier currency + the release probe | none published | `_REQUEST_INTERVAL=0.2` (courtesy — GET-per-accession, unbatched; one extra request for `/rest/info`) | `Accept: application/json` |
@@ -3401,6 +3403,44 @@ written before the column existed, asked once). Nothing else on the row is re-fe
 identifiers and the licence were answered and stay merged. An answer rewrites `quote_source`,
 `quotes_found` and the status; a second failure leaves the row as it was. The older `fulltext()` keeps its
 one-`None` contract for callers that rely on it, such as the authoring plugin's `fetch_fulltext` tool.
+
+**A `pmid=NONE` citation is checked by its DOI (RM349, 0.8).** The DOI is the only identifier such a
+row carries, so it is what both questions are put about, once per distinct DOI however many rows cite it
+(`spec.doi_key`: case and a doi.org prefix ignored):
+
+- **Existence, and which work it is.** `CrossrefClient.work`, so the answer names the title Crossref
+  holds (`@existence-not-identity`). No citing table carries a stated title to compare it with, so it is
+  recorded (`DoiCitation.title`) and named in the `citation_existence` detail and on the CLI, never
+  compared. A DOI no registration agency knows joins `doi_missing`, which `strict` refuses on.
+- **Crossref's `/works` 404 is not the registries' 404.** It answers 404 for every DOI another agency
+  minted, and a `NONE` row is exactly where a dataset is cited: `10.5281/zenodo.3360392` (DataCite) is
+  real and 404s there. After a 404 the client asks Crossref's `/works/{doi}/agency`, which answers for
+  every agency (probed 2026-11-04: `datacite` for that DOI, 404 for a fabricated one and for an
+  unregistered Zenodo number). Another agency is `exists=True` with `CrossrefWork.agency` set and no
+  title in hand, said so in the detail; any failed or contradicting answer withholds (`None`). This
+  holds for an authored DOI on a PubMed row and for `hint citation --doi` too, which used to call such
+  a DOI absent.
+- **The text.** `EuropePmcClient.record_for_doi` searches `DOI:"…"` over every Europe PMC source and
+  takes only a record whose own `doi` matches. A record with a PMC id goes the two rungs above (Europe
+  PMC, then BioC). A preprint (`source=PPR`) is fetched from Europe PMC's preprint repository
+  (`fetch_preprint_fulltext`: the record's file list, then the JATS file it names), and only when the
+  search record lists a full text, because the repository's answer for a preprint with none is a 500,
+  the same status as an outage. The documented `/{id}/fullTextXML` is not the route: it answered 500
+  for every `PPR` id probed on 2026-11-04, with and without a full text. The abstract in the same search
+  response is the fallback, with the asymmetry above. `fulltext_status` has its `LiteratureRow`
+  meaning: `retrieved`, `absent` (no record, or a record with no text) or `unreachable` (a request never
+  answered, which a re-run clears and the record names apart).
+- **Nothing about it is written to `literature.csv`.** That table is keyed on a PubMed id and feeds a
+  published parquet the compiler reads by PMID (`split_cited_literature`, the quote-counter and licence
+  checks, `manifest.literature`), so a `NONE` row there would be a widening of a published column's
+  grammar. The answers live in `LiteratureResult.doi_citations` (one `DoiCitation` per DOI) and in
+  `verification.json`, which is the durable half; with no pin, every online run asks again. Offline
+  nothing is asked and both records say `offline`.
+
+What it does not do: bioRxiv's own API publishes a `jatsxml` link for every bioRxiv and medRxiv
+preprint, a wider route than Europe PMC's subset, and is not used (it is a new source, not a client
+this tier has). The non-commercial quoting notice and the title-as-quote check (S54) read
+`literature.csv` rows and so do not reach a preprint quote.
 
 **A quote is an *attestation*, so no tool may write one — and retrieving the fulltext changes what the
 check proves.** `provenance_quote`/`provenance_regex` mean *a curator read this passage in this paper*,

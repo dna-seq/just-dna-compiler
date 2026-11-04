@@ -334,8 +334,18 @@ class LiteratureRow(BaseModel):
         carries is a staleness question answered elsewhere — the compiler's `quote_counter_stale`
         warning, and the enricher's `unexamined` count — and a stale row settles what it recorded.
         """
-        if self.quotes_found is None:
-            return 0
-        if self.quote_source == "fulltext":
-            return self.quotes_authored or 0
-        return self.quotes_found
+        return settled_quotes(self.quotes_authored, self.quotes_found, self.quote_source)
+
+
+def settled_quotes(quotes_authored: int | None, quotes_found: int | None, quote_source: str | None) -> int:
+    """The arithmetic behind `LiteratureRow.quotes_checked`, for a citation that has no row (RM349).
+
+    A `pmid=NONE` citation is matched by the enricher against a preprint's text and never written to
+    `literature.csv` (its key is a PubMed id), so the pass needs the same three arms without a row.
+    One function, so the two cannot disagree about what an abstract settled.
+    """
+    if quotes_found is None:
+        return 0
+    if quote_source == "fulltext":
+        return quotes_authored or 0
+    return quotes_found

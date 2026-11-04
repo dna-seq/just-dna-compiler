@@ -41,6 +41,31 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM349: a `pmid=NONE` row's DOI is checked to exist, and its quote matched where the text is reachable (0.8, uncut)
+
+**enricher** — The literature pass now asks about a work cited by DOI alone. Each distinct DOI on a
+`pmid=NONE` row (`spec.doi_key`) is put to Crossref, and the answer names the title Crossref holds for
+it, in the `citation_existence` detail and on the CLI (`NONE doi <doi>: names '…'`). A DOI no
+registration agency knows is a finding, joins `doi_missing`, and is refused under `--strict`. Its quotes
+are matched against the text Europe PMC holds for that DOI: a record with a PMC id goes through the
+Europe PMC and BioC rungs, and a bioRxiv/medRxiv preprint goes through Europe PMC's preprint repository,
+which serves the JATS the documented `fullTextXML` route answers 500 for. The abstract is the fallback
+(a hit settles a quote, a miss does not), and `fulltext_status` keeps its meaning: `retrieved`, `absent`
+or `unreachable`. Settled quotes join the `provenance_quote` denominator. A module citing only by DOI
+records `citation_existence` with `source="crossref"`, or skips it as `not_requested` (`--no-doi`) or
+`unreachable`; offline both records say `offline` (the quote record used to say `unsupported`). Nothing
+is written to `literature.csv`, whose rows stay keyed on a PubMed id, so every online run asks again.
+`LiteratureResult.doi_citations` holds one `DoiCitation` per DOI.
+
+**A Crossref 404 is no longer read as "this DOI does not exist" by itself.** `/works` answers 404 for
+every DOI another agency registered, such as a DataCite dataset (`10.5281/zenodo.3360392`), which is
+real. After a 404 `CrossrefClient.work` asks `/works/{doi}/agency`: another agency answers
+`exists=True` with `CrossrefWork.agency` set and no title, a 404 there is `False`, and anything else
+withholds. This also changes an authored DOI's check on a PubMed row and `hint citation --doi`.
+
+**format** — `literature.settled_quotes`, the rule `LiteratureRow.quotes_checked` applies, as a function
+for a citation that has no row.
+
 ## 2026-11-04 — RM348: `logs/` discovery stops trusting the filesystem (0.8, uncut)
 
 **compiler** — Every path log discovery considers, the top-level `*.log` included, must resolve to

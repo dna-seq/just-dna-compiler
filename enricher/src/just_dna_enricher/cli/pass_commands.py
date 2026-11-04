@@ -22,7 +22,7 @@ from just_dna_enricher.gene_validity import GeneValidityError, enrich_gene_valid
 from just_dna_enricher.grch37 import summarize_build_diagnoses
 from just_dna_enricher.gwas import GwasError, enrich_gwas
 from just_dna_enricher.licensing import LicenseRefusal, sidecar_path, sources_path
-from just_dna_enricher.literature import LiteratureEnrichmentError, enrich_literature
+from just_dna_enricher.literature import DoiCitation, LiteratureEnrichmentError, enrich_literature
 from just_dna_enricher.pgx import PgxEnrichmentError, enrich_pgx
 from just_dna_enricher.sequences import summarize_ref_mismatches
 
@@ -587,6 +587,17 @@ def literature_(
             f"pins their citation at another quote count — re-run the pass online to re-derive it",
             fg=typer.colors.YELLOW,
         )
+    # The citations by DOI alone (RM349), each with the work Crossref names for it (existence is not
+    # identity: the title is what says this is the paper meant) and how its quote check ended.
+    if result.quotes_without_pmid:
+        doi_found = sum(c.quotes_found or 0 for c in result.doi_citations)
+        doi_unsettled = result.quotes_without_pmid - sum(c.quotes_checked() for c in result.doi_citations)
+        typer.echo(
+            f"quotes on pmid NONE rows: {doi_found}/{result.quotes_without_pmid} found, "
+            f"{doi_unsettled} not checked"
+        )
+    for cited in result.doi_citations:
+        typer.echo(f"  NONE doi {cited.doi}: {_doi_citation_line(cited)}")
     if result.missing:
         # Red: a citation that does not resolve is a defect in the module, not a coverage gap.
         typer.secho(f"  PubMed has no record of: {result.missing}", fg=typer.colors.RED, err=True)
@@ -696,3 +707,23 @@ def pgx_(
     # disagree, so failing would make the format arbitrate between its own authorities.
     for conflict in result.conflicts:
         typer.secho(f"  allele-function difference: {conflict}", fg=typer.colors.YELLOW, err=True)
+
+
+def _doi_citation_line(cited: DoiCitation) -> str:
+    """One line per DOI-only citation: what Crossref said, then what the text settled (RM349)."""
+    if not cited.crossref_asked:
+        parts = ["not looked up (--no-doi)"]
+    elif cited.exists is None:
+        parts = ["Crossref did not answer"]
+    elif cited.exists is False:
+        parts = ["no registration agency knows this DOI"]
+    elif cited.title:
+        parts = [f"names {cited.title!r}"]
+    else:
+        parts = [f"resolves ({cited.agency or 'no agency'}) with no title in hand"]
+    if cited.fulltext_status is not None:
+        parts.append(
+            f"quotes {cited.quotes_found or 0}/{cited.quotes_authored} found, text {cited.fulltext_status}"
+            + (f" (searched: {cited.quote_source})" if cited.quote_source else "")
+        )
+    return "; ".join(parts)
