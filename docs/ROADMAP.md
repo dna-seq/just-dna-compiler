@@ -348,62 +348,6 @@ you**, so check which `# ` heading you are under before writing the section, not
 The trackers further down are the other live part of this file: the reserved-namespace tracker and the
 1.0-cleanup candidate tracker, which the Constitution deliberately keeps out of itself.
 
-## RM270 — an indel's artifact key is its source's spelling: a left-aligned VCF misses a respelled row, and the spelling-independent id the enricher mints never reaches the artifact
-
-**0.8, decided 2026-11-03.** Taken into 0.8 by the maintainer, with the rest of the indel-placement fixes (RM304, RM267, RM270, RM292, RM305). The status line below predates that decision.
-
-**Severity** high · **Status** open — **a minor, release undecided** · **Owner** enricher (resolution
-fill, `vrs.mint_resolution_rows`) + compiler (the parquet column) · **Motivating case**
-[S120](CONSUMER_SUGGESTIONS_HISTORY.md#s120--the-format-declares-no-coordinate-normalization-convention-so-a-legal-respelling-of-an-indel-is-a-silent-position-join-miss-no-one-is-wrong-is-the-footgun)
-
-**What was confirmed.** The three cases S120 cites (`rs72613567`, `rs77944059`, `rs333` CCR5-Δ32) sit
-in our Ensembl snapshot one base right of ClinVar's left-aligned spelling, which is also what the
-callers emit. Against GRCh38 (UCSC `hg38`; Ensembl REST was down) each pair gives the same haplotype,
-so they are one event spelled two legal ways. That is RM267's harmless +1 class, not its wrong-event
-−1 class. Nothing in the contract names a normalization. The compiler cannot apply one either, because
-left-alignment reads flanking sequence and the compiler has no sequence (P2). So an indel's
-`variant_key` is `chrom:start:ref:alts` in whatever spelling its source used. Compiling
-`reference_examples/hboc_palb2` keys `rs1555461597` as `16:23635706:G:GT`.
-
-**The identity that would join them already exists and is dropped.** The enricher mints each indel's
-`vrs_id` over the *fully justified* allele. Probed: both spellings of `rs72613567` mint
-`ga4gh:VA.Jml7SNku3QQBCVIj78BGiFvR21bNkos7`, and both of `rs77944059` mint
-`ga4gh:VA.ks2GTWYOW0aKfGbJ2aeQUOZxOT_xC2ts`. S117's `rs8176719` pair mints **two different** ids, so the
-id also tells RM267's wrong event apart from a respelling instead of masking it. That id lives in
-`resolution.csv`, which has no parquet by design. Of the compiled parquets only `frequencies.parquet`
-carries a `vrs_id`, and that one is gnomAD's. `@dont-discard-computed`.
-
-**Candidate repairs, and why each is wrong or partial.**
-
-1. **Compiler left-normalizes and stamps a field** (the reporter's preferred option). Refused twice.
-   It needs reference sequence in the compile path, the line COMPILER.md § the VRS verify pass says
-   not to cross (P2). And on an *authored* coordinate it rewrites a value `reverse_module` then
-   re-emits, so lap 1 moves `content_signature` (P7).
-2. **An authored `coordinate_normalization` key.** It is a claim no offline tier can check. It costs
-   the full authored price (P9) and would be believed by exactly the consumer it misleads. As a
-   **verdict the enricher stamps** (tri-state: checked left-aligned / not / unknown), it is honest and
-   minor-legal, and it is part of the answer.
-3. **The enricher left-normalizes the coordinates it fills.** Legal: a resolution fill is outside
-   `content_signature` (`@rm43-positional-fill`). It fixes the +1 class for rsID-authored rows. It
-   does not reach an authored coordinate. For those the enricher reports the normalized spelling as a
-   finding and never rewrites the cell (`@enrichment-is-validation`). `@sidecar-authoritative`: it
-   reaches an existing table only on `--rederive`.
-4. **Carry the per-ALT `vrs_id` onto the variant parquets.** A parquet column is approximately free
-   (P9) and it is already computed. It gives a consumer who can mint VRS from its VCF a key that does
-   not depend on spelling. Alone it is not enough, because minting an indel needs sequence access the
-   consumer may not have. Hence it pairs with 3.
-
-The build is 3 + 4, plus the stamped verdict from 2. The part that ships without a decision, the
-consumer guide stating that no normalization is guaranteed, landed with the S120 reply.
-
-
-**Carries RM241's residual.** RM241 (shipped on `0.8`) left a round trip that drops every `vrs_id`, because no
-variant parquet carries one. Candidate 4 below, the per-ALT `vrs_id` on the variant parquets, is what closes it.
-
-**Pinned by RM291 (2026-09-27).** `compiler/tests/test_consumer_join.py` joins every reference example
-against a bcftools-normalized ClinVar slice, and the two SHOX rows Ensembl spells at `X:634690`
-(`AGAG>AG`, `AGAG>AGAGAG`; ClinVar and callers write `X:634689`) are its expected misses, pinned to
-this item. Shipping this empties that set, and the test fails until the pin is removed.
 ## RM285 — the MITOMAP lane's two open remainders: `VUS*` withheld, and the unrated-miss identity rows
 
 **Severity** low · **Status** open — **a patch** (either answer is drafter behaviour), two decisions first; the anchoring pass shipped as RM293 ·

@@ -43,6 +43,15 @@ def _write_resolution_csv(
 
 
 def _resolution_cell(value: object) -> str:
-    """`None` is the empty cell, everything else its `str`. `ResolutionRow` has no boolean field, so
-    there is no tri-state spelling to agree with the compiler about here."""
-    return "" if value is None else str(value)
+    """`None` is the empty cell, a boolean `true`/`false`, everything else its `str`.
+
+    The boolean spelling is the compiler's `_scalar_cell`'s, the writer `reverse` uses for this same
+    table, so the tri-state `left_aligned` (RM270) reads back the same from either. Spelled here rather
+    than imported: `just_dna_compiler.compiler.tables` is not in the compiler release this package's
+    floor names (`test_workspace_versions`).
+    """
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)

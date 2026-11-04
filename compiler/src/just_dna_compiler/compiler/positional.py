@@ -39,6 +39,17 @@ _POSITIONAL_TABLE_KINDS: tuple[tuple[str, type[BaseModel]], ...] = tuple(
 )
 
 
+#: The positional kinds that name a whole allele — `ref` and `alts` beside the coordinate and a
+#: `variant_key` to file it under — so a `vrs_id` parallel to `alts` has a frame: their parquets gain
+#: `vrs_id`/`vrs_spec` (RM270). Derived for the reason the set above is, and on every column
+#: `vrs_columns.with_vrs_columns` reads, so a kind lacking one is left out rather than crashing it.
+_VRS_BEARING_TABLES: frozenset[str] = frozenset(
+    csv_name
+    for csv_name, model in _POSITIONAL_TABLE_KINDS
+    if {"variant_key", "ref", "alts"} <= set(model.model_fields)
+)
+
+
 #: The table kinds carrying a `gene` column, derived from `_TABLE_KINDS` the same way and for the same
 #: reason: a hand-kept list goes stale the moment a kind is added, and this one feeds a **published
 #: manifest number** (S57). Seven of the eight non-variant kinds make `gene` *required*, so a module

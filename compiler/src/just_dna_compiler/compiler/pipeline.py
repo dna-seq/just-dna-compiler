@@ -115,6 +115,7 @@ from just_dna_compiler.compiler.parquets import (
     _build_weights,
 )
 from just_dna_compiler.compiler.positional import (
+    _VRS_BEARING_TABLES,
     _apply_positional_resolution,
     _check_positional_joinability,
     positional_placement,
@@ -144,6 +145,7 @@ from just_dna_compiler.compiler.variant_checks import (
     _restamp_for_build,
 )
 from just_dna_compiler.compiler.vrs_checks import _verify_vrs_ids, _vrs_coverage, _vrs_coverage_warnings
+from just_dna_compiler.compiler.vrs_columns import VrsIds, with_vrs_columns
 from just_dna_compiler.models import ClosureResult, CompilationResult
 from just_dna_compiler.resolution import resolve_from_table
 from just_dna_compiler.resolution_findings import resolution_not_injected
@@ -686,8 +688,11 @@ def compile_module(
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # The ids `resolution.csv` records, by allele, for every variant parquet (RM270). Gated like every
+    # resolution read: under `--no-resolve` the table was not read, so no id reaches the artifact.
+    vrs_ids = VrsIds.of(resolution_rows, config.genome_build) if resolve_with_ensembl else VrsIds()
     # SNP core: weights/annotations only when the module actually has variants.
-    weights_df = _build_weights(variants, config, studies) if variants else None
+    weights_df = _build_weights(variants, config, studies, vrs_ids) if variants else None
     annotations_df = _build_annotations(variants, module_name) if variants else None
     studies_df = (
         # Gated like every resolution read: under `--no-resolve` the table was not read, so no proxy's
@@ -740,6 +745,8 @@ def compile_module(
         if rows is None:
             continue
         table_df = _build_table(rows, model, module_name)
+        if csv_name in _VRS_BEARING_TABLES:
+            table_df = with_vrs_columns(table_df, vrs_ids, config.genome_build)
         table_df.write_parquet(output_dir / parquet_name, compression=compression)
         table_rows[parquet_name] = table_df.height
 

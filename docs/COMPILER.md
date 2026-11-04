@@ -1093,7 +1093,10 @@ else "best_effort"`:
 
 **Digest parity** between paths 1 and 2 is the load-bearing guarantee: given the same facts, both emit
 byte-identical `weights.parquet` (hence `artifact.digest`). The one order-sensitive spot — a one-to-many
-expansion — is pinned by sorting on `(locus_index, chrom, start, ref)`.
+expansion — is pinned by sorting on `(locus_index, chrom, start, ref)`. **Since 0.8 it holds when the
+table records no `vrs_id`**: path 1 carries the ids `resolution.csv` records onto the parquets (RM270),
+and path 2 has no table to read them from, so with ids recorded the two `weights.parquet` differ in
+`vrs_id`/`vrs_spec` and nowhere else (`test_offline_enrich_then_compile_matches_duckdb_digest`).
 
 ## Resolution
 
@@ -1244,6 +1247,34 @@ absence.
 **`resolution.csv` still gets no parquet**, and that is the repair this item deliberately did not
 make: it is a build-time derived artifact whose consumers are the compiler and the enricher, and
 publishing it would turn it into a consumer contract it was never designed to be. See SCHEMAS.md.
+
+### The VRS ids on the variant parquets (RM270, 0.8)
+
+An indel's `variant_key` and coordinate are its source's spelling, and a caller may spell the same event
+another legal way, so an exact `(chrom, pos, ref, alt)` join misses it. The VRS allele id is minted over
+the fully justified allele, so both spellings of one event carry one id (`rs72613567` at `4:87310240
+T>TA` and `4:87310241 A>AA`) and two events carry two (S117's `rs8176719`). Since 0.8 the id the
+enricher recorded reaches the artifact:
+
+| Parquet | `vrs_id` | `vrs_spec` |
+| --- | --- | --- |
+| `weights.parquet` | `List(Utf8)`, parallel to `alts`, null where no id is recorded | `Utf8` |
+| `pharm_variants`, `haplotypes`, `heteroplasmy` (`positional._VRS_BEARING_TABLES`) | `Utf8`, comma-joined like the table's `alts` and `resolution.csv`'s cell, holes kept | `Utf8` |
+| `studies.parquet` `proxy_loci` | a struct field, the proxy row's cell | a struct field |
+
+Not on `annotations.parquet`, which carries `variant_key` but no allele to be parallel to (it joins to
+`weights.parquet` on the key), nor on `frequencies.parquet`, whose `vrs_id` is gnomAD's.
+
+**Copied, never minted** (`compiler/vrs_columns.py`): the compiler has no sequence to justify an indel
+(P2), and an id minted here would reach `resolution.csv` on reverse and make the second lap count more
+identified alleles than the first. **From the row's own `resolution.csv` row, by allele, not by position
+in a cell**: a parquet row reads the rows filed under the key `reverse` files it under
+(`vrs_columns.resolution_key`, the authored key, so an expansion member finds its rsID's rows) at its own
+`(chrom, start, ref)`, and its list follows its own `alts`. Never another subject's id for the same
+spelling: true of the allele, but reverse would write it under this row's key and the round trip would
+gain ids the table never held. Two rows of one key recording one allele with two different ids withhold
+it (null), since one of them is wrong. `vrs_spec` is the cell as recorded, stated only when every id on
+the row came from rows stating the same one. Under `--no-resolve` both columns are null.
 
 ### `resolve_from_table` (`compiler/resolution.py`)
 
@@ -1664,6 +1695,11 @@ plus each authored table that is not a kind (`overrides.csv` since 0.7, RM124; `
   `rsid_alternates`/`rsid_current`/`rsid_status` are not written, because those columns are kept out of
   the fact set precisely so they never enter the artifact — there is nothing for reverse to read. Recover
   them by re-running the enricher.
+- **`vrs_id` and `vrs_spec` come back (RM270, 0.8).** Every variant parquet carries them — see *The VRS
+  ids on the variant parquets* under § Resolution — so reverse writes each positioned row's ids into
+  `resolution.csv`, holes kept, and the recompile carries the same ids. Before 0.8 no parquet held one,
+  so a round trip dropped every id and the second lap's `vrs_alleles_identified` read 0 (RM241's
+  residual).
 - **Derived-fact sidecars** round-trip through the same generic writer, minus the columns that are
   recomputed rather than stored: `allele_frequency` is derived on write and is not a `FrequencyRow`
   field, so it falls away by construction rather than by a special case, and re-deriving it on the next

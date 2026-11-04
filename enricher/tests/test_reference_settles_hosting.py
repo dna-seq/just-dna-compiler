@@ -93,7 +93,9 @@ def test_enrich_keeps_the_same_event_and_drops_the_different_one(
         spec, offline=True, ensembl_cache=tmp_path / "cache", clinvar_cache=tmp_path, mint_vrs=False
     )
     placed = {r.rsid: (r.chrom, r.start) for r in result.rows if r.chrom}
-    assert placed == {"rs77944059": ("2", 166204477)}
+    # Kept, and written in its left-aligned spelling since RM270: the window reads `GAAAC` seven bases
+    # left of the snapshot's `ACAAA`, ClinVar's and a caller's spelling of the same deletion.
+    assert placed == {"rs77944059": ("2", 166204470)}
     assert "rs1" in result.unresolved
     # RM272: the dropped locus is named on the result, per locus, not only in the log.
     assert result.reference_rejected_loci == ["rs1 2:166204477"]

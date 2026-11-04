@@ -9,6 +9,7 @@ from just_dna_format.spec import ModuleSpecConfig, StudyRow, VariantRow
 from just_dna_format.vocab import OUTCOME_STRIP_CELLS
 
 from just_dna_compiler.compiler.tables import _polars_type, _split_genotype, study_coordinate_key
+from just_dna_compiler.compiler.vrs_columns import VrsIds, resolution_key
 
 # ── Parquet builders ───────────────────────────────────────────────────────────
 
@@ -86,17 +87,41 @@ _OUTCOME_CELLS: tuple[str, ...] = tuple(dict.fromkeys(OUTCOME_STRIP_CELLS.values
 
 
 def _build_weights(
-    variants: list[VariantRow], config: ModuleSpecConfig, studies: list[StudyRow] | None = None
+    variants: list[VariantRow],
+    config: ModuleSpecConfig,
+    studies: list[StudyRow] | None = None,
+    vrs: VrsIds | None = None,
 ) -> pl.DataFrame:
-    """Build the weights.parquet DataFrame from validated variant rows, and the locus-level columns
-    derived from the module's study rows (`_locus_study_facts`)."""
+    """Build the weights.parquet DataFrame from validated variant rows, the locus-level columns
+    derived from the module's study rows (`_locus_study_facts`), and each allele's `vrs_id` recorded in
+    `resolution.csv` (`vrs`, RM270; `None` when no table was read)."""
     defaults = config.defaults
     module_name = config.module.name
     records: list[dict[str, Any]] = []
     index = _StudyIndex(studies or [])
+    vrs = vrs or VrsIds()
     for v in variants:
         priority = v.priority if v.priority is not None else defaults.priority
         derived = _locus_study_facts(index.supporting(v))
+        alts = v.alts.split(",") if v.alts else None
+        vrs_ids, vrs_spec = vrs.lookup(
+            resolution_key(
+                {
+                    "authored_ident": v.authored_ident,
+                    "rsid": v.rsid,
+                    "ref": v.ref,
+                    "variant_key": v.variant_key,
+                },
+                v.chrom,  # type: ignore[arg-type]
+                v.start,  # type: ignore[arg-type]
+                v.alts,
+                config.genome_build,
+            ),
+            v.chrom,
+            v.start,
+            v.ref,
+            alts,
+        )
         records.append(
             {
                 "rsid": v.rsid,
@@ -137,7 +162,7 @@ def _build_weights(
                 "start": v.start,
                 "end": v.start,
                 "ref": v.ref,
-                "alts": v.alts.split(",") if v.alts else None,
+                "alts": alts,
                 # Tri-state: keep None distinct from False (nullable pl.Boolean). Collapsing
                 # None→False lost the difference between "curator stated not-pathogenic" (False) and
                 # "unstated" (None) — an authored False did not survive the round-trip, and
@@ -176,6 +201,11 @@ def _build_weights(
                 "outcome_healthspan": derived["outcome_healthspan"],
                 "outcome_lifespan": derived["outcome_lifespan"],
                 "outcome_exceptional": derived["outcome_exceptional"],
+                # ── 0.8 (RM270): the id `resolution.csv` records for each ALT, parallel to `alts` with
+                # a null where none is recorded, and the VRS version it was minted under. Copied, never
+                # minted here (`vrs_columns`); `reverse` writes both back to `resolution.csv`. ──
+                "vrs_id": vrs_ids,
+                "vrs_spec": vrs_spec,
             }
         )
     schema = {
@@ -225,6 +255,8 @@ def _build_weights(
         "outcome_healthspan": pl.Boolean,
         "outcome_lifespan": pl.Boolean,
         "outcome_exceptional": pl.Boolean,
+        "vrs_id": pl.List(pl.Utf8),
+        "vrs_spec": pl.Utf8,
     }
     return pl.DataFrame(records, schema=schema)
 
@@ -326,6 +358,10 @@ PROXY_LOCUS_DTYPE = pl.Struct(
         "ref": pl.Utf8,
         "alts": pl.Utf8,
         "locus_index": pl.Int64,
+        # RM270: the row's `vrs_id` cell (comma-joined, parallel to `alts`) and its `vrs_spec`, so
+        # `reverse` re-emits the proxy's ids with its row.
+        "vrs_id": pl.Utf8,
+        "vrs_spec": pl.Utf8,
     }
 )
 
@@ -362,6 +398,8 @@ def _proxy_loci(
             "ref": r.ref,
             "alts": r.alts,
             "locus_index": r.locus_index,
+            "vrs_id": r.vrs_id,
+            "vrs_spec": r.vrs_spec,
         }
         for r in loci
     ]

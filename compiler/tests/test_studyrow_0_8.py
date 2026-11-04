@@ -757,11 +757,14 @@ def test_the_derived_columns_come_last_and_never_reach_variants_csv(tmp_path: Pa
         "outcome_lifespan",
         "outcome_exceptional",
     ]
-    assert list(schema)[-len(derived) :] == derived
+    # RM270's pair (`vrs_id`, `vrs_spec`) is the other 0.8 append, after these: copied from
+    # `resolution.csv`, and written back there by reverse, never to `variants.csv`.
+    copied = ["vrs_id", "vrs_spec"]
+    assert list(schema)[-len(derived) - len(copied) :] == derived + copied
     assert all(schema[c] == pl.Boolean for c in derived[1:])
     reverse_module(tmp_path / "a1", tmp_path / "rev")
     header, _ = _read_rows(tmp_path / "rev" / "variants.csv")
-    assert not set(derived) & set(header)
+    assert not set(derived + copied) & set(header)
     second = compile_module(tmp_path / "rev", tmp_path / "a2")
     assert second.success, second.errors
     assert second.manifest.artifact.digest == compile_module(spec, tmp_path / "a3").manifest.artifact.digest

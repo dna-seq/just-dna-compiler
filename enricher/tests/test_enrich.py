@@ -93,8 +93,11 @@ def test_offline_enrich_then_compile_matches_duckdb_digest(cache: Path, tmp_path
         "rs999,,,,A/T,risk,c3,X\n"
     )
     # Enrich offline against the synthetic cache → resolution.csv, then compile path 1 (no cache).
+    # Without minting: since RM270 every variant parquet carries the `vrs_id`s `resolution.csv`
+    # records, which the DuckDB path has no table to read, so parity is a claim about the facts and
+    # holds exactly when the table records no id. The minting run is compared below, column by column.
     spec1 = _spec(tmp_path / "spec1", variants)
-    result = enrich(spec1, offline=True, ensembl_cache=cache)
+    result = enrich(spec1, offline=True, ensembl_cache=cache, mint_vrs=False)
     assert result.fully_resolved
     assert (spec1 / "resolution.csv").is_file()
 
@@ -117,6 +120,13 @@ def test_offline_enrich_then_compile_matches_duckdb_digest(cache: Path, tmp_path
     assert r1.manifest.artifact.digest == d2
     # every variant needed resolution, so the cache filled all of them
     assert r1.manifest.compilation.resolution_sources == ["cache"]
+    # With the ids minted, the two `weights.parquet` differ in the two RM270 columns and nowhere else.
+    spec3 = _spec(tmp_path / "spec3", variants)
+    enrich(spec3, offline=True, ensembl_cache=cache)
+    assert compile_module(spec3, tmp_path / "o3").success
+    minted, duck = (pl.read_parquet(tmp_path / o / "weights.parquet") for o in ("o3", "o2"))
+    assert minted.drop("vrs_id", "vrs_spec").equals(duck.drop("vrs_id", "vrs_spec"))
+    assert minted["vrs_id"].null_count() < minted.height and duck["vrs_id"].null_count() == duck.height
 
 
 def test_each_link_records_the_authority_it_speaks_for(cache: Path, tmp_path: Path) -> None:

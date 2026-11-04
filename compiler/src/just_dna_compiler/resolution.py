@@ -11,6 +11,8 @@ Digest parity with the DuckDB path is deliberate and load-bearing: given the sam
 produces byte-identical `weights.parquet` (hence `artifact.digest`) as `resolver.resolve_variants`.
 The one place row order could drift — a one-to-many expansion — is pinned by sorting the expanded
 rows on `(locus_index, chrom, start, ref)`, matching the resolver's `ORDER BY id, chrom, start, ref`.
+Since 0.8 the parity holds when the table records no `vrs_id`: the ids it does record reach the parquets
+(RM270, `compiler/vrs_columns.py`), and the DuckDB path has no table to read them from.
 """
 
 import logging

@@ -2447,7 +2447,7 @@ does not carry a coordinate, and it is the wrong one — RM43 (0.6) is the right
   nothing, so `withdrawn` is the one resolution finding that is **fatal in `best_effort` too**.
 - **Reverse emits facts and drops provenance, by design.** `reverse_module` rebuilds this table from
   `weights.parquet`, which holds no provenance at all — it resets `source` to `reversed`, `status` to
-  `resolved`, blanks `fetched_at`, and cannot emit `authority`/`rsid_alternates`/`rsid_current`/`rsid_status`
+  `resolved`, blanks `fetched_at`, writes `vrs_id`/`vrs_spec` back from the parquets (RM270), and cannot emit `authority`/`rsid_alternates`/`rsid_current`/`rsid_status`
   because those columns are kept out of the artifact on purpose. (For `authority` there is a second reason
   and it is not a limitation: a reversed table's facts came out of parquet, so no licensed source answered
   for them.) Recovering them after a round-trip
@@ -2459,7 +2459,8 @@ does not carry a coordinate, and it is the wrong one — RM43 (0.6) is the right
   `caid?` (`CA\d+`); `vrs_id` and `caid` with a grammar validator. Three registries, three columns — never one
   overloaded `identifier` field (Principle 5). They stay out of `RESOLUTION_FACT_FIELDS` so adding them
   moves no existing `resolution_signature`; the identity they carry reaches the artifact through
-  `variant_key` instead, so the fact set does not need them.
+  `variant_key` for a resolved substitution, and since 0.8 `vrs_id` itself reaches every variant parquet
+  (RM270), so the fact set does not need them.
 - **`vrs_spec` is the per-row VRS version, and since 0.8 it is read (RM304).** It records the VRS minor
   the row's ids were minted under, written by the run that minted them and by no later one — an empty
   cell is *unstated*, never the current version, because merge-not-clobber forbids a later pass writing
@@ -2471,9 +2472,10 @@ does not carry a coordinate, and it is the wrong one — RM43 (0.6) is the right
   Both halves exist because a pin alone cannot describe a table mixing runs, and a per-row value alone
   cannot say which version is intended. RM304 was filed believing nothing recorded a version; the
   per-row half had shipped in 0.5 under this name, and 0.8 added the pin, the comparison and the
-  minter reading its version off `ga4gh.vrs`. No parquet carries it yet: no compiled parquet carries an
-  id this ecosystem minted (`frequencies.parquet`'s `vrs_id` is gnomAD's), and carrying both onto the
-  artifact is RM270's.
+  minter reading its version off `ga4gh.vrs`. **Since RM270 (0.8) both reach the artifact**: every
+  variant parquet carries `vrs_id` and `vrs_spec`, copied from this table by allele (COMPILER.md § *The
+  VRS ids on the variant parquets*), and `reverse` writes them back, so they survive a round trip.
+  `frequencies.parquet`'s `vrs_id` is gnomAD's and gets no `vrs_spec`.
 - **`placement_witness` and `placement_verdict` say who else placed the row, and what they said (0.8,
   RM267).** Provenance, outside the fact set: which second authority the enricher asked where this rsID
   sits (`clinvar`, `clinvar_gkm`, or both `+`-joined), independent of the link that gave the row, and its
@@ -2487,6 +2489,15 @@ does not carry a coordinate, and it is the wrong one — RM43 (0.6) is the right
   ALT of the row was placed the same; one ALT no witness holds makes the row `unplaced`. Before 0.8 every coordinate here had one
   witness and `authority=ensembl` read the same whether a second authority agreed, disagreed or was
   never asked (S117, S121). Reverse cannot emit them, for `authority`'s reason above.
+- **`left_aligned` is the spelling verdict the enricher stamps (0.8, RM270).** Tri-state, outside the
+  fact set: `true` when the row's spelling was checked to be the leftmost parsimonious one ALT by ALT
+  (the spelling a caller's `bcftools norm -m -any` writes), `false` when it was checked and is not,
+  empty when unknown (no reference read, a non-nucleotide allele, a row written before 0.8). A coordinate
+  the enricher fills from an rsID is written left-aligned, so it reads `true` wherever a read was made;
+  a coordinate a module authored, and a pair's recorded reference locus, are recorded as given and only
+  judged. A stamped verdict rather than an authored `coordinate_normalization` key: an author's claim of
+  a convention is one no offline tier can check. A `false` row's indel joins a caller's spelling only
+  through `vrs_id`. Reverse cannot emit it, for `authority`'s reason above.
 - **`RESOLUTION_FACT_FIELDS`** names the fact columns; `integrity.resolution_signature` hashes only
   those (provenance deliberately excluded), so a human-filled and an Ensembl-filled table with identical
   facts hash equal.

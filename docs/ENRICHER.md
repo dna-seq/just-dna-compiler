@@ -464,7 +464,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `gene_metrics` | pass 3: the module's genes → `gene_metrics.csv` (snapshot first, live API second) | `duckdb`, format |
 | `constraint_build` | **`[dev]`** builder: gnomAD constraint TSV → gene-level parquet + `release.json` | `polars` (lazy), `httpx` |
 | `vrs` | GA4GH VRS allele-id minting onto `resolution.csv` (substitutions stdlib, indels normalized) | `ga4gh.vrs` |
-| `sequences` | reference-sequence access (cached) + the reference-allele check | `ga4gh.vrs` |
+| `sequences` | reference-sequence access (cached), the reference-allele check, and the one left-alignment every pass uses (`left_normalize`, `normalize_locus`, `spelling_verdict`; RM270 writes a fill left-aligned with it) | `ga4gh.vrs` |
 | `placement` | **0.8** (RM267): where the run's own link placed each rsID against where ClinVar and ClinVar-GKM place it — by VRS id, else the left-aligned spelling; a disagreement withholds the rsID | `sequences`, `clinvar`, `clinvar_gkm` |
 | `locations` | cache-location resolution — **one `resolve`/`default_dir`/`env_var` triple per lane in `CACHE_LANES`**, paired by a test rather than counted here — plus `.env` and the pull record. The snapshot layout names and `read_release` are imported from `just_dna_format.snapshot` since 0.8 (RM303) and stay importable from here | `platformdirs`, `python-dotenv` |
 | `download` | HuggingFace **snapshot** download, footer-checked and atomic — **one `ensure_*` per lane whose `publish_repo` is set**, which is the registry's own answer to which lanes may be pulled rather than a second list. A lane with no repo is operator-built; see *The caches* | `huggingface_hub` (lazy) |
@@ -1187,6 +1187,48 @@ The ClinVar witness is the snapshot the run locates for its link and the `clin_s
 `--no-clinvar --no-verify-clinsig` leaves only ClinVar-GKM. The live REST rung is not a witness: the
 0.8 contract compares loaded authorities only (PROPOSAL_0_8_PT2 §5 C4), and asking REST would cost one
 request per indel.
+
+### A filled coordinate is written left-aligned; an authored one is judged (0.8, RM270)
+
+An indel can be spelled more than one legal way, and a caller writes the leftmost parsimonious one
+(`bcftools norm -m -any`). The Ensembl snapshot does not always: it places `rs72613567` at `4:87310241
+A>AA` where ClinVar and a caller write `4:87310240 T>TA`, `rs77944059` seven bases right, and SHOX's
+`rs1569493663` as the multi-allelic `X:634690 AGAG>AG,AGAGAG`. An exact `(chrom, pos, ref, alt)` join then
+misses the row, though nobody is wrong (S120).
+
+- **A coordinate this run fills from an rsID is written left-aligned** (`sequences.normalize_locus`). A
+  fill is outside `content_signature` (`@rm43-positional-fill`), so the respelling moves no authored
+  identity. Each ALT takes its leftmost spelling through `sequences.left_normalize`: a substitution or
+  MNV by trimming its shared flank, with no reference read, and an insertion or deletion through
+  `_left_align`, the same normalizer RM267's comparison uses (`@one-normalizer-two-spellings`). ALTs that
+  land on one `(start, ref)` stay one locus; ALTs that land on two become two loci, the split a caller
+  makes, so SHOX's site becomes `X:634689 CAG>C` and `X:634689 C>CAG` and the compiler expands the rsID
+  onto both. It runs after the hosting filter and the PAR choice, which read the link's spelling as
+  before, and each piece keeps the RM267 verdict of the locus it came from. A split writes the piece the
+  row's genotype is about (`orchestration._filled_pieces`): a genotype spelled in the source locus's own
+  frame names its ALTs exactly (`AG/AGAG` on SHOX's site is the deletion); one naming ALTs in two pieces
+  (`AG/AGAGAG`) has no one left-aligned locus, so the source is written whole, as the link gave it, and
+  judged; otherwise every piece that can host it (`C/CAG` fits either). When any ALT cannot be decided
+  (offline, an unreadable window, a non-nucleotide allele) the locus is written as the link gave it:
+  half a respelling would put two conventions in one cell.
+- **An authored coordinate is judged, never rewritten** (`@enrichment-is-validation`). The cell is the
+  row's identity, so every subject that authored a whole coordinate is checked against its leftmost
+  spelling on every run, and a difference is a warning naming both (`EnrichmentResult.spelling.findings`,
+  over `checked`, with `unknown` counted apart). The row's `vrs_id` is what joins it to a caller's
+  spelling, and since RM270 it is on the parquet. The same holds for a pair's recorded reference locus
+  (S104): the compiler compares it with the authored coordinate by spelling, so it is recorded as the
+  link gave it.
+- **Every written row carries the verdict**, `left_aligned` ([SCHEMAS.md](SCHEMAS.md)): `true` checked
+  left-aligned (every fill the run respelled, and any row already so), `false` checked and not, empty
+  unknown. Outside `resolution_signature`.
+- **Recorded rows are not respelled.** Merge-not-clobber holds (`@sidecar-authoritative`): a
+  `resolution.csv` written before 0.8 is respelled only under `--rederive` or after the file is deleted.
+  The drift canary names a respelled subject apart (`SubjectDrift.respelled`, logged at INFO): when every
+  allele on both sides carries a `vrs_id` and the ids are the same, the source did not move, this
+  release's spelling did.
+
+The pass is not a `verification.json` check: it compares the module's spelling with a convention, not a
+claim with a witness, and the reference-allele check already attests the bases it reads.
 
 ### Reverse (position→rsid) back-fill is allele-aware
 

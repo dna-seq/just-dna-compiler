@@ -20,6 +20,7 @@ from just_dna_format.manifest import (
     Verification,
     read_manifest,
 )
+from just_dna_format.vrs import join_vrs_ids
 
 from just_dna_compiler.compiler.positional import _POSITIONAL_TABLE_KINDS
 from just_dna_compiler.compiler.tables import (
@@ -30,6 +31,7 @@ from just_dna_compiler.compiler.tables import (
     _scalar_cell,
     _write_table_csv,
 )
+from just_dna_compiler.compiler.vrs_columns import resolution_key as _resolution_key
 
 # `validate_spec`/`compile_module` return their findings on a result object, which is the right shape
 # for anything a caller must act on. `reverse_module` returns a bare `Path` and has none, so the one
@@ -571,15 +573,22 @@ def _write_resolution_csv(
       exactly one locus there; emitting a second row under one key would read back as a one-to-many
       rsID and send the next compile into the expansion path.
 
-    **Reverse emits facts and discards provenance, deliberately and completely.** `source` becomes
-    `reversed`, `status` becomes `resolved`, `fetched_at` empties — and the provenance-only columns
-    (`rsid_alternates`, `rsid_current`, `rsid_status`, `vrs_id`, `caid`) are simply not written. This
-    was once filed as a bug about `rsid_alternates` specifically; it is not one, and it is not fixable
-    here. Those columns are **outside** the fact set precisely so they stay out of `weights.parquet`,
-    so the information does not exist in the artifact this function reads — emitting the column names
-    would produce a header with permanently empty cells and change nothing. Recovering an ambiguous
-    candidate list after a round-trip means re-running the enricher, which is the correct place for it:
-    the candidate list is a statement about a reference at a moment, not a property of the module.
+    **Reverse emits facts and discards provenance, deliberately and completely — with one exception.**
+    `source` becomes `reversed`, `status` becomes `resolved`, `fetched_at` empties — and the
+    provenance-only columns (`rsid_alternates`, `rsid_current`, `rsid_status`, `caid`) are simply not
+    written. This was once filed as a bug about `rsid_alternates` specifically; it is not one, and it is
+    not fixable here. Those columns are **outside** the fact set precisely so they stay out of
+    `weights.parquet`, so the information does not exist in the artifact this function reads — emitting
+    the column names would produce a header with permanently empty cells and change nothing.
+
+    The exception is `vrs_id` with its `vrs_spec` (RM270, 0.8): every variant parquet carries the id
+    `resolution.csv` recorded for each allele, because it is the spelling-independent key a consumer
+    joins an indel on, so the artifact holds it and this writes it back, holes kept. Without that, a
+    round trip dropped every id (RM241's residual) and the second lap's manifest counted none.
+
+    Recovering an ambiguous candidate list after a round-trip means re-running the enricher, which is
+    the correct place for it: the candidate list is a statement about a reference at a moment, not a
+    property of the module.
 
     `authority` (RM33) joins that list for the same reason and one of its own: `source` is `reversed`
     here, and a reversed table's facts came out of parquet rather than from any licensed source, so
@@ -601,6 +610,8 @@ def _write_resolution_csv(
         "alts",
         "genome_build",
         "locus_index",
+        "vrs_id",
+        "vrs_spec",
         "source",
         "status",
         "fetched_at",
@@ -746,39 +757,6 @@ def _smallest_free(used: set[int]) -> int:
     return index
 
 
-def _resolution_key(
-    row: dict[str, Any],
-    chrom: str,
-    start: int,
-    alts_cell: str | None,
-    genome_build: str,
-) -> str:
-    """The key a reversed `resolution.csv` row is filed under: the identity the AUTHOR wrote.
-
-    Recomputed from `authored_ident` rather than read off the parquet's own `variant_key`, because on
-    the weights side those two differ exactly where it matters: a one-to-many rsID expansion re-keys
-    each emitted row onto its own locus, so the stored key names a locus while the injected table
-    named the rsID. Reading the stored column there would file N rows under N keys and leave the
-    collapsed authored row joining to none of them.
-
-    Falls back to the stored key, then to a fresh derivation, for an artifact compiled before
-    `authored_ident` existed.
-    """
-    if (authored := row.get("authored_ident")) is not None:
-        authored_set = set(authored)
-        return derive_variant_key(
-            row.get("rsid") if "rsid" in authored_set else None,
-            chrom if "chrom" in authored_set else None,
-            start if "start" in authored_set else None,
-            row.get("ref") if "ref" in authored_set else None,
-            alts_cell if "alts" in authored_set else None,
-            build=genome_build,
-        )
-    return row.get("variant_key") or derive_variant_key(
-        row.get("rsid"), chrom, start, row.get("ref"), alts_cell, build=genome_build
-    )
-
-
 def _resolution_record(
     row: dict[str, Any],
     resolution_key: str,
@@ -803,10 +781,22 @@ def _resolution_record(
         # made a reversed table unjoinable.
         "genome_build": genome_build,
         "locus_index": locus_index,
+        # RM270: the ids every variant parquet carries since 0.8 — a list parallel to `alts` on
+        # `weights.parquet`, the `resolution.csv` cell itself on a positional table and a proxy locus.
+        # An older artifact has neither column and writes empty cells, as before.
+        "vrs_id": _vrs_cell(row.get("vrs_id")),
+        "vrs_spec": _scalar_cell(row.get("vrs_spec")),
         "source": "reversed",
         "status": "resolved",
         "fetched_at": "",
     }
+
+
+def _vrs_cell(value: object) -> str:
+    """A parquet's `vrs_id` as `resolution.csv` spells it: a list joined with its holes kept."""
+    if isinstance(value, list):
+        return join_vrs_ids(value) or ""
+    return _scalar_cell(value)
 
 
 def _most_common(df: pl.DataFrame, col: str) -> str | None:

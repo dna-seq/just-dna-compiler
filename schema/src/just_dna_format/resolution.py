@@ -230,6 +230,21 @@ class ResolutionRow(BaseModel):
         ),
         json_schema_extra={**vocabulary("placement_verdict", VALID_PLACEMENT_VERDICTS), **since("0.8.0")},
     )
+    # ── the spelling verdict (0.8, RM270; EXCLUDED from resolution_signature) ──
+    # A verdict the enricher stamps, never an authored claim: an author-declared normalization would be
+    # a claim no offline tier can check, believed by exactly the consumer it misleads (RM270 candidate 2).
+    left_aligned: bool | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description=(
+            "Whether the enricher checked this row's spelling to be the leftmost parsimonious one, ALT "
+            "by ALT, against the reference: `true` checked left-aligned, `false` checked and not, empty "
+            "unknown (no reference read, a non-nucleotide allele, or a row written before 0.8). A "
+            "coordinate the enricher fills from an rsID is written left-aligned; a coordinate a module "
+            "authored is recorded as authored and only judged here (RM270). A caller's left-aligned "
+            "VCF joins a `false` row's indel only through `vrs_id`."
+        ),
+    )
     fetched_at: str | None = Field(
         json_schema_extra=since("0.5.0"),
         default=None,

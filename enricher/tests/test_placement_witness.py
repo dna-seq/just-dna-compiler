@@ -16,6 +16,7 @@ data proxy holding only those bases, so every id below is minted by `ga4gh.vrs` 
 first test proves the windows: the two RM270 alleles mint the ids RM270 and ClinVar-GKM recorded.
 """
 
+import gzip
 import hashlib
 import json
 from pathlib import Path
@@ -23,13 +24,15 @@ from pathlib import Path
 import polars as pl
 import pytest
 from ga4gh.vrs.dataproxy import _DataProxy
-from just_dna_compiler.compiler import load_csv_rows
+from just_dna_compiler.compiler import compile_module, load_csv_rows
 from just_dna_enricher.clinvar_gkm import ALLELE_FILE, VARIATION_FILE, WITNESS_PARQUET, parse_manifest
 from just_dna_enricher.clinvar_gkm_build import build_snapshot
 from just_dna_enricher.enrich import EnrichmentError, enrich
+from just_dna_enricher.enrich.orchestration import _filled_pieces
+from just_dna_enricher.enrich.resolution_csv import _write_resolution_csv
 from just_dna_enricher.licensing import sources_path
 from just_dna_enricher.placement import Allele, compare_placements, same_event
-from just_dna_enricher.sequences import SequenceProxy
+from just_dna_enricher.sequences import SequenceProxy, normalize_locus, spelling_verdict
 from just_dna_enricher.vrs import VrsMinter
 from just_dna_format.integrity import resolution_signature
 from just_dna_format.layout import VERIFICATION_JSON
@@ -37,6 +40,7 @@ from just_dna_format.resolution import ResolutionRow
 from just_dna_format.vrs import refget_accession
 
 SLICE = Path(__file__).resolve().parents[2] / "assets" / "clinvar_gkm_slice"
+CONSUMER_JOIN = Path(__file__).resolve().parents[2] / "assets" / "consumer_join"
 
 #: `chrom -> (first 1-based position, bases)`; see the module docstring for where each was read.
 WINDOWS: dict[str, tuple[int, str]] = {
@@ -315,10 +319,12 @@ def test_s117_is_withheld_and_both_respellings_are_written_with_their_witness(
     (finding,) = result.placement.disagreements
     assert finding.placed == ("9:133257520 G>GC",) and finding.witness_placed == ("9:133257521 T>TC",)
     assert (finding.authority, finding.witness) == ("ensembl", "clinvar")
-    # The respellings: written at Ensembl's spelling, the witness recorded on the row.
+    # The respellings: one event, so written — left-aligned since RM270, which is ClinVar's spelling —
+    # with the witness recorded on the row.
     for rsid, vrs_id in (("rs72613567", HSD17B13_ID), ("rs77944059", RS77944059_ID)):
         row = rows[rsid]
-        assert (row.chrom, row.start, row.ref, row.alts) == ENSEMBL[rsid]
+        assert (row.chrom, row.start, row.ref, row.alts) == CLINVAR[rsid]
+        assert row.left_aligned is True
         assert (row.placement_witness, row.placement_verdict) == ("clinvar+clinvar_gkm", "same_event")
         assert row.vrs_id == vrs_id
     # One witness: asked, and holding nothing for it — counted, never agreement.
@@ -516,3 +522,232 @@ def test_witnesses_holding_nothing_record_a_skip_never_a_zero_of_zero(
     record = _record(spec)
     assert record["skipped"] == "nothing_to_check" and record.get("subjects") in (None, 0)
     assert "1 of 1 placed rsID(s) had one witness only" in record["detail"]
+
+
+# ── RM270: a fill is written left-aligned, an authored coordinate is judged, the id joins both ─────
+
+
+def _coordinate_spec(root: Path, spellings: dict[str, tuple[str, int, str, str]]) -> Path:
+    """Coordinate-authored rows (no rsID): the module's own spelling is its identity."""
+    spec = root / "spec"
+    spec.mkdir()
+    (spec / "module_spec.yaml").write_text(_YAML)
+    lines = ["chrom,start,ref,alts,genotype,state,conclusion"]
+    for name, (chrom, start, ref, alt) in spellings.items():
+        lines.append(f"{chrom},{start},{ref},{alt},{'/'.join(sorted((ref, alt)))},risk,{name}")
+    (spec / "variants.csv").write_text("\n".join(lines) + "\n")
+    (spec / "studies.csv").write_text(
+        "chrom,start,ref,pmid\n" + "".join(f"{c},{p},{r},9545397\n" for c, p, r, _ in spellings.values())
+    )
+    return spec
+
+
+def _weights_ids(spec: Path, out: Path) -> dict[tuple, list | None]:
+    result = compile_module(spec, out)
+    assert result.success, result.errors
+    df = pl.read_parquet(out / "weights.parquet")
+    return {
+        (r["chrom"], r["start"], r["ref"], ",".join(r["alts"])): r["vrs_id"] for r in df.iter_rows(named=True)
+    }
+
+
+def test_rm270_a_filled_respelling_is_written_left_aligned_and_compiles_to_its_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_ambient_caches: Path
+) -> None:
+    """The Ensembl snapshot gives each rsID a few bases right of the caller's spelling. The fill is
+    outside `content_signature`, so the run writes it left-aligned — the spelling ClinVar and a
+    caller's normalized VCF use — and the parquet carries the one id both spellings mint."""
+    spec = _spec(tmp_path, {"rs72613567": "T/TA", "rs77944059": "G/GAAAC"})
+    result = _enrich(spec, tmp_path, monkeypatch)
+    rows = {r.rsid: r for r in result.rows}
+    for rsid in ("rs72613567", "rs77944059"):
+        assert (rows[rsid].chrom, rows[rsid].start, rows[rsid].ref, rows[rsid].alts) == CLINVAR[rsid]
+        assert rows[rsid].left_aligned is True
+    assert result.spelling is not None and len(result.spelling.respelled) == 2
+    assert "rs72613567 4:87310241 A>AA → 4:87310240 T>TA" in result.spelling.respelled
+    ids = _weights_ids(spec, tmp_path / "out")
+    assert ids[(*CLINVAR["rs72613567"][:3], "TA")] == [HSD17B13_ID]
+    assert ids[(*CLINVAR["rs77944059"][:3], "G")] == [RS77944059_ID]
+
+
+def test_rm270_an_authored_coordinate_is_judged_never_rewritten_and_its_id_joins_both_spellings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_ambient_caches: Path
+) -> None:
+    """Both spellings of `rs72613567` and `rs77944059` authored as coordinates, and `rs8176719`'s two
+    placements. The cells are the rows' identity: each is recorded exactly as authored, the
+    right-shifted ones are stamped `left_aligned=false` with the leftmost spelling named, and on the
+    parquet each event carries one id whichever way it was spelled while the two events carry two."""
+    spellings = {
+        "hsd17b13_ensembl": ENSEMBL["rs72613567"],
+        "hsd17b13_clinvar": CLINVAR["rs72613567"],
+        "rs77944059_ensembl": ENSEMBL["rs77944059"],
+        "abo_ensembl": ENSEMBL["rs8176719"],
+        "abo_clinvar": CLINVAR["rs8176719"],
+    }
+    spec = _coordinate_spec(tmp_path, spellings)
+    authored = (spec / "variants.csv").read_bytes()
+    result = _enrich(spec, tmp_path, monkeypatch)
+    rows = {(r.chrom, r.start, r.ref, r.alts): r for r in result.rows}
+    assert set(rows) == set(spellings.values()), "every cell recorded as authored"
+    aligned = {name: rows[s].left_aligned for name, s in spellings.items()}
+    assert aligned == {
+        "hsd17b13_ensembl": False,
+        "hsd17b13_clinvar": True,
+        "rs77944059_ensembl": False,
+        "abo_ensembl": True,
+        "abo_clinvar": True,
+    }
+    assert result.spelling is not None
+    assert (result.spelling.checked, result.spelling.unknown, result.spelling.respelled) == (5, 0, [])
+    assert sorted(result.spelling.findings) == [
+        "2:166204477:ACAAA:A: 2:166204477 ACAAA>A → 2:166204470 GAAAC>G",
+        "4:87310241:A:AA: 4:87310241 A>AA → 4:87310240 T>TA",
+    ]
+    assert (spec / "variants.csv").read_bytes() == authored
+    ids = _weights_ids(spec, tmp_path / "out")
+    assert ids[ENSEMBL["rs72613567"]] == ids[CLINVAR["rs72613567"]] == [HSD17B13_ID]
+    assert ids[ENSEMBL["rs77944059"]] == [RS77944059_ID]
+    abo = ids[ENSEMBL["rs8176719"]], ids[CLINVAR["rs8176719"]]
+    assert abo[0] and abo[1] and abo[0] != abo[1]
+
+
+def test_rm270_offline_a_fill_keeps_its_links_spelling_and_says_unknown(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_ambient_caches: Path
+) -> None:
+    """No reference read, no verdict: the fill stays as the link gave it, `left_aligned` empty —
+    unknown, never `false` — and a substitution is still decided, since it needs no read."""
+    monkeypatch.setattr("just_dna_enricher.enrich.orchestration.SequenceProxy", SequenceProxy)
+    spec = _spec(tmp_path, {"rs72613567": "T/TA", "rs4988235": "A/G"})
+    result = enrich(
+        spec,
+        offline=True,
+        ensembl_cache=_ensembl_snapshot(tmp_path),
+        download=False,
+        use_gnomad=False,
+        verify_ref=False,
+        verify_clinsig=False,
+        verify_rsids=False,
+        verify_datasets=False,
+    )
+    rows = {r.rsid: r for r in result.rows}
+    assert (rows["rs72613567"].start, rows["rs72613567"].left_aligned) == (ENSEMBL["rs72613567"][1], None)
+    assert rows["rs4988235"].left_aligned is True
+    assert result.spelling is not None and result.spelling.respelled == []
+
+
+def test_rm270_a_recorded_fill_is_respelled_only_on_rederive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_ambient_caches: Path
+) -> None:
+    """`@sidecar-authoritative`: an ordinary run leaves a recorded row alone, `--rederive` re-asks."""
+    spec = _spec(tmp_path, {"rs72613567": "T/TA"})
+    chrom, start, ref, alt = ENSEMBL["rs72613567"]
+    (spec / "resolution.csv").write_text(
+        "variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,source,status\n"
+        f"rs72613567,rs72613567,{chrom},{start},{ref},{alt},GRCh38,0,cache,resolved\n"
+    )
+    (row,) = _enrich(spec, tmp_path, monkeypatch).rows
+    assert (row.start, row.left_aligned) == (start, None)
+    (row,) = _enrich(spec, tmp_path, monkeypatch, rederive=True).rows
+    assert ((row.chrom, row.start, row.ref, row.alts), row.left_aligned) == (CLINVAR["rs72613567"], True)
+
+
+def test_rm270_the_verdict_is_outside_the_fact_signature_and_reads_back_tri_state(tmp_path: Path) -> None:
+    bare = ResolutionRow(variant_key="rs1", rsid="rs1", chrom="2", start=5, ref="G", alts="A")
+    for verdict in (True, False):
+        stamped = ResolutionRow(**bare.model_dump(exclude_none=True), left_aligned=verdict)
+        assert resolution_signature([bare]) == resolution_signature([stamped])
+        path = tmp_path / f"{verdict}.csv"
+        _write_resolution_csv([stamped, bare], path)
+        back, errors, _ = load_csv_rows(path, ResolutionRow, path.name)
+        assert errors == [] and [r.left_aligned for r in back] == [verdict, None]
+
+
+def _consumer_join_window(chrom: str, start: int, end: int) -> str | None:
+    """1-based inclusive GRCh38 bases from the consumer-join fixture's windows (`samtools faidx`)."""
+    with gzip.open(CONSUMER_JOIN / "grch38_windows.fa.gz", "rt") as handle:
+        records = handle.read().split(">")[1:]
+    for record in records:
+        header, _, body = record.partition("\n")
+        name, span = header.rsplit(":", 1)
+        first = int(span.split("-")[0])
+        bases = body.replace("\n", "").upper()
+        if name == chrom and first <= end <= first + len(bases) - 1:
+            return bases[max(start, first) - first : end - first + 1]
+    return None
+
+
+def test_rm270_shox_multi_allelic_fill_splits_into_the_two_spellings_a_caller_writes() -> None:
+    """Ensembl's `X:634690 AGAG>AG,AGAGAG` is a 2 bp AG deletion and its duplication; ClinVar and a
+    caller's `bcftools norm -m -any` write `X:634689 CAG>C` and `X:634689 C>CAG`. Two references, so two
+    loci; a site whose ALTs share one leftmost `(start, ref)` stays one locus."""
+    shox = {"chrom": "X", "start": 634690, "ref": "AGAG", "alts": "AG,AGAGAG"}
+    normalized = normalize_locus(shox, _consumer_join_window)
+    assert normalized.aligned is True and normalized.piece_of == (0, 1)
+    assert [(lo["start"], lo["ref"], lo["alts"]) for lo in normalized.loci] == [
+        (634689, "CAG", "C"),
+        (634689, "C", "CAG"),
+    ]
+    # Offline: nothing decided, nothing respelled — whole or not at all.
+    assert normalize_locus(shox, None).loci == [shox] and normalize_locus(shox, None).aligned is None
+    # A multi-allelic substitution needs no read and stays one locus.
+    snv = {"chrom": "X", "start": 641036, "ref": "C", "alts": "A,T"}
+    assert (normalize_locus(snv, None).loci, normalize_locus(snv, None).aligned) == ([snv], True)
+    # The authored half: judged per ALT, so the jointly trimmed spelling of the pair reads `false`.
+    verdict = spelling_verdict("X", 634689, "CAG", "C,CAGAG", _consumer_join_window)
+    assert verdict.verdict is False and verdict.normalized[1] == ("X", 634689, "C", "CAG")
+
+
+def test_rm270_a_pairs_recorded_locus_is_judged_and_kept_in_the_links_spelling(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_ambient_caches: Path
+) -> None:
+    """A row authoring both an rsID and a coordinate: the reference's locus is recorded beside the
+    authored one for the compiler's spelling comparison (S104), so respelling it would manufacture an
+    agreement or a disagreement the sources never stated. It is judged and kept as the link gave it."""
+    spec = _spec(tmp_path, {"rs72613567": "T/TA"}, pairs={"rs72613567": ENSEMBL["rs72613567"]})
+    result = _enrich(spec, tmp_path, monkeypatch)
+    (row,) = result.rows
+    assert ((row.chrom, row.start, row.ref, row.alts), row.left_aligned) == (ENSEMBL["rs72613567"], False)
+    assert result.spelling is not None and result.spelling.respelled == []
+    assert result.spelling.findings == ["rs72613567: 4:87310241 A>AA → 4:87310240 T>TA"]
+
+
+@pytest.mark.parametrize(
+    ("genotype", "written"),
+    [
+        # Spelled in the source locus's own frame: the genotype names the deletion, never the duplication.
+        ("AG/AGAG", [("X", 634689, "CAG", "C")]),
+        # Naming both ALTs: no one left-aligned locus holds them, so the source is written whole.
+        ("AG/AGAGAG", [("X", 634690, "AGAG", "AG,AGAGAG")]),
+        # Not in the source's frame, and either reading fits: both pieces, as the source fitted.
+        ("C/CAG", [("X", 634689, "CAG", "C"), ("X", 634689, "C", "CAG")]),
+    ],
+)
+def test_rm270_a_split_writes_the_piece_the_genotype_is_about(genotype: str, written: list[tuple]) -> None:
+    """The source locus passed the hosting filter as one site; after the split each piece must carry the
+    alleles the row's genotype names, or a compound het of the two ALTs would lose its only locus."""
+    shox = {"chrom": "X", "start": 634690, "ref": "AGAG", "alts": "AG,AGAGAG"}
+    pieces = _filled_pieces(genotype, shox, _consumer_join_window)
+    assert [(p["chrom"], p["start"], p["ref"], p["alts"]) for p, _ in pieces] == written
+    expected = written[0][1] != 634690
+    assert {aligned for _, aligned in pieces} == {expected}
+
+
+def test_rm270_a_respelling_on_rederive_is_not_reported_as_the_source_moving(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_ambient_caches: Path
+) -> None:
+    """The drift canary compares facts, and a left-aligned fill moves `start`/`ref`/`alts`. With every
+    allele's id the same on both sides it is the same event spelled this release's way, named apart."""
+    spec = _spec(tmp_path, {"rs72613567": "T/TA", "rs4988235": "A/G"})
+    chrom, start, ref, alt = ENSEMBL["rs72613567"]
+    (spec / "resolution.csv").write_text(
+        "variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,vrs_id,vrs_spec,source,status\n"
+        f"rs72613567,rs72613567,{chrom},{start},{ref},{alt},GRCh38,0,{HSD17B13_ID},2.0,cache,resolved\n"
+        # A recorded answer the source no longer gives: real drift, and it must still read as drift.
+        "rs4988235,rs4988235,2,135851077,G,A,GRCh38,0,,,cache,resolved\n"
+    )
+    result = _enrich(spec, tmp_path, monkeypatch, rederive=True)
+    assert result.rederived is not None
+    assert {(d.variant_key, d.respelled) for d in result.rederived} == {
+        ("rs72613567", True),
+        ("rs4988235", False),
+    }
