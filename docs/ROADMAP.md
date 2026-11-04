@@ -551,60 +551,6 @@ check cannot ship without stating its witness.
 *self-consistent* is a new verdict vocabulary member. Both are additive and minor-legal (P3, P8).
 Price: the record is machine-written, so half cost (P9). Not on `main`.
 
-## RM304 — a `vrs_id` does not say which VRS minted it, and VRS 2.1 moves some insertion ids
-
-**Decided 2026-11-04 by the maintainer: both, a module-wide pin and a per-row version.** The manifest pins the VRS version the module's ids are meant to be minted under, and each `vrs_id` carries the version that minted it, beside it. A row whose version differs from the pin is the one to invalidate against, with its own reason, never the mismatch error (question 2). A per-row column alone cannot say which version is intended; a pin alone cannot survive a merge-not-clobber table mixing runs.
-
-**0.8, decided 2026-11-03.** Taken into 0.8 by the maintainer, with the rest of the indel-placement fixes (RM304, RM267, RM270, RM292, RM305). The status line below predates that decision.
-
-**Severity** high · **Status** open — **a minor, release undecided**, to land before RM270 · **Owner**
-format (where the version is recorded) + enricher (the minting) · **Motivating case** [GKS_SURVEY.md](probes/GKS_SURVEY.md) §0 findings 2 and 3,
-2026-09-28
-
-**Two facts, both measured in the survey.**
-
-1. **The id carries no version.** For BRAF V600E (`chr7:140753336 A>T`) three `ga4gh:VA.` ids exist:
-   ours under VRS 2.0 (`…Otc5ovrw…`), vrs-python's VRS 1.3 computation (`…fZiBjQEo…`), and the ClinGen
-   Allele Registry's (`…HaPTmn-r…`, a VRS 1.x shape). All three are well-formed and none says which
-   spec produced it. Nothing in the repo records the version: `grep -rni 'vrs_version'` over
-   `schema/`, `enricher/` and SCHEMAS.md finds nothing.
-2. **VRS 2.1.0 (2026-09-01) changes ambiguous-insertion normalization**: it now picks the smallest
-   repeat-unit factor where 2.0 picked the greatest, and that moves the digest of affected alleles.
-   vrs-python has not implemented it. Both 2.3.3 (ours) and 2.4.0a4 still iterate the factors
-   descending, and the change is open as vrs-python issue #637. Today everyone we compare against
-   mints 2.0.x ids: our enricher, ClinVar-GKM and gnomAD. The first vrs-python release that ships the
-   2.1 rule will make a fresh `enrich` mint a different id for some insertions than the one stored
-   in `resolution.csv` and the one gnomAD publishes, with nothing to say why.
-
-**Why it is filed before RM270.** RM270's candidate repair carries the enricher's `vrs_id` onto the
-parquets as the spelling-independent join key. A key whose derivation silently changes under a
-dependency upgrade is the failure RM270 exists to remove, moved one layer down.
-
-**Mitigation shipped separately, the same day.** `ga4gh.vrs` is capped `<2.4` in the enricher, so no
-upgrade can change the rule unannounced. The cap is a stopgap. It is lifted by this item, never
-quietly: once the version is recorded, an upgrade becomes a declared re-id instead of a silent one.
-
-**Open questions.**
-
-1. **Where the version lives.** It could be one run-level fact on `resolution.csv`'s provenance or in
-   the manifest (every id in a run is minted by one library), or a column beside `vrs_id`. Both
-   spellings of one allele can coexist only in the column form. The run-level form is cheaper, and a
-   merge-not-clobber sidecar mixing runs is the case that breaks it (`@currency-cannot-be-a-column`
-   asks which run writes it).
-2. **What the verify pass does on a version mismatch.** Recomputing a stored 2.0 id under 2.1 gives a
-   mismatch that is neither corruption nor a wrong event. It needs its own reason, never the
-   existing mismatch error (`@vrs-three-outcomes`).
-3. **A pinned insertion.** The ground-truth tests pin substitutions against gnomAD. `rs72613567`
-   (`4-87310240-T-TA` → `ga4gh:VA.Jml7SNku3QQBCVIj78BGiFvR21bNkos7`, present in ClinVar-GKM) is the
-   insertion to pin, behind `JUST_DNA_NETWORK_TESTS=1` since indel minting reads the SeqRepo proxy.
-   The test is what turns a future rule change red.
-
-**Addendum, 2026-11-04 (the liaison, `docs/UPSTREAM_GA4GH_VRS.md`).** vrs-python PR #665, still open, adds
-`normalize(rle_subunit_mode=...)` with a default of `LARGEST`, the VRS 2.0 rule. Its text says the `vrs/2.1` branch
-will default to `SMALLEST`. Through 2.4.0-a6, no digest we compute moves (the liaison diffed and measured it). Once
-the keyword is released, the cap can be lifted with the id rule chosen on purpose: our call passes the mode
-explicitly, and question 1's recorded version says which rule minted each id.
-
 ## RM305 — ClinVar-GKM's allele table is an offline, independent witness for where an indel sits, and nothing reads it
 
 **Decided 2026-11-04 by the maintainer: a witness, indels only.** ClinVar-GKM becomes the witness RM292's checks name (no check of its own), and the lane keeps the ~270k `ReferenceLengthExpression` alleles plus other indels, not the full 4.46 M rows.

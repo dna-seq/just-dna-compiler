@@ -278,7 +278,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
   | `VALID_SOURCE_LAYERS` | 9 (closed) |  |
   | `VALID_VERIFICATION_CHECKS` | 26 (closed) |  |
   | `VALID_VERIFICATION_SKIPS` | 8 (closed) |  |
-  | `VALID_WARNING_CODES` | 77 (closed) | every code a compile may stamp on a finding (members in `RETIRED_WARNING_CODES` are no longer emitted); the catalogue with texts is in [COMPILER.md](COMPILER.md) |
+  | `VALID_WARNING_CODES` | 78 (closed) | every code a compile may stamp on a finding (members in `RETIRED_WARNING_CODES` are no longer emitted); the catalogue with texts is in [COMPILER.md](COMPILER.md) |
 
   Vocabularies owned by a leaf rather than by `vocab` (`spec`, `binning`, `pgx`, `pgs`, `manifest`,
   `sources`) are reached through the field markers above and not listed here, for the reason the bullet
@@ -1298,6 +1298,13 @@ because every consumer that reads the column has to agree on it and a second imp
 - **`is_substitution(ref, alt)`** — the predicate behind minting's "substitutions only" rule, exposed
   so a caller can ask *before* getting a `None` back and having to guess which of the several reasons
   applied.
+- **`VRS_SPEC_VERSION` and `vrs_spec_release(value)`** (0.8, RM304) — which VRS rule an id was minted
+  under. The id rule changes at a VRS **minor** (2.1 re-ids some ambiguous insertions), so a version is
+  compared at `major.minor`: `vrs_spec_release` reads `"2.0.1"` (the library's spelling) as `"2.0"`,
+  answers `None` for an unstated cell, and hands back an unreadable value untouched so it equals no pin
+  and is quoted whole. The enricher stamps `ResolutionRow.vrs_spec` through it and the compiler's verify
+  pass compares through it; `VRS_SPEC_VERSION` is the rule `derive_vrs_allele_id` implements and the
+  module's pin (`manifest.compilation.vrs_version`).
 - **`normalize_chrom` / `refget_accession`** — contig spelling and the accession lookup.
   `refget_accession` **raises** `UnsupportedBuildError` for a build with no table rather than
   returning `None` — including for `None` or `""`, since the GRCh38 default lives in the signature and
@@ -2255,10 +2262,24 @@ does not carry a coordinate, and it is the wrong one — RM43 (0.6) is the right
   not an annotation and must not inherit VariantRow's annotation validators; it reuses only the shared
   `rsid` grammar and the `status` vocabulary.
 - **Cross-references (0.5, outside the fact set):** `vrs_id?` (`ga4gh:VA.…`), `vrs_spec?` (`"2.0"`),
-  `caid?` (`CA\d+`), each with a grammar validator. Three registries, three columns — never one
+  `caid?` (`CA\d+`); `vrs_id` and `caid` with a grammar validator. Three registries, three columns — never one
   overloaded `identifier` field (Principle 5). They stay out of `RESOLUTION_FACT_FIELDS` so adding them
   moves no existing `resolution_signature`; the identity they carry reaches the artifact through
   `variant_key` instead, so the fact set does not need them.
+- **`vrs_spec` is the per-row VRS version, and since 0.8 it is read (RM304).** It records the VRS minor
+  the row's ids were minted under, written by the run that minted them and by no later one — an empty
+  cell is *unstated*, never the current version, because merge-not-clobber forbids a later pass writing
+  into an earlier pass's row. The module-wide half is the pin, `manifest.compilation.vrs_version`:
+  the rule this compiler verifies against, `None` when no allele carries an id. A row whose `vrs_spec`
+  differs from the pin is reported as `vrs_version_differs`, beside each allele's own verdict; only a
+  substitution under another VRS **major**, whose digest serialization differs, is counted there instead
+  of being a mismatch.
+  Both halves exist because a pin alone cannot describe a table mixing runs, and a per-row value alone
+  cannot say which version is intended. RM304 was filed believing nothing recorded a version; the
+  per-row half had shipped in 0.5 under this name, and 0.8 added the pin, the comparison and the
+  minter reading its version off `ga4gh.vrs`. No parquet carries it yet: no compiled parquet carries an
+  id this ecosystem minted (`frequencies.parquet`'s `vrs_id` is gnomAD's), and carrying both onto the
+  artifact is RM270's.
 - **`RESOLUTION_FACT_FIELDS`** names the fact columns; `integrity.resolution_signature` hashes only
   those (provenance deliberately excluded), so a human-filled and an Ensembl-filled table with identical
   facts hash equal.
@@ -2462,7 +2483,9 @@ Resolution *policy and outcome*: `resolution_mode?` (`strict`/`best_effort`), `f
 `resolution_signature?`, `resolution_sources`. Allele-identity *coverage*: `vrs_alleles` and `vrs_alleles_identified`, the
 counts `_vrs_coverage_warnings` reports, so a consumer can read how completely the identity scheme
 names this module's alleles instead of inferring it from the absence of warnings. "Complete" is
-`identified == alleles`, derived rather than stored twice.
+`identified == alleles`, derived rather than stored twice. Beside them, `vrs_version?` (0.8, RM304): the
+VRS minor those ids are pinned to, the rule the compiler verified against, `None` when no allele carries
+an id; a row stating another version in `resolution.csv`'s `vrs_spec` is `vrs_version_differs`.
 
 **Read `fully_resolved` with `resolution_subjects` or you will trust the wrong modules (RM44, 0.6).**
 The flag is `all(...)` over the module's variant rows, so on a module with no `variants.csv` it is

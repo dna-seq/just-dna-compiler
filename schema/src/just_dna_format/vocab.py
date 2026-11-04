@@ -1547,6 +1547,7 @@ VALID_WARNING_CODES: frozenset[str] = frozenset(
         # ── VRS ──
         "vrs_id_unverifiable",  # a recorded `ga4gh:VA.` this tier cannot recompute
         "vrs_coverage_incomplete",  # alleles in resolution.csv that carry no VA at all
+        "vrs_version_differs",  # a VA minted under a VRS minor other than the pinned one (RM304)
         # ── variants.csv coherence ──
         "weight_sign_disagrees_with_effect",  # `weight`'s sign contradicts `state` or `direction`
         "genotype_allele_not_at_locus",  # a genotype names an allele the locus does not carry

@@ -38,11 +38,18 @@ VRS_ID_PATTERN: re.Pattern[str] = re.compile(r"^ga4gh:(VA|SL|SQ|CX|CN)\.[A-Za-z0
 # ClinGen Allele Registry canonical allele id.
 CAID_PATTERN: re.Pattern[str] = re.compile(r"^CA\d+$")
 
-# The VRS spec version whose serialization `derive_vrs_allele_id` implements. Stored beside a minted
-# id (`ResolutionRow.vrs_spec`) to disambiguate an *embedded location* id, not because the allele id
-# drifts — the `VA.` digest for a substitution is identical under 1.x and 2.0, which is why gnomAD's
-# (1.x-shaped) payload and this 2.0 implementation agree byte-for-byte.
+# The VRS spec version whose serialization `derive_vrs_allele_id` implements, at the spec's MINOR — the
+# grain the id rule changes at. Stored beside a minted id (`ResolutionRow.vrs_spec`) and published as
+# the module's pin (`manifest.compilation.vrs_version`, RM304). The allele id DOES drift across a
+# minor: VRS 2.1 picks the smallest repeat-unit factor for an ambiguous insertion where 2.0 picked the
+# greatest, which moves that allele's digest. A substitution's id is unaffected, and so is everything
+# `derive_vrs_allele_id` mints (substitutions only), which is why the stdlib and the enricher's
+# library must still agree on the minor — `enricher/tests/test_vrs_version.py` asserts it.
 VRS_SPEC_VERSION: str = "2.0"
+
+#: `major.minor` at the head of a stated VRS version (`"2.0.1"`, the library's own spelling, reads as
+#: `"2.0"`). Anything after the minor is a patch, and a patch never changes the id rule.
+_VRS_RELEASE_PATTERN: re.Pattern[str] = re.compile(r"^(\d+)\.(\d+)(?:\.\d+)?$")
 
 # ── The GRCh38 refget accession per primary contig ─────────────────────────────────────────────
 # A refget accession IS the identity of a reference sequence (`SQ.` + `sha512t24u` of the uppercased
@@ -709,6 +716,29 @@ def derive_vrs_allele_id(
         "type": "Allele",
     }
     return VRS_ALLELE_PREFIX + sha512t24u(_canonical(allele))
+
+
+def vrs_spec_release(value: str | None) -> str | None:
+    """The VRS rule a stated version names, at the grain the rule changes: `"2.0.1"` → `"2.0"`.
+
+    Three arms (RM304). Unstated (`None`, blank) is the unknown arm and answers `None` — a row whose
+    version nobody recorded is not a row under some other version. A readable `major.minor[.patch]`
+    answers its `major.minor`. A stated value this grammar cannot read is returned stripped and
+    otherwise untouched: it is neither unknown nor equal to any pin, so a comparison reports it as a
+    difference and the message quotes it whole, rather than this function guessing a member for it.
+
+    One normalizer for both sides of the comparison — the enricher stamps through it and the
+    compiler's verify pass reads through it — because the library spells its version `"2.0.1"` while
+    every table written since 0.5 carries `"2.0"`, and a raw string compare would report every row of
+    every module as minted under another rule.
+    """
+    if value is None or not value.strip():
+        return None
+    stated = value.strip()
+    match = _VRS_RELEASE_PATTERN.match(stated)
+    if match is None:
+        return stated
+    return f"{int(match.group(1))}.{int(match.group(2))}"
 
 
 def split_vrs_ids(value: str | None) -> list[str | None]:

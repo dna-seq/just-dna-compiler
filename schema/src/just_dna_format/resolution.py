@@ -125,9 +125,13 @@ class ResolutionRow(BaseModel):
         json_schema_extra=since("0.5.0"),
         default=None,
         description=(
-            "VRS spec version the id was minted under ('2.0'). Recorded to disambiguate an embedded "
-            "location id, not because the allele id drifts — a substitution's VA is identical under "
-            "1.x and 2.0."
+            "VRS spec version the row's `vrs_id` was minted under, at the spec's minor ('2.0'). The "
+            "id rule can change at a minor (VRS 2.1 re-ids some ambiguous insertions), so this is "
+            "what tells an id minted under another rule from a corrupt one: a stated version that "
+            "differs from the module's pin (`manifest.compilation.vrs_version`) is reported as "
+            "`vrs_version_differs`; a substitution that recomputes differently under another VRS major is counted "
+            "there, never as a mismatch. Written only by the run that minted the id; "
+            "empty means unstated, never the current version (RM304)."
         ),
     )
     caid: str | None = Field(
