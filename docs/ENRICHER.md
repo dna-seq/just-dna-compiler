@@ -530,7 +530,7 @@ per service, put a semaphore around your call site; the gate will not give you t
 | **ClinGen Allele Registry** (`reg.clinicalgenome.org/allele`) | `clingen_allele` → the identity-from-a-name procedure (0.7, RM153) | none published | `_REQUEST_INTERVAL=0.1` (courtesy) | none |
 | **Ensembl GRCh37 REST** (`grch37.rest.ensembl.org`) | `grch37.diagnose_wrong_build` (0.6), `hint recover` | Ensembl publishes **15 req/s** | `_REQUEST_INTERVAL=0.1` — keeps a whole panel inside it while still interactive | none |
 | **ClinVar release probe** | `currency.ClinVarReleaseClient` — one bounded read of the VCF's header (`HEADER_PROBE_BYTES`) per `--verify-datasets` run (0.7) | NCBI asks for no particular pacing on the FTP-over-HTTPS mirror | `CLINVAR_MIN_INTERVAL=0.5` — this tier paces every service it touches, and one probe per run is inside any budget | none |
-| **Ensembl REST** (`rest.ensembl.org`) | `ensembl` (the live link); the placement witness (0.8, RM267), one sequential request per snapshot indel no loaded witness holds | **15 req/s** per IP, **~55 000 / rolling hour**; 429 + `Retry-After` / `X-RateLimit-*` | **no `PacingGate`** — both uses are one request at a time over what the snapshots missed, so volume stays low; tenacity on transport, 5xx and 429 (`net.retry_if_transient`) | none |
+| **Ensembl REST** (`rest.ensembl.org`) | `ensembl` (the live link); the placement witness (0.8, RM267), one sequential request per snapshot indel no loaded witness holds | **15 req/s** per IP, **~55 000 / rolling hour**; 429 + `Retry-After` / `X-RateLimit-*` | `_REQUEST_INTERVAL=0.1` (`EnsemblSettings.interval`), one `PacingGate` per resolver, waited once per attempt (since 2026-11-04); tenacity on transport, 5xx and 429, waiting at least the answer's `Retry-After` (`net.wait_retry_after`); one longer than `net.RETRY_AFTER_CEILING` (60 s) is not retried, and the resolver asks nothing until it passes | none |
 | **CPIC** (`api.cpicpgx.org`) | `cpic` / `pgx_draft` | unpublished | **no `PacingGate`** — coarse PostgREST GETs (gene-scoped), not per-allele loops | none |
 | **ClinPGx** | `clinpgx` / `clinpgx_draft` | n/a at runtime | **offline snapshot only** for the check/draft path — no live poll budget | none (live API retired → snapshot) |
 | **seqrepo REST** (`services.genomicmedlab.org`) | `sequences` / VRS indel mint | unpublished | **no `PacingGate`**; in-process memo of window reads | none |
@@ -1211,9 +1211,11 @@ case needs a witness that holds it, which is why REST is asked:
   optional capability, `ensembl.RestWitness` (`resolve_rsid_rest`), asked only where the injected
   resolver has it. One written before 0.8 leaves REST not asked for the run: every eligible rsID is
   counted as not asked, `detail` says the resolver has no such method, and one warning names the class.
-  Before this, the first eligible indel raised `AttributeError` and the run died. There
-  is no pacing gate and no `Retry-After` handling on this rung (the table below): during an outage each
-  asked rsID costs three attempts.
+  Before this, the first eligible indel raised `AttributeError` and the run died.
+- **Paced, and told when to come back.** The rung waits on its resolver's `PacingGate` before every
+  attempt and honours a throttle's `Retry-After` (the rate table above). During an outage each asked rsID
+  still costs three attempts; a `Retry-After` past the ceiling leaves every later rsID not asked, with no
+  request, until the time the server named.
 
 
 The ClinVar witness is the snapshot the run locates for its link and the `clin_sig` check, so
@@ -1320,7 +1322,11 @@ fixpoint** (`artifact.digest`, `content_signature`, and the provisional `resolut
 (`_rest_rsid`, `DEFAULT_REST_ENDPOINT` = `rest.ensembl.org/variation/{species}/{rsid}`), and parses its
 GRCh38 `mappings` into loci; `resolve_rsid_rest` is the same request under the name the placement witness
 asks for (an optional capability of an injected resolver, `RestWitness`). **`tenacity`** (`@retry`,
-exponential jitter, 3 attempts) retries a transport error, a timeout, a 5xx and a 429.
+exponential jitter, 3 attempts) retries a transport error, a timeout, a 5xx and a 429, each attempt
+paced by the resolver's `PacingGate` (`EnsemblSettings.interval`, 0.1 s against Ensembl's 15 req/s), and
+a retry waits at least what the answer's `Retry-After` asked for (`net.wait_retry_after`). A wait past
+`net.RETRY_AFTER_CEILING` (60 s; Ensembl's hourly budget answers with the time to its reset) is not
+slept: the request is could-not-ask, and the resolver asks nothing until that time has passed.
 
 **The beta GraphQL leg is retired (2026-11-04).** `beta.ensembl.org/api/graphql/variation`, its query
 leeched from ensembl-mcp, was POSTed before every REST request. Probed by hand that day (19:19Z): the

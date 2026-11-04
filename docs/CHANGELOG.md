@@ -79,6 +79,13 @@ after the retries is unreachable rather than "no record". New: `verification.ran
   (`search.thegencc.org` → `thegencc.org`) and `gene_validity.DEFAULT_GENCC_URL` now names the new
   host; every other one answers where it is named (ClinPGx's 303 and ClinVar-GKM's directory 302 are
   hops to files that answer 200).
+- **The REST rung is paced and honours `Retry-After`.** `EnsemblResolver` holds a `PacingGate`
+  (`EnsemblSettings.interval`, 0.1 s against Ensembl's published 15 req/s; injectable as `gate=`) and
+  waits on it once per attempt, so a host's shared resolver is really paced (just-dna-marketplace's
+  pacing table already said it was). A retried 5xx or 429 waits at least the answer's `Retry-After`
+  (`net.wait_retry_after`, `net.retry_after_seconds`: delta-seconds or an HTTP-date); one past
+  `net.RETRY_AFTER_CEILING` (60 s) is not retried (`net.retry_if_transient_within`), and the resolver
+  asks nothing, answering could-not-ask, until the time the server named.
 
 ## 2026-11-04 — RM270: an indel's spelling-independent `vrs_id` reaches every variant parquet, and a filled coordinate is written left-aligned (0.8, uncut)
 

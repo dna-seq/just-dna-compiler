@@ -271,6 +271,12 @@ redirects unfollowed: only GenCC's bulk download answered 301 (`search.thegencc.
 and its default now names the new host; ClinPGx's 303 to S3 and ClinVar-GKM's directory 302 are hops to
 files that answer 200.
 
+**2026-11-04: the REST rung is paced and honours `Retry-After`.** Neither existed on it (the review of
+the REST witness reported both). `EnsemblResolver` holds a `PacingGate` (0.1 s, Ensembl's 15 req/s)
+waited once per attempt; a retried 5xx or 429 waits at least the answer's `Retry-After`
+(`net.wait_retry_after`, the first in the tier), and one past `net.RETRY_AFTER_CEILING` is not retried
+and holds every later request until it passes. Tests on a fake clock, each arm mutated once.
+
 **Severity** high · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** (two optional
 `resolution.csv` columns and a new check; [PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §5 C4) ·
 **Owner** enricher (the resolver chain's snapshot link), with the upstream half in `just-dna-pipelines` · **Motivating case**

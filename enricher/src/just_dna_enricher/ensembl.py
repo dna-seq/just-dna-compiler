@@ -1,8 +1,10 @@
 """Live Ensembl resolution — for the rare rsIDs the frozen snapshot slice misses.
 
-One backend: the **REST** variation API (rest.ensembl.org), a bare rsID → its GRCh38 mappings, retried
-by `tenacity` on a transport error, a timeout, a 5xx or a 429. All network lives here (never in
-format/compiler). GRCh38 only.
+One backend: the **REST** variation API (rest.ensembl.org), a bare rsID → its GRCh38 mappings. Paced
+under Ensembl's published budget (`PacingGate`, once per attempt) and retried by `tenacity` on a
+transport error, a timeout, a 5xx or a 429, waiting at least what the answer's `Retry-After` asked for;
+a wait longer than `net.RETRY_AFTER_CEILING` is not slept, and nothing is asked until it passes. All
+network lives here (never in format/compiler). GRCh38 only.
 
 **There was a second, and it is gone (2026-11-04).** A beta **GraphQL** leg (`beta.ensembl.org/api/
 graphql/variation`, its query leeched from ensembl-mcp) was POSTed before every REST request. Probed by
@@ -25,7 +27,14 @@ from just_dna_format.vrs import refget_accession
 from tenacity import retry, wait_exponential_jitter
 
 from just_dna_enricher.clingen_allele import anchor_indel
-from just_dna_enricher.net import attempt_floor, is_transient_status, retry_if_transient
+from just_dna_enricher.net import (
+    PacingGate,
+    attempt_floor,
+    is_transient_status,
+    retry_after_seconds,
+    retry_if_transient_within,
+    wait_retry_after,
+)
 from just_dna_enricher.sequences import SequenceProxy
 
 logger = logging.getLogger(__name__)
@@ -33,12 +42,17 @@ logger = logging.getLogger(__name__)
 DEFAULT_REST_ENDPOINT = "https://rest.ensembl.org"
 _ASSEMBLY = "GRCh38"
 
+#: Ensembl publishes 15 requests/second per IP (and ~55,000 per rolling hour, `x-ratelimit-*` on every
+#: answer); a tenth of a second keeps a run inside both, the interval `grch37` uses for the same service.
+_REQUEST_INTERVAL = 0.1
+
 
 @dataclass
 class EnsemblSettings:
     rest_endpoint: str = DEFAULT_REST_ENDPOINT
     species: str = "human"
     timeout: float = 15.0
+    interval: float = _REQUEST_INTERVAL
 
 
 class EnsemblError(RuntimeError):
@@ -81,6 +95,16 @@ class EnsemblResolver:
     # rsIDs this resolver answered with no placeable locus because every mapping carried no nucleotide
     # allele (RM271), collected so a caller can name them (RM272). Accumulates across calls.
     non_nucleotide_rsids: set[str] = field(default_factory=set)
+    # One gate per resolver, so a host holding one resolver (just-dna-marketplace shares one across
+    # threads; the gate is thread-safe) paces every request it makes. Injectable for a test's clock.
+    gate: PacingGate | None = None
+    # The gate's clock reading before which nothing is asked: set when a throttle's `Retry-After`
+    # exceeds `net.RETRY_AFTER_CEILING`, so the server's "not before" is honoured across rsIDs.
+    _resume_at: float | None = None
+
+    def __post_init__(self) -> None:
+        if self.gate is None:
+            self.gate = PacingGate(interval=self.settings.interval)
 
     def _base_reader(self) -> Callable[[str, int], str | None]:
         if self._read_base is None:
@@ -134,9 +158,19 @@ class EnsemblResolver:
         mapping puts the rsID, through RM268's anchor, and an injected resolver's `resolve_rsid` may
         answer from any surface. It is an optional capability of an injected one (`RestWitness`).
         """
+        assert self.gate is not None
+        if self._resume_at is not None:
+            if self.gate.clock() < self._resume_at:
+                logger.info("V1 REST for %s not asked: Ensembl asked for no request before then", rsid)
+                return None, None
+            self._resume_at = None
         try:
             loci, withheld, unplaceable = self._rest_rsid(rsid)
         except httpx.HTTPStatusError as exc:
+            asked = retry_after_seconds(exc)
+            if asked is not None:
+                # The retries are spent or the wait was too long to sleep: honour it for every rsID after.
+                self._resume_at = self.gate.clock() + asked
             # A 5xx or a 429 after the retries is a request that got no answer, never "no record"
             # (`@unreachable-not-absent`): a throttle used to fall through to the 4xx arm below.
             if is_transient_status(exc):
@@ -178,11 +212,13 @@ class EnsemblResolver:
     # second try could not change it.
     @retry(
         stop=attempt_floor(3),
-        wait=wait_exponential_jitter(initial=0.5, max=8.0),
-        retry=retry_if_transient(),
+        wait=wait_retry_after(wait_exponential_jitter(initial=0.5, max=8.0)),
+        retry=retry_if_transient_within(),
         reraise=True,
     )
     def _rest_rsid(self, rsid: str) -> tuple[list[dict], int, int]:
+        assert self.gate is not None
+        self.gate.wait()
         resp = self._http().get(
             f"{self.settings.rest_endpoint}/variation/{self.settings.species}/{rsid}",
             params={"content-type": "application/json"},
