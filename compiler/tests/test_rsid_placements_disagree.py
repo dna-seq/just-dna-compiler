@@ -203,11 +203,43 @@ def test_only_positional_answers_withhold() -> None:
     assert placement_disagreements(rows, "GRCh38") == []
 
 
-def test_one_key_with_a_repeated_locus_index_withholds() -> None:
+def test_one_key_with_a_repeated_locus_index_is_never_two_answers() -> None:
     """Two rows under one key at `locus_index` 0: a hand-filled one-to-many rsID or two answers merged
-    under one key, and the table cannot tell which."""
-    rows = [_row("rs1", "rs1", "1", 100, "A", "G"), _row("rs1", "rs1", "1", 101, "C", "G")]
+    under one key, and the table cannot tell which, so one key is never reported against itself. A
+    positional answer inside either of its loci still agrees."""
+    rows = [
+        _row("rs1", "rs1", "1", 100, "A", "G"),
+        _row("rs1", "rs1", "1", 101, "C", "G"),
+        _row("1:101:C:G", "rs1", "1", 101, "C", "G"),
+    ]
     assert placement_disagreements(rows, "GRCh38") == []
+
+
+def test_two_spellings_the_enricher_judged_are_withheld() -> None:
+    """One release, two spellings: the rsID's answer was filled left-aligned (`left_aligned=true`, RM270)
+    and a positional row authored at the snapshot's own right-shifted spelling was judged not left-aligned
+    (`false`) and back-filled. `--rederive` would rewrite the same table, so this is the spelling question,
+    never a stale answer, and the check withholds."""
+    rows = [
+        _row("rs761191455", "rs761191455", "13", 48041103, "T", "TG", left_aligned=True),
+        _row("13:48041104:G:GG", "rs761191455", "13", 48041104, "G", "GG", left_aligned=False),
+    ]
+    assert placement_disagreements(rows, "GRCh38") == []
+
+
+def test_a_row_with_no_start_is_not_an_answer() -> None:
+    """A located row with `chrom` and no `start` places nothing; it must not compare as position 0."""
+    rows = [
+        _row("rs1", "rs1", "1", 100, "A", "G"),
+        ResolutionRow(variant_key="rs1", rsid="rs1", chrom="1", start=None, status="resolved", locus_index=1),
+        _row("1:100:A:G", "rs1", "1", 100, "A", "G"),
+    ]
+    assert placement_disagreements(rows, "GRCh38") == []
+    only_half = [
+        ResolutionRow(variant_key="rs1", rsid="rs1", chrom="1", start=None, status="resolved"),
+        _row("1:100:A:G", "rs1", "1", 100, "A", "G"),
+    ]
+    assert placement_disagreements(only_half, "GRCh38") == []
 
 
 def test_a_pseudoautosomal_partner_is_the_same_place() -> None:
@@ -298,8 +330,18 @@ def test_the_message_names_each_answers_release_when_recorded() -> None:
 def _membership_case() -> tuple[list[VariantRow], dict[str, list[ResolutionRow]]]:
     """The probe's `rs646776`: dbSNP 157 lists A, the old release's row (C>G,T) does not."""
     variants = [VariantRow(rsid="rs646776", genotype="A/C", state="risk", conclusion="probe")]
-    table = {"rs646776": [_row("rs646776", "rs646776", "1", 109275908, "C", "G,T")]}
+    table = {"rs646776": [_row("rs646776", "rs646776", "1", 109275908, "C", "G,T", authority="ensembl")]}
     return variants, table
+
+
+def test_a_hand_filled_allele_set_gets_no_snapshot_reading() -> None:
+    """A table row no external source answered (`authority` empty: authored, manual, reversed) came from no
+    snapshot, so the stale-release reading and its remedy would be noise there."""
+    variants, _ = _membership_case()
+    table = {"rs646776": [_row("rs646776", "rs646776", "1", 109275908, "C", "G,T", source="manual")]}
+    errors, _ = _check_allele_membership(variants, table, strict=True)
+    (error,) = errors
+    assert "earlier snapshot release" not in error and "--rederive" not in error
 
 
 def test_a_resolved_allele_refusal_names_the_stale_reading_and_the_remedy() -> None:
@@ -314,7 +356,18 @@ def test_a_resolved_allele_refusal_names_the_stale_reading_and_the_remedy() -> N
 def test_a_resolved_allele_refusal_names_the_rows_release() -> None:
     variants, _ = _membership_case()
     table = {
-        "rs646776": [_row("rs646776", "rs646776", "1", 109275908, "C", "G,T", source_release="ensembl-old")]
+        "rs646776": [
+            _row(
+                "rs646776",
+                "rs646776",
+                "1",
+                109275908,
+                "C",
+                "G,T",
+                authority="ensembl",
+                source_release="ensembl-old",
+            )
+        ]
     }
     errors, _ = _check_allele_membership(variants, table, strict=True)
     (error,) = errors

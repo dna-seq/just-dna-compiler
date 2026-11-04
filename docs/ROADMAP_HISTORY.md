@@ -47,7 +47,10 @@ compares rows under one merge key only, and refusing there is a tightening its o
 so the lead files it as a new item · won't fix — one key repeating a `locus_index` and positional-only answers
 are withheld, because the table cannot tell them from a legitimate one-to-many rsID · won't fix — a
 positional row at a locus the rsID's own answer dropped for its genotype reads as two placements; the
-dropped locus leaves no trace in the table · won't fix — not in this item: one event in two spellings within one release (an old snapshot read online) is the
+dropped locus leaves no trace in the table · won't fix — not in this item: a merged rsID's own key
+(`rs_old`, `rsid_current` naming `rs_new`) is not joined with a positional row back-filled `rs_new`, so that
+pair is not compared · won't fix — not in this item: the check reads every row of the table, including a
+subject the spec no longer names, which the next ordinary enrich drops · won't fix — not in this item: one event in two spellings within one release (an old snapshot read online) is the
 sibling item on authored-versus-resolved spellings
 
 **The class.** A merge-not-clobber sidecar keeps every subject it already has and fills only the new ones, so
@@ -80,7 +83,10 @@ compile refuse with the same errors, best-effort warns once (`warnings_summary` 
 across compile → reverse → compile, a fresh table is silent, and it walks **every** reference example's table
 (an equality: the code is absent from each), pinning that the walk holds `shox_par1`'s split. Negatives: a
 positional answer inside the rsID's answer, a split's pieces, a PAR partner, positional-only answers, a
-repeated `locus_index`, another build, an ambiguous pick. `test_one_channel_under_strict.py` gained the case
+repeated `locus_index`, another build, an ambiguous pick, a row with no `start`, and two spellings the
+enricher judged `left_aligned` true and false (one release, one event; a review of the first cut found it
+refused a correct module that `--rederive` could not clear). The stale reading is given only on rows an
+external source answered (`authority` set). `test_one_channel_under_strict.py` gained the case
 `test_every_ladder_code_has_a_case` demanded, and `features/compiler/resolution.feature` the `@ladder`
 scenario. Mutated twice: dropping the subset test sent four negatives red; routing with `strict=False` sent
 the two strict refusals red. The release-named tests skip until RM373's column exists; run against a

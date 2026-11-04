@@ -1171,7 +1171,7 @@ def row_release(row: ResolutionRow) -> str | None:
 
 def _place(row: ResolutionRow, genome_build: str) -> tuple[str, int]:
     """Where a locus is, with a pseudoautosomal Y spelling read as its X partner (one place, two contigs)."""
-    chrom, start = str(row.chrom), int(row.start or 0)
+    chrom, start = str(row.chrom), int(row.start)  # callers pass rows with a start only
     if chrom == "Y":
         partner = par_partner(chrom, start, build=genome_build)
         if partner is not None:
@@ -1186,6 +1186,12 @@ def _answer_label(key: str, loci: list[ResolutionRow], recorded: bool) -> str:
     releases = sorted({release for lo in loci if (release := row_release(lo))})
     stated = f"release {', '.join(releases)}" if releases else "release not recorded"
     return f"under {key} at {shown} [{stated}]"
+
+
+def _spellings_judged_apart(full: list[ResolutionRow], other: list[ResolutionRow]) -> bool:
+    """The enricher judged one answer's spelling left-aligned and the other's not (RM270's verdict)."""
+    verdicts = {lo.left_aligned for lo in (*full, *other) if lo.left_aligned is not None}
+    return verdicts == {True, False}
 
 
 def placement_disagreements(rows: list[ResolutionRow], genome_build: str) -> list[LadderFinding]:
@@ -1209,9 +1215,17 @@ def placement_disagreements(rows: list[ResolutionRow], genome_build: str) -> lis
 
     * no answer is keyed by the rsID itself — two positional rows labelled with one rsID may be two loci
       of a one-to-many rsID or one event spelled twice, and nothing here says which;
-    * one key holding two rows at one `locus_index` — a hand-filled table leaves `locus_index` at 0 for
-      every locus of a one-to-many rsID, which looks exactly like two answers merged under one key;
-    * an `ambiguous` row, whose rsID is a deterministic pick among candidates rather than a fact.
+    * one key is never reported against itself, even holding two rows at one `locus_index` — a
+      hand-filled table leaves `locus_index` at 0 for every locus of a one-to-many rsID, which looks
+      exactly like two answers merged under one key; such a key is still the full answer the other keys
+      are compared with;
+    * an `ambiguous` row, whose rsID is a deterministic pick among candidates rather than a fact, and a
+      row with no `start`, which places nothing;
+    * two answers whose spellings the enricher judged, one `left_aligned=true` and the other `false`:
+      within 0.8 a filled coordinate is written left-aligned, so a stale answer re-filled now would agree
+      with the fresh one, and a true/false pair is one event spelled two ways in one release (an
+      authored or snapshot spelling beside the respelled fill). `--rederive` would rewrite the same
+      table, so that is the spelling question, not this one.
 
     Compared on `(chrom, start)`, not alleles: a stale allele SET under one key is the membership check's
     axis (`_check_allele_membership`), not a placement. GRCh38-bound like the rest of resolution (RM15).
@@ -1221,7 +1235,7 @@ def placement_disagreements(rows: list[ResolutionRow], genome_build: str) -> lis
         return []
     answers: dict[str, dict[str, list[ResolutionRow]]] = {}
     for row in _usable_loci(rows, genome_build):
-        if row.rsid is None or row.status == "ambiguous":
+        if row.rsid is None or row.status == "ambiguous" or row.start is None:
             continue
         answers.setdefault(row.rsid, {}).setdefault(row.variant_key, []).append(row)
     findings: list[LadderFinding] = []
@@ -1234,7 +1248,9 @@ def placement_disagreements(rows: list[ResolutionRow], genome_build: str) -> lis
         disagreeing = {
             key: loci
             for key, loci in sorted(by_key.items())
-            if key != rsid and not {_place(lo, genome_build) for lo in loci} <= places
+            if key != rsid
+            and not {_place(lo, genome_build) for lo in loci} <= places
+            and not _spellings_judged_apart(full, loci)
         }
         if not disagreeing:
             continue
@@ -1253,8 +1269,8 @@ def placement_disagreements(rows: list[ResolutionRow], genome_build: str) -> lis
             f"resolution.csv and enrich again."
         )
         refusal = (
-            f"{warning} Strict refuses until the table places each rsID one way: the artifact would "
-            f"publish one identity at two places."
+            f"{warning} Strict refuses until the table places each rsID one way: an artifact compiled "
+            f"from it can publish one identity at two places."
         )
         findings.append(LadderFinding(CodedWarning("rsid_placements_disagree", warning), refusal=refusal))
     return findings

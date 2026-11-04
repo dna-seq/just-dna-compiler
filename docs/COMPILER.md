@@ -229,7 +229,9 @@ alt list is a gap in the source at least as often as a defect in the module. Sin
 a third reading too (RM374): the row was resolved against an earlier snapshot release than the module is
 enriched against now, because an enrich never re-asks a subject it has a row for. It names the release the
 row records (`ResolutionRow.source_release`) or says `release not recorded`, and gives `enrich --rederive`
-as the remedy. Which release is older is not decidable offline, so it is a reading, never a verdict. The comparison is also made
+as the remedy. Which release is older is not decidable offline, so it is a reading, never a verdict, and it
+is given only where an external source answered the row (`authority` set): a hand-filled or reversed row
+came from no snapshot. The comparison is also made
 against the **union** of every locus a key resolves to, never per-expanded-row, for the same reason.
 
 **"Exactly one of those rows can match" is a statement about matching, and a reader does more than
@@ -1426,9 +1428,14 @@ X partner. Alleles are not compared: a stale allele **set** under one key is the
 
 - No row is keyed by the rsID itself. Two positional rows labelled with one rsID may be two loci of a
   one-to-many rsID or one event spelled twice, and the table does not say which.
-- One key repeats a `locus_index`. A hand-filled table leaves the column at its default 0 for every locus
-  of a one-to-many rsID, which looks exactly like two answers merged under one key.
-- An `ambiguous` row, whose rsID is a deterministic pick rather than a fact.
+- One key is never reported against itself, even where it repeats a `locus_index`. A hand-filled table
+  leaves the column at its default 0 for every locus of a one-to-many rsID, which looks exactly like two
+  answers merged under one key. Such a key is still the full answer the other keys are compared with.
+- An `ambiguous` row, whose rsID is a deterministic pick rather than a fact, and a row with no `start`.
+- Two answers whose spellings the enricher judged apart, one `left_aligned=true` and the other `false`.
+  Within 0.8 a filled coordinate is written left-aligned, so a stale answer re-filled now agrees with the
+  fresh one; a true/false pair is one event spelled two ways in one release (an old snapshot's spelling
+  beside the respelled fill), which `--rederive` would write again. That is the spelling question.
 - A positional row at a locus of a one-to-many rsID that the rsID's own answer dropped for its genotype is
   **not** withheld: the table records no trace of the dropped locus, so this reads as two placements.
   No reference example has the shape.

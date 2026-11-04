@@ -263,7 +263,7 @@ def _check_allele_membership(
             because = (
                 "these alleles come from resolution.csv, so either the genotype is wrong or the "
                 "resolving source's allele list is incomplete (ClinVar carries only its submitted "
-                "alleles, while Ensembl carries every allele dbSNP knows) — check which before editing. "
+                "alleles, while Ensembl carries every allele dbSNP knows) — check which before editing"
                 f"{_stale_reading(resolution_table.get(variant.variant_key or '', []))}"
             )
         findings: list[str] = []
@@ -309,12 +309,15 @@ def _stale_reading(rows: list[ResolutionRow]) -> str:
     release keeps that release's allele set after the snapshot moved — the 0.8 migration probe's
     `rs646776`, whose `C>G,T` row from dbSNP 156 refused a correct `A/C` that dbSNP 157 lists. Which
     release is *older* is not decidable offline, so this names what the rows record and the remedy,
-    never a verdict.
+    never a verdict. Empty where no external source answered the rows (`authority` empty).
     """
+    if not any(row.authority for row in rows):
+        # No external source answered (authored, manual, reversed): no snapshot, so no stale reading.
+        return ""
     releases = sorted({release for row in rows if (release := row_release(row))})
     recorded = f"the row records release {', '.join(releases)}" if releases else "release not recorded"
     return (
-        f"Or the row was resolved against an earlier snapshot release than the one the module is "
+        f". Or the row was resolved against an earlier snapshot release than the one the module is "
         f"enriched against now ({recorded}): `just-dna-enricher enrich <spec-dir> --rederive` re-asks it"
     )
 

@@ -53,10 +53,10 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   `validate --strict` refuse.
 - **One key is one answer.** A one-to-many rsID, a pseudoautosomal pair and a multi-ALT locus split into
   pieces at one `start` (`shox_par1`'s `rs1569493663`) never fire; no reference example does. Where the table
-  cannot tell one answer from two (no row keyed by the rsID itself, a repeated `locus_index` under one key)
-  the check withholds.
+  cannot tell one answer from two (no row keyed by the rsID itself, one key against itself, two spellings the
+  enricher judged `left_aligned` true and false) the check withholds.
 - **A resolved allele refusal names the stale reading.** `genotype_allele_not_at_locus` and
-  `effect_allele_not_at_locus`, on alleles from `resolution.csv`, add that the row may predate the snapshot,
+  `effect_allele_not_at_locus`, on alleles an external source put in `resolution.csv`, add that the row may predate the snapshot,
   name the release it records (or `release not recorded`) and give `--rederive` as the remedy. The probe's
   `rs646776` `A/C` refusal blamed only the author or ClinVar.
 - See [COMPILER § One rsID, one placement set](COMPILER.md#one-rsid-one-placement-set-rm374-08) and
