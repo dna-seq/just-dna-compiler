@@ -243,6 +243,51 @@ mutated once to watch its test go red.
 
 **Residuals** none
 
+## RM353 — the module publisher diverges from what the manifest declares: provenance is never uploaded, snapshot names are not glob-escaped, and a logs-only republish overwrites a version
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `main`, uncut — a patch** (filed 2026-11-04 by the lead) · **Owner** enricher (`upload._declared_files`, `upload.plan_upload`, `upload._versioned_conflict`, `upload._literal_patterns`) · **Motivating case** found while building RM347 · *related* RM347
+
+**One class: the publisher's plan and guard are not derived from what the manifest says it holds.** Three instances:
+
+1. `provenance.json` is named with a sha256 in `manifest.provenance.file`, and no allowlist includes it, so it is
+   never uploaded;
+2. `publish_reference_snapshot` passes file names to the hub as glob patterns unescaped (RM347 escaped the module
+   publisher's), so a name with `[` selects a different file;
+3. the overwrite guard for `data/<name>/v<version>/` compares only `artifact.digest`, which excludes logs by design,
+   so a second publish with changed logs replaces them without `--force`.
+
+The fix derives the upload set from every file entry the manifest declares (artifact, logs, provenance, logo, readme),
+escapes every pattern in both publishers through one helper, and widens the guard's comparison to the declared
+files' hashes. Not in scope, under the existing rule: the flat `data/<name>/` path keeps stale files, since a publish
+deletes only what was declared (`@a-publish-may-not-orphan-the-bytes-it-stops-describing`).
+
+**Shipped.** One helper, `_declared_files`, reads every file the manifest declares in the module directory out
+of the JSON `_manifest_document` returns: `artifact.files`, `logo`, `readme`, `provenance` (a summary carrying
+`file` and `sha256`, which is why a `FileEntry` walk never saw it) and `logs`. `inputs` and `derived` are left
+out, since they describe files beside the spec. `plan_upload` sends `manifest.json` plus those files when
+`artifact.files` is legible, and **nothing else**: a parquet an earlier compile left in the directory, or a logo
+the manifest does not name, now stays behind (the old allowlist sent both, and a stale parquet on the flat path
+reads to discovery as part of the module). RM347's path guard, renamed `_declared_refusal_reason`, reads every
+declared name, so a hand-edited `provenance.file` of `../x` is skipped with a warning; an attested parquet
+refused or absent still raises rule 1, and an optional one absent is skipped quietly. With no readable manifest
+or no `artifact.files` list the plan falls back to `_ALLOW_PATTERNS` on disk, as before. `_literal_patterns` is
+the one escaping helper, applied to the module publisher's `allow_patterns`, both of the snapshot publisher's,
+the declared retirement's `delete_patterns` (`LayoutShift.retires` is one name, never a glob) and, beyond the
+two publishers the item named, `prune_repo`'s `delete_patterns`, where an unescaped listed name would delete a
+file nobody was shown. The guard, `_versioned_conflict`, compares `artifact.digest` and then every declared
+file's sha256; a hash that differs, or a file declared on one side only, is a `PublishCollisionError` whose
+message says *the same compiled data but different declared files* and names each one. A declaration with no
+legible hash is not compared. `PublishCollisionError` stays the type on `main`. One test fixture changed with
+it: the RM199 retirement test passed `retires="data/old-*.parquet"`, a glob the field forbids, and now passes a
+name. Tests compile copies of `apoe_epsilon` carrying a `provenance.json`, a logo, a README and a log, and check
+the plan against the declared set, an undeclared stale parquet and logo, an escaping `provenance.file`, a
+snapshot file `data/chr[1].parquet` beside a `data/chr1.parquet` decoy, a retirement and a prune of a `[` name,
+a logs-only recompile at the same version (digest equal, refused, then sent under `force`), and a log declared
+on one side only. Each derivation was mutated once to watch its tests go red: the provenance arm, the derived
+plan (back to the allowlist union), the escaping helper, and the declared-hash comparison.
+
+**Residuals** none
+
 ## RM338 — which files under `logs/` ship: `*.log` only, a text allowlist, content-checked text, or images too
 
 **Severity** low · **Status** ✅ **SHIPPED 2026-11-04 on `main`, uncut — a patch** (decided 2026-11-03,

@@ -973,26 +973,6 @@ running duckdb cannot read rather than mocking `connect`.
 
 **Residuals** none yet.
 
-## RM353 — the module publisher diverges from what the manifest declares: provenance is never uploaded, snapshot names are not glob-escaped, and a logs-only republish overwrites a version
-
-**Severity** medium · **Status** open — **a patch**, filed 2026-11-04 by the lead · **Owner** enricher (`upload`) · **Motivating case** found while building RM347 · *related* RM347
-
-**One class: the publisher's plan and guard are not derived from what the manifest says it holds.** Three instances:
-
-1. `provenance.json` is named with a sha256 in `manifest.provenance.file`, and no allowlist includes it, so it is
-   never uploaded;
-2. `publish_reference_snapshot` passes file names to the hub as glob patterns unescaped (RM347 escaped the module
-   publisher's), so a name with `[` selects a different file;
-3. the overwrite guard for `data/<name>/v<version>/` compares only `artifact.digest`, which excludes logs by design,
-   so a second publish with changed logs replaces them without `--force`.
-
-The fix derives the upload set from every file entry the manifest declares (artifact, logs, provenance, logo, readme),
-escapes every pattern in both publishers through one helper, and widens the guard's comparison to the declared
-files' hashes. Not in scope, under the existing rule: the flat `data/<name>/` path keeps stale files, since a publish
-deletes only what was declared (`@a-publish-may-not-orphan-the-bytes-it-stops-describing`).
-
-**Residuals** none yet.
-
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.

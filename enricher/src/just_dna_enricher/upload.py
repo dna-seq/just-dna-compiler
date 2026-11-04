@@ -2,8 +2,9 @@
 
 Two publish shapes share one create-or-update pathway (``ensure_repo``):
 
-* **module** — a compiled module's artifacts (**every parquet the artifact carries** + manifest.json,
-  a logo and readme if present, and every log ``manifest.logs`` names, RM347) to ``datasets/<repo>/data/<name>/``, matching the layout
+* **module** — a compiled module's ``manifest.json`` and **every file it declares** (the attested
+  parquets, the logo, the readme, ``provenance.json`` and each log; RM347, RM353) to
+  ``datasets/<repo>/data/<name>/``, matching the layout
   just-dna-lite's discovery scans, **and** to ``data/<name>/v<version>/`` when the manifest states a
   version, so the discovery path can address a particular release rather than only "whatever is there
   now" (``upload_module``; RM84).
@@ -64,6 +65,12 @@ _MANIFEST_FILENAME = "manifest.json"
 # parquet this allowlist dropped — so the digest a consumer recomputes over what arrived cannot match
 # the digest the manifest states. `sources.parquet` is the worst of them, because the licence terms and
 # attribution a downstream report is obliged to render are in it.
+#
+# **Since RM353 this list is the fallback, not the plan.** A module whose manifest states its
+# `artifact.files` is published as exactly what that manifest declares (`_declared_files`), which is
+# how `provenance.json` — named and hashed in `manifest.provenance` and in no list here — came to
+# travel. The list below answers only when the manifest cannot say, because a directory without a
+# readable manifest has always been publishable.
 _ALLOW_PATTERNS = [
     *ARTIFACT_PARQUETS,
     _MANIFEST_FILENAME,
@@ -298,8 +305,9 @@ class UploadPlan(BaseModel):
     )
     files: list[str] = Field(
         description=(
-            "Paths, relative to the module directory, that will be uploaded: the artifact files by "
-            "basename, then each log manifest.logs names (e.g. logs/authoring.log)"
+            "Paths, relative to the module directory, that will be uploaded: the attested artifact "
+            "files, manifest.json, then the logo, readme, provenance document and each log the "
+            "manifest declares (e.g. logs/authoring.log)"
         )
     )
 
@@ -356,18 +364,16 @@ def _manifest_document(module_dir: Path) -> dict | None:
     return document if isinstance(document, dict) else None
 
 
-def _artifact_digest(module_dir: Path) -> str | None:
-    """``manifest.artifact.digest`` for a compiled module, or ``None`` when the manifest cannot say.
+def _literal_patterns(paths: Iterable[str]) -> list[str]:
+    """Each path as an `fnmatch` pattern that selects that path and nothing else (RM347, RM353).
 
-    Tri-state, and read field by field out of the JSON, for the same two reasons as its neighbours:
-    an unreadable manifest is *unknown* rather than *no digest*, and validating the whole
-    ``ModuleManifest`` to reach one string would let an unrelated model defect withhold a value that
-    is right there and legible.
+    The hub matches `allow_patterns` and `delete_patterns` with `fnmatch`, so a name is a pattern
+    whether anyone meant it as one or not: `data/chr[1].parquet` unescaped is a character class that
+    selects `data/chr1.parquet` and never itself. Every list of names this module hands the hub goes
+    through here, because a publish sends what its plan names and a deletion removes what its plan
+    names, and neither plan contains a glob.
     """
-    document = _manifest_document(module_dir) or {}
-    artifact = document.get("artifact")
-    digest = artifact.get("digest") if isinstance(artifact, dict) else None
-    return digest if isinstance(digest, str) and digest else None
+    return [glob_escape(path) for path in paths]
 
 
 def _named_entries(entries: object) -> list[str] | None:
@@ -380,17 +386,48 @@ def _named_entries(entries: object) -> list[str] | None:
     ]
 
 
-def _attested_parquets(module_dir: Path) -> list[str] | None:
-    """The parquets ``manifest.artifact.files`` names, or ``None`` when the manifest cannot say.
+def _attested_parquets(document: dict) -> list[str] | None:
+    """The files ``manifest.artifact.files`` names, or ``None`` when the manifest cannot say.
 
     Tri-state, like ``_module_version`` beside it and for the same reason: a missing or unreadable
     manifest is *unknown*, not *attests nothing*, and an unknown withholds rather than refusing. Read
     field by field out of the JSON rather than through ``read_manifest`` — an unrelated model defect
     must not be able to turn a legible file list into a failed publish.
     """
-    document = _manifest_document(module_dir) or {}
     artifact = document.get("artifact")
     return _named_entries(artifact.get("files") if isinstance(artifact, dict) else None)
+
+
+def _declared_files(document: dict) -> list[tuple[str, str | None]]:
+    """Every file the manifest declares in the module directory, as ``(name, sha256)``, in plan order.
+
+    **One reader for both the plan and the guard (RM353).** Five fields name a file beside the
+    manifest: ``artifact.files``, ``logo``, ``readme``, ``provenance`` and ``logs``. Four are
+    ``FileEntry``-shaped; ``provenance`` is a summary carrying ``file`` and ``sha256``, which is why
+    it was the one no allowlist held — `provenance.json` was named and hashed in every manifest that
+    had one and never uploaded. ``inputs`` and ``derived`` are not here: they describe files beside
+    the *spec*, which a compile does not copy into the module directory.
+
+    A field that is not the shape it should be contributes nothing, and a ``sha256`` that is not a
+    string is ``None`` (unknown, never a hash).
+    """
+    entries: list[object] = []
+    artifact = document.get("artifact")
+    if isinstance(artifact, dict) and isinstance(artifact.get("files"), list):
+        entries.extend(artifact["files"])
+    entries.extend(document.get(key) for key in ("logo", "readme"))
+    provenance = document.get("provenance")
+    if isinstance(provenance, dict):
+        entries.append({"name": provenance.get("file"), "sha256": provenance.get("sha256")})
+    if isinstance(document.get("logs"), list):
+        entries.extend(document["logs"])
+    declared: list[tuple[str, str | None]] = []
+    for entry in entries:
+        if not isinstance(entry, dict) or not isinstance(entry.get("name"), str) or not entry["name"]:
+            continue
+        sha256 = entry.get("sha256")
+        declared.append((entry["name"], sha256 if isinstance(sha256, str) else None))
+    return declared
 
 
 def _hub_ignore_patterns() -> list[str]:
@@ -407,18 +444,19 @@ def _hub_ignore_patterns() -> list[str]:
     return list(DEFAULT_IGNORE_PATTERNS)
 
 
-def _log_refusal_reason(module_dir: Path, name: str) -> str | None:
-    """Why a ``manifest.logs`` name is not uploaded although the manifest names it, else ``None``.
+def _declared_refusal_reason(module_dir: Path, name: str) -> str | None:
+    """Why a name the manifest declares is not uploaded although the manifest names it, else ``None``.
 
-    The field is documented as a path *relative to the module dir*, and the compiler only ever writes
-    one; a hand-edited manifest can still say ``../x``, ``/etc/x``, or name a symlink whose target is
-    elsewhere. The lexical half is read on the name as the manifest spells it (POSIX, the spelling
-    ``_collect_logs`` writes); the resolved half is what catches the symlink, which no spelling shows.
+    Every declared field documents its name as a path *relative to the module dir*, and the compiler
+    only ever writes one; a hand-edited manifest can still say ``../x``, ``/etc/x``, or name a symlink
+    whose target is elsewhere. The lexical half is read on the name as the manifest spells it (POSIX,
+    the spelling the compiler writes); the resolved half is what catches the symlink, which no
+    spelling shows. Written for ``manifest.logs`` (RM347) and read for every declared file since RM353.
 
     **A hidden path is refused on the compiler's own terms, not a second rule.** RM338's discovery skips
     a hidden path for every kind except ``*.log``, which ships hidden or not as it always has; so a
     hidden ``.log`` the manifest names is uploaded, and any other hidden name (``.env``, an editor's or
-    an agent's settings) is one discovery never writes and a hand edit put there. **Whatever
+    an agent's settings) is one the compiler never writes and a hand edit put there. **Whatever
     ``upload_folder``'s default ignore list drops is refused regardless** (``.git``,
     ``.cache/huggingface``): the hub would not send it, so planning it would make the dry run promise a
     file that never arrives.
@@ -442,40 +480,22 @@ def _log_refusal_reason(module_dir: Path, name: str) -> str | None:
     return None
 
 
-def _manifest_logs(module_dir: Path) -> list[str]:
-    """The ``manifest.logs`` paths this upload carries: named by the manifest, inside the module, on disk.
+def _sendable(module_dir: Path, names: Iterable[str]) -> tuple[list[str], dict[str, str]]:
+    """Split declared names into ``(sendable, {refused name: reason})`` — inside the module, on disk.
 
-    **Derived from the manifest, never restated as a glob (RM347, `@publisher-allowlist-derived`).** The
-    compiler decides which files under `logs/` ship (RM338's content checks) and names each one in
-    ``manifest.logs``; a pattern here would be a second statement of that decision, and the first time
-    the two disagreed a published manifest would name a log the repo does not hold — the same gap the
-    parquets, the logo and the readme each had before they were derived.
-
-    **A file present on disk that the manifest does not name is not uploaded.** Nothing the published
-    manifest says covers it, so it would arrive unattested, and a published file is permanent.
-
-    A name that leaves the module directory, sits on a hidden path the compiler would not have shipped,
-    or is one the hub's own ignore list drops is skipped with a warning that says why
-    (`_log_refusal_reason`); a named log absent
-    from disk is skipped too, quietly, since logs are optional (`verify --check-logs` skips it the same
-    way). An absent or unreadable manifest, or one with no readable ``logs`` list, plans no logs and
-    never raises — the publisher has always accepted such a directory.
+    A name on disk that passes ``_declared_refusal_reason`` is sendable. A refused name carries its
+    reason; a name absent from disk is in neither, because what that means depends on the field — an
+    attested parquet missing is a refusal, a missing log or logo is normal.
     """
-    document = _manifest_document(module_dir) or {}
-    planned: list[str] = []
-    for name in _named_entries(document.get("logs")) or []:
-        reason = _log_refusal_reason(module_dir, name)
+    sendable: list[str] = []
+    refused: dict[str, str] = {}
+    for name in names:
+        reason = _declared_refusal_reason(module_dir, name)
         if reason is not None:
-            logger.warning(
-                "%s names log %r, which is not uploaded: %s.",
-                _MANIFEST_FILENAME,
-                name,
-                reason,
-            )
-            continue
-        if (module_dir / name).is_file() and name not in planned:
-            planned.append(name)
-    return planned
+            refused[name] = reason
+        elif (module_dir / name).is_file() and name not in sendable:
+            sendable.append(name)
+    return sendable, refused
 
 
 def plan_upload(
@@ -495,16 +515,24 @@ def plan_upload(
     (`clin_sig_not_checked`, `skipped_offline`): a caller that has to parse prose to learn what
     happened has not been told.
 
-    **What it refuses is three positive rules, not one required list (RM89).** The old rule demanded
-    the three SNP-core parquets, which RM2 made optional four releases ago, so seven of the sixteen
-    reference examples could not be published at all. In their place, ordered most specific first so a
-    refusal names the actual fault:
+    **The files are what the manifest declares (RM353, `@publisher-allowlist-derived`).** When
+    `manifest.artifact.files` is legible, the plan is `manifest.json` plus every file the manifest
+    names in the module directory — the attested parquets, the logo, the readme, `provenance.json` and
+    each log — and nothing else: a parquet an earlier compile left behind, or a logo the manifest does
+    not name, would arrive unattested, and on the flat path a stale parquet reads to discovery as part
+    of the module. A declared optional file that leaves the module directory is skipped with a warning
+    naming the reason; one absent from disk is skipped quietly, since every optional file is optional
+    (`verify` skips an absent log or logo the same way). **When the manifest cannot say** — absent,
+    unparseable, or with no `artifact.files` list — the plan falls back to `_ALLOW_PATTERNS` found on
+    disk: an unknown withholds, and a directory with no manifest has always been publishable.
 
-    1. **The plan carries everything the artifact attests.** `manifest.artifact.files` states a name,
-       a sha256 and a size per parquet, and `artifact.digest` is a Merkle root over exactly those — so
-       a file attested and not sent makes the published manifest a false claim about bytes that are not
-       there. This is the general guard, and it is a self-check as much as a module check: it fires if
-       this publisher's allowlist ever falls behind the compiler's output list again.
+    **What it refuses is three positive rules, not one required list (RM89).** In order, most specific
+    first so a refusal names the actual fault:
+
+    1. **Every attested artifact file is sent.** `artifact.digest` is a Merkle root over exactly the
+       files `manifest.artifact.files` names, so an attested file missing from disk, or one whose name
+       leaves the module directory, would make the published manifest a false claim about bytes that
+       are not there.
     2. **`weights.parquet` never travels alone.** A SNP core compiles to all three, so a missing
        `annotations`/`studies` beside it is an interrupted compile.
     3. **At least one lead table.** A directory with a manifest, a readme and no annotation rows is not
@@ -512,18 +540,36 @@ def plan_upload(
        produced, and it is what discovery would then be unable to see.
     """
     resolved_repo = repo_id or DEFAULT_REPO_ID
-    present = [f for f in _ALLOW_PATTERNS if (module_dir / f).exists()]
-    attested = _attested_parquets(module_dir)
-    unsent = [] if attested is None else [f for f in attested if f not in present]
-    if unsent:
-        raise FileNotFoundError(
-            f"{name}: {_MANIFEST_FILENAME} attests {unsent} but the upload would not carry "
-            f"{'it' if len(unsent) == 1 else 'them'} — `artifact.digest` is computed over the "
-            f"attested files, so what arrives could not be verified against the manifest that "
-            f"describes it. Re-compile {module_dir} if the file is missing."
+    document = _manifest_document(module_dir) or {}
+    attested = _attested_parquets(document)
+    declared = [declared_name for declared_name, _ in _declared_files(document)]
+    if attested is None:
+        files = [f for f in _ALLOW_PATTERNS if (module_dir / f).exists()]
+        optional = declared
+    else:
+        artifact_files, refused = _sendable(module_dir, attested)
+        unsent = [f for f in attested if f not in artifact_files]
+        if unsent:
+            reasons = "".join(f" ({f}: {refused[f]})" for f in unsent if f in refused)
+            raise FileNotFoundError(
+                f"{name}: {_MANIFEST_FILENAME} attests {unsent} but the upload would not carry "
+                f"{'it' if len(unsent) == 1 else 'them'}{reasons} — `artifact.digest` is computed over "
+                f"the attested files, so what arrived could not be verified against the manifest that "
+                f"describes it. Re-compile {module_dir} if the file is missing."
+            )
+        files = [*artifact_files, _MANIFEST_FILENAME]
+        optional = [f for f in declared if f not in attested]
+    sendable, refused = _sendable(module_dir, optional)
+    for refused_name, reason in refused.items():
+        logger.warning(
+            "%s names %r, which is not uploaded: %s.",
+            _MANIFEST_FILENAME,
+            refused_name,
+            reason,
         )
-    if "weights.parquet" in present:
-        half = [f for f in _EXPECTED_WITH_WEIGHTS if f not in present]
+    files.extend(f for f in sendable if f not in files)
+    if "weights.parquet" in files:
+        half = [f for f in _EXPECTED_WITH_WEIGHTS if f not in files]
         if half:
             raise FileNotFoundError(
                 f"{name}: missing compiled artifact(s) {half} in {module_dir} beside "
@@ -531,7 +577,7 @@ def plan_upload(
                 f"half-finished compile. Re-run `just-dna-enricher enrich-and-compile` "
                 f"or `just-dna-compiler compile`."
             )
-    if not any(f in LEAD_PARQUETS for f in present):
+    if not any(f in LEAD_PARQUETS for f in files):
         raise FileNotFoundError(
             f"{name}: no annotation table in {module_dir} — a module carries at least one of "
             f"{list(LEAD_PARQUETS)}. Compile the module first (e.g. "
@@ -539,30 +585,49 @@ def plan_upload(
         )
     flat = f"data/{name}"
     version, reason = _module_version(module_dir)
-    logs = [f for f in _manifest_logs(module_dir) if f not in present]
     return UploadPlan(
         module=name,
         repo_id=resolved_repo,
         path_in_repo=flat,
         versioned_path_in_repo=None if version is None else f"{flat}/v{version}",
         version_unknown_reason=reason,
-        files=[*present, *logs],
+        files=files,
     )
 
 
-def _versioned_digest_conflict(api, plan: "UploadPlan", local_digest: str | None) -> str | None:
-    """The remote `artifact.digest` already at the versioned path when it **differs** — else ``None``.
+def _artifact_digest(document: dict) -> str | None:
+    """``manifest.artifact.digest``, or ``None`` when the manifest cannot say."""
+    artifact = document.get("artifact")
+    digest = artifact.get("digest") if isinstance(artifact, dict) else None
+    return digest if isinstance(digest, str) and digest else None
 
-    RM88's comparator, and the four outcomes are the whole of the gate:
+
+def _declared_hashes(document: dict) -> dict[str, str]:
+    """Each declared file's sha256 by name — the declarations a hash is known for."""
+    return {name: sha256 for name, sha256 in _declared_files(document) if sha256 is not None}
+
+
+def _versioned_conflict(api, plan: "UploadPlan", local: dict | None) -> str | None:
+    """How the release already at the versioned path **differs** from this one — else ``None``.
+
+    RM88's comparator, widened by RM353, and the four outcomes are the whole of the gate:
 
     - **no versioned path** (the module states no version) — nothing addressable to collide with;
     - **the path is not there** — the first publish of this version, which is the normal case;
-    - **it is there and the digests agree** — the same release arriving twice. This must *proceed*,
-      and it is the case a naive existence check would break: `upload_module` writes two commits and
+    - **it is there and says the same** — the same release arriving twice. This must *proceed*, and it
+      is the case a naive existence check would break: `upload_module` writes two commits and
       documents a re-run as the recovery when the second fails, so refusing on presence alone would
       refuse exactly the retry the design depends on;
-    - **it is there and the digests differ** — the collision. `None` is not returned, and the caller
-      refuses unless `--force`.
+    - **it is there and says something else** — the collision, returned as a sentence naming what
+      differs, and the caller refuses unless `--force`.
+
+    **"Says the same" is the artifact digest and every declared file's hash (RM353).** The digest is
+    a Merkle root over the attested parquets and excludes logs, provenance, logo and readme by
+    design, so comparing it alone let a second publish of one version replace those files without
+    `--force`. Now a declared file whose hash differs, or that one side declares and the other does
+    not, is a collision too — the published manifest is replaced by the upload, so what that version
+    says it holds would change. A declaration with no legible hash on either side is not compared:
+    an unknown cannot disagree.
 
     **An unknown proceeds, with a warning, and that is a decision rather than an oversight.** If the
     remote manifest cannot be read — a flake, a repo that answers but has no manifest at that path —
@@ -571,11 +636,11 @@ def _versioned_digest_conflict(api, plan: "UploadPlan", local_digest: str | None
     by default and turns a gate into one people route around. That is the failure the policy decision
     was explicitly trying to avoid, so it must not be reintroduced by the error path.
 
-    Reads the remote `manifest.json` rather than comparing per-file hashes: `artifact.digest` is a
-    Merkle root over exactly the attested files, so one small download answers the question that a
-    tree listing could only answer for whatever happens to be LFS-backed.
+    Reads the remote `manifest.json` rather than listing per-file hashes: the manifest states every
+    declared file's sha256, so one small download answers the question that a tree listing could
+    only answer for whatever happens to be LFS-backed.
     """
-    if plan.versioned_path_in_repo is None or local_digest is None:
+    if plan.versioned_path_in_repo is None or local is None:
         return None
     remote_manifest = f"{plan.versioned_path_in_repo}/{_MANIFEST_FILENAME}"
     try:
@@ -598,11 +663,33 @@ def _versioned_digest_conflict(api, plan: "UploadPlan", local_digest: str | None
             exc,
         )
         return None
-    artifact = published.get("artifact") if isinstance(published, dict) else None
-    remote_digest = artifact.get("digest") if isinstance(artifact, dict) else None
-    if not isinstance(remote_digest, str) or not remote_digest:
+    if not isinstance(published, dict):
         return None
-    return None if remote_digest == local_digest else remote_digest
+    local_digest, remote_digest = _artifact_digest(local), _artifact_digest(published)
+    if local_digest is not None and remote_digest is not None and local_digest != remote_digest:
+        return (
+            f"a different artifact ({remote_digest[:19]}… there, {local_digest[:19]}… here). Note that "
+            f"recompiling an unchanged spec under a newer compiler moves the digest too — if that is "
+            f"what happened, this refusal is still protecting the bytes the published version was cut "
+            f"from"
+        )
+    here, there = _declared_hashes(local), _declared_hashes(published)
+    # A name declared with no legible hash on either side is an unknown, and an unknown cannot disagree.
+    unhashed = {n for n, h in [*_declared_files(local), *_declared_files(published)] if h is None}
+    differing = [
+        f"{n} ({'changed' if n in here and n in there else 'declared only here' if n in here else 'declared only there'})"
+        for n in sorted((here.keys() | there.keys()) - unhashed)
+        if here.get(n) != there.get(n)
+    ]
+    if not differing:
+        return None
+    same_data = local_digest is not None and local_digest == remote_digest
+    return (
+        f"{'the same compiled data but ' if same_data else ''}different declared files: "
+        f"{', '.join(differing)}. Logs, provenance, the logo and the readme are outside "
+        f"`artifact.digest`, so the data agreeing does not make these the files that version was "
+        f"published with"
+    )
 
 
 def upload_module(
@@ -626,11 +713,12 @@ def upload_module(
     landed — `data/<name>/` is the new release and the versioned copy is absent until a re-run, which
     is idempotent.
 
-    **The versioned path refuses to be overwritten with different bytes (RM88).** Before either
-    write, the published `manifest.json` at `data/<name>/v<version>/` is read and its
-    `artifact.digest` compared with this module's. A different digest is a `PublishCollisionError`
-    unless `force=True`. The flat path is deliberately **not** guarded: it means *latest*, so
-    overwriting it is what it is for, and the whole point of the versioned copy is that it does not.
+    **The versioned path refuses to be overwritten with different bytes (RM88, RM353).** Before either
+    write, the published `manifest.json` at `data/<name>/v<version>/` is read and compared with this
+    module's: its `artifact.digest`, and the sha256 of every file it declares (`_versioned_conflict`).
+    A difference is a `PublishCollisionError` unless `force=True`. The flat path is deliberately
+    **not** guarded: it means *latest*, so overwriting it is what it is for, and the whole point of the
+    versioned copy is that it does not.
 
     The policy is refuse-unless-`--force` rather than warn-and-proceed or refuse-outright, decided
     2026-08-18. The flag's existence is itself the claim that overwriting is sometimes right — a
@@ -646,21 +734,16 @@ def upload_module(
     """
     plan = plan_upload(module_dir, name, repo_id)
     api = ensure_repo(plan.repo_id, token)
-    published_digest = None if force else _versioned_digest_conflict(api, plan, _artifact_digest(module_dir))
-    if published_digest is not None:
+    conflict = None if force else _versioned_conflict(api, plan, _manifest_document(module_dir))
+    if conflict is not None:
         raise PublishCollisionError(
-            f"{name}: {plan.versioned_path_in_repo}/ is already published with a different artifact "
-            f"({published_digest[:19]}… there, {_artifact_digest(module_dir)[:19]}… here), so this "
-            f"upload would replace the bytes that version names. Bump `version:` in "
-            f"module_spec.yaml and re-compile to publish this as a new release, or pass --force to "
-            f"overwrite it deliberately. Note that recompiling an unchanged spec under a newer "
-            f"compiler moves the digest too — if that is what happened, this refusal is still "
-            f"protecting the bytes the published version was cut from."
+            f"{name}: {plan.versioned_path_in_repo}/ is already published with {conflict}. This upload "
+            f"would replace what that version names. Bump `version:` in module_spec.yaml and "
+            f"re-compile to publish this as a new release, or pass --force to overwrite it deliberately."
         )
     # The plan IS the allowlist, so the dry run is a promise (the snapshot publisher's rule, RM347 for
-    # modules). Each path is glob-escaped: `upload_folder` matches patterns with `fnmatch`, and a log
-    # named `fig[1].png` would otherwise be a character class that matches some other file, or none.
-    allow_patterns = [glob_escape(f) for f in plan.files]
+    # modules), each path made literal: `upload_folder` matches patterns with `fnmatch`.
+    allow_patterns = _literal_patterns(plan.files)
     api.upload_folder(
         folder_path=str(module_dir),
         path_in_repo=plan.path_in_repo,
@@ -878,7 +961,9 @@ def prune_repo(plan: PrunePlan, token: str | None = None, commit_message: str | 
     api = _hf_api(plan.repo_id, token)
     api.delete_files(
         repo_id=plan.repo_id,
-        delete_patterns=[c.path for c in plan.candidates],
+        # Each a literal: `delete_files` matches with `fnmatch`, and a listed `data/x[1].parquet`
+        # unescaped would delete `data/x1.parquet`, a file nobody was shown (RM353).
+        delete_patterns=_literal_patterns(c.path for c in plan.candidates),
         repo_type="dataset",
         commit_message=commit_message
         or (f"Prune {len(plan.candidates)} file(s) that are not part of this snapshot"),
@@ -954,12 +1039,14 @@ def publish_reference_snapshot(
         repo_type="dataset",
         # The retirement is a `delete_patterns` on the same call, so the new file arriving and the old
         # one leaving are one operation rather than a window in which the repo has neither or both.
-        delete_patterns=[shift.retires for shift in due] or None,
+        # `retires` is one name, never a glob, and made literal so the hub cannot read it as one (RM353).
+        delete_patterns=_literal_patterns(shift.retires for shift in due) or None,
         # Derived from the plan rather than restated as a pattern list. The two had to agree and did
         # not: `--dry-run` printed a file the patterns then dropped, which is the failure mode that
         # lost `citations/` and `LICENSE.txt` in the first place. One list, computed once, so what a
-        # dry run promises is exactly what an upload sends (`@publisher-allowlist-derived`).
-        allow_patterns=payload_files,
+        # dry run promises is exactly what an upload sends (`@publisher-allowlist-derived`) — each
+        # name made literal, since the hub reads a pattern and `data/chr[1].parquet` is one (RM353).
+        allow_patterns=_literal_patterns(payload_files),
         commit_message=commit_message
         or (
             f"Publish reference snapshot ({len(payload_files)} files)"
@@ -973,7 +1060,7 @@ def publish_reference_snapshot(
             path_in_repo="",
             repo_id=plan.repo_id,
             repo_type="dataset",
-            allow_patterns=description,
+            allow_patterns=_literal_patterns(description),
             commit_message=f"Describe the snapshot ({RELEASE_FILENAME})",
         )
     return plan

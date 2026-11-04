@@ -19,14 +19,18 @@ from just_dna_enricher.upload import (
     DEFAULT_CLINVAR_REPO_ID,
     DEFAULT_REPO_ID,
     DEFAULT_STRCHIVE_REPO_ID,
+    LayoutShift,
+    PruneCandidate,
+    PrunePlan,
     PublishCollisionError,
     UploadPlan,
     plan_reference_snapshot,
     plan_upload,
+    prune_repo,
     publish_reference_snapshot,
     upload_module,
 )
-from just_dna_format.integrity import build_artifact
+from just_dna_format.integrity import build_artifact, file_entry
 from just_dna_format.layout import VERIFICATION_JSON
 from just_dna_format.manifest import (
     LOGO_EXTENSIONS,
@@ -64,17 +68,34 @@ def _manifest(name: str, version: str | None) -> ModuleManifest:
 
 
 def _compiled_module(
-    d: Path, *, logo: bool = False, version: str | None = "1.2.3", manifest_bytes: str | None = None
+    d: Path,
+    *,
+    logo: str | None = None,
+    readme: str | None = None,
+    version: str | None = "1.2.3",
+    manifest_bytes: str | None = None,
 ) -> Path:
+    """A module directory whose manifest declares what it holds, as a compiled one does (RM353): the
+    publisher sends what the manifest declares, so a fixture that wrote files its manifest does not
+    name would be testing a directory no compiler produces."""
     d.mkdir(parents=True, exist_ok=True)
     for name in _SNP_CORE:
         (d / name).write_bytes(b"parquet-placeholder")
+    if logo is not None:
+        (d / logo).write_bytes(b"image-bytes")
+    if readme is not None:
+        (d / readme).write_text("prose\n", encoding="utf-8")
     if manifest_bytes is None:
-        write_manifest(_manifest("test_module", version), d / "manifest.json")
+        manifest = _manifest("test_module", version).model_copy(
+            update={
+                "artifact": build_artifact(d, list(_SNP_CORE)),
+                "logo": file_entry(d, logo) if logo is not None else None,
+                "readme": file_entry(d, readme) if readme is not None else None,
+            }
+        )
+        write_manifest(manifest, d / "manifest.json")
     else:
         (d / "manifest.json").write_text(manifest_bytes, encoding="utf-8")
-    if logo:
-        (d / "logo.png").write_bytes(b"png")
     return d
 
 
@@ -103,7 +124,7 @@ def _snapshot(d: Path) -> Path:
 
 
 def test_plan_upload_lists_present_artifacts(tmp_path: Path) -> None:
-    module_dir = _compiled_module(tmp_path / "coronary", logo=True, version="2.0.1")
+    module_dir = _compiled_module(tmp_path / "coronary", logo="logo.png", version="2.0.1")
     plan = plan_upload(module_dir, "coronary")
     assert plan == UploadPlan(
         module="coronary",
@@ -128,15 +149,16 @@ def test_plan_upload_carries_the_readme_the_compiler_attests(tmp_path: Path) -> 
     as ClinVar's unpublished `citations/` and ClinPGx's dropped `LICENSE.txt`. The allowlist is checked
     against the compiler's own discovery set rather than a copy of it, so a stem or extension the
     compiler can produce cannot fall out of what the publisher sends."""
-    module_dir = _compiled_module(tmp_path / "candidates")
-    (module_dir / "README.md").write_text("# candidate findings\n", encoding="utf-8")
+    module_dir = _compiled_module(tmp_path / "candidates", readme="README.md")
     assert "README.md" in plan_upload(module_dir, "candidates").files
 
-    # Every spelling the compiler will discover is a spelling the publisher accepts.
+    # Every spelling the compiler will discover is a spelling the publisher accepts — declared, it is
+    # sent (RM353), and with no readable manifest the fallback allowlist still covers it.
     for name in README_CANDIDATES:
-        alt = _compiled_module(tmp_path / f"m-{name}")
-        (alt / name).write_text("prose\n", encoding="utf-8")
+        alt = _compiled_module(tmp_path / f"m-{name}", readme=name)
         assert name in plan_upload(alt, "m").files, name
+        unknown = _compiled_module(tmp_path / f"u-{name}", readme=name, manifest_bytes="{")
+        assert name in plan_upload(unknown, "m").files, name
 
 
 def test_every_logo_the_compiler_can_ship_is_a_logo_the_publisher_uploads(tmp_path: Path) -> None:
@@ -154,9 +176,10 @@ def test_every_logo_the_compiler_can_ship_is_a_logo_the_publisher_uploads(tmp_pa
     assert {p for p in _ALLOW_PATTERNS if p.startswith("logo.")} == {f"logo.{ext}" for ext in LOGO_EXTENSIONS}
 
     for ext in sorted(LOGO_EXTENSIONS):
-        module_dir = _compiled_module(tmp_path / f"logo-{ext}")
-        (module_dir / f"logo.{ext}").write_bytes(b"image-bytes")
+        module_dir = _compiled_module(tmp_path / f"logo-{ext}", logo=f"logo.{ext}")
         assert f"logo.{ext}" in plan_upload(module_dir, "m").files, ext
+        unknown = _compiled_module(tmp_path / f"u-logo-{ext}", logo=f"logo.{ext}", manifest_bytes="{")
+        assert f"logo.{ext}" in plan_upload(unknown, "m").files, ext
 
     # …and end to end through a real compile, which is where the skew was actually visible: the
     # winning spelling is the one the publisher used to drop.
@@ -564,21 +587,29 @@ def test_publish_reference_snapshot_requires_token(tmp_path: Path) -> None:
 
 # ── RM88: the versioned path refuses to become a different release ────────────────────────────────
 
-_LOCAL_DIGEST = "sha256:" + "0" * 64
 _OTHER_DIGEST = "sha256:" + "1" * 64
 
 
-def _remote(tmp_path: Path, digest: str | None) -> tuple[MagicMock, Path | None]:
-    """A mock api whose versioned path holds a manifest with `digest`, or nothing when `digest` is
-    None. Returns the api and the file `hf_hub_download` should hand back."""
+def _published_as(module_dir: Path, *, digest: str | None = None) -> dict:
+    """The module's own manifest as the versioned path would hold it, with `artifact.digest` replaced
+    when `digest` is given — so "the same release" is the same document, declared files included."""
+    document = json.loads((module_dir / "manifest.json").read_text(encoding="utf-8"))
+    if digest is not None:
+        document["artifact"]["digest"] = digest
+    return document
+
+
+def _remote(tmp_path: Path, document: dict | None) -> tuple[MagicMock, Path | None]:
+    """A mock api whose versioned path holds `document` as its manifest, or nothing when it is None.
+    Returns the api and the file `hf_hub_download` should hand back."""
     api = MagicMock()
     api.token = "hf_test_token"
-    if digest is None:
+    if document is None:
         api.file_exists.return_value = False
         return api, None
     api.file_exists.return_value = True
     published = tmp_path / "published_manifest.json"
-    published.write_text(json.dumps({"artifact": {"digest": digest}}), encoding="utf-8")
+    published.write_text(json.dumps(document), encoding="utf-8")
     return api, published
 
 
@@ -600,7 +631,7 @@ def test_a_versioned_path_holding_a_different_artifact_refuses(tmp_path: Path) -
     than *is something there*.
     """
     module_dir = _compiled_module(tmp_path / "m", version="1.2.3")
-    api, published = _remote(tmp_path, _OTHER_DIGEST)
+    api, published = _remote(tmp_path, _published_as(module_dir, digest=_OTHER_DIGEST))
 
     with pytest.raises(PublishCollisionError) as caught:
         _upload(module_dir, api, published)
@@ -621,7 +652,7 @@ def test_the_same_artifact_republished_is_not_a_collision(tmp_path: Path) -> Non
     digests instead, and identical bytes are not a collision.
     """
     module_dir = _compiled_module(tmp_path / "m", version="1.2.3")
-    api, published = _remote(tmp_path, _LOCAL_DIGEST)
+    api, published = _remote(tmp_path, _published_as(module_dir))
 
     plan = _upload(module_dir, api, published)
 
@@ -648,7 +679,7 @@ def test_force_overwrites_and_does_not_even_ask(tmp_path: Path) -> None:
     a curator re-cutting a draft release should not pay a round trip to be told what they already
     decided."""
     module_dir = _compiled_module(tmp_path / "m", version="1.2.3")
-    api, published = _remote(tmp_path, _OTHER_DIGEST)
+    api, published = _remote(tmp_path, _published_as(module_dir, digest=_OTHER_DIGEST))
 
     _upload(module_dir, api, published, force=True)
 
@@ -659,7 +690,7 @@ def test_force_overwrites_and_does_not_even_ask(tmp_path: Path) -> None:
 def test_a_module_with_no_version_is_not_gated_at_all(tmp_path: Path) -> None:
     """There is no versioned path to collide with, so there is nothing to ask and nobody to ask."""
     module_dir = _compiled_module(tmp_path / "m", version=None)
-    api, published = _remote(tmp_path, _OTHER_DIGEST)
+    api, published = _remote(tmp_path, _published_as(module_dir, digest=_OTHER_DIGEST))
 
     plan = _upload(module_dir, api, published)
 
@@ -709,7 +740,7 @@ def test_a_local_module_with_no_readable_digest_is_not_gated(tmp_path: Path) -> 
     cannot disagree with anything. It also cannot have produced a versioned path, which is why this
     is a belt-and-braces case rather than a reachable one."""
     module_dir = _compiled_module(tmp_path / "m", manifest_bytes="{ not json")
-    api, published = _remote(tmp_path, _OTHER_DIGEST)
+    api, published = _remote(tmp_path, {"artifact": {"digest": _OTHER_DIGEST}})
 
     _upload(module_dir, api, published)
 
@@ -821,13 +852,14 @@ def test_a_retirement_still_rides_the_payload_commit_at_any_size(tmp_path: Path)
         patch("huggingface_hub.get_token", return_value="hf_test_token"),
         patch(
             "just_dna_enricher.upload.layout_shifts_to_apply",
-            return_value=[SimpleNamespace(retires="data/old-*.parquet", reason="a test")],
+            # `retires` is one name, never a glob (`LayoutShift`), and it reaches the hub as a literal.
+            return_value=[SimpleNamespace(retires="data/clinvar.parquet", reason="a test")],
         ),
     ):
         publish_reference_snapshot(_snapshot_of_size(tmp_path, 6 * 1024**3), "just-dna-seq/alphagenome_avi")
 
     payload, description = (c.kwargs for c in api.upload_folder.call_args_list)
-    assert payload["delete_patterns"] == ["data/old-*.parquet"]
+    assert payload["delete_patterns"] == ["data/clinvar.parquet"]
     assert "delete_patterns" not in description, "the description commit deletes nothing"
 
 
@@ -955,3 +987,222 @@ def test_a_log_path_that_leaves_the_module_directory_is_never_planned(tmp_path: 
     for name in escaping:
         assert any(name in record.getMessage() for record in caplog.records), name
     assert any("cannot be resolved" in record.getMessage() for record in caplog.records)
+
+
+# ── the publisher sends what the manifest declares, and guards it (RM353) ───────────────────────
+
+
+def _declared(document: dict) -> dict[str, str]:
+    """Every file the manifest declares, by name, with its sha256 — computed from the document the
+    compiler wrote, the five kinds that sit in the module directory."""
+    entries = [*document["artifact"]["files"], *document.get("logs", [])]
+    entries += [document[key] for key in ("logo", "readme") if document.get(key)]
+    declared = {entry["name"]: entry["sha256"] for entry in entries}
+    if document.get("provenance"):
+        declared[document["provenance"]["file"]] = document["provenance"]["sha256"]
+    return declared
+
+
+def _compile_with_everything(tmp_path: Path, *, version: str | None = None) -> Path:
+    """A real compile of a copy of `apoe_epsilon` carrying every optional kind a manifest declares: a
+    `provenance.json`, a logo, its README and a log."""
+    spec = tmp_path / "spec"
+    shutil.copytree(_EXAMPLES / _LOGS_EXAMPLE, spec)
+    (spec / "provenance.json").write_text(
+        json.dumps({"generator": "a test", "items": [{"variant_key": "rs429358", "rationale": "why"}]}),
+        encoding="utf-8",
+    )
+    (spec / "logo.png").write_bytes(_PNG_BYTES)
+    (spec / "logs").mkdir()
+    (spec / "logs" / "authoring.log").write_text("drafted\n", encoding="utf-8")
+    if version is not None:
+        spec_file = spec / "module_spec.yaml"
+        document = yaml.safe_load(spec_file.read_text(encoding="utf-8"))
+        document["module"]["version"] = version
+        spec_file.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+        (spec / VERIFICATION_JSON).unlink(missing_ok=True)
+    out = tmp_path / "out"
+    result = compile_module(spec, out)
+    assert result.success, result.errors
+    return out
+
+
+def test_every_file_the_manifest_declares_is_planned(tmp_path: Path) -> None:
+    """`provenance.json` is named, with a sha256, in `manifest.provenance.file`, and no allowlist held
+    it, so a published manifest pointed at a document the repository lacked. The plan is derived from
+    every file entry the manifest declares — artifact files, logs, provenance, logo, readme — so a kind
+    the compiler ships is a kind the publisher sends without a list to update."""
+    out = _compile_with_everything(tmp_path)
+    document = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+    declared = _declared(document)
+    assert "provenance.json" in declared, "the fixture must compile to a manifest naming its provenance"
+    assert {"logo.png", "README.md", "logs/authoring.log"} <= set(declared)
+
+    plan = plan_upload(out, _LOGS_EXAMPLE)
+    assert set(plan.files) == {*declared, "manifest.json"}
+
+    # What `upload_folder` would select from the directory is the plan, provenance included.
+    api = MagicMock()
+    with (
+        patch("huggingface_hub.HfApi", return_value=api),
+        patch("huggingface_hub.get_token", return_value="hf_test_token"),
+    ):
+        upload_module(out, _LOGS_EXAMPLE, force=True)
+    sent = set(
+        filter_repo_objects(
+            _files_under(out),
+            allow_patterns=api.upload_folder.call_args.kwargs["allow_patterns"],
+            ignore_patterns=DEFAULT_IGNORE_PATTERNS,
+        )
+    )
+    assert sent == set(plan.files)
+
+
+def test_a_file_on_disk_the_manifest_does_not_declare_stays_behind(tmp_path: Path) -> None:
+    """The plan is the manifest's declarations, not whatever the allowlist finds on disk: a parquet a
+    previous compile left in the directory, or a logo the current manifest does not name, would arrive
+    unattested — and a stale parquet on the flat path reads to discovery as part of the module."""
+    out = _compile_with_everything(tmp_path)
+    assert not (out / "weights.parquet").exists(), "the fixture must be a table-only module"
+    for stale in ("weights.parquet", "annotations.parquet", "studies.parquet"):
+        (out / stale).write_bytes(b"left by an earlier compile")
+    (out / "logo.jpeg").write_bytes(_PNG_BYTES)
+    files = plan_upload(out, _LOGS_EXAMPLE).files
+    assert not {"weights.parquet", "annotations.parquet", "studies.parquet", "logo.jpeg"} & set(files)
+
+
+def test_a_declared_optional_file_that_leaves_the_module_is_never_planned(tmp_path: Path, caplog) -> None:
+    """The path guard RM347 wrote for logs reads every declared name now, so a hand-edited
+    `provenance.file` naming `../x` is skipped with a reason, like a log would be."""
+    out = _compile_with_everything(tmp_path)
+    outside = tmp_path / "outside.json"
+    outside.write_text("{}", encoding="utf-8")
+    manifest_path = out / "manifest.json"
+    document = json.loads(manifest_path.read_text(encoding="utf-8"))
+    document["provenance"]["file"] = "../outside.json"
+    manifest_path.write_text(json.dumps(document), encoding="utf-8")
+    with caplog.at_level("WARNING", logger="just_dna_enricher.upload"):
+        files = plan_upload(out, _LOGS_EXAMPLE).files
+    assert "../outside.json" not in files
+    assert any("../outside.json" in record.getMessage() for record in caplog.records)
+
+
+def test_a_snapshot_file_with_a_glob_metacharacter_selects_only_itself(tmp_path: Path) -> None:
+    """`upload_folder` matches its allowlist with `fnmatch`, so an unescaped `data/chr[1].parquet` is a
+    character class: it selects `data/chr1.parquet` and never itself. RM347 escaped the module
+    publisher's patterns; the snapshot publisher's went through unescaped."""
+    snap = _snapshot(tmp_path / "snap")
+    (snap / "data" / "chr[1].parquet").write_bytes(b"PAR1payloadPAR1")
+    (snap / "data" / "chr1.parquet").write_bytes(b"PAR1decoyPAR1")
+    plan = plan_reference_snapshot(snap, "just-dna-seq/clinvar")
+    assert "data/chr[1].parquet" in plan.files
+
+    api = MagicMock()
+    api.list_repo_files.return_value = []
+    with (
+        patch("huggingface_hub.HfApi", return_value=api),
+        patch("huggingface_hub.get_token", return_value="hf_test_token"),
+    ):
+        publish_reference_snapshot(snap, "just-dna-seq/clinvar")
+    on_disk = _files_under(snap)
+    patterns = [p for c in api.upload_folder.call_args_list for p in c.kwargs["allow_patterns"]]
+    # One pattern per planned file, each selecting exactly that file and nothing else.
+    assert len(patterns) == len(plan.files)
+    for name, pattern in zip(plan.files, patterns, strict=True):
+        assert set(filter_repo_objects(on_disk, allow_patterns=[pattern])) == {name}, pattern
+
+
+def test_a_declared_retirement_deletes_only_the_file_it_names(tmp_path: Path) -> None:
+    """`LayoutShift.retires` is one name, never a glob, and `delete_patterns` is matched with
+    `fnmatch` too — so a retired name carrying `[` would delete a different file, unescaped."""
+    shift = LayoutShift(
+        repo_id="just-dna-seq/clinvar",
+        retires="data/old[1].parquet",
+        introduces="data/clinvar-chr*.parquet",
+        reason="a test",
+    )
+    remote = ["data/old[1].parquet", "data/old1.parquet"]
+    api = MagicMock()
+    api.list_repo_files.return_value = remote
+    with (
+        patch("huggingface_hub.HfApi", return_value=api),
+        patch("huggingface_hub.get_token", return_value="hf_test_token"),
+        patch("just_dna_enricher.upload.layout_shifts_to_apply", return_value=[shift]),
+    ):
+        publish_reference_snapshot(_snapshot(tmp_path / "snap"), "just-dna-seq/clinvar")
+    delete = api.upload_folder.call_args_list[0].kwargs["delete_patterns"]
+    assert set(filter_repo_objects(remote, allow_patterns=delete)) == {"data/old[1].parquet"}
+
+
+def test_a_prune_deletes_only_the_files_its_plan_names(tmp_path: Path) -> None:
+    """The prune plan lists remote paths and `delete_files` matches them with `fnmatch`: a candidate
+    `data/x[1].parquet` unescaped would delete `data/x1.parquet`, a file nobody was shown."""
+    plan = PrunePlan(
+        repo_id="just-dna-seq/clinvar", candidates=[PruneCandidate(path="data/x[1].parquet", reason="t")]
+    )
+    api = MagicMock()
+    with (
+        patch("huggingface_hub.HfApi", return_value=api),
+        patch("huggingface_hub.get_token", return_value="hf_test_token"),
+    ):
+        prune_repo(plan)
+    delete = api.delete_files.call_args.kwargs["delete_patterns"]
+    remote = ["data/x[1].parquet", "data/x1.parquet"]
+    assert set(filter_repo_objects(remote, allow_patterns=delete)) == {"data/x[1].parquet"}
+
+
+def test_a_logs_only_change_at_the_versioned_path_refuses_without_force(tmp_path: Path) -> None:
+    """`artifact.digest` excludes logs by design, so a guard comparing only the digest let a second
+    publish of the same version replace its logs. The guard compares every declared file's hash: the
+    compiled data is identical, a declared log is not, and the refusal says which."""
+    out = _compile_with_everything(tmp_path, version=_AUTHORED_VERSION)
+    published = _published_as(out)
+
+    # The same release arriving twice is not a collision, declared files included.
+    api, remote = _remote(tmp_path, published)
+    _upload(out, api, remote)
+    assert len(api.upload_folder.call_args_list) == 2
+
+    # Recompile with one log changed: same data, same digest (P7), a different declared log.
+    (tmp_path / "spec" / "logs" / "authoring.log").write_text("drafted, then reviewed\n", encoding="utf-8")
+    shutil.rmtree(out)
+    assert compile_module(tmp_path / "spec", out).success
+    local = _published_as(out)
+    assert local["artifact"]["digest"] == published["artifact"]["digest"], "the data must not have moved"
+    assert _declared(local)["logs/authoring.log"] != _declared(published)["logs/authoring.log"]
+
+    api, remote = _remote(tmp_path, published)
+    with pytest.raises(PublishCollisionError) as caught:
+        _upload(out, api, remote)
+    message = str(caught.value)
+    assert f"data/test_module/v{_AUTHORED_VERSION}" in message
+    assert "logs/authoring.log" in message
+    assert "--force" in message
+    api.upload_folder.assert_not_called()
+
+    api, remote = _remote(tmp_path, published)
+    _upload(out, api, remote, force=True)
+    assert len(api.upload_folder.call_args_list) == 2
+
+
+def test_a_declared_file_on_one_side_only_is_a_collision(tmp_path: Path) -> None:
+    """A log the published version does not declare, added under the same version, changes what that
+    version says it holds — the declared sets are compared, not only the hashes they share."""
+    module_dir = _compiled_module(tmp_path / "m", version="1.2.3")
+    published = _published_as(module_dir)
+    published["logs"] = [{"name": "logs/run.log", "sha256": "sha256:" + "2" * 64, "size": 3}]
+    api, remote = _remote(tmp_path, published)
+    with pytest.raises(PublishCollisionError, match="logs/run.log"):
+        _upload(module_dir, api, remote)
+    api.upload_folder.assert_not_called()
+
+
+def test_a_declaration_with_no_legible_hash_is_not_compared(tmp_path: Path) -> None:
+    """An unknown cannot disagree: a published manifest whose `provenance` names the file but states
+    no sha256 says nothing about its bytes, so it is no collision with a local one that does."""
+    out = _compile_with_everything(tmp_path, version=_AUTHORED_VERSION)
+    published = _published_as(out)
+    published["provenance"]["sha256"] = None
+    api, remote = _remote(tmp_path, published)
+    _upload(out, api, remote)
+    assert len(api.upload_folder.call_args_list) == 2

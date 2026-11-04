@@ -1554,7 +1554,8 @@ def upload_(
         False,
         "--force",
         help=(
-            "Overwrite data/<name>/v<version>/ even when it already holds a different artifact. "
+            "Overwrite data/<name>/v<version>/ even when it already holds a different artifact "
+            "or different declared files (logs, provenance, logo, readme). "
             "Without this the publish refuses; the flat path is always overwritten."
         ),
     ),
@@ -1566,9 +1567,11 @@ def upload_(
     that order, as two commits. With no version, the flat path alone,
     and the reason why.
 
-    Refuses when the versioned path already holds a different artifact
-    (compare by artifact.digest), unless --force. The flat path means
-    latest and is overwritten either way.
+    Sends what manifest.json declares: the artifact files, the logo,
+    the readme, provenance.json and every log. Refuses when the versioned
+    path already holds a different artifact or a different declared file
+    (compare by artifact.digest and each declared sha256), unless --force.
+    The flat path means latest and is overwritten either way.
     """
     from just_dna_enricher.upload import PublishCollisionError, plan_upload, upload_module
 
