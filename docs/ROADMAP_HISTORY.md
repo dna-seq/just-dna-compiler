@@ -65,8 +65,9 @@ scope narrowing a map), a subset is the honest shape and stays.
    `claimed <= VALID_VERIFICATION_CHECKS`. → each command's claimed checks **equal** the names its
    modules pass to `ran`/`skipped`, read by one AST walker (`checks_written_in`, in
    `enricher/tests/conftest.py`) that the vocabulary-wide emitter guard in
-   `test_verification_record.py` now calls too; an unreadable check name is refused, and a producer
-   module that resolves to nothing fails.
+   `test_verification_record.py` now calls too. It reads `ran`/`skipped` under any import alias or
+   module attribute and `VerificationRecord(check=…)` built directly; an unreadable check name is
+   refused, and a producer module that resolves to nothing fails.
 2. `schema/tests/test_first_seen.py:83-85` — `len(_ALL_MODELS) >= 31` and `>= 414` fields, while the
    registry held 38 models and 538 fields. → every pydantic model the package defines is in the
    registry, reachable from a document the tooling writes (`ModuleManifest`, `VerificationDoc`,
@@ -78,7 +79,8 @@ scope narrowing a map), a subset is the honest shape and stays.
    dispute is the parquet that began carrying it (RM270). → every field's declaration must equal the
    first tag whose model carries it (the uncut release where no tag does), parsed from each tag's own
    sources with inherited fields resolved; the same walk refuses a published field the model lost
-   (Principle 3). All 538 hold. It skips, saying why, in a checkout with no tags.
+   (Principle 3) on a model still present under its name. All 538 hold. It skips, saying why, where
+   git is missing or the clone is shallow (CI's default), rather than measuring a partial history.
 5. `docs/COMPILER.md` — the `ARTIFACT_PARQUETS` diagram drew 26 of 30 names (no `locus_to_gene`,
    `colocalisations`, `consequences`, `ld_pairs`) with `expression_effects` out of order, under a pinned
    "Thirty names" (the audit's "Twenty-nine" had already been corrected; its six missing names were
@@ -92,9 +94,10 @@ scope narrowing a map), a subset is the honest shape and stays.
    `vrs_spec`, `rsid_alternates`, `rsid_current`, `rsid_status`, `placement_witness`,
    `placement_verdict`, `left_aligned`; `literature.csv`'s `doi_exists`, `doi_checked`, `quote_source`;
    `consequences.csv`'s `rsid`; `VerificationRecord.producer`), and seven provenance columns were never
-   named. → `schema/tests/test_fact_fields_partition.py`: each column is in the tuple or named in the
-   comment above it, which is where each module already argued its exclusions, so the exemption list is
-   that prose rather than a second copy; the tuples walked equal those `integrity`/`verification` hash.
+   named. → `schema/tests/test_fact_fields_partition.py`: each column is in the tuple or named in a
+   sentence of the comment above it that excludes (*out*, *outside*, *except*, …), which is where each
+   module already argued its exclusions, so the exemption list is that prose rather than a second copy,
+   and a column a sentence calls *inside* cannot be dropped from its tuple unseen; the tuples walked equal those `integrity`/`verification` hash.
    Each column now carries the reason SCHEMAS.md or its tests give; `doi_exists`/`doi_checked` say none
    was recorded. **No tuple changed and no signature moves.**
 7. `enricher/tests/test_sidecar_resolution_is_uniform.py:35-47` — `SIDECAR_OWNERS`, the roster the
