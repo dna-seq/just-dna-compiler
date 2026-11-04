@@ -54,3 +54,34 @@ Prose is left byte-for-byte when it is answered and when it is moved, so it stay
 observed rather than of what was decided.
 
 ---
+
+## S129 — a strict refusal's errors carry no code, so a consumer cannot tell a module-level one from a per-row one
+
+*From just-dna-registry's liaison seat, 2026-11-04, against format 0.7.1 / compiler 0.7.2 installed, and the `0.8`
+branch at `503730c` read.*
+
+**What we ran.** The registry's dry runs (`/validate`, `/check`) grade a spec twice: a modeless
+`validate_spec` first, whose verdict becomes `would_publish_module_level`, then a strict one after enrichment,
+which is what the publish's strict compile will do. Our reasoning for keeping the module-level verdict from the
+modeless pass was the sentence your docstring carried until RM218: *strict changes severity only*, so every
+strict-only error was a per-row judgement and belonged to the enrichment tier.
+
+**What happened.** RM218 corrected that sentence, and it was right to: under `strict` two findings are
+*aggregates with no `best_effort` counterpart* — the unresolved-position refusal (`strict compile: N variant(s)
+…`) and `build_disagreement_error`. The first is per-row and enrichment's, as we assumed. The second is
+module-level (one authored file contradicting another about the genome build), and our maintainer decided today
+that a module-level strict-only refusal should flip `would_publish_module_level` to false.
+
+We cannot do that without matching a sentence. `ValidationResult.errors` is `list[str]`; warnings got codes and
+`warnings_summary` in RM131, errors got nothing, on 0.7.3 and on the `0.8` branch alike (no `errors_summary`, no
+coded error in `schema/src` or `compiler/src`). Telling `build_disagreement_error`'s output apart from the
+unresolved aggregate means reading its wording, which is yours to change.
+
+**What we did meanwhile.** Queued a correction of our own comments to say what RM218 says, and left the verdict as it is
+(module-level from the modeless pass), which is wrong only for a module whose files disagree about the build.
+
+**Candidate fixes.** (a) Errors carry a code from a closed vocabulary, with an `errors_summary` beside
+`warnings_summary` — RM131's shape, applied to the other list. (b) Narrower: a field on `ValidationResult` naming
+the strict-only module-level refusals (today just the build disagreement). (a) is the general answer and helps
+every consumer that grades; (b) is what we need and nothing more. A reason (b) might be wrong: it bakes our
+"module-level vs per-row" split into your model, when a code would let each consumer draw its own line.
