@@ -574,6 +574,68 @@ turns 10 of these red; narrowing the enricher's gene scope turns the roster equa
 **Measured** (validate and compile over every reference example, before and after): no warning gained or lost, and
 `stats.genes` unchanged on all 22 — no shipped module carries a fact table about a gene or locus outside `variants.csv`.
 
+**2026-11-04, found merging RM364: a position is every spelling the module's own resolution gives a carried
+identity.** The class: *a "does the module sit at this locus" question answered from one spelling of a position, when
+the module's own `resolution.csv` says the identity sits at another.* An indel has several valid spellings. RM364
+restores NUDT15 `*1` `rs1457579126` in `cpic_gene_pairs`: `haplotypes.csv` spells it 13:48040982 `A` (CPIC,
+right-shifted), the re-enriched `resolution.csv` places the rsID at 13:48040978 `AA` (left-aligned), and the
+frequency pass, which asks gnomAD about the resolution row, wrote `frequencies.csv` at 13:48040978. `module_subjects`
+took a row's position from its own cells only, so the frequency orphan check named the pass's own row "a coordinate
+no variant in this module sits at", and `test_module_subjects_one_answer[cpic_gene_pairs]` went red. RM270 never
+rewrites an authored coordinate, so the row cannot be respelled. The lead's option (a), the `@membership-union` rule:
+every locus the injected table places a carried identity at, on the module's build, joins the row's own position.
+
+Instances (hunted across all three packages, at `84dbb2a`):
+
+1. `subjects.module_subjects` (`positions`), asked by `fact_checks._cross_check_frequencies`,
+   `fact_checks._cross_check_clinical_assertions` and `table_checks._cross_validate_studies` (`sits_at`), in both
+   `compile_module` and `validate_spec` (three views there: `subjects`, `kept`, `resolved_subjects`).
+2. `fact_checks._check_ba1_lint` — the pathogenic map was keyed by the variant's own `chrom:start:ref`, so a common
+   frequency at the table's spelling never met the variant and BA1 stayed silent. The entry above listed it as
+   "checked and held", which was right about the table it reads and wrong about the spelling.
+3. `parquets._StudyIndex.supporting` — the study join behind `weights.parquet`'s study facts (`effect_unit`,
+   `eur_only_evidence`, the outcome strip) matched a coordinate-only study by the variant's own spelling: a study at
+   the table's spelling fed nothing, while the orphan check (instance 1) now says it is about the module.
+4. A locus a 1:N rsID resolves to that cannot host the authored genotype: the compile expands onto the others and
+   re-keys them by coordinate, so the table's third row was reachable through no row's position and no row's key. The
+   frequency pass asks about it, and its row was an orphan. Reached now through the rows' `rsid`.
+
+**Checked and held.** `resolve_from_table._verify` and `resolve_positional_rows` compare an authored position with the
+table on purpose (that comparison is the contradiction report). `unresolved_subjects` already reads the table.
+`allele_checks._check_study_effect_alleles` keys rsID first and withholds on a missing key; `table_checks` haplotype
+signatures key rsID first, so two spellings of one rsID collapse. `fact_checks.resolution_target_survives` is keyed by
+identity and already unions the table. The enricher's `collect_subjects`, `gwas._module_subjects` and the frequency,
+assertion, clinical and Open Targets passes are the askers that read resolution rows, never an authored spelling. The
+RM364 `resolution_loci` path is not on `0.8`.
+
+**The mechanism.** `subjects.identity_placements(row, resolution, genome_build)`: every usable locus
+(`resolution.usable_loci`, the fill's predicate, public now) the injected table files under the row's `variant_key`
+**or** `rsid`, empty without a table, under `--no-resolve` (the callers pass `None`) and off GRCh38 (where the fills
+decline to join, RM15). Three-valued by that predicate: a `not_found` row, a row with no `chrom` and a row on another
+build place nothing. `module_subjects(..., resolution=, genome_build=)` unions it into `positions` and records it apart
+as `resolved_positions`. `subjects.row_positions` is the per-row answer for a check that attributes a finding to a row
+(BA1, the study join): a row the table places where it stands (same `chrom:start`, and `ref` where the row states one)
+sits at its own locus only, so one expansion copy is never handed a sibling's evidence; a row the table places at
+exactly one other position sits there too; with several other positions it keeps its own only, because which one it
+means is unknown and the house algebra withholds. BA1 reports a variant once per ALT, at its strongest evidence, when
+both spellings carry a frequency. `position_key` is the one `chrom:start:ref` key both sides of a position join use
+(`sits_at` and the module's rows). A PAR locus
+needs no branch: the table holds whichever contig the enricher kept (`@par-one-place`), and that is the placement.
+
+**The guard.** `compiler/tests/test_module_subjects_placement.py`: over all 22 reference examples, the GRCh38
+placements `resolution.csv` files under a carried identity, computed off the raw table, equal `resolved_positions`
+(dropping the union turns 16 of them red); a NUDT15-shape fixture (red on `84dbb2a`: the orphan fired, BA1 was silent,
+`effect_unit` was null); the `not_found`, other-build and `--no-resolve` arms, each still an orphan (mutating the
+predicate turns two red); `--no-resolve` keeping BA1 and the study join on the authored spelling; `strict` refusing the
+fixture (`rsid_coordinate_disagrees`), so no strict artifact's `weights.parquet` moves; BA1 once across two spellings;
+`row_positions`' four arms; `validate`/`compile` parity; and the expanded-rsID fixture, which alone goes red when the
+`rsid` lookup is dropped. Measured on all 22 reference examples, `84dbb2a` against this change: `artifact.digest`,
+`content_signature` and every compile and validate warning identical.
+
+**Lap 2.** On bare `0.8`, `reverse` writes the authored spelling back as the resolution fact (RM364's finding), so a
+module in this state is not a fixed point before or after this change: the second lap's orphan returns and a study
+fact joined through the table's spelling is lost. RM364's `resolution_loci` makes it one; nothing here depends on it.
+
 **Residuals** won't fix — gene symbols compare as written here; folding case and space is the gene-key class (the
 audit's class 3), not this one.
 

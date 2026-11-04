@@ -556,8 +556,12 @@ def compile_module(
     # "What the module carries" is asked once, of `module_subjects` (RM362), over the resolved variants
     # and the filled positional tables — the rows the artifact holds — so every orphan check below, the
     # manifest's `stats.genes` and the enricher's scopes give one answer. A load failure has already
-    # refused the compile, so no table is unreadable here.
-    subjects = module_subjects({"variants.csv": variants, **kind_rows})
+    # refused the compile, so no table is unreadable here. The injected table's placements of every
+    # carried identity are positions too (RM362, 2026-11-04), under the fill's own switch.
+    placements = resolution_table if resolve_with_ensembl else None
+    subjects = module_subjects(
+        {"variants.csv": variants, **kind_rows}, resolution=placements, genome_build=config.genome_build
+    )
 
     def _frequency_checks(rows: list) -> tuple[list[str], list[str]]:
         # De-duplicated on the message, the `_literature_checks` idiom eleven lines below and the
@@ -570,7 +574,15 @@ def compile_module(
         errors, warns = _check_frequency_arithmetic(rows)
         warns = [w for w in warns if w not in all_warnings]
         warns.extend(_cross_check_frequencies(rows, subjects))
-        warns.extend(_check_ba1_lint(rows, variants, threshold=ba1_threshold))
+        warns.extend(
+            _check_ba1_lint(
+                rows,
+                variants,
+                threshold=ba1_threshold,
+                resolution=placements,
+                genome_build=config.genome_build,
+            )
+        )
         return errors, warns
 
     def _gene_metrics_checks(rows: list) -> tuple[list[str], list[str]]:
@@ -776,7 +788,9 @@ def compile_module(
     # resolution read: under `--no-resolve` the table was not read, so no id reaches the artifact.
     vrs_ids = VrsIds.of(resolution_rows, config.genome_build) if resolve_with_ensembl else VrsIds()
     # SNP core: weights/annotations only when the module actually has variants.
-    weights_df = _build_weights(variants, config, studies, vrs_ids) if variants else None
+    weights_df = (
+        _build_weights(variants, config, studies, vrs_ids, resolution=placements) if variants else None
+    )
     annotations_df = _build_annotations(variants, module_name) if variants else None
     studies_df = (
         # Gated like every resolution read: under `--no-resolve` the table was not read, so no proxy's

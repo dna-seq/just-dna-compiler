@@ -3,11 +3,13 @@
 from typing import Any
 
 import polars as pl
+from just_dna_format.base import DEFAULT_GENOME_BUILD
 from just_dna_format.frequency import FrequencyRow
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.spec import ModuleSpecConfig, StudyRow, VariantRow
 from just_dna_format.vocab import OUTCOME_STRIP_CELLS
 
+from just_dna_compiler.compiler.subjects import ResolutionTable, row_positions
 from just_dna_compiler.compiler.tables import _polars_type, _split_genotype, study_coordinate_key
 from just_dna_compiler.compiler.vrs_columns import VrsIds, resolution_key
 
@@ -24,8 +26,15 @@ class _StudyIndex:
     of genotype rows and study rows costs two dict lookups per weights row, not a scan.
     """
 
-    def __init__(self, studies: list[StudyRow]) -> None:
+    def __init__(
+        self,
+        studies: list[StudyRow],
+        resolution: ResolutionTable | None = None,
+        genome_build: str = DEFAULT_GENOME_BUILD,
+    ) -> None:
         self.studies = studies
+        self.resolution = resolution
+        self.genome_build = genome_build
         self.by_rsid: dict[str, list[int]] = {}
         self.by_coord: dict[str, list[int]] = {}
         for i, s in enumerate(studies):
@@ -39,11 +48,12 @@ class _StudyIndex:
         """`variant`'s supporting study rows, in authored order (which keeps every derivation stable).
 
         `variant` is the post-resolution row, so a coordinate the enricher filled matches a coordinate-
-        authored study too.
+        authored study too. And every spelling the variant sits at (`subjects.row_positions`, RM362
+        2026-11-04): a study at the injected table's spelling of an rsID authored beside another
+        spelling is about the same place, as the orphan check already says.
         """
         hits = set(self.by_rsid.get(variant.rsid or "", ()))
-        coord = study_coordinate_key(variant.chrom, variant.start, variant.ref)
-        if coord is not None:
+        for coord in row_positions(variant, self.resolution, self.genome_build):
             hits.update(self.by_coord.get(coord, ()))
         return [self.studies[i] for i in sorted(hits)]
 
@@ -91,14 +101,17 @@ def _build_weights(
     config: ModuleSpecConfig,
     studies: list[StudyRow] | None = None,
     vrs: VrsIds | None = None,
+    *,
+    resolution: ResolutionTable | None = None,
 ) -> pl.DataFrame:
     """Build the weights.parquet DataFrame from validated variant rows, the locus-level columns
     derived from the module's study rows (`_locus_study_facts`), and each allele's `vrs_id` recorded in
-    `resolution.csv` (`vrs`, RM270; `None` when no table was read)."""
+    `resolution.csv` (`vrs`, RM270; `None` when no table was read). `resolution` is the injected table
+    the study join reads a variant's other spellings from, `None` where none may be consulted."""
     defaults = config.defaults
     module_name = config.module.name
     records: list[dict[str, Any]] = []
-    index = _StudyIndex(studies or [])
+    index = _StudyIndex(studies or [], resolution, config.genome_build)
     vrs = vrs or VrsIds()
     for v in variants:
         priority = v.priority if v.priority is not None else defaults.priority

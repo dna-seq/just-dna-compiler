@@ -690,12 +690,22 @@ def _validate_spec(
     # drops applied), the view `compile_module` asks with, so the gene orphans and the overlay's
     # reachability say the same sentence on both sides; `subjects` keeps every authored row, because the
     # study check counts a dropped row as carried (the lead, 2026-11-04) and runs in this pass only.
+    # The injected table's placements of a carried identity are positions too (RM362, 2026-11-04): the
+    # same table under the same switch `compile_module` asks with, or the two disagree about an orphan.
     unreadable = {"variants.csv"} if has_variants and not variants else set()
     unreadable |= {csv_name for csv_name, rows in loaded_kinds.items() if not rows}
-    subjects = module_subjects({"variants.csv": variants, **loaded_kinds}, unreadable=unreadable)
+    placements = membership_table if resolve_with_ensembl else None
+    subjects = module_subjects(
+        {"variants.csv": variants, **loaded_kinds},
+        unreadable=unreadable,
+        resolution=placements,
+        genome_build=declared_build,
+    )
     kept = module_subjects(
         {"variants.csv": _apply_symbolic_drops(variants, would_drop.get("variants.csv", set())), **survivors},
         unreadable=unreadable,
+        resolution=placements,
+        genome_build=declared_build,
     )
 
     # Composition: a module must carry at least one recognized table kind.
@@ -867,10 +877,22 @@ def _validate_spec(
     if not legacy_resolves:
         # The module's subjects over the resolved rows (RM362's one answer, RM367's view): the same call
         # `compile_module` makes over its resolved variants and kept table kinds.
-        resolved_subjects = module_subjects({"variants.csv": resolved_variants, **survivors})
+        resolved_subjects = module_subjects(
+            {"variants.csv": resolved_variants, **survivors},
+            resolution=placements,
+            genome_build=declared_build,
+        )
         frequency_rows = fact_rows.get(FrequencyRow, [])
         all_warnings.extend(_cross_check_frequencies(frequency_rows, resolved_subjects))
-        all_warnings.extend(_check_ba1_lint(frequency_rows, resolved_variants, threshold=ba1_threshold))
+        all_warnings.extend(
+            _check_ba1_lint(
+                frequency_rows,
+                resolved_variants,
+                threshold=ba1_threshold,
+                resolution=placements,
+                genome_build=declared_build,
+            )
+        )
         all_warnings.extend(
             _cross_check_clinical_assertions(fact_rows.get(ClinicalAssertionRow, []), resolved_subjects)
         )
