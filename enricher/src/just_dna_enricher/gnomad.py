@@ -44,6 +44,7 @@ from tenacity import (
 )
 
 from just_dna_enricher.net import (
+    UNREACHABLE,
     PacingGate,
     RetiredEndpoint,
     attempt_floor,
@@ -291,10 +292,28 @@ class GnomadClient:
     settings: GnomadSettings = field(default_factory=GnomadSettings)
     gate: PacingGate | None = None
     _client: httpx.Client | None = None
+    #: `subject -> reason` for every subject a batch answered with an error rather than a record or an
+    #: absence (RM361): a per-alias timeout or internal error. Such a subject is missing from the
+    #: method's result exactly as an absent one is, so a caller that writes `not_found` for a missing
+    #: subject reads this first; the reason is `net.UNREACHABLE`. Accumulates over the client's life.
+    unanswered: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.gate is None:
             self.gate = PacingGate(self.settings.min_request_interval)
+
+    def _note_unanswered(
+        self, errors: dict[str, str], subjects: list[str], *, also_answers: tuple = ()
+    ) -> None:
+        """Record every subject whose alias carries an error that is neither an absence nor, for the
+        caller, an answer of its own (`also_answers`, e.g. "Multiple variants found")."""
+        for i, subject in enumerate(subjects):
+            message = errors.get(_alias(i))
+            if message is None or message.strip().lower() in _ABSENCE_MESSAGES:
+                continue
+            if any(pattern.search(message) for pattern in also_answers):
+                continue
+            self.unanswered[subject] = UNREACHABLE
 
     def _http(self) -> httpx.Client:
         if self._client is None:
@@ -416,6 +435,7 @@ class GnomadClient:
                 for i, rsid in enumerate(batch)
             ]
             data, errors = self._post_batch(fields, what="rsid resolution")
+            self._note_unanswered(errors, batch, also_answers=(_MULTIPLE_VARIANTS_RE,))
             for i, rsid in enumerate(batch):
                 alias = _alias(i)
                 if _MULTIPLE_VARIANTS_RE.search(errors.get(alias, "")):
@@ -430,7 +450,8 @@ class GnomadClient:
                 f"dataset: {self.settings.dataset}) {{ variant_id }}"
                 for i, rsid in enumerate(batch)
             ]
-            data, _ = self._post_batch(fields, what="rsid search")
+            data, errors = self._post_batch(fields, what="rsid search")
+            self._note_unanswered(errors, batch)
             for i, rsid in enumerate(batch):
                 hits = data.get(_alias(i)) or []
                 ids = [h.get("variant_id") for h in hits if h.get("variant_id")]
@@ -460,7 +481,8 @@ class GnomadClient:
                 f"populations {{ id ac an homozygote_count hemizygote_count }} }} }}"
                 for i, vid in enumerate(batch)
             ]
-            data, _ = self._post_batch(fields, what="frequency")
+            data, errors = self._post_batch(fields, what="frequency")
+            self._note_unanswered(errors, batch)
             for i, vid in enumerate(batch):
                 node = data.get(_alias(i))
                 if not node:
@@ -498,7 +520,8 @@ class GnomadClient:
                 f"lof_z mis_z syn_z obs_lof exp_lof flags }} }}"
                 for i, symbol in enumerate(batch)
             ]
-            data, _ = self._post_batch(fields, what="gene constraint")
+            data, errors = self._post_batch(fields, what="gene constraint")
+            self._note_unanswered(errors, batch)
             for i, symbol in enumerate(batch):
                 node = data.get(_alias(i))
                 if not node:

@@ -149,7 +149,16 @@ def _fetch_all(client: CpicClient, table: str, select: str) -> list[dict[str, An
     """
     rows = client.fetch_table(table, select)
     expected = client.row_count(table)
-    if expected is not None and len(rows) != expected:
+    if expected is None:
+        # The guard cannot run, so whether the read is whole is unknown: refuse rather than write a
+        # snapshot that may be short as if it were complete (RM361). A proxy stripping
+        # `Content-Range` is the realistic way here.
+        raise CpicBuildError(
+            f"CPIC {table}: fetched {len(rows)} row(s) and the service stated no count (no "
+            f"Content-Range), so whether the read is whole cannot be checked. Refusing rather than "
+            f"writing a snapshot that may be silently incomplete."
+        )
+    if len(rows) != expected:
         raise CpicBuildError(
             f"CPIC {table}: fetched {len(rows)} row(s) but the service reports {expected}. The "
             f"endpoint has started paginating; the snapshot would be silently incomplete."

@@ -27,7 +27,7 @@ from tenacity import (
 )
 
 from just_dna_enricher.clingen_allele import anchor_indel
-from just_dna_enricher.net import attempt_floor, retry_if_transient
+from just_dna_enricher.net import Withholding, attempt_floor, retry_if_transient
 from just_dna_enricher.sequences import SequenceProxy
 
 logger = logging.getLogger(__name__)
@@ -70,7 +70,7 @@ class EnsemblError(RuntimeError):
 
 
 @dataclass
-class EnsemblResolver:
+class EnsemblResolver(Withholding):
     """Resolve a bare rsID to its GRCh38 loci via live Ensembl (V2 GraphQL → V1 REST fallback)."""
 
     settings: EnsemblSettings = field(default_factory=EnsemblSettings)
@@ -140,6 +140,7 @@ class EnsemblResolver:
             loci, withheld, unplaceable = self._rest_rsid(rsid)
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code != _REST_NO_RECORD_STATUS:
+                self.note_retired("Ensembl REST", exc)
                 logger.warning("V1 REST for %s failed: %s", rsid, exc)
                 return None, None
             logger.info("V1 REST has no record for %s (%s)", rsid, exc)

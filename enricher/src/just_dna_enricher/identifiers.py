@@ -673,7 +673,18 @@ class OntologyClient:
         )
         if response.status_code == 404:
             return TraitStatus(curie=curie, state="absent")
-        terms = (_json(response).get("_embedded") or {}).get("terms") or []
+        payload = _json(response)
+        embedded = payload.get("_embedded")
+        terms = embedded.get("terms") if isinstance(embedded, dict) else None
+        if not isinstance(terms, list):
+            # HAL omits `_embedded` for an empty page, and then the page's own count says so; a body
+            # with neither is a shape this client cannot read, never "no such term" (RM361).
+            page = payload.get("page")
+            if not (isinstance(page, dict) and page.get("totalElements") == 0):
+                raise IdentifierUnavailable(
+                    f"OLS4 answered for {curie} with no terms block and no page count"
+                )
+            terms = []
         if not terms:
             return TraitStatus(curie=curie, state="absent")
         term = terms[0]
@@ -717,7 +728,13 @@ class OntologyClient:
         response = self._get(f"{self.hgnc_base.rstrip('/')}/fetch/{path}")
         if response.status_code == 404:
             return []
-        return (_json(response).get("response") or {}).get("docs") or []
+        body = _json(response).get("response")
+        docs = body.get("docs") if isinstance(body, dict) else None
+        if not isinstance(docs, list):
+            # HGNC's answer is `response.docs`, empty for a symbol it does not hold; a body without it
+            # answered nothing, so it is never the empty answer (RM361).
+            raise IdentifierUnavailable(f"HGNC answered fetch/{path} with no response.docs block")
+        return docs
 
 
 def _json(response: httpx.Response) -> dict:

@@ -258,8 +258,10 @@ def read_module(spec_dir: Path, *, genome_build: str) -> tuple[list[VariantRow],
     return variants, resolution
 
 
-def read_studies(spec_dir: Path) -> list[StudyRow]:
-    """The module's citation table, or `[]` when it carries none — and never fatal.
+def read_studies(spec_dir: Path) -> list[StudyRow] | None:
+    """The module's citation table, `[]` when it carries none, or `None` when it will not parse — and
+    never fatal. `None` is not `[]` (RM361): a table that could not be read holds citations nobody
+    looked at, and reading it as empty published the check as *nothing to check*.
 
     A table that will not parse is logged and read as empty rather than raised, because the one caller
     is a **read-only check** folded into a pass that has other work to do: `enrich` would otherwise
@@ -276,7 +278,7 @@ def read_studies(spec_dir: Path) -> list[StudyRow]:
             "the compiler reports this table's own errors.",
             errors[0],
         )
-        return []
+        return None
     return rows
 
 
@@ -624,9 +626,17 @@ class EvidenceStatusCheck:
     #: Subjects the API could not be asked about this run, with the reason.
     unreachable: dict[int, str] = field(default_factory=dict)
     skip: str | None = None
+    #: Set when `studies.csv` would not parse (RM361): the citations it records were never read, so the
+    #: skip is `no_reference` with this sentence, never `nothing_to_check`.
+    studies_unreadable: str | None = None
 
     def detail(self) -> str:
         """The sentence beside the machine key, on every run including the empty one."""
+        if self.studies_unreadable is not None:
+            return (
+                f"studies.csv could not be read ({self.studies_unreadable}), so the citations it records "
+                f"were never looked at — not a module with nothing to check"
+            )
         if self.skip == "nothing_to_check":
             return (
                 "this module records no citation drafted from CIViC's API, so there is no recorded "
@@ -721,7 +731,7 @@ def cited_pmids(studies: Sequence[StudyRow]) -> dict[str, set[str]]:
 def check_evidence_status_currency(
     variants: Sequence[VariantRow],
     resolution_rows: Sequence[ResolutionRow],
-    studies: Sequence[StudyRow],
+    studies: Sequence[StudyRow] | None,
     *,
     reference: Path | None,
     client: CivicApiClient | None = None,
@@ -741,6 +751,8 @@ def check_evidence_status_currency(
     A run that could not put the question says which of four reasons applies rather than reporting a
     comparison of zeros — a check that could not run is not a check that passed.
     """
+    if studies is None:
+        return EvidenceStatusCheck(skip="no_reference", studies_unreadable="the table did not parse")
     recorded = recorded_civic_citations(studies)
     grounding = grounding_civic_citations(studies)
     everything_cited = cited_pmids(studies)
@@ -782,8 +794,13 @@ def check_evidence_status_currency(
         # *already cited*, so a hand-written or snapshot-drafted row for the same paper silences the
         # added-a-citation arm instead of being re-reported every lap.
         cited = everything_cited.get(key, set())
+        # A read short of CIViC's own total cannot say a paper is gone: it may be in what was not
+        # served (RM361). Its served items still answer, so only the absence arm is withheld.
+        short = subject.variant_id in getattr(api, "short_reads", set())
         for pmid, was in held.items():
             citation = current.get(pmid)
+            if citation is None and short:
+                continue
             if citation is None:
                 # Every item citing this paper is now rejected, or the item is gone. Reported on the
                 # status axis rather than as a third code: the remedy is the same one, which is to

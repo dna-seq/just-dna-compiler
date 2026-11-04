@@ -35,7 +35,7 @@ from dataclasses import dataclass
 import httpx
 from tenacity import retry, retry_if_exception_type, wait_exponential_jitter
 
-from just_dna_enricher.net import PacingGate, attempt_floor
+from just_dna_enricher.net import PacingGate, Withholding, attempt_floor
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +110,12 @@ def _parse(caid: str, payload: dict) -> AlleleIdentity:
     can hold; withholding it is the `identity-whole-or-none` rule, and the rsID leg usually covers
     those rows anyway.
     """
+    if not isinstance(payload, dict) or (
+        "genomicAlleles" not in payload and "externalRecords" not in payload
+    ):
+        # A JSON body that is not an allele record (an error object, a changed schema) answered
+        # nothing about the allele: unchecked, never `no_identity` (RM361).
+        return AlleleIdentity(caid=caid, outcome="unchecked")
     rsid = None
     for record in payload.get("externalRecords", {}).get("dbSNP", []) or []:
         rs = record.get("rs")
@@ -201,7 +207,7 @@ def anchor_indel(unanchored: tuple[str, int, str, str], read_base) -> tuple[str,
     return (chrom, pos, base + ref, base + alt)
 
 
-class ClingenAlleleClient:
+class ClingenAlleleClient(Withholding):
     """Resolve CAIDs, one at a time, paced, with a per-run cache.
 
     A class rather than a function because the pacing gate and the cache are per-run state, and a
@@ -231,6 +237,7 @@ class ClingenAlleleClient:
             if exc.response.status_code == 404:
                 result = AlleleIdentity(caid=caid, outcome="no_identity")
             else:
+                self.note_retired("The ClinGen Allele Registry", exc)
                 logger.warning("ClinGen Allele Registry returned %s for %s", exc.response.status_code, caid)
                 result = AlleleIdentity(caid=caid, outcome="unchecked")
         except (httpx.HTTPError, ValueError) as exc:

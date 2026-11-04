@@ -315,6 +315,43 @@ def aggregate_reason(reasons: Iterable[str | None]) -> str:
     return RETIRED if RETIRED in set(reasons) else UNREACHABLE
 
 
+class Withholding:
+    """Mixed into every client whose contract is a withheld value rather than an exception (RM361).
+
+    Such a client answers a failed request with `None` (or its outcome's could-not-ask arm), so a 410
+    reached its caller as an outage. `retired` is how it says otherwise without raising: the
+    `retired_message` of the first 410 the client met, `None` until then. Sticky for the client's
+    life, because a retired route is a fact about the source rather than about one request; a caller
+    recording why a question went unanswered reads it with `withheld_reason`.
+    """
+
+    retired: str | None = None
+
+    def note_retired(self, source: str, failure: BaseException | httpx.Response) -> bool:
+        """Record a 410 from `failure` (an exception or a response); `True` when it was one."""
+        response = failure.response if isinstance(failure, httpx.HTTPStatusError) else failure
+        if not isinstance(response, httpx.Response) or response.status_code != GONE:
+            return False
+        if self.retired is None:
+            self.retired = retired_message(source, response)
+            logger.warning("%s", self.retired)
+        return True
+
+
+def withheld_reason(client: object) -> str:
+    """`retired` when a withholding client met a 410, else `unreachable` (RM361)."""
+    return RETIRED if getattr(client, "retired", None) else UNREACHABLE
+
+
+def release_dataset(lane: str, released: str | None) -> str:
+    """A `dataset` label, `<lane>_<release>`, or the bare lane when the source stated no release (RM361).
+
+    The label is a merge-key member and a `sources.csv` cell; a release the file did not state is
+    withheld from it, never spelled `unknown` (a release of that name) or `None`.
+    """
+    return f"{lane}_{released}" if released else lane
+
+
 # ── bulk file downloads: one body, translated and retried (RM187) ───────────────────────────────
 #
 # Eleven builders stream one file from a source's FTP or bulk endpoint, and until RM187 each carried

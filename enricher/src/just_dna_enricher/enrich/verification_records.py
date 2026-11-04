@@ -151,6 +151,8 @@ def _verification_records(
                     "this tier has a refget table for GRCh38 only, so an authored ref on another "
                     "assembly has nothing to be compared against (RM15)"
                     if ref_check.not_checked == "unsupported"
+                    else f"every one of {ref_check.unread} reference read(s) failed, so no authored ref was compared"
+                    if ref_check.unread
                     else "no sequence access this run, so no authored ref was compared"
                 ),
                 source="seqrepo",
@@ -163,7 +165,19 @@ def _verification_records(
                 subjects=ref_check.subjects,
                 findings=len(ref_check.mismatches),
                 source="seqrepo",
-                detail="; ".join(summarize_ref_mismatches(ref_check.mismatches)) or None,
+                detail="; ".join(
+                    [
+                        *summarize_ref_mismatches(ref_check.mismatches),
+                        *(
+                            [
+                                f"{ref_check.unread} row(s) outside this denominator: their reference read failed"
+                            ]
+                            if ref_check.unread
+                            else []
+                        ),
+                    ]
+                )
+                or None,
             )
         )
 

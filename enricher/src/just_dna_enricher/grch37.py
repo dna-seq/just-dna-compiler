@@ -39,12 +39,16 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 import httpx
-from tenacity import retry, retry_if_exception_type, wait_exponential_jitter
+from tenacity import retry, wait_exponential_jitter
 
-from just_dna_enricher.net import PacingGate, attempt_floor
+from just_dna_enricher.net import PacingGate, Withholding, attempt_floor, retry_if_transient
 from just_dna_enricher.sequences import RefMismatch
 
 logger = logging.getLogger(__name__)
+
+#: The one status the GRCh37 REST host answers "nothing here" with: a contig it lacks, or a position
+#: past a contig's end (`20:63500000`). Every other status answered nothing about the place (RM361).
+GRCH37_NOTHING_THERE_STATUS = 400
 
 #: Ensembl's permanent GRCh37 service. Same paths and same payload shapes as `rest.ensembl.org`;
 #: only the assembly differs, which is why `assembly_name` is asserted on every parsed feature rather
@@ -84,7 +88,7 @@ class Grch37Settings:
 
 
 @dataclass
-class Grch37Client:
+class Grch37Client(Withholding):
     """Paced, retrying access to the GRCh37 REST service. Every read is three-valued.
 
     Hold one per session, the way `LookupClients` says to: the `PacingGate` state and the connection
@@ -113,7 +117,7 @@ class Grch37Client:
     @retry(
         stop=attempt_floor(3),
         wait=wait_exponential_jitter(initial=0.5, max=8.0),
-        retry=retry_if_exception_type((httpx.TransportError, httpx.TimeoutException)),
+        retry=retry_if_transient(),
         reraise=True,
     )
     def _get(self, path: str, accept: str, params: dict[str, str] | None = None) -> httpx.Response:
@@ -129,9 +133,10 @@ class Grch37Client:
         """dbSNP variants overlapping `chrom:start` on GRCh37, or `None` for could-not-ask.
 
         `[]` is an answer — the service was reached and records nothing there — while `None` means the
-        question never completed. A 4xx counts as an answer: this service 400s on a contig it does not
+        question never completed. A 400 counts as an answer: this service 400s on a contig it does not
         have and on a position past the end of one, and both of those really are "GRCh37 has nothing
-        for you here", stated by the service rather than guessed at by us.
+        for you here", stated by the service rather than guessed at by us. Any other status — a 429, a
+        403, a 404, a 410 — answered nothing, and is `None` (RM361: every 4xx was `[]` before).
 
         Only dbSNP features with an `rs` id are returned. The endpoint also serves HGMD-PUBLIC records
         (`CM112509` at 7:140453136), and an id that is not an rs-number is not what this recovers.
@@ -143,7 +148,8 @@ class Grch37Client:
                 {"feature": "variation"},
             )
         except httpx.HTTPStatusError as exc:
-            if exc.response.status_code >= 500:
+            if exc.response.status_code != GRCH37_NOTHING_THERE_STATUS:
+                self.note_retired("The GRCh37 REST service", exc)
                 logger.warning("GRCh37 overlap for %s:%d failed (%s)", chrom, start, exc)
                 return None
             logger.info("GRCh37 has no region %s:%d (%s)", chrom, start, exc)
@@ -189,7 +195,8 @@ class Grch37Client:
         try:
             response = self._get(f"/sequence/region/human/{chrom}:{start}..{end}", "text/plain")
         except httpx.HTTPStatusError as exc:
-            if exc.response.status_code >= 500:
+            if exc.response.status_code != GRCH37_NOTHING_THERE_STATUS:
+                self.note_retired("The GRCh37 REST service", exc)
                 logger.warning("GRCh37 sequence for %s:%d-%d failed (%s)", chrom, start, end, exc)
                 return None
             logger.info("GRCh37 has no sequence at %s:%d-%d (%s)", chrom, start, end, exc)

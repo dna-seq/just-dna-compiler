@@ -56,12 +56,12 @@ _CELLS = {"chrom": ["13", None], "start": [48037749, None], "ref": ["G", None], 
 )
 def test_no_key_carries_the_word_none(chrom, start, ref, alts) -> None:
     """Every combination of present and absent cells, through both entry points."""
-    if chrom is None and start is None:
-        with pytest.raises(ValueError):
-            coordinate_key(chrom, start, ref, alts)
-        return
     for key in (coordinate_key(chrom, start, ref, alts), derive_variant_key(None, chrom, start, ref, alts)):
         assert "None" not in key
+
+
+def test_a_row_naming_nothing_keys_as_the_empty_string() -> None:
+    assert coordinate_key(None, None, None) == "" == derive_variant_key(None, None, None, None)
 
 
 def test_an_absent_ref_cannot_collide_with_a_present_one() -> None:

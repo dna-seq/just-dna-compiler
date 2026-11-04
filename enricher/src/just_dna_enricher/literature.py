@@ -82,6 +82,7 @@ from just_dna_enricher.net import (
     UNREACHABLE,
     PacingGate,
     RetiredEndpoint,
+    Withholding,
     aggregate_reason,
     attempt_floor,
     batched,
@@ -90,6 +91,7 @@ from just_dna_enricher.net import (
     raise_if_retired,
     retired_message,
     retry_if_transient,
+    withheld_reason,
 )
 from just_dna_enricher.verification import examples, ran, record_verification, skipped
 
@@ -312,6 +314,8 @@ class LiteratureResult:
 
     rows: list[LiteratureRow]
     missing: list[str] = field(default_factory=list)  # PMIDs PubMed has no record of
+    #: Why Crossref never answered, when it did not: `retired` once it answered 410 (RM361).
+    crossref_unanswered: str = UNREACHABLE
     doi_conflicts: list[DoiConflict] = field(default_factory=list)
     pmcid_conflicts: list[PmcidConflict] = field(default_factory=list)
     cited: list[str] = field(default_factory=list)  # the PMIDs the module cites right now
@@ -761,7 +765,7 @@ def crossref_bibliographic(message: dict) -> dict[str, str | None]:
 
 
 @dataclass
-class CrossrefClient:
+class CrossrefClient(Withholding):
     """DOI existence, for the citations PubMed does not index.
 
     PubMed answers "does this article exist" for anything it indexes — **including paywalled work**;
@@ -867,6 +871,7 @@ class CrossrefClient:
         if response.status_code == 404:
             return self._registered_elsewhere(doi)
         if response.status_code != 200:
+            self.note_retired("Crossref", response)
             logger.warning("Crossref answered HTTP %s for %s; not checked", response.status_code, doi)
             return CrossrefWork(exists=None)
         try:
@@ -896,6 +901,7 @@ class CrossrefClient:
             return CrossrefWork(exists=None)
         if response.status_code == 404:
             return CrossrefWork(exists=False)
+        self.note_retired("Crossref", response)
         try:
             agency = response.json()["message"]["agency"]["id"] if response.status_code == 200 else None
         except (ValueError, KeyError, TypeError):
@@ -919,7 +925,7 @@ class PmcIdRecord:
 
 
 @dataclass
-class PmcIdConverterClient:
+class PmcIdConverterClient(Withholding):
     """PMCID → PMID, for a curator holding the wrong half of the pair (RM50).
 
     **It reports; it never fills.** The PMID it returns is handed back as an advisory the author types
@@ -1006,6 +1012,7 @@ class PmcIdConverterClient:
             try:
                 payload = self._get(params).json()
             except httpx.HTTPError as exc:
+                self.note_retired("The PMC id converter", exc)
                 logger.warning("PMC id converter could not be asked for %s (%s)", batch, exc)
                 continue
             for record in payload.get("records") or []:
@@ -1023,7 +1030,7 @@ class PmcIdConverterClient:
 
 
 @dataclass
-class PmcBiocClient:
+class PmcBiocClient(Withholding):
     """PMC's BioC text-mining service: the body text of an article Europe PMC will not serve (RM257, S110).
 
     **The records this reaches are the ones the Europe PMC rung cannot.** An NIH author manuscript is
@@ -1120,6 +1127,8 @@ class PmcBiocClient:
         try:
             return self.fetch_fulltext(pmcid)
         except FulltextUnavailable as exc:
+            if isinstance(exc, FulltextRetired) and isinstance(exc.__cause__, httpx.HTTPStatusError):
+                self.note_retired("PMC BioC", exc.__cause__)
             logger.warning("BioC fetch failed for %s (%s)", pmcid, exc)
             return None
 
@@ -1655,6 +1664,7 @@ def enrich_literature(
                     )
                     for key in sorted(doi_cited)
                 ]
+            result.crossref_unanswered = withheld_reason(crossref)
         finally:
             if owned_epmc:
                 epmc.close()
@@ -2109,7 +2119,12 @@ def _verification_records(
             )
         elif result.doi_citations:
             records.append(
-                skipped("citation_existence", "unreachable", detail="; ".join(doi_parts), source="crossref")
+                skipped(
+                    "citation_existence",
+                    result.crossref_unanswered,
+                    detail="; ".join(doi_parts),
+                    source="crossref",
+                )
             )
         else:
             records.append(

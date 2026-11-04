@@ -22,18 +22,41 @@ from pathlib import Path
 import httpx
 import just_dna_enricher
 import pytest
-from just_dna_enricher import literature
+from just_dna_enricher import cpic_build, literature
+from just_dna_enricher.civic_api import CivicApiClient
+from just_dna_enricher.civic_citations import check_evidence_status_currency, read_studies
+from just_dna_enricher.clingen import parse_curation_list
+from just_dna_enricher.clingen_allele import ClingenAlleleClient
+from just_dna_enricher.clingen_allele import _parse as _car_parse
+from just_dna_enricher.cpic import CpicClient
+from just_dna_enricher.cpic_build import CpicBuildError
 from just_dna_enricher.ensembl import EnsemblResolver, EnsemblSettings
 from just_dna_enricher.eutils import EutilsClient, EutilsError, EutilsSettings, is_missing
+from just_dna_enricher.frequencies import FrequencyUnavailable, enrich_frequencies
+from just_dna_enricher.gnomad import GnomadClient, GnomadSettings
+from just_dna_enricher.grch37 import Grch37Client
+from just_dna_enricher.identifiers import IdentifierUnavailable, OntologyClient
 from just_dna_enricher.literature import (
     CrossrefClient,
     EuropePmcClient,
     FulltextRetired,
     FulltextUnavailable,
     PmcBiocClient,
+    PmcIdConverterClient,
     enrich_literature,
 )
-from just_dna_enricher.net import RETIRED, UNREACHABLE, PacingGate, RetiredEndpoint, aggregate_reason
+from just_dna_enricher.net import (
+    RETIRED,
+    UNREACHABLE,
+    PacingGate,
+    RetiredEndpoint,
+    Withholding,
+    aggregate_reason,
+    release_dataset,
+    withheld_reason,
+)
+from just_dna_enricher.sequences import SequenceProxy, verify_reference_alleles
+from just_dna_format.resolution import ResolutionRow
 
 _SRC = Path(just_dna_enricher.__file__).resolve().parent
 _ASSETS = Path(__file__).resolve().parents[2] / "assets"
@@ -411,3 +434,190 @@ def test_a_europe_pmc_flag_it_did_not_state_is_unknown(flag, read) -> None:
         transport=httpx.MockTransport(lambda request: httpx.Response(200, json=payload))
     )
     assert client.lookup([_REAL])[_REAL]["is_open_access"] is read
+
+
+# ── a guard that cannot run is not a guard that passed ──────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("content_range", [None, "0-0/*", "garbage"], ids=["absent", "star", "garbage"])
+def test_a_cpic_table_whose_count_is_unstated_refuses_rather_than_writes(content_range: str | None) -> None:
+    """Before RM361 a missing `Content-Range` skipped the short-read guard, so a truncated table was
+    written as a complete snapshot."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.headers.get("Prefer") == "count=exact":
+            headers = {"Content-Range": content_range} if content_range else {}
+            return httpx.Response(200, json=[], headers=headers)
+        return httpx.Response(200, json=[{"genesymbol": "CYP2C19"}])
+
+    client = CpicClient(client=httpx.Client(transport=httpx.MockTransport(handler)))
+    with pytest.raises(CpicBuildError, match="no count"):
+        cpic_build._fetch_all(client, "gene", "*")
+
+
+def test_a_cpic_table_whose_count_agrees_is_read() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.headers.get("Prefer") == "count=exact":
+            return httpx.Response(200, json=[], headers={"Content-Range": "0-0/1"})
+        return httpx.Response(200, json=[{"genesymbol": "CYP2C19"}])
+
+    client = CpicClient(client=httpx.Client(transport=httpx.MockTransport(handler)))
+    assert cpic_build._fetch_all(client, "gene", "*") == [{"genesymbol": "CYP2C19"}]
+
+
+# ── the rest of the class: every site the RM361 hunt found, each with the leg that broke it ─────────
+
+
+def test_a_gnomad_alias_answered_with_an_error_is_unanswered_never_not_found(tmp_path: Path) -> None:
+    """A per-alias error (a timeout, an internal error) left a null node, and the pass wrote a
+    `not_found` row, which its own comment calls a fact. Now: no row, named as unanswered."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, json={"data": {"v0": None}, "errors": [{"message": "Timeout", "path": ["v0"]}]}
+        )
+
+    client = GnomadClient(settings=GnomadSettings(), gate=_gate())
+    client._client = httpx.Client(transport=httpx.MockTransport(handler))
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    (spec / "variants.csv").write_text(
+        "rsid,genotype,state,conclusion\nrs1801133,G/A,risk,c\n", encoding="utf-8"
+    )
+    (spec / "resolution.csv").write_text(
+        "variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,source,status\n"
+        "rs1801133,rs1801133,1,11796321,G,A,GRCh38,0,ensembl-rest,resolved\n",
+        encoding="utf-8",
+    )
+    result = enrich_frequencies(spec, client=client, write=False)
+    assert len(result.unanswered) == 1 and result.covered == []
+    assert result.missing == [] and not [r for r in result.rows if r.status == "not_found"]
+    with pytest.raises(FrequencyUnavailable):
+        enrich_frequencies(spec, client=client, write=False, mode="strict")
+
+
+def test_a_gnomad_absence_is_still_an_absence() -> None:
+    """The pathless "Variant not found" is gnomAD's answer and stays one."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"data": {"v0": None}, "errors": [{"message": "Variant not found"}]})
+
+    client = GnomadClient(settings=GnomadSettings(), gate=_gate())
+    client._client = httpx.Client(transport=httpx.MockTransport(handler))
+    assert client.fetch_frequencies(["9-1-A-G"]) == {} and client.unanswered == {}
+
+
+def test_a_short_civic_read_withholds_the_withdrawn_arm(monkeypatch: pytest.MonkeyPatch) -> None:
+    """CIViC states its own total; a read short of it cannot say a recorded paper is gone."""
+    api = CivicApiClient(client=httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(500))))
+    page = {"evidenceItems": {"totalCount": 2, "nodes": [], "pageInfo": {"hasNextPage": False}}}
+    monkeypatch.setattr(api, "_post", lambda variables: page)
+    assert api.evidence_items(12) == [] and 12 in api.short_reads
+
+
+def test_an_unreadable_studies_table_is_not_nothing_to_check(tmp_path: Path) -> None:
+    (tmp_path / "studies.csv").write_text("rsid,pmid,start\nrs1,123,not-a-number\n", encoding="utf-8")
+    assert read_studies(tmp_path) is None
+    check = check_evidence_status_currency([], [], None, reference=None)
+    assert check.skip != "nothing_to_check" and "could not be read" in check.detail()
+
+
+@pytest.mark.parametrize("released, label", [("2026-08-01", "lane_2026-08-01"), (None, "lane"), ("", "lane")])
+def test_a_release_the_file_did_not_state_is_withheld_from_the_label(released, label) -> None:
+    assert release_dataset("lane", released) == label
+
+
+def test_a_clingen_list_with_no_release_line_states_none() -> None:
+    _ratings, released = parse_curation_list("#Gene Symbol\tGene ID\nBRCA1\t672\n")
+    assert released is None
+
+
+def test_a_reference_read_that_fails_is_not_a_clean_check() -> None:
+    """Every read failing was `ran(subjects=0)` and a build record saying no ref disagreed."""
+
+    class _Failing(SequenceProxy):
+        def proxy(self):
+            return object()
+
+        def subsequence(self, accession, start, end):
+            return None
+
+    rows = [
+        ResolutionRow(variant_key="rs1", rsid="rs1", chrom="1", start=11796321, ref="G", status="resolved")
+    ]
+    check = verify_reference_alleles(rows, sequences=_Failing())
+    assert (check.not_checked, check.subjects, check.unread) == ("unreachable", 0, 1)
+
+
+def _ontology(body: dict) -> OntologyClient:
+    client = OntologyClient(gate=_gate())
+    client._client = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, json=body)))
+    return client
+
+
+@pytest.mark.parametrize("body", [{"error": "x"}, {"_embedded": "nope"}], ids=["no-terms", "wrong-type"])
+def test_an_ols4_body_of_another_shape_is_could_not_ask(body: dict) -> None:
+    with pytest.raises(IdentifierUnavailable):
+        _ontology(body).trait("EFO:0001645")
+
+
+def test_an_ols4_empty_page_is_still_absent() -> None:
+    assert _ontology({"page": {"totalElements": 0}}).trait("EFO:0001645").state == "absent"
+
+
+def test_an_hgnc_body_of_another_shape_is_could_not_ask() -> None:
+    with pytest.raises(IdentifierUnavailable):
+        _ontology({"error": "x"}).gene("BRCA1")
+    assert _ontology({"response": {"numFound": 0, "docs": []}}).gene("NOTAGENE").state == "unknown"
+
+
+def test_a_registry_body_of_another_shape_is_unchecked() -> None:
+    assert _car_parse("CA1", {"errorType": "x"}).outcome == "unchecked"
+    assert _car_parse("CA1", {"genomicAlleles": [], "externalRecords": {}}).outcome == "no_identity"
+
+
+# ── a withholding client says `retired` without raising ─────────────────────────────────────────────
+
+
+#: `(label, client factory, the call)`: every class that mixes in `Withholding`, walked below.
+WITHHOLDING = {
+    "literature.CrossrefClient": (lambda: CrossrefClient(gate=_gate()), lambda c: c.exists("10.1038/ng826")),
+    "literature.PmcIdConverterClient": (
+        lambda: PmcIdConverterClient(gate=_gate()),
+        lambda c: c.resolve(["PMC1"]),
+    ),
+    "literature.PmcBiocClient": (lambda: PmcBiocClient(gate=_gate()), lambda c: c.fulltext("PMC1")),
+    "grch37.Grch37Client": (lambda: Grch37Client(gate=_gate()), lambda c: c.variants_at("6", 26093141)),
+    "ensembl.EnsemblResolver": (
+        lambda: EnsemblResolver(settings=EnsemblSettings()),
+        lambda c: c.resolve_rsid("rs334"),
+    ),
+    "clingen_allele.ClingenAlleleClient": (lambda: ClingenAlleleClient(), lambda c: c.resolve("CA341482")),
+}
+
+
+def test_every_withholding_client_is_walked() -> None:
+    found = {
+        f"{module.__name__.removeprefix('just_dna_enricher.')}.{name}"
+        for module in _modules()
+        for name, obj in vars(module).items()
+        if inspect.isclass(obj)
+        and issubclass(obj, Withholding)
+        and obj is not Withholding
+        and obj.__module__ == module.__name__
+    }
+    assert found == set(WITHHOLDING)
+
+
+@pytest.mark.parametrize("label", sorted(WITHHOLDING))
+def test_a_withholding_client_names_a_410_and_still_withholds(label: str) -> None:
+    factory, call = WITHHOLDING[label]
+    for status, reason in ((410, RETIRED), (503, UNREACHABLE)):
+        client = factory()
+        if hasattr(client, "gate"):
+            client.gate = _gate()
+        client._client = httpx.Client(
+            transport=httpx.MockTransport(lambda r, s=status: httpx.Response(s, text="gone"))
+        )
+        call(client)  # never raises: the contract is a withheld value
+        assert withheld_reason(client) == reason, f"{label} after a {status}"

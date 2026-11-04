@@ -98,6 +98,9 @@ class FrequencyResult:
     # `missing` means asked and absent; these were never askable, so counting them as absences would
     # report an unknown as a negative (see `gnomad.covers_locus`).
     uncovered: list[str] = field(default_factory=list)
+    #: Alleles gnomAD answered with an error rather than a record or an absence (RM361): no row is
+    #: written for them, and the next run asks again. Never in `missing`.
+    unanswered: list[str] = field(default_factory=list)
     sources: list[str] = field(default_factory=list)
     mode: str = "best_effort"
     skipped_offline: bool = False
@@ -274,6 +277,7 @@ def enrich_frequencies(
     to_fetch = [a for a in wanted if covers_locus(a[1], a[2]) is not False]
     uncovered = [a for a in wanted if covers_locus(a[1], a[2]) is False]
     fetched: dict[str, dict] = {}
+    unanswered_ids: set[str] = set()
     if to_fetch:
         owned = client is None
         gnomad = client or GnomadClient()
@@ -286,13 +290,20 @@ def enrich_frequencies(
         finally:
             if owned:
                 gnomad.close()
+        unanswered_ids = set(gnomad.unanswered)
 
     fetched_at = now_utc_iso()
     out: list[FrequencyRow] = list(existing.values())
     covered: list[str] = []
     missing: list[str] = []
+    unanswered: list[str] = []
     for key, chrom, start, ref, alt in to_fetch:
         payload = fetched.get(_variant_id(chrom, start, ref, alt))
+        if not payload and _variant_id(chrom, start, ref, alt) in unanswered_ids:
+            # gnomAD answered this allele's alias with an error, not with an absence (RM361): no row,
+            # so nothing is pinned, and the next run asks again.
+            unanswered.append(key)
+            continue
         if not payload or not payload.get("populations"):
             missing.append(key)
             # A `not_found` row is a FACT — "gnomAD was asked and does not have this allele" — and is
@@ -368,6 +379,7 @@ def enrich_frequencies(
         rows=out,
         covered=sorted(set(covered)),
         missing=sorted(set(missing)),
+        unanswered=sorted(set(unanswered)),
         uncovered=sorted({key for key, *_ in uncovered}),
         sources=sorted({r.source for r in out if r.source}),
         mode=mode,
@@ -376,6 +388,18 @@ def enrich_frequencies(
     # artifact", and a locus outside gnomAD's callset is perfectly reproducible — it will be outside it
     # on every run. Refusing would make a pseudoautosomal module uncompilable under `strict` for a
     # reason no authored edit could fix, which is the opposite of what a strict failure is for.
+    if result.unanswered:
+        logger.warning(
+            "gnomAD answered %d allele(s) with an error rather than a record (%s): no row is written for "
+            "them, which is unchecked rather than absent, and the next run asks again.",
+            len(result.unanswered),
+            result.unanswered[:3],
+        )
+        if mode == "strict":
+            raise FrequencyUnavailable(
+                f"strict frequency enrichment: gnomAD answered {len(result.unanswered)} allele(s) with an "
+                f"error rather than a record: {result.unanswered}. Nothing was established about them."
+            )
     if mode == "strict" and result.missing:
         raise FrequencyEnrichmentError(
             f"strict frequency enrichment: {len(result.missing)} resolved allele(s) have no gnomAD "

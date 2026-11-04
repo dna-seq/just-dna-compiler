@@ -431,10 +431,9 @@ def coordinate_key(chrom: str | None, start: int | None, ref: str | None, alts: 
     an identifier that names a reference base called "None". An absent segment is empty, and trailing
     empty segments are dropped: a row with no `ref` keys as `13:48037749`, and one with no `ref` and an
     ALT as `13:48037749::A`, which cannot collide with the `13:48037749:A` of a row whose `ref` is `A`.
-    A row naming no place at all has no coordinate key: `ValueError`, never `"None:None:None"`.
+    A row naming nothing at all keys as the empty string, never `"None:None:None"`; a caller that
+    must tell such a row apart checks for an identity first, as `StudyRow.variant_key` does.
     """
-    if chrom is None and start is None:
-        raise ValueError("a coordinate key needs a chrom or a start; this row names no place")
     cells = ["" if value is None else str(value) for value in (chrom, start, ref, alts)]
     while cells and cells[-1] == "":
         cells.pop()

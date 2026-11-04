@@ -229,6 +229,9 @@ class CivicApiClient:
         self._gate = gate or PacingGate(_REQUEST_INTERVAL)
         self._offline = offline
         self._items: dict[int, list[CivicEvidenceItem]] = {}
+        #: Variants whose read was short of the total CIViC stated (RM361): their served items are
+        #: answers, and an item missing from them is unknown, never "rejected or withdrawn".
+        self.short_reads: set[int] = set()
 
     @property
     def offline(self) -> bool:
@@ -283,6 +286,7 @@ class CivicApiClient:
                 )
             after = str(cursor)
         if stated is not None and stated != len(items):
+            self.short_reads.add(int(variant_id))
             # The response carries its own denominator, so a truncated read is checkable without a
             # second request (`@dont-discard-computed`). A warning rather than a refusal: the items
             # really were served, and discarding them would turn a partial answer into no answer.

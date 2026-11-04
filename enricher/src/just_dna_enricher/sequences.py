@@ -458,6 +458,9 @@ class RefCheck:
     mismatches: list[RefMismatch]
     subjects: int = 0
     not_checked: str | None = None
+    #: Comparable rows whose reference read failed (RM361): never in `subjects`, and when every one
+    #: failed the whole check is `unreachable` rather than a clean pass over nothing.
+    unread: int = 0
 
 
 def verify_reference_alleles(
@@ -511,6 +514,7 @@ def verify_reference_alleles(
 
     mismatches: list[RefMismatch] = []
     subjects = 0
+    unread = 0
     for row in rows:
         if row.chrom is None or row.start is None or not row.ref:
             continue
@@ -525,6 +529,7 @@ def verify_reference_alleles(
             continue
         actual, shift = _read_with_neighbours(sequences, accession, row.start, len(claimed), claimed)
         if actual is None:
+            unread += 1
             continue
         subjects += 1
         if actual == claimed:
@@ -540,7 +545,11 @@ def verify_reference_alleles(
                 shift=shift,
             )
         )
-    return RefCheck(mismatches, subjects)
+    if unread and not subjects:
+        # Rows were there to compare and no read came back: a check that could not run (RM361), never
+        # `ran(subjects=0)` and a build diagnosis saying no authored ref disagreed.
+        return RefCheck([], 0, "unreachable", unread=unread)
+    return RefCheck(mismatches, subjects, unread=unread)
 
 
 def _read_with_neighbours(

@@ -736,8 +736,12 @@ def _run_enrichment(
                         source_of_rsid[rsid] = "gnomad"
                         journal.record(rsid, "gnomad", loci)
                         tracker.settle(subjects_of_rsid.get(rsid, ()))
+                # An rsID gnomAD answered with an error is unchecked, never `not_found` (RM361).
+                unreachable_rsids.update(set(getattr(client, "unanswered", {})) & set(missing))
             except GnomadError as exc:  # a last-resort link must not sink the whole enrichment
                 logger.warning("gnomAD link failed (%s); continuing without it.", exc)
+                # Nobody answered for these rsIDs: unchecked rather than absent (RM361).
+                unreachable_rsids.update(missing)
             finally:
                 if owned:
                     client.close()
