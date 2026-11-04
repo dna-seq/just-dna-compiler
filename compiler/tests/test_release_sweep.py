@@ -125,6 +125,8 @@ def test_compiling_one_spec_twice_moves_no_axis(tmp_path: Path) -> None:
     second.manifest["compilation"]["compiled_at"] = "2020-01-01T00:00:00Z"
     second.manifest["compilation"]["compiler_version"] = "just-dna-compiler 0.0.1"
     second.manifest["compilation"]["compiled_by"] = "somebody else"
+    # RM342: the toolchain moves whenever the install does, the same trap one field over.
+    second.manifest["compilation"]["toolchain"] = {"polars": "0.0.1", "python": "0.0.1"}
     delta = compare_module(first, second)
 
     assert first.manifest["compilation"]["compiled_at"] != second.manifest["compilation"]["compiled_at"]

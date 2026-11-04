@@ -1215,34 +1215,3 @@ would still say nothing to the uploader. Borrowing a code that names another fin
 stays a patch; the warning half of its decision is this item.
 
 **Residuals** none yet.
-
-## RM342 — the manifest does not record the toolchain that wrote the bytes, so a digest that moves cannot say why
-
-**Where the toolchain reason fires, corrected 2026-11-04 (the lead's PT2 §4 question 7, accepted by the pm seat).** `verify_manifest` re-hashes files and never recompiles, so it cannot see a toolchain. The reason `toolchain_differs` therefore fires where a fresh compile is compared with a recorded digest: the publish collision check and the release sweeps. This keeps the maintainer's intent: an explainable difference is never reported as corruption.
-
-**Decided 2026-11-04 by the maintainer.**
-
-- **One toolchain block:** a single optional field in `manifest.compilation` holding a small map (e.g. `{polars: 2.1.0, python: 3.13.1}`). A library added later is a new key, not a new field.
-- **`verify` gives a toolchain difference its own reason.** "Bytes differ, toolchain differs" is distinct from corruption and never the plain mismatch error (`@vrs-three-outcomes`).
-- **Principle 4 is amended.** Reproducibility is pinned via `compiler_version`, the recorded toolchain and the resolved reference. The why goes in `CONSTITUTION_AMENDMENTS_HISTORY.md`, and the lead lands the amendment with the item.
-
-Ready to build; the polars 2 lock moves into 0.8 with it.
-
-**0.8, decided 2026-11-04**, on the lead's list, "not ready": its open questions (one field or a toolchain block; whether `verify` reports a toolchain mismatch as its own reason; whether Principle 4 needs an amendment) are settled in the 0.8 interview. The polars 2 lock moves into 0.8 with it.
-
-
-**Severity** medium · **Status** open — **a minor** (a new optional manifest field); the pm places it in 0.9 · **Owner** format + compiler · **Motivating case** RM341 · *related* RM304, RM341
-
-**Why it is filed.** polars stays uncapped (RM341, the maintainer, 2026-11-04). From 2.0 the parquet bytes name
-the polars release that wrote them, so two installs of one `compiler_version` mint different digests for equal
-content, and nothing in the manifest says which polars wrote which. The liaison's adoption map, item 3: record
-the polars version beside `compiler_version` in `manifest.compilation`, as an optional field. That is additive
-and minor-legal. The alternative, deciding in P4 that the digest names the toolchain, would be a charter
-amendment.
-
-**Open questions.** Whether the record is one manifest field or a toolchain block (polars, arrow if it ever
-appears, Python); whether `verify` reports a digest mismatch whose recorded toolchain differs from the running
-one as its own reason (`@vrs-three-outcomes` asks for that); and whether P4's sentence on reproducibility needs
-an amendment once the toolchain is recorded.
-
-**Residuals** none yet.

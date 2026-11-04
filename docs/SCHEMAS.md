@@ -927,7 +927,7 @@ Both are `pl.UInt32`, compiler-managed and stamped at the expansion — no autho
 authored cell of that name is overwritten, and `reverse_module` does not re-emit them into
 `variants.csv`. Both are **outside `content_signature`**: they record what resolution did, not what a
 human wrote, so adding them moved no module's authored identity (only a recompile's `artifact.digest`,
-which Principle 4 already scopes to a fixed `compiler_version`).
+which Principle 4 already scopes to a fixed `compiler_version` and recorded toolchain).
 
 The consumer-side workaround this replaces — withholding on a locus whose `ref` differs from its
 siblings' — was **partial**: it catches the ClinVar dup/del shape and nothing else. A same-`ref`
@@ -2336,8 +2336,22 @@ any column describing the *outside world's* current state rather than the module
 (`is_open_access`, `rsid_current`/`rsid_status`). A signature that moved because dbSNP merged an rsID or
 an embargo lifted would no longer be reproducible from the module alone.
 
-Reproducibility identity is the triple **`(content_signature, resolution_signature, compiler_version)
-⟹ artifact.digest`** — a holder of the two small CSVs reproduces the artifact byte-for-byte, offline.
+Reproducibility identity is **`(content_signature, resolution_signature, compiler_version,
+compilation.toolchain) ⟹ artifact.digest`** — a holder of the two small CSVs reproduces the artifact
+byte-for-byte, offline, under the same compiler and toolchain.
+
+**The toolchain is the fourth term since 0.8 (RM342).** From polars 2 the parquet footer names the
+polars release that wrote it, so one `compiler_version` beside two polars releases mints two digests
+for equal content. `compilation.toolchain` records the libraries that wrote the bytes as one map,
+`{"polars": …, "python": …}` (a library added later is a new key), outside `artifact.digest` like
+`compiler_version`. `None` on a manifest compiled before 0.8 means *not recorded*, never an empty
+toolchain. `manifest.toolchains_differ(before, after)` is the one comparison every reader shares: `True`
+when a library both manifests name stands at two releases, `False` when both name the same libraries at
+the same releases, and `None` otherwise (either side unrecorded, or a library only one side names).
+Where a fresh compile meets a recorded digest — the publish collision check and the release sweep — a
+digest difference with `toolchains_differ(...) is True` carries the reason `TOOLCHAIN_DIFFERS`
+(`"toolchain_differs"`) instead of the plain mismatch; `verify_manifest` re-hashes files and never
+names it.
 
 **A moved `artifact.digest` beside an unmoved `content_signature` is the intended reading of a
 provenance-only change, not a puzzle** (CONSUMER_SUGGESTIONS_HISTORY § S7, where a registry spent an
@@ -2378,6 +2392,8 @@ do not), `populations`/`variant_count` on `frequency`, `genes` on `gene_metrics`
 `unrated_count`/`not_found_count` on `clinical_assertions`, the quote and open-access counters on
 `literature`, and the licence roll-up on `sources` (`licenses`, `attributions`, the per-layer facets
 and the derived `commercial_use` / `redistribution`). All six are out of `artifact.digest`.
+`compilation.toolchain` (0.8, RM342) records the Python and polars that wrote the bytes; see
+§ identity & integrity for how a comparison reads it.
 
 **`stats` describes the module, not `variants.csv`.** `Stats` is the card/detail block a catalog
 facets on — `variant_count`, `study_count`, `gene_count`/`genes`, `categories` and the three ClinVar

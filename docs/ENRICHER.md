@@ -2478,10 +2478,20 @@ of the reader. The half this tier owns is the layout, and it is written twice no
   - **It fails open.** An unreadable published manifest is an *unknown*, and nothing established a
     collision, so the publish proceeds with a warning. Failing closed would make a network flake
     demand `--force` and train an author to pass it by default.
-  - **A recompile under a newer compiler trips it**, correctly: P4 scopes byte-reproducibility to a
-    fixed `compiler_version`, so the path really would come to hold different bytes than the ones it
-    was published with. The refusal says so, because *"but I changed nothing"* is the first thing its
-    first user will think.
+  - **A recompile under a newer compiler trips it**, correctly: P4 pins byte-reproducibility to
+    `compiler_version`, the recorded toolchain and the resolved reference, so the path really would
+    come to hold different bytes than the ones it was published with. The refusal says so, because
+    *"but I changed nothing"* is the first thing its first user will think.
+  - **A collision the two recorded toolchains explain is `ToolchainDiffersError` (0.8, RM342).** When
+    both manifests carry `compilation.toolchain` and `manifest.toolchains_differ` answers `True`, the
+    refusal is this subclass of `PublishCollisionError`, with `reason == "toolchain_differs"` and both
+    toolchains as `published_toolchain` / `local_toolchain`, plus `content_unchanged` (`True` when both
+    manifests carry one `content_signature`, `False` when the content moved as well, `None` when either
+    states none: the reason names a co-occurring difference, never a proven cause); the CLI prints
+    `TOOLCHAIN DIFFERS` from a branch placed before the collision's. It still refuses unless `--force` — the versioned path
+    keeps the bytes it was cut as — and an unrecorded toolchain on either side, or the same one on
+    both, keeps the plain collision with `reason` `None`. A subclass so every existing handler of the
+    collision still refuses; tell the two apart by type or by `reason`, never by the message.
 - **`upload_folder` adds and replaces; it never removes — so a republish leaves a union of two
   releases.** A recompile that stops emitting a table leaves the previous release's parquet at the
   path beside a manifest that does not attest it, and this happens on the **flat path, every time**.
@@ -4926,7 +4936,7 @@ caller and `except` order never matters. RM310 was the list shape failing: `cach
 | `mane_build` | `ManeBuildError` | `ManeUnavailable` |
 | `pubmind_build` | `PubMindBuildError` | `PubMindUnavailable` |
 | `upload` | `OrphanedSidecarError` | — |
-| `upload` | `PublishCollisionError` | — |
+| `upload` | `PublishCollisionError` | `ToolchainDiffersError` (RM342: the two recorded toolchains differ) |
 
 **Snapshot readers — an absent or unreadable cache, deliberately a `FileNotFoundError`**
 

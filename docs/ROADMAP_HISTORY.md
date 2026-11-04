@@ -35,6 +35,61 @@ up.
 The bugfix round [PROPOSAL_0_8_PT1.md](proposals/PROPOSAL_0_8_PT1.md) decided on 2026-09-29, built on
 the `0.8` branch in the proposal's order. Newest first.
 
+## RM342 — the manifest does not record the toolchain that wrote the bytes, so a digest that moves cannot say why
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** (a new optional
+manifest field, a new exception subclass, and a Principle 4 amendment), [PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md)
+§3 item 19, §4 question 7, §5 block A1 · **Owner** format + compiler + enricher · **Motivating case** RM341 ·
+*related* RM304, RM341
+
+**Residuals** none
+
+**What shipped.** `Compilation.toolchain: dict[str, str] | None`, stamped at compile as
+`{"polars": pl.__version__, "python": platform.python_version()}` of the running process, outside
+`artifact.digest` like `compiler_version` (the manifest is not one of the Merkle root's files). `None` on
+a manifest compiled before 0.8. The format tier owns the one comparison, `manifest.toolchains_differ`,
+three-valued (Kleene: a shared library at two releases is `True` whatever else is unknown; a library only
+one side names is absent, never different), and the reason constant `TOOLCHAIN_DIFFERS`. The two places a
+fresh compile meets a recorded digest use it: the publish collision check raises `ToolchainDiffersError`,
+a subclass of `PublishCollisionError` with `reason`, `published_toolchain`, `local_toolchain` and the
+tri-state `content_unchanged` (the reason names a co-occurring difference, not a proven cause), and the
+CLI prints `TOOLCHAIN DIFFERS` from a branch ahead of the collision's; the release sweep's `ModuleDelta`
+carries `toolchain_differs` and `bytes_reason`, and `SweepMeasurement.moved_under_other_toolchain` lists
+the modules.
+Either toolchain unrecorded, or the same toolchain with a different digest, keeps the old outcome. The
+publish still refuses unless `--force`: the reason changes what the refusal says, not whether the
+versioned path's bytes are protected. `compilation.toolchain` joins `EXCLUDED_MANIFEST_FIELDS`, since it
+moves whenever the install does. `verify_manifest` and `needs_recompile` are unchanged: the first
+re-hashes files on disk and the second compares two version strings, and neither holds a second
+toolchain. Principle 4's last sentence and Principle 7's closing parenthesis were amended together
+(the why is in [CONSTITUTION_AMENDMENTS_HISTORY.md](CONSTITUTION_AMENDMENTS_HISTORY.md)). Tests:
+`schema/tests/test_toolchain.py`, `compiler/tests/test_toolchain.py`, and the RM342 block in
+`enricher/tests/test_upload.py`.
+
+**Where the toolchain reason fires, corrected 2026-11-04 (the lead's PT2 §4 question 7, accepted by the pm seat).** `verify_manifest` re-hashes files and never recompiles, so it cannot see a toolchain. The reason `toolchain_differs` therefore fires where a fresh compile is compared with a recorded digest: the publish collision check and the release sweeps. This keeps the maintainer's intent: an explainable difference is never reported as corruption.
+
+**Decided 2026-11-04 by the maintainer.**
+
+- **One toolchain block:** a single optional field in `manifest.compilation` holding a small map (e.g. `{polars: 2.1.0, python: 3.13.1}`). A library added later is a new key, not a new field.
+- **`verify` gives a toolchain difference its own reason.** "Bytes differ, toolchain differs" is distinct from corruption and never the plain mismatch error (`@vrs-three-outcomes`).
+- **Principle 4 is amended.** Reproducibility is pinned via `compiler_version`, the recorded toolchain and the resolved reference. The why goes in `CONSTITUTION_AMENDMENTS_HISTORY.md`, and the lead lands the amendment with the item.
+
+Ready to build; the polars 2 lock moves into 0.8 with it.
+
+**0.8, decided 2026-11-04**, on the lead's list, "not ready": its open questions (one field or a toolchain block; whether `verify` reports a toolchain mismatch as its own reason; whether Principle 4 needs an amendment) are settled in the 0.8 interview. The polars 2 lock moves into 0.8 with it.
+
+**Why it is filed.** polars stays uncapped (RM341, the maintainer, 2026-11-04). From 2.0 the parquet bytes name
+the polars release that wrote them, so two installs of one `compiler_version` mint different digests for equal
+content, and nothing in the manifest says which polars wrote which. The liaison's adoption map, item 3: record
+the polars version beside `compiler_version` in `manifest.compilation`, as an optional field. That is additive
+and minor-legal. The alternative, deciding in P4 that the digest names the toolchain, would be a charter
+amendment.
+
+**Open questions.** Whether the record is one manifest field or a toolchain block (polars, arrow if it ever
+appears, Python); whether `verify` reports a digest mismatch whose recorded toolchain differs from the running
+one as its own reason (`@vrs-three-outcomes` asks for that); and whether P4's sentence on reproducibility needs
+an amendment once the toolchain is recorded.
+
 ## RM288 — two snapshot builders and the PGx drafter make every caller enumerate their exception family, a question RM101 named and left in a test's exemption block
 
 **Severity** low · **Status** ✅ **SHIPPED 2026-09-30 on `0.8`, uncut** — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) (a public exception base) ·

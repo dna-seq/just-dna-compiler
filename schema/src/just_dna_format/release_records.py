@@ -73,6 +73,11 @@ EXCLUDED_MANIFEST_FIELDS: dict[str, str] = {
     "compilation.compiled_at": "a wall-clock timestamp; it moves on every recompile of anything",
     "compilation.compiled_by": "who ran the compile — an environment fact, not an output fact",
     "compilation.compiler_version": "moves on every release by construction; it IS the interval key",
+    # RM342: the Python and polars that wrote the bytes. It moves whenever the install does, the
+    # `compiler_version` trap one field over; the sweep reads it as the reason a `parquet_bytes`
+    # movement carries (`ModuleDelta.bytes_reason`), never as a published field that changed.
+    "compilation.toolchain": "the environment that wrote the bytes, like `compiled_by`; it explains a "
+    "`parquet_bytes` movement as `toolchain_differs` rather than being one",
     "compilation.warnings": "routed to the `warnings` axis, which is outside the recompile drivers",
     # RM131 published two fields DERIVED from `compilation.warnings`, so they move exactly when it
     # does. Left in, they would report *a manifest field changed* on every module in a catalogue for

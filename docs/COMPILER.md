@@ -1484,7 +1484,9 @@ including which columns the compiler stamps rather than reads, is in
   hashing. A machine-produced reference-fact table is a third category — injected, fact-hashed,
   human-overridable — and folding it in would blur the line the 0.5 rework drew.
 - **Manifest `Compilation` fields the compiler populates:** `compile_success`, `compiled_by`,
-  `compiler_version`, `ensembl_reference`, `compiled_at`, `warnings`, and the 0.5 resolution provenance —
+  `compiler_version`, `toolchain` (0.8, RM342: `{"polars": pl.__version__, "python":
+  platform.python_version()}` of the running process), `ensembl_reference`, `compiled_at`, `warnings`,
+  and the 0.5 resolution provenance —
   `resolution_mode` (policy), `fully_resolved` (outcome — orthogonal axis, P5), `resolution_subjects`
   (0.6 — the denominator that flag covers), `resolution_signature`, `resolution_sources`. All out of
   `artifact.digest`. The trust rule is `resolution_subjects > 0 and (resolution_mode == "strict" or
@@ -1995,7 +1997,19 @@ Five axes, and each is computed apart because a consumer acts on each differentl
 so counting it would make every record fire on every module in every release and rebuild, inside the
 instrument, exactly the false-positive class the interval shape exists to avoid.
 `compilation.compiled_at` and `compiled_by` are environment; `content_signature`, `artifact.digest` and
-`artifact.files` are routed to their own axes rather than dropped.
+`artifact.files` are routed to their own axes rather than dropped. `compilation.toolchain` (RM342) is
+environment too, and it moves whenever the install does, so it is excluded for `compiler_version`'s
+reason; the sweep reads it instead as the reason a `parquet_bytes` movement carries (below).
+
+**A `parquet_bytes` movement under a different toolchain names it (RM342).** `compare_module` sets
+`ModuleDelta.toolchain_differs` from `manifest.toolchains_differ` (tri-state, `None` when either
+manifest recorded none), and `ModuleDelta.bytes_reason` is `"toolchain_differs"` exactly when the
+digest moved and the recorded toolchains differ. `SweepMeasurement.moved_under_other_toolchain` lists
+those modules (named apart from the delta's tri-state, `@flag-means-same`), the evidence sentence names
+them, and the JSON carries both per module and the list at the top. The gate is unchanged: the movement
+is still a measured `parquet_bytes` movement. **The reason names a co-occurring difference, not a
+proven cause**: across a sweep the compiler version differs by construction, so a release that moves
+polars and changes the compiler labels every moved module this way.
 
 **A list is a leaf.** Indexing into one would make an inserted element rename every path after it, and
 `stats.genes` is what a consumer keys on anyway. A missing key and a present `null` are distinguished

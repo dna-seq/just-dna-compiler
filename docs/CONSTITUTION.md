@@ -126,8 +126,8 @@ and only where a rule turns on one.
    them and the module's name/display metadata, is its **content** identity — this data, however and
    wherever it was compiled. A published version's bytes are **never mutated**; withdrawal is a *yank*
    (drop from listings, keep fetchable), not an edit. Parquet is not byte-deterministic across
-   polars/arrow versions, so reproducibility is pinned via `compiler_version` and the resolved
-   reference.
+   polars/arrow versions, so reproducibility is pinned via `compiler_version`, the recorded toolchain
+   and the resolved reference.
 
 5. **Orthogonal axes, no overloaded fields.** Each concept gets its own column or table; a field must
    not pile up independent axes. (The legacy `state` field — conflating statistical significance,
@@ -153,7 +153,7 @@ and only where a rule turns on one.
 
    These are enforced by tests, not merely asserted here. (Cross-*version* byte-reproducibility is
    still bounded by Principle 4: parquet is not deterministic across polars/arrow versions, so the
-   digest guarantee is *within* a fixed `compiler_version`.)
+   digest guarantee is *within* a fixed `compiler_version` and recorded toolchain.)
 
 8. **Requiredness is monotonic within a major (field-optionality compatibility).** Whether a field is
    required is itself part of the contract and may only tighten, never loosen, inside an `N.x` line:

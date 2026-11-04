@@ -47,6 +47,7 @@ COMPILER.md § The phrases, under *retired*, for grepping old manifests.
 | --- | --- | --- |
 | `stats.clin_sig_counts` | RM300 | Authored `variants.csv` rows per ClinVar tier, from the effective `clin_sig`, every `VALID_CLIN_SIG` member present (zeros included) in sorted order. Rows, the grain of `pathogenic_count`. Empty on a manifest compiled before 0.8, which means *not counted*, never zero. |
 | `stats.clin_sig_variant_counts` | RM300 | Distinct `variant_key`s per tier, keyed the same way. |
+| `compilation.toolchain` | RM342 | The libraries that wrote the bytes, `{"polars": "2.1.0", "python": "3.13.1"}`; a library added later is a new key. Outside `artifact.digest`. `null` on a manifest compiled before 0.8, which means *not recorded*. `Compilation` ignores unknown keys too, so a 0.7 reader drops it. |
 
 ## 1.3 New derived column and client method (no break)
 
@@ -67,3 +68,16 @@ COMPILER.md § The phrases, under *retired*, for grepping old manifests.
    manifests compiled by 0.8 (§ 1).
 2. If you key on `warnings_summary`, the new codes are listed in § 1 with their meaning, and
    `quality_floor_inverted` will stop appearing (§ 1.1).
+3. **Publishers (RM342).** `upload_module` raises `ToolchainDiffersError`, a subclass of
+   `PublishCollisionError`, when the versioned path holds a different digest and the two manifests'
+   recorded toolchains differ; its `reason` is `"toolchain_differs"` (the plain collision's is `None`)
+   and it carries `published_toolchain` / `local_toolchain` and `content_unchanged` (tri-state: `False`
+   when the `content_signature` moved too, so the toolchain does not account for all of it). It still
+   refuses, so a handler of the
+   collision keeps working unchanged; catch the subclass first if you want to say why the digest
+   moved. If either manifest predates 0.8 the plain collision is raised, as before.
+4. **Release-sweep readers (RM342).** `ModuleDelta` gains `toolchain_differs` (tri-state) and
+   `bytes_reason` (`"toolchain_differs"` or `null`), `SweepMeasurement` gains `moved_under_other_toolchain` (the
+   modules whose bytes moved under a different recorded toolchain), and `measurement_json` carries all
+   three. `compilation.toolchain` joins `EXCLUDED_MANIFEST_FIELDS`, so it never appears in a record's
+   `manifest_fields`.

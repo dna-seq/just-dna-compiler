@@ -18,6 +18,7 @@ from just_dna_enricher.upload import (
     DEFAULT_REPO_ID,
     DEFAULT_STRCHIVE_REPO_ID,
     PublishCollisionError,
+    ToolchainDiffersError,
     UploadPlan,
     plan_reference_snapshot,
     plan_upload,
@@ -29,6 +30,7 @@ from just_dna_format.layout import VERIFICATION_JSON
 from just_dna_format.manifest import (
     LOGO_EXTENSIONS,
     README_CANDIDATES,
+    TOOLCHAIN_DIFFERS,
     Artifact,
     Display,
     Identity,
@@ -712,6 +714,140 @@ def test_a_local_module_with_no_readable_digest_is_not_gated(tmp_path: Path) -> 
     _upload(module_dir, api, published)
 
     api.file_exists.assert_not_called()
+
+
+# ── RM342: a collision the two recorded toolchains explain names that reason ─────────────────────
+
+
+def _published_like(
+    module_dir: Path, tmp_path: Path, *, toolchain: dict[str, str] | None
+) -> tuple[MagicMock, Path]:
+    """A remote holding this module's own manifest with a different digest and the given toolchain.
+
+    Built from the local manifest rather than typed, so the only things that differ between the two
+    sides are the ones each test sets; `toolchain=None` removes the block, as a manifest compiled
+    before 0.8 has none.
+    """
+    document = json.loads((module_dir / "manifest.json").read_text(encoding="utf-8"))
+    document["artifact"]["digest"] = _OTHER_DIGEST
+    if toolchain is None:
+        document["compilation"].pop("toolchain", None)
+    else:
+        document["compilation"]["toolchain"] = toolchain
+    published = tmp_path / "published_manifest.json"
+    published.write_text(json.dumps(document), encoding="utf-8")
+    api = MagicMock()
+    api.token = "hf_test_token"
+    api.file_exists.return_value = True
+    return api, published
+
+
+def _local_toolchain(module_dir: Path) -> dict[str, str]:
+    toolchain = read_manifest(module_dir / "manifest.json").compilation.toolchain
+    assert toolchain, "the compile did not record a toolchain"
+    return toolchain
+
+
+def test_a_collision_under_a_different_polars_is_reported_as_toolchain_differs(tmp_path: Path) -> None:
+    """The PT2 A1 test: different digests and different recorded polars are `toolchain_differs`,
+    never the plain collision. The publish still refuses — the versioned path's bytes stay what they
+    were cut as — but it says why the bytes moved, by type."""
+    module_dir = _compile_example(tmp_path, version=_AUTHORED_VERSION)
+    local = _local_toolchain(module_dir)
+    remote = {**local, "polars": "1.39.0"}
+    api, published = _published_like(module_dir, tmp_path, toolchain=remote)
+
+    with pytest.raises(PublishCollisionError) as caught:
+        _upload(module_dir, api, published)
+
+    assert type(caught.value) is ToolchainDiffersError
+    assert caught.value.reason == TOOLCHAIN_DIFFERS
+    assert caught.value.published_toolchain == remote
+    assert caught.value.local_toolchain == local
+    assert caught.value.content_unchanged is True
+    assert "1.39.0" in str(caught.value)
+    api.upload_folder.assert_not_called()
+
+
+def test_a_content_change_under_a_different_polars_does_not_claim_the_content_is_unchanged(
+    tmp_path: Path,
+) -> None:
+    """The reason names a co-occurring difference, never a proven cause. A content edit recompiled
+    beside another polars still raises the subclass, and `content_unchanged` says the toolchain does
+    not account for all of it, so nobody reads the refusal as licence to `--force` a content change."""
+    module_dir = _compile_example(tmp_path, version=_AUTHORED_VERSION)
+    api, published = _published_like(
+        module_dir, tmp_path, toolchain={**_local_toolchain(module_dir), "polars": "1.39.0"}
+    )
+    document = json.loads(published.read_text(encoding="utf-8"))
+    document["content_signature"] = "sha256:" + "2" * 64
+    published.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(PublishCollisionError) as caught:
+        _upload(module_dir, api, published)
+
+    assert type(caught.value) is ToolchainDiffersError
+    assert caught.value.content_unchanged is False
+
+    del document["content_signature"]
+    published.write_text(json.dumps(document), encoding="utf-8")
+    with pytest.raises(PublishCollisionError) as unknown:
+        _upload(module_dir, api, published)
+    assert unknown.value.content_unchanged is None
+
+
+def test_a_published_manifest_with_no_toolchain_is_the_plain_collision(tmp_path: Path) -> None:
+    module_dir = _compile_example(tmp_path, version=_AUTHORED_VERSION)
+    api, published = _published_like(module_dir, tmp_path, toolchain=None)
+
+    with pytest.raises(PublishCollisionError) as caught:
+        _upload(module_dir, api, published)
+
+    assert type(caught.value) is PublishCollisionError
+    assert caught.value.reason is None
+
+
+def test_a_local_manifest_with_no_toolchain_is_the_plain_collision(tmp_path: Path) -> None:
+    """The other side's unknown arm: a module compiled before 0.8 records nothing to compare."""
+    module_dir = _compiled_module(tmp_path / "m", version="1.2.3")
+    api, published = _remote(tmp_path, _OTHER_DIGEST)
+    document = json.loads(published.read_text(encoding="utf-8"))
+    document["compilation"] = {"toolchain": {"polars": "1.39.0", "python": "3.12.0"}}
+    published.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(PublishCollisionError) as caught:
+        _upload(module_dir, api, published)
+
+    assert type(caught.value) is PublishCollisionError
+
+
+def test_the_same_toolchain_and_a_different_digest_is_the_plain_collision(tmp_path: Path) -> None:
+    module_dir = _compile_example(tmp_path, version=_AUTHORED_VERSION)
+    api, published = _published_like(module_dir, tmp_path, toolchain=_local_toolchain(module_dir))
+
+    with pytest.raises(PublishCollisionError) as caught:
+        _upload(module_dir, api, published)
+
+    assert type(caught.value) is PublishCollisionError
+
+
+def test_the_cli_says_toolchain_differs_rather_than_already_published(tmp_path: Path) -> None:
+    """The CLI's branch for the subclass must sit before the collision's, or it never runs."""
+    module_dir = _compile_example(tmp_path, version=_AUTHORED_VERSION)
+    remote = {**_local_toolchain(module_dir), "polars": "1.39.0"}
+    api, published = _published_like(module_dir, tmp_path, toolchain=remote)
+    download = MagicMock(return_value=str(published))
+
+    with (
+        patch("huggingface_hub.HfApi", return_value=api),
+        patch("huggingface_hub.get_token", return_value="hf_test_token"),
+        patch("huggingface_hub.hf_hub_download", download),
+    ):
+        result = CliRunner().invoke(app, ["upload", str(module_dir), "--name", "hfe"])
+
+    assert result.exit_code == 1
+    assert "TOOLCHAIN DIFFERS" in result.output
+    assert "ALREADY PUBLISHED" not in result.output
 
 
 def test_the_dry_run_promises_exactly_what_the_upload_sends(tmp_path: Path) -> None:

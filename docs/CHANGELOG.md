@@ -41,6 +41,19 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM342: the manifest records the toolchain that wrote the bytes, and a digest it explains says so (0.8, uncut)
+
+**format, compiler, enricher** — Every compile now stamps `manifest.compilation.toolchain`, the Python and
+polars that wrote the bytes (`{"polars": "2.1.0", "python": "3.13.1"}`; a library added later is a new key).
+It is optional and outside `artifact.digest`, like `compiler_version`, and `null` on older manifests. From
+polars 2 every parquet footer names its polars release, so one compiler beside two polars mints two digests
+for equal content. Where a fresh compile meets a recorded digest, that case now says so: `upload` raises
+`ToolchainDiffersError` (a subclass of `PublishCollisionError`, still a refusal unless `--force`) and prints
+`TOOLCHAIN DIFFERS`, and the release sweep reports `bytes_reason: "toolchain_differs"` per module. If either
+manifest records no toolchain, or both record the same one, the old outcome stands. Principle 4 is amended:
+reproducibility is pinned via `compiler_version`, the recorded toolchain and the resolved reference.
+`verify_manifest` is unchanged. See [INTEGRATION_0_8.md](INTEGRATION_0_8.md).
+
 ## 2026-11-04 — RM340: the VRS-coverage warning points at the record that explains its no-ALT rows (patch, on `main`)
 
 **compiler, enricher** — When an attested `verification.json` carries an `rsid_coordinate_agreement` record

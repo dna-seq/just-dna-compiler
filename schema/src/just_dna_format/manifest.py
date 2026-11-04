@@ -15,7 +15,9 @@ extends it) can share one definition without pulling heavy transitive dependenci
 """
 
 import re
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -475,6 +477,20 @@ class Compilation(BaseModel):
         default=None,
         description="Of those, how many carry chrom+start, hence join to a VCF by position",
     )
+    # ── RM342: the environment that wrote the bytes. From polars 2 the parquet footer names the
+    # polars release that wrote it, so one `compiler_version` installed beside two polars releases
+    # mints two `artifact.digest`s for equal content. Outside the digest like `compiler_version`
+    # (the manifest is not one of the Merkle root's files); `toolchains_differ` below is how a
+    # comparison reads it. One map rather than a field per library, so a library added later is a
+    # new key, never a new field.
+    toolchain: dict[str, str] | None = Field(
+        default=None,
+        description=(
+            "The library releases that wrote this artifact's bytes, keyed by name: `python` and "
+            "`polars` today, a new key for a library added later. None = compiled before 0.8, which "
+            "recorded nothing — an unknown, never an empty toolchain."
+        ),
+    )
 
     @field_validator("warnings_summary")
     @classmethod
@@ -496,6 +512,47 @@ class Compilation(BaseModel):
                 raise ValueError(f"warnings_summary[{checked}] is a count and may not be negative")
             rebuilt[checked] = rebuilt.get(checked, 0) + count
         return {code: rebuilt[code] for code in sorted(rebuilt)}
+
+
+#: The reason a digest difference carries when both manifests recorded a toolchain and the two
+#: differ (RM342). Read by the publish collision check (`ToolchainDiffersError.reason`) and the release
+#: sweep (`ModuleDelta.bytes_reason`), the two places a fresh compile meets a recorded digest.
+#: `verify_manifest` never names it: it re-hashes files on disk, and no toolchain moves that answer.
+TOOLCHAIN_DIFFERS: str = "toolchain_differs"
+
+
+def recorded_toolchain(manifest: Mapping[str, Any] | None) -> dict[str, str] | None:
+    """`compilation.toolchain` read out of a manifest's JSON, or `None` when it records none.
+
+    Field by field rather than through `ModuleManifest`, for the reason the publisher's own readers
+    give: an unrelated defect elsewhere in a published manifest must not withhold a value that is
+    right there. Anything that is not a non-empty map of strings is *not recorded*, the unknown arm.
+    """
+    compilation = manifest.get("compilation") if isinstance(manifest, Mapping) else None
+    toolchain = compilation.get("toolchain") if isinstance(compilation, Mapping) else None
+    if not isinstance(toolchain, Mapping) or not toolchain:
+        return None
+    if not all(isinstance(k, str) and isinstance(v, str) for k, v in toolchain.items()):
+        return None
+    return dict(toolchain)
+
+
+def toolchains_differ(before: Mapping[str, Any] | None, after: Mapping[str, Any] | None) -> bool | None:
+    """Whether two manifests were written by different toolchains — `None` when it cannot be said.
+
+    Three-valued, combined the Kleene way: one library both sides name at different releases is
+    `True` whatever else is unknown; `False` needs both sides to name the same libraries at the same
+    releases; anything else — either side unrecorded, or a library only one side names with the
+    shared ones agreeing — is `None`. A key one side lacks is absent, never different
+    (`@absent-is-not-different`).
+    """
+    left = recorded_toolchain(before)
+    right = recorded_toolchain(after)
+    if left is None or right is None:
+        return None
+    if any(left[name] != right[name] for name in left.keys() & right.keys()):
+        return True
+    return False if left.keys() == right.keys() else None
 
 
 class Frequency(BaseModel):
