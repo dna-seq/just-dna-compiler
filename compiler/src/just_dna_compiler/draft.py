@@ -75,6 +75,7 @@ from just_dna_compiler.compiler import (
     _load_csv_rows,
     _scalar_cell,
 )
+from just_dna_compiler.compiler.tables import same_row
 
 #: Every authored CSV a draft can target: the SNP core, the optional table kinds, and the one fact
 #: sidecar a human writes.
@@ -454,11 +455,14 @@ def append_rows(
         with open(path, encoding="utf-8", newline="") as handle:
             existing_header = next(csv.reader(handle), [])
 
-    by_key: dict[tuple, BaseModel] = {}
+    # Every row under a key, in file order, not just the first: since RM356 two rows may share a key
+    # and still be two rows (two genes' `*2` on one variant), so "already there" is `same_row` against
+    # the bucket — the compiler's own predicate, so an append never writes a row it then refuses.
+    by_key: dict[tuple, list[BaseModel]] = {}
     for row in existing_rows:
         key = natural_key(row)
         if key is not None:
-            by_key.setdefault(key, row)
+            by_key.setdefault(key, []).append(row)
 
     outcomes: list[RowOutcome] = []
     to_write: list[BaseModel] = []
@@ -468,10 +472,11 @@ def append_rows(
             outcomes.append(RowOutcome(key=None, status="appended_unkeyed"))
             to_write.append(row)
             continue
-        authored = by_key.get(key)
+        earlier = by_key.setdefault(key, [])
+        authored = same_row(row, earlier)
         if authored is None:
             outcomes.append(RowOutcome(key=key, status="added"))
-            by_key[key] = row  # so a duplicate inside `rows` itself is caught too
+            earlier.append(row)  # so a duplicate inside `rows` itself is caught too
             to_write.append(row)
             continue
         differences = _compare(authored, row)

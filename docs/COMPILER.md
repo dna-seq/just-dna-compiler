@@ -469,6 +469,22 @@ authored table changes what an identity key means, which is major-only under Pri
 restates `(variant_key, pmid)` rather than reading `_KEY_FIELDS`, so splitting it here splits nothing
 else.
 
+**`haplotypes.csv`'s `gene` splits its duplicate rule the same way (0.8, RM356), and there the split is
+declared on the model** because three surfaces must agree on it. The key stays
+`(haplotype_name, variant_key, allele)`; `HaplotypeRow._KEY_DISTINCT_WHEN_STATED = ("gene",)` says two
+rows under it are still two rows when both state `gene` and the symbols differ (compared case- and
+space-insensitively, as RM351's cross-table checks compare a gene). The UGT1A genes share exons 2–5, so
+UGT1A1's `*2` and UGT1A6's `*2` can be defined by one variant and allele, and before 0.8 the second was
+refused as `haplotypes.csv: duplicate row for key …`. A row naming no gene still collides with any row
+under its key, a gene stated twice still collides, and the refusal keeps its byte-identical text. The
+relation is not transitive (a gene-less `*2` collides with both genes' rows, which do not collide with
+each other), so no hashable key can carry it: the compile/validate refusal, `draft.append_rows` and the
+hints lint each bucket by the key and ask one predicate, `compiler.tables.same_row`, within the bucket.
+`hints.key_fields` publishes the column as `TableKey.distinct_when_stated`, beside `columns` rather than
+inside it. The change only narrows what is refused, and nothing it reads feeds the parquet row order or
+`content_signature`: the reference examples with this table compile to the same `artifact.digest` with
+and without the declaration (`compiler/tests/test_haplotype_key_gene.py`).
+
 ### Locus-level columns `weights.parquet` derives from the study rows (0.8)
 
 `VariantRow` names no study, so a fact that lives on `studies.csv` reaches a variant only by a rule.

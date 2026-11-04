@@ -26,6 +26,8 @@ from just_dna_compiler.compiler.tables import (
     META_CSV,
     MODEL_ORGANISMS_CSV,
     OVERRIDES_CSV,
+    _gene_key,
+    same_row,
     study_coordinate_key,
 )
 
@@ -109,13 +111,6 @@ def _cross_validate_haplotype_definitions(
             f"no variant, so a missing haplotypes.csv row is expected there."
         )
     return [CodedWarning("star_allele_undefined", message)]
-
-
-def _gene_key(gene: str) -> str:
-    """A gene symbol as the cross-table PGx checks compare it (RM351). Case and surrounding space do
-    not make two genes: the bare-name key ignored the gene entirely, so a symbol spelled `Cyp2c19` in
-    one table and `CYP2C19` in another must not turn every allele of it into a new finding."""
-    return gene.strip().casefold()
 
 
 #: An allele a haplotype does not mention — or mentions as its own reference base. The letter never
@@ -507,12 +502,18 @@ def _validate_table_kind(
 
     keyfn = _TABLE_DUPE_KEYS.get(model)
     if keyfn is not None:
-        seen: set[tuple] = set()
+        # Bucketed by the key, then asked `same_row` within the bucket (RM356): a column the model
+        # declares distinct-when-stated (`HaplotypeRow.gene`) splits two rows only when both state it
+        # and differ. For every other model the bucket being non-empty is the old `key in seen`, and
+        # the message is byte-identical either way. A refused row stays in the bucket: it is still in the
+        # table, and since the relation is not transitive it can be the one a later row collides with.
+        seen: dict[tuple, list[Any]] = {}
         for r in rows:
             key = keyfn(r)
-            if key in seen:
+            earlier = seen.setdefault(key, [])
+            if same_row(r, earlier) is not None:
                 errors.append(f"{csv_name}: duplicate row for key {key}")
-            seen.add(key)
+            earlier.append(r)
 
     return errors, warnings
 

@@ -236,6 +236,16 @@ class HaplotypeRow(AuthoredModel):
     #: `variant_key` is the *stamped* identity (RM43): the key reads what the author wrote rather than
     #: whatever the resolution fill has since put in the cells.
     _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("haplotype_name", "variant_key", "allele")
+    #: Columns that tell two rows sharing `_KEY_FIELDS` apart **only when both rows state them and the
+    #: stated values differ** (RM356). The UGT1A genes share exons 2-5, so UGT1A1's `*2` and UGT1A6's
+    #: `*2` can be defined by one variant and allele, and the bare key made the second a duplicate of
+    #: the first. `gene` is optional here, and an unstated gene is unknown: it cannot establish that two
+    #: rows are about two genes, so a gene-less row still collides with any row under its key
+    #: (`@absent-is-not-different`). The relation is not an equality — a gene-less `*2` collides with
+    #: both genes' rows, which do not collide with each other — so it cannot live inside the key tuple,
+    #: and every "same row" site asks `compiler.tables.same_row` instead. Stated values compare case-
+    #: and space-insensitively, the way RM351's cross-table checks compare a gene symbol.
+    _KEY_DISTINCT_WHEN_STATED: ClassVar[tuple[str, ...]] = ("gene",)
     #: A haplotype junction matches a variant at chrom:start:ref regardless of allele — the key the
     #: enricher has always derived for this table, kept byte-identical so nothing re-keys.
     _KEY_INCLUDES_ALTS: ClassVar[bool] = False

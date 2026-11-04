@@ -266,6 +266,15 @@ so do not drop the record. `null` is unknown, never independent.
 | --- | --- | --- |
 | `study_variant_orphan` (validate and compile) | A study's variant is no longer an orphan when it is a defining variant in `haplotypes.csv`, or the variant of a `variants.csv` / `pharm_variants.csv` row a `meta.csv` member reached; before, only a `variants.csv` row counted. The warning fires less often, never more. Its text keeps `Studies reference variants not in variants.csv: [keys]` and appends ` — nor among haplotypes.csv's defining variants or the rows a meta.csv member reaches.` | Nothing, unless you match the whole sentence rather than its prefix. |
 
+## 1.16 Two genes' allele on one variant are two `haplotypes.csv` rows (RM356, no new warning code)
+
+| Surface | What changed | What to do |
+| --- | --- | --- |
+| `haplotypes.csv` duplicate refusal (validate and compile) | Two rows sharing `(haplotype_name, variant_key, allele)` are no longer refused when both state `gene` and the genes differ (case and surrounding space ignored). A row with no `gene`, or the same gene twice, is refused exactly as before, with the same `haplotypes.csv: duplicate row for key (…)` text. | Nothing, unless you keep your own duplicate rule for this table: then split it the same way, only on two stated genes that differ. |
+| `haplotypes.parquet` | `(haplotype_name, variant_key, allele)` is no longer unique in a compiled artifact: two rows may share it and differ by `gene`. A module with no such pair compiles to the same bytes as before. | A reader that indexes this table by name, variant and allele adds `gene` to its key, or it merges two genes' definitions of one name. |
+| `draft.append_rows`, `hints.inspect_rows` | Ask the compiler's predicate (`compiler.tables.same_row`), so a drafted second gene's row is `added` and the lint stops flagging it. | Nothing. |
+| `hints.TableKey` / `describe_table(...)["key"]` | Gains `distinct_when_stated` (`("gene",)` for `haplotypes.csv`, `()` for every other kind): columns outside `columns` that split two rows only when both state them and the values differ. | A tool that tells an author when two rows collide reads it beside `columns`. One reading only `columns` over-reports for this table, as before. |
+
 ## 2. What to change
 
 1. If you parse `manifest.json` with `just-dna-format`, move your pin to 0.8 when you start reading

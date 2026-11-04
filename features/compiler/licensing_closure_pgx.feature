@@ -223,6 +223,19 @@ Feature: The licence gate, the closure, and the PGx cross-checks
     # arm: it defines its name for every gene, so a gene-less module reads exactly as before.
 
   # source: compiler/src/just_dna_compiler/compiler/table_checks.py
+  # anchor: _validate_table_kind
+  Scenario: two genes' allele on one variant are two haplotypes.csv rows
+    Given haplotypes.csv defines UGT1A1 *2 and UGT1A6 *2 by the same variant and allele
+    When the module is validated
+    Then neither row is refused
+    But a third row with the same name, variant and allele and no gene is refused as a "duplicate row for key"
+    And so is the same gene stated twice, in any case
+    # RM356. The UGT1A genes share exons 2-5, so the key `(haplotype_name, variant_key, allele)` made the
+    # second gene's row a duplicate. `gene` is optional, so it splits two rows only when both state it
+    # and the values differ: an unstated gene is unknown, never a different gene. Drafting and the hints
+    # lint ask the same predicate, so neither can write or pass a row the compiler then refuses.
+
+  # source: compiler/src/just_dna_compiler/compiler/table_checks.py
   # anchor: _cross_validate_phase_ambiguity
   @code:diplotype_phase_ambiguous @actionable @both_modes
   Scenario: two diplotype rows unphased data cannot tell apart, disagreeing
