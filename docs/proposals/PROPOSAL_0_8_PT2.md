@@ -99,11 +99,14 @@ alternative is beside it. Names still get the P5 audit in §5, and the audit can
    `]`, `,` or `=`; such a selector is refused with a message naming the character. Rejected: `member_a` /
    `member_b` columns (no separator at all, but every corpus case is arity 2 only until it is not, and a
    third member would be a third column).
-4. **The table key is the normalized member set plus `trait_efo_id` plus `sex`.** Members are sorted for
+4. **The table key is the normalized member set plus `trait_efo_id` plus `sex` (plus `drug`, 2026-11-04).** Members are sorted for
    the key, so `A & B` and `B & A` are one key, refused as a duplicate. Within a member, conditions are
    sorted too. `sex` is in the key because it scopes the whole row, facts included: a `male` row and a
    `female` row for one member set are two statements, not a duplicate. A row with `sex` outranks the same
-   key without it, for that sex.
+   key without it, for that sex. **Addendum 2026-11-04: `drug` joins the key** (the member set plus
+   `trait_efo_id` plus `sex` plus `drug`), at the maintainer's default, after `cpic_gene_pairs` found CPIC
+   answering one phenotype pair once per thiopurine; a drug-scoped row outranks the same key without one,
+   for that drug.
 5. **Columns**, all optional except `members`: `trait_efo_id`, `trait_role` (closed: `mediator`; empty means
    the trait is an effect, the maintainer's third addendum),
    `direction` (the existing vocabulary), `conclusion`, `negatives`, `tier`, `age_of_action`,

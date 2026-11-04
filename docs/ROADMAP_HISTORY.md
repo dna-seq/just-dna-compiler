@@ -1906,7 +1906,8 @@ the `0.8` branch in the proposal's order. Newest first.
 facts. One grammar for every member, `table[column=value, …]` over `variants`, `diplotypes`,
 `pharm_variants` and `allele_function`, members joined by `&` at bracket depth 0; conditions AND-ed, `=` on a
 list column meaning contains, and a member existential inside a combination. The key is the sorted members
-plus `trait_efo_id` plus `sex`, so `A & B` and `B & A` are one key, refused as a duplicate. Negation, OR,
+plus `trait_efo_id` plus `sex` plus `drug` (2026-11-04: `drug` added at the maintainer's default; see below),
+so `A & B` and `B & A` are one key, refused as a duplicate. Negation, OR,
 ranges, joins across tables and selectors over `studies.csv` are refused, each by its own message; there is no
 bare-rsID shorthand. The compiler expands every member into the rows it matches and writes `meta.parquet`
 (the selectors verbatim for `reverse`, the matches, `replaces`) and `meta_resolved.parquet` (each row a

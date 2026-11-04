@@ -154,7 +154,9 @@ a stated value standing in for an unstated one. Raised by a side agent from the 
 
 **Where a difference ends and a disagreement begins: the key, weighed 2026-11-04 by the pm seat at the
 maintainer's direction ("it's the good old 'what's a key' in a new skin").** A meta-table row's key is **its
-member set, plus `trait_efo_id` on a per-trait row**. The rule follows from it:
+member set, plus `trait_efo_id` on a per-trait row** — and, as built, plus `sex` and `drug` where stated
+(2026-11-04: `drug` added at the maintainer's default, so one member set states one finding per drug). The
+rule follows from it:
 
 - **The same key twice is a disagreement.** Two rows with one member set (and one trait) are a duplicate key,
   and they are refused as on every other keyed authored table. This is the only place two values can
