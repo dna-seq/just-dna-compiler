@@ -41,7 +41,9 @@ from pathlib import Path
 
 from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.concordance import ClinSigAuthorityCallRow, ClinSigConcordanceRow
-from just_dna_format.layout import atomic_writer, resolve_sidecar, sidecar_write_path
+from just_dna_format.layout import atomic_writer, nothing_to_write, resolve_sidecar, sidecar_write_path
+
+from just_dna_enricher.licensing import overlay_answered_subjects
 
 logger = logging.getLogger(__name__)
 
@@ -308,27 +310,33 @@ def _cell(value: object) -> str:
     return str(value)
 
 
-def _write_table(rows: Sequence[object], fieldnames: list[str], path: Path) -> None:
-    """Write one table atomically, with a fixed column order and canonical cells.
+def _write_table(rows: Sequence[object], fieldnames: list[str], path: Path, *, answered: bool) -> bool:
+    """Write one table atomically, with a fixed column order and canonical cells; `True` if written.
 
     Atomic because every sidecar here is read back by the next run: a process killed mid-write leaves
     a file that is syntactically valid and simply short, which is the one failure mode a table cannot
     report about itself.
+
+    `answered` is whether the module's overlay answers this record, which makes an empty one say
+    something (see `write_concordance_tables`).
     """
+    if not answered and nothing_to_write(path, rows):
+        return False  # RM370: a pass that answered nothing leaves no table
     with atomic_writer(path, newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         for row in rows:
             dumped = row.model_dump()  # type: ignore[attr-defined]
             writer.writerow({name: _cell(dumped.get(name)) for name in fieldnames})
+    return True
 
 
 def write_concordance_tables(
     spec_dir: Path,
     parents: Sequence[ClinSigConcordanceRow],
     calls: Sequence[ClinSigAuthorityCallRow],
-) -> tuple[Path, Path]:
-    """Replace both tables beside the spec, and return where they were written.
+) -> tuple[Path, ...]:
+    """Replace both tables beside the spec, and return the paths actually written.
 
     **These are pure build products, and they are rewritten whole rather than merged.** Every other
     derived sidecar gap-fills because a recorded row might carry a curator's judgement; this one
@@ -337,26 +345,43 @@ def write_concordance_tables(
     *leave* the record, since a conflict that stops being reported is exactly how an author learns
     the archive caught up with them.
 
-    A run that found nothing contested therefore writes two empty tables rather than leaving the
-    previous run's rows in place — an empty record is a claim (*nothing is contested*), and it is a
-    different claim from no record at all, which is what a run that could not put the question leaves
-    behind by writing nothing.
+    A run that found nothing contested therefore empties a record already on disk rather than leaving
+    the previous run's rows in place. Where there is no record yet it writes none (RM370,
+    `layout.nothing_to_write`): a header-only table beside a module with no `clin_sig` cell said
+    nothing, and the compiler already reads an empty record and an absent one alike (no manifest
+    block). How many subjects were compared is the check's denominator in `verification.json`, which
+    is where *asked and found nothing contested* is recorded; a run that could not put the question
+    returns no record at all and leaves the previous one exactly as it was.
+
+    **One exception, and it is the vindication signal (RM117).** A module whose `overrides.csv`
+    answers this record refers to it, so an empty record there is not about nothing: it is what turns
+    the answer into `overlay_answer_vindicated` (*the authorities now agree*) at compile time, where a
+    missing table would read `overlay_targets_missing_table` and tell the author to run the pass that
+    just ran. That arises when an author deleted the sidecar to regenerate it (`@sidecar-authoritative`).
 
     Resolved through `layout` so a module carrying its sidecars under `derived/` gets them written
     where it keeps the rest, rather than growing a second copy at the root.
     """
     parent_path = sidecar_write_path(spec_dir, CONCORDANCE_CSV)
     calls_path = sidecar_write_path(spec_dir, AUTHORITY_CALLS_CSV)
-    _write_table(parents, _CONCORDANCE_FIELDNAMES, parent_path)
-    _write_table(calls, _AUTHORITY_CALL_FIELDNAMES, calls_path)
-    logger.info(
-        "Wrote the clinical-significance concordance record: %d contested subject(s), %d authority "
-        "call(s). Answer one with an overrides.csv row against %s.",
-        len(parents),
-        len(calls),
-        CONCORDANCE_CSV,
+    answered = bool(overlay_answered_subjects(spec_dir, CONCORDANCE_CSV))
+    written = tuple(
+        path
+        for rows, fieldnames, path in (
+            (parents, _CONCORDANCE_FIELDNAMES, parent_path),
+            (calls, _AUTHORITY_CALL_FIELDNAMES, calls_path),
+        )
+        if _write_table(rows, fieldnames, path, answered=answered)
     )
-    return parent_path, calls_path
+    if written:
+        logger.info(
+            "Wrote the clinical-significance concordance record: %d contested subject(s), %d authority "
+            "call(s). Answer one with an overrides.csv row against %s.",
+            len(parents),
+            len(calls),
+            CONCORDANCE_CSV,
+        )
+    return written
 
 
 def read_recorded_calls(spec_dir: Path) -> list[ClinSigAuthorityCallRow] | None:
@@ -369,9 +394,10 @@ def read_recorded_calls(spec_dir: Path) -> list[ClinSigAuthorityCallRow] | None:
     the unrelated reason that a refused `strict` run must change nothing, and that ordering is what
     makes this readable at all.
 
-    `None` rather than `[]` for a module that has never had a record written, because the two are
-    different claims and the whole check turns on the difference: no file is *nobody asked at record
-    time*, an empty file is a run that asked and found nothing contested.
+    `None` for a module with no record on disk, `[]` for one whose record is empty. Since RM370 no
+    record is also what a run that asked and found nothing contested leaves where there was none
+    before (`layout.nothing_to_write`); `answered_call_shift` reads the two alike — every lookup
+    misses, and an answered call is withheld as `no_prior_record` either way.
 
     A file that will not parse is `None` too, and says so. Guessing at a half-read baseline would
     manufacture a movement out of our own inability to read, which is the one wrong answer available.

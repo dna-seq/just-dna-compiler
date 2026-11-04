@@ -36,6 +36,7 @@ from just_dna_format.layout import (
     SOURCES_CSV,
     SidecarCollision,
     atomic_writer,
+    nothing_to_write,
     sidecar_write_path,
 )
 from just_dna_format.normalize import now_utc_iso
@@ -1139,7 +1140,13 @@ def _cell(value: object) -> str:
 
 
 def write_sources_csv(rows: list[SourceRow], path: Path) -> None:
-    """Write `sources.csv` in a fixed column order (normalized, like every reverse writer)."""
+    """Write `sources.csv` in a fixed column order (normalized, like every reverse writer).
+
+    A merge that adds no row to a module with no licence table writes none (RM370): the same predicate
+    as every data table's, so a pass that recorded nothing leaves no header-only `sources.csv` either.
+    """
+    if nothing_to_write(path, rows):
+        return
     with atomic_writer(Path(path), newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=SOURCES_FIELDNAMES)
         writer.writeheader()

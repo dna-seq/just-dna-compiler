@@ -21,7 +21,7 @@ move, because only they have a machine that knows where to put them.
 
 import os
 import tempfile
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sized
 from contextlib import contextmanager
 from pathlib import Path
 from typing import TextIO
@@ -235,6 +235,28 @@ def atomic_write_text(path: Path, text: str, *, encoding: str = "utf-8") -> Path
     with atomic_writer(path, encoding=encoding) as handle:
         handle.write(text)
     return Path(path)
+
+
+def nothing_to_write(path: Path, rows: Sized) -> bool:
+    """Whether a sidecar write would only create a file that says nothing (RM370).
+
+    **Zero rows and no file there already: write nothing.** A data table beside the spec is the claim
+    *this module carries these facts from this source*, exactly as a `sources.csv` row is — so a pass
+    that answered nothing (no subject, no answer, every subject declined) must leave no table, for the
+    reason `@write-the-sourcerow` gives for the licence row. Seven sidecars wrote a bare header instead,
+    and the 0.8 reference examples carried two of them. Every enricher sidecar writer calls this first,
+    and returns before its `atomic_writer` — so the licence row, which lands only inside that commit
+    (`before_commit`), is skipped with it.
+
+    **A file already there is never this predicate's to keep.** Zero rows over an existing table is a
+    pass's answer, not a run that covered nothing: the concordance record clears a subject the
+    authorities stopped contesting, and a merge pass prunes rows whose variant the author deleted. A
+    run that could not ask keeps its rows by never reaching the writer (`@rederive-never-shortens`).
+
+    Two writers write an empty table on purpose and say why: `resolution.csv`, which every pass after
+    `enrich` needs in order to run at all, and a concordance record the module's overlay answers.
+    """
+    return not rows and not Path(path).exists()
 
 
 @contextmanager

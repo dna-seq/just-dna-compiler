@@ -458,6 +458,14 @@ names, `sex` and rsIDs compare as written; each already has one rule.
 | `close_module` / `just-dna-compiler close` | Runs the same pre-flight, so it refuses a module whose `provenance.json` does not parse or whose logo or readme has an unsupported extension, as it refuses any module that does not validate. | Fix the file, then close. |
 | `validate_spec(resolve_with_ensembl=False)` | A `resolution.csv` row whose coordinate is impossible in its build, or a duplicate key in that table, no longer refuses: the table is not read under the switch. | Nothing; the refusal returns when resolution is on. |
 
+## 1.24 A pass that answered nothing leaves no table (RM370, no new warning code)
+
+| Surface | What changed | What to do |
+| --- | --- | --- |
+| Every enricher sidecar but `resolution.csv` (the ones that wrote a bare header: `clin_sig_concordance.csv`, `clin_sig_authority_calls.csv`, `frequencies.csv`, `gene_metrics.csv`, `gene_validity.csv`, `clinical_assertions.csv`, `literature.csv`; already none: `gwas_effects.csv`, `expression_effects.csv`, `ld_pairs.csv`, `locus_to_gene.csv`, `colocalisations.csv`, `consequences.csv`; and the licence table) | A run with no subject to ask about used to write a header-only table; it now writes none, and so no licence row. A table already on disk is still rewritten, emptied where the pass's answer is empty (a concordance record whose subjects stopped being contested). An empty concordance record is still written where `overrides.csv` answers it, and `resolution.csv` is still written when `enrich` placed nothing. | A tool that took a sidecar's *presence* as "this pass ran" reads `verification.json`'s record for the check instead, which is where a run that asked and found nothing is recorded. A compiled artifact no longer carries the empty parquet such a table became; the manifest already reported no block for an empty concordance record. |
+| `just_dna_format.layout.nothing_to_write(path, rows)` | New public predicate: `True` when `rows` is empty and nothing is at `path`. | A tool writing a sidecar of its own may ask it. |
+| `reference_examples/cpic_gene_pairs`, `longevity_studies`, `model_organisms` | Their header-only `clin_sig_concordance.csv` / `clin_sig_authority_calls.csv` are removed, so `artifact.files` loses the two empty parquets and `artifact.digest` moves. `content_signature` does not. | None. |
+
 ## 2. What to change
 
 1. If you parse `manifest.json` with `just-dna-format`, move your pin to 0.8 when you start reading

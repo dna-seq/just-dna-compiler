@@ -31,6 +31,12 @@ def _write_resolution_csv(
     made. That is what makes deleting this file and re-running cost nothing: the author's judgements
     are not in here to lose. The re-run itself is unchanged, and still gap-fills rather than re-asking
     every subject; what changed is that leaving a recorded row alone now risks nothing.
+
+    **Written even with no row, the one sidecar `layout.nothing_to_write` does not gate (RM370).**
+    Every pass downstream of `enrich` (`frequencies`, `assertions`, `opentargets enrich`, `vrs`) reads
+    this table and refuses without it, telling the author to run `enrich` first. An empty table is
+    therefore not a claim about a source — it names none, and no licence row lands with it — but the
+    record that `enrich` ran and placed nothing, which those passes then answer as nothing to ask.
     """
     with atomic_writer(output_path, newline="", before_commit=before_commit) as f:
         writer = csv.DictWriter(f, fieldnames=_FIELDNAMES)

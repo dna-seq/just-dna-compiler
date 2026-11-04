@@ -63,7 +63,7 @@ from pathlib import Path
 import httpx
 from just_dna_compiler.compiler import load_citing_rows, load_csv_rows, table_citations
 from just_dna_format.base import merge_key
-from just_dna_format.layout import atomic_writer
+from just_dna_format.layout import atomic_writer, nothing_to_write
 from just_dna_format.literature import LiteratureRow, settled_quotes
 from just_dna_format.manifest import VerificationRecord
 from just_dna_format.normalize import now_utc_iso
@@ -2591,6 +2591,8 @@ def _write_literature_csv(rows: list[LiteratureRow], output_path: Path) -> None:
     value. The re-run itself is unchanged, and still gap-fills rather than re-asking every subject;
     what changed is that leaving a recorded row alone now risks nothing.
     """
+    if nothing_to_write(output_path, rows):
+        return  # RM370: a pass that answered nothing leaves no table
     with atomic_writer(output_path, newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=_FIELDNAMES)
         writer.writeheader()

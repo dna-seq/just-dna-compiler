@@ -23,8 +23,8 @@ just-dna-compiler close reference_examples/cpic_gene_pairs
 just-dna-compiler compile reference_examples/cpic_gene_pairs out/ --strict
 ```
 
-`enrich` also writes the two `clin_sig_*.csv` sidecars, header-only here because the module authors no
-`clin_sig`; the other 0.8 examples carry the same pair. `--offline` drafts from the snapshot (`cpic_snapshot_b0ffd4c6f010`) and nothing else. `--allele` keeps
+`enrich` writes no `clin_sig_*.csv` concordance pair here: the module authors no `clin_sig`, so the
+check has nothing to ask, and a pass that answered nothing writes no table (RM370). `--offline` drafts from the snapshot (`cpic_snapshot_b0ffd4c6f010`) and nothing else. `--allele` keeps
 the table small: TPMT `*1`, `*2`, `*3A` and NUDT15 `*1`, `*3` give six and three diplotypes covering the
 Normal, Intermediate and Poor Metabolizer phenotypes of each gene. The drafter wrote `haplotypes.csv`,
 `allele_function.csv`, `diplotypes.csv` and the CPIC row of `licensing.csv`: CC-BY-SA-4.0, share-alike,

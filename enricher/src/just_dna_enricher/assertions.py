@@ -36,7 +36,7 @@ from pathlib import Path
 from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.assertions import ClinicalAssertionRow
 from just_dna_format.base import derive_variant_key, merge_key
-from just_dna_format.layout import atomic_writer
+from just_dna_format.layout import atomic_writer, nothing_to_write
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.resolution import ResolutionRow
 from pydantic import ValidationError
@@ -450,6 +450,8 @@ def _write_assertions_csv(
     are not in here to lose. The re-run itself is unchanged, and still gap-fills rather than re-asking
     every subject; what changed is that leaving a recorded row alone now risks nothing.
     """
+    if nothing_to_write(output_path, rows):
+        return  # RM370: a pass that answered nothing leaves no table
     with atomic_writer(output_path, newline="", before_commit=before_commit) as handle:
         writer = csv.DictWriter(handle, fieldnames=_FIELDNAMES)
         writer.writeheader()

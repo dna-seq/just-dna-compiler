@@ -40,7 +40,7 @@ from pathlib import Path
 from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.base import derive_variant_key, merge_key
 from just_dna_format.expression import ExpressionEffectRow
-from just_dna_format.layout import atomic_writer
+from just_dna_format.layout import atomic_writer, nothing_to_write
 from just_dna_format.normalize import now_utc_iso
 
 from just_dna_enricher.atlas_protos import ATLAS_IMPORT_FAILURES, client_absence
@@ -340,6 +340,8 @@ def _write_csv(
     A pure build product: a correction to a derived row belongs in `overrides.csv`, which is what
     makes deleting this file and re-running cost nothing (`@sidecar-authoritative`).
     """
+    if nothing_to_write(output_path, rows):
+        return  # RM370: a pass that answered nothing leaves no table
     with atomic_writer(output_path, newline="", before_commit=before_commit) as handle:
         writer = csv.DictWriter(handle, fieldnames=_FIELDNAMES)
         writer.writeheader()

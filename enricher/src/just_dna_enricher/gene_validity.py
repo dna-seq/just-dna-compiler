@@ -51,7 +51,7 @@ from just_dna_format.gene_validity import (
     superseded_groups,
     undecidable_groups,
 )
-from just_dna_format.layout import atomic_writer
+from just_dna_format.layout import atomic_writer, nothing_to_write
 from just_dna_format.normalize import normalize_utc_timestamp, now_utc_iso
 from just_dna_format.spelling import gene_key
 
@@ -655,6 +655,8 @@ def _write_gene_validity_csv(
     when the source published one. A row keyed only on the gene's grain can be corrected
     group-scoped, by `gene`, and not more finely than that.
     """
+    if nothing_to_write(output_path, rows):
+        return  # RM370: a pass that answered nothing leaves no table
     with atomic_writer(output_path, newline="", before_commit=before_commit) as handle:
         writer = csv.DictWriter(handle, fieldnames=_FIELDNAMES)
         writer.writeheader()

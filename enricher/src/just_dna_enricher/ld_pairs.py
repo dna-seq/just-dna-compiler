@@ -46,7 +46,7 @@ from pathlib import Path
 import httpx
 from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.base import merge_key
-from just_dna_format.layout import atomic_writer
+from just_dna_format.layout import atomic_writer, nothing_to_write
 from just_dna_format.ld_pairs import LD_RESOLVED, LdPairRow
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.resolution import ResolutionRow
@@ -345,6 +345,8 @@ def _cell(value: object) -> str:
 
 def _write(rows: list[LdPairRow], path: Path, *, before_commit: Callable[[], None] | None) -> None:
     fieldnames = list(LdPairRow.model_fields)  # derived from the model, never hand-kept
+    if nothing_to_write(path, rows):
+        return  # RM370: a pass that answered nothing leaves no table
     with atomic_writer(path, newline="", before_commit=before_commit) as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()

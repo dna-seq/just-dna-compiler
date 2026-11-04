@@ -41,6 +41,27 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM370: a pass that answered nothing leaves no table behind (0.8, uncut)
+
+- **An enrichment pass with no subject to ask about writes no sidecar, and so no licence row.** Seven
+  writers left a header-only table instead: `enrich`'s `clin_sig_concordance.csv` and
+  `clin_sig_authority_calls.csv` on a module with no `clin_sig` cell; `frequencies.csv` and `clinical_assertions.csv` when every resolved row is
+  off-build; `gene_metrics.csv` (both the constraint and dosage passes) and `gene_validity.csv` on a
+  module with no gene; and `literature.csv` when every citation is DOI-only. One predicate,
+  `layout.nothing_to_write`, now sits in front of every enricher sidecar writer.
+- **A table already on disk is still the pass's to empty.** The concordance record still clears a
+  subject the authorities stopped contesting, and a merge pass still prunes rows whose variant was
+  deleted; only the creation of a file that says nothing is withheld. Two empty tables are still
+  created on purpose: `resolution.csv` when `enrich` placed nothing (every later pass needs it to run),
+  and a concordance record the module's `overrides.csv` answers (so the answer still compiles to
+  `overlay_answer_vindicated`).
+- **`cpic_gene_pairs`, `longevity_studies` and `model_organisms` lose their header-only concordance
+  pair**, so their compiled artifacts carry no empty `clin_sig_concordance.parquet` /
+  `clin_sig_authority_calls.parquet`. The manifest already reported no concordance block for them.
+- Guarded by a test running every `DERIVED_PRODUCERS` pass on a module that gives it nothing to answer
+  (runner set equal to the registry), and an AST walk asserting every enricher CSV writer calls the
+  predicate.
+
 ## 2026-11-04 — RM369: a snapshot build that dies before its last write leaves no `release.json`, never the previous build's (0.8, uncut)
 
 - **Every builder withdraws `release.json` before its payload moves and writes the new one last.**

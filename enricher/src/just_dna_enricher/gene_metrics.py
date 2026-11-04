@@ -31,7 +31,7 @@ import duckdb
 from just_dna_compiler.compiler import AUTHORED_NON_KIND_TABLES, load_csv_rows
 from just_dna_format.base import merge_key
 from just_dna_format.gene_metrics import GeneMetricsRow
-from just_dna_format.layout import atomic_writer
+from just_dna_format.layout import atomic_writer, nothing_to_write
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.spelling import gene_key
 
@@ -473,6 +473,8 @@ def _write_gene_metrics_csv(
     rather than re-asking every subject; what changed is that leaving a recorded row alone now risks
     nothing.
     """
+    if nothing_to_write(output_path, rows):
+        return  # RM370: a pass that answered nothing leaves no table
     with atomic_writer(output_path, newline="", before_commit=before_commit) as handle:
         writer = csv.DictWriter(handle, fieldnames=_FIELDNAMES)
         writer.writeheader()
