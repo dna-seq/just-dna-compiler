@@ -669,7 +669,9 @@ def gwas_(
         f"gwas: {len(result.rows)} row(s) for {len(result.covered)} variant(s), "
         f"{len(result.missing)} with no published association; "
         f"{result.requests_made} request(s), {result.requests_saved} saved by caching, "
-        f"{result.p_value_underflows} p-value(s) below float64 range",
+        f"{result.p_value_underflows} p-value(s) below float64 range, "
+        f"{result.unparsed_effects} effect string(s) withheld as unreadable, "
+        f"{result.unusable} association(s) with no usable id",
         fg=typer.colors.GREEN,
     )
     # The path the pass actually wrote, never `spec_dir / <name>` — a module keeping its sidecars

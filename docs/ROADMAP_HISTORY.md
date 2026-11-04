@@ -378,8 +378,17 @@ over every `CLIENTS` row and measured the rest of the class: no client named a 4
 equality with the `CLIENTS` labels), `test_a_permanent_4xx_is_asked_once` (400, 404, 410 over every row), and
 `test_no_retry_policy_in_the_tier_retries_a_permanent_4xx`, which walks every `@retry` in the package and asks
 its predicate directly, so the withholding clients and the builders' download are covered too. Each client's
-404 meaning was checked and kept; ENRICHER.md tables it. Each guard was broken once to watch it go red: the
+404 meaning was checked and kept; ENRICHER.md tables it. The handler shapes were enumerated before the
+subclasses landed: no `except` in the tier names a sibling narrowing a `*Retired` could fall into
+(`RateLimitedError`, `EutilsRateLimitedError`, `GwasNotFound`), and every `*Unavailable` handler catches it, by design. Each guard was broken once to watch it go red: the
 410 arm in `gwas`, a widened `pharmvar` predicate, and `litvar`'s 410 arm.
+
+**What the code review changed before the close.** The effect allele is taken from the `snp_effect_allele` entry
+naming the queried rsID (a multi-SNP association's first entry is another variant's); `gwas` retries a 5xx and a
+429 too, which moved its status translation out of the retried body into `_get`; v2's `-` is an absent `pmid`;
+a templated `next` link is stripped like every other link; the CLI prints `unparsed_effects` and `unusable`;
+`associations_for` was a test-only wrapper and is gone. Kept as built: a 404 on the search is could-not-ask and
+aborts the pass like any outage, and `size=1000` was measured to return all 386 associations, not assumed.
 
 **Bounded on purpose.** The withholding clients (`grch37`, `ensembl`, `clingen_allele`, Crossref,
 `EuropePmcClient.fulltext`) raise nothing by contract. A 410 there is withheld like any other failure, and is

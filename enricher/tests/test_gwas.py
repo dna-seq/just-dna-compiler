@@ -424,7 +424,7 @@ def test_v2s_empty_answer_has_no_embedded_key_and_is_still_an_answer() -> None:
     key at all** and `page.totalElements: 0` — recorded live for `rs111033563`. Read with the legacy
     guard, every clinically-authored module would refuse on its first rare variant.
     """
-    assert _client(associations=[]).associations_for("rs111033563") == []
+    assert _client(associations=[]).association_pages("rs111033563") == [[]]
 
 
 def test_a_200_with_no_associations_and_a_nonzero_total_is_a_shape_change() -> None:
@@ -436,7 +436,7 @@ def test_a_200_with_no_associations_and_a_nonzero_total_is_a_shape_change() -> N
     client = GwasCatalogClient(gate=PacingGate(0.0))
     client._client = httpx.Client(transport=httpx.MockTransport(handler))
     with pytest.raises(GwasError, match="shape"):
-        client.associations_for("rs4149056")
+        client.association_pages("rs4149056")
 
 
 def test_every_page_is_read_and_counted(tmp_path: Path) -> None:
@@ -666,7 +666,7 @@ def test_a_404_on_the_search_path_is_could_not_ask_not_an_empty_answer() -> None
     """
     client = _client(status=404)
     with pytest.raises(GwasError) as caught:
-        client.associations_for("rs111033563")
+        client.association_pages("rs111033563")
     assert not isinstance(caught.value, GwasRetired)
     assert _client(status=404).follow(f"{DEFAULT_GWAS_ENDPOINT}/studies/GCST000000/ancestries") == {}
     with pytest.raises(GwasNotFound):
@@ -679,6 +679,46 @@ def test_a_404_on_the_search_path_is_could_not_ask_not_an_empty_answer() -> None
 def _one(association: dict, tmp_path: Path, **kwargs) -> tuple[GwasEffectRow, object]:
     result = enrich_gwas(_spec(tmp_path), client=_client(associations=[association]), dataset="d", **kwargs)
     return result.rows[0], result
+
+
+def test_a_multi_snp_associations_allele_is_the_queried_variants_never_the_first_listed(
+    tmp_path: Path,
+) -> None:
+    """A multi-SNP association lists one `snp_effect_allele` per SNP, in the source's order. Taking the
+    first would state another variant's allele against this module's row; no match withholds it."""
+    two = {**_ASSOCIATIONS[0], "snp_effect_allele": ["rs1-A", "rs4149056-G"]}
+    row, _ = _one(two, tmp_path / "a")
+    assert (row.rsid, row.effect_allele) == ("rs4149056", "G")
+    other = {**_ASSOCIATIONS[0], "snp_effect_allele": ["rs1-A"]}
+    row, _ = _one(other, tmp_path / "b")
+    assert (row.rsid, row.effect_allele) == ("rs4149056", None)
+
+
+def test_v2s_dash_is_an_absent_pmid_and_keeps_the_row(tmp_path: Path) -> None:
+    row, result = _one({**_ASSOCIATIONS[0], "pubmed_id": "-"}, tmp_path)
+    assert row.pmid is None
+    assert result.unusable == 0
+
+
+def test_a_passing_5xx_is_retried_and_a_persistent_one_is_could_not_ask(tmp_path: Path) -> None:
+    """A v2 pass makes one request per page and per study; one passing 503 must not sink them all."""
+    served: list[int] = []
+
+    def flaky(request: httpx.Request) -> httpx.Response:
+        if not served:
+            served.append(503)
+            return httpx.Response(503, text="busy")
+        served.append(200)
+        return httpx.Response(200, json=_page(_ASSOCIATIONS)(request))
+
+    client = GwasCatalogClient(gate=PacingGate(0.0))
+    client._client = httpx.Client(transport=httpx.MockTransport(flaky))
+    result = enrich_gwas(_spec(tmp_path / "a"), client=client, dataset="d", study_facts=False)
+    assert served[:2] == [503, 200]
+    assert len(result.rows) == len(_ASSOCIATIONS)
+    with pytest.raises(GwasError) as caught:
+        enrich_gwas(_spec(tmp_path / "b"), client=_client(status=503), dataset="d")
+    assert not isinstance(caught.value, (GwasRetired, GwasNotFound))
 
 
 def test_a_unit_with_a_thin_space_is_kept_verbatim(tmp_path: Path) -> None:
@@ -812,12 +852,12 @@ def test_live_the_legacy_api_is_retired_and_v2_answers() -> None:
             client._get(
                 "https://www.ebi.ac.uk/gwas/rest/api/singleNucleotidePolymorphisms/rs4149056/associations"
             )
-        associations = client.associations_for("rs4149056")
+        associations = [a for page in client.association_pages("rs4149056") for a in page]
         assert len(associations) > 20, "more than one default page: the paging must have run"
         live = next(a for a in associations if str(a.get("association_id")) == "13069")
         recorded = _ASSOCIATIONS[0]
         for key in ("beta", "accession_id", "pubmed_id", "efo_traits", "snp_effect_allele"):
             assert live[key] == recorded[key], key
-        assert client.associations_for("rs111033563") == []
+        assert client.association_pages("rs111033563") == [[]]
     finally:
         client.close()

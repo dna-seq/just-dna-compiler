@@ -22,10 +22,13 @@ the attempts.
 
 from __future__ import annotations
 
+import importlib
+import pkgutil
 import time
 from collections.abc import Callable
 
 import httpx
+import just_dna_enricher
 import pytest
 from just_dna_enricher.civic_api import CivicApiClient, CivicApiRetired, CivicApiUnavailable
 from just_dna_enricher.cpic import CpicClient, CpicError, CpicRetired
@@ -41,6 +44,7 @@ from just_dna_enricher.litvar import LitvarClient, LitvarRetired, LitvarUnavaila
 from just_dna_enricher.net import PacingGate
 from just_dna_enricher.pgs import PgsCatalogClient, PgsCatalogRetired, PgsCatalogUnavailable
 from just_dna_enricher.pharmvar import PharmVarClient, PharmVarError, PharmVarRetired
+from tenacity import BaseRetrying, RetryCallState
 
 
 @pytest.fixture(autouse=True)
@@ -171,7 +175,7 @@ def _gwas(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], ob
     """
     client = GwasCatalogClient(gate=_instant_gate())
     client._client = httpx.Client(transport=httpx.MockTransport(handler))
-    return lambda: client.associations_for("rs1801133")
+    return lambda: client.association_pages("rs1801133")
 
 
 def _europepmc(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], object]:
@@ -477,12 +481,6 @@ def test_no_retry_policy_in_the_tier_retries_a_permanent_4xx() -> None:
     not reach (the withholding clients, the builders' download), by handing each policy's own `retry`
     predicate a synthetic `HTTPStatusError` and asking whether it would try again.
     """
-    import importlib
-    import pkgutil
-
-    import just_dna_enricher
-    from tenacity import BaseRetrying, RetryCallState
-
     policies: dict[str, BaseRetrying] = {}
     for info in pkgutil.iter_modules(just_dna_enricher.__path__):
         module = importlib.import_module(f"just_dna_enricher.{info.name}")

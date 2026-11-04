@@ -4789,7 +4789,8 @@ wider than that lane. No client named a 410, and six (`gnomad`, `eutils`, `cpic`
 three or four times first. Since RM354:
 
 - **Retried:** a transport failure, a timeout, a 5xx and a 429 — `net.retry_if_transient`, which the
-  six now use. The clients that already retried transport only keep their narrower predicate.
+  six now use, and so does `gwas`, whose v2 pass makes one request per page and per study (one passing
+  503 used to sink all of them). The other clients that retried transport only keep that predicate.
   `test_no_retry_policy_in_the_tier_retries_a_permanent_4xx` hands every `@retry` policy in the package
   a synthetic 400, 404 and 410 and refuses any that would try again.
 - **A 410 raises the client's own `*Retired`**, a subclass of its could-not-ask type, so every
@@ -5517,7 +5518,7 @@ the legacy pass wrote rather than doubling it (a test pins that).
 | column | v2 field | note |
 | --- | --- | --- |
 | `association_id` | `association_id` (an integer) | `_links.self`'s last segment as the fallback |
-| `effect_allele`, `rsid` | `snp_effect_allele[0]` | `rs4149056-C`, or `rs4149056-?` → null: the legacy `riskAlleleName` grammar, unchanged |
+| `effect_allele`, `rsid` | the `snp_effect_allele` entry naming the queried rsID | `rs4149056-C`, or `rs4149056-?` → null: the legacy `riskAlleleName` grammar, unchanged. A multi-SNP association lists one entry per SNP; none naming this variant withholds the allele rather than taking the first |
 | `effect_size`, `effect_measure` | `or_per_copy_num` → `OR`; else the number in `beta` → `beta` | `beta` is **one composite string** where the legacy API had three fields |
 | `effect_unit`, `effect_direction` | the middle and the last token of `beta` | `"0.05 umol/l increase"`; the unit kept verbatim (one study writes U+2009 in it). `"-"` is v2's no-value. A string outside `<number> [<unit>] <increase\|decrease>` is **withheld whole and counted** (`unparsed_effects`, and `--strict` refuses on it) |
 | `standard_error` | — | **v2 publishes none.** Always null; never derived from the CI |
@@ -5525,7 +5526,7 @@ the legacy pass wrote rather than doubling it (a test pins that).
 | `risk_allele_frequency` | `risk_frequency` | `NR` → null |
 | `p_value` | `pvalue_mantissa` + `pvalue_exponent` → `3e-493` | the pair the Catalog curated; the float beside it is `0.0` past float64's range and `2.9999999999999997e-29` for `3e-29`. `p_value_num` is read from the same string |
 | `trait`, `trait_efo_id` | `efo_traits[].efo_trait`, `efo_traits[].efo_id` | inline now. The EFO label, as the legacy efoTraits link served; `reported_trait` is not read |
-| `pmid`, `study_accession` | `pubmed_id`, `accession_id` | inline now |
+| `pmid`, `study_accession` | `pubmed_id`, `accession_id` | inline now; v2's `-` → null |
 | `ancestry` | `/studies/<accession>/ancestries` | **the one fact still behind a request.** Every stage, sorted; `NR` → absent |
 
 **Everything below came from probing the live API, not its documentation.**

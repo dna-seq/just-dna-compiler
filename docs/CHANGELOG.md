@@ -53,7 +53,9 @@ table the legacy pass wrote. What changed in the values: `standard_error` is alw
 none); `p_value` is the Catalog's mantissa/exponent pair (`3e-493` where the legacy pass wrote `0.0`);
 an all-`NR` ancestry is empty rather than `NR`; an effect string outside v2's
 `<number> [<unit>] <increase|decrease>` is withheld and counted in the new `GwasResult.unparsed_effects`,
-which `--strict` refuses on. `--no-study-facts` now skips only the ancestry request; pmid, accession and
+which `--strict` refuses on and the CLI summary prints. The effect allele is taken from the
+`snp_effect_allele` entry naming the queried rsID, never the first of a multi-SNP list. The client now
+retries a 5xx and a 429 as well as a transport failure. `--no-study-facts` now skips only the ancestry request; pmid, accession and
 trait are filled either way. A 404 on the association search is now could-not-ask (v2 answers a variant
 it holds nothing for with an empty 200), so `gwas` left the 404-is-an-answer set.
 

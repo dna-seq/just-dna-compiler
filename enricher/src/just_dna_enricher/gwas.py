@@ -62,7 +62,7 @@ from just_dna_format.layout import atomic_writer
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.sources import SourceRow
 from pydantic import ValidationError
-from tenacity import retry, retry_if_exception_type, wait_exponential_jitter
+from tenacity import retry, wait_exponential_jitter
 
 from just_dna_enricher.enrich import (
     EnrichmentError,
@@ -75,7 +75,7 @@ from just_dna_enricher.licensing import (
     require_sources_file,
     sidecar_path,
 )
-from just_dna_enricher.net import PacingGate, attempt_floor, raise_if_retired
+from just_dna_enricher.net import PacingGate, attempt_floor, raise_if_retired, retry_if_transient
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +128,7 @@ class GwasNotFound(GwasError):
     It stays inside `GwasError` so a caller that does not care about the distinction still catches
     one type. **Since v2 (RM354) only `follow` treats it as an answer** — one study's ancestry
     withheld. The v2 search answers a variant it holds nothing for with a 200 and zero elements, and
-    its only measured 404 was a path that does not exist, so `associations_for` lets this propagate:
+    its only measured 404 was a path that does not exist, so `association_pages` lets this propagate:
     reading it as "no associations" would write a confident negative about a variant nobody could ask
     about.
     """
@@ -223,49 +223,44 @@ class GwasCatalogClient:
     @retry(
         stop=attempt_floor(3),
         wait=wait_exponential_jitter(initial=0.5, max=8.0),
-        retry=retry_if_exception_type((httpx.TransportError, httpx.TimeoutException)),
+        # Transport, 5xx and 429 since RM354: a v2 pass makes ~190 requests on one module, and one
+        # passing 503 sank all of them. A permanent 4xx is never retried.
+        retry=retry_if_transient(),
         reraise=True,
     )
     def _request(self, url: str) -> dict:
         """The retrying half, kept separate so the translation sits **outside** the retry (RM208).
 
-        The docstring below used to sit on this body and claim "both legs are translated". They were
-        not: the transport leg re-raised bare so tenacity could match it, and with `reraise=True`
-        nothing caught it once the attempts ran out — so `associations_for` raised a raw
-        `httpx.ConnectError` at a caller told to expect `GwasError`. Measured, not argued: three
-        attempts against a refusing transport, then the httpx type.
-
-        Same split as `eutils._request`, `cpic._request` and `gnomad._request`. The status and body
-        legs stay **here** rather than below, because `HTTPStatusError` is not in the retry predicate
-        — translating it in this body is a first-and-final attempt by construction, which is what
-        `@client-exception-contract` means by translating each leg where it can be translated.
+        Every leg is translated in `_get`, not here. Before RM354 the status and body legs were
+        translated in this body, which was right while the predicate retried transport only — a
+        status was a first-and-final attempt by construction. Now a 5xx and a 429 are retried, so
+        translating a status here would make it a first-and-final attempt again
+        (`test_retry_is_reachable.py`), and every leg moved out together.
         """
         self.gate.wait()
+        response = self._http().get(url, headers={"Accept": "application/json"})
+        response.raise_for_status()
+        return response.json()
+
+    def _get(self, url: str) -> dict:
+        """Every way this client can fail, spelled as `GwasError` and its subclasses.
+
+        After the retry has spent its attempts: a 404 is `GwasNotFound`, a 410 `GwasRetired`, any
+        other status, an exhausted transport failure or a body that is not JSON a plain `GwasError`.
+        The transport leg is the one the retry hands back — `reraise=True` gives the last failure to
+        this `except` — and it becomes the tier's own type here instead of escaping as `httpx`'s.
+        """
         try:
-            response = self._http().get(url, headers={"Accept": "application/json"})
-            response.raise_for_status()
-            return response.json()
+            return self._request(url)
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 404:
                 raise GwasNotFound(f"GWAS Catalog has no record at {url}") from exc
             raise_if_retired(exc, GwasRetired, "The GWAS Catalog")
             raise GwasError(f"GWAS Catalog returned {exc.response.status_code} for {url}") from exc
-        except ValueError as exc:
-            raise GwasError(f"GWAS Catalog returned unparseable JSON for {url}: {exc}") from exc
-
-    def _get(self, url: str) -> dict:
-        """Every way this client can fail, spelled as `GwasError` / `GwasNotFound`.
-
-        The leg this adds is the one the retry gives back: `reraise=True` hands the last transport
-        failure to this `except` after the attempts are spent, and it becomes the tier's own type
-        here instead of escaping as `httpx`'s.
-        """
-        try:
-            return self._request(url)
-        except (httpx.TransportError, httpx.TimeoutException) as exc:
-            raise GwasError(f"GWAS Catalog request failed for {url}: {exc}") from exc
         except httpx.HTTPError as exc:
             raise GwasError(f"GWAS Catalog request failed for {url}: {exc}") from exc
+        except ValueError as exc:
+            raise GwasError(f"GWAS Catalog returned unparseable JSON for {url}: {exc}") from exc
 
     def association_pages(self, rsid: str) -> list[list[dict]]:
         """Every page of the Catalog's associations for one rsID, one list per request made.
@@ -301,12 +296,9 @@ class GwasCatalogClient:
                     f"record a false negative"
                 )
             pages.append(list(associations))
-            url = (((payload.get("_links") or {}).get("next")) or {}).get("href")
+            nxt = (((payload.get("_links") or {}).get("next")) or {}).get("href")
+            url = str(nxt).split("{")[0] if nxt else None  # a HAL link may be a URI template
         return pages
-
-    def associations_for(self, rsid: str) -> list[dict]:
-        """Every association the Catalog holds for one rsID, all pages joined. `[]` is an answer."""
-        return [association for page in self.association_pages(rsid) for association in page]
 
     def study_ancestries_url(self, accession: str) -> str:
         """Where v2 keeps one study's ancestries. Built from the accession: v2 associations carry no
@@ -344,6 +336,20 @@ def _parse_risk_allele(name: str | None) -> tuple[str | None, str | None]:
     if not allele or allele == _UNKNOWN_ALLELE:
         return rsid.strip() or None, None
     return rsid.strip() or None, allele.upper()
+
+
+def _allele_for(names: list, rsid: str) -> tuple[str | None, str | None]:
+    """`(rsid, effect allele)` from the `snp_effect_allele` entry naming the variant asked about.
+
+    A multi-SNP association lists one entry per SNP (`['rs1-A', 'rs2-G']`), and the first is not
+    necessarily this module's variant: taking it would state rs1's allele against rs2's row. So the
+    entry is matched on its rsID, and when none matches the allele is withheld — never borrowed.
+    """
+    parsed = [_parse_risk_allele(str(name)) for name in names if name]
+    for reported, allele in parsed:
+        if reported and reported.lower() == rsid.lower():
+            return reported, allele
+    return None, None
 
 
 def _float_or_none(value: object) -> float | None:
@@ -786,7 +792,7 @@ def enrich_gwas(
             f"id this pass can key on, {result.p_value_underflows} carried a p-value below "
             f"float64's range and this pass could not read the effect of "
             f"{result.unparsed_effects}, so the artifact does not hold everything the Catalog published. "
-            f"Both are the Catalog's shape rather than an authoring mistake -- use "
+            f"All three are the Catalog's shape rather than an authoring mistake -- use "
             f"mode='best_effort' to record what is holdable and read the warnings."
         )
     return result
@@ -817,8 +823,7 @@ def _build_row(
     if association_id is None or not str(association_id).strip():
         return None
 
-    allele_names = association.get("snp_effect_allele") or []
-    reported_rsid, effect_allele = _parse_risk_allele(allele_names[0] if allele_names else None)
+    reported_rsid, effect_allele = _allele_for(association.get("snp_effect_allele") or [], rsid)
     effect = _effect_from(association)
     if effect is None:
         unparsed.append(str(association_id))
@@ -831,7 +836,7 @@ def _build_row(
         underflows.append(str(association_id))
 
     accession = _verbatim_or_none(association.get("accession_id"))
-    pmid = association.get("pubmed_id")
+    pmid = association.get("pubmed_id")  # a string on v2; `_verbatim_or_none` reads its `-` as absent
     ancestry = None
     if study_facts and accession:
         ancestry = _ancestry(cache.get(study_url(accession)))
@@ -855,7 +860,7 @@ def _build_row(
             p_value_num=queryable_p,
             trait=traits["trait"],
             trait_efo_id=traits["trait_efo_id"],
-            pmid=str(pmid).strip() or None if pmid is not None else None,
+            pmid=_verbatim_or_none(pmid),
             study_accession=accession,
             ancestry=ancestry,
             dataset=release,
