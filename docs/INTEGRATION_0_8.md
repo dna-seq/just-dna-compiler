@@ -116,8 +116,8 @@ gains `locus_to_gene`, `colocalisation` and `consequence`; a 0.7 reader refuses 
 carrying one, which is the same upgrade-first rule.
 
 **A `resolution.csv` row with an rsID and no ALT is answered (added 2026-11-04).** The pass takes the
-release's allele when exactly one at the row's `(chrom, start, ref)` carries the rsID and none there
-states no rsID, and withholds the row otherwise; ENRICHER.md's Open Targets section has the arms. For a
+release's allele when exactly one at the row's position carries the rsID, on the row's REF, and no
+other allele there could be the one, and withholds the row otherwise; ENRICHER.md's Open Targets section has the arms. For a
 consumer: rows in the four tables may now be of an allele the module did not author, and nothing on the
 row says so; the pass's result names those keys (`allele_supplied`) beside the withheld ones
 (`allele_unstated_withheld`, `allele_unstated_no_rsid`, `allele_unstated_unasked`), `summarise` and the

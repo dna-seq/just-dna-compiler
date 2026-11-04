@@ -34,13 +34,15 @@ several of the study's sets with different values (`@multiplicity-is-a-finding`,
 
 **A row with no ALT gets the release's allele, only when the release names exactly one** (RM333, decided
 2026-11-04). `resolution.csv` may hold an rsID at `(chrom, start, ref)` with `alts` empty (an authored
-rsID-only row, `apoe_epsilon`'s two). The pass then reads every allele of the release at that locus and
-its `rsIds`: an allele carrying the row's rsID is a candidate, an allele carrying none is a candidate too
-(unknown, never "not this one": at `6:26091590 G` the release states rs773443949 on `G>T` and nothing on
-`G>A`, while dbSNP, through ClinVar, names both), and an allele carrying only other rsIDs is not. Exactly
-one candidate that carries the rsID supplies the ALT, and the key is named in `allele_supplied`; several
-candidates, or a single one that states no rsID, withhold the key (`allele_unstated_withheld`, never a
-pick: `@multiplicity-is-a-finding`); no candidate is the ordinary not-in-release answer. A row with no
+rsID-only row, `apoe_epsilon`'s two). The pass then reads every allele of the release at that position and
+its `rsIds`: an allele carrying the row's rsID (or its `rsid_current`) is a candidate on any REF, an
+allele on the row's REF carrying none is a candidate too (unknown, never "not this one": at
+`6:26091590 G` the release states rs773443949 on `G>T` and nothing on `G>A`, while dbSNP, through
+ClinVar, names both), and an allele carrying only other rsIDs is not. Exactly one candidate, carrying
+the rsID on the row's REF, supplies the ALT, and the key is named in `allele_supplied`; any other
+non-empty set withholds the key (`allele_unstated_withheld`, never a pick:
+`@multiplicity-is-a-finding`), as does a row whose rsID is itself the back-fill's pick
+(`status="ambiguous"`); no candidate is the ordinary not-in-release answer. A row with no
 rsID either is withheld (`allele_unstated_no_rsid`): a position alone is not an identity
 (`@rsid-not-per-allele`). The supplied ALT is never written back to `resolution.csv`
 (`@enrichment-is-validation`), and no derived row says which ALT it used: the named key lists and the
@@ -204,15 +206,18 @@ def _partial_datasets(release: dict) -> dict[str, tuple[int, int]]:
 
 
 Allele = tuple[str, str | None, str, int, str, str]
-Unstated = tuple[str, str | None, str, int, str]
+#: `(variant_key, rsid, rsid_current, chrom, start, ref)`: a resolved row that states no ALT.
+Unstated = tuple[str, str | None, str | None, str, int, str]
 
 
-def _alleles(rows: list[ResolutionRow]) -> tuple[list[Allele], list[Unstated], list[str]]:
-    """`(variant_key, rsid, chrom, start, ref, alt)` per resolved ALT; `(variant_key, rsid, chrom, start,
-    ref)` per on-build row that states no ALT; and the keys left out as off-build."""
+def _alleles(rows: list[ResolutionRow]) -> tuple[list[Allele], list[Unstated], list[str], list[str]]:
+    """`(variant_key, rsid, chrom, start, ref, alt)` per resolved ALT; one `Unstated` per on-build row that
+    states no ALT and carries a settled rsID; the keys of no-ALT rows whose rsID is itself a pick among
+    several (`status="ambiguous"`, `rsid_alternates`); and the keys left out as off-build."""
     seen: set[tuple] = set()
     out: list[Allele] = []
     unstated: list[Unstated] = []
+    unsettled: set[str] = set()
     off_build: list[str] = []
     for row in rows:
         if row.status == "not_found" or row.chrom is None or row.start is None or row.ref is None:
@@ -222,7 +227,10 @@ def _alleles(rows: list[ResolutionRow]) -> tuple[list[Allele], list[Unstated], l
             continue
         alts = [a.strip() for a in (row.alts or "").split(",") if a.strip()]
         if not alts:
-            entry = (row.variant_key, row.rsid, row.chrom, row.start, row.ref)
+            if row.status == "ambiguous":
+                unsettled.add(row.variant_key)
+                continue
+            entry = (row.variant_key, row.rsid, row.rsid_current, row.chrom, row.start, row.ref)
             if entry not in seen:
                 seen.add(entry)
                 unstated.append(entry)
@@ -232,18 +240,22 @@ def _alleles(rows: list[ResolutionRow]) -> tuple[list[Allele], list[Unstated], l
             if entry not in seen:
                 seen.add(entry)
                 out.append(entry)
-    return out, unstated, sorted(set(off_build))
+    return out, unstated, sorted(unsettled), sorted(set(off_build))
 
 
 def _supply_alleles(
     con: duckdb.DuckDBPyConnection, unstated: list[Unstated]
 ) -> tuple[list[Allele], list[str], list[str]]:
-    """The release's ALT for each row that states none, by its rsID at its `(chrom, start, ref)`.
+    """The release's ALT for each row that states none, by its rsID at its position.
 
-    Returns the supplied alleles, the keys withheld (several candidates, or one stating no rsID) and the
-    keys with no candidate at all. An allele carrying only other rsIDs is not a candidate; one carrying
-    no rsID is (unknown), so it withholds rather than letting its sibling win. Each `unstated` entry is
-    answered on its own locus, so a key on two loci is not one locus with twice the alleles.
+    Returns the supplied alleles, the keys withheld, and the keys with no candidate at all. The row's
+    rsID is `rsid`, or the `rsid_current` dbSNP merged it into. A candidate is an allele at the row's
+    `(chrom, start)` carrying that rsID, whatever its REF (one rsID can name a SNV and an indel at one
+    position), or an allele at the row's `(chrom, start, ref)` carrying no rsID at all (unknown, so it
+    withholds rather than letting its sibling win). An allele carrying only other rsIDs is not one.
+    Exactly one candidate, carrying the rsID on the row's own REF, supplies its ALT; any other
+    non-empty set withholds. Candidates are distinct `(ref, alt)` pairs, so one allele the release
+    lists under two ids is one candidate. Each entry is answered on its own locus.
     """
     probe_table(
         con,
@@ -251,34 +263,37 @@ def _supply_alleles(
         [
             ("variant_key", "VARCHAR"),
             ("rsid", "VARCHAR"),
+            ("rsid_current", "VARCHAR"),
             ("chrom", "VARCHAR"),
             ("position", "BIGINT"),
             ("ref", "VARCHAR"),
         ],
         unstated,
     )
-    carrying: dict[Unstated, list[str]] = {entry: [] for entry in unstated}
-    unknown: dict[Unstated, int] = dict.fromkeys(unstated, 0)
-    for key, rsid, chrom, position, ref, alt, carries, states_none in con.execute(
-        "SELECT u.variant_key, u.rsid, u.chrom, u.position, u.ref, v.alt, "
-        "coalesce(list_contains(v.rs_ids, u.rsid), false), coalesce(len(v.rs_ids), 0) = 0 "
-        "FROM unstated u JOIN variants v "
-        "ON v.chrom = u.chrom AND v.position = u.position AND v.ref = u.ref "
-        "ORDER BY u.variant_key, u.chrom, u.position, v.alt, v.variant_id"
+    carrying: dict[Unstated, set[tuple[str, str]]] = {entry: set() for entry in unstated}
+    unknown: dict[Unstated, set[tuple[str, str]]] = {entry: set() for entry in unstated}
+    for key, rsid, current, chrom, position, ref, v_ref, v_alt, carries, states_none in con.execute(
+        "SELECT u.variant_key, u.rsid, u.rsid_current, u.chrom, u.position, u.ref, v.ref, v.alt, "
+        "coalesce(list_contains(v.rs_ids, u.rsid), false) "
+        "OR coalesce(list_contains(v.rs_ids, u.rsid_current), false), "
+        "coalesce(len(v.rs_ids), 0) = 0 "
+        "FROM unstated u JOIN variants v ON v.chrom = u.chrom AND v.position = u.position "
+        "ORDER BY u.variant_key, u.chrom, u.position, v.ref, v.alt, v.variant_id"
     ).fetchall():
-        entry = (key, rsid, chrom, position, ref)
+        entry = (key, rsid, current, chrom, position, ref)
         if carries:
-            carrying[entry].append(alt)
-        elif states_none:
-            unknown[entry] += 1
+            carrying[entry].add((v_ref, v_alt))
+        elif states_none and v_ref == ref:
+            unknown[entry].add((v_ref, v_alt))
     supplied: list[Allele] = []
     withheld: set[str] = set()
     absent: set[str] = set()
     for entry in unstated:
-        key, rsid, chrom, start, ref = entry
-        if len(carrying[entry]) == 1 and unknown[entry] == 0:
-            supplied.append((key, rsid, chrom, start, ref, carrying[entry][0]))
-        elif carrying[entry] or unknown[entry]:
+        key, rsid, _current, chrom, start, ref = entry
+        candidates = carrying[entry] | unknown[entry]
+        if len(candidates) == 1 and carrying[entry] and next(iter(carrying[entry]))[0] == ref:
+            supplied.append((key, rsid, chrom, start, ref, next(iter(carrying[entry]))[1]))
+        elif candidates:
             withheld.add(key)
         else:
             absent.add(key)
@@ -397,9 +412,9 @@ def enrich_opentargets(
     resolution_rows = overlaid_input_rows(
         spec_dir, "resolution.csv", _existing(resolution_path, ResolutionRow), error=OpenTargetsError
     )
-    alleles, unstated, off_build = _alleles(resolution_rows)
+    alleles, unstated, unsettled, off_build = _alleles(resolution_rows)
     # A row with neither an ALT nor an rsID names a position, not an allele: nothing is asked for it.
-    no_rsid = sorted({key for key, rsid, *_ in unstated if not rsid})
+    no_rsid = sorted({entry[0] for entry in unstated if not entry[1]})
     unstated = [entry for entry in unstated if entry[1]]
     if off_build:
         logger.warning(
@@ -433,9 +448,15 @@ def enrich_opentargets(
                 )
             else:
                 unasked = sorted({key for key, *_ in unstated})
-        held = set(no_rsid) | set(withheld) | set(unasked)
+        withheld = sorted(set(withheld) | set(unsettled))
+        # A key with a stated ALT on another of its rows is still answered for that allele, as it was
+        # before no-ALT rows were read; only a key with nothing else to ask about is held back.
+        blocked = set(no_rsid) | set(withheld) | set(unasked)
+        supplied = [entry for entry in supplied if entry[0] not in blocked]
+        stated = {entry[0] for entry in alleles}
+        held = blocked - stated
         alleles = [entry for entry in dict.fromkeys(alleles + supplied) if entry[0] not in held]
-        result.allele_supplied = sorted({entry[0] for entry in supplied} - held)
+        result.allele_supplied = sorted({entry[0] for entry in supplied})
         result.allele_unstated_withheld = withheld
         result.allele_unstated_no_rsid = no_rsid
         result.allele_unstated_unasked = unasked
@@ -692,7 +713,8 @@ def enrich_opentargets(
         logger.warning(
             "Open Targets pass withheld %d variant(s) whose resolution row states no ALT: the release holds "
             "several alleles at the position that may carry the row's rsID (or the only one states no "
-            "rsID), and one is never picked. State the ALT in resolution.csv. Examples: %s",
+            "rsID, or sits on another REF), or the row's rsID is itself a pick among several "
+            "(status ambiguous); one is never picked. State the ALT in resolution.csv. Examples: %s",
             len(result.allele_unstated_withheld),
             result.allele_unstated_withheld[:3],
         )

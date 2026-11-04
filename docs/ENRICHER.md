@@ -3366,23 +3366,29 @@ a heavily fine-mapped variant: rs646776's 2,061 sets carry 309,634 coloc rows.
 
 **A row that states an rsID and no ALT** (added 2026-11-04). An authored rsID-only row
 (`apoe_epsilon`'s two, `hfe_compound_het`'s two) used to be skipped without a word. The pass now reads
-every allele the release holds at the row's `(chrom, start, ref)` and each allele's `rs_ids`:
+every allele the release holds at the row's `(chrom, start)` and each allele's `rs_ids`. The row's rsID
+is its `rsid`, or the `rsid_current` dbSNP merged it into. A **candidate** is an allele at the position
+carrying that rsID, on any REF (one rsID can name a SNV and an indel at one position), or an allele on
+the row's own REF carrying no rsID at all; one allele the release lists under two ids is one candidate.
 
-| what the release holds at the locus | answer | where it is named |
+| what the release holds | answer | where it is named |
 |---|---|---|
-| exactly one allele carrying the row's rsID, and none with an empty `rs_ids` | that allele's ALT is used for all four tables | `allele_supplied` |
-| several alleles carrying it, or one beside an allele with an empty `rs_ids` | withheld, nothing written, earlier rows kept | `allele_unstated_withheld` |
-| no allele carrying it, and none with an empty `rs_ids` | asked and absent | `not_in_release` |
+| exactly one candidate, carrying the rsID, on the row's REF | that allele's ALT is used for all four tables | `allele_supplied` |
+| several candidates, or the only one states no rsID or sits on another REF | withheld, nothing written, earlier rows kept | `allele_unstated_withheld` |
+| no candidate | asked and absent | `not_in_release` |
+| (the row's `status` is `ambiguous`: its rsID is the back-fill's pick among several) | withheld | `allele_unstated_withheld` |
 | (the row has no rsID either) | withheld, nothing asked: a position names no allele (`@rsid-not-per-allele`) | `allele_unstated_no_rsid` |
 | (the snapshot predates `rs_ids`) | nobody asked; `--strict` refuses | `allele_unstated_unasked` |
+
+A key with a stated ALT on another of its rows is still answered for that allele; only a key with
+nothing else to ask about is held back.
 
 An allele with an empty `rs_ids` is a candidate, not a refusal. The release does not label every allele:
 at `6:26091590 G` it states rs773443949 on `G>T` and nothing on `G>A`, and ClinVar names both under it, so
 supplying `G>T` would pick one of two (`@multiplicity-is-a-finding`). Over the 26.09 release, 101,945 of
 the 276,003 loci with several alleles at one `(chrom, position, ref)` have an rsID-less allele beside a
 labelled one; a no-ALT row at any of them is withheld, and the author states the ALT. An allele carrying
-only other rsIDs is a definite no. The rsID read is the row's `rsid`; a merged rsID the release states
-under its current number does not match. The supplied ALT is never written back to `resolution.csv`
+only other rsIDs is a definite no. The supplied ALT is never written back to `resolution.csv`
 (`@enrichment-is-validation`), and **no derived row says which ALT it used**: the pass's key lists, its
 warning and the CLI's counts are the only record, so a reader of `consequences.csv` cannot tell a
 supplied allele from an authored one. A row-level column would say it; that is a P5 question left open.

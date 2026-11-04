@@ -673,9 +673,9 @@ def test_the_slice_carries_every_allele_at_a_wanted_locus_with_its_rsids() -> No
     record = read_release(SLICE)
     assert record is not None
     wanted = {tuple(v.split("_", 3)) for v in record.model_dump()["subset_of"]}
-    loci = {(c, int(p), r) for c, p, r, _a in wanted}
-    held = {(c, p, r) for c, p, r in variants.select("chrom", "position", "ref").iter_rows()}
-    assert held == loci, "the allele table holds the wanted loci and nothing else"
+    loci = {(c, int(p)) for c, p, _r, _a in wanted}
+    held = set(variants.select("chrom", "position").iter_rows())
+    assert held == loci, "the allele table holds the wanted positions and nothing else"
     assert variants.height > len(wanted), "some wanted locus has a sibling allele in the release"
     full = resolve_opentargets_reference()
     if full is None or full.resolve() == SLICE.resolve():
@@ -684,13 +684,13 @@ def test_the_slice_carries_every_allele_at_a_wanted_locus_with_its_rsids() -> No
     if "rs_ids" not in every.columns:
         return
     on_release = every.join(
-        variants.select("chrom", "position", "ref").unique(), on=["chrom", "position", "ref"], how="semi"
+        variants.select("chrom", "position").unique(), on=["chrom", "position"], how="semi"
     ).sort("variant_id")
     assert on_release.equals(variants.sort("variant_id"))
 
 
-def test_subset_snapshot_keeps_a_wanted_alleles_siblings_and_nothing_else_of_them(tmp_path: Path) -> None:
-    """Cut from the slice itself: wanting `6_26091590_G_T` keeps `G_A` in the allele table, and only there."""
+def test_subset_snapshot_keeps_a_wanted_alleles_siblings_whole(tmp_path: Path) -> None:
+    """Cut from the slice itself: wanting `6_26091590_G_T` keeps `G_A`, with its consequence rows too."""
     cut = tmp_path / "cut"
     subset_snapshot(SLICE, cut, [("6", 26091590, "G", "T")])
     variants = pl.read_parquet(cut / "data" / "variants.parquet")
@@ -699,8 +699,13 @@ def test_subset_snapshot_keeps_a_wanted_alleles_siblings_and_nothing_else_of_the
     )
     assert variants.height == 2
     (sibling,) = variants.filter(pl.col("alt") == "A")["variant_id"]
-    for name in ("consequences-00000.parquet", "credible_set_members-00000.parquet"):
-        assert sibling not in set(pl.read_parquet(cut / "data" / name)["variant_id"])
+    on_slice = pl.read_parquet(SLICE / "data" / "consequences-00000.parquet").filter(
+        pl.col("variant_id") == sibling
+    )
+    on_cut = pl.read_parquet(cut / "data" / "consequences-00000.parquet").filter(
+        pl.col("variant_id") == sibling
+    )
+    assert on_slice.height and on_cut.equals(on_slice)
 
 
 def test_a_row_with_no_alt_takes_the_one_allele_carrying_its_rsid(module: Path, tmp_path: Path) -> None:
@@ -868,6 +873,131 @@ def test_a_snapshot_without_rsids_cannot_answer_a_row_with_no_alt(module: Path, 
     # The unasked key's GWAS rows keep their values, counted as withheld rather than as not looked up.
     unasked_rows = [r for r in result.gwas_effects if r.variant_key == "rs1800562" and r.study_accession]
     assert unasked_rows and result.posterior.allele_withheld == len(unasked_rows)
+
+
+def _slice_with_allele(tmp_path: Path, row: dict) -> Path:
+    """A copy of the slice whose allele table holds one more row (every other byte is the release's)."""
+    copy = tmp_path / "with_allele"
+    shutil.copytree(SLICE, copy)
+    path = copy / "data" / "variants.parquet"
+    variants = pl.read_parquet(path)
+    pl.concat([variants, pl.DataFrame([row], schema=variants.schema)]).write_parquet(path)
+    return copy
+
+
+def test_a_carrier_on_another_ref_at_the_position_withholds(module: Path, tmp_path: Path) -> None:
+    """One rsID can name a SNV and an indel at one position: a carrier on another REF is a candidate too."""
+    snapshot = _slice_with_allele(
+        tmp_path,
+        {
+            "variant_id": "6_26092913_GA_G",
+            "chrom": "6",
+            "position": 26092913,
+            "ref": "GA",
+            "alt": "G",
+            "rs_ids": ["rs1800562"],
+        },
+    )
+    _blank_alts(module, "rs1800562")
+    result = enrich_opentargets(module, snapshot=snapshot, write=False)
+    assert result.allele_unstated_withheld == ["rs1800562"] and not result.allele_supplied
+    # An rsID-less allele on another REF is not a candidate: the row's REF already excludes it.
+    snapshot = _slice_with_allele(
+        tmp_path / "b",
+        {
+            "variant_id": "6_26092913_GA_G",
+            "chrom": "6",
+            "position": 26092913,
+            "ref": "GA",
+            "alt": "G",
+            "rs_ids": [],
+        },
+    )
+    assert enrich_opentargets(module, snapshot=snapshot, write=False).allele_supplied == ["rs1800562"]
+
+
+def test_one_allele_listed_under_two_ids_is_one_candidate(module: Path, tmp_path: Path) -> None:
+    """The release keys some long alleles by an `OTVAR_` hash: the same (ref, alt) twice is one allele."""
+    snapshot = _slice_with_allele(
+        tmp_path,
+        {
+            "variant_id": "OTVAR_test",
+            "chrom": "6",
+            "position": 26092913,
+            "ref": "G",
+            "alt": "A",
+            "rs_ids": ["rs1800562"],
+        },
+    )
+    _blank_alts(module, "rs1800562")
+    result = enrich_opentargets(module, snapshot=snapshot, write=False)
+    assert result.allele_supplied == ["rs1800562"] and not result.allele_unstated_withheld
+
+
+def test_the_merged_rsids_current_number_matches(module: Path) -> None:
+    """A row whose rsID dbSNP merged away is matched by `rsid_current`, the number the release states."""
+    _append(
+        module / "resolution.csv",
+        [
+            {
+                **LEAD_ROW,
+                "variant_key": "rs000merged",
+                "rsid": "rs1",
+                "rsid_current": "rs1800562",
+                "chrom": "6",
+                "start": "26092913",
+                "ref": "G",
+                "alts": "",
+            }
+        ],
+    )
+    result = enrich_opentargets(module, snapshot=SLICE, write=False)
+    assert "rs000merged" in result.allele_supplied
+
+
+def test_a_row_whose_rsid_is_itself_a_pick_is_withheld(module: Path) -> None:
+    """`status="ambiguous"`: the back-fill picked the lowest of several rsIDs, so the rsID is no identity."""
+    _blank_alts(module, "rs1800562")
+    path = module / "resolution.csv"
+    with path.open(newline="") as handle:
+        reader = csv.DictReader(handle)
+        fieldnames, rows = reader.fieldnames, list(reader)
+    with path.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            if row["variant_key"] == "rs1800562":
+                row = {**row, "status": "ambiguous", "rsid_alternates": "rs1800562,rs1800563"}
+            writer.writerow(row)
+    result = enrich_opentargets(module, snapshot=SLICE, write=False)
+    assert result.allele_unstated_withheld == ["rs1800562"] and not result.allele_supplied
+
+
+def test_a_key_with_a_stated_allele_is_still_answered_beside_a_no_alt_row(module: Path) -> None:
+    """A second, unanswerable row of a key does not take the key's stated allele down with it."""
+    authored = enrich_opentargets(module, snapshot=SLICE, write=False)
+    _append(
+        module / "resolution.csv",
+        [
+            {
+                **LEAD_ROW,
+                "variant_key": "rs1800562",
+                "rsid": "",
+                "chrom": "6",
+                "start": "26092913",
+                "ref": "G",
+                "alts": "",
+                "locus_index": "1",
+            }
+        ],
+    )
+    result = enrich_opentargets(module, snapshot=SLICE, write=False)
+    assert result.allele_unstated_no_rsid == ["rs1800562"]
+    for name in ("locus_to_gene", "consequences"):
+        assert [r for r in _facts(getattr(result, name)) if r["variant_key"] == "rs1800562"] == [
+            r for r in _facts(getattr(authored, name)) if r["variant_key"] == "rs1800562"
+        ]
+    assert result.posterior == authored.posterior
 
 
 #: APOE ε, as `reference_examples/apoe_epsilon` authors it: two rsID-only rows, `alts` empty.

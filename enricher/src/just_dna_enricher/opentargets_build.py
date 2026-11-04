@@ -492,9 +492,9 @@ def subset_snapshot(
     they are members of, those sets' L2G and coloc rows), so a pass over the subset answers as it would over the
     whole release for those variants. `studies` keeps every credible-set head of those studies too,
     so "the study has credible sets, and the variant is in none" answers on the subset as it does on
-    the release. Every other allele of the release at a wanted allele's `(chrom, position, ref)` keeps its
-    allele-table row (and nothing else), so the pass's lookup for a module row with no ALT sees the
-    locus's alleles as the release does. The `release.json` is the parent's with `subset_of` added.
+    the release. Every other allele of the release at a wanted allele's `(chrom, position)` is kept too,
+    with all of its rows, so the pass's lookup for a module row with no ALT sees the position's alleles
+    as the release does. The `release.json` is the parent's with `subset_of` added.
     """
     _require_polars()
     snapshot, out_dir = Path(snapshot), Path(out_dir)
@@ -503,17 +503,16 @@ def subset_snapshot(
     wanted = pl.DataFrame(
         alleles, schema={"chrom": pl.Utf8, "position": pl.Int64, "ref": pl.Utf8, "alt": pl.Utf8}, orient="row"
     )
-    every = pl.read_parquet(src / VARIANTS_FILE)
-    # The wanted alleles carry their whole footprint. Their SIBLINGS (every other allele of the release at
-    # a wanted `(chrom, position, ref)`) carry their allele-table row only: a module row naming an rsID
-    # and no ALT is matched against every allele at its locus, so a slice without the siblings would
-    # answer "one allele here" where the release answers "several". Nothing else of a sibling is read.
-    variants = every.join(wanted, on=["chrom", "position", "ref", "alt"], how="semi")
-    siblings = every.join(
-        wanted.select("chrom", "position", "ref").unique(), on=["chrom", "position", "ref"], how="semi"
+    # Every allele of the release at a wanted allele's `(chrom, position)` is kept whole, beside the wanted
+    # one: a module row naming an rsID and no ALT is matched against every allele at its position, so a
+    # slice without them would answer "one allele here" where the release answers "several", and a
+    # sibling the pass supplies must answer as it does on the release.
+    variants = (
+        pl.read_parquet(src / VARIANTS_FILE)
+        .join(wanted.select("chrom", "position").unique(), on=["chrom", "position"], how="semi")
+        .sort("chrom", "position", "ref", "alt", "variant_id")
     )
     ids = variants.select("variant_id")
-    variants = siblings.sort("chrom", "position", "ref", "alt", "variant_id")
     members = pl.scan_parquet(str(src / MEMBERS_GLOB)).join(ids.lazy(), on="variant_id", how="semi").collect()
     sets = pl.read_parquet(src / CREDIBLE_SETS_FILE)
     of_studies = sets.filter(pl.col("study_id").is_in(studies or [])).select("study_locus_id")

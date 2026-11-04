@@ -1,6 +1,6 @@
 {
   "builder_version": "0.7.3",
-  "built_at": "2026-11-04T15:46:31Z",
+  "built_at": "2026-11-04T16:03:57Z",
   "croissant": {
     "date_published": "2026-09-18",
     "license": "https://creativecommons.org/publicdomain/zero/1.0/",
@@ -25,7 +25,7 @@
   },
   "row_counts": {
     "colocalisations-00000.parquet": 2352,
-    "consequences-00000.parquet": 1318,
+    "consequences-00000.parquet": 1603,
     "credible_set_members-00000.parquet": 363,
     "credible_sets.parquet": 24939,
     "l2g.parquet": 655,
@@ -48,6 +48,8 @@
     "6_26093233_G_A",
     "6_26094198_GGCACTACGTCTTA_G",
     "6_26072764_C_T",
+    "8_78193100_C_G",
+    "8_78193100_C_T",
     "8_78193100_C_G",
     "8_78193100_C_T"
   ]
