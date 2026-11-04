@@ -41,6 +41,22 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM352: a release record can declare a toolchain-only byte move, backed by a fixed-compiler sweep (0.8, uncut)
+
+**format, compiler** — `VALID_RELEASE_CHANGE_KINDS` gains `toolchain`: the bytes moved, the content did
+not, and the recorded toolchain (`compilation.toolchain`, RM342) says why. It is legal on
+`parquet_bytes` only, and `RecompileAnswer.toolchain_moves` reads it beside `corrections` and
+`additions`. The release gate accepts it only when a second sweep backs it, with this release's
+compiler on both sides and only the toolchain varied (`sweep --toolchain-before DIR`). Both sides must
+record different toolchains, `content_signature` must not move, and, when it is the axis's only kind,
+every module whose bytes moved must have moved under the toolchain alone. Each condition has its own
+`TOOLCHAIN_*` finding phrase. `SweepMeasurement` records each side's toolchain
+(`before_toolchain` / `after_toolchain`). Measured on this branch: the sixteen reference examples
+compiled by one compiler under polars 1.44.2 and 2.1.0 move `parquet_bytes` on 16 of 16 and
+`content_signature` on none. The Constitution's Goals sentence on integrity now names the recorded
+toolchain beside the pinned compiler version. A 0.7 `just-dna-format` refuses a serialized record
+carrying `kind: toolchain`; see [INTEGRATION_0_8.md](INTEGRATION_0_8.md) § 1.5.
+
 ## 2026-11-04 — RM304: a `vrs_id` says which VRS minted it, and the module pins one (0.8, uncut)
 
 **format, compiler, enricher** — VRS 2.1 re-ids some ambiguous insertions, so an id now carries the

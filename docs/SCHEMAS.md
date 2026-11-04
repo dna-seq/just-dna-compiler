@@ -2746,6 +2746,14 @@ and only the person who fixed the bug knows which. Both are closed sets with a m
 on `DeclaredChange`, so `describe`-style surfaces and the separator canonicalisation reach them like
 any other vocabulary.
 
+**`toolchain` is the third kind (0.8, RM352)**: nothing was wrong and nothing was absent; the bytes
+moved with the content unchanged because the recorded toolchain (`compilation.toolchain`, RM342) did.
+polars 1 → 2 is the case, since from 2.0 every parquet footer names its polars release. A model
+validator refuses it on any axis but `parquet_bytes`, and the release gate accepts it only when a sweep
+with the compiler held fixed backs it ([COMPILER § The release-record sweep](COMPILER.md#the-release-record-sweep-rm126)).
+`RecompileAnswer.toolchain_moves` reads them beside `corrections` and `additions`; a toolchain move
+still sets `parquet_bytes`, so `output_differs` still says the bytes differ.
+
 `warnings` is a member and is **outside** `RECOMPILE_DRIVING_AXES`, derived by subtraction from
 `NON_RECOMPILE_AXES`. `compilation.warnings` is a published manifest field, so folding it into
 `manifest_fields` would report *a manifest field changed* on essentially every module in a release

@@ -66,6 +66,21 @@ COMPILER.md § The phrases, under *retired*, for grepping old manifests.
 | --- | --- | --- |
 | `archive_last_modified` in the ClinPGx snapshot's `release.json` | RM283 | `Last-Modified` of the lane's archive and its sibling archives at build time (name → ISO date, `null` where the `HEAD` did not answer). Absent on a snapshot built from a local archive. RM303 will give `release.json` a model on this branch; this key is one it has to carry. |
 
+## 1.5 A new release-change kind: `toolchain` (an old-reader break)
+
+`DeclaredChange.kind` (in `just_dna_format.release_records`) validates against
+`VALID_RELEASE_CHANGE_KINDS`, a closed vocabulary that gains `toolchain` in 0.8 (RM352): the bytes
+moved, the content did not, and the recorded toolchain (`compilation.toolchain`) says why. The 0.8.0
+record is expected to declare the polars 1 → 2 byte move with it. The records ship inside the package,
+so a 0.7 install never holds the 0.8.0 one; the break reaches a consumer that **serializes** a record
+(JSON, a cache, an API response) and validates it again with a 0.7 `just-dna-format`, which refuses
+`kind: toolchain`. That is the same shape as § 1 and has the same remedy: validate with 0.8. The
+member is legal on `axis: parquet_bytes` only; the model refuses it on any other axis.
+
+`RecompileAnswer` gains `toolchain_moves` beside `corrections` and `additions`, and the three together
+cover `declared`. A registry that spends a PATCH only on `corrections` needs no change: a toolchain
+move is not one. `output_differs` still reads `True` for it, because the bytes do differ.
+
 ## 2. What to change
 
 1. If you parse `manifest.json` with `just-dna-format`, move your pin to 0.8 when you start reading
@@ -85,3 +100,8 @@ COMPILER.md § The phrases, under *retired*, for grepping old manifests.
    modules whose bytes moved under a different recorded toolchain), and `measurement_json` carries all
    three. `compilation.toolchain` joins `EXCLUDED_MANIFEST_FIELDS`, so it never appears in a record's
    `manifest_fields`.
+5. **Release-record readers (RM352).** If you switch on `DeclaredChange.kind`, add the third arm,
+   `toolchain` (§ 1.5), or read `RecompileAnswer.corrections` / `additions` / `toolchain_moves` rather
+   than the raw kind. `SweepMeasurement` gains `before_toolchain` / `after_toolchain` (the one toolchain
+   each side recorded, `null` when unrecorded or mixed), `measurement_json` carries both, and
+   `sweep --toolchain-before DIR --json` nests the fixed-compiler sweep under `toolchain_sweep`.

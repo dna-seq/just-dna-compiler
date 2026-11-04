@@ -1471,7 +1471,11 @@ VALID_RELEASE_OUTPUT_AXES: frozenset[str] = frozenset(
 # `stats.genes` was wrong (a star-allele module published `[]` while 1,332 of its rows named a gene);
 # `curator` was absent (RM120 added the column, and no earlier artifact could have carried it). The
 # two look identical to a differ, and only the person who fixed the bug knows which it was.
-VALID_RELEASE_CHANGE_KINDS: frozenset[str] = frozenset({"correction", "addition"})
+# `toolchain` (RM352, 0.8) is the third answer: nothing was wrong and nothing was absent — the bytes
+# moved because the recorded toolchain (`manifest.compilation.toolchain`, RM342) did, content unchanged.
+# polars 1 → 2 is the case: the parquet footer names the polars that wrote it. Legal on `parquet_bytes`
+# only, and the release gate accepts it only when a sweep with the compiler held fixed backs it.
+VALID_RELEASE_CHANGE_KINDS: frozenset[str] = frozenset({"correction", "addition", "toolchain"})
 
 
 # ── What a warning IS, and whether an author can clear it (RM131) ────────────────────────────────

@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import Any
 
 import polars as pl
-from just_dna_format.manifest import TOOLCHAIN_DIFFERS, toolchains_differ
+from just_dna_format.manifest import TOOLCHAIN_DIFFERS, recorded_toolchain, toolchains_differ
 from just_dna_format.release_records import (
     EXCLUDED_MANIFEST_FIELDS,
     RELEASE_RECORDS,
@@ -62,6 +62,19 @@ OVERDECLARED_NOTE_PHRASE = "is declared and this sweep did not see it move"
 REGRESSED_MODULE_PHRASE = "compiled under the previous release and does not compile under this one"
 UNDECLARED_UNMEASURED_PHRASE = "has no output from the previous release and the record does not list it"
 OVERDECLARED_UNMEASURED_NOTE_PHRASE = "is declared unmeasured and this sweep measured it on both sides"
+# RM352: a `toolchain` declaration is backed by a SECOND sweep, the release's compiler held fixed and
+# only the toolchain varied. One phrase per remediation, each naming what that sweep failed to show.
+TOOLCHAIN_UNBACKED_PHRASE = "is declared a toolchain move and no fixed-compiler sweep backs it"
+TOOLCHAIN_ACROSS_COMPILERS_PHRASE = (
+    "compares two compiler versions, so it cannot separate the toolchain from the compiler"
+)
+TOOLCHAIN_WRONG_COMPILER_PHRASE = "held fixed a compiler other than the release being gated"
+TOOLCHAIN_NOT_DIFFERENT_PHRASE = "does not record two different toolchains, one per side"
+TOOLCHAIN_CONTENT_MOVED_PHRASE = "moved its content_signature, so a toolchain move cannot cover it"
+TOOLCHAIN_UNEXPLAINED_PHRASE = (
+    "moved its bytes across the release and not under the toolchain alone, so a toolchain move does "
+    "not cover it"
+)
 
 
 @dataclass(frozen=True)
@@ -145,6 +158,12 @@ class SweepMeasurement:
     #: by `build_outputs` and empty when the AFTER side was read from a tree, where nothing recorded
     #: it. Carried so the fatal finding names the error instead of sending the operator to a log.
     build_failures: dict[str, str]
+    #: The one toolchain every module on each side recorded (RM342's `compilation.toolchain`), or
+    #: `None` when any module on that side recorded none or the side mixes two: the unknown arm,
+    #: never a "same". A field because the release gate checks it for a `toolchain` declaration
+    #: (RM352), and a reason the gate acts on is never a sentence in `evidence`.
+    before_toolchain: dict[str, str] | None = None
+    after_toolchain: dict[str, str] | None = None
 
     @property
     def unmeasured(self) -> tuple[str, ...]:
@@ -174,9 +193,20 @@ class SweepMeasurement:
     def evidence(self) -> str:
         """The sentence a `ReleaseRecord.evidence` carries — what was compiled, and what was not."""
         counts = ", ".join(f"{axis} {moved}/{len(self.modules)}" for axis, moved in self.moved_counts.items())
+        if self.before == self.after:
+            # RM352's fixed-compiler sweep: one compiler on both sides, only the toolchain varied.
+            setup = (
+                f"{len(self.modules)} reference module(s) compiled by {self.after} under the toolchains "
+                f"{self.before_toolchain} and {self.after_toolchain} from one spec root, so the "
+                f"toolchain is the only variable"
+            )
+        else:
+            setup = (
+                f"{len(self.modules)} reference module(s) compiled under {self.before} and {self.after} "
+                f"from one spec root, so the compiler is the only variable"
+            )
         parts = [
-            f"{len(self.modules)} reference module(s) compiled under {self.before} and {self.after} "
-            f"from one spec root, so the compiler is the only variable",
+            setup,
             f"modules moved per axis: {counts}",
         ]
         if self.moved_under_other_toolchain:
@@ -413,6 +443,21 @@ def _release_of(outputs: dict[str, ModuleOutput], side: str) -> str:
     return release_version(stamped.pop())
 
 
+def _toolchain_of(outputs: dict[str, ModuleOutput]) -> dict[str, str] | None:
+    """The one toolchain every module on a side recorded, else `None` (unrecorded, or a mixed side).
+
+    Unlike `_release_of` this does not refuse a mixed side: the release sweep's BEFORE tree at the
+    0.8 cut is a 0.7 tree that records no toolchain at all, and a side's toolchain is only ever read
+    as evidence for a `toolchain` declaration, where the unknown arm fails the gate with its own
+    finding.
+    """
+    recorded = [recorded_toolchain(output.manifest) for output in outputs.values()]
+    if not recorded or any(toolchain is None for toolchain in recorded):
+        return None
+    distinct = {tuple(sorted(toolchain.items())) for toolchain in recorded if toolchain is not None}
+    return dict(distinct.pop()) if len(distinct) == 1 else None
+
+
 def compare_outputs(
     before: dict[str, ModuleOutput],
     after: dict[str, ModuleOutput],
@@ -439,13 +484,84 @@ def compare_outputs(
         only_after=tuple(sorted(set(after) - set(before))),
         per_module=deltas,
         build_failures=dict(build_failures or {}),
+        before_toolchain=_toolchain_of(before),
+        after_toolchain=_toolchain_of(after),
     )
+
+
+def _toolchain_findings(
+    measurement: SweepMeasurement,
+    version: str,
+    toolchain_measurement: SweepMeasurement | None,
+    sole_kind: bool,
+) -> list[str]:
+    """What stops a `toolchain` declaration on `parquet_bytes` being accepted (RM352). Empty accepts.
+
+    A `toolchain` move says the bytes moved with the content unchanged because the toolchain did. The
+    release sweep cannot show that: at a cut the compiler version moves together with the toolchain,
+    so a toolchain difference co-occurs with every move, and a compiler bug moves bytes without
+    moving content too. The only clean separation is `toolchain_measurement`, a second sweep with
+    this release's compiler on both sides and only the toolchain varied. Its fields are checked,
+    never a sentence in `evidence`:
+
+    * both sides stamped with the release being gated (one compiler, and the right one);
+    * both sides recording one toolchain each, and the two differing. Unrecorded is unknown, and
+      unknown does not satisfy the gate;
+    * `content_signature` unmoved on every module the toolchain moved, on both sweeps.
+
+    When `toolchain` is the only kind declared on the axis, every module whose bytes moved across the
+    release must have moved under the toolchain alone too. One that did not moved for a compiler
+    reason, which is a correction or an addition and has to be declared as one.
+    """
+    if toolchain_measurement is None:
+        return [
+            f"axis 'parquet_bytes' {TOOLCHAIN_UNBACKED_PHRASE}: pass the tree this release compiled "
+            "under the previous toolchain (`sweep --toolchain-before`)"
+        ]
+    findings: list[str] = []
+    backing = toolchain_measurement
+    if backing.before != backing.after:
+        findings.append(
+            f"the toolchain sweep {TOOLCHAIN_ACROSS_COMPILERS_PHRASE}: measured {backing.before} → "
+            f"{backing.after}; both sides must be compiled by {version}"
+        )
+    elif backing.after != version:
+        findings.append(
+            f"the toolchain sweep {TOOLCHAIN_WRONG_COMPILER_PHRASE}: it held {backing.after} fixed, "
+            f"gating {version}"
+        )
+    sides = (
+        {"compilation": {"toolchain": backing.before_toolchain}},
+        {"compilation": {"toolchain": backing.after_toolchain}},
+    )
+    if toolchains_differ(*sides) is not True:
+        findings.append(
+            f"the toolchain sweep {TOOLCHAIN_NOT_DIFFERENT_PHRASE}: BEFORE records "
+            f"{backing.before_toolchain}, AFTER records {backing.after_toolchain} (`None` is "
+            "unrecorded or a side mixing two, which is unknown and never a difference)"
+        )
+    moved_by_toolchain = {delta.name for delta in backing.per_module if delta.axes["parquet_bytes"]}
+    content_moved = {delta.name for delta in backing.per_module if delta.axes["content_signature"]}
+    content_moved |= {
+        delta.name
+        for delta in measurement.per_module
+        if delta.axes["content_signature"] and delta.name in moved_by_toolchain
+    }
+    findings.extend(f"{name} {TOOLCHAIN_CONTENT_MOVED_PHRASE}" for name in sorted(content_moved))
+    if sole_kind:
+        findings.extend(
+            f"{delta.name} {TOOLCHAIN_UNEXPLAINED_PHRASE}"
+            for delta in measurement.per_module
+            if delta.axes["parquet_bytes"] and delta.name not in moved_by_toolchain
+        )
+    return findings
 
 
 def gate_findings(
     measurement: SweepMeasurement,
     version: str,
     records: dict[str, ReleaseRecord] | None = None,
+    toolchain_measurement: SweepMeasurement | None = None,
 ) -> tuple[list[str], list[str]]:
     """`(findings, notes)` — the release gate. A non-empty `findings` fails the release.
 
@@ -481,6 +597,11 @@ def gate_findings(
     A **note** is the other direction — a declaration this sweep did not see move — and it is
     deliberately not a failure: the reference corpus is sixteen modules and a real correction can land
     on a shape none of them has.
+
+    **A `toolchain` declaration on `parquet_bytes` is backed, never trusted (RM352).**
+    `toolchain_measurement` is the second sweep that backs it (this release's compiler on both sides,
+    only the toolchain varied), and `_toolchain_findings` lists what it must show. The degenerate-
+    interval check is deliberately not applied to it: one compiler on both sides is that sweep's point.
 
     The gate runs in the bump → `uv sync` → tag sequence rather than as an ordinary test, because it
     needs the previous release actually installed.
@@ -546,9 +667,20 @@ def gate_findings(
         if measurement.axes[axis] and record.axes.get(axis) is not True:
             findings.append(f"axis {axis!r} {UNDECLARED_AXIS_PHRASE}")
         if measurement.axes[axis] and axis not in declared_axes:
-            findings.append(f"axis {axis!r} {UNDECLARED_KIND_PHRASE}")
+            # The phrase is grepped and stays as it is; the bytes axis names the third kind beside it.
+            hint = " (or, on this axis, a toolchain move)" if axis == "parquet_bytes" else ""
+            findings.append(f"axis {axis!r} {UNDECLARED_KIND_PHRASE}{hint}")
         if record.axes.get(axis) is True and not measurement.axes[axis]:
             notes.append(f"axis {axis!r} {OVERDECLARED_NOTE_PHRASE}")
+
+    # `DeclaredChange` refuses `toolchain` on any other axis, so this is the only place it can sit.
+    byte_kinds = {change.kind for change in record.declared if change.axis == "parquet_bytes"}
+    if "toolchain" in byte_kinds and measurement.axes["parquet_bytes"]:
+        findings.extend(
+            _toolchain_findings(
+                measurement, version, toolchain_measurement, sole_kind=byte_kinds == {"toolchain"}
+            )
+        )
 
     listed = set(record.manifest_fields)
     for field in measurement.manifest_fields:
@@ -574,6 +706,8 @@ def measurement_json(measurement: SweepMeasurement) -> dict[str, Any]:
         "only_after": list(measurement.only_after),
         "build_failures": dict(measurement.build_failures),
         "moved_under_other_toolchain": list(measurement.moved_under_other_toolchain),
+        "before_toolchain": measurement.before_toolchain,
+        "after_toolchain": measurement.after_toolchain,
         "evidence": measurement.evidence,
         "per_module": [
             {

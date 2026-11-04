@@ -32,8 +32,8 @@ and only where a rule turns on one.
   they need and pull nothing heavier. The bright line is the *heavyweight* deps in Non-goals below
   (Dagster / LLM SDKs / HuggingFace), which the **format and compiler tiers** may never pull.
 - Make **integrity the identity.** A version is identified by its artifact digest and its authored
-  content by `content_signature`, both reproducible by anyone holding the inputs and the pinned
-  compiler version.
+  content by `content_signature`, both reproducible by anyone holding the inputs, the pinned
+  compiler version and the recorded toolchain.
 
 ## Non-goals
 

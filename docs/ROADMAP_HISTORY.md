@@ -35,6 +35,59 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM352 — release records have no change kind for a toolchain-only byte move, so the 0.8 cut cannot declare polars 2
+
+**0.8, filed 2026-11-04 by the lead** as a second-pass item: RM342's residual, and a cut gate.
+
+**Severity** high · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** (a new member of a
+closed published vocabulary, and a Goals amendment) · **Owner** format (`release_records.VALID_RELEASE_CHANGE_KINDS`)
++ compiler (`sweep.py`) · **Motivating case** the RM342 builder's report · *related* RM342, RM341
+
+**Residuals** none
+
+**Why it was filed.** `VALID_RELEASE_CHANGE_KINDS` was `{correction, addition}`, and the sweep's gate
+(`UNDECLARED_KIND_PHRASE`) needs one of them for every moved axis. polars 1 → 2 moves `parquet_bytes` on
+every module with no value wrong and nothing added, so the 0.8.0 record could not be written. A third
+member, `toolchain` (bytes moved, content unchanged, the toolchain record says why), is additive and
+minor-legal. The 0.8.0 record then declares the polars move with it. The Constitution's Goals sentence on
+reproducibility ("anyone holding the inputs and the pinned compiler version") gains "and the recorded
+toolchain", matching RM342's Principle 4 amendment, with a line in the amendments history.
+
+**Decided 2026-11-04 by the lead with the maintainer, during the build.** Content unchanged is not enough
+to accept a `toolchain` declaration: a compiler bug moves bytes without moving content, and at the 0.8 cut
+the compiler version changes together with polars, so RM342's `toolchain_differs` co-occurs with every move
+in the release sweep and separates nothing. The only clean separation is a second sweep with the compiler
+held fixed and only the toolchain varied, and the gate reads that sweep's fields, never a sentence in
+`evidence` (`@one-side-only-has-two-causes`).
+
+**What shipped.**
+
+- `VALID_RELEASE_CHANGE_KINDS` gains `toolchain`. `DeclaredChange` refuses it on any axis but
+  `parquet_bytes` (a model validator), since only a byte measurement can back it.
+  `RecompileAnswer.toolchain_moves` sits beside `corrections` and `additions`, and the three cover
+  `declared` (asserted over a synthetic record holding one of each).
+- `SweepMeasurement.before_toolchain` / `after_toolchain`: the one toolchain each side recorded, `None`
+  when a module recorded none or the side mixes two. `measurement_json` carries both.
+- `gate_findings(..., toolchain_measurement=)` and `sweep --toolchain-before DIR` (the release's compiler
+  under the previous toolchain; the release sweep's AFTER tree is the other side, nested under
+  `toolchain_sweep` in `--json`). A `toolchain` declaration on a moved `parquet_bytes` passes only when
+  that sweep was passed, its two sides carry one `compiler_version` and it is the release gated, both
+  sides record a toolchain and they differ (unrecorded is unknown and never satisfies), `content_signature`
+  did not move under the toolchain nor across the release on a module the toolchain moved, and, when
+  `toolchain` is the axis's only kind, every module whose bytes moved across the release moved under the
+  toolchain alone too. Six `TOOLCHAIN_*` phrases, one per remediation. `UNDECLARED_KIND_PHRASE` keeps its
+  wording and appends `(or, on this axis, a toolchain move)` on `parquet_bytes`.
+- The Goals bullet *Make integrity the identity* now ends "holding the inputs, the pinned compiler version
+  and the recorded toolchain." The why is in CONSTITUTION_AMENDMENTS_HISTORY.md.
+
+**Measured, not assumed.** The sixteen `reference_examples/` compiled by one compiler under
+`uv run --with polars==1.44.2` and under the locked polars 2.1.0 move `parquet_bytes` on 16 of 16 and
+`content_signature`, `manifest_fields`, `parquet_schema` and `warnings` on none; the gate accepts a
+synthetic 0.8.0-like record declaring `parquet_bytes` as `toolchain` over that pair and refuses it with no
+backing sweep, with one across compilers, and with one toolchain on both sides. The 0.8.0 record itself is
+the cut's to write, after measuring. Tests: `compiler/tests/test_release_kind_toolchain.py`, the kind tests
+in `schema/tests/test_release_records.py`.
+
 ## RM304 — a `vrs_id` does not say which VRS minted it, and VRS 2.1 moves some insertion ids
 
 **Decided 2026-11-04 by the maintainer: both, a module-wide pin and a per-row version.** The manifest pins the VRS version the module's ids are meant to be minted under, and each `vrs_id` carries the version that minted it, beside it. A row whose version differs from the pin is the one to invalidate against, with its own reason, never the mismatch error (question 2). A per-row column alone cannot say which version is intended; a pin alone cannot survive a merge-not-clobber table mixing runs.
@@ -169,7 +222,7 @@ manifest field, a new exception subclass, and a Principle 4 amendment), [PROPOSA
 §3 item 19, §4 question 7, §5 block A1 · **Owner** format + compiler + enricher · **Motivating case** RM341 ·
 *related* RM304, RM341
 
-**Residuals** none
+**Residuals** RM352
 
 **What shipped.** `Compilation.toolchain: dict[str, str] | None`, stamped at compile as
 `{"polars": pl.__version__, "python": platform.python_version()}` of the running process, outside
