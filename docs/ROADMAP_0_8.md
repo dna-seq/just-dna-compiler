@@ -107,6 +107,8 @@ gene-pair subject (it does not if that home is keyed on `variant_key`).
 
 ## RM323 — a fact about a locus has no authored home, so every per-locus axis is copied onto each genotype row and nothing checks the copies agree
 
+**Reopened 2026-11-04 by the maintainer**: "why can't each part of the combination live in its respective table, and the combination plus its finding in the meta-table? A new table is the most expensive thing." The decisions below stand until the analysis is answered.
+
 **Decided 2026-11-04 by the maintainer: a per-locus fact table keyed `(subject_kind, subject)`.** It has three
 kinds:
 
@@ -754,6 +756,8 @@ the column; hashing it would make a reworded note move the digest, which is the 
 [FAQ](FAQ.md) already answers twice.
 
 ## RM28 — Meta-conclusions (the predicate half)
+
+**Decided 2026-11-04 by the maintainer: a matching combination replaces the single-locus findings it names.** A genome that is KL-VS heterozygous and an APOE ε4 carrier gets the buffered finding instead of the plain ε4 risk. The accepted cost is that a reader that predates the combination table shows the unbuffered risk alone.
 
 **0.8, decided 2026-11-04 by the maintainer: the combination half is built in 0.8.** A combination is defined here as a set of subjects (a variant, a gene or a named allele) each in a stated genotype state, for example KL-VS heterozygous together with APOE ε4. Each defined combination becomes one more kind of subject on RM323's per-locus fact table, so its tier, confidence and age of action live in the same place as a single locus's. Facts never get a second table. Boolean `OR` and open-world negation stay out, as the corpus below argues: rows are already a disjunction.
 
