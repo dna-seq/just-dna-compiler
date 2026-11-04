@@ -757,9 +757,9 @@ def test_the_derived_columns_come_last_and_never_reach_variants_csv(tmp_path: Pa
         "outcome_lifespan",
         "outcome_exceptional",
     ]
-    # RM270's pair (`vrs_id`, `vrs_spec`) is the other 0.8 append, after these: copied from
-    # `resolution.csv`, and written back there by reverse, never to `variants.csv`.
-    copied = ["vrs_id", "vrs_spec"]
+    # RM270's pair (`vrs_id`, `vrs_spec`) and RM364's `resolution_loci` are the other 0.8 appends, after
+    # these: copied from `resolution.csv`, and written back there by reverse, never to `variants.csv`.
+    copied = ["vrs_id", "vrs_spec", "resolution_loci"]
     assert list(schema)[-len(derived) - len(copied) :] == derived + copied
     assert all(schema[c] == pl.Boolean for c in derived[1:])
     reverse_module(tmp_path / "a1", tmp_path / "rev")

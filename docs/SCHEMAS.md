@@ -2413,7 +2413,11 @@ half of them, and a downstream reader keying on it would be reading the *lookup*
 which is materialized into `weights.parquet` and the positional tables where it belongs. This is written
 down here because "publish it as a parquet" is the first repair anyone proposes on finding a table that
 does not carry a coordinate, and it is the wrong one — RM43 (0.6) is the right one, and it is what makes
-"materialized into the positional tables where it belongs" true rather than aspirational.
+"materialized into the positional tables where it belongs" true rather than aspirational. What does ride
+a parquet is the answer **per row**, beside the row it answers: `studies.parquet.proxy_loci` (RM331) and,
+on `weights.parquet` and every positional parquet, `resolution_loci` (RM364), the loci the table files
+under the row's authored key, so `reverse` can rebuild the table from the artifact when the fill left the
+row's own cells alone.
 
 - **Join key:** `variant_key` (the frozen authored identity). **Facts** (feed `resolution_signature`):
   `rsid?`, `chrom?`, `start? (ge=0)`, `ref?`, `alts?`, `genome_build="GRCh38"` (the RM15 forward hook),

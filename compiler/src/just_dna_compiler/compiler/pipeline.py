@@ -113,8 +113,10 @@ from just_dna_compiler.compiler.parquets import (
     _build_frequencies,
     _build_studies,
     _build_weights,
+    with_resolution_loci,
 )
 from just_dna_compiler.compiler.positional import (
+    _POSITIONAL_TABLE_CSVS,
     _VRS_BEARING_TABLES,
     _apply_positional_resolution,
     _check_positional_joinability,
@@ -415,16 +417,15 @@ def compile_module(
         # no `resolution.csv` and stamping the signature would have published an identity the next
         # compile could not reproduce (P7). Reverse now rebuilds it from the positional parquets too.
         #
-        # **The residual, measured rather than assumed.** The signature reproduces exactly when the
-        # artifact consumed the whole table — all eleven reference examples, and every clean row of
-        # `test_resolution_matrix.py`. It does **not** reproduce when the table says more than the
-        # module uses: a row about a variant the module does not carry, an unplaced one-to-many, a
-        # coordinate the author overrode. Reverse rebuilds the table from the artifact, so a fact the
-        # artifact never held has nowhere to come back from — the same structural reason
-        # `rsid_alternates` is unrecoverable. That is **not new and not positional**: a plain SNP
-        # module with one unused injected row has always behaved this way, and it is pinned in the
-        # matrix now (`Case.table_says_more`) because stamping here is what first made it visible.
-        # `artifact.digest` is reproducible throughout, which is why `strict` has nothing to refuse.
+        # **The residual, measured rather than assumed.** The signature reproduces across
+        # `compile → reverse → compile` for every row the table files under a subject the artifact
+        # carries: since RM364 every variant parquet holds those rows as `resolution_loci` (a row the
+        # fill left alone included: a contradicted coordinate, a pruned or unplaced one-to-many, a build
+        # the fill skips), and `studies.parquet` holds a proxy's as `proxy_loci` (RM331). It does **not**
+        # reproduce for a row about a variant the module does not carry, which has no parquet row to ride
+        # on, nor for a `not_found` sentinel, which carries no locus. The first is pinned in the matrix
+        # (`Case.table_says_more`), the second refuses under `strict`. `artifact.digest` is reproducible
+        # throughout.
         #
         # Still gated on `resolve_with_ensembl`: under `--no-resolve` the table is deliberately not
         # consulted (the warning above says so), and a signature naming a table that shaped nothing
@@ -692,7 +693,11 @@ def compile_module(
     # resolution read: under `--no-resolve` the table was not read, so no id reaches the artifact.
     vrs_ids = VrsIds.of(resolution_rows, config.genome_build) if resolve_with_ensembl else VrsIds()
     # SNP core: weights/annotations only when the module actually has variants.
-    weights_df = _build_weights(variants, config, studies, vrs_ids) if variants else None
+    weights_df = (
+        _build_weights(variants, config, studies, vrs_ids, resolution_table if resolve_with_ensembl else None)
+        if variants
+        else None
+    )
     annotations_df = _build_annotations(variants, module_name) if variants else None
     studies_df = (
         # Gated like every resolution read: under `--no-resolve` the table was not read, so no proxy's
@@ -747,6 +752,13 @@ def compile_module(
         table_df = _build_table(rows, model, module_name)
         if csv_name in _VRS_BEARING_TABLES:
             table_df = with_vrs_columns(table_df, vrs_ids, config.genome_build)
+        if csv_name in _POSITIONAL_TABLE_CSVS:
+            # RM364: what the table said under each row's key, so `reverse` rebuilds `resolution.csv`
+            # from the table's answer rather than from the row's own cells. Gated like every resolution
+            # read, and NOT on the fill having applied: a row the fill left alone is the reason for it.
+            table_df = with_resolution_loci(
+                table_df, resolution_table if resolve_with_ensembl else {}, config.genome_build
+            )
         table_df.write_parquet(output_dir / parquet_name, compression=compression)
         table_rows[parquet_name] = table_df.height
 

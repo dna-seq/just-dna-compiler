@@ -91,36 +91,44 @@ def _build_weights(
     config: ModuleSpecConfig,
     studies: list[StudyRow] | None = None,
     vrs: VrsIds | None = None,
+    resolution: dict[str, list[ResolutionRow]] | None = None,
 ) -> pl.DataFrame:
     """Build the weights.parquet DataFrame from validated variant rows, the locus-level columns
-    derived from the module's study rows (`_locus_study_facts`), and each allele's `vrs_id` recorded in
-    `resolution.csv` (`vrs`, RM270; `None` when no table was read)."""
+    derived from the module's study rows (`_locus_study_facts`), each allele's `vrs_id` recorded in
+    `resolution.csv` (`vrs`, RM270; `None` when no table was read), and the loci the table files under
+    the row's authored key (`resolution`, RM364; `None` when no table was read)."""
     defaults = config.defaults
     module_name = config.module.name
     records: list[dict[str, Any]] = []
     index = _StudyIndex(studies or [])
     vrs = vrs or VrsIds()
+    #: Per record, the key the table files it under and what reverse's cell rebuild would write (RM364).
+    authored_keys: list[str] = []
+    cell_facts: list[tuple[Any, ...] | None] = []
     for v in variants:
         priority = v.priority if v.priority is not None else defaults.priority
         derived = _locus_study_facts(index.supporting(v))
         alts = v.alts.split(",") if v.alts else None
-        vrs_ids, vrs_spec = vrs.lookup(
-            resolution_key(
-                {
-                    "authored_ident": v.authored_ident,
-                    "rsid": v.rsid,
-                    "ref": v.ref,
-                    "variant_key": v.variant_key,
-                },
-                v.chrom,  # type: ignore[arg-type]
-                v.start,  # type: ignore[arg-type]
-                v.alts,
-                config.genome_build,
-            ),
-            v.chrom,
-            v.start,
-            v.ref,
-            alts,
+        # The key `resolution.csv` files this row under: the AUTHORED one, which an expansion's re-keyed
+        # row no longer stores. One computation for both columns that read the table by it.
+        authored_key = resolution_key(
+            {
+                "authored_ident": v.authored_ident,
+                "rsid": v.rsid,
+                "ref": v.ref,
+                "variant_key": v.variant_key,
+            },
+            v.chrom,  # type: ignore[arg-type]
+            v.start,  # type: ignore[arg-type]
+            v.alts,
+            config.genome_build,
+        )
+        vrs_ids, vrs_spec = vrs.lookup(authored_key, v.chrom, v.start, v.ref, alts)
+        authored_keys.append(authored_key)
+        cell_facts.append(
+            None
+            if v.chrom is None or v.start is None
+            else _locus_fact(v.rsid, v.chrom, v.start, v.ref, v.alts, v.locus_index)
         )
         records.append(
             {
@@ -206,6 +214,10 @@ def _build_weights(
                 # minted here (`vrs_columns`); `reverse` writes both back to `resolution.csv`. ──
                 "vrs_id": vrs_ids,
                 "vrs_spec": vrs_spec,
+                # ── 0.8 (RM364): the loci the table files under the authored key, so `reverse`
+                # rebuilds `resolution.csv` from the table's answer rather than from this row's cells,
+                # which hold the author's coordinate wherever the fill left the row alone. Last. ──
+                "resolution_loci": resolution_loci(authored_key, resolution or {}, config.genome_build),
             }
         )
     schema = {
@@ -257,7 +269,14 @@ def _build_weights(
         "outcome_exceptional": pl.Boolean,
         "vrs_id": pl.List(pl.Utf8),
         "vrs_spec": pl.Utf8,
+        "resolution_loci": pl.List(RESOLUTION_LOCUS_DTYPE),
     }
+    # Kept only where the cells would not rebuild them (RM364), decided per key over every record.
+    withheld = withhold_reproduced_loci(
+        [record["resolution_loci"] for record in records], list(authored_keys), cell_facts
+    )
+    for record, cell in zip(records, withheld, strict=True):
+        record["resolution_loci"] = cell
     return pl.DataFrame(records, schema=schema)
 
 
@@ -347,10 +366,11 @@ def _build_annotations(variants: list[VariantRow], module_name: str) -> pl.DataF
     return pl.DataFrame(records, schema=schema)
 
 
-#: One resolved locus of a study's LD proxy, as `studies.parquet.proxy_loci` carries it (RM331): the
-#: `resolution.csv` fact columns a reverse needs to re-emit the proxy's row, `genome_build` aside (the
-#: module's, which reverse knows).
-PROXY_LOCUS_DTYPE = pl.Struct(
+#: One resolved locus, as a parquet carries it beside the row whose key it was filed under: the
+#: `resolution.csv` fact columns a reverse needs to re-emit the row, `genome_build` aside (the module's,
+#: which reverse knows). Two carriers: `studies.parquet.proxy_loci` (a study's LD proxy, RM331) and
+#: `resolution_loci` on `weights.parquet` and every positional parquet (RM364).
+RESOLUTION_LOCUS_DTYPE = pl.Struct(
     {
         "rsid": pl.Utf8,
         "chrom": pl.Utf8,
@@ -359,31 +379,35 @@ PROXY_LOCUS_DTYPE = pl.Struct(
         "alts": pl.Utf8,
         "locus_index": pl.Int64,
         # RM270: the row's `vrs_id` cell (comma-joined, parallel to `alts`) and its `vrs_spec`, so
-        # `reverse` re-emits the proxy's ids with its row.
+        # `reverse` re-emits the ids with the row.
         "vrs_id": pl.Utf8,
         "vrs_spec": pl.Utf8,
     }
 )
 
 
-def _proxy_loci(
-    proxy_rsid: str | None, resolution: dict[str, list[ResolutionRow]], genome_build: str
+def resolution_loci(
+    key: str | None, resolution: dict[str, list[ResolutionRow]], genome_build: str
 ) -> list[dict[str, Any]] | None:
-    """The proxy's resolved loci on this build, in `locus_index` order, or `None` when it has none.
+    """The loci `resolution.csv` files under `key` on this build, in `locus_index` order, or `None`.
 
-    **Why a parquet carries them (RM331).** `collect_subjects` asks a coordinate for each proxy, so the
-    enricher writes its `resolution.csv` row and the compile's allele check reads it. `reverse_module`
-    rebuilds `resolution.csv` from parquets, and no other parquet holds a proxy's coordinate (a proxy is
-    usually not a module variant), so the reversed spec lost the row, `resolution_signature` moved and
-    the check went silent. Positioned loci only, the rule the weights and positional passes keep: a
-    `not_found` row carries no fact for reverse to restore.
+    **Why a parquet carries them.** `reverse_module` rebuilds `resolution.csv` from parquets, so a fact
+    no parquet holds does not come back, `resolution_signature` moves, and whatever the compile said
+    about it goes silent on the second lap. Two kinds of row are keyed into the table without holding
+    its answer in their own columns: a study's LD proxy, which is usually not a module variant (RM331),
+    and a variant row the fill left alone (RM364) — one whose authored coordinate the table contradicts,
+    one whose key names several loci none of which was taken, a locus dropped as unable to host the
+    genotype, and every row of a module on a build the fill skips. Rebuilding those from the row's own
+    cells wrote the author's coordinate back as a resolution fact.
+
+    Positioned loci only: a `not_found` row carries no fact for reverse to restore.
     """
-    if proxy_rsid is None:
+    if key is None:
         return None
     loci = sorted(
         (
             r
-            for r in resolution.get(proxy_rsid, [])
+            for r in resolution.get(key, [])
             if r.genome_build == genome_build and r.chrom is not None and r.start is not None
         ),
         key=lambda r: r.locus_index,
@@ -403,6 +427,73 @@ def _proxy_loci(
         }
         for r in loci
     ]
+
+
+def _locus_fact(rsid: Any, chrom: Any, start: Any, ref: Any, alts: Any, locus_index: Any) -> tuple[Any, ...]:
+    """One table row's facts as `reverse` rebuilds them, `genome_build` and the key aside."""
+    return (rsid or None, chrom, start, ref or None, alts or None, locus_index or 0)
+
+
+def withhold_reproduced_loci(
+    cells: list[list[dict[str, Any]] | None],
+    keys: list[str | None],
+    facts: list[tuple[Any, ...] | None],
+) -> list[list[dict[str, Any]] | None]:
+    """`cells` with a key's loci nulled wherever its rows' own cells already rebuild them exactly (RM364).
+
+    `facts[i]` is what `reverse`'s cell rebuild writes for row `i` (`None` where it writes nothing, a row
+    with no coordinate). Where the set of those facts over a key equals the facts of the loci the table
+    files under it, the cells answer and the column stays null, so a module the fill resolved cleanly
+    carries nothing new, and its `artifact.digest` matches the deprecated `ensembl_cache` path's, which
+    reads no table. Everywhere else, which is every row the fill left alone, the loci are kept.
+    """
+    by_key: dict[str, set[tuple[Any, ...]]] = {}
+    for key, fact in zip(keys, facts, strict=True):
+        if key is not None:
+            facts_of_key = by_key.setdefault(key, set())
+            if fact is not None:
+                facts_of_key.add(fact)
+    reproduced = {
+        key
+        for key, cell in zip(keys, cells, strict=True)
+        if key is not None
+        and cell
+        and by_key[key]
+        == {
+            _locus_fact(
+                locus["rsid"],
+                locus["chrom"],
+                locus["start"],
+                locus["ref"],
+                locus["alts"],
+                locus["locus_index"],
+            )
+            for locus in cell
+        }
+    }
+    return [None if key in reproduced else cell for key, cell in zip(keys, cells, strict=True)]
+
+
+def with_resolution_loci(
+    table: pl.DataFrame, resolution: dict[str, list[ResolutionRow]], genome_build: str
+) -> pl.DataFrame:
+    """A positional table's parquet with `resolution_loci`: the loci filed under each row's key (RM364).
+
+    Keyed on the row's stored `variant_key`, the key the positional fill looked the row up by and the
+    key `reverse` files it under. Kept wherever the row's own cells would not rebuild them
+    (`withhold_reproduced_loci`): a row the fill left alone still carries what the table said about it.
+    An empty `resolution` (no table, or `--no-resolve`) leaves the column null.
+    """
+    keys = table["variant_key"].to_list()
+    cells = [resolution_loci(key, resolution, genome_build) for key in keys]
+    facts = [
+        None
+        if row["chrom"] is None or row["start"] is None
+        else _locus_fact(row.get("rsid"), row["chrom"], row["start"], row.get("ref"), row.get("alts"), 0)
+        for row in table.iter_rows(named=True)
+    ]
+    cells = withhold_reproduced_loci(cells, keys, facts)
+    return table.with_columns(pl.Series("resolution_loci", cells, dtype=pl.List(RESOLUTION_LOCUS_DTYPE)))
 
 
 def _build_studies(
@@ -486,7 +577,7 @@ def _build_studies(
                 "effect_unit": s.effect_unit,
                 # RM331: the proxy's resolved loci, so reverse can re-emit its `resolution.csv` row.
                 # Compiler-filled and never authored; last, so no earlier column moves.
-                "proxy_loci": _proxy_loci(s.proxy_rsid, resolution or {}, genome_build),
+                "proxy_loci": resolution_loci(s.proxy_rsid, resolution or {}, genome_build),
             }
         )
     schema = {
@@ -528,6 +619,6 @@ def _build_studies(
         "stratum_level": pl.Utf8,
         "proxy_rsid": pl.Utf8,
         "effect_unit": pl.Utf8,
-        "proxy_loci": pl.List(PROXY_LOCUS_DTYPE),
+        "proxy_loci": pl.List(RESOLUTION_LOCUS_DTYPE),
     }
     return pl.DataFrame(records, schema=schema)

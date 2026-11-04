@@ -1261,6 +1261,7 @@ enricher recorded reaches the artifact:
 | `weights.parquet` | `List(Utf8)`, parallel to `alts`, null where no id is recorded | `Utf8` |
 | `pharm_variants`, `haplotypes`, `heteroplasmy` (`positional._VRS_BEARING_TABLES`) | `Utf8`, comma-joined like the table's `alts` and `resolution.csv`'s cell, holes kept | `Utf8` |
 | `studies.parquet` `proxy_loci` | a struct field, the proxy row's cell | a struct field |
+| the positional parquets' `resolution_loci` (RM364) | a struct field, the table row's cell | a struct field |
 
 Not on `annotations.parquet`, which carries `variant_key` but no allele to be parallel to (it joins to
 `weights.parquet` on the key), nor on `frequencies.parquet`, whose `vrs_id` is gnomAD's.
@@ -1473,12 +1474,12 @@ fails in `strict` — enumerated and enforced in `compiler/tests/test_resolution
 | pair (rsid + coordinate), table agrees | ✅ | ✅ | stable |
 | **withdrawn** — the table records the rsid as *retracted by dbSNP* | ❌ **refuses** | ❌ refuses | — |
 | **ambiguous** — several rsIDs for one allele | ⚠️ warning | ❌ refuses | stable |
-| expansion drops a locus that cannot host the genotype | ⚠️ warning | ❌ refuses | unstable |
-| every candidate locus contradicts the genotype → unresolved | ⚠️ warning | ❌ refuses | unstable |
+| expansion drops a locus that cannot host the genotype | ⚠️ warning | ❌ refuses | stable since RM364 |
+| every candidate locus contradicts the genotype → unresolved | ⚠️ warning | ❌ refuses | stable since RM364 |
 | `not_found` — the table records the rsid as genuinely absent | ⚠️ warning | ❌ refuses | unstable |
 | no resolution row at all | ⚠️ warning | ❌ refuses | stable (nothing to lose) |
-| authored `ref` contradicts the table | ⚠️ warning | ❌ refuses | unstable |
-| authored coordinate contradicts the table | ⚠️ warning | ❌ refuses | unstable |
+| authored `ref` contradicts the table | ⚠️ warning | ❌ refuses | stable since RM364 |
+| authored coordinate contradicts the table | ⚠️ warning | ❌ refuses | stable since RM364 |
 
 Four things the table encodes that are worth saying out loud:
 
@@ -1492,12 +1493,13 @@ it too, in both modes** — it reads the injected table's own column and no reso
 compile-only exemption does not cover it (RM207); the same is true of `ambiguous` under `strict`.
 
 **Instability always means the *table* cannot be reproduced, never the bytes.** `artifact.digest` is a
-fixed point in every row above, including the unstable ones — a module that compiles at all compiles to
-the same bytes twice. What is lost is `resolution_signature`: a `not_found` sentinel has no coordinate
-so reverse writes no row for it; a dropped locus is simply not in the artifact; and where an authored
-value contradicts the table the authored value wins, so the table's version is gone. Each is a real
-reduction in what the injected table said, which is exactly why `strict` — whose contract is a
-reproducible artifact — will not build on it.
+fixed point in every row above, including the unstable one — a module that compiles at all compiles to
+the same bytes twice. What is lost is `resolution_signature`: a `not_found` sentinel has no coordinate,
+so no parquet carries a row for it. Until RM364 three more rows lost it too: a dropped locus was not in
+the artifact, and where an authored value contradicted the table the authored value won, so the table's
+version was gone. Since RM364 every variant parquet carries the table's rows for its key
+(`resolution_loci`), so those come back and the second lap reaches the same finding; `strict` still
+refuses each, for the finding itself.
 
 **`ambiguous` is the one exception in the other direction.** It *is* round-trip stable, because the
 enricher writes a single row carrying the deterministic pick while the candidate list rides in
@@ -1660,8 +1662,9 @@ it) and is this loader on `overrides.csv`.
 
 `reverse_module` reads the parquets for every row, and the artifact's `manifest.json` for every
 `module_spec.yaml` field the manifest carries (RM241). It emits into `output_dir`: `module_spec.yaml`
-(always), the `README`/logo the compile shipped (when the manifest records them), `variants.csv` + `resolution.csv` (when `weights.parquet` exists;
-`resolution.csv` gated on `write_resolution=True`), `studies.csv` (when present), one CSV per present
+(always), the `README`, logo, `provenance.json` and logs the compile shipped (when the manifest records
+them), `variants.csv` + `resolution.csv` (when `weights.parquet` exists; `resolution.csv` gated on
+`write_resolution=True`, and not written for a module whose compile read none, RM364), `studies.csv` (when present), one CSV per present
 table kind, and one CSV per derived-fact sidecar whose parquet is present (`frequencies.csv`,
 `gene_metrics.csv`, `literature.csv`, `gene_validity.csv`, `clinical_assertions.csv`, `sources.csv`),
 plus each authored table that is not a kind (`overrides.csv` since 0.7, RM124; `meta.csv` and
@@ -1690,6 +1693,28 @@ plus each authored table that is not a kind (`overrides.csv` since 0.7, RM124; `
   under the same key. `proxy_loci` is read from the post-overlay `resolution.csv`, and not at all under
   `--no-resolve`, so `studies.parquet` (like `weights.parquet`'s filled coordinates) moves with the injected
   table while `content_signature` does not.
+- **A variant row is rebuilt from what the table said, not from its own cells (RM364, 0.8).**
+  `weights.parquet` and every positional parquet carry `resolution_loci`, the same struct list as
+  `proxy_loci`: the loci the post-overlay table files under the row's **authored** key, on the module's
+  build, kept wherever the row's own cells would not rebuild them exactly and null on a cleanly resolved
+  row (`parquets.withhold_reproduced_loci`), so a clean module's parquets match the deprecated
+  `ensembl_cache` path's byte for byte. Reverse writes the loci back, and rebuilds a null row from its
+  cells as before. A row the fill leaves alone is
+  the reason: one whose authored coordinate the table contradicts, a one-to-many none of whose loci was
+  taken, a locus dropped because it cannot host the genotype, and every row of a module on a build the
+  fill skips. Before the column, reverse rebuilt such a row's table rows from its own cells, which lost
+  the rows the fill did not take and wrote the **authored** coordinate back as a resolution fact; the
+  second lap's contradiction warning went silent and `resolution_signature` moved, and
+  `reference_examples/cpic_gene_pairs` had dropped its NUDT15 `rs1457579126` row to stay green. Five
+  cases of the round-trip matrix that `strict` refuses are now stable too. A parquet compiled before the
+  column falls back to the cell rebuild. Still lost: a row about a variant the module does not carry
+  (no parquet row to ride on, `table_says_more`) and a `not_found` sentinel (no locus; `strict` refuses).
+- **No table comes back for a module that read none (RM364).** When the manifest records no
+  `resolution_signature` and no parquet row carries an identity cell its `authored_ident` does not name,
+  reverse writes no `resolution.csv`. It used to rebuild one from the authored coordinates, and the second
+  lap then published a signature, VRS coverage and expansion counts the first did not (`grch37_build`,
+  `mt_heteroplasmy`, `cyp2d6_structural`). A filled cell with no signature (an older compile, the
+  deprecated `ensembl_cache` path) still gets the table, since the recompile needs it.
 - **The derived sidecars come back POST-overlay, and `overrides.csv` comes back beside them** (0.7,
   RM124). The overlay is applied at compile, so what reverse reads out of the parquets is already the
   corrected table — and it re-emits the overlay too, which means **the overlay applies twice and the
@@ -1718,8 +1743,10 @@ plus each authored table that is not a kind (`overrides.csv` since 0.7, RM124; `
   (`manifest.display`), `version` (`identity`, pre-coercion spelling first, RM103), `genome_build`,
   the defaults' `curator`/`method`, `license`, `weighting`, `authorship`, `authority_precedence` and
   `panel` — and `REVERSE_EXCLUDED` names the rest with a reason, under a test that walks the spec
-  models and asserts the two sets cover every field. The README and logo are copied byte for byte
-  after a hash check against the manifest's record; a file that disagrees is not copied. Every value
+  models and asserts the two sets cover every field. The README, logo, `provenance.json` and every
+  shipped log (`reverse.shipped_files`, RM364 for the last two) are copied byte for byte after a hash
+  check against the manifest's record; a file that disagrees, or a recorded name that leaves the module
+  directory, is not copied, and one the compiler would not discover on its own is named. Every value
   is taken in one order: **an explicit argument, then the manifest, then the bare-directory
   fallback**. `genome_build` is the value that made this list necessary rather than cosmetic: it
   decides the *identity key*, so a GRCh37 module reversed as GRCh38 recompiled with `ga4gh:VA.…` keys
@@ -1727,13 +1754,19 @@ plus each authored table that is not a kind (`overrides.csv` since 0.7, RM124; `
   never named (`reference_examples/grch37_build/`). The rest could not move a digest, and that is why
   they went unnoticed: the round-trip gate compared `artifact.digest` and `content_signature`, both of
   which leave the manifest out by design, so it could not fail on any of them. It now also compares
-  the manifest's authored projection across laps.
+  the manifest across laps, field by field: **`REVERSE_MANIFEST_RECONSTRUCTED` / `REVERSE_MANIFEST_EXCLUDED`
+  (RM364) put every `ModuleManifest` and `Compilation` field on one side**, under a test that walks both
+  models, and every round-trip gate compares `reconstructed_projection` (the reconstructed fields, as JSON)
+  lap against lap — `compilation.resolution_signature` among them, from the first lap, on every reference
+  example. The exclusions are the attestation, what a registry stamps, the byte hashes of re-emitted
+  files, `compiled_at`, the warnings (the first lap's include the attestation and the resolution
+  provenance reverse drops), `dropped_rows` and `resolution_sources`.
 - **Normalized, only for a bare parquet directory with no manifest:** title/report_title fall back to
   name-derived defaults, description to `Annotation module: <name>`, icon/color to
   `database`/`#6435c9`, curator/method to the most-common column value, `genome_build` to `GRCh38`.
   `defaults.priority` is never written: the manifest carries no default priority, and `priority` is
   re-emitted verbatim per row instead.
-- **Lost (not in the artifact to be read):** `provenance`, and the **verification attestation**
+- **Lost (not in the artifact to be read):** the **verification attestation**
   (RM45) — `verification.json` is not in the artifact,
   so there is nothing for reverse to read and inventing one would mint a claim nobody put; a reversed
   module carries no `manifest.verification`, which is the honest *says nothing*, and re-attesting
@@ -1747,7 +1780,8 @@ plus each authored table that is not a kind (`overrides.csv` since 0.7, RM124; `
   consumer needing these reads `manifest.json` (preserved verbatim by the forward compile). This list
   used to hold `authorship`, `panel`, `logo` and `readme` too, on the test of whether losing a value
   could change a parquet byte. That test was the wrong one: P7 asks whether an *authored value*
-  survives, and those four were in the artifact all along (RM241).
+  survives, and those four were in the artifact all along (RM241). `provenance` and the logs left it in
+  0.8 (RM364): both were copied into the artifact and hashed into the manifest by every compile.
 
 ## Output artifact & hashing
 

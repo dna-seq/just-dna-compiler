@@ -328,6 +328,20 @@ is scheduled. (Neither is *closed*: RM_TOC's ✖ section holds two items and nei
 The other half of the argument is the candidate-repair list above, which is the record of five refusals.
 Closing the entry retires that record just as the release most likely to re-propose all five arrives.
 
+### Addendum 2026-11-04 — RM364 made the signature a fixed point; the fill is still skipped
+
+RM364 (0.8) put a `resolution_loci` column on every variant parquet: the rows the table files under
+each row's key, on the module's own build, wherever the row's own cells do not already rebuild them
+(here, every row, since the fill is skipped). `reverse` rebuilds the
+table from it, so `cyp2c9_warfarin_grch37`'s three `source=manual` rows come back and its
+`resolution_signature` is equal on both laps; the corpus sweep's build-derived exemption was removed.
+It is none of the five refused repairs above: nothing is joined, no coordinate is written into the row,
+its `variant_key` is untouched, the loci are on the module's build (so no two assemblies meet in one
+row), there is no `resolution.parquet`, and the comparison is kept. The fifth refusal's objection, a
+stable hash over unplaced rows, does not reach it either: the rows stay unplaced and the manifest says so
+on both laps, in `positional_rows_placed` and the joinability warning. What is left of this entry is the
+fill itself, which is RM15's. Whether that is still an item or is now RM15 alone is the pm's to decide.
+
 ---
 
 ## RM52 — 1.0 ships an upgrade procedure, or 1.0 does not ship

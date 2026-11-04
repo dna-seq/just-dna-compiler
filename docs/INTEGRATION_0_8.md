@@ -387,6 +387,20 @@ leftmost spelling, and its `vrs_id` is what joins it.
 **This breaks a 0.7 reader of a 0.8-enriched `resolution.csv`**, for § 1.18's reason: `ResolutionRow`
 forbids unknown columns. Same remedy.
 
+## 1.20 `reverse` gives back what the compile carried, and the positional parquets carry `resolution_loci` (RM364, no break)
+
+Which manifest fields `compile → reverse → compile` gives back is now a registry,
+`just_dna_compiler.compiler.reverse.REVERSE_MANIFEST_RECONSTRUCTED`, with every other field in
+`REVERSE_MANIFEST_EXCLUDED` and a reason each; `reconstructed_projection(manifest)` is the comparison the
+round-trip gates make, lap against lap.
+
+| Surface | What changed |
+| --- | --- |
+| `reverse` | Copies `provenance.json` and every shipped log back into the reversed spec, byte for byte after a hash check against the manifest, as it already did the README and logo (`reverse.shipped_files`). A file that disagrees with its record, or a recorded name that leaves the module directory, is not copied and is logged. Before, `manifest.provenance` and `manifest.logs` were empty on the second lap. |
+| `weights.parquet`, `pharm_variants.parquet`, `haplotypes.parquet`, `heteroplasmy.parquet` `resolution_loci` (compiler-filled) | `List(Struct{rsid, chrom, start, ref, alts, locus_index, vrs_id, vrs_spec})`, the `proxy_loci` shape: the loci the post-overlay `resolution.csv` files under the row's authored key (on `weights.parquet` the key the author wrote, not an expanded row's locus key), on the module's build. **Null wherever the row's own cells already rebuild those loci exactly** (every cleanly resolved row), and null when the table files none or under `--no-resolve`; so it is filled exactly on a row the fill left alone, and then repeated on every genotype row and expanded locus of that authored row. Not authored and never written to a CSV; `reverse` rebuilds `resolution.csv` from it, so a row whose authored coordinate the table contradicts no longer comes back with that coordinate written as a resolution fact. It is the lookup's answer kept for the round trip; a consumer joining a VCF reads the row's own `chrom`/`start`/`ref`/`alts`. Appended last, so **every module carrying `variants.csv` or a positional table gets a new `artifact.digest` on a 0.8 recompile** (a new column, null on a clean module); `content_signature` does not move. |
+| `reverse`, a module that read no table | Writes no `resolution.csv` when the manifest records no `resolution_signature`, its `derived` list names none, and no parquet row carries a filled identity cell. It used to rebuild one from the authored coordinates, and the second lap's manifest then published a `resolution_signature`, VRS coverage and expansion counts the first did not. A spec that carried a table with no rows gets a header-only one back. |
+| `reference_examples/cpic_gene_pairs` | The NUDT15 `*1` row `rs1457579126` (removed while the example was built, for this defect) is back in `haplotypes.csv`, with its `resolution.csv` row and a ClinVar `licensing.csv` row (the placement's witness). The module was re-enriched and re-closed. |
+
 ## 2. What to change
 
 1. If you parse `manifest.json` with `just-dna-format`, move your pin to 0.8 when you start reading

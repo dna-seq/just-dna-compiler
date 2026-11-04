@@ -3,28 +3,30 @@
 import csv
 import logging
 import shutil
-from pathlib import Path
+from dataclasses import dataclass
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import polars as pl
 import yaml
 from just_dna_format.base import derive_variant_key
 from just_dna_format.integrity import sha256_file
-from just_dna_format.layout import sidecar_write_path
+from just_dna_format.layout import sidecar_relative_names, sidecar_write_path
 from just_dna_format.manifest import (
     LOGO_EXTENSIONS,
     README_CANDIDATES,
     SCHEMA_VERSION,
-    FileEntry,
     ModuleManifest,
     Verification,
     read_manifest,
 )
 from just_dna_format.vrs import join_vrs_ids
 
-from just_dna_compiler.compiler.positional import _POSITIONAL_TABLE_KINDS
+from just_dna_compiler.compiler.manifest import _log_left_behind_reason
+from just_dna_compiler.compiler.positional import _POSITIONAL_TABLE_CSVS, _POSITIONAL_TABLE_KINDS
 from just_dna_compiler.compiler.tables import (
     _FACT_TABLES,
+    _PROVENANCE_FILE,
     _TABLE_KINDS,
     AUTHORED_NON_KIND_TABLES,
     _list_cell,
@@ -109,6 +111,129 @@ REVERSE_EXCLUDED: dict[str, str] = {
 }
 
 
+#: Every `manifest.json` field a `compile → reverse → compile` gives back unchanged (RM364), as a dotted
+#: path with the `compilation` block walked one level down. RM241's registry above is about the spec;
+#: this one is about everything the compile CARRIED, and a test walks `ModuleManifest` and `Compilation`
+#: and asserts their fields equal this set together with `REVERSE_MANIFEST_EXCLUDED`. The round-trip
+#: gates compare `reconstructed_projection` over exactly this set, so a field placed here is a field the
+#: corpus sweep holds lap against lap. Before it, `provenance.json` and the shipped logs were hashed into
+#: the manifest and left behind by reverse while the README and logo beside them came back.
+REVERSE_MANIFEST_RECONSTRUCTED: frozenset[str] = frozenset(
+    {
+        "manifest_version",
+        "schema_version",
+        "identity",
+        "display",
+        "genome_build",
+        "curator",
+        "method",
+        "license",
+        "authority_precedence",
+        "weighting",
+        "tier_scale",
+        "meta_selectors",
+        "authorship",
+        "panel",
+        "stats",
+        # The fact sidecars' summaries: each table is re-emitted from its parquet and re-summarized.
+        "frequency",
+        "gene_metrics",
+        "gene_validity",
+        "clinical_assertions",
+        "gwas_effects",
+        "expression_effects",
+        "locus_to_gene",
+        "colocalisations",
+        "consequences",
+        "ld_pairs",
+        "literature",
+        "clin_sig_concordance",
+        "sources",
+        "content_signature",
+        "artifact",
+        # The four files a compile ships beside the parquets, each copied back byte for byte after a
+        # hash check against its record here.
+        "readme",
+        "logo",
+        "logs",
+        "provenance",
+        "compilation.compile_success",
+        "compilation.compiled_by",
+        "compilation.compiler_version",
+        "compilation.ensembl_reference",
+        "compilation.resolution_mode",
+        "compilation.fully_resolved",
+        "compilation.resolution_subjects",
+        "compilation.expanded_keys",
+        "compilation.expanded_rows",
+        # A fixed point for every row the table files under a subject the artifact carries: each variant
+        # parquet holds those rows as `resolution_loci` (RM364). A row about a variant the module does
+        # not carry has no row to ride on and still moves it; the round-trip matrix pins that case as
+        # `table_says_more`, the one shape this entry does not cover.
+        "compilation.resolution_signature",
+        "compilation.vrs_alleles",
+        "compilation.vrs_alleles_identified",
+        "compilation.vrs_version",
+        "compilation.positional_rows",
+        "compilation.positional_rows_placed",
+        "compilation.toolchain",
+    }
+)
+
+#: The manifest fields a round trip does **not** give back unchanged, each with the reason (RM364).
+REVERSE_MANIFEST_EXCLUDED: dict[str, str] = {
+    "compilation": "a block: its fields are listed individually",
+    "verification": (
+        "the attestation document is not in the artifact and is bound to authored bytes reverse "
+        "re-emits, so reverse says it is dropping it (`_verification_loss_notice`) instead"
+    ),
+    "signature": "a detached signature a registry puts over a published digest; no compile writes it",
+    "owner": "stamped by a registry at publish; no compile writes it",
+    "authors": "stamped by a registry at publish; no compile writes it",
+    "created_at": "stamped by a registry at publish; no compile writes it",
+    "published_at": "stamped by a registry at publish; no compile writes it",
+    "inputs": (
+        "raw byte hashes of the authored files, and reverse re-emits their values with column order "
+        "and cell formatting normalized; the identity they carry is `content_signature`, held above"
+    ),
+    "derived": (
+        "raw byte hashes of the sidecars, which reverse re-emits normalized and with provenance "
+        "discarded, and `verification.json` among them; each table's identity is its fact signature"
+    ),
+    "compilation.compiled_at": "the wall-clock time of the compile, which a second compile cannot repeat",
+    "compilation.warnings": (
+        "the first lap's findings include the attestation and closure reverse drops, and those about "
+        "resolution provenance (`authority`, `placement_witness`) that reverse discards with `source`"
+    ),
+    "compilation.carried": "derived from `compilation.warnings`, which is excluded for the reason it gives",
+    "compilation.warnings_summary": "derived from `compilation.warnings`, which is excluded for the reason it gives",
+    "compilation.dropped_rows": (
+        "rows the first compile dropped never reach a parquet, so the recompile of the reversed spec "
+        "has nothing left to drop; the drop is the first lap's to report"
+    ),
+    "compilation.resolution_sources": (
+        "the `source` column of `resolution.csv`, provenance reverse replaces with `reversed` because "
+        "the facts it re-emits came out of parquet rather than from any link"
+    ),
+}
+
+
+def reconstructed_projection(manifest: ModuleManifest) -> dict[str, Any]:
+    """Every `REVERSE_MANIFEST_RECONSTRUCTED` value of `manifest`, as JSON, keyed by its dotted path.
+
+    What a round trip must hold equal, lap against lap. Public because both round-trip gates compare it
+    and a second copy of the list is how RM241's hand-kept projection came to miss logs and provenance.
+    """
+    dumped = manifest.model_dump(mode="json")
+    projection: dict[str, Any] = {}
+    for path in sorted(REVERSE_MANIFEST_RECONSTRUCTED):
+        value: Any = dumped
+        for part in path.split("."):
+            value = value[part]
+        projection[path] = value
+    return projection
+
+
 def _artifact_manifest(parquet_dir: Path) -> ModuleManifest | None:
     """The artifact's own `manifest.json`, or `None` for a bare parquet directory or one this
     compiler cannot parse.
@@ -170,51 +295,146 @@ def _artifact_verification(parquet_dir: Path) -> Verification | None:
     return manifest.verification if manifest is not None else None
 
 
-def _copy_shipped_file(parquet_dir: Path, output_dir: Path, entry: FileEntry | None, what: str) -> None:
-    """Copy a file the compile shipped beside the parquets (README, logo) back into the spec, byte for
-    byte, after checking it against the manifest's record of it (RM241).
+@dataclass(frozen=True)
+class ShippedFile:
+    """One file a compile copied into the artifact beside the parquets and recorded in the manifest."""
 
-    The compile copies `README.md` / `logo.png` into the artifact and records its hash, so the bytes
-    are there to be read; reverse used to leave them behind, and the recompile's manifest then had no
-    `readme` at all. A file whose hash disagrees with the record is **not** copied: it is not the file
-    the manifest describes, and passing it on would let the next compile attest bytes nobody compiled.
-    A file under a name the compile does not discover on its own is copied and named, since the next
-    compile needs `readme_file=`/`logo_file=` to pick it up.
+    #: Its path relative to the module directory, as the manifest records it.
+    name: str
+    #: The `sha256:` the manifest records for it, or `None` where the record carries none.
+    sha256: str | None
+    #: The manifest field that records it: `readme`, `logo`, `provenance` or `logs`.
+    what: str
+
+
+def shipped_files(manifest: ModuleManifest) -> list[ShippedFile]:
+    """Every file `manifest` says the compile shipped beside the parquets, in a fixed order (RM364).
+
+    The four kinds a compile collects from the spec directory and copies into the artifact: the README
+    and logo (RM241), `provenance.json` and the logs. Reverse copies each one back, and the round-trip
+    tests walk this list, so a fifth kind is one entry here rather than a third `what ==` arm.
     """
-    if entry is None:
+    files: list[ShippedFile] = []
+    if manifest.readme is not None:
+        files.append(ShippedFile(manifest.readme.name, manifest.readme.sha256, "readme"))
+    if manifest.logo is not None:
+        files.append(ShippedFile(manifest.logo.name, manifest.logo.sha256, "logo"))
+    if manifest.provenance is not None and manifest.provenance.file is not None:
+        files.append(ShippedFile(manifest.provenance.file, manifest.provenance.sha256, "provenance"))
+    files.extend(ShippedFile(entry.name, entry.sha256, "logs") for entry in manifest.logs)
+    return files
+
+
+def _discovered(shipped: ShippedFile, destination: Path, output_dir: Path) -> bool:
+    """Whether the next compile of `output_dir` finds `destination` on its own, without an explicit path.
+
+    The compile's own discovery rule for each kind, read rather than restated: README and logo by their
+    fixed names, provenance by `_PROVENANCE_FILE`, and a log by `_log_left_behind_reason` (the function
+    discovery itself asks) under `logs/` or as a top-level `*.log`.
+    """
+    if shipped.what == "readme":
+        return shipped.name in README_CANDIDATES
+    if shipped.what == "logo":
+        return shipped.name in {f"logo.{ext}" for ext in LOGO_EXTENSIONS}
+    if shipped.what == "provenance":
+        return shipped.name == _PROVENANCE_FILE
+    parts = PurePosixPath(shipped.name).parts
+    top_level_log = len(parts) == 1 and destination.suffix == ".log"
+    under_logs = len(parts) > 1 and parts[0] == "logs"
+    if not (top_level_log or under_logs):
+        return False
+    return _log_left_behind_reason(destination, output_dir / "logs", output_dir) is None
+
+
+def _inside(root: Path, name: str) -> Path | None:
+    """`root / name` when `name` is a relative path that stays inside `root`, else `None`.
+
+    A manifest is read, not trusted: a recorded name of `../x.log` or `/etc/x` would otherwise have
+    reverse read a file outside the artifact and write one outside the reversed spec."""
+    pure = PurePosixPath(name)
+    if pure.is_absolute() or ".." in pure.parts or not pure.parts:
+        return None
+    return root / Path(*pure.parts)
+
+
+def _leaves_through_a_link(path: Path, root: Path) -> bool:
+    """Whether `path`, or a directory between it and `root`, is a symlink (the read and write halves).
+
+    The lexical check in `_inside` cannot see a link; resolving can. Asked of the source in the artifact
+    and of the destination in the reversed spec, before either is opened."""
+    resolved_root = root.resolve()
+    current = path
+    while current != root and current != current.parent:
+        if current.is_symlink():
+            return True
+        current = current.parent
+    return not path.resolve().is_relative_to(resolved_root)
+
+
+def _copy_shipped_file(parquet_dir: Path, output_dir: Path, shipped: ShippedFile) -> None:
+    """Copy a file the compile shipped beside the parquets back into the spec, byte for byte, after
+    checking it against the manifest's record of it (RM241 for the README and logo, RM364 for
+    `provenance.json` and the logs).
+
+    The compile copies each one into the artifact and records its hash, so the bytes are there to be
+    read; reverse used to leave them behind, and the recompile's manifest then had no record of them at
+    all. A file whose hash disagrees with the record is **not** copied: it is not the file the manifest
+    describes, and passing it on would let the next compile attest bytes nobody compiled. Neither is a
+    name that leaves the module directory. A file under a name the compile does not discover on its own
+    is copied and named, since the next compile needs it passed explicitly to pick it up.
+    """
+    source = _inside(parquet_dir, shipped.name)
+    destination = _inside(output_dir, shipped.name)
+    if source is None or destination is None:
+        logger.warning(
+            "The artifact's manifest records a %s named %r, which is not a path inside the module, so it "
+            "was not copied into the reversed spec.",
+            shipped.what,
+            shipped.name,
+        )
         return
-    source = parquet_dir / entry.name
+    if _leaves_through_a_link(source, parquet_dir) or _leaves_through_a_link(destination, output_dir):
+        logger.warning(
+            "The artifact's manifest records a %s (%s) reached through a symlink, so it was not copied "
+            "into the reversed spec: a link can read or write outside the module, and a compile never "
+            "ships one.",
+            shipped.what,
+            shipped.name,
+        )
+        return
     if not source.is_file():
         logger.warning(
             "The artifact's manifest records a %s (%s) that is not in %s, so the reversed spec has none.",
-            what,
-            entry.name,
+            shipped.what,
+            shipped.name,
             parquet_dir,
         )
         return
-    if sha256_file(source) != entry.sha256:
+    if shipped.sha256 is None:
+        logger.warning(
+            "The artifact's manifest records a %s (%s) with no hash, so it was not copied into the "
+            "reversed spec: nothing says these are the bytes that were compiled.",
+            shipped.what,
+            shipped.name,
+        )
+        return
+    if sha256_file(source) != shipped.sha256:
         logger.warning(
             "The %s in %s (%s) does not match the hash its manifest records, so it was not copied into "
             "the reversed spec: it is not the file that was compiled.",
-            what,
+            shipped.what,
             parquet_dir,
-            entry.name,
+            shipped.name,
         )
         return
-    destination = output_dir / entry.name
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(source, destination)
-    discovered = (
-        entry.name in README_CANDIDATES
-        if what == "readme"
-        else entry.name in {f"logo.{ext}" for ext in LOGO_EXTENSIONS}
-    )
-    if not discovered:
+    if not _discovered(shipped, destination, output_dir):
         logger.warning(
             "The %s was copied as %s, a name the compiler does not discover on its own; pass it "
             "explicitly when compiling the reversed spec.",
-            what,
-            entry.name,
+            shipped.what,
+            shipped.name,
         )
 
 
@@ -409,8 +629,8 @@ def reverse_module(
         yaml.dump(spec, default_flow_style=False, sort_keys=False, allow_unicode=True), encoding="utf-8"
     )
     if manifest is not None:
-        _copy_shipped_file(parquet_dir, output_dir, manifest.readme, "readme")
-        _copy_shipped_file(parquet_dir, output_dir, manifest.logo, "logo")
+        for shipped in shipped_files(manifest):
+            _copy_shipped_file(parquet_dir, output_dir, shipped)
 
     # variants.csv + studies.csv only when the module has them.
     if weights_df is not None:
@@ -463,7 +683,7 @@ def reverse_module(
         if kind_path.is_file():
             kind_df = pl.read_parquet(kind_path)
             _write_table_csv(kind_df, model, output_dir / csv_name)
-            if csv_name in {name for name, _model in _POSITIONAL_TABLE_KINDS}:
+            if csv_name in _POSITIONAL_TABLE_CSVS:
                 positional_frames.append((csv_name, kind_df))
 
     # `resolution.csv` last, because it is rebuilt from everything above. It is written from the SNP
@@ -476,13 +696,17 @@ def reverse_module(
     # RM43 *moved* this call out of the `weights_df is not None` block so a table-only module emits one,
     # while RM51's repair was applied to the call site at its old address. Taking either side of that
     # merge alone loses the other.
-    if write_resolution:
+    # RM364: a spec that carried no table gets none back. Rebuilding one from the authored cells a
+    # first compile never resolved is a table the author never wrote: the second lap then reads it, and
+    # its manifest publishes a `resolution_signature`, VRS coverage and expansion counts the first did not.
+    if write_resolution and not _no_table_was_read(manifest, weights_df, positional_frames):
         _write_resolution_csv(
             weights_df,
             positional_frames,
             sidecar_paths["resolution.csv"],
             genome_build=genome_build,
             studies_df=studies_df,
+            spec_carried_one=manifest is not None and _spec_carried_a_table(manifest),
         )
 
     # 0.5 derived-fact sidecars: same round-trip, minus the columns that are recomputed rather than
@@ -545,9 +769,16 @@ def _write_resolution_csv(
     output_path: Path,
     genome_build: str = "GRCh38",
     studies_df: pl.DataFrame | None = None,
+    spec_carried_one: bool = False,
 ) -> None:
     """Emit `resolution.csv` from the compiled artifact — the resolved facts, so `reverse → compile`
     is fully offline (no Ensembl reference, no network).
+
+    **Since RM364 a parquet carries the table's own rows** (`resolution_loci` on `weights.parquet` and the
+    positional parquets, beside `proxy_loci`), and this writes those, keyed on the authored key, in the
+    order below. Everything from here to the end of this docstring describes the rebuild from a row's
+    cells, which is now the fallback for a parquet compiled before the column existed: it lost every
+    table row the fill did not take and wrote the author's coordinate back as a resolution fact.
 
     Each *positioned* weights row yields one `ResolutionRow` keyed by its frozen `variant_key`,
     carrying the resolved rsid (which `variants.csv` drops on a coord-keyed row). On recompile,
@@ -569,9 +800,13 @@ def _write_resolution_csv(
     * **weights first, and a key it emitted is never re-emitted.** `variants.csv` is the only table
       carrying `alts` as an authored fact, so letting a PGx row win would change what the table says
       about an allele — the same hazard that ordering exists to avoid one tier up.
-    * **one row per key from the positional side.** These tables are never expanded, so a key names
-      exactly one locus there; emitting a second row under one key would read back as a one-to-many
-      rsID and send the next compile into the expansion path.
+    * **what the table said, where the parquet carries it (RM364).** Every variant parquet compiled
+      since RM364 carries `resolution_loci`, the rows the table files under the row's authored key, and
+      those are emitted as stored, several under one key where the table had several. That is not the
+      expansion hazard: the rows ARE the table's, so the next compile reads the one-to-many it read the
+      first time. The cell rebuild below is the fallback for an older parquet, and there a positional
+      table contributes **one row per key**: those tables are never expanded, so a second row rebuilt
+      from cells would invent a one-to-many the table never stated.
 
     **Reverse emits facts and discards provenance, deliberately and completely — with one exception.**
     `source` becomes `reversed`, `status` becomes `resolved`, `fetched_at` empties — and the
@@ -629,10 +864,21 @@ def _write_resolution_csv(
 
     for row in weights_df.iter_rows(named=True) if weights_df is not None else ():
         chrom, start = row.get("chrom"), row.get("start")
-        if chrom is None or start is None:
-            continue
         alts_list = row.get("alts")
         alts_cell = ",".join(alts_list) if alts_list else None
+        if row.get("resolution_loci"):
+            # RM364: the loci the table filed under the row's AUTHORED key, as the table stated them,
+            # carried exactly where this row's own cells would not reproduce them. Every genotype row and
+            # every expanded locus of one authored row carries the same list, so the first emits it and
+            # the key is then taken.
+            key = _resolution_key(row, chrom, start, alts_cell, genome_build)
+            if key not in locus_counter:
+                _emit_loci(key, row["resolution_loci"], locus_counter, emitted, genome_build)
+            continue
+        # The cell rebuild: a row whose cells reproduce the table (the column is null there), and every
+        # row of a `weights.parquet` compiled before the column existed.
+        if chrom is None or start is None:
+            continue
         resolution_key = _resolution_key(row, chrom, start, alts_cell, genome_build)
         # One authored row may appear several times in weights (one per genotype); the resolved
         # fact is the same each time, so emit it once.
@@ -657,8 +903,19 @@ def _write_resolution_csv(
         )
 
     for _csv_name, table_df in positional:
+        # RM364: where a row carries `resolution_loci`, that answer is what comes back, never the row's own
+        # cells. A row the fill left alone (its authored coordinate contradicted, its key naming several
+        # loci, or a build the fill skips) holds the AUTHORED coordinate there, and writing that back as
+        # a resolution fact both lost the table's answer and silenced the contradiction on the second
+        # lap. The cell rebuild below serves a row whose cells reproduce the table (the column is null
+        # there) and every row of a parquet compiled before the column existed.
         for row in table_df.iter_rows(named=True):
             chrom, start = row.get("chrom"), row.get("start")
+            if row.get("resolution_loci"):
+                key = row.get("variant_key")
+                if key and key not in locus_counter:
+                    _emit_loci(key, row["resolution_loci"], locus_counter, emitted, genome_build)
+                continue
             if chrom is None or start is None:
                 continue
             alts_cell = row.get("alts") or None
@@ -689,31 +946,93 @@ def _write_resolution_csv(
         key, loci = row.get("proxy_rsid"), row.get("proxy_loci")
         if not key or not loci or key in locus_counter:
             continue
-        locus_counter[key] = len(loci)
-        for locus in loci:
-            emitted.append(
-                _resolution_record(
-                    locus,
-                    key,
-                    locus["chrom"],
-                    locus["start"],
-                    locus.get("alts") or None,
-                    locus["locus_index"],
-                    genome_build,
-                )
-            )
+        _emit_loci(key, loci, locus_counter, emitted, genome_build)
 
     # A module that resolved nothing anywhere gets no file — writing a header-only `resolution.csv`
     # into a reversed spec that never had one would invent a derived sidecar (and a `manifest.derived`
     # entry) out of an absence. A module with a `weights.parquet` keeps the pre-0.6 behaviour of
     # always writing, so nothing that already round-trips changes shape.
-    if weights_df is None and not emitted:
+    # `spec_carried_one` (RM364): the compiled spec had a table, so the reversed one has one too, even
+    # with nothing in it a parquet held.
+    if weights_df is None and not emitted and not spec_carried_one:
         return
     with open(output_path, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         for record in emitted:
             writer.writerow(record)
+
+
+def _emit_loci(
+    key: str,
+    loci: list[dict[str, Any]],
+    locus_counter: dict[str, int],
+    emitted: list[dict[str, object]],
+    genome_build: str,
+) -> None:
+    """Re-emit the loci a parquet carries for `key` (`proxy_loci`, `resolution_loci`), each as stored."""
+    locus_counter[key] = len(loci)
+    for locus in loci:
+        emitted.append(
+            _resolution_record(
+                locus,
+                key,
+                locus["chrom"],
+                locus["start"],
+                locus.get("alts") or None,
+                locus["locus_index"],
+                genome_build,
+            )
+        )
+
+
+#: The identity cells a resolution may fill into a parquet row, beside the ones the author wrote.
+_FILLABLE_IDENTITY: tuple[str, ...] = ("rsid", "chrom", "start", "ref", "alts")
+
+
+def _no_table_was_read(
+    manifest: ModuleManifest | None,
+    weights_df: pl.DataFrame | None,
+    positional: list[tuple[str, pl.DataFrame]],
+) -> bool:
+    """Whether the compile that made this artifact resolved from nothing, so reverse writes no table (RM364).
+
+    Three facts, all required. The manifest names no `resolution_signature`, which every compile since
+    0.6 stamps where it reads a table with rows. Its `derived` list names no `resolution.csv`, which it
+    records for a table with no rows or one `--no-resolve` left unread. And no parquet row carries an identity cell its
+    `authored_ident` does not name: a filled cell came from somewhere, and an older compile, or the
+    deprecated `ensembl_cache` path, fills one without stamping a signature, so that module still needs
+    the table rebuilt to recompile to the same bytes. A parquet with no `authored_ident` column cannot
+    tell a filled cell from an authored one and counts as filled; a bare directory with no manifest
+    keeps the old behaviour of always writing.
+    """
+    if manifest is None or manifest.compilation.resolution_signature is not None:
+        return False
+    if _spec_carried_a_table(manifest):
+        return False
+    frames = [frame for frame in (weights_df,) if frame is not None] + [frame for _csv, frame in positional]
+    return not any(_carries_a_filled_cell(frame) for frame in frames)
+
+
+def _spec_carried_a_table(manifest: ModuleManifest) -> bool:
+    """Whether the compiled spec carried a `resolution.csv`, by `manifest.derived`'s record of it.
+
+    Recorded even when the table had no rows or was not read (`--no-resolve`), so the reversed spec
+    carries one back, header-only if nothing a parquet holds came from it."""
+    carried = set(sidecar_relative_names("resolution.csv"))
+    return any(entry.name in carried for entry in manifest.derived)
+
+
+def _carries_a_filled_cell(frame: pl.DataFrame) -> bool:
+    """Whether some row of `frame` holds an identity cell its `authored_ident` does not name."""
+    if "authored_ident" not in frame.columns:
+        return True
+    columns = [name for name in _FILLABLE_IDENTITY if name in frame.columns]
+    for row in frame.select("authored_ident", *columns).iter_rows(named=True):
+        authored = set(row["authored_ident"] or ())
+        if any(row[name] not in (None, "", []) and name not in authored for name in columns):
+            return True
+    return False
 
 
 def _reverse_locus_index(row: dict[str, Any], resolution_key: str, emitted: dict[str, set[int]]) -> int:
