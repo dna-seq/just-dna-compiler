@@ -50,6 +50,7 @@ from just_dna_format.manifest import (
     GwasEffects,
     Identity,
     Literature,
+    MetaSelectorCount,
     ModuleManifest,
     Provenance,
     ProvenanceDoc,
@@ -1050,6 +1051,7 @@ def _build_manifest(
     literature: Literature | None = None,
     sources: Sources | None = None,
     verification: Verification | None = None,
+    meta_selectors: list[MetaSelectorCount] | None = None,
 ) -> ModuleManifest:
     """Assemble the manifest from the spec, validation stats, and hashed input/output/log files."""
     module = config.module
@@ -1137,6 +1139,11 @@ def _build_manifest(
         # RM92: what the module's `weight` column means, copied verbatim. Advisory like `license`,
         # so it reaches the manifest and neither identity half.
         weighting=config.weighting,
+        # RM324: the scale `meta.csv`'s `tier` grades on, copied verbatim like `weighting`.
+        tier_scale=config.tier_scale,
+        # RM28: every meta member's match count, computed by the expansion and published rather than
+        # discarded (`@dont-discard-computed`).
+        meta_selectors=meta_selectors,
         # RM134: whose clinical call this curator weighted, copied verbatim and read by nothing.
         # Same class as `weighting` — advisory, in the manifest, in neither identity half — and the
         # compile path deliberately does not consult it: resolving a disagreement between two

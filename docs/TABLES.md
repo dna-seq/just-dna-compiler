@@ -244,6 +244,34 @@ they sit outside content identity and editing one does not move the digest.
 *removed* disagreed with itself between two runs of the same module, because the second run had nothing
 left to remove.
 
+## meta.csv
+
+**One row is one composite statement and what it says.** The statement is a member set: one or more
+rows of the single-statement tables (`variants`, `diplotypes`, `pharm_variants`, `allele_function`),
+each picked by a `table[column=value, …]` member. What it says is a finding (a conclusion, a per-trait
+direction, its negatives) or the per-locus facts (tier, age of action and its confidence, tags), or
+both. A row with one member and only facts is how a single locus or a named allele gets its tier; a row
+with two members and a conclusion is a combination, such as KL-VS heterozygous with an APOE ε4 diplotype.
+
+**A person decides every cell, and the compiler decides only what each member matched.** The member
+text is kept verbatim through `reverse`, so a selector the author wrote over a tag set
+(`variants[flags=legacy_longevitymap]`) stays a selector rather than becoming every row it matched. The compiler writes those rows beside it, so a consumer reads matches and never evaluates a
+rule.
+
+**Facts live here and nowhere else.** A tier is never repeated on the genotype rows of a locus, so no
+two copies of it can drift apart. Two rows can still state two values for one row they both reach; the
+more specific one wins, column by column (a concrete row key, then a locus, then more conditions, then
+fewer; a diplotype over the alleles it contains; a sex-scoped row over the same key without one, for
+that sex). Where neither is more specific and they disagree, the column is withheld, which is the ε2/ε4
+case: two allele rows meet at one diplotype, and a third row keyed on that diplotype settles it.
+**Unstated is not different**: a specific row that leaves a fact empty takes the general row's value.
+
+**The symptom when it is wrong.** A member that matches nothing is almost always a value spelled other
+than the table stores it: a diplotype pair is stored with the smaller haplotype first, a genotype with
+its alleles sorted. A per-trait row on a bare locus whose genotype rows disagree on `effect_allele` has
+its direction withheld rather than guessed. A module carrying only this file is refused: it names rows,
+and there are none to name.
+
 ## licensing.csv
 
 **One row is one data source, at one layer of the module, with the terms it was used under** — keyed

@@ -301,8 +301,22 @@ def test_required_any_of_agrees_with_each_models_own_validator() -> None:
         "StudyRow": {"pmid": "12345678"},
         "HaplotypeRow": {"haplotype_name": "*4", "allele": "A"},
         "PharmVariantRow": {"drug": "warfarin", "conclusion": "c"},
+        # The meta-table's groups are its statement columns rather than identity ones (0.8): a row
+        # must state at least one finding or fact.
+        "MetaRow": {"members": "variants[variant_key=rs1]"},
     }
-    identity_values = {"rsid": "rs1801133", "chrom": "1", "start": 100}
+    identity_values = {
+        "rsid": "rs1801133",
+        "chrom": "1",
+        "start": 100,
+        "conclusion": "c",
+        "direction": "risk",
+        "negatives": "n",
+        "tier": "A",
+        "age_of_action": "LATE",
+        "age_of_action_confidence": "DIRECT",
+        "flags": "tag",
+    }
     checked = 0
     for name, model in _ALL_MODELS.items():
         groups = getattr(model, "REQUIRED_ANY_OF", ())

@@ -279,7 +279,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
   | `VALID_SOURCE_LAYERS` | 9 (closed) |  |
   | `VALID_VERIFICATION_CHECKS` | 26 (closed) |  |
   | `VALID_VERIFICATION_SKIPS` | 8 (closed) |  |
-  | `VALID_WARNING_CODES` | 76 (closed) | every code a compile may stamp on a finding (members in `RETIRED_WARNING_CODES` are no longer emitted); the catalogue with texts is in [COMPILER.md](COMPILER.md) |
+  | `VALID_WARNING_CODES` | 78 (closed) | every code a compile may stamp on a finding (members in `RETIRED_WARNING_CODES` are no longer emitted); the catalogue with texts is in [COMPILER.md](COMPILER.md) |
 
   Vocabularies owned by a leaf rather than by `vocab` (`spec`, `binning`, `pgx`, `pgs`, `manifest`,
   `sources`) are reached through the field markers above and not listed here, for the reason the bullet
@@ -2073,6 +2073,61 @@ tables — the 1.0 work — an author warned off `outranks` has nowhere to go, a
 clear is noise rather than notice. Merging the two now was rejected: it is legal only if the old form
 survives as a working derived alias, which means shipping the unification *and* its compatibility shim
 in a release where the overlay has no users yet.
+
+## The meta-table (0.8) — `meta.csv`
+
+One authored table holds the combinations RM28 left open, the per-locus facts RM323 had no home for,
+RM324's `tier`, RM327's per-trait judgements and RM330's `sex` condition (the maintainer's "go with C",
+2026-11-04). `MetaRow` (`just_dna_format.meta`) is an `AuthoredModel`; what the compiler does with it is
+[COMPILER.md § The meta-table](COMPILER.md#the-meta-table-08--expansion-precedence-and-the-two-parquets).
+
+### The member grammar
+
+A row's `members` cell is one or more members joined by `&` at bracket depth 0, each
+`table[column=value, column=value]`:
+
+- the member tables are `variants`, `diplotypes`, `pharm_variants` and `allele_function`
+  (`META_MEMBER_TABLES`); `haplotypes.csv` defines alleles and is not one, and `studies.csv` is out of
+  bounds;
+- a column is any authored column of that table, plus `variant_key`;
+- conditions are AND-ed, and on a list column (`flags`) `=` means contains;
+- a value may not contain `[`, `]`, `,` or `=`, and is refused naming the character; `&` and `|` inside a
+  value are data (a DPYD haplotype name, a phased genotype). The shared `MULTI_SEP` splitter never
+  touches this cell.
+
+Out of bounds, each refused with its own message: negation (`!=`, `NOT`), OR (`|` or `OR` between
+members), numeric ranges (`<`, `>`), joins across tables (`table.column`), and selectors over
+`studies.csv`. Rows are already a disjunction. There is no bare-rsID shorthand.
+
+A concrete row is a member naming its table's full key (`variants[variant_key=rs429358,
+genotype=C/C]`), a locus is `variants[variant_key=rs10455872]`, a named allele is
+`allele_function[gene=APOE, allele=ε4]` (the module needs that `allele_function.csv` row, every other
+column may be empty), and a tag set is `variants[flags=legacy_longevitymap]`.
+
+### The key, and what a row must say
+
+The key is `(members_key, trait_efo_id, sex)`. `members_key` is stamped from `members`: members sorted,
+conditions sorted within each, so `A & B` and `B & A` are one key and are refused as a duplicate. The
+cell itself stays verbatim. `sex` is in the key because it scopes the whole row: a `male` and a `female`
+row for one member set are two statements.
+
+A row must state at least one of `conclusion`, `direction`, `negatives`, `tier`, `age_of_action`,
+`age_of_action_confidence` or `flags` (`REQUIRED_ANY_OF`). `trait_role` (closed: `mediator`; empty means
+the trait is an effect) needs `trait_efo_id`. `sex` is closed: `male`, `female`. `direction` is the shared
+vocabulary, and every member of a row stating one must fix an allele (`allele_bearing`, three-valued): a
+`genotype` condition, a `diplotypes` member naming either haplotype, or any `allele_function` member, is
+`true`; a bare `variants[variant_key=…]` locus is `None`, decided at compile by whether every row of the
+locus states one `effect_allele` (if not, the warning `meta_member_allele_ambiguous` and the direction is
+withheld); anything else is `false` and refused. `tier` is open text graded on the scale
+`module_spec.yaml` names once as `tier_scale`; a `tier` with no scale is refused. `pmid` and `doi` follow
+the citing tables' rules (RM336's pair validator plugs in where `MetaRow` carries `# RM336:`).
+
+### Precedence, from the conditions
+
+`member_rank(member, target)` is `(3, 0)` for a concrete row key, `(2, 0)` for a locus, `(1, n)` for a
+selector of `n` conditions, compared as tuples; equal ranks are incomparable. Across tables, a diplotype
+outranks the alleles it contains, and a sex-scoped row outranks the same key without one, for that sex.
+Two incomparable rows that state different values withhold the column. The compiler applies it.
 
 ## The verification attestation (0.6) — `verification.json`
 

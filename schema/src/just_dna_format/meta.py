@@ -253,6 +253,15 @@ def parse_members(cell: str) -> list[MetaMember]:
     return members
 
 
+def split_members(cell: str) -> list[str]:
+    """The members of a `members` cell, each verbatim as authored (stripped), in authored order.
+
+    The texts a finding or the manifest quotes back to the author. Call `parse_members` first (or hold
+    a row that validated): this splits without judging.
+    """
+    return [part.strip() for part in _split_depth0(cell)]
+
+
 def normalize_members(cell: str) -> str:
     """The row key's member half: members sorted, conditions sorted within each, joined by ` & `.
 
@@ -316,6 +325,21 @@ class MetaRow(AuthoredModel):
     """
 
     _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("members_key", "trait_efo_id", "sex")
+    #: A row must state at least one finding or fact column — any ONE of these satisfies it. Declared
+    #: beside `_validate_statement` so a tool listing what a row needs can see the rule (the
+    #: `VariantRow` rsid-or-coordinate precedent); `conclusion` first, the one a stub offers.
+    REQUIRED_ANY_OF: ClassVar[tuple[frozenset[str], ...]] = tuple(
+        frozenset({name})
+        for name in (
+            "conclusion",
+            "direction",
+            "negatives",
+            "tier",
+            "age_of_action",
+            "age_of_action_confidence",
+            "flags",
+        )
+    )
 
     members: str = Field(
         json_schema_extra=since("0.8.0"),

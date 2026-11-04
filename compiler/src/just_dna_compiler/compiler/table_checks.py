@@ -20,6 +20,7 @@ from just_dna_compiler.compiler.tables import (
     _PROVENANCE_FILE,
     _TABLE_DUPE_KEYS,
     _TABLE_KIND_CSVS,
+    META_CSV,
     OVERRIDES_CSV,
 )
 
@@ -387,6 +388,8 @@ _KNOWN_SPEC_FILES: frozenset[str] = frozenset(
     # is what makes a stray `derived/overrides.csv` reported as a misplaced table rather than
     # tolerated — the rows in it would otherwise be read from nowhere.
     | {OVERRIDES_CSV}
+    # The meta-table (0.8) is authored and has one legal name and place, the overlay's terms.
+    | {META_CSV}
     # Every accepted spelling, not just the one the registries name — a sidecar the compiler happily
     # reads under an alias must not also be reported as a near-miss stray file in the same run (RM51).
     | {name for csv, _, _ in _FACT_TABLES for name in sidecar_spellings(csv)}

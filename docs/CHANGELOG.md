@@ -41,6 +41,24 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM28, RM323, RM324 (and RM327's rows, RM330's `sex`): the meta-table, `meta.csv` (0.8, uncut)
+
+**format, compiler, enricher** — A new optional authored table, `meta.csv` (`just_dna_format.meta.MetaRow`),
+maps a member set to a finding and/or the per-locus facts. A member is `table[column=value, …]` over
+`variants`, `diplotypes`, `pharm_variants` or `allele_function`, members joined by `&`; conditions are
+AND-ed and `=` on a list column means contains. Columns: `members` (required), `trait_efo_id`,
+`trait_role` (`mediator`), `direction`, `conclusion`, `negatives`, `tier`, `age_of_action`,
+`age_of_action_confidence`, `flags`, `pmid`, `doi`, `sex` (`male`/`female`). The key is the sorted members,
+the trait and `sex`, so `A & B` and `B & A` are one key. `module_spec.yaml` gains `tier_scale`, required
+by any `tier` cell, copied into the manifest and written back by `reverse`. The compiler expands every
+member and writes `meta.parquet` (the authored rows, verbatim selectors, their matches, `replaces`,
+`withheld`) and `meta_resolved.parquet` (each row a one-member meta row reaches, with each fact after
+precedence and the columns withheld where two incomparable rows disagree). New manifest field
+`meta_selectors` (each member's match count); new warning codes `meta_selector_matches_nothing` and
+`meta_member_allele_ambiguous`. `meta.csv` alone is not a module. The enricher's rsID currency pass asks
+dbSNP about every rsID a member names. See [INTEGRATION_0_8.md](INTEGRATION_0_8.md) and
+[COMPILER.md § The meta-table](COMPILER.md#the-meta-table-08--expansion-precedence-and-the-two-parquets).
+
 ## 2026-11-04 — RM340: the VRS-coverage warning points at the record that explains its no-ALT rows (patch, on `main`)
 
 **compiler, enricher** — When an attested `verification.json` carries an `rsid_coordinate_agreement` record

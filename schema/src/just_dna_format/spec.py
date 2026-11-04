@@ -400,6 +400,18 @@ class ModuleSpecConfig(BaseModel):
         ),
     )
 
+    tier_scale: str | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description=(
+            "The name of the scale `meta.csv`'s `tier` column grades on, stated once per module, free "
+            "text (RM324) — the `weighting:` pattern. A `tier` cell in a module with no `tier_scale` is "
+            "refused: a grade with no scale beside it is a number nobody can read. Values are not "
+            "checked against the scale; the scale is the module's. Copied into the manifest and "
+            "written back by `reverse_module` from there."
+        ),
+    )
+
     authority_precedence: list[str] = Field(
         json_schema_extra=since("0.7.0"),
         default_factory=list,
