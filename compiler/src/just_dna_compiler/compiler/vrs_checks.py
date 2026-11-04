@@ -32,8 +32,8 @@ def _verify_vrs_ids(resolution_rows: list[ResolutionRow]) -> tuple[list[str], li
     to run this (Goal 2). A mismatch means the row was tampered with, or the producer and this
     implementation disagree — either way the id is not usable as an identity.
 
-    Every allele lands in exactly one of **four** outcomes, and the distinction between the middle two
-    is the one that matters:
+    Every allele lands in exactly one of **three** outcomes, and the distinction between the last two
+    is the one that matters (a row minted under another VRS version is reported beside them):
 
     - **verified** — recomputed and equal. Silent.
     - **mismatch** — recomputed and *different*. Always an **error**, in both modes: this computation
