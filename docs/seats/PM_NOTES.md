@@ -59,8 +59,9 @@ purpose; normalization is the compiled parquet's job (RM346, 1.0).
   The next read starts after c3ac4d8.
 - **The `0.8` push is the lead's, under its grant**, not the person's. I said otherwise in chat on
   2026-11-04 and withdrew it in `#just-dna-compiler>scope`.
-- **Charter wording before the cut**: P4 and P7 changed on `0.8` and the person's vetting of the wording is
-  not recorded. That is the lead's desk question, and I flagged it to the lead (2026-11-04).
+- **Charter wording before the cut: settled.** The person read each changed sentence old → new in the
+  lead's chat before leaving (P4, P7, the Goals snapshot bullet, the Goals toolchain clause) and answered
+  "Good, I accept". The lead records it in CONSTITUTION_AMENDMENTS_HISTORY.md on `0.8`; no desk item.
 - **Unattended from 04:10Z, 2026-11-04**: the desk holds no pm question, and none was waiting in chat.
   The licensing points below stay unraised: no work waits on them.
 - RM149's gate: **decided 2026-11-03, it stays** (option 1). Written under RM149 in ROADMAP_0_9.md.
