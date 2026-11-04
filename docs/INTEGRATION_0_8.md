@@ -115,6 +115,17 @@ The manifest blocks are `{signature, sources, datasets, row_count, variant_count
 gains `locus_to_gene`, `colocalisation` and `consequence`; a 0.7 reader refuses a `sources.csv` row
 carrying one, which is the same upgrade-first rule.
 
+**A `resolution.csv` row with an rsID and no ALT is answered (added 2026-11-04).** The pass takes the
+release's allele when exactly one at the row's `(chrom, start, ref)` carries the rsID and none there
+states no rsID, and withholds the row otherwise; ENRICHER.md's Open Targets section has the arms. For a
+consumer: rows in the four tables may now be of an allele the module did not author, and nothing on the
+row says so; the pass's result names those keys (`allele_supplied`) beside the withheld ones
+(`allele_unstated_withheld`, `allele_unstated_no_rsid`, `allele_unstated_unasked`), `summarise` and the
+CLI count them, and `PosteriorCounts` gains `allele_withheld`. For an operator: the lane snapshot's
+`variants.parquet` gains the list column `rs_ids`, so **rebuild the `opentargets` snapshot**; an older
+one answers those rows as not asked, and `--strict` refuses it when the module has such a row. No new
+warning code.
+
 ## 1.3 New derived column and client method (no break)
 
 | Surface | Item | What changed |

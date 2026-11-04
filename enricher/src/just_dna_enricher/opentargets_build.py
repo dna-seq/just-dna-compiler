@@ -14,7 +14,9 @@ row counts and sizes as measured on 2026-11-04):
 | `study` | read only to name a coloc row's right-hand gene and tissue |
 
 **Flattened at build, read by duckdb at run time** (`@duckdb-vs-polars`). Every list column the runtime
-pass would otherwise unnest per query (`locus`, `transcriptConsequences`) is exploded here, once.
+pass would otherwise unnest per query (`locus`, `transcriptConsequences`) is exploded here, once. The
+one list kept as a list is an allele's `rsIds` (`variants.parquet`'s `rs_ids`): the pass asks only
+whether it holds one rsID, for a module row that states no ALT, and never unnests it.
 
 **Alleles come from columns, never from the id.** `variantId` is `<chr>_<pos>_<ref>_<alt>` with
 underscores (the croissant says hyphens) and, for 2,114 long alleles, an `OTVAR_…` hash; the snapshot
@@ -268,6 +270,9 @@ def _build_variants(source: Path, data_dir: Path) -> int:
             pl.col("position").cast(pl.Int64).alias("position"),
             pl.col("referenceAllele").alias("ref"),
             pl.col("alternateAllele").alias("alt"),
+            # The source's own rsIDs per allele, verbatim (a list; empty for 491,617 alleles of 26.09). Read
+            # only when a module row names an rsID and no ALT: the pass then asks which allele carries it.
+            pl.col("rsIds").alias("rs_ids"),
         )
         .sort("chrom", "position", "ref", "alt", "variant_id")
         .collect()
@@ -487,7 +492,9 @@ def subset_snapshot(
     they are members of, those sets' L2G and coloc rows), so a pass over the subset answers as it would over the
     whole release for those variants. `studies` keeps every credible-set head of those studies too,
     so "the study has credible sets, and the variant is in none" answers on the subset as it does on
-    the release. The `release.json` is the parent's with `subset_of` added.
+    the release. Every other allele of the release at a wanted allele's `(chrom, position, ref)` keeps its
+    allele-table row (and nothing else), so the pass's lookup for a module row with no ALT sees the
+    locus's alleles as the release does. The `release.json` is the parent's with `subset_of` added.
     """
     _require_polars()
     snapshot, out_dir = Path(snapshot), Path(out_dir)
@@ -496,12 +503,17 @@ def subset_snapshot(
     wanted = pl.DataFrame(
         alleles, schema={"chrom": pl.Utf8, "position": pl.Int64, "ref": pl.Utf8, "alt": pl.Utf8}, orient="row"
     )
-    variants = (
-        pl.read_parquet(src / VARIANTS_FILE)
-        .join(wanted, on=["chrom", "position", "ref", "alt"], how="semi")
-        .sort("chrom", "position", "ref", "alt", "variant_id")
+    every = pl.read_parquet(src / VARIANTS_FILE)
+    # The wanted alleles carry their whole footprint. Their SIBLINGS (every other allele of the release at
+    # a wanted `(chrom, position, ref)`) carry their allele-table row only: a module row naming an rsID
+    # and no ALT is matched against every allele at its locus, so a slice without the siblings would
+    # answer "one allele here" where the release answers "several". Nothing else of a sibling is read.
+    variants = every.join(wanted, on=["chrom", "position", "ref", "alt"], how="semi")
+    siblings = every.join(
+        wanted.select("chrom", "position", "ref").unique(), on=["chrom", "position", "ref"], how="semi"
     )
     ids = variants.select("variant_id")
+    variants = siblings.sort("chrom", "position", "ref", "alt", "variant_id")
     members = pl.scan_parquet(str(src / MEMBERS_GLOB)).join(ids.lazy(), on="variant_id", how="semi").collect()
     sets = pl.read_parquet(src / CREDIBLE_SETS_FILE)
     of_studies = sets.filter(pl.col("study_id").is_in(studies or [])).select("study_locus_id")

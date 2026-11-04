@@ -146,6 +146,12 @@ def opentargets_enrich_(
         f"{summary['allele_ambiguous']}"
     )
     typer.echo(
+        f"rows stating no ALT: allele supplied by the release {summary['allele_supplied']}  withheld "
+        f"(several candidate alleles) {summary['allele_unstated_withheld']}  no rsID "
+        f"{summary['allele_unstated_no_rsid']}  not asked (snapshot without rsIDs) "
+        f"{summary['allele_unstated_unasked']}"
+    )
+    typer.echo(
         "posterior on gwas_effects.csv: "
         + ", ".join(f"{name.replace('_', ' ')} {n}" for name, n in summary["posterior"].items())
     )
