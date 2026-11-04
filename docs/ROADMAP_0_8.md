@@ -472,6 +472,8 @@ surfacing as an incident, and it was repaired at the reader rather than at the c
 
 ## RM253 — a repeat-count star allele (UGT1A1 `*28` = TA(8)) has no home a diplotype can name, and the CPIC drafter translates none of CPIC's notation
 
+**Decided 2026-11-04, in part.** DPYD (seam 3): the drafter writes CPIC's full name with the spaces dropped, as the maintainer chose, and replaces the comma between variants with `&`, because a comma inside a name would split any multi-valued cell (MULTI_SEP is `,;|`). `&` was picked over the alternatives because each of the others already means something in an allele name. `:` is HGVS's reference separator. `+` is an intronic offset (`c.1905+1G>A`, DPYD `*2A`). `_` is an HGVS range. `/` separates the two halves of a diplotype. So HapB3 is `c.1129-5923C>G&c.1236G>A(HapB3)`. Seam 1, how a repeat count is spelled: open, decided after checking precedent in real VCFs (PGP-HMS, and just-vcf's seats).
+
 **0.8, confirmed 2026-11-03** by the maintainer when scoping 0.8.
 
 **Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-09-21** · **Owner** format (schema) +
