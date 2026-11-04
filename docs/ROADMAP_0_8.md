@@ -41,9 +41,9 @@ land wherever RM323 puts per-locus facts. RM322 next, since APOE is the lead loc
 
 | Item | What it adds | Price (P9) | Note |
 |---|---|---|---|
-| [RM323](#rm323--a-fact-about-a-locus-has-no-authored-home-so-every-per-locus-axis-is-copied-onto-each-genotype-row-and-nothing-checks-the-copies-agree) | where per-locus facts live: typed columns per genotype plus an agreement warning, or a locus table | full ×n, or a new table kind | **decide first** |
+| [RM323](ROADMAP_HISTORY.md#rm323--a-fact-about-a-locus-has-no-authored-home-so-every-per-locus-axis-is-copied-onto-each-genotype-row-and-nothing-checks-the-copies-agree) | where per-locus facts live: typed columns per genotype plus an agreement warning, or a locus table | full ×n, or a new table kind | **decide first** |
 | [RM322](#rm322--diplotypescsv-carries-none-of-the-axes-a-scored-finding-needs-so-apoe-the-modules-headline-result-cannot-state-its-tier-mechanism-or-trade-off) | `DiplotypeRow` gains `negatives`, `category`, `priority`, `flags` (maybe `actionability`), so APOE can carry the axes | full ×4–5 |  |
-| [RM324](#rm324--there-is-no-evidence-tier-column-so-the-axis-that-gates-visibility-is-a-flags-tiera-token) | evidence tier as value + scheme | full ×2 | home from RM323 |
+| [RM324](ROADMAP_HISTORY.md#rm324--there-is-no-evidence-tier-column-so-the-axis-that-gates-visibility-is-a-flags-tiera-token) | evidence tier as value + scheme | full ×2 | home from RM323 |
 | [RM325](#rm325--studiescsv-has-no-sample-size-and-v2s-tier-a-rule-is-stated-in-n) | `StudyRow` sample size (and cases) | full ×1–2 |  |
 | [RM326](#rm326--a-study-row-cannot-say-which-outcome-it-measured-so-the-definition-of-pro-longevity-lives-in-a-study_design-prefix) | `StudyRow` phenotype class; evidence role and the outcome strip derived from it | full ×1, derived near-zero | check EFO first |
 | [RM327](#rm327--pleiotropy-has-no-per-trait-row-so-a-trade-off-can-only-be-prose-and-tradeoff-is-computed-rather-than-authored) | per-trait benefit/harm table (mediator folds in); `tradeoff` computed; reserve the name | full (new kind), derived near-zero, reservation a patch | `tradeoff` decided |
@@ -108,108 +108,6 @@ Alzheimer's row and a lifespan row per ε pair, which is how the plan's two fram
 **To design.** Which columns, and whether the home RM323 decides for locus-level facts also reaches a
 gene-pair subject (it does not if that home is keyed on `variant_key`).
 
-## RM323 — a fact about a locus has no authored home, so every per-locus axis is copied onto each genotype row and nothing checks the copies agree
-
-**Cut 2026-11-04 by the maintainer, after the final measuring run** (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §3): causal and effector confidence are **not authored**. The parquet carries their raw inputs: the fine-mapping posterior, the coding consequence, the L2G score and coloc. The C1–C4 / E1–E4 labels are v2's rubric, i.e. policy, so they live in v2's README and are computed by the consumer, as "evidence role" is. The run computed them on 67 of 75 rows. The 8 hand-curated inputs go in `overrides.csv` as corrections to the derived inputs. The meta-table keeps `tier`, `age_of_action` and its confidence, and gains **`flags`**: the maintainer chose it for parity, so every kind of member can carry tags the way `variants.csv` rows do, such as `ap:<strength>` and `hallmark:…`. `also_in:<module>` stays prose.
-
-**Final, 2026-11-04, the maintainer: "go with C".** This supersedes both decisions below. The per-locus facts
-(tier, causal and effector confidence, age of action and its confidence) are columns of **the meta-table only**.
-They are never repeated on `variants.csv` or `diplotypes.csv`.
-
-- A single locus's facts are a meta-table row with **one member** and no finding.
-- A member is an item of a single-statement table. It may be a locus-level reference (a `variant_key` alone),
-  for a fact that does not depend on the genotype, or a full row's key.
-- APOE ε2 and ε4 are each a one-member row naming their allele.
-
-One new table holds facts and combinations. Priced at about 20 (a new table at about 10, plus five fact columns
-and the finding's columns), against about 30 for a separate fact table or for facts repeated on the
-existing tables. The maintainer's standing rule from this decision is in [RM28](#rm28--meta-conclusions-the-predicate-half):
-weight toward fewer entities.
-
-**Re-decided 2026-11-04 by the maintainer: no new fact table, and no subject kinds.** This supersedes the
-`(subject_kind, subject)` key below.
-
-The per-locus facts become **columns on the single-statement tables** that already exist, such as
-`variants.csv` and `diplotypes.csv`, and on the meta-table's rows. The maintainer: "Authoring surface is
-human centered. If it were a db it'd be 10x more tables, because many columns are duplicated across
-individual-loci-type tables and properly normalized db resolves this by pairing adapters. Humans have trouble
-reading such." So the authored layer stays denormalized on purpose. Compilation may normalize it, which is
-[RM346](ROADMAP_1_0.md#rm346--the-authored-tables-are-denormalized-for-people-and-the-parquets-copy-that-shape-so-a-machine-reader-gets-it-too) (1.0).
-
-**What this means for a value that differs between rows.** A fact sits on a statement (one genotype row,
-one diplotype row), so it is a property of that statement. Two rows of one locus may legitimately differ:
-APOE's ε2/ε4 and ε3/ε4 rows each carry their own age-of-action confidence, which dissolves the ε2 versus
-ε4 break the archive check found. So no agreement warning is built. When a locus's facts are meant to be
-identical on every row, that is the author's to keep, and the 1.0 normalized shape will show any
-disagreement as two values. (Superseded by C the same day: facts are not repeated on rows, and the key rule under RM28 decides
-what counts as a disagreement.)
-
-**Reopened 2026-11-04 by the maintainer**: "why can't each part of the combination live in its respective table, and the combination plus its finding in the meta-table? A new table is the most expensive thing." The decisions below stand until the analysis is answered.
-
-**Decided 2026-11-04 by the maintainer: a per-locus fact table keyed `(subject_kind, subject)`.** It has three
-kinds:
-
-- `variant`: a `variant_key`;
-- `gene`: a symbol, for gene-level facts such as LoF burden;
-- `haplotype`: `(gene, allele name)`, resolved against `haplotypes.csv` or RM334's HLA allele table.
-
-It deliberately has no region or locus kind. A combination of several subjects, each in a stated genotype
-state, is defined by RM28's meta-table. Since 2026-11-04 that is also in 0.8, and each combination becomes a
-fourth subject kind here. Facts about a combination therefore live on this table too, never on a second one.
-
-**What the shape was tested against.** A subagent checked it against v2's full research archive
-(`data/input/4bf03886-….zip`, the seed's 161 loci): **121 fit, 37 strain, 3 break**. All three breaks are
-named alleles, and the `haplotype` kind holds them:
-
-- APOE ε2 and ε4 carry different age-of-action confidence;
-- HLA-B\*57:01 and HLA-DRB1\*15:01 carry facts that belong to the allele, not its tag SNP.
-
-**The strains need no new key, but they do need three authoring rules, stated in the proposal:**
-
-1. Which study's fine-mapping posterior sets a causal-confidence level (the seed uses the maximum).
-2. A fact measured on a proxy is marked as such (RM331's columns).
-3. A European-only tier is scoped by ancestry (RM328's derived flag), never transferred.
-
-**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first, and **decide this before RM324, RM326 and RM329** · **Owner** format + compiler · **Motivating case** longevitymap v2 requirements §4.2 · *for* longevitymap v2 · *related* RM322, RM324
-
-**What was confirmed.** `VariantRow` keys on `(variant_key, genotype)`. v2's tier, causal confidence,
-effector confidence, age of action, outcome profile and animal support describe the **locus**, not a
-genotype, so the plan writes each as a `flags` token on all three genotype rows. Nothing compares the
-copies, so an edit to one row leaves the locus saying two things. `annotations.parquet` is the
-per-variant table, but it is derived (keyed on the variant-effect pair) and an author cannot write it.
-
-**Shapes, priced, neither picked.**
-
-- **Typed optional columns on `VariantRow`**, repeated per genotype, plus a new warning code when the
-  rows of one variant disagree. Full price per column; the code is minor-class (RM308's rule).
-- **A locus table keyed on `variant_key`** that the per-locus columns live on. Full price, a new table
-  kind. It joins the frozen identity, so nothing is restated. It does not reach a diplotype subject
-  (RM322), and APOE is the module's lead locus.
-
-The decision is where the per-locus axes live. RM324's tier, RM326's derived outcome profile and
-RM329's age-of-action class all land wherever this decides.
-
-## RM324 — there is no evidence-tier column, so the axis that gates visibility is a `flags: tier:A` token
-
-**Placement updated 2026-11-04.** The one `tier` column goes on the meta-table only (RM323's final decision, "go with C"). The scale is still declared once per module.
-
-**Decided 2026-11-04 by the maintainer: one `tier` column, with the scale declared once per module.** The tier column goes on RM323's fact table. The module names the scale it grades on once in `module_spec.yaml`, as `weighting:` names its scale. A module therefore holds one scale, and a source's own grade cannot sit beside the module's tier in this column. RM294 (STRchive's grade) moved to 0.9 for that reason.
-
-**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format · **Motivating case** longevitymap v2 requirements §4.1 · *for* longevitymap v2 · *related* RM323, RM188 (axis 5), RM294
-
-**Need.** v2's tier A–D decides what is scored and what a reader sees by default. The plan carries it
-as `flags: tier:A` and derives `priority` from it. That makes `priority` (described only as "priority
-level override") a second spelling of the tier.
-
-**What not to reuse.** `evidence_level` is PharmGKB's closed `1A`–`4` on the PGx tables. Writing a
-module's own A–D scale into it puts two instruments under one name (P5).
-
-**Shape.** A value plus the scheme it is measured on, refused without the scheme: the 0.7
-`StudyRow.confidence` / `confidence_unit` pair is the precedent, and `@weight-has-no-unit` is why.
-Full ×2. Where it lives is RM323's decision. Design it with RM188's axis 5 (a salience separate from
-clinical severity; dna-engine carries a `tier`) and RM294 (whether a source's evidence grade travels
-into a module), since all three are one column family.
-
 ## RM325 — `studies.csv` has no sample size, and v2's tier A rule is stated in N
 
 **Decided 2026-11-04 by the maintainer: `sample_size`, a closed `sample_unit` beside it (individuals / lives), and `n_cases`.** A magnitude carries its unit beside it (`@weight-has-no-unit`), so v2's "N ≥ 100k lives" is checkable from the artifact. The names still get the P5 audit in the proposal.
@@ -273,6 +171,8 @@ Two things become **derived, near-zero**, once it exists:
   two-valued: a locus with no study row of a class is **untested** and withheld, never "no effect".
 
 ## RM327 — pleiotropy has no per-trait row, so a trade-off can only be prose, and `tradeoff` is computed rather than authored
+
+**Built on 0.8, 2026-11-04: the meta rows.** A per-trait judgement is a one-member `meta.csv` row with `trait_efo_id`, `direction` and an allele-bearing member (a bare locus bears one when its rows share an `effect_allele`, else `meta_member_allele_ambiguous` and the direction is withheld), `trait_role` (`mediator`) beside it. Still open: `tradeoff` and the resolved facts' Kleene table (B2), computed at `meta_resolved.parquet`'s grain; the name stays reserved until then.
 
 **Default under the 2026-11-04 reduction rule (the pm seat's reading; the maintainer may veto):** a per-trait judgement is a row of RM28's meta-table: one member, `trait_efo_id`, and `direction` (`protective`/`risk`). `tradeoff` is computed over those rows, and no new table kind is built for this item.
 
@@ -342,6 +242,8 @@ recruitment). Full ×2–3. The names need the P5 audit before they are fixed. T
 (DIRECT, DIRECT_WEAK) is partly derivable from the bands once they are data.
 
 ## RM330 — an effect measured in one sex, one smoking stratum or one genotype has no row
+
+**Built on 0.8, 2026-11-04: `sex`.** `meta.csv` gains the closed `sex` condition (`male`, `female`), part of the row key; a sex-scoped row outranks the same key without one, for that sex, and `meta_resolved.parquet` carries one row per scope. Still open: the study's stratum, `StudyRow`'s half (the `StudyRow` batch).
 
 **Narrowing extended 2026-11-04** (the final run's gap 12). Two rows that differ only by stratum do not count as a duplicate citation, RM140's pattern.
 
@@ -763,6 +665,8 @@ harmonised release carries no credible set, which is a nobody-asked third state 
 **Related** RM188, RM90 (the table this lands on).
 
 ## RM28 — Meta-conclusions (the predicate half)
+
+**Built on 0.8, 2026-11-04: the combination half** (the meta-table; its shipped record is [ROADMAP_HISTORY § RM28](ROADMAP_HISTORY.md#rm28--the-combination-half-the-meta-table)). Still open here: the study-orphan widening (wave 3, after the `StudyRow` batch), and the predicate half's remainder, which the maintainer put out of bounds.
 
 **The name and grammar, accepted 2026-11-04 by the maintainer, as written in `proposals/PROPOSAL_0_8_PT2.md`
 §3 items 1–4.**
