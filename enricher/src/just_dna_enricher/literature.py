@@ -80,8 +80,8 @@ from just_dna_enricher.net import (
     GONE,
     RETIRED,
     UNREACHABLE,
+    EndpointRetired,
     PacingGate,
-    RetiredEndpoint,
     Withholding,
     aggregate_reason,
     attempt_floor,
@@ -171,7 +171,7 @@ class FulltextUnavailable(LiteratureUnavailable):
     """
 
 
-class LiteratureRetired(LiteratureUnavailable, RetiredEndpoint):
+class LiteratureRetired(LiteratureUnavailable, EndpointRetired):
     """Europe PMC answered HTTP 410: it retired the endpoint asked (RM354).
 
     A fact about the source, not an outage, and not retried; a `LiteratureUnavailable` so every
@@ -180,7 +180,7 @@ class LiteratureRetired(LiteratureUnavailable, RetiredEndpoint):
     """
 
 
-class FulltextRetired(FulltextUnavailable, RetiredEndpoint):
+class FulltextRetired(FulltextUnavailable, EndpointRetired):
     """A fulltext service answered HTTP 410 for the route asked (RM361).
 
     Before RM361 every status below 500 read as *absent*, so a retired route wrote a permanent

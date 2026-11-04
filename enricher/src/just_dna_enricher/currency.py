@@ -56,8 +56,8 @@ from just_dna_enricher.clinvar_gkm import (
     ClinVarGkmUnavailable,
 )
 from just_dna_enricher.net import (
+    EndpointRetired,
     PacingGate,
-    RetiredEndpoint,
     attempt_floor,
     could_not_ask_reason,
     raise_if_retired,
@@ -87,7 +87,7 @@ class ReleaseUnavailable(ReleaseProbeError):
     """
 
 
-class ReleaseRetired(ReleaseUnavailable, RetiredEndpoint):
+class ReleaseRetired(ReleaseUnavailable, EndpointRetired):
     """The source answered HTTP 410: it retired the file the probe asks for (RM354).
 
     A fact about the source, not an outage, and not retried. A `ReleaseUnavailable` so every existing

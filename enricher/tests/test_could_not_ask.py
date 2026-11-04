@@ -48,8 +48,8 @@ from just_dna_enricher.literature import (
 from just_dna_enricher.net import (
     RETIRED,
     UNREACHABLE,
+    EndpointRetired,
     PacingGate,
-    RetiredEndpoint,
     Withholding,
     aggregate_reason,
     release_dataset,
@@ -92,7 +92,7 @@ def _modules() -> list:
 
 
 def test_every_retired_error_carries_the_marker() -> None:
-    """The set of `*Retired` exception classes equals the set marked `RetiredEndpoint`, both walked.
+    """The set of `*Retired` exception classes equals the set marked `EndpointRetired`, both walked.
 
     `could_not_ask_reason` reads the marker; a `*Retired` class without it would be recorded as an
     outage again, and a marked class not named `*Retired` would be one a reader cannot find.
@@ -107,7 +107,7 @@ def test_every_retired_error_carries_the_marker() -> None:
                 continue
             if name.endswith("Retired"):
                 named.add(f"{module.__name__}.{name}")
-            if issubclass(obj, RetiredEndpoint) and obj is not RetiredEndpoint:
+            if issubclass(obj, EndpointRetired) and obj is not EndpointRetired:
                 marked.add(f"{module.__name__}.{name}")
     assert named, "the walk found no *Retired class at all"
     assert named == marked, sorted(named ^ marked)

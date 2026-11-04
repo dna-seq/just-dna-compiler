@@ -43,7 +43,7 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 
 ## 2026-11-04 — RM361: a failed, retired, unread or undecided answer is never recorded as a definite one (0.8, uncut)
 
-- **A 410 is `retired`, never `unreachable`.** Every `*Retired` error carries `net.RetiredEndpoint`, and every
+- **A 410 is `retired`, never `unreachable`.** Every `*Retired` error carries `net.EndpointRetired`, and every
   handler that records why a question went unanswered reads it with `net.could_not_ask_reason`. A client
   whose contract is a withheld value (Crossref, the PMC id converter, BioC, GRCh37 REST, Ensembl, the ClinGen
   Allele Registry) mixes in `net.Withholding` and says it through `retired` without raising. `retired` is a

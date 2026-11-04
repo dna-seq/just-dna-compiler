@@ -55,8 +55,8 @@ from just_dna_format.vrs import vrs_spec_release
 from tenacity import retry, wait_exponential_jitter
 
 from just_dna_enricher.net import (
+    EndpointRetired,
     PacingGate,
-    RetiredEndpoint,
     attempt_floor,
     raise_if_retired,
     retry_if_transient,
@@ -125,7 +125,7 @@ class ClinVarGkmUnavailable(ClinVarGkmError):
     """
 
 
-class ClinVarGkmRetired(ClinVarGkmUnavailable, RetiredEndpoint):
+class ClinVarGkmRetired(ClinVarGkmUnavailable, EndpointRetired):
     """The source answered HTTP 410: it retired the file asked for (RM354).
 
     A fact about the source, not an outage, and not retried. A `ClinVarGkmUnavailable` so every existing

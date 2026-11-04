@@ -53,7 +53,7 @@ boundary, each with a guard that walks the members rather than pinning a site.
 **The mechanism.**
 
 - **Could-not-ask carries its reason** (`enricher/net.py`). Every client's `*Retired` error mixes in
-  `RetiredEndpoint`, and a handler records `could_not_ask_reason(exc)`: `retired` for a 410 (read through
+  `EndpointRetired`, and a handler records `could_not_ask_reason(exc)`: `retired` for a 410 (read through
   `__cause__` too), `unreachable` otherwise; `aggregate_reason` leads with `retired` for a group. A
   client whose contract is a withheld value rather than an exception mixes in `Withholding` and says
   `retired` through a sticky `retired` message, read with `withheld_reason`, without raising. `retired`
@@ -130,7 +130,7 @@ boundary, each with a guard that walks the members rather than pinning a site.
     `EnsemblResolver`, `ClingenAlleleClient`) answered a 410 as an outage → `Withholding.retired`.
 
 **Guards** (`enricher/tests/test_could_not_ask.py` unless named): the `*Retired` classes equal the
-`RetiredEndpoint`-marked ones, walked; an AST walk refuses any `except` arm writing an unreachable reason
+`EndpointRetired`-marked ones, walked; an AST walk refuses any `except` arm writing an unreachable reason
 without `could_not_ask_reason`; every `CLIENTS` row's 410, 503 and transport failure read through it
 (`test_client_exception_contract.py`); every fulltext route × seven legs; every `Withholding` class,
 walked, names a 410 and not a 503; every quote tally goes through one count (AST); `READS` equals the

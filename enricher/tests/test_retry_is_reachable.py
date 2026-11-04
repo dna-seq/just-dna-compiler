@@ -42,6 +42,12 @@ def _retried_types(decorator: ast.Call) -> list[type]:
     """The exception classes a `@retry(...)` decorator names in `retry_if_exception_type(...)`."""
     found: list[type] = []
     for node in ast.walk(decorator):
+        if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "retry_if_transient":
+            # `net.retry_if_transient` (RM354): the transport legs, a timeout, and a 5xx/429 status. Read
+            # here since RM361 moved the literature, Ensembl and GRCh37 routes onto it, which took them out
+            # of a walk that only knew `retry_if_exception_type`.
+            found += [httpx.TransportError, httpx.TimeoutException, httpx.HTTPStatusError]
+            continue
         if not (isinstance(node, ast.Call) and getattr(node.func, "id", None) == "retry_if_exception_type"):
             continue
         for arg in node.args:

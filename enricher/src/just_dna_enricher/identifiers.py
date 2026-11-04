@@ -68,8 +68,8 @@ from just_dna_enricher.licensing import (
 )
 from just_dna_enricher.net import (
     UNREACHABLE,
+    EndpointRetired,
     PacingGate,
-    RetiredEndpoint,
     attempt_floor,
     could_not_ask_reason,
     dedupe,
@@ -135,7 +135,7 @@ class IdentifierUnavailable(IdentifierCheckError):
     """
 
 
-class IdentifierRetired(IdentifierUnavailable, RetiredEndpoint):
+class IdentifierRetired(IdentifierUnavailable, EndpointRetired):
     """OLS4 or HGNC answered HTTP 410: it retired the endpoint asked (RM354).
 
     A fact about the source, not an outage, and not retried; an `IdentifierUnavailable` so every

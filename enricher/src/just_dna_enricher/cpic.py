@@ -53,7 +53,7 @@ from tenacity import (
 )
 
 from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME
-from just_dna_enricher.net import RetiredEndpoint, attempt_floor, raise_if_retired, retry_if_transient
+from just_dna_enricher.net import EndpointRetired, attempt_floor, raise_if_retired, retry_if_transient
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +65,7 @@ class CpicError(RuntimeError):
     """A CPIC request failed in a way the caller must see."""
 
 
-class CpicRetired(CpicError, RetiredEndpoint):
+class CpicRetired(CpicError, EndpointRetired):
     """CPIC answered HTTP 410: it retired the endpoint asked (RM354). A fact about the source, not an
     outage, and not retried; a `CpicError` so every existing handler still catches it."""
 

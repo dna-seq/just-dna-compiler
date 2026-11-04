@@ -279,7 +279,7 @@ RETIRED: str = "retired"
 UNREACHABLE: str = "unreachable"
 
 
-class RetiredEndpoint(Exception):
+class EndpointRetired(Exception):
     """Mixed into every client's `*Retired` error: the source answered HTTP 410 (RM361).
 
     A marker, not a catchable family of its own: handlers keep catching their client's could-not-ask
@@ -298,7 +298,7 @@ def could_not_ask_reason(exc: BaseException) -> str:
     """
     seen: BaseException | None = exc
     while seen is not None:
-        if isinstance(seen, RetiredEndpoint) or (
+        if isinstance(seen, EndpointRetired) or (
             isinstance(seen, httpx.HTTPStatusError) and seen.response.status_code == GONE
         ):
             return RETIRED
@@ -338,9 +338,9 @@ class Withholding:
         return True
 
 
-def withheld_reason(client: object) -> str:
+def withheld_reason(withholder: object) -> str:
     """`retired` when a withholding client met a 410, else `unreachable` (RM361)."""
-    return RETIRED if getattr(client, "retired", None) else UNREACHABLE
+    return RETIRED if getattr(withholder, "retired", None) else UNREACHABLE
 
 
 def release_dataset(lane: str, released: str | None) -> str:

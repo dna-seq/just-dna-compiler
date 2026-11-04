@@ -85,8 +85,8 @@ from just_dna_enricher.clingen_allele import ClingenAlleleClient, anchor_indel
 from just_dna_enricher.licensing import overlaid_input_rows
 from just_dna_enricher.net import (
     RETIRED,
+    EndpointRetired,
     PacingGate,
-    RetiredEndpoint,
     attempt_floor,
     could_not_ask_reason,
     dedupe,
@@ -186,7 +186,7 @@ class LitvarUnavailable(LitvarError):
     """
 
 
-class LitvarRetired(LitvarUnavailable, RetiredEndpoint):
+class LitvarRetired(LitvarUnavailable, EndpointRetired):
     """LitVar answered HTTP 410: it retired the endpoint asked (RM354).
 
     A fact about the source, not an outage, and not retried; a `LitvarUnavailable` so every existing

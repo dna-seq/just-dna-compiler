@@ -33,8 +33,8 @@ from tenacity import (
 
 from just_dna_enricher.locations import env_value
 from just_dna_enricher.net import (
+    EndpointRetired,
     PacingGate,
-    RetiredEndpoint,
     attempt_floor,
     batched,
     dedupe,
@@ -64,7 +64,7 @@ class EutilsRateLimitedError(EutilsError):
     """NCBI answered HTTP 429. Retried with backoff; the pacing gate should normally prevent it."""
 
 
-class EutilsRetired(EutilsError, RetiredEndpoint):
+class EutilsRetired(EutilsError, EndpointRetired):
     """NCBI answered HTTP 410: it retired the eutils endpoint asked (RM354). A fact about the source,
     not an outage, and not retried; an `EutilsError` so every existing handler still catches it."""
 

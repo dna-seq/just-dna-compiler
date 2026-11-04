@@ -63,7 +63,7 @@ import grpc
 from tenacity import retry, retry_if_exception, wait_random_exponential
 
 from just_dna_enricher.atlas_protos import OUT_DIR, SERVICE_CONFIG_NAME
-from just_dna_enricher.net import PacingGate, RetiredEndpoint, attempt_floor
+from just_dna_enricher.net import EndpointRetired, PacingGate, attempt_floor
 
 # The one guarded module-level import the house rules allow, and the reason it is guarded is that
 # the bindings are a build product rather than source: `generated/` is git-ignored, so a fresh
@@ -236,7 +236,7 @@ class AtlasRefMismatch(AtlasRefused):
     """
 
 
-class AtlasRetired(AtlasUnavailable, RetiredEndpoint):
+class AtlasRetired(AtlasUnavailable, EndpointRetired):
     """The Atlas answered UNIMPLEMENTED for a method it was asked to run on a question it does score
     (RM361): gRPC's word for a method the server does not have, its 410. Not `AtlasNotScored`, which
     is the same status on an indel the precomputed set leaves out; a handler records `retired`."""

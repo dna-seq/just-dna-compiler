@@ -5293,7 +5293,7 @@ three or four times first. Since RM354:
   existing handler still catches it. The message carries the URL, the status and the source's own
   text, which is usually where it says the endpoint went. `net.raise_if_retired` is the one place
   the message is built. **A handler records the reason with `net.could_not_ask_reason(exc)`**
-  (RM361): `retired` for a 410 (every `*Retired` carries `net.RetiredEndpoint`), `unreachable` for an
+  (RM361): `retired` for a 410 (every `*Retired` carries `net.EndpointRetired`), `unreachable` for an
   outage, because the two are cleared by different things (an upgrade, a re-run). An AST walk refuses
   an `except` arm that writes an unreachable reason without it. A client whose contract is a withheld
   value rather than an exception mixes in `net.Withholding`, keeps the withhold, and says `retired`
@@ -5415,7 +5415,7 @@ and `EnsemblResolver` are the latter, and are exempt from the contract suite for
 | `gwas` | `GwasError` | `GwasNotFound`, `GwasRetired` |
 | `identifiers` | `IdentifierCheckError` | `IdentifierUnavailable`, `IdentifierRetired` (under the one before it) |
 | `ld_pairs` | `LdError` | `LdUnavailable`, `LdRetired` (under the one before it) |
-| `literature` | `LiteratureEnrichmentError` | `LiteratureUnavailable`, `FulltextUnavailable` (RM258: the fulltext clients' unanswered request), `LiteratureRetired` (under `LiteratureUnavailable`) |
+| `literature` | `LiteratureEnrichmentError` | `LiteratureUnavailable`, `FulltextUnavailable` (RM258: the fulltext clients' unanswered request), `FulltextRetired` (under the one before it; a fulltext route's 410, RM361), `LiteratureRetired` (under `LiteratureUnavailable`) |
 | `opentargets` | `OpenTargetsError` | — (it never fetches) |
 | `litvar` | `LitvarError` | `LitvarUnavailable`, `LitvarRetired` (under the one before it) |
 | `mitomap` | `MitomapError` | `MitomapUnavailable` |
@@ -5433,7 +5433,8 @@ caller and `except` order never matters. RM310 was the list shape failing: `cach
 
 | module | base type | narrowed by |
 |---|---|---|
-| `atlas_client` | `AtlasError` | `AtlasNotScored`, `AtlasRefused`, `AtlasRefMismatch` (under the one before it), `AtlasUnavailable` |
+| `atlas_client` | `AtlasError` | `AtlasNotScored`, `AtlasRefused`, `AtlasRefMismatch` (under the one before it), `AtlasUnavailable`, `AtlasRetired` (under the one before it; UNIMPLEMENTED on anything but an indel, never retried, RM361) |
+| `net` | `EndpointRetired` | — (a marker every `*Retired` mixes in, read by `net.could_not_ask_reason`, RM361) |
 | `civic_api` | `CivicApiError` | `CivicApiUnavailable`, `CivicApiRetired` (under the one before it) |
 | `clingen_allele` | `ClingenAlleleError` | — |
 | `cpic` | `CpicError` | `CpicRetired` |

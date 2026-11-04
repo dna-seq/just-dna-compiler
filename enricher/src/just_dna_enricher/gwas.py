@@ -76,8 +76,8 @@ from just_dna_enricher.licensing import (
     sidecar_path,
 )
 from just_dna_enricher.net import (
+    EndpointRetired,
     PacingGate,
-    RetiredEndpoint,
     attempt_floor,
     raise_if_retired,
     retry_if_transient,
@@ -140,7 +140,7 @@ class GwasNotFound(GwasError):
     """
 
 
-class GwasRetired(GwasError, RetiredEndpoint):
+class GwasRetired(GwasError, EndpointRetired):
     """The Catalog answered HTTP 410 Gone: it retired the endpoint this client asked (RM354).
 
     **A fact about the source, not an outage.** The legacy REST API began answering 410 on every path
