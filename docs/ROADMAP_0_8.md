@@ -17,7 +17,7 @@ Every item is additive under Principles 3/4/8, so each is legal in a minor. Inde
 | The indel-placement fixes | [RM304](ROADMAP.md#rm304--a-vrs_id-does-not-say-which-vrs-minted-it-and-vrs-21-moves-some-insertion-ids) first, then [RM267](ROADMAP.md#rm267--the-ensembl-snapshot-anchors-a-class-of-insertions-one-base-early-and-resolutioncsv-serves-them-as-a-different-event), [RM270](ROADMAP.md#rm270--an-indels-artifact-key-is-its-sources-spelling-a-left-aligned-vcf-misses-a-respelled-row-and-the-spelling-independent-id-the-enricher-mints-never-reaches-the-artifact), [RM292](ROADMAP.md#rm292--a-verification-check-does-not-say-what-it-checked-against-so-a-check-that-witnesses-itself-reads-as-verified), [RM305](ROADMAP.md#rm305--clinvar-gkms-allele-table-is-an-offline-independent-witness-for-where-an-indel-sits-and-nothing-reads-it) | [ROADMAP.md](ROADMAP.md) | one design, interviewed before it is built; four are high severity |
 | The lead's ready minors (2026-11-04) | RM337 (a warning naming each `logs/` file left behind), RM342 (the toolchain in the manifest, with the polars 2 lock) | this file | RM337 ready; RM342 after its interview |
 | Chosen earlier | [RM303](#rm303--the-snapshot-layout-is-a-contract-with-six-parties-and-no-model-so-it-belongs-in-just-dna-format) (the snapshot layout as a model), [RM253](#rm253--a-repeat-count-star-allele-ugt1a1-28--ta8-has-no-home-a-diplotype-can-name-and-the-cpic-drafter-translates-none-of-cpics-notation) (a repeat-count star allele) | this file | taken into 0.8 in September |
-| longevitymap v2 | RM28's combination half, RM322–RM336 ([the group](#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03)), [RM302](ROADMAP.md#rm302--one-conclusion-serves-every-place-a-report-shows-it-a-table-cell-a-details-card-and-an-explanatory-mode-want-different-wordings), and [RM236](#rm236--consequence-and-impact-are-planned-axes-with-no-slot-and-an-acmg-engine-reads-both-as-primary-inputs), [RM238](#rm238--a-per-tissue-eqtl-has-no-row-and-expression_effectscsv-is-the-wrong-table-to-widen), [RM239](#rm239--a-fine-mapping-posterior-has-no-column-and-gwas_effectscsv-already-has-its-key) as inputs to RM333's confidence labels | this file and [ROADMAP.md](ROADMAP.md) | design first; RM323 decides before RM324, RM326 and RM329 |
+| longevitymap v2 | RM28's combination half, RM322–RM336 ([the group](#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03)), and [RM236](#rm236--consequence-and-impact-are-planned-axes-with-no-slot-and-an-acmg-engine-reads-both-as-primary-inputs), [RM238](#rm238--a-per-tissue-eqtl-has-no-row-and-expression_effectscsv-is-the-wrong-table-to-widen), [RM239](#rm239--a-fine-mapping-posterior-has-no-column-and-gwas_effectscsv-already-has-its-key) as inputs to RM333's confidence labels | this file and [ROADMAP.md](ROADMAP.md) | design first; RM323 decides before RM324, RM326 and RM329 |
 
 Patch-class items stay on `main` and are not part of this scope, as [RELEASE_CYCLE.md](RELEASE_CYCLE.md) says.
 
@@ -66,7 +66,7 @@ scope decision put each in 0.8 or 0.9, as marked):
 - **RM241** (this file, **built on `0.8`**) — v2 declares `weighting:` precisely to say it has no weights, and `reverse` drops the block.
 - **RM263** ([ROADMAP.md](ROADMAP.md), **built on `0.8`**) — v2 cites preprints, whose rows hold a DOI and need a PMID; RM336 is the parsing half.
 - **RM294** ([ROADMAP_0_9.md](ROADMAP_0_9.md), **0.9** since 2026-11-04, after the one-scale tier decision) — a source's evidence grade travelling into a module is the same column family as RM324's tier.
-- **RM302** ([ROADMAP.md](ROADMAP.md), **0.8**) — v2 writes for three readers (citizen, geneticist, ageing researcher), which is the register question.
+- **RM302** ([ROADMAP_0_9.md](ROADMAP_0_9.md), **0.9** since 2026-11-04: v2's conclusion is already lay) — v2 writes for three readers (citizen, geneticist, ageing researcher), which is the register question.
 - **RM308** ([ROADMAP.md](ROADMAP.md), **built on `0.8`**) — v2 hand-writes per-genotype conclusions for its scored loci and a 528-rsID legacy layer.
 - **RM321** ([ROADMAP.md](ROADMAP.md), **a patch on `main`**) — v2's plan sets `pleiotropic` and `conditional` expecting behaviour.
 - **RM28** (this file, **0.8**: its combination half, taken in 2026-11-04) — KL-VS buffering in APOE4 carriers joins two loci on two chromosomes, so no haplotype holds it. It is now a defined combination, and its facts sit on RM323's table.
@@ -77,6 +77,8 @@ The authored `report:` block in [ROADMAP.md's idea-book](ROADMAP.md) is the unnu
 answers v2's §8 consumer requests 1 and 2 (category prose from the module, no "Net weight").
 
 ## RM322 — `diplotypes.csv` carries none of the axes a scored finding needs, so APOE, the module's headline result, cannot state its tier, mechanism or trade-off
+
+**Cut 2026-11-04 by the maintainer, after the final measuring run** (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §3): `priority` (it restates the tier; v2 says it is "derived from tier") and `actionability` (v2's policy "late-acting ⇒ descriptive" belongs in its README). `DiplotypeRow` gains only **`negatives` and `category`**.
 
 **Decided 2026-11-04 by the maintainer: four columns, no `flags`.** `DiplotypeRow` gains `negatives`, `category`, `priority` and `actionability`, each full price, with RM70 as the precedent. `flags` stays off: no tier acts on its tags (RM321), and v2's flag tokens are what RM323–RM330's typed columns replace. Per-locus facts go on RM323's table, with APOE ε2 and ε4 as `haplotype` subjects.
 
@@ -107,6 +109,8 @@ Alzheimer's row and a lifespan row per ε pair, which is how the plan's two fram
 gene-pair subject (it does not if that home is keyed on `variant_key`).
 
 ## RM323 — a fact about a locus has no authored home, so every per-locus axis is copied onto each genotype row and nothing checks the copies agree
+
+**Cut 2026-11-04 by the maintainer, after the final measuring run** (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §3): causal and effector confidence are **not authored**. The parquet carries their raw inputs: the fine-mapping posterior, the coding consequence, the L2G score and coloc. The C1–C4 / E1–E4 labels are v2's rubric, i.e. policy, so they live in v2's README and are computed by the consumer, as "evidence role" is. The run computed them on 67 of 75 rows. The 8 hand-curated inputs go in `overrides.csv` as corrections to the derived inputs. The meta-table keeps `tier`, `age_of_action` and its confidence, and gains **`flags`**: the maintainer chose it for parity, so every kind of member can carry tags the way `variants.csv` rows do, such as `ap:<strength>` and `hallmark:…`. `also_in:<module>` stays prose.
 
 **Final, 2026-11-04, the maintainer: "go with C".** This supersedes both decisions below. The per-locus facts
 (tier, causal and effector confidence, age of action and its confidence) are columns of **the meta-table only**.
@@ -324,6 +328,8 @@ The ancestry banner (R-ANC-3) is just-dna-lite's half.
 
 ## RM329 — an age-stratified estimate has no age band, so age of action is reconstructed from `statistical_test` prose
 
+**Cut 2026-11-04 by the maintainer, after the final measuring run** (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §3): `age_event` (0 v2 rows with an event other than death). The band is `age_min`, `age_max` and whose age (`age_of`); names still get the P5 audit. Rows that differ only by band narrow the duplicate-citation check, RM140's pattern, extended to bands.
+
 **Severity** low · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format · **Motivating case** longevitymap v2 requirements §4.2 (age of action), Timmers 2019 age bands · *for* longevitymap v2 · *related* RM323, RM140
 
 **Interim that works.** One study row per age band, each with a stated and different
@@ -336,6 +342,8 @@ recruitment). Full ×2–3. The names need the P5 audit before they are fixed. T
 (DIRECT, DIRECT_WEAK) is partly derivable from the bands once they are data.
 
 ## RM330 — an effect measured in one sex, one smoking stratum or one genotype has no row
+
+**Narrowing extended 2026-11-04** (the final run's gap 12). Two rows that differ only by stratum do not count as a duplicate citation, RM140's pattern.
 
 **Decided 2026-11-04 by the maintainer: the study's stratum and a sex condition.** `StudyRow` gains the stratum an estimate was measured in, a modifier and its level (full ×2). Conclusion rows gain one closed `sex` condition (male/female), which the consumer matches against karyotype. This is RM28's "plain column on demand" rule, with sex as its first class. A modifier that is another locus's genotype stays RM28's (0.9).
 
@@ -359,6 +367,8 @@ corpus entry.
 
 ## RM331 — a study measured on an LD proxy cannot say so, and filing it under the lead checks the proxy's allele against the lead's
 
+**Cut 2026-11-04 by the maintainer, after the final measuring run** (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §3): **authors write only `proxy_rsid`.** r² has no meaning without its population, so r² and its population are a pair, and the pair is **computed**: the enricher asks an LD reference for the r² between proxy and lead in the study's own `ancestry` and writes it to a machine-written table (half price). The allele check runs against the proxy's alleles.
+
 **Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format + compiler (`_check_study_effect_alleles`) · **Motivating case** longevitymap v2 requirements §6.2 (`rsid`, `ld_proxy_of`), §6.4 (APOE proxies) · *for* longevitymap v2 · *related* RM91
 
 **What was confirmed.** The plan scores lead variants only and records proxies "on study rows". But
@@ -378,6 +388,8 @@ population), with `effect_allele` checked against the proxy's alleles rather tha
 
 ## RM332 — a `beta` has no unit on authored rows, while `gwas_effects.csv` has carried one since 0.6
 
+**Cut 2026-11-04 by the maintainer, after the final measuring run** (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §3): the `VariantRow` half, which reverses the morning's "both tables". `effect_unit` is on `StudyRow` only, and the parquet joins it onto a variant's effect from the matching study row.
+
 **Decided 2026-11-04 by the maintainer: both tables.** `effect_unit` goes on `StudyRow` and on `VariantRow`, free text and verbatim, mirroring `gwas_effects.csv`: wherever an effect size is authored, its unit sits beside it.
 
 **Severity** low · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority** · **Owner** format · **Motivating case** longevitymap v2 requirements §6.2 (`effect_measure`), §9 step 3 (sign conventions) · *for* longevitymap v2 · *related* `@weight-has-no-unit`
@@ -392,6 +404,8 @@ mirroring the derived table. Full ×1–2. A sign convention ("positive = shorte
 `effect_allele` with `direction` already says it.
 
 ## RM333 — the effector gene behind a GWAS locus has no source and no column
+
+**Placement settled 2026-11-04.** The effector-confidence label is never authored (RM323's cut). This lane's derived table is one of its inputs, beside coloc and the coding consequence.
 
 **Licence probed 2026-11-04 (all claims checked at the source); decided by the maintainer: build, under Open
 Targets' own terms plus its notice.**
@@ -435,6 +449,8 @@ Open Targets.
 once the inputs exist, never authored.
 
 ## RM334 — an HLA allele has no table, and tag SNPs cannot stand in for one
+
+**Cut 2026-11-04 by the maintainer, after the final measuring run** (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §3): **the new HLA table.** `allele_function.csv` (keyed `(gene, allele)`) holds the 8 v2 alleles, and meta-table rows hold their facts and findings. The nomenclature grammar check applies to HLA genes on `allele_function.csv`.
 
 **Decided 2026-11-04 by the maintainer: grammar now, the list in 0.9.** The format checks the nomenclature's grammar (`gene*field:field` at a stated resolution). Checking that an allele exists in IPD-IMGT/HLA's list is an enricher lane whose licence is unprobed, and it waits for 0.9.
 

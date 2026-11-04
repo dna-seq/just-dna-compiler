@@ -28,8 +28,16 @@ through a named new column or table), **D** (fits only by derivation) or **X** (
 
 The shape is **neither sufficient nor minimal as proposed**. It cannot hold twelve things v2 has (§4). Five
 proposed additions are used by no v2 requirement, and a further five are derivable from other columns (§3).
-The pm seat's verdicts per column are in §3's last column. They are proposals until the maintainer answers;
-the answers are recorded in the roadmap entries.
+The pm seat's verdicts per column are in §3's last column. **The maintainer decided all of them on
+2026-11-04 as proposed, with three changes:**
+
+- the meta-table gains `flags`, for parity, so `ap:` and `hallmark:` tags have a home (`also_in` stays
+  prose);
+- the LD pair (r² and its population) is **computed** from `proxy_rsid` and the study's ancestry;
+- preprints cite through a `pmid` sentinel that makes `doi` mandatory.
+
+The gaps' fixes in §4 are decided the same way (gap 9: `flags` on the meta-table; gap 5: the sentinel). Each
+decision is recorded in its roadmap entry.
 
 ## 2. Requirements
 
@@ -65,7 +73,7 @@ R-LEGACY-2/-3, R-CAT-1, R-TIER-4) fit today or are reporting rules with no data.
 The "needed by" column names the v2 case that cannot be written without the column. "Derivable" names the
 columns it could be computed from, and how often that derivation holds in v2's data.
 
-| Column / table | Needed by | Derivable from | Holds | pm verdict (pending) |
+| Column / table | Needed by | Derivable from | Holds | Verdict (decided 2026-11-04) |
 |---|---|---|---|---|
 | meta-table | KL-VS × ε4; APOE ε2 ≠ ε4 facts | — | — | **keep** |
 | `tier` | visibility gate: 161 leads + 528 legacy | — | — | **keep**; values open within the module's scale (seed uses X, A-, B-) |
@@ -84,8 +92,8 @@ columns it could be computed from, and how often that derivation holds in v2's d
 | stratum + level | Pilling father/mother, 13 rows; FOXO3 "hypertensive men" | — | — | **keep** |
 | `sex` (on conclusions) | HLA-DRB1\*15:01, d3-GHR, FOXO3 men, ~3 loci (I) | a sex stratum on supporting rows | fails (rs3135388 unstratified) | **keep** |
 | `proxy_rsid` | CELSR2 via rs4970836, FOXO3 via rs3800231; 5 APOE proxies (M) | — | — | **keep** |
-| `proxy_r2` | ~5 numeric values anywhere (I) | — | — | **cut** (the allele check needs only the proxy) |
-| `proxy_ld_pop` | none: 0 values (I) | study `ancestry` | — | **cut** |
+| `proxy_r2` | ~5 numeric values anywhere (I) | an LD reference, given the proxy, the lead and the study's ancestry | — | **computed, as a pair with its population** (half price) |
+| `proxy_ld_pop` | none: 0 values (I) | study `ancestry` | — | **computed with r²** (a valid specifier; r² is meaningless without it) |
 | `effect_unit` on studies | betas in 4 units: years 57, −lnHR 35, Martingale 24, log-odds 16 (I) | `effect_measure` | ratio measures only (I) | **keep** |
 | `effect_unit` on variants | restates the anchor study's unit | the anchor study | always | **cut** (reverses a 2026-11-04 decision; asked) |
 | diplotype `negatives` / `category` | ε2/ε2 recessive harm; APOE → `brain_memory` | — | — | **keep** |
@@ -104,13 +112,13 @@ columns it could be computed from, and how often that derivation holds in v2's d
 |---|---|---|---|
 | 1 | Nesting across member kinds: the ε2/ε4 diplotype matches both the ε2 and ε4 allele rows, and neither key contains the other | 1 (M) | a rule, no column: two incomparable matching rows that disagree on a column **withhold** it (Kleene) unless a more specific row exists. The author writes the ε2/ε4 diplotype row to settle it |
 | 2 | A per-trait row on a locus-level member has no allele for `direction` to refer to | 4 loci with no determined allele (M) | a rule: a per-trait row must name an allele-bearing member. The 4 loci honestly have no direction |
-| 3 | No study row can cite a diplotype, allele or combination member | APOE 14 links; 8 HLA alleles; KL-VS × ε4 | **+1 column**: a citation (`pmid`) on meta-table rows, the RM47 pattern (a row cites when its claim is finer than `studies.csv`'s key). Also, the orphan check accepts meta-table members |
-| 4 | The mediator role is lost when per-trait rows replaced RM327's table | 32 loci (M) | **+1 column**: the trait's role (outcome / mediator) on per-trait rows |
-| 5 | Preprint-only evidence has no legal `pmid` once a DOI is refused | 17 studies (M) | **asked**: keep the refusal (v2 leaves them out until 1.0's doi-first), or warn instead |
+| 3 | No study row can cite a diplotype, allele or combination member | APOE 14 links; 8 HLA alleles; KL-VS × ε4 | **+1 column, decided**: a citation (`pmid`) on meta-table rows, the RM47 pattern (a row cites when its claim is finer than `studies.csv`'s key). Also, the orphan check accepts meta-table members |
+| 4 | The mediator role is lost when per-trait rows replaced RM327's table | 32 loci (M) | **+1 column, decided**: the trait's role (outcome / mediator) on per-trait rows |
+| 5 | Preprint-only evidence has no legal `pmid` once a DOI is refused | 17 studies (M) | **decided**: `pmid` accepts a `NONE` sentinel that makes `doi` the mandatory, validated substitute |
 | 6 | A percentile threshold has no typed home | Deelen, 16 variants | none: `statistical_test` keeps it (RM140's interim works) |
 | 7 | Two modifiers on one estimate | 2 loci (I) | none: prose for 2 loci; a second stratum pair is not worth a column |
 | 8 | MULTIVARIATE_AGEING fills no outcome cell | 16 leads (I) | none in the format: the mapping is v2's to state in its README |
-| 9 | Tags (also-in, hallmarks) have no home on APOE: diplotypes carry no `flags` | APOE (1) | **asked**: a `flags` column on the meta-table (one home for every member kind), or APOE goes without |
+| 9 | Tags (also-in, hallmarks) have no home on APOE: diplotypes carry no `flags` | APOE (1) | **decided**: `flags` on the meta-table, for parity with `variants.csv` (APOE is the canary, not the reason) |
 | 10 | No bare-gene member | 24 model-organism rows; 7 gene-level LoF rows (out of scope) | the model-organism table keys on gene itself |
 | 11 | A closed tier scale would refuse seed `X` (4) and `A-`/`B-` (6) | 10 (M) | tier values are open within the module's named scale |
 | 12 | The duplicate-citation narrowing names only `phenotype_class` | 72 band rows, 13 stratum rows | a rule: age bands and strata narrow it too (RM140's pattern), no column |
