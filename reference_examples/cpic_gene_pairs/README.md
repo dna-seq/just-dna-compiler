@@ -95,11 +95,12 @@ phenotype); the snapshot just cannot say which halves belong together.
   `resolution_signature` moves:
   `test_reference_example_round_trips_to_a_fixed_point[cpic_gene_pairs]` failed with
   *"reverse lost injected resolution facts on a module the fill was applied to"*. That is a compiler
-  defect in the indel-placement family (RM267's lane), reported, not fixed here. The removed row is a
+  defect in the indel-placement family (RM267's lane), reported to the 0.8 lead for filing and not
+  fixed here. The removed row is a
   `*1` reference row, so no phenotype the module states depends on it, and removal is the
   `cyp2c19_star_alleles` precedent (curated by removal). Correcting the start by hand was not done: it is
   the rewrite RM267's open half withholds from the enricher.
 - **Rows with no rsID and no `ref` get a `variant_key` like `13:48037749:None`.** Nine of the drafted
   `*1` rows carry a position and an allele but no rsID and no reference base, and `derive_variant_key`
   formats the missing `ref` as the Python literal `None`. It compiles and round-trips; the key is still
-  wrong. Reported, not fixed here.
+  wrong. Reported to the 0.8 lead for filing, not fixed here.

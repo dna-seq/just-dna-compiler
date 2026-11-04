@@ -46,7 +46,10 @@ both alleles, so in `meta_resolved.parquet`:
 | `age_of_action_confidence` | DIRECT_WEAK | DIRECT | INFERRED | **INFERRED** |
 | `flags` | protect:presence | ap:weak | (unstated) | null, `withheld = ["flags"]` |
 
-A diplotype outranks the alleles it contains, so the diplotype row settles the column it states. It
+A `diplotypes` member outranks an `allele_function` member that reaches the same diplotype through an
+allele it contains (the maintainer's "the narrower condition wins across tables"), so the diplotype row
+settles the column it states. The member names no `trait_efo_id`, so it is not a concrete row key; the
+containment rule is what ranks it, not the concrete-key rank. It
 states no `flags`, and unstated is not different, so the two alleles' disagreement on `flags` still
 stands and the column is withheld rather than picked. A diplotype holding one of the two alleles
 (ε3/ε4, ε4/ε4, ε2/ε2, ε2/ε3) takes that allele's facts whole.

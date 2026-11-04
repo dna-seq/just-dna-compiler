@@ -18,7 +18,7 @@ from pathlib import Path
 import polars as pl
 import pytest
 from just_dna_compiler.compiler import compile_module, validate_spec
-from just_dna_format.meta import parse_members
+from just_dna_format.meta import MetaRow, parse_members
 
 _EXAMPLES = Path(__file__).resolve().parents[2] / "reference_examples"
 _APOE = _EXAMPLES / "apoe_klvs_meta"
@@ -40,14 +40,29 @@ def _meta_by_members(out: Path) -> dict[str, dict]:
     return {row["members"]: row for row in pl.read_parquet(out / "meta.parquet").iter_rows(named=True)}
 
 
+_RESOLVED_CACHE: dict[Path, dict[tuple, list[dict]]] = {}
+
+
 def _resolved(out: Path, table: str, key: list[str | None]) -> dict:
-    rows = [
-        r
-        for r in pl.read_parquet(out / "meta_resolved.parquet").iter_rows(named=True)
-        if r["table"] == table and r["key"] == key and r["sex"] is None
-    ]
+    """The unscoped `meta_resolved.parquet` row for one target; the parquet is read once per artifact."""
+    if out not in _RESOLVED_CACHE:
+        index: dict[tuple, list[dict]] = {}
+        for r in pl.read_parquet(out / "meta_resolved.parquet").iter_rows(named=True):
+            index.setdefault((r["table"], tuple(r["key"]), r["sex"]), []).append(r)
+        _RESOLVED_CACHE[out] = index
+    rows = _RESOLVED_CACHE[out].get((table, tuple(key), None), [])
     assert len(rows) == 1, (table, key)
     return rows[0]
+
+
+def _expected_matches(members: str, diplotypes: list[dict[str, str]]) -> list[dict]:
+    """What `meta.parquet` should list for a row of `diplotypes` members, computed from the CSV rows."""
+    return [
+        {"member": position, "table": "diplotypes", "key": _diplotype_key(d)}
+        for position, member in enumerate(parse_members(members))
+        for d in diplotypes
+        if all(d[column] == value for column, value in member.conditions)
+    ]
 
 
 def _authored(spec: Path, members: str) -> dict[str, str]:
@@ -88,6 +103,12 @@ def test_apoe_the_legacy_tag_is_beaten_only_where_a_locus_row_exists(apoe) -> No
         resolved = _resolved(out, "variants", [row["rsid"], row["genotype"]])
         assert resolved["tier"] == locus_rows.get(row["rsid"], legacy), row
         assert resolved["withheld"] == []
+        if row["rsid"] in locus_rows:
+            stated = _authored(_APOE, f"variants[variant_key={row['rsid']}]")
+            assert (resolved["age_of_action"], resolved["age_of_action_confidence"]) == (
+                stated["age_of_action"],
+                stated["age_of_action_confidence"],
+            )
 
 
 def test_apoe_the_e2_e4_diplotype_settles_what_it_states_and_only_that(apoe) -> None:
@@ -101,7 +122,8 @@ def test_apoe_the_e2_e4_diplotype_settles_what_it_states_and_only_that(apoe) -> 
         d for d in _rows(_APOE / "diplotypes.csv") if (d["haplotype_a"], d["haplotype_b"]) == ("ε2", "ε4")
     ]
     resolved = _resolved(out, "diplotypes", _diplotype_key(pair))
-    # The diplotype outranks the alleles it contains, for the column it states.
+    # A diplotypes member outranks an allele_function member reaching the same diplotype through an
+    # allele it contains (the containment arm of the precedence), for the column it states.
     assert resolved["age_of_action_confidence"] == settle["age_of_action_confidence"]
     # The columns the two alleles agree on reach the diplotype; unstated on it is not different.
     assert (resolved["tier"], resolved["age_of_action"]) == (e4["tier"], e4["age_of_action"])
@@ -113,42 +135,41 @@ def test_apoe_the_e2_e4_diplotype_settles_what_it_states_and_only_that(apoe) -> 
 
 def test_apoe_a_one_allele_diplotype_inherits_that_alleles_facts(apoe) -> None:
     _result, out = apoe
-    e4 = _authored(_APOE, "allele_function[gene=APOE, allele=ε4]")
+    named = {
+        allele: _authored(_APOE, f"allele_function[gene=APOE, allele={allele}]") for allele in ("ε2", "ε4")
+    }
+    checked = 0
     for d in _rows(_APOE / "diplotypes.csv"):
-        if (
-            d["gene"] == "APOE"
-            and "ε4" in (d["haplotype_a"], d["haplotype_b"])
-            and "ε2"
-            not in (
-                d["haplotype_a"],
-                d["haplotype_b"],
-            )
-        ):
-            resolved = _resolved(out, "diplotypes", _diplotype_key(d))
-            assert resolved["age_of_action_confidence"] == e4["age_of_action_confidence"], d
-            assert resolved["flags"] == [e4["flags"]]
-            assert resolved["withheld"] == []
+        carried = {d["haplotype_a"], d["haplotype_b"]} & set(named)
+        if d["gene"] != "APOE" or len(carried) != 1:
+            continue
+        (allele,) = carried
+        resolved = _resolved(out, "diplotypes", _diplotype_key(d))
+        for column in ("tier", "age_of_action", "age_of_action_confidence"):
+            assert resolved[column] == named[allele][column], (d, column)
+        assert resolved["flags"] == [named[allele]["flags"]]
+        assert resolved["withheld"] == []
+        checked += 1
+    assert checked, "the example must carry a diplotype holding exactly one named allele"
 
 
 def test_apoe_kl_vs_by_e4_replaces_exactly_the_rows_it_names(apoe) -> None:
     _result, out = apoe
     (members,) = [r["members"] for r in _rows(_APOE / "meta.csv") if " & " in r["members"]]
     row = _meta_by_members(out)[members]
-    diplotypes = _rows(_APOE / "diplotypes.csv")
-    expected = [
-        {"member": 0, "table": "diplotypes", "key": _diplotype_key(d)}
-        for d in diplotypes
-        if (d["gene"], d["haplotype_a"], d["haplotype_b"]) == ("KL", "KL-VS", "ref")
-    ] + [
-        {"member": 1, "table": "diplotypes", "key": _diplotype_key(d)}
-        for d in diplotypes
-        if d["gene"] == "APOE" and d["haplotype_b"] == "ε4"
-    ]
+    expected = _expected_matches(members, _rows(_APOE / "diplotypes.csv"))
+    assert {m["member"] for m in expected} == {0, 1}
     assert row["matches"] == expected
     assert row["replaces"] is True
-    # A combination's facts stay on its own row: no KL diplotype appears in meta_resolved.
+    # A combination's facts are about the combination: its meta row never reaches a member row, so no
+    # meta_resolved row lists it, and its tier never lands on a diplotype it matched.
+    combination = [r["members"] for r in _rows(_APOE / "meta.csv")].index(members)
     resolved = pl.read_parquet(out / "meta_resolved.parquet")
-    assert not [r for r in resolved.iter_rows(named=True) if r["key"][0] == "KL"]
+    assert not [r for r in resolved.iter_rows(named=True) if combination in r["meta_rows"]]
+    combined_tier = _authored(_APOE, members)["tier"]
+    for match in expected:
+        hits = [r for r in resolved.iter_rows(named=True) if r["key"] == match["key"]]
+        assert all(r["tier"] != combined_tier for r in hits), match
 
 
 def test_apoe_the_study_links_on_rs429358_and_rs7412_are_not_orphans(apoe) -> None:
@@ -158,7 +179,6 @@ def test_apoe_the_study_links_on_rs429358_and_rs7412_are_not_orphans(apoe) -> No
     studied = {r["rsid"] for r in _rows(_APOE / "studies.csv")}
     assert {"rs429358", "rs7412"} <= studied - variants
     assert "study_variant_orphan" not in _codes(result)
-    assert not [w for w in result.warnings if "study_variant_orphan" in w or "orphan" in w.lower()]
 
 
 def test_apoe_the_tier_scale_reaches_the_manifest(apoe) -> None:
@@ -243,13 +263,7 @@ def test_cpic_each_phenotype_pair_matches_every_drafted_diplotype_of_both_phenot
     authored = _rows(_CPIC / "meta.csv")
     assert len(meta) == len(authored)
     for row in authored:
-        members = parse_members(row["members"])
-        expected = [
-            {"member": position, "table": "diplotypes", "key": _diplotype_key(d)}
-            for position, member in enumerate(members)
-            for d in diplotypes
-            if all(d[column] == value for column, value in member.conditions)
-        ]
+        expected = _expected_matches(row["members"], diplotypes)
         compiled = meta[row["members"]]
         assert compiled["matches"] == expected
         assert {m["member"] for m in expected} == {0, 1}, (
@@ -276,9 +290,12 @@ def test_cpic_a_second_drugs_pair_row_is_a_duplicate_key(tmp_path: Path) -> None
     """The finding this example records: `meta.csv`'s key has no drug, so two thiopurines collide.
 
     CPIC states a different recommendation for one phenotype pair per drug; the second is refused as a
-    duplicate of the first. When the meta-table gains a way to scope a row to a drug, this test turns red
-    and the README's finding is to be rewritten.
+    duplicate of the first. The key and the absence of a drug column are asserted first, so the day the
+    meta-table gains a way to scope a row to a drug this test turns red and the README's finding is to be
+    rewritten.
     """
+    assert MetaRow._KEY_FIELDS == ("members_key", "trait_efo_id", "sex")
+    assert not [name for name in MetaRow.model_fields if "drug" in name]
     spec = tmp_path / "spec"
     shutil.copytree(_CPIC, spec)
     first = _rows(spec / "meta.csv")[0]

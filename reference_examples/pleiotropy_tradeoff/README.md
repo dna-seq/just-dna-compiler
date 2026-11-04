@@ -53,6 +53,12 @@ Nothing. Two things worth knowing:
 
 - The warning fires under `--strict` and does not refuse: it is a withheld reading, not an invalid row.
   So `--strict` is green with one warning, and that warning is the example's point.
+- LPA's genotype rows follow v2's own convention (the audit's case 1): `state` is per genotype against
+  the common genotype (A/A neutral, a G carrier at risk), and `effect_allele` is A, the allele the
+  per-trait `direction` is about (protective). Read together, "A is protective" and "carrying G is a
+  risk" are one claim from two sides, not a contradiction; a module that wants the genotype rows to
+  read the other way round states `effect_allele=G` and `risk` per trait, and the trade-off verdict is
+  the same null.
 - `effect_allele` on `variants.csv` now does double duty: it says which allele a row's effect is about,
   and, uniform across a locus, it is what lets a one-row-per-trait meta row be about an allele. A module
   that leaves it empty on a locus gets the warning above for every per-trait row on it.
