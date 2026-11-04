@@ -35,6 +35,55 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM359 — under `--strict`, `study_effect_allele_not_at_locus` arrives as both an error and a warning, and SCHEMAS.md states a count the code has outgrown
+
+**0.8, filed 2026-11-04 by the lead** as a second-pass item: found by a 0.8 builder.
+
+**Severity** low · **Status** SHIPPED 2026-11-04 on `0.8`, uncut — a minor · **Owner** compiler (`allele_checks.py`) + docs
+(`SCHEMAS.md`) · **Motivating case** a 0.8 builder's report, 2026-11-04 · *related* `@no-rerun-with-counts`,
+`@registry-completeness`
+
+**Two instances of one class: a fact stated where it can disagree with itself.**
+
+1. **A finding on two channels at once.** Under `--strict`, `study_effect_allele_not_at_locus` is escalated into
+   `errors` and still emitted into `warnings`, so a consumer counting findings counts it twice and one reading of
+   the result contradicts the other.
+2. **A count stated in prose.** SCHEMAS.md says `authoring_reference()["vocabularies"]` has "21 entries today".
+   It has 38 on `main` (measured) and the builder counted 43 on `0.8`.
+
+**The fix, as one rule.** A finding lives on exactly one channel, the one its severity under the mode picks, and a
+test asserts no code appears in both lists. The prose drops the number and states the rule that generates the
+list (`@registry-completeness`: never a count in prose).
+
+**Shipped 2026-11-04 on `0.8`.** Instance 1, the class: a mode-ladder finding under `strict` is in
+`errors` and nowhere else. Two routes put it in both, and both are closed. `compile_module` ran its
+pre-flight in `best_effort` whatever its own mode, so it seeded `warnings` with every ladder sentence;
+it now runs the pre-flight in its own mode, which makes the parity contract literal (a strict compile
+refuses with `validate --strict`'s accumulated errors). `ResolutionOutcome.warnings` carried each
+resolution ladder's warning in both modes; `ResolutionOutcome.channels(strict=)` now routes them through
+`route`, and its docstring no longer says the refusal is published "beside" the warning.
+`compiler/tests/test_one_channel_under_strict.py` asserts the rule over every code the `LadderFinding`
+walk finds plus `symbolic_allele_unusable` (which the walk cannot see); all eight cases were red on
+`0.8` before the change. Kept out of the rule on purpose: the strict-only aggregates (`strict compile:
+N variant(s) …`, `build_disagreement_error`) are different findings from the per-subject warnings that
+fire in both modes, and the enricher escalates by raising. `@one-finding-one-channel`.
+
+Instance 2, the class: a count in prose with nothing re-deriving it. SCHEMAS.md's "21 entries today"
+(47 on the `0.8` tip) is gone, and so is every registry total the sweep found in the maintained
+references beside *entries / codes / tables / table kinds / lanes / parquets / kinds / checks*:
+`ladder.py`'s and `mode_ladder.feature`'s "seven" ladder codes, the nine table kinds (six sites), the
+four binning and PGx kinds (eight sites), COMPILER.md's "six fact tables" (thirteen), "all nine"
+overridable tables (twelve) and "seven merged tables" (ten), ENRICHER.md's "five lanes" not published
+(the enumeration also missed `opentargets`), the per-command check counts, `cpic_build`'s "five parquets", "eight finding kinds", "four
+other tables" with a `source` column (two sites), a parametrized test's "four checks", and SCHEMAS.md's
+"eight siblings" of `resolution.csv` (thirteen). `test_counted_prose.py` keeps the two generated-roster
+paragraphs free of a total; the counts it already pins (`ARTIFACT_PARQUETS`, `OVERRIDABLE_TABLES`,
+`_FACT_TABLES`, the hash family) stay pinned. Left as written, being dated or designed rather than
+registry totals: ROADMAP / INTEGRATION_0_7 / POSTMORTEM / AGENT_NOTES narratives, closed-vocabulary
+member counts (`state`'s six), measurements, and headings.
+
+**Residuals** none
+
 ## RM333 — the effector gene behind a GWAS locus has no source and no column
 
 **Placement settled 2026-11-04.** The effector-confidence label is never authored (RM323's cut). This lane's derived table is one of its inputs, beside coloc and the coding consequence.

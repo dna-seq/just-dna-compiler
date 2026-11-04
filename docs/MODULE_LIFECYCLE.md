@@ -263,7 +263,7 @@ Three readings that this document exists to make explicit, because each has cost
 
 One more thing an edit can move, and it is not an identity at all: `verification.json`'s
 `module_hash`, which binds the **bytes** of the authored files (`authored_input_entries` —
-`module_spec.yaml`, `variants.csv`, `studies.csv`, the nine table kinds), read with `\r\n` as `\n`
+`module_spec.yaml`, `variants.csv`, `studies.csv`, the table kinds), read with `\r\n` as `\n`
 since 0.6 (RM82) and otherwise byte for byte. Because it hashes bytes rather than content, it does not
 move with either identity, in either direction. §6.2 measures both ways round.
 

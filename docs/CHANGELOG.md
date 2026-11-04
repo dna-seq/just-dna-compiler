@@ -41,6 +41,21 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM359: under `--strict` an escalated finding is an error only, and the docs state no registry totals (0.8, uncut)
+
+- **One finding, one channel.** A `compile --strict` used to publish every mode-ladder finding twice: once
+  in `errors`, and once in `warnings` as the best-effort sentence its pre-flight had run into. It is now in
+  `errors` only. `compile_module` runs its pre-flight (`validate_spec`) in its own mode, so a strict
+  compile refuses with `validate --strict`'s accumulated errors where it used to stop at the first ladder
+  that refused, and a resolution ladder publishes its longer refusal instead of its warning
+  (`ResolutionOutcome.channels(strict=)`). `best_effort` output is unchanged. No new warning code.
+  Asserted over every ladder code by `compiler/tests/test_one_channel_under_strict.py`; consumer note in
+  [INTEGRATION_0_8.md](INTEGRATION_0_8.md) § 1.15.
+- **No counts in prose beside a generated roster.** SCHEMAS.md said `authoring_reference()["vocabularies"]`
+  had "21 entries today" (47 now). That number and the other registry totals the maintained references
+  stated with nothing re-deriving them are gone; the paragraph states the rule that generates the list.
+  The list is in [ROADMAP_HISTORY.md](ROADMAP_HISTORY.md) under RM359.
+
 ## 2026-11-04 — RM333, RM239, RM236: the Open Targets lane fills a locus-to-gene table, its colocalisations, per-transcript consequences and a fine-mapping posterior (0.8, uncut)
 
 - **A new snapshot lane, `opentargets`.** `just-dna-enricher opentargets build` mirrors Open Targets Platform

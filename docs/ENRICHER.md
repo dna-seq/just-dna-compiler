@@ -176,8 +176,7 @@ stale, one function does not. What to hold onto when wiring a new pass into it:
   clean bill. Everything not compared stays **outside** the denominator and inside the record's
   `detail`, grouped by reason.
 - **One proof-of-work per call, so a pass collects its records and writes once.** `enrich()` writes all
-  five of its checks at the end of the run, `enrich_literature` its three, `check-identifiers` its
-  three. The merge is what keeps every command in one document, replacing per check and never erasing
+  of its checks at the end of the run, and `enrich_literature` and `check-identifiers` do the same. The merge is what keeps every command in one document, replacing per check and never erasing
   a check this run did not put — and until `literature` was wired in there was no second writer at
   all, so the merge was machinery tested only against a document nothing produced.
 - **A skip does not displace an answer the document already holds (RM72, 0.6) — while the authored
@@ -466,7 +465,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `sequences` | reference-sequence access (cached) + the reference-allele check | `ga4gh.vrs` |
 | `locations` | cache-location resolution — **one `resolve`/`default_dir`/`env_var` triple per lane in `CACHE_LANES`**, paired by a test rather than counted here — plus `.env` and the pull record. The snapshot layout names and `read_release` are imported from `just_dna_format.snapshot` since 0.8 (RM303) and stay importable from here | `platformdirs`, `python-dotenv` |
 | `download` | HuggingFace **snapshot** download, footer-checked and atomic — **one `ensure_*` per lane whose `publish_repo` is set**, which is the registry's own answer to which lanes may be pulled rather than a second list. A lane with no repo is operator-built; see *The caches* | `huggingface_hub` (lazy) |
-| `cpic_build` | **`[dev]`** builder (0.5.1): the whole CPIC PostgREST database → five parquets + `release.json` | `polars` (lazy), `cpic` |
+| `cpic_build` | **`[dev]`** builder (0.5.1): the whole CPIC PostgREST database → parquets + `release.json` | `polars` (lazy), `cpic` |
 | `pharmvar_build` | **`[dev]`** builder (0.5.1): `/genes` → alleles + defining variants. Operator-built, never published | `polars` (lazy), `pharmvar` |
 | `pubmind_build` | **`[dev]`** builder (0.7, RM134): the ANNOVAR-distributed PubMind table → one parquet + `release.json`. Operator-built, and `pubmind publish` **refuses** | `polars` (lazy), `httpx`, `clin_sig` |
 | `mane_build` | **`[dev]`** builder (0.7, RM168): one pinned MANE release → three parquets + `release.json`. Operator-built; there is no `mane publish` because NCBI states a policy rather than a licence | `polars` (lazy), `httpx` |
@@ -1519,11 +1518,11 @@ just-dna-enricher cache prepare --use non-commercial        # the deployment's o
 just-dna-enricher cache prepare --only mane --only acmg     # or a subset
 ```
 
-`cache pull` fetches the published snapshots and stops, and five lanes are not published *for
-recorded reasons* — PharmVar's personal key, PubMind's NoDerivatives, NCBI's policy over MANE, ACMG's
+`cache pull` fetches the published snapshots and stops, and the lanes with no `publish_repo` are not
+published, each *for a recorded reason* — among them PharmVar's personal key, PubMind's NoDerivatives, NCBI's policy over MANE, ACMG's
 supplementary material, and `mitomap_miss`, which is derived from two parents on the pulling machine
 and would only pin somebody else's ClinVar if it travelled. A machine that only pulled is therefore
-five caches short, and the checks that
+those caches short, and the checks that
 read them skip themselves with `no_reference`. `prepare` runs each lane by the route it has: pull if
 published, build if not.
 
@@ -1607,7 +1606,7 @@ Three things about it are worth reading before a deployment runs it nightly.
   Elsevier supplementary material, PharmVar a personal key, CIViC a release date to pin, Ensembl is
   built by just-dna-pipelines, and a derived lane whose parents are not on disk (`mitomap_miss`, RM171)
   names the parent it lacks rather than reporting an empty result. Each prints its own reason — taken from the registry field, not composed
-  here — and the exit code counts only real failures, so a nightly run does not alarm on four lanes
+  here — and the exit code counts only real failures, so a nightly run does not alarm on lanes
   behaving exactly as designed.
 - **Credentials come from the `.env` too, and until RM176's follow-up two of them did not.**
   `$PHARMVAR_API_KEY` and `$HF_TOKEN` are read at the point they are used (`@credential-where-read`),
@@ -4057,7 +4056,7 @@ division either way. A source division is a closed *window* `[previous.max, next
 point, so the same division stated in either spelling matches; `resolve_tiling` decides only which
 endpoint the message names, and whether a cut at a bin's own top edge divides it.
 
-Eight finding kinds, one sentence each, asserted equal to the arms `compare_bands` can emit: a
+The finding kinds, one sentence each, asserted equal to the arms `compare_bands` can emit: a
 boundary only the module has or only the source has, a floor that differs or is open on one side, and
 the same three for the ceiling.
 
@@ -5348,7 +5347,7 @@ directly to compose passes, inject clients, or run in-process.
 | `strchive build` | `strchive_build.build_strchive_snapshot` → `strchive.load_strchive_catalogue` |
 | `clinpgx build` / `clinpgx check` | `clinpgx_build.download_clinpgx_zip` + `build_snapshot` / `clinpgx.enrich_clinpgx` |
 | `clinpgx build-labels` / `check-labels` | `drug_labels_build.download_drug_labels_zip` + `build_drug_label_snapshot` / `drug_labels.check_drug_labels` |
-| `civic build` / `citations` / `publish` / `reproduce` | `civic_build.build_snapshot` / `civic_citations.draft_civic_citations` (+ `check_evidence_status_currency`, folded into `enrich`) / `upload.publish_reference_snapshot` (CC0; RM176) / the CLI's own five checks |
+| `civic build` / `citations` / `publish` / `reproduce` | `civic_build.build_snapshot` / `civic_citations.draft_civic_citations` (+ `check_evidence_status_currency`, folded into `enrich`) / `upload.publish_reference_snapshot` (CC0; RM176) / the CLI's own checks |
 | `clinvar build` / `citations` / `publish` | `clinvar_build.download_clinvar_vcf` + `build_snapshot` / `download_var_citations` + `build_citations` / `upload.publish_reference_snapshot` |
 | `gnomad constraint build` / `publish` | `constraint_build.download_constraint_tsv` + `build_snapshot` / `upload.publish_reference_snapshot` |
 | `vrs mint` | `vrs.mint_resolution_rows` |
@@ -5384,7 +5383,7 @@ them (S86).** `check_identifiers` built its roster from `variants.csv` alone whi
 models declare `trait_efo_id` or `gene` — `StudyRow` has carried the trait column since 0.3 — so a
 module whose traits live in `studies.csv` reported nothing checked and nothing flagged, and could ship
 a retired CURIE with every gate green. The set is derived from `DRAFTABLE` rather than listed
-(`@registry-completeness`): nine tables carry `trait_efo_id`, nine carry `gene`, and a table kind added
+(`@registry-completeness`): every table carrying `trait_efo_id` or `gene` is in it, and a table kind added
 later joins by existing. The three **derived** models that also carry these columns —
 `GeneMetricsRow`, `GeneValidityRow`, `GwasEffectRow` — are deliberately outside it: they are
 machine-written, so a stale id in one is the *source's* currency and no author can act on it.
@@ -5414,7 +5413,7 @@ check applies to, are not: `--strict --no-traits` still exits 0, and `check-acmg
 stating no `acmg_sf` cell now **passes** with its denominator printed rather than withholding, which
 is the one behaviour RM234 set differently. `unreachable` is not a member and could not be — a
 registry outage raises `IdentifierUnavailable` before a report exists, and that path already exits 1
-with an `unreachable` attestation for all five checks.
+with an `unreachable` attestation for every check it runs.
 
 **A prose filter was the defect underneath it.** `unreadable_tables` kept everything in
 `*_tables_not_read` except the literal `"not present"`, so the row-taking call form's reason — a
