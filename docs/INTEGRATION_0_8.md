@@ -148,6 +148,14 @@ import from there keeps working.
 | `CacheLane.release_label` | No lane overrides it; ClinVar's per-lane reader (`clinvar_dataset_label` as the lane's `release_label`) is gone. ClinVar's label is unchanged, for snapshots built before and after 0.8. | Nothing, unless you compared `lane.release_label` against `caches._dataset_label`, which no longer exists: compare against `snapshot.release_label`. |
 | `clinpgx.load_snapshot`, `CpicSnapshotClient.release`, `PharmVarSnapshotClient.release`, `mitomap_miss_build.read_miss_release` | Return or hold a `SnapshotRelease` (empty when the file is absent), not a `dict`. | Attribute access instead of `.get`. |
 
+## 1.10 A new cache lane, `clinvar_gkm` (RM305, no break)
+
+| Surface | What changed | What to do |
+| --- | --- | --- |
+| `caches.CACHE_LANES` | Gains `clinvar_gkm`: ClinVar-GKM's GRCh38 indels, a placement witness (`$JUST_DNA_CLINVAR_GKM_CACHE`, `clinvar-gkm build`, publish repo `just-dna-seq/clinvar_gkm`, not created yet). | A consumer that renders or provisions the registry picks it up by walking it. One that hand-lists lanes adds it. |
+| `currency.PROBE_SOURCES` | Gains `clinvar_gkm`, so `--verify-datasets` can answer for a `sources.csv` row naming it. | Nothing; a row with that source was `unsupported` before. |
+| `licensing.TERMS_BY_SOURCE` | Gains `clinvar_gkm` (CC0-1.0 over ClinGen's transformation). | Nothing, until a check writes that `SourceRow`. |
+
 ## 1.5 A behaviour narrowing: what a `*.log` ships (no new code)
 
 | Surface | Item | What changed |
