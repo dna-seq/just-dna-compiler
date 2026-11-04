@@ -21,6 +21,7 @@ from just_dna_compiler.compiler.tables import (
     _TABLE_DUPE_KEYS,
     _TABLE_KIND_CSVS,
     META_CSV,
+    MODEL_ORGANISMS_CSV,
     OVERRIDES_CSV,
 )
 
@@ -396,6 +397,8 @@ _KNOWN_SPEC_FILES: frozenset[str] = frozenset(
     | {OVERRIDES_CSV}
     # The meta-table (0.8) is authored and has one legal name and place, the overlay's terms.
     | {META_CSV}
+    # The model-organism table (0.8, RM335), on the same terms.
+    | {MODEL_ORGANISMS_CSV}
     # Every accepted spelling, not just the one the registries name — a sidecar the compiler happily
     # reads under an alias must not also be reported as a near-miss stray file in the same run (RM51).
     | {name for csv, _, _ in _FACT_TABLES for name in sidecar_spellings(csv)}

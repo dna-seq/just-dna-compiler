@@ -54,7 +54,7 @@ land wherever RM323 puts per-locus facts. RM322 next, since APOE is the lead loc
 | [RM332](#rm332--a-beta-has-no-unit-on-authored-rows-while-gwas_effectscsv-has-carried-one-since-06) | `effect_unit` on authored rows, as `gwas_effects.csv` has | full ×1–2 |  |
 | [RM333](#rm333--the-effector-gene-behind-a-gwas-locus-has-no-source-and-no-column) | an Open Targets lane; effector gene, score, release on a derived table | half, plus a lane | licence unprobed |
 | [RM334](ROADMAP_HISTORY.md#rm334--an-hla-allele-has-no-table-and-tag-snps-cannot-stand-in-for-one) | the IPD-IMGT/HLA name grammar on `allele_function.csv` (the table was cut) | near-zero (a refusal) | ✅ shipped 2026-11-04 |
-| [RM335](#rm335--model-organism-evidence-has-nowhere-to-go-and-a-study-row-naming-the-rsid-claims-the-mouse-study-was-about-the-human-variant) | a model-organism evidence table | full (new kind) |  |
+| [RM335](ROADMAP_HISTORY.md#rm335--model-organism-evidence-has-nowhere-to-go-and-a-study-row-naming-the-rsid-claims-the-mouse-study-was-about-the-human-variant) | a model-organism evidence table (not a lead table) | full (new kind) | ✅ shipped 2026-11-04 |
 | [RM336](ROADMAP_HISTORY.md#rm336--a-doi-written-into-pmid-parses-as-five-or-six-pubmed-ids-and-the-literature-pass-looks-each-one-up) | a DOI-token arm in `validate_pmid_cell` | near-zero (a refusal or a warning code) | **shipped 2026-11-04 on `0.8`, uncut** |
 
 **Older items the plan also needs, tagged rather than moved** (each keeps its own entry; the 2026-11-03
@@ -317,23 +317,6 @@ Open Targets.
 **licence probed first** (not verified here). Effector gene, score, method and release on a derived table
 (half cost). The C1–C4 / E1–E4 labels are the module's rubric over those inputs, so they are computed
 once the inputs exist, never authored.
-
-## RM335 — model-organism evidence has nowhere to go, and a study row naming the rsID claims the mouse study was about the human variant
-
-**Severity** low · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format · **Motivating case** longevitymap v2 requirements §4.3 (R-ANIMAL-1…5), §10 · *for* longevitymap v2 · *related* RM327
-
-**What was confirmed.** The plan's interim is a `studies.csv` row with `study_design: model_organism`.
-That row is false either way:
-
-- **With the rsID**, it says a mouse lifespan study was about the human SNP.
-- **Without one**, it attaches to the whole module, because `StudyRow` has no `gene` column (RM47 made the
-  variant optional, not a gene the row could name instead).
-
-**Shape.** A separate table, one concern per table: the human gene with an orthologue id (symbol
-matching found 20 of the 22 genes NCBI orthologues found), species, model type, sex, diet, the lifespan
-effect, and the direction concordance with the human allele (`concordant`, `discordant`,
-`nonmonotone`), with a citation. Annotation only: it never reaches an effect column or a tier
-(R-ANIMAL-1). Full, a new table kind.
 
 ## RM236 — `consequence` and `impact` are planned axes with no slot, and an ACMG engine reads both as primary inputs
 

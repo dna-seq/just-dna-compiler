@@ -336,8 +336,14 @@ def test_the_overlay_parquet_is_registered_last_and_it_is_absence_that_protects_
     Shown by construction rather than by reading the hasher: one file set in two orders hashes equal,
     and dropping an entry is what moves it.
     """
-    # Last until 0.8, which appended the meta-table's pair after it, for the same reason.
-    assert ARTIFACT_PARQUETS[-3:] == ("overrides.parquet", "meta.parquet", "meta_resolved.parquet")
+    # Last until 0.8, which appended the meta-table's pair and the model-organism table after it, for the
+    # same reason.
+    assert ARTIFACT_PARQUETS[-4:] == (
+        "overrides.parquet",
+        "meta.parquet",
+        "meta_resolved.parquet",
+        "model_organisms.parquet",
+    )
 
     entries = [
         FileEntry(name="weights.parquet", sha256=f"sha256:{'a' * 64}", size=1),

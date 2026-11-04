@@ -295,6 +295,32 @@ its alleles sorted. A per-trait row on a bare locus whose genotype rows disagree
 its direction withheld rather than guessed. A module carrying only this file is refused: it names rows,
 and there are none to name.
 
+## model_organisms.csv
+
+**One row is one experiment on a model organism and what it did to lifespan, about a human gene.** The
+human gene is the subject; the rest says which orthologue was altered, in which species, by which
+intervention, in which sex and on which diet, and what happened. A male and a female cohort, or a chow and
+a high-fat one, are two rows, because they are two experiments: everything but the outcome and its
+concordance is the key, so the same experiment written twice with two outcomes is refused.
+
+**A person decides every cell.** Nothing is derived and nothing is filled: the parquet is the CSV.
+`concordance` is the one judgement in the row, whether the animal's direction agrees with the human
+allele's, and empty is the honest answer when the paper does not let anyone say. A citation is welcome and
+not demanded: a GenAge-style entry often has no paper, and the table never reaches a score, so an uncited
+row draws no warning.
+
+**Why it is its own table.** The evidence has no other true home. A `studies.csv` row naming the rsID
+says the mouse study was about the human variant, and one naming no variant attaches to the whole module;
+a meta-table member cannot name a bare gene; and `Igf1r+/-` is a mouse genotype, not a human allele, so
+`allele_function.csv` cannot hold it either. Keying on the gene itself is what lets a gene-only finding be
+written at all.
+
+**Annotation only, and the symptom when that is forgotten.** Nothing here becomes a weight, an effect, a
+tier or a meta-table member, and the table is not a lead table: a module carrying only this file is
+refused as having no recognized table, and the genes it names are not counted among the genes the module
+is about. A model-organism finding that should move a person's result belongs in a finding table with a
+human study behind it, never here.
+
 ## licensing.csv
 
 **One row is one data source, at one layer of the module, with the terms it was used under** — keyed

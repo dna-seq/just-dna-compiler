@@ -79,6 +79,18 @@ A `variants` match is keyed by the authored `(variant_key, genotype)`; for an rs
 onto several loci, `weights.parquet` keys those rows by coordinate, and they are reached through `rsid`.
 `module_spec.yaml` gains the optional `tier_scale:`; a `tier` cell without it is refused.
 
+## 1.2.2 A new authored table: model-organism evidence (no break)
+
+A module may carry `model_organisms.csv` (RM335): one row per model-organism lifespan finding about a
+human gene, `gene` required, `orthologue`, `species`, `model_type`, `sex` (the animals', free text),
+`diet`, `lifespan_effect`, `concordance` (closed: `concordant`, `discordant`, `nonmonotone`; empty is
+unstated), `pmid`, `doi` (optional; an uncited row draws no warning). It compiles verbatim to
+`model_organisms.parquet`, listed last in `ARTIFACT_PARQUETS` and not in `LEAD_PARQUETS`; a module
+carrying no such file keeps its digest. **Annotation only**: it reaches no weight, effect, tier or
+meta-table member, it does not make a directory a module on its own, and its genes are not in
+`manifest.stats.genes`. A 0.7 reader of the artifact ignores the parquet; a 0.7 compiler does not read
+the CSV, so it neither checks nor compiles it.
+
 ## 1.3 New derived column and client method (no break)
 
 | Surface | Item | What changed |
@@ -180,3 +192,6 @@ import from there keeps working.
    the reader returns a model, and three keys are spelled differently in a snapshot built by 0.8.
 7. If you read a module's findings, read `meta.parquet` too: a row with `replaces` true whose members all
    match the sample replaces the findings of the rows in its `matches` (§ 1.2.1).
+8. If you keep a hand-written list of artifact parquets or authored CSVs (a publisher's allowlist, a
+   spec-directory mirror), add `model_organisms.parquet` and `model_organisms.csv`, or derive the list
+   from `ARTIFACT_PARQUETS` and `table_bindings()` (§ 1.2.2).

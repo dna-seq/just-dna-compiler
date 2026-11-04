@@ -21,6 +21,7 @@ from just_dna_format.manifest import (
     read_manifest,
 )
 from just_dna_format.meta import MetaRow
+from just_dna_format.model_organisms import ModelOrganismRow
 from just_dna_format.overrides import OverrideRow
 
 from just_dna_compiler.compiler.positional import _POSITIONAL_TABLE_KINDS
@@ -29,6 +30,8 @@ from just_dna_compiler.compiler.tables import (
     _TABLE_KINDS,
     META_CSV,
     META_PARQUET,
+    MODEL_ORGANISMS_CSV,
+    MODEL_ORGANISMS_PARQUET,
     OVERRIDES_CSV,
     OVERRIDES_PARQUET,
     _list_cell,
@@ -530,6 +533,14 @@ def reverse_module(
     meta_parquet = parquet_dir / META_PARQUET
     if meta_parquet.is_file():
         _write_table_csv(pl.read_parquet(meta_parquet), MetaRow, output_dir / META_CSV)
+
+    # The model-organism table (0.8, RM335), at the spec root like the meta-table. The parquet carries
+    # every authored cell verbatim, so the generic writer is the whole of the reverse.
+    model_organisms_parquet = parquet_dir / MODEL_ORGANISMS_PARQUET
+    if model_organisms_parquet.is_file():
+        _write_table_csv(
+            pl.read_parquet(model_organisms_parquet), ModelOrganismRow, output_dir / MODEL_ORGANISMS_CSV
+        )
 
     return output_dir
 

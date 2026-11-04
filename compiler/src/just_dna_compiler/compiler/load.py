@@ -12,13 +12,14 @@ from just_dna_format.base import DEFAULT_GENOME_BUILD, AuthoredModel
 from just_dna_format.binning import MeasureBinRow
 from just_dna_format.integrity import content_signature as _content_signature
 from just_dna_format.meta import MetaRow
+from just_dna_format.model_organisms import ModelOrganismRow
 from just_dna_format.normalize import strip_authority_keys
 from just_dna_format.overrides import OverrideRow
 from just_dna_format.spec import Defaults, ModuleSpecConfig, StudyRow, VariantRow, extract_pmids
 from pydantic import BaseModel, ValidationError
 
 from just_dna_compiler.compiler.binning_checks import _BINNING_TABLE_KINDS, _CITING_TABLE_KINDS
-from just_dna_compiler.compiler.tables import _TABLE_KINDS, META_CSV, OVERRIDES_CSV
+from just_dna_compiler.compiler.tables import _TABLE_KINDS, META_CSV, MODEL_ORGANISMS_CSV, OVERRIDES_CSV
 from just_dna_compiler.compiler.variant_checks import _restamp_for_build
 
 # ── File loading helpers ───────────────────────────────────────────────────────
@@ -388,6 +389,8 @@ def spec_tables(spec_dir: Path) -> tuple[dict[str, list[Any]], str]:
         # The meta-table (0.8) is authored input, so it is content: the selectors verbatim and every
         # finding and fact cell. `members_key` is stamped and `exclude=True`, so it adds nothing.
         (META_CSV, MetaRow),
+        # The model-organism table (0.8, RM335) is authored input, so it is content: every cell.
+        (MODEL_ORGANISMS_CSV, ModelOrganismRow),
     ]
     tables: dict[str, list[Any]] = {}
     for csv_name, model in kinds:

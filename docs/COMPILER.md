@@ -1459,6 +1459,28 @@ through `_TABLE_DUPE_KEYS` like every keyed table's. The enricher's rsID currenc
 every rsID a member names, so one variant written under two keys is caught where NCBI is the oracle
 (ENRICHER.md).
 
+## The model-organism table (0.8, RM335) — verbatim, and never a lead table
+
+`model_organisms.csv` is annotation only (the model is in
+[SCHEMAS.md § The model-organism table](SCHEMAS.md#the-model-organism-table-08-rm335--model_organismscsv)).
+The compiler's part is small and deliberately so:
+
+- **One loader on both sides.** `validate_spec` and `compile_module` call
+  `compiler.model_organisms.load_model_organisms`: the rows parse, a present file with no rows is refused,
+  and a duplicate key (every column but `lifespan_effect` and `concordance`) is refused through
+  `_TABLE_DUPE_KEYS`. Nothing else reads the rows, so nothing else can refuse them.
+- **Verbatim to `model_organisms.parquet`**, through the generic materializer, in authored order;
+  `reverse` writes `model_organisms.csv` back from it through the generic writer. The rows are inside
+  `content_signature` and the CSV is in `manifest.inputs`.
+- **A citation site.** The table is in `_CITING_TABLE_KINDS`, so a cited row's `pmid` is read by the
+  literature cross-check and keeps its `literature.csv` row, and the enricher's literature pass looks it
+  up. An uncited row draws nothing.
+- **Not a table kind.** It is registered beside the meta-table rather than in `_TABLE_KINDS`, so it does
+  not satisfy "a module must carry at least one recognized table", is not in `LEAD_PARQUETS` (the publish
+  gate and discovery's *is this a module* rule), and its genes do not enter `manifest.stats.genes`. The
+  reason is at `tables.MODEL_ORGANISMS_CSV`: a mouse lifespan finding is nothing a genome is matched
+  against.
+
 ## Reverse
 
 `reverse_module` reads the parquets for every row, and the artifact's `manifest.json` for every
@@ -1553,6 +1575,7 @@ clin_sig_concordance  clin_sig_authority_calls                     ← the deriv
 sources                                                           ← the licence table
 overrides                                                         ← the authored overlay (0.7)
 meta  meta_resolved                                               ← the meta-table (0.8); not lead tables
+model_organisms                                                   ← the model-organism table (0.8, RM335); not a lead table
 ```
 
 **It is not digest order, and this section said it was.** `artifact_digest` sorts the listing by name
@@ -1563,7 +1586,7 @@ late it sits in the tuple. What the position does govern is the order a consumer
 listing, not the hash; what keeps an already-published digest still is that the module has no such
 file at all.
 
-Twenty-five names. `LEAD_PARQUETS` is the ten carrying a module's own annotation rows — `weights` plus the
+Twenty-six names. `LEAD_PARQUETS` is the ten carrying a module's own annotation rows — `weights` plus the
 nine table kinds — which is the publisher's *is this a module* rule and what discovery probes.
 
 **The per-parquet column lists are deliberately not reproduced here.** They are derivable from the
@@ -1643,6 +1666,9 @@ asymmetry below is intended: **rows are preserved, presentation is normalized.**
   row's authored position, then the `sex` scope (none, `female`, `male`); its `meta_rows` are ascending.
   No set or dict iteration reaches either file, and `test_meta_compile.py` compiles twice and compares
   the bytes.
+- **`model_organisms.parquet`** (0.8, RM335) is in authored row order: the generic materializer writes
+  the CSV's rows as they stand, and `test_model_organisms_compile.py` compiles twice and compares the
+  bytes.
 
 **Normalized, not preserved.** Column order and cell formatting in every reversed CSV; the
 `curator`/`method` blank-vs-explicit split; unphased genotype allele order.

@@ -17,6 +17,7 @@ from just_dna_format.integrity import resolution_signature as _resolution_signat
 from just_dna_format.layout import SOURCES_CSV, VERIFICATION_JSON, SidecarCollision, sidecar_write_path
 from just_dna_format.literature import LiteratureRow
 from just_dna_format.manifest import VerificationDoc, write_manifest
+from just_dna_format.model_organisms import ModelOrganismRow
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.overrides import (
     LOSSY_OVERLAY_TABLES,
@@ -101,6 +102,7 @@ from just_dna_compiler.compiler.meta import (
     meta_resolved_frame,
     meta_scale_errors,
 )
+from just_dna_compiler.compiler.model_organisms import load_model_organisms
 from just_dna_compiler.compiler.parquets import (
     _build_annotations,
     _build_frequencies,
@@ -119,6 +121,8 @@ from just_dna_compiler.compiler.tables import (
     META_CSV,
     META_PARQUET,
     META_RESOLVED_PARQUET,
+    MODEL_ORGANISMS_CSV,
+    MODEL_ORGANISMS_PARQUET,
     OVERRIDES_PARQUET,
     SNP_CORE_PARQUETS,
     _build_table,
@@ -287,9 +291,19 @@ def compile_module(
     if meta_errors:
         return CompilationResult(success=False, errors=meta_errors, warnings=all_warnings)
     authored_variants = variants
-    # The citation view: the table kinds plus the meta rows, whose `pmid` is a citation site
-    # (`_CITING_TABLE_KINDS`). Every literature check below reads this rather than `kind_rows`.
-    citing_rows: dict[str, list[Any]] = {**kind_rows, META_CSV: meta_rows}
+    # The model-organism table (0.8, RM335), loaded and refused before `mkdir` on the meta-table's terms
+    # (the pre-flight has already refused anything this could). It is written verbatim further down.
+    model_organism_rows, model_organism_errors, _ = load_model_organisms(spec_dir)
+    if model_organism_errors:
+        return CompilationResult(success=False, errors=model_organism_errors, warnings=all_warnings)
+    # The citation view: the table kinds plus the meta and model-organism rows, whose `pmid` is a
+    # citation site (`_CITING_TABLE_KINDS`). Every literature check below reads this rather than
+    # `kind_rows`.
+    citing_rows: dict[str, list[Any]] = {
+        **kind_rows,
+        META_CSV: meta_rows,
+        MODEL_ORGANISMS_CSV: model_organism_rows,
+    }
 
     # The source-independent resolution table (0.5), if authored/produced beside the spec. When
     # present it is the *preferred* resolution path: the compiler consumes already-resolved facts and
@@ -979,6 +993,13 @@ def compile_module(
         ):
             frame.write_parquet(output_dir / parquet_name, compression=compression)
             table_rows[parquet_name] = frame.height
+
+    # The model-organism table (0.8, RM335), verbatim and in authored order, through the generic
+    # materializer: no expansion and no derived column. `reverse_module` reads it back from here.
+    if model_organism_rows:
+        model_organism_df = _build_table(model_organism_rows, ModelOrganismRow, module_name)
+        model_organism_df.write_parquet(output_dir / MODEL_ORGANISMS_PARQUET, compression=compression)
+        table_rows[MODEL_ORGANISMS_PARQUET] = model_organism_df.height
 
     frequency_rows: list[FrequencyRow] = fact_rows.get(FrequencyRow, [])
     gene_metrics_rows: list[GeneMetricsRow] = fact_rows.get(GeneMetricsRow, [])

@@ -26,6 +26,7 @@ from just_dna_format.layout import VERIFICATION_JSON, SidecarCollision, deprecat
 from just_dna_format.literature import LiteratureRow
 from just_dna_format.manifest import FileEntry
 from just_dna_format.meta import MetaRow
+from just_dna_format.model_organisms import ModelOrganismRow
 from just_dna_format.overrides import OverrideRow
 from just_dna_format.pgs import PgsRow
 from just_dna_format.pgx import AlleleFunctionRow, DiplotypeRow, HaplotypeRow, PharmVariantRow
@@ -133,6 +134,10 @@ _TABLE_DUPE_KEYS: dict[type[BaseModel], Callable[[Any], tuple]] = dict.fromkeys(
         # `A & B` and `B & A` are one key. The same key twice is the one place two meta values can
         # contradict each other, so it is refused here like every other keyed table's duplicate.
         MetaRow,
+        # `ModelOrganismRow` keys on every column but the finding's two (0.8, RM335): one gene,
+        # orthologue, species, intervention, sex, diet and citation are one experiment, and the same
+        # experiment stated twice with two lifespan effects is two answers with no order between them.
+        ModelOrganismRow,
     ),
     _key_of,
 )
@@ -186,6 +191,26 @@ META_PARQUET: str = "meta.parquet"
 META_RESOLVED_PARQUET: str = "meta_resolved.parquet"
 
 
+#: The model-organism evidence table (0.8, RM335). Authored, so it is input (raw-byte hashed into
+#: `manifest.inputs`, inside `content_signature`), keyed (`_TABLE_DUPE_KEYS`), and a citation site
+#: (`_CITING_TABLE_KINDS`).
+#:
+#: **Not a `_TABLE_KINDS` entry, on the meta-table's argument** (PT2 §5 A6 says "a `_TABLE_KINDS`
+#: entry"; the registration follows the meta-table's 0.8 precedent instead, and this is why). A table
+#: kind satisfies "a module must carry at least one recognized table", is a `LEAD_PARQUETS` member the
+#: reference consumer's discovery and the publish gate key on, and feeds `_GENE_BEARING_TABLE_KINDS`,
+#: which publishes `manifest.stats.genes`. A model-organism row is annotation only (R-ANIMAL-1): it states
+#: what happened to a mouse, never anything a genome is matched against, so a directory carrying only
+#: this file is not a module and its genes are not genes the module's findings are about.
+#:
+#: One parquet, appended last in `ARTIFACT_PARQUETS`, where a module carrying no such file keeps its
+#: digest.
+MODEL_ORGANISMS_CSV: str = "model_organisms.csv"
+
+
+MODEL_ORGANISMS_PARQUET: str = "model_organisms.parquet"
+
+
 _INPUT_FILES: tuple[str, ...] = (
     "module_spec.yaml",
     "variants.csv",
@@ -193,6 +218,7 @@ _INPUT_FILES: tuple[str, ...] = (
     *_TABLE_KIND_CSVS,
     OVERRIDES_CSV,
     META_CSV,
+    MODEL_ORGANISMS_CSV,
 )
 
 
@@ -268,6 +294,8 @@ ARTIFACT_PARQUETS: tuple[str, ...] = (
     # member belongs, and a module carrying no meta.csv carries neither file and keeps its digest.
     META_PARQUET,
     META_RESOLVED_PARQUET,
+    # The model-organism table (0.8, RM335), last for the same reason.
+    MODEL_ORGANISMS_PARQUET,
 )
 
 
@@ -346,10 +374,11 @@ def table_bindings() -> dict[str, tuple[str, ...]]:
     new table kind whose parquet is written by a literal at its own write site fails the test instead of
     quietly missing a reference page.
 
-    Five registries, each owning its own slice: `SNP_CORE_PARQUETS` (the core, where `variants.csv`
+    Six registries, each owning its own slice: `SNP_CORE_PARQUETS` (the core, where `variants.csv`
     fans out to two), `_TABLE_KINDS` (the optional authored kinds), `_FACT_TABLES` (the derived facts),
-    `OVERRIDES_PARQUET` (the overlay, whose CSV is authored but is not a table kind) and the meta-table's
-    pair (`META_CSV`, which fans out to two like `variants.csv`).
+    `OVERRIDES_PARQUET` (the overlay, whose CSV is authored but is not a table kind), the meta-table's
+    pair (`META_CSV`, which fans out to two like `variants.csv`) and the model-organism table
+    (`MODEL_ORGANISMS_CSV`).
     """
     bound: dict[str, tuple[str, ...]] = dict(SNP_CORE_PARQUETS)
     for csv_name, parquet, _model in _TABLE_KINDS:
@@ -358,6 +387,7 @@ def table_bindings() -> dict[str, tuple[str, ...]]:
         bound[csv_name] = (parquet,)
     bound[OVERRIDES_CSV] = (OVERRIDES_PARQUET,)
     bound[META_CSV] = (META_PARQUET, META_RESOLVED_PARQUET)
+    bound[MODEL_ORGANISMS_CSV] = (MODEL_ORGANISMS_PARQUET,)
     return bound
 
 

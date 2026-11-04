@@ -528,9 +528,11 @@ def test_the_citing_kinds_are_exactly_the_table_kinds_declaring_a_pmid() -> None
         # The meta-table (0.8): authored and citing, but not a table kind, so it is appended to the
         # walk rather than swept up by it (`binning_checks._CITING_TABLE_KINDS`).
         "meta.csv",
+        # The model-organism table (0.8, RM335), on the meta-table's terms.
+        "model_organisms.csv",
     }
     assert binning < citing
-    assert citing - binning == {"pharm_variants.csv", "meta.csv"}
+    assert citing - binning == {"pharm_variants.csv", "meta.csv", "model_organisms.csv"}
 
     # And the rule that decides membership, per model: a kind cites exactly when it declares the
     # column. Written as a per-kind equality so the failure names the kind, and so a table kind added

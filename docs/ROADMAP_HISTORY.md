@@ -35,6 +35,48 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM335 — model-organism evidence has nowhere to go, and a study row naming the rsID claims the mouse study was about the human variant
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** ([PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §5 A6, §3 item 23), taken into 0.8 on 2026-11-03 as a priority · **Owner** format · **Motivating case** longevitymap v2 requirements §4.3 (R-ANIMAL-1…5), §10 · *for* longevitymap v2 · *related* RM327
+
+**What was confirmed.** The plan's interim is a `studies.csv` row with `study_design: model_organism`.
+That row is false either way:
+
+- **With the rsID**, it says a mouse lifespan study was about the human SNP.
+- **Without one**, it attaches to the whole module, because `StudyRow` has no `gene` column (RM47 made the
+  variant optional, not a gene the row could name instead).
+
+**What shipped.** `model_organisms.csv`, one row per model-organism lifespan finding about a human gene:
+`ModelOrganismRow` (`just_dna_format.model_organisms`, on `AuthoredModel` and `CitationPair`) with
+`gene` required and `orthologue`, `species`, `model_type`, `sex`, `diet`, `lifespan_effect`,
+`concordance`, `pmid`, `doi` optional. `concordance` is closed (`concordant`, `discordant`,
+`nonmonotone`) and empty is unstated, which is what v2's 55 "unclear" rows become. The key is every
+column but `lifespan_effect` and `concordance`, refused on a duplicate through `_TABLE_DUPE_KEYS`. An
+uncited row draws no warning; a cited one follows the pair's rules and is a citation site
+(`_CITING_TABLE_KINDS`). `sex` is the animals', free text, and deliberately not bound to `meta.csv`'s
+`VALID_SEXES` (a karyotype condition, another axis). `gene` has no model-level grammar, like
+`VariantRow.gene`; `check-identifiers` reads it because the table is in `DRAFTABLE`.
+
+**Registered on the meta-table's terms, not as a `_TABLE_KINDS` entry**, departing from §5 A6's wording
+on purpose (the reason is at `tables.MODEL_ORGANISMS_CSV`): a table kind satisfies "a module must carry at
+least one recognized table", is a `LEAD_PARQUETS` member the publish gate and discovery key on, and feeds
+`manifest.stats.genes`, and a mouse lifespan finding is none of those. So the CSV is authored input
+(`_INPUT_FILES`, `content_signature`), compiles verbatim to `model_organisms.parquet` (last in
+`ARTIFACT_PARQUETS`, not lead), and comes back through `reverse`. Tests:
+`schema/tests/test_model_organisms.py` and `compiler/tests/test_model_organisms_compile.py` (the audit's
+two rows through compile → reverse → compile with equal digest and `content_signature`, the signature
+moving on an edited cell, the duplicate refusal, the vocabulary refusal, no warning from an uncited row,
+the module-alone refusal); the duplicate key, the signature roster, the citing roster and the reverse
+were each broken once and their test went red.
+
+**Residuals** none
+
+**Shape.** A separate table, one concern per table: the human gene with an orthologue id (symbol
+matching found 20 of the 22 genes NCBI orthologues found), species, model type, sex, diet, the lifespan
+effect, and the direction concordance with the human allele (`concordant`, `discordant`,
+`nonmonotone`), with a citation. Annotation only: it never reaches an effect column or a tier
+(R-ANIMAL-1). Full, a new table kind.
+
 ## RM303 — the snapshot layout is a contract with six parties and no model, so it belongs in `just-dna-format`
 
 **0.8, confirmed 2026-11-03** by the maintainer when scoping 0.8.
