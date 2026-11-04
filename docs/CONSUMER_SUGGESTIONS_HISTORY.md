@@ -5994,6 +5994,10 @@ who or when, which is why your own ledger is the right place for them.
 **Meanwhile:** `*.log` with JSON Lines inside still ships, and an explicit `log_files=[...]` passed to
 `compile_module` ships any path it names, `.jsonl` included. The registry's server-side compile only
 discovers, so that second route does not help a publish.
+
+**Correction, 2026-11-04:** RM337 is a minor, not a patch. The warning needs a new warning code, and a
+reader pinned to an older `just-dna-format` refuses a manifest carrying a code it does not know, so it
+waits for a minor release. Which files ship (RM338) is still a patch.
 <!-- triaged: RM337 RM338 filed · sha 42482e8f4bdd -->
 
 
