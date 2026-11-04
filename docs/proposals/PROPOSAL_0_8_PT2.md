@@ -349,7 +349,7 @@ source it checks against, and a verdict member `self_consistent` used when they 
 registry carries both as fields, and an equality test over the roster refuses a check that states neither.
 A tolerance that makes a class undecided publishes the count of that class.
 
-**C3. RM305, the ClinVar-GKM lane.** Through CACHE_SURFACE.md's checklist, every line with its test. Indels
+**C3. RM305, the ClinVar-GKM lane.** *Addendum 2026-11-04, from the hand-run probe (`probes/LANES_0_8.md` §3): the set is on Cloudflare R2, not Google Cloud Storage, and one Parquet set is overwritten weekly, so the pin is `(source_release, sha256)` plus a drift check; it mints under VRS 2.1.1, so ids compare only at the same VRS minor. The lane was built to that.* Through CACHE_SURFACE.md's checklist, every line with its test. Indels
 only (the ~270k `ReferenceLengthExpression` alleles and other indels). A pinned release recorded through
 RM303's model; the Google Cloud Storage download owes the client exception contract; a currency finding
 when the latest weekly delta is old. It is a witness RM292's records name, with no check of its own.
