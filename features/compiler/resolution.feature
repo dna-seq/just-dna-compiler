@@ -179,6 +179,23 @@ Feature: Resolution from the injected table
     # Three causes, and one window read cannot separate them (`@ref-mismatch-causes`). The enricher's
     # twin of this code adds the dbSNP merge reading, which is the one the compiler cannot check.
 
+  # source: compiler/src/just_dna_compiler/resolution.py
+  # anchor: placement_disagreements
+  @code:rsid_placements_disagree @actionable @ladder
+  Scenario: one rsID is placed two ways by two subjects of one resolution.csv
+    Given a resolution.csv row keyed by rs761191455 at 13:48041104 G>GG
+    And a row keyed by the position 13:48041103:T:TG whose rsID was back-filled as rs761191455
+    When the module is compiled in best_effort mode
+    Then a warning says the table "holds two placement sets for this one rsID"
+    And it names both answers, their releases or "releases not recorded", and the remedy "--rederive"
+    And a strict validate and a strict compile both refuse
+    # The 0.8 migration probe's instance: an enrich fills only subjects it has no row for, so a table
+    # enriched before a snapshot moved and again after it holds both releases' spellings, and a
+    # consumer's positional join meets one of them. One key is one answer, so an rsID with several
+    # loci, or one multi-ALT locus split into pieces, under ONE key is never this finding. Where the
+    # table cannot tell (no row keyed by the rsID itself, or one key repeating a `locus_index`) the
+    # check withholds rather than refuses.
+
   # source: compiler/src/just_dna_compiler/compiler/positional.py
   # anchor: _apply_positional_resolution
   @code:positional_identity_contradicted @actionable @both_modes

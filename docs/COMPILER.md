@@ -225,7 +225,11 @@ module with a one-to-many rsid compiles once and never again — Principle 7's f
 lint. (Not hypothetical: three variants in `reference_examples/pathogenic_clinvar/` have this shape.)
 For the resolved case there is a second reason to stay at a warning: `alts` came from a *source*, and
 ClinVar carries only its submitted alleles while Ensembl carries every allele dbSNP knows, so a short
-alt list is a gap in the source at least as often as a defect in the module. The comparison is also made
+alt list is a gap in the source at least as often as a defect in the module. Since 0.8 the resolved sentence names
+a third reading too (RM374): the row was resolved against an earlier snapshot release than the module is
+enriched against now, because an enrich never re-asks a subject it has a row for. It names the release the
+row records (`ResolutionRow.source_release`) or says `release not recorded`, and gives `enrich --rederive`
+as the remedy. Which release is older is not decidable offline, so it is a reading, never a verdict. The comparison is also made
 against the **union** of every locus a key resolves to, never per-expanded-row, for the same reason.
 
 **"Exactly one of those rows can match" is a statement about matching, and a reader does more than
@@ -1391,6 +1395,50 @@ it in, so a compiled row can legitimately carry `genotype=C/CAG` beside `ref=AGA
 two applies the same reduction (`just_dna_format.alleles` is public and dependency-free); rewriting the
 authored cell is the parked enricher-co-authoring item.
 
+### One rsID, one placement set (RM374, 0.8)
+
+`resolution.csv` is merge-not-clobber: `enrich` fills the subjects it has no row for and never re-asks the
+rest. So a module enriched before a snapshot moved and again after it holds **both** releases' answers,
+and nothing compared them until 0.8. The 0.8 migration probe's instance is `rs761191455`, which one table
+placed at `13:48041104 G>GG` under its own key (the old Ensembl release's right-shifted spelling) and at
+`13:48041103 T>TG` under the positional key a later row was authored at (the new release's left-aligned
+one). A consumer joining a left-aligned VCF by position matched one and missed the other; `validate`,
+`compile` and `strict` were silent.
+
+`read_resolution` now asks it, over the active (post-overlay) rows, for both commands
+(`resolution.placement_disagreements`, code `rsid_placements_disagree`). It is a property of the table, so
+it is asked where the table is read, and a module with no `variants.csv` (a PGx-only one) is asked too. A
+warning in `best_effort`, a refusal under `strict` and under `validate --strict`, GRCh38-bound like the rest
+of resolution.
+
+**What one answer is.** A `variant_key` is one subject, and a re-run replaces a subject's rows whole
+(`ResolutionRow._KEY_RULE = "subject"`), so the rows under one key are one answer and `locus_index` only
+orders its loci. A one-to-many rsID, a pseudoautosomal pair, and one multi-ALT locus that RM270 respelled
+into pieces at one `start` with two `ref`s (`shox_par1`'s `rs1569493663` at `X:634689`, `CAG>C` and
+`C>CAG`) are each **one** answer and never this finding (`@membership-union`). Two answers about one rsID
+are two keys whose rows carry it: the rsID's own key, which is the full answer, and a positional key whose
+rsID was back-filled, which answers for the one locus its row was authored at. The finding is a positional
+answer whose `(chrom, start)` is not among the full answer's, with a Y pseudoautosomal locus compared as its
+X partner. Alleles are not compared: a stale allele **set** under one key is the membership check's axis
+(below).
+
+**Where the table cannot tell, the check withholds** rather than refuse, and these are its limits:
+
+- No row is keyed by the rsID itself. Two positional rows labelled with one rsID may be two loci of a
+  one-to-many rsID or one event spelled twice, and the table does not say which.
+- One key repeats a `locus_index`. A hand-filled table leaves the column at its default 0 for every locus
+  of a one-to-many rsID, which looks exactly like two answers merged under one key.
+- An `ambiguous` row, whose rsID is a deterministic pick rather than a fact.
+- A positional row at a locus of a one-to-many rsID that the rsID's own answer dropped for its genotype is
+  **not** withheld: the table records no trace of the dropped locus, so this reads as two placements.
+  No reference example has the shape.
+
+The sentence names each answer as `under <variant_key> at <chrom:start ref>alts>`, then the releases: each
+answer's `[release …]` when rows record one (`ResolutionRow.source_release`, RM373), else
+`(releases not recorded)`. Under `strict` it adds that the table must place each rsID one way. The remedy
+it gives is `just-dna-enricher enrich <spec-dir> --rederive`, or deleting `resolution.csv` and enriching
+again; either re-asks every subject against one snapshot.
+
 ### The authored shape is recorded, not inferred
 
 `VariantRow.authored_ident` lists which of `{rsid, chrom, start, ref, alts}` the author actually
@@ -1508,6 +1556,7 @@ fails in `strict` — enumerated and enforced in `compiler/tests/test_resolution
 | no resolution row at all | ⚠️ warning | ❌ refuses | stable (nothing to lose) |
 | authored `ref` contradicts the table | ⚠️ warning | ❌ refuses | unstable |
 | authored coordinate contradicts the table | ⚠️ warning | ❌ refuses | unstable |
+| one rsID placed two ways by two subjects of the table (RM374) | ⚠️ warning | ❌ refuses | stable — and that is the problem: the disagreement survives every lap |
 
 Four things the table encodes that are worth saying out loud:
 
@@ -1950,8 +1999,8 @@ actionable, which is `vocab.ACTIONABLE_WARNING_CODES`, derived by subtraction:
 - **resolution** — `resolution_disabled`, `resolution_not_injected`, `resolution_skipped_cross_build`,
   `positional_identity_contradicted`, `positional_rows_unjoinable`, `rsid_unresolved`,
   `rsid_without_resolution_label`, `rsid_expanded_to_multiple_loci`, `rsid_ambiguous`,
-  `rsid_coordinate_disagrees`, `locus_hosting_undecidable`, `locus_cannot_host_genotype`,
-  `rsid_no_hosting_locus`
+  `rsid_coordinate_disagrees`, `rsid_placements_disagree`, `locus_hosting_undecidable`,
+  `locus_cannot_host_genotype`, `rsid_no_hosting_locus`
 - **VRS** — `vrs_id_unverifiable`, `vrs_coverage_incomplete`, `vrs_version_differs`
 - **`variants.csv` coherence** — `weight_sign_disagrees_with_effect`, `genotype_allele_not_at_locus`,
   `effect_allele_not_at_locus`, `genotype_coverage_gap`, `conclusion_names_other_genotype`,
@@ -2054,6 +2103,7 @@ QUAL_REFERENCE_EVIDENCE_PHRASE = "a QUAL floor cannot be read on the evidence th
 MISSING_ALLELE_PHRASE          = "is VCF's MISSING marker, not an allele"
 UNCLOSED_PHRASE                = "records no closure"
 LOG_NOT_SHIPPED_PHRASE         = "does not ship with the module"
+PLACEMENTS_DISAGREE_PHRASE     = "two placement sets for this one rsID"   # resolution.py, RM374
 ```
 
 **Retired phrases.** A consumer may still grep manifests compiled before the retirement, so the text

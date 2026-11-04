@@ -1680,6 +1680,7 @@ VALID_WARNING_CODES: frozenset[str] = frozenset(
         "rsid_expanded_to_multiple_loci",  # one authored row became several, because the source says so
         "rsid_ambiguous",  # the table marks the rsID ambiguous; the pick is a pick
         "rsid_coordinate_disagrees",  # an authored rsID+coordinate pair the table contradicts
+        "rsid_placements_disagree",  # one rsID placed two ways by two subjects of one table (RM374)
         "locus_hosting_undecidable",  # whether a locus can host the genotype could not be decided
         "locus_cannot_host_genotype",  # a locus contradicts the authored genotype and was dropped
         "rsid_no_hosting_locus",  # every candidate locus contradicts the authored genotype

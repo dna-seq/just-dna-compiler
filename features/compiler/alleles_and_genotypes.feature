@@ -19,6 +19,7 @@ Feature: Alleles, genotypes and contig ploidy
     Then a warning fires whose text contains "are not among the"
     And the text names only the alleles the verdict was actually taken over
     And an unobservable "*" allele is never listed among the missing ones
+    And a resolved allele set also names the reading that the row predates the snapshot, "earlier snapshot release"
     # The predicate abstains on `*` (RM59): it records what the call could not observe, so it is never
     # one of the alleles "missing" from a locus. Listing it pointed the author at a correct
     # transcription — a false accusation in the one sentence that says which cell is wrong.

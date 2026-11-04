@@ -35,6 +35,57 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM374 — one identity answered twice in a merged sidecar, and nothing checks that the answers agree
+
+**SHIPPED 2026-11-04 on `0.8`, uncut — a minor (the 0.8 Ensembl migration probe).** Owner compiler, severity
+medium.
+
+**Residuals** won't fix — not in this item: the derived fact tables carrying `rsid` and a coordinate beside `variant_key`
+(`frequencies.csv`, `clinical_assertions.csv`, `expression_effects.csv`, `consequences.csv`,
+`gwas_effects.csv`) can hold one variant's answers under two keys from two runs; `fact_rows_contradict`
+compares rows under one merge key only, and refusing there is a tightening its own entry deferred to 1.0,
+so the lead files it as a new item · won't fix — one key repeating a `locus_index` and positional-only answers
+are withheld, because the table cannot tell them from a legitimate one-to-many rsID · won't fix — a
+positional row at a locus the rsID's own answer dropped for its genotype reads as two placements; the
+dropped locus leaves no trace in the table · won't fix — not in this item: one event in two spellings within one release (an old snapshot read online) is the
+sibling item on authored-versus-resolved spellings
+
+**The class.** A merge-not-clobber sidecar keeps every subject it already has and fills only the new ones, so
+after a source moves, one identity can be answered twice, by two runs against two releases, under two keys,
+and nothing compared the answers. The probe (`Q_mixed`): `rs761191455` placed at `13:48041104 G>GG` under its
+own key and at `13:48041103 T>TG` under a positional key; a consumer's positional join matched 2 of 4 records,
+4 of 4 after a fresh enrich; validate, compile and strict were silent. And a stale allele set (`rs646776`,
+`G,T`) made `--strict` refuse a correct `A/C` with a message blaming the author or ClinVar.
+
+**Instances (before → after).**
+
+- `compiler/src/just_dna_compiler/compiler/resolution_step.py` `read_resolution` — self-checked VRS ids and
+  coverage, never whether two subjects placed one rsID two ways → asks `placement_disagreements` over the
+  active rows and routes it as a ladder (`errors` under `strict`). Both `compile_module` and `_validate_spec`
+  call it, now with `genome_build` and `strict`, so `test_check_paths`'s roster did not move.
+- `compiler/src/just_dna_compiler/resolution.py` `placement_disagreements` (new) — one key is one answer
+  (`_KEY_RULE = "subject"`, a re-run replaces it whole); two keys carrying one rsID are two answers; the
+  finding is a positional answer whose `(chrom, start)` is outside the rsID-keyed answer, a Y PAR locus read
+  as its X partner, alleles not compared. Uses `_usable_loci` and `par_partner`.
+- `compiler/src/just_dna_compiler/compiler/allele_checks.py` `_check_allele_membership`, resolved branch — two
+  readings (the genotype, or the source's allele list) → a third, "resolved against an earlier snapshot
+  release", naming the release the row records (`row_release`, read by name so RM373's
+  `ResolutionRow.source_release` is picked up when it lands) or `release not recorded`, with `--rederive`.
+- `schema/src/just_dna_format/vocab.py` — `rsid_placements_disagree` in `VALID_WARNING_CODES`.
+
+**The mechanism and its guards.** One predicate (`placement_disagreements`) asked in the one reader both
+commands share, so validate and compile cannot disagree. `compiler/tests/test_rsid_placements_disagree.py`
+builds the red case from the probe's real `Q_mixed372/resolution.csv` (embedded verbatim): strict validate and
+compile refuse with the same errors, best-effort warns once (`warnings_summary` 1), the finding is lap-stable
+across compile → reverse → compile, a fresh table is silent, and it walks **every** reference example's table
+(an equality: the code is absent from each), pinning that the walk holds `shox_par1`'s split. Negatives: a
+positional answer inside the rsID's answer, a split's pieces, a PAR partner, positional-only answers, a
+repeated `locus_index`, another build, an ambiguous pick. `test_one_channel_under_strict.py` gained the case
+`test_every_ladder_code_has_a_case` demanded, and `features/compiler/resolution.feature` the `@ladder`
+scenario. Mutated twice: dropping the subset test sent four negatives red; routing with `strict=False` sent
+the two strict refusals red. The release-named tests skip until RM373's column exists; run against a
+simulated column they pass.
+
 ## RM372 — the Ensembl snapshot moved to a new Hugging Face repo, and a warm cache never migrates
 
 **SHIPPED 2026-11-04 on `0.8`, uncut — a minor.** Owner enricher + format, severity medium.
