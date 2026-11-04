@@ -627,6 +627,9 @@ def test_gnomad_link_never_overrides_an_earlier_link(cache: Path, tmp_path: Path
         ensembl_cache=cache,
         clinvar_cache=tmp_path / "no_clinvar",
         gnomad_client=_gnomad_client(transport),
+        # An online run with no ClinVar snapshot provisions one, and this test means none: before the
+        # hub fence (RM372) it downloaded ClinVar from HuggingFace into `tmp_path` on every run.
+        download=False,
     )
 
     row = next(r for r in result.rows if r.rsid == "rs1801133")
@@ -647,6 +650,7 @@ def test_gnomad_link_fills_only_what_nothing_else_could(cache: Path, tmp_path: P
         clinvar_cache=tmp_path / "no_clinvar",
         resolver=stub,
         gnomad_client=_gnomad_client(transport),
+        download=False,  # no ClinVar provisioning: see `test_gnomad_link_never_overrides_an_earlier_link`
     )
 
     row = next(r for r in result.rows if r.rsid == "rs88888888")

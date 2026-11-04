@@ -395,6 +395,9 @@ def test_an_unrelated_manifest_defect_does_not_withhold_a_legible_version(tmp_pa
 def test_upload_module_calls_hf_api(tmp_path: Path) -> None:
     module_dir = _compiled_module(tmp_path / "lipidmetabolism", version="0.4.0")
     mock_api = MagicMock()
+    # Nothing is published at the versioned path. A bare MagicMock answers `file_exists` truthily, and
+    # the collision check then called the real `hf_hub_download` with this fake token (RM372's fence).
+    mock_api.file_exists.return_value = False
     with (
         patch("huggingface_hub.HfApi", return_value=mock_api) as api_cls,
         patch("huggingface_hub.get_token", return_value="hf_test_token"),
@@ -448,6 +451,7 @@ def test_the_default_commit_messages_name_which_copy_they_are(tmp_path: Path) ->
     unreadable as a separate act."""
     module_dir = _compiled_module(tmp_path / "coronary", version="1.0.0")
     mock_api = MagicMock()
+    mock_api.file_exists.return_value = False  # see `test_upload_module_calls_hf_api`
     with (
         patch("huggingface_hub.HfApi", return_value=mock_api),
         patch("huggingface_hub.get_token", return_value="hf_test_token"),

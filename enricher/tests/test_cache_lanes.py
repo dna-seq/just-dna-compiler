@@ -848,8 +848,19 @@ def test_rebuild_caches_and_prepare_caches_are_the_cli_loops(tmp_path: Path) -> 
     Walked over the registry: the pairing that matters is one outcome per lane, in registry order, so
     a caller can zip the result against `CACHE_LANES` without matching on names.
     """
-    prepared = caches.prepare_caches([LANES_BY_NAME["ensembl"]])
+    # The lane's own `ensure` and `resolve` are stubbed: run as declared, `prepare_caches` provisions
+    # the developer's real base, and on 2026-11-04 it re-pulled six chromosomes of a shared cache from
+    # the lane's new repo (RM372). The autouse `_fenced_hub` refuses that now; this test never needed it.
+    pulled: list[str] = []
+    lane = dataclasses.replace(
+        LANES_BY_NAME["ensembl"],
+        resolve=lambda: None,
+        ensure=lambda: pulled.append("ensembl") or tmp_path,
+        default_dir=lambda: tmp_path,
+    )
+    prepared = caches.prepare_caches([lane])
     assert [o.lane for o in prepared] == ["ensembl"]
+    assert pulled == ["ensembl"]
 
     rebuilt = caches.rebuild_caches([LANES_BY_NAME["ensembl"]], out=tmp_path)
     assert [o.lane for o in rebuilt] == ["ensembl"]

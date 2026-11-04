@@ -20,6 +20,17 @@ explicitly and is unaffected.
 **A second autouse fixture blanks `HF_TOKEN`** (RM301), for the same reason one layer over: the
 publisher's tests stub `get_token()`, and the repository's own `.env` must not outrank the stub.
 
+**A third autouse fixture fences the real HuggingFace hub** (RM372). `_provision_snapshot` is the
+one writer into a cache base, and it reaches the network through `huggingface_hub.HfFileSystem`
+(the upload half's read through `hf_hub_download`). On 2026-11-04 `test_rebuild_caches_and_prepare_
+caches_are_the_cli_loops` ran `prepare_caches` on the real Ensembl lane, the lane's new repo turned
+the developer's recorded cache into a re-pull, and six chromosomes of the shared base were replaced
+with another release while other sessions read it. So without `JUST_DNA_NETWORK_TESTS=1` both names
+refuse, and a test that wants a hub installs its own fake over this one. With the opt-in the real
+hub is reached, and a fetch whose local target is under the developer's real cache base still
+refuses: no test writes into the shared base under any setting. Set `JUST_DNA_HUB_GUARD_LOG` to a
+file to have every refusal append its test id there, which is how the reaching tests were listed.
+
 **And one opt-in fixture, `no_ambient_caches`, for the test that means "no snapshot" about any lane.**
 The PubMind fixture is autouse because *every* lookup test wants it; the general one is not, because
 the integration tests (`test_resolver_integration`, the `_needs_snapshot` drafters) deliberately use
@@ -33,15 +44,114 @@ than listed, so a fifteenth lane is covered the day it is declared.
 
 import ast
 import gzip
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
 
+import huggingface_hub
 import pytest
-from just_dna_enricher import clinvar_build, locations
+from just_dna_enricher import clinvar_build, download, locations
 from just_dna_enricher.caches import CACHE_LANES
 from just_dna_enricher.mitomap_build import build_snapshot as build_mitomap_snapshot
 from just_dna_enricher.mitomap_miss_build import build_miss_snapshot
+
+#: The developer's real cache base, read before any test changes the environment and without exporting
+#: the `.env` (`env_value`): the configured base, else the platformdirs default.
+_REAL_CACHE_BASE: Path = Path(
+    locations.env_value(locations.CACHE_BASE_VAR) or locations.user_cache_dir(appname=locations.APPNAME)
+).resolve()
+#: Every real directory a provisioner could write into: the base, and each lane's own override where the
+#: developer set one outside it.
+_REAL_CACHE_ROOTS: tuple[Path, ...] = (_REAL_CACHE_BASE,) + tuple(
+    Path(value).resolve() for lane in CACHE_LANES if (value := locations.env_value(lane.env_var))
+)
+#: The two bodies every `ensure_*` provisions through; `test_the_hub_is_fenced.py` asserts the set.
+_PROVISIONERS: tuple[str, ...] = ("_provision_snapshot", "_provision_root_file_snapshot")
+_REAL_HF_FILESYSTEM = huggingface_hub.HfFileSystem
+_REAL_HF_HUB_DOWNLOAD = huggingface_hub.hf_hub_download
+
+
+class HubReachedInTests(RuntimeError):
+    """A test reached the real HuggingFace hub, or a fetch into the real cache base, without arranging it."""
+
+
+def _refuse(what: str) -> HubReachedInTests:
+    log = os.environ.get("JUST_DNA_HUB_GUARD_LOG")
+    test = os.environ.get("PYTEST_CURRENT_TEST", "<unknown test>")
+    if log:
+        with Path(log).open("a", encoding="utf-8") as fh:
+            fh.write(f"{test}\t{what}\n")
+    return HubReachedInTests(
+        f"{what} from {test}: install a fake hub (monkeypatch huggingface_hub.HfFileSystem), stub the "
+        f"lane's `ensure`, or point it at a tmp directory under JUST_DNA_NETWORK_TESTS=1 (RM372)."
+    )
+
+
+def _under_real_base(local: object) -> bool:
+    resolved = Path(str(local)).resolve()
+    return any(resolved.is_relative_to(root) for root in _REAL_CACHE_ROOTS)
+
+
+def _network_opted_in() -> bool:
+    return os.environ.get("JUST_DNA_NETWORK_TESTS") == "1"
+
+
+class _FencedHfFileSystem:
+    """`HfFileSystem` as the suite sees it: refused offline, and never writing into the real base."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        if not _network_opted_in():
+            raise _refuse("the real HfFileSystem")
+        self._fs = _REAL_HF_FILESYSTEM(*args, **kwargs)
+
+    def get(self, remote_path: str, local_path: str, *args, **kwargs):
+        if _under_real_base(local_path):
+            raise _refuse(f"a fetch of {remote_path} into the real cache base {_REAL_CACHE_BASE}")
+        return self._fs.get(remote_path, local_path, *args, **kwargs)
+
+    def __getattr__(self, name: str):
+        return getattr(self._fs, name)
+
+
+def _fenced_hf_hub_download(*args, **kwargs):
+    if not _network_opted_in():
+        raise _refuse("the real hf_hub_download")
+    target = kwargs.get("local_dir") or kwargs.get("cache_dir")
+    if target is not None and _under_real_base(target):
+        raise _refuse(f"hf_hub_download into the real cache base {_REAL_CACHE_BASE}")
+    return _REAL_HF_HUB_DOWNLOAD(*args, **kwargs)
+
+
+@pytest.fixture
+def real_cache_base() -> Path:
+    """The developer's real cache base, the one directory no test may fetch into."""
+    return _REAL_CACHE_BASE
+
+
+def _fenced_provisioner(real):
+    """`real` (a provisioner taking the cache directory first), refused for a real cache directory.
+
+    At the provisioner, not only at the fetch: `_provision_snapshot` writes its pull record and stages
+    the manifest before its first `get`, so a fence at `get` alone would let it rewrite a real record.
+    """
+
+    def fenced(cache_dir, *args, **kwargs):
+        if _under_real_base(cache_dir):
+            raise _refuse(f"a provisioning of the real cache directory {cache_dir}")
+        return real(cache_dir, *args, **kwargs)
+
+    return fenced
+
+
+@pytest.fixture(autouse=True)
+def _fenced_hub(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The real hub is unreachable unless opted in, and no real cache directory is ever provisioned."""
+    monkeypatch.setattr(huggingface_hub, "HfFileSystem", _FencedHfFileSystem)
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", _fenced_hf_hub_download)
+    for name in _PROVISIONERS:
+        monkeypatch.setattr(download, name, _fenced_provisioner(getattr(download, name)))
+
 
 #: A CSI escape sequence — what rich emits to colour a span. See `cli_text`.
 _ANSI = re.compile(r"\x1b\[[0-9;]*m")

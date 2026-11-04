@@ -3837,6 +3837,25 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   because it also validates the *reason* for the spelling: `load_dotenv` skips a variable that is
   merely present, so `setenv(VAR, "")` is the only thing that holds once anything loads `.env`.
 
+- `@no-test-reaches-the-real-hub` — **No test reaches the real HuggingFace hub unasked, and none fetches into the
+  real cache base under any setting** (RM372, 2026-11-04). `test_rebuild_caches_and_prepare_caches_are_the_cli_loops`
+  ran `prepare_caches` on the real Ensembl lane. For months that was harmless by accident: the developer's
+  cache was recorded, so `prepare` left it alone. The day the lane moved repos, the recorded cache became
+  another repo's snapshot, `prepare` re-pulled it, and six chromosomes of a base other sessions were
+  reading were replaced with another release before the run was stopped. The cure is a class fence, not a
+  fix to one test: the autouse `_fenced_hub` (enricher conftest) replaces `huggingface_hub.HfFileSystem` and
+  `hf_hub_download` with stand-ins that refuse without `JUST_DNA_NETWORK_TESTS=1`, and refuse a fetch into
+  the real base even with it. A test wanting a hub installs its own fake over the fence (later
+  `monkeypatch.setattr` wins). `test_the_hub_is_fenced.py` asserts the enricher imports no other fetching
+  name from `huggingface_hub` (an equality, with each unfenced name's reason), and
+  `JUST_DNA_HUB_GUARD_LOG=<file>` makes every refusal append its test id, which is how the reaching tests
+  were listed: besides the incident's, two `test_enrich.py` gnomAD tests downloaded ClinVar into
+  `tmp_path` on every run (an online `enrich` with no ClinVar snapshot provisions one), and two
+  `test_upload.py` tests called the real `hf_hub_download` because a bare `MagicMock` answers
+  `file_exists` truthily. The fence also wraps the two provisioning bodies by name (asserted as the
+  set of `download._provision*`), because `_provision_snapshot` writes its pull record before its first
+  fetch, and a lane's own override directory counts as real as the base does.
+
 - `@weight-has-no-unit` — **`VariantRow.weight` is the one magnitude in the format with no unit column, and
   filling it from a source is barred (RM90/RM92, S36).** `effect_size` has `effect_measure`; `weight` has
   `float | None` and "Score (positive=protective)". A consumer living with that across a corpus reported the

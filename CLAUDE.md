@@ -604,6 +604,7 @@ questions vs answers. A blocker is never a dead end: dissolved, closed additivel
   `.env` leaks into `os.environ` from any unrelated test, so neutralize with `setenv(VAR, "")`, never
   `delenv`. Suspect ordering whenever a test passes alone and fails in the suite. `@test-no-credential`
 - A test meaning "no snapshot" must arrange it: request `no_ambient_caches` (enricher conftest, walked off `CACHE_LANES`). Ten tests read a real answer the day the developer's base gained every snapshot. `@test-no-credential`
+- No test reaches the real hub or fetches into the real cache base: the autouse `_fenced_hub` refuses both; install a fake hub or stub the lane's `ensure`. `@no-test-reaches-the-real-hub`
 
 ## Documentation & prose style
 
