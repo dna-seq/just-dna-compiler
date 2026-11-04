@@ -84,6 +84,18 @@ onto several loci, `weights.parquet` keys those rows by coordinate, and they are
 it. A consumer reading `RESERVED_NAMES_0_4` to list unwritable names should read both maps;
 `authoring_reference()` carries the second as the new key `misplaced_columns`.
 
+## 1.2.2 A new authored table: model-organism evidence (no break)
+
+A module may carry `model_organisms.csv` (RM335): one row per model-organism lifespan finding about a
+human gene, `gene` required, `orthologue`, `species`, `model_type`, `sex` (the animals', free text),
+`diet`, `lifespan_effect`, `concordance` (closed: `concordant`, `discordant`, `nonmonotone`; empty is
+unstated), `pmid`, `doi` (optional; an uncited row draws no warning). It compiles verbatim to
+`model_organisms.parquet`, listed last in `ARTIFACT_PARQUETS` and not in `LEAD_PARQUETS`; a module
+carrying no such file keeps its digest. **Annotation only**: it reaches no weight, effect, tier or
+meta-table member, it does not make a directory a module on its own, and its genes are not in
+`manifest.stats.genes` nor in the enricher's gene-level scope (constraint, gene validity, dosage). A 0.7 reader of the artifact ignores the parquet; a 0.7 compiler does not read
+the CSV, so it neither checks nor compiles it.
+
 ## 1.3 New derived column and client method (no break)
 
 | Surface | Item | What changed |
@@ -212,3 +224,7 @@ move is not one. `output_differs` still reads `True` for it, because the bytes d
    each side recorded, `null` when unrecorded or mixed) and `before_digests` / `after_digests` (each
    module's `artifact.digest`), `measurement_json` carries all four, and
    `sweep --toolchain-before DIR --json` nests the fixed-compiler sweep under `toolchain_sweep`.
+
+9. If you keep a hand-written list of artifact parquets or authored CSVs (a publisher's allowlist, a
+   spec-directory mirror), add `model_organisms.parquet` and `model_organisms.csv`, or derive the list
+   from `ARTIFACT_PARQUETS` and `table_bindings()` (§ 1.2.2).

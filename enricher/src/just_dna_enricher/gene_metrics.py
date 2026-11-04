@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import duckdb
-from just_dna_compiler.compiler import load_csv_rows
+from just_dna_compiler.compiler import MODEL_ORGANISMS_CSV, load_csv_rows
 from just_dna_format.base import merge_key
 from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.layout import atomic_writer
@@ -126,6 +126,13 @@ class GeneMetricsResult:
     mode: str = "best_effort"
 
 
+#: Authored tables whose `gene` is not a gene the module's findings are about, so it is outside the scope
+#: below while `check-identifiers` still reads it. `model_organisms.csv` (0.8, RM335) names the gene a
+#: mouse experiment altered; the compiler leaves it out of `manifest.stats.genes` for the same reason, and
+#: this scope follows that published set rather than widening past it.
+_NOT_THE_MODULES_GENES: frozenset[str] = frozenset({MODEL_ORGANISMS_CSV})
+
+
 def module_genes(spec_dir: Path) -> list[str]:
     """The module's gene symbols, de-duplicated in first-occurrence order (P7: never set order).
 
@@ -149,7 +156,7 @@ def module_genes(spec_dir: Path) -> list[str]:
     one table wider. `read_errors` carries the loader's own message so the sentence is unchanged for
     `variants.csv`, which is what `gene_validity` re-raises as its own error type.
     """
-    roster = authored_identifiers(Path(spec_dir), "gene")
+    roster = authored_identifiers(Path(spec_dir), "gene", exclude=_NOT_THE_MODULES_GENES)
     for name, error in sorted(roster.read_errors.items()):
         raise GeneMetricsEnrichmentError(f"{name} is invalid: {error}")
     # `read_errors` is the PARSE failures alone. A `SidecarCollision` — the same table present both

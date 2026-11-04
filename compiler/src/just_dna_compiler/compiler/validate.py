@@ -60,6 +60,7 @@ from just_dna_compiler.compiler.manifest import (
     module_stats,
 )
 from just_dna_compiler.compiler.meta import build_meta, load_meta, member_tables
+from just_dna_compiler.compiler.model_organisms import load_model_organisms
 from just_dna_compiler.compiler.positional import (
     _GENE_BEARING_TABLE_KINDS,
     _POSITIONAL_TABLE_KINDS,
@@ -77,6 +78,7 @@ from just_dna_compiler.compiler.tables import (
     _FACT_TABLES,
     _TABLE_KINDS,
     META_CSV,
+    MODEL_ORGANISMS_CSV,
     OVERRIDES_CSV,
     _locate_sidecar,
 )
@@ -692,8 +694,22 @@ def _validate_spec(
         )
         all_errors.extend(meta_build.errors)
         all_warnings.extend(meta_build.warnings)
-    citing_kinds: dict[str, list[Any]] = {**loaded_kinds, META_CSV: meta_rows}
-    citing_survivors: dict[str, list[Any]] = {**survivors, META_CSV: meta_rows}
+    # The model-organism table (0.8, RM335): parse, the present-but-empty refusal and the duplicate key,
+    # nothing else. It names no row of another table and no rule reads it, so it needs no other check.
+    # It does not take part in the composition check above (`tables.MODEL_ORGANISMS_CSV` says why).
+    model_organism_rows, model_organism_errors, model_organism_warnings = load_model_organisms(spec_dir)
+    all_errors.extend(model_organism_errors)
+    all_warnings.extend(model_organism_warnings)
+    citing_kinds: dict[str, list[Any]] = {
+        **loaded_kinds,
+        META_CSV: meta_rows,
+        MODEL_ORGANISMS_CSV: model_organism_rows,
+    }
+    citing_survivors: dict[str, list[Any]] = {
+        **survivors,
+        META_CSV: meta_rows,
+        MODEL_ORGANISMS_CSV: model_organism_rows,
+    }
 
     # RM137, and this is the point the loop above deferred to: `studies` and the citing tables are both
     # in scope now, so "could an artifact of this module carry that row" is answerable. Split here in

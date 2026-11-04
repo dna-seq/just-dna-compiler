@@ -2165,6 +2165,10 @@ derived from the same registry walk the identifier roster uses, so a table kind 
 joins by existing; a table that will not parse **refuses** here rather than being routed to `not_read`,
 because half a scope is a silently narrowed one. `pgx._GENE_TABLES` is deliberately not this roster: it
 is the pair whose presence decides whether the star-allele cross-check applies at all.
+**One authored table is left out, since 0.8: `model_organisms.csv` (RM335).** Its `gene` is the gene a
+mouse experiment altered, not a gene the module's findings are about, so the scope follows
+`manifest.stats.genes`, which omits it too (`gene_metrics._NOT_THE_MODULES_GENES`). `check-identifiers`
+still asks HGNC about its symbols.
 
 This is the one gnomAD role that works with **zero egress**, and the difference from frequency is
 purely size: gene-level constraint is one row per gene, single-digit MB as parquet.

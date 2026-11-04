@@ -56,6 +56,7 @@ from just_dna_format.layout import (
     sidecar_spellings,
 )
 from just_dna_format.meta import MetaRow
+from just_dna_format.model_organisms import ModelOrganismRow
 from just_dna_format.overrides import OverrideRow
 from just_dna_format.sources import SourceRow
 from just_dna_format.spec import StudyRow, VariantRow
@@ -66,6 +67,7 @@ from just_dna_compiler.compiler import (
     _TABLE_DUPE_KEYS,
     _TABLE_KINDS,
     META_CSV,
+    MODEL_ORGANISMS_CSV,
     OVERRIDES_CSV,
     _key_of,
     _list_cell,
@@ -100,6 +102,9 @@ DRAFTABLE: dict[str, type[BaseModel]] = {
     OVERRIDES_CSV: OverrideRow,
     # The meta-table (0.8): authored, one legal name, so every authoring surface answers for it.
     META_CSV: MetaRow,
+    # The model-organism table (0.8, RM335): authored, one legal name. Being here is also what puts its
+    # `gene` column in front of the enricher's `check-identifiers` HGNC currency roster.
+    MODEL_ORGANISMS_CSV: ModelOrganismRow,
 }
 
 # The SNP core's natural keys, the two `_TABLE_DUPE_KEYS` does not carry because the compiler checks

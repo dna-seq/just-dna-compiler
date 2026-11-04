@@ -41,6 +41,29 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM335: model-organism evidence has a table of its own, `model_organisms.csv` (0.8, uncut)
+
+**format** — `just_dna_format.model_organisms.ModelOrganismRow`: one row per model-organism lifespan
+finding about a human gene. `gene` (required, the human symbol), `orthologue`, `species`, `model_type`,
+`sex` (the animals', free text; not `meta.csv`'s karyotype condition), `diet`, `lifespan_effect`,
+`concordance` (closed: `concordant`, `discordant`, `nonmonotone`; empty is unstated), `pmid`, `doi`. It
+inherits `CitationPair`; the citation is optional and an uncited row draws no warning. The key is every
+column but `lifespan_effect` and `concordance`.
+
+**compiler** — The table is authored input (in `manifest.inputs` and `content_signature`), keyed (a
+duplicate is refused), a citation site (`_CITING_TABLE_KINDS`), and compiles verbatim to
+`model_organisms.parquet`, appended last to `ARTIFACT_PARQUETS`; `reverse` writes it back and the round
+trip is a fixed point. It is registered beside the meta-table rather than as a `_TABLE_KINDS` entry, so it
+is **not a lead table**: a module carrying only this file is refused as having no recognized table, and its
+genes stay out of `manifest.stats.genes`. Annotation only: it reaches no weight, effect, tier or meta
+member. `describe`/`template`/`stub` answer for it (`DRAFTABLE`), which also puts its `gene` in front of
+`check-identifiers`. A module carrying no such file keeps its digest. INTEGRATION_0_8 § 1.2.2.
+
+**enricher** — `gene_metrics.module_genes`, the scope of the constraint, gene-validity and ClinGen dosage
+passes, leaves `model_organisms.csv` out (a gene named only there is not one of the module's genes, as
+`manifest.stats.genes` already says); `authored_identifiers`/`authored_rows` gain a keyword-only
+`exclude` for it. `check-identifiers` reads the table as it reads every authored one.
+
 ## 2026-11-04 — RM351: the PGx cross-table checks know an allele by its gene, and an HLA allele is no longer "undefined" (0.8, uncut)
 
 **format, compiler** — The two cross-table PGx checks key a named allele on `(gene, allele)`, not on

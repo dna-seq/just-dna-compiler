@@ -367,6 +367,8 @@ from just_dna_compiler.compiler.tables import LEAD_PARQUETS as LEAD_PARQUETS
 from just_dna_compiler.compiler.tables import META_CSV as META_CSV
 from just_dna_compiler.compiler.tables import META_PARQUET as META_PARQUET
 from just_dna_compiler.compiler.tables import META_RESOLVED_PARQUET as META_RESOLVED_PARQUET
+from just_dna_compiler.compiler.tables import MODEL_ORGANISMS_CSV as MODEL_ORGANISMS_CSV
+from just_dna_compiler.compiler.tables import MODEL_ORGANISMS_PARQUET as MODEL_ORGANISMS_PARQUET
 from just_dna_compiler.compiler.tables import OVERRIDES_CSV as OVERRIDES_CSV
 from just_dna_compiler.compiler.tables import OVERRIDES_PARQUET as OVERRIDES_PARQUET
 from just_dna_compiler.compiler.tables import SNP_CORE_PARQUETS as SNP_CORE_PARQUETS

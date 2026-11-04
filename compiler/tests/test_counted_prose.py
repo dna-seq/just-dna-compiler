@@ -53,6 +53,7 @@ _WORDS: dict[str, int] = {
     "twenty-three": 23,
     "twenty-four": 24,
     "twenty-five": 25,
+    "twenty-six": 26,
 }
 
 

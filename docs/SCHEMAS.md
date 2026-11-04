@@ -52,6 +52,7 @@ maintained one, and where the two disagree this one is what a consumer may rely 
 | `pgs` | `PgsRow` (PGS-Catalog-ID manifest) | `base`, `vocab` |
 | `overrides` | `OverrideRow` + `OVERRIDABLE_TABLES` + `apply_overrides` — the 0.7 authored overlay over the covered derived tables (RM124) | `base`, `normalize`, `vocab`, and the covered derived row models |
 | `meta` | `MetaRow` + the member grammar (`parse_members`, `normalize_members`, `member_rank`) — the 0.8 meta-table (RM28/RM323/RM324) | `base`, `pgx`, `spec`, `vocab` |
+| `model_organisms` | `ModelOrganismRow` + `VALID_MODEL_ORGANISM_CONCORDANCE` — the 0.8 model-organism evidence table (RM335) | `base`, `spec`, `vocab` |
 | `integrity` | SHA-256 hashing, the signatures, Ed25519 verify | `manifest`, `resolution`, `frequency`, `gene_metrics`, `literature`, `sources`, `cryptography` |
 | `signing` | Ed25519 private-key signing (over `artifact.digest`) | `integrity`, `manifest`, `cryptography` |
 | `verification` | `verification.json` — the attestation's binding, its proof-of-work and the table's fact hash (0.6, RM45) | `integrity`, `layout`, `manifest`, `signing` |
@@ -140,6 +141,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
 | `pgs.csv` | `pgs.PgsRow` | PGS-Catalog-ID manifest + ancestry-validity fields |
 | `gwas_effects.csv` | `gwas.GwasEffectRow` | injected GWAS Catalog effect sizes (0.6, RM90; enricher-produced) |
 | `overrides.csv` | `overrides.OverrideRow` | the authored overlay over the covered derived tables (0.7, RM124) — the set is `OVERRIDABLE_TABLES`, and it has grown once already |
+| `model_organisms.csv` | `model_organisms.ModelOrganismRow` | model-organism lifespan evidence about a human gene (0.8, RM335) — annotation only, never a lead table |
 
 ## Conventions (the idioms every model obeys)
 
@@ -2181,6 +2183,31 @@ the citing tables' rules: `MetaRow` inherits `spec.CitationPair`, so `pmid=NONE`
 selector of `n` conditions, compared as tuples; equal ranks are incomparable. Across tables, a diplotype
 outranks the alleles it contains, and a sex-scoped row outranks the same key without one, for that sex.
 Two incomparable rows that state different values withhold the column. The compiler applies it.
+
+## The model-organism table (0.8, RM335) — `model_organisms.csv`
+
+One row is one model-organism lifespan finding about a **human gene**: `gene` (required, the human HGNC
+symbol), `orthologue`, `species`, `model_type`, `sex`, `diet`, `lifespan_effect`, `concordance`, `pmid`,
+`doi`. `ModelOrganismRow` (`just_dna_format.model_organisms`) is an `AuthoredModel` and inherits
+`spec.CitationPair`.
+
+- **The key is every column except the finding's two**, `lifespan_effect` and `concordance`: one gene,
+  orthologue, species, intervention, sex, diet and citation are one experiment, so the same experiment
+  stated twice is refused as a duplicate. A male and a female cohort are two rows.
+- **`concordance` is closed** (`concordant`, `discordant`, `nonmonotone`). Empty is unstated, never a
+  fourth member: it is what a source's "unclear" becomes.
+- **`pmid` and `doi` are optional, and an uncited row draws no warning.** A row that does cite follows the
+  pair's rules (`pmid=NONE` makes `doi` mandatory, RM336). Its `pmid` is a citation site the literature
+  checks read (`_CITING_TABLE_KINDS`).
+- **`sex` is the animals' sex, free text** (`female`, `both`, `hermaphrodite`). It is not `meta.csv`'s
+  `sex`, which is a closed condition a consumer matches against a person's karyotype; the two share a word
+  and not an axis.
+- **Annotation only.** Nothing here reaches an effect column, a weight, a tier or a meta-table member, and
+  the table is not a lead table: `model_organisms.parquet` is in `ARTIFACT_PARQUETS` and not in
+  `LEAD_PARQUETS`, and a module carrying only this file is refused as having no recognized table. Its
+  genes do not enter `manifest.stats.genes`, which counts the genes a module's findings are about.
+- **`gene` has no model-level grammar**, like `VariantRow.gene`; the enricher's `check-identifiers`
+  reads it for HGNC currency because the table is in `DRAFTABLE`.
 
 ## The verification attestation (0.6) — `verification.json`
 

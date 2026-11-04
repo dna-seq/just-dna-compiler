@@ -5,10 +5,11 @@ from typing import Any
 from just_dna_format.binning import MeasureBinRow, deprecation_warnings, measurement_shape_warnings
 from just_dna_format.findings import CodedWarning, restate
 from just_dna_format.meta import MetaRow
+from just_dna_format.model_organisms import ModelOrganismRow
 from just_dna_format.spec import StudyRow
 from pydantic import BaseModel
 
-from just_dna_compiler.compiler.tables import _TABLE_KINDS, META_CSV
+from just_dna_compiler.compiler.tables import _TABLE_KINDS, META_CSV, MODEL_ORGANISMS_CSV
 
 #: The binning table kinds, derived from the models for the same reason `_POSITIONAL_TABLE_KINDS` is:
 #: a kind is a binning kind exactly when its model is a `MeasureBinRow`, and a hand-kept list of the
@@ -39,11 +40,16 @@ _BINNING_TABLE_KINDS: tuple[tuple[str, type[BaseModel]], ...] = tuple(
 #: finer than `studies.csv`'s key (the RM47 pattern), so it is an authored row grounding its own claim.
 #: It is not a `_TABLE_KINDS` entry (see `tables.META_CSV`), so it is appended rather than swept up — a
 #: caller handing these functions its `kind_rows` adds the meta rows under `META_CSV` to be read.
+#:
+#: **So does the model-organism table (0.8, RM335)**, on the same terms: its `pmid` grounds the row's own
+#: finding, and it is not a `_TABLE_KINDS` entry (see `tables.MODEL_ORGANISMS_CSV`). A citing kind whose
+#: rows are not handed over reads as an orphan citation in one direction and is unchecked in the other.
 _CITING_TABLE_KINDS: tuple[tuple[str, type[BaseModel]], ...] = tuple(
     (csv_name, model)
     for csv_name, model in (
         *((csv_name, model) for csv_name, _parquet, model in _TABLE_KINDS),
         (META_CSV, MetaRow),
+        (MODEL_ORGANISMS_CSV, ModelOrganismRow),
     )
     if "pmid" in model.model_fields
 )
