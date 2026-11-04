@@ -42,6 +42,7 @@ from just_dna_format.manifest import (
     VerificationRecord,
     Weighting,
 )
+from just_dna_format.meta import MetaRow
 from just_dna_format.normalize import IDENTITY_AUTHORITY_KEYS, IDENTITY_AUTHORITY_REASONS
 from just_dna_format.overrides import OverrideRow
 from just_dna_format.pgs import (
@@ -173,6 +174,11 @@ _FACT_MODELS: dict[str, type[BaseModel]] = {
 # `OVERRIDABLE_TABLES`' to state and moved once already; it is not restated here.
 _OVERLAY_MODELS: dict[str, type[BaseModel]] = {"OverrideRow": OverrideRow}
 
+# `meta.csv` (0.8) is authored and keyed like the PGx tables, but it is not one: its rows name rows of
+# the other tables rather than a genotype, and a module carrying only this file has nothing to select.
+# Its own group, for the reason the overlay has one, so a reader meets it beside the tables it names.
+_META_MODELS: dict[str, type[BaseModel]] = {"MetaRow": MetaRow}
+
 _ALL_MODELS: dict[str, type[BaseModel]] = {
     **_MODULE_MODELS,
     **_VARIANT_MODELS,
@@ -181,6 +187,7 @@ _ALL_MODELS: dict[str, type[BaseModel]] = {
     **_PGS_MODELS,
     **_FACT_MODELS,
     **_OVERLAY_MODELS,
+    **_META_MODELS,
 }
 
 

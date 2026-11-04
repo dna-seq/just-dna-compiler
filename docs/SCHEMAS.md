@@ -50,6 +50,7 @@ maintained one, and where the two disagree this one is what a consumer may rely 
 | `pgx` | PGx star-allele rows (4 table kinds) | `base`, `vocab` |
 | `pgs` | `PgsRow` (PGS-Catalog-ID manifest) | `base`, `vocab` |
 | `overrides` | `OverrideRow` + `OVERRIDABLE_TABLES` + `apply_overrides` — the 0.7 authored overlay over the covered derived tables (RM124) | `base`, `normalize`, `vocab`, and the covered derived row models |
+| `meta` | `MetaRow` + the member grammar (`parse_members`, `normalize_members`, `member_rank`) — the 0.8 meta-table (RM28/RM323/RM324) | `base`, `pgx`, `spec`, `vocab` |
 | `integrity` | SHA-256 hashing, the signatures, Ed25519 verify | `manifest`, `resolution`, `frequency`, `gene_metrics`, `literature`, `sources`, `cryptography` |
 | `signing` | Ed25519 private-key signing (over `artifact.digest`) | `integrity`, `manifest`, `cryptography` |
 | `verification` | `verification.json` — the attestation's binding, its proof-of-work and the table's fact hash (0.6, RM45) | `integrity`, `layout`, `manifest`, `signing` |
