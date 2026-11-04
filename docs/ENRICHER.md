@@ -3474,7 +3474,13 @@ the run contributed a row to it. A variant this run looked up has its rows repla
 look up (unresolved, off-build) keeps what it had (`@rederive-never-shortens`). With no snapshot the
 pass writes nothing and says nobody asked. It never fetches, so it has no `--offline`; `--strict`
 refuses a snapshot built from part of the release, and one that does not record its part totals (unknown
-completeness is not completeness). Two module keys on one release allele have that allele's L2G and coloc
+completeness is not completeness). **`best_effort` answers only from what it read whole (RM361)**:
+`READS` names the source datasets each table and the posterior come from, and
+`opentargets.read_is_complete` asks `release.json` whether each was read in full (`False` for a partial
+one, `None` when the record does not say). Anything but `True` answers no key for that table: rows the
+snapshot did yield are merged in, every existing row is kept, a key that did not join the allele table is
+`not_read` rather than `not_in_release`, and the posterior on `gwas_effects.csv` is left as it was
+(`posterior.not_read`). Two module keys on one release allele have that allele's L2G and coloc
 rows withheld and the keys named (`shared_allele_keys`): one allele stated under two keys is a module
 defect to name, not a fact to write twice. The member-wide grain (decided 2026-11-04) makes coloc large for
 a heavily fine-mapped variant: rs646776's 2,061 sets carry 309,634 coloc rows.
@@ -3755,11 +3761,13 @@ terms, so `is_open_access` and `license` stay what Europe PMC said. A BioC hit i
 because that column records how far the search reached and not which host served it.
 
 **An outage is asked again; an absent copy is not (RM258, 0.8).** Both clients now have a three-way
-`fetch_fulltext`: text, `None` for a service that holds no copy (a 4xx, or BioC's plain-text "no result"
-200), and `FulltextUnavailable` for a request that never got an answer (a 5xx or a transport failure,
-after the transport retries). The pass records how the question ended in `literature.csv`'s
-`fulltext_status` (`retrieved | absent | unreachable`), and on every later run it asks that one question
-again for a pinned row that is `unreachable`, or null and not already matched against a fulltext (a row
+`fetch_fulltext`: text, `None` for a service that holds no copy (a 404, or BioC's plain-text "no result"
+200 and only that body), and `FulltextUnavailable` for a request that never got an answer (a 5xx, a 429,
+any other 4xx, a transport failure, or a 200 that is not the text: a page that is not JSON or not a JATS
+`<article>`), after the retries, which cover a 5xx and a 429. A 410 raises `FulltextRetired` (RM361).
+The pass records how the question ended in `literature.csv`'s `fulltext_status`
+(`retrieved | absent | unreachable | retired`), and on every later run it asks that one question again
+for a pinned row that is `unreachable` or `retired`, or null and not already matched against a fulltext (a row
 written before the column existed, asked once). Nothing else on the row is re-fetched: existence,
 identifiers and the licence were answered and stay merged. An answer rewrites `quote_source`,
 `quotes_found` and the status; a second failure leaves the row as it was. The older `fulltext()` keeps its
@@ -5284,9 +5292,12 @@ three or four times first. Since RM354:
 - **A 410 raises the client's own `*Retired`**, a subclass of its could-not-ask type, so every
   existing handler still catches it. The message carries the URL, the status and the source's own
   text, which is usually where it says the endpoint went. `net.raise_if_retired` is the one place
-  the message is built. **A handler that records its could-not-ask type as `unreachable` records a
-  retired endpoint there too**: the type is a subclass, so the record's reason is the `*Retired`
-  message, and a handler wanting a separate outcome catches the subclass first.
+  the message is built. **A handler records the reason with `net.could_not_ask_reason(exc)`**
+  (RM361): `retired` for a 410 (every `*Retired` carries `net.RetiredEndpoint`), `unreachable` for an
+  outage, because the two are cleared by different things (an upgrade, a re-run). An AST walk refuses
+  an `except` arm that writes an unreachable reason without it. A client whose contract is a withheld
+  value rather than an exception mixes in `net.Withholding`, keeps the withhold, and says `retired`
+  through its sticky `retired` message (`net.withheld_reason`).
 - **What a 404 means stayed per client**, and it is not the same everywhere:
 
 | client | a 404 is | so |

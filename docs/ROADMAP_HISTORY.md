@@ -35,6 +35,124 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM361 — an unknown or failed answer is recorded as a definite one: a retired endpoint as an outage, a throttle as "no copy", an unread part as "not in the release", a timed-out regex as a missed quote, an absent cell as the word `None`
+
+**SHIPPED 2026-11-04 on `0.8`, uncut — a minor (the 0.8 audit, round 1).** Owner enricher + format + compiler, severity high.
+
+**Residuals** none
+
+**The class.** The house algebra is three-valued, and a question that was not answered is the third value:
+withheld, never a negative. The audit found a request that failed, a part that was never read, a regex
+that timed out, a body that would not parse and a cell that was absent each written down as a definite
+answer: a 410 recorded as `unreachable` (an outage), a 429 or a maintenance page recorded as `absent`
+(permanent, never asked again), an unread snapshot part as `not_in_release`, an undecided regex as a quote
+missing from the paper, an absent `ref` formatted into a key as `None`. The hunt across all three packages
+found the same shape in twelve more places. It is fixed as a class, by one mechanism per kind of
+boundary, each with a guard that walks the members rather than pinning a site.
+
+**The mechanism.**
+
+- **Could-not-ask carries its reason** (`enricher/net.py`). Every client's `*Retired` error mixes in
+  `RetiredEndpoint`, and a handler records `could_not_ask_reason(exc)`: `retired` for a 410 (read through
+  `__cause__` too), `unreachable` otherwise; `aggregate_reason` leads with `retired` for a group. A
+  client whose contract is a withheld value rather than an exception mixes in `Withholding` and says
+  `retired` through a sticky `retired` message, read with `withheld_reason`, without raising. `retired`
+  joins `VALID_VERIFICATION_SKIPS` and `VALID_FULLTEXT_STATUS`.
+- **"No such thing" is one named status per client**, never "every 4xx": a fulltext route's 404 and
+  BioC's recorded `[Error] : No result can be found.` body (`_fulltext_absent_or_raise`), Ensembl REST's
+  400 (`_REST_NO_RECORD_STATUS`), GRCh37 REST's 400 (`GRCH37_NOTHING_THERE_STATUS`), the Hub's own
+  not-found errors (`_hub_says_absent`). The fulltext and Ensembl REST routes retry a 5xx and a 429.
+- **A body that is not the answer's shape is could-not-ask**: an esummary with no summary block, an OLS4
+  body with neither a terms block nor an empty page, an HGNC body with no `response.docs`, a ClinGen
+  Allele Registry body that is not an allele record, a 200 fulltext that is not JATS.
+- **A read is only as complete as its record says** (`opentargets.read_is_complete`, Kleene over the
+  datasets `READS` names per table): anything but `True` answers no key, so nothing is replaced and
+  nothing is `not_in_release`.
+- **An undecided member withholds the count**: `literature._quotes_found` is the one quote tally, and an
+  undecided regex withholds `quotes_found`, which `settled_quotes` then counts as nothing settled.
+- **An absent cell is an empty segment**: `base.coordinate_key` is the one place a coordinate becomes a
+  key; `net.release_dataset` the one place a release becomes a `dataset` label.
+
+**Every instance, before → after** (as of `0.8` at `0a5293b`):
+
+1. `opentargets.py` `enrich_opentargets`: a snapshot with no `parts_total` or a partial part answered
+   its unread keys as `not_in_release`, `_replace_answered` dropped their L2G, coloc and consequence rows,
+   and the posterior update nulled a filled value → no key is answered for a table whose datasets were
+   not read whole; unmatched keys are `not_read`; the posterior is left as it was (`posterior.not_read`);
+   `strict` refuses a record silent about any dataset; a malformed count no longer raises `TypeError`.
+2. `literature.py` `PmcBiocClient.fetch_fulltext`: any non-JSON 200 → `absent` → only the recorded "no
+   result" body; anything else `FulltextUnavailable`.
+3. `literature.py` `EuropePmcClient.fetch_fulltext`, `PmcBiocClient.fetch_fulltext`,
+   `fetch_preprint_fulltext`: every status below 500 → `absent` → only a 404; a 410 is `FulltextRetired`
+   (`fulltext_status="retired"`, asked again); a 429 is retried, then `unreachable`.
+4. `literature.py` `extract_text` / `fetch_fulltext`: XML that does not parse, or parses as a page that is
+   not a JATS `<article>`, returned `None` (absent) or was searched as the article → `FulltextUnavailable`.
+5. `literature.py` `_study_quote_found`: `regex_matches`' `None` → `False` at three tallies, and
+   `settled_quotes` counted it checked → `bool | None`, one count `_quotes_found`, `quotes_found=None`.
+6. `literature.py` `lookup`/`record_for_doi`: a missing `isOpenAccess`/`inEPMC` flag → `False` → `None`.
+7. `base.py` `derive_variant_key`: an absent `ref` → `13:48037749:None` (nine keys in
+   `reference_examples/cpic_gene_pairs/resolution.csv`, corrected) → `13:48037749`; the same f-string
+   in `fact_checks.py` (twice), `pharmvar.py`, `cli/civic_commands.py`, `clinvar_gkm.py` → `coordinate_key`.
+   `positional._table_row_key` keyed a gene-only row as `None:None:None` → `None`.
+8. RM354's `*Retired` handlers wrote `unreachable`: `identifiers.py` (PGS leg, `unreachable_records`),
+   `currency._ask`, `acmg.fetch_acmg_page`, `civic_citations` (twice, and the aggregate skip),
+   `pgx` (a leg), `alphagenome_check` (twice), `litvar` (`index_retired`, and the record),
+   `literature` (`fulltext_status`, the DOI route, Crossref's skip) → `could_not_ask_reason`.
+9. `enrich/orchestration.py` + `verification_records.py`: a dbSNP outage published
+   `rsid_currency: ran(subjects=N, findings=0)` → a skip with the reason.
+10. `eutils.esummary`: a 200 with no summary block made every uid "no such document" (`absent` rsIDs,
+    `not_found` PMIDs) → `EutilsError`.
+11. `ensembl.resolve_rsid`: every REST 4xx → `[]`, written `not_found` → only the 400; else `(None, None)`.
+12. `download.py` `_provision_snapshot` / `_provision_root_file_snapshot`: any Hub failure →
+    `SnapshotNotPublished`, so `cache pull` printed "not published yet" and exited 0 → only the Hub's
+    not-found errors; anything else the lane's error.
+13. `gnomad.py` per-alias errors (a timeout, an internal error) left a null node, written `not_found` by
+    `frequencies`, `gene_metrics` and the resolver chain → `GnomadClient.unanswered`; no row, named
+    (`FrequencyResult.unanswered`, `GeneMetricsResult.unconsulted`, `unreachable_rsids`), and `strict`
+    refuses. A whole-link gnomAD failure leaves its rsIDs unreachable rather than `not_found`.
+14. `grch37.py` `variants_at` / `reference_bases`: every 4xx → "nothing there" → only the 400; retries a
+    5xx and a 429.
+15. `civic_api` + `civic_citations`: a read short of CIViC's stated total made each recorded paper
+    missing from it "rejected or withdrawn" → `short_reads`, the absence arm withheld.
+16. `civic_citations.read_studies`: an unparsable `studies.csv` → `[]` → `nothing_to_check` → `None` →
+    `no_reference`, the detail naming the table.
+17. `clingen.parse_curation_list`, `gene_validity.parse_clingen_validity`, `parse_gencc`: no release line
+    → the literal `unknown` in the `dataset` merge key → `None`, and the label is the bare lane.
+18. `atlas_client._translate`: gRPC `UNIMPLEMENTED` → `AtlasNotScored` ("no score for this variant") on
+    every request → only on an indel; elsewhere `AtlasRetired`, never retried.
+19. `cpic_build._fetch_all`: no `Content-Range` count skipped the short-read guard → refuses.
+20. `sequences.verify_reference_alleles`: a failed read was skipped, so all failing was
+    `ran(subjects=0)` and a build record saying no ref disagreed → `unread`, and `unreachable` when every
+    read failed.
+21. `identifiers.OntologyClient`: an OLS4 or HGNC body of another shape → `absent`/`unknown` →
+    `IdentifierUnavailable`. `clingen_allele._parse`: a non-record body → `no_identity` → `unchecked`.
+22. The withholding clients (`CrossrefClient`, `PmcIdConverterClient`, `PmcBiocClient`, `Grch37Client`,
+    `EnsemblResolver`, `ClingenAlleleClient`) answered a 410 as an outage → `Withholding.retired`.
+
+**Guards** (`enricher/tests/test_could_not_ask.py` unless named): the `*Retired` classes equal the
+`RetiredEndpoint`-marked ones, walked; an AST walk refuses any `except` arm writing an unreachable reason
+without `could_not_ask_reason`; every `CLIENTS` row's 410, 503 and transport failure read through it
+(`test_client_exception_contract.py`); every fulltext route × seven legs; every `Withholding` class,
+walked, names a 410 and not a 503; every quote tally goes through one count (AST); `READS` equals the
+owned tables and covers every dataset, and every dataset × {partial, unstated} keeps every earlier row
+(`test_opentargets.py`); an AST walk over all three packages refuses a colon-joined f-string key
+(`schema/tests/test_no_absent_value_in_a_key.py`). Each was run against `0.8` and fails there, and the
+mechanism was mutated once (`could_not_ask_reason` returning `unreachable` for a 410: 15 red; the
+completeness predicate forced `True`: 8 red).
+
+**The corrected derivation, measured.** `reference_examples/cpic_gene_pairs` compiled under `0.8` and under
+this branch: `content_signature` unchanged, `compilation.warnings` unchanged, `parquet_bytes` moved
+(`haplotypes.parquet`, the nine `variant_key` cells) and `manifest_fields` moved (`derived`'s
+`resolution.csv` hash, and `readme`). `compile → reverse → compile` keeps `artifact.digest` and
+`content_signature`. The 0.8.0 release record owes a `DeclaredChange` for it (`correction`, item RM361).
+
+**Decisions the contract did not make, taken withholding.** A partial Open Targets snapshot answers no
+key for the tables it did not read whole (rows it did yield are still merged); a posterior is not filled
+from one. An undecided regex withholds the row's whole `quotes_found`, not one member of it. A row naming
+no place keys as `""`. A `retired` fulltext row is asked again. An unparsable `studies.csv` skips as
+`no_reference`, no new vocabulary member. Atlas `UNIMPLEMENTED` on an SNV is read as a retired method
+(unprobed: the probe that classified the status used an indel).
+
 ## RM270 — an indel's artifact key is its source's spelling: a left-aligned VCF misses a respelled row, and the spelling-independent id the enricher mints never reaches the artifact
 
 **0.8, decided 2026-11-03.** Taken into 0.8 by the maintainer, with the rest of the indel-placement fixes (RM304, RM267, RM270, RM292, RM305). The status line below predates that decision.
