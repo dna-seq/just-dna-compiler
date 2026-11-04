@@ -41,9 +41,7 @@ from pathlib import Path
 
 from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.concordance import ClinSigAuthorityCallRow, ClinSigConcordanceRow
-from just_dna_format.layout import atomic_writer, resolve_sidecar, sidecar_write_path
-
-from just_dna_enricher.licensing import nothing_to_write
+from just_dna_format.layout import atomic_writer, nothing_to_write, resolve_sidecar, sidecar_write_path
 
 logger = logging.getLogger(__name__)
 
@@ -343,7 +341,7 @@ def write_concordance_tables(
 
     A run that found nothing contested therefore empties a record already on disk rather than leaving
     the previous run's rows in place. Where there is no record yet it writes none (RM370,
-    `licensing.nothing_to_write`): a header-only table beside a module with no `clin_sig` cell said
+    `layout.nothing_to_write`): a header-only table beside a module with no `clin_sig` cell said
     nothing, and the compiler already reads an empty record and an absent one alike (no manifest
     block). How many subjects were compared is the check's denominator in `verification.json`, which
     is where *asked and found nothing contested* is recorded; a run that could not put the question
@@ -378,7 +376,7 @@ def read_recorded_calls(spec_dir: Path) -> list[ClinSigAuthorityCallRow] | None:
 
     `None` for a module with no record on disk, `[]` for one whose record is empty. Since RM370 no
     record is also what a run that asked and found nothing contested leaves where there was none
-    before (`licensing.nothing_to_write`); `answered_call_shift` reads the two alike — every lookup
+    before (`layout.nothing_to_write`); `answered_call_shift` reads the two alike — every lookup
     misses, and an answered call is withheld as `no_prior_record` either way.
 
     A file that will not parse is `None` too, and says so. Guessing at a half-read baseline would

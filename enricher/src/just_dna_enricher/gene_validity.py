@@ -51,14 +51,13 @@ from just_dna_format.gene_validity import (
     superseded_groups,
     undecidable_groups,
 )
-from just_dna_format.layout import atomic_writer
+from just_dna_format.layout import atomic_writer, nothing_to_write
 from just_dna_format.normalize import normalize_utc_timestamp, now_utc_iso
 
 from just_dna_enricher.gene_metrics import GeneMetricsEnrichmentError, module_genes
 from just_dna_enricher.licensing import (
     CLINGEN_TERMS,
     GENCC_TERMS,
-    nothing_to_write,
     record_source_terms,
     require_sources_file,
     sidecar_path,

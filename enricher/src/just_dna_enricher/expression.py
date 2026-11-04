@@ -40,7 +40,7 @@ from pathlib import Path
 from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.base import derive_variant_key, merge_key
 from just_dna_format.expression import ExpressionEffectRow
-from just_dna_format.layout import atomic_writer
+from just_dna_format.layout import atomic_writer, nothing_to_write
 from just_dna_format.normalize import now_utc_iso
 
 from just_dna_enricher.atlas_protos import ATLAS_IMPORT_FAILURES, client_absence
@@ -57,7 +57,6 @@ from just_dna_enricher.licensing import (
     check_declared_use,
     effective_declared_use,
     merge_sources_file,
-    nothing_to_write,
     require_sources_file,
     sidecar_path,
 )

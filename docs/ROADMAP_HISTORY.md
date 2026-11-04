@@ -67,7 +67,7 @@ neither file. The six files in `cpic_gene_pairs`, `longevity_studies` and `model
 (`git rm`); no closure binds a derived file, each still validates `--strict`, and compile → reverse →
 compile reproduces `artifact.digest` and `content_signature` with no `clin_sig_*` parquet in the artifact.
 
-**The mechanism: one predicate, `licensing.nothing_to_write(path, rows)`**, called first by every enricher
+**The mechanism: one predicate, `layout.nothing_to_write(path, rows)`**, called first by every enricher
 sidecar writer: zero rows and no file there already writes nothing, and since the licence row lands only
 inside the table's commit (`before_commit`, RM231) it is skipped with the table. It never suppresses a write
 over a file already there, and that is the smaller of the two readings the item named: zero rows over an

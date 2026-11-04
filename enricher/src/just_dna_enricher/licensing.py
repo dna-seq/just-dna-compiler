@@ -27,7 +27,7 @@ import csv
 import hashlib
 import logging
 import re
-from collections.abc import Iterable, Mapping, Sized
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -36,6 +36,7 @@ from just_dna_format.layout import (
     SOURCES_CSV,
     SidecarCollision,
     atomic_writer,
+    nothing_to_write,
     sidecar_write_path,
 )
 from just_dna_format.normalize import now_utc_iso
@@ -1183,25 +1184,6 @@ def sidecar_path(spec_dir: Path, name: str, *, error: type[Exception]) -> Path:
         return sidecar_write_path(spec_dir, name)
     except SidecarCollision as exc:
         raise error(str(exc)) from exc
-
-
-def nothing_to_write(path: Path, rows: Sized) -> bool:
-    """Whether a sidecar write would only create a file that says nothing (RM370).
-
-    **Zero rows and no file there already: write nothing.** A data table beside the spec is the claim
-    *this module carries these facts from this source*, exactly as a `sources.csv` row is — so a pass
-    that answered nothing (no subject, no answer, every subject declined) must leave no table, for the
-    reason `@write-the-sourcerow` gives for the licence row. Nine sidecars wrote a bare header instead,
-    and the 0.8 reference examples carried two of them. Every enricher sidecar writer calls this first,
-    and returns before its `atomic_writer` — so the licence row, which lands only inside that commit
-    (`before_commit`), is skipped with it.
-
-    **A file already there is never this predicate's to keep.** Zero rows over an existing table is a
-    pass's answer, not a run that covered nothing: the concordance record clears a subject the
-    authorities stopped contesting, and a merge pass prunes rows whose variant the author deleted. A
-    run that could not ask keeps its rows by never reaching the writer (`@rederive-never-shortens`).
-    """
-    return not rows and not Path(path).exists()
 
 
 def sources_path(spec_dir: Path, *, error: type[Exception]) -> Path:

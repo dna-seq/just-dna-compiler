@@ -46,7 +46,7 @@ from pathlib import Path
 import httpx
 from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.base import merge_key
-from just_dna_format.layout import atomic_writer
+from just_dna_format.layout import atomic_writer, nothing_to_write
 from just_dna_format.ld_pairs import LD_RESOLVED, LdPairRow
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.resolution import ResolutionRow
@@ -57,7 +57,6 @@ from tenacity import retry, wait_exponential_jitter
 from just_dna_enricher.ensembl import DEFAULT_REST_ENDPOINT
 from just_dna_enricher.licensing import (
     ENSEMBL_TERMS,
-    nothing_to_write,
     overlaid_input_rows,
     record_source_terms,
     require_sources_file,

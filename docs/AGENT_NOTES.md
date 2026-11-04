@@ -1768,7 +1768,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `resolution.csv` (nobody reachable), `frequencies.csv` and `clinical_assertions.csv` (every row
   off-build), `gene_metrics.csv` and `gene_validity.csv` (no gene) and `literature.csv` (DOI-only
   citations) did the same. The rule lives in **one predicate in front of every writer**,
-  `licensing.nothing_to_write(path, rows)`: zero rows and no file there writes nothing, and the licence
+  `layout.nothing_to_write(path, rows)`: zero rows and no file there writes nothing, and the licence
   row, which lands only inside the table's commit, goes with it. The tempting stronger reading, *zero
   rows never overwrites a file*, was refused: zero rows over an existing table is an answer — the
   concordance record clearing a subject nobody contests any more, a merge pass pruning a deleted

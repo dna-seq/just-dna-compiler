@@ -49,7 +49,7 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   source could be asked; `frequencies.csv` and `clinical_assertions.csv` when every resolved row is
   off-build; `gene_metrics.csv` (both the constraint and dosage passes) and `gene_validity.csv` on a
   module with no gene; and `literature.csv` when every citation is DOI-only. One predicate,
-  `licensing.nothing_to_write`, now sits in front of every enricher sidecar writer.
+  `layout.nothing_to_write`, now sits in front of every enricher sidecar writer.
 - **A table already on disk is still the pass's to empty.** The concordance record still clears a
   subject the authorities stopped contesting, and a merge pass still prunes rows whose variant was
   deleted; only the creation of a file that says nothing is withheld.

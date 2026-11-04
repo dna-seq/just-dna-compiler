@@ -63,7 +63,7 @@ from pathlib import Path
 import httpx
 from just_dna_compiler.compiler import load_citing_rows, load_csv_rows, table_citations
 from just_dna_format.base import merge_key
-from just_dna_format.layout import atomic_writer
+from just_dna_format.layout import atomic_writer, nothing_to_write
 from just_dna_format.literature import LiteratureRow, settled_quotes
 from just_dna_format.manifest import VerificationRecord
 from just_dna_format.normalize import now_utc_iso
@@ -75,7 +75,7 @@ from tenacity import (
 )
 
 from just_dna_enricher.eutils import EutilsClient, EutilsError, is_missing
-from just_dna_enricher.licensing import article_terms, nothing_to_write, sidecar_path
+from just_dna_enricher.licensing import article_terms, sidecar_path
 from just_dna_enricher.locations import env_value
 from just_dna_enricher.net import PacingGate, attempt_floor, batched, dedupe, raise_if_retired
 from just_dna_enricher.verification import examples, ran, record_verification, skipped

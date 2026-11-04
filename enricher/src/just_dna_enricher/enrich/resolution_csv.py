@@ -6,10 +6,8 @@ import csv
 from collections.abc import Callable
 from pathlib import Path
 
-from just_dna_format.layout import atomic_writer
+from just_dna_format.layout import atomic_writer, nothing_to_write
 from just_dna_format.resolution import ResolutionRow
-
-from just_dna_enricher.licensing import nothing_to_write
 
 #: Derived from the model, never restated beside it (`@fieldnames-from-model`). This was a hand-kept
 #: literal in sync with `ResolutionRow` by coincidence, paired with a per-column dict literal in the

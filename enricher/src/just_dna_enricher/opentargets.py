@@ -66,7 +66,7 @@ from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.base import merge_key
 from just_dna_format.consequences import ConsequenceRow
 from just_dna_format.gwas import GwasEffectRow
-from just_dna_format.layout import atomic_writer
+from just_dna_format.layout import atomic_writer, nothing_to_write
 from just_dna_format.locus_genes import ColocalisationRow, LocusToGeneRow
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.resolution import ResolutionRow
@@ -76,7 +76,6 @@ from pydantic import BaseModel
 from just_dna_enricher.licensing import (
     OPENTARGETS_TERMS,
     merge_sources_file,
-    nothing_to_write,
     overlaid_input_rows,
     require_sources_file,
     sidecar_path,

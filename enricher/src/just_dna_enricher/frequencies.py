@@ -25,7 +25,7 @@ from pathlib import Path
 from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.base import derive_variant_key, merge_key
 from just_dna_format.frequency import FrequencyRow
-from just_dna_format.layout import atomic_writer
+from just_dna_format.layout import atomic_writer, nothing_to_write
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.vocab import population_sort_key
@@ -40,7 +40,6 @@ from just_dna_enricher.gnomad import (
     covers_locus,
 )
 from just_dna_enricher.licensing import (
-    nothing_to_write,
     overlaid_input_rows,
     record_source_terms,
     require_sources_file,

@@ -3021,7 +3021,7 @@ second happened, and `enrich()` writing nothing on `None` is what leaves an earl
 instead of overwriting it with a comparison nobody made.
 
 **An empty record is written only over a record already on disk (RM370).** Like every enricher
-sidecar, the pair goes through `licensing.nothing_to_write`: zero rows and no file there writes
+sidecar, the pair goes through `layout.nothing_to_write`: zero rows and no file there writes
 nothing, so a module with no `clin_sig` cell, or one where nothing is contested on its first run,
 carries no concordance file. A record already on disk is still rewritten to empty, because that is
 how a subject the authorities stopped contesting leaves it. *Asked and found nothing contested* is

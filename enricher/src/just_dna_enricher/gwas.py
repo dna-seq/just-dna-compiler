@@ -58,7 +58,7 @@ import httpx
 from just_dna_compiler.compiler import load_csv_rows, load_spec_variants
 from just_dna_format.base import merge_key
 from just_dna_format.gwas import GwasEffectRow
-from just_dna_format.layout import atomic_writer
+from just_dna_format.layout import atomic_writer, nothing_to_write
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.sources import SourceRow
 from pydantic import ValidationError
@@ -72,7 +72,6 @@ from just_dna_enricher.enrich import (
 from just_dna_enricher.licensing import (
     GWAS_CATALOG_TERMS,
     merge_sources_file,
-    nothing_to_write,
     require_sources_file,
     sidecar_path,
 )

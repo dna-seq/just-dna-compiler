@@ -31,7 +31,7 @@ import duckdb
 from just_dna_compiler.compiler import AUTHORED_NON_KIND_TABLES, load_csv_rows
 from just_dna_format.base import merge_key
 from just_dna_format.gene_metrics import GeneMetricsRow
-from just_dna_format.layout import atomic_writer
+from just_dna_format.layout import atomic_writer, nothing_to_write
 from just_dna_format.normalize import now_utc_iso
 
 from just_dna_enricher.download import ensure_constraint_snapshot
@@ -44,7 +44,6 @@ from just_dna_enricher.gnomad import (
 )
 from just_dna_enricher.identifiers import authored_identifiers
 from just_dna_enricher.licensing import (
-    nothing_to_write,
     record_source_terms,
     require_sources_file,
     sidecar_path,

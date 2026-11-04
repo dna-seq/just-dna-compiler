@@ -8,7 +8,7 @@ examples carried them (`longevity_studies`, `model_organisms`, `cpic_gene_pairs`
 than that pair: nine sidecars across seven passes wrote a table with a header and nothing under it
 whenever the run had no subject to ask about.
 
-**The rule is one predicate, `licensing.nothing_to_write`, called by every sidecar writer:** zero rows
+**The rule is one predicate, `layout.nothing_to_write`, called by every sidecar writer:** zero rows
 and no file there already means nothing is written — and so the licence row, which only ever lands
 inside the table's commit, is not written either. It never suppresses a write over a file that is
 already there, because two passes empty an existing table on purpose and that emptying is an answer:
@@ -43,18 +43,13 @@ from just_dna_enricher.gene_validity import enrich_gene_validity
 from just_dna_enricher.gnomad import GnomadClient, GnomadSettings
 from just_dna_enricher.gwas import enrich_gwas
 from just_dna_enricher.ld_pairs import enrich_ld_pairs
-from just_dna_enricher.licensing import (
-    CLINVAR_TERMS,
-    merge_sources_file,
-    nothing_to_write,
-    require_sources_file,
-)
+from just_dna_enricher.licensing import CLINVAR_TERMS, merge_sources_file, require_sources_file
 from just_dna_enricher.literature import enrich_literature
 from just_dna_enricher.net import PacingGate
 from just_dna_enricher.opentargets import enrich_opentargets
 from just_dna_enricher.producers import DERIVED_PRODUCERS
 from just_dna_format import verification as verification_module
-from just_dna_format.layout import SOURCES_CSV, resolve_sidecar
+from just_dna_format.layout import SOURCES_CSV, nothing_to_write, resolve_sidecar
 from just_dna_format.vrs import derive_vrs_allele_id
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -383,6 +378,6 @@ def test_every_sidecar_writer_calls_the_predicate() -> None:
     )
     missing = sorted(key for key, called in writers.items() if key not in exempt and _PREDICATE not in called)
     assert not missing, (
-        f"these write a sidecar without asking `licensing.{_PREDICATE}` first, so a run that answered "
+        f"these write a sidecar without asking `layout.{_PREDICATE}` first, so a run that answered "
         f"nothing leaves a header-only table behind (RM370): {missing}"
     )
