@@ -34,8 +34,12 @@ None open.
 
 ## Plan
 
-- **RM338**: decided 2026-11-03 (content-checked text plus png/jpg, no SVG). `unattended`, `after RM337`
-  (triage's patch, same function). Built by the lead in a worktree once RM337 lands.
+- **RM338**: decided 2026-11-03 (content-checked text plus png/jpg, no SVG). `unattended`, a patch on `main`,
+  no longer after RM337: triage re-sized RM337 to a minor on 2026-11-04 (172a215), because its warning needs a
+  new `VALID_WARNING_CODES` member. Split, told to triage the same day: the patch ships only what needs no
+  new code (the content checks, and each newly shipped non-`.log` file named by a `logger` line and in
+  `manifest.logs`). The left-behind warning, a failed check's reason included, goes with RM337 in its minor.
+  Write that split into RM338's entry when building it.
 - **RM344**: `unattended`, a patch (a duckdb-2-written `.duckdb` cache falls back to parquet).
 - **RM342**: a minor, the pm's to place (0.9). Polars version in `manifest.compilation`.
 - **Lock moves, the liaison's schedule (2026-11-04):** duckdb 2.x into `uv.lock` once RM344 lands, so RM344
