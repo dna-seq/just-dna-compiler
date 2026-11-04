@@ -1675,6 +1675,28 @@ passes. The list is the witness. Its terms are unprobed, so the first step is th
 
 **Residuals** none yet.
 
+## RM358 — a DOI-only literature answer is never pinned, and bioRxiv's own full-text route is unused
+
+**0.9, filed 2026-11-04 by the lead**: RM349's two residuals, found by its builder.
+
+**Severity** low · **Status** open — **a minor**, 0.9 · **Owner** enricher (`literature`) + compiler (the
+`literature.csv` checks) · **Motivating case** the RM349 builder's report, 2026-11-04 · *related* RM349, RM336
+
+**One class: a `pmid=NONE` citation is checked, but the answer goes nowhere a downstream check reads.** Two
+instances:
+
+1. RM349 checks a DOI-only row's existence and quote, but the answers are not pinned in `literature.csv`, which
+   keys on PubMed ids. The compiler's quote counter, its licence check and its title-as-quote check read
+   `literature.csv`, so none of them ever sees a `pmid=NONE` row.
+2. The quote is matched only where Europe PMC holds the preprint's text. bioRxiv's own API publishes a `jatsxml`
+   link for every bioRxiv and medRxiv preprint, a wider route than Europe PMC's subset, and no client reads it.
+
+**The fix, as one rule.** A DOI-only answer is pinned in `literature.csv` under its DOI, so every check that reads
+the table reads it too; bioRxiv's `jatsxml` becomes a full-text source for the quote check, as a new source with
+its own `SourceRow` and licence probe, not a branch inside an existing client.
+
+**Residuals** none yet.
+
 ## RM345 — `SourceRow` cannot state five licence shapes: AlphaGenome's four, and a host licence that defers to owners a row cannot name
 
 **Severity** medium · **Status** open — **a minor** (new optional `sources.csv` columns or a sibling table;

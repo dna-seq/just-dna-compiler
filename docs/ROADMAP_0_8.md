@@ -1341,6 +1341,78 @@ Constitution's Goals sentence on reproducibility ("anyone holding the inputs and
 
 **Residuals** none yet.
 
+## RM356 — a named-allele row's identity key omits `gene`, so two genes' `*2` defined by the same variant are one duplicate
+
+**0.8, filed 2026-11-04 by the lead** as a second-pass item: found by a 0.8 builder alongside RM351.
+
+**Severity** medium · **Status** open — **a minor**, joins 0.8 · **Owner** format (`pgx.py` `_KEY_FIELDS`) + compiler
+(the dedup sites that read it) · **Motivating case** a 0.8 builder's report, 2026-11-04: the UGT1A genes share
+their exons 2–5, so two genes' `*2` can be defined by the same variant and allele · *related* RM351,
+`@absent-is-not-different`
+
+**One class: an identity or dedup key that names an allele without its gene.** `HaplotypeRow._KEY_FIELDS` is
+`("haplotype_name", "variant_key", "allele")`. A UGT1A1 `*2` row and a UGT1A6 `*2` row on the same shared-exon
+variant and allele are then the same row, and the duplicate check refuses the second. RM351 found the same shape
+in the cross-table checks, which key a named allele on its bare name; `AlleleFunctionRow` already keys
+`(gene, allele)`. Grep for the class, not the instance: every `_KEY_FIELDS` and every dedup or merge key in the
+three tiers that carries an allele name and no gene.
+
+**The P3 question the fix answers first.** Adding `gene` to a key narrows what counts as a duplicate: a pair that is
+refused today becomes legal, nothing legal today is refused, so the change is additive. But `gene` is optional on
+`HaplotypeRow`, so two rows split on it only when **both state it and the values differ**
+(`@absent-is-not-different`); a row with no `gene` still collides with one that has it, and the check narrows
+rather than the key splitting on an absence. The merge identity drafting uses moves with the key, so a module
+drafted before the change must re-draft to the same rows (a lap test).
+
+**Residuals** none yet.
+
+## RM357 — the authored tables that are not table kinds have no registry: three copies of one loader, and a refused `meta.csv` reports its citations as uncited
+
+**0.8, filed 2026-11-04 by the lead** as a second-pass item: found by a 0.8 builder.
+
+**Severity** medium · **Status** open — **a minor**, joins 0.8 · **Owner** compiler (`load_meta`, `load_model_organisms`,
+`load_overlay` and the lists that name them) · **Motivating case** a 0.8 builder's report, 2026-11-04 · *related*
+RM335, RM28, `@registry-completeness`, `@overlay-not-inside`
+
+**One class: a category of table with no registry.** `meta.csv` (RM28, `compiler/meta.py` on `0.8`),
+`model_organisms.csv` (RM335, `compiler/model_organisms.py` on `build/RM335`) and `overrides.csv`
+(`load_overlay`) are authored tables outside the table-kind registry. Each has its own copy of one loader body,
+and about ten hand-kept lists say which of them cites literature, names a gene or is a lead table. A fourth such
+table means another copy and ten more edits, and a list that misses one fails silently.
+
+**The instance that misleads an author.** `load_meta` drops all its rows on a duplicate-key error. In the same run,
+a `literature.csv` row cited only by `meta.csv` is then reported as uncited, which points the author at
+`literature.csv` when the defect is in `meta.csv`.
+
+**The fix, as one rule.** One registry of authored non-kind tables, each entry carrying its loader and its citing,
+gene and lead flags; every list is derived from it and a test asserts equality over the walked set. A loader that
+refuses still hands its parsed rows to the other checks, so one table's error never becomes another table's
+finding.
+
+**Residuals** none yet.
+
+## RM359 — under `--strict`, `study_effect_allele_not_at_locus` arrives as both an error and a warning, and SCHEMAS.md states a count the code has outgrown
+
+**0.8, filed 2026-11-04 by the lead** as a second-pass item: found by a 0.8 builder.
+
+**Severity** low · **Status** open — **a minor**, joins 0.8 · **Owner** compiler (`allele_checks.py`) + docs
+(`SCHEMAS.md`) · **Motivating case** a 0.8 builder's report, 2026-11-04 · *related* `@no-rerun-with-counts`,
+`@registry-completeness`
+
+**Two instances of one class: a fact stated where it can disagree with itself.**
+
+1. **A finding on two channels at once.** Under `--strict`, `study_effect_allele_not_at_locus` is escalated into
+   `errors` and still emitted into `warnings`, so a consumer counting findings counts it twice and one reading of
+   the result contradicts the other.
+2. **A count stated in prose.** SCHEMAS.md says `authoring_reference()["vocabularies"]` has "21 entries today".
+   It has 38 on `main` (measured) and the builder counted 43 on `0.8`.
+
+**The fix, as one rule.** A finding lives on exactly one channel, the one its severity under the mode picks, and a
+test asserts no code appears in both lists. The prose drops the number and states the rule that generates the
+list (`@registry-completeness`: never a count in prose).
+
+**Residuals** none yet.
+
 ## RM342 — the manifest does not record the toolchain that wrote the bytes, so a digest that moves cannot say why
 
 **Where the toolchain reason fires, corrected 2026-11-04 (the lead's PT2 §4 question 7, accepted by the pm seat).** `verify_manifest` re-hashes files and never recompiles, so it cannot see a toolchain. The reason `toolchain_differs` therefore fires where a fresh compile is compared with a recorded digest: the publish collision check and the release sweeps. This keeps the maintainer's intent: an explainable difference is never reported as corruption.
