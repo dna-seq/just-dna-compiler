@@ -28,8 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import duckdb
-from just_dna_compiler.compiler import load_csv_rows
-from just_dna_compiler.compiler.subjects import MODULE_GENE_TABLES, module_subjects
+from just_dna_compiler.compiler import MODULE_GENE_TABLES, load_csv_rows, module_subjects
 from just_dna_format.base import merge_key
 from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.layout import atomic_writer

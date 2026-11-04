@@ -17,8 +17,13 @@ import shutil
 from pathlib import Path
 
 import pytest
-from just_dna_compiler.compiler import compile_module, load_csv_rows
-from just_dna_compiler.compiler.subjects import MODULE_GENE_TABLES, MODULE_LOCUS_TABLES, ModuleSubjects
+from just_dna_compiler.compiler import (
+    MODULE_GENE_TABLES,
+    MODULE_LOCUS_TABLES,
+    ModuleSubjects,
+    compile_module,
+    load_csv_rows,
+)
 from just_dna_enricher.enrich.subjects import SUBJECT_TABLES, study_proxy_rsids
 from just_dna_enricher.gene_metrics import _NOT_THE_MODULES_GENES, module_genes
 from just_dna_enricher.gwas import _module_subjects as gwas_subjects
