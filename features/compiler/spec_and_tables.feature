@@ -105,10 +105,12 @@ Feature: The spec directory and the cells inside it
     And authoring.log ships and draws no warning
     And the same warnings fire under strict, and the compile succeeds in both modes
     # RM337. One reason per arm of `_log_left_behind_reason`, which also decides the verdict, so the two
-    # cannot drift: a hidden path, a symlink, an image over the ceiling (both sizes named) or with the
-    # wrong signature, SVG, any other extension, text that is not UTF-8, a `.json` that does not parse,
-    # a `.jsonl` line that does not parse. An explicit `log_files` list ships what it names and draws
-    # none; a non-`.log` file beside the spec is the ordinary tolerance of unknown files, not a log.
+    # cannot drift: a hidden path, a symlink or a path under one, a file over the ceiling (both sizes
+    # named), a file the compile could not read, an image with the wrong signature, SVG, any other
+    # extension, text that is not UTF-8, a `.json` that does not parse, a `.jsonl` line that does not
+    # parse. RM348 holds every discovered path to the link, size and read rules, a top-level `*.log` and
+    # `logs/` itself included. An explicit `log_files` list ships what it names and draws none; a
+    # non-`.log` file beside the spec is the ordinary tolerance of unknown files, not a log.
 
   # source: compiler/src/just_dna_compiler/compiler/validate.py
   # anchor: _validate_spec

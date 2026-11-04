@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 import yaml
-from just_dna_compiler.compiler import LOG_IMAGE_MAX_BYTES, LOG_NOT_SHIPPED_PHRASE, compile_module
+from just_dna_compiler.compiler import LOG_MAX_BYTES, LOG_NOT_SHIPPED_PHRASE, compile_module
 from just_dna_format.integrity import verify_manifest
 from just_dna_format.manifest import read_manifest
 
@@ -142,8 +142,8 @@ def _rm338_spec(tmp_path: Path) -> tuple[Path, set[str], set[str]]:
     spec = _spec(tmp_path, with_logs=False)
     _write_files(spec, _SHIPPED)
     _write_files(spec, _LEFT_BEHIND)
-    shipped = set(_SHIPPED) | {_png_of_size(spec, "logs/edge.png", LOG_IMAGE_MAX_BYTES)}
-    left_behind = set(_LEFT_BEHIND) | {_png_of_size(spec, "logs/big.png", LOG_IMAGE_MAX_BYTES + 1)}
+    shipped = set(_SHIPPED) | {_png_of_size(spec, "logs/edge.png", LOG_MAX_BYTES)}
+    left_behind = set(_LEFT_BEHIND) | {_png_of_size(spec, "logs/big.png", LOG_MAX_BYTES + 1)}
     # A symlink is not followed out of the module: valid JSON it points at stays behind.
     outside = tmp_path / "outside.json"
     outside.write_text('{"token": "not for publishing"}')

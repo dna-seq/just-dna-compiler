@@ -41,6 +41,22 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM348: `logs/` discovery stops trusting the filesystem (0.8, uncut)
+
+**compiler** — Every path log discovery considers, the top-level `*.log` included, must resolve to
+exactly where it lies inside the spec directory. A symlink at any level stays behind with
+`log_file_not_shipped`'s symlink reason, now *"it is a symlink or lies under one, and a link can reach
+outside the module"*, and a `logs/` that is itself a link is not walked: one finding names `logs`.
+Every discovered file is held to one ceiling, `LOG_MAX_BYTES` (5 MiB, read from `stat` before any byte;
+`LOG_IMAGE_MAX_BYTES`, RM338's name on `main`, stays as an alias of it), and the oversize reason now reads *"it is
+larger than the ceiling for a file discovery ships"*. A file the compile cannot stat or open stays behind
+with a new reason, *"the compile could not read it"*, where a `PermissionError` used to fail the
+compile; a directory under `logs/`, or `logs/` itself, that the compile cannot list and search draws
+the same reason in place of the files it hides, which the walk used to skip without a word. **This
+narrows what a `*.log` did before RM338:** a symlinked `*.log`, one beside the spec or under `logs/`,
+and a `*.log` over 5 MiB used to ship and now stay behind with a warning. A `*.log` is
+still not checked for content. An explicit `log_files` list is unaffected, and neither identity moves.
+
 ## 2026-11-04 — RM28, RM323, RM324 (and RM327's rows, RM330's `sex`): the meta-table, `meta.csv` (0.8, uncut)
 
 **format, compiler, enricher** — A new optional authored table, `meta.csv` (`just_dna_format.meta.MetaRow`),

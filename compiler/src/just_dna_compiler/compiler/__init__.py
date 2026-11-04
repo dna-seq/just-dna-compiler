@@ -259,6 +259,7 @@ from just_dna_compiler.compiler.manifest import _UNCORROBORABLE_LAYERS as _UNCOR
 from just_dna_compiler.compiler.manifest import BUILD_AGREEMENT_CHECK as BUILD_AGREEMENT_CHECK
 from just_dna_compiler.compiler.manifest import LOG_IMAGE_MAGIC as LOG_IMAGE_MAGIC
 from just_dna_compiler.compiler.manifest import LOG_IMAGE_MAX_BYTES as LOG_IMAGE_MAX_BYTES
+from just_dna_compiler.compiler.manifest import LOG_MAX_BYTES as LOG_MAX_BYTES
 from just_dna_compiler.compiler.manifest import LOG_NOT_SHIPPED_PHRASE as LOG_NOT_SHIPPED_PHRASE
 from just_dna_compiler.compiler.manifest import LOG_NOT_SHIPPED_REASONS as LOG_NOT_SHIPPED_REASONS
 from just_dna_compiler.compiler.manifest import LOG_TEXT_EXTENSIONS as LOG_TEXT_EXTENSIONS

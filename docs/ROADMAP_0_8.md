@@ -842,28 +842,3 @@ remaining class gets the same treatment — a plain column, on demand, one at a 
   life; it stays that way, here.
 
 Neither is built until a real module needs it.
-
-## RM348 — `logs/` discovery trusts the filesystem: a symlink ships what it points at, and a large or unreadable file reaches the compile
-
-**0.8, filed 2026-11-04 by the lead** as a second-pass item (RELEASE_CYCLE § Minors step 4): found while building
-RM337, in behaviour RM338 shipped.
-
-**Severity** medium · **Status** open — **a minor**, joins 0.8 · **Owner** compiler (`_collect_logs`) · **Motivating
-case** the RM337 builder's report, 2026-11-04 · *related* RM337, RM338, RM347
-
-**One class, four instances.** Discovery under `logs/` reads whatever the filesystem hands it, and a published file is
-permanent:
-
-1. a symlinked `*.log` ships, even when it points outside the module;
-2. a `logs/` directory that is itself a symlink is walked, and everything under it ships;
-3. a text file under `logs/` has no size ceiling and is read whole into memory;
-4. an unreadable file (a `PermissionError`) raises out of the compile instead of staying behind.
-
-**The fix, as one rule.** Every path discovery considers is resolved and must stay inside the spec directory; a symlink,
-at any level including `logs/` itself, stays behind with `log_file_not_shipped`'s symlink reason (an explicit
-`log_files` list is unaffected); text gets the same ceiling as images (`LOG_IMAGE_MAX_BYTES` becomes one
-`LOG_MAX_BYTES`, read from `stat` before any byte); a file that cannot be read stays behind with a new reason,
-never an exception. `*.log` keeps shipping unchecked for content, but not past the symlink and size rules. That last
-point narrows what a `*.log` did before RM338, so its CHANGELOG line says so.
-
-**Residuals** none yet.

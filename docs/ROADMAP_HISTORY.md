@@ -1429,6 +1429,85 @@ The count is a log line, not a `MissBuildResult` field (minor-class). The three 
 Principle 2 (the lane docstring, the `mitomap miss` CLI note, the drafter note) and ENRICHER.md's
 bucket table now say what happens instead.
 
+## RM348 — `logs/` discovery trusts the filesystem: a symlink ships what it points at, and a large or unreadable file reaches the compile
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** (it narrows what a
+`*.log` ships, and joins 0.8 as filed) · **Owner** compiler (`_collect_logs`) · **Motivating case** the
+RM337 builder's report, 2026-11-04 · *related* RM337, RM338, RM347
+
+**Residuals** won't fix — a hard link reaches outside the module with no symlink at any level, and `st_nlink` cannot tell an author's own link from a reach outside, so it is reported to the lead rather than guessed at here · won't fix — the copy into the output reads the file again after the check, so a file still being appended can ship past the ceiling; closing it means copying the checked bytes, which is reported to the lead as its own question
+
+**0.8, filed 2026-11-04 by the lead** as a second-pass item (RELEASE_CYCLE § Minors step 4): found while building
+RM337, in behaviour RM338 shipped.
+
+**One class, four instances.** Discovery under `logs/` reads whatever the filesystem hands it, and a published file is
+permanent:
+
+1. a symlinked `*.log` ships, even when it points outside the module;
+2. a `logs/` directory that is itself a symlink is walked, and everything under it ships;
+3. a text file under `logs/` has no size ceiling and is read whole into memory;
+4. an unreadable file (a `PermissionError`) raises out of the compile instead of staying behind.
+
+**The fix, as one rule.** Every path discovery considers is resolved and must stay inside the spec directory; a symlink,
+at any level including `logs/` itself, stays behind with `log_file_not_shipped`'s symlink reason (an explicit
+`log_files` list is unaffected); text gets the same ceiling as images (`LOG_IMAGE_MAX_BYTES` becomes one
+`LOG_MAX_BYTES`, read from `stat` before any byte); a file that cannot be read stays behind with a new reason,
+never an exception. `*.log` keeps shipping unchecked for content, but not past the symlink and size rules. That last
+point narrows what a `*.log` did before RM338, so its CHANGELOG line says so.
+
+**What shipped.** `_reached_through_a_link(path, spec_dir)` is the containment rule: a path is a symlink,
+or its resolved form is not exactly the spec directory's resolved form joined with the path's own
+relative part. The resolved spec directory is the reference, so a spec directory that is itself reached
+through a link still ships its own files. `_log_left_behind_reason(path, logs_dir, spec_dir)` asks it
+first, for every kind, `*.log` included; then, for anything but an exact `.log`, the name-only arms as
+before (hidden path, SVG, an extension that does not ship); then one `try` around the `stat` and the
+open: over `LOG_MAX_BYTES` is `oversize` with both sizes, any `OSError` is the new `unreadable` arm, *"the
+compile could not read it"*. A `.log` is opened and nothing read, an image reads its magic, text reads
+whole, now bounded. `_collect_logs` judges the top-level `*.log` through the same function, and treats
+`logs/` as a candidate like any path under it: a link is judged and never walked, so one finding names
+`logs`. The ceiling is `LOG_MAX_BYTES`, and `LOG_IMAGE_MAX_BYTES` stays as a working alias of it: no
+tag carries the old name yet, but `main` does, and the next 0.7 patch publishes it, so removing it in
+0.8 would be a removal inside the major line (Principle 3). Two sentences moved with
+the rule, legal because RM337 is uncut: the symlink reason now reads *"it is a symlink or lies under one,
+and a link can reach outside the module"*, and the oversize reason *"it is larger than the ceiling for a
+file discovery ships"*. Three choices the contract left open:
+
+- **A link that stays inside the module is refused too.** The rule as filed is "a symlink at any
+  level", and a link's target can change after the compile is checked; so `logs/again.log` pointing at
+  `logs/authoring.log` stays behind.
+- **A directory the compile cannot list is named.** Found while building: a walk skips a directory it
+  cannot list or search without a word, so the files under it stayed behind unnamed, the RM337 class
+  again. `_listable` asks for read and search (`os.access`, `R_OK | X_OK`), since a directory with one
+  and not the other hides its files just the same, and an unlistable directory, `logs/` included, draws
+  the `unreadable` reason in place of its files. It ships nothing new and adds no arm.
+- **A directory that resolves elsewhere without being a link is judged as one.** A Windows junction
+  is a directory to `is_symlink()`; the walk asks `_reached_through_a_link` of every directory it
+  meets, so one draws the symlink reason rather than being walked or passed over. No test here can
+  make a junction. A top-level `*.log` that is a directory is not a log and stays silent, readable
+  or not, as it was before.
+- **The intermediate-level half of the rule is driven directly.** Python 3.13's `rglob` does not descend
+  into a linked directory (it yields the link, which draws the symlink reason), so no compile reaches a
+  file under one. The resolved-path comparison is still the rule as filed, and a test drives the real
+  function on such a path, where an `is_symlink()` on the leaf alone would ship it.
+
+Tests: `compiler/tests/test_logs_containment.py`, one per instance, red before the code: a symlinked
+`*.log` under `logs/` pointing outside and one pointing inside; a symlinked top-level `*.log`; a `logs/`
+that is a link to a directory of valid files (one finding, `logs`, and nothing shipped); a path under a
+linked directory, judged directly; sparse `.log` and `.txt` files one byte over the ceiling beside a
+top-level one, and two exactly at it that ship; four files made unreadable (`.log`, `.json`, `.png`, and a
+top-level `.log`) plus a directory with no permission and one listed but not searched, in both modes;
+an unreadable `logs/`; and an explicit `log_files` list that still ships a link. The permission tests skip
+as root, and skip when the chmod does not take (an NTFS mount ignores the mode). RM337's fixture gained an
+unreadable `.json`, so its walk over the arms reaches the new one, with the same carve-out. Each mutation turned a
+test red before the code was kept: no link check, the leaf `is_symlink()` alone, `logs/` walked through a
+link, the top level not judged, the ceiling on images only, `>=` at the ceiling, `OSError` uncaught, a
+`.log` stat-ed but not opened, the `unreadable` arm given `not_utf8`'s sentence, every directory listable,
+read asked without search, an unlistable directory skipped, and an unreadable top-level directory
+named `*.log` judged. A test that refuses the open itself for chosen paths reaches the `unreadable` arm
+on a runner that is root, where the mode-based tests skip. One did not, and its guard was removed
+rather than kept: `_listable(logs_dir)` before the walk, which `rglob` on an unreadable directory already
+makes a no-op.
+
 ## RM337 — a file under `logs/` that is not `*.log` is dropped from the compile, and nothing says so
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** (corrected

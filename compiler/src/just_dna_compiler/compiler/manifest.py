@@ -5,6 +5,7 @@ the sources and licence gate, the verification and closure blocks, and `_build_m
 import codecs
 import json
 import logging
+import os
 import platform
 import shutil
 from importlib.metadata import PackageNotFoundError, version
@@ -128,8 +129,13 @@ LOG_IMAGE_MAGIC: dict[str, bytes] = {
     "jpeg": b"\xff\xd8\xff",
 }
 # 5 MiB: the line this repository already draws for anything that travels (a larger asset goes
-# through Git LFS), and far above a figure or screenshot, so an image over it is not a log.
-LOG_IMAGE_MAX_BYTES: int = 5 * 1024 * 1024
+# through Git LFS), and far above a figure, a screenshot or a session's transcript, so a file over it is
+# not a log. One ceiling for every file discovery ships, `*.log` included (RM348; RM338 drew it for
+# images only), read from `stat` before any byte.
+LOG_MAX_BYTES: int = 5 * 1024 * 1024
+# RM338's name for the same ceiling, from when it held for images only. It is on `main`, which the next
+# 0.7 patch publishes, so 0.8 keeps it as a working alias (Principle 3) rather than removing it.
+LOG_IMAGE_MAX_BYTES: int = LOG_MAX_BYTES
 
 
 #: The fragment every `log_file_not_shipped` line carries (RM337). A consumer greps for it, so it is
@@ -143,8 +149,9 @@ LOG_NOT_SHIPPED_PHRASE = "does not ship with the module"
 #: number, two sizes), never an interpreter's error message, because the line reaches `manifest.json`.
 LOG_NOT_SHIPPED_REASONS: dict[str, str] = {
     "hidden_path": "it is on a hidden path (a part of it starts with '.'), which is tool state, not a log",
-    "symlink": "it is a symlink, and a link can reach outside the module",
-    "oversize": "it is larger than the ceiling for an image under logs/",
+    "symlink": "it is a symlink or lies under one, and a link can reach outside the module",
+    "oversize": "it is larger than the ceiling for a file discovery ships",
+    "unreadable": "the compile could not read it",
     "magic": "its first bytes are not the signature of the image format its extension names",
     "svg": "an SVG is XML that can carry script, so it never ships",
     "extension": "its extension is not one that ships from logs/",
@@ -154,41 +161,71 @@ LOG_NOT_SHIPPED_REASONS: dict[str, str] = {
 }
 
 
-def _log_left_behind_reason(path: Path, logs_dir: Path) -> str | None:
-    """Why discovery leaves this path under `logs_dir` behind, or `None` when it ships (RM338/RM337).
+def _reached_through_a_link(path: Path, spec_dir: Path) -> bool:
+    """Whether `path` is a symlink, or lies under one anywhere below `spec_dir` (RM348).
 
-    One function decides and explains, so the verdict and its reason cannot drift. In order: an exact
-    `.log` suffix on a regular file ships unchecked, as it always has (hidden or linked included); a
-    hidden path or a symlink stays behind (tool state, or a reach outside the module); a png/jpg/jpeg
-    ships at most `LOG_IMAGE_MAX_BYTES` and starting with its format's magic, the size read before any
-    byte; SVG and any extension outside `LOG_TEXT_EXTENSIONS` stay behind; text decodes as UTF-8 (a
-    byte-order mark allowed), a `.json` parses as one document, and every non-blank `.jsonl` line parses.
-    The caller passes a regular file or a symlink, never a directory.
-    """
-    if path.suffix == ".log" and path.is_file():
-        return None
-    reasons = LOG_NOT_SHIPPED_REASONS
-    if any(part.startswith(".") for part in path.relative_to(logs_dir).parts):
-        return reasons["hidden_path"]
+    Resolved, a path discovery may ship is exactly where it lies inside the spec directory. Comparing
+    against the resolved spec directory, rather than the one passed, lets a spec directory that is itself
+    reached through a link (a temp dir, a user's linked checkout) still ship its own files."""
     if path.is_symlink():
+        return True
+    return path.resolve() != spec_dir.resolve() / path.relative_to(spec_dir)
+
+
+def _listable(directory: Path) -> bool:
+    """Whether the compile may list `directory` and stat what is in it (RM348).
+
+    A walk skips a directory it cannot read without a word, so the files under it would stay behind
+    unnamed. Listing needs read and stat needs search, and a directory with one and not the other hides
+    its files just the same, so both are asked, as the effective user where the platform can (a setuid
+    or sudo-run compile reads with those ids, not the real ones)."""
+    return os.access(directory, os.R_OK | os.X_OK, effective_ids=os.access in os.supports_effective_ids)
+
+
+def _log_left_behind_reason(path: Path, logs_dir: Path, spec_dir: Path) -> str | None:
+    """Why discovery leaves `path` behind, or `None` when it ships (RM338/RM337/RM348).
+
+    `path` is under `logs_dir`, or a top-level `*.log` beside the spec. One function decides and
+    explains, so the verdict and its reason cannot drift. In order: a symlink, or a path under one,
+    stays behind, `*.log` included (a link can reach outside the module); then, for anything but an
+    exact `.log` suffix, a hidden path (tool state), an SVG, and an extension outside
+    `LOG_TEXT_EXTENSIONS` and `LOG_IMAGE_MAGIC` stay behind on the name alone; then every file is held
+    to `LOG_MAX_BYTES`, read from `stat` before any byte, and a file the compile cannot stat or open
+    stays behind rather than raising. A `.log` that passes ships unchecked for content, as it always
+    has; an image starts with its format's magic; text decodes as UTF-8 (a byte-order mark allowed), a
+    `.json` parses as one document, and every non-blank `.jsonl` line parses. The caller passes a
+    regular file or a symlink, never a directory.
+    """
+    reasons = LOG_NOT_SHIPPED_REASONS
+    if _reached_through_a_link(path, spec_dir):
         return reasons["symlink"]
+    is_log = path.suffix == ".log"
     ext = path.suffix.lower().lstrip(".")
     magic = LOG_IMAGE_MAGIC.get(ext)
-    if magic is not None:
+    if not is_log:
+        if any(part.startswith(".") for part in path.relative_to(logs_dir).parts):
+            return reasons["hidden_path"]
+        if ext == "svg":
+            return reasons["svg"]
+        if magic is None and ext not in LOG_TEXT_EXTENSIONS:
+            shown = f".{ext}" if ext else "none"
+            shipped = ", ".join(f".{e}" for e in sorted(LOG_TEXT_EXTENSIONS | set(LOG_IMAGE_MAGIC)))
+            return f"{reasons['extension']} (this one is {shown}; {shipped} do)"
+    # A `.log` is opened and nothing read (its content is not checked), an image reads its magic, and
+    # text reads whole, which the ceiling above bounds. One `OSError` arm: whether the stat or the open
+    # failed, the compile could not read it, and a published module may not depend on which.
+    try:
         size = path.stat().st_size
-        if size > LOG_IMAGE_MAX_BYTES:
-            return f"{reasons['oversize']} ({size} bytes, and the ceiling is {LOG_IMAGE_MAX_BYTES})"
+        if size > LOG_MAX_BYTES:
+            return f"{reasons['oversize']} ({size} bytes, and the ceiling is {LOG_MAX_BYTES})"
         with path.open("rb") as handle:
-            if handle.read(len(magic)) != magic:
-                return f"{reasons['magic']} (.{ext})"
+            data = handle.read(0 if is_log else len(magic) if magic is not None else -1)
+    except OSError:
+        return reasons["unreadable"]
+    if is_log:
         return None
-    if ext == "svg":
-        return reasons["svg"]
-    if ext not in LOG_TEXT_EXTENSIONS:
-        shown = f".{ext}" if ext else "none"
-        shipped = ", ".join(f".{e}" for e in sorted(LOG_TEXT_EXTENSIONS | set(LOG_IMAGE_MAGIC)))
-        return f"{reasons['extension']} (this one is {shown}; {shipped} do)"
-    data = path.read_bytes()
+    if magic is not None:
+        return None if data == magic else f"{reasons['magic']} (.{ext})"
     # A byte-order mark is UTF-8 a Windows editor writes, and no part of the JSON. It is stripped
     # here rather than by `utf-8-sig`, whose error offset counts from after the mark, so the offset
     # named below is the file's own.
@@ -229,10 +266,11 @@ def _collect_logs(
 
     Auto-discovers a top-level aggregate log (`*.log` in `spec_dir`) plus files under a
     `spec_dir/logs/` folder, preserving each file's path relative to the module. Under `logs/`,
-    `_log_left_behind_reason` decides: a `*.log` ships as it always has, unchecked; a
-    `.txt`/`.md`/`.json`/`.jsonl`/`.png`/`.jpg`/`.jpeg` ships when its content matches its name (RM338)
-    and is named by an info line so an author sees it before publishing; every other path under `logs/`
-    stays behind with a `log_file_not_shipped` warning naming it and the reason (RM337), in both modes.
+    `_log_left_behind_reason` decides, for the top-level `*.log` too: a `*.log` ships unchecked for
+    content; a `.txt`/`.md`/`.json`/`.jsonl`/`.png`/`.jpg`/`.jpeg` ships when its content matches its
+    name (RM338) and is named by an info line so an author sees it before publishing; nothing ships
+    through a symlink, `logs/` itself included, over `LOG_MAX_BYTES`, or unreadable (RM348); every
+    path left behind gets a `log_file_not_shipped` warning naming it and the reason (RM337), in both modes.
     An explicit `log_files` list overrides discovery, ships what it names and warns about nothing.
     Files are copied into `output_dir` (so they ship with the module) and returned as hashed
     `FileEntry` rows, beside the warnings. No logs → empty lists (a valid module).
@@ -247,27 +285,42 @@ def _collect_logs(
                 rel = path.name
             pairs.append((rel, path))
     else:
-        for path in sorted(spec_dir.glob("*.log")):
-            pairs.append((path.name, path))
+        candidates = sorted(spec_dir.glob("*.log"))
         logs_dir = spec_dir / "logs"
-        if logs_dir.is_dir():
-            for path in sorted(logs_dir.rglob("*")):
-                # A real directory is walked, not judged. A symlink is judged whatever it points at (a
-                # file, a directory, nothing), since discovery never follows one into the module.
-                if not path.is_symlink() and not path.is_file():
+        # `logs/` is a candidate like any path under it (RM348): a link is judged and never walked,
+        # since listing it would already be reading outside the module, and one finding names it.
+        if logs_dir.is_symlink() or logs_dir.is_dir():
+            candidates.append(logs_dir)
+            if not _reached_through_a_link(logs_dir, spec_dir):
+                candidates.extend(sorted(logs_dir.rglob("*")))
+        for path in candidates:
+            # A symlink is judged whatever it points at (a file, a directory, nothing), since discovery
+            # never follows one. A real directory is walked, not judged, unless the compile cannot list
+            # it, when everything under it stays behind unseen and the directory is what is named. A
+            # directory that resolves elsewhere without being a symlink (a Windows junction) is judged
+            # as a link. A top-level `*.log` that is a directory is not a log, and stays silent.
+            if path.is_symlink() or path.is_file():
+                reason = _log_left_behind_reason(path, logs_dir, spec_dir)
+            elif path.is_dir() and path.is_relative_to(logs_dir):
+                if _reached_through_a_link(path, spec_dir):
+                    reason = LOG_NOT_SHIPPED_REASONS["symlink"]
+                elif _listable(path):
                     continue
-                rel = path.relative_to(spec_dir).as_posix()
-                reason = _log_left_behind_reason(path, logs_dir)
-                if reason is not None:
-                    warnings.append(
-                        CodedWarning("log_file_not_shipped", f"{rel} {LOG_NOT_SHIPPED_PHRASE}: {reason}.")
-                    )
-                    continue
-                # `*.log` ships unchecked and unannounced, exactly as before RM338; a newly shipped
-                # kind is named so an author sees it before publishing a permanent file.
-                if path.suffix != ".log":
-                    logger.info("%s ships with the module (its content matches its name)", rel)
-                pairs.append((rel, path))
+                else:
+                    reason = LOG_NOT_SHIPPED_REASONS["unreadable"]
+            else:
+                continue
+            rel = path.relative_to(spec_dir).as_posix()
+            if reason is not None:
+                warnings.append(
+                    CodedWarning("log_file_not_shipped", f"{rel} {LOG_NOT_SHIPPED_PHRASE}: {reason}.")
+                )
+                continue
+            # `*.log` ships unchecked and unannounced, exactly as before RM338; a newly shipped
+            # kind is named so an author sees it before publishing a permanent file.
+            if path.suffix != ".log":
+                logger.info("%s ships with the module (its content matches its name)", rel)
+            pairs.append((rel, path))
 
     seen: set[str] = set()
     names: list[str] = []
