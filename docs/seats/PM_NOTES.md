@@ -64,9 +64,9 @@ purpose; normalization is the compiled parquet's job (RM346, 1.0).
   - the scope table has no row for RM361–RM370 or the RM267 REST witness; I write it on main unless the lead
     writes it on 0.8;
   - RM_TOC.md on 0.8 still carries RM361–RM370's reservation lines (the lead's records pass);
-  - RM373–RM376 (the migration probe's classes) are unsized. My default: into 0.8 if 0.8 gives a false answer
-    without it (RM374, RM376 look so), else 0.9 (RM373, RM375) unless the lead measured it under an hour.
-    `unattended`, waiting on the lead's read.
+  - RM373–RM376: **0.8, by the maintainer's decision in the lead's interview on the migration probe**
+    (2026-11-04 evening), which my default did not know of. The lead writes the RM_TOC cleanup at the cut merge.
+  - Both scope rows written on main in e1869851 (done).
 - **RM253's precedent, from just-vcf's lead (2026-11-04)**: the short-read callers they read (GATK,
   DeepVariant, DRAGEN, freeBayes, CGI) all write a repeat-length change as a left-aligned sequence indel,
   so 0.8's spelling matches. The repeat-count forms (ExpansionHunter `<STRn>` + REPCN, TRGT AL/MC,
