@@ -47,7 +47,7 @@ that timed out, a body that would not parse and a cell that was absent each writ
 answer: a 410 recorded as `unreachable` (an outage), a 429 or a maintenance page recorded as `absent`
 (permanent, never asked again), an unread snapshot part as `not_in_release`, an undecided regex as a quote
 missing from the paper, an absent `ref` formatted into a key as `None`. The hunt across all three packages
-found the same shape in twelve more places. It is fixed as a class, by one mechanism per kind of
+found the same shape in the places listed below. It is fixed as a class, by one mechanism per kind of
 boundary, each with a guard that walks the members rather than pinning a site.
 
 **The mechanism.**
@@ -108,8 +108,9 @@ boundary, each with a guard that walks the members rather than pinning a site.
     not-found errors; anything else the lane's error.
 13. `gnomad.py` per-alias errors (a timeout, an internal error) left a null node, written `not_found` by
     `frequencies`, `gene_metrics` and the resolver chain → `GnomadClient.unanswered`; no row, named
-    (`FrequencyResult.unanswered`, `GeneMetricsResult.unconsulted`, `unreachable_rsids`), and `strict`
-    refuses. A whole-link gnomAD failure leaves its rsIDs unreachable rather than `not_found`.
+    (`FrequencyResult.unanswered`, `GeneMetricsResult.unconsulted`; in the resolver chain a warning,
+    because gnomAD is the last-resort link and its error may not overwrite another link's answer), and
+    `strict` refuses. An alias error saying "not found" stays gnomAD's absence.
 14. `grch37.py` `variants_at` / `reference_bases`: every 4xx → "nothing there" → only the 400; retries a
     5xx and a 429.
 15. `civic_api` + `civic_citations`: a read short of CIViC's stated total made each recorded paper
@@ -127,7 +128,13 @@ boundary, each with a guard that walks the members rather than pinning a site.
 21. `identifiers.OntologyClient`: an OLS4 or HGNC body of another shape → `absent`/`unknown` →
     `IdentifierUnavailable`. `clingen_allele._parse`: a non-record body → `no_identity` → `unchecked`.
 22. The withholding clients (`CrossrefClient`, `PmcIdConverterClient`, `PmcBiocClient`, `Grch37Client`,
-    `EnsemblResolver`, `ClingenAlleleClient`) answered a 410 as an outage → `Withholding.retired`.
+    `EnsemblResolver`, `ClingenAlleleClient`) answered a 410 as an outage → `Withholding.retired`, logged
+    once per client; Crossref's `citation_existence` skip and Ensembl's unreachable-rsIDs warning read it.
+    The other four outcomes have no reason field (a GRCh37 diagnosis `unchecked`, a Registry outcome
+    `unchecked`, an id the converter left out), and none was added: the 410 reaches the run's log.
+23. The review's: an `esummaryresult` "Invalid uid" envelope is NCBI's answer, not an outage; a gated or
+    401/403 Hub repo is not "nothing published"; `lookup` says "frequencies unchecked" for an allele gnomAD
+    errored on.
 
 **Guards** (`enricher/tests/test_could_not_ask.py` unless named): the `*Retired` classes equal the
 `EndpointRetired`-marked ones, walked; an AST walk refuses any `except` arm writing an unreachable reason
