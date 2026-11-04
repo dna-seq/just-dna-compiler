@@ -49,6 +49,8 @@ None open.
   reset with "continue from build/<unit>'s last commit" (shared brief: scratchpad `worker_common_w2.md`).
   Wave 3 after the StudyRow batch: study-orphan widening, RM331's computed LD pair; wave 4: RM267, examples;
   wave 5: RM270, release-gate sweep.
+  Pre-cut order (the person, 2026-11-04): audit rounds + class fixes, gate sweep, a DOCS subagent (user guides
+  re-run against 0.8, doc map, nav), then the cut subagent (packaging only). Brief items: scratchpad `cut_brief_notes.md`.
 
 - **0.8's build** (the pm's handout, 2026-11-04): the plan is `docs/proposals/PROPOSAL_0_8_PT2.md`
   (3d5adcd), critic-read. Seven pm questions in its §4, each with a default the build takes. Wave 0 is
