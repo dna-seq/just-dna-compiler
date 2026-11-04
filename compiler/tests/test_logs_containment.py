@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 from just_dna_compiler.compiler import (
+    LOG_IMAGE_MAX_BYTES,
     LOG_MAX_BYTES,
     LOG_NOT_SHIPPED_PHRASE,
     LOG_NOT_SHIPPED_REASONS,
@@ -209,3 +210,49 @@ def test_rm348_an_explicit_list_still_ships_a_link(tmp_path: Path) -> None:
     assert result.success and result.manifest is not None, result.errors
     assert [e.name for e in result.manifest.logs] == ["logs/secret.log"]
     assert _findings(result.warnings) == {}
+
+
+def test_rm348_a_failed_open_is_the_unreadable_arm_whoever_runs_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The mode-based tests skip as root, where CI often runs. This one makes the open itself fail for
+    # chosen paths, so the arm, and the compile surviving it, are exercised on every runner. Only the
+    # filesystem's answer is replaced; the verdict and the compile run as they do for real.
+    spec = _apoe(tmp_path)
+    refused = {"logs/a.log", "logs/b.json", "logs/c.png", "top.log"}
+    for rel in refused:
+        (spec / rel).write_bytes(b"\x89PNG\r\n\x1a\n" if rel.endswith(".png") else b"{}\n")
+    (spec / "logs" / "authoring.log").write_text("drafted rs429358\n")
+    real_open = Path.open
+
+    def refusing_open(self: Path, *args: object, **kwargs: object):  # noqa: ANN202
+        if self.name in {Path(rel).name for rel in refused}:
+            raise PermissionError(13, "Permission denied", str(self))
+        return real_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", refusing_open)
+    result = compile_module(spec, tmp_path / "out")
+    assert result.success and result.manifest is not None, result.errors
+    assert {e.name for e in result.manifest.logs} == {"logs/authoring.log"}
+    found = _findings(result.warnings)
+    assert set(found) == refused
+    assert all(_arms(line) == {"unreadable"} for line in found.values()), found
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads a directory whatever its mode")
+def test_rm348_a_top_level_directory_named_log_stays_silent(tmp_path: Path) -> None:
+    # A top-level `*.log` that is a directory is not a log, readable or not: it was skipped without a
+    # word before RM348, and an unreadable one is not turned into a finding about logs.
+    spec = _apoe(tmp_path)
+    (spec / "archive.log").mkdir()
+    if not _lock(spec / "archive.log"):
+        pytest.skip("this filesystem ignores the mode, so nothing can be made unreadable")
+    result = compile_module(spec, tmp_path / "out")
+    (spec / "archive.log").chmod(0o755)
+    assert result.success, result.errors
+    assert _findings(result.warnings) == {}
+
+
+def test_rm348_the_old_ceiling_name_still_reads() -> None:
+    # `LOG_IMAGE_MAX_BYTES` is on `main`, which a 0.7 patch publishes, so 0.8 keeps it as an alias.
+    assert LOG_IMAGE_MAX_BYTES == LOG_MAX_BYTES

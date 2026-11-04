@@ -699,7 +699,7 @@ bucket table now say what happens instead.
 `*.log` ships, and joins 0.8 as filed) · **Owner** compiler (`_collect_logs`) · **Motivating case** the
 RM337 builder's report, 2026-11-04 · *related* RM337, RM338, RM347
 
-**Residuals** none
+**Residuals** won't fix — a hard link reaches outside the module with no symlink at any level, and `st_nlink` cannot tell an author's own link from a reach outside, so it is reported to the lead rather than guessed at here · won't fix — the copy into the output reads the file again after the check, so a file still being appended can ship past the ceiling; closing it means copying the checked bytes, which is reported to the lead as its own question
 
 **0.8, filed 2026-11-04 by the lead** as a second-pass item (RELEASE_CYCLE § Minors step 4): found while building
 RM337, in behaviour RM338 shipped.
@@ -729,8 +729,9 @@ open: over `LOG_MAX_BYTES` is `oversize` with both sizes, any `OSError` is the n
 compile could not read it"*. A `.log` is opened and nothing read, an image reads its magic, text reads
 whole, now bounded. `_collect_logs` judges the top-level `*.log` through the same function, and treats
 `logs/` as a candidate like any path under it: a link is judged and never walked, so one finding names
-`logs`. `LOG_IMAGE_MAX_BYTES` is renamed `LOG_MAX_BYTES` with no alias: no tag carries the old name
-(`git tag --contains 8666490` is empty) and no sibling repository imports it. Two sentences moved with
+`logs`. The ceiling is `LOG_MAX_BYTES`, and `LOG_IMAGE_MAX_BYTES` stays as a working alias of it: no
+tag carries the old name yet, but `main` does, and the next 0.7 patch publishes it, so removing it in
+0.8 would be a removal inside the major line (Principle 3). Two sentences moved with
 the rule, legal because RM337 is uncut: the symlink reason now reads *"it is a symlink or lies under one,
 and a link can reach outside the module"*, and the oversize reason *"it is larger than the ceiling for a
 file discovery ships"*. Three choices the contract left open:
@@ -743,6 +744,11 @@ file discovery ships"*. Three choices the contract left open:
   again. `_listable` asks for read and search (`os.access`, `R_OK | X_OK`), since a directory with one
   and not the other hides its files just the same, and an unlistable directory, `logs/` included, draws
   the `unreadable` reason in place of its files. It ships nothing new and adds no arm.
+- **A directory that resolves elsewhere without being a link is judged as one.** A Windows junction
+  is a directory to `is_symlink()`; the walk asks `_reached_through_a_link` of every directory it
+  meets, so one draws the symlink reason rather than being walked or passed over. No test here can
+  make a junction. A top-level `*.log` that is a directory is not a log and stays silent, readable
+  or not, as it was before.
 - **The intermediate-level half of the rule is driven directly.** Python 3.13's `rglob` does not descend
   into a linked directory (it yields the link, which draws the symlink reason), so no compile reaches a
   file under one. The resolved-path comparison is still the rule as filed, and a test drives the real
@@ -760,7 +766,9 @@ unreadable `.json`, so its walk over the arms reaches the new one, with the same
 test red before the code was kept: no link check, the leaf `is_symlink()` alone, `logs/` walked through a
 link, the top level not judged, the ceiling on images only, `>=` at the ceiling, `OSError` uncaught, a
 `.log` stat-ed but not opened, the `unreadable` arm given `not_utf8`'s sentence, every directory listable,
-read asked without search, and an unlistable directory skipped. One did not, and its guard was removed
+read asked without search, an unlistable directory skipped, and an unreadable top-level directory
+named `*.log` judged. A test that refuses the open itself for chosen paths reaches the `unreadable` arm
+on a runner that is root, where the mode-based tests skip. One did not, and its guard was removed
 rather than kept: `_listable(logs_dir)` before the walk, which `rglob` on an unreadable directory already
 makes a no-op.
 

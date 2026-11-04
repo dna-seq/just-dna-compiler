@@ -118,6 +118,9 @@ LOG_IMAGE_MAGIC: dict[str, bytes] = {
 # not a log. One ceiling for every file discovery ships, `*.log` included (RM348; RM338 drew it for
 # images only), read from `stat` before any byte.
 LOG_MAX_BYTES: int = 5 * 1024 * 1024
+# RM338's name for the same ceiling, from when it held for images only. It is on `main`, which the next
+# 0.7 patch publishes, so 0.8 keeps it as a working alias (Principle 3) rather than removing it.
+LOG_IMAGE_MAX_BYTES: int = LOG_MAX_BYTES
 
 
 #: The fragment every `log_file_not_shipped` line carries (RM337). A consumer greps for it, so it is
@@ -159,8 +162,9 @@ def _listable(directory: Path) -> bool:
 
     A walk skips a directory it cannot read without a word, so the files under it would stay behind
     unnamed. Listing needs read and stat needs search, and a directory with one and not the other hides
-    its files just the same, so both are asked."""
-    return os.access(directory, os.R_OK | os.X_OK)
+    its files just the same, so both are asked, as the effective user where the platform can (a setuid
+    or sudo-run compile reads with those ids, not the real ones)."""
+    return os.access(directory, os.R_OK | os.X_OK, effective_ids=os.access in os.supports_effective_ids)
 
 
 def _log_left_behind_reason(path: Path, logs_dir: Path, spec_dir: Path) -> str | None:
@@ -277,13 +281,18 @@ def _collect_logs(
         for path in candidates:
             # A symlink is judged whatever it points at (a file, a directory, nothing), since discovery
             # never follows one. A real directory is walked, not judged, unless the compile cannot list
-            # it, when everything under it stays behind unseen and the directory is what is named.
+            # it, when everything under it stays behind unseen and the directory is what is named. A
+            # directory that resolves elsewhere without being a symlink (a Windows junction) is judged
+            # as a link. A top-level `*.log` that is a directory is not a log, and stays silent.
             if path.is_symlink() or path.is_file():
                 reason = _log_left_behind_reason(path, logs_dir, spec_dir)
-            elif path.is_dir():
-                if _listable(path):
+            elif path.is_dir() and path.is_relative_to(logs_dir):
+                if _reached_through_a_link(path, spec_dir):
+                    reason = LOG_NOT_SHIPPED_REASONS["symlink"]
+                elif _listable(path):
                     continue
-                reason = LOG_NOT_SHIPPED_REASONS["unreadable"]
+                else:
+                    reason = LOG_NOT_SHIPPED_REASONS["unreadable"]
             else:
                 continue
             rel = path.relative_to(spec_dir).as_posix()

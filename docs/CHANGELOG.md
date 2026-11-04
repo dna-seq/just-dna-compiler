@@ -48,7 +48,7 @@ exactly where it lies inside the spec directory. A symlink at any level stays be
 `log_file_not_shipped`'s symlink reason, now *"it is a symlink or lies under one, and a link can reach
 outside the module"*, and a `logs/` that is itself a link is not walked: one finding names `logs`.
 Every discovered file is held to one ceiling, `LOG_MAX_BYTES` (5 MiB, read from `stat` before any byte;
-it replaces `LOG_IMAGE_MAX_BYTES`, which no release carried), and the oversize reason now reads *"it is
+`LOG_IMAGE_MAX_BYTES`, RM338's name on `main`, stays as an alias of it), and the oversize reason now reads *"it is
 larger than the ceiling for a file discovery ships"*. A file the compile cannot stat or open stays behind
 with a new reason, *"the compile could not read it"*, where a `PermissionError` used to fail the
 compile; a directory under `logs/`, or `logs/` itself, that the compile cannot list and search draws
