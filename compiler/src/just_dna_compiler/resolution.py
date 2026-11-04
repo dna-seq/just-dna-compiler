@@ -1206,19 +1206,23 @@ def _verify(v: VariantRow, loci: list[ResolutionRow], ladders: list[LadderFindin
                 f"{sorted(keys)}: whether the two are one event in two spellings is undecided (the "
                 f"enricher recorded `authored_event=undecided`)."
             )
+            # Why strict declines here is an unsettled spelling, not an irreproducible artifact, and
+            # neither side is the one to fix until it is settled (RM375).
+            refusal = (
+                message + " strict builds only on an authored pair the table agrees with, and this one is "
+                "unsettled: re-derive online (`just-dna-enricher enrich --rederive`) so the enricher reads "
+                "the reference, or author the VCF POS if the start is another convention's position; or "
+                "compile without strict."
+            )
         else:
             message = coordinate_disagrees(
                 subject=v.rsid or coordkey,
                 authored=coordkey,
                 reported=f"the resolution table maps it to {sorted(keys)}",
             )
-        ladders.append(
-            LadderFinding(
-                CodedWarning("rsid_coordinate_disagrees", message),
-                refusal=(
-                    message + " The authored value is kept, so the table's position does not survive a "
-                    "reverse — the compile is not reproducible from it. Fix one of the two, or compile "
-                    "without strict."
-                ),
+            refusal = (
+                message + " The authored value is kept, so the table's position does not survive a "
+                "reverse — the compile is not reproducible from it. Fix one of the two, or compile "
+                "without strict."
             )
-        )
+        ladders.append(LadderFinding(CodedWarning("rsid_coordinate_disagrees", message), refusal=refusal))

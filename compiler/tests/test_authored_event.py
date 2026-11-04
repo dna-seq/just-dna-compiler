@@ -142,10 +142,12 @@ def test_the_snp_core_pair_reads_the_recorded_verdict(verdict: str | None) -> No
     assert [v.start for v in outcome.variants] == [AUTHORED_START]
     if verdict == "same_event":
         assert found == []
-        assert outcome.channels(strict=True)[1] == []
+        assert outcome.channels(strict=True)[0] == [], "no strict refusal"
     elif verdict == "undecided":
         assert len(found) == 1
         assert not _ACCUSING.search(found[0]), found[0]
+        (refusal,) = outcome.channels(strict=True)[0]
+        assert not _ACCUSING.search(refusal) and "Fix one of the two" not in refusal, refusal
     else:
         assert len(found) == 1
         assert "(reference disagreement" in found[0]
