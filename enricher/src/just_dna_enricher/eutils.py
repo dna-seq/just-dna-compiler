@@ -200,7 +200,14 @@ class EutilsClient:
         out: dict[str, dict[str, Any]] = {}
         for batch in batched(wanted, self.settings.batch_size):
             payload = self._get("esummary.fcgi", {"db": db, "id": ",".join(batch), "retmode": "json"})
-            result = payload.get("result") or {}
+            result = payload.get("result") if isinstance(payload, dict) else None
+            if not isinstance(result, dict) or not isinstance(result.get("uids"), list):
+                # A 200 whose JSON is not a summary — NCBI's `{"error": …}` envelope (a throttle or an
+                # API-key refusal), or a schema it changed — answered nothing about any uid in the batch.
+                # Reading it as "no such document" for every uid stamped `absent` on live rsIDs and
+                # `not_found` on real PMIDs (RM361); it is the could-not-ask type instead.
+                said = " ".join(str(payload).split())[:200]
+                raise EutilsError(f"eutils answered esummary for {db} with no summary block: {said}")
             for uid in batch:
                 record = result.get(uid)
                 if isinstance(record, dict):

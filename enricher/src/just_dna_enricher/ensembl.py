@@ -27,7 +27,7 @@ from tenacity import (
 )
 
 from just_dna_enricher.clingen_allele import anchor_indel
-from just_dna_enricher.net import attempt_floor
+from just_dna_enricher.net import attempt_floor, retry_if_transient
 from just_dna_enricher.sequences import SequenceProxy
 
 logger = logging.getLogger(__name__)
@@ -36,6 +36,10 @@ logger = logging.getLogger(__name__)
 DEFAULT_GRAPHQL_ENDPOINT = "https://beta.ensembl.org/api/graphql/variation"
 DEFAULT_REST_ENDPOINT = "https://rest.ensembl.org"
 _FALLBACK_STATUS = frozenset({500, 502, 503, 504})
+#: The one status REST answers "no such variation" with: a 400 naming the rsID (`rs3216883`). Every
+#: other status (a 429 throttle, a 403, a 404 path, a 410 retired route, any 5xx) answered nothing
+#: about the rsID, so it is could-not-ask, never the empty answer (RM361).
+_REST_NO_RECORD_STATUS = 400
 _ASSEMBLY = "GRCh38"
 
 # Minimal variant query (ensembl-mcp's variation backend shape, trimmed to the location fields we
@@ -108,9 +112,10 @@ class EnsemblResolver:
         in the fabricated pile on a flaky run. This is the tri-state rule the rest of the tree keeps —
         an unreachable source reports unknown, never the negative.
 
-        A **4xx is an answer**, not a failure: Ensembl 400s on rsIDs it cannot resolve (`rs3216883`,
-        which dbSNP reports as merged), so only a 5xx, a transport error or a timeout — the cases where
-        nothing came back at all — return `None`. An empty answer now carries its source too, so a
+        A **400 is an answer**, not a failure: Ensembl 400s on rsIDs it cannot resolve (`rs3216883`,
+        which dbSNP reports as merged). Every other status — a 429 throttle, a 403, a 404, a 410, a
+        5xx — and a transport error or a timeout return `None` (RM361: until then every 4xx was the
+        empty answer, and a throttled run wrote `not_found` for live rsIDs). An empty answer now carries its source too, so a
         caller can record *which* link said nothing; that omission was the only trace the old code
         left, and it was a missing element in a set nobody diffs.
 
@@ -134,7 +139,7 @@ class EnsemblResolver:
         try:
             loci, withheld, unplaceable = self._rest_rsid(rsid)
         except httpx.HTTPStatusError as exc:
-            if exc.response.status_code in _FALLBACK_STATUS:
+            if exc.response.status_code != _REST_NO_RECORD_STATUS:
                 logger.warning("V1 REST for %s failed: %s", rsid, exc)
                 return None, None
             logger.info("V1 REST has no record for %s (%s)", rsid, exc)
@@ -193,7 +198,7 @@ class EnsemblResolver:
     @retry(
         stop=attempt_floor(3),
         wait=wait_exponential_jitter(initial=0.5, max=8.0),
-        retry=retry_if_exception_type((httpx.TransportError, httpx.TimeoutException)),
+        retry=retry_if_transient(),
         reraise=True,
     )
     def _rest_rsid(self, rsid: str) -> tuple[list[dict], int, int]:

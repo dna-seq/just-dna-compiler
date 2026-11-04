@@ -90,6 +90,7 @@ from just_dna_enricher.locations import (
     resolve_ensembl_reference,
     resolve_pubmind_reference,
 )
+from just_dna_enricher.net import could_not_ask_reason
 from just_dna_enricher.placement import (
     PlacementCheck,
     answered_placements,
@@ -1462,6 +1463,9 @@ def _run_enrichment(
     # because doing so would migrate `variant_key` by network lookup. See `identifiers.check_rsids`.
     stale_rsids: list[RsidStatus] = []
     rsid_subjects = 0
+    # Why dbSNP never answered, when it did not (RM361): the record is then a skip, never `ran` over
+    # subjects nobody asked about with zero findings.
+    rsid_unanswered: tuple[str, str] | None = None
     if verify_rsids and not offline:
         # The rows the table carries, and every rsID a meta.csv member names (0.8): one variant under
         # two keys is a meta-table disagreement hidden as a difference, and NCBI is the merge oracle.
@@ -1489,6 +1493,10 @@ def _run_enrichment(
             # run never established — `@unreachable-not-absent`, one column over.
             logger.warning("dbSNP rsID check failed (%s); continuing without rsID verdicts.", exc)
             statuses = []
+            rsid_unanswered = (
+                could_not_ask_reason(exc),
+                f"dbSNP could not be asked about {rsid_subjects} rsID(s): {exc}",
+            )
         by_rsid = {s.rsid: s for s in statuses}
         for row in out:
             status = by_rsid.get(row.rsid or "")
@@ -1892,6 +1900,7 @@ def _run_enrichment(
                 verify_rsids=verify_rsids,
                 rsid_subjects=rsid_subjects,
                 stale_rsids=stale_rsids,
+                rsid_unanswered=rsid_unanswered,
                 pairs=pair_check,
                 ensembl_ref=reference,
                 placement=placement,

@@ -20,9 +20,10 @@ from just_dna_enricher.ensembl import EnsemblResolver
 from just_dna_enricher.eutils import EutilsClient
 from just_dna_enricher.gnomad import GnomadClient
 from just_dna_enricher.net import PacingGate
-from just_dna_format.layout import SOURCES_CSV, preferred_spelling
+from just_dna_format.layout import SOURCES_CSV, VERIFICATION_JSON, preferred_spelling
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.sources import SourceRow, taints_commercial_use
+from just_dna_format.verification import read_verification
 from just_dna_format.vrs import derive_vrs_allele_id
 
 #: The licence sidecar's current filename, derived rather than named: it gained a second
@@ -486,8 +487,9 @@ def test_three_answered_or_failed_states_are_named_apart_and_stay_unresolved(
     assert result.reference_rejected_loci == []
 
 
+@pytest.mark.parametrize("status, reason", [(503, "unreachable"), (410, "retired")])
 def test_a_dbsnp_outage_does_not_sink_a_finished_enrichment(
-    cache: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    cache: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, status: int, reason: str
 ) -> None:
     """The rsID check runs last and had no handler at all (RM97).
 
@@ -507,7 +509,7 @@ def test_a_dbsnp_outage_does_not_sink_a_finished_enrichment(
     monkeypatch.setattr(time, "sleep", lambda _seconds: None)  # tenacity's backoff, not the gate's
 
     def unwell(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(503, json={"error": "service unavailable"})
+        return httpx.Response(status, json={"error": "service unavailable"})
 
     def failing_check(rsids: list[str], **_kwargs: object) -> list:
         client = EutilsClient(gate=PacingGate(interval=0.0, clock=lambda: 0.0, sleeper=lambda _s: None))
@@ -532,6 +534,10 @@ def test_a_dbsnp_outage_does_not_sink_a_finished_enrichment(
         "nobody asked dbSNP, so no row may carry a verdict"
     )
     assert (spec / "resolution.csv").exists() or (spec / "derived" / "resolution.csv").exists()
+    # RM361: the record says nobody was asked, and why — never `ran` with zero findings, which published
+    # the outage as a clean currency check, and never `unreachable` for a retired endpoint.
+    [record] = [r for r in read_verification(spec / VERIFICATION_JSON).records if r.check == "rsid_currency"]
+    assert record.skipped == reason
 
 
 def test_offline_with_no_cache_at_all_writes_no_not_found_row(tmp_path: Path) -> None:

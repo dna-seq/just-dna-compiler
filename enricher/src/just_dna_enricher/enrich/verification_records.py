@@ -110,6 +110,7 @@ def _verification_records(
     ensembl_ref: Path | None,
     placement: PlacementCheck,
     currency: CurrencyCheck | None,
+    rsid_unanswered: tuple[str, str] | None = None,
 ) -> list[VerificationRecord]:
     """The checks this pass puts, as records `verification.json` can carry (RM45).
 
@@ -338,6 +339,11 @@ def _verification_records(
                 source="dbsnp",
             )
         )
+    elif rsid_unanswered is not None:
+        # dbSNP never answered (RM361): the subjects were never asked, so a `ran` with no findings
+        # would publish an outage as a clean currency check.
+        reason, detail = rsid_unanswered
+        records.append(skipped("rsid_currency", reason, detail=detail, source="dbsnp"))
     else:
         records.append(
             ran(

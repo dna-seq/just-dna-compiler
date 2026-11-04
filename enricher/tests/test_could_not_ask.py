@@ -23,7 +23,8 @@ import httpx
 import just_dna_enricher
 import pytest
 from just_dna_enricher import literature
-from just_dna_enricher.eutils import EutilsClient, EutilsSettings
+from just_dna_enricher.ensembl import EnsemblResolver, EnsemblSettings
+from just_dna_enricher.eutils import EutilsClient, EutilsError, EutilsSettings, is_missing
 from just_dna_enricher.literature import (
     CrossrefClient,
     EuropePmcClient,
@@ -332,7 +333,8 @@ def test_an_undecided_regex_leaves_the_count_unsettled(
 
 def test_a_decided_regex_still_settles(tmp_path: Path) -> None:
     spec = _spec(tmp_path / "s", f"rsid,pmid,provenance_regex\nrs334,{_REAL},zzz-not-here-zzz\n")
-    [row] = _run(spec, lambda request: httpx.Response(200, json=_BIOC_CLINVAR)).rows
+    # A generous bound: a loaded machine must not turn this decided regex into an undecided one.
+    [row] = _run(spec, lambda request: httpx.Response(200, json=_BIOC_CLINVAR), regex_timeout=120.0).rows
     assert (row.quote_source, row.quotes_found, row.quotes_checked()) == ("fulltext", 0, 1)
 
 
@@ -350,3 +352,45 @@ def test_every_quote_tally_goes_through_the_one_count() -> None:
         if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "_study_quote_found"
     }
     assert callers == {"_quotes_found"}
+
+
+# ── two clients whose "no record" answer had grown to cover failures (found by the RM361 hunt) ──────
+
+
+@pytest.mark.parametrize("status", [400, 403, 404, 410, 429, 503])
+def test_ensembl_rest_reads_only_its_400_as_no_record(status: int) -> None:
+    """A 400 naming the rsID is Ensembl's "no such variation"; every other status answered nothing.
+
+    Before RM361 every 4xx was the empty answer, which `enrich` writes as `not_found` — the fingerprint
+    of a fabricated rsID — for a live one asked during a throttle.
+    """
+    resolver = EnsemblResolver(settings=EnsemblSettings())
+    resolver._client = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(status)))
+    expected = ([], "ensembl-rest") if status == 400 else (None, None)
+    assert resolver.resolve_rsid("rs334") == expected
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [{"error": "API rate limit exceeded"}, {"esummaryresult": ["Something went wrong"]}, {"result": {}}],
+    ids=["error-envelope", "other-shape", "no-uids"],
+)
+def test_an_esummary_with_no_summary_block_is_could_not_ask(payload: dict) -> None:
+    """A 200 JSON that is not a summary answered nothing about any uid. Before RM361 every uid in the
+    batch became NCBI's "no such document", so live rsIDs read `absent` and real PMIDs `not_found`."""
+    client = EutilsClient(settings=EutilsSettings(email=None), gate=_gate())
+    client._client = httpx.Client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json=payload))
+    )
+    with pytest.raises(EutilsError):
+        client.esummary("snp", ["334"])
+
+
+def test_an_esummary_uid_missing_from_a_real_summary_is_still_no_document() -> None:
+    """The answered absence is kept: a summary block that lists the batch and omits one uid."""
+    client = EutilsClient(settings=EutilsSettings(email=None), gate=_gate())
+    body = {"result": {"uids": ["1"], "1": {"uid": "1"}}}
+    client._client = httpx.Client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json=body))
+    )
+    assert is_missing(client.esummary("pubmed", ["1", "2"])["2"])
