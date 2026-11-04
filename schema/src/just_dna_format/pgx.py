@@ -78,15 +78,26 @@ HLA_GENE_PREFIX: str = "HLA-"
 HLA_ALLELE_PATTERN: re.Pattern[str] = re.compile(r"\*[0-9]{2,}(?::[0-9]{2,}){1,3}[NLSCAQ]?")
 
 
+def hla_allele_refusal(gene: str, allele: str) -> str | None:
+    """Why `allele` is refused for `gene` under IPD-IMGT/HLA's grammar (RM334), or `None` if it is not.
+
+    The one statement of the rule: the model's validator raises it, and a drafter skips on it, so the
+    two cannot disagree (`@drafting-scaffold`). Every gene outside `HLA-` answers `None`."""
+    if not gene.startswith(HLA_GENE_PREFIX) or HLA_ALLELE_PATTERN.fullmatch(allele):
+        return None
+    return (
+        f"{gene} is an HLA gene, so its allele must follow IPD-IMGT/HLA nomenclature: `*`, "
+        "then two to four colon-separated numeric fields of at least two digits each, then an "
+        "optional expression suffix (N, L, S, C, A or Q), e.g. *15:01, *57:01:01, *02:01:01:02N; "
+        f"the field count is the resolution the name states, so at least two are needed. Got: {allele!r}"
+    )
+
+
 def validate_hla_allele(gene: str, allele: str) -> str:
-    """Refuse an HLA allele name outside IPD-IMGT/HLA's grammar (RM334); any other gene passes."""
-    if gene.startswith(HLA_GENE_PREFIX) and not HLA_ALLELE_PATTERN.fullmatch(allele):
-        raise ValueError(
-            f"{gene} is an HLA gene, so its allele must follow IPD-IMGT/HLA nomenclature: `*`, "
-            "then two to four colon-separated numeric fields of at least two digits each, then an "
-            "optional expression suffix (N, L, S, C, A or Q), e.g. *15:01, *57:01:01, *02:01:01:02N; "
-            f"the field count is the resolution the name states, so at least two are needed. Got: {allele!r}"
-        )
+    """Raise `hla_allele_refusal`'s reason when there is one; return `allele` unchanged otherwise."""
+    refusal = hla_allele_refusal(gene, allele)
+    if refusal is not None:
+        raise ValueError(refusal)
     return allele
 
 
