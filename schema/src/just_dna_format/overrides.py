@@ -166,7 +166,8 @@ _MERGED = (
 #:   fact of the set and gene, whichever member asked, so an `update` reaches every member's row of
 #:   that pair and may not write `variant_key` itself (it is a key column). An `insert` matches on the
 #:   `variant_key` it supplies too, so it can add a second member's row to a pair. The limit is
-#:   `suppress`: it removes every member's row of the pair, and cannot withdraw one member's.
+#:   `suppress`: it removes every member's row of the pair, and cannot withdraw one member's. And two
+#:   inserts of one pair for two members share the overlay's own key, so only one is accepted.
 #: * `consequences.csv` — `transcript`. One variant carries a row per transcript (RM236).
 #:
 #: **`clin_sig_authority_calls.csv` is deliberately outside, and it is the pair's second decision.**
