@@ -61,7 +61,9 @@ is written to `literature.csv`, whose rows stay keyed on a PubMed id, so every o
 every DOI another agency registered, such as a DataCite dataset (`10.5281/zenodo.3360392`), which is
 real. After a 404 `CrossrefClient.work` asks `/works/{doi}/agency`: another agency answers
 `exists=True` with `CrossrefWork.agency` set and no title, a 404 there is `False`, and anything else
-withholds. This also changes an authored DOI's check on a PubMed row and `hint citation --doi`.
+withholds. This also changes an authored DOI's check on a PubMed row and `hint citation --doi`. A
+`literature.csv` row pinned before this with `doi_exists=false` for such a DOI keeps its verdict, since a
+pinned row is not re-fetched: delete the sidecar to re-derive it.
 
 **format** — `literature.settled_quotes`, the rule `LiteratureRow.quotes_checked` applies, as a function
 for a citation that has no row.

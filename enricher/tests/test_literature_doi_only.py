@@ -309,6 +309,33 @@ def test_a_hint_names_the_agency_rather_than_a_crossref_record_it_does_not_have(
     assert not any("Crossref has a record" in m for m in messages)
 
 
+def test_a_jats_answer_that_does_not_parse_is_unreachable_not_absent() -> None:
+    """The file list answered and the JATS leg came back as a maintenance page: withheld."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.params.get("type") == "METADATA":
+            return httpx.Response(200, json=_REPO_METADATA)
+        return httpx.Response(200, text="<html>maintenance")
+
+    client = EuropePmcClient(gate=_gate())
+    client._client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(FulltextUnavailable):
+        client.fetch_preprint_fulltext("PPR1129025")
+
+
+def test_the_record_with_a_route_to_the_text_wins_over_an_earlier_one_without() -> None:
+    """One DOI, two records: a text-less one first must not make the answer `absent`."""
+    preprint = _DOI_SEARCH[_PREPRINT]["resultList"]["result"][0]
+    textless = {**preprint, "id": "AGR0000001", "source": "AGR", "fullTextIdList": None}
+    payload = {"hitCount": 2, "resultList": {"result": [textless, preprint]}}
+    client = EuropePmcClient(gate=_gate())
+    client._client = httpx.Client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json=payload))
+    )
+    record = client.record_for_doi(_PREPRINT)
+    assert record is not None and record["preprint_id"] == preprint["id"]
+
+
 # ── the quote, against the preprint's own text ──────────────────────────────────────────────────
 
 
@@ -322,6 +349,8 @@ def test_a_quote_in_the_preprint_body_is_found(tmp_path: Path) -> None:
     assert (checked.quote_source, checked.fulltext_status) == ("fulltext", "retrieved")
     record = _records(spec)["provenance_quote"]
     assert (record.skipped, record.subjects, record.findings) == (None, 1, 0)
+    # The coverage sentence the run logs says the same, rather than "no provenance quotes authored".
+    assert result.coverage.startswith("checked 1 of 1 quote(s) on pmid NONE")
 
 
 def test_a_quote_the_preprint_does_not_carry_is_a_finding(tmp_path: Path) -> None:

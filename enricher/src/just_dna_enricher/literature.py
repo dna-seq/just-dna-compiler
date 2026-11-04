@@ -555,24 +555,32 @@ class EuropePmcClient:
                 f"Europe PMC answered {response.status_code} with a body that is not JSON: {exc}"
             ) from exc
         wanted = doi_key(doi)
+        matching: list[dict] = []
         for record in (payload.get("resultList") or {}).get("result") or []:
             if not record.get("doi") or doi_key(str(record["doi"])) != wanted:
                 continue
             record_id = str(record.get("id") or "")
             fulltext_ids = (record.get("fullTextIdList") or {}).get("fullTextId") or []
             preprint = record.get("source") == "PPR" and record_id in fulltext_ids
-            return {
-                "id": record_id or None,
-                "source": record.get("source"),
-                "pmcid": record.get("pmcid"),
-                "is_open_access": str(record.get("isOpenAccess") or "").upper() == "Y",
-                # Verbatim, and `None` when absent: unknown terms are unknown, never unlicensed.
-                "license": record.get("license") or None,
-                "abstract": record.get("abstractText"),
-                "title": record.get("title"),
-                "preprint_id": record_id if preprint else None,
-            }
-        return None
+            matching.append(
+                {
+                    "id": record_id or None,
+                    "source": record.get("source"),
+                    "pmcid": record.get("pmcid"),
+                    "is_open_access": str(record.get("isOpenAccess") or "").upper() == "Y",
+                    # Verbatim, and `None` when absent: unknown terms are unknown, never unlicensed.
+                    "license": record.get("license") or None,
+                    "abstract": record.get("abstractText"),
+                    "title": record.get("title"),
+                    "preprint_id": record_id if preprint else None,
+                }
+            )
+        # One DOI can have several records (a MEDLINE or AGRICOLA one beside the preprint's), and only
+        # some carry a route to the text: the first one that does wins, else the first match, so an
+        # earlier text-less hit never makes the answer `absent` while a later one holds the text.
+        return next(
+            (r for r in matching if r["pmcid"] or r["preprint_id"]), matching[0] if matching else None
+        )
 
     def fetch_preprint_fulltext(self, preprint_id: str) -> str | None:
         """A preprint's JATS body as normalized text; `None` when the repository lists no XML file for
@@ -619,7 +627,14 @@ class EuropePmcClient:
             raise FulltextUnavailable(
                 f"Europe PMC's preprint repository answered for {preprint_id} with no readable file list: {exc}"
             ) from exc
-        return extract_text(response.text)
+        text = extract_text(response.text)
+        if text is None:
+            # A 200 that is not JATS (a maintenance page) is the fourth leg: withheld, never `absent`.
+            raise FulltextUnavailable(
+                f"Europe PMC's preprint repository answered 200 for {preprint_id}'s JATS with a body that "
+                f"does not parse"
+            )
+        return text
 
 
 @dataclass(frozen=True)
@@ -1387,6 +1402,9 @@ def enrich_literature(
         mode=mode,
         cited=sorted(citations, key=int),
         quotes_authored=authored_total,
+        # Set here, before the coverage line is logged, so the log carries the DOI-only clause (RM349).
+        quotes_without_pmid=without_pmid,
+        citations_without_pmid=cited_by_doi_only,
         fulltext_requested=check_fulltext,
     )
 
@@ -1584,7 +1602,9 @@ def enrich_literature(
     _tally_existence(result, citations)
     # A DOI no registration agency knows is a cited DOI that does not resolve, whichever kind of row
     # cites it (RM349), so the `strict` gate and the report below name it with the others.
-    result.doi_missing += [c.doi for c in result.doi_citations if c.exists is False]
+    result.doi_missing += [
+        c.doi for c in result.doi_citations if c.exists is False and c.doi not in result.doi_missing
+    ]
     _tally_quotes(result, citations)
     _compare_identifiers(result, citations)
     logger.info("Literature: %s", result.coverage)
@@ -1616,8 +1636,6 @@ def enrich_literature(
         )
     if write:
         _write_literature_csv(result.rows, output_path)
-    result.quotes_without_pmid = without_pmid
-    result.citations_without_pmid = cited_by_doi_only
     return _attest(result, spec_dir, write=write, check_fulltext=check_fulltext, check_doi=check_doi)
 
 

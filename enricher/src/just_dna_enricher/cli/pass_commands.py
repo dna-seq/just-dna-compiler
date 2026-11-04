@@ -596,8 +596,12 @@ def literature_(
             f"quotes on pmid NONE rows: {doi_found}/{result.quotes_without_pmid} found, "
             f"{doi_unsettled} not checked"
         )
-    for cited in result.doi_citations:
+    # Bounded, as `verification.examples` bounds the record's detail: a module drafted from a preprint
+    # server can cite hundreds, and an unbounded list buries the red lines below it.
+    for cited in result.doi_citations[:_DOI_LINES]:
         typer.echo(f"  NONE doi {cited.doi}: {_doi_citation_line(cited)}")
+    if len(result.doi_citations) > _DOI_LINES:
+        typer.echo(f"  … and {len(result.doi_citations) - _DOI_LINES} more DOI-only citation(s)")
     if result.missing:
         # Red: a citation that does not resolve is a defect in the module, not a coverage gap.
         typer.secho(f"  PubMed has no record of: {result.missing}", fg=typer.colors.RED, err=True)
@@ -707,6 +711,10 @@ def pgx_(
     # disagree, so failing would make the format arbitrate between its own authorities.
     for conflict in result.conflicts:
         typer.secho(f"  allele-function difference: {conflict}", fg=typer.colors.YELLOW, err=True)
+
+
+#: How many DOI-only citations the `literature` report lists one per line (RM349).
+_DOI_LINES = 10
 
 
 def _doi_citation_line(cited: DoiCitation) -> str:
