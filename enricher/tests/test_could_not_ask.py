@@ -394,3 +394,20 @@ def test_an_esummary_uid_missing_from_a_real_summary_is_still_no_document() -> N
         transport=httpx.MockTransport(lambda request: httpx.Response(200, json=body))
     )
     assert is_missing(client.esummary("pubmed", ["1", "2"])["2"])
+
+
+@pytest.mark.parametrize(
+    "flag, read", [("Y", True), ("N", False), ("y", True), (None, None), ("", None), ("?", None)]
+)
+def test_a_europe_pmc_flag_it_did_not_state_is_unknown(flag, read) -> None:
+    """A record silent about `isOpenAccess` was written as closed (`False`) before RM361."""
+    payload = json.loads(json.dumps(_EPMC_SEARCH))
+    record = next(r for r in payload["resultList"]["result"] if r.get("pmid") == _REAL)
+    record.pop("isOpenAccess", None)
+    if flag is not None:
+        record["isOpenAccess"] = flag
+    client = EuropePmcClient(gate=_gate())
+    client._client = httpx.Client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json=payload))
+    )
+    assert client.lookup([_REAL])[_REAL]["is_open_access"] is read

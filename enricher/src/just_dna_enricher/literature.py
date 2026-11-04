@@ -187,6 +187,16 @@ class FulltextRetired(FulltextUnavailable, RetiredEndpoint):
     """
 
 
+def _yes_no(flag: object) -> bool | None:
+    """Europe PMC's `'Y'`/`'N'` flag as a tri-state: `None` when the record does not carry it (RM361).
+
+    `str(flag or "").upper() == "Y"` read a missing flag as `N`, so a record silent about open access
+    was written to `literature.csv` as closed, and the pass skipped Europe PMC's fulltext for it.
+    """
+    said = str(flag).strip().upper() if flag is not None else ""
+    return {"Y": True, "N": False}.get(said)
+
+
 def _fulltext_absent_or_raise(exc: httpx.HTTPStatusError, service: str, subject: str) -> None:
     """Return when `exc` is a service's "no copy" answer (a 404); raise the right error otherwise (RM361).
 
@@ -514,10 +524,10 @@ class EuropePmcClient:
                     "pmcid": record.get("pmcid"),
                     "doi": record.get("doi"),
                     # The API answers with the strings 'Y'/'N', not booleans.
-                    "is_open_access": str(record.get("isOpenAccess") or "").upper() == "Y",
+                    "is_open_access": _yes_no(record.get("isOpenAccess")),
                     # `inEPMC` is NOT a fulltext signal: a record can be in Europe PMC with
                     # `isOpenAccess=N`, and `fullTextXML` then answers 404. Probed on PMID 23788249.
-                    "in_epmc": str(record.get("inEPMC") or "").upper() == "Y",
+                    "in_epmc": _yes_no(record.get("inEPMC")),
                     # Verbatim, and `None` when the field is absent — an article whose terms Europe
                     # PMC does not state is unknown, not unlicensed.
                     "license": (record.get("license") or None),
@@ -625,7 +635,7 @@ class EuropePmcClient:
                     "id": record_id or None,
                     "source": record.get("source"),
                     "pmcid": record.get("pmcid"),
-                    "is_open_access": str(record.get("isOpenAccess") or "").upper() == "Y",
+                    "is_open_access": _yes_no(record.get("isOpenAccess")),
                     # Verbatim, and `None` when absent: unknown terms are unknown, never unlicensed.
                     "license": record.get("license") or None,
                     "abstract": record.get("abstractText"),
