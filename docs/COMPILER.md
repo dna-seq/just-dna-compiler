@@ -1759,8 +1759,9 @@ weights  annotations  studies                                    ← the SNP cor
 activity_phenotype  copynumbers  repeat_alleles  heteroplasmy
 haplotypes  allele_function  diplotypes  pgs  pharm_variants      ← the table kinds
 frequencies  gene_metrics  literature  gene_validity
-clinical_assertions  gwas_effects  expression_effects
-clin_sig_concordance  clin_sig_authority_calls                     ← the derived-fact sidecars (the last two: RM130, 0.7)
+clinical_assertions  gwas_effects
+clin_sig_concordance  clin_sig_authority_calls  expression_effects
+locus_to_gene  colocalisations  consequences  ld_pairs             ← the derived-fact sidecars (the Open Targets three and ld_pairs: 0.8)
 sources                                                           ← the licence table
 overrides                                                         ← the authored overlay (0.7)
 meta  meta_resolved                                               ← the meta-table (0.8); not lead tables
@@ -1784,12 +1785,10 @@ models, and a hand-kept column list is precisely how `SOURCES_FIELDNAMES` lost a
 including which columns the compiler stamps rather than reads, is in
 [audit/COMPILER_FROM_CODE.md](audit/COMPILER_FROM_CODE.md) § 5 — dated evidence, not a maintained list.
 
-- **`ARTIFACT_PARQUETS`** (feed `artifact.digest`; `_OUTPUT_FILES` until 0.6): `weights`/`annotations`/
-  `studies.parquet` + one parquet per table kind + `frequencies.parquet` / `gene_metrics.parquet` /
-  `literature.parquet` / `gene_validity.parquet` / `clinical_assertions.parquet` /
-  `gwas_effects.parquet` / `expression_effects.parquet` / `clin_sig_concordance.parquet` / `clin_sig_authority_calls.parquet` /
-  `sources.parquet` / `overrides.parquet` when present — the diagram above is the tuple, and this
-  sentence is not a second inventory of it. The sidecars enter
+- **`ARTIFACT_PARQUETS`** (feed `artifact.digest`; `_OUTPUT_FILES` until 0.6): the SNP core, one
+  parquet per table kind, one per derived-fact sidecar, the licence table, the overlay and the 0.8
+  tables, each when present — the diagram above is the tuple, in its order, under
+  `test_counted_prose.py`, and this sentence is not a second inventory of it. The sidecars enter
   the digest because a module carrying frequency data genuinely *is* different content — but adding one
   leaves the SNP core's bytes untouched (an explicit test). **It is public because the publisher tier
   has to agree with it**: `just_dna_enricher.upload` derives its allow-patterns from this tuple, after a
@@ -1798,14 +1797,12 @@ including which columns the compiler stamps rather than reads, is in
   nine 0.4 families — which is the publisher's "is this a module" rule and what discovery probes.
 - **`_INPUT_FILES`** (feed `manifest.inputs`, raw-bytes hashed): `module_spec.yaml` + `variants.csv` +
   `studies.csv` + the 9 table-kind CSVs + `overrides.csv` (0.7 — every row of it is written by a
-  human, which is what puts it here) — the authored surface, and the reason only the *other* files
-  gained a second legal name and location in 0.6. **`resolution.csv` is deliberately NOT here** (nor in
+  human, which is what puts it here) + `meta.csv` and `model_organisms.csv` (0.8) — the authored
+  surface, and the reason only the *other* files gained a second legal name and location in 0.6. **`resolution.csv` is deliberately NOT here** (nor in
   `ARTIFACT_PARQUETS`) — it is a multi-producer artifact hashed only by the normalized `resolution_signature`
-  (a raw-bytes hash would be unstable across enricher/human/reverse producers). `frequencies.csv`,
-  `gene_metrics.csv`, `literature.csv`, the 0.6 pair `gene_validity.csv` / `clinical_assertions.csv`,
-  `gwas_effects.csv`, `expression_effects.csv` and the 0.7 pair `clin_sig_concordance.csv` / `clin_sig_authority_calls.csv`
-  are out for exactly the same reason, each hashed by its own `*_signature` (the derived roster is
-  `_DERIVED_FILES`; read it rather than this sentence). `provenance.json` is
+  (a raw-bytes hash would be unstable across enricher/human/reverse producers). Every derived-fact
+  sidecar is out for exactly the same reason, each hashed by its own `*_signature` (the derived roster is
+  `_DERIVED_FILES`; read it rather than a sentence here). `provenance.json` is
   likewise out of the digest.
 - **The derived-fact sidecars are deliberately NOT `_TABLE_KINDS`.** Those are authored DSL tables with
   `AuthoredModel` semantics, the reserved-namespace guard, duplicate-key checks and raw-byte input

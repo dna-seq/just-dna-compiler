@@ -24,7 +24,8 @@ import re
 from pathlib import Path
 
 import pytest
-from just_dna_compiler.compiler import _FACT_TABLES, ARTIFACT_PARQUETS
+from just_dna_compiler.compiler import _FACT_TABLES, _INPUT_FILES, ARTIFACT_PARQUETS
+from just_dna_compiler.compiler.tables import _TABLE_KINDS
 from just_dna_format import integrity
 from just_dna_format.overrides import OVERRIDABLE_TABLES
 
@@ -131,6 +132,40 @@ def test_compiler_doc_counts_match_the_registries(pattern: str, expected, what: 
     """`COMPILER.md` spells out two registry sizes. Both are walked here rather than trusted."""
     doc = (_DOCS / "COMPILER.md").read_text(encoding="utf-8")
     assert _spelled(doc, pattern) == expected(), f"{what} moved and COMPILER.md did not"
+
+
+def test_the_compiler_doc_diagram_is_artifact_parquets_in_order() -> None:
+    """**RM365.** The count beside it was pinned and the list was not, so `COMPILER.md` said "Thirty
+    names" under a diagram of twenty-six, in a different order, while claiming *"the diagram above is
+    the tuple"*. The diagram is what a reader uses, so it is compared as an ordered list — the tuple's
+    order is the `artifact.files` listing order, which is what the section says it shows.
+    """
+    doc = (_DOCS / "COMPILER.md").read_text(encoding="utf-8")
+    section = doc.split("**`ARTIFACT_PARQUETS` is the `artifact.files` listing order**", 1)[1]
+    fence = section.split("```", 2)[1]
+    drawn = [name for line in fence.splitlines() for name in line.split("←", 1)[0].split()]
+    expected = [name.removesuffix(".parquet") for name in ARTIFACT_PARQUETS]
+    assert drawn == expected, (
+        f"COMPILER.md's diagram is not ARTIFACT_PARQUETS: missing {sorted(set(expected) - set(drawn))}, "
+        f"extra {sorted(set(drawn) - set(expected))}, or out of order"
+    )
+
+
+def test_the_compiler_doc_input_files_are_input_files() -> None:
+    """The same shape one bullet down (RM365): `_INPUT_FILES` was enumerated in prose and lacked the
+    two 0.8 authored tables. The named files plus the table kinds (a stated, pinned number) must be
+    exactly the tuple."""
+    doc = (_DOCS / "COMPILER.md").read_text(encoding="utf-8")
+    bullet = doc.split("- **`_INPUT_FILES`**", 1)[1].split("— the authored surface", 1)[0]
+    named = set(re.findall(r"`([\w.]+\.(?:csv|yaml))`", bullet))
+    kinds = re.findall(r"the (\d+) table-kind CSVs", bullet)
+    assert kinds == [str(len(_TABLE_KINDS))], (
+        f"the bullet's table-kind count {kinds} is not {len(_TABLE_KINDS)}"
+    )
+    stated = named | {csv for csv, _parquet, _model in _TABLE_KINDS}
+    assert stated == set(_INPUT_FILES), (
+        f"COMPILER.md's _INPUT_FILES drifted: {sorted(stated ^ set(_INPUT_FILES))}"
+    )
 
 
 #: A total of a walked set, in words or digits, directly before the noun a roster counts.
