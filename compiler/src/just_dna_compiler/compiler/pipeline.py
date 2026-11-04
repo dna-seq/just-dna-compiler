@@ -360,7 +360,9 @@ def compile_module(
     # view — empty under `--no-resolve` — and every consumer below reads it, so the switch reaches the
     # membership table, the VRS counts, the signature, the parquets' ids and the licence cross-check at
     # once. The pre-flight has already refused anything this can; the refusal here is defensive.
-    injected = read_resolution(spec_dir, overrides, resolve=resolve_with_ensembl)
+    injected = read_resolution(
+        spec_dir, overrides, resolve=resolve_with_ensembl, genome_build=config.genome_build, strict=strict
+    )
     all_warnings.extend(w for w in injected.warnings if w not in all_warnings)
     if injected.errors:
         return CompilationResult(success=False, errors=injected.errors, warnings=all_warnings)

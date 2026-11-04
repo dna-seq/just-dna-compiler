@@ -432,7 +432,9 @@ def _validate_spec(
     # `resolution.csv` first, by the reader `compile_module` reads it with (RM367): the same self-checks,
     # and the same ACTIVE view, which is empty under `--no-resolve` — so the switch reaches membership,
     # the build check, the positional fill and resolution here exactly as it does in the compile.
-    injected = read_resolution(spec_dir, overrides, resolve=resolve_with_ensembl)
+    injected = read_resolution(
+        spec_dir, overrides, resolve=resolve_with_ensembl, genome_build=declared_build, strict=strict
+    )
     all_errors.extend(injected.errors)
     all_warnings.extend(injected.warnings)
     if injected.present:

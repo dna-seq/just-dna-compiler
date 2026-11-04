@@ -41,6 +41,27 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM374: one rsID placed two ways in one resolution.csv is reported, and refused under strict (0.8, uncut)
+
+- **`rsid_placements_disagree`, a new warning code.** `read_resolution` asks, for both `validate` and
+  `compile`, whether a `resolution.csv` places one rsID at one `(chrom, start)` under its own key and at
+  another under a positional key whose rsID was back-filled: what merge-not-clobber leaves when a module is
+  enriched before a snapshot moves and again after it. The 0.8 migration probe's `rs761191455`
+  (`13:48041104 G>GG` beside `13:48041103 T>TG`) now draws it. The sentence names the rsID, each answer, the
+  releases (`ResolutionRow.source_release` when rows record it, else `releases not recorded`) and the remedy,
+  `enrich --rederive` or a deleted `resolution.csv`. A warning in `best_effort`; `compile --strict` and
+  `validate --strict` refuse.
+- **One key is one answer.** A one-to-many rsID, a pseudoautosomal pair and a multi-ALT locus split into
+  pieces at one `start` (`shox_par1`'s `rs1569493663`) never fire; no reference example does. Where the table
+  cannot tell one answer from two (no row keyed by the rsID itself, one key against itself, two spellings the
+  enricher judged `left_aligned` true and false) the check withholds.
+- **A resolved allele refusal names the stale reading.** `genotype_allele_not_at_locus` and
+  `effect_allele_not_at_locus`, on alleles an external source put in `resolution.csv`, add that the row may predate the snapshot,
+  name the release it records (or `release not recorded`) and give `--rederive` as the remedy. The probe's
+  `rs646776` `A/C` refusal blamed only the author or ClinVar.
+- See [COMPILER § One rsID, one placement set](COMPILER.md#one-rsid-one-placement-set-rm374-08) and
+  [INTEGRATION_0_8 § 1.30](INTEGRATION_0_8.md#130-one-rsid-one-placement-set-in-resolutioncsv-rm374-one-new-code).
+
 ## 2026-11-04 — RM376: why one rsID fills three ALTs offline and one online on the same snapshot (0.8, uncut)
 
 - **No code change.** The 0.8 migration probe saw `rs746071566` filled with three ALTs offline and one

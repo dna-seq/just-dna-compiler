@@ -163,6 +163,24 @@ CASES = [
         },
         refusal="The authored value is kept, so the table's position does not survive a",
     ),
+    Case(
+        # The 0.8 migration probe's two answers for one rsID (RM374): the old release's spelling under
+        # the rsID's key, the new one under a positional key a later row was authored at.
+        "rsid_placements_disagree",
+        "two placement sets for this one rsID",
+        {
+            "variants.csv": "rsid,chrom,start,ref,alts,genotype,state,conclusion\n"
+            "rs1800562,6,26092913,G,A,A/A,risk,c\n"
+            "rs761191455,,,,,G/GG,risk,c\n"
+            ",13,48041103,T,TG,T/TG,risk,c\n",
+            "studies.csv": _HFE_STUDY,
+            "resolution.csv": _RES_HEADER
+            + _res("rs1800562", "rs1800562", 6, 26092913, "G", "A")
+            + _res("rs761191455", "rs761191455", 13, 48041104, "G", "GG")
+            + _res("13:48041103:T:TG", "rs761191455", 13, 48041103, "T", "TG"),
+        },
+        refusal="Strict refuses until the table places each rsID one way",
+    ),
 ]
 
 

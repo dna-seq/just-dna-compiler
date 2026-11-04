@@ -40,7 +40,8 @@ from just_dna_compiler.compiler.variant_checks import (
     _cross_validate_variants,
 )
 from just_dna_compiler.compiler.vrs_checks import _verify_vrs_ids, _vrs_coverage_warnings
-from just_dna_compiler.resolution import resolve_from_table
+from just_dna_compiler.ladder import route
+from just_dna_compiler.resolution import placement_disagreements, resolve_from_table
 from just_dna_compiler.resolution_findings import resolution_not_injected
 
 RESOLUTION_CSV = "resolution.csv"
@@ -109,12 +110,22 @@ def resolution_disabled(rows: list[ResolutionRow]) -> CodedWarning:
     )
 
 
-def read_resolution(spec_dir: Path, overrides: list[OverrideRow], *, resolve: bool) -> InjectedResolution:
+def read_resolution(
+    spec_dir: Path,
+    overrides: list[OverrideRow],
+    *,
+    resolve: bool,
+    genome_build: str,
+    strict: bool,
+) -> InjectedResolution:
     """Read `resolution.csv` into the view every consumer reads (see the module docstring).
 
     The self-checks run here, on the active rows only: the table-kind coherence check, `_verify_vrs_ids`
-    (a mismatch refuses in both modes) and the VRS coverage count. Under `--no-resolve` none of them
-    runs, because none of what they judge reaches the artifact.
+    (a mismatch refuses in both modes), the VRS coverage count, and whether one rsID is placed two ways
+    by two of the table's subjects (RM374, a ladder: a warning, and under `strict` a refusal in
+    `errors`). Under `--no-resolve` none of them runs, because none of what they judge reaches the
+    artifact. Asked here rather than in `resolve_variants` because it is a property of the table, which a
+    module with no `variants.csv` (a PGx-only one) carries too.
     """
     out = InjectedResolution()
     path, spelling_warnings, spelling_errors = _locate_sidecar(spec_dir, RESOLUTION_CSV)
@@ -153,6 +164,9 @@ def read_resolution(spec_dir: Path, overrides: list[OverrideRow], *, resolve: bo
     out.warnings.extend(
         _vrs_coverage_warnings(rows, unplaced_recorded=_snapshot_unplaced_rsids_recorded(spec_dir))
     )
+    placement_refusals, placement_warnings = route(placement_disagreements(rows, genome_build), strict=strict)
+    out.errors.extend(placement_refusals)
+    out.warnings.extend(placement_warnings)
     return out
 
 
