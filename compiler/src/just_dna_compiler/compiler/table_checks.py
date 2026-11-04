@@ -51,19 +51,30 @@ def _cross_validate_haplotype_definitions(
     two of them declared `no_function`, and nothing defined any of them.
 
     **An allele is `(gene, name)`, never the bare name (RM351).** Keyed on the name, CYP2C19's `*2`
-    defined CYP2C9's. A `haplotypes.csv` row naming no gene is the unknown arm: it defines its name
-    for every gene, since nothing says which gene it is not — so a gene-less module reads as before.
-    **An HLA gene is exempt** (`is_hla_gene`): its alleles are typed by name and defined by no
-    variant, so "can never match" would be false. The exempted genes are named on the warning a real
-    gap raises; when the only undefined alleles are exempt, nothing fires.
+    defined CYP2C9's. Genes compare through `_gene_key`, so a symbol spelled in another case in one
+    table is not a second gene. A `haplotypes.csv` row naming no gene is the unknown arm: it defines its
+    name for every gene, since nothing says which gene it is not, so a gene-less module is reported
+    for the same alleles as before. **A typed gene is exempt**: an HLA gene (`is_hla_gene`) that
+    `haplotypes.csv` defines nothing for, since its alleles are called by name and "can never match"
+    would be false. An HLA gene the module *does* define by variants is checked like any other. The
+    exempted genes are named on the warning a real gap raises; when the only undefined alleles are
+    exempt, nothing fires.
     """
     if not haplotypes:
         return []
-    defined = {(row.gene, row.haplotype_name) for row in haplotypes if row.gene is not None}
+    defined = {(_gene_key(row.gene), row.haplotype_name) for row in haplotypes if row.gene is not None}
+    defined_genes = {gene for gene, _ in defined}
     defined_for_any_gene = {row.haplotype_name for row in haplotypes if row.gene is None}
-    used: set[tuple[str, str]] = {(row.gene, row.allele) for row in allele_functions}
-    for row in diplotypes:
-        used.update({(row.gene, row.haplotype_a), (row.gene, row.haplotype_b)})
+    # The first spelling of each gene, in row order, is the one the message prints.
+    spelled: dict[str, str] = {}
+    used: set[tuple[str, str]] = set()
+    for gene, alleles in (
+        *((row.gene, (row.allele,)) for row in allele_functions),
+        *((row.gene, (row.haplotype_a, row.haplotype_b)) for row in diplotypes),
+    ):
+        key = _gene_key(gene)
+        spelled.setdefault(key, gene)
+        used.update((key, allele) for allele in alleles)
     missing = sorted(
         (gene, allele)
         for gene, allele in used
@@ -71,12 +82,19 @@ def _cross_validate_haplotype_definitions(
         and allele not in defined_for_any_gene
         and (gene, allele) not in defined
     )
-    undefined = [(gene, allele) for gene, allele in missing if not is_hla_gene(gene)]
+
+    def _typed(gene: str) -> bool:
+        return is_hla_gene(spelled[gene]) and gene not in defined_genes
+
+    undefined: dict[str, list[str]] = {}
+    for gene, allele in missing:
+        if not _typed(gene):
+            undefined.setdefault(spelled[gene], []).append(allele)
     if not undefined:
         return []
-    exempt = sorted({gene for gene, _ in missing if is_hla_gene(gene)})
-    names = sorted({allele for _, allele in undefined})
-    by_gene = ", ".join(f"{gene} {allele}" for gene, allele in undefined)
+    exempt = sorted({spelled[gene] for gene, _ in missing if _typed(gene)})
+    names = sorted({allele for alleles in undefined.values() for allele in alleles})
+    by_gene = "; ".join(f"{gene} {', '.join(alleles)}" for gene, alleles in undefined.items())
     message = (
         f"Star allele(s) used but not defined in haplotypes.csv: {names}. A consumer's caller "
         f"cannot emit an allele nothing defines, so rows about it can never match. By gene: {by_gene}."
@@ -87,6 +105,13 @@ def _cross_validate_haplotype_definitions(
             f"no variant, so a missing haplotypes.csv row is expected there."
         )
     return [CodedWarning("star_allele_undefined", message)]
+
+
+def _gene_key(gene: str) -> str:
+    """A gene symbol as the cross-table PGx checks compare it (RM351). Case and surrounding space do
+    not make two genes: the bare-name key ignored the gene entirely, so a symbol spelled `Cyp2c19` in
+    one table and `CYP2C19` in another must not turn every allele of it into a new finding."""
+    return gene.strip().casefold()
 
 
 #: An allele a haplotype does not mention — or mentions as its own reference base. The letter never
@@ -171,6 +196,7 @@ def _cross_validate_phase_ambiguity(haplotypes: list[Any], diplotypes: list[Any]
     # naming no gene is the unknown arm and sits under `None`, read for every gene (`_defined_for`).
     by_haplotype: dict[tuple[str | None, str], dict[tuple, str]] = {}
     variants: list[tuple] = []
+    seen_variants: set[tuple] = set()
     for row in haplotypes:
         # Position-level, and *without* `alts`: a haplotype names one allele at a locus, so the key
         # must be the place. Passing `alts` would mint a per-allele VRS id and put each haplotype's
@@ -178,23 +204,29 @@ def _cross_validate_phase_ambiguity(haplotypes: list[Any], diplotypes: list[Any]
         variant = derive_variant_key(row.rsid, row.chrom, row.start, row.ref)
         if variant is None:
             continue
-        if variant not in variants:
+        if variant not in seen_variants:
+            seen_variants.add(variant)
             variants.append(variant)
         allele = _IMPLIED_REFERENCE if row.ref is not None and row.allele == row.ref else row.allele
-        by_haplotype.setdefault((row.gene, row.haplotype_name), {})[variant] = allele
+        gene = None if row.gene is None else _gene_key(row.gene)
+        by_haplotype.setdefault((gene, row.haplotype_name), {})[variant] = allele
 
     # A diplotype naming a haplotype `haplotypes.csv` never defines has no signature to compute —
     # every one of its variants would read as reference, which is a claim rather than a computation.
     # That case already has its own warning; here it is simply skipped.
-    definitions: dict[tuple[str, str], dict[tuple, str]] = {}
+    # Resolved once per (gene, name), not once per diplotype row: a CPIC draft has thousands of rows
+    # over a few hundred names.
+    definitions: dict[tuple[str, str], dict[tuple, str] | None] = {}
     by_signature: dict[tuple, list[Any]] = {}
     for row in diplotypes:
         pair = (row.haplotype_a, row.haplotype_b)
-        resolved = {name: _defined_for(by_haplotype, row.gene, name) for name in pair}
+        gene = _gene_key(row.gene)
+        for name in pair:
+            if (gene, name) not in definitions:
+                definitions[(gene, name)] = _defined_for(by_haplotype, gene, name)
+        resolved = {name: definitions[(gene, name)] for name in pair}
         if any(definition is None for definition in resolved.values()):
             continue
-        for name, definition in resolved.items():
-            definitions[(row.gene, name)] = definition
         by_signature.setdefault((row.gene, _unphased_signature(pair, resolved, variants)), []).append(row)
 
     warnings: list[str] = []
@@ -225,7 +257,7 @@ def _cross_validate_phase_ambiguity(haplotypes: list[Any], diplotypes: list[Any]
         # haplotype definitions → nothing distinguishes them; different → phase does.
         by_definition: dict[tuple, list[tuple[str, str]]] = {}
         for pair in pairs:
-            key = tuple(sorted(tuple(sorted(definitions[(gene, name)].items())) for name in pair))
+            key = tuple(sorted(tuple(sorted(definitions[(_gene_key(gene), name)].items())) for name in pair))
             by_definition.setdefault(key, []).append(pair)
 
         for identical in by_definition.values():

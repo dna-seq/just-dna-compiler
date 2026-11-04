@@ -99,6 +99,39 @@ def test_a_gene_less_definition_defines_its_name_for_every_gene() -> None:
     assert _cross_validate_haplotype_definitions(haplotypes, functions, []) == []
 
 
+def test_a_gene_spelled_in_another_case_is_one_gene() -> None:
+    """The bare-name key ignored the gene, so `Cyp2c19` in haplotypes.csv against `CYP2C19` elsewhere
+    passed. Keying on the gene must not turn that spelling into a finding about every allele."""
+    haplotypes = [HaplotypeRow(haplotype_name="*2", rsid="rs4244285", allele="A", gene="Cyp2c19 ")]
+    functions = [AlleleFunctionRow(gene="CYP2C19", allele="*2")]
+    diplotypes = [DiplotypeRow(gene="CYP2C19", haplotype_a="*2", haplotype_b="*2", conclusion="PM")]
+    assert _cross_validate_haplotype_definitions(haplotypes, functions, diplotypes) == []
+
+
+def test_an_hla_gene_the_module_defines_by_variants_is_checked() -> None:
+    """The exemption is for a TYPED gene. A module that defines HLA-B *57:01 by a tag SNP has chosen
+    definitions for HLA-B, so an HLA-B allele it uses and never defines is a real gap."""
+    haplotypes = [HaplotypeRow(haplotype_name="*57:01", rsid="rs2395029", allele="G", gene="HLA-B")]
+    functions = [
+        AlleleFunctionRow(gene="HLA-B", allele="*57:01"),
+        AlleleFunctionRow(gene="HLA-B", allele="*58:01"),
+    ]
+    (warning,) = _cross_validate_haplotype_definitions(haplotypes, functions, [])
+    assert "By gene: HLA-B *58:01." in warning and "Not checked" not in warning
+
+
+def test_the_gaps_are_grouped_per_gene() -> None:
+    """One clause per gene, the aggregation the neighbouring PGx warnings use."""
+    haplotypes = [HaplotypeRow(haplotype_name="*2", rsid="rs4244285", allele="A", gene="CYP2C19")]
+    functions = [
+        AlleleFunctionRow(gene="CYP2D6", allele="*36"),
+        AlleleFunctionRow(gene="CYP2D6", allele="*37"),
+        AlleleFunctionRow(gene="CYP2C9", allele="*2"),
+    ]
+    (warning,) = _cross_validate_haplotype_definitions(haplotypes, functions, [])
+    assert "By gene: CYP2C9 *2; CYP2D6 *36, *37." in warning
+
+
 def test_is_hla_gene_is_the_prefix_the_grammar_reads() -> None:
     """One predicate: the compiler's exemption and the model's grammar answer the same question."""
     assert is_hla_gene("HLA-DRB1") and is_hla_gene("HLA-B")
@@ -152,6 +185,18 @@ def _without_genes(rows: list) -> list:
     return [row.model_copy(update={"gene": None}) for row in rows]
 
 
+def _bare_name_gaps(haplotypes: list, functions: list, diplotypes: list) -> list[str]:
+    """The pre-RM351 rule, as it read: every used name no `haplotypes.csv` row names, gene ignored,
+    `*1` exempt. Kept here as the oracle the regression test compares against, never in the compiler."""
+    if not haplotypes:
+        return []
+    defined = {row.haplotype_name for row in haplotypes}
+    used = {row.allele for row in functions} | {
+        name for row in diplotypes for name in (row.haplotype_a, row.haplotype_b)
+    }
+    return sorted(name for name in used if name not in defined and name != "*1")
+
+
 @pytest.mark.parametrize(
     "example",
     [
@@ -164,33 +209,30 @@ def _without_genes(rows: list) -> list:
     ],
 )
 def test_the_reference_examples_warn_as_they_did_under_the_bare_name(example: str) -> None:
-    """On every PGx reference example (each names one gene per table), keying on `(gene, allele)`
-    changes nothing. The pre-RM351 answer is computed at runtime by blanking `haplotypes.csv`'s gene,
-    which makes every definition the gene-blind one the bare-name key gave."""
+    """On every PGx reference example, keying on `(gene, allele)` reports the same gaps the bare-name
+    rule did. `star_allele_undefined` is compared with the old rule restated above; the phase check is
+    compared with itself run on a `haplotypes.csv` whose genes are blanked, which puts every definition
+    under the one gene-blind key the bare name gave."""
     root = _EXAMPLES / example
     result = validate_spec(root)
     assert result.valid, result.errors
-    loaded = {
-        name: _load(root / f"{name}.csv", model)
-        for name, model in (
-            ("haplotypes", HaplotypeRow),
-            ("allele_function", AlleleFunctionRow),
-            ("diplotypes", DiplotypeRow),
-        )
-    }
-    haplotypes = loaded["haplotypes"]
-    for check, args in (
-        (
-            _cross_validate_haplotype_definitions,
-            (loaded["allele_function"], loaded["diplotypes"]),
-        ),
-        (_cross_validate_phase_ambiguity, (loaded["diplotypes"],)),
-    ):
-        keyed = [str(w) for w in check(haplotypes, *args)]
-        bare = [str(w) for w in check(_without_genes(haplotypes), *args)]
-        assert keyed == bare
-        # And what the full validate run reports is that answer, neither more nor less.
-        assert set(keyed) <= {str(w) for w in result.warnings}
+    haplotypes = _load(root / "haplotypes.csv", HaplotypeRow)
+    functions = _load(root / "allele_function.csv", AlleleFunctionRow)
+    diplotypes = _load(root / "diplotypes.csv", DiplotypeRow)
+    reported = {str(w) for w in result.warnings}
+
+    gaps = _bare_name_gaps(haplotypes, functions, diplotypes)
+    undefined = [str(w) for w in _cross_validate_haplotype_definitions(haplotypes, functions, diplotypes)]
+    if gaps:
+        (warning,) = undefined
+        assert f"haplotypes.csv: {gaps}." in warning and warning in reported
+    else:
+        assert undefined == [] and not _undefined_warnings(result.warnings)
+
+    keyed = [str(w) for w in _cross_validate_phase_ambiguity(haplotypes, diplotypes)]
+    blind = [str(w) for w in _cross_validate_phase_ambiguity(_without_genes(haplotypes), diplotypes)]
+    assert keyed == blind
+    assert set(keyed) <= reported
 
 
 def _load(path: Path, model: type) -> list:

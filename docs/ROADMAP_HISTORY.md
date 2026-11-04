@@ -53,24 +53,29 @@ for the class, not the instance: every `used.setdefault(row.allele` and set of b
 - `_cross_validate_haplotype_definitions` (`star_allele_undefined`): `defined` and `used` were sets of
   bare names. They are `(gene, allele)` now. A `haplotypes.csv` row with no `gene` (the column is
   optional there and required on the other two tables) is the unknown arm: it defines its name for every
-  gene, which is what the bare-name key did, so a module that leaves `gene` out of `haplotypes.csv` warns as before. A gene
-  for which `pgx.is_hla_gene` is true is exempt. That predicate is new, it states the `HLA-` prefix once,
-  and RM334's `hla_allele_refusal` now reads it too. The message keeps its wording and appends
-  `By gene: <gene> <allele>, …`, then, when an HLA allele was skipped, the HLA genes it did not check.
-  When every undefined allele is an HLA allele, nothing fires.
+  gene, which is what the bare-name key did, so a module that leaves `gene` out of `haplotypes.csv` is
+  warned about the same alleles as before. Genes compare through `_gene_key` (case and surrounding
+  space ignored), because the bare-name key never read the gene and a stricter comparison would have
+  turned a spelling into a finding. An HLA gene (`pgx.is_hla_gene`) that `haplotypes.csv` defines
+  nothing for is exempt, since its alleles are typed; one the module defines by variants (a tag SNP)
+  is checked like any other. The predicate is new, it states the `HLA-` prefix once, and RM334's
+  `hla_allele_refusal` now reads it too. The message keeps its wording and appends
+  `By gene: <gene> <allele>, …; <gene> …`, then, when an HLA allele was skipped, the HLA genes it did
+  not check. When every undefined allele is an HLA allele, nothing fires.
 - `_cross_validate_phase_ambiguity` (`diplotype_definitions_identical`, `diplotype_phase_ambiguous`):
   `definitions` was keyed on the haplotype name, so a second gene's `*2` merged its defining variants
   into the first gene's `*2`, and a real finding about the first went silent. Definitions are keyed
-  `(gene, name)` now. A diplotype reads its gene's own rows laid over any gene-less ones
-  (`_defined_for`).
+  `(gene, name)` now, through the same `_gene_key`. A diplotype reads its gene's own rows laid over
+  any gene-less ones (`_defined_for`), resolved once per `(gene, name)` rather than once per row.
 
 Not instances, read and left alone: `compiler/meta.py`'s allele-to-diplotype reach (gated on
 `diplotype.gene == target.gene`), and in the enricher `pgx.py`'s function cross-check (keyed
 `(row.gene, row.allele)`), `drug_labels.authored_subjects` (passes `row.gene`), and `pgx_draft` (one gene
 per draft, so its allele sets are already per gene). Tests: `compiler/tests/test_pgx_allele_identity.py`
 (the HLA case and the shared-`*2` case, both failing before the change; the phase leak; both gene-less
-cases; and the six PGx reference examples, whose warnings under `(gene, allele)` are computed at runtime
-and compared with the gene-blind answer); one scenario in
+cases; a gene spelled in another case; an HLA gene defined by a tag SNP; the per-gene grouping; and the
+six PGx reference examples, checked against the bare-name rule restated in the test, and for the phase
+check against a run with `haplotypes.csv`'s genes blanked); one scenario in
 `features/compiler/licensing_closure_pgx.feature`.
 
 **Residuals** none
