@@ -128,6 +128,15 @@ def test_names_event_answers_three_ways(authored: tuple, reads: bool, expected: 
     assert names_event(*authored, Allele(*NEW), mint=OFFLINE, read_window=window) is expected
 
 
+def test_an_insertion_touches_its_anchor_and_the_next_base_only() -> None:
+    """A 3 bp insertion `GAC` after the `T` slides through `GAAA` to anchor 48041105, and sits between
+    that anchor and 48041106. A position past that is outside the event however long the payload."""
+    ins = Allele("13", NEW[1], "T", "TGAC")
+    assert [s[1] for s in indel_spellings(*ins.spelling, read)] == [NEW[1], NEW[1] + 1, NEW[1] + 2]
+    assert names_event("13", NEW[1] + 3, None, None, ins, mint=OFFLINE, read_window=read) is None
+    assert names_event("13", NEW[1] + 4, None, None, ins, mint=OFFLINE, read_window=read) is False
+
+
 def test_a_moved_substitution_is_a_different_event_with_no_reference() -> None:
     """A substitution cannot slide, so no read is needed to call another position another event."""
     snv = Allele("2", 135851076, "G", "A")
@@ -160,8 +169,8 @@ _VERDICT = {"same_event": True, "different_event": False, "undecided": None}
 
 
 def _via_authored_event(authored: tuple, window) -> bool | None:
-    verdict = authored_event(authored, _locus(NEW), mint=OFFLINE, read_window=window)
-    return None if verdict is None else _VERDICT[verdict]
+    judged = authored_event(authored, _locus(NEW), mint=OFFLINE, read_window=window)
+    return None if judged is None else _VERDICT[judged[0]]
 
 
 def _via_coordinate_verdict(authored: tuple, window) -> bool | None:
@@ -357,11 +366,12 @@ def test_the_cpic_row_is_judged_the_same_event_and_compiles_as_agreement(
     spec = _spec(tmp_path)
     _enrich(spec, tmp_path, monkeypatch)
     (row,) = _resolution(spec)
-    assert (row["start"], row["ref"], row["alts"], row["authored_event"]) == (
+    assert (row["start"], row["ref"], row["alts"], row["authored_event"], row["judged_coordinate"]) == (
         str(NEW[1]),
         NEW[2],
         NEW[3],
         "same_event",
+        f"13:{OLD[1]}",
     )
     assert _pair_record(spec)["findings"] == 0, "the insertion's one-base ref is not a substitution"
 

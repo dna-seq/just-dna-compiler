@@ -58,7 +58,8 @@ class SubjectDrift:
         suffix = {
             True: " (respelled: the same events, spelled another way)",
             False: " (moved: the source names a different event)",
-            None: " (respelled or moved is undecided: no VRS id and no reference read to tell)",
+            None: " (undecided whether respelled or moved: no VRS id and no reference read, or an indel "
+            "ALT only one table keeps)",
         }[self.respelled]
         return f"{self.variant_key}: {self.before} → {self.after}{suffix}"
 

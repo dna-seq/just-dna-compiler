@@ -35,7 +35,7 @@ from just_dna_format.spec import VariantRow
 from just_dna_format.vrs import normalize_chrom
 
 from just_dna_enricher.ensembl import _placeable_alleles
-from just_dna_enricher.events import Mint, ReadWindow, alleles_of, names_event, no_mint
+from just_dna_enricher.events import Mint, ReadWindow, alleles_of, kleene_any, names_event, no_mint
 from just_dna_enricher.locations import DUCKDB_NAME, resolve_ensembl_reference
 
 logger = logging.getLogger(__name__)
@@ -635,8 +635,9 @@ def coordinate_verdict(
     events = alleles_of(loci)
     if start is None or not events:
         return None
-    answers = [names_event(chrom, start, ref, None, e, mint=mint, read_window=read_window) for e in events]
-    return True if True in answers else None if None in answers else False
+    return kleene_any(
+        names_event(chrom, start, ref, None, e, mint=mint, read_window=read_window) for e in events
+    )
 
 
 def coordinate_disagreement(

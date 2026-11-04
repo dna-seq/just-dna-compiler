@@ -395,9 +395,10 @@ RESOLUTION_LOCUS_DTYPE = pl.Struct(
         # `reverse` re-emits the ids with the row.
         "vrs_id": pl.Utf8,
         "vrs_spec": pl.Utf8,
-        # RM375: the enricher's verdict on the authored spelling, which the compile read as agreement or
-        # not, so the second lap reads the same verdict the first did.
+        # RM375: the enricher's verdict on the authored spelling and the coordinate it judged, which the
+        # compile read as agreement or not, so the second lap reads the same verdict the first did.
         "authored_event": pl.Utf8,
+        "judged_coordinate": pl.Utf8,
     }
 )
 
@@ -441,6 +442,7 @@ def resolution_loci(
             "vrs_id": r.vrs_id,
             "vrs_spec": r.vrs_spec,
             "authored_event": r.authored_event,
+            "judged_coordinate": r.judged_coordinate,
         }
         for r in loci
     ]

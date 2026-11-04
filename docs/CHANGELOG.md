@@ -45,7 +45,8 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 
 - **`enrich` records whether an authored coordinate spells the resolved event**: `resolution.csv` gains
   `authored_event` (`same_event` / `different_event` / `undecided`), written against the reference where
-  the authored `chrom`/`start`/`ref` differs from the locus. NUDT15's `rs761191455`, authored at the old
+  the authored `chrom`/`start`/`ref` differs from the locus, and `judged_coordinate`, the coordinate it
+  judged, so a verdict never outlives an edit or speaks for another table's row. NUDT15's `rs761191455`, authored at the old
   snapshot's `13:48041104` and placed by the new one at `13:48041103 T>TG`, reads `same_event` online and
   `undecided` offline.
 - **The compiler reads the record and judges nothing itself.** A recorded `same_event` draws no

@@ -42,9 +42,9 @@ compiler + format, severity medium.
 
 **Residuals** won't fix — an offline run never settles a respelled indel, because the reference is read
 through the seqrepo service and no local reference is wired into `SequenceProxy`; offline the verdict is
-`undecided`, never agreement · won't fix — two authored rows under one key that spell it differently are
-judged on the first one's spelling, since `collect_subjects` dedupes by key; no reference example has
-such a key
+`undecided`, never agreement · won't fix — an indel ALT one table keeps and the other does not reads
+undecided on `--rederive` rather than moved, because an offline table keeps ALTs an online hosting filter
+drops (`rs746071566`); that costs sharpness, never truth
 
 **The class.** An indel can be anchored anywhere inside its repeat, and two releases of one source, two
 sources, or an author and a source pick different anchors: NUDT15's `rs761191455` is `13:48041104 G>GG`
@@ -62,7 +62,7 @@ rather than "unknown": the house algebra's `None` read as `False`.
    signature; the false warning stayed). → reads the recorded verdict; `same_event` is agreement and
    fills only `rsid`/`chrom`; `undecided` is left alone in non-accusing words.
 2. `compiler/src/just_dna_compiler/resolution.py:1128` `_verify` (now `:1187`): the SNP core's pair, by
-   `chrom:start:ref` key, refused under `strict`. → the same predicate, `recorded_same_event`.
+   `chrom:start:ref` key, refused under `strict`. → the same predicate, `recorded_verdicts`.
 3. `enricher/src/just_dna_enricher/resolver.py:587–630` `_is_substitution` / `coordinate_verdict`: a locus
    whose `ref` is one base read as a substitution, which an insertion's anchor is, so the cpic pair was a
    confident disagreement in `rsid_coordinate_agreement` (the probe's "0→1 finding"). → `_is_substitution`
@@ -86,7 +86,10 @@ alleles, `names_event` for an authored coordinate that may be partial (its ancho
 for a written row, `same_allele_sets` for a drift. **The enricher judges, compile trusts**: the verdict is
 recorded per row as `resolution.csv` `authored_event` (`same_event` / `different_event` / `undecided`,
 outside `resolution_signature`), written where the authored `chrom`/`start`/`ref` differs from the
-locus, and carried through `reverse` in the `resolution_loci` struct so lap two reads what lap one did.
+locus, **bound** by `judged_coordinate` (the coordinate it judged, `authored_coordinate_key`): the key
+is the subject's, so a verdict outlives a later edit of the coordinate and is shared with every other
+table's row under the rsID, and the compiler applies it only to a row still authoring that coordinate
+(found by the review). Both ride `resolution_loci` through `reverse`, so lap two reads what lap one did.
 A per-row column rather than `verification.json` (rewritten per run over the subjects asked; the probe's
 Q2 shows that record read as a module fact) or `placement_verdict` (who else places the rsID: another
 axis, P5). A derived-sidecar column, half cost (P9); additive (P3).
@@ -95,7 +98,8 @@ axis, P5). A derived-sidecar column, half cost (P9); additive (P3).
 (`authored_event`, `coordinate_verdict`, `_same_events`, `compare_placements`), runs each over one corpus
 (the cpic row, its half coordinate, offline, outside the footprint, another contig, a padded `ref`), and an
 AST walk asserts the registry equals every enricher function calling the judge. Mutating the judge to
-answer `False` with no reference turned 6 red; mutating `recorded_same_event` to `False` turned 8 red.
+answer `False` with no reference turned 6 red; mutating the compiler's predicate to answer nothing
+turned 8 red.
 `compiler/tests/test_authored_event.py` runs both compiler comparers over every positional kind and
 `variants.csv` × the four cell states, and three rows joined `test_resolution_matrix`.
 

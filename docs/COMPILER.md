@@ -1246,11 +1246,13 @@ Four rules, and the last two are what separate it from the naive repair:
   `hosting_verdict`'s three-valued question, already asked one step earlier.
 - **`start` and `ref` are a spelling, and the enricher's record decides them (RM375, 0.8).** An indel
   anchored elsewhere in its repeat differs in both and is one event, which only a reference read can
-  tell; the compiler has none, so it reads `resolution.csv` `authored_event` (`recorded_same_event`, one
-  predicate shared with `_verify`). `same_event`: agreement, no warning, and the fill takes only the
+  tell; the compiler has none, so it reads `resolution.csv` `authored_event` (`recorded_verdicts`, one
+  predicate shared with `_verify`), and only where its `judged_coordinate` is the row's own coordinate
+  (a verdict about another coordinate, stale or another table's, reads as never judged). `same_event`: agreement, no warning, and the fill takes only the
   cells no spelling changes (`rsid`, `chrom` — a CPIC half-coordinate is completed), never a `ref` or
   `alts` that would be worn at the author's anchor. `undecided`: left as authored, under the same code,
-  in words that accuse neither side. `different_event` or an empty cell: today's contradiction.
+  in words that accuse neither side (a wrong `rsid` or contig is still accused). `different_event` or an
+  empty cell: today's contradiction.
 - **Rows are mutated in place and their identity is frozen first.** Each positional model stamps
   `variant_key` and `authored_ident` at load, from the authored columns only, so filling cannot re-key
   a row.

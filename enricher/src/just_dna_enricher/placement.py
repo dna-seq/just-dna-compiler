@@ -64,8 +64,7 @@ from just_dna_compiler.compiler import load_overlay
 
 from just_dna_enricher import clinvar
 from just_dna_enricher.clinvar_gkm import ClinVarGkmWitness
-from just_dna_enricher.events import Allele, Mint, ReadWindow, _kind, alleles_of, same_event
-from just_dna_enricher.sequences import _LEFT_ALIGN_WINDOW
+from just_dna_enricher.events import Mint, ReadWindow, _kind, alleles_of, counterparts, kleene_any, same_event
 from just_dna_enricher.verification import examples
 
 logger = logging.getLogger(__name__)
@@ -100,15 +99,6 @@ _AUTHORITY_OF_WITNESS: dict[str, str] = {
 SAME_EVENT = "same_event"
 UNDECIDED = "undecided"
 UNPLACED = "unplaced"
-
-
-def _counterparts(allele: Allele, witness: Sequence[Allele]) -> list[Allele]:
-    kind = _kind(allele)
-    return [
-        w
-        for w in witness
-        if w.chrom == allele.chrom and abs(w.start - allele.start) <= _LEFT_ALIGN_WINDOW and _kind(w) == kind
-    ]
 
 
 def locus_key(locus: Mapping[str, object]) -> tuple[str, int, str, str]:
@@ -293,12 +283,13 @@ def compare_placements(
             for allele in alleles_of([locus]):
                 answers: list[bool | None] = []
                 for witness in asked:
-                    counterparts = _counterparts(allele, theirs[witness])
-                    if not counterparts:
+                    matches = counterparts(allele, theirs[witness])
+                    if not matches:
                         continue
                     witnessed_by.add(witness)
-                    said = [same_event(allele, w, mint=mint, read_window=read_window) for w in counterparts]
-                    answer = True if True in said else None if None in said else False
+                    answer = kleene_any(
+                        same_event(allele, w, mint=mint, read_window=read_window) for w in matches
+                    )
                     answers.append(answer)
                     if answer is False:
                         check.disagreements.append(
@@ -307,7 +298,7 @@ def compare_placements(
                                 authority=authority,
                                 placed=(str(allele),),
                                 witness=witness,
-                                witness_placed=tuple(str(w) for w in counterparts),
+                                witness_placed=tuple(str(w) for w in matches),
                             )
                         )
                 verdicts.append(_allele_verdict(answers))

@@ -28,7 +28,7 @@ from just_dna_compiler.compiler import _POSITIONAL_TABLE_KINDS, compile_module, 
 from just_dna_compiler.resolution import resolve_from_table, resolve_positional_rows
 from just_dna_format.binning import HeteroplasmyRow
 from just_dna_format.pgx import HaplotypeRow, PharmVariantRow
-from just_dna_format.resolution import ResolutionRow
+from just_dna_format.resolution import ResolutionRow, authored_coordinate_key
 from just_dna_format.spec import VariantRow
 from just_dna_format.vocab import VALID_AUTHORED_EVENT_VERDICTS
 
@@ -43,7 +43,12 @@ STATES: list[str | None] = [*sorted(VALID_AUTHORED_EVENT_VERDICTS), None]
 _ACCUSING = re.compile(r"\b(contradicts|disagreement|disagrees)\b")
 
 
-def _locus(verdict: str | None, *, chrom: str = LOCUS[0], key: str = RSID) -> ResolutionRow:
+def _locus(
+    verdict: str | None, *, chrom: str = LOCUS[0], key: str = RSID, judged: str | None = None
+) -> ResolutionRow:
+    """The new snapshot's locus, carrying `verdict` about the authored coordinate `judged`.
+
+    `judged` defaults to the old anchor on `chrom`, the coordinate every row below authors."""
     return ResolutionRow(
         variant_key=key,
         rsid=RSID,
@@ -57,6 +62,9 @@ def _locus(verdict: str | None, *, chrom: str = LOCUS[0], key: str = RSID) -> Re
         authority="ensembl",
         status="resolved",
         authored_event=verdict,
+        judged_coordinate=None
+        if verdict is None
+        else judged or authored_coordinate_key(chrom, AUTHORED_START, None),
     )
 
 
@@ -103,8 +111,9 @@ def test_a_positional_row_reads_the_recorded_verdict(
 ) -> None:
     row = _positional_row(csv_name, chrom=chrom)
     table_chrom = "MT" if csv_name == "heteroplasmy.csv" else LOCUS[0]
+    judged = authored_coordinate_key(row.chrom, AUTHORED_START, None)
     report = resolve_positional_rows(
-        [row], {row.variant_key: [_locus(verdict, chrom=table_chrom, key=row.variant_key)]}
+        [row], {row.variant_key: [_locus(verdict, chrom=table_chrom, key=row.variant_key, judged=judged)]}
     )
 
     assert row.start == AUTHORED_START, "the authored coordinate is never rewritten"
@@ -125,6 +134,30 @@ def test_a_positional_row_reads_the_recorded_verdict(
         assert len(report.contradicted) == 1
         assert "contradicts" in report.contradicted[0]
         assert row.chrom == chrom
+
+
+@pytest.mark.parametrize("verdict", ["same_event", "undecided"])
+def test_a_verdict_about_another_coordinate_is_no_verdict(verdict: str) -> None:
+    """The key is the subject's, so a verdict outlives an edit of the coordinate (merge-not-clobber does
+    not re-ask a covered subject) and is shared by every table's row under the rsID. Bound to the
+    coordinate it judged, a stale one reads as never judged: today's contradiction stands."""
+    row = _positional_row("haplotypes.csv", chrom=LOCUS[0])
+    row.start = AUTHORED_START + 50
+    stale = _locus(verdict, judged=authored_coordinate_key(LOCUS[0], AUTHORED_START, None))
+    report = resolve_positional_rows([row], {row.variant_key: [stale]})
+    assert (len(report.contradicted), report.undecided) == (1, [])
+    outcome = resolve_from_table([_variant(AUTHORED_START + 50)], {RSID: [stale]})
+    (ladder,) = outcome.ladders
+    assert "(reference disagreement" in ladder.warning
+
+
+def test_undecided_is_about_the_spelling_only_a_wrong_contig_is_still_accused() -> None:
+    row = _positional_row("haplotypes.csv", chrom="12")
+    locus = _locus("undecided", judged=authored_coordinate_key("12", AUTHORED_START, None))
+    report = resolve_positional_rows([row], {row.variant_key: [locus]})
+    assert report.undecided == []
+    (sentence,) = report.contradicted
+    assert "chrom='12' contradicts" in sentence
 
 
 def _variant(start: int) -> VariantRow:

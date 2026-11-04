@@ -29,7 +29,7 @@ from just_dna_format.alleles import (
 )
 from just_dna_format.base import derive_variant_key
 from just_dna_format.findings import CodedWarning
-from just_dna_format.resolution import ResolutionRow
+from just_dna_format.resolution import ResolutionRow, authored_coordinate_key
 from just_dna_format.spec import VariantRow
 from just_dna_format.vrs import par_partner
 
@@ -367,8 +367,10 @@ SAME_EVENT = "same_event"
 UNDECIDED_EVENT = "undecided"
 
 
-def recorded_same_event(loci: Sequence[ResolutionRow]) -> bool:
-    """Whether the enricher recorded the authored coordinate as another spelling of one of these loci (RM375).
+def recorded_verdicts(
+    chrom: str | None, start: int | None, ref: str | None, loci: Sequence[ResolutionRow]
+) -> set[str]:
+    """The `authored_event` verdicts these loci record about THIS authored coordinate (RM375).
 
     **The compiler trusts the record and never judges it** (`@a-recorded-judgement-is-a-fact`). Two
     spellings of one indel (NUDT15's `13:48041104 G>GG` and `13:48041103 T>TG`) differ in `start` and
@@ -376,8 +378,17 @@ def recorded_same_event(loci: Sequence[ResolutionRow]) -> bool:
     tier, so the enricher's verdict on the locus's row is the whole answer. One predicate for both
     comparers — `_verify` on the SNP core and `_authored_conflict` on the positional tables — so the
     two cannot read the cell two ways.
+
+    **Only a verdict about the coordinate the row holds now.** The key is the subject's, so a verdict
+    survives an edit of the coordinate (merge-not-clobber does not re-ask a covered subject) and is
+    shared with every other table's row under the same rsID. A verdict whose `judged_coordinate` is not
+    this row's (`authored_coordinate_key`, a string compare and no judgement) is no verdict here: the row
+    reads as never judged, and today's contradiction stands.
     """
-    return any(locus.authored_event == SAME_EVENT for locus in loci)
+    judged = authored_coordinate_key(chrom, start, ref)
+    return {
+        locus.authored_event for locus in loci if locus.authored_event and locus.judged_coordinate == judged
+    }
 
 
 @dataclass
@@ -464,9 +475,8 @@ def resolve_positional_rows(
         locus = candidates[0]
         conflict = _authored_conflict(row, locus)
         if conflict is not None:
-            (report.undecided if locus.authored_event == UNDECIDED_EVENT else report.contradicted).append(
-                conflict
-            )
+            sentence, undecided = conflict
+            (report.undecided if undecided else report.contradicted).append(sentence)
             continue
         if _respelled(row, locus):
             # Another spelling of the same event (RM375): its anchor, `ref` and `alts` belong to the
@@ -498,16 +508,23 @@ def _stated_allele(row: object) -> str | None:
 _SPELLING_FREE: frozenset[str] = frozenset({"rsid", "chrom"})
 
 
+def _verdicts_of(row: object, locus: ResolutionRow) -> set[str]:
+    """`recorded_verdicts` for one positional row against one locus."""
+    return recorded_verdicts(
+        getattr(row, "chrom", None), getattr(row, "start", None), getattr(row, "ref", None), [locus]
+    )
+
+
 def _respelled(row: object, locus: ResolutionRow) -> bool:
     """Whether the row authored another spelling of the locus's event, by the enricher's record (RM375)."""
-    if not recorded_same_event([locus]):
+    if SAME_EVENT not in _verdicts_of(row, locus):
         return False
     start, ref = getattr(row, "start", None), getattr(row, "ref", None)
     return (start is not None and start != locus.start) or (ref is not None and str(ref) != str(locus.ref))
 
 
-def _authored_conflict(row: object, locus: ResolutionRow) -> str | None:
-    """A sentence naming the authored identity cell the locus disagrees with, or `None`.
+def _authored_conflict(row: object, locus: ResolutionRow) -> tuple[str, bool] | None:
+    """`(sentence, undecided)` naming the authored identity cell the locus disagrees with, or `None`.
 
     Only cells the author actually wrote are compared — a filled cell is by construction the locus's
     own value. A half-coordinate (`start` with no `chrom`, the shape CPIC drafting produces) is the
@@ -525,22 +542,25 @@ def _authored_conflict(row: object, locus: ResolutionRow) -> str | None:
     sentence names the two spellings without calling either wrong. A `different_event` or an empty cell
     (never judged) is today's sentence.
     """
-    respelled = recorded_same_event([locus])
-    for name in ("rsid", "chrom") if respelled else ("rsid", "chrom", "start", "ref"):
+    verdicts = _verdicts_of(row, locus)
+    for name in ("rsid", "chrom") if SAME_EVENT in verdicts else ("rsid", "chrom", "start", "ref"):
         authored = getattr(row, name, None)
         against = getattr(locus, name, None)
         if authored is not None and against is not None and str(authored) != str(against):
-            if locus.authored_event == UNDECIDED_EVENT and name in ("start", "ref"):
+            # Undecided is a verdict about the spelling only: a wrong rsID or contig is still accused.
+            if UNDECIDED_EVENT in verdicts and name in ("start", "ref"):
                 return (
                     f"{getattr(row, 'variant_key', None)}: authored {name}={authored!r} and the resolution "
                     f"table's {name}={against!r} may be two spellings of one event, which the enricher "
                     f"recorded as undecided (`authored_event=undecided`), so the rest of that row's "
-                    f"coordinate is left unfilled rather than completed from that locus"
+                    f"coordinate is left unfilled rather than completed from that locus",
+                    True,
                 )
             return (
                 f"{getattr(row, 'variant_key', None)}: authored {name}={authored!r} contradicts the "
                 f"resolution table's {name}={against!r}, so the rest of that row's coordinate is left "
-                f"unfilled rather than completed from a locus the row disagrees with"
+                f"unfilled rather than completed from a locus the row disagrees with",
+                False,
             )
     return None
 
@@ -1196,11 +1216,12 @@ def _verify(v: VariantRow, loci: list[ResolutionRow], ladders: list[LadderFindin
     coordkey = derive_variant_key(None, v.chrom, v.start, v.ref)
     keys = {derive_variant_key(None, lo.chrom, lo.start, lo.ref) for lo in loci}
     if keys and coordkey not in keys:
-        if recorded_same_event(loci):
+        verdicts = recorded_verdicts(v.chrom, v.start, v.ref, loci)
+        if SAME_EVENT in verdicts:
             # The enricher read the reference and recorded the authored pair as another spelling of the
             # locus's event (RM375): agreement, and the table's spelling rides `resolution_loci` back.
             return
-        if any(lo.authored_event == UNDECIDED_EVENT for lo in loci):
+        if UNDECIDED_EVENT in verdicts:
             message = (
                 f"{v.rsid or coordkey} authored as {coordkey}, while the resolution table spells it "
                 f"{sorted(keys)}: whether the two are one event in two spellings is undecided (the "

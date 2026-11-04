@@ -31,7 +31,7 @@ from just_dna_format.base import derive_variant_key
 _YAML = "schema_version: '1.0'\nmodule:\n  name: demo\n  title: D\n  description: d\n  report_title: D\n"
 _RES_HEADER = (
     "variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,source,status,"
-    "rsid_alternates,fetched_at,authored_event\n"
+    "rsid_alternates,fetched_at,authored_event,judged_coordinate\n"
 )
 _VAR_HEADER = "rsid,chrom,start,ref,alts,genotype,state,conclusion\n"
 
@@ -41,9 +41,13 @@ _KEY_COORD_ALT = derive_variant_key(None, "7", 700, "C", "G")
 _KEY_COORD_ONLY = derive_variant_key(None, "7", 700, "C")
 
 
-def _row(key, rsid, chrom, start, ref, alts, idx=0, status="resolved", alternates="", event="") -> str:
+def _row(
+    key, rsid, chrom, start, ref, alts, idx=0, status="resolved", alternates="", event="", judged=""
+) -> str:
     cell = f'"{alternates}"' if alternates else ""
-    return f"{key},{rsid},{chrom},{start},{ref},{alts},GRCh38,{idx},manual,{status},{cell},,{event}\n"
+    return (
+        f"{key},{rsid},{chrom},{start},{ref},{alts},GRCh38,{idx},manual,{status},{cell},,{event},{judged}\n"
+    )
 
 
 _PHARM_HEADER = "rsid,chrom,start,ref,gene,genotype,drug,conclusion\n"
@@ -235,21 +239,21 @@ CASES: list[Case] = [
     Case(
         "pair authored at another anchor of its indel, recorded same_event",
         "rs777,7,701,,,G/GG,risk,c\n",
-        _row("rs777", "rs777", 7, 700, "T", "TG", event="same_event"),
+        _row("rs777", "rs777", 7, 700, "T", "TG", event="same_event", judged="7:701"),
         stable=True,
         strict_refuses=False,
     ),
     Case(
         "pair authored at another anchor of its indel, recorded undecided",
         "rs777,7,701,,,G/GG,risk,c\n",
-        _row("rs777", "rs777", 7, 700, "T", "TG", event="undecided"),
+        _row("rs777", "rs777", 7, 700, "T", "TG", event="undecided", judged="7:701"),
         stable=True,
         strict_refuses=True,
     ),
     Case(
         "table-only, half coordinate at another anchor, recorded same_event: chrom completed",
         "",
-        _row("rs777", "rs777", 7, 700, "T", "TG", event="same_event"),
+        _row("rs777", "rs777", 7, 700, "T", "TG", event="same_event", judged=":701"),
         stable=True,
         strict_refuses=False,
         pharm="rs777,,701,,SLCO1B1,G/GG,simvastatin,c\n",

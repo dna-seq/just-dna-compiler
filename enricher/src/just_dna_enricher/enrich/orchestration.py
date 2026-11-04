@@ -1089,6 +1089,12 @@ def _run_enrichment(
                     )
                 for i, (locus, source_locus, aligned) in enumerate(written):
                     witness, verdict = placement.row_columns(v.rsid, source_locus)
+                    # RM375: whether the coordinate the module authored (whole, or CPIC's half) spells
+                    # this locus's event, judged against the reference, and the coordinate judged, so
+                    # the compile reads a respelling as agreement instead of a contradiction.
+                    judged = authored_event(
+                        (v.chrom, v.start, v.ref, v.alts), locus, mint=mint, read_window=read_window
+                    )
                     out.append(
                         ResolutionRow(
                             variant_key=key,
@@ -1100,12 +1106,8 @@ def _run_enrichment(
                             placement_witness=witness,
                             placement_verdict=verdict,
                             left_aligned=aligned,
-                            # RM375: whether the coordinate the module authored (whole, or CPIC's
-                            # half) spells this locus's event, judged against the reference, so the
-                            # compile reads a respelling as agreement instead of a contradiction.
-                            authored_event=authored_event(
-                                (v.chrom, v.start, v.ref, v.alts), locus, mint=mint, read_window=read_window
-                            ),
+                            authored_event=judged[0] if judged else None,
+                            judged_coordinate=judged[1] if judged else None,
                             **locus,
                         )
                     )
@@ -1705,9 +1707,10 @@ def _run_enrichment(
             )
         if unsettled:
             logger.warning(
-                "Re-derivation: %d of %d re-asked subject(s) changed spelling and this run could not "
-                "tell a respelling from a move (no VRS id, no reference read) — %s. Re-run with a "
-                "sequence service to settle them.",
+                "Re-derivation: %d of %d re-asked subject(s) changed and this run could not tell a "
+                "respelling from a move — %s. Undecided means an allele with no VRS id and no reference "
+                "read, or an indel ALT one table keeps and the other does not, which the hosting filter "
+                "keeps offline and settles online; re-derive online to settle the first.",
                 len(unsettled),
                 compared,
                 "; ".join(str(d) for d in unsettled),

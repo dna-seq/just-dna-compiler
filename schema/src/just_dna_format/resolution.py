@@ -21,7 +21,7 @@ from typing import ClassVar
 
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
-from just_dna_format.base import Companion, PairedFields, both_or_neither, since, vocabulary
+from just_dna_format.base import Companion, PairedFields, both_or_neither, coordinate_key, since, vocabulary
 from just_dna_format.normalize import normalize_utc_timestamp
 from just_dna_format.spelling import ChromCell
 from just_dna_format.vocab import (
@@ -32,7 +32,7 @@ from just_dna_format.vocab import (
     check_vocab,
     validate_rsid,
 )
-from just_dna_format.vrs import split_vrs_ids, validate_caid, validate_vrs_id_list
+from just_dna_format.vrs import normalize_chrom, split_vrs_ids, validate_caid, validate_vrs_id_list
 
 # The fact columns that feed `integrity.resolution_signature` — the reproducibility-relevant facts,
 # deliberately EXCLUDING the provenance columns (`source`/`status`/`fetched_at`) so a human-filled and
@@ -59,6 +59,16 @@ RESOLUTION_FACT_FIELDS: tuple[str, ...] = (
     "genome_build",
     "locus_index",
 )
+
+
+def authored_coordinate_key(chrom: str | None, start: int | None, ref: str | None) -> str:
+    """The authored coordinate an `authored_event` verdict judged, as one comparable string (RM375).
+
+    Written by the enricher beside the verdict and recomputed by the compiler from the row it would
+    apply the verdict to, so the two sides cannot spell it two ways: the contig folded
+    (`normalize_chrom`), `ref` uppercased, an absent cell an empty segment (`coordinate_key`).
+    """
+    return coordinate_key(normalize_chrom(chrom), start, ref.upper() if ref else None)
 
 
 class ResolutionRow(PairedFields):
@@ -88,6 +98,11 @@ class ResolutionRow(PairedFields):
         "placement_verdict",
         "a placement witness and its verdict are written together: who was asked, and what they "
         "answered (RM267)",
+    ) + both_or_neither(
+        "authored_event",
+        "judged_coordinate",
+        "a verdict on an authored spelling names the spelling it judged, or nothing can tell it from a "
+        "stale one (RM375)",
     )
 
     model_config = ConfigDict(extra="forbid")
@@ -288,6 +303,16 @@ class ResolutionRow(PairedFields):
             "the row predates 0.8 (RM375)."
         ),
         json_schema_extra={**vocabulary("authored_event", VALID_AUTHORED_EVENT_VERDICTS), **since("0.8.0")},
+    )
+    judged_coordinate: str | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description=(
+            "The authored coordinate `authored_event` judged, as `authored_coordinate_key` spells it "
+            "(`chrom:start[:ref]`, the contig empty for a half coordinate). The compiler trusts the "
+            "verdict only for a row whose authored coordinate is still this one: an edit made after the "
+            "enricher judged, or another table's row under the same key, reads as never judged (RM375)."
+        ),
     )
     fetched_at: str | None = Field(
         json_schema_extra=since("0.5.0"),

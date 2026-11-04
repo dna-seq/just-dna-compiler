@@ -37,10 +37,11 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
 from just_dna_format.alleles import parsimony_reduce
+from just_dna_format.resolution import authored_coordinate_key
 from just_dna_format.vocab import ALLELE_PATTERN
 from just_dna_format.vrs import normalize_chrom
 
-from just_dna_enricher.sequences import _left_align, indel_spellings
+from just_dna_enricher.sequences import _LEFT_ALIGN_WINDOW, _left_align, indel_spellings
 
 Mint = Callable[[str, int, str, str], str | None]
 ReadWindow = Callable[[str, int, int], str | None]
@@ -138,13 +139,13 @@ def alleles_of(loci: Iterable[Mapping[str, object]]) -> list[Allele]:
     return out
 
 
-def _kleene_any(answers: Iterable[bool | None]) -> bool | None:
+def kleene_any(answers: Iterable[bool | None]) -> bool | None:
     """`True` if any answer is, else `None` if any is unknown, else `False` (and `False` for none)."""
     seen = list(answers)
     return True if True in seen else None if None in seen else False
 
 
-def _kleene_all(answers: Iterable[bool | None]) -> bool | None:
+def kleene_all(answers: Iterable[bool | None]) -> bool | None:
     """`False` if any answer is, else `None` if any is unknown, else `True`."""
     seen = list(answers)
     return False if False in seen else None if None in seen else True
@@ -168,7 +169,10 @@ def _anchors_name(start: int, ref: str | None, event: Allele, read_window: ReadW
     if any(start == s[1] and (ref is None or ref.upper() == s[2]) for s in spellings):
         return True
     last = spellings[-1]
-    footprint_end = last[1] + abs(len(last[2]) - len(last[3]))
+    # The bases the event touches: a deletion's anchor and the bases it removes; an insertion's anchor
+    # and the base after it, between which it sits (an HGVS insertion names both).
+    deletion = len(last[2]) > len(last[3])
+    footprint_end = last[1] + (len(last[2]) - len(last[3]) if deletion else 1)
     if padded or spellings[0][1] <= start <= footprint_end:
         return None
     return False
@@ -195,7 +199,7 @@ def names_event(
         alleles_of([{"chrom": event.chrom, "start": start, "ref": ref, "alts": alts}]) if ref and alts else []
     )
     if whole:
-        return _kleene_any(same_event(a, event, mint=mint, read_window=read_window) for a in whole)
+        return kleene_any(same_event(a, event, mint=mint, read_window=read_window) for a in whole)
     return _anchors_name(start, ref, event, read_window)
 
 
@@ -205,14 +209,16 @@ def authored_event(
     *,
     mint: Mint,
     read_window: ReadWindow | None,
-) -> str | None:
-    """`ResolutionRow.authored_event` for one locus written for a subject that authored a coordinate.
+) -> tuple[str, str] | None:
+    """`(authored_event, judged_coordinate)` for one locus written for a subject that authored a coordinate.
 
-    `None` (an empty cell) where there is nothing to judge: the subject authored no `start`, or the
+    `None` (two empty cells) where there is nothing to judge: the subject authored no `start`, or the
     authored cells the compiler compares (`chrom`, `start`, and `ref` where authored) equal the locus's,
     so the compiler sees agreement on its own. Otherwise the verdict the compiler reads, over the
     locus's ALTs: the authored coordinate names the locus when it spells any of its events (a
-    multi-allelic site's anchor is shared), and a locus with no nucleotide ALT is undecided.
+    multi-allelic site's anchor is shared), and a locus with no nucleotide ALT is undecided. Beside it,
+    the coordinate it judged (`authored_coordinate_key`), which binds the verdict: the compiler applies
+    it only to a row still authoring that coordinate.
     """
     chrom, start, ref, alts = authored
     if start is None:
@@ -226,19 +232,25 @@ def authored_event(
         return None
     events = alleles_of([locus])
     answer = (
-        _kleene_any(
+        kleene_any(
             names_event(chrom, start, ref, alts, e, mint=mint, read_window=read_window) for e in events
         )
         if events
         else None
     )
-    return AUTHORED_EVENT_VERDICT[answer]
+    return AUTHORED_EVENT_VERDICT[answer], authored_coordinate_key(chrom, start, ref)
 
 
-def _counterparts(allele: Allele, other: Sequence[Allele]) -> list[Allele]:
-    """The alleles on the other side a respelling of `allele` could be: same contig, same kind of event."""
+def counterparts(allele: Allele, other: Sequence[Allele]) -> list[Allele]:
+    """The alleles on the other side a respelling of `allele` could be: the same contig, within the window
+    an indel can slide in, the same kind of event (an insertion or deletion of the same length, or a
+    substitution to the same bases). Shared by the placement witness (RM267) and the drift (RM375)."""
     kind = _kind(allele)
-    return [o for o in other if o.chrom == allele.chrom and _kind(o) == kind]
+    return [
+        o
+        for o in other
+        if o.chrom == allele.chrom and abs(o.start - allele.start) <= _LEFT_ALIGN_WINDOW and _kind(o) == kind
+    ]
 
 
 def same_allele_sets(
@@ -253,18 +265,19 @@ def same_allele_sets(
     a run with one and a run without would have kept it alike. An unmatched **indel** is undecided: the
     hosting filter settles an indel locus by the reference (RM274) and RM270 splits a locus only when it
     can read one, so an offline table and an online one legitimately keep different indel ALTs of the
-    same source answer (`rs746071566`'s three offline, one online).
+    same source answer (`rs746071566`'s three offline, one online). That costs sharpness, never truth: a
+    source that really gained or dropped an indel ALT reads undecided rather than moved.
     """
     if not before and not after:
         return None
     answers: list[bool | None] = []
     for side, other in ((before, after), (after, before)):
         for allele in side:
-            counterparts = _counterparts(allele, other)
-            if not counterparts:
+            matches = counterparts(allele, other)
+            if not matches:
                 answers.append(False if _kind(allele)[0] == "substitution" else None)
                 continue
             answers.append(
-                _kleene_any(same_event(allele, o, mint=mint, read_window=read_window) for o in counterparts)
+                kleene_any(same_event(allele, o, mint=mint, read_window=read_window) for o in matches)
             )
-    return _kleene_all(answers)
+    return kleene_all(answers)

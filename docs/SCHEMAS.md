@@ -2443,7 +2443,7 @@ row's own cells alone.
   rsids for the exact allele — a dbSNP merge), `rsid_alternates?` (the full candidate list when
   `ambiguous`; `rsid` holds the deterministic pick), `rsid_current?` / `rsid_status?`
   (`VALID_RSID_STATUS = {live, merged, absent, withdrawn}` — what dbSNP says about `rsid` today),
-  `fetched_at?`, `placement_witness?`, `placement_verdict?` (0.8, below).
+  `fetched_at?`, `placement_witness?`, `placement_verdict?`, `left_aligned?`, `authored_event?`, `judged_coordinate?` (0.8, below).
 - **`source` names the link; `authority` names the licensed source it speaks for (RM33).** `source` is
   `ensembl-rest`/`ensembl-graphql`/`cache`/`clinvar`/`gnomad`/`authored`/`reversed`/`manual` — *which link
   answered* (`ensembl-graphql` is no longer written since its leg was retired in 0.8, and still reads), which matters for diagnosing a compile and has no other home. `authority` is the thing
@@ -2532,9 +2532,11 @@ row's own cells alone.
   `13:48041104 G>GG` against `13:48041103 T>TG`); `different_event` — it is not; `undecided` — nothing the
   run held could tell (no reference read, a padded `ref`, a position inside the event that is no
   anchor). Written only where the authored `chrom`, `start` or `ref` differs from the row's; empty where
-  they agree, and on a row written before 0.8. The compiler reads `same_event` as agreement and judges
-  nothing itself (P2). Unlike the two verdicts above, **reverse carries it**: the parquets'
-  `resolution_loci` struct has the field, so the second lap reads the verdict the first did.
+  they agree, and on a row written before 0.8. **`judged_coordinate`** beside it (a pair: both or
+  neither) is the coordinate judged, `authored_coordinate_key` (`chrom:start[:ref]`, the contig empty for
+  a half coordinate): the compiler reads `same_event` as agreement, and judges nothing itself (P2), only
+  for a row still authoring that coordinate. Unlike the two verdicts above, **reverse carries it**: the parquets'
+  `resolution_loci` struct has both fields, so the second lap reads the verdict the first did.
 - **`RESOLUTION_FACT_FIELDS`** names the fact columns; `integrity.resolution_signature` hashes only
   those (provenance deliberately excluded), so a human-filled and an Ensembl-filled table with identical
   facts hash equal.
