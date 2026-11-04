@@ -153,6 +153,13 @@ FIXTURES = [
         base=_HFE,
     ),
     Fixture("log_not_shipped", {"logs/run.exe": b"MZ\x00"}, base=_HFE),
+    # A header-only licence table beside a sidecar naming a source: the compile's closure warns
+    # `source_terms_unrecorded`, so the pre-flight must ask it on an empty table too.
+    Fixture(
+        "sources_header_only",
+        {"sources.csv": (_HFE / "sources.csv").read_text(encoding="utf-8").splitlines()[0] + "\n"},
+        base=_HFE,
+    ),
 ]
 
 
@@ -219,6 +226,7 @@ def test_the_fixtures_refuse_where_they_were_reported_to(tmp_path: Path) -> None
         "provenance_malformed": {(s, r) for s, r in _MODES},
         "provenance_not_utf8": {(s, r) for s, r in _MODES},
         "grch37_rsid_only": {(True, True), (True, False)},
+        "grch37_rsid_only_with_table": {(True, True), (True, False)},
         "rsid_only_no_table": {(True, True), (True, False)},
         # Under `--no-resolve` an rsID-only row is unplaced, which `strict` refuses on its own account.
         "locus_cannot_host_genotype": {(True, True), (True, False)},

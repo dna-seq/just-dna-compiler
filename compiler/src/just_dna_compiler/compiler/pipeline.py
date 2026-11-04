@@ -643,7 +643,7 @@ def compile_module(
         # The set is `sources_in_use`, which the pre-flight asks too (RM367), over every resolution row
         # the file holds: a source row is about the module's files, whatever `--no-resolve` says.
         # `fact_rows` holds every other sidecar by now, since `sources.csv` is last in `_FACT_TABLES`.
-        warns = _source_checks(rows, sources_in_use(injected.loaded, fact_rows))
+        warns = _source_checks(rows, sources_in_use(injected.asserted, fact_rows))
         warns.extend(_check_declared_license_agrees(rows, config.license if config else None))
         return [], warns
 

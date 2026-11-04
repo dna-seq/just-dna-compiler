@@ -285,6 +285,13 @@ def _collect_logs(
     `FileEntry` rows, beside the warnings. No logs → empty lists (a valid module).
     """
     pairs, warnings = discover_logs(spec_dir, explicit)
+    if explicit is None:
+        # `*.log` ships unchecked and unannounced, exactly as before RM338; a newly shipped kind is named
+        # so an author sees it before publishing a permanent file. Here, where it is copied, rather than
+        # in the discovery the pre-flight also runs, so a compile names each file once.
+        for rel, src in pairs:
+            if src.suffix != ".log":
+                logger.info("%s ships with the module (its content matches its name)", rel)
     seen: set[str] = set()
     names: list[str] = []
     for rel, src in pairs:
@@ -346,10 +353,6 @@ def discover_logs(spec_dir: Path, explicit: list[Path] | None) -> tuple[list[tup
                     CodedWarning("log_file_not_shipped", f"{rel} {LOG_NOT_SHIPPED_PHRASE}: {reason}.")
                 )
                 continue
-            # `*.log` ships unchecked and unannounced, exactly as before RM338; a newly shipped
-            # kind is named so an author sees it before publishing a permanent file.
-            if path.suffix != ".log":
-                logger.info("%s ships with the module (its content matches its name)", rel)
             pairs.append((rel, path))
 
     return pairs, warnings
@@ -438,7 +441,8 @@ def _collect_provenance(spec_dir: Path, output_dir: Path, explicit: Path | None)
     src = _provenance_source(spec_dir, explicit)
     if src is None:
         return None
-    doc = ProvenanceDoc.model_validate_json(src.read_text(encoding="utf-8"))
+    # Parsed exactly as `ancillary_errors` parsed it before `mkdir`, so a document it accepted parses here.
+    doc = ProvenanceDoc.model_validate_json(src.read_bytes())
     dest = output_dir / _PROVENANCE_FILE
     if dest.resolve() != src.resolve():
         dest.parent.mkdir(parents=True, exist_ok=True)

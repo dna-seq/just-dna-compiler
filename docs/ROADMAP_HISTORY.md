@@ -115,7 +115,16 @@ to ignore the switch turns 43 cases red; dropping one moved check from the pre-f
 walk red.
 
 **What is withheld rather than changed.** A malformed `resolution.csv` still refuses under
-`--no-resolve` (its rows are parsed for the count), on both paths. A `sources.csv` row naming the
+`--no-resolve` (its rows are parsed for the count), on both paths; a coordinate impossible in its build
+or a duplicate key in it no longer does, since those judge a table the switch does not read. On the
+deprecated `ensembl_cache` path the pre-flight skips every judgement over resolved rows (coverage, the
+strict aggregate, the four resolved-row cross-checks) rather than ask it over unresolved rows and publish
+a second, differently counted sentence (`@no-rerun-with-counts`). `close_module` runs the same pre-flight,
+so it now refuses a malformed `provenance.json`. Two review findings were declined: that
+`--no-resolve` should go on refusing a tampered `vrs_id` (it judges a table the switch does not read,
+which is the instance being fixed; the refusal returns with the switch off), and that the compile should
+take the pre-flight's resolution result instead of running the step again (a cost, not a defect; the
+compile's own returns stay defensive, and the `ensembl_cache` path needs them). A `sources.csv` row naming the
 resolution layer's authority is not reported unused under `--no-resolve`: a source row is about the
 module's files, so `sources_in_use` reads every row the file holds. The positional joinability
 report still names how many rows the unconsulted table would have placed (`InjectedResolution.named_table`).

@@ -15,7 +15,8 @@ reason is owed, and it is meant to stay short.
 **The one exemption the walk cannot see.** The deprecated `ensembl_cache` path (removed at 1.0) resolves
 rows against a reference the pre-flight is never handed, so what follows from that resolution — coverage,
 the strict aggregate, the resolved-row cross-checks — is the compile's alone on that path
-(`_validate_spec(legacy_reference=True)`). It is a reference, not a check, so it has no name to walk.
+(`_validate_spec(legacy_reference=True)`, which then skips those judgements rather than ask them over
+unresolved rows). It is a reference, not a check, so it has no name to walk.
 """
 
 #: Checks the compile asks and the pre-flight does not call by this name, with the reason.

@@ -396,6 +396,8 @@ forbids unknown columns. Same remedy.
 | `validate_spec` / `compile_module` refusals | A malformed `provenance.json` (any decoding error included), or a logo or readme with an unsupported extension, refuses at `validate`; `compile_module` refuses before creating `output_dir`, as it now does for every refusal. | A caller cleaning up a partial output directory after a refused compile no longer finds one. |
 | `compile_module(resolve_with_ensembl=False)` with a `resolution.csv` | The table is parsed for the `resolution_disabled` count and nothing else: no overlay, no VRS verification (a tampered id no longer refuses), `vrs_alleles` / `vrs_alleles_identified` 0 and `vrs_version` null, no allele membership against it. | A consumer reading `vrs_alleles_identified` from a `--no-resolve` manifest reads 0, which is what the parquets carry. |
 | `just-dna-compiler validate` | New `--resolve/--no-resolve` and `--ba1-threshold`. | Pass the switches the compile will get. |
+| `close_module` / `just-dna-compiler close` | Runs the same pre-flight, so it refuses a module whose `provenance.json` does not parse or whose logo or readme has an unsupported extension, as it refuses any module that does not validate. | Fix the file, then close. |
+| `validate_spec(resolve_with_ensembl=False)` | A `resolution.csv` row whose coordinate is impossible in its build, or a duplicate key in that table, no longer refuses: the table is not read under the switch. | Nothing; the refusal returns when resolution is on. |
 
 ## 2. What to change
 

@@ -8,7 +8,7 @@ resolving it is pure computation over bytes the pre-flight has already loaded, a
 no network. What the pre-flight genuinely cannot see is a reference it is not handed, the deprecated
 `ensembl_cache`, so that path stays the compile's alone and is the one entry left in `check_paths`.
 
-Three functions, each called by both commands:
+Five functions, each called by both commands:
 
 * `read_resolution` reads the table and returns the **active** view. Under `--no-resolve` the view is
   empty, and every consumer reads the view, so the switch reaches every check, count, signature and
@@ -16,8 +16,9 @@ Three functions, each called by both commands:
   the row count the `resolution_disabled` warning publishes and for its own load errors.
 * `resolve_variants` fills and expands `variants.csv` from the active view, or says that nothing was
   injected, and returns the refusals in the strings the compile publishes.
-* `after_resolution` is what the resolved rows owe: the identity checks an expansion can break, the
-  ploidy guardrail on the `chrom` resolution filled, and the strict aggregate over rows still unplaced.
+* `identity_after_resolution`, `ploidy_after_resolution` and `unplaced_refusal` are what the resolved
+  rows owe: the identity checks an expansion can break, the ploidy guardrail on the `chrom` resolution
+  filled, and the strict aggregate over rows still unplaced.
 """
 
 from dataclasses import dataclass, field
@@ -69,6 +70,13 @@ class InjectedResolution:
     def table(self) -> dict[str, list[ResolutionRow]]:
         """The active rows by `variant_key`, in file order — what resolution and membership look up."""
         return _by_key(self.rows)
+
+    @property
+    def asserted(self) -> list[ResolutionRow]:
+        """Every row the module asserts, read whatever the switch says: post-overlay where the view is
+        active, and the parsed rows where it is not. For `sources_in_use`, whose question is about the
+        module's files, not about what resolution consulted."""
+        return self.rows if self.consulted else self.loaded
 
     @property
     def named_table(self) -> dict[str, list[ResolutionRow]]:

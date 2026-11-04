@@ -573,8 +573,9 @@ def _validate_spec(
     # And `sources.csv` against the sources the other derived tables name — after the loop for the same
     # reason, since that set is complete only once every sidecar has been read. The compile asks the same
     # two functions; this pass did not, so `source_row_unused` reached an author only at compile (RM367).
-    if source_rows:
-        all_warnings.extend(_source_checks(source_rows, sources_in_use(injected.loaded, fact_rows)))
+    # On a present, parsed `sources.csv`, header-only included, as the compile's closure asks it.
+    if SourceRow in fact_rows:
+        all_warnings.extend(_source_checks(source_rows, sources_in_use(injected.asserted, fact_rows)))
 
     # The `panel:` block lost its last reader in 0.6 (RM4) and is removed at 1.0. Warn-only, and the
     # block still compiles and still reaches `manifest.panel` exactly as before — the charter's
@@ -828,6 +829,10 @@ def _validate_spec(
     authored_survivors = _apply_symbolic_drops(variants, would_drop.get("variants.csv", set()))
     resolved_variants = authored_survivors
     legacy_places_rows = legacy_reference and not membership_table
+    #: The deprecated reference will place rows this pass cannot see, so every judgement over the
+    #: resolved rows is the compile's on that path: asked here over the unresolved rows, a count-bearing
+    #: sentence would differ from the compile's and both would publish (`@no-rerun-with-counts`).
+    legacy_resolves = resolve_with_ensembl and legacy_places_rows
     resolution_ran = bool(variants) and resolve_with_ensembl and not legacy_places_rows
     if resolution_ran:
         resolved = resolve_variants(authored_survivors, membership_table, declared_build, strict=strict)
@@ -836,19 +841,20 @@ def _validate_spec(
         resolved_variants = resolved.variants
     # `strict`'s aggregate over the rows resolution left unplaced — under `--no-resolve` and on a
     # non-GRCh38 build too, where the compile refuses them and this pass used to say valid.
-    if strict and variants and not (resolve_with_ensembl and legacy_places_rows):
+    if strict and variants and not legacy_resolves:
         all_errors.extend(unplaced_refusal(resolved_variants))
 
     # The derived tables keyed by position or identity, against the resolved rows — the rows the compile
     # asks them against, since an rsID-only variant has a position only now (RM367). Warning-only in both
     # modes; they were compile-only under the resolved-rows exemption this pass no longer needs.
-    frequency_rows = fact_rows.get(FrequencyRow, [])
-    all_warnings.extend(_cross_check_frequencies(frequency_rows, resolved_variants))
-    all_warnings.extend(_check_ba1_lint(frequency_rows, resolved_variants, threshold=ba1_threshold))
-    all_warnings.extend(
-        _cross_check_clinical_assertions(fact_rows.get(ClinicalAssertionRow, []), resolved_variants)
-    )
-    all_warnings.extend(_cross_check_gwas_effects(fact_rows.get(GwasEffectRow, []), resolved_variants))
+    if not legacy_resolves:
+        frequency_rows = fact_rows.get(FrequencyRow, [])
+        all_warnings.extend(_cross_check_frequencies(frequency_rows, resolved_variants))
+        all_warnings.extend(_check_ba1_lint(frequency_rows, resolved_variants, threshold=ba1_threshold))
+        all_warnings.extend(
+            _cross_check_clinical_assertions(fact_rows.get(ClinicalAssertionRow, []), resolved_variants)
+        )
+        all_warnings.extend(_cross_check_gwas_effects(fact_rows.get(GwasEffectRow, []), resolved_variants))
 
     # Same rule about where a check belongs: the VCF pointer columns are authored cells read against
     # two spec-derived constants, with no resolution step and no `output_dir` in sight, so the
@@ -954,13 +960,18 @@ def _validate_spec(
         # the point of `validate` is to report every problem it can, not to stop at the first.
         all_warnings.extend(_check_contig_ploidy(variants, config.genome_build if config else "GRCh38"))
         # And the resolved rows' answers, which the compile asks after resolution (RM367): ploidy on the
-        # `chrom` resolution filled, and the identity checks an expansion can break. The identity half is
-        # asked only on an otherwise clean pass, as the compile reaches it only after this pre-flight.
+        # `chrom` resolution filled, and the identity checks an expansion can break. A post-resolution
+        # error restating one the authored rows already drew (resolution changed nothing at that row) is
+        # not listed twice; every other one is, whatever else this pass found.
         all_warnings.extend(
             w for w in ploidy_after_resolution(resolved_variants, declared_build) if w not in all_warnings
         )
-        if resolution_ran and not all_errors:
-            all_errors.extend(identity_after_resolution(resolved_variants, declared_build))
+        if resolution_ran:
+            all_errors.extend(
+                e
+                for e in identity_after_resolution(resolved_variants, declared_build)
+                if e.removeprefix("post-resolution: ") not in all_errors
+            )
         # `flags` is an open vocabulary — surface non-reserved tags as INFO (not a warning; nothing
         # is wrong). ROADMAP 0.3 item 4.
         unknown_flags = sorted(
