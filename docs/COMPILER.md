@@ -430,6 +430,21 @@ message names the cell as written (`Duplicate (variant, pmid): (rs…, NONE doi 
 real `pmid` is keyed and worded as before. The two other study findings that print a row's `pmid`
 (`study_effect_allele_not_at_locus`, `p_value_encodings_disagree`) name a `NONE` row the same way.
 
+**A study's outcome class outside the recommended set warns once (0.8, RM326).**
+`phenotype_class_unrecognized` names every `phenotype_class` token outside
+`RECOMMENDED_PHENOTYPE_CLASSES` with its row count, in one finding, in both modes. The set is open, so
+the rows stand; the warning exists for the second spelling, since v2 writes `FAMILIAL_LONGEVITY` beside
+`FAMILIAL` and `MR_MEDIATOR` beside `MR`. Text: `studies.csv phenotype_class outside the recommended
+set: 'FAMILIAL_LONGEVITY' (2 rows), … — the set is open, so the rows stand; …`.
+
+**A proxied study is checked against the proxy (0.8, RM331).** `study_effect_allele_not_at_locus` reads
+the resolved alleles of `proxy_rsid` when a row states one, never the lead's: filed under the lead, a
+proxy's allele used to be refused when the two loci differ and passed with the wrong meaning when they
+happen to match. The text names both (`rs646776 via proxy rs4970836 (PMID …): effect_allele 'T' is not
+among the resolved alleles at the proxy (A/C/G)`); a row with no proxy reads exactly as before. A proxy
+with no `resolution.csv` row withholds, as an unresolved lead does — the enricher resolves proxies as
+subjects so the row exists.
+
 **Only *both stated and different* suppresses the warning.** The rule is Kleene rather than `a != b`:
 an absent `statistical_test` is **unknown**, and unknown against a stated value cannot establish that
 two rows describe separate work. So a pair where neither row names an analysis, where both name the
@@ -438,11 +453,44 @@ code and the byte-identical message — every module published before 0.7 behave
 repeating an analysis already stated for its key still warns however many distinct siblings sit beside
 it.
 
+**Since 0.8 the same rule reads more columns** (PT2 §3 item 16): `phenotype_class` (one paper measuring
+several outcomes, RM326), the age band (`age_min`, `age_max`, `age_of`, read cell by cell, RM329) and
+the stratum pair (`stratum`/`stratum_level`, RM330). Two rows under one `(variant_key, pmid)` are two
+claims when **any** of these, or `statistical_test`, is both stated and different; a row warns when it
+is not distinct from some earlier row under its key. The band is read per cell because each bound is
+optional on its own: `80–` against `80–90` share the one bound both state, and an empty bound is
+unknown. `proxy_rsid` is deliberately not read: two proxies of one lead in one paper are the same
+association measured twice. Every case that still warns keeps the byte-identical message, and a module
+writing none of the new columns warns exactly as in 0.7.
+
 **`StudyRow._KEY_FIELDS` is not widened**, and the divergence is contained in this check. That tuple
 drives `hints.key_fields` and the `key.columns` an authoring surface publishes; re-keying a shipped
 authored table changes what an identity key means, which is major-only under Principle 3. The check
 restates `(variant_key, pmid)` rather than reading `_KEY_FIELDS`, so splitting it here splits nothing
 else.
+
+### Locus-level columns `weights.parquet` derives from the study rows (0.8)
+
+`VariantRow` names no study, so a fact that lives on `studies.csv` reaches a variant only by a rule.
+`_build_weights` collects each variant's **supporting** study rows — any shared identifier, the same rsid
+or the same `chrom:start:ref`, which is the rule the orphan check uses — and derives each column below
+from them, repeating it on every genotype row of the locus (a parquet column is approximately free, P9).
+None is authored on a variant, and `reverse` reads none back. All are appended after every 0.7 column.
+
+- **`effect_unit`** (RM332) — the unit of the variant's effect, when every supporting study row that
+  states a unit states the same one. Null when none states one, and null when two disagree: never the
+  first, never the most common (PT2 §3 item 17's default, accepted by the pm).
+- **`eur_only_evidence`** (RM328) — Kleene over the supporting rows' `ancestry`: false when any row
+  states a code other than `EUR` (`EAS|EUR` included), whatever else is unstated; otherwise null when any
+  row states none, or when the locus has no supporting row; otherwise true. A `Boolean` column, null
+  meaning unknown.
+- **The outcome strip** (RM326) — `outcome_healthspan`, `outcome_lifespan`, `outcome_exceptional`. A
+  cell is true when a supporting row's `phenotype_class` maps to it in `vocab.OUTCOME_STRIP_CELLS`
+  (`HEALTHSPAN` → healthspan; `PARENTAL_LIFESPAN`, `OWN_SURVIVAL` → lifespan; `EXTREME_SURVIVAL_CC`,
+  `FAMILIAL` → exceptional) and **null otherwise, never false**: a locus with no study of an outcome is
+  untested, not "no effect". True says the outcome was *studied* at this locus, not that an effect was
+  found; the study rows carry the finding. Every other class, `MULTIVARIATE_AGEING` included, maps to no
+  cell. v2's requirements §5.1 name the three cells and state no class map, so the map is PT2's.
 
 ### Three more schema limits, made legible the same way (0.6, the VCF 4.4 audit)
 
@@ -1760,7 +1808,8 @@ actionable, which is `vocab.ACTIONABLE_WARNING_CODES`, derived by subtraction:
 - **PGx tables** — `star_allele_undefined`, `diplotype_definitions_identical`,
   `diplotype_phase_ambiguous`
 - **studies and literature** — `study_variant_orphan`, `duplicate_study_citation`,
-  `p_value_encodings_disagree`, `study_effect_allele_not_at_locus`, `citation_not_in_pubmed`,
+  `p_value_encodings_disagree`, `study_effect_allele_not_at_locus`, `phenotype_class_unrecognized`,
+  `citation_not_in_pubmed`,
   `literature_row_uncited`, `quote_counter_stale`, `quoted_article_license_restrictive`
 - **sources and licensing** — `source_row_unused`, `source_terms_unrecorded`,
   `declared_license_disagrees`

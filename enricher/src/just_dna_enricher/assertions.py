@@ -43,6 +43,8 @@ from pydantic import ValidationError
 
 from just_dna_enricher.clinvar import lookup_clin_sig
 from just_dna_enricher.download import ensure_clinvar_snapshot
+from just_dna_enricher.enrich.outcome import EnrichmentError
+from just_dna_enricher.enrich.subjects import study_proxy_rsids
 from just_dna_enricher.licensing import (
     CLINVAR_TERMS,
     overlaid_input_rows,
@@ -201,6 +203,13 @@ def enrich_clinical_assertions(
     resolution_rows = overlaid_input_rows(
         spec_dir, "resolution.csv", resolution_rows, error=ClinicalAssertionError
     )
+    # A study's LD proxy has a row only for the compiler's allele check (RM331); it is not one of the
+    # module's loci, so this pass does not ask about it or write a fact row the compile calls an orphan.
+    try:
+        proxies = study_proxy_rsids(spec_dir)
+    except EnrichmentError as exc:
+        raise ClinicalAssertionError(str(exc)) from exc
+    resolution_rows = [row for row in resolution_rows if row.variant_key not in proxies]
 
     existing_rows: list[ClinicalAssertionRow] = []
     if assertions_path.exists():

@@ -5,19 +5,97 @@ from typing import Any
 import polars as pl
 from just_dna_format.frequency import FrequencyRow
 from just_dna_format.spec import ModuleSpecConfig, StudyRow, VariantRow
+from just_dna_format.vocab import OUTCOME_STRIP_CELLS
 
-from just_dna_compiler.compiler.tables import _polars_type, _split_genotype
+from just_dna_compiler.compiler.tables import _polars_type, _split_genotype, study_coordinate_key
 
 # ── Parquet builders ───────────────────────────────────────────────────────────
 
 
-def _build_weights(variants: list[VariantRow], config: ModuleSpecConfig) -> pl.DataFrame:
-    """Build the weights.parquet DataFrame from validated variant rows."""
+class _StudyIndex:
+    """The module's study rows, indexed once by the two identifiers a study can name a variant by.
+
+    "Supporting" is the orphan check's rule — the same rsid, or the same `chrom:start:ref`
+    (`tables.study_coordinate_key`, shared with `_cross_validate_studies`). Frozen-key equality would
+    contribute nothing for an rsid-authored study of a coordinate-keyed variant, and silently, since a
+    locus with no supporting rows reads as unknown. Built once per compile, so a module with thousands
+    of genotype rows and study rows costs two dict lookups per weights row, not a scan.
+    """
+
+    def __init__(self, studies: list[StudyRow]) -> None:
+        self.studies = studies
+        self.by_rsid: dict[str, list[int]] = {}
+        self.by_coord: dict[str, list[int]] = {}
+        for i, s in enumerate(studies):
+            if s.rsid is not None:
+                self.by_rsid.setdefault(s.rsid, []).append(i)
+            coord = study_coordinate_key(s.chrom, s.start, s.ref)
+            if coord is not None:
+                self.by_coord.setdefault(coord, []).append(i)
+
+    def supporting(self, variant: VariantRow) -> list[StudyRow]:
+        """`variant`'s supporting study rows, in authored order (which keeps every derivation stable).
+
+        `variant` is the post-resolution row, so a coordinate the enricher filled matches a coordinate-
+        authored study too.
+        """
+        hits = set(self.by_rsid.get(variant.rsid or "", ()))
+        coord = study_coordinate_key(variant.chrom, variant.start, variant.ref)
+        if coord is not None:
+            hits.update(self.by_coord.get(coord, ()))
+        return [self.studies[i] for i in sorted(hits)]
+
+
+def _locus_study_facts(studies: list[StudyRow]) -> dict[str, Any]:
+    """The locus-level columns `weights.parquet` derives from a variant's study rows (0.8).
+
+    Repeated on every genotype row of the locus: a parquet column is approximately free (P9), and a
+    consumer reading one row then needs no second join.
+
+    * `effect_unit` (RM332): the unit of the variant's effect, when every supporting study row that
+      states a unit states the same one. `VariantRow` names no study, so "the matching study row" is
+      undefined; unanimity is the rule that never guesses (PT2 §3 item 17). Null when none states one,
+      and null when two disagree — never the first, never the most common.
+    * `eur_only_evidence` (RM328): Kleene over the supporting rows' `ancestry`. False when any row states
+      a code other than `EUR` (a decisive counter-example, whatever else is unstated); otherwise null
+      when any row states none, or when the locus has no supporting row at all (no evidence is not
+      European-only evidence); otherwise true.
+    * the outcome strip (RM326): `outcome_<cell>` is true when a supporting row's `phenotype_class`
+      maps to that cell in `vocab.OUTCOME_STRIP_CELLS`, and null otherwise. Never false: a locus with no
+      study of an outcome is untested, not "no effect".
+    """
+    units = {s.effect_unit for s in studies if s.effect_unit is not None}
+    eur_only: bool | None
+    if any(s.ancestry and set(s.ancestry) != {"EUR"} for s in studies):
+        eur_only = False
+    elif not studies or any(not s.ancestry for s in studies):
+        eur_only = None
+    else:
+        eur_only = True
+    studied = {OUTCOME_STRIP_CELLS.get(s.phenotype_class or "") for s in studies}
+    return {
+        "effect_unit": units.pop() if len(units) == 1 else None,
+        "eur_only_evidence": eur_only,
+        **{f"outcome_{cell}": (True if cell in studied else None) for cell in _OUTCOME_CELLS},
+    }
+
+
+#: The strip's cells in column order, read off the format constant once (insertion order, deduped).
+_OUTCOME_CELLS: tuple[str, ...] = tuple(dict.fromkeys(OUTCOME_STRIP_CELLS.values()))
+
+
+def _build_weights(
+    variants: list[VariantRow], config: ModuleSpecConfig, studies: list[StudyRow] | None = None
+) -> pl.DataFrame:
+    """Build the weights.parquet DataFrame from validated variant rows, and the locus-level columns
+    derived from the module's study rows (`_locus_study_facts`)."""
     defaults = config.defaults
     module_name = config.module.name
     records: list[dict[str, Any]] = []
+    index = _StudyIndex(studies or [])
     for v in variants:
         priority = v.priority if v.priority is not None else defaults.priority
+        derived = _locus_study_facts(index.supporting(v))
         records.append(
             {
                 "rsid": v.rsid,
@@ -89,6 +167,14 @@ def _build_weights(variants: list[VariantRow], config: ModuleSpecConfig) -> pl.D
                 # floor. Both-or-neither is a model rule, so the pair is always whole here.
                 "quality_from": v.quality_from,
                 "min_quality": v.min_quality,
+                # ── 0.8: derived from the study rows, never authored on a variant; after every 0.7
+                # column so none moves, and `reverse` reads none of them back. Named one by one, not
+                # spread, so the two-halves guard in test_compiler_regression still sees each key. ──
+                "effect_unit": derived["effect_unit"],
+                "eur_only_evidence": derived["eur_only_evidence"],
+                "outcome_healthspan": derived["outcome_healthspan"],
+                "outcome_lifespan": derived["outcome_lifespan"],
+                "outcome_exceptional": derived["outcome_exceptional"],
             }
         )
     schema = {
@@ -133,6 +219,11 @@ def _build_weights(variants: list[VariantRow], config: ModuleSpecConfig) -> pl.D
         "actionability": pl.Utf8,
         "quality_from": pl.Utf8,
         "min_quality": pl.Float64,
+        "effect_unit": pl.Utf8,
+        "eur_only_evidence": pl.Boolean,
+        "outcome_healthspan": pl.Boolean,
+        "outcome_lifespan": pl.Boolean,
+        "outcome_exceptional": pl.Boolean,
     }
     return pl.DataFrame(records, schema=schema)
 
@@ -272,6 +363,27 @@ def _build_studies(studies: list[StudyRow], module_name: str) -> pl.DataFrame:
                 # pattern — see `_build_frequencies`).
                 "p_value_num": s.p_value_num,
                 "neg_log10_p": s.neg_log10_p,
+                # ── 0.8: the StudyRow batch (PROPOSAL_0_8_PT2 §3 items 11–17), after every 0.7 column so
+                # none of them moves. Passthroughs; nothing here derives one from another. ──
+                # RM325: how many were analysed, in what unit, and how many were cases.
+                "sample_size": s.sample_size,
+                "sample_unit": s.sample_unit,
+                "n_cases": s.n_cases,
+                # RM326: which outcome the study measured.
+                "phenotype_class": s.phenotype_class,
+                # RM328: the superpopulation code(s) the estimate was measured in, in authored order.
+                "ancestry": s.ancestry,
+                # RM329: the age band the estimate covers, and whose age it is.
+                "age_min": s.age_min,
+                "age_max": s.age_max,
+                "age_of": s.age_of,
+                # RM330: the stratum the estimate was measured in, and its level.
+                "stratum": s.stratum,
+                "stratum_level": s.stratum_level,
+                # RM331: the LD proxy the study measured, when it was not the lead itself.
+                "proxy_rsid": s.proxy_rsid,
+                # RM332: the unit of `effect_size`, verbatim.
+                "effect_unit": s.effect_unit,
             }
         )
     schema = {
@@ -299,5 +411,19 @@ def _build_studies(studies: list[StudyRow], module_name: str) -> pl.DataFrame:
         "curator": pl.Utf8,
         "p_value_num": pl.Float64,
         "neg_log10_p": pl.Float64,
+        # Int64, not UInt32: a consumer sums these across studies (`@a-count-that-fits-every-partition-
+        # need-not-fit-their-sum`), and polars' `sum()` keeps the input dtype.
+        "sample_size": pl.Int64,
+        "sample_unit": pl.Utf8,
+        "n_cases": pl.Int64,
+        "phenotype_class": pl.Utf8,
+        "ancestry": pl.List(pl.Utf8),
+        "age_min": pl.Float64,
+        "age_max": pl.Float64,
+        "age_of": pl.Utf8,
+        "stratum": pl.Utf8,
+        "stratum_level": pl.Utf8,
+        "proxy_rsid": pl.Utf8,
+        "effect_unit": pl.Utf8,
     }
     return pl.DataFrame(records, schema=schema)

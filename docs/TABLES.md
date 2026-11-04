@@ -229,6 +229,39 @@ it since 0.8. The symptom of skipping it is a refusal naming the DOI you wrote; 
 column over. When the preprint is later published, write its PMID instead of `NONE`
 (`just-dna-enricher hint citation --doi` finds it where PubMed has one).
 
+**A sample size is a count of something, and the something is a cell** (0.8). `sample_size` is the
+total analysed, cases included, and `sample_unit` says whether it counts people or lives: a
+parental-lifespan study counts two lives per participant, so the same number means half as many
+genotyped people. A size without its unit is refused, and so is an `n_cases` larger than the size.
+
+**`phenotype_class` says what was measured; `study_design` says how.** A case-control GWAS of
+centenarians and a Cox model of parental lifespan are both "GWAS" in `study_design`, and the class is
+what separates them. The recommended twelve are v2's; a token outside them is kept and warned about
+once, because the commonest cause is a second spelling of one of them.
+
+**`ancestry` is a code, `population` is a description.** `ancestry` takes the 1000 Genomes
+superpopulation codes and nothing else, listing each one a trans-ethnic study pooled; the cohort's own
+name (an Ashkenazi study is `EUR` there) goes in `population`. An unstated `ancestry` is unknown, which
+is why a locus whose evidence is partly unstated is never reported as European-only.
+
+**An age-stratified estimate is one row per band.** `age_min`/`age_max` bound the band in years, an
+empty bound leaves it open (Timmers 2019's top parental band is 80 and over), and `age_of` says whose
+age it is: a parental-lifespan study bands by the parent's age at death, not the participant's.
+
+**A stratum is a pair.** `stratum` names the modifier an estimate was measured within and
+`stratum_level` the level (`sex`/`male`, `parent_sex`/`father`); one without the other is refused. One
+pair holds one modifier, so "hypertensive men" keeps its second modifier in `statistical_test`.
+
+**A study measured on an LD proxy is filed under the lead, with the proxy in `proxy_rsid`.** The
+`effect_allele` is then the proxy's allele, and that is what the compiler checks it against; filed
+under the proxy's own rsID instead, the row would be an orphan. Write only the rsID: r² means nothing
+without its population, so it is computed rather than typed.
+
+**`effect_measure` is the kind of estimate, `effect_unit` what one unit of it is.** A `beta` can be in
+years of parental lifespan per allele, Martingale residuals or a hazard; write the unit as the paper does.
+A variant's row in `weights.parquet` carries it only when every study row of that variant that states a
+unit states the same one, so two units for one variant leave it empty rather than picking one.
+
 **The symptom of confusing it with `literature.csv` is a dropped row.** `literature.csv` is
 machine-produced and keeps every article it found; the compiler **discards an uncited literature row**
 when nothing references it. `studies.csv` is the authored side and is never dropped. If a citation

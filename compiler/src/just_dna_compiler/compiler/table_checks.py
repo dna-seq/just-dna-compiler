@@ -13,6 +13,7 @@ from just_dna_format.findings import CodedWarning, restate
 from just_dna_format.layout import DERIVED_SUBDIR, VERIFICATION_JSON, sidecar_spellings
 from just_dna_format.pgx import is_hla_gene
 from just_dna_format.spec import PMID_NONE, StudyRow, VariantRow, cited_as, doi_key
+from just_dna_format.vocab import RECOMMENDED_PHENOTYPE_CLASSES
 from pydantic import BaseModel
 
 from just_dna_compiler.compiler.tables import (
@@ -24,6 +25,7 @@ from just_dna_compiler.compiler.tables import (
     META_CSV,
     MODEL_ORGANISMS_CSV,
     OVERRIDES_CSV,
+    study_coordinate_key,
 )
 
 #: The reference star allele by CYP naming, exempt from the used-but-not-defined warning for every
@@ -325,17 +327,14 @@ def _cross_validate_studies(
     and unknown cannot establish distinctness."""
     warnings: list[str] = []
     variant_rsids = {v.rsid for v in variants if v.rsid is not None}
-    variant_coords = {
-        derive_variant_key(None, v.chrom, v.start, v.ref) for v in variants if v.chrom is not None
-    }
+    variant_coords = {study_coordinate_key(v.chrom, v.start, v.ref) for v in variants if v.chrom is not None}
     orphans: list[str] = []
     for row in studies:
         if row.variant_key is None:
             continue
         by_rsid = row.rsid is not None and row.rsid in variant_rsids
         by_coord = (
-            row.chrom is not None
-            and derive_variant_key(None, row.chrom, row.start, row.ref) in variant_coords
+            row.chrom is not None and study_coordinate_key(row.chrom, row.start, row.ref) in variant_coords
         )
         if not by_rsid and not by_coord:
             orphans.append(row.variant_key)
@@ -366,29 +365,83 @@ def _cross_validate_studies(
     # different preprints on one variant would share a key; the cell key carries the DOI there
     # (normalized: a bare token and a doi.org URL, in any case, are one DOI), and the message names it,
     # so the same preprint written twice still warns.
-    stated: dict[tuple[str | None, str], set[str]] = {}
-    unstated: dict[tuple[str | None, str], int] = {}
+    #
+    # **Since 0.8 the same rule reads more columns** (PT2 §3 item 16): `phenotype_class` (one paper,
+    # several outcomes), the age band (`age_min`, `age_max`, `age_of`, cell by cell) and the stratum
+    # pair. Two rows are distinct when ANY of them is both stated and different, and a row warns when it
+    # is not distinct from some earlier row under its key. `proxy_rsid` is deliberately not one: two
+    # proxies of one lead in one paper are the same association measured twice.
+    earlier: dict[tuple[str | None, str], list[StudyRow]] = {}
     for row in studies:
         cites = f"{PMID_NONE} doi {doi_key(row.doi)}" if row.pmid == PMID_NONE and row.doi else row.pmid
         key = (row.variant_key, cites)
-        test = row.statistical_test.strip() if row.statistical_test else None
-        if key not in stated:
-            stated[key] = set()
-            unstated[key] = 0
-        else:
-            names_a_new_analysis = test is not None and test not in stated[key] and unstated[key] == 0
-            if not names_a_new_analysis:
-                warnings.append(
-                    CodedWarning(
-                        "duplicate_study_citation",
-                        f"Duplicate (variant, pmid): ({row.variant_key}, {cited_as(row.pmid, row.doi)})",
-                    )
+        siblings = earlier.setdefault(key, [])
+        if any(not _distinct_study_rows(row, sibling) for sibling in siblings):
+            warnings.append(
+                CodedWarning(
+                    "duplicate_study_citation",
+                    f"Duplicate (variant, pmid): ({row.variant_key}, {cited_as(row.pmid, row.doi)})",
                 )
-        if test is None:
-            unstated[key] += 1
-        else:
-            stated[key].add(test)
+            )
+        siblings.append(row)
     return [], warnings
+
+
+def _narrowing_cells(row: StudyRow) -> tuple[object, ...]:
+    """The cells that can tell two rows under one `(variant_key, pmid)` apart, `None` where unstated.
+
+    `statistical_test` (RM140) is stripped, as it always was. The band is three cells, each read on its
+    own, because each is independently optional: `80–` against `80–90` share the one bound both state,
+    and an empty bound is unknown rather than "open and therefore different". The stratum is one pair —
+    its two halves are written both or neither, so the pair is stated exactly when either half is.
+    """
+    return (
+        row.statistical_test.strip() if row.statistical_test else None,
+        row.phenotype_class,
+        row.age_min,
+        row.age_max,
+        row.age_of,
+        (row.stratum, row.stratum_level) if row.stratum is not None else None,
+    )
+
+
+def _distinct_study_rows(a: StudyRow, b: StudyRow) -> bool:
+    """Whether two rows under one key are two claims: some narrowing cell is BOTH stated and different.
+
+    Kleene, never `a != b` (`@absent-is-not-different`): an unstated cell is unknown, and unknown cannot
+    establish that two rows describe separate work.
+    """
+    return any(
+        x is not None and y is not None and x != y
+        for x, y in zip(_narrowing_cells(a), _narrowing_cells(b), strict=True)
+    )
+
+
+def _check_phenotype_classes(studies: list[StudyRow]) -> list[str]:
+    """`phenotype_class` outside the recommended set, one warning naming each token (RM326, 0.8).
+
+    The set is open on purpose — three real studies fit none of v2's twelve classes — so a token outside
+    it is kept, and this says so once rather than per row. What it exists to catch is the second
+    spelling: v2 itself writes `FAMILIAL_LONGEVITY` beside `FAMILIAL` and `MR_MEDIATOR` beside `MR`, and
+    a consumer grouping by class would otherwise read one class as two. Counted in authored order so
+    the message is deterministic, and a warning in both modes, never a refusal.
+    """
+    counts: dict[str, int] = {}
+    for row in studies:
+        token = row.phenotype_class
+        if token is not None and token not in RECOMMENDED_PHENOTYPE_CLASSES:
+            counts[token] = counts.get(token, 0) + 1
+    if not counts:
+        return []
+    named = ", ".join(f"{token!r} ({n} rows)" for token, n in sorted(counts.items()))
+    return [
+        CodedWarning(
+            "phenotype_class_unrecognized",
+            f"studies.csv phenotype_class outside the recommended set: {named} — the set is open, so the "
+            f"rows stand; check each is not a second spelling of a recommended class "
+            f"({', '.join(sorted(RECOMMENDED_PHENOTYPE_CLASSES))})",
+        )
+    ]
 
 
 def _validate_table_kind(

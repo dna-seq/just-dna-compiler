@@ -41,6 +41,91 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM326, RM328: `weights.parquet` says whether a locus's evidence is European-only, and which outcomes were studied (0.8, uncut)
+
+**format, compiler** — `weights.parquet` gains four derived columns, repeated on each genotype row of a
+locus and read off its supporting study rows (same rsid or same `chrom:start:ref`). `eur_only_evidence`
+is true when every row states only `EUR`, false when one states another code, and null when any states
+none or there are none. The outcome strip `outcome_healthspan`, `outcome_lifespan`,
+`outcome_exceptional` is true when a row's `phenotype_class` maps to the cell
+(`vocab.OUTCOME_STRIP_CELLS`: `HEALTHSPAN`; `PARENTAL_LIFESPAN` and `OWN_SURVIVAL`;
+`EXTREME_SURVIVAL_CC` and `FAMILIAL`) and null otherwise, never false. None is authored and `reverse`
+writes none back. Closes RM326 and RM328.
+
+## 2026-11-04 — RM326, RM329, RM330: one paper's several outcomes, bands and strata are not duplicate citations (0.8, uncut)
+
+**compiler** — `duplicate_study_citation` reads the 0.8 study columns by RM140's rule: two rows for one
+`(variant_key, pmid)` are two claims when `phenotype_class`, an age-band cell (`age_min`, `age_max`,
+`age_of`, each on its own) or the stratum pair is stated on both and differs, as `statistical_test`
+already did. An unstated cell is unknown and the pair still warns; `proxy_rsid` is not read. Every case
+that still warns keeps the byte-identical message, and a module writing none of the new columns warns
+exactly as before. Closes RM329 and RM330 (both halves of RM330 are now on 0.8).
+
+## 2026-11-04 — RM332: an effect states its unit on the study row, and `weights.parquet` carries it when the studies agree (0.8, uncut)
+
+**format, compiler** — `studies.csv` gains `effect_unit`, free text and verbatim, the column
+`gwas_effects.csv` has carried since 0.6. `weights.parquet` gains a derived `effect_unit` per variant:
+the unit every supporting study row that states one agrees on, null when none states one or two
+disagree. It is not authored on `variants.csv` (the maintainer cut that half) and `reverse` never writes
+it back. Every module carrying `variants.csv` gets a new `artifact.digest` on a 0.8 recompile, since
+`weights.parquet` gains a column; `content_signature` does not move.
+
+## 2026-11-04 — RM331 (the author's half): a study measured on an LD proxy says so, and its allele is checked against the proxy (0.8, uncut)
+
+**format, compiler, enricher** — `studies.csv` gains `proxy_rsid`, the variant a study measured when it
+stood in for the row's lead. A proxy on a row naming no variant, or equal to its own `rsid`, is refused.
+`study_effect_allele_not_at_locus` checks `effect_allele` against the proxy's resolved alleles when one is
+stated, never the lead's, and names both in its text; a proxy with no `resolution.csv` row withholds.
+`enrich` resolves each stated proxy as a subject (after every table naming a module variant), so the
+row exists. A proxy is not one of the module's loci, so the GWAS, frequency and clinical-assertion passes
+leave proxy-only rows out (naming them runs the subject collector, so the frequency and
+clinical-assertion passes now refuse an invalid PGx or heteroplasmy table, as `enrich` already did). An
+invalid study row does not stop `enrich`: the valid rows' proxies are
+asked for and one warning names the rest. The r² between proxy and lead, computed in the study's
+`ancestry`, is still to come on 0.8.
+
+## 2026-11-04 — RM330: a study row states the stratum its estimate was measured in (0.8, uncut)
+
+**format, compiler** — `studies.csv` gains `stratum` and `stratum_level`, free text and written both or
+neither (`sex`/`male`, `parent_sex`/`father`); one without the other is refused. They reach
+`studies.parquet` and `reverse` writes them back. This is RM330's study half; its conclusion half,
+`meta.csv`'s `sex`, shipped with the meta-table.
+
+## 2026-11-04 — RM329: a study row states the age band its estimate covers, and whose age it is (0.8, uncut)
+
+**format, compiler** — `studies.csv` gains `age_min` and `age_max` (years, finite and non-negative;
+either may be empty for an open band) and `age_of` (closed: `participant`, `parent`). No refusal ties
+the three together. They reach `studies.parquet` and `reverse` writes them back. `age_event` was cut by
+the maintainer before the build.
+
+## 2026-11-04 — RM328: a study row names the ancestry it was measured in (0.8, uncut)
+
+**format, compiler** — `studies.csv` gains `ancestry`, optional, multi-valued and closed over the 1000
+Genomes superpopulation codes (`vocab.VALID_SUPERPOPULATIONS`: `AFR`, `AMR`, `EAS`, `EUR`, `SAS`). A
+trans-ethnic study lists its codes; `population` stays free text. `pgs.VALID_TRAINING_ANCESTRY` is now
+derived from the same constant plus `multi`, so the five codes are one vocabulary; its members are
+unchanged. The column reaches `studies.parquet` as a list and `reverse` writes it back `|`-joined.
+
+## 2026-11-04 — RM326: a study row states which outcome it measured (0.8, uncut)
+
+**format, compiler** — `studies.csv` gains `phenotype_class`, optional and open, with longevitymap v2's
+twelve classes as the recommended members (`RECOMMENDED_PHENOTYPE_CLASSES`: `EXTREME_SURVIVAL_CC`,
+`PARENTAL_LIFESPAN`, `OWN_SURVIVAL`, `VIABILITY_AF`, `HEALTHSPAN`, `MULTIVARIATE_AGEING`, `FAMILIAL`,
+`DISEASE_DEPLETION`, `RARE_BURDEN`, `EVOLUTIONARY`, `MR`, `BIOMARKER`). A token outside them is kept and
+draws the new warning `phenotype_class_unrecognized`, once per module, naming each token with its row
+count, in both modes. It reaches `studies.parquet` and `reverse` writes it back. **New warning code:** a
+reader pinned to 0.7 refuses a manifest carrying it (INTEGRATION_0_8 § 1).
+
+## 2026-11-04 — RM325: a study row states how many were analysed, in what unit, and how many were cases (0.8, uncut)
+
+**format, compiler** — `studies.csv` gains `sample_size` (the total analysed, cases included),
+`sample_unit` (closed: `individuals`, `lives`) and `n_cases`, optional and declared after every 0.7
+column. A `sample_size` without its unit is refused, since a parental-lifespan study counts two lives
+per participant, and so is an `n_cases` larger than the `sample_size` beside it. The three reach
+`studies.parquet` (the counts as `Int64`) and `reverse` writes them back. A module that leaves them out
+keeps its `content_signature`; every module with `studies.csv` gets a new `artifact.digest` on a 0.8
+recompile, because the parquet gains columns.
+
 ## 2026-11-04 — RM349: a `pmid=NONE` row's DOI is checked to exist, and its quote matched where the text is reachable (0.8, uncut)
 
 **enricher** — The literature pass now asks about a work cited by DOI alone. Each distinct DOI on a

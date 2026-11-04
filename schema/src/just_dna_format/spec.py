@@ -19,6 +19,7 @@ from pydantic import (
     ConfigDict,
     Field,
     PrivateAttr,
+    ValidationInfo,
     field_validator,
     model_validator,
 )
@@ -53,9 +54,14 @@ from just_dna_format.vocab import (
     ACTIONABILITY_SEED,
     ALLELE_PATTERN,  # noqa: F401 — re-exported for backward compat (genotype grammar moved to base)
     RECOMMENDED_EFFECT_MEASURES,
+    RECOMMENDED_PHENOTYPE_CLASSES,
+    RSID_PATTERN,
+    VALID_AGE_OF,
     VALID_CLIN_SIG,  # noqa: F401 — re-exported for backward compat (see note below)
     VALID_DIRECTIONS,  # noqa: F401 — re-exported for backward compat
+    VALID_SAMPLE_UNITS,
     VALID_SIGNIFICANCE,  # noqa: F401 — re-exported for backward compat
+    VALID_SUPERPOPULATIONS,
     check_vocab,
     reject_template_placeholders,
     validate_allele,
@@ -1412,6 +1418,130 @@ class StudyRow(CitationPair, AuthoredModel):
         ),
     )
 
+    # ── The 0.8 batch (PROPOSAL_0_8_PT2 §3 items 11–17), declared after every 0.7 column so no column
+    # of a 0.7 `studies.parquet` changes position. ──
+    # RM325: how many were analysed, in what unit, and how many of them were cases. longevitymap v2's
+    # tier A is stated in N ("N ≥ 100k lives, or ≥ 3k cases"), and nothing in the format carried one.
+    # `sample_size` is the TOTAL analysed, cases included, so `n_cases` can never exceed it; the unit
+    # beside it is what keeps a parental study's lives apart from a cohort's people.
+    sample_size: int | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        ge=0,
+        description=(
+            "How many were analysed for this row's estimate, cases included, in the unit "
+            "`sample_unit` names (required beside it)."
+        ),
+    )
+    sample_unit: str | None = Field(
+        default=None,
+        json_schema_extra={**vocabulary("sample_unit", VALID_SAMPLE_UNITS), **since("0.8.0")},
+        description=(
+            "What `sample_size` counts: `individuals`, or `lives` where a study counts each "
+            "participant's parents (two lives per participant)."
+        ),
+    )
+    n_cases: int | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        ge=0,
+        description=(
+            "How many of the analysed were cases, for a case-control or extreme-phenotype design. "
+            "Never more than `sample_size` when both are stated."
+        ),
+    )
+    # RM326: which OUTCOME the study measured, a different axis from `study_design` (which describes
+    # the study) and one the trait term does not separate. Open, with v2's twelve as the recommended
+    # members; a token outside them warns (`phenotype_class_unrecognized`) and is kept.
+    phenotype_class: str | None = Field(
+        default=None,
+        json_schema_extra={
+            **vocabulary("phenotype_class", RECOMMENDED_PHENOTYPE_CLASSES, closed=False),
+            **since("0.8.0"),
+        },
+        description=(
+            "Which outcome this study measured, e.g. `PARENTAL_LIFESPAN`, `EXTREME_SURVIVAL_CC`, "
+            "`HEALTHSPAN` (recommended, open; another token warns and is kept). `study_design` "
+            "describes the study; this describes what it measured, and one paper may measure several."
+        ),
+    )
+    # RM328: the 1000G superpopulation(s) the estimate was measured in, closed and multi-valued. Beside
+    # `population`, which stays free text for what a code cannot say (an Ashkenazi cohort is `EUR` here
+    # and named there). `eur_only_evidence` on `weights.parquet` is derived from it.
+    ancestry: list[str] | None = Field(
+        default=None,
+        json_schema_extra={**vocabulary("superpopulation", VALID_SUPERPOPULATIONS), **since("0.8.0")},
+        description=(
+            "The 1000 Genomes superpopulation(s) this estimate was measured in (AFR, AMR, EAS, EUR, "
+            "SAS; multi-valued — a trans-ethnic study lists each code). `population` beside it stays "
+            "free text for the cohort. Absent means unstated, never 'any'."
+        ),
+    )
+    # RM329: the age band an age-stratified estimate covers, and whose age the band is. Either bound may
+    # be empty (an open band: Timmers 2019's top band is 80+), and no refusal ties the three together.
+    age_min: float | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        ge=0,
+        description="Lower bound of the age band this estimate covers, in years. Empty: open below.",
+    )
+    age_max: float | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        ge=0,
+        description="Upper bound of the age band this estimate covers, in years. Empty: open above.",
+    )
+    age_of: str | None = Field(
+        default=None,
+        json_schema_extra={**vocabulary("age_of", VALID_AGE_OF), **since("0.8.0")},
+        description=(
+            "Whose age the band is: `participant`, or `parent` for a parental-lifespan study banded "
+            "by the parent's age at death."
+        ),
+    )
+    # RM330, the study's half: the stratum an estimate was measured in — a modifier and its level, free
+    # text and written both or neither. A conclusion that DEPENDS on a modifier is a different thing and
+    # lives on `meta.csv` (`sex`); a modifier that is another locus's genotype is RM28's.
+    stratum: str | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description=(
+            "The modifier this estimate was measured within, e.g. `sex`, `parent_sex`, `smoking`. "
+            "Free text, and only with `stratum_level` beside it."
+        ),
+    )
+    stratum_level: str | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description="The level of `stratum` this estimate was measured in, e.g. `male`, `father`, `never`.",
+    )
+    # RM331, the author's half: the variant the study actually MEASURED, when it is an LD proxy of the
+    # row's own (lead) variant. The row stays filed under the lead; `effect_allele` is then the proxy's
+    # allele, and the compiler checks it against the proxy's alleles. Authors write only the rsID: r²
+    # means nothing without its population, so the pair is computed by the enricher, never typed.
+    proxy_rsid: str | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description=(
+            "The dbSNP id of the variant this study measured, when it is an LD proxy of the row's "
+            "variant. `effect_allele` is then an allele of the proxy. r² and its population are "
+            "computed, never authored."
+        ),
+    )
+    # RM332: the unit `effect_size` is in, verbatim — `gwas_effects.csv` has carried the same column
+    # since 0.6. `effect_measure` names the KIND of estimate (beta, OR); this names what one unit of it is
+    # (years of parental lifespan per allele, -ln HR per allele). On `StudyRow` only (the maintainer cut
+    # the `VariantRow` half); `weights.parquet` joins it onto a variant when its study rows agree.
+    effect_unit: str | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description=(
+            "The unit of `effect_size`, verbatim as the paper states it, e.g. `years of parental "
+            "lifespan per allele`, `-ln HR per allele`. Free text. A sign convention is not a unit: "
+            "`effect_allele` with `direction` already says which way."
+        ),
+    )
+
     @property
     def variant_key(self) -> str | None:
         """Stable key matching VariantRow.variant_key, or `None` when the row names no variant.
@@ -1484,6 +1614,95 @@ class StudyRow(CitationPair, AuthoredModel):
                 f"confidence={self.confidence!r} names a magnitude with no instrument beside it — "
                 f"set confidence_unit (e.g. 'civic_evidence_status'), because two sources publish "
                 f"values on scales that are not the same quantity"
+            )
+        return self
+
+    @field_validator("proxy_rsid")
+    @classmethod
+    def _validate_proxy_rsid(cls, v: str | None) -> str | None:
+        if v is not None and not RSID_PATTERN.match(v):
+            raise ValueError(f"proxy_rsid must match rs<digits>, got: {v!r}")
+        return v
+
+    @model_validator(mode="after")
+    def _refuse_a_proxy_of_nothing_or_of_itself(self) -> "StudyRow":
+        # RM331. A proxy stands in for the row's own variant, so a row naming no variant has nothing it
+        # could be a proxy of, and a proxy equal to the row's rsID is the lead itself, written twice.
+        if self.proxy_rsid is None:
+            return self
+        if self.rsid is None and self.chrom is None:
+            raise ValueError(
+                f"proxy_rsid={self.proxy_rsid!r} on a row that names no variant — a proxy stands in "
+                f"for the row's own variant, so set rsid (or chrom/start/ref) to the lead it proxies"
+            )
+        if self.proxy_rsid == self.rsid:
+            raise ValueError(
+                f"proxy_rsid={self.proxy_rsid!r} is the row's own rsid — leave proxy_rsid empty when "
+                f"the study measured the lead itself"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _refuse_half_a_stratum(self) -> "StudyRow":
+        # RM330. A modifier with no level says the estimate was stratified without saying in which
+        # stratum it sits, and a level with no modifier (`male`) cannot be told from another axis.
+        if (self.stratum is None) != (self.stratum_level is None):
+            stated, missing = ("stratum", "stratum_level") if self.stratum else ("stratum_level", "stratum")
+            raise ValueError(
+                f"{stated} is set and {missing} is not — a stratum is written as both or neither (the "
+                f"modifier, and the level of it this estimate was measured in)"
+            )
+        return self
+
+    @field_validator("sample_unit")
+    @classmethod
+    def _validate_sample_unit(cls, v: str | None) -> str | None:
+        return check_vocab(v, VALID_SAMPLE_UNITS, "sample_unit")
+
+    @field_validator("age_min", "age_max")
+    @classmethod
+    def _validate_age(cls, v: float | None, info: ValidationInfo) -> float | None:
+        validate_finite(v, info.field_name or "age")
+        return v
+
+    @field_validator("age_of")
+    @classmethod
+    def _validate_age_of(cls, v: str | None) -> str | None:
+        return check_vocab(v, VALID_AGE_OF, "age_of")
+
+    @field_validator("ancestry", mode="before")
+    @classmethod
+    def _split_ancestry(cls, v: object) -> object:
+        # A CSV cell arrives as a string; split it as `PgsRow.training_ancestry` does.
+        if isinstance(v, str):
+            tokens = [t.strip() for t in _MULTI_SEP.split(v) if t.strip()]
+            return tokens or None
+        return v
+
+    @field_validator("ancestry")
+    @classmethod
+    def _validate_ancestry(cls, v: list[str] | None) -> list[str] | None:
+        # Rebuilt from `check_vocab`'s returns, never validated and discarded (RM95).
+        if v is None:
+            return v
+        return [check_vocab(tok, VALID_SUPERPOPULATIONS, "ancestry") or tok for tok in v]
+
+    @model_validator(mode="after")
+    def _refuse_a_count_with_no_unit_or_more_cases_than_analysed(self) -> "StudyRow":
+        # RM325. A count of 1,012,240 is a parental-lifespan study's LIVES or a cohort's people, and
+        # the two differ by a factor of two (`@weight-has-no-unit`). Only the asymmetric case is
+        # refused, as `confidence` does: a unit with no count names nothing that was measured.
+        if self.sample_size is not None and self.sample_unit is None:
+            raise ValueError(
+                f"sample_size={self.sample_size} has no unit beside it — set sample_unit "
+                f"({'|'.join(sorted(VALID_SAMPLE_UNITS))}), because a parental-lifespan study counts "
+                f"two lives per participant"
+            )
+        # Both columns are new, so no published row can hold the pair, and the two cannot both be true.
+        if self.sample_size is not None and self.n_cases is not None and self.n_cases > self.sample_size:
+            raise ValueError(
+                f"n_cases={self.n_cases} is more than sample_size={self.sample_size} — sample_size is the "
+                f"total analysed, cases included"
             )
         return self
 

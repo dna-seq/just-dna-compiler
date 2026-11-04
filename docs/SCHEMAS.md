@@ -254,7 +254,9 @@ reason its `source` column is inside its fact set while everywhere else `source`
   |---|---|---|
   | `RECOMMENDED_ANCESTRY_GROUPS` | 11 (open) | gnomAD's population labels — **open**, and deliberately not merged with `PgsRow.training_ancestry`'s 1000G superpopulations |
   | `RECOMMENDED_AUTHOR_KINDS` | 7 (open) |  |
+  | `RECOMMENDED_PHENOTYPE_CLASSES` | 12 (open) | which outcome a `StudyRow` measured — longevitymap v2's twelve classes; a token outside them warns (`phenotype_class_unrecognized`) and is kept (RM326) |
   | `RECOMMENDED_EFFECT_MEASURES` | 7 (open) | the units a `StudyRow` effect size is usually in — **open**, since a real study may report another |
+  | `VALID_AGE_OF` | 2 (closed) | whose age a `StudyRow` age band is — the participant's, or a parent's (RM329) |
   | `VALID_ACTIONABILITY` | 7 (closed) | what a consumer's return-of-results policy may act on. Shipped as `ACTIONABILITY_SEED`, which survives as a working alias — the `_SEED` name and a comment beside it both read as open while the validator refuses a non-member (RM225) |
   | `VALID_AUTHORED_POSITION` | 5 (closed) | what an `overrides.csv` row claims about the author's own standing on the value |
   | `VALID_AUTHORITY_CALL_STATUS` | 3 (closed) | whether an authority was asked, answered, or not consulted |
@@ -278,12 +280,14 @@ reason its `source` column is inside its fact set while everywhere else `source`
   | `VALID_RELEASE_OUTPUT_AXES` | 5 (closed) |  |
   | `VALID_RESOLUTION_STATUS` | 3 (closed) |  |
   | `VALID_RSID_STATUS` | 4 (closed) |  |
+  | `VALID_SAMPLE_UNITS` | 2 (closed) | what a `StudyRow.sample_size` counts — people, or lives where a study counts each participant's parents (RM325) |
   | `VALID_SIGNIFICANCE` | 4 (closed) |  |
+  | `VALID_SUPERPOPULATIONS` | 5 (closed) | the 1000 Genomes superpopulation codes: what `StudyRow.ancestry` binds, and — plus `multi` — `pgs.VALID_TRAINING_ANCESTRY`, derived from it so the codes are one list (RM328) |
   | `VALID_SOURCE_LAYERS` | 9 (closed) |  |
   | `VALID_VERIFICATION_CHECKS` | 26 (closed) |  |
   | `VALID_VERIFICATION_SKIPS` | 8 (closed) |  |
   | `VALID_VERIFICATION_INDEPENDENCE` | 2 (closed) | `VerificationRecord.independence`, derived from the record's two sources and never typed (RM292) |
-  | `VALID_WARNING_CODES` | 80 (closed) | every code a compile may stamp on a finding (members in `RETIRED_WARNING_CODES` are no longer emitted); the catalogue with texts is in [COMPILER.md](COMPILER.md) |
+  | `VALID_WARNING_CODES` | 81 (closed) | every code a compile may stamp on a finding (members in `RETIRED_WARNING_CODES` are no longer emitted); the catalogue with texts is in [COMPILER.md](COMPILER.md) |
 
   Vocabularies owned by a leaf rather than by `vocab` (`spec`, `binning`, `pgx`, `pgs`, `manifest`,
   `sources`) are reached through the field markers above and not listed here, for the reason the bullet
@@ -556,6 +560,34 @@ the manifest's `authorship` (S55). 0.7 adds **`statistical_test?`** — which *a
 row's `p_value`/`effect_size`, free text like `study_design` beside it (RM140) — and
 **`confidence?`/`confidence_unit?`**, how far the *citing source* stands behind this evidence link, in
 that source's own units (RM160).
+0.8 adds the facts longevitymap v2 tiers and sorts its evidence by (PROPOSAL_0_8_PT2 §3 items 11–17),
+each optional and declared after every 0.7 column: **`sample_size?`/`sample_unit?`/`n_cases?`**
+(RM325) — `sample_size` is the total analysed, cases included, and is refused without its unit
+(`VALID_SAMPLE_UNITS`: `individuals`, or `lives` where a study counts each participant's parents); a
+row whose `n_cases` exceeds its `sample_size` is refused. **`phenotype_class?`** (RM326) — which
+*outcome* the study measured, a different axis from `study_design`; open over
+`RECOMMENDED_PHENOTYPE_CLASSES` (v2's twelve), and a token outside them draws
+`phenotype_class_unrecognized` once per module, naming each token with its row count.
+**`ancestry?`** (RM328) — the 1000 Genomes superpopulation code(s) the estimate was measured in,
+multi-valued and closed over `VALID_SUPERPOPULATIONS` (`AFR`, `AMR`, `EAS`, `EUR`, `SAS`); a
+trans-ethnic study lists its codes, never `multi`, and `population` stays free text beside it.
+`PgsRow.training_ancestry`'s set is now derived from the same constant plus `multi`.
+**`age_min?`/`age_max?`/`age_of?`** (RM329) — the age band an age-stratified estimate covers, in years
+(finite, ≥ 0; either bound may be empty for an open band), and whose age it is (`VALID_AGE_OF`:
+`participant`, `parent`). No refusal ties the three together. **`stratum?`/`stratum_level?`**
+(RM330, the study's half) — the modifier an estimate was measured within and its level, free text,
+written both or neither (`sex`/`male`, `parent_sex`/`father`). A conclusion that *depends* on sex is
+`meta.csv`'s `sex` condition, a different thing. **`proxy_rsid?`** (RM331, the author's half) — the
+variant the study measured when it is an LD proxy of the row's lead; the row stays filed under the lead,
+`effect_allele` is the proxy's allele, and the compiler checks it against the proxy's resolved alleles.
+A proxy on a row naming no variant, or equal to the row's own `rsid`, is refused. Authors never write
+the r² or its population: that pair is computed. **`effect_unit?`** (RM332) — the unit of `effect_size`,
+free text and verbatim, as on `gwas_effects.csv`; `StudyRow` only (the `VariantRow` half was cut), and
+`weights.parquet` carries it per variant when every supporting study row that states one agrees.
+`weights.parquet` also derives `eur_only_evidence` (from `ancestry`) and the outcome strip
+`outcome_healthspan`/`outcome_lifespan`/`outcome_exceptional` (from `phenotype_class` through
+`vocab.OUTCOME_STRIP_CELLS`), both Kleene and neither authored; COMPILER.md § Locus-level columns has
+the rules.
 
 **The pmid/doi pair (0.8, RM336) — one rule on every table that cites.** `pmid` never holds a DOI: a
 cell whose only identifier is a DOI is refused, naming the DOI, the way RM50 refuses a PMC id, because

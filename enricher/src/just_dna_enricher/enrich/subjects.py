@@ -3,22 +3,26 @@ authored-pair check, and the pseudoautosomal representative (RM260 split this ou
 single-file `enrich.py`).
 """
 
+import logging
 import re
 from collections.abc import Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from pathlib import Path
 
-from just_dna_compiler.compiler import META_CSV, load_csv_rows
+from just_dna_compiler.compiler import META_CSV, load_csv_rows, load_spec_variants
 from just_dna_format.base import derive_variant_key
 from just_dna_format.binning import HeteroplasmyRow
 from just_dna_format.meta import MetaRow, parse_members
 from just_dna_format.pgx import HaplotypeRow, PharmVariantRow
-from just_dna_format.spec import VariantRow
+from just_dna_format.spec import StudyRow, VariantRow
 from just_dna_format.vrs import normalize_chrom, par_partner
 
+from just_dna_enricher.enrich.build_declaration import spec_genome_build
 from just_dna_enricher.enrich.outcome import EnrichmentError
 from just_dna_enricher.resolver import PairCheck, check_rsid_coordinates
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -65,7 +69,11 @@ def _subject_of_variant(v: VariantRow, genome_build: str = "GRCh38") -> Subject:
 
 
 def collect_subjects(
-    spec_dir: Path, variants: list[VariantRow], genome_build: str = "GRCh38"
+    spec_dir: Path,
+    variants: list[VariantRow],
+    genome_build: str = "GRCh38",
+    *,
+    include_study_proxies: bool = True,
 ) -> list[Subject]:
     """Every row in the spec that needs a coordinate, `variants.csv` first, deduped by `variant_key`.
 
@@ -85,6 +93,21 @@ def collect_subjects(
     inline. The stamped value is the same expression, frozen at load from the authored columns, so
     nothing here changes; and `PharmVariantRow.alts`, added by the same item, is deliberately not read
     here because it is compiler-filled data rather than an authored fact.
+
+    **A study's LD proxy is a subject too, last** (RM331, 0.8). `StudyRow.proxy_rsid` names the variant a
+    study measured in place of the row's lead, and the compiler checks the row's `effect_allele` against
+    the proxy's resolved alleles — which exist only if this asks for them. A proxy is usually not a
+    module variant, so it is admitted here, after every table above: one that is also a module variant
+    keeps that row's subject, and the precedence above is untouched. It carries no `constraint`: the
+    compile check is what judges the allele, and filtering loci by it here would drop the very loci that
+    check needs. `include_study_proxies=False` is for a pass about the module's own variants (the GWAS
+    Catalog pass), which a proxy is not. The study rows themselves stay out, as before: a study row
+    *references* a variant the module already carries.
+
+    **An invalid study row does not stop the run**, unlike the tables above. Those are coordinate
+    sources, so a run that cannot read one has nothing honest to resolve; `studies.csv` only adds
+    proxies. Its valid rows' proxies are asked for and the rest are named in one warning — the compile
+    refuses those rows anyway, and `validate` names each.
     """
     subjects: list[Subject] = [_subject_of_variant(v, genome_build) for v in variants]
 
@@ -151,10 +174,42 @@ def collect_subjects(
             for r in rows
         )
 
+    studies_path = spec_dir / "studies.csv"
+    if include_study_proxies and studies_path.exists():
+        rows, errors, _ = load_csv_rows(studies_path, StudyRow, "studies.csv")
+        if errors:
+            logger.warning(
+                "studies.csv has %d invalid row(s), and any LD proxy on them is not asked for (first: %s); "
+                "`just-dna-compiler validate` names each.",
+                len(errors),
+                errors[0],
+            )
+        subjects.extend(
+            Subject(r.proxy_rsid, r.proxy_rsid, None, None, None, None, None, "studies.csv")
+            for r in rows
+            if r.proxy_rsid is not None
+        )
+
     deduped: dict[str, Subject] = {}
     for s in subjects:
         deduped.setdefault(s.variant_key, s)
     return list(deduped.values())
+
+
+def study_proxy_rsids(spec_dir: Path) -> frozenset[str]:
+    """The rsIDs this module asks about ONLY as a study's LD proxy (RM331, 0.8).
+
+    `collect_subjects` admits a proxy last and dedupes, so a subject still carrying the `studies.csv`
+    origin is one no table naming a module variant asked for. Its `resolution.csv` row exists for the
+    compiler's allele check alone, and a pass that reads `resolution.csv` as the module's own loci (the
+    frequency and clinical-assertion passes) leaves these rsIDs out, or it would spend requests on loci
+    the module does not annotate and write fact rows the compile reports as orphans. A proxy's rows are
+    keyed by the rsID itself (an rsID subject's `variant_key`), so a pass filters on `variant_key`, which
+    never drops a coordinate-authored module variant whose back-filled `rsid` happens to be the same.
+    """
+    variants, _errors, _warnings = load_spec_variants(spec_dir)
+    subjects = collect_subjects(spec_dir, variants, spec_genome_build(spec_dir))
+    return frozenset(s.rsid for s in subjects if s.origin == "studies.csv" and s.rsid)
 
 
 #: An rsID as a member condition writes it: the stamped `variant_key` of an rsID-authored row is the rsID.

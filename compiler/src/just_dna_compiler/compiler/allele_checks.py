@@ -324,6 +324,13 @@ def _check_study_effect_alleles(
 
     Since 0.6 a study row need not name a variant at all (`REQUIRED_ANY_OF` is empty, RM47), so a row
     with no identity derives no key and is skipped by the same path.
+
+    **A stated `proxy_rsid` is the locus asked about (RM331, 0.8).** A study measured on an LD proxy is
+    filed under the lead, and its `effect_allele` is the proxy's: checking it against the lead's
+    alleles refused a correct row when they differed and passed it with the wrong meaning when they
+    happened to match. So the proxy's resolved alleles are the evidence, and the lead's are never a
+    fallback — a proxy with no `resolution.csv` row (the enricher resolves proxies as subjects) is
+    unknown, and withholds exactly as an unresolved lead does.
     """
     ladders: list[LadderFinding] = []
     for study in studies:
@@ -331,7 +338,8 @@ def _check_study_effect_alleles(
             continue
         if study.rsid is None and study.chrom is None:
             continue
-        key = derive_variant_key(study.rsid, study.chrom, study.start, study.ref)
+        lead = derive_variant_key(study.rsid, study.chrom, study.start, study.ref)
+        key = study.proxy_rsid or lead
         if _resolved_allele_verdict(study.effect_allele, key, resolution_table) is not False:
             continue
         resolved: set[str] = set()
@@ -341,12 +349,15 @@ def _check_study_effect_alleles(
             resolved.add(row.ref.upper())
             resolved.update(a.strip().upper() for a in row.alts.split(",") if a.strip())
         shown = "/".join(sorted(resolved))
+        # A proxied row names both: the lead it is filed under, and the proxy whose alleles were read.
+        where = f"{lead} via proxy {study.proxy_rsid}" if study.proxy_rsid else key
+        locus = "the proxy" if study.proxy_rsid else "this locus"
         ladders.append(
             LadderFinding(
                 CodedWarning(
                     "study_effect_allele_not_at_locus",
-                    f"{key} (PMID {cited_as(study.pmid, study.doi)}): effect_allele {study.effect_allele!r} is not among "
-                    f"the resolved alleles at this locus ({shown}) — effect_size is stated relative to "
+                    f"{where} (PMID {cited_as(study.pmid, study.doi)}): effect_allele {study.effect_allele!r} is not among "
+                    f"the resolved alleles at {locus} ({shown}) — effect_size is stated relative to "
                     f"it, so a wrong effect allele inverts the study's finding rather than breaking "
                     f"it; the resolving source's allele list may also be incomplete, so check which "
                     f"before editing",

@@ -948,6 +948,7 @@ eligible row to a `_Subject` and feeds it through the unchanged chain, caches, o
 | `pharm_variants.csv` | `variant_key` property (**without** `alts`) | `genotype` (optional — `None` keeps every locus) |
 | `haplotypes.csv` | derived the same way, without `alts` | the defining `allele` |
 | `heteroplasmy.csv` (0.5.3) | `variant_key` property, **with** `alts` — it mints one exactly as `VariantRow` does | none: a measurement band over a locus is not a claim about a genotype |
+| `studies.csv` `proxy_rsid` (0.8, RM331) | the proxy's rsID, admitted **last** | none: the compiler's `effect_allele` check judges the allele, and filtering loci here would drop what it reads |
 
 A `HaplotypeRow` reuses the *same* membership predicate rather than a parallel one: its defining
 allele is the one-allele form of the question a genotype asks of two. Subjects are deduped by
@@ -962,6 +963,25 @@ resolved to nothing at all — the same gap PGx had before 0.5, found from the o
 compiler started reporting which tables a VCF cannot join (COMPILER.md § Scope). Because its
 `variant_key` carries `alts`, it can mint a `ga4gh:VA.…`, so that load **passes the module's
 `genome_build`** where the two PGx loads rightly do not — the RM36 trap, one call site further on.
+
+**A study's LD proxy joined the list in 0.8 (RM331).** `StudyRow.proxy_rsid` names the variant a study
+measured in place of the row's lead, and the compiler checks the row's `effect_allele` against the
+proxy's resolved alleles. A proxy is usually not a module variant (rs4970836 for longevitymap's
+rs646776), so without a subject of its own it has no `resolution.csv` row and the check withholds. It is
+admitted after every table above, so a proxy that is also a module variant keeps that row's subject,
+and a later run keeps its row in scope. The r² between proxy and lead is not computed here yet.
+An invalid study row does **not** stop the run, unlike an invalid `pharm_variants.csv` or
+`haplotypes.csv` (coordinate sources, so a run that cannot read one has nothing honest to resolve):
+`studies.csv` only adds proxies, so the valid rows' proxies are asked for and one warning names the
+rest (`studies.csv has N invalid row(s), and any LD proxy on them is not asked for`); the compile refuses
+those rows anyway. **A proxy is not one of the module's loci**, so the passes that read `resolution.csv`
+as the module's own coordinates — the frequency pass and the clinical-assertion pass — leave out every
+row keyed by a proxy-only rsID (`enrich.subjects.study_proxy_rsids`), and the GWAS pass never asks about
+one. Otherwise each would spend a request on a locus the module does not annotate and write a fact row
+the compile reports as `derived_row_orphan`. Naming those rsIDs runs the subject collector, so the
+frequency and clinical-assertion passes now refuse an invalid `pharm_variants.csv`, `haplotypes.csv` or
+`heteroplasmy.csv` with their own error type, as `enrich` already did; before 0.8 they read only
+`resolution.csv`.
 
 **What the enricher resolves is not what the compiler applies.** These subjects all land in
 `resolution.csv`, and the compiler applies that table to `variants.csv` only; a PGx or heteroplasmy
@@ -5641,7 +5661,9 @@ resolution uses and answers the same question — which rows in this spec ask ab
 pass inherits its precedence (`variants.csv` first, first occurrence winning, so a PGx row cannot take
 an identity a SNP row minted) rather than restating the loop. `studies.csv` carries `rsid` and is
 deliberately not a subject: a study row references the variant it grounds, which the module already
-carries as a row of its own.
+carries as a row of its own. Its `proxy_rsid` (0.8, RM331) is a resolution subject, but this pass calls
+the collector with `include_study_proxies=False`: an association for an LD proxy is not one for the
+module's variant.
 
 **It does not fill `weight`, and that is the point of the pass rather than a limitation of it.** A
 consumer asked for exactly that (S36); `MODULE_LIFECYCLE` § Stage 3 names the cell, and every check

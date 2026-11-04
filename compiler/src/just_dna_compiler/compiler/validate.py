@@ -69,6 +69,7 @@ from just_dna_compiler.compiler.positional import (
 )
 from just_dna_compiler.compiler.table_checks import (
     _check_misspelled_tables,
+    _check_phenotype_classes,
     _cross_validate_haplotype_definitions,
     _cross_validate_phase_ambiguity,
     _cross_validate_studies,
@@ -903,6 +904,9 @@ def _validate_spec(
     )
     all_errors.extend(study_allele_errors)
     all_warnings.extend(study_allele_warnings)
+    # RM326's class check, outside `if variants:` for the same reason: a citation-only `studies.csv`
+    # (RM47) beside a table kind and no `variants.csv` is legal, and its classes need the same check.
+    all_warnings.extend(_check_phenotype_classes(studies))
 
     if variants:
         cross_errors, cross_warnings = _cross_validate_variants(variants)
