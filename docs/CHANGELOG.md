@@ -46,8 +46,9 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 - **`reference_examples/longevity_studies/`**: five longevity loci and thirteen `studies.csv` rows from
   Timmers 2019 and 2020, Deelen 2019, Pilling 2017, a Research Square preprint (`pmid=NONE` + `doi`) and CHAMP.
   They use every 0.8 `StudyRow` column: `phenotype_class`, `sample_size`/`sample_unit`/`n_cases`, the age
-  band, the stratum, `ancestry`, `effect_unit` and `proxy_rsid`. Its round trip fails until RM331's fix
-  lands: reverse drops the proxy's `resolution.csv` row.
+  band, the stratum, `ancestry`, `effect_unit` and `proxy_rsid`. `artifact.digest` and `content_signature`
+  survive the round trip; `resolution_signature` does not until RM331's fix lands, because reverse drops
+  the proxy's `resolution.csv` row.
 - **`reference_examples/hla_alleles/`**: three HLA alleles as `allele_function.csv` items, with `meta.csv`
   findings scoped by `sex` and one cited by DOI alone.
 - **`reference_examples/model_organisms/`**: RM335's table beside a one-variant lead table, with one
