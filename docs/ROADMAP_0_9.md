@@ -1881,3 +1881,38 @@ step is the acquisition measurement that correctly parked the frequency snapshot
 eQTL Catalogue bulk artifacts weigh, and what their terms say (`@probe-the-real-file`).
 
 **Related** RM188, RM194/RM200 (the AlphaGenome table this must not be folded into), USE_CASES § 7.2.
+
+## RM378 — errors carry no code, so a consumer grading a spec tells one refusal from another by its wording
+
+**0.9, placed 2026-11-05 by the pm.** 0.8 is the work already built, the fixes already chosen and longevitymap v2, and "the rest goes to 0.9" (the maintainer, 2026-11-03). RM378 is new, its code vocabulary is permanent within the major once shipped, and it has two open design questions, so it is not added to a release at its cut. RM377 already gives the reporter the two phrases it needs today. The maintainer can still take it into 0.8.
+
+**Severity** low · **Status** open — **a minor, 0.9** (placed by the pm on 2026-11-05; triage proposed 0.8) ·
+**Owner** compiler (the result types, every `errors` append site) + format (the vocabulary) · **Motivating
+case** S129 in CONSUMER_SUGGESTIONS_HISTORY.md (just-dna-registry's liaison seat, 2026-11-04) · *related*
+RM377, RM131, RM218, RM359
+
+**The gap.** RM131 gave the warnings channel a code per finding and `warnings_summary`; `errors` stayed
+`list[str]` on `ValidationResult`, `CompilationResult` and `ClosureResult`. A consumer that grades a spec
+must read an error's words to know which refusal it is. RM377 published the two phrases the reporter needs
+today; this item is the general answer, the reporter's candidate (a).
+
+**What it would be.** A code from a closed vocabulary on each error and an `errors_summary` beside
+`warnings_summary`, by RM131's shape: derived in the same `mode="before"` validator, summing to
+`len(errors)` or empty, never partial. A mode-laddered finding raised to an error under `strict` already
+has a warning code, which is dropped on the error path today, so part of this is keeping a code that exists.
+
+**Open questions, for the interview.**
+
+1. **Pydantic's own errors.** A rejected row's message comes from pydantic and has no closed vocabulary.
+   RM131 refuses both a partial summary and a catch-all key. So either every such error gets one code that
+   names the finding (*a row the model rejected*), or the summary is defined over the coded errors only and
+   says so. The first keeps RM131's rule; the second breaks it.
+2. **The vocabulary's cost.** Codes are permanent within the major (P3, P5, P6), so the first set shipped is
+   the one consumers key on. RM131 measured that the audit of emission sites is the cost; the container is
+   near free (P9: a result-model field, nothing authored).
+3. **The reporter's candidate (b)**, a field naming the strict-only module-level refusals, is narrower and
+   cheaper. It is not taken here: it builds one consumer's split (module-level against per-row) into the
+   model, a classification axis under P5, which the reporter named as the reason it might be wrong. With
+   codes, each consumer draws its own line.
+
+**Residuals** none yet.
