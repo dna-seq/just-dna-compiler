@@ -166,6 +166,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S125** logs/ ships only *.log, the rest silently — RM337, RM338 filed
 - **S126** interrupted snapshot pull reads as complete — RM339 filed
 - **S127** two kinds of authored resolution row — (b); RM340 filed
+- **S128** tenacity `initial` deprecated at every import — RM371 shipped
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -6234,3 +6235,55 @@ no VRS id, gets no pointer to the check that already explained why. If the answe
 `verification.json`", that is a fine answer and we would suggest only that the VRS-coverage warning
 name it. We would not have filed this had we read the attestation first; the useful part of the
 report may just be that we did not think to.
+
+# Field notes from prepare-annotations, 2026-11-04 — the enricher under tenacity 9.2.1
+
+## S128 — every enricher import warns that tenacity's `initial` is deprecated, and a tenacity that drops it would stop the enricher importing
+
+**Status — accepted, and your candidate fix is what shipped:
+[RM371](ROADMAP_HISTORY.md#rm371--the-enricher-spells-tenacitys-backoff-initial-which-tenacity-921-deprecates-so-every-import-warns-and-a-release-that-drops-it-would-stop-the-enricher-importing),
+a patch on `main`, uncut.** Reproduced: with tenacity 9.2.1, `wait_exponential_jitter(initial=0.5)`
+warns, and 9.1.4's constructor has no `multiplier`. We count the same 18 sites in 15 modules on `main`.
+All 18 now pass `multiplier=`. That includes `cpic.py` and `pharmvar.py`, whose `initial=1` never
+warned but would still break on a tenacity that drops the keyword. The floor is `tenacity>=9.2.1`, and
+the lock moves to 9.2.1 with it. Backoff timing is unchanged: in 9.2.1 `initial` is only copied into
+`multiplier`. An AST walk over the enricher package (`test_retry_wait_keywords.py`) refuses `initial=`,
+and also a first positional argument, which 9.2.1 still binds to `initial`. Since the suite treats
+`DeprecationWarning` as an error, the locked 9.2.1 is a second gate at import.
+
+**What to do now:** nothing until the next enricher patch. Once you take it, the six warnings stop.
+Before raising the floor we checked who caps tenacity: just-dna-lite, the marketplace and
+just-module-creator all accept 9.2.1, and dagster does not depend on tenacity. So an install that
+resolves today still resolves.
+<!-- triaged: RM371 shipped · sha 3756dec46f13 -->
+
+*From prepare-annotations (`v1-port` extra, `pytest`), 2026-11-04, enricher 0.7.3, tenacity 9.2.1.*
+
+**What we ran.** `uv sync --extra v1-port` in prepare-annotations, which resolves just-dna-enricher 0.7.3
+and tenacity 9.2.1 (the latest, released 2026-10-07), then `uv run pytest tests/test_v1_port.py`.
+
+**What we expected.** No warnings from the enricher at import.
+
+**What happened.** Six `DeprecationWarning: The 'initial' parameter is deprecated, use 'multiplier'
+instead`, from `clingen_allele.py:246`, `ensembl.py:168` and `:190`, `civic_api.py:329`, `gnomad.py:306`
+and `grch37.py:115`: the modules our port imports. They fire at import, because each one builds a
+`wait_exponential_jitter(initial=...)` in a module-level `@retry` decorator. The same keyword is used at 22
+call sites across 17 modules on `0.8` (18 on `main`). `net.py`, `ensembl.py`, `literature.py` (4), `eutils.py`
+and `pharmvar.py` are among them.
+
+The risk is more than noise. A tenacity release that removes `initial` turns every one of those
+decorators into a `TypeError` at import. The floor is `tenacity>=9.0.0` with no cap, so a fresh resolve
+would pick that release up, and every enricher command would die at import. That is the same failure
+shape as the protobuf `VersionError` S107 fixed.
+
+**What we did meanwhile.** Nothing. The warnings are harmless today, and prepare-annotations leaves its
+warning filters alone.
+
+**Candidate fix.** Rename the keyword to `multiplier=` at every site. In tenacity 9.2.1 it is a drop-in
+replacement: the constructor assigns `multiplier = initial` when only `initial` is given, and the wait is
+`multiplier * exp_base**(n-1) + jitter` either way, so backoff timing is unchanged. **It needs a floor
+bump**, because `multiplier` does not exist before 9.2.1. Measured: 9.1.4's `wait_exponential_jitter`
+takes only `initial, max, exp_base, jitter`, and PyPI has no 9.2.0. Raising the floor to
+`tenacity>=9.2.1` is a patch-legal dependency move. An AST guard over `src/` that refuses `initial=` in a
+`wait_exponential_jitter` call would keep a new site from bringing it back. Wrong option: suppressing the
+warning hides exactly the removal this protects against.

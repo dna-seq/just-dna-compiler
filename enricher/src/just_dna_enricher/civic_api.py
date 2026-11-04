@@ -335,7 +335,7 @@ class CivicApiClient:
 
     @retry(
         retry=retry_if_exception_type(httpx.TransportError),
-        wait=wait_exponential_jitter(initial=0.5, max=8),
+        wait=wait_exponential_jitter(multiplier=0.5, max=8),
         stop=attempt_floor(3),
         reraise=True,
     )

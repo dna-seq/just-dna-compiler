@@ -41,6 +41,16 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM371: the enricher no longer warns at import under tenacity 9.2.1, and floors it (patch, on `main`)
+
+**enricher** — Importing any retried enricher client under tenacity 9.2.1 printed `DeprecationWarning:
+The 'initial' parameter is deprecated, use 'multiplier' instead`, once per `@retry` site. All 18 sites
+now pass `multiplier=`, with the same backoff timing. **The dependency floor moves to
+`tenacity>=9.2.1`**, the first release that has `multiplier`. An install that also caps tenacity below
+9.2.1 now fails to resolve rather than importing. just-dna-lite, just-module-creator and the marketplace
+all accept 9.2.1, and dagster does not depend on tenacity. No format or compiler change, and no identity
+moves.
+
 ## 2026-11-04 — RM354: `gwas` reads the GWAS Catalog's REST API v2, and every client names a retired endpoint (patch, on `main`)
 
 **enricher** — The GWAS Catalog retired the legacy REST API the `gwas` pass read; every legacy path now

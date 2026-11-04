@@ -222,7 +222,7 @@ class GwasCatalogClient:
 
     @retry(
         stop=attempt_floor(3),
-        wait=wait_exponential_jitter(initial=0.5, max=8.0),
+        wait=wait_exponential_jitter(multiplier=0.5, max=8.0),
         # Transport, 5xx and 429 since RM354: a v2 pass makes ~190 requests on one module, and one
         # passing 503 sank all of them. A permanent 4xx is never retried.
         retry=retry_if_transient(),

@@ -21,7 +21,7 @@ dependencies = [
     "platformdirs>=4.0.0",
     "python-dotenv>=1.0.1",
     "httpx>=0.28.1",
-    "tenacity>=9.0.0",
+    "tenacity>=9.2.1",
     "huggingface-hub>=0.34.0",
     "typer>=0.12.0",
     # GA4GH VRS allele identity. CORE, not an extra: minting a *substitution* id is stdlib and lives
