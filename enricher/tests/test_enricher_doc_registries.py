@@ -226,7 +226,7 @@ def _rostered_errors() -> set[str]:
     named = set(
         re.findall(
             r"`([A-Z]\w*(?:Error|Unavailable|Refused|NotScored|NotFound|Refusal|Mismatch"
-            r"|Collision|NotPublished|Retired))`",
+            r"|Collision|NotPublished|NotPublishable|Retired))`",
             section,
         )
     )
