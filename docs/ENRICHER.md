@@ -1186,8 +1186,9 @@ case needs a witness that holds it, which is why REST is asked:
 
 - **Ensembl REST is the third witness, online only.** For an rsID the Ensembl snapshot placed with at
   least one allele that is not a substitution, and that neither loaded witness holds, an online run asks
-  the live REST rung (`EnsemblResolver.resolve_rsid`, through the run's own resolver, so an injected one
-  is honoured) and compares its answer by the same ladder. REST answers `rs8176719` as `-/C` at
+  the live REST rung (`EnsemblResolver.resolve_rsid_rest`, the V1 half of `resolve_rsid` on its own, so
+  the beta GraphQL surface is never asked; through the run's own resolver, so an injected one is
+  honoured), one request at a time, and compares its answer by the same ladder. REST answers `rs8176719` as `-/C` at
   `start 133257522, end 133257521`, which RM268's anchor turns into `9:133257521 T>TC`; the snapshot's
   `9:133257520 G>GC` mints a different id, so the rsID is withheld with both placements named. A row the
   live rung gave itself, a substitution, and an rsID ClinVar or ClinVar-GKM holds are not asked. Answers
@@ -1195,15 +1196,19 @@ case needs a witness that holds it, which is why REST is asked:
 - **REST is Ensembl, so it is self-consistent, not independent** (RM292). The witness is named
   `ensembl`, the licensed source `placement_witness` joins `sources.csv` on, and the record names its
   checked side `ensembl` once REST answered, so `independence` derives `self_consistent` when REST was the
-  only witness and is withheld when ClinVar answered for other rsIDs in the same run. That does not empty
+  only witness and is withheld when ClinVar answered for other rsIDs in the same run. A skipped record
+  names the authorities of what it placed the same way, so an Ensembl-placed module's skip does not
+  read `independent` against a witness list that names Ensembl. That does not empty
   the comparison of value: it catches the snapshot's VCF dump disagreeing with Ensembl's own REST mapping,
   which is exactly S117's mechanism (the dump anchors a class of insertions one base left of Ensembl's
   interbase point). It cannot catch an error both surfaces share, so an rsID only REST agreed with stays
   in the one-witness count, and `detail` names those apart.
 - **Unreachable is not asked.** REST is retried on a transport error, a 5xx and a 429. A request still
   unanswered, or an answer whose anchor base could not be read, leaves REST not asked for that rsID: the
-  row does not name `ensembl`, nothing is withheld, and `detail` counts the rsIDs. `--offline` asks
-  nothing.
+  row does not name `ensembl`, nothing is withheld, and `detail` counts the rsIDs. A 4xx is an answer:
+  REST holds no placement, so the row names `ensembl` with `unplaced`. `--offline` asks nothing. There
+  is no pacing gate and no `Retry-After` handling on this rung (the table below): during an outage each
+  asked rsID costs three attempts.
 
 
 The ClinVar witness is the snapshot the run locates for its link and the `clin_sig` check, so

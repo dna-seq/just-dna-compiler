@@ -131,7 +131,16 @@ class EnsemblResolver:
                 logger.warning("V2 GraphQL for %s failed (%s); trying REST", rsid, exc)
         except (EnsemblError, httpx.TransportError, httpx.TimeoutException) as exc:
             logger.warning("V2 GraphQL for %s errored (%s); trying REST", rsid, exc)
+        return self.resolve_rsid_rest(rsid)
 
+    def resolve_rsid_rest(self, rsid: str) -> tuple[list[dict] | None, str | None]:
+        """`resolve_rsid`'s V1 half on its own: REST's `/variation` mapping, with the same four outcomes.
+
+        The placement witness (RM267) asks this, not `resolve_rsid`: its question is where REST's own
+        mapping puts the rsID, through RM268's anchor, and a GraphQL answer — another surface, whose
+        indel convention is unprobed — would answer a different one. It also spares a request per rsID
+        to the beta endpoint, which answers a redirect today.
+        """
         try:
             loci, withheld, unplaceable = self._rest_rsid(rsid)
         except httpx.HTTPStatusError as exc:

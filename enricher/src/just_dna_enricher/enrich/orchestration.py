@@ -779,7 +779,12 @@ def _run_enrichment(
             owned = resolver is None
             client = resolver or EnsemblResolver()
             try:
-                rest_answers, rest_not_asked = ask_live_witness(client.resolve_rsid, rest_subjects)
+                logger.info(
+                    "Placement witness — asking Ensembl REST about %d snapshot indel(s) no loaded witness "
+                    "holds, one request at a time (RM267).",
+                    len(rest_subjects),
+                )
+                rest_answers, rest_not_asked = ask_live_witness(client.resolve_rsid_rest, rest_subjects)
             finally:
                 if owned:
                     client.close()

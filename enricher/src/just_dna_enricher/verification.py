@@ -537,6 +537,7 @@ def skipped(
     detail: str | None = None,
     source: str | None = None,
     undecided: int | None = None,
+    reported_by: Collection[str] | None = None,
     now: str | None = None,
 ) -> VerificationRecord:
     """A record for a check that did NOT run, carrying the machine key and the sentence.
@@ -547,6 +548,8 @@ def skipped(
     The witness is stated on a skip too (RM292): it describes the question, which did not change
     because this run could not put it. `undecided` may ride a skip — a check that reached a verdict on
     nothing can still have abstained on something, and that count is the honest part of the record.
+    `reported_by` is `ran`'s: on a skip it names the sources whose values the question was about, so a
+    question that includes a reporter's own authority among its witnesses does not read `independent`.
     """
     return VerificationRecord(
         check=check,
@@ -555,7 +558,7 @@ def skipped(
         source=source,
         checked_at=now or now_utc_iso(),
         producer=producer_label(),
-        **_witnessed(check, source, None, undecided, ran_=False),
+        **_witnessed(check, source, None, undecided, ran_=False, reported_by=reported_by),
     )
 
 

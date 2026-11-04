@@ -442,8 +442,8 @@ def _verification_records(
                                 "unsupported": "placement is GRCh38-bound, so nothing on another assembly "
                                 "was compared (RM15)",
                                 "nothing_to_check": "no placement this run made was also placed by a "
-                                "loaded witness, so none was compared — recorded rows are compared only "
-                                "under --rederive",
+                                "witness asked about it, so none was compared — recorded rows are compared "
+                                "only under --rederive",
                                 "no_reference": "no second authority answered — no ClinVar or ClinVar-GKM "
                                 "snapshot was located, and Ensembl REST was not asked (offline, or no "
                                 "snapshot indel to ask about) or did not answer — so every placement has "
@@ -453,6 +453,7 @@ def _verification_records(
                         ]
                     )
                 ),
+                reported_by=placement.placed_by,
             )
         )
     else:

@@ -84,6 +84,15 @@ _NOT_INDEPENDENT: dict[str, frozenset[str]] = {
     CLINVAR_WITNESS: frozenset({CLINVAR_WITNESS, CLINVAR_GKM_WITNESS}),
     CLINVAR_GKM_WITNESS: frozenset({CLINVAR_WITNESS, CLINVAR_GKM_WITNESS}),
 }
+#: The authority each witness belongs to. A witness compared against a placement of its own authority
+#: (REST against the snapshot) is asked — its disagreement is a finding — but it is never an independent
+#: witness, so its agreement leaves the rsID in the one-witness count. One map, so a witness whose name
+#: differs from its authority (`clinvar_gkm` is ClinVar's) cannot pass for independent by spelling.
+_AUTHORITY_OF_WITNESS: dict[str, str] = {
+    CLINVAR_WITNESS: CLINVAR_WITNESS,
+    CLINVAR_GKM_WITNESS: CLINVAR_WITNESS,
+    ENSEMBL_WITNESS: ENSEMBL_WITNESS,
+}
 
 #: The row verdicts (`ResolutionRow.placement_verdict`, `vocab.VALID_PLACEMENT_VERDICTS`).
 SAME_EVENT = "same_event"
@@ -227,6 +236,7 @@ class PlacementCheck:
       snapshot placement): a disagreement there is a finding, an agreement proves nothing.
     * `not_asked` — rsIDs a live witness was due to be asked about and got no answer for: unknown.
     * `reported_by` — the authorities whose placements were compared, the record's checked side.
+    * `placed_by` — the authorities of every placement looked at, which a skip names instead.
     * `placed` — every rsID the comparison looked at, the denominator `single_witness` is a part of.
     * `rows` — `(rsid, locus_key) -> (witness, verdict)` for the row writer.
     * `not_checked` — a `VALID_VERIFICATION_SKIPS` key when the comparison could not run at all.
@@ -241,6 +251,7 @@ class PlacementCheck:
     self_consistent: list[str] = field(default_factory=list)
     not_asked: list[str] = field(default_factory=list)
     reported_by: set[str] = field(default_factory=set)
+    placed_by: set[str] = field(default_factory=set)
     placed: int = 0
     rows: dict[tuple[str, tuple[str, int, str, str]], tuple[str, str]] = field(default_factory=dict)
     not_checked: str | None = None
@@ -338,6 +349,8 @@ def compare_placements(
         loci = placed[rsid]
         check._loci_of[rsid] = [locus_key(locus) for locus in loci]
         authority = authority_of.get(rsid) or ""
+        if authority:
+            check.placed_by.add(authority)
         asked = sorted(
             w
             for w in witnesses
@@ -372,8 +385,10 @@ def compare_placements(
             per_locus[locus_key(locus)] = verdicts
         if witnessed_by:
             check.subjects += 1
-            check.reported_by.add(authority)
-        if not witnessed_by - {authority}:
+            if authority:
+                check.reported_by.add(authority)
+        independent = {w for w in witnessed_by if _AUTHORITY_OF_WITNESS.get(w, w) != authority}
+        if not independent:
             check.single_witness.append(rsid)
             if witnessed_by:
                 check.self_consistent.append(rsid)
@@ -467,7 +482,7 @@ Resolve = Callable[[str], tuple[Sequence[Mapping[str, object]] | None, str | Non
 
 
 def ask_live_witness(resolve: Resolve, rsids: Sequence[str]) -> tuple[Loci, list[str]]:
-    """Ask the live rung (`EnsemblResolver.resolve_rsid`) about each rsID, one request at a time.
+    """Ask the live REST rung (`EnsemblResolver.resolve_rsid_rest`) about each rsID, one at a time.
 
     Returns `rsid -> loci` for every rsID it answered (an empty list is an answer: REST has no placeable
     locus), and the rsIDs it did not answer — `None` loci, whether the request failed after its retries
