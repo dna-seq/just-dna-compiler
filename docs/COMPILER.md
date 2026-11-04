@@ -706,10 +706,21 @@ and still publishes `manifest.sources`. Both of those are renames only a major m
    line parses, and a `.png`/`.jpg`/`.jpeg` starts with its format's magic and is at most
    `LOG_IMAGE_MAX_BYTES` (5 MiB). Only an exact `.log` suffix skips the check; any other extension is
    compared lowercased, so a `.LOG` is checked as text. A hidden path (any part starting with `.`) or a
-   symlink never takes the checked route. SVG and every other file stay behind without a word (RM337 is
-   the warning). Each file that ships and is not `*.log` is named by an info line on
-   `just_dna_compiler.compiler` and, in `just-dna-compiler compile`, by a `log ships: <name>` line. An
-   explicit `log_files` list skips discovery and ships what it names. The readme is discovered from
+   symlink never takes the checked route. Each file that ships and is not `*.log` is named by an info
+   line on `just_dna_compiler.compiler` and, in `just-dna-compiler compile`, by a `log ships: <name>`
+   line. **Every other path under `logs/` draws `log_file_not_shipped` (RM337)**, a warning in both
+   modes and never a refusal, one line per path: `<path> does not ship with the module: <reason>.` The
+   reason is a fixed sentence from `LOG_NOT_SHIPPED_REASONS`, one per arm, decided by the same
+   function that decides the verdict (`_log_left_behind_reason`), so the two cannot drift: a hidden
+   path, a symlink (to a file, a directory, or nothing), an image over the ceiling (both sizes named),
+   an image whose first bytes are not its format's signature, an SVG (*"XML that can carry script"*),
+   any other extension, text that is not UTF-8 (the offset of the first bad byte named), a `.json` that
+   does not parse, and a `.jsonl` line that does not parse (the first such line numbered, blanks
+   counted). The reason carries no interpreter error message, since it reaches `manifest.json`. There is
+   no cap and no `_examples` truncation: the decision was to name each file, and `warnings_summary`
+   counts them. An explicit `log_files` list skips discovery, ships what it names and draws no warning.
+   A file beside the spec that is not `*.log` is outside this: the top level was left as it was, and an
+   unknown file there is the spec directory's ordinary tolerance. The readme is discovered from
    `manifest.README_CANDIDATES` and hashed into `manifest.readme`, outside `artifact.files` — so it is attested without being content (S25).
 10. **Read the verification attestation** (`verification.json`, RM45): recompute the binding over the
     authored inputs — with `\r\n` read as `\n` since 0.6 (RM82), so an editor's line endings are not an
@@ -1581,7 +1592,8 @@ the major — additions are minor-legal, re-spellings are not.
 actionable, which is `vocab.ACTIONABLE_WARNING_CODES`, derived by subtraction:
 
 - **spec directory / `module_spec.yaml`** — `table_file_misplaced`, `table_file_near_miss`,
-  `sidecar_spelling_deprecated`, `module_version_coerced`, `panel_block_deprecated`
+  `sidecar_spelling_deprecated`, `module_version_coerced`, `panel_block_deprecated`,
+  `log_file_not_shipped`
 - **coordinates and the build** — `non_grch38_variant_keys`, `contig_ploidy_undecidable`,
   `contig_ploidy_mismatch`
 - **resolution** — `resolution_disabled`, `resolution_not_injected`, `resolution_skipped_cross_build`,
@@ -1687,6 +1699,7 @@ UNJOINABLE_PHRASE              = "have no chrom+start"
 QUAL_REFERENCE_EVIDENCE_PHRASE = "a QUAL floor cannot be read on the evidence this row is decided from"
 MISSING_ALLELE_PHRASE          = "is VCF's MISSING marker, not an allele"
 UNCLOSED_PHRASE                = "records no closure"
+LOG_NOT_SHIPPED_PHRASE         = "does not ship with the module"
 ```
 
 **Retired phrases.** A consumer may still grep manifests compiled before the retirement, so the text

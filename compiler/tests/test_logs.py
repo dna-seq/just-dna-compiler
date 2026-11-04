@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 import yaml
-from just_dna_compiler.compiler import LOG_IMAGE_MAX_BYTES, compile_module
+from just_dna_compiler.compiler import LOG_IMAGE_MAX_BYTES, LOG_NOT_SHIPPED_PHRASE, compile_module
 from just_dna_format.integrity import verify_manifest
 from just_dna_format.manifest import read_manifest
 
@@ -178,17 +178,22 @@ def test_rm338_logs_dir_ships_content_checked_text_and_images(
     assert named == {rel for rel in shipped if not rel.endswith(".log")}
 
 
-def test_rm338_adds_no_warning(tmp_path: Path) -> None:
-    # The warning for what stays behind is RM337's, a minor: this patch adds no warning at all.
+def test_rm338_warns_only_about_what_stays_behind(tmp_path: Path) -> None:
+    # RM338 itself added no warning; RM337's `log_file_not_shipped` names each file left behind
+    # (`test_logs_not_shipped.py`). Here: nothing that ships draws one, and nothing else moved.
     plain = _spec(tmp_path / "a", with_logs=False)
     _write_files(plain, {"logs/authoring.log": _SHIPPED["logs/authoring.log"]})
     baseline = compile_module(plain, tmp_path / "oa", resolve_with_ensembl=False)
-    full, _, _ = _rm338_spec(tmp_path / "b")
+    full, shipped, left_behind = _rm338_spec(tmp_path / "b")
     widened = compile_module(full, tmp_path / "ob", resolve_with_ensembl=False)
     assert baseline.success and widened.success
     assert baseline.manifest is not None and widened.manifest is not None
-    assert widened.warnings == baseline.warnings
-    assert widened.manifest.compilation.warnings_summary == baseline.manifest.compilation.warnings_summary
+    named = [w for w in widened.warnings if LOG_NOT_SHIPPED_PHRASE in w]
+    assert sorted(w.split(f" {LOG_NOT_SHIPPED_PHRASE}: ", 1)[0] for w in named) == sorted(left_behind)
+    assert [w for w in widened.warnings if w not in named] == baseline.warnings
+    summary = dict(widened.manifest.compilation.warnings_summary)
+    assert summary.pop("log_file_not_shipped") == len(left_behind)
+    assert summary == baseline.manifest.compilation.warnings_summary
 
 
 def test_rm338_logs_do_not_change_either_identity(tmp_path: Path) -> None:

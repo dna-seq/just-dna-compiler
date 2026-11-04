@@ -259,6 +259,8 @@ from just_dna_compiler.compiler.manifest import _UNCORROBORABLE_LAYERS as _UNCOR
 from just_dna_compiler.compiler.manifest import BUILD_AGREEMENT_CHECK as BUILD_AGREEMENT_CHECK
 from just_dna_compiler.compiler.manifest import LOG_IMAGE_MAGIC as LOG_IMAGE_MAGIC
 from just_dna_compiler.compiler.manifest import LOG_IMAGE_MAX_BYTES as LOG_IMAGE_MAX_BYTES
+from just_dna_compiler.compiler.manifest import LOG_NOT_SHIPPED_PHRASE as LOG_NOT_SHIPPED_PHRASE
+from just_dna_compiler.compiler.manifest import LOG_NOT_SHIPPED_REASONS as LOG_NOT_SHIPPED_REASONS
 from just_dna_compiler.compiler.manifest import LOG_TEXT_EXTENSIONS as LOG_TEXT_EXTENSIONS
 from just_dna_compiler.compiler.manifest import UNCLOSED_PHRASE as UNCLOSED_PHRASE
 from just_dna_compiler.compiler.manifest import _build_manifest as _build_manifest
@@ -289,7 +291,7 @@ from just_dna_compiler.compiler.manifest import _gwas_effect_signature as _gwas_
 from just_dna_compiler.compiler.manifest import _gwas_effects_block as _gwas_effects_block
 from just_dna_compiler.compiler.manifest import _literature_block as _literature_block
 from just_dna_compiler.compiler.manifest import _literature_signature as _literature_signature
-from just_dna_compiler.compiler.manifest import _log_content_agrees as _log_content_agrees
+from just_dna_compiler.compiler.manifest import _log_left_behind_reason as _log_left_behind_reason
 from just_dna_compiler.compiler.manifest import _module_binding as _module_binding
 from just_dna_compiler.compiler.manifest import _now_iso as _now_iso
 from just_dna_compiler.compiler.manifest import _read_verification_block as _read_verification_block

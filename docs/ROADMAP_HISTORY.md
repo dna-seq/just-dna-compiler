@@ -693,6 +693,97 @@ The count is a log line, not a `MissBuildResult` field (minor-class). The three 
 Principle 2 (the lane docstring, the `mitomap miss` CLI note, the drafter note) and ENRICHER.md's
 bucket table now say what happens instead.
 
+## RM337 — a file under `logs/` that is not `*.log` is dropped from the compile, and nothing says so
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** (corrected
+2026-11-04 from "a patch"; taken into 0.8 the same day, PROPOSAL_0_8_PT2 §5 A7) · **Owner** compiler
+(`_collect_logs`) · **Motivating case** S125 in CONSUMER_SUGGESTIONS_HISTORY.md (just-module-creator
+`F116`, 2026-10-05) · *related* RM338, RM147, RM308
+
+**Residuals** none
+
+**0.8, decided 2026-11-04.** The maintainer told the lead to push its ready-to-build minors into 0.8's
+scope, and the lead listed this one as ready. It also carries the half of RM338 that needs the new
+warning code.
+
+**Reproduced 2026-11-03** on a copy of `reference_examples/apoe_epsilon` with six files under `logs/`
+(`authoring.log`, `trace/session-a.jsonl`, `run.json`, `notes.md`, `notes.txt`, `fig.png`):
+`compile_module` succeeds, no warning mentions a log, and both `manifest.logs` and the output's `logs/`
+hold `logs/authoring.log` alone. Discovery globs `*.log` at the top level and `logs/**/*.log` below it,
+and skips everything else under `logs/` without a word. The registry's server-side compile leaves
+discovery to the compiler, so an upload carries the file and the published version does not. After
+RM338 synced into `0.8` the set that ships was wider, and the rest still went unmentioned: an SVG, a
+`.bin` and a `.json` that does not parse, beside `authoring.log` in an apoe copy, compiled green with
+`warnings_summary` holding `vrs_coverage_incomplete` alone.
+
+**The patch, as filed.** A coded warning, in both modes, naming each file under `logs/` that discovery
+left behind. It changes no verdict and ships nothing new, so it is legal whatever RM338 decides; once
+RM338 widens the set, the warning names whatever is still left out. An explicit `log_files` list is
+unaffected, since it already ships any path it names. The new code owes a `features/` scenario.
+
+**Sized wrong at filing; a minor (2026-11-04).** No existing member of `VALID_WARNING_CODES` names this
+finding, and every compile warning must carry one (`compiler/tests/test_warning_codes.py`), so the item
+adds a member. A new member is minor-class: `Compilation.warnings_summary` validates its keys, so a reader
+pinned to an older `just-dna-format` refuses a manifest that carries the new code. RM308 is the shipped
+precedent ("a new warning code, so minor-class"). A `logger` line would be patch-legal and is not taken:
+it is not the warnings channel, so the registry's server-side compile, where S125's file goes missing,
+would still say nothing to the uploader. Borrowing a code that names another finding is refused too
+(`@warning-code-names-the-finding`).
+
+**What shipped.** `log_file_not_shipped` (actionable), one warning per path under `logs/` that
+discovery leaves behind, in both modes and never a refusal: `<path> does not ship with the module:
+<reason>.` (`LOG_NOT_SHIPPED_PHRASE` is the pinned fragment). RM338's `_log_content_agrees` returned a
+bool; it became `_log_left_behind_reason(path, logs_dir) -> str | None`, which holds every arm of the
+verdict, the `.log` short-circuit, hidden paths and symlinks included, and returns the reason or `None`.
+One function decides and explains, so the two cannot drift (`@answered-is-not-absent`). Its fixed
+sentences, one per arm, are `LOG_NOT_SHIPPED_REASONS`: a hidden path; a symlink; an image over
+`LOG_IMAGE_MAX_BYTES`, with both sizes; an image whose first bytes are not its format's signature, naming
+the extension; an SVG, *"XML that can carry script"*; any other extension, naming it and the ones that
+ship; text that is not UTF-8, with the file offset of the first bad byte (a byte-order mark counted, so
+the decode strips the mark itself rather than through `utf-8-sig`, whose offsets start after it); a
+`.json` that does not parse; and a `.jsonl` line that
+does not parse, numbered with blank lines counted, as an editor counts them. A `.json` nested past the
+recursion limit takes the same `.json` sentence. The reason carries nothing from an interpreter's error
+message, because the line reaches `manifest.json` and the release sweep compares it. `_collect_logs`
+returns its warnings beside the entries, and `compile_module` extends the channel with them, so they
+reach `CompilationResult.warnings`, `manifest.compilation.warnings_summary` and the `compile` output.
+Three choices the contract left open:
+
+- **A symlink is judged whatever it points at.** A link to a directory, or to nothing, was skipped
+  silently by RM338's `is_file()` filter; now it draws the symlink reason, since discovery never follows
+  it. A dangling link named `.log` is a symlink too. A link to a file named `.log` still ships, as before.
+- **One line per file, with no cap.** The decision was to name each file, so there is no `_examples`
+  truncation; `warnings_summary` counts them, and `@warning-code-names-the-finding` refuses a cap because
+  it hides findings from the author who has the most.
+- **`validate` does not emit it.** The pre-flight reads no side-car asset, and a warning owes no
+  validate/compile parity (`@validate-refuses-all` is about refusals).
+
+Out of scope, as RM338 left it: the top level, where only `*.log` is discovered and any other file is the
+spec directory's ordinary tolerance of unknown files; and an explicit `log_files` list, which ships what
+it names and draws no warning.
+
+Tests: `compiler/tests/test_logs_not_shipped.py`. A copy of `apoe_epsilon` carries files that ship and
+paths that stay behind, every arm reached (two `.json`, one of them nested past the recursion limit; a
+`.jsonl` whose third line is bad after a blank; latin-1 text, and a `.md` with a byte-order mark, a bad
+byte at file offset 5 and a space in its name; a GIF named `.png` and a PNG named `.jpg`; a png one byte
+over the ceiling; a hidden `.md` and a hidden `.svg`; a link to a file, a dangling `.log` link and a link
+to a directory). In both modes it asserts exactly one finding per left-behind path, each holding its own
+arm's sentence and no other's, the line number, both offsets and both sizes, the count in
+`warnings_summary`, the rest of the channel equal to the pristine apoe compile's, nothing in `carried`,
+and both identities unchanged. A second test asserts the sentences pairwise distinct, none containing
+another, and drives the real function over one file per arm, the arms walked as the registry's keys;
+others cover lap stability, the explicit list, the top level and the CLI in both modes. Paths are read
+off a finding by splitting at the pinned phrase, never at the first space. `test_logs.py`'s RM338 "adds
+no warning" test became "warns only about what stays behind". Each mutation turned a test red before the
+code was kept: every arm switched off or given another arm's sentence, latin-1 accepted as UTF-8, the
+offset counted after the byte-order mark, the `.jsonl` numbering skipping blanks, `.log` checked, the
+warning not appended, the channel not extended, and an explicit list running discovery.
+
+Found by review and left as RM338 shipped them, since each changes what ships, not what is said (reported
+to the lead, unfiled): a symlinked `*.log` ships, and so does everything under a `logs/` that is itself a
+symlink; text has no size ceiling; and an unreadable file under `logs/` raises out of the compile rather
+than staying behind.
+
 ## RM338 — which files under `logs/` ship: `*.log` only, a text allowlist, content-checked text, or images too
 
 **Severity** low · **Status** ✅ **SHIPPED 2026-11-04 on `main`, uncut — a patch** (decided 2026-11-03,

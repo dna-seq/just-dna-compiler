@@ -1525,6 +1525,7 @@ VALID_WARNING_CODES: frozenset[str] = frozenset(
         "sidecar_spelling_deprecated",  # a machine-written sidecar under a superseded filename
         "module_version_coerced",  # `module.version` was read as SemVer from another spelling
         "panel_block_deprecated",  # `panel:` is deprecated in 0.6 and removed at 1.0
+        "log_file_not_shipped",  # a file under `logs/` that discovery leaves behind, with why (RM337)
         # ── coordinates and the genome build ──
         "non_grch38_variant_keys",  # VRS identity is GRCh38-only, so rows are coordinate-keyed
         "contig_ploidy_undecidable",  # chrom=Y on a build with no pseudoautosomal table here
