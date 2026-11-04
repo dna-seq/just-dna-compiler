@@ -157,7 +157,28 @@ modelling it (`@probe-the-real-file`).
 
 ## RM326 — a study row cannot say which outcome it measured, so the definition of "pro-longevity" lives in a `study_design` prefix
 
-**2026-11-04: the measurement first, as the entry asks.** The maintainer asked for it before deciding the column's vocabulary; it runs as a subagent.
+**Measured 2026-11-04, then decided by the maintainer.**
+
+The measurement was run by a subagent against both ported longevitymap `studies.csv` files, v2's
+`evidence/K_definitions_comparison.csv`, and OLS4. The trait term separates **0 of the 12 classes in
+real rows**. Neither ported file fills `trait_efo_id`. The one longevity term in real use, OBA_VT0005372
+(EFO_0004300 "longevity" is obsolete and points to it), covers at least four classes. In principle a
+term separates only PARENTAL_LIFESPAN (EFO_0007796) and HEALTHSPAN (EFO_0009762). Other findings:
+
+- `study_design` is free text and does not separate the classes either.
+- 15 of the K file's 63 PMIDs carry two or three classes.
+- v2 spells three class names two ways (FAMILIAL/FAMILIAL_LONGEVITY, MR/MR_MEDIATOR,
+  BIOMARKER/BIOMARKER_CLOCK).
+- Three real studies fit none of the twelve.
+
+Decided:
+
+- **The column is built:** `phenotype_class` on `StudyRow`, **open, with v2's twelve as the recommended
+  members**. A token outside them draws a warning, which catches spelling drift without refusing a
+  study that fits no class.
+- **One paper, several classes: RM140's rule.** Two rows for one `(variant_key, pmid)` are not duplicate
+  citations when both state `phenotype_class` and the values differ. The key stays as it is, and the
+  duplicate check narrows (`@absent-is-not-different`).
 
 **Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format + compiler (derived columns) · **Motivating case** longevitymap v2 requirements §4.5, R-DEF-1 · *for* longevitymap v2 · *related* RM323, RM325
 
