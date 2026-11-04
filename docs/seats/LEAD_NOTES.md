@@ -51,6 +51,8 @@ None open.
   wave 5: RM270, release-gate sweep.
   Pre-cut order (the person, 2026-11-04): audit rounds + class fixes, gate sweep, a DOCS subagent (user guides
   re-run against 0.8, doc map, nav), then the cut subagent (packaging only). Brief items: scratchpad `cut_brief_notes.md`.
+  Audit round 1 (four-leaf, 17 findings) → ten classes RM361–RM370, each building on `build/RM3xx` (shared brief
+  scratchpad `audit_fix_common.md`). RM267's REST witness building. Then the merge, audit round 2, gate sweep, docs, cut.
 
 - **0.8's build** (the pm's handout, 2026-11-04): the plan is `docs/proposals/PROPOSAL_0_8_PT2.md`
   (3d5adcd), critic-read. Seven pm questions in its §4, each with a default the build takes. Wave 0 is
