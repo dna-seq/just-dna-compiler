@@ -96,13 +96,14 @@ per file, which reads only footers [M]:
 
 | dataset | files | total bytes | rows | smallest / largest part |
 |---|---|---|---|---|
-| `l2g_prediction` | 200 `part-*.parquet` (snappy) | 509,628,512 (0.51 GB) | 3,293,342 | 0.37 MB / 8.5 MB |
+| `l2g_prediction` | 200 `part-*.parquet` (no codec in the name) | 509,628,512 (0.51 GB) | 3,293,342 | 0.37 MB / 8.5 MB |
 | `credible_set` | 200 `part-*.zstd.parquet` + `_SUCCESS` | 2,990,567,440 (2.99 GB) | 4,761,925 | 4.3 MB / 194 MB |
 | `colocalisation` | 200 `part-*.zstd.parquet` + `_SUCCESS` | 16,519,695,769 (16.5 GB) | 283,303,467 | 82.4 MB / 82.8 MB |
 | `variant` | 25 `part-*.zstd.parquet` + `_SUCCESS` | 1,967,290,736 (1.97 GB) | 7,886,762 | 62 MB / 107 MB |
 | `study` | 1 `part-*.zstd.parquet` + `_SUCCESS` | 97,748,879 (0.10 GB) | 3,004,247 | — |
 
-All are Spark output (`org.apache.spark.version` in the footer's key-value metadata). One part of each was
+All five are Spark output (`org.apache.spark.version` in the footer's key-value metadata of the part each
+was read from) [M]. One part of each was
 downloaded whole for row-level reads: `l2g` part-00104, `credible_set` part-00101, `colocalisation`
 part-00003, `variant` part-00017, `study` part-00000 (the whole table).
 
@@ -154,8 +155,9 @@ locusStart, locusEnd, sampleSize, ldSet, locus, confidence, studyType, isTransQt
   [M]. Only the 95% set is published (finding 1 in §0).
 - **Fine-mapping method** (part-00101, all study types): `SuSiE-inf` 10,232, `PICS` 6,785, `SuSie` 4,996;
   `confidence` spells out four classes, such as "SuSiE fine-mapped credible set with out-of-sample LD" and
-  "PICS fine-mapped credible set based on reported top hit" [M, one part]. A PICS set is not a
-  summary-statistics fine-mapping, and RM239's column description would have to say which it is.
+  "PICS fine-mapped credible set based on reported top hit" [M, one part]. Three methods and four
+  `confidence` classes stand behind one `posteriorProbability` column, so RM239's posterior needs the method
+  and confidence beside the number, or its field description claims more than the row says.
 - Sample member rows [M]:
 
   | studyLocusId | variantId | posteriorProbability | is95 | is99 |
