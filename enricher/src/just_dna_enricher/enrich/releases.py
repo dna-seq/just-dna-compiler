@@ -64,16 +64,17 @@ def table_releases(
     return releases
 
 
-def run_label(
-    label: str | None, rows: Iterable[ResolutionRow], authority: str
-) -> tuple[str | None, str | None]:
-    """`(label, withheld)`: the run's label when it speaks for every row `authority` answered, else a reason.
+def run_label(label: str | None, rows: Iterable[ResolutionRow], link: str) -> tuple[str | None, str | None]:
+    """`(label, withheld)`: a snapshot's label when it speaks for every row its `link` answered, else a reason.
 
-    A row answered by another release, or recording none, means the run's snapshot does not describe
-    the table, so the label is withheld (`None`) and the reason counts both kinds. With no label to
-    withhold, or no row the authority answered, there is nothing to say.
+    A row the snapshot's link answered from another release, or recording none, means this run's
+    snapshot does not describe the table, so the label is withheld (`None`) and the reason counts both
+    kinds. Rows another link answered (live REST, ClinVar) carry their own release and are not the
+    snapshot's to speak for: REST spells Ensembl's release `ensembl_116` where the snapshot spells it
+    `…vep116.0`, and nothing here can equate the two. With no label, or no row the link answered,
+    nothing is said.
     """
-    answered = [row for row in rows if row.authority == authority]
+    answered = [row for row in rows if row.source == link]
     if label is None or not answered:
         return label, None
     other = sum(1 for row in answered if row.source_release is not None and row.source_release != label)
@@ -81,7 +82,7 @@ def run_label(
     if not other and not unrecorded:
         return label, None
     return None, (
-        f"release withheld: {other + unrecorded} of {len(answered)} {authority.capitalize()}-answered row(s) "
+        f"release withheld: {other + unrecorded} of {len(answered)} snapshot-answered row(s) "
         f"in resolution.csv were not answered by this run's snapshot ({label}): {other} answered by another "
         f"release, {unrecorded} recording none. `enrich --rederive` re-answers them (RM373)."
     )

@@ -1243,10 +1243,12 @@ release had answered. Three pieces now, one rule each (`enrich/releases.py`):
 
 - **Every row this run answers carries `source_release`** ([SCHEMAS.md](SCHEMAS.md)): the release of
   the link that answered it, read the way the lane states it (`CacheLane.release_label`): the Ensembl
-  snapshot's `manifest.json` `release_id` or `release.json` `dataset`, the ClinVar snapshot's
-  `dataset`, live REST's data release from `/info/data` (`ensembl_116`, asked once per run and only when
-  REST answered), gnomAD's dataset id. GraphQL states none, and an answer seeded from an interrupted
-  run's journal records none, because that run never wrote its release down. A row this run did not
+  snapshot's `manifest.json` `release_id` or `release.json` `dataset`, the ClinVar snapshot's label by
+  `clinvar_dataset_label` (the one spelling every ClinVar reader computes), live REST's data release
+  from `/info/data` (`ensembl_116`, asked once per run, only of this tier's own `EnsemblResolver`, and
+  only when REST answered). GraphQL states none; gnomAD's dataset id (`gnomad_r4`) names a release line,
+  not a release, so a gnomAD row records none; and an answer seeded from an interrupted run's journal
+  records none, because that run never wrote its release down. A row this run did not
   answer keeps what it had, and a row written before 0.8 keeps none: merge-not-clobber never back-fills
   (`@sidecar-authoritative`). `--rederive` re-answers every row and stamps each; a subject it cannot ask
   about keeps its rows, release included (`@rederive-never-shortens`).
@@ -1257,23 +1259,36 @@ release had answered. Three pieces now, one rule each (`enrich/releases.py`):
   placement witness has no column of its own: a row this run wrote speaks for the witness's release
   this run, and a carried row speaks through the label recorded before this run, which was computed over
   every row the table then held — so a run with nothing to do does not withdraw a label still true.
+  Only rows of a source with a terms constant are stamped, so a curator's `manual` row is never touched.
 - **The run's own record withholds its label over a mixed table.** `rsid_coordinate_agreement.release`
-  is the snapshot's label only when every Ensembl-answered row the table holds carries it; otherwise it
-  is null and `detail` counts why: `release withheld: N of M Ensembl-answered row(s) in resolution.csv
-  were not answered by this run's snapshot (…): K answered by another release, J recording none`.
+  is the snapshot's label only when every row the snapshot's link (`source=cache`) answered carries it;
+  otherwise it is null and `detail` counts why: `release withheld: N of M snapshot-answered row(s) in
+  resolution.csv were not answered by this run's snapshot (…): K answered by another release, J
+  recording none`. Rows live REST answered carry their own release and are not the snapshot's to speak
+  for. The licence row is the table's, though, and REST spells one Ensembl release `ensembl_116` where
+  the snapshot spells it `…vep116.0`: nothing here can equate the two, so a table both answered names
+  no release on its `ensembl` licence row.
 
 The same helper writes every derived pass's licence rows (`frequencies`, `gene-metrics`, `dosage`,
 `gene-validity`, `assertions`, `gwas`, `ld-pairs`, `alphagenome expression`, `opentargets enrich`), from
-each table's own per-row `dataset`, or, for Open Targets' tables, which carry none, from this run's
-release on the rows it answered and the recorded label on the rows it kept. `DerivedProducer.release_lanes`
+each table's own per-row `dataset` read through `net.stated_release` (the bare lane `release_dataset`
+writes for an unstated release, `gwas_catalog` or `clinvar`, is no release), or, for Open Targets'
+tables, which carry none, from this run's release on the rows it answered and none on a row it kept: the
+label recorded before may be a pre-0.8 first run's. A row is labelled by its source's own release, never
+the day the run asked: `gwas` reads the Catalog's from `/api/search/stats` (`gwas_catalog_2026-10-29`),
+the AlphaGenome atlas states none (`alphagenome_atlas`), `assertions` uses `clinvar_dataset_label`, and
+`gene-metrics` reads the constraint snapshot's `release.json`. `DerivedProducer.release_lanes`
 names the lane each pass reads whose release reaches its licence row; `test_producers.py` asserts the
 lanes each module's code reads equal that field plus `LANES_READ_WITHOUT_A_LICENCE_ROW`, and that no
 derived pass writes a licence row any other way.
 
-**What it costs.** A filled `clinvar`/`clinvar_gkm` licence row is a release `--verify-datasets` can
-compare, and both have a currency probe, so a strict online `enrich` now refuses when ClinVar has
-published past the snapshot that answered the module's rows; `--rederive` against a current snapshot, or
-`--no-verify-datasets`, is the remedy. `ensembl` has no probe and reads `unchecked`.
+**A derived table's release moving never makes `strict` refuse.** A filled `clinvar`/`clinvar_gkm`
+licence row is a release `--verify-datasets` compares, and both have a currency probe. A source
+publishing past the release that answered is the source working and no authored edit clears it
+(`@a-source-recuring-is-not-a-strict-matter`), so on every layer but `annotation`
+(`licensing.DRAFTED_LAYERS`) the finding warns in both modes, escalates in neither, and names its remedy:
+`enrich --rederive`, or delete the derived table and re-run. Only a drafted layer's superseded release
+refuses under `strict` and says re-draft.
 
 ### Reverse (position→rsid) back-fill is allele-aware
 

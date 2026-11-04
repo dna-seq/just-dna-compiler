@@ -50,12 +50,14 @@ from just_dna_enricher.licensing import (
     require_sources_file,
     sidecar_path,
 )
-from just_dna_enricher.net import release_dataset
+from just_dna_enricher.net import release_dataset, stated_release
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_CLINGEN_URL = "https://ftp.clinicalgenome.org/ClinGen_gene_curation_list_GRCh38.tsv"
 CLINGEN_SOURCE = CLINGEN_TERMS.source
+#: The bare lane a dosage row carries when the file states no release (`release_dataset`).
+DOSAGE_LANE = "clingen_dosage"
 # The header line the file's comment block ends with (see the module docstring).
 _HEADER_PREFIX = "#Gene Symbol"
 _NOT_EVALUATED = "not yet evaluated"
@@ -234,7 +236,7 @@ def enrich_dosage_sensitivity(
             existing[merge_key(row)] = row
 
     ratings, released = parse_curation_list(curation_text or fetch_curation_list(url))
-    dataset = release_dataset("clingen_dosage", released)
+    dataset = release_dataset(DOSAGE_LANE, released)
     fetched_at = now_utc_iso()
 
     out: list[GeneMetricsRow] = list(existing.values())
@@ -311,7 +313,13 @@ def enrich_dosage_sensitivity(
                 # rows are another pass's and name another source.
                 (
                     lambda: record_table_sources(
-                        {CLINGEN_SOURCE: [row.dataset for row in out if row.source == CLINGEN_SOURCE]},
+                        {
+                            CLINGEN_SOURCE: [
+                                stated_release(row.dataset, DOSAGE_LANE)
+                                for row in out
+                                if row.source == CLINGEN_SOURCE
+                            ]
+                        },
                         source_row.layer,
                         spec_dir,
                         error=ClinGenError,

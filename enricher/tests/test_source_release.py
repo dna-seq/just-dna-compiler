@@ -20,9 +20,10 @@ import polars as pl
 import pytest
 from just_dna_compiler.compiler import _load_csv_rows
 from just_dna_enricher.caches import LANES_BY_NAME
+from just_dna_enricher.clinvar import clinvar_dataset_label
 from just_dna_enricher.enrich import enrich
 from just_dna_enricher.ensembl import EnsemblResolver
-from just_dna_enricher.licensing import table_release
+from just_dna_enricher.licensing import record_table_sources, sources_path, table_release, write_sources_csv
 from just_dna_enricher.locations import SNAPSHOT_MANIFEST_FILENAME
 from just_dna_format.integrity import resolution_signature
 from just_dna_format.layout import SOURCES_CSV, VERIFICATION_JSON, preferred_spelling
@@ -215,7 +216,7 @@ def test_reenriching_an_old_table_keeps_its_rows_unlabelled_and_withholds_the_ru
     assert _dataset(spec, "ensembl") is None
     record = _pair_record(spec)
     assert record.skipped is None and record.release is None
-    assert "release withheld: 2 of 3 Ensembl-answered row(s)" in record.detail
+    assert "release withheld: 2 of 3 snapshot-answered row(s)" in record.detail
     assert "0 answered by another release, 2 recording none" in record.detail
 
 
@@ -313,3 +314,160 @@ def test_a_release_the_service_will_not_state_is_none(tmp_path: Path) -> None:
     spec = _spec(tmp_path, ["rs1801133,,,,A/G"])
     _enrich(spec, tmp_path / "no-cache", offline=False, resolver=resolver, verify_datasets=False)
     assert _releases(spec) == {"rs1801133": None}
+
+
+# ── the review round (RM373, 2026-11-05) ───────────────────────────────────────────────────────
+
+
+def _rest_handler(asked: list[str] | None = None):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if asked is not None:
+            asked.append(request.url.path)
+        if "graphql" in str(request.url):
+            return httpx.Response(503, text="beta down")
+        if request.url.path == "/info/data":
+            return httpx.Response(200, json={"releases": [116]})
+        rsid = request.url.path.rsplit("/", 1)[-1]
+        chrom, start, ref, alt = _LIVE_ONLY.get(rsid) or _NEW_SITES[rsid]
+        mapping = {"seq_region_name": chrom, "start": start, "allele_string": f"{ref}/{alt}"}
+        return httpx.Response(200, json={"name": rsid, "mappings": [{**mapping, "assembly_name": "GRCh38"}]})
+
+    return handler
+
+
+#: An rsID the snapshots do not hold, so only the live link can answer it.
+_LIVE_ONLY = {"rs1061170": ("1", 196690107, "T", "C")}
+
+
+def test_rest_rows_beside_snapshot_rows_leave_the_snapshots_label_standing(new: Path, tmp_path: Path) -> None:
+    """The run's record speaks for the rows its snapshot answered; REST's rows carry their own release.
+
+    The two links spell one Ensembl release two ways (`…vep116.0` and `ensembl_116`) and nothing here can
+    equate them, so the licence row, which names the table, is still withheld. The record is not: it is
+    the snapshot's, and every row the snapshot answered is this release's.
+    """
+    resolver = EnsemblResolver()
+    resolver._client = httpx.Client(transport=httpx.MockTransport(_rest_handler()))
+    spec = _spec(tmp_path, [*_FIRST, "rs1061170,,,,C/T"])
+    _enrich(spec, new, offline=False, resolver=resolver, verify_datasets=False)
+    assert _releases(spec) == {"rs1801133": _NEW, "rs429358": _NEW, "rs1061170": "ensembl_116"}
+    record = _pair_record(spec)
+    assert record.release == _NEW and "withheld" not in (record.detail or "")
+    assert _dataset(spec, "ensembl") is None
+
+
+class _RaisingRelease:
+    """A host's resolver: it answers rsIDs and its release call fails in its own way."""
+
+    def resolve_rsid(self, rsid: str):
+        chrom, start, ref, alt = _LIVE_ONLY[rsid]
+        return [{"chrom": chrom, "start": start, "ref": ref, "alts": alt}], "ensembl-rest"
+
+    def data_release(self) -> str | None:
+        raise RuntimeError("the host's own failure")
+
+    def close(self) -> None:
+        return None
+
+
+def test_a_hosts_resolver_is_never_asked_for_a_release(tmp_path: Path) -> None:
+    """An optional provenance label may not abort a run whose answers are already in."""
+    spec = _spec(tmp_path, ["rs1061170,,,,C/T"])
+    _enrich(spec, tmp_path / "no-cache", offline=False, resolver=_RaisingRelease(), verify_datasets=False)
+    assert _releases(spec) == {"rs1061170": None}
+
+
+class _Gnomad:
+    """gnomAD's link: it answers from a dataset id that names a release line, never a release."""
+
+    settings = type("S", (), {"dataset": "gnomad_r4"})()
+    unanswered: dict = {}
+
+    def resolve_rsids(self, rsids: list[str]) -> dict[str, list[dict]]:
+        chrom, start, ref, alt = _LIVE_ONLY["rs1061170"]
+        return {r: [{"chrom": chrom, "start": start, "ref": ref, "alts": alt}] for r in rsids}
+
+    def close(self) -> None:
+        return None
+
+
+class _NoLive:
+    def resolve_rsid(self, rsid: str):
+        return [], "ensembl-rest"
+
+    def close(self) -> None:
+        return None
+
+
+def test_a_gnomad_answer_records_no_release(tmp_path: Path) -> None:
+    spec = _spec(tmp_path, ["rs1061170,,,,C/T"])
+    _enrich(
+        spec,
+        tmp_path / "no-cache",
+        offline=False,
+        resolver=_NoLive(),
+        use_gnomad=True,
+        gnomad_client=_Gnomad(),
+        verify_datasets=False,
+    )
+    rows, errors, _ = _load_csv_rows(spec / "resolution.csv", ResolutionRow, "resolution.csv")
+    assert errors == [] and [(r.source, r.source_release) for r in rows] == [("gnomad", None)]
+
+
+def _clinvar(root: Path, release: dict | None) -> Path:
+    """A ClinVar snapshot holding only rs1061170, so ClinVar's link answers it."""
+    chrom, start, ref, alt = _LIVE_ONLY["rs1061170"]
+    (root / "data").mkdir(parents=True)
+    pl.DataFrame(
+        {"rsid": ["rs1061170"], "chrom": [chrom], "start": [start], "ref": [ref], "alt": [alt]}
+    ).write_parquet(root / "data" / "c.parquet")
+    if release is not None:
+        (root / "release.json").write_text(json.dumps(release), encoding="utf-8")
+    return root
+
+
+def test_a_clinvar_answer_records_the_label_every_clinvar_reader_computes(new: Path, tmp_path: Path) -> None:
+    """`clinvar_dataset_label` is the one spelling: a digest-only snapshot is named by its digest."""
+    clinvar = _clinvar(tmp_path / "clinvar", {"source_sha256": "sha256:" + "ab" * 32})
+    spec = _spec(tmp_path, ["rs1801133,,,,A/G", "rs1061170,,,,C/T"])
+    _enrich(spec, new, clinvar_cache=clinvar)
+    expected = clinvar_dataset_label(clinvar)
+    assert expected == "clinvar_sha256:" + "ab" * 32
+    assert _releases(spec)["rs1061170"] == expected
+
+
+def test_a_source_publishing_past_the_snapshot_never_makes_strict_refuse(
+    new: Path, tmp_path: Path, caplog
+) -> None:
+    """`@a-source-recuring-is-not-a-strict-matter`: no authored edit clears it, so it warns in both modes.
+
+    The first run records ClinVar's release on the resolution layer; the second, strict, finds live ClinVar
+    has published since. It stays green, and the warning names the remedy a derived table has.
+    """
+    clinvar = _clinvar(tmp_path / "clinvar", {"dataset": "clinvar_2026-06-27"})
+    spec = _spec(tmp_path, ["rs1801133,,,,A/G", "rs1061170,,,,C/T"])
+    options = {
+        "clinvar_cache": clinvar,
+        "offline": False,
+        "resolver": _NoLive(),
+        "release_probes": {"clinvar": lambda: "clinvar_2026-11-01"},
+    }
+    _enrich(spec, new, **options)
+    assert _dataset(spec, "clinvar") == "clinvar_2026-06-27"
+    with caplog.at_level("WARNING"):
+        _enrich(spec, new, mode="strict", **options)
+    assert "enrich --rederive" in caplog.text and "re-draft" not in caplog.text.lower()
+
+
+def test_a_curators_row_for_a_source_with_no_terms_is_never_restamped(tmp_path: Path) -> None:
+    """`record_table_sources` stamps only the rows it writes; `manual` has no terms constant, so none."""
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    path = sources_path(spec, error=RuntimeError)
+    write_sources_csv([SourceRow(source="manual", layer="frequency", dataset="my_curation_v2")], path)
+    record_table_sources(
+        {"manual": [None], "gnomad": ["gnomad_v4.1_joint"]}, "frequency", spec, error=RuntimeError
+    )
+    rows, errors, _ = _load_csv_rows(path, SourceRow, path.name)
+    assert errors == []
+    assert {r.source: r.dataset for r in rows} == {"manual": "my_curation_v2", "gnomad": "gnomad_v4.1_joint"}

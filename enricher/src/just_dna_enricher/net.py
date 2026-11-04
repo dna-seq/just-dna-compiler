@@ -352,6 +352,17 @@ def release_dataset(lane: str, released: str | None) -> str:
     return f"{lane}_{released}" if released else lane
 
 
+def stated_release(dataset: str | None, *lanes: str) -> str | None:
+    """The release a `dataset` label states, or `None` when it states none (RM373).
+
+    The inverse of `release_dataset` for a reader: a blank cell, and the bare lane that label writes when
+    the source stated no release, are both no release. What a licence row's `dataset` is computed from,
+    so a table whose rows say `gwas_catalog` names no release rather than one called `gwas_catalog`.
+    """
+    label = (dataset or "").strip()
+    return None if not label or label in lanes else label
+
+
 # ── bulk file downloads: one body, translated and retried (RM187) ───────────────────────────────
 #
 # Eleven builders stream one file from a source's FTP or bulk endpoint, and until RM187 each carried

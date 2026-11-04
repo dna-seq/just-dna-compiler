@@ -41,7 +41,7 @@ from just_dna_format.normalize import now_utc_iso
 from just_dna_format.resolution import ResolutionRow
 from pydantic import ValidationError
 
-from just_dna_enricher.clinvar import lookup_clin_sig
+from just_dna_enricher.clinvar import clinvar_dataset_label, lookup_clin_sig
 from just_dna_enricher.download import ensure_clinvar_snapshot
 from just_dna_enricher.enrich.outcome import EnrichmentError
 from just_dna_enricher.enrich.subjects import study_proxy_rsids
@@ -53,7 +53,8 @@ from just_dna_enricher.licensing import (
     sidecar_path,
     table_datasets,
 )
-from just_dna_enricher.locations import read_release, resolve_clinvar_reference
+from just_dna_enricher.locations import resolve_clinvar_reference
+from just_dna_enricher.net import release_dataset, stated_release
 
 logger = logging.getLogger(__name__)
 
@@ -70,8 +71,6 @@ ASSERTION_GENOME_BUILD = "GRCh38"
 
 #: Label prefix for the `dataset` column, completed with the snapshot's own release date.
 _DATASET_PREFIX = "clinvar"
-#: What a row's `dataset` says when the snapshot states no release (`snapshot_dataset`).
-_UNKNOWN_DATASET = f"{_DATASET_PREFIX}_unknown"
 
 #: The column order, derived from the model rather than hand-kept (`SOURCES_FIELDNAMES`'s rule).
 #: `ClinicalAssertionRow` has no compiler-stamped fields, so every declared field is a real column.
@@ -146,25 +145,19 @@ def _alleles_from_resolution(
 
 
 def snapshot_dataset(reference: Path | None) -> str:
-    """The `dataset` label for records read from this snapshot.
+    """The `dataset` label for records read from this snapshot: `clinvar_dataset_label`, the one spelling.
 
-    Reads the snapshot's own `release.json` — the RM38 rule that a snapshot stamps its release into
-    the row, so a consumer can tell a pinned file from whatever happened to be current. A snapshot
-    that cannot state its release gets `clinvar_unknown` rather than a fabricated date: an unknown
-    written down as a plausible-looking value is worse than one written down as unknown.
+    The function `enrich`, the clinical cross-check and `--verify-datasets` read too (RM373: this read
+    `clinvar_file_date` by hand, and a digest-only snapshot was `clinvar_unknown` here and its digest
+    everywhere else). A snapshot that states no release gets the bare lane (`release_dataset`, RM361):
+    an unknown written down as unknown, never as a release of that name.
     """
-    release = read_release(reference) if reference is not None else None
-    stated = str((release.clinvar_file_date if release is not None else None) or "").strip()
-    return f"{_DATASET_PREFIX}_{stated}" if stated else _UNKNOWN_DATASET
+    return clinvar_dataset_label(reference) or release_dataset(_DATASET_PREFIX, None)
 
 
 def _row_release(row: ClinicalAssertionRow) -> str | None:
-    """The release a row states for its licence row's label: `None` for `snapshot_dataset`'s unknown spelling.
-
-    `clinvar_unknown` is how a row says the snapshot stated no release, so it is not a release a
-    licence row may name, and a table holding one has no label (RM373).
-    """
-    return None if row.dataset == _UNKNOWN_DATASET else row.dataset
+    """The release a row states for its licence row's label: `None` for the bare lane (no release)."""
+    return stated_release(row.dataset, _DATASET_PREFIX)
 
 
 def enrich_clinical_assertions(

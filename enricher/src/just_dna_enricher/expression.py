@@ -62,6 +62,7 @@ from just_dna_enricher.licensing import (
     table_datasets,
 )
 from just_dna_enricher.locations import env_value, missing_credential_reason
+from just_dna_enricher.net import release_dataset, stated_release
 
 # Guarded at module scope rather than imported inside the function, which is the documented exception
 # to this workspace's no-inline-imports rule and the shape `alphagenome_check` uses. The fallback
@@ -97,6 +98,8 @@ logger = logging.getLogger(__name__)
 
 SIDECAR_NAME: str = "expression_effects.csv"
 SOURCE_NAME: str = ALPHAGENOME_ATLAS_TERMS.source
+#: The bare lane a row's `dataset` carries: the atlas states no release (RM373).
+ATLAS_LANE = "alphagenome_atlas"
 SOURCE_LAYER: str = "expression_effect"
 
 #: The one scorer RM200 adopted, and the value `effect_measure` records.
@@ -441,7 +444,9 @@ def enrich_expression(
     if mismatch:
         result.warnings.append(mismatch)
 
-    release = dataset or f"alphagenome_atlas_{now_utc_iso()[:10]}"
+    # The atlas states no release, so a row names none unless the caller states one (RM373): the run's
+    # date was a release nobody published. The bare lane is `release_dataset`'s unstated spelling.
+    release = dataset or release_dataset(ATLAS_LANE, None)
     fetched_at = now_utc_iso()
     result.dataset = release
 
@@ -542,7 +547,7 @@ def enrich_expression(
             output_path,
             # Labelled by the release every committed row states, not by this run's alone (RM373).
             before_commit=lambda: record_table_sources(
-                table_datasets(out, release=lambda row: row.dataset),
+                table_datasets(out, release=lambda row: stated_release(row.dataset, ATLAS_LANE)),
                 SOURCE_LAYER,
                 spec_dir,
                 error=ExpressionError,

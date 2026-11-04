@@ -40,11 +40,15 @@ the `0.8` branch lane by lane. Newest first.
 **SHIPPED 2026-11-04 on `0.8`, uncut — a minor (the 0.8 Ensembl migration probe).** Owner format +
 enricher, severity medium.
 
-**Residuals** won't fix — `fetched_at` stays blank on enriched rows: it says when a pass wrote a row,
-never which release answered, so it is another axis and not this class · won't fix — the hand-typed
+**Residuals** won't fix — the hand-typed
 `--ensembl-reference` flag stays unchecked: it names the superseded DuckDB injection path, and the
 per-row column now carries the release · won't fix — an answer seeded from an interrupted run's journal
-records no release, because that run never wrote one down, and `--rederive` re-answers it
+records no release, because that run never wrote one down, and `--rederive` re-answers it · won't fix —
+the enricher never writes `fetched_at` on a resolution row: the cell says when a pass wrote a row, an
+axis apart from which release answered, which `source_release` now records, and no check reads the time · won't fix — the `ensembl` licence row of a table the snapshot and live REST both answered names
+no release: REST spells Ensembl's release `ensembl_116` and the snapshot `…vep116.0`, and no published
+mapping equates them · won't fix — `frequencies.csv` keeps the constant `gnomad_v4.1_joint`: the gnomAD
+API states no release, and the constant names the release its numbers describe
 
 **The class.** The record of which source release answered a derived fact was missing, blank, or the
 current run's, so an old-release answer and a new-release answer looked identical to every tier. The
@@ -67,7 +71,7 @@ record describes what it binds (`@a-record-written-in-two-passes-drifts-between-
   `resolution`: `record_source_terms(...)` with no `datasets=` → `record_table_sources`, labelled by the
   committed rows (the ClinVar row was blank on every probe arm too).
 - `enrich/verification_records.py:440` `rsid_coordinate_agreement.release`: the run's snapshot label
-  over any table → the label only when every Ensembl-answered row carries it, else null with a counted
+  over any table → the label only when every row the snapshot answered carries it, else null with a counted
   reason in `detail` (`enrich.releases.run_label`).
 - `assertions.py:406`, `gene_metrics.py:458`, `frequencies.py:419`, `gene_validity.py:576`: licence rows
   with a blank `dataset` although every row records its release → labelled from the rows' `dataset`.
@@ -110,11 +114,28 @@ of the snapshot the pass read (`test_source_release.py`, `test_placement_witness
 `test_clinical_assertions.py`, `test_fact_passes.py`, `test_opentargets.py`). The probe's case is
 `test_reenriching_an_old_table_keeps_its_rows_unlabelled_and_withholds_the_runs_label`.
 
-**What it costs.** A `clinvar` or `clinvar_gkm` licence row now names a release `--verify-datasets`
-compares, so a strict online `enrich` refuses once ClinVar publishes past the snapshot that answered;
-`--rederive` against a current snapshot or `--no-verify-datasets` clears it. Proposed, not built: the
-currency gate need not escalate on a `resolution`-layer row, whose remedy is a re-derivation rather than
-a re-draft.
+**A derived table's release moving is not a strict matter.** A filled `clinvar`/`clinvar_gkm` licence
+row is a release `--verify-datasets` compares. A source publishing past it is the source working and no
+authored edit clears it (`@a-source-recuring-is-not-a-strict-matter`), so on every layer but `annotation`
+(`licensing.DRAFTED_LAYERS`) the finding warns in both modes and names `enrich --rederive` (or deleting
+the derived table); only a drafted layer refuses and says re-draft.
+
+**The review round (2026-11-05), each finding with a red test first** (`data/rm373/red_4.txt`):
+`run_label` counts only the rows the snapshot's link answered (a REST row beside a cache row no longer
+withholds the snapshot's label); ClinVar's label is `clinvar_dataset_label`, the one spelling every
+ClinVar reader computes (a digest-only snapshot was `None` here); `record_table_sources` stamps only rows
+of a source with a terms constant, so a curator's `manual` row is never touched; an Open Targets row this
+run kept states no release, because the recorded label may be a pre-0.8 first run's; a gnomAD answer
+records none (`gnomad_r4` names a release line); `data_release` is asked only of this tier's own
+`EnsemblResolver`, so a host's resolver cannot abort a finished run for a label. Two more instances of
+the class: `gwas` and `alphagenome expression` labelled their rows by the run's date, now by the source's
+own release (`GwasCatalogClient.release`, the Catalog's `/api/search/stats` `date`, read by hand on
+2026-11-05) or the bare lane when none is stated (`net.release_dataset`, RM361), and a licence row reads a
+row label through `net.stated_release`, so a bare lane is no release; `assertions.snapshot_dataset` was a
+second spelling of the ClinVar label and is now `clinvar_dataset_label` (unstated: `clinvar`, no longer
+`clinvar_unknown`); `gene-metrics` stamped the constant `gnomad_v4.1_constraint` on a snapshot row and now
+reads the snapshot's `release.json`. Mutated: the drafted/derived split collapsed and `stated_release`
+passing a bare lane through, each watched red.
 
 ## RM372 — the Ensembl snapshot moved to a new Hugging Face repo, and a warm cache never migrates
 

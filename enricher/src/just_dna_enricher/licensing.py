@@ -1037,6 +1037,12 @@ def record_source_terms(
     )
 
 
+#: The layers a drafting provider writes, and so the only ones a re-draft moves (RM373). Every other layer
+#: is a derived table's, labelled by `record_table_sources` from its own rows: its release moving is the
+#: source working, which warns and never makes `strict` refuse (`@a-source-recuring-is-not-a-strict-matter`).
+DRAFTED_LAYERS: frozenset[str] = frozenset({"annotation"})
+
+
 def table_release(labels: Iterable[str | None]) -> str | None:
     """The one release every row of a table states, or `None` when that is not one release (RM373).
 
@@ -1102,7 +1108,12 @@ def record_table_sources(
     stale = [
         r
         for r in recorded
-        if r.layer == layer and r.source in labels and (r.dataset or None) != labels[r.source]
+        # Only the rows this call writes: a source with no terms constant (`manual`) gets no row
+        # from it, so a curator's hand-written row for one is never touched.
+        if r.layer == layer
+        and r.source in labels
+        and r.source in TERMS_BY_SOURCE
+        and (r.dataset or None) != labels[r.source]
     ]
     if not stale:
         return recorded

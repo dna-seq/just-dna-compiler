@@ -8,6 +8,7 @@ actually are.
 
 import csv
 import json
+import shutil
 from pathlib import Path
 
 import httpx
@@ -32,6 +33,7 @@ from just_dna_format.frequency import FrequencyRow
 from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.layout import SOURCES_CSV, preferred_spelling
 from just_dna_format.resolution import ResolutionRow
+from just_dna_format.snapshot import read_release, write_release
 from just_dna_format.sources import SourceRow
 from just_dna_format.vrs import derive_vrs_allele_id, split_vrs_ids
 from pydantic import ValidationError
@@ -807,3 +809,21 @@ def test_rm373_the_constraint_licence_row_is_the_lanes_label_until_a_second_rele
         client=_mock_client(lambda _r: httpx.Response(200, json=gene_payload)),
     )
     assert _licence_dataset(spec, "gene_metrics") is None
+
+
+def test_rm373_a_snapshot_row_says_the_snapshots_own_release_never_a_constant(
+    tmp_path: Path, constraint_cache: Path
+) -> None:
+    """A newer constraint snapshot used to be stamped `gnomad_v4.1_constraint`, the label of the build
+    the pass was written against. The row now says what the snapshot it was read from states."""
+    newer = tmp_path / "newer"
+    shutil.copytree(constraint_cache, newer)
+    record = read_release(newer)
+    assert record is not None
+    write_release(newer, record.model_copy(update={"dataset": "gnomad_v4.2_constraint"}))
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    (spec / "variants.csv").write_text("rsid,genotype,state,conclusion,gene\nrs1,A/G,risk,x,BRCA1\n")
+    result = enrich_gene_metrics(spec, offline=True, constraint_cache=newer)
+    assert {r.dataset for r in result.rows} == {"gnomad_v4.2_constraint"}
+    assert _licence_dataset(spec, "gene_metrics") == LANES_BY_NAME["constraint"].release_label(newer)

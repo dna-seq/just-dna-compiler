@@ -2526,11 +2526,12 @@ does not carry a coordinate, and it is the wrong one — RM43 (0.6) is the right
   migration probe). The value is the release as the answering source states it: an Ensembl snapshot's
   `manifest.json` `release_id` (`ensembl-variation-2026_07_13-vep116.0`) or `release.json` `dataset`, a
   ClinVar snapshot's `clinvar_<date>`, live REST's data release from `/info/data` (`ensembl_116`, never
-  `/info/rest`, which is the REST software's version), gnomAD's dataset id. Written only by the run
+  `/info/rest`, which is the REST software's version). Written only by the run
   that answered the row: a row a later run carries forward keeps it, a row written before 0.8 keeps
   none, and nothing back-fills one (`@sidecar-authoritative`); `enrich --rederive` re-answers every row
   and stamps each. **Empty is "not recorded", never "current"**: the old Ensembl repo states no release,
-  GraphQL states none, an authored, `manual` or `reversed` row has no source that answered, and an
+  GraphQL states none, gnomAD's dataset id (`gnomad_r4`) names a release line rather than a release, an
+  authored, `manual` or `reversed` row has no source that answered, and an
   answer seeded from an interrupted run's journal never had its release written down. Per row rather
   than per table because merge-not-clobber makes a table two releases answered the normal case. Reverse
   cannot emit it, for `authority`'s reason above. The licence rows `enrich` writes take their `dataset`

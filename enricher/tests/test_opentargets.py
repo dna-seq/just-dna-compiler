@@ -1303,3 +1303,18 @@ def test_rm373_every_licence_row_names_the_lanes_release_and_a_rerun_against_a_n
     assert _datasets(module) == {
         layer: first[layer] if layer == "gwas_effect" else "opentargets_26.12" for layer in first
     }
+
+
+def test_rm373_a_row_this_run_did_not_answer_withholds_the_label(module: Path) -> None:
+    """A kept row's release is not known: the recorded label may be a pre-0.8 first run's, kept forever."""
+    enrich_opentargets(module, snapshot=SLICE)
+    path = sidecar_path(module, "locus_to_gene.csv", error=RuntimeError)
+    with path.open(newline="") as handle:
+        reader = csv.DictReader(handle)
+        fieldnames, first = reader.fieldnames, next(reader)
+    _append(path, [{**first, "variant_key": "rs999999999"}])
+    assert fieldnames is not None
+    enrich_opentargets(module, snapshot=SLICE)
+    datasets = _datasets(module)
+    assert datasets["locus_to_gene"] is None
+    assert datasets["consequence"] == LANES_BY_NAME["opentargets"].release_label(SLICE)

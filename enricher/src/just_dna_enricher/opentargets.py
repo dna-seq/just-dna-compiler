@@ -86,7 +86,6 @@ from pydantic import BaseModel
 from just_dna_enricher.licensing import (
     OPENTARGETS_TERMS,
     overlaid_input_rows,
-    read_sources_file,
     record_table_sources,
     require_sources_file,
     sidecar_path,
@@ -868,7 +867,7 @@ def enrich_opentargets(
                 else None,
             )
         if gwas_rows and updated != gwas_rows:
-            # A posterior an earlier run filled and this one left alone is that run's release's.
+            # A posterior an earlier run filled and this one left alone states no release (`_licence`).
             untouched = {id(row) for row in gwas_rows}
             kept = sum(1 for row in updated if id(row) in untouched and row.posterior_probability is not None)
             _write(
@@ -887,23 +886,15 @@ def _licence(
 ) -> Callable[[], None]:
     """The licence row for `layer`, labelled by the table rather than by this run alone (RM373).
 
-    These tables carry no per-row release, so a row this run answered states this run's `dataset`, and a
-    row an earlier run wrote and this one kept states what the licence row recorded before this run:
-    that label was computed over every row the table then held. Nothing recorded, or a recorded label
-    that is not this run's, withholds the table's label.
+    These tables carry no per-row release, so a row this run answered states this run's `dataset` and a
+    row an earlier run wrote and this one kept states none: the label recorded before this run may be a
+    pre-0.8 first run's, which `merge_sources_file` kept whatever the table later held, so it is not
+    evidence about the kept rows. One kept row withholds the table's label until a run re-answers it.
     """
 
     def _commit_licence() -> None:
-        recorded = next(
-            (
-                r.dataset
-                for r in read_sources_file(spec_dir)
-                if (r.source, r.layer) == (OPENTARGETS_TERMS.source, layer)
-            ),
-            None,
-        )
         record_table_sources(
-            {OPENTARGETS_TERMS.source: [dataset] * answered + [recorded] * kept},
+            {OPENTARGETS_TERMS.source: [dataset] * answered + [None] * kept},
             layer,
             spec_dir,
             error=OpenTargetsError,
