@@ -1169,7 +1169,7 @@ CACHE_LANES: list[CacheLane] = [
     ),
     CacheLane(
         name="clinvar_gkm",
-        approx_mb=16,
+        approx_mb=18,
         build_command="clinvar-gkm build",
         subdir=CLINVAR_GKM_SUBDIR,
         env_var=CLINVAR_GKM_CACHE_VAR,

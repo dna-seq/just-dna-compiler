@@ -519,6 +519,40 @@ GKM-Core 1.3.0" [M]. GKS_SURVEY's `vrs_output_2_0_1.schema.json` described 1.0-r
 The lane's `release.json` therefore carries the VRS version as a declared value read off the changelog of the
 release it pinned, not off the bytes [I].
 
+### 3.7 Built (RM305, 2026-11-04)
+
+The lane was built once for real, through the shipped command and its download path:
+
+```bash
+JUST_DNA_HTTP_RETRY_ATTEMPTS=6 uv run just-dna-enricher clinvar-gkm build --out data/repro/clinvar_gkm
+```
+
+Run 04:57 to 05:22 UTC. Both inputs were downloaded whole and matched `manifest.json` in size and sha256 [M].
+A first attempt with plain `curl` had its `variation.parquet` connection reset at about 1 GB; the build's
+own download retries the transport.
+
+| what | value [M] |
+|---|---|
+| `dataset` | `clinvar_gkm_2026-10-24` (`source_release` 2026-10-24, source `dataset` `clinvar_2026_10_24_v2_6_1`) |
+| `allele.parquet` sha256 | `cfd29e5464c9903c7645e7ca4359c6b0bc660e329ba0176635037f0ac45bc625` (1,119,974,942 bytes) |
+| `variation.parquet` sha256 | `136b0db54d39fe74a570a3e59e00acc2aa7d24de1f937d8a441b0b52392740f1` (3,914,257,911 bytes) |
+| alleles read | 4,599,039 |
+| dropped: no SPDI / off GRCh38 / same length / no VCF spelling | 6,092 / 1 / 4,283,541 / 0 |
+| indel alleles kept | **309,405**, the §3.5 figure: 285,144 `ReferenceLengthExpression`, 24,261 `LiteralSequenceExpression` |
+| rows (one per allele and rsID) | 309,409 |
+| rows with an rsID / distinct rsIDs | 219,844 / 202,236 |
+| `data/clinvar_gkm-indels.parquet` | 17,172,269 bytes (zstd; 10 columns, so larger than §3.5's six-column 15.6 MB) |
+| line's `latest_release` at build | 2026-10-31, so the build reported that the set lags by one week |
+
+The rsID counts are 27 and 15 below §3.5's 219,871 and 202,251. §3.5 counted the 70 multi-base
+reference-agreeing alleles the probe's filter let through, and the builder drops them [I: the difference is
+not otherwise measured]. No SPDI deleted or inserted field is digit-only in this release, so the length rule
+never had to read a deletion length [M]. The `gnomad` expression spells the mitochondrion `MT` and the sex
+chromosomes `X` and `Y` [M]. `rs72613567` and `rs77944059` resolve to the §3.5 ids, VCF spellings and ClinVar
+variations; `rs8176719` is not witnessed [M: `clinvar-gkm lookup`, and `test_clinvar_gkm.py` against the
+built snapshot]. `cache status` shows the lane present at 17.2 MB, and the publish plan is
+`data/clinvar_gkm-indels.parquet`, `LICENSE.txt`, `release.json`, in that order [M].
+
 ---
 
 ## 4. Files and reproduction

@@ -35,6 +35,72 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM305 — ClinVar-GKM's allele table is an offline, independent witness for where an indel sits, and nothing reads it
+
+**Decided 2026-11-04 by the maintainer: a witness, indels only.** ClinVar-GKM becomes the witness RM292's checks name (no check of its own), and the lane keeps the ~270k `ReferenceLengthExpression` alleles plus other indels, not the full 4.46 M rows.
+
+**0.8, decided 2026-11-03.** Taken into 0.8 by the maintainer, with the rest of the indel-placement fixes (RM304, RM267, RM270, RM292, RM305). The status line below predates that decision.
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** (a new cache lane; no check of its own, per the 2026-11-04 decision; [PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §5 C3)
+· **Owner** enricher (a lane beside the ClinVar VCF lane, and the check) · **Motivating case**
+[GKS_SURVEY.md](probes/GKS_SURVEY.md) §0 finding 4, 2026-09-28 · *related* RM267, RM270, RM292
+
+**Residuals** RM267 · won't fix — the source keeps no archived Parquet sets, so a past release cannot be rebuilt or pinned by URL, only detected as drift
+
+**What shipped (2026-11-04).** A cache lane, `clinvar_gkm` (`clinvar_gkm.py`, `clinvar_gkm_build.py`,
+`clinvar-gkm build|currency|lookup`), built through [CACHE_SURFACE.md](CACHE_SURFACE.md)'s checklist. The
+probe ([LANES_0_8.md](probes/LANES_0_8.md) §3) corrected two lines below: the source is on Cloudflare R2, not
+Google Cloud Storage, and its ids are minted under VRS 2.1.1, not 2.0.x. The lane decisions, in order:
+
+- **Indels only**, as decided: the GRCh38 alleles whose SPDI deletes and inserts a different number of
+  bases, whichever VRS state type carries them, so the reference-agreeing `ReferenceLengthExpression`
+  alleles are dropped too. 309,405 alleles from the 2026-10-24 set, 17.2 MB; every dropped class is
+  counted in `release.json` (LANES §3.7).
+- **The pin is `(source_release, sha256)`**, because the source overwrites its one Parquet set weekly.
+  Both inputs are downloaded whole, as the source asks, and a file whose size or digest differs from the
+  set's `manifest.json` is refused (`ClinVarGkmMismatch`). That is also the guard for the R2 range slip
+  §4 records: a partial body fails the size check whatever status came with it. A release landing
+  mid-build, and an overwrite in place under the same release, are each named.
+- **Its own `SourceRow`**, `CLINVAR_GKM_TERMS`, with the manifest's attribution and disclaimer verbatim.
+  CC0 permits publishing, so the lane has `ensure_*` and `just-dna-seq/clinvar_gkm` (not created yet).
+- **Keys**: the VRS id and the gnomAD-style VCF spelling on every row, the rsID secondary (71% of rows).
+  `ClinVarGkmWitness.lookup` returns every placement and never picks; `ids_comparable` allows a VRS-id
+  comparison only at the same VRS minor, so against today's 2.0 minter a check compares by the
+  left-normalized VCF spelling.
+- **No check of its own.** RM292's records and RM267's comparison name it as their witness.
+- **Currency, three questions apart**: a newer Parquet set exists, the set was overwritten under the same
+  release (both digests are compared), or the set itself lags the line's newest weekly release, which a
+  rebuild cannot fix. `clinvar_gkm` also joins `currency.default_probes`, so `--verify-datasets` asks it
+  for any module whose `sources.csv` names it.
+
+**What exists.** ClinGen's ClinVar-GKM pipeline republishes each ClinVar release in GA4GH form. Its
+`allele.parquet` is 1.09 GB, **CC0**, and holds 4.46 M alleles, each with a VRS 2.0 id beside
+`spdi`, `hgvs.g` and a gnomAD-style VCF expression. The survey found **exactly** the two insertion
+ids RM270 minted (`rs72613567`, `rs77944059`) in it, and our stdlib SNV ids matched it byte for byte
+on the two rows sampled.
+
+**Why it matters here.** Three open items need to know whether a placement is right, and each checks
+it today against a source that shares our failure: RM267's anchoring error comes from the Ensembl
+snapshot, RM270's respelling from the source's spelling, and RM292 asks that a check say what it
+checked against. A table built by a different pipeline, with a spelling-independent id on every row,
+is a witness none of them has. It **does not replace** the ClinVar VCF lane: clinical significance
+still comes from there, and this lane is used for placement only.
+
+**Things the survey recorded that the design must carry.**
+
+- **Maturity.** The dataset is at 1.0-rc3, and a breaking change landed mid-RC. The lane pins a
+  release and records it in `release.json` (RM303's model, if it has landed).
+- **Currency.** The latest weekly delta was dated 2026-08-22, about five weeks stale at survey time,
+  so the lane owes a currency finding (`@currency-asks-the-source-not-the-cache`).
+- **Distribution** is Google Cloud Storage, not FTP. The builder's download is a new transport and
+  owes the client contract (`@client-exception-contract`).
+- **VRS version.** Its ids are 2.0.x (`vrs_output_2_0_1.schema.json`). Comparing them against ours
+  is exactly where RM304's version record is needed.
+
+**Open questions.** Is it a new check, or the witness an existing check gains (RM292's shape)? Should
+the lane carry the full 4.46 M rows, or only the 270,161 `ReferenceLengthExpression` alleles and
+other indels, where placement is actually in doubt?
+
 ## RM303 — the snapshot layout is a contract with six parties and no model, so it belongs in `just-dna-format`
 
 **0.8, confirmed 2026-11-03** by the maintainer when scoping 0.8.

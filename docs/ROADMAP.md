@@ -551,44 +551,6 @@ check cannot ship without stating its witness.
 *self-consistent* is a new verdict vocabulary member. Both are additive and minor-legal (P3, P8).
 Price: the record is machine-written, so half cost (P9). Not on `main`.
 
-## RM305 — ClinVar-GKM's allele table is an offline, independent witness for where an indel sits, and nothing reads it
-
-**Decided 2026-11-04 by the maintainer: a witness, indels only.** ClinVar-GKM becomes the witness RM292's checks name (no check of its own), and the lane keeps the ~270k `ReferenceLengthExpression` alleles plus other indels, not the full 4.46 M rows.
-
-**0.8, decided 2026-11-03.** Taken into 0.8 by the maintainer, with the rest of the indel-placement fixes (RM304, RM267, RM270, RM292, RM305). The status line below predates that decision.
-
-**Severity** medium · **Status** open — **a minor, release undecided** (a new cache lane and a check)
-· **Owner** enricher (a lane beside the ClinVar VCF lane, and the check) · **Motivating case**
-[GKS_SURVEY.md](probes/GKS_SURVEY.md) §0 finding 4, 2026-09-28 · *related* RM267, RM270, RM292
-
-**What exists.** ClinGen's ClinVar-GKM pipeline republishes each ClinVar release in GA4GH form. Its
-`allele.parquet` is 1.09 GB, **CC0**, and holds 4.46 M alleles, each with a VRS 2.0 id beside
-`spdi`, `hgvs.g` and a gnomAD-style VCF expression. The survey found **exactly** the two insertion
-ids RM270 minted (`rs72613567`, `rs77944059`) in it, and our stdlib SNV ids matched it byte for byte
-on the two rows sampled.
-
-**Why it matters here.** Three open items need to know whether a placement is right, and each checks
-it today against a source that shares our failure: RM267's anchoring error comes from the Ensembl
-snapshot, RM270's respelling from the source's spelling, and RM292 asks that a check say what it
-checked against. A table built by a different pipeline, with a spelling-independent id on every row,
-is a witness none of them has. It **does not replace** the ClinVar VCF lane: clinical significance
-still comes from there, and this lane is used for placement only.
-
-**Things the survey recorded that the design must carry.**
-
-- **Maturity.** The dataset is at 1.0-rc3, and a breaking change landed mid-RC. The lane pins a
-  release and records it in `release.json` (RM303's model, if it has landed).
-- **Currency.** The latest weekly delta was dated 2026-08-22, about five weeks stale at survey time,
-  so the lane owes a currency finding (`@currency-asks-the-source-not-the-cache`).
-- **Distribution** is Google Cloud Storage, not FTP. The builder's download is a new transport and
-  owes the client contract (`@client-exception-contract`).
-- **VRS version.** Its ids are 2.0.x (`vrs_output_2_0_1.schema.json`). Comparing them against ours
-  is exactly where RM304's version record is needed.
-
-**Open questions.** Is it a new check, or the witness an existing check gains (RM292's shape)? Should
-the lane carry the full 4.46 M rows, or only the 270,161 `ReferenceLengthExpression` alleles and
-other indels, where placement is actually in doubt?
-
 ## RM309 — a `risk`/`protective` state whose own conclusion negates it goes unflagged
 
 **Severity** low · **Status** open — **a patch** (a hint), parked on a precision measurement · **Owner**
