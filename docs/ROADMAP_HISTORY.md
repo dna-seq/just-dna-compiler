@@ -843,6 +843,94 @@ dropped stands; a name present and not a string is malformed and refuses. The se
 bytes in memory for the two commits, which a module affords; it is the reason the snapshot send is a
 residual rather than the same mechanism.
 
+## RM364 — reverse drops what compile carried: shipped files, the table's answer for a row the fill left alone, and a table the module never had
+
+**SHIPPED 2026-11-04 on `0.8`, uncut — a minor (the 0.8 audit, round 1)** · **Severity** medium ·
+**Owner** compiler · **Principle** 7 · **Found by** the 0.8 four-model audit (class C)
+
+**Residuals** won't fix — the second lap's warnings lose the resolution provenance reverse discards (`authority`, `placement_witness`), so eight examples gain `source_row_unused` on lap two; carrying provenance into a parquet reverses the documented reverse-discards-provenance decision and is the pm's call · won't fix — a `resolution.csv` row about a variant the module does not carry has no row in the artifact to ride on, and `resolution.csv` gets no parquet (SCHEMAS) · won't fix — a `not_found` sentinel carries no locus to ride `resolution_loci`, and `strict` refuses the module that holds one · won't fix — a coordinate-authored row the table files nothing under is still rebuilt from its own cells, so the second lap's table gains a row the first did not hold; telling that null apart from a reproduced one would cost the `ensembl_cache` digest parity, and the pm decides whether that path is worth keeping
+
+**The class.** Everything `compile_module` reads from a spec directory and carries into the artifact or
+the manifest is either reconstructed by `reverse_module`, so the next compile reproduces it, or excluded
+with a reason. Nothing said which was which: RM241 put the *spec* fields on a registry, and the files and
+facts beside them were each handled, or not, on their own. The round-trip gates compared what they had
+been told to compare, so a loss outside that list was green.
+
+**Instances, re-verified on `0.8` and found by walking every input, manifest block and resolution path:**
+
+1. `compiler/reverse.py:412-413` (on `0.8`): reverse copied back the README and logo only.
+   `provenance.json` (`manifest._collect_provenance`) and the logs (`manifest._collect_logs`) are copied
+   into the artifact and hashed into `manifest.provenance` / `manifest.logs` by every compile, and the
+   second lap had neither. → `reverse.shipped_files(manifest)` lists all four kinds; one helper,
+   `_copy_shipped_file`, copies each byte for byte after a hash check and refuses a name that leaves the
+   module directory, and `_discovered` asks each kind's own discovery rule (`_log_left_behind_reason`
+   for a log) before naming a file the next compile would not find.
+2. `compiler/reverse.py:659-678` (on `0.8`): the positional pass rebuilt `resolution.csv` from a
+   positional row's own cells. For a row the fill leaves alone (an authored coordinate the table
+   contradicts, a key naming several loci, every row of a module whose build the fill skips) those cells
+   hold the author's coordinate or nothing, so reverse lost the table's row and, for the first shape,
+   wrote the **authored** coordinate back as a resolution fact: the second lap's
+   `positional_identity_contradicted` went silent and `resolution_signature` moved, with `strict`
+   accepting the module throughout. `reference_examples/cpic_gene_pairs` had dropped NUDT15's
+   `rs1457579126` (CPIC 48040982, Ensembl `48040978 AA>A`) to stay green, and RM331's guard
+   (`SUBJECT_TABLES == RESOLUTION_SOURCE_TABLES`) could not see it, since the table is a subject source.
+3. `compiler/reverse.py:630-656` (on `0.8`): the weights pass had the same shape on the SNP core: a
+   locus dropped as unable to host the genotype, a one-to-many none of whose loci could host it, an
+   authored coordinate or `ref` the table contradicts, and every row of a non-GRCh38 module with a table.
+   `strict` refuses the first three, which is why the round-trip matrix filed them as unstable rather
+   than as defects; a cross-build module it accepts.
+   → for 2 and 3, `weights.parquet` and the three positional parquets carry `resolution_loci` (the
+   `proxy_loci` struct, one helper `parquets.resolution_loci` shared with it, keyed on the authored key
+   `vrs_columns.resolution_key` already computes), and reverse emits those loci. The column is null
+   where the row's own cells already rebuild the key's loci exactly (`withhold_reproduced_loci`), which
+   keeps every clean module's parquets equal to the deprecated `ensembl_cache` path's
+   (`test_digest_parity_and_offline_roundtrip` caught the first cut, which filled every row); reverse
+   rebuilds a null row from its cells, as before.
+4. `compiler/reverse.py:479` (on `0.8`): reverse wrote a `resolution.csv` for a module whose compile read
+   none, rebuilt from authored coordinates, so the second lap published a `resolution_signature`, VRS
+   coverage and expansion counts the first did not (`grch37_build`, `mt_heteroplasmy`,
+   `cyp2d6_structural`; recorded as "not a defect" in RM69 and in the corpus sweep). →
+   `_no_table_was_read`: no signature in the manifest, no `resolution.csv` in `manifest.derived` (a
+   header-only table comes back header-only), and no parquet cell its `authored_ident` does not name, so
+   an older compile or the deprecated `ensembl_cache` path, which fill without a signature, still gets
+   its table.
+5. `compiler/reverse.py` `_copy_shipped_file`, found by review of the first cut: a name check alone
+   follows a symlink, so a downloaded artifact's `logs/x.log` linked elsewhere would be copied into the
+   reversed spec. → `_leaves_through_a_link` refuses a link on either side, as compile never ships one.
+6. `compiler/tests/test_reference_examples_roundtrip.py`: the lap-1 `resolution_signature` comparison was
+   exempt on a non-GRCh38 build, which hid `cyp2c9_warfarin_grch37` (instance 2's third shape, RM69).
+   The exemption is gone.
+
+**The mechanism.** `reverse.REVERSE_MANIFEST_RECONSTRUCTED` / `REVERSE_MANIFEST_EXCLUDED` place every
+`ModuleManifest` field and every `Compilation` field (walked one level down), and
+`test_every_manifest_field_is_reconstructed_or_excluded` asserts the walk equals their union, disjoint,
+each exclusion with a reason. `reconstructed_projection(manifest)` is what every round-trip gate now
+compares lap against lap: the corpus sweep (all 22 examples, from the first lap, `resolution_signature`
+included) and a fixture carrying every shipped file kind (README, logo, `provenance.json`, a top-level
+log, three files under `logs/`), since the corpus carries no provenance and no logs. The corpus sweep also
+asserts every `manifest.inputs[]` and `manifest.derived[]` name comes back under a legal spelling.
+`test_every_file_the_manifest_names_beside_the_parquets_is_shipped_back` derives the file-bearing
+manifest fields from the model's annotations and asserts `shipped_files` reads exactly those, bar
+`inputs`/`derived` (files beside the spec). The round-trip matrix's two positional `table_says_more`
+cases are now plain fixed points, and five weights-side cases `strict` refuses are now stable as well
+(the matrix's contract, unstable implies refused, still holds; only `not_found` still moves).
+
+**Tests.** Red on `0.8` first: the two matrix cases (`expected a fixed point, but
+['resolution_signature'] moved`), the every-field fixture (lap two's `logs == []`, `provenance is None`).
+Each mechanism broken once: `with_resolution_loci` returning the table unchanged fails the two matrix
+cases, `cyp2c9_warfarin_grch37` and the contradicted-row test; `weights.parquet`'s column left null fails
+15 matrix cases; `_no_table_was_read` returning `False` fails `grch37_build`, `mt_heteroplasmy`,
+`cyp2d6_structural` and the no-table test; the link guard and the `derived` read each fail their test.
+`test_build_roundtrip.test_reversed_resolution_csv_carries_the_module_build` now injects a table, since
+the module it built read none.
+
+**Not this class, and why.** The verification attestation stays excluded (not in the artifact, bound to
+bytes reverse re-emits; reverse says so). RM69's own record refused a `resolution.parquet` and four
+other repairs; `resolution_loci` is none of them (nothing joined, the row's coordinate and key untouched,
+the loci on the module's build) and its addendum says so. The enricher's publisher enumerates the same
+four shipped kinds from raw JSON (`upload._declared_files`, RM353), deliberately tolerant of a manifest
+the model rejects, so it keeps its own reader.
+
 ## RM270 — an indel's artifact key is its source's spelling: a left-aligned VCF misses a respelled row, and the spelling-independent id the enricher mints never reaches the artifact
 
 **0.8, decided 2026-11-03.** Taken into 0.8 by the maintainer, with the rest of the indel-placement fixes (RM304, RM267, RM270, RM292, RM305). The status line below predates that decision.

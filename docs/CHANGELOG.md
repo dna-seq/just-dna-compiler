@@ -41,6 +41,38 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM364: `reverse` gives back everything the compile carried, or names why not (0.8, uncut)
+
+- **`provenance.json` and the logs come back.** A compile copies both into the artifact and hashes
+  them into `manifest.provenance` / `manifest.logs`; reverse copied back only the README and logo, so
+  the second lap's manifest had neither. All four now go through one list, `reverse.shipped_files`, each
+  copied byte for byte after a hash check; a file that disagrees with its record, or a name that leaves
+  the module directory, is not copied.
+- **Every manifest field is on one side of a registry.** `REVERSE_MANIFEST_RECONSTRUCTED` and
+  `REVERSE_MANIFEST_EXCLUDED` (with a reason each) cover every `ModuleManifest` and `Compilation` field,
+  asserted by a walk over both models. The corpus sweep and the every-field fixture compare
+  `reconstructed_projection` lap against lap, which replaced two hand-kept projections that both missed
+  logs and provenance.
+- **A variant row is rebuilt from what the table said.** `weights.parquet` and the three positional
+  parquets gain `resolution_loci`, the loci `resolution.csv` files under each row's authored key (the
+  `proxy_loci` shape), kept wherever the row's own cells would not rebuild them and null on a cleanly
+  resolved row. Reverse used to rebuild a row the fill
+  left alone from its own cells, losing the rows the fill did not take and writing the **authored**
+  coordinate back as a resolution fact: the contradiction went silent on the second lap and
+  `resolution_signature` moved. Two positional matrix cases `strict` accepts, and five weights-side cases
+  it refuses, are now fixed points. Every module carrying `variants.csv` or a positional table gets a new
+  `artifact.digest` on recompile (a new column); `content_signature` does not move.
+- **No `resolution.csv` comes back for a module that read none** (`grch37_build`, `mt_heteroplasmy`,
+  `cyp2d6_structural`), so the second lap no longer publishes a signature and VRS coverage the first did
+  not. `resolution_signature` is now compared from the first lap on every reference example, with no
+  exemption; `cyp2c9_warfarin_grch37` was the one the GRCh37 exemption hid (RM69, addendum).
+- **`reference_examples/cpic_gene_pairs` has its NUDT15 `*1` row `rs1457579126` back**, removed while the
+  example was built because of this defect; re-enriched (`enrich --strict`, which added the ClinVar
+  licence row for the placement's witness) and re-closed.
+- Not fixed, and named in `REVERSE_MANIFEST_EXCLUDED`: the second lap's warnings, which lose the
+  attestation and the resolution provenance reverse discards. On eight examples that provenance
+  (`authority`, `placement_witness`) is why the second lap says a `licensing.csv` source is unused.
+
 ## 2026-11-04 — RM362 (amended): a fact row at the resolved spelling of an identity the module carries is not an orphan (0.8, uncut)
 
 - **A position is every spelling the module's own `resolution.csv` gives a carried identity.** A row authored at one

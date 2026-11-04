@@ -113,8 +113,10 @@ from just_dna_compiler.compiler.parquets import (
     _build_frequencies,
     _build_studies,
     _build_weights,
+    with_resolution_loci,
 )
 from just_dna_compiler.compiler.positional import (
+    _POSITIONAL_TABLE_CSVS,
     _VRS_BEARING_TABLES,
     _apply_positional_resolution,
     _check_positional_joinability,
@@ -379,9 +381,11 @@ def compile_module(
     # The table's identity, stamped where the table is READ (a table-only module carries one too), and
     # gated on the active view having ROWS: a header-only table hashes to the empty-set digest, which
     # would cost `resolution_signature is not None` its meaning ("this module was resolved"), and under
-    # `--no-resolve` the view is empty, so no signature names a table that shaped nothing. The residual
-    # (a table saying more than the module uses does not reproduce across reverse) is pinned in
-    # `test_resolution_matrix.py` (`Case.table_says_more`).
+    # `--no-resolve` the view is empty, so no signature names a table that shaped nothing. The residual,
+    # measured: since RM364 every row filed under a subject the artifact carries rides on a variant
+    # parquet's `resolution_loci` (a proxy's on `studies.parquet.proxy_loci`, RM331), so the signature
+    # reproduces across reverse; a row about a variant the module does not carry has no parquet row to
+    # ride on, and is pinned in `test_resolution_matrix.py` (`Case.table_says_more`).
     if resolution_rows:
         resolution_sources = sorted({row.source for row in resolution_rows if row.source})
         resolution_sig = _resolution_signature(resolution_rows)
@@ -833,6 +837,11 @@ def compile_module(
         table_df = _build_table(rows, model, module_name)
         if csv_name in _VRS_BEARING_TABLES:
             table_df = with_vrs_columns(table_df, vrs_ids, config.genome_build)
+        if csv_name in _POSITIONAL_TABLE_CSVS:
+            # RM364: what the table said under each row's key, so `reverse` rebuilds `resolution.csv`
+            # from the table's answer rather than from the row's own cells. Gated like every resolution
+            # read, and NOT on the fill having applied: a row the fill left alone is the reason for it.
+            table_df = with_resolution_loci(table_df, placements or {}, config.genome_build)
         table_df.write_parquet(output_dir / parquet_name, compression=compression)
         table_rows[parquet_name] = table_df.height
 

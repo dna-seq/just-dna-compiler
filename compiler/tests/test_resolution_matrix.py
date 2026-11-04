@@ -146,14 +146,15 @@ CASES: list[Case] = [
         stable=True,
         strict_refuses=False,
     ),
-    # And the decidable negative still drops the locus, so this stays unstable + strict-refusing: the
-    # event sizes differ (1 bp inserted vs 2 bp deleted), which re-anchoring cannot change.
+    # And the decidable negative still drops the locus, so this stays strict-refusing: the event sizes
+    # differ (1 bp inserted vs 2 bp deleted), which re-anchoring cannot change. Stable since RM364, the
+    # dropped locus riding `resolution_loci`.
     Case(
         "expansion drops a locus whose indel is a different size",
         "rs281864532,,,,,G/GT,risk,c\n",
         _row("rs281864532", "rs281864532", 11, 5226675, "G", "GT", 0)
         + _row("rs281864532", "rs281864532", 11, 5226676, "GTT", "G", 1),
-        stable=False,
+        stable=True,
         strict_refuses=True,
     ),
     # ── stable, but resting on something strict will not build on ─────────────────────────────
@@ -164,12 +165,16 @@ CASES: list[Case] = [
         stable=True,
         strict_refuses=True,
     ),
-    # ── unstable: the table cannot be reproduced from the artifact, so strict must refuse ──────
+    # ── refused by strict. Until RM364 the first four below were also UNSTABLE: reverse rebuilt the
+    #    table from the weights row's own cells, which hold the author's coordinate or a pruned locus
+    #    set wherever the fill left the row alone. `weights.parquet` now carries `resolution_loci`, the
+    #    table's own rows under the authored key, so the second lap reads what the first read and says
+    #    the same thing again. Only `not_found` still moves: a sentinel with no locus rides no parquet. ──
     Case(
         "expansion drops a locus that cannot host the genotype",
         "rs999,,,,,C/G,risk,c\n",
         _row("rs999", "rs999", 5, 500, "C", "G", 0) + _row("rs999", "rs999", 6, 600, "A", "T", 1),
-        stable=False,
+        stable=True,
         strict_refuses=True,
     ),
     Case(
@@ -183,14 +188,14 @@ CASES: list[Case] = [
         "authored ref contradicts the table",
         "rs777,7,700,A,G,C/G,risk,c\n",
         _row("rs777", "rs777", 7, 700, "C", "G"),
-        stable=False,
+        stable=True,
         strict_refuses=True,
     ),
     Case(
         "authored coordinate contradicts the table",
         "rs777,7,700,C,G,C/G,risk,c\n",
         _row("rs777", "rs777", 9, 900, "C", "G"),
-        stable=False,
+        stable=True,
         strict_refuses=True,
     ),
     # ── nothing to resolve from ────────────────────────────────────────────────────────────────
@@ -201,13 +206,12 @@ CASES: list[Case] = [
         stable=True,
         strict_refuses=True,
     ),
-    # Unstable for the same reason `not_found` is: an unresolved row has no coordinate, so reverse
-    # writes no resolution row for it and the table's two candidates are gone.
+    # Stable since RM364: the row stays unresolved, and its two candidates ride `resolution_loci`.
     Case(
         "every candidate locus contradicts the genotype: left unresolved",
         "rs999,,,,,A/T,risk,c\n",
         _row("rs999", "rs999", 5, 500, "C", "G", 0) + _row("rs999", "rs999", 6, 600, "C", "G", 1),
-        stable=False,
+        stable=True,
         strict_refuses=True,
     ),
     # ── the table says more than the module uses: the injected row has nowhere to come back from ──
@@ -252,13 +256,16 @@ CASES: list[Case] = [
         strict_refuses=False,
         pharm=",7,700,C,SLCO1B1,C/G,simvastatin,c\n",
     ),
+    # The two rows the positional fill leaves alone. `strict` accepts both, so neither may lose a fact:
+    # until RM364 reverse rebuilt their table rows from the row's own cells, which held nothing for the
+    # first and the AUTHORED coordinate for the second, and `resolution_signature` moved. Every
+    # positional parquet now carries `resolution_loci`, the table's answer under the row's key.
     Case(
         "table-only, one-to-many rsid: left unplaced, never picked or expanded",
         "",
         _row("rs999", "rs999", 5, 500, "C", "G", 0) + _row("rs999", "rs999", 6, 600, "C", "G", 1),
         stable=True,
         strict_refuses=False,
-        table_says_more=True,
         pharm="rs999,,,,SLCO1B1,C/G,simvastatin,c\n",
     ),
     Case(
@@ -267,7 +274,6 @@ CASES: list[Case] = [
         _row("rs777", "rs777", 7, 700, "C", "G"),
         stable=True,
         strict_refuses=False,
-        table_says_more=True,
         pharm="rs777,,999,,SLCO1B1,C/G,simvastatin,c\n",
     ),
     Case(

@@ -41,6 +41,10 @@ _POSITIONAL_TABLE_KINDS: tuple[tuple[str, type[BaseModel]], ...] = tuple(
 )
 
 
+#: The positional kinds' CSV names, for a membership test at a write site.
+_POSITIONAL_TABLE_CSVS: frozenset[str] = frozenset(csv_name for csv_name, _model in _POSITIONAL_TABLE_KINDS)
+
+
 #: The positional kinds that name a whole allele — `ref` and `alts` beside the coordinate and a
 #: `variant_key` to file it under — so a `vrs_id` parallel to `alts` has a frame: their parquets gain
 #: `vrs_id`/`vrs_spec` (RM270). Derived for the reason the set above is, and on every column

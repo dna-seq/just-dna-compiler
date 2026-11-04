@@ -42,6 +42,8 @@ _ALL = sorted(p.parent.name for p in _EXAMPLES.glob("*/module_spec.yaml"))
 
 #: The NUDT15 shape: CPIC spells the deletion's allele right-shifted, Ensembl left-aligns it.
 _HAP_RSID = "rs999362001"
+#: The example's own NUDT15 `*1` at the same locus (RM364 restored it to `cpic_gene_pairs`).
+_EXAMPLE_NUDT15_RSID = "rs1457579126"
 _AUTHORED = ("13", 48040982, None)
 _RESOLVED = ("13", 48040978, "AA")
 
@@ -131,6 +133,12 @@ def _nudt15_shape(tmp_path: Path, **resolution_over: str) -> Path:
     `resolution.csv` at the left-aligned one, and a frequency row at the left-aligned one."""
     spec = tmp_path / "cpic_gene_pairs"
     shutil.copytree(_EXAMPLES / "cpic_gene_pairs", spec)
+    # The example carries the real NUDT15 `*1` at this locus since RM364 (rs1457579126, placed by its own
+    # `resolution.csv` row at the left-aligned spelling). Take it out, so the placement under test is the
+    # synthetic row's alone and the arms that place nothing can be seen.
+    for name in ("haplotypes.csv", "resolution.csv"):
+        header, rows = _read(spec / name)
+        _write(spec / name, header, [row for row in rows if row.get("rsid") != _EXAMPLE_NUDT15_RSID])
     chrom, start, _ = _AUTHORED
     _append(
         spec / "haplotypes.csv",
