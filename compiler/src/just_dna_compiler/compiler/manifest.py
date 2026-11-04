@@ -5,11 +5,13 @@ the sources and licence gate, the verification and closure blocks, and `_build_m
 import codecs
 import json
 import logging
+import platform
 import shutil
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
+import polars as pl
 from just_dna_format.assertions import ClinicalAssertionRow
 from just_dna_format.concordance import ClinSigAuthorityCallRow, ClinSigConcordanceRow
 from just_dna_format.expression import ExpressionEffectRow
@@ -91,6 +93,18 @@ def _compiler_version() -> str:
         return f"just-dna-compiler {version('just-dna-compiler')}"
     except PackageNotFoundError:
         return "just-dna-compiler unknown"
+
+
+def _toolchain() -> dict[str, str]:
+    """The running interpreter and polars, stamped as `compilation.toolchain` (RM342).
+
+    polars is the library that writes every parquet, and from 2.0 it names its own release in each
+    footer, so it is the one whose release moves `artifact.digest`. Read from the running import
+    rather than from package metadata: the module that wrote the bytes is the one that answers.
+    Keys in sorted order, so the manifest's JSON does not depend on the order of this literal.
+    """
+    stamped = {"polars": pl.__version__, "python": platform.python_version()}
+    return dict(sorted(stamped.items()))
 
 
 def _now_iso() -> str:
@@ -1231,6 +1245,7 @@ def _build_manifest(
             compile_success=True,
             compiled_by=compiled_by,
             compiler_version=_compiler_version(),
+            toolchain=_toolchain(),
             ensembl_reference=ensembl_reference,
             compiled_at=_now_iso(),
             warnings=warnings,

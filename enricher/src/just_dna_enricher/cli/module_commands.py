@@ -122,7 +122,12 @@ def upload_(
     (compare by artifact.digest), unless --force. The flat path means
     latest and is overwritten either way.
     """
-    from just_dna_enricher.upload import PublishCollisionError, plan_upload, upload_module
+    from just_dna_enricher.upload import (
+        PublishCollisionError,
+        ToolchainDiffersError,
+        plan_upload,
+        upload_module,
+    )
 
     module_name = name or module_dir.name
     if dry_run:
@@ -148,6 +153,12 @@ def upload_(
             commit_message=commit_message,
             force=force,
         )
+    except ToolchainDiffersError as exc:
+        # Before the collision's branch, which would otherwise catch it (a subclass, RM342): the
+        # versioned path is still protected, and the refusal says the digest moved because the
+        # recorded toolchain did, which is not the "already published" a content change gets.
+        typer.secho(f"TOOLCHAIN DIFFERS: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
     except PublishCollisionError as exc:
         # Its own branch, and its own word: this module is publishable and the remote already has
         # this version. "UPLOAD FAILED" beside the three `plan_upload` refusals would read as

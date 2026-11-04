@@ -14,6 +14,39 @@ the disagreement is a defect in this file.
 
 Newest first.
 
+## 0.8 — reproducibility is pinned by the recorded toolchain too (2026-11-04)
+
+Recorded in Principle 4's last sentence, which now pins reproducibility via `compiler_version`, *the
+recorded toolchain* and the resolved reference, and in Principle 7's closing parenthesis, which scopes
+the digest guarantee to a fixed `compiler_version` *and recorded toolchain*.
+
+**What broke the old wording.** Principle 4 already said parquet is not byte-deterministic across
+polars/arrow versions, and then pinned reproducibility on `compiler_version` alone, as if one compiler
+release implied one polars. It never did, since the compiler does not pin polars; but before polars 2 the
+gap was invisible in practice. From polars 2.0 the parquet footer names the polars release that wrote it,
+so one `compiler_version` installed beside two polars releases mints two `artifact.digest`s for equal
+content, and nothing in the manifest said which polars wrote which
+([RM341](ROADMAP_HISTORY.md#rm341--polars-2x-writes-its-version-into-every-parquet-footer-so-one-compiler_version-mints-a-digest-per-polars-release)).
+Principle 7's parenthesis made the same claim from the other side (the digest guarantee holds *within* a
+fixed `compiler_version`), and it became false under the same release, so it was amended with it.
+
+**What was rejected.** A `polars<2` cap with a footer test (RM341) was built and reverted the same night:
+the maintainer's decision is that polars stays uncapped, and that a pin is for a proven break, never for
+a byte difference that changes no content. Deciding instead that the digest *names* the toolchain would
+have left the version's byte identity unexplained to everyone holding only the manifest.
+
+**What replaced it** is RM342, decided by the maintainer on 2026-11-04: the manifest records the toolchain
+in one optional block, `compilation.toolchain` (`python` and `polars` today; a library added later is a
+new key), outside `artifact.digest` like `compiler_version`. Where a fresh compile is compared with a
+recorded digest, the publish collision check and the release sweep, a difference the two recorded
+toolchains explain is reported as `toolchain_differs`, never as the plain collision, because an
+explainable difference is not corruption. A manifest compiled before 0.8 records no toolchain, and the
+comparison then keeps its old answer: an unknown never explains anything.
+
+**Left as it was.** The Goals' sentence on integrity still says the two identities are reproducible by
+anyone holding the inputs and *the pinned compiler version*; it was outside this amendment's decision
+and is named for the next one.
+
 ## 0.6 — release class and artifact staleness are different axes
 
 Recorded in Principle 3 as *Release class and artifact staleness are different axes* and *Authored

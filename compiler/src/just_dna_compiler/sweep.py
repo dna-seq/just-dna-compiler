@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Any
 
 import polars as pl
+from just_dna_format.manifest import TOOLCHAIN_DIFFERS, toolchains_differ
 from just_dna_format.release_records import (
     EXCLUDED_MANIFEST_FIELDS,
     RELEASE_RECORDS,
@@ -93,6 +94,23 @@ class ModuleDelta:
     #: a manifest compiled before the split, which reads correctly as *not recorded*.
     carried_added: tuple[str, ...] = ()
     actionable_added: tuple[str, ...] = ()
+    #: Whether the two manifests' recorded toolchains differ (RM342), read whether or not the bytes
+    #: moved: `None` when either side recorded none (a manifest compiled before 0.8), which is the
+    #: unknown arm and never a "same".
+    toolchain_differs: bool | None = None
+
+    @property
+    def bytes_reason(self) -> str | None:
+        """`TOOLCHAIN_DIFFERS` when `parquet_bytes` moved and the recorded toolchains differ, else None.
+
+        The reason names a co-occurring difference, not a proven cause: across a sweep the compiler
+        version differs too by construction, so a release that moves polars and changes the compiler
+        labels every moved module this way. With no movement there is no reason, and an unrecorded
+        toolchain explains nothing, so that case is the plain movement it always was.
+        """
+        if self.axes.get("parquet_bytes") and self.toolchain_differs is True:
+            return TOOLCHAIN_DIFFERS
+        return None
 
 
 @dataclass(frozen=True)
@@ -134,6 +152,15 @@ class SweepMeasurement:
         return tuple(sorted(self.only_before + self.only_after))
 
     @property
+    def moved_under_other_toolchain(self) -> tuple[str, ...]:
+        """The modules whose `bytes_reason` is `TOOLCHAIN_DIFFERS` (RM342): bytes moved, toolchains differ.
+
+        Named apart from `ModuleDelta.toolchain_differs`, which is the tri-state toolchain comparison
+        alone, whether or not anything moved (`@flag-means-same`).
+        """
+        return tuple(delta.name for delta in self.per_module if delta.bytes_reason == TOOLCHAIN_DIFFERS)
+
+    @property
     def moved_counts(self) -> dict[str, int]:
         """How many of the measured modules moved on each axis — the denominator is `modules`.
 
@@ -152,6 +179,11 @@ class SweepMeasurement:
             f"from one spec root, so the compiler is the only variable",
             f"modules moved per axis: {counts}",
         ]
+        if self.moved_under_other_toolchain:
+            parts.append(
+                f"parquet_bytes moved under a different recorded toolchain ({TOOLCHAIN_DIFFERS}): "
+                f"{', '.join(self.moved_under_other_toolchain)}"
+            )
         if self.only_after:
             parts.append(
                 f"unmeasured rather than unchanged — no output under {self.before}, so no "
@@ -360,6 +392,7 @@ def compare_module(before: ModuleOutput, after: ModuleOutput) -> ModuleDelta:
         warnings_removed=tuple(sorted(before_warnings - after_warnings)),
         carried_added=tuple(w for w in added if w in carried_after),
         actionable_added=tuple(w for w in added if w not in carried_after),
+        toolchain_differs=toolchains_differ(before.manifest, after.manifest),
     )
 
 
@@ -540,6 +573,7 @@ def measurement_json(measurement: SweepMeasurement) -> dict[str, Any]:
         "only_before": list(measurement.only_before),
         "only_after": list(measurement.only_after),
         "build_failures": dict(measurement.build_failures),
+        "moved_under_other_toolchain": list(measurement.moved_under_other_toolchain),
         "evidence": measurement.evidence,
         "per_module": [
             {
@@ -550,6 +584,8 @@ def measurement_json(measurement: SweepMeasurement) -> dict[str, Any]:
                 "warnings_removed": list(delta.warnings_removed),
                 "carried_added": list(delta.carried_added),
                 "actionable_added": list(delta.actionable_added),
+                "toolchain_differs": delta.toolchain_differs,
+                "bytes_reason": delta.bytes_reason,
             }
             for delta in measurement.per_module
         ],

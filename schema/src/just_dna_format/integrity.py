@@ -469,8 +469,9 @@ def resolution_signature(rows: Sequence[BaseModel]) -> str:
       dropped, so CSV reformatting and an unset optional column do not change it.
     - **Deterministically sorted, order-independent** — rows are sorted by their canonical JSON.
 
-    Together with `content_signature` and `compiler_version` it fully determines `artifact.digest`, so
-    a holder of the two small CSVs reproduces the artifact byte-for-byte, fully offline.
+    Together with `content_signature`, `compiler_version` and the recorded `compilation.toolchain`
+    (RM342: polars 2 names its release in every parquet footer) it fully determines `artifact.digest`,
+    so a holder of the two small CSVs reproduces the artifact byte-for-byte, fully offline.
     """
     return fact_signature(rows, RESOLUTION_FACT_FIELDS)
 

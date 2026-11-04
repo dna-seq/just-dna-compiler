@@ -26,10 +26,17 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from fnmatch import fnmatch
 from pathlib import Path
+from typing import Any
 
 from just_dna_compiler.compiler import ARTIFACT_PARQUETS, LEAD_PARQUETS
 from just_dna_format.identity import is_valid_version
-from just_dna_format.manifest import LOGO_EXTENSIONS, README_CANDIDATES
+from just_dna_format.manifest import (
+    LOGO_EXTENSIONS,
+    README_CANDIDATES,
+    TOOLCHAIN_DIFFERS,
+    recorded_toolchain,
+    toolchains_differ,
+)
 from pydantic import BaseModel, Field
 
 from just_dna_enricher.locations import (
@@ -278,7 +285,49 @@ class PublishCollisionError(RuntimeError):
     Its own type rather than a `FileNotFoundError`, because the CLI has to tell it apart from the
     three refusals `plan_upload` raises: those say the local module is not publishable, this one says
     the local module is fine and the remote already has that version.
+
+    `reason` is `None` on the plain collision — nothing recorded says why the bytes differ — and a
+    subclass sets it when something does (`ToolchainDiffersError`).
     """
+
+    reason: str | None = None
+
+
+class ToolchainDiffersError(PublishCollisionError):
+    """The plain collision's one explained case: the two manifests recorded different toolchains (RM342).
+
+    From polars 2 the parquet footer names the polars release that wrote it, so an unchanged spec
+    recompiled beside another polars mints another digest. That is not corruption, and the maintainer's
+    decision (2026-11-04) is that it is never reported as the plain mismatch. The publish still
+    refuses unless `--force`: the versioned path's bytes stay the ones that version was cut as
+    (Principle 4), and the reason changes what the refusal says, not whether it refuses.
+
+    **A subclass, so every handler of `PublishCollisionError` still refuses.** A sibling type would
+    turn a handled refusal into an uncaught one in any caller that catches only the collision; the
+    cost is that a caller wanting the distinction must catch this type first
+    (`@client-exception-contract`), which the CLI does. Tell the two apart by type or by `reason`,
+    never by the message.
+
+    **The reason names a co-occurring difference, not a proven cause.** A content edit recompiled under
+    another polars raises this too, which is why `content_unchanged` rides beside it: `True` when both
+    manifests carry one `content_signature` (the toolchain alone can account for the digest), `False`
+    when the content moved as well, `None` when either side states none.
+    """
+
+    reason: str | None = TOOLCHAIN_DIFFERS
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        published_toolchain: dict[str, str],
+        local_toolchain: dict[str, str],
+        content_unchanged: bool | None,
+    ) -> None:
+        super().__init__(message)
+        self.published_toolchain = published_toolchain
+        self.local_toolchain = local_toolchain
+        self.content_unchanged = content_unchanged
 
 
 class UploadPlan(BaseModel):
@@ -342,16 +391,38 @@ def _artifact_digest(module_dir: Path) -> str | None:
     ``ModuleManifest`` to reach one string would let an unrelated model defect withhold a value that
     is right there and legible.
     """
+    return _digest_of(_manifest_document(module_dir))
+
+
+def _digest_of(document: Any) -> str | None:
+    """`artifact.digest` out of a parsed manifest document, or `None` when it states none."""
+    artifact = document.get("artifact") if isinstance(document, dict) else None
+    digest = artifact.get("digest") if isinstance(artifact, dict) else None
+    return digest if isinstance(digest, str) and digest else None
+
+
+def _content_unchanged(published: Any, local: Any) -> bool | None:
+    """Whether the two manifests carry one `content_signature`, `None` when either states none."""
+    left = published.get("content_signature") if isinstance(published, dict) else None
+    right = local.get("content_signature") if isinstance(local, dict) else None
+    if not isinstance(left, str) or not left or not isinstance(right, str) or not right:
+        return None
+    return left == right
+
+
+def _manifest_document(module_dir: Path) -> Any:
+    """The compiled module's `manifest.json` as parsed JSON, or `None` when it cannot be read.
+
+    Unvalidated, for the field-by-field readers beside it: whatever shape it has, each reader checks
+    the one path it wants.
+    """
     path = module_dir / _MANIFEST_FILENAME
     if not path.is_file():
         return None
     try:
-        document = json.loads(path.read_text(encoding="utf-8"))
+        return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return None
-    artifact = document.get("artifact") if isinstance(document, dict) else None
-    digest = artifact.get("digest") if isinstance(artifact, dict) else None
-    return digest if isinstance(digest, str) and digest else None
 
 
 def _attested_parquets(module_dir: Path) -> list[str] | None:
@@ -449,8 +520,11 @@ def plan_upload(
     )
 
 
-def _versioned_digest_conflict(api, plan: "UploadPlan", local_digest: str | None) -> str | None:
-    """The remote `artifact.digest` already at the versioned path when it **differs** — else ``None``.
+def _versioned_digest_conflict(api, plan: "UploadPlan", local_digest: str | None) -> dict[str, Any] | None:
+    """The published manifest at the versioned path when its `artifact.digest` **differs** — else ``None``.
+
+    The whole published document rather than its digest alone, so the caller can read the recorded
+    toolchain (RM342) without a second download.
 
     RM88's comparator, and the four outcomes are the whole of the gate:
 
@@ -501,7 +575,12 @@ def _versioned_digest_conflict(api, plan: "UploadPlan", local_digest: str | None
     remote_digest = artifact.get("digest") if isinstance(artifact, dict) else None
     if not isinstance(remote_digest, str) or not remote_digest:
         return None
-    return None if remote_digest == local_digest else remote_digest
+    return None if remote_digest == local_digest else published
+
+
+def _toolchain_text(toolchain: dict[str, str]) -> str:
+    """`polars 2.1.0, python 3.13.1`: a recorded toolchain as a refusal prints it."""
+    return ", ".join(f"{library} {release}" for library, release in sorted(toolchain.items()))
 
 
 def upload_module(
@@ -537,22 +616,53 @@ def upload_module(
     people route around.
 
     **Recompiling under a newer compiler also moves the digest**, and will trip this. That is correct
-    rather than a false positive: P4 scopes byte-reproducibility to a fixed `compiler_version`, so the
-    versioned path really would come to hold different bytes than the ones it was published with. The
-    refusal says so, because "I changed nothing" is the first thing its first user will think.
+    rather than a false positive: P4 pins byte-reproducibility to `compiler_version`, the recorded
+    toolchain and the resolved reference, so the versioned path really would come to hold different
+    bytes than the ones it was published with. The refusal says so, because "I changed nothing" is the
+    first thing its first user will think.
+
+    **When both manifests recorded a toolchain and the two differ, the refusal is a
+    `ToolchainDiffersError` (RM342)**, which names both toolchains. Either side unrecorded (a manifest
+    compiled before 0.8), or the same toolchain on both, keeps the plain `PublishCollisionError`.
 
     Raises PermissionError if no token is available and ImportError if huggingface_hub is absent.
     """
     plan = plan_upload(module_dir, name, repo_id)
     api = ensure_repo(plan.repo_id, token)
-    published_digest = None if force else _versioned_digest_conflict(api, plan, _artifact_digest(module_dir))
-    if published_digest is not None:
-        raise PublishCollisionError(
+    local = _manifest_document(module_dir)
+    local_digest = _digest_of(local)
+    published = None if force else _versioned_digest_conflict(api, plan, local_digest)
+    if published is not None:
+        published_digest = published["artifact"]["digest"]
+        collision = (
             f"{name}: {plan.versioned_path_in_repo}/ is already published with a different artifact "
-            f"({published_digest[:19]}… there, {_artifact_digest(module_dir)[:19]}… here), so this "
+            f"({published_digest[:19]}… there, {local_digest[:19]}… here), so this "
             f"upload would replace the bytes that version names. Bump `version:` in "
             f"module_spec.yaml and re-compile to publish this as a new release, or pass --force to "
-            f"overwrite it deliberately. Note that recompiling an unchanged spec under a newer "
+            f"overwrite it deliberately."
+        )
+        if toolchains_differ(published, local) is True:
+            published_toolchain = recorded_toolchain(published) or {}
+            local_toolchain = recorded_toolchain(local) or {}
+            content_unchanged = _content_unchanged(published, local)
+            content = {
+                True: "the content_signature is the same on both sides, so the toolchain alone can "
+                "account for the moved digest",
+                False: "the content_signature differs as well, so the content changed too and the "
+                "toolchain does not account for all of it",
+                None: "one side states no content_signature, so whether the content changed is unknown",
+            }[content_unchanged]
+            raise ToolchainDiffersError(
+                f"{collision} The two manifests record different toolchains "
+                f"({_toolchain_text(published_toolchain)} there, {_toolchain_text(local_toolchain)} "
+                f"here); {content}. The refusal still protects the bytes the published version was "
+                f"cut from.",
+                published_toolchain=published_toolchain,
+                local_toolchain=local_toolchain,
+                content_unchanged=content_unchanged,
+            )
+        raise PublishCollisionError(
+            f"{collision} Note that recompiling an unchanged spec under a newer "
             f"compiler moves the digest too — if that is what happened, this refusal is still "
             f"protecting the bytes the published version was cut from."
         )
