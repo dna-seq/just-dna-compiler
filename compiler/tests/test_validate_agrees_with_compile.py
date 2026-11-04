@@ -249,9 +249,11 @@ def test_every_injected_table_has_a_parity_case() -> None:
 
     registry = {"resolution.csv", *(name for name, _parquet, _model in _FACT_TABLES)}
     covered = {filename for filename, _body, _expected in _INJECTED_ROW_CASES}
-    assert registry <= covered, (
+    # An equality (RM365): a case naming a file the registry no longer has is a case testing nothing.
+    assert registry == covered, (
         f"no validate/compile parity case for {sorted(registry - covered)} — add one to "
-        f"_INJECTED_ROW_CASES rather than deleting this assertion"
+        f"_INJECTED_ROW_CASES rather than deleting this assertion; cases for a table that is not "
+        f"injected: {sorted(covered - registry)}"
     )
 
 
