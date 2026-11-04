@@ -799,6 +799,17 @@ the column; hashing it would make a reworded note move the digest, which is the 
 
 ## RM28 — Meta-conclusions (the predicate half)
 
+**The name and grammar, accepted 2026-11-04 by the maintainer, as written in `proposals/PROPOSAL_0_8_PT2.md`
+§3 items 1–4.**
+
+- The file is `meta.csv`, and its parquet `meta.parquet`.
+- There is one member grammar, `table[column=value, …]`.
+- Members are joined by `&` in one bracket-aware `members` cell.
+- Precedence follows from the conditions.
+- The key is the sorted members, plus the trait, plus `sex`.
+
+No bare-rsID shorthand yet. Adding one later is additive, if authors ask.
+
 **Settled 2026-11-04 by the maintainer, after the second measuring run** (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §6):
 
 - **The narrower condition outranks, across tables too.** A diplotype row is more specific than an allele row
@@ -1241,6 +1252,8 @@ stays a patch; the warning half of its decision is this item.
 **Residuals** none yet.
 
 ## RM342 — the manifest does not record the toolchain that wrote the bytes, so a digest that moves cannot say why
+
+**Where the toolchain reason fires, corrected 2026-11-04 (the lead's PT2 §4 question 7, accepted by the pm seat).** `verify_manifest` re-hashes files and never recompiles, so it cannot see a toolchain. The reason `toolchain_differs` therefore fires where a fresh compile is compared with a recorded digest: the publish collision check and the release sweeps. This keeps the maintainer's intent: an explainable difference is never reported as corruption.
 
 **Decided 2026-11-04 by the maintainer.**
 
