@@ -5,7 +5,8 @@ CPIC keys its thiopurine recommendations on a TPMT phenotype and a NUDT15 phenot
 0.8 meta-table writes each pair as one row over two phenotype selectors instead of diplotype ×
 diplotype. The values below are asserted by `compiler/tests/test_reference_examples_meta.py`.
 
-**This module carries azathioprine only.** Mercaptopurine and thioguanine are the finding below.
+**This module carries all three thiopurines: azathioprine, mercaptopurine and thioguanine.** Until
+`meta.csv` gained `drug` it carried azathioprine only; finding 2 below records why.
 
 ## How it was built
 
@@ -15,14 +16,15 @@ just-dna-enricher draft reference_examples/cpic_gene_pairs --gene TPMT --allele 
     --use non-commercial --offline
 just-dna-enricher draft reference_examples/cpic_gene_pairs --gene NUDT15 --allele '*3' \
     --use non-commercial --offline
-# meta.csv: nine rows, from CPIC's API (below)
+# meta.csv: 27 rows, nine pairs × three drugs, from CPIC's API (below)
 # haplotypes.csv: one row removed (below)
 just-dna-enricher enrich reference_examples/cpic_gene_pairs --strict
 just-dna-compiler close reference_examples/cpic_gene_pairs
 just-dna-compiler compile reference_examples/cpic_gene_pairs out/ --strict
 ```
 
-`--offline` drafts from the snapshot (`cpic_snapshot_b0ffd4c6f010`) and nothing else. `--allele` keeps
+`enrich` also writes the two `clin_sig_*.csv` sidecars, header-only here because the module authors no
+`clin_sig`; the other 0.8 examples carry the same pair. `--offline` drafts from the snapshot (`cpic_snapshot_b0ffd4c6f010`) and nothing else. `--allele` keeps
 the table small: TPMT `*1`, `*2`, `*3A` and NUDT15 `*1`, `*3` give six and three diplotypes covering the
 Normal, Intermediate and Poor Metabolizer phenotypes of each gene. The drafter wrote `haplotypes.csv`,
 `allele_function.csv`, `diplotypes.csv` and the CPIC row of `licensing.csv`: CC-BY-SA-4.0, share-alike,
@@ -30,14 +32,22 @@ no sale, `declared_use=non_commercial` (`@pgx-research-only`). `enrich` added th
 
 ## What it exercises
 
-Nine rows, TPMT {Normal, Intermediate, Poor} × NUDT15 {Normal, Intermediate, Poor}, each like
+27 rows: TPMT {Normal, Intermediate, Poor} × NUDT15 {Normal, Intermediate, Poor}, once per thiopurine in
+`drug`, each like
 
 ```
 diplotypes[gene=TPMT, phenotype=Poor Metabolizer] & diplotypes[gene=NUDT15, phenotype=Normal Metabolizer]
 ```
 
-with CPIC's `drugrecommendation` verbatim in `conclusion` and the guideline's PMID (30447069, Relling et
-al. 2019, the CPIC TPMT/NUDT15 thiopurine guideline, checked against PubMed) in `pmid`.
+with CPIC's `drugrecommendation` verbatim in `conclusion` (CPIC's own spelling kept, `mecaptopurine`
+included) and the guideline's PMID (30447069, Relling et al. 2019, the CPIC TPMT/NUDT15 thiopurine
+guideline, checked against PubMed) in `pmid`. The rows are drug-major (azathioprine, mercaptopurine,
+thioguanine), and within a drug TPMT-major, each gene in the order Normal, Intermediate, Poor.
+
+- **One pair, one row per drug.** `drug` is part of `meta.csv`'s key, so the pair's three rows are three
+  statements. For TPMT Poor × NUDT15 Normal, azathioprine reads "Consider alternative nonthiopurine
+  immunosuppressant therapy.", mercaptopurine starts "For malignancy: initiate therapy with drastically
+  reduced starting doses", and thioguanine "Initiate therapy with drastically reduced starting doses".
 
 - **A selector is existential inside a combination.** `phenotype=Poor Metabolizer` matches all three
   drafted TPMT poor-metabolizer diplotypes (`*2/*2`, `*2/*3A`, `*3A/*3A`); the row lists every one in
@@ -45,12 +55,12 @@ al. 2019, the CPIC TPMT/NUDT15 thiopurine guideline, checked against PubMed) in 
 - **Every row replaces what it names** (`replaces` true): a genome matching both members shows the pair
   recommendation in place of the two single-gene phenotype rows.
 - **Nothing reaches `meta_resolved.parquet`.** No row has one member, so no fact resolves onto a
-  diplotype row.
+  diplotype row, whatever its drug.
 
 ## The CPIC call made by hand
 
-The provisioned snapshot cannot give the pairs (finding 1), so the nine rows come from one call to CPIC's
-API, run by hand on 2026-11-04T14:54:58Z:
+The provisioned snapshot cannot give the pairs (finding 1), so the rows come from CPIC's API, called by
+hand on 2026-11-04T14:54:58Z for the nine azathioprine rows and again on 2026-11-04T17:15:31Z for all 27:
 
 ```
 GET https://api.cpicpgx.org/v1/recommendation?select=id,lookupkey,phenotypes,drugrecommendation,
@@ -60,7 +70,8 @@ GET https://api.cpicpgx.org/v1/recommendation?select=id,lookupkey,phenotypes,dru
 ```
 
 Every azathioprine half the snapshot holds matches the API's text exactly (checked per gene, per
-phenotype); the snapshot just cannot say which halves belong together.
+phenotype); the snapshot just cannot say which halves belong together. The second call returned the
+same nine azathioprine texts as the first, byte for byte, and the 18 other rows were written from it.
 
 ## Findings
 
@@ -71,18 +82,19 @@ phenotype); the snapshot just cannot say which halves belong together.
    alternative nonthiopurine immunosuppressant therapy." is the whole recommendation for 11 different pairs.
    No drafter writes `meta.csv` rows either. So the pair rows were written from the live API, not
    drafted.
-2. **`meta.csv` cannot scope a row to a drug, so one module holds one drug's pairs.** The table's key
-   is the member set plus `trait_efo_id` plus `sex`. CPIC gives each phenotype pair a different
-   recommendation per thiopurine (for Normal × Normal: azathioprine "e.g., 2 mg/kg/day", mercaptopurine
-   "e.g., 75 mg/m2/day", thioguanine "e.g., 40 mg/m2/day"), so a mercaptopurine row for the same pair is refused as a
-   duplicate key. `test_cpic_a_second_drugs_pair_row_is_a_duplicate_key` pins that. The members cannot
-   carry the drug either: `diplotypes[…, drug=azathioprine]` needs diplotype rows with that drug, and
-   the drafter writes drug rows only from single-gene recommendations (RM249), which pair-keyed drugs
-   have none of. The default taken: azathioprine only, named in `module_spec.yaml`. Writing the drug into
-   `trait_efo_id` would overload the trait axis (P5) and was not done.
-3. **CPIC's `classification` has no column on the meta-table.** Eight of the nine rows are `Strong`
-   and Intermediate × Intermediate is `Moderate`; `DiplotypeRow.recommendation_strength` holds it for a
-   single gene, and a pair row drops it. It was not put into `tier`, which is an evidence tier on a
+2. **`meta.csv` could not scope a row to a drug, so the module first held one drug's pairs. Answered:
+   `drug` is now part of the key.** The key was the member set plus `trait_efo_id` plus `sex`. CPIC gives
+   each phenotype pair a different recommendation per thiopurine (for Normal × Normal: azathioprine
+   "e.g., 2 mg/kg/day", mercaptopurine "e.g., 75 mg/m2/day", thioguanine "e.g., 40 mg/m2/day"), so a
+   mercaptopurine row for the same pair was refused as a duplicate key, and a test pinned that. The
+   members cannot carry the drug: `diplotypes[…, drug=azathioprine]` needs diplotype rows with that drug,
+   and the drafter writes drug rows only from single-gene recommendations (RM249), which pair-keyed drugs
+   have none of. Writing the drug into `trait_efo_id` would overload the trait axis (P5). The lead added an
+   optional `drug` to `meta.csv` on 2026-11-04, in the key beside `sex`, and the module now carries all
+   three drugs; `test_cpic_every_phenotype_pair_states_each_thiopurine_once` asserts it.
+3. **CPIC's `classification` has no column on the meta-table.** Of the 27 rows, 23 are `Strong` and four
+   are `Moderate` (azathioprine's Intermediate × Intermediate and three of thioguanine's).
+   `DiplotypeRow.recommendation_strength` holds it for a single gene, and a pair row drops it. It was not put into `tier`, which is an evidence tier on a
    module-named scale, not CPIC's strength.
 
 ## What building it broke

@@ -41,6 +41,26 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM28: a `meta.csv` row can be scoped to a drug, so one phenotype pair states each thiopurine's recommendation (0.8, uncut)
+
+- **`meta.csv` gains an optional `drug`** (`MetaRow.drug`, free text as on `diplotypes.csv`, first in
+  0.8.0), and the key is now `(members_key, trait_efo_id, sex, drug)`. An azathioprine row and a
+  mercaptopurine row for one TPMT × NUDT15 phenotype pair are two statements; the same drug twice is
+  still a duplicate key.
+- **A drug-scoped row outranks the same key without a drug, for that drug**, as a sex-scoped row does
+  for its sex. A row scoped on both outranks either; a `male` row and an `azathioprine` row are
+  incomparable where both apply, so a column they disagree on is withheld.
+- **`meta_resolved.parquet` gains a `drug` column, and its grain is (row reached, sex, drug).** The scopes
+  of one row are every combination of the sexes and drugs the rows reaching it state, `none` included on
+  each axis, so a consumer taking, per axis, its own value where the target has rows for it and null
+  otherwise finds at most one row, and none means nothing applies. A module stating no `drug` writes the
+  same rows as before, with `drug` null. A combination's `replaces` holds within its own sex and drug
+  scope.
+- `meta.parquet` carries the authored cell, `reverse` writes it back, and the round trip is a fixed point.
+- **`reference_examples/cpic_gene_pairs/` carries all three thiopurines**: 27 rows, CPIC's nine TPMT × NUDT15
+  phenotype pairs for azathioprine, mercaptopurine and thioguanine, from the CPIC API call its README
+  records (re-run 2026-11-04T17:15:31Z; the azathioprine texts were unchanged). Re-enriched and closed.
+
 ## 2026-11-04 — RM270: an indel's spelling-independent `vrs_id` reaches every variant parquet, and a filled coordinate is written left-aligned (0.8, uncut)
 
 - **`weights.parquet` gains `vrs_id` (`List(Utf8)`, parallel to `alts`) and `vrs_spec`**; the three

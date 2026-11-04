@@ -1,5 +1,5 @@
 """The meta-table, `meta.csv` (0.8): RM28's combinations, RM323's per-locus facts, RM324's `tier`,
-RM327's per-trait judgements and RM330's `sex`, in one table.
+RM327's per-trait judgements, RM330's `sex` and the `drug` a row is about, in one table.
 
 A row maps a **composite statement** to a finding and/or the per-locus facts. A composite statement is
 one or more *members*, each an item of a single-statement table, written in one grammar:
@@ -313,15 +313,17 @@ def member_rank(member: MetaMember, target: Mapping[str, Any]) -> tuple[int, int
 class MetaRow(CitationPair, AuthoredModel):
     """One row of `meta.csv`: a composite statement mapped to a finding and/or per-locus facts.
 
-    The key is the normalized member set plus `trait_efo_id` plus `sex` (§3 item 4), so `A & B` and
-    `B & A` are one key, refused as a duplicate, while a `male` row and a `female` row for one member set
-    are two statements.
+    The key is the normalized member set plus `trait_efo_id` plus `sex` (§3 item 4) plus `drug` (the
+    lead, 2026-11-04), so `A & B` and `B & A` are one key, refused as a duplicate, while a `male` row and
+    a `female` row for one member set are two statements, and so are an azathioprine row and a
+    mercaptopurine row for one TPMT × NUDT15 phenotype pair (CPIC states one recommendation per
+    thiopurine).
 
     Inherits `AuthoredModel` (reserved-namespace guard, and the shared `trait_efo_id`/`direction`
     validators).
     """
 
-    _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("members_key", "trait_efo_id", "sex")
+    _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("members_key", "trait_efo_id", "sex", "drug")
     #: A row must state at least one finding or fact column — any ONE of these satisfies it. Declared
     #: beside `_validate_statement` so a tool listing what a row needs can see the rule (the
     #: `VariantRow` rsid-or-coordinate precedent); `conclusion` first, the one a stub offers.
@@ -428,6 +430,16 @@ class MetaRow(CitationPair, AuthoredModel):
         description=(
             "Scopes the whole row to one sex (male|female), matched by the consumer against karyotype. "
             "Part of the key; a row with `sex` outranks the same key without it, for that sex."
+        ),
+    )
+    drug: str | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description=(
+            "Drug the row's statement is about, e.g. mercaptopurine; free text, as on diplotypes.csv and "
+            "pharm_variants.csv. Scopes the whole row, so it is part of the key: one member set states "
+            "one finding per drug, and a row with `drug` outranks the same key without it, for that drug. "
+            "Not a member condition: `diplotypes[drug=…]` selects diplotype rows carrying that drug."
         ),
     )
 

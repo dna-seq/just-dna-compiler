@@ -12,13 +12,12 @@ the author chose (a tier letter, a confidence word) are read off `meta.csv` rath
 
 import csv
 import io
-import shutil
 from pathlib import Path
 
 import polars as pl
 import pytest
-from just_dna_compiler.compiler import compile_module, validate_spec
-from just_dna_format.meta import MetaRow, parse_members
+from just_dna_compiler.compiler import compile_module
+from just_dna_format.meta import parse_members
 
 _EXAMPLES = Path(__file__).resolve().parents[2] / "reference_examples"
 _APOE = _EXAMPLES / "apoe_klvs_meta"
@@ -44,13 +43,14 @@ _RESOLVED_CACHE: dict[Path, dict[tuple, list[dict]]] = {}
 
 
 def _resolved(out: Path, table: str, key: list[str | None]) -> dict:
-    """The unscoped `meta_resolved.parquet` row for one target; the parquet is read once per artifact."""
+    """The unscoped `meta_resolved.parquet` row for one target (no sex, no drug); the parquet is read
+    once per artifact."""
     if out not in _RESOLVED_CACHE:
         index: dict[tuple, list[dict]] = {}
         for r in pl.read_parquet(out / "meta_resolved.parquet").iter_rows(named=True):
-            index.setdefault((r["table"], tuple(r["key"]), r["sex"]), []).append(r)
+            index.setdefault((r["table"], tuple(r["key"]), r["sex"], r["drug"]), []).append(r)
         _RESOLVED_CACHE[out] = index
-    rows = _RESOLVED_CACHE[out].get((table, tuple(key), None), [])
+    rows = _RESOLVED_CACHE[out].get((table, tuple(key), None, None), [])
     assert len(rows) == 1, (table, key)
     return rows[0]
 
@@ -256,15 +256,23 @@ def cpic(tmp_path_factory: pytest.TempPathFactory):
     return _compiled(_CPIC, out), out
 
 
+def _cpic_meta(out: Path) -> dict[tuple[str, str], dict]:
+    """`meta.parquet`'s rows by `(members, drug)`: one phenotype pair carries one row per thiopurine."""
+    return {
+        (row["members"], row["drug"]): row
+        for row in pl.read_parquet(out / "meta.parquet").iter_rows(named=True)
+    }
+
+
 def test_cpic_each_phenotype_pair_matches_every_drafted_diplotype_of_both_phenotypes(cpic) -> None:
     _result, out = cpic
     diplotypes = _rows(_CPIC / "diplotypes.csv")
-    meta = _meta_by_members(out)
+    meta = _cpic_meta(out)
     authored = _rows(_CPIC / "meta.csv")
     assert len(meta) == len(authored)
     for row in authored:
         expected = _expected_matches(row["members"], diplotypes)
-        compiled = meta[row["members"]]
+        compiled = meta[(row["members"], row["drug"])]
         assert compiled["matches"] == expected
         assert {m["member"] for m in expected} == {0, 1}, (
             "a pair whose phenotype was not drafted matches nothing"
@@ -272,9 +280,34 @@ def test_cpic_each_phenotype_pair_matches_every_drafted_diplotype_of_both_phenot
         assert compiled["replaces"] is True
         assert compiled["conclusion"] == row["conclusion"]
     # The selector is existential: some phenotype is carried by more than one drafted diplotype.
-    assert any(compiled["match_count"] > len(parse_members(m)) for m, compiled in meta.items())
+    assert any(compiled["match_count"] > len(parse_members(m)) for (m, _d), compiled in meta.items())
     # No one-member row, so nothing reaches meta_resolved.
     assert pl.read_parquet(out / "meta_resolved.parquet").height == 0
+
+
+def test_cpic_every_phenotype_pair_states_each_thiopurine_once(cpic) -> None:
+    """The finding `drug` answered: CPIC gives one pair a recommendation per thiopurine, and the key keeps
+    them apart. Every pair carries the same set of drugs, and the drugs disagree on a pair's text."""
+    result, out = cpic
+    authored = _rows(_CPIC / "meta.csv")
+    meta = _cpic_meta(out)
+    drugs = {r["drug"] for r in authored}
+    assert drugs == {"azathioprine", "mercaptopurine", "thioguanine"}
+    pairs = {r["members"] for r in authored}
+    by_pair: dict[str, dict[str, str]] = {}
+    for r in authored:
+        by_pair.setdefault(r["members"], {})[r["drug"]] = r["conclusion"]
+    assert len(authored) == len(pairs) * len(drugs), "one row per (pair, drug), none missing, none twice"
+    assert all(set(texts) == drugs for texts in by_pair.values())
+    # The compiled rows carry the authored drug and conclusion, row for row.
+    assert {key: row["conclusion"] for key, row in meta.items()} == {
+        (r["members"], r["drug"]): r["conclusion"] for r in authored
+    }
+    # Some pair is answered differently per drug: that is what the old key refused as a duplicate.
+    assert any(len(set(texts.values())) == len(drugs) for texts in by_pair.values())
+    # Two-member rows only, so meta_resolved stays empty whatever the drug scopes.
+    assert pl.read_parquet(out / "meta_resolved.parquet").height == 0
+    assert "meta_selector_matches_nothing" not in _codes(result)
 
 
 def test_cpic_the_licence_row_is_cpics_own_terms() -> None:
@@ -284,26 +317,3 @@ def test_cpic_the_licence_row_is_cpics_own_terms() -> None:
         "false",
         "non_commercial",
     )
-
-
-def test_cpic_a_second_drugs_pair_row_is_a_duplicate_key(tmp_path: Path) -> None:
-    """The finding this example records: `meta.csv`'s key has no drug, so two thiopurines collide.
-
-    CPIC states a different recommendation for one phenotype pair per drug; the second is refused as a
-    duplicate of the first. The key and the absence of a drug column are asserted first, so the day the
-    meta-table gains a way to scope a row to a drug this test turns red and the README's finding is to be
-    rewritten.
-    """
-    assert MetaRow._KEY_FIELDS == ("members_key", "trait_efo_id", "sex")
-    assert not [name for name in MetaRow.model_fields if "drug" in name]
-    spec = tmp_path / "spec"
-    shutil.copytree(_CPIC, spec)
-    first = _rows(spec / "meta.csv")[0]
-    buffer = io.StringIO()
-    writer = csv.DictWriter(buffer, fieldnames=list(first), lineterminator="\n")
-    writer.writerow({**first, "conclusion": "a second drug's recommendation for the same phenotype pair"})
-    with (spec / "meta.csv").open("a", encoding="utf-8") as handle:
-        handle.write(buffer.getvalue())
-    result = validate_spec(spec)
-    assert not result.valid
-    assert any("meta.csv: duplicate row for key" in e for e in result.errors), result.errors

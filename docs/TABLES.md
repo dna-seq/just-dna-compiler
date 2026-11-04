@@ -314,6 +314,11 @@ direction, its negatives) or the per-locus facts (tier, age of action and its co
 both. A row with one member and only facts is how a single locus or a named allele gets its tier; a row
 with two members and a conclusion is a combination, such as KL-VS heterozygous with an APOE ε4 diplotype.
 
+**`sex` and `drug` scope the whole row, so each is part of what makes it one statement.** CPIC answers a
+TPMT × NUDT15 phenotype pair once per thiopurine, so that pair carries an azathioprine row, a
+mercaptopurine row and a thioguanine row. The row's `drug` says which drug the statement is about; a
+member's `drug=` condition is a different job, picking the diplotype or pharm rows that carry a drug.
+
 **A person decides every cell, and the compiler decides only what each member matched.** The member
 text is kept verbatim through `reverse`, so a selector the author wrote over a tag set
 (`variants[flags=legacy_longevitymap]`) stays a selector rather than becoming every row it matched. The compiler writes those rows beside it, so a consumer reads matches and never evaluates a
@@ -322,8 +327,8 @@ rule.
 **Facts live here and nowhere else.** A tier is never repeated on the genotype rows of a locus, so no
 two copies of it can drift apart. Two rows can still state two values for one row they both reach; the
 more specific one wins, column by column (a concrete row key, then a locus, then more conditions, then
-fewer; a diplotype over the alleles it contains; a sex-scoped row over the same key without one, for
-that sex). Where neither is more specific and they disagree, the column is withheld, which is the ε2/ε4
+fewer; a diplotype over the alleles it contains; a sex- or drug-scoped row over the same key without
+one, for that sex or drug). Where neither is more specific and they disagree, the column is withheld, which is the ε2/ε4
 case: two allele rows meet at one diplotype, and a third row keyed on that diplotype settles it.
 **Unstated is not different**: a specific row that leaves a fact empty takes the general row's value.
 

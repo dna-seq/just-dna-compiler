@@ -682,18 +682,19 @@ row for a locus whose allele is not determined.
 
 Built for real as [`reference_examples/cpic_gene_pairs/`](../reference_examples/cpic_gene_pairs). The two
 genes are drafted from the CPIC snapshot (`draft --gene TPMT --allele '*2' --allele '*3A' --offline`, then
-NUDT15 with `*3`), and each of CPIC's azathioprine recommendations is one row over two existential phenotype
-selectors:
+NUDT15 with `*3`), and each of CPIC's thiopurine recommendations is one row over two existential phenotype
+selectors, scoped to its drug:
 
 ```csv
-members,conclusion,pmid
-"diplotypes[gene=TPMT, phenotype=Poor Metabolizer] & diplotypes[gene=NUDT15, phenotype=Normal Metabolizer]",Consider alternative nonthiopurine immunosuppressant therapy.,30447069
+members,conclusion,pmid,drug
+"diplotypes[gene=TPMT, phenotype=Poor Metabolizer] & diplotypes[gene=NUDT15, phenotype=Normal Metabolizer]",Consider alternative nonthiopurine immunosuppressant therapy.,30447069,azathioprine
 ```
 
-Nine rows (three phenotypes per gene), each listing every drafted diplotype its two phenotypes match. The
-README records three findings: the CPIC snapshot keeps no recommendation id, so a pair cannot be
-reassembled from it and the rows came from one hand-run API call; `meta.csv` cannot scope a row to a drug,
-so mercaptopurine's and thioguanine's rows for the same pairs are duplicate keys and the module carries
-azathioprine only; and CPIC's `classification` has no column on a pair row. It also names one compiler
+27 rows (three phenotypes per gene, three drugs), each listing every drafted diplotype its two phenotypes
+match. `drug` is part of `meta.csv`'s key, so one pair's azathioprine, mercaptopurine and thioguanine rows
+are three statements rather than duplicates. The README records three findings: the CPIC snapshot keeps no
+recommendation id, so a pair cannot be reassembled from it and the rows came from a hand-run API call;
+`meta.csv` could not scope a row to a drug, so the module first carried azathioprine only, which is what
+added `drug` to the key; and CPIC's `classification` has no column on a pair row. It also names one compiler
 defect the build hit (a haplotype row whose indel placement disagrees with `resolution.csv` loses the
 injected fact on reverse) and the one `*1` row removed to keep the round trip.

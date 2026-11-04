@@ -1514,7 +1514,7 @@ resolves from a table that no longer says what it said.
 
 ## The meta-table (0.8) — expansion, precedence and the two parquets
 
-`meta.csv` (RM28, RM323, RM324, RM327's rows, RM330's `sex`) maps a member set to a finding and/or the
+`meta.csv` (RM28, RM323, RM324, RM327's rows, RM330's `sex`, and `drug`) maps a member set to a finding and/or the
 per-locus facts; the grammar and the model are in [SCHEMAS.md § The meta-table](SCHEMAS.md#the-meta-table-08--metacsv).
 The compiler's part is to **expand every member into the rows it matches**, so a consumer evaluates no
 rule (P1), and to resolve which fact wins where two rows reach one row.
@@ -1539,7 +1539,11 @@ reaches the row (it is listed in `meta_rows`). A member naming both halves of a 
 as the model stores the pair (`haplotype_a <= haplotype_b`); the authored cell is kept. Among the rows that **state**
 a column (unstated is not different), the maximal ones under this order win:
 
-1. a sex-scoped row outranks the row with the same key and no `sex`, for that sex;
+1. a row whose scope refines another's, on the same member set and trait, outranks it: a sex-scoped
+   row outranks the row with the same key and no `sex`, for that sex; a drug-scoped row the row with no
+   `drug`, for that drug; and a row scoped on both outranks either. A `male` row and an `azathioprine`
+   row refine neither each other, so where both apply (a male on azathioprine) a disagreeing column is
+   withheld;
 2. a `diplotypes` member outranks an `allele_function` member reaching the same diplotype through one
    of its two haplotypes (an allele reaches every diplotype of its gene that contains it);
 3. otherwise `member_rank` decides: a concrete row key (the conditions name every key column the row
@@ -1556,11 +1560,16 @@ at least one recognized table".
   `reverse` writes back), the stamped `members_key`, `match_count`, `matches` (a list of
   `{member, table, key}` structs, `key` in the table's `_KEY_FIELDS` order), `replaces` (true on a row of
   two or more members stating a finding: a matching combination replaces the findings of exactly the
-  rows in `matches`), and `withheld` (`direction`, when a bare-locus member on a direction row fixes no
+  rows in `matches`, within the row's own `sex` and `drug` scope), and `withheld` (`direction`, when a bare-locus member on a direction row fixes no
   allele).
-- `meta_resolved.parquet`: one row per (row reached, `sex` scope), with `table`, `key`, `sex`, the four
-  fact columns after precedence, `tradeoff`, `withheld` and `meta_rows` (the 0-based `meta.parquet` rows
-  that reach it).
+- `meta_resolved.parquet`: one row per (row reached, `sex` scope, `drug` scope), with `table`, `key`,
+  `sex`, `drug`, the four fact columns after precedence, `tradeoff`, `withheld` and `meta_rows` (the
+  0-based `meta.parquet` rows that apply in that scope, an outranked one included). The scopes of one row
+  reached are **every** pair `({none} ∪ the sexes stated) × ({none} ∪ the drugs stated)` by the rows
+  reaching it, skipping a pair no row applies in. The product rather than only the pairs some row
+  states, so a consumer's lookup has one answer: per axis it takes its own value where the target has
+  rows for it and `none` otherwise, and with a `male` row and an `azathioprine` row the
+  `(male, azathioprine)` row exists and holds both. No row for the pair means no row applies.
 
 **`tradeoff` (RM327), computed and never authored.** A nullable boolean, `true` or null and never
 `false`. A per-trait judgement is a one-member row with `trait_efo_id` and a `direction`; the verdict is
@@ -1570,7 +1579,7 @@ bare locus (the reference homozygote included, since the verdict is about the lo
 `effect_allele`), and each diplotype carrying a named `allele_function` allele. A row two members reach
 is `true` when either is; two alleles' judgements are never pooled, so ε2 protective on one trait and ε4
 risk on another leaves the ε2/ε4 row null. **On one trait at one row, the precedence above runs first**:
-a judgement on that trait outranked by another (a sex-scoped row over the same key unscoped, a
+a judgement on that trait outranked by another (a sex- or drug-scoped row over the same key unscoped, a
 `diplotypes` member over an allele it contains, a genotype over its locus) is dropped there, so a
 diplotype row stating ε3/ε4 `neutral` on the trait ε4 is `risk` on clears ε4's trade-off at ε3/ε4
 only. A `mediator` row counts (its direction is still a benefit or a harm);
@@ -1843,7 +1852,8 @@ asymmetry below is intended: **rows are preserved, presentation is normalized.**
 - **The meta-table's two parquets** (0.8). `meta.parquet` is in authored row order, and each row's
   `matches` list is in member order, then in the matched table's authored row order.
   `meta_resolved.parquet` is sorted by member table (`META_MEMBER_TABLES` order), then the matched
-  row's authored position, then the `sex` scope (none, `female`, `male`); its `meta_rows` are ascending.
+  row's authored position, then the `sex` scope (none, `female`, `male`), then the `drug` scope (none,
+  then by name); its `meta_rows` are ascending.
   No set or dict iteration reaches either file, and `test_meta_compile.py` compiles twice and compares
   the bytes.
 - **`model_organisms.parquet`** (0.8, RM335) is in authored row order: the generic materializer writes

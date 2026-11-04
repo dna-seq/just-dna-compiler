@@ -19,6 +19,7 @@ from just_dna_format.meta import (
     normalize_members,
     parse_members,
 )
+from just_dna_format.pgx import DiplotypeRow
 from just_dna_format.spec import VariantRow
 from pydantic import ValidationError
 
@@ -111,11 +112,19 @@ def test_member_order_and_condition_order_do_not_change_the_key() -> None:
     assert a == b
 
 
-def test_the_row_key_is_members_trait_and_sex_and_the_cell_stays_verbatim() -> None:
+def test_the_row_key_is_members_trait_sex_and_drug_and_the_cell_stays_verbatim() -> None:
     row = _row(members="variants[genotype=C/T, variant_key=rs1]", tier="A")
     assert row.members == "variants[genotype=C/T, variant_key=rs1]"
     assert row.members_key == normalize_members(row.members)
-    assert MetaRow._KEY_FIELDS == ("members_key", "trait_efo_id", "sex")
+    assert MetaRow._KEY_FIELDS == ("members_key", "trait_efo_id", "sex", "drug")
+
+
+def test_drug_is_free_text_as_on_diplotypes() -> None:
+    """`drug` is the drug the statement is about, open text as `DiplotypeRow.drug` is, first in 0.8.0."""
+    assert _row(members="variants[variant_key=rs1]", tier="A", drug="azathioprine").drug == "azathioprine"
+    assert _row(members="variants[variant_key=rs1]", tier="A").drug is None
+    assert MetaRow.model_fields["drug"].annotation == DiplotypeRow.model_fields["drug"].annotation
+    assert MetaRow.model_fields["drug"].json_schema_extra == {"first_seen": "0.8.0"}
 
 
 # ── the model's refusals ─────────────────────────────────────────────────────────────────────────

@@ -299,7 +299,7 @@ _TABLE_DUPE_KEYS: dict[type[BaseModel], Callable[[Any], tuple]] = dict.fromkeys(
         ClinSigConcordanceRow,
         ClinSigAuthorityCallRow,
         # The authored tables that are not table kinds (RM357), every one of them keyed: the overlay on
-        # `(table, subject, member, field)`, the meta-table on `(members_key, trait_efo_id, sex)` (the
+        # `(table, subject, member, field)`, the meta-table on `(members_key, trait_efo_id, sex, drug)` (the
         # member set normalized, so `A & B` and `B & A` are one key), the model-organism table on every
         # column but the finding's two. Under each key two rows are two answers to one question with no
         # order between them, the `SourceRow` failure one table over.
