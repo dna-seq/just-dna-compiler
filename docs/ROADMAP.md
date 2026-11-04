@@ -1062,34 +1062,6 @@ schema.
 
 **Residuals** none yet.
 
-## RM340 — the VRS-coverage warning counts alleles with no ALT and does not point at the record that says why
-
-**Severity** low · **Status** open — **a patch** · **Owner** compiler (`_vrs_coverage` warning) ·
-**Motivating case** S127 in CONSUMER_SUGGESTIONS_HISTORY.md (just-module-creator `F118`, 2026-10-25) ·
-*related* RM251, `@unreachable-not-absent`, `@answered-is-not-absent`
-
-**What stands of the report.** After RM251, `source="authored"` rows with empty `ref`/`alts` are two
-populations: rows with no rsID, which no refresh can fill, and rows whose live rsID the injected Ensembl
-snapshot predates, which a newer snapshot would fill. The reporter's correction found the split already
-stated, by name, in `verification.json`'s `rsid_coordinate_agreement` record (*"absent from this
-snapshot is not absent from Ensembl"*). The rows are truthful; what is missing is the join. The compile
-warning (*"VRS allele identity covers 166/183 … 17 allele(s): no ALT recorded"*) gives no pointer to the
-record that explains the gap.
-
-**The patch.** When the spec directory's `verification.json` carries an `rsid_coordinate_agreement`
-record with pairs not compared, the no-ALT line of `vrs_coverage_incomplete` says so and names the
-record. The compiler already reads the block at compile (`_read_verification_block`). Message text only,
-under `@warning-text-is-api`: the existing phrase stays and the pointer is appended. Run
-`schema/tests/test_feature_corpus.py`, since `features/` quotes emission text.
-
-**Not taken.** A new `status` member such as `position_only`, or a second `source` value. The reporter
-argues against the second themselves, and `@answered-is-not-absent` is the house answer to the first:
-`VALID_RESOLUTION_STATUS` is a wire vocabulary every reader of a published `resolution.csv` shares, and
-the row was never the untruth. Only the reason it gives is missing, and the reason already exists in the
-attestation.
-
-**Residuals** none yet.
-
 ## RM344 — a `.duckdb` Ensembl cache written by duckdb 2.0 crashes a 1.x enricher instead of falling back to the parquet beside it
 
 **Severity** low · **Status** open — **a patch**, `unattended` (about 15 minutes) · **Owner** enricher

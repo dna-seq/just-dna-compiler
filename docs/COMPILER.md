@@ -1690,6 +1690,15 @@ VRS allele identity covers {identified}/{alleles} allele(s) in resolution.csv ({
 {missing} carry no ga4gh:VA. id. Anything keying on the VA sees only the covered fraction.
 ```
 
+The no-ALT reason line (`no ALT recorded, and a VRS allele id names exactly one allele`) gains a pointer
+when the spec's attested `verification.json` carries an `rsid_coordinate_agreement` record saying the
+injected Ensembl snapshot has no record for some authored rsIDs (RM340). Those rows keep an empty
+`ref`/`alts` under `source="authored"` (RM251), and a newer snapshot may fill them. The pointer is appended,
+so the phrase above still leads the line: `` — verification.json's `rsid_coordinate_agreement` record names
+authored rsIDs the injected Ensembl snapshot carries no record for, and a newer snapshot may fill their
+ALT``. The compiler recognises the record by `compiler.SNAPSHOT_UNPLACED_PHRASE`, the sentence the enricher
+writes into the record's `detail`, so the two cannot drift apart.
+
 **Its twin, for ids that are present and that this tier cannot recompute, is grouped the same way
 since S67** — one line per reason, descending count then reason, three `variant_key`s named
 and the rest counted:

@@ -204,6 +204,50 @@ The count is a log line, not a `MissBuildResult` field (minor-class). The three 
 Principle 2 (the lane docstring, the `mitomap miss` CLI note, the drafter note) and ENRICHER.md's
 bucket table now say what happens instead.
 
+## RM340 — the VRS-coverage warning counts alleles with no ALT and does not point at the record that says why
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-11-04 on `main`, uncut — a patch** (message text) · **Owner**
+compiler (`_vrs_coverage` warning) ·
+**Motivating case** S127 in CONSUMER_SUGGESTIONS_HISTORY.md (just-module-creator `F118`, 2026-10-25) ·
+*related* RM251, `@unreachable-not-absent`, `@answered-is-not-absent`
+
+**What stands of the report.** After RM251, `source="authored"` rows with empty `ref`/`alts` are two
+populations: rows with no rsID, which no refresh can fill, and rows whose live rsID the injected Ensembl
+snapshot predates, which a newer snapshot would fill. The reporter's correction found the split already
+stated, by name, in `verification.json`'s `rsid_coordinate_agreement` record (*"absent from this
+snapshot is not absent from Ensembl"*). The rows are truthful; what is missing is the join. The compile
+warning (*"VRS allele identity covers 166/183 … 17 allele(s): no ALT recorded"*) gives no pointer to the
+record that explains the gap.
+
+**The patch.** When the spec directory's `verification.json` carries an `rsid_coordinate_agreement`
+record with pairs not compared, the no-ALT line of `vrs_coverage_incomplete` says so and names the
+record. The compiler already reads the block at compile (`_read_verification_block`). Message text only,
+under `@warning-text-is-api`: the existing phrase stays and the pointer is appended. Run
+`schema/tests/test_feature_corpus.py`, since `features/` quotes emission text.
+
+**Not taken.** A new `status` member such as `position_only`, or a second `source` value. The reporter
+argues against the second themselves, and `@answered-is-not-absent` is the house answer to the first:
+`VALID_RESOLUTION_STATUS` is a wire vocabulary every reader of a published `resolution.csv` shares, and
+the row was never the untruth. Only the reason it gives is missing, and the reason already exists in the
+attestation.
+
+**Residuals** none
+
+**What shipped.** `_vrs_coverage_warnings` takes `unplaced_recorded` and appends a pointer to the no-ALT
+reason line alone, after its unchanged phrase. Both call sites (`validate_spec`'s pre-flight and
+`compile_module`) pass `_snapshot_unplaced_rsids_recorded(spec_dir)`, which reads the block through
+`_read_verification_block`, so an attestation these bytes no longer match points at nothing. The record
+is recognised by `compiler.SNAPSHOT_UNPLACED_PHRASE` (*"absent from this snapshot is not absent from
+Ensembl"*), which `just_dna_enricher.enrich` now imports to write that same sentence, so the writer and
+the reader share one constant. The two sides produce the same line, and the existing message dedup
+collapses it to one. No code and no vocabulary member was added.
+
+Tests: `test_fact_tables.py` (the pointer changes exactly one line, the no-ALT one, and that line still
+begins with its old text) and `test_verification_block.py` (`apoe_epsilon` carries two no-ALT alleles:
+an attested record with the phrase adds the pointer on both sides, once in the manifest; a record
+without it, or a stale one, leaves the line bare). `features/compiler/identity_and_vrs.feature` has the
+scenario; COMPILER.md's warning catalogue states the pointer.
+
 ## RM339 — an interrupted snapshot pull leaves a cache that reads as complete, so it is never finished
 
 **Severity** high · **Status** ✅ **SHIPPED 2026-11-04 on `main`, uncut — a patch** (enricher only) · **Owner**

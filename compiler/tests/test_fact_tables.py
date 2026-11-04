@@ -671,6 +671,20 @@ def test_vrs_coverage_counts_alleles_and_groups_the_gaps_by_reason() -> None:
     assert len(warnings) == 1 + len(gaps)
 
 
+def test_the_record_pointer_lands_on_the_no_alt_line_and_nowhere_else() -> None:
+    """RM340: appended to one reason's line, after its unchanged phrase; every other line is untouched."""
+    from just_dna_compiler.compiler import _vrs_coverage_warnings
+
+    rows = [_res_row(alts=None, vrs_id=None), _res_row(ref="C", alts="CA", vrs_id=None)]
+    bare = _vrs_coverage_warnings(rows)
+    pointed = _vrs_coverage_warnings(rows, unplaced_recorded=True)
+    changed = [(b, p) for b, p in zip(bare, pointed, strict=True) if b != p]
+    assert len(changed) == 1
+    before, after = changed[0]
+    assert "no ALT recorded" in before and after.startswith(before)
+    assert "rsid_coordinate_agreement" in after
+
+
 def test_a_symbolic_allele_is_its_own_gap_class_never_an_indel() -> None:
     """RM5 shipped the symbolic grammar in 0.6 and this pass was never told (D1-2, compiler half).
 

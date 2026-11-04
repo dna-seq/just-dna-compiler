@@ -41,6 +41,15 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM340: the VRS-coverage warning points at the record that explains its no-ALT rows (patch, on `main`)
+
+**compiler, enricher** — When an attested `verification.json` carries an `rsid_coordinate_agreement` record
+saying the injected Ensembl snapshot has no record for some authored rsIDs, the no-ALT line of
+`vrs_coverage_incomplete` now names that record. Those rows' empty ALT is explained there, and a newer
+snapshot may fill it (S127). The line's existing phrase is unchanged and leads it. The phrase the enricher
+writes is now one constant, `compiler.SNAPSHOT_UNPLACED_PHRASE`, shared by writer and reader. No new
+warning code.
+
 ## 2026-11-04 — RM339: an interrupted snapshot pull no longer reads as complete (patch, on `main`)
 
 **enricher** — A snapshot pull now writes `pull-record.json` from the remote listing before its first

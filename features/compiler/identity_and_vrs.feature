@@ -145,6 +145,20 @@ Feature: Identity and the VRS verify pass
 
   # source: compiler/src/just_dna_compiler/compiler.py
   # anchor: _vrs_coverage_warnings
+  @code:vrs_coverage_incomplete @carried @both_modes
+  Scenario: the no-ALT line names the record that explains it
+    Given a resolution.csv with authored rows that carry no ALT
+    And an attested verification.json whose rsid_coordinate_agreement record says the injected Ensembl snapshot carries no record for some authored rsIDs
+    When the module is validated and compiled
+    Then the no-ALT line keeps its phrase and appends a pointer to that record
+    And the line is the same on both sides, so it appears once
+    # The rows are truthful (RM251): an rsID the snapshot predates is absent from the snapshot, not from
+    # Ensembl. The explanation already sat in the attestation, and the warning never pointed at it
+    # (RM340, S127). A stale attestation is pointed at by nothing, and no new code or status member is
+    # added (`@answered-is-not-absent`).
+
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _vrs_coverage_warnings
   Scenario: full coverage reports nothing at all
     Given a resolution.csv where every allele carries a ga4gh:VA. id
     When the module is compiled

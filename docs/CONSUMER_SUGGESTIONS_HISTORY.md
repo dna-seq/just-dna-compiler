@@ -6142,7 +6142,7 @@ diagnosis.
 
 **Status — the rows are right and the split is already recorded, as your correction found; the missing
 pointer is filed as
-[RM340](ROADMAP.md#rm340--the-vrs-coverage-warning-counts-alleles-with-no-alt-and-does-not-point-at-the-record-that-says-why),
+[RM340](ROADMAP_HISTORY.md#rm340--the-vrs-coverage-warning-counts-alleles-with-no-alt-and-does-not-point-at-the-record-that-says-why),
 a patch.** Thank you for re-running S104 on the shipped fix; 117 of 130 rows from the cache is the
 result RM251 was built for. What we checked: the compile's `vrs_coverage_incomplete` warning
 (`_vrs_coverage` in the compiler) counts the no-ALT alleles and names no record, while the compiler
