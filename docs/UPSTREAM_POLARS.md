@@ -53,6 +53,11 @@ use polars only in builders (`@duckdb-vs-polars`).
   eager) reach nothing we call. Our one `map_elements` (`enricher/src/just_dna_enricher/clinvar_build.py:373`)
   is not the `.map` namespace.
 - **Who else holds polars below 2:** polars-bio 0.36.2, which just-dna-lite stands on, pins `polars<2,>=1.40.0`.
+  Checked again 2026-11-04: 0.36.2 (2026-10-13) is still the latest on PyPI. Upstream has the support written:
+  biodatageeks/polars-bio#478 "feat: support polars 2.x" (open since 2026-10-08, not a draft, CI green on polars 1
+  and 2, last touched 2026-10-08) widens it to `polars>=1.40.0,<3` and starts 0.37.0. It fixes the two things 2.0
+  broke for them: headerless CSV columns are numbered from `column_0`, and IO-plugin errors are no longer wrapped
+  in `ComputeError`. Until it merges and releases, just-dna-lite stays on polars 1.x.
 
 **Sorted: breaks us, in the digest only.** Every 2.x release writes its own version and build into every
 parquet we produce, so from 2.0 on `artifact.digest` changes with every polars release, even a patch. Releases

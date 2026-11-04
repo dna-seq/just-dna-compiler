@@ -37,7 +37,9 @@ and a second cap here would block everyone else.
 adoption plan for both majors without a cap, which supersedes the first message's cap option; and, for RM304, PR
 ga4gh/vrs-python#665 (`RleSubunitMode`, which `vrs/2.1` will default to SMALLEST).
 
-**Lock schedule:** duckdb 2.x once RM344 lands; polars 2.x with RM342 (0.9). RM343 (EXPLAIN test) is done.
+**Lock schedule:** duckdb 2.x once RM344 lands; polars 2.x with RM342, which the pm moved into **0.8** (f3377a6;
+its shape is being interviewed). RM343 (EXPLAIN test) is done. polars-bio: still `<2` at 0.36.2; its polars-2
+PR is biodatageeks/polars-bio#478 (open, green). Watch for 0.37.0.
 
 **Push:** origin/main holds every liaison commit through 324eaee (pushed with the other seats' commits on
 2026-11-04). The liaison pushes only its own ledgers and notes, and only as a fast-forward that carries no other seat's
