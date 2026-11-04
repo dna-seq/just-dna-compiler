@@ -1,0 +1,6 @@
+rsid,genotype,state,direction,conclusion,gene,trait_efo_id
+rs10455872,A/G,risk,risk,"One copy of the LPA G allele. The cited healthspan, parental-lifespan and longevity GWAS all name A as the allele that lengthens life, so a G carrier sits on the shorter-lived side of each estimate.",LPA,OBA_VT0005372
+rs429358,C/T,risk,risk,"One copy of the C allele that defines APOE ε4: lower odds of surviving to the 90th and 99th survival percentiles, and shorter parental attained age.",APOE,OBA_VT0005372
+rs646776,C/T,protective,protective,"One copy of the C allele at the CELSR2/PSRC1 locus. The lifespan estimate was measured on rs4970836, whose G allele lengthened parental lifespan; in Europeans that G allele travels with rs646776 C.",CELSR2,OBA_VT0005372
+rs75571981,C/T,protective,protective,"One copy of the EYS C allele, which a genome-wide study of Japanese centenarians found more often in centenarians than in controls. The study is a preprint and has not been replicated outside Japan.",EYS,OBA_VT0005372
+rs2802292,G/T,protective,protective,"One copy of the FOXO3 G allele, the allele long associated with longevity. In a cohort of older Australian men, G carriers with angina had lower mortality.",FOXO3,OBA_VT0005372

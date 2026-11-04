@@ -1,0 +1,14 @@
+schema_version: '1.0'
+module:
+  name: longevity_studies
+  title: Longevity GWAS evidence, per analysis
+  description: Five longevity loci whose study rows say which outcome each estimate measured, in whom,
+    how many, over which age band and stratum, and on which variant.
+  report_title: Longevity GWAS evidence, per analysis
+  icon: heartbeat
+  icon_set: fomantic
+  color: '#21ba45'
+defaults:
+  curator: ai-module-creator
+  method: literature-review
+genome_build: GRCh38
