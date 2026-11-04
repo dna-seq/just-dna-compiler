@@ -2421,7 +2421,7 @@ does not carry a coordinate, and it is the wrong one — RM43 (0.6) is the right
   `fetched_at?`, `placement_witness?`, `placement_verdict?` (0.8, below).
 - **`source` names the link; `authority` names the licensed source it speaks for (RM33).** `source` is
   `ensembl-rest`/`ensembl-graphql`/`cache`/`clinvar`/`gnomad`/`authored`/`reversed`/`manual` — *which link
-  answered*, which matters for diagnosing a compile and has no other home. `authority` is the thing
+  answered* (`ensembl-graphql` is no longer written since its leg was retired in 0.8, and still reads), which matters for diagnosing a compile and has no other home. `authority` is the thing
   `sources.csv.source` joins on (`ensembl`, `clinvar`, `gnomad`), and it is **empty** where there is no
   external source to name: `authored` is the module's own bytes, `reversed` is the compiler, `manual` is a
   human. Before the split, the compiler compared the link against `sources.csv` by string and every

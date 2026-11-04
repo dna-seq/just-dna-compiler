@@ -476,7 +476,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `strchive` | RM165: the STRchive repeat-locus catalogue — the `repeat_alleles.csv` band cross-check (offline, reports only) | format `binning`, compiler `load_csv_rows` |
 | `strchive_build` | RM165 builder: download `STRchive-loci.json` + `release.json`. Core `httpx` only, no parquet and no `[dev]` extra | `httpx` |
 | `strchive_draft` | RM165: STRchive → `repeat_alleles.csv` **partial** rows — identity only, bands left to a human | `strchive`, compiler `draft` |
-| `ensembl` | live Ensembl: V2 GraphQL → V1 REST fallback, tenacity | `httpx`, `tenacity` |
+| `ensembl` | live Ensembl REST (the beta GraphQL leg was retired on 2026-11-04), tenacity | `httpx`, `tenacity` |
 | `upload` | publisher surface — push a compiled module or a reference snapshot to HF (`[dev]`) | `huggingface_hub` (lazy) |
 | `litvar` | RM167: LitVar2/PubTator3 literature coverage per locus, **with the tier that answered** (allele node / position node / absent). Reports only; writes no row and no `SourceRow` | `httpx`, `tenacity`, `clingen_allele` |
 | `drug_labels` | RM166: five regulators' drug labels — the `(gene[, allele], drug)` cross-check at two join tiers (offline, reports only, writes no `SourceRow`) | `duckdb`, format `pgx`, compiler `load_csv_rows` |
@@ -530,8 +530,7 @@ per service, put a semaphore around your call site; the gate will not give you t
 | **ClinGen Allele Registry** (`reg.clinicalgenome.org/allele`) | `clingen_allele` → the identity-from-a-name procedure (0.7, RM153) | none published | `_REQUEST_INTERVAL=0.1` (courtesy) | none |
 | **Ensembl GRCh37 REST** (`grch37.rest.ensembl.org`) | `grch37.diagnose_wrong_build` (0.6), `hint recover` | Ensembl publishes **15 req/s** | `_REQUEST_INTERVAL=0.1` — keeps a whole panel inside it while still interactive | none |
 | **ClinVar release probe** | `currency.ClinVarReleaseClient` — one bounded read of the VCF's header (`HEADER_PROBE_BYTES`) per `--verify-datasets` run (0.7) | NCBI asks for no particular pacing on the FTP-over-HTTPS mirror | `CLINVAR_MIN_INTERVAL=0.5` — this tier paces every service it touches, and one probe per run is inside any budget | none |
-| **Ensembl REST** (`rest.ensembl.org`) | `ensembl` V1 fallback; the placement witness (0.8, RM267), one sequential request per snapshot indel no loaded witness holds | **15 req/s** per IP, **~55 000 / rolling hour**; 429 + `Retry-After` / `X-RateLimit-*` | **no `PacingGate`** — both uses are one request at a time over what the snapshots missed, so volume stays low; tenacity on transport, 5xx and 429 (`net.retry_if_transient`) | none |
-| **Ensembl GraphQL** (`beta.ensembl.org`) | `ensembl` V2 first try | unpublished (beta) | **no `PacingGate`**; 5xx falls through to REST | none |
+| **Ensembl REST** (`rest.ensembl.org`) | `ensembl` (the live link); the placement witness (0.8, RM267), one sequential request per snapshot indel no loaded witness holds | **15 req/s** per IP, **~55 000 / rolling hour**; 429 + `Retry-After` / `X-RateLimit-*` | **no `PacingGate`** — both uses are one request at a time over what the snapshots missed, so volume stays low; tenacity on transport, 5xx and 429 (`net.retry_if_transient`) | none |
 | **CPIC** (`api.cpicpgx.org`) | `cpic` / `pgx_draft` | unpublished | **no `PacingGate`** — coarse PostgREST GETs (gene-scoped), not per-allele loops | none |
 | **ClinPGx** | `clinpgx` / `clinpgx_draft` | n/a at runtime | **offline snapshot only** for the check/draft path — no live poll budget | none (live API retired → snapshot) |
 | **seqrepo REST** (`services.genomicmedlab.org`) | `sequences` / VRS indel mint | unpublished | **no `PacingGate`**; in-process memo of window reads | none |
@@ -734,7 +733,8 @@ coord but no rsid), runs a **first-hit-wins chain**, and writes/merges `resoluti
    is a complementary reference (4.4M clinically-curated records, 1.54M with no rsid) that makes an
    offline clinical enrich possible without provisioning the 14 GB dbSNP cache.
 5. **Live Ensembl** — for rsIDs every cache missed, `ensembl.EnsemblResolver.resolve_rsid`
-   (V2 GraphQL → V1 REST fallback). Sources `ensembl-graphql` / `ensembl-rest`. It has **four**
+   (REST). Source `ensembl-rest`; a row written before 0.8 may carry `ensembl-graphql`, the retired
+   leg's. It has **four**
    outcomes: loci, an answered `[]`, `(None, None)` for could-not-ask, and `(None, source)` for an
    answer whose one-sided indels could not be anchored (RM268) — see *Live Ensembl* below, and note
    that neither `None` leaves **any `resolution.csv` row at all**.
@@ -1314,19 +1314,22 @@ fixpoint** (`artifact.digest`, `content_signature`, and the provisional `resolut
 [SCHEMAS.md](SCHEMAS.md) (`derive_variant_key`, `ResolutionRow.rsid_alternates`) and
 `reference_examples/pathogenic_clinvar/README.md` (the ClinVar dogfood these fixes came from).
 
-## Live Ensembl — V2 GraphQL + V1 REST fallback (`ensembl.py`)
+## Live Ensembl — REST (`ensembl.py`)
 
-`EnsemblResolver.resolve_rsid(rsid) -> (list[locus] | None, source | None)` tries two backends in order:
+`EnsemblResolver.resolve_rsid(rsid) -> (list[locus] | None, source | None)` asks one backend, REST
+(`_rest_rsid`, `DEFAULT_REST_ENDPOINT` = `rest.ensembl.org/variation/{species}/{rsid}`), and parses its
+GRCh38 `mappings` into loci; `resolve_rsid_rest` is the same request under the name the placement witness
+asks for (an optional capability of an injected resolver, `RestWitness`). **`tenacity`** (`@retry`,
+exponential jitter, 3 attempts) retries a transport error, a timeout, a 5xx and a 429.
 
-- **V2 — beta GraphQL** (`_graphql_rsid`, `DEFAULT_GRAPHQL_ENDPOINT`): the endpoint + variant-query shape
-  leeched from ensembl-mcp, `eliot.start_action` swapped for stdlib `logging`.
-- **V1 — legacy REST** (`_rest_rsid`, `DEFAULT_REST_ENDPOINT` = `rest.ensembl.org/variation/{species}/{rsid}`):
-  newly written for this repo (it did not exist in ensembl-mcp); parses GRCh38 `mappings` into loci.
-
-`resolve_rsid` falls back V2→V1 on a status in `_FALLBACK_STATUS = {500, 502, 503, 504}` (or a
-GraphQL/transport error, or an empty V2 result). **`tenacity`** (`@retry`, exponential jitter, 3 attempts,
-on `httpx.TransportError`/timeout) wraps *each* backend independently, so an endpoint is retried before
-the fallback triggers.
+**The beta GraphQL leg is retired (2026-11-04).** `beta.ensembl.org/api/graphql/variation`, its query
+leeched from ensembl-mcp, was POSTed before every REST request. Probed by hand that day (19:19Z): the
+endpoint answers **301** to `www.ensembl.org/api/graphql/variation`; there the query no longer validates
+(`Cannot query field 'region_name' on type 'Location'`, HTTP 400); and even a valid query answers a bare
+rsID with `VARIANT_ID_NOT_FOUND`, because that API wants a composite `region:pos:rsid` id. It never
+answered a bare rsID, so it cost a request per rsID and handed every one to REST. It was removed with its
+settings (`EnsemblSettings.graphql_endpoint`, `human_genome_id`) rather than pointed at the new host:
+nothing it could say there is a question this resolver asks.
 
 **Three outcomes, because two of them used to be one (S20, 0.5.4).** A non-empty list is an answer; `[]`
 is *also* an answer — Ensembl was reached and has no GRCh38 locus for this rsID — and **`None` means
@@ -1354,13 +1357,12 @@ a lazy `SequenceProxy`), giving `9:133257521 T>TC`. An allele string with no `-`
 anchored and reads nothing. When the base cannot be read the locus is withheld, and an answer whose
 every locus was withheld returns `(None, "ensembl-rest")`: unchecked like a failed request, but
 `enrich` names it in its own warning (a structured field is RM272, minor), and `lookup` gives it its
-own finding, because the request did not fail. The GraphQL leg's convention is unprobed, so a one-sided
-node there answers `[]` and the rsID goes to REST.
+own finding, because the request did not fail.
 
 **A non-base allele is not a locus, at either rung (RM271, 2026-09-27).** REST serves the literals
 `dbSNP_novariation` and `dbSNP_variant` as an `allele_string`; the VCF-dump snapshot serves an empty
 alt, `<.>`, IUPAC placeholders (`<R>`, `<Y>`), `N` runs and N-masked chrY refs. One private predicate,
-`ensembl._placeable_alleles`, runs at every read of both (REST, GraphQL, and the four snapshot reads in
+`ensembl._placeable_alleles`, runs at every read of both (REST and the four snapshot reads in
 `resolver`): a `ref` outside `^[ACGT]+$` withholds the locus, an alt outside it is dropped, and a locus
 with no alt left is withheld. REST with nothing left answers the ordinary `[]` (it is permanent, so no
 re-run helps), and the snapshot names such rsIDs in one warning instead of `rsid_unresolved`.
@@ -1375,11 +1377,7 @@ resolved to for every snapshot the lookup opened or tried to (`ensembl`, `clinva
 one field a host drops to keep its layout private. duckdb's own first line may still name a file; that
 is upstream's sentence and stays as evidence.
 
-> **Honest caveat (bare rsID).** The beta variation GraphQL wants a composite `region:pos:rsid` id, so a
-> *bare* rsID typically won't resolve through V2 and **falls through to V1 REST, which does the real
-> work** — mirroring ensembl-mcp itself. Today V1 is the workhorse; V2 is wired, retried, and first in
-> line but mostly hands off. Adding a REST→composite-id step (a follow-up) would make V2 a genuine first
-> responder. Endpoints and the human GRCh38 genome id are configurable via `EnsemblSettings`.
+The REST endpoint, species and timeout are configurable via `EnsemblSettings`.
 
 ## The caches
 

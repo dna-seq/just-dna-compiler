@@ -613,7 +613,7 @@ WITHHOLDING_CLIENTS = [
 @pytest.mark.parametrize("handler", [_serve(503), _refuse, _serve_html], ids=["5xx", "transport", "html"])
 def test_a_withholding_client_withholds_on_every_failed_leg(label, builder, withheld, handler) -> None:
     """Every failure leg — status, transport, unreadable body — is the same withheld value, and none
-    of them is an exception. `ensembl` is the sharper case: with the GraphQL leg answering HTML the
-    resolver used to raise instead of falling through to REST, and `enrich` wraps the call in a
-    `try/finally` with no `except`, so the whole run aborted mid-loop."""
+    of them is an exception. `ensembl` is the sharper case: with Ensembl answering HTML the resolver
+    used to raise, and `enrich` wraps the call in a `try/finally` with no `except`, so the whole run
+    aborted mid-loop."""
     assert builder(handler)() == withheld

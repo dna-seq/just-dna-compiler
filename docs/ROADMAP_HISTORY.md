@@ -262,6 +262,15 @@ counted, with `PlacementCheck.not_asked_reason` in `detail` and one warning. Hun
 other injected collaborators (gnomAD, GRCh37, the release probes): each calls only its parameter's
 original contract. Test red before, the reason's wiring mutated once.
 
+**2026-11-04: the retired beta GraphQL leg is no longer asked.** `resolve_rsid` POSTed to
+`beta.ensembl.org/api/graphql/variation` before every REST request. Probed by hand (19:19Z): 301 to
+`www.ensembl.org`, where the query no longer validates (HTTP 400) and a bare rsID is
+`VARIANT_ID_NOT_FOUND`. Removed with its settings and dead tests; `resolve_rsid` is REST alone.
+`ensembl-graphql` stays a readable `source` value. Every other client endpoint was probed once that day,
+redirects unfollowed: only GenCC's bulk download answered 301 (`search.thegencc.org` → `thegencc.org`),
+and its default now names the new host; ClinPGx's 303 to S3 and ClinVar-GKM's directory 302 are hops to
+files that answer 200.
+
 **Severity** high · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** (two optional
 `resolution.csv` columns and a new check; [PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §5 C4) ·
 **Owner** enricher (the resolver chain's snapshot link), with the upstream half in `just-dna-pipelines` · **Motivating case**

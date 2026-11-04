@@ -69,6 +69,16 @@ after the retries is unreachable rather than "no record". New: `verification.ran
   hunted across `enrich`'s other injected collaborators: `gnomad_client.resolve_rsids`,
   `grch37_client.reference_bases`/`variants_at` and the `release_probes` callables are each their
   parameter's original contract, and `non_nucleotide_rsids` was already read by `getattr` (RM272).
+- **`resolve_rsid` no longer asks the retired beta GraphQL surface before REST.** Probed 2026-11-04:
+  `beta.ensembl.org/api/graphql/variation` answers 301 to `www.ensembl.org`, where the query no longer
+  validates and a bare rsID is `VARIANT_ID_NOT_FOUND`; it never answered one, so it cost a request per
+  rsID. The leg is removed with `EnsemblSettings.graphql_endpoint` and `human_genome_id`;
+  `resolve_rsid` is REST alone and every row it writes says `ensembl-rest`. `ensembl-graphql` stays a
+  readable `source` value (rows written before 0.8) and keeps its `ensembl` authority. The other
+  clients' endpoints were probed the same day, redirects unfollowed: GenCC's bulk download answered 301
+  (`search.thegencc.org` → `thegencc.org`) and `gene_validity.DEFAULT_GENCC_URL` now names the new
+  host; every other one answers where it is named (ClinPGx's 303 and ClinVar-GKM's directory 302 are
+  hops to files that answer 200).
 
 ## 2026-11-04 — RM270: an indel's spelling-independent `vrs_id` reaches every variant parquet, and a filled coordinate is written left-aligned (0.8, uncut)
 

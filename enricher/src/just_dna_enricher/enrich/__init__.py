@@ -1,7 +1,7 @@
 """`enrich` — fill the source-independent resolution table for a module spec, then hand off to compile.
 
 The resolver chain, first-hit-wins: an existing/human-authored row (authoritative, never clobbered) →
-the local cache (a downloaded snapshot, offline) → live Ensembl (V2 GraphQL → V1 REST). It writes
+the local cache (a downloaded snapshot, offline) → live Ensembl (REST). It writes
 `resolution.csv` beside the spec; the compiler then consumes it with no source knowledge and no
 network. Two modes: `best_effort` fills what it can and records the rest as `not_found`; `strict`
 fails unless every in-scope variant resolves to a position (the network analogue of the compiler's

@@ -69,8 +69,9 @@ logger = logging.getLogger(__name__)
 #: and a second `+++` line before the data — neither a plain CSV nor a comment-prefixed one.
 DEFAULT_CLINGEN_VALIDITY_URL = "https://search.clinicalgenome.org/kb/gene-validity/download"
 
-#: GenCC's full submission export — every submitter's assertions in one CSV, ~28 MB.
-DEFAULT_GENCC_URL = "https://search.thegencc.org/download/action/submissions-export-csv"
+#: GenCC's full submission export — every submitter's assertions in one CSV, ~28 MB. On `thegencc.org`
+#: since `search.thegencc.org` began answering 301 there (probed 2026-11-04, same 28 MB body).
+DEFAULT_GENCC_URL = "https://thegencc.org/download/action/submissions-export-csv"
 
 CLINGEN_SOURCE = CLINGEN_TERMS.source
 GENCC_SOURCE = GENCC_TERMS.source

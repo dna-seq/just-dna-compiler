@@ -584,15 +584,11 @@ class _Rest:
 
     def __init__(self, status: int = 200) -> None:
         self.requested: list[str] = []
-        self.graphql = 0
         self.status = status
 
     def resolver(self) -> EnsemblResolver:
         def handler(request: httpx.Request) -> httpx.Response:
-            if "graphql" in str(request.url):
-                # The beta endpoint answers a redirect today (RM268); the witness never asks it.
-                self.graphql += 1
-                return httpx.Response(301, headers={"Location": "https://beta.ensembl.org/"})
+            assert request.url.host == "rest.ensembl.org", f"asked {request.url}, not Ensembl REST"
             rsid = request.url.path.rsplit("/", 1)[-1]
             self.requested.append(rsid)
             if self.status != 200:
@@ -623,9 +619,8 @@ def test_rest_withholds_s117_when_no_loaded_witness_holds_it(
         clinvar_gkm_cache=_gkm_snapshot(tmp_path),
         resolver=rest.resolver(),
     )
-    # Asked about the one indel nobody loaded holds: not the SNV, not the indels ClinVar holds — and
-    # asked of REST's own mapping, never the GraphQL surface first.
-    assert rest.requested == ["rs8176719"] and rest.graphql == 0
+    # Asked about the one indel nobody loaded holds: not the SNV, not the indels ClinVar holds.
+    assert rest.requested == ["rs8176719"]
     rows = {r.rsid: r for r in result.rows}
     assert "rs8176719" not in rows and "rs8176719" in result.unresolved
     assert result.placement is not None and result.placement.withheld == ["rs8176719"]

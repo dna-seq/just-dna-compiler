@@ -1,17 +1,17 @@
 """Live Ensembl resolution — for the rare rsIDs the frozen snapshot slice misses.
 
-Two backends, tried in order with a fallback the user asked for:
+One backend: the **REST** variation API (rest.ensembl.org), a bare rsID → its GRCh38 mappings, retried
+by `tenacity` on a transport error, a timeout, a 5xx or a 429. All network lives here (never in
+format/compiler). GRCh38 only.
 
-  V2 — the beta **GraphQL** variation API (endpoint + query shape leeched from ensembl-mcp, with
-       `fastmcp`/`eliot` dropped and stdlib `logging` in their place); and
-  V1 — the legacy **REST** variation API (rest.ensembl.org), which is the workhorse for a *bare*
-       rsID → coordinate (the beta GraphQL variant lookup needs a composite `region:pos:rsid` id, so
-       a bare rsID falls through to REST). V1 also serves as the explicit **fallback on 500/503** from
-       V2.
-
-`tenacity` retries each backend on transient transport/timeout errors; a V2 5xx is not retried but
-triggers the V2→V1 fallback, and V1 retries a 5xx or a 429 as well before it reads as unreachable. All
-network lives here (never in format/compiler). GRCh38 only.
+**There was a second, and it is gone (2026-11-04).** A beta **GraphQL** leg (`beta.ensembl.org/api/
+graphql/variation`, its query leeched from ensembl-mcp) was POSTed before every REST request. Probed by
+hand that day: the endpoint answers **301** to `www.ensembl.org/api/graphql/variation`; there the query's
+shape no longer validates (`Cannot query field 'region_name' on type 'Location'`, HTTP 400); and a bare
+rsID is `VARIANT_ID_NOT_FOUND` even in a valid query, since that API wants a composite
+`region:pos:rsid` id. It could not answer a bare rsID on any day it was asked, so it cost a request per
+rsID and returned nothing. `ensembl-graphql` survives only as a `resolution.csv` `source` value a row
+written before 0.8 may carry.
 """
 
 import logging
@@ -22,11 +22,7 @@ from typing import Protocol, runtime_checkable
 import httpx
 from just_dna_format.vocab import ALLELE_PATTERN
 from just_dna_format.vrs import refget_accession
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    wait_exponential_jitter,
-)
+from tenacity import retry, wait_exponential_jitter
 
 from just_dna_enricher.clingen_allele import anchor_indel
 from just_dna_enricher.net import attempt_floor, is_transient_status, retry_if_transient
@@ -34,31 +30,13 @@ from just_dna_enricher.sequences import SequenceProxy
 
 logger = logging.getLogger(__name__)
 
-# Endpoints leeched from ensembl-mcp's config (the human GRCh38 genome id is beta's fixed UUID).
-DEFAULT_GRAPHQL_ENDPOINT = "https://beta.ensembl.org/api/graphql/variation"
 DEFAULT_REST_ENDPOINT = "https://rest.ensembl.org"
-_FALLBACK_STATUS = frozenset({500, 502, 503, 504})
 _ASSEMBLY = "GRCh38"
-
-# Minimal variant query (ensembl-mcp's variation backend shape, trimmed to the location fields we
-# need). Bare-rsID lookup needs a composite id, so this is a best-effort V2 attempt that gracefully
-# yields to the REST fallback when beta rejects it.
-_VARIANT_QUERY = """
-query Variant($genomeId: String!, $variantId: String!) {
-  variant(by_id: {genome_id: $genomeId, variant_id: $variantId}) {
-    name
-    alleles { allele_type { value } reference_sequence }
-    slice { location { region_name start } }
-  }
-}
-"""
 
 
 @dataclass
 class EnsemblSettings:
-    graphql_endpoint: str = DEFAULT_GRAPHQL_ENDPOINT
     rest_endpoint: str = DEFAULT_REST_ENDPOINT
-    human_genome_id: str = "a7335667-93e7-11ec-a39d-005056b38ce3"
     species: str = "human"
     timeout: float = 15.0
 
@@ -93,7 +71,7 @@ class RestWitness(Protocol):
 
 @dataclass
 class EnsemblResolver:
-    """Resolve a bare rsID to its GRCh38 loci via live Ensembl (V2 GraphQL → V1 REST fallback)."""
+    """Resolve a bare rsID to its GRCh38 loci via live Ensembl REST."""
 
     settings: EnsemblSettings = field(default_factory=EnsemblSettings)
     _client: httpx.Client | None = None
@@ -122,8 +100,8 @@ class EnsemblResolver:
     def resolve_rsid(self, rsid: str) -> tuple[list[dict] | None, str | None]:
         """Return `([{chrom, start, ref, alts}, ...], source)` for a bare rsID.
 
-        Tries V2 GraphQL, then falls back to V1 REST on a 5xx (or when V2 yields nothing). `source` is
-        `ensembl-graphql` or `ensembl-rest` — recorded per row so the manifest can report provenance.
+        Asks REST (`resolve_rsid_rest`); the retired GraphQL leg is no longer asked first (module
+        docstring). `source` is `ensembl-rest` — recorded per row so the manifest can report provenance.
 
         **Three outcomes, because two of them used to be one (S20).** A non-empty list is an answer;
         `[]` is *also* an answer — Ensembl was reached and has no GRCh38 locus for this rsID — and
@@ -147,24 +125,14 @@ class EnsemblResolver:
         answer whose every locus was withheld is unchecked rather than empty, exactly like a request
         that failed; the source is returned so a caller can say which of the two happened.
         """
-        try:
-            loci = self._graphql_rsid(rsid)
-            if loci:
-                return loci, "ensembl-graphql"
-        except httpx.HTTPStatusError as exc:
-            if exc.response.status_code not in _FALLBACK_STATUS:
-                logger.warning("V2 GraphQL for %s failed (%s); trying REST", rsid, exc)
-        except (EnsemblError, httpx.TransportError, httpx.TimeoutException) as exc:
-            logger.warning("V2 GraphQL for %s errored (%s); trying REST", rsid, exc)
         return self.resolve_rsid_rest(rsid)
 
     def resolve_rsid_rest(self, rsid: str) -> tuple[list[dict] | None, str | None]:
         """`resolve_rsid`'s V1 half on its own: REST's `/variation` mapping, with the same four outcomes.
 
         The placement witness (RM267) asks this, not `resolve_rsid`: its question is where REST's own
-        mapping puts the rsID, through RM268's anchor, and a GraphQL answer — another surface, whose
-        indel convention is unprobed — would answer a different one. It also spares a request per rsID
-        to the beta endpoint, which answers a redirect today.
+        mapping puts the rsID, through RM268's anchor, and an injected resolver's `resolve_rsid` may
+        answer from any surface. It is an optional capability of an injected one (`RestWitness`).
         """
         try:
             loci, withheld, unplaceable = self._rest_rsid(rsid)
@@ -204,28 +172,6 @@ class EnsemblResolver:
             )
         return loci, "ensembl-rest"
 
-    # ── V2: beta GraphQL ──────────────────────────────────────────────────────────────────────
-    @retry(
-        stop=attempt_floor(3),
-        wait=wait_exponential_jitter(initial=0.5, max=8.0),
-        retry=retry_if_exception_type((httpx.TransportError, httpx.TimeoutException)),
-        reraise=True,
-    )
-    def _graphql_rsid(self, rsid: str) -> list[dict]:
-        resp = self._http().post(
-            self.settings.graphql_endpoint,
-            json={
-                "query": _VARIANT_QUERY,
-                "variables": {"genomeId": self.settings.human_genome_id, "variantId": rsid},
-            },
-        )
-        resp.raise_for_status()
-        payload = _json(resp)
-        if payload.get("errors"):
-            raise EnsemblError(f"GraphQL errors for {rsid}: {payload['errors']}")
-        variant = (payload.get("data") or {}).get("variant")
-        return _loci_from_graphql(variant)
-
     # ── V1: legacy REST ───────────────────────────────────────────────────────────────────────
     # A 5xx and a 429 are retried too (RM354's predicate): REST is the rung a run leans on, and the
     # placement witness (RM267) reads a request that never got an answer as "not asked" only after a
@@ -262,10 +208,9 @@ def _json(response: httpx.Response) -> dict:
     """The body as JSON, or `EnsemblError` — so `resolve_rsid` can treat it as a leg that failed.
 
     A 200 carrying HTML (Ensembl's maintenance page, a proxy interstitial) raised a bare
-    `json.JSONDecodeError` here, and `resolve_rsid`'s first `try` catches only `httpx` types and
-    `EnsemblError`: the GraphQL leg answering HTML never fell through to the REST leg the method
-    exists to provide, and `enrich` — which wraps the call in `try/finally` with no `except` — aborted
-    mid-loop instead of recording the subject as unreachable. Typed, both legs now withhold.
+    `json.JSONDecodeError` here, which the request's handler does not catch: `enrich` — which wraps
+    the call in `try/finally` with no `except` — aborted mid-loop instead of recording the subject as
+    unreachable. Typed, the request withholds.
     """
     try:
         payload = response.json()
@@ -344,37 +289,3 @@ def _anchor_rest_alleles(
             return None
         anchored.append(placed[3])
     return start - 1, anchored
-
-
-def _loci_from_graphql(variant: dict | None) -> list[dict]:
-    """Parse a beta GraphQL variant node into GRCh38 loci (best-effort; shape mirrors ensembl-mcp)."""
-    if not variant:
-        return []
-    loc = ((variant.get("slice") or {}).get("location")) or {}
-    chrom, start = loc.get("region_name"), loc.get("start")
-    if chrom is None or start is None:
-        return []
-    ref = next(
-        (
-            a.get("reference_sequence")
-            for a in variant.get("alleles", [])
-            if (a.get("allele_type") or {}).get("value") == "reference"
-        ),
-        None,
-    )
-    if ref is None:
-        return []
-    alts = ",".join(
-        a.get("reference_sequence", "")
-        for a in variant.get("alleles", [])
-        if (a.get("allele_type") or {}).get("value") != "reference" and a.get("reference_sequence")
-    )
-    if ref in ("", "-") or "-" in (alts or "").split(","):
-        # A one-sided indel. REST's coordinate convention for it was probed (RM268) and this node's
-        # was not — the beta endpoint answers no bare rsID today — so it is withheld rather than
-        # anchored on a guess. `[]` hands the rsID to the REST leg, which anchors it.
-        return []
-    placed = _placeable_alleles(str(ref), (alts or "").split(","))
-    if placed is None:
-        return []  # RM271: no nucleotide allele, so no locus; REST is asked instead
-    return [{"chrom": str(chrom), "start": int(start), "ref": placed[0], "alts": ",".join(placed[1])}]
