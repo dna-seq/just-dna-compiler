@@ -228,6 +228,33 @@ CLINVAR_TERMS = SourceTerms(
     redistribution=True,
 )
 
+# ClinGen's ClinVar-GKM (RM305), read off its Parquet `manifest.json` on 2026-11-04 (quoted verbatim in
+# docs/probes/LANES_0_8.md §3.3). Its own source name, not `clinvar`: the transformation is ClinGen's,
+# and a module that names this witness has to be able to credit the party that built it. All three
+# permission axes are **documented**: CC0 covers ClinGen's contribution, ClinVar underneath is NCBI
+# public domain (`CLINVAR_TERMS`), and CC0 neither bars sale nor imposes share-alike. The attribution
+# and the disclaimer are the manifest's own words; CC0 cannot grant rights ClinVar's submitters hold,
+# which is what the scope sentence in `notice` says.
+CLINVAR_GKM_TERMS = SourceTerms(
+    source="clinvar_gkm",
+    license="CC0-1.0",
+    license_url="https://dataexchange.clinicalgenome.org/clinvar-gkm/data-use/",
+    attribution=(
+        "Derived from NCBI's ClinVar. If you use or redistribute these data, attribute ClinVar as the "
+        "data source and cite it; cite ClinVar-GKM (doi:10.5281/zenodo.18343663) if you used these files."
+    ),
+    notice=(
+        "CC0 covers ClinGen's contribution (the code and this published transformation) only. It adds "
+        "no restriction, and it cannot grant rights that NCBI or ClinVar's submitters hold. ClinVar's "
+        "disclaimer applies: the information is not intended for direct diagnostic use or medical "
+        "decision-making without review by a genetics professional. ClinVar-GKM is not an NCBI, NLM or "
+        "NIH product and is not endorsed by them."
+    ),
+    share_alike=False,
+    commercial_use=True,
+    redistribution=True,
+)
+
 # Already in the chain and unrestricted — recorded so a module's licence picture is complete rather
 # than only listing the sources that constrain it.
 ENSEMBL_TERMS = SourceTerms(
@@ -881,6 +908,7 @@ TERMS_BY_SOURCE: dict[str, SourceTerms] = {
         CLINGEN_TERMS,
         GENCC_TERMS,
         CLINVAR_TERMS,
+        CLINVAR_GKM_TERMS,
         ENSEMBL_TERMS,
         GNOMAD_TERMS,
         GWAS_CATALOG_TERMS,

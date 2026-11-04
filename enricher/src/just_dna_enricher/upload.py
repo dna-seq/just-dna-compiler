@@ -138,6 +138,10 @@ DEFAULT_MITOMAP_REPO_ID = "just-dna-seq/mitomap"
 #: `LICENSE.txt`, so a puller receives the terms with the bytes.
 DEFAULT_ALPHAGENOME_AVI_REPO_ID = "just-dna-seq/alphagenome_avi"
 
+#: ClinVar-GKM's indel witness (RM305). CC0 over ClinGen's transformation of public-domain ClinVar, so
+#: redistribution is granted; ClinVar's attribution and disclaimer travel as the snapshot's `LICENSE.txt`.
+DEFAULT_CLINVAR_GKM_REPO_ID = "just-dna-seq/clinvar_gkm"
+
 
 def _hf_api(repo_id: str, token: str | None = None):
     """Resolve a write token and return an authenticated ``HfApi``.

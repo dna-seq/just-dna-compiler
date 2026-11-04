@@ -53,6 +53,7 @@ from just_dna_enricher import (
     civic_build,
     clinpgx_build,
     clinvar_build,
+    clinvar_gkm_build,
     constraint_build,
     cpic_build,
     drug_labels_build,
@@ -65,12 +66,14 @@ from just_dna_enricher import (
     pubmind_build,
     strchive_build,
 )
+from just_dna_enricher.clinvar_gkm import ClinVarGkmClient, ClinVarGkmError
 from just_dna_enricher.download import (
     SNAPSHOT_FILE_GLOBS,
     SnapshotNotPublished,
     ensure_alphagenome_avi_snapshot,
     ensure_civic_snapshot,
     ensure_clinpgx_snapshot,
+    ensure_clinvar_gkm_snapshot,
     ensure_clinvar_snapshot,
     ensure_constraint_snapshot,
     ensure_cpic_snapshot,
@@ -99,6 +102,8 @@ from just_dna_enricher.locations import (
     CLINPGX_CACHE_VAR,
     CLINPGX_SUBDIR,
     CLINVAR_CACHE_VAR,
+    CLINVAR_GKM_CACHE_VAR,
+    CLINVAR_GKM_SUBDIR,
     CLINVAR_SUBDIR,
     CONSTRAINT_CACHE_VAR,
     CONSTRAINT_SUBDIR,
@@ -126,6 +131,7 @@ from just_dna_enricher.locations import (
     default_civic_cache_dir,
     default_clinpgx_cache_dir,
     default_clinvar_cache_dir,
+    default_clinvar_gkm_cache_dir,
     default_constraint_cache_dir,
     default_cpic_cache_dir,
     default_drug_labels_cache_dir,
@@ -142,6 +148,7 @@ from just_dna_enricher.locations import (
     resolve_alphagenome_avi_reference,
     resolve_civic_reference,
     resolve_clinpgx_reference,
+    resolve_clinvar_gkm_reference,
     resolve_clinvar_reference,
     resolve_constraint_reference,
     resolve_cpic_reference,
@@ -159,6 +166,7 @@ from just_dna_enricher.upload import (
     DEFAULT_ALPHAGENOME_AVI_REPO_ID,
     DEFAULT_CIVIC_REPO_ID,
     DEFAULT_CLINPGX_REPO_ID,
+    DEFAULT_CLINVAR_GKM_REPO_ID,
     DEFAULT_CLINVAR_REPO_ID,
     DEFAULT_CONSTRAINT_REPO_ID,
     DEFAULT_CPIC_REPO_ID,
@@ -830,6 +838,52 @@ def _rebuild_mitomap_miss(request: RebuildRequest) -> RebuildOutcome:
     )
 
 
+def _rebuild_clinvar_gkm(request: RebuildRequest) -> RebuildOutcome:
+    """Download ClinVar-GKM's two Parquet inputs whole, verify them, cut the indel witness (RM305).
+
+    **A pin cannot select a release here**: the source publishes one Parquet set and overwrites it
+    every week, so the only release on offer is the current one. A pin is therefore checked rather
+    than obeyed, and a pin the source no longer serves is could-not-run, never a build of something
+    else under the pinned name. `--source` names one file and this lane takes three (two Parquet files
+    and the manifest that verifies them), so a local build goes through `clinvar-gkm build`.
+    """
+    if request.source is not None:
+        return RebuildOutcome(
+            "clinvar_gkm",
+            None,
+            "takes three input files (allele.parquet, variation.parquet and the manifest.json that "
+            "verifies them) and --source can name one, so a local build goes through `clinvar-gkm "
+            "build --allele … --variation … --manifest …`",
+        )
+    request.out_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        client = ClinVarGkmClient()
+        if request.pin is not None:
+            served = client.parquet_manifest().source_release
+            if served != request.pin:
+                return RebuildOutcome(
+                    "clinvar_gkm",
+                    None,
+                    f"pinned to {request.pin}, and ClinVar-GKM serves only its current Parquet set "
+                    f"({served}); no earlier set can be downloaded",
+                )
+        result = clinvar_gkm_build.download_and_build(request.out_dir, client=client)
+    except (ClinVarGkmError, ImportError, OSError) as exc:
+        return RebuildOutcome("clinvar_gkm", False, str(exc))
+    lag = (
+        f"; the source's newest weekly release is {result.latest_release}, which has no Parquet yet"
+        if result.source_lags
+        else ""
+    )
+    return RebuildOutcome(
+        "clinvar_gkm",
+        True,
+        f"{result.row_count} indel rows from {result.counts.alleles} alleles "
+        f"({result.with_rsid} with an rsID), dataset {result.dataset}{lag}",
+        result.out_dir,
+    )
+
+
 # ── the registry ────────────────────────────────────────────────────────────────────────────────
 #
 # A list rather than a dict, because the order is what `cache status` prints and a deployment reads
@@ -1110,6 +1164,22 @@ CACHE_LANES: list[CacheLane] = [
         # terms rather than an engineering question. The maintainer took that reading on 2026-09-10,
         # so `redistribution` is `True` and this lane publishes — with the reading recorded as a
         # reading in RM195's history entry, because `sources.csv` shows only a boolean.
+    ),
+    CacheLane(
+        name="clinvar_gkm",
+        approx_mb=16,
+        build_command="clinvar-gkm build",
+        subdir=CLINVAR_GKM_SUBDIR,
+        env_var=CLINVAR_GKM_CACHE_VAR,
+        serves="ClinVar-GKM indels, the placement witness (RM292's checks, RM267)",
+        resolve=resolve_clinvar_gkm_reference,
+        default_dir=default_clinvar_gkm_cache_dir,
+        rebuild=_rebuild_clinvar_gkm,
+        ensure=ensure_clinvar_gkm_snapshot,
+        publish_repo=DEFAULT_CLINVAR_GKM_REPO_ID,
+        # `terms=None` although `CLINVAR_GKM_TERMS` exists, for MITOMAP's reason: this field is the
+        # declared-use gate, and CC0 over public-domain ClinVar refuses no declaration.
+        terms=None,
     ),
 ]
 

@@ -61,6 +61,7 @@ from just_dna_enricher.cli.strchive_commands import draft_repeats_ as draft_repe
 from just_dna_enricher.cli.strchive_commands import strchive_app as strchive_app
 from just_dna_enricher.cli.strchive_commands import strchive_build_ as strchive_build_
 from just_dna_enricher.cli.strchive_commands import strchive_publish_ as strchive_publish_
+from just_dna_enricher.cli.clinvar_gkm_commands import clinvar_gkm_app as clinvar_gkm_app
 
 # isort: on
 import json as json
@@ -292,3 +293,4 @@ app.add_typer(strchive_app, name="strchive")
 app.add_typer(mitomap_app, name="mitomap")
 app.add_typer(atlas_app, name="atlas")
 app.add_typer(alphagenome_app, name="alphagenome")
+app.add_typer(clinvar_gkm_app, name="clinvar-gkm")
