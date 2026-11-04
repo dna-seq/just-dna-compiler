@@ -42,6 +42,13 @@ None open.
   Filed: RM348–RM353. Next: wave 2 (StudyRow batch, RM335, RM292, Open Targets lane, B2, RM349, RM351), wave 3–5,
   four-leaf audit, cut subagent (its brief items in the scratchpad's `cut_brief_notes.md`). Charter wording
   vetted by the person. Never `git branch -D` (classifier).
+  Wave 1 all merged on 0.8 (9bfc87d, 5195 passed); a merge agent is syncing main into 0.8. Wave 2 running, each
+  builder in its own `.claude/worktrees/lead-<unit>` on `build/<unit>`: studyrow, RM335, RM292, RM333 (Open Targets
+  lane + RM239 + RM236), meta-derived (RM327 tradeoff), RM349, RM351, RM305 (ClinVar-GKM), RM353 (on main); RM352
+  still building. Quota ran past 85% at 05:15 CET: a builder that died on quota is respawned after the 07:29 CET
+  reset with "continue from build/<unit>'s last commit" (shared brief: scratchpad `worker_common_w2.md`).
+  Wave 3 after the StudyRow batch: study-orphan widening, RM331's computed LD pair; wave 4: RM267, examples;
+  wave 5: RM270, release-gate sweep.
 
 - **0.8's build** (the pm's handout, 2026-11-04): the plan is `docs/proposals/PROPOSAL_0_8_PT2.md`
   (3d5adcd), critic-read. Seven pm questions in its §4, each with a default the build takes. Wave 0 is
