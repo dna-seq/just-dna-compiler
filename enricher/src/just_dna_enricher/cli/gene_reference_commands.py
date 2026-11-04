@@ -94,20 +94,21 @@ def constraint_publish_(
     """Create-or-update the dataset repo and upload the built constraint snapshot (publisher/dev)."""
     from just_dna_enricher.upload import (
         DEFAULT_CONSTRAINT_REPO_ID,
-        plan_reference_snapshot,
+        PublishRefused,
         publish_reference_snapshot,
+        rehearse_reference_snapshot,
     )
 
     target = repo_id or DEFAULT_CONSTRAINT_REPO_ID
-    if dry_run:
-        plan = plan_reference_snapshot(snapshot_dir, target)
-        typer.echo(f"Would upload to {plan.repo_id}:")
-        for f in plan.files:
-            typer.echo(f"  • {f}")
-        return
     try:
+        if dry_run:
+            plan = rehearse_reference_snapshot(snapshot_dir, target)
+            typer.echo(f"Would upload to {plan.repo_id}:")
+            for f in plan.files:
+                typer.echo(f"  • {f}")
+            return
         plan = publish_reference_snapshot(snapshot_dir, target, commit_message=commit_message)
-    except (FileNotFoundError, PermissionError, ImportError) as exc:
+    except (PublishRefused, PermissionError, ImportError) as exc:
         typer.secho(f"PUBLISH FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
     typer.secho(

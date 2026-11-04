@@ -475,7 +475,11 @@ def alphagenome_publish_(
     payload first, then `release.json` — the description must never arrive before the bytes it
     describes.
     """
-    from just_dna_enricher.upload import plan_reference_snapshot, publish_reference_snapshot
+    from just_dna_enricher.upload import (
+        PublishRefused,
+        publish_reference_snapshot,
+        rehearse_reference_snapshot,
+    )
 
     target = repo or DEFAULT_ALPHAGENOME_AVI_REPO_ID
     if snapshot is None:
@@ -493,7 +497,7 @@ def alphagenome_publish_(
         typer.echo(f"  using {snapshot}")
     try:
         if dry_run:
-            plan = plan_reference_snapshot(snapshot, target)
+            plan = rehearse_reference_snapshot(snapshot, target)
             typer.echo(f"would upload {len(plan.files)} file(s) to {plan.repo_id}:")
             for name in plan.files:
                 size = (snapshot / name).stat().st_size if (snapshot / name).is_file() else 0
@@ -504,7 +508,7 @@ def alphagenome_publish_(
             )
             return
         plan = publish_reference_snapshot(snapshot, target, commit_message=message)
-    except (FileNotFoundError, PermissionError, ImportError, ValueError) as exc:
+    except (PublishRefused, PermissionError, ImportError, ValueError) as exc:
         typer.secho(f"PUBLISH FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
     if KNOT_FILENAME not in plan.files:

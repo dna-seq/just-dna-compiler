@@ -41,6 +41,30 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM368: a module publish sends exactly the bytes it checked, and every dry run runs the real run's checks (0.8, uncut)
+
+**enricher** — what the publisher plans, checks and sends is now one reading of the disk.
+
+- **The plan's bytes are what is sent.** `UploadPlan.sha256` records every planned file's hash,
+  `manifest.json` from the bytes it was parsed from. After the versioned-path check each file is read
+  once more, compared, and those bytes are committed through `create_commit`; a file that changed in
+  between (a recompile still writing) raises `PlanChangedError` before either commit. It used to be
+  re-read by `upload_folder` after the check.
+- **A malformed declared field refuses.** `artifact.files` that is not a list, a `sha256` that is not
+  a string, a `logs`/`logo`/`readme`/`provenance` of the wrong shape used to read as absent and drop
+  the check it feeds; the plan now refuses, quoting the field. Absent or `null` still withholds. A
+  whitespace-only `name` names no file.
+- **The manifest itself is compared at the versioned path.** The same data under a new title replaced
+  the published manifest of a version without `--force`; the refusal now names the dotted paths that
+  differ.
+- **Every dry run rehearses.** `upload --dry-run` reads the published manifest of the version
+  (read-only, anonymous without a token) and refuses as the real run would; every snapshot
+  `publish --dry-run` runs the orphan check that two of them ran and the rest skipped.
+- **One error family**, `upload.PublishRefused`: `ModuleNotPublishable` and `SnapshotNotPublishable`
+  (still `FileNotFoundError`s within 0.8), `PlanChangedError`, and the collision and orphan types
+  re-based under it. `cpic publish` and `clinpgx publish` print a refusal as one line instead of a
+  traceback. INTEGRATION_0_8 § 1.20. No format or compiler change, and no identity moves.
+
 ## 2026-11-04 — RM28: a `meta.csv` row can be scoped to a drug, so one phenotype pair states each thiopurine's recommendation (0.8, uncut)
 
 - **`meta.csv` gains an optional `drug`** (`MetaRow.drug`, free text as on `diplotypes.csv`, first in

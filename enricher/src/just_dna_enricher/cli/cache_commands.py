@@ -460,10 +460,9 @@ def _publish_rebuilt(lane: CacheLane, outcome: RebuildOutcome, *, dry_run: bool)
     PharmVar cannot be published would make the flag unusable on the set it was written for.
     """
     from just_dna_enricher.upload import (
-        OrphanedSidecarError,
-        check_publish_orphans_no_sidecar,
-        plan_reference_snapshot,
+        PublishRefused,
         publish_reference_snapshot,
+        rehearse_reference_snapshot,
     )
 
     if lane.publish_repo is None:
@@ -480,15 +479,14 @@ def _publish_rebuilt(lane: CacheLane, outcome: RebuildOutcome, *, dry_run: bool)
     payload = STRCHIVE_CATALOGUE_FILENAME if lane.name == "strchive" else None
     try:
         if dry_run:
-            plan = plan_reference_snapshot(snapshot_dir, lane.publish_repo, payload=payload)
             # The remote check runs here too: a dry run that skips what a publish refuses on is the
             # same defect as an allowlist that drops a file the dry run promised — it makes the
             # rehearsal a different operation from the thing (`@publisher-allowlist-derived`).
-            check_publish_orphans_no_sidecar(plan)
+            plan = rehearse_reference_snapshot(snapshot_dir, lane.publish_repo, payload=payload)
             typer.echo(f"    would upload {len(plan.files)} file(s) to {plan.repo_id}: {plan.files}")
             return
         plan = publish_reference_snapshot(snapshot_dir, lane.publish_repo, payload=payload)
-    except (FileNotFoundError, PermissionError, ImportError, OrphanedSidecarError) as exc:
+    except (PublishRefused, PermissionError, ImportError) as exc:
         typer.secho(f"    PUBLISH FAILED: {exc}", fg=typer.colors.RED, err=True)
         return
     typer.secho(f"    published → {plan.repo_id} ({len(plan.files)} files)", fg=typer.colors.GREEN)

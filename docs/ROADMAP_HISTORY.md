@@ -35,6 +35,80 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM368 — what the module publisher plans, checks and sends are three readings of the disk
+
+**SHIPPED 2026-11-04 on `0.8`, uncut — a minor (the 0.8 audit, round 1).** Owner enricher, severity
+medium. Reported by four builders of the 0.8 round, each instance re-verified on `0.8` at `0a5293b`.
+
+**Residuals** won't fix — the reference-snapshot send stays an allowlist over the plan's names: a snapshot records no per-file hash (`SnapshotRelease` has none), so there is no attestation a re-read at send time could defeat, and byte-verifying a 32 GB lane at send would read it twice
+
+**The class.** A publisher states what it will send (the plan), checks it (the plan's refusals and the
+remote guard), and sends it. Each of the three read the disk, the manifest or the remote on its own,
+so they could disagree: a check ran over one reading and the send shipped another; a field read as
+absent dropped the check that field feeds; the dry run ran a different set of checks from the real
+run; a refusal came out as a type no caller could tell from an unrelated failure; and the prose
+describing the checks counted them wrong.
+
+**Instances** (file:line on `0.8` at `0a5293b` → after):
+
+1. `enricher/src/just_dna_enricher/upload.py:918`, `:928` — `upload_folder(folder_path=…)` re-read
+   the directory after the plan hashed the declared files and the guard compared the in-memory
+   manifest; `manifest.json` itself was re-read by the hub. A recompile between the two shipped bytes
+   nothing checked → the plan records every planned file's sha256 (`UploadPlan.sha256`, the
+   manifest's from the very bytes parsed), and the send reads each file once more, compares, and
+   commits those bytes through `create_commit` (`_verified_payload`); a change is `PlanChangedError`.
+2. `upload.py:452–457` (`_file_entries`) and `:644–646` — an `artifact.files` that was not a list
+   read as absent and fell back to the allowlist, dropping the attestation check; `:449`
+   (`_named_entry`) read a non-string `sha256` as unknown, dropping the hash check (`:740`);
+   `:502–512` (`_declared_files`) dropped a `logs`, `logo`, `readme` or `provenance` of the wrong
+   shape → `_declarations` walks `DECLARED_FILE_FIELDS` once and the plan refuses a present-but-
+   malformed field, quoting it (`ModuleNotPublishable`); absent or `null` is still the unknown arm.
+3. `upload.py:743–830` (`_versioned_conflict`) compared the digest and the declared files, never
+   `manifest.json`: the same data under a new title replaced the published manifest of a version
+   without `--force` → a third arm, `_manifest_differences`, names the dotted paths of every other
+   field that differs; a remote manifest whose bytes hash to the plan's is the same release.
+4. `cli/module_commands.py:141` — `upload --dry-run` called `plan_upload` alone and skipped the
+   versioned-path check the real run refuses on, while RM355's title read as parity → `rehearse_upload`
+   (the plan plus the read, read-only, no repo created). The same in the snapshot commands:
+   `civic_commands.py:318`, `gene_reference_commands.py:103`, `mitomap_commands.py:238`,
+   `pgx_commands.py:228`, `:262`, `:548`, `strchive_commands.py:110`, `alphagenome_commands.py:496`
+   skipped the orphan check that `clinvar_commands.py:97` and `cache_commands.py:483` ran →
+   `rehearse_reference_snapshot` for every one.
+5. `enricher/tests/test_upload.py:1389` — the RM355 dry-run test ran a real `upload` with no network
+   guard, offline only because the plan refused first → an autouse fixture blocks `HfApi` and
+   `hf_hub_download` for the whole file.
+6. `upload.py:446` — a whitespace-only `name` named a file → blank is no name. The attested-entry
+   refusal (`:460–473`) covers every entry that is not an object with a non-blank string `name`, wider
+   than the `""` RM355's CHANGELOG entry and ENRICHER bullet describe → ENRICHER states the whole
+   class (RM355's shipped CHANGELOG entry is left as written).
+7. `upload.py:650`, `:661`, `:684`, `:693`, `:700`, `:967`, `:980` raised `FileNotFoundError` for a
+   refusal → `PublishRefused` is the family: `ModuleNotPublishable`, `SnapshotNotPublishable` (both
+   keep `FileNotFoundError` as a second base within 0.8), `PlanChangedError`, and the existing
+   `PublishCollisionError`, `ToolchainDiffersError`, `OrphanedSidecarError` re-based under it. Every
+   CLI `try` around a publish catches the family; `pgx_commands.py:231` and `:265` (`cpic publish`,
+   `clinpgx publish`) caught nothing and tracebacked.
+8. `upload.py:299` "the three refusals `plan_upload` raises" and `cli/module_commands.py:158` "the
+   three `plan_upload` refusals" (there were five); ENRICHER.md "Three consequences" above four
+   bullets, "Four things about the gate" above five, "Three positive rules" → the counts are gone.
+
+**The mechanism.** One plan, read once, is what every check reads and what the send carries: paths
+and hashes, the manifest among them, verified again at send time with the verified bytes sent. One
+walker over a registry of declared fields decides absent (withhold) against malformed (refuse). One
+rehearsal per publisher is the dry run. One error family. The guards: `test_the_publisher_reads_every_field_that_names_a_file`
+(the `ModuleManifest` fields reaching a `FileEntry` or a `Provenance` equal `DECLARED_FILE_FIELDS` ∪
+`SPEC_SIDE_FILE_FIELDS`); `test_every_declared_field_has_a_malformed_case` (the parametrization walks
+that registry); `test_every_refusal_the_publisher_raises_is_in_its_family` (an AST walk: the names
+`upload.py` raises equal `PublishRefused`'s subclasses plus `PermissionError` and `ImportError`);
+`test_every_publish_command_catches_the_refusal_family` (every CLI `try` calling the publisher names
+`PublishRefused`); `test_every_dry_run_is_a_rehearsal` (the CLI's bare-plan callers equal one
+allowlisted reproduction check); and the file-wide network block. Each was mutated once and went red.
+
+**Decisions taken.** Two commits stay two (one `create_commit` carrying both paths is now a small
+change, not taken). A recompile of an unchanged spec states a new `compiled_at`, so republishing it
+under the same version is a collision — the version's manifest would change (P4). The two plan
+refusals keep `FileNotFoundError` as a second base within 0.8, so no existing handler stops
+catching them. RM355's decision that an optional entry naming no file is dropped stands.
+
 ## RM270 — an indel's artifact key is its source's spelling: a left-aligned VCF misses a respelled row, and the spelling-independent id the enricher mints never reaches the artifact
 
 **0.8, decided 2026-11-03.** Taken into 0.8 by the maintainer, with the rest of the indel-placement fixes (RM304, RM267, RM270, RM292, RM305). The status line below predates that decision.

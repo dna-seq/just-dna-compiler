@@ -387,6 +387,17 @@ leftmost spelling, and its `vrs_id` is what joins it.
 **This breaks a 0.7 reader of a 0.8-enriched `resolution.csv`**, for § 1.18's reason: `ResolutionRow`
 forbids unknown columns. Same remedy.
 
+## 1.20 The publisher's refusal family, and what a publish sends (RM368, no break)
+
+| surface | change |
+| --- | --- |
+| `upload.PublishRefused` | New base of every refusal a publish raises. `ModuleNotPublishable` (`plan_upload`'s refusals) and `SnapshotNotPublishable` (`plan_reference_snapshot`'s) are new and **still `FileNotFoundError`s within 0.8**, so an `except FileNotFoundError` keeps catching them; `PlanChangedError` is new; `PublishCollisionError`, `ToolchainDiffersError` and `OrphanedSidecarError` are re-based under it, names and attributes unchanged. A missing token stays `PermissionError`, a missing `huggingface_hub` `ImportError`. |
+| `UploadPlan.sha256` | New field with a default: each planned file's sha256 as the plan read it, `manifest.json` included. |
+| `upload_module` | Sends through `create_commit` carrying the plan's bytes, verified at send time; a file that changed since the plan raises `PlanChangedError` before either commit. Two commits, flat path first, as before. |
+| `plan_upload` | **A tightening:** a declared field present in a shape the compiler never writes (`artifact.files` not a list, a `sha256` not a string, `logs` not a list, `logo`/`readme`/`provenance` not an object) refuses, quoting it, where it read as absent and dropped a check. An absent or `null` field still withholds. A blank `name` names no file. No compiled manifest holds such a field. |
+| the versioned-path guard | Also compares every other field of `manifest.json`, naming the dotted paths that differ; a recompile of an unchanged spec (a new `compiled_at`) under the same version is a collision. |
+| `rehearse_upload`, `rehearse_reference_snapshot` | New: the dry runs, running every check the real publish runs. `upload --dry-run` now reads the published manifest of the version (read-only, anonymous when there is no token) and every snapshot `publish --dry-run` the repo's file list. |
+
 ## 2. What to change
 
 1. If you parse `manifest.json` with `just-dna-format`, move your pin to 0.8 when you start reading
@@ -427,3 +438,7 @@ forbids unknown columns. Same remedy.
 
 10. If you read `verification.json` or `manifest.verification`, upgrade to 0.8 first (§ 1.13), and do not
    count a `self_consistent` check's agreement as evidence for the value it checked (its findings stand).
+
+11. **Publishers (RM368).** Catch `upload.PublishRefused` around a publish rather than
+   `FileNotFoundError`: the two plan refusals keep `FileNotFoundError` as a second base only until 1.0.
+   A `--dry-run` of `upload` or a snapshot `publish` now reads the hub (§ 1.20).
