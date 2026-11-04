@@ -735,6 +735,16 @@ cannot be retyped into a table.
 
 ## RM239 — a fine-mapping posterior has no column, and `gwas_effects.csv` already has its key
 
+**Columns settled 2026-11-04 by the pm seat, on the lead's hand-run probe** (`probes/LANES_0_8.md` on `0.8`, 92eff12):
+`gwas_effects.csv` gains **`posterior_probability` and `fine_mapping_method`**, and no credible-set level.
+
+- Open Targets 26.09 publishes only the 95% set: `is95 = is99 = true` on all 40,967,780 GWAS member rows,
+  so a level column would have no case.
+- The posterior comes from three methods (SuSiE, SuSiE-inf, PICS), and the number means nothing without its
+  method, the same rule as a magnitude carrying its unit.
+
+The column count is the same, and every value has a case. It is a derived table, so half price.
+
 **0.8, decided 2026-11-03.** Kept in 0.8 as an input to longevitymap v2's causal and effector-gene confidence labels (RM333), while the rest of RM188's parity work moved to 0.9.
 
 **Severity** low · **Status** open — **filed 2026-09-13 from [RM188](ROADMAP_0_9.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)'s ClawBio half** ·
