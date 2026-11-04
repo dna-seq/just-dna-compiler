@@ -58,8 +58,12 @@ list (`@registry-completeness`: never a count in prose).
 **Shipped 2026-11-04 on `0.8`.** Instance 1, the class: a mode-ladder finding under `strict` is in
 `errors` and nowhere else. Two routes put it in both, and both are closed. `compile_module` ran its
 pre-flight in `best_effort` whatever its own mode, so it seeded `warnings` with every ladder sentence;
-it now runs the pre-flight in its own mode, which makes the parity contract literal (a strict compile
-refuses with `validate --strict`'s accumulated errors). `ResolutionOutcome.warnings` carried each
+it now runs the pre-flight in its own mode, so a strict compile refuses with `validate --strict`'s
+accumulated errors for every check the pre-flight asks (the deprecated `ensembl_cache` path is told
+apart, because the pre-flight cannot see what that reference places). Unchanged by this item, and
+under the standing resolved-rows exemption: `validate --strict` still reports valid where `compile --strict` refuses on the two resolution
+ladders that read resolved rows (`locus_cannot_host_genotype`, `rsid_coordinate_disagrees`); the test
+pins them as compile-only so the day the pre-flight asks them it says so. `ResolutionOutcome.warnings` carried each
 resolution ladder's warning in both modes; `ResolutionOutcome.channels(strict=)` now routes them through
 `route`, and its docstring no longer says the refusal is published "beside" the warning.
 `compiler/tests/test_one_channel_under_strict.py` asserts the rule over every code the `LadderFinding`

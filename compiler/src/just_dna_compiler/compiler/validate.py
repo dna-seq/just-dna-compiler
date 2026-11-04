@@ -215,8 +215,15 @@ def _validate_spec(
     *,
     strict: bool = False,
     resolve_with_ensembl: bool = True,
+    legacy_reference: bool = False,
 ) -> tuple[ValidationResult, list[str]]:
     """`validate_spec`'s body, plus the findings list the result cannot carry back out.
+
+    `legacy_reference` is `compile_module` saying it holds the deprecated `ensembl_cache`. With no
+    `resolution.csv`, that reference is what places the rows, and this pre-flight cannot see it, so the
+    coverage judgement (per-subject warnings and the `strict` aggregate) is left to the compile, which
+    asks it after resolution. Since RM359 the pre-flight runs in the compile's mode, and without this
+    it refused every rsID-only row the reference was about to place.
 
     Pydantic coerces a `CodedWarning` to a plain `str` on its way into `ValidationResult.warnings`, which
     is right for the published surface and fatal for a caller that seeds its own channel from this
@@ -805,7 +812,7 @@ def _validate_spec(
     # all nothing was consulted, and the compile says so once, in one aggregated line, instead of
     # blaming a file that does not exist once per variant. Both refuse under `strict`, because a
     # partial artifact is unreproducible either way.
-    if variants and resolve_with_ensembl:
+    if variants and resolve_with_ensembl and (membership_table or not legacy_reference):
         unplaceable = unresolved_subjects(variants, membership_table, declared_build)
         if membership_table:
             all_warnings.extend(

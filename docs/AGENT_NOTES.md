@@ -969,9 +969,10 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   route: `ResolutionOutcome.warnings` carried each ladder's warning in both modes, and its docstring
   called the refusal "published beside it", while `mode_ladder.feature` said "refuses instead" — two of
   our own texts disagreeing, and the code followed the wrong one. The repair is the pre-flight in the
-  compile's mode (the parity contract, `validate(strict=x)` and `compile(strict=x)` reach the same
-  verdict, made literal: a strict compile now refuses with `validate --strict`'s accumulated errors)
-  plus `ResolutionOutcome.channels(strict=)`, which goes through `route`. **The rejected repair** was
+  compile's mode (a strict compile now refuses with `validate --strict`'s accumulated errors for every
+  check the pre-flight asks; the two resolution ladders reading resolved rows stay compile-only, and
+  `legacy_reference` keeps the pre-flight from judging coverage the deprecated `ensembl_cache` will
+  supply, which the first cut of this repair refused on) plus `ResolutionOutcome.channels(strict=)`, which goes through `route`. **The rejected repair** was
   stripping escalated sentences out of `warnings` at each refusal: it leaves a later ladder, one the
   compile returned before re-running, in `warnings` under `strict`, which is one channel and the
   wrong one. Not in this rule, deliberately: the strict-only *aggregates* (`strict compile: N

@@ -136,7 +136,7 @@ def test_compiler_doc_counts_match_the_registries(pattern: str, expected, what: 
 _A_TOTAL = re.compile(
     r"\b(\d+|"
     + "|".join(sorted(_WORDS, key=len, reverse=True))
-    + r")\s+(entries|table kinds|binning kinds)\b",
+    + r")\s+(entries|table kinds|binning kinds|vocabularies|parquets|codes)\b",
     re.IGNORECASE,
 )
 
@@ -157,7 +157,10 @@ def test_a_generated_roster_is_described_by_its_rule_never_its_total(doc: str, a
     """
     text = (_DOCS / doc).read_text(encoding="utf-8")
     assert text.count(anchor) == 1, f"{anchor!r} moved in {doc}; re-point this test at the sentence"
-    paragraph = text.split(anchor)[1].split("\n\n")[0]
+    before, after = text.split(anchor)
+    # The whole paragraph the anchor sits in, not only its tail: a total in the sentence before is the
+    # same claim.
+    paragraph = before.rsplit("\n\n", 1)[-1] + anchor + after.split("\n\n")[0]
     assert not _A_TOTAL.search(paragraph), (
         f"{doc} states a total beside a generated roster: {paragraph[:200]!r}"
     )

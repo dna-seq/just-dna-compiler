@@ -156,6 +156,20 @@ def test_deprecated_ensembl_cache_path_warns(tmp_path: Path) -> None:
     assert result.success, result.errors
 
 
+def test_deprecated_ensembl_cache_path_still_compiles_under_strict(tmp_path: Path) -> None:
+    """RM359 runs the pre-flight in the compile's mode, and the pre-flight cannot see `ensembl_cache`.
+
+    So without `legacy_reference` it judged coverage against an empty table and refused every rsID-only
+    row the injected reference was about to place, telling the caller to inject the reference they had
+    injected. The compile asks coverage itself after resolution, which is where it belongs here.
+    """
+    spec = _spec(tmp_path / "spec", "rsid,genotype,state,conclusion\nrs1801133,A/G,risk,c1\n")
+    with pytest.warns(DeprecationWarning, match="deprecated"):
+        result = compile_module(spec, tmp_path / "out", ensembl_cache=_cache(tmp_path), strict=True)
+    assert result.success, result.errors
+    assert not [w for w in result.warnings if "No resolution.csv and no ensembl_cache injected" in w]
+
+
 def test_digest_parity_and_offline_roundtrip(tmp_path: Path) -> None:
     variants = (
         "rsid,chrom,start,ref,genotype,state,conclusion,gene\n"

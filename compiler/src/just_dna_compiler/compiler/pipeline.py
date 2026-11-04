@@ -215,14 +215,18 @@ def compile_module(
     # mode, so it seeded `all_warnings` with every mode-ladder sentence and a `strict` compile then
     # refused with the same finding in `errors`: one finding on two channels, counted twice by any
     # consumer. In the compile's mode a ladder finding lands where its severity puts it, and only
-    # there; and the pre-flight's refusal is `validate --strict`'s, which is the parity contract
-    # (`validate(strict=x)` and `compile(strict=x)` reach the same verdict) made literal. The ladder
-    # checks still re-run below, over the rows the compile changes (post-drop, post-resolution).
-    # `resolve_with_ensembl` is passed for its own reason: it is not a severity, it decides whether the
-    # injected table is consulted at all, and a pre-flight answering that differently would seed
-    # `all_warnings` with a finding this compile contradicts.
+    # there, and every refusal the pre-flight can ask is `validate --strict`'s own. The ladders that
+    # read RESOLVED rows (`locus_cannot_host_genotype`, `rsid_coordinate_disagrees`) are compile-only
+    # and refuse further down. `resolve_with_ensembl` is passed for its own reason: it is not a
+    # severity, it decides whether the injected table is consulted at all, and a pre-flight answering
+    # that differently would seed `all_warnings` with a finding this compile contradicts.
+    # `legacy_reference` tells it the deprecated `ensembl_cache` will place rows it cannot see.
     validation, validation_findings = _validate_spec(
-        spec_dir, authority_keys, strict=strict, resolve_with_ensembl=resolve_with_ensembl
+        spec_dir,
+        authority_keys,
+        strict=strict,
+        resolve_with_ensembl=resolve_with_ensembl,
+        legacy_reference=ensembl_cache is not None,
     )
     if not validation.valid:
         # The classified list, not `validation.warnings` — a failed compile publishes the same
@@ -519,7 +523,7 @@ def compile_module(
                     success=False,
                     errors=[f"resolution: {e}" for e in outcome.errors]
                     + [f"strict resolution: {e}" for e in resolve_strict_errors],
-                    warnings=all_warnings + resolve_warnings,
+                    warnings=all_warnings + [w for w in resolve_warnings if w not in all_warnings],
                 )
             # `resolution_sources` / `resolution_sig` are stamped where the table is READ, several
             # blocks up — not here. This branch is about applying the table to `variants.csv`, and

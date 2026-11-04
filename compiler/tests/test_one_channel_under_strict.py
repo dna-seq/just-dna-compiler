@@ -67,6 +67,12 @@ class Case:
     #: from `strict`'s warnings is asserted.
     fragment: str
     files: dict[str, str] = field(default_factory=dict)
+    #: A fragment of the STRICT refusal, where it is a different sentence from the warning (the
+    #: resolution ladders); `None` means the refusal is the warning's own sentence.
+    refusal: str | None = None
+    #: Whether `validate --strict` asks this finding. Two resolution ladders read RESOLVED rows and are
+    #: compile-only (the standing exemption), so the pre-flight neither refuses nor warns on them.
+    preflight: bool = True
 
 
 CASES = [
@@ -132,6 +138,7 @@ CASES = [
             "resolution.csv": _RES_HEADER
             + _res(_KEY_7_700, "rs777", 7, 700, "C", "G", status="ambiguous", alternates="rs777,rs888"),
         },
+        refusal="a deterministic pick among equals, not a fact",
     ),
     Case(
         "locus_cannot_host_genotype",
@@ -143,6 +150,8 @@ CASES = [
             + _res("rs999", "rs999", 5, 500, "C", "G", 0)
             + _res("rs999", "rs999", 6, 600, "A", "T", 1),
         },
+        refusal="makes the compile non-reproducible from the injected table",
+        preflight=False,
     ),
     Case(
         "rsid_coordinate_disagrees",
@@ -152,6 +161,8 @@ CASES = [
             "studies.csv": "rsid,pmid\nrs777,29165669\n",
             "resolution.csv": _RES_HEADER + _res("rs777", "rs777", 9, 900, "C", "G"),
         },
+        refusal="The authored value is kept, so the table's position does not survive a",
+        preflight=False,
     ),
 ]
 
@@ -201,7 +212,10 @@ def test_an_escalated_finding_is_an_error_and_never_also_a_warning(case: Case, t
 
     strict = compile_module(spec, tmp_path / "strict", strict=True)
     assert not strict.success
-    assert strict.errors
+    refusal = case.refusal or case.fragment
+    assert any(refusal in e for e in strict.errors), (
+        f"{case.code}: strict refused, but not with this finding: {strict.errors}"
+    )
     both = set(strict.errors) & set(strict.warnings)
     assert not both, f"{case.code}: on both channels in one strict run: {sorted(both)}"
     leaked = [w for w in strict.warnings if case.fragment in w]
@@ -210,8 +224,24 @@ def test_an_escalated_finding_is_an_error_and_never_also_a_warning(case: Case, t
 
 @pytest.mark.parametrize("case", CASES, ids=lambda c: c.code)
 def test_validate_strict_keeps_the_same_rule(case: Case, tmp_path: Path) -> None:
-    """`validate --strict` is the pre-flight for `compile --strict`; it owes the same one channel."""
+    """`validate --strict` is the pre-flight for `compile --strict`; it owes the same one channel.
+
+    Proven to fire first, so the absence is not vacuous: a pre-flight case must warn under
+    `best_effort` and refuse under `strict` with this finding. A compile-only case is pinned as one,
+    silent in both modes, so the day the pre-flight learns to ask it this test says so.
+    """
     spec = _spec(tmp_path, case)
+    lenient = validate_spec(spec)
     result = validate_spec(spec, strict=True)
     assert not set(result.errors) & set(result.warnings)
     assert not [w for w in result.warnings if case.fragment in w]
+    if case.preflight:
+        # `rsid_ambiguous`'s best_effort sentence is the compile's alone; the pre-flight asks only its
+        # strict refusal (`ambiguous_refusals`), so the warning half is proven on the compile test.
+        if case.refusal is None:
+            assert any(case.fragment in w for w in lenient.warnings), lenient.warnings
+        assert not result.valid
+        assert any((case.refusal or case.fragment) in e for e in result.errors), result.errors
+    else:
+        assert not [w for w in lenient.warnings if case.fragment in w]
+        assert not [e for e in result.errors if (case.refusal or case.fragment) in e]
