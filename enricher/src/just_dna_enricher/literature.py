@@ -1613,8 +1613,10 @@ def enrich_literature(
     _tally_existence(result, citations)
     # A DOI no registration agency knows is a cited DOI that does not resolve, whichever kind of row
     # cites it (RM349), so the `strict` gate and the report below name it with the others.
+    # Both sides by `doi_key` (RM363): the PubMed path records the registry's DOI as the registry spells it.
+    missing = {doi_key(doi) for doi in result.doi_missing}
     result.doi_missing += [
-        c.doi for c in result.doi_citations if c.exists is False and doi_key(c.doi) not in result.doi_missing
+        c.doi for c in result.doi_citations if c.exists is False and doi_key(c.doi) not in missing
     ]
     _tally_quotes(result, citations)
     _compare_identifiers(result, citations)

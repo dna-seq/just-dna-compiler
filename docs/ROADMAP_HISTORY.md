@@ -70,7 +70,10 @@ checks, and the meta-table's expansion two files away still compared raw.
   (`literature.py:2521`) stripped `.,;` (measured: `10.1101/2024.01.01.123456.` keyed two ways). The DOI-only
   path (`literature.py:567-570/1663/1668`, Crossref's request) and `duplicate_study_citation`
   (`table_checks.py:394`) used the first; the PubMed path (`:1764/:2484/:2489`) the second; schema
-  `literature.py:282` ran `DOI_PATTERN` itself. → one body, `spelling.doi_token`/`doi_key`.
+  `literature.py:282` ran `DOI_PATTERN` itself; neither stripped a bracket or quote from prose around a DOI
+  (`(10.1101/…)`), found by the review. → one body, `spelling.doi_token`/`doi_key`, which also drops a trailing
+  quote and a closing bracket the DOI does not open (`10.1016/S0140-6736(17)30058-2` keeps its own); the
+  enricher's `doi_missing` dedup compares both sides by the key.
 - **PMID.** `duplicate_study_citation` keyed the raw `pmid` cell, so `[PMID: 30642433]` and `30642433` were
   two citations while `cited_pmids` read them as one → `spec.citation_key` (PMIDs through `extract_pmids`, or
   `NONE` + the DOI key).
@@ -79,7 +82,8 @@ checks, and the meta-table's expansion two files away still compared raw.
   `clinpgx_draft.py:182/223` and `drug_labels.py:348/364/368` each re-typed `.strip().lower()` or
   `.casefold()` → `drug_key`; `meta_resolved.parquet` names a folded scope by its first spelling. A meta
   row's `drug` was never compared with its member rows' → `meta_member_drug_disagrees` (new code, warning in
-  both modes, nothing withheld).
+  both modes, nothing withheld; an allele row is checked against the diplotypes it reaches by containment too,
+  through the one `_contained` rule the resolver reads).
 
 **Hunted and not instances.** `trait_efo_id`, haplotype and allele names, `sex` (a closed vocabulary stored
 as its member), rsIDs (`^rs\d+$`, one spelling), ancestry and population labels (`normalize_population`,
@@ -89,7 +93,7 @@ themselves (the ACMG SF list, STRchive's loci) and stay raw, listed with that re
 **The mechanism.** `just_dna_format.spelling` holds one comparison per kind (`gene_key`, `drug_key`,
 `doi_key`/`doi_token`, and `fold_chrom` as `ChromCell`), `COMPARISON_KEYS` maps a column name to it, and
 `comparison_key(column, value)` is what generic code (meta selectors, `same_row`'s distinct-when-stated
-columns, meta scopes) calls. Gene and drug cells are stored as written (`@verbatim-except-order`); `chrom`
+columns, meta scopes, and the duplicate key of a table new in 0.8) calls. Gene and drug cells are stored as written (`@verbatim-except-order`); `chrom`
 keeps the input fold `VariantRow` already had. The guards (`schema/tests/test_one_normalizer_per_kind.py`):
 the set of string fields named `gene`/`*_gene`/`drug`/`doi`/`chrom` over `_ALL_MODELS` equals the registry;
 the set of `chrom` fields equals the set declared `ChromCell`; an AST walk over `compiler/src` and
@@ -100,7 +104,7 @@ attribute outside a key function, the six one-source sites excepted by equality;
 `partner_gene` field added) and went red. Behaviour on the real compile path:
 `compiler/tests/test_one_normalizer_per_kind.py`, with a round trip carrying two spellings of each kind.
 
-**Residuals** won't fix — the duplicate-row refusal still keys on stored cells, because folding gene or drug case there would refuse rows a published module may hold (Principle 3) · won't fix — `trait_efo_id` written `EFO_n` and `EFO:n` stays two values, because unifying an ontology CURIE's two legal forms is a vocabulary decision and not a second normalizer · won't fix — an enricher query to a remote source (PharmVar's alleles for a gene, gnomAD's constraint, HGNC) still sends the authored spelling, because which case each remote accepts is that source's convention and the answers are now compared by key
+**Residuals** won't fix — within 0.x, the duplicate-row refusal of a table older than 0.8 still keys on stored cells, because folding gene or drug case there would refuse rows a published module may hold (Principle 3); a table new in 0.8 (`meta.csv`, `model_organisms.csv`) folds, derived from its fields' `first_seen` marks in `tables._key_compared` · won't fix — `trait_efo_id` written `EFO_n` and `EFO:n` stays two values, because unifying an ontology CURIE's two legal forms is a vocabulary decision and not a second normalizer · won't fix — an enricher query to a remote source (PharmVar's alleles for a gene, gnomAD's constraint, HGNC) still sends the authored spelling, because which case each remote accepts is that source's convention and the answers are now compared by key
 
 ## RM270 — an indel's artifact key is its source's spelling: a left-aligned VCF misses a respelled row, and the spelling-independent id the enricher mints never reaches the artifact
 

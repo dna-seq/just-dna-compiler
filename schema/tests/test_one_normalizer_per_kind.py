@@ -83,6 +83,8 @@ def test_every_chrom_field_folds_on_input() -> None:
         ("drug", "azathioprine", "Azathioprine"),
         ("doi", "10.1101/2024.01.01.123456", "https://doi.org/10.1101/2024.01.01.123456."),
         ("doi", "10.1038/S41586-020-2308-7", "10.1038/s41586-020-2308-7;"),
+        ("doi", "10.1101/2025.03.01.640000", "(10.1101/2025.03.01.640000)"),
+        ("doi", "10.1000/abc", '"10.1000/abc";'),
         ("chrom", "12", "chr12"),
     ],
 )
@@ -99,6 +101,8 @@ def test_the_doi_key_is_the_literature_passs_token() -> None:
     # The two bodies this replaced disagreed on exactly this cell (the audit's measured pair).
     assert doi_key("10.1101/2024.01.01.123456.") == "10.1101/2024.01.01.123456"
     assert doi_key("doi:10.1000/X,") == "10.1000/x"
+    # A bracket the DOI opens is part of it; only an unbalanced closer is the prose around it.
+    assert doi_key("10.1016/S0140-6736(17)30058-2.") == "10.1016/s0140-6736(17)30058-2"
 
 
 def test_distinct_spellings_keeps_the_first_and_sorts() -> None:

@@ -44,7 +44,10 @@ VALID_CHROMOSOMES: frozenset[str] = frozenset({str(i) for i in range(1, 23)} | {
 DOI_PATTERN: re.Pattern[str] = re.compile(r"10\.\d{4,9}/\S+")
 
 #: Punctuation a DOI token picks up from the prose around it and never ends in.
-_DOI_TRAILING = ".,;"
+_DOI_TRAILING = ".,;\"'"
+
+#: A closer and its opener: trailing only when the token does not open it.
+_DOI_CLOSERS: dict[str, str] = {")": "(", "]": "[", ">": "<"}
 
 
 def fold_chrom(value: str | None) -> str | None:
@@ -76,11 +79,20 @@ def drug_key(drug: str) -> str:
 def doi_token(raw: str) -> str | None:
     """The DOI a free-form cell names, as two cells compare it, or `None` when it names none.
 
-    The token is lower-cased (DOIs are case-insensitive) and loses trailing `.`, `,` and `;`, which a DOI
-    pasted from prose carries and a registered DOI does not end in. The `None` arm is for text that is not
+    The token is lower-cased (DOIs are case-insensitive) and loses a trailing `.`, `,`, `;` or quote and an
+    unbalanced closing bracket, which a DOI pasted from prose carries and a registered DOI does not end in. The `None` arm is for text that is not
     a validated `doi` cell — a registry's answer, a free-text field."""
     match = DOI_PATTERN.search(raw)
-    return match.group(0).rstrip(_DOI_TRAILING).casefold() if match else None
+    if match is None:
+        return None
+    token = match.group(0).rstrip(_DOI_TRAILING)
+    # A closing bracket or quote the token does not open is the prose around it: `(10.1/x)`. One the token
+    # opens is part of the DOI (`10.1016/0140-6736(17)30058-2`), so only an unbalanced one goes.
+    while (
+        token and token[-1] in _DOI_CLOSERS and token.count(token[-1]) > token.count(_DOI_CLOSERS[token[-1]])
+    ):
+        token = token[:-1].rstrip(_DOI_TRAILING)
+    return token.casefold()
 
 
 def doi_key(doi: str) -> str:

@@ -227,20 +227,54 @@ def test_a_meta_row_whose_drug_disagrees_with_its_member_rows_warns(tmp_path: Pa
     assert "line 2" in warning
 
 
+def test_an_allele_row_scoped_to_a_drug_is_checked_against_the_diplotypes_it_reaches(tmp_path: Path) -> None:
+    """The contained reach attaches a one-member allele row's facts to its diplotypes, so those count."""
+    meta = _META_HEADER + '"allele_function[gene=TPMT, allele=*3B]",,ADULT,{drug}\n'
+    for drug, expected in (("azathioprine", 0), ("mercaptopurine", 1)):
+        spec = _drug_module(tmp_path, drug, meta.format(drug=drug))
+        (spec / "allele_function.csv").write_text(
+            "gene,allele,function_status\nTPMT,*3B,no_function\n", encoding="utf-8"
+        )
+        result = validate_spec(spec, resolve_with_ensembl=False)
+        assert _codes(result).get("meta_member_drug_disagrees", 0) == expected, drug
+
+
 def test_one_drug_written_two_ways_is_one_scope(tmp_path: Path) -> None:
+    """Two rows on two scopes that share a drug written two ways: the drug axis holds one value, named
+    in its first spelling, and the narrower `(male, drug)` row outranks the `(none, drug)` one there."""
     member = '"diplotypes[gene=TPMT, haplotype_b=*3B]"'
-    meta = _META_HEADER + f"{member},,ADULT,azathioprine\n{member},A,,Azathioprine\n"
-    spec = _drug_module(tmp_path, "scope", meta + "")
-    (spec / "module_spec.yaml").write_text(_SPEC_YAML + "tier_scale: A-C\n", encoding="utf-8")
+    meta = (
+        "members,tier,age_of_action,sex,drug\n"
+        + f"{member},,ADULT,,azathioprine\n{member},,CHILD,male,Azathioprine\n"
+    )
+    spec = _drug_module(tmp_path, "scope", meta)
     result = compile_module(spec, tmp_path / "out", resolve_with_ensembl=False)
     assert result.success, result.errors
     frame = pl.read_parquet(tmp_path / "out" / "meta_resolved.parquet")
-    scoped = frame.filter(pl.col("drug").is_not_null())
-    assert scoped.height == 1
-    (row,) = scoped.iter_rows(named=True)
-    # Both facts land in the one scope, and it is named in the first authored spelling.
-    assert (row["drug"], row["tier"], row["age_of_action"]) == ("azathioprine", "A", "ADULT")
-    assert drug_key(row["drug"]) == "azathioprine"
+    scoped = {(r["sex"], r["drug"]): r["age_of_action"] for r in frame.iter_rows(named=True) if r["drug"]}
+    assert scoped == {(None, "azathioprine"): "ADULT", ("male", "azathioprine"): "CHILD"}
+    assert {drug_key(drug) for _sex, drug in scoped} == {"azathioprine"}
+
+
+def test_a_table_new_in_0_8_refuses_a_duplicate_written_two_ways_and_an_older_one_does_not(
+    tmp_path: Path,
+) -> None:
+    """`meta.csv` is held by no published module, so its key compares through the keys; `diplotypes.csv`
+    is, so its refusal stays on the stored cell (Principle 3) and two case spellings stay two rows."""
+    member = '"diplotypes[gene=TPMT, haplotype_b=*3B]"'
+    meta = _write(
+        tmp_path / "meta",
+        {
+            "haplotypes.csv": _HAPLOTYPES,
+            "diplotypes.csv": _DIPLOTYPES,
+            "meta.csv": _META_HEADER + f"{member},,ADULT,azathioprine\n{member},,CHILD,Azathioprine\n",
+        },
+    )
+    refused = validate_spec(meta, resolve_with_ensembl=False)
+    assert [e for e in refused.errors if "meta.csv: duplicate row for key" in e], refused.errors
+    dips = _DIPLOTYPES + "Tpmt,*1,*3B,Intermediate Metabolizer,Azathioprine,Reduced dose.\n"
+    older = _write(tmp_path / "older", {"haplotypes.csv": _HAPLOTYPES, "diplotypes.csv": dips})
+    assert not [e for e in validate_spec(older, resolve_with_ensembl=False).errors if "duplicate row" in e]
 
 
 def test_a_meta_selector_names_a_drug_in_any_case(tmp_path: Path) -> None:

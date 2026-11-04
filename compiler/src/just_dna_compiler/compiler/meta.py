@@ -212,25 +212,46 @@ def _matches_nothing(index: int, text: str, table: str) -> str:
     )
 
 
-def _drug_disagrees(index: int, text: str, table: str, drug: str, stated: list[str]) -> str:
+def _drug_disagrees(index: int, text: str, tables: str, drug: str, stated: list[str]) -> str:
     return (
         f"{META_CSV} line {_line(index)}: the row is about drug {drug!r} and member {text!r} reaches "
-        f"{table} rows about {stated}. A drug-scoped row's facts apply where {drug!r} is prescribed, so "
+        f"{tables} rows about {stated}. A drug-scoped row's facts apply where {drug!r} is prescribed, so "
         f"stating them over a finding about another drug pairs two claims that are not about the same "
-        f"thing. Name the drug in the member ({table}[…, drug={drug}]) or correct the row's `drug`."
+        f"thing. Name the drug in a member whose table carries one (`diplotypes[…, drug={drug}]`), or "
+        f"correct the row's `drug`."
     )
 
 
-def _member_drug_disagrees(row: MetaRow, table_rows: list[Any], hits: list[MetaMatch]) -> list[str]:
-    """The drugs a member's matched rows state that the meta row's `drug` is not (RM363), in row order.
+def _member_drug_disagrees(row: MetaRow, reached: list[Any]) -> list[str]:
+    """The drugs the rows a member reaches state that the meta row's `drug` is not (RM363), in row order.
 
-    By `drug_key`, so a spelling is never a disagreement. A matched row stating no drug, or a meta row
-    stating none, is unknown and adds nothing (`@absent-is-not-different`)."""
+    `reached` is what the row's facts land on: the member's matches, and for a one-member `allele_function`
+    row the diplotypes containing the allele (`_contained`). By `drug_key`, so a spelling is never a
+    disagreement. A reached row stating no drug, or a meta row stating none, is unknown and adds nothing
+    (`@absent-is-not-different`)."""
     if row.drug is None:
         return []
-    stated = [getattr(table_rows[hit.index], "drug", None) for hit in hits]
+    stated = [getattr(target, "drug", None) for target in reached]
     other = [drug for drug in stated if drug is not None and drug_key(drug) != drug_key(row.drug)]
     return list(dict.fromkeys(other))
+
+
+def _diplotypes_by_gene(diplotypes: list[Any]) -> dict[str, list[int]]:
+    """Diplotype positions by `gene_key`, in authored order — `_contained`'s index, built once."""
+    index: dict[str, list[int]] = {}
+    for position, diplotype in enumerate(diplotypes):
+        index.setdefault(gene_key(diplotype.gene), []).append(position)
+    return index
+
+
+def _contained(allele_row: Any, diplotypes: list[Any], by_gene: dict[str, list[int]]) -> list[int]:
+    """The diplotypes a named allele reaches: its gene's (by `gene_key`, RM363) that carry it on either
+    homolog, in authored order. The one rule `_resolve` and the drug check both read."""
+    return [
+        position
+        for position in by_gene.get(gene_key(allele_row.gene), [])
+        if allele_row.allele in (diplotypes[position].haplotype_a, diplotypes[position].haplotype_b)
+    ]
 
 
 def _allele_ambiguous(index: int, text: str, stated: list[str]) -> str:
@@ -341,6 +362,7 @@ def _resolve(
             held[candidate.meta] = candidate
 
     diplotypes = tables.get("diplotypes") or []
+    by_gene = _diplotypes_by_gene(diplotypes)
     for index, row_members in enumerate(members):
         if len(row_members) != 1:
             continue
@@ -354,12 +376,8 @@ def _resolve(
                 continue
             # A named allele reaches every diplotype of its gene that contains it, so the ε2 and ε4
             # rows meet at ε2/ε4. Ranked below any diplotypes member there (`_outranks`).
-            for position, diplotype in enumerate(diplotypes):
-                if gene_key(diplotype.gene) == gene_key(target.gene) and target.allele in (
-                    diplotype.haplotype_a,
-                    diplotype.haplotype_b,
-                ):
-                    _keep((_TABLE_ORDER.index("diplotypes"), position), _Candidate(index, "contained", rank))
+            for position in _contained(target, diplotypes, by_gene):
+                _keep((_TABLE_ORDER.index("diplotypes"), position), _Candidate(index, "contained", rank))
 
     spelled = _spellings(rows)
     resolved: list[dict[str, Any]] = []
@@ -380,8 +398,8 @@ def _resolve(
                 "table": name,
                 "key": key,
                 **{
-                    name: spelled.get((axis, value), value)
-                    for axis, (name, value) in enumerate(zip(_SCOPE_FIELDS, scope, strict=True))
+                    axis_name: spelled.get((axis, value), value)
+                    for axis, (axis_name, value) in enumerate(zip(_SCOPE_FIELDS, scope, strict=True))
                 },
             }
             withheld: list[str] = []
@@ -435,6 +453,7 @@ def build_meta(rows: list[MetaRow], tables: dict[str, list[Any]], tier_scale: st
     warnings: list[str] = []
 
     by_key: dict[str, dict[str | None, list[int]]] = {}
+    by_gene_of: dict[str, dict[str, list[int]]] = {}
     all_members: list[list[MetaMember]] = []
     all_texts: list[list[str]] = []
     all_matches: list[list[MetaMatch]] = []
@@ -463,12 +482,22 @@ def build_meta(rows: list[MetaRow], tables: dict[str, list[Any]], tier_scale: st
                     CodedWarning("meta_selector_matches_nothing", _matches_nothing(index, text, member.table))
                 )
             row_matches.extend(hits)
-            differing = _member_drug_disagrees(row, table_rows, hits)
+            reached = [table_rows[hit.index] for hit in hits]
+            reached_tables = [member.table]
+            if member.table == "allele_function" and len(row_members) == 1:
+                diplotypes = tables.get("diplotypes") or []
+                by_gene = by_gene_of.setdefault("diplotypes", _diplotypes_by_gene(diplotypes))
+                contained = [
+                    diplotypes[k] for target in reached for k in _contained(target, diplotypes, by_gene)
+                ]
+                reached += contained
+                reached_tables += ["diplotypes"] if contained else []
+            differing = _member_drug_disagrees(row, reached)
             if differing:
                 warnings.append(
                     CodedWarning(
                         "meta_member_drug_disagrees",
-                        _drug_disagrees(index, text, member.table, row.drug or "", differing),
+                        _drug_disagrees(index, text, " and ".join(reached_tables), row.drug or "", differing),
                     )
                 )
             if row.direction is not None and allele_bearing(member) is None:

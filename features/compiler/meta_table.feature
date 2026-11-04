@@ -46,7 +46,8 @@ Feature: The meta-table's members and what they match
     And diplotypes.csv rows that member matches stating drug "azathioprine"
     When the module is compiled
     Then a warning fires whose text contains "A drug-scoped row's facts apply where "
-    And it states that "Name the drug in the member ("
+    And it states that "Name the drug in a member whose table carries one"
     # Drugs compare by `spelling.drug_key`, so "Azathioprine" against "azathioprine" is no finding. A
-    # matched row stating no drug, or a meta row stating none, is unknown and adds nothing. Never a
+    # one-member allele_function row is checked against the diplotypes it reaches by containment too. A
+    # reached row stating no drug, or a meta row stating none, is unknown and adds nothing. Never a
     # refusal and nothing is withheld: the expansion is unchanged, only the pairing is named.

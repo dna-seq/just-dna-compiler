@@ -64,7 +64,8 @@ guards: a model walk asserting the set of gene/drug/DOI/contig fields equals the
 field folds; an AST walk over the compiler and the enricher asserting no site compares one of them raw
 (six sites comparing one source's own records are listed with their reason); and an AST walk refusing a
 hand-typed `.lower()`/`.casefold()` on one, and `DOI_PATTERN` outside the module owning the DOI rule.
-Gene and drug cells stay as written; the duplicate-row refusal is unchanged. Consumer view:
+Gene and drug cells stay as written. The duplicate-row refusal folds only on a table new in 0.8 (`meta.csv`,
+`model_organisms.csv`), where no published module holds a row it would refuse. Consumer view:
 [INTEGRATION_0_8 § 1.20](INTEGRATION_0_8.md).
 
 ## 2026-11-04 — RM28: a `meta.csv` row can be scoped to a drug, so one phenotype pair states each thiopurine's recommendation (0.8, uncut)
