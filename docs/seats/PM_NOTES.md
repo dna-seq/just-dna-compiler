@@ -67,6 +67,9 @@ purpose; normalization is the compiled parquet's job (RM346, 1.0).
   - RM373–RM376: **0.8, by the maintainer's decision in the lead's interview on the migration probe**
     (2026-11-04 evening), which my default did not know of. The lead writes the RM_TOC cleanup at the cut merge.
   - Both scope rows written on main in e1869851 (done).
+- **RM378 (coded errors, from S129) placed in 0.9, 2026-11-05** (f8b595d6), against triage's proposal of 0.8:
+  the person's "the rest goes to 0.9", a permanent vocabulary, two open questions, and RM377 already covers
+  the reporter. The person may take it into 0.8; told in the report, no desk item, since their rule decides it.
 - **RM253's precedent, from just-vcf's lead (2026-11-04)**: the short-read callers they read (GATK,
   DeepVariant, DRAGEN, freeBayes, CGI) all write a repeat-length change as a left-aligned sequence indel,
   so 0.8's spelling matches. The repeat-count forms (ExpansionHunter `<STRn>` + REPCN, TRGT AL/MC,
