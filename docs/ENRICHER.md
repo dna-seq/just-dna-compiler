@@ -974,7 +974,10 @@ measured in place of the row's lead, and the compiler checks the row's `effect_a
 proxy's resolved alleles. A proxy is usually not a module variant (rs4970836 for longevitymap's
 rs646776), so without a subject of its own it has no `resolution.csv` row and the check withholds. It is
 admitted after every table above, so a proxy that is also a module variant keeps that row's subject,
-and a later run keeps its row in scope. The r² between proxy and lead is not computed here yet.
+and a later run keeps its row in scope. The r² between proxy and lead is the `ld-pairs` pass's (§ The
+computed LD pair). The compile carries the proxy's resolved loci on `studies.parquet.proxy_loci`, so
+`reverse` re-emits its `resolution.csv` row; every table listed here is in `SUBJECT_TABLES`, which a test
+holds equal to the tables reverse rebuilds rows from.
 An invalid study row does **not** stop the run, unlike an invalid `pharm_variants.csv` or
 `haplotypes.csv` (coordinate sources, so a run that cannot read one has nothing honest to resolve):
 `studies.csv` only adds proxies, so the valid rows' proxies are asked for and one warning names the

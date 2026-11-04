@@ -458,8 +458,9 @@ def reverse_module(
             genome_build=genome_build,
         )
     studies_path = parquet_dir / "studies.parquet"
-    if studies_path.exists():
-        _write_studies_csv(pl.read_parquet(studies_path), output_dir / "studies.csv")
+    studies_df: pl.DataFrame | None = pl.read_parquet(studies_path) if studies_path.exists() else None
+    if studies_df is not None:
+        _write_studies_csv(studies_df, output_dir / "studies.csv")
 
     # 0.4 table kinds (RM1): each present parquet → its authored CSV.
     positional_frames: list[tuple[str, pl.DataFrame]] = []
@@ -487,6 +488,7 @@ def reverse_module(
             positional_frames,
             sidecar_paths["resolution.csv"],
             genome_build=genome_build,
+            studies_df=studies_df,
         )
 
     # 0.5 derived-fact sidecars: same round-trip, minus the columns that are recomputed rather than
@@ -545,11 +547,22 @@ def reverse_module(
     return output_dir
 
 
+#: The authored tables whose resolved subjects `_write_resolution_csv` rebuilds `resolution.csv` rows from:
+#: `variants.csv` through `weights.parquet`, the positional kinds through their own parquets.
+RESOLUTION_SOURCE_TABLES: tuple[str, ...] = (
+    "variants.csv",
+    *(csv_name for csv_name, _model in _POSITIONAL_TABLE_KINDS),
+    # A study's LD proxy (RM331), through `studies.parquet.proxy_loci`.
+    "studies.csv",
+)
+
+
 def _write_resolution_csv(
     weights_df: pl.DataFrame | None,
     positional: list[tuple[str, pl.DataFrame]],
     output_path: Path,
     genome_build: str = "GRCh38",
+    studies_df: pl.DataFrame | None = None,
 ) -> None:
     """Emit `resolution.csv` from the compiled artifact — the resolved facts, so `reverse → compile`
     is fully offline (no Ensembl reference, no network).
@@ -672,6 +685,32 @@ def _write_resolution_csv(
                 continue
             locus_counter[resolution_key] = 1
             emitted.append(_resolution_record(row, resolution_key, chrom, start, alts_cell, 0, genome_build))
+
+    # A study's LD proxy last (RM331), the order `collect_subjects` admits it in: one that is also a module
+    # variant or a positional row was emitted above under the same key and keeps that row. Several study
+    # rows may name one proxy, and each carries the same loci, so the first one emits them.
+    proxy_rows = (
+        studies_df.iter_rows(named=True)
+        if studies_df is not None and "proxy_loci" in studies_df.columns
+        else ()
+    )
+    for row in proxy_rows:
+        key, loci = row.get("proxy_rsid"), row.get("proxy_loci")
+        if not key or not loci or key in locus_counter:
+            continue
+        locus_counter[key] = len(loci)
+        for locus in loci:
+            emitted.append(
+                _resolution_record(
+                    locus,
+                    key,
+                    locus["chrom"],
+                    locus["start"],
+                    locus.get("alts") or None,
+                    locus["locus_index"],
+                    genome_build,
+                )
+            )
 
     # A module that resolved nothing anywhere gets no file — writing a header-only `resolution.csv`
     # into a reversed spec that never had one would invent a derived sidecar (and a `manifest.derived`

@@ -56,6 +56,12 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   module without the table keeps its digest), `manifest.ld_pairs` summarises it, `reverse` writes the CSV
   back. `VALID_SOURCE_LAYERS` gains `ld_pair`, and the `(ensembl, ld_pair)` licence row commits inside the
   table's write. No new warning code. INTEGRATION_0_8 § 1.2.4; the hand-run is `probes/LANES_0_8.md` § 6.
+- **A proxy's resolved row now survives `compile → reverse → compile`.** It reached no parquet, so the
+  reversed spec lost it, `resolution_signature` moved on lap 2 and the proxy allele check went silent.
+  `studies.parquet` gains the compiler-filled `proxy_loci` (so every module with `studies.csv` gets a new
+  `artifact.digest` on a 0.8 recompile; `content_signature` does not move), and reverse re-emits the rows.
+  A test holds the tables the enricher resolves equal to the tables reverse rebuilds from; the proxy was
+  the only gap.
 
 ## 2026-11-04 — RM333, RM239, RM236: the Open Targets lane fills a locus-to-gene table, its colocalisations, per-transcript consequences and a fine-mapping posterior (0.8, uncut)
 

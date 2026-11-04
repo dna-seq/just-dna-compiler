@@ -72,6 +72,17 @@ The `(ensembl, ld_pair)` licence row commits inside the table's write, only on a
 compiles to `ld_pairs.parquet` with a `manifest.ld_pairs` block, and `reverse` writes it back (P7, tested on
 the real paths). The hand-run calls are `probes/LANES_0_8.md` § 6.
 
+**Fixed the same day: the author's half did not survive a reverse (P7).** The proxy's `resolution.csv` row
+reached no parquet, so `reverse_module` (which rebuilds that table from parquets) dropped it: lap 2's
+`resolution_signature` moved and the proxy allele check went silent (found by the examples builder,
+`test_reference_example_round_trips_to_a_fixed_point`). `studies.parquet` now carries the proxy's
+resolved loci (`proxy_loci`, compiler-filled) and reverse re-emits them, last. The class was checked, not
+only the instance: of the five tables `collect_subjects` draws subjects from (`variants`,
+`pharm_variants`, `haplotypes`, `heteroplasmy`, `studies`), `studies.csv` was the only one reverse did
+not rebuild from; `meta.csv` members are asked of dbSNP but never resolved, so they write no row. A test
+now holds `enrich.subjects.SUBJECT_TABLES` (walked from every `Subject(...)` origin) equal to
+`reverse.RESOLUTION_SOURCE_TABLES`.
+
 **Residuals** none
 
 ## RM333 — the effector gene behind a GWAS locus has no source and no column

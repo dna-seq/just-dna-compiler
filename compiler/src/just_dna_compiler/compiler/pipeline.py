@@ -675,7 +675,9 @@ def compile_module(
     # SNP core: weights/annotations only when the module actually has variants.
     weights_df = _build_weights(variants, config, studies) if variants else None
     annotations_df = _build_annotations(variants, module_name) if variants else None
-    studies_df = _build_studies(studies, module_name) if studies else None
+    studies_df = (
+        _build_studies(studies, module_name, resolution_table, config.genome_build) if studies else None
+    )
     # Names taken from `SNP_CORE_PARQUETS` rather than spelled again: this is the site the binding was
     # extracted from, so a literal here would be the copy the constant exists to remove.
     _weights_name, _annotations_name = SNP_CORE_PARQUETS["variants.csv"]

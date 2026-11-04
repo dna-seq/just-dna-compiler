@@ -323,6 +323,7 @@ def test_the_table_compiles_reverses_and_recompiles_to_the_same_digest(tmp_path:
     second = compile_module(reversed_dir, tmp_path / "out2", strict=True)
     assert second.success, second.errors
     assert second.manifest.artifact.digest == first.manifest.artifact.digest
+    assert second.manifest.compilation.resolution_signature == first.manifest.compilation.resolution_signature
     assert content_signature(reversed_dir) == content_signature(spec)
     assert second.manifest.ld_pairs == first.manifest.ld_pairs
     assert pl.read_parquet(tmp_path / "out2" / "ld_pairs.parquet").equals(table)

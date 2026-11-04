@@ -13,16 +13,19 @@ The snapshot rows are rs646776 and rs4970836 exactly as the provisioned Ensembl 
 so the run is offline and deterministic.
 """
 
+import ast
 import json
 import logging
 from pathlib import Path
 
 import httpx
+import just_dna_enricher.enrich.subjects as subjects_module
 import polars as pl
 import pytest
-from just_dna_compiler.compiler import compile_module
+from just_dna_compiler.compiler import compile_module, reverse_module
+from just_dna_compiler.compiler.reverse import RESOLUTION_SOURCE_TABLES
 from just_dna_enricher.enrich import enrich
-from just_dna_enricher.enrich.subjects import collect_subjects, study_proxy_rsids
+from just_dna_enricher.enrich.subjects import SUBJECT_TABLES, collect_subjects, study_proxy_rsids
 from just_dna_enricher.frequencies import enrich_frequencies
 from just_dna_enricher.gnomad import GnomadClient, GnomadSettings
 from just_dna_enricher.gwas import _module_subjects
@@ -152,3 +155,60 @@ def test_the_frequency_pass_does_not_ask_gnomad_about_a_proxy(tmp_path: Path) ->
     enrich_frequencies(spec, client=client, write=False)
     assert any("1-109275908-C-G" in line for line in asked), asked
     assert not any("109279175" in line for line in asked), asked
+
+
+def test_a_proxys_resolution_row_survives_compile_reverse_compile(tmp_path: Path) -> None:
+    """P7 on the proxy (RM331): reverse rebuilt `resolution.csv` from the weights and positional parquets
+    only, and neither carries a proxy's coordinates. So lap 2 lost the proxy's row, `resolution_signature`
+    moved, and the proxy allele check went silent on the reversed spec. The proxy's resolved loci now
+    ride on `studies.parquet` and reverse re-emits them."""
+    spec = _spec(tmp_path, "A")
+    enrich(spec, offline=True, ensembl_cache=_cache(tmp_path), clinvar_cache=tmp_path, mint_vrs=False)
+    first = compile_module(spec, tmp_path / "a1", strict=True)
+    assert first.success, first.errors
+
+    reverse_module(tmp_path / "a1", tmp_path / "rev1")
+    reversed_rows = pl.read_csv(tmp_path / "rev1" / "resolution.csv", infer_schema=False)
+    proxy = reversed_rows.filter(pl.col("variant_key") == "rs4970836")
+    assert proxy.select("rsid", "chrom", "start", "ref", "alts").rows() == [
+        ("rs4970836", "1", "109279175", "G", "A,C")
+    ]
+    second = compile_module(tmp_path / "rev1", tmp_path / "a2", strict=True)
+    assert second.success, second.errors
+    assert second.manifest.compilation.resolution_signature == first.manifest.compilation.resolution_signature
+    assert second.manifest.artifact.digest == first.manifest.artifact.digest
+
+    # The check still reads the proxy after the reverse: a wrong allele is refused, naming the proxy.
+    studies = pl.read_csv(tmp_path / "rev1" / "studies.csv", infer_schema=False)
+    assert studies.filter(pl.col("proxy_rsid") == "rs4970836")["effect_allele"].to_list() == ["A"]
+    studies.with_columns(
+        pl.when(pl.col("proxy_rsid") == "rs4970836")
+        .then(pl.lit("T"))
+        .otherwise(pl.col("effect_allele"))
+        .alias("effect_allele")
+    ).write_csv(tmp_path / "rev1" / "studies.csv")
+    refused = compile_module(tmp_path / "rev1", tmp_path / "a3", strict=True)
+    assert any("via proxy rs4970836" in e for e in refused.errors), refused.errors
+
+
+def test_every_table_enrich_asks_a_coordinate_for_is_one_reverse_rebuilds_it_from() -> None:
+    """`@registry-completeness` across the round trip: a table whose rows `collect_subjects` admits as
+    resolution subjects writes `resolution.csv` rows, and `compile → reverse → compile` keeps them only if
+    reverse rebuilds them from some parquet. The proxy was the table that had no such parquet. Walked
+    from the code on the enricher side (every `Subject(...)` origin), so a sixth table cannot join
+    without this naming it."""
+    source = Path(subjects_module.__file__).read_text(encoding="utf-8")
+    origins: set[str] = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "Subject":
+            arg = (
+                node.args[7]
+                if len(node.args) > 7
+                else next(k.value for k in node.keywords if k.arg == "origin")
+            )
+            assert isinstance(arg, ast.Constant), (
+                "a Subject's origin is a table name, spelled where it is built"
+            )
+            origins.add(arg.value)
+    assert origins == set(SUBJECT_TABLES)
+    assert set(SUBJECT_TABLES) == set(RESOLUTION_SOURCE_TABLES)
