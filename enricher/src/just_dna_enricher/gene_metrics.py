@@ -338,7 +338,7 @@ def enrich_gene_metrics(
         finally:
             if owned:
                 gnomad.close()
-        api_unanswered = set(gnomad.unanswered) & set(still_missing)
+        api_unanswered = set(getattr(gnomad, "unanswered", {})) & set(still_missing)
 
     # Which release a `not_found` row is reporting absence *from*: the last route actually consulted.
     absent_from = dataset if offline else API_CONSTRAINT_DATASET_LABEL

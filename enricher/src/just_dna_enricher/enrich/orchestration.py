@@ -680,11 +680,13 @@ def _run_enrichment(
         )
 
     # ── live Ensembl link (V2→V1), for cache misses, unless offline ────────────────────────────
+    ensembl_link: object | None = None
     if live_ensembl_runs:
         missing = [v.rsid for v in need_pos if v.rsid and v.rsid not in rsid_to_loci]
         if missing:
             owned = resolver is None
             client = resolver or EnsemblResolver()
+            ensembl_link = client
             try:
                 for rsid in missing:
                     loci, src = client.resolve_rsid(rsid)
@@ -736,12 +738,19 @@ def _run_enrichment(
                         source_of_rsid[rsid] = "gnomad"
                         journal.record(rsid, "gnomad", loci)
                         tracker.settle(subjects_of_rsid.get(rsid, ()))
-                # An rsID gnomAD answered with an error is unchecked, never `not_found` (RM361).
-                unreachable_rsids.update(set(getattr(client, "unanswered", {})) & set(missing))
+                # An rsID gnomAD answered with an error is named, and its row stays whatever an earlier
+                # link answered: the last-resort link's outage may not overwrite another registry's
+                # answer (`@one-registrys-outage-may-not-speak-for-another`, RM361).
+                errored = sorted(set(getattr(client, "unanswered", {})) & set(missing))
+                if errored:
+                    logger.warning(
+                        "gnomAD answered %d rsID(s) with an error rather than a record: %s; their rows "
+                        "keep the earlier links' answer.",
+                        len(errored),
+                        ", ".join(errored),
+                    )
             except GnomadError as exc:  # a last-resort link must not sink the whole enrichment
                 logger.warning("gnomAD link failed (%s); continuing without it.", exc)
-                # Nobody answered for these rsIDs: unchecked rather than absent (RM361).
-                unreachable_rsids.update(missing)
             finally:
                 if owned:
                     client.close()
@@ -1697,7 +1706,16 @@ def _run_enrichment(
         answered_calls=answered_calls,
     )
 
-    if unreachable_rsids:
+    if unreachable_rsids and getattr(ensembl_link, "retired", None):
+        # A 410 is not an outage (RM361): a re-run asks a route the source no longer serves.
+        logger.warning(
+            "%d rsID(s) could not be asked of live Ensembl because it retired the route (%s): %s. "
+            "Upgrade just-dna-enricher; re-running will not answer them.",
+            len(unreachable_rsids),
+            ensembl_link.retired,
+            ", ".join(sorted(unreachable_rsids)),
+        )
+    elif unreachable_rsids:
         # Warned in BOTH modes, and not escalated by `strict`: nothing an author can edit clears a
         # failed request, and `strict` means "reproducible artifact" (P5). What it does change is the
         # reading of the run — an unresolved key here may well resolve on the next one.

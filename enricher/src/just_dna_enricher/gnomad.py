@@ -189,6 +189,9 @@ def _gql_string(value: str) -> str:
 #: Matched on the message because there is nothing else to match on: with no path, the error cannot
 #: be attributed to an alias, and it does not need to be — the null node is the per-row answer.
 _ABSENCE_MESSAGES: frozenset[str] = frozenset({"variant not found"})
+#: An alias error that is gnomAD's answer that the record is absent (RM361): "Variant not found",
+#: "Gene not found". Any other alias error is a question that went unanswered.
+_NOT_FOUND = re.compile(r"\bnot found\b", re.IGNORECASE)
 
 
 def _errors_by_alias(payload: dict) -> tuple[dict[str, str], list[str], list[str]]:
@@ -308,8 +311,11 @@ class GnomadClient:
         """Record every subject whose alias carries an error that is neither an absence nor, for the
         caller, an answer of its own (`also_answers`, e.g. "Multiple variants found")."""
         for i, subject in enumerate(subjects):
+            # The latest answer for a subject wins: an error on an earlier call is not this one's.
+            self.unanswered.pop(subject, None)
             message = errors.get(_alias(i))
-            if message is None or message.strip().lower() in _ABSENCE_MESSAGES:
+            if message is None or _NOT_FOUND.search(message):
+                # gnomAD's absence, pathless ("Variant not found") or on the alias ("Gene not found").
                 continue
             if any(pattern.search(message) for pattern in also_answers):
                 continue

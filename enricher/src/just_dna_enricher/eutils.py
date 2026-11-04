@@ -201,6 +201,10 @@ class EutilsClient:
         for batch in batched(wanted, self.settings.batch_size):
             payload = self._get("esummary.fcgi", {"db": db, "id": ",".join(batch), "retmode": "json"})
             result = payload.get("result") if isinstance(payload, dict) else None
+            if result is None and _invalid_uid_envelope(payload):
+                # NCBI's answer for a batch of only invalid or nonexistent uids: no summary block, and
+                # an `esummaryresult` naming them. An answer, so every uid is "no such document".
+                result = {"uids": []}
             if not isinstance(result, dict) or not isinstance(result.get("uids"), list):
                 # A 200 whose JSON is not a summary — NCBI's `{"error": …}` envelope (a throttle or an
                 # API-key refusal), or a schema it changed — answered nothing about any uid in the batch.
@@ -218,6 +222,12 @@ class EutilsClient:
                     # silently omitted.
                     out[uid] = {"uid": uid, "error": NO_SUMMARY}
         return out
+
+
+def _invalid_uid_envelope(payload: object) -> bool:
+    """Whether a 200 with no summary block is NCBI's "these uids are invalid" answer (RM361)."""
+    said = payload.get("esummaryresult") if isinstance(payload, dict) else None
+    return isinstance(said, list) and bool(said) and all("invalid uid" in str(s).lower() for s in said)
 
 
 def is_missing(record: dict[str, Any]) -> bool:

@@ -204,6 +204,11 @@ def _hub_says_absent(exc: BaseException) -> bool:
     whether anything is published, and reading it as "nothing is published" hid every outage of the
     one command that provisions a deployment.
     """
+    if type(exc).__name__ == "GatedRepoError":
+        return False  # a subclass of RepositoryNotFoundError that means "not allowed", not "absent"
+    response = getattr(exc, "response", None)
+    if getattr(response, "status_code", None) in (401, 403):
+        return False  # the Hub answers a private repo and an expired token as "not found" with a 401
     return isinstance(exc, FileNotFoundError) or any(
         cls.__name__ in _HUB_ABSENT_ERRORS for cls in type(exc).__mro__
     )

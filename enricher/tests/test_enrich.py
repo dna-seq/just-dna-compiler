@@ -362,7 +362,9 @@ def test_a_4xx_is_an_answer_and_a_5xx_is_a_failure() -> None:
         return resolver
 
     assert status(400).resolve_rsid("rs3216883") == ([], "ensembl-rest")
-    assert status(404).resolve_rsid("rs2000000000") == ([], "ensembl-rest")
+    # RM361: only the documented 400 is Ensembl's "no such variation". A 404 (a path that moved), a 429
+    # or a 410 answered nothing about the rsID, and reading it as `[]` wrote `not_found` for a live one.
+    assert status(404).resolve_rsid("rs2000000000") == (None, None)
     assert status(503).resolve_rsid("rs1801133") == (None, None)
 
 

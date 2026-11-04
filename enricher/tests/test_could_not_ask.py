@@ -621,3 +621,48 @@ def test_a_withholding_client_names_a_410_and_still_withholds(label: str) -> Non
         )
         call(client)  # never raises: the contract is a withheld value
         assert withheld_reason(client) == reason, f"{label} after a {status}"
+
+
+# ── the review's cases: an answer stays an answer ───────────────────────────────────────────────────
+
+
+def test_a_gnomad_alias_not_found_is_an_absence_and_an_earlier_error_does_not_stick() -> None:
+    answers = iter(
+        [
+            {"data": {"v0": None}, "errors": [{"message": "Timeout", "path": ["v0"]}]},
+            {"data": {"v0": None}, "errors": [{"message": "Gene not found", "path": ["v0"]}]},
+        ]
+    )
+    client = GnomadClient(settings=GnomadSettings(), gate=_gate())
+    client._client = httpx.Client(
+        transport=httpx.MockTransport(lambda r: httpx.Response(200, json=next(answers)))
+    )
+    client.fetch_gene_constraint(["NOTAGENE"])
+    assert set(client.unanswered) == {"NOTAGENE"}
+    client.fetch_gene_constraint(["NOTAGENE"])
+    assert client.unanswered == {}, "gnomAD's later 'not found' is its answer"
+
+
+def test_an_esummary_naming_only_invalid_uids_is_no_such_document() -> None:
+    client = EutilsClient(settings=EutilsSettings(email=None), gate=_gate())
+    body = {"esummaryresult": ["Invalid uid 99999999999 at position=0"]}
+    client._client = httpx.Client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json=body))
+    )
+    assert is_missing(client.esummary("pubmed", ["99999999999"])["99999999999"])
+
+
+def test_a_gated_or_refused_hub_is_not_nothing_published() -> None:
+    from just_dna_enricher.download import _hub_says_absent
+
+    class RepositoryNotFoundError(Exception):
+        pass
+
+    class GatedRepoError(RepositoryNotFoundError):
+        pass
+
+    refused = RepositoryNotFoundError("401")
+    refused.response = httpx.Response(401)  # type: ignore[attr-defined]
+    assert _hub_says_absent(RepositoryNotFoundError("404"))
+    assert not _hub_says_absent(GatedRepoError("gated"))
+    assert not _hub_says_absent(refused)

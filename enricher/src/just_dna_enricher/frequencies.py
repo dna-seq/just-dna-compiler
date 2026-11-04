@@ -290,7 +290,9 @@ def enrich_frequencies(
         finally:
             if owned:
                 gnomad.close()
-        unanswered_ids = set(gnomad.unanswered)
+        unanswered_ids = set(getattr(gnomad, "unanswered", {})) & {
+            _variant_id(chrom, start, ref, alt) for _, chrom, start, ref, alt in to_fetch
+        }
 
     fetched_at = now_utc_iso()
     out: list[FrequencyRow] = list(existing.values())
