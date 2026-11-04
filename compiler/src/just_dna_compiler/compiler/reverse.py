@@ -847,6 +847,7 @@ def _write_resolution_csv(
         "locus_index",
         "vrs_id",
         "vrs_spec",
+        "authored_event",
         "source",
         "status",
         "fetched_at",
@@ -1105,6 +1106,9 @@ def _resolution_record(
         # An older artifact has neither column and writes empty cells, as before.
         "vrs_id": _vrs_cell(row.get("vrs_id")),
         "vrs_spec": _scalar_cell(row.get("vrs_spec")),
+        # RM375: the enricher's verdict on the authored spelling, carried on a `resolution_loci` locus;
+        # a row's own cells hold none, so the cell rebuild writes it empty, as before.
+        "authored_event": _scalar_cell(row.get("authored_event")),
         "source": "reversed",
         "status": "resolved",
         "fetched_at": "",

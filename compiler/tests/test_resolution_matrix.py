@@ -31,7 +31,7 @@ from just_dna_format.base import derive_variant_key
 _YAML = "schema_version: '1.0'\nmodule:\n  name: demo\n  title: D\n  description: d\n  report_title: D\n"
 _RES_HEADER = (
     "variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,source,status,"
-    "rsid_alternates,fetched_at\n"
+    "rsid_alternates,fetched_at,authored_event\n"
 )
 _VAR_HEADER = "rsid,chrom,start,ref,alts,genotype,state,conclusion\n"
 
@@ -41,9 +41,9 @@ _KEY_COORD_ALT = derive_variant_key(None, "7", 700, "C", "G")
 _KEY_COORD_ONLY = derive_variant_key(None, "7", 700, "C")
 
 
-def _row(key, rsid, chrom, start, ref, alts, idx=0, status="resolved", alternates="") -> str:
+def _row(key, rsid, chrom, start, ref, alts, idx=0, status="resolved", alternates="", event="") -> str:
     cell = f'"{alternates}"' if alternates else ""
-    return f"{key},{rsid},{chrom},{start},{ref},{alts},GRCh38,{idx},manual,{status},{cell},\n"
+    return f"{key},{rsid},{chrom},{start},{ref},{alts},GRCh38,{idx},manual,{status},{cell},,{event}\n"
 
 
 _PHARM_HEADER = "rsid,chrom,start,ref,gene,genotype,drug,conclusion\n"
@@ -227,6 +227,32 @@ CASES: list[Case] = [
         stable=True,
         strict_refuses=False,
         table_says_more=True,
+    ),
+    # ── two spellings of one indel (RM375): the pair is authored at the old snapshot's anchor
+    #    (`7:701 G>GG`), the table holds the new one's (`7:700 T>TG`). The compiler cannot tell a
+    #    respelling from a contradiction; the enricher's recorded verdict does. Both are fixed points,
+    #    since the table's locus rides `resolution_loci` and the verdict with it. ─────────────────
+    Case(
+        "pair authored at another anchor of its indel, recorded same_event",
+        "rs777,7,701,,,G/GG,risk,c\n",
+        _row("rs777", "rs777", 7, 700, "T", "TG", event="same_event"),
+        stable=True,
+        strict_refuses=False,
+    ),
+    Case(
+        "pair authored at another anchor of its indel, recorded undecided",
+        "rs777,7,701,,,G/GG,risk,c\n",
+        _row("rs777", "rs777", 7, 700, "T", "TG", event="undecided"),
+        stable=True,
+        strict_refuses=True,
+    ),
+    Case(
+        "table-only, half coordinate at another anchor, recorded same_event: chrom completed",
+        "",
+        _row("rs777", "rs777", 7, 700, "T", "TG", event="same_event"),
+        stable=True,
+        strict_refuses=False,
+        pharm="rs777,,701,,SLCO1B1,G/GG,simvastatin,c\n",
     ),
     # ── the positional 0.4 kinds (RM43). Same grid, no `variants.csv`: the module the item is about
     #    carries no `weights.parquet` at all, so reverse has to rebuild `resolution.csv` from the

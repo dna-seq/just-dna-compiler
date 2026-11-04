@@ -25,6 +25,9 @@ or a substitution to the same bases. A counterpart is the same event when
 4. both left-align against the reference window (`sequences._left_align`), compared as tuples;
 5. otherwise the comparison is **undecided** — counted, never read as agreement (`@tautology-zero`).
 
+The ladder is `events.same_event`, the one judge every comparison of two spellings in this tier asks
+(RM375): an authored coordinate against its resolved locus, and a re-derived answer against a recorded one.
+
 An allele with no counterpart is **unplaced** by that witness: the witness holds a different allele of
 the rsID, or none. That is not a disagreement — ClinVar holds the alleles somebody submitted, not every
 allele dbSNP knows — and it is the class whose count is published as "one witness".
@@ -53,17 +56,16 @@ asks nothing.
 """
 
 import logging
-from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from just_dna_compiler.compiler import load_overlay
-from just_dna_format.alleles import parsimony_reduce
-from just_dna_format.vocab import ALLELE_PATTERN
 
 from just_dna_enricher import clinvar
 from just_dna_enricher.clinvar_gkm import ClinVarGkmWitness
-from just_dna_enricher.sequences import _LEFT_ALIGN_WINDOW, _left_align
+from just_dna_enricher.events import Allele, Mint, ReadWindow, _kind, alleles_of, same_event
+from just_dna_enricher.sequences import _LEFT_ALIGN_WINDOW
 from just_dna_enricher.verification import examples
 
 logger = logging.getLogger(__name__)
@@ -99,50 +101,6 @@ SAME_EVENT = "same_event"
 UNDECIDED = "undecided"
 UNPLACED = "unplaced"
 
-Mint = Callable[[str, int, str, str], str | None]
-ReadWindow = Callable[[str, int, int], str | None]
-
-
-@dataclass(frozen=True)
-class Allele:
-    """One allele of one placement, in VCF spelling."""
-
-    chrom: str
-    start: int
-    ref: str
-    alt: str
-
-    def __str__(self) -> str:
-        return f"{self.chrom}:{self.start} {self.ref}>{self.alt}"
-
-    @property
-    def spelling(self) -> tuple[str, int, str, str]:
-        return (self.chrom, self.start, self.ref, self.alt)
-
-
-def _trimmed(allele: Allele) -> tuple[int, str, str]:
-    """`(start, ref, alt)` with the shared flank trimmed, right then left (`parsimony_reduce`'s rule)."""
-    ref, alt, start = allele.ref, allele.alt, allele.start
-    while ref and alt and ref[-1] == alt[-1]:
-        ref, alt = ref[:-1], alt[:-1]
-    while ref and alt and ref[0] == alt[0]:
-        ref, alt, start = ref[1:], alt[1:], start + 1
-    return start, ref, alt
-
-
-def _kind(allele: Allele) -> tuple[str, int, str]:
-    """What left-alignment cannot change: the event's type, its length, and a substitution's bases.
-
-    An indel's payload is left out on purpose — sliding it inside a repeat rotates it (`AG` reads as
-    `GA` one base on), so only its length pairs two spellings of one event.
-    """
-    reduced = parsimony_reduce([allele.ref, allele.alt])
-    _, ref, alt = _trimmed(allele)
-    if "" in reduced and len(reduced) == 2:
-        (payload,) = reduced - {""}
-        return ("insertion" if len(allele.alt) > len(allele.ref) else "deletion", len(payload), "")
-    return ("substitution", len(alt), alt) if len(ref) == len(alt) else ("complex", len(ref) - len(alt), alt)
-
 
 def _counterparts(allele: Allele, witness: Sequence[Allele]) -> list[Allele]:
     kind = _kind(allele)
@@ -151,44 +109,6 @@ def _counterparts(allele: Allele, witness: Sequence[Allele]) -> list[Allele]:
         for w in witness
         if w.chrom == allele.chrom and abs(w.start - allele.start) <= _LEFT_ALIGN_WINDOW and _kind(w) == kind
     ]
-
-
-def same_event(first: Allele, second: Allele, *, mint: Mint, read_window: ReadWindow | None) -> bool | None:
-    """Whether two spellings are one event — `True`, `False`, or `None` when nothing here can tell.
-
-    The module docstring gives the ladder. `None` is not a weak `False`: it is a respelling this run
-    had no sequence to settle, and it is counted apart.
-    """
-    if first.spelling == second.spelling:
-        return True
-    kind = _kind(first)
-    if kind[0] == "substitution" and kind == _kind(second):
-        return _trimmed(first) == _trimmed(second)
-    ids = (mint(*first.spelling), mint(*second.spelling))
-    if ids[0] is not None and ids[1] is not None:
-        return ids[0] == ids[1]
-    if read_window is not None:
-        left = (
-            _left_align(*first.spelling, read_window=read_window),
-            _left_align(*second.spelling, read_window=read_window),
-        )
-        if left[0] is not None and left[1] is not None:
-            return left[0] == left[1]
-    return None
-
-
-def alleles_of(loci: Iterable[Mapping[str, object]]) -> list[Allele]:
-    """Every nucleotide allele the loci name, one per ALT. A symbolic or empty ALT names no placement."""
-    out: list[Allele] = []
-    for locus in loci:
-        chrom, start, ref = locus.get("chrom"), locus.get("start"), str(locus.get("ref") or "").upper()
-        if chrom is None or start is None or not ALLELE_PATTERN.match(ref):
-            continue
-        for alt in str(locus.get("alts") or "").split(","):
-            alt = alt.strip().upper()
-            if alt and alt != ref and ALLELE_PATTERN.match(alt):
-                out.append(Allele(str(chrom), int(start), ref, alt))  # type: ignore[arg-type]
-    return out
 
 
 def locus_key(locus: Mapping[str, object]) -> tuple[str, int, str, str]:

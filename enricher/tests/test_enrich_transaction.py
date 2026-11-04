@@ -761,6 +761,7 @@ def test_the_written_columns_are_derived_from_the_model(tmp_path: Path) -> None:
         placement_witness="clinvar+clinvar_gkm",
         placement_verdict="same_event",
         left_aligned=True,
+        authored_event="same_event",
         fetched_at="2026-09-09T00:00:00Z",
     )
     # Every field set, so a column the renderer skipped would show as a blank cell on reload.

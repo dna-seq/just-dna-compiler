@@ -287,6 +287,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
   | `VALID_PHENOTYPE_CATEGORIES` | 6 (closed) |  |
   | `VALID_QUOTE_SOURCE` | 2 (closed) |  |
   | `VALID_PLACEMENT_VERDICTS` | 3 (closed) | what a second authority answered about a `resolution.csv` row's placement — `same_event`, `undecided`, `unplaced`; no `different_event`, because a contradicted placement is withheld (RM267) |
+  | `VALID_AUTHORED_EVENT_VERDICTS` | 3 (closed) | whether a module's authored coordinate spells the same event as the `resolution.csv` locus written for it, judged by the enricher against the reference — `same_event`, `different_event`, `undecided` (RM375) |
   | `VALID_RECOMMENDATION_STRENGTH` | 4 (closed) |  |
   | `VALID_RELEASE_CHANGE_KINDS` | 3 (closed) |  |
   | `VALID_RELEASE_OUTPUT_AXES` | 5 (closed) |  |
@@ -2525,6 +2526,15 @@ row's own cells alone.
   judged. A stamped verdict rather than an authored `coordinate_normalization` key: an author's claim of
   a convention is one no offline tier can check. A `false` row's indel joins a caller's spelling only
   through `vrs_id`. Reverse cannot emit it, for `authority`'s reason above.
+- **`authored_event` is the enricher's verdict on the authored spelling (0.8, RM375).** Outside the fact
+  set, `VALID_AUTHORED_EVENT_VERDICTS`: `same_event` — the coordinate the module authored for this subject
+  is another spelling of this row's event (an indel anchored elsewhere in its repeat, NUDT15's
+  `13:48041104 G>GG` against `13:48041103 T>TG`); `different_event` — it is not; `undecided` — nothing the
+  run held could tell (no reference read, a padded `ref`, a position inside the event that is no
+  anchor). Written only where the authored `chrom`, `start` or `ref` differs from the row's; empty where
+  they agree, and on a row written before 0.8. The compiler reads `same_event` as agreement and judges
+  nothing itself (P2). Unlike the two verdicts above, **reverse carries it**: the parquets'
+  `resolution_loci` struct has the field, so the second lap reads the verdict the first did.
 - **`RESOLUTION_FACT_FIELDS`** names the fact columns; `integrity.resolution_signature` hashes only
   those (provenance deliberately excluded), so a human-filled and an Ensembl-filled table with identical
   facts hash equal.

@@ -14,6 +14,7 @@ from just_dna_enricher.civic_refutation import RefutationFinding
 from just_dna_enricher.clinical import ClinSigComparison, ClinSigConflict, ConcordanceRecord
 from just_dna_enricher.concordance import AnsweredCallReport
 from just_dna_enricher.currency import CurrencyCheck
+from just_dna_enricher.events import Mint, ReadWindow, alleles_of, no_mint, same_allele_sets
 from just_dna_enricher.grch37 import BuildDiagnosis
 from just_dna_enricher.identifiers import RsidStatus
 from just_dna_enricher.placement import PlacementCheck
@@ -45,13 +46,20 @@ class SubjectDrift:
     variant_key: str
     before: str
     after: str
-    #: The facts moved but the events did not (RM270): every allele on both sides carries a `vrs_id`
-    #: and the two sides name the same ids, so the fresh table spells the same alleles another way —
-    #: the left-aligned fill this release writes — rather than the source answering differently.
-    respelled: bool = False
+    #: Whether the facts moved while the events did not, three-valued (RM270, RM375). `True`: every
+    #: allele on each side is the same event as one on the other (by `vrs_id`, or by `events.same_event`
+    #: against the reference), so the fresh table spells the same alleles another way — the left-aligned
+    #: fill, or another release's anchor. `False`: some allele is a different event, so the source
+    #: answered differently. `None`: nothing this run held could tell (an indel with no id and no
+    #: reference read), which is never reported as either. The default keeps an older call's `False`.
+    respelled: bool | None = False
 
     def __str__(self) -> str:
-        suffix = " (respelled; every allele's vrs_id unchanged)" if self.respelled else ""
+        suffix = {
+            True: " (respelled: the same events, spelled another way)",
+            False: " (moved: the source names a different event)",
+            None: " (respelled or moved is undecided: no VRS id and no reference read to tell)",
+        }[self.respelled]
         return f"{self.variant_key}: {self.before} → {self.after}{suffix}"
 
 
@@ -67,12 +75,32 @@ def _allele_ids(rows: Sequence[ResolutionRow]) -> list[str] | None:
     return sorted(ids)
 
 
-def _same_events(before: Sequence[ResolutionRow], after: Sequence[ResolutionRow]) -> bool:
-    """Whether two answers for one subject name the same alleles, by id, on the same build and rsID."""
+def _same_events(
+    before: Sequence[ResolutionRow],
+    after: Sequence[ResolutionRow],
+    *,
+    mint: Mint = no_mint,
+    read_window: ReadWindow | None = None,
+) -> bool | None:
+    """Whether two answers for one subject name the same events — `True`, `False`, or `None` (RM375).
+
+    A different rsID or build is a different answer. Ids on every allele of both sides decide it
+    exactly. Otherwise the alleles go to the one judge (`events.same_allele_sets`), which reads the
+    reference when this run has one and answers `None` when it does not: an offline re-derive of a
+    left-shifted indel is a respelling it cannot see, never a source that moved (`None` is never
+    `False`, the house algebra).
+    """
     if {(r.rsid, r.genome_build) for r in before} != {(r.rsid, r.genome_build) for r in after}:
         return False
     was, now = _allele_ids(before), _allele_ids(after)
-    return was is not None and was == now
+    if was is not None and now is not None:
+        return was == now
+    return same_allele_sets(
+        alleles_of(r.model_dump() for r in before),
+        alleles_of(r.model_dump() for r in after),
+        mint=mint,
+        read_window=read_window,
+    )
 
 
 def _render_facts(rows: Sequence[ResolutionRow]) -> str:
@@ -90,6 +118,8 @@ def _rederived_drift(
     after: Sequence[ResolutionRow],
     *,
     skip: Collection[tuple] = (),
+    mint: Mint = no_mint,
+    read_window: ReadWindow | None = None,
 ) -> tuple[list[SubjectDrift], int]:
     """`(what moved, how many subjects were re-asked)` between a recorded table and a fresh one.
 
@@ -116,7 +146,8 @@ def _rederived_drift(
         compared += 1
         was, now = _render_facts(old_rows), _render_facts(new_rows)
         if was != now:
-            drift.append(SubjectDrift(old_rows[0].variant_key, was, now, _same_events(old_rows, new_rows)))
+            same = _same_events(old_rows, new_rows, mint=mint, read_window=read_window)
+            drift.append(SubjectDrift(old_rows[0].variant_key, was, now, same))
     return sorted(drift, key=lambda d: d.variant_key), compared
 
 

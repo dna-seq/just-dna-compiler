@@ -539,6 +539,23 @@ round-trip gates make, lap against lap.
 | `locations` | New public names: `SnapshotManifest`, `SnapshotManifestFile`, `read_snapshot_manifest`, `manifest_coverage`, `ManifestCoverage`, `manifest_attests`, `pull_record_repo`, `ensembl_release_label`; `download.SNAPSHOT_REPO_PREFIXES`, `download.pulled_from_elsewhere`; `just_dna_format.snapshot.SNAPSHOT_MANIFEST_FILENAME`, now in `SNAPSHOT_ROOT_FILENAMES` before `release.json`. | A publisher walking `SNAPSHOT_ROOT_FILENAMES` uploads a snapshot's `manifest.json` when one is present; no builder here writes one. |
 | `cache status`, the `rsid_coordinate_agreement` record | The Ensembl lane's label is the manifest's `release_id`; the old repo's cache still shows none. | None. |
 
+## 1.30 Two spellings of one event: the enricher judges, the compiler trusts (RM375, no new code)
+
+An indel anchored elsewhere inside its repeat is one event in two spellings (NUDT15's `rs761191455`:
+`13:48041104 G>GG` in the old Ensembl snapshot and in `reference_examples/cpic_gene_pairs`, `13:48041103
+T>TG` in the new one). The enricher now settles that against the reference and records it; the compiler
+reads the record and no longer calls such a row a contradiction.
+
+| Surface | What changed | What to do |
+| --- | --- | --- |
+| `resolution.csv` `authored_event` | New optional verdict column (`VALID_AUTHORED_EVENT_VERDICTS`: `same_event`, `different_event`, `undecided`), written where a subject's authored `chrom`/`start`/`ref` differs from the locus written for it; empty where they agree. Outside `resolution_signature`. **A 0.7 reader refuses a 0.8-enriched table carrying it** (`extra="forbid"`, § 1.18's remedy). | Re-derive online (`enrich --rederive`) to judge rows recorded before 0.8; offline every indel verdict is `undecided`. |
+| `positional_identity_contradicted`, `rsid_coordinate_disagrees` | A recorded `same_event` is agreement: no warning, no `strict` refusal, the authored coordinate kept, and only `rsid`/`chrom` filled (a CPIC half-coordinate is completed; `ref`/`alts` are never worn at the author's anchor). A recorded `undecided` keeps the code and its consequence, in a sentence without "contradicts" or "disagreement". The pinned phrase "are left exactly as authored" is in both. | A consumer grepping "contradicts" now sees only real contradictions. |
+| The parquets' `resolution_loci` and `studies.parquet` `proxy_loci` | The struct gains `authored_event` (`Utf8`); a key whose locus carries a verdict always keeps its loci, so `reverse` writes the verdict back and lap two reads what lap one read. Another schema change on these parquets: **`artifact.digest` moves on a 0.8 recompile** of a module carrying them; `content_signature` does not. | None. |
+| `reverse`'s `resolution.csv` | Gains the `authored_event` column (empty where no verdict rode a `resolution_loci` locus). | None. |
+| The `rsid_coordinate_agreement` record | An insertion's one-base `ref` is no longer read as a substitution: the pair is judged by `events.names_event`, so a respelled indel counts as agreement online and as undecided offline, never as a finding. | A module whose record carried such a finding loses it on the next online `enrich`. |
+| `SubjectDrift.respelled` | `bool \| None`. `True` respelled, `False` moved (the drift warning), `None` undecided (no id and no reference read), warned apart from the drift. An unmatched indel ALT is undecided, since an offline run keeps ALTs an online one splits off or filters. | A caller testing `if drift.respelled` reads `None` as not respelled; test `is True` / `is False`. |
+| `just_dna_enricher.events` | New module: `Allele`, `same_event` (moved from `placement`, which imports it), `names_event`, `authored_event`, `same_allele_sets`, `no_mint`. `sequences.indel_spellings` walks an indel's anchors. `resolver.coordinate_verdict` and `check_rsid_coordinates` take keyword `mint`/`read_window`. | Import `same_event` from `events`; `placement.same_event` still resolves. |
+
 ## 2. What to change
 
 1. If you parse `manifest.json` with `just-dna-format`, move your pin to 0.8 when you start reading

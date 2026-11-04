@@ -20,6 +20,7 @@ from just_dna_format.vrs import normalize_chrom, par_partner
 
 from just_dna_enricher.enrich.build_declaration import spec_genome_build
 from just_dna_enricher.enrich.outcome import EnrichmentError
+from just_dna_enricher.events import Mint, ReadWindow, no_mint
 from just_dna_enricher.resolver import PairCheck, check_rsid_coordinates
 
 logger = logging.getLogger(__name__)
@@ -274,6 +275,8 @@ def _check_authored_pairs(
     offline: bool,
     unusable: bool = False,
     answered: AbstractSet[tuple[str, str]] = frozenset(),
+    mint: Mint = no_mint,
+    read_window: ReadWindow | None = None,
 ) -> PairCheck:
     """The rsid↔coordinate pass, with the reason it did not run when it did not (RM45).
 
@@ -305,7 +308,9 @@ def _check_authored_pairs(
     if reference is None or unusable:
         no_snapshot = "offline" if offline and not unusable else "no_reference"
         return PairCheck(not_checked=no_snapshot)
-    check = check_rsid_coordinates(pairs, rsid_loci, answered)
+    # The reference reaches the comparison (RM375): an indel authored at another anchor of its repeat
+    # is the same event, and only a read can say so.
+    check = check_rsid_coordinates(pairs, rsid_loci, answered, mint=mint, read_window=read_window)
     if check.subjects == 0:
         return PairCheck(unknown=check.unknown, undecided=check.undecided, not_checked="no_reference")
     return check

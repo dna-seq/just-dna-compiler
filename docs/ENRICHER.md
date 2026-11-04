@@ -19,7 +19,8 @@ the mode** (`best_effort` warns and carries on; `strict` refuses). What exists t
 | **Reference allele** | authored `ref` vs the actual reference sequence | `sequences.verify_reference_alleles` | `authored` | `seqrepo` | `reference_allele` |
 | **Wrong build** | a ref-mismatched row vs the same coordinate on GRCh37 (0.6) | `grch37.diagnose_wrong_build` (**warns in both modes**) | `authored` | `ensembl-grch37` | `genome_build_agreement` |
 | **VRS cross-check** | a source's own `vrs_id` vs the locally-minted one | `vrs.mint_resolution_rows` | `reporting_source` | `seqrepo` | `vrs_allele_id` |
-| **rsid↔coordinate** | an authored pair vs what the reference says | `compiler/resolution.py::_verify` over the injected table (warning), and `enrich()` against the injected Ensembl snapshot (`resolver.check_rsid_coordinates`, warning in both modes) — one question, two tiers, so one attestation name, and the enricher's half is the one that attests | `authored`; abstentions counted in `undecided` | `ensembl` | `rsid_coordinate_agreement` |
+| **rsid↔coordinate** | an authored pair vs what the reference says | `compiler/resolution.py::_verify` over the injected table (warning), and `enrich()` against the injected Ensembl snapshot (`resolver.check_rsid_coordinates`, warning in both modes) — one question, two tiers, so one attestation name, and the enricher's half is the one that attests. An indel authored at another anchor of its repeat is the same event (`events.names_event`, against the reference, 0.8 RM375) | `authored`; abstentions counted in `undecided` | `ensembl` | `rsid_coordinate_agreement` |
+| **Authored spelling** | a subject's authored coordinate (whole, or CPIC's half) vs each locus written for it, where the two spellings differ (0.8, RM375) | `events.authored_event`, stamped as `resolution.csv` `authored_event` by `enrich()`; the compiler reads `same_event` as agreement (`resolution.recorded_same_event`) and judges nothing itself | `authored` | `seqrepo` | — *(recorded onto the row, not attested)* |
 | **Placement agreement** | where the run's own link placed an rsID vs where ClinVar and ClinVar-GKM place it, and, online, where Ensembl REST places a snapshot indel neither holds (0.8, RM267); a disagreement **withholds** the disputed locus | `placement.compare_placements`, called by `enrich()` before the table is assembled (warns in both modes; `strict` refuses through the unresolved gate, since a withheld rsID-only row is unresolved) | `reporting_source`, or `ensembl` once REST answered (Ensembl against itself); abstentions counted in `undecided` | `clinvar`, `clinvar_gkm`, `ensembl` | `placement_agreement` |
 | **Ambiguous back-fill** | ≥2 rsIDs for one exact allele → recorded, never guessed | `resolver._lookup_rsid_candidates` | — | — | — *(recorded onto the row, not attested)* |
 | **Clinical significance** | authored `clin_sig` vs **every annotation authority** consulted — ClinVar and, since 0.7, PubMind — allele-exactly | `clinical.verify_clin_sig` (**warns in both modes**), persisted as the N-authority concordance record by `clinical.clin_sig_concordance` (0.7, RM130 + RM134 § B) | `authored` | `clinvar` | `clinical_significance` |
@@ -1263,10 +1264,45 @@ misses the row, though nobody is wrong (S120).
   `resolution.csv` written before 0.8 is respelled only under `--rederive` or after the file is deleted.
   The drift canary names a respelled subject apart (`SubjectDrift.respelled`, logged at INFO): when every
   allele on both sides carries a `vrs_id` and the ids are the same, the source did not move, this
-  release's spelling did.
+  release's spelling did. **Three-valued since RM375**: with an id missing on either side the alleles go
+  to the one spelling judge (`events.same_allele_sets`, against the reference when the run has one), so a
+  respelling reads `True`, a different event `False` (the drift warning), and a change this run cannot
+  settle `None`, warned apart as undecided rather than blamed on the source. An unmatched substitution is
+  a change; an unmatched indel is undecided, because an offline run keeps indel ALTs the online hosting
+  filter and RM270's split would drop (RM376's `rs746071566`).
 
 The pass is not a `verification.json` check: it compares the module's spelling with a convention, not a
 claim with a witness, and the reference-allele check already attests the bases it reads.
+
+### Two spellings of one event: the enricher judges, the compiler trusts (RM375, 0.8)
+
+A pair's locus is recorded as the link gave it, and since the 0.8 snapshot (`ensembl_variations_split`)
+the link's indels are left-aligned where the old snapshot sometimes anchored them right. NUDT15's
+`rs761191455` is `13:48041104 G>GG` in the old release and `13:48041103 T>TG` in the new one, one event in
+a run of `G`s, and `reference_examples/cpic_gene_pairs/haplotypes.csv` authors the old anchor. The
+compiler, which holds no reference, called the row `positional_identity_contradicted` and left it
+unfilled; `check_rsid_coordinates` called it a disagreement (an insertion's one-base `ref` read as a
+substitution); `--rederive` called the respelling a source change whenever a row had no `vrs_id`.
+
+- **One judge**, `events.py`, three-valued: `same_event` (two whole spellings: identical, trimmed
+  substitutions, VRS ids, left-aligned tuples) and `names_event` (an authored coordinate that may be
+  partial — a haplotype row authors a `start`, no ALT — against one allele: its anchors are the
+  substitution's own and trimmed spelling, or every anchor `sequences.indel_spellings` walks inside the
+  repeat). **Different** only where that is sharp: a substitution elsewhere, or an indel whose every
+  spelling was read and none touches the authored position. A position inside the event's footprint
+  that is no VCF anchor, a padded `ref`, and anything with no reference read are undecided.
+  `placement.compare_placements`, `resolver.coordinate_verdict`, `outcome._same_events` and the row stamp
+  all ask it; `enricher/tests/test_authored_event.py` runs each over one corpus and an AST walk asserts
+  no other function calls it.
+- **Recorded per row**, `resolution.csv` `authored_event`
+  (`VALID_AUTHORED_EVENT_VERDICTS`: `same_event` / `different_event` / `undecided`), on every locus
+  written for a subject that authored a coordinate whose `chrom`, `start` or authored `ref` differs from
+  the locus's. Empty where the spellings agree (the compiler sees that on its own) and on a row written
+  before 0.8. A row, not `verification.json`: the record is rewritten per run over the subjects that run
+  asked, and merge-not-clobber keeps a row's verdict beside the row it judges. Not `placement_verdict`:
+  that is who else places the rsID, this is whether the module's own cells name the answer (P5).
+- **Offline is `undecided`** for an indel: the reference is read through seqrepo, which has no local
+  equivalent here, so an offline run never settles a respelled indel. `--rederive` online settles it.
 
 ### Reverse (position→rsid) back-fill is allele-aware
 
