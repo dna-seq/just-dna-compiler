@@ -91,9 +91,12 @@ from just_dna_enricher.locations import (
     resolve_pubmind_reference,
 )
 from just_dna_enricher.placement import (
+    ENSEMBL_WITNESS,
     PlacementCheck,
     answered_placements,
+    ask_live_witness,
     compare_placements,
+    live_witness_subjects,
     load_witnesses,
     locus_key,
 )
@@ -762,13 +765,36 @@ def _run_enrichment(
         placement = PlacementCheck(not_checked="unsupported")
     else:
         witnesses = load_witnesses(clinvar_ref, resolve_clinvar_gkm_reference(clinvar_gkm_cache), fresh_rsids)
+        fresh_loci = {rsid: rsid_to_loci[rsid] for rsid in fresh_rsids}
+        # The third witness, online only: Ensembl REST, asked about a snapshot indel no loaded witness
+        # holds (S117's own `rs8176719`). Through the run's live client, so an injected resolver is
+        # honoured; its answers are never journalled, since a witness's answer is not a placement this
+        # run writes. Self-consistent with the snapshot by RM292's rule — see `placement`.
+        asked_about: dict[str, set[str]] = {}
+        rest_not_asked: list[str] = []
+        rest_subjects = (
+            live_witness_subjects(fresh_loci, source_of_rsid, witnesses) if live_ensembl_runs else []
+        )
+        if rest_subjects:
+            owned = resolver is None
+            client = resolver or EnsemblResolver()
+            try:
+                rest_answers, rest_not_asked = ask_live_witness(client.resolve_rsid, rest_subjects)
+            finally:
+                if owned:
+                    client.close()
+            if rest_answers:
+                witnesses[ENSEMBL_WITNESS] = rest_answers
+                asked_about[ENSEMBL_WITNESS] = set(rest_answers)
         placement = compare_placements(
-            {rsid: rsid_to_loci[rsid] for rsid in fresh_rsids},
+            fresh_loci,
             {rsid: resolution_authority(source_of_rsid.get(rsid)) for rsid in fresh_rsids},
             witnesses,
             mint=lambda chrom, start, ref, alt: minter.mint(chrom, start, ref, alt)[0],
             read_window=read_window,
+            asked_about=asked_about,
         )
+        placement.not_asked = rest_not_asked
         if not fresh_rsids:
             placement.not_checked = "nothing_to_check"
         elif not witnesses:

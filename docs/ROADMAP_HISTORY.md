@@ -195,7 +195,7 @@ now holds `enrich.subjects.SUBJECT_TABLES` (walked from every `Subject(...)` ori
 
 **0.8, decided 2026-11-03.** Taken into 0.8 by the maintainer, with the rest of the indel-placement fixes (RM304, RM267, RM270, RM292, RM305). The status line below predates that decision.
 
-**Residuals** RM270 · won't fix — re-anchoring the snapshot at build is `just-dna-pipelines`' builder, outside this repository (candidate 1 below) · won't fix — writing a corrected spelling was refused for 0.8 by PROPOSAL_0_8_PT2 §4 question 3 · won't fix — a live Ensembl REST witness is outside PT2 §5 C4's two loaded authorities, so S117's own rsID stays one-witness until the pm decides otherwise
+**Residuals** RM270 · won't fix — re-anchoring the snapshot at build is `just-dna-pipelines`' builder, outside this repository (candidate 1 below) · won't fix — writing a corrected spelling was refused for 0.8 by PROPOSAL_0_8_PT2 §4 question 3
 
 **What shipped (2026-11-04).** Candidate 4 as S121's addendum generalised it, in `placement.py`, run by
 `enrich()` after every link and before the table is assembled:
@@ -231,7 +231,27 @@ ids RM270 and ClinVar-GKM recorded for `rs72613567` and `rs77944059`, and `rs817
 four-rsID module against this machine's real Ensembl and ClinVar snapshots wrote `rs72613567`,
 `rs77944059` and `rs4988235` as `same_event` and `rs8176719` as `unplaced`. A witness that holds it is
 the live REST rung (candidate 4's original "else REST"), which the 0.8 contract's "two loaded
-authorities" leaves out, and the third residual above records that.
+authorities" left out; it was built the same day (below).
+
+**2026-11-04: Ensembl REST is the third witness, online only** (the lead's call under the default offered
+to the maintainer that day; it replaces the won't-fix residual "a live Ensembl REST witness is outside
+PT2 §5 C4's two loaded authorities"). For an rsID the Ensembl snapshot placed, with an allele that is not
+a substitution, and that neither ClinVar nor ClinVar-GKM holds, an online run asks the live REST rung
+through the run's resolver (RM268's anchored path) and compares by the same ladder, so S117's own
+`rs8176719` is now **withheld** against the real witnesses: REST answered `-/C` at `start 133257522,
+end 133257521` by hand on 2026-11-04 (17:33Z, after 503s and timeouts from 17:26Z), which anchors to
+`9:133257521 T>TC` and mints a different id from the snapshot's `9:133257520 G>GC`. The witness is named
+`ensembl`, the licensed source `placement_witness` joins `sources.csv` on (an `ensembl_rest` key would
+have no terms row and warn as an unaccounted source on every module). REST and the snapshot are one
+authority, so by RM292's rule the comparison is **self-consistent, not independent**: the record names
+its checked side `ensembl` once REST answered (`verification.ran(reported_by=)`), so `independence`
+derives `self_consistent` for REST alone and withholds beside ClinVar, and an rsID only REST agreed with
+stays in the one-witness count with its own sentence in `detail`. That keeps the comparison's value for
+S117's class, the dump disagreeing with Ensembl's own REST mapping, while saying it cannot catch an error
+both surfaces share. Unanswered after retries (the REST leg now retries a 5xx and a 429) or unanchorable
+is *not asked*, counted in `detail`, never agreement; `--offline` asks nothing; answers are never
+journalled. Tests in `enricher/tests/test_placement_witness.py` (recorded REST answers for `rs8176719` and
+`rs77944059`, one live test under `JUST_DNA_NETWORK_TESTS=1`), each arm mutated once.
 
 **Severity** high · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** (two optional
 `resolution.csv` columns and a new check; [PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §5 C4) ·

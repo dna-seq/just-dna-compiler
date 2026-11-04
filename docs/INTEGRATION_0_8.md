@@ -317,13 +317,25 @@ unresolved state. Each witness a written row names gets a `resolution`-layer `So
 `9:133257521 T>TC` dbSNP and Ensembl REST give, two haplotypes. Probed 2026-11-04 on real data: neither loaded witness holds `rs8176719` (ClinVar's 2026-06-27 VCF has no record at `9:133257510–529` and no `RS=8176719`; ClinVar-GKM lacks it, RM305), so against today's witnesses S117's own case is counted in the one-witness class and named in `detail`, not withheld. The spelling `9:133257521 T>TC` is dbSNP's and Ensembl REST's; the tests supply it as a ClinVar row to exercise the withhold. A respelling (`rs72613567`, `rs77944059`) mints one VRS id and is
 written, left-aligned since RM270 (§ 1.19).
 
+**Ensembl REST as the third witness (2026-11-04, after the first build).** An online run now also asks
+Ensembl REST about an indel the Ensembl snapshot placed and neither ClinVar nor ClinVar-GKM holds, so
+S117's own `rs8176719` is withheld against the real witnesses: REST answers `-/C` at the interbase point,
+which anchors to `9:133257521 T>TC`. REST is Ensembl, so the comparison is self-consistent, not
+independent: the row names `ensembl`, the record's checked side becomes `ensembl` and its `independence`
+reads `self_consistent` (REST alone) or withholds (REST beside ClinVar), and an rsID only REST agreed
+with stays in the one-witness count. A REST request still unanswered after its retries leaves REST not
+asked for that rsID, counted in `detail`. `--offline` asks nothing. A consumer reading `independence`
+off a `placement_agreement` record sees it withheld on a typical online run that asked REST anything.
+
 | Surface | What changed |
 | --- | --- |
-| `resolution.csv` `placement_witness` | New optional provenance column: which second authority was asked (`clinvar`, `clinvar_gkm`, or both `+`-joined). Empty means nobody independent was asked. Outside `resolution_signature`. |
+| `resolution.csv` `placement_witness` | New optional provenance column: which second authority was asked (`clinvar`, `clinvar_gkm`, and online `ensembl` for a snapshot indel neither holds, `+`-joined). `ensembl` is Ensembl REST, self-consistent with the snapshot rather than independent. Empty means nobody was asked. Outside `resolution_signature`. |
 | `resolution.csv` `placement_verdict` | New optional provenance column, `VALID_PLACEMENT_VERDICTS` (closed): `same_event`, `undecided`, `unplaced`. Outside `resolution_signature`. |
-| `VALID_VERIFICATION_CHECKS` | Gains `placement_agreement` (`checked_source` `reporting_source`, witness `clinvar+clinvar_gkm`, with an `undecided` count; the one-witness count is in `detail`). |
+| `VALID_VERIFICATION_CHECKS` | Gains `placement_agreement` (`checked_source` `reporting_source`, or `ensembl` once Ensembl REST answered; witness `clinvar+clinvar_gkm+ensembl`, narrowed to the ones that answered; with an `undecided` count; the one-witness count, the REST-only and the REST-not-asked counts are in `detail`). |
 | `enrich(clinvar_gkm_cache=)`, `enrich --clinvar-gkm-cache` | Where the ClinVar-GKM witness is read from; `$JUST_DNA_CLINVAR_GKM_CACHE` otherwise. Read locally, never downloaded by `enrich`. |
-| `EnrichmentResult.placement`, `placement.PlacementCheck`, `ClinVarGkmWitness.by_rsids` | What the comparison did, and the batch lookup it uses. |
+| `EnrichmentResult.placement`, `placement.PlacementCheck`, `ClinVarGkmWitness.by_rsids` | What the comparison did, and the batch lookup it uses. `PlacementCheck` gains `self_consistent`, `not_asked` and `reported_by` with the REST witness. |
+| `verification.ran(reported_by=)` | Names the sources a `reporting_source` check's values came from; the checked side becomes that source once it is also a witness, so `independence` derives `self_consistent` or withholds. |
+| `EnsemblResolver.resolve_rsid` | The REST leg now retries a 5xx and a 429 (`net.retry_if_transient`), and a 429 left after the retries is unreachable (`(None, None)`), no longer "no record" (`[]`). |
 
 **This breaks a 0.7 reader of a 0.8-enriched `resolution.csv`.** `ResolutionRow` forbids unknown
 columns, so a 0.7 compiler refuses the table once a 0.8 enricher has written it, and a 0.7 reader of a

@@ -9,8 +9,9 @@ Two backends, tried in order with a fallback the user asked for:
        a bare rsID falls through to REST). V1 also serves as the explicit **fallback on 500/503** from
        V2.
 
-`tenacity` retries each backend on transient transport/timeout errors; a 5xx is not retried but
-triggers the V2→V1 fallback. All network lives here (never in format/compiler). GRCh38 only.
+`tenacity` retries each backend on transient transport/timeout errors; a V2 5xx is not retried but
+triggers the V2→V1 fallback, and V1 retries a 5xx or a 429 as well before it reads as unreachable. All
+network lives here (never in format/compiler). GRCh38 only.
 """
 
 import logging
@@ -27,7 +28,7 @@ from tenacity import (
 )
 
 from just_dna_enricher.clingen_allele import anchor_indel
-from just_dna_enricher.net import attempt_floor
+from just_dna_enricher.net import attempt_floor, is_transient_status, retry_if_transient
 from just_dna_enricher.sequences import SequenceProxy
 
 logger = logging.getLogger(__name__)
@@ -134,7 +135,9 @@ class EnsemblResolver:
         try:
             loci, withheld, unplaceable = self._rest_rsid(rsid)
         except httpx.HTTPStatusError as exc:
-            if exc.response.status_code in _FALLBACK_STATUS:
+            # A 5xx or a 429 after the retries is a request that got no answer, never "no record"
+            # (`@unreachable-not-absent`): a throttle used to fall through to the 4xx arm below.
+            if is_transient_status(exc):
                 logger.warning("V1 REST for %s failed: %s", rsid, exc)
                 return None, None
             logger.info("V1 REST has no record for %s (%s)", rsid, exc)
@@ -190,10 +193,13 @@ class EnsemblResolver:
         return _loci_from_graphql(variant)
 
     # ── V1: legacy REST ───────────────────────────────────────────────────────────────────────
+    # A 5xx and a 429 are retried too (RM354's predicate): REST is the rung a run leans on, and the
+    # placement witness (RM267) reads a request that never got an answer as "not asked" only after a
+    # second try could not change it.
     @retry(
         stop=attempt_floor(3),
         wait=wait_exponential_jitter(initial=0.5, max=8.0),
-        retry=retry_if_exception_type((httpx.TransportError, httpx.TimeoutException)),
+        retry=retry_if_transient(),
         reraise=True,
     )
     def _rest_rsid(self, rsid: str) -> tuple[list[dict], int, int]:

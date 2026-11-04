@@ -20,7 +20,7 @@ the mode** (`best_effort` warns and carries on; `strict` refuses). What exists t
 | **Wrong build** | a ref-mismatched row vs the same coordinate on GRCh37 (0.6) | `grch37.diagnose_wrong_build` (**warns in both modes**) | `authored` | `ensembl-grch37` | `genome_build_agreement` |
 | **VRS cross-check** | a source's own `vrs_id` vs the locally-minted one | `vrs.mint_resolution_rows` | `reporting_source` | `seqrepo` | `vrs_allele_id` |
 | **rsid↔coordinate** | an authored pair vs what the reference says | `compiler/resolution.py::_verify` over the injected table (warning), and `enrich()` against the injected Ensembl snapshot (`resolver.check_rsid_coordinates`, warning in both modes) — one question, two tiers, so one attestation name, and the enricher's half is the one that attests | `authored`; abstentions counted in `undecided` | `ensembl` | `rsid_coordinate_agreement` |
-| **Placement agreement** | where the run's own link placed an rsID vs where ClinVar and ClinVar-GKM place it (0.8, RM267); a disagreement **withholds** the disputed locus | `placement.compare_placements`, called by `enrich()` before the table is assembled (warns in both modes; `strict` refuses through the unresolved gate, since a withheld rsID-only row is unresolved) | `reporting_source`; abstentions counted in `undecided` | `clinvar`, `clinvar_gkm` | `placement_agreement` |
+| **Placement agreement** | where the run's own link placed an rsID vs where ClinVar and ClinVar-GKM place it, and, online, where Ensembl REST places a snapshot indel neither holds (0.8, RM267); a disagreement **withholds** the disputed locus | `placement.compare_placements`, called by `enrich()` before the table is assembled (warns in both modes; `strict` refuses through the unresolved gate, since a withheld rsID-only row is unresolved) | `reporting_source`, or `ensembl` once REST answered (Ensembl against itself); abstentions counted in `undecided` | `clinvar`, `clinvar_gkm`, `ensembl` | `placement_agreement` |
 | **Ambiguous back-fill** | ≥2 rsIDs for one exact allele → recorded, never guessed | `resolver._lookup_rsid_candidates` | — | — | — *(recorded onto the row, not attested)* |
 | **Clinical significance** | authored `clin_sig` vs **every annotation authority** consulted — ClinVar and, since 0.7, PubMind — allele-exactly | `clinical.verify_clin_sig` (**warns in both modes**), persisted as the N-authority concordance record by `clinical.clin_sig_concordance` (0.7, RM130 + RM134 § B) | `authored` | `clinvar` | `clinical_significance` |
 | **Answered-call currency** | an authority's call **now** vs what it said when the author's `overrides.csv` answer was written (0.7, RM151) | `clinical.answered_call_shift` → `concordance.shifted_authority_calls` (**warns in both modes**; the baseline is the previous run's `clin_sig_authority_calls.csv`, so it is read before the commit rewrites it and a move is observable exactly once) | — | — | — *(logged; the record it reads is the attestation)* |
@@ -465,7 +465,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `constraint_build` | **`[dev]`** builder: gnomAD constraint TSV → gene-level parquet + `release.json` | `polars` (lazy), `httpx` |
 | `vrs` | GA4GH VRS allele-id minting onto `resolution.csv` (substitutions stdlib, indels normalized) | `ga4gh.vrs` |
 | `sequences` | reference-sequence access (cached), the reference-allele check, and the one left-alignment every pass uses (`left_normalize`, `normalize_locus`, `spelling_verdict`; RM270 writes a fill left-aligned with it) | `ga4gh.vrs` |
-| `placement` | **0.8** (RM267): where the run's own link placed each rsID against where ClinVar and ClinVar-GKM place it — by VRS id, else the left-aligned spelling; a disagreement withholds the rsID | `sequences`, `clinvar`, `clinvar_gkm` |
+| `placement` | **0.8** (RM267): where the run's own link placed each rsID against where ClinVar and ClinVar-GKM place it, and, online, where Ensembl REST places a snapshot indel neither holds — by VRS id, else the left-aligned spelling; a disagreement withholds the rsID | `sequences`, `clinvar`, `clinvar_gkm` |
 | `locations` | cache-location resolution — **one `resolve`/`default_dir`/`env_var` triple per lane in `CACHE_LANES`**, paired by a test rather than counted here — plus `.env` and the pull record. The snapshot layout names and `read_release` are imported from `just_dna_format.snapshot` since 0.8 (RM303) and stay importable from here | `platformdirs`, `python-dotenv` |
 | `download` | HuggingFace **snapshot** download, footer-checked and atomic — **one `ensure_*` per lane whose `publish_repo` is set**, which is the registry's own answer to which lanes may be pulled rather than a second list. A lane with no repo is operator-built; see *The caches* | `huggingface_hub` (lazy) |
 | `cpic_build` | **`[dev]`** builder (0.5.1): the whole CPIC PostgREST database → parquets + `release.json` | `polars` (lazy), `cpic` |
@@ -530,7 +530,7 @@ per service, put a semaphore around your call site; the gate will not give you t
 | **ClinGen Allele Registry** (`reg.clinicalgenome.org/allele`) | `clingen_allele` → the identity-from-a-name procedure (0.7, RM153) | none published | `_REQUEST_INTERVAL=0.1` (courtesy) | none |
 | **Ensembl GRCh37 REST** (`grch37.rest.ensembl.org`) | `grch37.diagnose_wrong_build` (0.6), `hint recover` | Ensembl publishes **15 req/s** | `_REQUEST_INTERVAL=0.1` — keeps a whole panel inside it while still interactive | none |
 | **ClinVar release probe** | `currency.ClinVarReleaseClient` — one bounded read of the VCF's header (`HEADER_PROBE_BYTES`) per `--verify-datasets` run (0.7) | NCBI asks for no particular pacing on the FTP-over-HTTPS mirror | `CLINVAR_MIN_INTERVAL=0.5` — this tier paces every service it touches, and one probe per run is inside any budget | none |
-| **Ensembl REST** (`rest.ensembl.org`) | `ensembl` V1 fallback | **15 req/s** per IP, **~55 000 / rolling hour**; 429 + `Retry-After` / `X-RateLimit-*` | **no `PacingGate`** — live path is the last link after cache/snapshot, so volume stays low; tenacity on transport only | none |
+| **Ensembl REST** (`rest.ensembl.org`) | `ensembl` V1 fallback; the placement witness (0.8, RM267), one sequential request per snapshot indel no loaded witness holds | **15 req/s** per IP, **~55 000 / rolling hour**; 429 + `Retry-After` / `X-RateLimit-*` | **no `PacingGate`** — both uses are one request at a time over what the snapshots missed, so volume stays low; tenacity on transport, 5xx and 429 (`net.retry_if_transient`) | none |
 | **Ensembl GraphQL** (`beta.ensembl.org`) | `ensembl` V2 first try | unpublished (beta) | **no `PacingGate`**; 5xx falls through to REST | none |
 | **CPIC** (`api.cpicpgx.org`) | `cpic` / `pgx_draft` | unpublished | **no `PacingGate`** — coarse PostgREST GETs (gene-scoped), not per-allele loops | none |
 | **ClinPGx** | `clinpgx` / `clinpgx_draft` | n/a at runtime | **offline snapshot only** for the check/draft path — no live poll budget | none (live API retired → snapshot) |
@@ -1170,18 +1170,41 @@ ids are VRS 2.1.1 and ours 2.0, so its VCF spelling is minted here rather than i
 - **A ClinVar fill has no independent witness here.** ClinVar-GKM is ClinVar's own release, so a row the
   ClinVar link filled is counted with the one-witness class and its two columns stay empty.
 - **Each written row says who was asked and what they answered**: `placement_witness` and
-  `placement_verdict` ([SCHEMAS.md](SCHEMAS.md)). Both empty means nobody independent was asked. Every
+  `placement_verdict` ([SCHEMAS.md](SCHEMAS.md)). Both empty means nobody was asked. Every
   witness a written row names gets its `SourceRow` at the `resolution` layer (`@write-the-sourcerow`),
   and the compiler's orphan check counts those names as used.
 - **It attests as `placement_agreement`**: `subjects` is the rsIDs compared, `findings` the rsIDs
   with a disputed placement, `undecided` the respellings nothing could settle, and `detail` the one-witness count over
-  every placed rsID.
+  every placed rsID, the rsIDs only Ensembl REST compared, and the rsIDs REST could not be asked about.
 - **Recorded rows are not re-asked.** Merge-not-clobber holds, so a `resolution.csv` written before 0.8
   meets the comparison only under `--rederive` or after the file is deleted. Under `--rederive` a
   disputed subject counts as answered, so its recorded placement is not carried forward.
 
-Probed 2026-11-04 on real data: neither loaded witness holds `rs8176719` (ClinVar's 2026-06-27 VCF has no record at `9:133257510–529` and no `RS=8176719`; ClinVar-GKM lacks it, RM305), so against today's witnesses S117's own case is counted in the one-witness class and named in `detail`, not withheld. The spelling `9:133257521 T>TC` is dbSNP's and Ensembl REST's; the tests supply it as a ClinVar row to exercise the withhold. Catching it needs a witness that holds it: the live REST rung is the obvious one and is
-not asked (below).
+Probed 2026-11-04 on real data: neither loaded witness holds `rs8176719` (ClinVar's 2026-06-27 VCF has
+no record at `9:133257510–529` and no `RS=8176719`; ClinVar-GKM lacks it, RM305). Catching S117's own
+case needs a witness that holds it, which is why REST is asked:
+
+- **Ensembl REST is the third witness, online only.** For an rsID the Ensembl snapshot placed with at
+  least one allele that is not a substitution, and that neither loaded witness holds, an online run asks
+  the live REST rung (`EnsemblResolver.resolve_rsid`, through the run's own resolver, so an injected one
+  is honoured) and compares its answer by the same ladder. REST answers `rs8176719` as `-/C` at
+  `start 133257522, end 133257521`, which RM268's anchor turns into `9:133257521 T>TC`; the snapshot's
+  `9:133257520 G>GC` mints a different id, so the rsID is withheld with both placements named. A row the
+  live rung gave itself, a substitution, and an rsID ClinVar or ClinVar-GKM holds are not asked. Answers
+  are never journalled: a witness's answer is not a placement the run writes.
+- **REST is Ensembl, so it is self-consistent, not independent** (RM292). The witness is named
+  `ensembl`, the licensed source `placement_witness` joins `sources.csv` on, and the record names its
+  checked side `ensembl` once REST answered, so `independence` derives `self_consistent` when REST was the
+  only witness and is withheld when ClinVar answered for other rsIDs in the same run. That does not empty
+  the comparison of value: it catches the snapshot's VCF dump disagreeing with Ensembl's own REST mapping,
+  which is exactly S117's mechanism (the dump anchors a class of insertions one base left of Ensembl's
+  interbase point). It cannot catch an error both surfaces share, so an rsID only REST agreed with stays
+  in the one-witness count, and `detail` names those apart.
+- **Unreachable is not asked.** REST is retried on a transport error, a 5xx and a 429. A request still
+  unanswered, or an answer whose anchor base could not be read, leaves REST not asked for that rsID: the
+  row does not name `ensembl`, nothing is withheld, and `detail` counts the rsIDs. `--offline` asks
+  nothing.
+
 
 The ClinVar witness is the snapshot the run locates for its link and the `clin_sig` check, so
 `--no-clinvar --no-verify-clinsig` leaves only ClinVar-GKM. The live REST rung is not a witness: the

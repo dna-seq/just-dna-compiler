@@ -215,10 +215,13 @@ class ResolutionRow(BaseModel):
         json_schema_extra=since("0.8.0"),
         default=None,
         description=(
-            "Which second authority was asked where this row's placement sits, independent of the "
-            "link that gave it: `clinvar`, `clinvar_gkm`, or both `+`-joined in sorted order. Empty "
-            "means no independent authority was asked (none was loaded, or the row's own link is "
-            "ClinVar's). A placement a witness contradicts is never written (RM267)."
+            "Which second authority was asked where this row's placement sits: `clinvar`, "
+            "`clinvar_gkm`, and, on an online run, `ensembl` (Ensembl REST, asked about an indel the "
+            "Ensembl snapshot placed and neither of the others holds), `+`-joined in sorted order. "
+            "`ensembl` is the snapshot's own authority, so its answer is self-consistent, never "
+            "independent. Empty means nobody was asked (none was loaded, the row's own link is "
+            "ClinVar's, or REST could not be reached). A placement a witness contradicts is never "
+            "written (RM267)."
         ),
     )
     placement_verdict: str | None = Field(

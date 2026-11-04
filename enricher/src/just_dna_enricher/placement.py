@@ -37,10 +37,23 @@ rewritten (PROPOSAL_0_8_PT2 §4 question 3: no corrected spelling in 0.8, `@enri
 
 **Independence.** A placement the ClinVar link filled has no independent witness here — ClinVar-GKM is
 ClinVar's own release — so it is counted with the one-witness class and never compared.
+
+**Ensembl REST, the third witness, online only.** Neither loaded witness holds S117's own `rs8176719`
+(ClinVar has no record there, ClinVar-GKM lacks it), so against them it is one witness. REST does hold it,
+as `-/C` at the interbase point RM268 anchors to `9:133257521 T>TC`. So for an indel the Ensembl snapshot
+placed and no loaded witness holds, an online run asks the live REST rung (`live_witness_subjects`,
+`ask_live_witness`) and compares the answer by the same ladder. REST and the snapshot are one authority,
+Ensembl, so the witness is named `ensembl` — the licensed source `placement_witness` joins
+`sources.csv` on — and a comparison against it is **self-consistent, not independent** (RM292): it still
+catches the snapshot's dump disagreeing with Ensembl's own REST mapping, which is S117's case, but an
+agreement proves nothing about the placement, so a REST-only agreement stays in the one-witness count.
+A request that got no answer (unreachable after retries, or an anchor base that could not be read) leaves
+REST *not asked* for that rsID — counted, never agreement (`@unreachable-not-absent`) — and `--offline`
+asks nothing.
 """
 
 import logging
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -58,6 +71,13 @@ logger = logging.getLogger(__name__)
 #: The two witnesses this tier holds offline, by the names `sources.csv` and the RM292 roster use.
 CLINVAR_WITNESS = "clinvar"
 CLINVAR_GKM_WITNESS = "clinvar_gkm"
+#: The live one: Ensembl REST, named by its licensed source because `placement_witness` joins
+#: `sources.csv` (`@source-vs-authority`). It is the snapshot's own authority, so it witnesses the
+#: snapshot self-consistently, never independently.
+ENSEMBL_WITNESS = "ensembl"
+#: The resolution link whose placements the REST witness is asked about: the Ensembl snapshot. A row the
+#: live rung itself gave is never re-asked.
+_SNAPSHOT_LINK = "cache"
 
 #: The authorities a witness may not speak for, because it is that authority's own data.
 _NOT_INDEPENDENT: dict[str, frozenset[str]] = {
@@ -193,15 +213,20 @@ class PlacementDisagreement:
 class PlacementCheck:
     """What the comparison did (RM267) — the `PairCheck` shape, so an empty list cannot read as a pass.
 
-    * `witnesses` — the second authorities this run had loaded, sorted; empty means none was.
-    * `subjects` — rsIDs compared: placed by an authority a loaded witness is independent of, with at
-      least one allele a witness also placed. The record's denominator.
+    * `witnesses` — the second authorities this run had loaded or asked, sorted; empty means none was.
+    * `subjects` — rsIDs compared: at least one allele a witness asked about it also placed. The
+      record's denominator.
     * `disagreements` — one per (allele, witness) placed as a different event. Its locus is withheld.
     * `withheld_loci` — `(rsid, locus_key)` of every locus holding a disputed allele; never written.
     * `undecided` — rsIDs with no withheld locus left unsettled: some allele could not be decided.
     * `single_witness` — rsIDs this run placed that no independent witness placed: the ClinVar link's
-      own fills, and every rsID none of whose alleles a witness holds. Published beside the finding
-      (`@tautology-zero`).
+      own fills, every rsID none of whose alleles a witness holds, and every rsID only its own
+      authority's other surface compared (Ensembl REST against the snapshot). Published beside the
+      finding (`@tautology-zero`).
+    * `self_consistent` — compared rsIDs whose only witness was their own authority (REST for a
+      snapshot placement): a disagreement there is a finding, an agreement proves nothing.
+    * `not_asked` — rsIDs a live witness was due to be asked about and got no answer for: unknown.
+    * `reported_by` — the authorities whose placements were compared, the record's checked side.
     * `placed` — every rsID the comparison looked at, the denominator `single_witness` is a part of.
     * `rows` — `(rsid, locus_key) -> (witness, verdict)` for the row writer.
     * `not_checked` — a `VALID_VERIFICATION_SKIPS` key when the comparison could not run at all.
@@ -213,6 +238,9 @@ class PlacementCheck:
     withheld_loci: set[tuple[str, tuple[str, int, str, str]]] = field(default_factory=set)
     undecided: list[str] = field(default_factory=list)
     single_witness: list[str] = field(default_factory=list)
+    self_consistent: list[str] = field(default_factory=list)
+    not_asked: list[str] = field(default_factory=list)
+    reported_by: set[str] = field(default_factory=set)
     placed: int = 0
     rows: dict[tuple[str, tuple[str, int, str, str]], tuple[str, str]] = field(default_factory=dict)
     not_checked: str | None = None
@@ -248,6 +276,19 @@ class PlacementCheck:
                 f"{len(self.single_witness)} of {self.placed} placed rsID(s) had one witness only — no "
                 f"independent second authority placed them ({examples(self.single_witness)})"
             )
+        if self.self_consistent:
+            out.append(
+                f"{len(self.self_consistent)} of them were compared with Ensembl REST alone "
+                f"({examples(self.self_consistent)}) — Ensembl's own other surface, so self-consistent "
+                "rather than independent: a disagreement is still a finding, an agreement proves nothing "
+                "about the placement"
+            )
+        if self.not_asked:
+            out.append(
+                f"{len(self.not_asked)} rsID(s) Ensembl REST could not be asked about "
+                f"({examples(self.not_asked)}) — unreachable after retries, or an answer whose anchor base "
+                "could not be read — so it is unknown there, never agreement"
+            )
         if self.undecided:
             out.append(
                 f"{len(self.undecided)} compared rsID(s) are respellings this run had no reference "
@@ -271,12 +312,19 @@ def compare_placements(
     *,
     mint: Mint,
     read_window: ReadWindow | None,
+    asked_about: Mapping[str, Collection[str]] | None = None,
 ) -> PlacementCheck:
     """Compare every rsID in `placed` against every loaded witness it is independent of.
 
     `placed` is `rsid -> loci` as the first authority gave them (before the hosting filter: the
     question is where the source puts the rsID, not which locus the module can use); `authority_of`
-    names that authority per rsID; `witnesses` is `witness name -> rsid -> loci`.
+    names that authority per rsID; `witnesses` is `witness name -> rsid -> loci`. A witness in
+    `asked_about` was asked only about the rsIDs it lists there (the live REST witness); every other
+    rsID's row does not name it. A loaded snapshot witness is asked about every rsID.
+
+    **A witness that is the rsID's own authority compares, but witnesses nothing independently**
+    (Ensembl REST for a snapshot placement): its disagreement withholds like any other, and its
+    agreement leaves the rsID in the one-witness count.
 
     **Withheld per locus, judged per allele.** A locus holding a disputed allele is not written; a
     locus of the same rsID nobody disputes still is, so one contested allele does not cost the module
@@ -285,11 +333,17 @@ def compare_placements(
     unsettled one `undecided`, so no allele reads as confirmed that was not.
     """
     check = PlacementCheck(witnesses=tuple(sorted(witnesses)), placed=len(placed))
+    scope = asked_about or {}
     for rsid in sorted(placed):
         loci = placed[rsid]
         check._loci_of[rsid] = [locus_key(locus) for locus in loci]
         authority = authority_of.get(rsid) or ""
-        asked = sorted(w for w in witnesses if authority not in _NOT_INDEPENDENT.get(w, frozenset()))
+        asked = sorted(
+            w
+            for w in witnesses
+            if authority not in _NOT_INDEPENDENT.get(w, frozenset()) and (w not in scope or rsid in scope[w])
+        )
+        witnessed_by: set[str] = set()
         theirs = {witness: alleles_of(witnesses[witness].get(rsid, ())) for witness in asked}
         per_locus: dict[tuple[str, int, str, str], list[bool | None | str]] = {}
         for locus in loci:
@@ -300,6 +354,7 @@ def compare_placements(
                     counterparts = _counterparts(allele, theirs[witness])
                     if not counterparts:
                         continue
+                    witnessed_by.add(witness)
                     said = [same_event(allele, w, mint=mint, read_window=read_window) for w in counterparts]
                     answer = True if True in said else None if None in said else False
                     answers.append(answer)
@@ -315,11 +370,13 @@ def compare_placements(
                         )
                 verdicts.append(_allele_verdict(answers))
             per_locus[locus_key(locus)] = verdicts
-        compared = any(v != UNPLACED for verdicts in per_locus.values() for v in verdicts)
-        if not compared:
-            check.single_witness.append(rsid)
-        else:
+        if witnessed_by:
             check.subjects += 1
+            check.reported_by.add(authority)
+        if not witnessed_by - {authority}:
+            check.single_witness.append(rsid)
+            if witnessed_by:
+                check.self_consistent.append(rsid)
         unsettled = False
         for key, verdicts in per_locus.items():
             if False in verdicts:
@@ -382,6 +439,50 @@ def load_witnesses(
                 for rsid, rows in placements.items()
             }
     return found
+
+
+def live_witness_subjects(
+    placed: Mapping[str, Sequence[Mapping[str, object]]],
+    link_of: Mapping[str, str | None],
+    loaded: Mapping[str, Mapping[str, Sequence[Mapping[str, object]]]],
+) -> list[str]:
+    """The rsIDs Ensembl REST is asked about, sorted: placed by the Ensembl snapshot, with at least one
+    allele that is not a substitution, and held by no loaded witness.
+
+    The snapshot only, because S117's class lives in its dump, and a row the live rung gave is REST's own
+    answer. Indels only, because a substitution has one spelling and the snapshot cannot respell it. And
+    only where no loaded witness holds the rsID, because there REST would add a self-consistent answer
+    beside an independent one at the cost of a request.
+    """
+    return sorted(
+        rsid
+        for rsid, loci in placed.items()
+        if link_of.get(rsid) == _SNAPSHOT_LINK
+        and any(_kind(allele)[0] != "substitution" for allele in alleles_of(loci))
+        and not any(witness.get(rsid) for witness in loaded.values())
+    )
+
+
+Resolve = Callable[[str], tuple[Sequence[Mapping[str, object]] | None, str | None]]
+
+
+def ask_live_witness(resolve: Resolve, rsids: Sequence[str]) -> tuple[Loci, list[str]]:
+    """Ask the live rung (`EnsemblResolver.resolve_rsid`) about each rsID, one request at a time.
+
+    Returns `rsid -> loci` for every rsID it answered (an empty list is an answer: REST has no placeable
+    locus), and the rsIDs it did not answer — `None` loci, whether the request failed after its retries
+    or every mapping's anchor base was unreadable (RM268). Those are not asked, never asked-and-empty.
+    Nothing is journalled: a witness's answer is not a placement this run writes.
+    """
+    answered: Loci = {}
+    not_asked: list[str] = []
+    for rsid in rsids:
+        loci, _ = resolve(rsid)
+        if loci is None:
+            not_asked.append(rsid)
+        else:
+            answered[rsid] = [dict(locus) for locus in loci]
+    return answered, not_asked
 
 
 #: The cells a placement is made of. An overlay answers a disputed placement only when it states all of
