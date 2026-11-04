@@ -525,32 +525,6 @@ differs, the correction patches history while a newer curation says something el
 withholds, as `classify_currency` already does. **What to decide:** whether the second arm is the
 existing superseded finding or a new code, which sizes this item.
 
-## RM292 — a verification check does not say what it checked against, so a check that witnesses itself reads as verified
-
-**0.8, decided 2026-11-03.** Taken into 0.8 by the maintainer, with the rest of the indel-placement fixes (RM304, RM267, RM270, RM292, RM305). The status line below predates that decision.
-
-**Severity** high · **Status** open — **a minor**, for the `0.8` branch · **Owner** format
-(`VerificationRecord`) + enricher (the check roster) · **Motivating case** the 2026-09-27 postmortem,
-blindspot B2 and mitigation M3, decided with the maintainer that day · *related* RM267, RM270,
-RM274, `@start-1based`, `@registry-completeness`
-
-Every check that could have seen the indel anchor error either compared a source with itself or was
-tolerant by design. The reference-allele check passes a wrong anchor because the anchor base is a real
-genome base. `check_rsid_coordinates` abstains on every indel position difference and counts none of
-them. The ClinVar snapshot was loaded in the same run and used only as a fallback. `@start-1based`
-wrote the lesson down on 2026-08-06 (*validate-by-redundancy assumes independence*), but only as a
-sentence.
-
-**The change.** Each check declares two things: the source of what it checks, and the source it checks
-against. When those are the same source, the record reads *self-consistent*, never *verified*. A
-tolerance that makes a class undecided counts that class and publishes the count (`@tautology-zero`).
-It is carried as a field on the check registry and asserted by an equality over the roster, so a new
-check cannot ship without stating its witness.
-
-**Why a minor.** The field on `VerificationRecord` is a new member of a published document, and
-*self-consistent* is a new verdict vocabulary member. Both are additive and minor-legal (P3, P8).
-Price: the record is machine-written, so half cost (P9). Not on `main`.
-
 ## RM305 — ClinVar-GKM's allele table is an offline, independent witness for where an indel sits, and nothing reads it
 
 **Decided 2026-11-04 by the maintainer: a witness, indels only.** ClinVar-GKM becomes the witness RM292's checks name (no check of its own), and the lane keeps the ~270k `ReferenceLengthExpression` alleles plus other indels, not the full 4.46 M rows.

@@ -32,6 +32,7 @@ from just_dna_format.vocab import (
     VALID_AUTHOR_ROLES,
     VALID_CLIN_SIG,
     VALID_VERIFICATION_CHECKS,
+    VALID_VERIFICATION_INDEPENDENCE,
     VALID_VERIFICATION_SKIPS,
     VALID_WARNING_CODES,
     check_vocab,
@@ -1443,6 +1444,55 @@ class VerificationRecord(BaseModel):
         ),
     )
 
+    checked_source: str | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description=(
+            "Where the values this check read came from (RM292): `authored` for cells the module's "
+            "author wrote, or a source key when the run established they are a copy of that source "
+            "(a drafter's digest still matching, or a currency check reading a value the source "
+            "itself published). Null when nothing could establish it — a licence table naming the "
+            "witness without a matching digest, an unreadable one, or a record written before 0.8. "
+            f"{UNTRUSTED_NOTE}"
+        ),
+    )
+    witness_source: str | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description=(
+            "The source the values were compared against (RM292), stated even where `source` cannot "
+            "be: `source` is a single join key into the licence table and stays null on a check with "
+            "two authorities, while this names them all, `+`-joined in sorted order. Null on a "
+            f"record written before 0.8. {UNTRUSTED_NOTE}"
+        ),
+    )
+    independence: str | None = Field(
+        json_schema_extra={
+            **vocabulary("verification_independence", VALID_VERIFICATION_INDEPENDENCE),
+            **since("0.8.0"),
+        },
+        default=None,
+        description=(
+            "Derived from the two fields above, never typed (RM292): `self_consistent` when "
+            "`checked_source` is the witness — agreement with the source a value was copied from "
+            "proves nothing about the value, though a disagreement still says the source moved — "
+            "`independent` when it is not among the witnesses, null when either side is unstated or "
+            "the checked source is one of several witnesses. A record stating a value its two sources "
+            f"contradict is refused. Outside the fact set, since it restates two facts in it. {UNTRUSTED_NOTE}"
+        ),
+    )
+    undecided: int | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description=(
+            "Rows a tolerance left without a verdict (RM292, `@tautology-zero`) — outside `subjects`, "
+            "since no verdict was reached on them, and published so an abstention cannot read as "
+            "agreement. `rsid_coordinate_agreement` counts the indel pairs whose position differs, "
+            "which a re-anchoring can explain (RM31). Null for a check with no tolerance class; 0 "
+            f"when it has one and it was empty. {UNTRUSTED_NOTE}"
+        ),
+    )
+
     @field_validator("check")
     @classmethod
     def _check_name(cls, v: str) -> str:
@@ -1463,6 +1513,18 @@ class VerificationRecord(BaseModel):
             raise ValueError("a count must not be negative")
         return v
 
+    @field_validator("undecided")
+    @classmethod
+    def _check_undecided(cls, v: int | None) -> int | None:
+        if v is not None and v < 0:
+            raise ValueError("a count must not be negative")
+        return v
+
+    @field_validator("independence")
+    @classmethod
+    def _check_independence(cls, v: str | None) -> str | None:
+        return check_vocab(v, VALID_VERIFICATION_INDEPENDENCE, "independence")
+
     @model_validator(mode="after")
     def _check_consistent(self) -> "VerificationRecord":
         # A record that says both "this did not run" and "it looked at 12 rows" contradicts itself,
@@ -1480,7 +1542,35 @@ class VerificationRecord(BaseModel):
                 f"check {self.check!r} reports {self.findings} finding(s) out of {self.subjects} "
                 f"subject(s); a finding is one of the rows the check was evaluated over."
             )
+        # RM292. Derived, so it cannot disagree with the two facts it restates: filled when both sides
+        # are stated, refused when a stated value contradicts them, and refused where the derivation
+        # withholds — an independence with nothing under it is a claim, not a derivation.
+        derived = self.derived_independence()
+        if self.independence is None:
+            self.independence = derived
+        elif self.independence != derived:
+            raise ValueError(
+                f"check {self.check!r} reads its {self.checked_source!r} values against "
+                f"{self.witness_source!r}, which makes its independence {derived!r} (derived from "
+                f"`checked_source` and `witness_source`, withheld when either is unknown), not "
+                f"{self.independence!r}."
+            )
         return self
+
+    def derived_independence(self) -> str | None:
+        """`self_consistent`, `independent`, or `None` — the one place the rule is written (RM292).
+
+        The witness may name several authorities (`cpic+pharmvar`). The checked side being one of them
+        and the only one is `self_consistent`; being none of them is `independent`; being one of
+        several is **withheld**, because part of the comparison read the values against their own
+        source and part did not, and neither word is true of the whole record.
+        """
+        if self.checked_source is None or self.witness_source is None:
+            return None
+        witnesses = self.witness_source.split("+")
+        if self.checked_source not in witnesses:
+            return "independent"
+        return "self_consistent" if witnesses == [self.checked_source] else None
 
 
 class VerificationDoc(BaseModel):

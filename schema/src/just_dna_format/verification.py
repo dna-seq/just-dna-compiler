@@ -65,6 +65,11 @@ from just_dna_format.signing import sign_digest
 #: `detail` is out because it is prose — rewording a sentence must not move a signature, the same call
 #: `LiteratureRow` made about which of its columns are facts. `checked_at` is out for the reason
 #: `fetched_at` is out everywhere: when a pass ran is a fact about the run, not about the module.
+#:
+#: RM292's three (0.8) are facts — which source was read, which it was read against, and how many rows
+#: a tolerance abstained on — and joining here moved no signature already on disk, because
+#: `fact_signature` drops a `None` and every earlier record leaves them unset. `independence` is not
+#: here: it is derived from the two sources, and a second copy of a fact is one that can disagree.
 VERIFICATION_FACT_FIELDS: tuple[str, ...] = (
     "check",
     "subjects",
@@ -72,6 +77,9 @@ VERIFICATION_FACT_FIELDS: tuple[str, ...] = (
     "skipped",
     "source",
     "release",
+    "checked_source",
+    "witness_source",
+    "undecided",
 )
 
 #: Leading zero bits the proof-of-work must meet.

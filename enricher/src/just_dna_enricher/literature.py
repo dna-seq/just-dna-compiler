@@ -1730,6 +1730,13 @@ def _verification_records(
                 findings=result.unresolved_citations,
                 source="pubmed",
                 detail="; ".join(parts) or None,
+                # RM292: Crossref is a witness only when a DOI verdict it gave is among the subjects;
+                # a PMID-only module was put to PubMed alone, and the record says so.
+                witness_source=(
+                    "crossref+pubmed"
+                    if any(row.doi_exists is not None for row in result.subject_rows)
+                    else "pubmed"
+                ),
             )
         )
 

@@ -50,7 +50,8 @@ grep -n  '"[a-z_]*",  *#' schema/src/just_dna_format/vocab.py   # the members, e
 """
 
 import logging
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
@@ -58,6 +59,7 @@ from just_dna_compiler.compiler import authored_input_entries
 from just_dna_format.layout import VERIFICATION_JSON, SidecarCollision, sidecar_write_path
 from just_dna_format.manifest import Closure, VerificationDoc, VerificationRecord
 from just_dna_format.normalize import now_utc_iso
+from just_dna_format.sources import SourceRow
 from just_dna_format.verification import (
     attest,
     merge_records,
@@ -65,6 +67,10 @@ from just_dna_format.verification import (
     read_verification,
     write_verification,
 )
+from just_dna_format.vocab import AUTHORED_SOURCE
+
+from just_dna_enricher.drafting import DRAFT_PROJECTIONS, drafted_unchanged
+from just_dna_enricher.licensing import load_sources_file
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +79,251 @@ logger = logging.getLogger(__name__)
 #: row into `manifest.verification` — the un-aggregated wall this tree collapses everywhere else. The
 #: log and the command's own report still name every one.
 DETAIL_LIMIT = 5
+
+
+#: The `checked_source` of a check whose subject is the release each recorded source names, read back
+#: against that same source now (`dataset_currency`). One spelling for a check with one leg per source,
+#: on both sides, so the record reads `self_consistent` without naming a source it cannot single out.
+RECORDED_SOURCE = "recorded_source"
+
+#: The `checked_source` of a check whose subject is an identifier a source reported (`vrs_allele_id`:
+#: a source's own `ga4gh:VA.…`, re-minted here). Not `authored` — no author typed it — and not one
+#: source, because which source reported it is per row.
+REPORTING_SOURCE = "reporting_source"
+
+
+@dataclass(frozen=True)
+class CheckWitness:
+    """What a check reads and what it reads it against (RM292) — one entry per emitting check.
+
+    * `checked` — where the values the check reads come from: `authored` (`vocab.AUTHORED_SOURCE`) for
+      cells the module's author wrote, or a source when the subject is by construction that source's
+      own earlier answer (a currency check). `record_verification` may resolve `authored` further
+      against the module's licence table; nothing resolves the others.
+    * `witness` — the source(s) the values are compared against, sorted. The same names `source`
+      carries where one source answers, because they are the same fact there — the constructors
+      refuse a `source` outside this set. Several only where the check has several authorities.
+    * `columns` — the authored cells whose drafter's digest could establish them as a copy (the
+      `DRAFT_PROJECTIONS` `checked` columns). Empty where no digest covers what the check reads, in
+      which case a licence row naming the witness withholds rather than resolves.
+    * `tolerance` — the class a tolerance leaves without a verdict, when the check has one. A record
+      of a check that ran must then carry `undecided`, and a check with none must not
+      (`@tautology-zero`: an abstention that is not counted reads as agreement).
+    * `reason` — one sentence on why this is the witness, kept beside the data it explains.
+    """
+
+    checked: str
+    witness: tuple[str, ...]
+    reason: str
+    columns: tuple[str, ...] = ()
+    tolerance: str | None = None
+
+    @property
+    def witness_source(self) -> str:
+        """The record's `witness_source`: the authorities `+`-joined in sorted order."""
+        return "+".join(sorted(self.witness))
+
+
+#: **The check roster (RM292): every emitting check states its witness, as data.** Keyed on the
+#: `VALID_VERIFICATION_CHECKS` member; `ran()`/`skipped()` read it, so a check with no entry cannot be
+#: recorded at all, and `test_check_witness.py` asserts the keys equal the vocabulary's members minus
+#: the RESERVED ones. When the checked side and the witness are one source the record reads
+#: `self_consistent` — the currency checks below are that by construction.
+CHECK_WITNESSES: dict[str, CheckWitness] = {
+    # ── `enrich` ──
+    "reference_allele": CheckWitness(
+        AUTHORED_SOURCE,
+        ("seqrepo",),
+        "the authored `ref` against the GRCh38 sequence itself — independent, and tolerant by "
+        "construction of a misplaced indel anchor, which is a real genome base wherever it sits",
+        columns=("ref",),
+    ),
+    "genome_build_agreement": CheckWitness(
+        AUTHORED_SOURCE,
+        ("ensembl-grch37",),
+        "a ref-mismatched authored coordinate against the same position on GRCh37",
+    ),
+    "clinical_significance": CheckWitness(
+        AUTHORED_SOURCE,
+        ("clinvar",),
+        "the authored `clin_sig` against ClinVar's own call for that allele; a ClinVar-drafted, "
+        "unedited column is ClinVar's copy, and the `tautology` skip is that case at the same release",
+        columns=("clin_sig",),
+    ),
+    "published_refutation": CheckWitness(
+        AUTHORED_SOURCE,
+        ("civic",),
+        "the authored `direction` against the refutations CIViC publishes; CIViC's drafter is a "
+        "judgement drafter with no digest, so a module drafted from it withholds",
+        columns=("direction",),
+    ),
+    "evidence_status_currency": CheckWitness(
+        "civic",
+        ("civic",),
+        "a curation status CIViC published at drafting against what CIViC says now — the source "
+        "against itself, which establishes currency and never the claim",
+        columns=("confidence",),
+    ),
+    "rsid_currency": CheckWitness(
+        AUTHORED_SOURCE,
+        ("dbsnp",),
+        "an authored rsID against dbSNP's merge history (NCBI is the oracle, `@ncbi-merge-oracle`)",
+        columns=("rsid",),
+    ),
+    "rsid_coordinate_agreement": CheckWitness(
+        AUTHORED_SOURCE,
+        ("ensembl",),
+        "an authored rsID+coordinate pair against the loci the Ensembl snapshot gives that rsID",
+        tolerance=(
+            "an indel pair whose position matches none of the snapshot's loci — a re-anchoring can "
+            "move it legitimately (RM31), so no verdict is reached and the pair is counted"
+        ),
+    ),
+    "dataset_currency": CheckWitness(
+        RECORDED_SOURCE,
+        (RECORDED_SOURCE,),
+        "the release each licence row records against the release that same source publishes now — "
+        "one leg per source, each the source against itself",
+        columns=("dataset",),
+    ),
+    # ── one command each ──
+    "variant_impact_agreement": CheckWitness(
+        AUTHORED_SOURCE,
+        ("alphagenome_avi",),
+        "a module's variants against the scores AlphaGenome published for them (`alphagenome check`)",
+    ),
+    "citation_existence": CheckWitness(
+        AUTHORED_SOURCE,
+        ("crossref", "pubmed"),
+        "an authored `pmid` against PubMed and a `doi` against Crossref (`literature`); `source` "
+        "names PubMed, whose terms govern the read",
+        columns=("pmid", "doi"),
+    ),
+    "citation_identifier": CheckWitness(
+        AUTHORED_SOURCE,
+        ("pubmed",),
+        "an authored `doi` (or `PMC…` id) against PubMed's own record for that PMID (`literature`)",
+        columns=("doi",),
+    ),
+    "provenance_quote": CheckWitness(
+        AUTHORED_SOURCE,
+        ("europepmc",),
+        "an authored quote or regex against the article's text from Europe PMC (`literature`)",
+        columns=("provenance_quote", "provenance_regex"),
+    ),
+    "allele_function": CheckWitness(
+        AUTHORED_SOURCE,
+        ("cpic", "pharmvar"),
+        "an authored `function_status` against PharmVar and CPIC (`pgx`); the record names the "
+        "authorities that answered, and a CPIC leg drafted from CPIC is skipped as a tautology",
+        columns=("function_status",),
+    ),
+    "pgx_evidence_level": CheckWitness(
+        AUTHORED_SOURCE,
+        ("clinpgx",),
+        "an authored `evidence_level` against ClinPGx's own for that annotation (`clinpgx check`)",
+        columns=("evidence_level",),
+    ),
+    "vrs_allele_id": CheckWitness(
+        REPORTING_SOURCE,
+        ("seqrepo",),
+        "a source-reported `ga4gh:VA.…` against the id minted here over the reference sequence (`vrs mint`)",
+    ),
+    "acmg_secondary_findings": CheckWitness(
+        AUTHORED_SOURCE,
+        ("acmg",),
+        "an authored `acmg_sf` against the published SF gene list (`check-acmg`)",
+        columns=("acmg_sf",),
+    ),
+    "gene_symbol_currency": CheckWitness(
+        AUTHORED_SOURCE,
+        ("hgnc",),
+        "an authored `gene` against HGNC's approved and previous symbols (`check-identifiers`)",
+        columns=("gene",),
+    ),
+    "trait_currency": CheckWitness(
+        AUTHORED_SOURCE,
+        ("ols4",),
+        "an authored `trait_efo_id` against OLS4's obsolete flag and replacement (`check-identifiers`)",
+        columns=("trait_efo_id",),
+    ),
+    "gene_locus_agreement": CheckWitness(
+        AUTHORED_SOURCE,
+        ("hgnc",),
+        "an authored `gene` against the chromosome HGNC places it on, beside the row's variant "
+        "(`check-identifiers`)",
+    ),
+    "pgs_accession_currency": CheckWitness(
+        AUTHORED_SOURCE,
+        ("pgs_catalog",),
+        "an authored `pgs_id` against the PGS Catalog's own record for it (`check-identifiers`)",
+        columns=("pgs_id",),
+    ),
+    "pgs_metadata_agreement": CheckWitness(
+        AUTHORED_SOURCE,
+        ("pgs_catalog",),
+        "authored training ancestry and cohort against the score record's (`check-identifiers`)",
+        columns=("training_ancestry", "training_cohort"),
+    ),
+    "repeat_band_agreement": CheckWitness(
+        AUTHORED_SOURCE,
+        ("strchive",),
+        "an authored repeat-count band table against STRchive's bands (`check-repeat-bands`)",
+    ),
+    "literature_coverage": CheckWitness(
+        AUTHORED_SOURCE,
+        ("litvar",),
+        "a module's alleles against the papers LitVar indexes for them, at the tier it answered "
+        "(`litvar coverage`)",
+    ),
+    "regulator_label_agreement": CheckWitness(
+        AUTHORED_SOURCE,
+        ("clinpgx",),
+        "an authored gene/allele/drug claim against the regulator labels ClinPGx carries "
+        "(`clinpgx check-labels`)",
+    ),
+}
+
+
+def _witnessed(
+    check: str,
+    source: str | None,
+    witness_source: str | None,
+    undecided: int | None,
+    *,
+    ran_: bool,
+) -> dict:
+    """The RM292 fields for a record, from the roster — and the three refusals that keep them honest.
+
+    A `KeyError` for a check the roster does not hold is the mechanism, not an accident: a check that
+    cannot state its witness cannot be recorded. `source` must be one of the declared witnesses, the
+    override (a multi-authority check naming the ones that answered) a part of them, and a check's
+    tolerance decides whether a run must carry `undecided` — a skip may carry one and need not.
+    """
+    if check not in CHECK_WITNESSES:
+        raise KeyError(f"{check!r} has no entry in CHECK_WITNESSES, so it cannot state its witness (RM292)")
+    entry = CHECK_WITNESSES[check]
+    if source is not None and source not in entry.witness:
+        raise ValueError(
+            f"{check!r} records source {source!r}, outside the witness its roster entry declares "
+            f"({entry.witness_source!r})"
+        )
+    witness = entry.witness_source
+    if witness_source is not None:
+        named = witness_source.split("+")
+        if not set(named) <= set(entry.witness) or named != sorted(set(named)):
+            raise ValueError(
+                f"{check!r} names witness {witness_source!r}; it must be a sorted part of "
+                f"{entry.witness_source!r}"
+            )
+        witness = witness_source
+    if entry.tolerance is None and undecided is not None:
+        raise ValueError(f"{check!r} has no tolerance class, so it has no undecided count to publish")
+    if entry.tolerance is not None and ran_ and undecided is None:
+        raise ValueError(
+            f"{check!r} abstains on a class ({entry.tolerance}); a run must publish the undecided count"
+        )
+    return {"checked_source": entry.checked, "witness_source": witness, "undecided": undecided}
 
 
 def examples(names: Sequence[str], limit: int = DETAIL_LIMIT) -> str:
@@ -180,7 +431,12 @@ def record_verification(
                 )
 
     doc = attest(
-        merge_records(existing, fresh, existing_still_binds=existing_still_binds),
+        # RM292: what each check read is settled against the module as it stands, at the one seam
+        # every command writes through, over the records carried across as well as this run's — so no
+        # document can sign `authored` over cells its licence table now says came from the witness.
+        resolve_witnesses(
+            merge_records(existing, fresh, existing_still_binds=existing_still_binds), spec_dir
+        ),
         binding,
         producer=producer_label(),
         produced_at=now or now_utc_iso(),
@@ -206,6 +462,8 @@ def ran(
     source: str | None = None,
     release: str | None = None,
     detail: str | None = None,
+    witness_source: str | None = None,
+    undecided: int | None = None,
     now: str | None = None,
 ) -> VerificationRecord:
     """A record for a check that RAN, with the denominator it ran over.
@@ -213,6 +471,10 @@ def ran(
     Two constructors rather than one with an optional `skipped`, because the two shapes cannot both
     be filled and the model refuses a record that tries — making the split visible at every call site
     is cheaper than discovering it as a validation error.
+
+    Both sides of the witness come from `CHECK_WITNESSES` (RM292); `witness_source` narrows a
+    multi-authority check to the ones that answered, and `undecided` is the tolerance count a tolerant
+    check must publish.
     """
     return VerificationRecord(
         check=check,
@@ -223,6 +485,7 @@ def ran(
         detail=detail,
         checked_at=now or now_utc_iso(),
         producer=producer_label(),
+        **_witnessed(check, source, witness_source, undecided, ran_=True),
     )
 
 
@@ -232,12 +495,17 @@ def skipped(
     *,
     detail: str | None = None,
     source: str | None = None,
+    undecided: int | None = None,
     now: str | None = None,
 ) -> VerificationRecord:
     """A record for a check that did NOT run, carrying the machine key and the sentence.
 
     The sentence is not optional in practice and is optional in the signature: `clinical.tautology_
     reason` writes a good one and it must survive into the record, while `not_requested` needs none.
+
+    The witness is stated on a skip too (RM292): it describes the question, which did not change
+    because this run could not put it. `undecided` may ride a skip — a check that reached a verdict on
+    nothing can still have abstained on something, and that count is the honest part of the record.
     """
     return VerificationRecord(
         check=check,
@@ -246,4 +514,88 @@ def skipped(
         source=source,
         checked_at=now or now_utc_iso(),
         producer=producer_label(),
+        **_witnessed(check, source, None, undecided, ran_=False),
     )
+
+
+def _checked_source(
+    entry: CheckWitness,
+    witness: str,
+    licence: list[SourceRow] | None,
+    unchanged: Callable[[str], bool | None],
+) -> str | None:
+    """Resolve an `authored` side against the licence table, Kleene-style (RM292).
+
+    * an unreadable table → `None`: it established nothing either way;
+    * exactly one source whose drafter digest over the cells this check reads still matches → that
+      source, the cells being its copy — unless the witness is ALSO named at the `annotation` layer and
+      is not that source, because a digest covers the whole table as the last drafter left it, rows
+      an earlier draft from the witness put there included;
+    * the table names the witness at the `annotation` layer and nothing above settled it, or two
+      digests both hold → `None`, withheld: the module drew on the witness and no one can say how much;
+    * otherwise → `authored`.
+
+    `unchanged` is `drafting.drafted_unchanged` bound to the module and memoized per source by the
+    caller, because it re-reads and re-hashes the drafted table.
+    """
+    if licence is None:
+        return None
+    drawn = {row.source for row in licence if row.layer == "annotation"}
+    witnesses = set(witness.split("+"))
+    copies = [
+        source
+        for source in sorted(drawn)
+        if entry.columns
+        and (projection := DRAFT_PROJECTIONS.get(source)) is not None
+        and set(entry.columns) <= set(projection.checked)
+        and unchanged(source) is True
+    ]
+    witness_drawn = bool(drawn & witnesses)
+    if len(copies) == 1 and (copies[0] in witnesses or not witness_drawn):
+        return copies[0]
+    if copies or witness_drawn:
+        return None
+    return AUTHORED_SOURCE
+
+
+def resolve_witnesses(records: Iterable[VerificationRecord], spec_dir: Path) -> list[VerificationRecord]:
+    """Each record's `checked_source` as the module's licence table settles it NOW (RM292).
+
+    Every record whose roster entry reads `authored` is re-settled, the ones carried across from an
+    earlier run included: the licence table is outside the authored binding, so a draft since that run
+    can have made its cells some source's copy, and a document that kept the older answer would sign
+    a side that is no longer true. A currency check's side is the roster's and nothing in a module
+    moves it; a record with no witness stated (written before 0.8) is left exactly as it is. The model
+    re-derives `independence`, so it cannot outlive the side it rests on.
+    """
+    records = list(records)
+    settles = [
+        record.witness_source is not None
+        and record.check in CHECK_WITNESSES
+        and CHECK_WITNESSES[record.check].checked == AUTHORED_SOURCE
+        for record in records
+    ]
+    if not any(settles):
+        return records
+    spec_dir = Path(spec_dir)
+    licence = load_sources_file(spec_dir)
+    memo: dict[str, bool | None] = {}
+
+    def unchanged(source: str) -> bool | None:
+        if source not in memo:
+            memo[source] = drafted_unchanged(spec_dir, source, licence or [])
+        return memo[source]
+
+    resolved: list[VerificationRecord] = []
+    for record, settle in zip(records, settles, strict=True):
+        if not settle:
+            resolved.append(record)
+            continue
+        checked = _checked_source(CHECK_WITNESSES[record.check], record.witness_source, licence, unchanged)
+        if checked == record.checked_source:
+            resolved.append(record)
+            continue
+        data = record.model_dump()
+        data.update(checked_source=checked, independence=None)
+        resolved.append(VerificationRecord.model_validate(data))
+    return resolved

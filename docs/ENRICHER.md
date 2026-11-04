@@ -14,58 +14,86 @@ check: it **reports and never repairs** (silently rewriting an authored value de
 something upstream is wrong, and turns a loud data problem into a quiet one), and its **severity follows
 the mode** (`best_effort` warns and carries on; `strict` refuses). What exists today:
 
-| Check | Compares | Where | Attests as |
-|---|---|---|---|
-| **Reference allele** | authored `ref` vs the actual reference sequence | `sequences.verify_reference_alleles` | `reference_allele` |
-| **Wrong build** | a ref-mismatched row vs the same coordinate on GRCh37 (0.6) | `grch37.diagnose_wrong_build` (**warns in both modes**) | `genome_build_agreement` |
-| **VRS cross-check** | a source's own `vrs_id` vs the locally-minted one | `vrs.mint_resolution_rows` | `vrs_allele_id` |
-| **rsid↔coordinate** | an authored pair vs what the reference says | `compiler/resolution.py::_verify` over the injected table (warning), and `enrich()` against the injected Ensembl snapshot (`resolver.check_rsid_coordinates`, warning in both modes) — one question, two tiers, so one attestation name, and the enricher's half is the one that attests | `rsid_coordinate_agreement` |
-| **Ambiguous back-fill** | ≥2 rsIDs for one exact allele → recorded, never guessed | `resolver._lookup_rsid_candidates` | — *(recorded onto the row, not attested)* |
-| **Clinical significance** | authored `clin_sig` vs **every annotation authority** consulted — ClinVar and, since 0.7, PubMind — allele-exactly | `clinical.verify_clin_sig` (**warns in both modes**), persisted as the N-authority concordance record by `clinical.clin_sig_concordance` (0.7, RM130 + RM134 § B) | `clinical_significance` |
-| **Answered-call currency** | an authority's call **now** vs what it said when the author's `overrides.csv` answer was written (0.7, RM151) | `clinical.answered_call_shift` → `concordance.shifted_authority_calls` (**warns in both modes**; the baseline is the previous run's `clin_sig_authority_calls.csv`, so it is read before the commit rewrites it and a move is observable exactly once) | — *(logged; the record it reads is the attestation)* |
-| **PGx evidence level** | authored `evidence_level` vs ClinPGx's own for that annotation | `clinpgx.enrich_clinpgx` (**refuses in `strict`** — the only enricher cross-check that does — on a row's own cited annotation only; RM297) | `pgx_evidence_level` |
-| **Citation existence** | a cited `pmid` vs PubMed | `literature.enrich_literature` | `citation_existence` |
-| **Identifier agreement** | an authored `doi` vs the registry's for that PMID | `literature.enrich_literature` | `citation_identifier` |
-| **PMC id agreement** | an authored `PMC…` in the `pmid` cell vs PubMed's for that record (0.6) | `literature._pmcid_conflicts` (attested under `citation_identifier`, the same question one registry over) | `citation_identifier` |
-| **Article licence** | the cited article's own terms, recorded per article (0.6) | `literature.enrich_literature` → `licensing.article_terms` | — *(a recording pass: it writes a source's answer and compares nothing)* |
-| **Provenance quote** | `provenance_quote`/`provenance_regex` vs the article's fulltext (Europe PMC's open-access subset, then PMC's BioC service), else its abstract | `literature.enrich_literature` (warning; partial coverage) | `provenance_quote` |
-| **rsID currency** | an authored rsID vs dbSNP (live / merged / absent) | `identifiers.check_rsids` | `rsid_currency` |
-| **Trait currency** | `trait_efo_id` vs OLS4 (obsolete + replacement) | `identifiers.OntologyClient.trait` (attested by `check-identifiers` since RM72) | `trait_currency` |
-| **Gene symbol currency** | `gene` vs HGNC approved / previous symbols | `identifiers.OntologyClient.gene` (attested by `check-identifiers` since RM72) | `gene_symbol_currency` |
-| **Gene ↔ locus agreement** | the row's `gene` vs the chromosome its variant sits on (0.5.4) | `identifiers.check_identifiers` → `GeneLocusConflict` (attested since RM72) | `gene_locus_agreement` |
-| **PGS accession currency** | an authored `pgs_id` vs the PGS Catalog's own record for it (0.7, RM163) — the Catalog answers 200 with `{}` for a never-assigned id and for a malformed one, so the check reads the body | `identifiers._check_pgs` (attested by `check-identifiers`; `--no-pgs` records `not_requested`) | `pgs_accession_currency` |
-| **PGS metadata agreement** | authored `training_ancestry` / `training_cohort` vs the score record's `ancestry_distribution` / `samples_training` (0.7, RM163) — its own member, because currency asks whether the id still names a score and this asks whether two cells beside it still match | `identifiers._check_pgs` (attested by `check-identifiers`) | `pgs_metadata_agreement` |
-| **ACMG secondary findings** | authored `acmg_sf` vs the published SF gene list (v3.3 via `--sf-list`; the scraped v3.2 page reports `unverifiable`) | `acmg.check_acmg_sf` (attested by `check-acmg` since RM72) | `acmg_secondary_findings` |
-| **Repeat bands** | an authored `repeat_alleles.csv` band table vs STRchive's `benign_*`/`intermediate_*`/`pathogenic_*` (0.7, RM165) | `strchive.check_repeat_bands` (**warns in both modes**; the catalogue's `pathogenic_max` is reported and never written) | `repeat_band_agreement` |
-| **Regulator drug labels** | a `(gene[, allele], drug)` claim vs the `Testing Level` five drug regulators' labels carry, at two join tiers (0.7, RM166) | `drug_labels.check_drug_labels` (**warns in both modes**; a blank level is `unknown` and never `No Clinical PGx`) | `regulator_label_agreement` |
-| **Published refutation** | an authored `direction` vs the refutations CIViC publishes for the same variant (0.7, RM170) | `civic_refutation.compare_refutations` → `enrich()` (**warns in both modes**; the record names its `status_basis`, because on the `accepted` basis the class is empty by construction) | `published_refutation` |
-| **Literature coverage** | which papers a variant-literature index holds for a module's alleles, and **at which tier** (0.7, RM167) | `litvar.check_literature_coverage` (reports only; allele-resolved, position-only and absent are three outcomes) | `literature_coverage` |
-| **Evidence-status currency** | a recorded `StudyRow.confidence` — a curation status a citing source published when the row was drafted — vs what that source says about the same item **now** (0.7, RM160) | `civic_citations.check_evidence_status_currency` → `enrich()` (**warns in both modes**; a status accepted or rejected since, or a citation added since. Not `dataset_currency`: that one asks which release, this one asks whether one judgement moved) | `evidence_status_currency` |
-| **Allele function** | authored `function_status` vs PharmVar and CPIC | `pgx.enrich_pgx` (**warns in both modes**) | `allele_function` |
-| **Declared use** | the caller's `--use` vs a source's terms | `licensing.check_declared_use` (**refuses in both modes**) | — *(an acquisition gate, not a comparison)* |
-| **Drafted vs authored rows** | a source's current row vs the one already in the CSV | `just_dna_compiler.draft.append_rows` (reports `differs`; never rewrites) | — *(a drafting report; it runs outside `enrich()`)* |
-| **A drafted table's licence row** | does `sources.csv` record what licensed the rows this append is landing? | `drafting.licence_commit`, handed to every `append_*` as `before_commit` (RM232) | refuses the run — the table is not committed, so a module never carries drafted rows with no licence record |
-| **Source coverage** | is the locus inside the source's callset at all? `not_covered` ≠ `not_found` | `gnomad.covers_locus` → `frequencies.enrich_frequencies` (**not** a `strict` failure) | — *(a recording pass: coverage is a fact about the callset)* |
-| **Dataset currency** | a recorded `SourceRow.dataset` vs the release that source publishes **now** (0.7) | `currency.check_dataset_currency` → `enrich()` (reports; `strict` refuses over a superseded release, never over an unreachable source) | `dataset_currency` |
-| **Variant impact** | an authored variant against the score AlphaGenome published for it — the three questions the local AVI artifact provably cannot answer (0.7, RM193) | `alphagenome_check.check_variant_impact` (**warns in both modes**; non-commercial, so an undeclared run asks nothing. Its own member rather than a second writer of `reference_allele`, which the Atlas also answers — two registries answering an overlapping question get two names, or one source's outage writes a skip against the other's) | `variant_impact_agreement` |
+| Check | Compares | Where | Reads | Against | Attests as |
+|---|---|---|---|---|---|
+| **Reference allele** | authored `ref` vs the actual reference sequence | `sequences.verify_reference_alleles` | `authored` | `seqrepo` | `reference_allele` |
+| **Wrong build** | a ref-mismatched row vs the same coordinate on GRCh37 (0.6) | `grch37.diagnose_wrong_build` (**warns in both modes**) | `authored` | `ensembl-grch37` | `genome_build_agreement` |
+| **VRS cross-check** | a source's own `vrs_id` vs the locally-minted one | `vrs.mint_resolution_rows` | `reporting_source` | `seqrepo` | `vrs_allele_id` |
+| **rsid↔coordinate** | an authored pair vs what the reference says | `compiler/resolution.py::_verify` over the injected table (warning), and `enrich()` against the injected Ensembl snapshot (`resolver.check_rsid_coordinates`, warning in both modes) — one question, two tiers, so one attestation name, and the enricher's half is the one that attests | `authored`; abstentions counted in `undecided` | `ensembl` | `rsid_coordinate_agreement` |
+| **Ambiguous back-fill** | ≥2 rsIDs for one exact allele → recorded, never guessed | `resolver._lookup_rsid_candidates` | — | — | — *(recorded onto the row, not attested)* |
+| **Clinical significance** | authored `clin_sig` vs **every annotation authority** consulted — ClinVar and, since 0.7, PubMind — allele-exactly | `clinical.verify_clin_sig` (**warns in both modes**), persisted as the N-authority concordance record by `clinical.clin_sig_concordance` (0.7, RM130 + RM134 § B) | `authored` | `clinvar` | `clinical_significance` |
+| **Answered-call currency** | an authority's call **now** vs what it said when the author's `overrides.csv` answer was written (0.7, RM151) | `clinical.answered_call_shift` → `concordance.shifted_authority_calls` (**warns in both modes**; the baseline is the previous run's `clin_sig_authority_calls.csv`, so it is read before the commit rewrites it and a move is observable exactly once) | — | — | — *(logged; the record it reads is the attestation)* |
+| **PGx evidence level** | authored `evidence_level` vs ClinPGx's own for that annotation | `clinpgx.enrich_clinpgx` (**refuses in `strict`** — the only enricher cross-check that does — on a row's own cited annotation only; RM297) | `authored` | `clinpgx` | `pgx_evidence_level` |
+| **Citation existence** | a cited `pmid` vs PubMed | `literature.enrich_literature` | `authored` | `crossref`, `pubmed` | `citation_existence` |
+| **Identifier agreement** | an authored `doi` vs the registry's for that PMID | `literature.enrich_literature` | `authored` | `pubmed` | `citation_identifier` |
+| **PMC id agreement** | an authored `PMC…` in the `pmid` cell vs PubMed's for that record (0.6) | `literature._pmcid_conflicts` (attested under `citation_identifier`, the same question one registry over) | `authored` | `pubmed` | `citation_identifier` |
+| **Article licence** | the cited article's own terms, recorded per article (0.6) | `literature.enrich_literature` → `licensing.article_terms` | — | — | — *(a recording pass: it writes a source's answer and compares nothing)* |
+| **Provenance quote** | `provenance_quote`/`provenance_regex` vs the article's fulltext (Europe PMC's open-access subset, then PMC's BioC service), else its abstract | `literature.enrich_literature` (warning; partial coverage) | `authored` | `europepmc` | `provenance_quote` |
+| **rsID currency** | an authored rsID vs dbSNP (live / merged / absent) | `identifiers.check_rsids` | `authored` | `dbsnp` | `rsid_currency` |
+| **Trait currency** | `trait_efo_id` vs OLS4 (obsolete + replacement) | `identifiers.OntologyClient.trait` (attested by `check-identifiers` since RM72) | `authored` | `ols4` | `trait_currency` |
+| **Gene symbol currency** | `gene` vs HGNC approved / previous symbols | `identifiers.OntologyClient.gene` (attested by `check-identifiers` since RM72) | `authored` | `hgnc` | `gene_symbol_currency` |
+| **Gene ↔ locus agreement** | the row's `gene` vs the chromosome its variant sits on (0.5.4) | `identifiers.check_identifiers` → `GeneLocusConflict` (attested since RM72) | `authored` | `hgnc` | `gene_locus_agreement` |
+| **PGS accession currency** | an authored `pgs_id` vs the PGS Catalog's own record for it (0.7, RM163) — the Catalog answers 200 with `{}` for a never-assigned id and for a malformed one, so the check reads the body | `identifiers._check_pgs` (attested by `check-identifiers`; `--no-pgs` records `not_requested`) | `authored` | `pgs_catalog` | `pgs_accession_currency` |
+| **PGS metadata agreement** | authored `training_ancestry` / `training_cohort` vs the score record's `ancestry_distribution` / `samples_training` (0.7, RM163) — its own member, because currency asks whether the id still names a score and this asks whether two cells beside it still match | `identifiers._check_pgs` (attested by `check-identifiers`) | `authored` | `pgs_catalog` | `pgs_metadata_agreement` |
+| **ACMG secondary findings** | authored `acmg_sf` vs the published SF gene list (v3.3 via `--sf-list`; the scraped v3.2 page reports `unverifiable`) | `acmg.check_acmg_sf` (attested by `check-acmg` since RM72) | `authored` | `acmg` | `acmg_secondary_findings` |
+| **Repeat bands** | an authored `repeat_alleles.csv` band table vs STRchive's `benign_*`/`intermediate_*`/`pathogenic_*` (0.7, RM165) | `strchive.check_repeat_bands` (**warns in both modes**; the catalogue's `pathogenic_max` is reported and never written) | `authored` | `strchive` | `repeat_band_agreement` |
+| **Regulator drug labels** | a `(gene[, allele], drug)` claim vs the `Testing Level` five drug regulators' labels carry, at two join tiers (0.7, RM166) | `drug_labels.check_drug_labels` (**warns in both modes**; a blank level is `unknown` and never `No Clinical PGx`) | `authored` | `clinpgx` | `regulator_label_agreement` |
+| **Published refutation** | an authored `direction` vs the refutations CIViC publishes for the same variant (0.7, RM170) | `civic_refutation.compare_refutations` → `enrich()` (**warns in both modes**; the record names its `status_basis`, because on the `accepted` basis the class is empty by construction) | `authored` | `civic` | `published_refutation` |
+| **Literature coverage** | which papers a variant-literature index holds for a module's alleles, and **at which tier** (0.7, RM167) | `litvar.check_literature_coverage` (reports only; allele-resolved, position-only and absent are three outcomes) | `authored` | `litvar` | `literature_coverage` |
+| **Evidence-status currency** | a recorded `StudyRow.confidence` — a curation status a citing source published when the row was drafted — vs what that source says about the same item **now** (0.7, RM160) | `civic_citations.check_evidence_status_currency` → `enrich()` (**warns in both modes**; a status accepted or rejected since, or a citation added since. Not `dataset_currency`: that one asks which release, this one asks whether one judgement moved) | `civic` | `civic` | `evidence_status_currency` |
+| **Allele function** | authored `function_status` vs PharmVar and CPIC | `pgx.enrich_pgx` (**warns in both modes**) | `authored` | `cpic`, `pharmvar` | `allele_function` |
+| **Declared use** | the caller's `--use` vs a source's terms | `licensing.check_declared_use` (**refuses in both modes**) | — | — | — *(an acquisition gate, not a comparison)* |
+| **Drafted vs authored rows** | a source's current row vs the one already in the CSV | `just_dna_compiler.draft.append_rows` (reports `differs`; never rewrites) | — | — | — *(a drafting report; it runs outside `enrich()`)* |
+| **A drafted table's licence row** | does `sources.csv` record what licensed the rows this append is landing? | `drafting.licence_commit`, handed to every `append_*` as `before_commit` (RM232) | — | — | refuses the run — the table is not committed, so a module never carries drafted rows with no licence record |
+| **Source coverage** | is the locus inside the source's callset at all? `not_covered` ≠ `not_found` | `gnomad.covers_locus` → `frequencies.enrich_frequencies` (**not** a `strict` failure) | — | — | — *(a recording pass: coverage is a fact about the callset)* |
+| **Dataset currency** | a recorded `SourceRow.dataset` vs the release that source publishes **now** (0.7) | `currency.check_dataset_currency` → `enrich()` (reports; `strict` refuses over a superseded release, never over an unreachable source) | `recorded_source` | `recorded_source` | `dataset_currency` |
+| **Variant impact** | an authored variant against the score AlphaGenome published for it — the three questions the local AVI artifact provably cannot answer (0.7, RM193) | `alphagenome_check.check_variant_impact` (**warns in both modes**; non-commercial, so an undeclared run asks nothing. Its own member rather than a second writer of `reference_allele`, which the Atlas also answers — two registries answering an overlapping question get two names, or one source's outage writes a skip against the other's) | `authored` | `alphagenome_avi` | `variant_impact_agreement` |
 
-**The fourth column is the join, and it is asserted rather than promised.** `vocab.py`'s own comment
+**The last column is the join, and it is asserted rather than promised.** `vocab.py`'s own comment
 says `VALID_VERIFICATION_CHECKS` was audited against *this table* — so a member with an emitter and no
 row here is a check a reader of `verification.json` cannot look up, which is what happened to
 `variant_impact_agreement` for a release. **Every member that has an emitter names a row above**
 (`test_enricher_doc_registries.py` walks it), and the two the vocabulary marks RESERVED —
 `gene_disease_validity` and `dosage_sensitivity` — deliberately have none: their passes *record* a
 source's verdict and compare nothing authored, and the member is held for a future pass that does. The
-containment runs one way only: rows whose fourth column is **—** are real work that attests nothing,
+containment runs one way only: rows whose last column is **—** are real work that attests nothing,
 either because it is an acquisition gate, a recording pass, or a report that runs outside `enrich()`.
+
+**`Reads` and `Against` are the check's witness, and they are data (RM292, 0.8).** Each is the
+`checked`/`witness` of the check's entry in `verification.CHECK_WITNESSES`, which `ran()` and
+`skipped()` read to fill every record's `checked_source` and `witness_source` — so a check with no
+entry cannot be recorded at all, and `test_check_witness.py` asserts the roster equals the emitting
+members. When the two are one source the record's `independence` reads `self_consistent`, never
+`independent`: the currency checks are that by construction (`civic` against `civic`, and
+`recorded_source` — each recorded release against the source that published it). `authored` is then
+settled against the module's licence table by `record_verification`, the one seam every command
+writes through — over the records carried from earlier runs as well as this run's, since the licence
+table is outside the authored binding — and it is three-valued: one source whose drafter digest still
+matches over the cells the check reads makes them that source's copy (a ClinVar-drafted, unedited
+`clin_sig` reads `clinvar` against `clinvar`), unless the witness is also named at the `annotation`
+layer and is not that source, since a digest covers rows an earlier draft put there; a licence row
+naming the witness with nothing establishing which cells it supplied withholds the side (`null`), as do
+two holding digests; no such row keeps `authored`; an unreadable table withholds. A checked side that is
+one of several witnesses (`cpic` against `cpic+pharmvar`) withholds `independence` too. A check with a tolerance publishes what it abstained on: `rsid_coordinate_agreement` counts
+the indel pairs whose position matches no snapshot locus into `undecided`, outside `subjects`, because
+a re-anchoring can move one legitimately (RM31) and an uncounted abstention reads as agreement
+(`@tautology-zero`). The roster says which checks have a tolerance, and `ran()` refuses a tolerant
+check's record without the count. Two honest limits: the reference-allele check is independent and
+still blind to a misplaced indel anchor, because the anchor base is a real genome base; and a
+CIViC-drafted module's refutation check withholds rather than reads `self_consistent`, because CIViC's
+drafter is a judgement drafter and records no digest that could establish the copy.
 
 **Every check that runs records what it did — `verification.json` (RM45, 0.6).** Until 0.6 the table
 above described work whose result died with the process: a check's findings reached a log line and an
 `EnrichmentResult` field, and the compiled module could not say whether the check had been put at all.
 `just_dna_enricher.verification.record_verification` is the load-merge-write that closes that, in the
 same shape `licensing.record_source_terms` has and for the same reason — a count of call sites goes
-stale, one function does not. Four things to hold onto when wiring a new pass into it:
+stale, one function does not. What to hold onto when wiring a new pass into it:
 
+- **A new check starts with its roster entry (RM292).** `ran()` and `skipped()` raise for a check with no
+  `CHECK_WITNESSES` entry, so the first edit is the witness: what the check reads (`authored`, or the
+  source whose earlier answer it re-asks), what it reads it against, and, if it abstains on a class, the
+  `tolerance` whose count it must then publish as `undecided`.
 - **A record carries two counts and a closed skip key.** `ran(check, subjects=…, findings=…)` when it
   ran (`subjects=0` is a legitimate answer meaning nothing was in scope) and
   `skipped(check, reason, detail=…)` when it did not. Both vocabularies are closed

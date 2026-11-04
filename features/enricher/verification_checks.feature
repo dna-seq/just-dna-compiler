@@ -409,3 +409,23 @@ Feature: The verification checks and their three outcomes
     Then the compiler drops the block with a warning
     # Correctly, because the checks were put against rows that no longer exist. Re-running the pass
     # re-attests. Currency of the SOURCE is a different question, read off each record's own `release`.
+
+  # source: enricher/src/just_dna_enricher/verification.py
+  # anchor: resolve_witnesses
+  @tri_state
+  Scenario Outline: a record names its witness, and one source on both sides reads self-consistent
+    Given a check whose values came from <checked> and are compared against <witness>
+    When the pass attests
+    Then the record's independence is <independence>
+    # RM292. Every emitting check states both sides in the enricher's roster, and the constructors fill
+    # every record from it, so a check with no roster entry cannot be recorded. Agreement with the
+    # source a value was copied from proves nothing about the value, so that record never reads
+    # independent. The authored side is settled against the licence table at the one writer every
+    # command goes through, and an unknown is withheld rather than guessed. A tolerance counts what it
+    # abstains on into the undecided field, outside the subjects.
+    Examples:
+      | checked                                         | witness  | independence    |
+      | cells the author wrote                          | ClinVar  | independent     |
+      | a ClinVar-drafted column nobody has edited      | ClinVar  | self_consistent |
+      | cells beside a licence row naming ClinVar alone | ClinVar  | withheld (null) |
+      | a release CIViC published at drafting           | CIViC    | self_consistent |

@@ -387,7 +387,15 @@ def _verification_records(
                 " — a run with egress provisions one" if pairs.not_checked == "offline" else ""
             )
         records.append(
-            skipped("rsid_coordinate_agreement", pairs.not_checked, detail=detail, source="ensembl")
+            skipped(
+                "rsid_coordinate_agreement",
+                pairs.not_checked,
+                detail=detail,
+                source="ensembl",
+                # RM292: a snapshot that was read and settled nothing still measured its indel class,
+                # so the count is published (0 included); no snapshot measured nothing, so it is unset.
+                undecided=len(pairs.undecided) if (pairs.unknown or pairs.undecided) else None,
+            )
         )
     else:
         # What was NOT compared travels with what was: coverage of an unstated fraction is the defect
@@ -408,6 +416,9 @@ def _verification_records(
                 source="ensembl",
                 release=_snapshot_release(ensembl_ref),
                 detail=" ".join(notes) or None,
+                # RM292 / `@tautology-zero`: the RM31 tolerance abstains on every indel position
+                # difference, so the abstentions are counted here rather than left to read as agreement.
+                undecided=len(pairs.undecided),
             )
         )
 

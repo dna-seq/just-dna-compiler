@@ -981,6 +981,25 @@ VALID_VERIFICATION_SKIPS: frozenset[str] = frozenset(
     }
 )
 
+# Whether a check's witness was independent of what it checked (RM292, 0.8). Derived on
+# `VerificationRecord` from its `checked_source` and `witness_source`, never typed: the same source on
+# both sides is `self_consistent`, two different ones are `independent`, and either side unstated
+# withholds the value (`None`). Named for its axis rather than `verdict`, which stays free for an
+# outcome (passed / failed) a later release may want on the same record. `tautology` above is the
+# skip a check takes when it would be self-consistent AND cannot fail; this is what a check that ran
+# says about its witness.
+VALID_VERIFICATION_INDEPENDENCE: frozenset[str] = frozenset(
+    {
+        "independent",  # the witness is a different source from the one the checked values came from
+        "self_consistent",  # the checked values came from the witness itself — agreement proves nothing
+    }
+)
+
+# The `checked_source` spelling for values the module's author wrote, as opposed to values a run
+# established are a copy of some named source. A reserved spelling in an open field, like `global`
+# among the ancestry groups: a source key is a licence-table name and none is spelled this way.
+AUTHORED_SOURCE: str = "authored"
+
 # ── Ancestry groups for the frequency table (0.5) ───────────────────────────────────────────────
 # An OPEN, seeded vocabulary in the `RECOMMENDED_AUTHOR_KINDS` idiom — deliberately NOT a closed
 # `frozenset` + rejecting validator, even though Principle 6 makes closed the default. The reason is
