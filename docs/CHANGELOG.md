@@ -41,6 +41,27 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM304: a `vrs_id` says which VRS minted it, and the module pins one (0.8, uncut)
+
+**format, compiler, enricher** — VRS 2.1 re-ids some ambiguous insertions, so an id now carries the
+version that minted it and the manifest pins the version a module's ids are meant under.
+
+- **The per-row version is `resolution.csv`'s `vrs_spec`**, which the enricher has written since 0.5 and
+  nothing read. No new column: the item was filed believing nothing recorded a version, and a second
+  column for the same axis would break P5. The enricher now reads the version off the library
+  (`ga4gh.vrs.VRS_VERSION`, `"2.0.1"`) and stamps it at the spec's minor (`"2.0"`, as before) through
+  `vrs.vrs_spec_release`. It stamps only rows it mints. A recorded id's cell is left alone, and empty
+  means *unstated*.
+- **The pin, `manifest.compilation.vrs_version`**, is the VRS minor the compiler verifies against
+  (`"2.0"`), or `null` when no allele in `resolution.csv` carries an id.
+- **New warning code `vrs_version_differs`**: a row whose `vrs_spec` names another minor is not
+  recomputed and never reported as the mismatch error. It is one line per stated version, a warning in
+  both modes, and actionable (re-mint). `vrs mint` and `enrich` report the same reason for recorded ids
+  that differ from the running minter's version.
+- `ga4gh.vrs` stays capped `<2.4`. The insertion `rs72613567` is pinned to
+  `ga4gh:VA.Jml7SNku3QQBCVIj78BGiFvR21bNkos7` behind `JUST_DNA_NETWORK_TESTS=1`. No parquet carries the
+  version yet; RM270 carries the minted id and its version onto the artifact.
+
 ## 2026-11-04 — RM340: the VRS-coverage warning points at the record that explains its no-ALT rows (patch, on `main`)
 
 **compiler, enricher** — When an attested `verification.json` carries an `rsid_coordinate_agreement` record

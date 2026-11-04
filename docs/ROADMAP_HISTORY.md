@@ -30,6 +30,123 @@ up.
 
 
 
+# The 0.8 PT2 build round
+
+The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
+the `0.8` branch lane by lane. Newest first.
+
+## RM304 — a `vrs_id` does not say which VRS minted it, and VRS 2.1 moves some insertion ids
+
+**Decided 2026-11-04 by the maintainer: both, a module-wide pin and a per-row version.** The manifest pins the VRS version the module's ids are meant to be minted under, and each `vrs_id` carries the version that minted it, beside it. A row whose version differs from the pin is the one to invalidate against, with its own reason, never the mismatch error (question 2). A per-row column alone cannot say which version is intended; a pin alone cannot survive a merge-not-clobber table mixing runs.
+
+**0.8, decided 2026-11-03.** Taken into 0.8 by the maintainer, with the rest of the indel-placement fixes (RM304, RM267, RM270, RM292, RM305). The status line below predates that decision.
+
+**Severity** high · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut** — **a minor** ([PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §3 item 20, §5 C1), landed before RM270 · **Owner**
+format (where the version is recorded) + enricher (the minting) · **Motivating case** [GKS_SURVEY.md](probes/GKS_SURVEY.md) §0 findings 2 and 3,
+2026-09-28
+
+**Residuals** RM270
+
+RM270 carries the minted per-ALT `vrs_id` onto the variant parquets, and with it this item's per-row
+version (PROPOSAL_0_8_PT2 §5 C5, *"with C1's version"*). Until then no compiled parquet carries an id
+we minted, so neither does any parquet carry the version, and `reverse_module` (which rebuilds
+`resolution.csv` from the parquets) drops both: RM241's residual, which RM270 already names. Lifting
+the `ga4gh.vrs<2.4` cap is the liaison's, once vrs-python releases `rle_subunit_mode`; it is not a
+remainder of this item, which keeps the cap by design.
+
+**What shipped (2026-11-04).** The premise of fact 1 was half wrong, and the build starts from the
+correction. *"Nothing in the repo records the version"* came from grepping `vrs_version`. The per-row
+half had shipped in 0.5 as `ResolutionRow.vrs_spec`: every row `mint_resolution_rows` mints has been
+stamped `"2.0"` since then. Nothing read it, and its description said the allele id does not drift,
+which VRS 2.1 refutes. So the per-row column is `vrs_spec`, re-described, and **no `vrs_version`
+column was added to `resolution.csv`**: two columns for one axis is the P5 failure, and P3 would have
+kept both for the rest of the major. The name `vrs_version` went to the pin, as the proposal named it.
+
+- **The pin**, `manifest.compilation.vrs_version: str | None`. No `manifest.resolution` block exists;
+  the resolution-table facts live in `Compilation` (`resolution_signature`, `vrs_alleles`,
+  `vrs_alleles_identified`), so the pin sits beside the VA coverage counts. Its value is
+  `vrs.VRS_SPEC_VERSION` (`"2.0"`), the rule the compiler's stdlib implements and verifies against,
+  when at least one allele in `resolution.csv` carries an id, and `None` otherwise. The compiler cannot
+  import `ga4gh.vrs` (P2, Goal 2), so the pin is the rule it can check, and the verify pass compares
+  every row against the same constant.
+- **One grammar for both sides**, `just_dna_format.vrs.vrs_spec_release`. The library spells its
+  version `"2.0.1"` and every table carries `"2.0"`; a raw compare would have reported every row of
+  every enriched module. The id rule changes at a VRS minor, so a version is compared at
+  `major.minor`. Unstated (`None`, blank) answers `None`, the unknown arm; an unreadable value comes
+  back untouched, equal to no pin and quoted whole in the warning. No validator was added to
+  `vrs_spec`: that would refuse a cell a 0.5 module may hold, and the comparison already reports it.
+- **The minting call** reads `ga4gh.vrs.VRS_VERSION`, the attribute vrs-python publishes for the VRS
+  spec it implements (`"2.0.1"` under `ga4gh.vrs` 2.3.3; its `__version__`, `"2.3.3"`, is the library's
+  own release and says nothing about the rule). `vrs.MINTER_VRS_VERSION = vrs_spec_release(VRS_VERSION)`
+  = `"2.0"` is stamped on every row the pass mints. An already-recorded id keeps its `vrs_spec`, an
+  empty one included: that run did not mint the id, so it may not claim its version
+  (`@currency-cannot-be-a-column`). A recorded version other than the minter's is counted in
+  `MintResult.version_differs` and printed as `vrs_version_differs: …` by `enrich` and `vrs mint`.
+- **The verify pass.** RM304 question 2 named *"the enricher's VRS verify pass"*. There is no such
+  pass: the enricher never recomputes a stored id, and the pass that does is the compiler's
+  `_verify_vrs_ids` (run by `validate` and `compile`). The reason is reported at both places that see
+  a stored id: there as warning code `vrs_version_differs`, and at the enricher's `already_present`
+  branch as above. In `_verify_vrs_ids` a row whose stated version differs from the pin is not
+  recomputed. It is reported once per stated version, as a warning in both modes, never as the
+  mismatch error. A row's own contradiction (no coordinate, no ALT, a symbolic allele) is decided
+  first and still errors. A row with no version is verified as before. Because re-minting clears it,
+  the code is actionable, not carried.
+- **Tests.** `compiler/tests/test_vrs_version.py`: the reason against a same-version control that
+  stays a mismatch error; patch spellings and whitespace that are not a difference; the unreadable
+  arm; a table with no `vrs_spec` column that still verifies and still refuses a tampered id; both
+  modes through `compile_module`, with `validate_spec` agreeing; the pin present, and absent with no
+  table or no id; a compile → reverse → compile fixed point. `enricher/tests/test_vrs_version.py`: the
+  minter's version read off the library; the library's minor equal to `VRS_SPEC_VERSION` (red the
+  day an upgrade implements another minor); a minted row stamped; a recorded row with another version
+  reported and left alone; one with none left unstated; and the pinned insertion `rs72613567`
+  (`4-87310240-T-TA` → `ga4gh:VA.Jml7SNku3QQBCVIj78BGiFvR21bNkos7`) behind `JUST_DNA_NETWORK_TESTS=1`,
+  run once against the live proxy and green. Mutation runs (the version arm off, the pin unconditional,
+  the enricher's count off) each turned their tests red. A `features/` scenario grounds the code.
+
+**Two facts, both measured in the survey.**
+
+1. **The id carries no version.** For BRAF V600E (`chr7:140753336 A>T`) three `ga4gh:VA.` ids exist:
+   ours under VRS 2.0 (`…Otc5ovrw…`), vrs-python's VRS 1.3 computation (`…fZiBjQEo…`), and the ClinGen
+   Allele Registry's (`…HaPTmn-r…`, a VRS 1.x shape). All three are well-formed and none says which
+   spec produced it. Nothing in the repo records the version: `grep -rni 'vrs_version'` over
+   `schema/`, `enricher/` and SCHEMAS.md finds nothing.
+2. **VRS 2.1.0 (2026-09-01) changes ambiguous-insertion normalization**: it now picks the smallest
+   repeat-unit factor where 2.0 picked the greatest, and that moves the digest of affected alleles.
+   vrs-python has not implemented it. Both 2.3.3 (ours) and 2.4.0a4 still iterate the factors
+   descending, and the change is open as vrs-python issue #637. Today everyone we compare against
+   mints 2.0.x ids: our enricher, ClinVar-GKM and gnomAD. The first vrs-python release that ships the
+   2.1 rule will make a fresh `enrich` mint a different id for some insertions than the one stored
+   in `resolution.csv` and the one gnomAD publishes, with nothing to say why.
+
+**Why it is filed before RM270.** RM270's candidate repair carries the enricher's `vrs_id` onto the
+parquets as the spelling-independent join key. A key whose derivation silently changes under a
+dependency upgrade is the failure RM270 exists to remove, moved one layer down.
+
+**Mitigation shipped separately, the same day.** `ga4gh.vrs` is capped `<2.4` in the enricher, so no
+upgrade can change the rule unannounced. The cap is a stopgap. It is lifted by this item, never
+quietly: once the version is recorded, an upgrade becomes a declared re-id instead of a silent one.
+
+**Open questions.**
+
+1. **Where the version lives.** It could be one run-level fact on `resolution.csv`'s provenance or in
+   the manifest (every id in a run is minted by one library), or a column beside `vrs_id`. Both
+   spellings of one allele can coexist only in the column form. The run-level form is cheaper, and a
+   merge-not-clobber sidecar mixing runs is the case that breaks it (`@currency-cannot-be-a-column`
+   asks which run writes it).
+2. **What the verify pass does on a version mismatch.** Recomputing a stored 2.0 id under 2.1 gives a
+   mismatch that is neither corruption nor a wrong event. It needs its own reason, never the
+   existing mismatch error (`@vrs-three-outcomes`).
+3. **A pinned insertion.** The ground-truth tests pin substitutions against gnomAD. `rs72613567`
+   (`4-87310240-T-TA` → `ga4gh:VA.Jml7SNku3QQBCVIj78BGiFvR21bNkos7`, present in ClinVar-GKM) is the
+   insertion to pin, behind `JUST_DNA_NETWORK_TESTS=1` since indel minting reads the SeqRepo proxy.
+   The test is what turns a future rule change red.
+
+**Addendum, 2026-11-04 (the liaison, `docs/UPSTREAM_GA4GH_VRS.md`).** vrs-python PR #665, still open, adds
+`normalize(rle_subunit_mode=...)` with a default of `LARGEST`, the VRS 2.0 rule. Its text says the `vrs/2.1` branch
+will default to `SMALLEST`. Through 2.4.0-a6, no digest we compute moves (the liaison diffed and measured it). Once
+the keyword is released, the cap can be lifted with the id rule chosen on purpose: our call passes the mode
+explicitly, and question 1's recorded version says which rule minted each id.
+
 # The 0.8 PT1 build round
 
 The bugfix round [PROPOSAL_0_8_PT1.md](proposals/PROPOSAL_0_8_PT1.md) decided on 2026-09-29, built on

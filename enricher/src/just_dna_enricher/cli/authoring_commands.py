@@ -425,6 +425,8 @@ def vrs_mint_(
     typer.echo(f"coverage: {result.identified}/{result.alleles} allele(s) carry a ga4gh:VA. id")
     for line in result.coverage_warnings():
         typer.secho(f"  warning: {line}", fg=typer.colors.YELLOW, err=True)
+    for line in result.version_warnings():
+        typer.secho(f"  warning: {line}", fg=typer.colors.YELLOW, err=True)
     for mismatch in result.mismatches:
         typer.secho(f"  mismatch: {mismatch}", fg=typer.colors.YELLOW, err=True)
     try:

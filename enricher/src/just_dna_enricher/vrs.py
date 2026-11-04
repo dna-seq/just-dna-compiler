@@ -49,22 +49,29 @@ import logging
 from dataclasses import dataclass, field
 
 from ga4gh.core.identifiers import ga4gh_identify
-from ga4gh.vrs import models, normalize
+from ga4gh.vrs import VRS_VERSION, models, normalize
 from just_dna_format.alleles import MISSING_ALLELE, is_symbolic_allele, is_unobservable_allele
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.vrs import (
-    VRS_SPEC_VERSION,
     UnsupportedBuildError,
     derive_vrs_allele_id,
     is_substitution,
     join_vrs_ids,
     refget_accession,
     split_vrs_ids,
+    vrs_spec_release,
 )
 
 from just_dna_enricher.sequences import DEFAULT_SEQREPO_URI, SequenceProxy
 
 logger = logging.getLogger(__name__)
+
+#: The VRS spec version this minter implements, read off the library (`ga4gh.vrs.VRS_VERSION`, which
+#: `ga4gh.vrs` 2.3.3 reports as `"2.0.1"`) and stored at the spec's minor, `"2.0"` — the grain the id
+#: rule changes at (RM304). Stamped into `ResolutionRow.vrs_spec` on every row this pass mints. The
+#: substitution path mints with the format tier's stdlib, whose rule is `VRS_SPEC_VERSION`; a test
+#: asserts the two agree, so a library upgrade implementing another minor goes red before any id moves.
+MINTER_VRS_VERSION: str | None = vrs_spec_release(VRS_VERSION)
 
 # ── Alleles that name no sequence, and so can never carry an id ────────────────────────────────
 #
@@ -172,6 +179,12 @@ class MintResult:
     #: the shortfall legible — "185 unmintable" says nothing without it.
     alleles: int = 0
     identified: int = 0
+    #: `stated version -> row count` for the already-recorded ids whose `vrs_spec` names a VRS minor
+    #: other than `MINTER_VRS_VERSION` (RM304). Per row, like `already_present`. Reported, never
+    #: re-minted over: the pass does not reach inside a cell it did not write, and an id minted under
+    #: another rule is neither corrupt nor a wrong event. A row with no `vrs_spec` is not counted — no
+    #: version is the unknown arm, never another version.
+    version_differs: dict[str, int] = field(default_factory=dict)
 
     @property
     def minted(self) -> int:
@@ -205,6 +218,19 @@ class MintResult:
             for reason, count in sorted(self.unmintable_reasons.items(), key=lambda kv: (-kv[1], kv[0]))
         )
         return lines
+
+    def version_warnings(self) -> list[str]:
+        """One `vrs_version_differs` line per stated version, or nothing (RM304).
+
+        The reason leads the line, so a caller grouping the run's output keys on it rather than on
+        prose; the same name is the compiler's warning code for the same finding at compile.
+        """
+        return [
+            f"vrs_version_differs: {count} row(s) carry a vrs_id recorded under VRS {stated!r}, and this "
+            f"minter implements VRS {MINTER_VRS_VERSION!r}; left as recorded — clear vrs_id and "
+            f"vrs_spec on those rows and re-run to re-mint them"
+            for stated, count in sorted(self.version_differs.items(), key=lambda kv: (-kv[1], kv[0]))
+        ]
 
 
 @dataclass
@@ -376,7 +402,10 @@ def mint_resolution_rows(
     """Stamp `vrs_id`/`vrs_spec` onto every mintable row, in place. Returns what it did.
 
     An **existing** `vrs_id` is never overwritten — the same "already there is authoritative" rule
-    `enrich()` applies to the rest of the table, so a hand-corrected id survives a re-run.
+    `enrich()` applies to the rest of the table, so a hand-corrected id survives a re-run. Nor is its
+    `vrs_spec`: this run did not mint that id, so it may not claim the id's version, and an empty cell
+    stays unstated (`@currency-cannot-be-a-column`). A recorded version other than this minter's is
+    counted in `MintResult.version_differs` and reported as `vrs_version_differs` (RM304).
 
     `source_ids` maps `variant_key` to an id a *source* reported (gnomAD serves one per variant). It is
     used only as a cross-check against what we minted, never as the value: trusting it would make our
@@ -396,6 +425,9 @@ def mint_resolution_rows(
         result.alleles += len(alts)
         if row.vrs_id is not None:
             result.already_present += 1
+            stated = vrs_spec_release(row.vrs_spec)
+            if stated is not None and stated != MINTER_VRS_VERSION:
+                result.version_differs[stated] = result.version_differs.get(stated, 0) + 1
             # Counted against coverage member by member: a pre-existing cell may itself carry holes,
             # and calling the row "already present" would report those as covered.
             for vrs_id in split_vrs_ids(row.vrs_id):
@@ -425,7 +457,7 @@ def mint_resolution_rows(
             # would be the same abstention this function was just fixed for, one level down.
             row.vrs_id = join_vrs_ids(minted)
             if row.vrs_id is not None:
-                row.vrs_spec = VRS_SPEC_VERSION
+                row.vrs_spec = MINTER_VRS_VERSION
         reported = (source_ids or {}).get(row.variant_key)
         # A source serves one id per allele, so it is compared against the member for *its* allele,
         # never against the whole cell — on a multi-allelic row the joined value could not match any

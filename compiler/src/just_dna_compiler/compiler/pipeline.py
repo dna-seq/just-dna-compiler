@@ -36,6 +36,7 @@ from just_dna_format.verification import (
     read_verification,
     write_verification,
 )
+from just_dna_format.vrs import VRS_SPEC_VERSION
 from pydantic import ValidationError
 
 from just_dna_compiler.compiler.allele_checks import (
@@ -289,6 +290,7 @@ def compile_module(
     # 0/0 for a module with no resolution table: no allele identities were attempted, which is a
     # different statement from "none were achieved" and is what the manifest should carry.
     vrs_alleles = vrs_identified = 0
+    vrs_version: str | None = None
     resolution_path, res_spelling_warnings, res_spelling_errors = _locate_sidecar(spec_dir, "resolution.csv")
     if res_spelling_errors:
         return CompilationResult(success=False, errors=res_spelling_errors, warnings=all_warnings)
@@ -331,6 +333,9 @@ def compile_module(
             if w not in all_warnings
         )
         vrs_alleles, vrs_identified, _gaps = _vrs_coverage(resolution_rows)
+        # The pin (RM304): the rule `_verify_vrs_ids` just compared every row against, published only
+        # when there is an id to pin — `None` on a table naming no allele, never a version nobody used.
+        vrs_version = VRS_SPEC_VERSION if vrs_identified else None
         # The table's identity is stamped **here**, where the table was read, rather than inside the
         # `variants`-gated resolution block below — which is where it used to sit, and which meant a
         # module with no `variants.csv` published `resolution_signature: null` while carrying a
@@ -985,6 +990,7 @@ def compile_module(
         positional_rows_placed=positional_rows_placed,
         vrs_alleles=vrs_alleles,
         vrs_alleles_identified=vrs_identified,
+        vrs_version=vrs_version,
         resolution_sig=resolution_sig,
         resolution_sources=resolution_sources,
         frequency=_frequency_block(frequency_rows),

@@ -3,7 +3,14 @@
 from just_dna_format.alleles import is_symbolic_allele, is_unobservable_allele
 from just_dna_format.findings import CodedWarning
 from just_dna_format.resolution import ResolutionRow
-from just_dna_format.vrs import UnsupportedBuildError, derive_vrs_allele_id, is_substitution, split_vrs_ids
+from just_dna_format.vrs import (
+    VRS_SPEC_VERSION,
+    UnsupportedBuildError,
+    derive_vrs_allele_id,
+    is_substitution,
+    split_vrs_ids,
+    vrs_spec_release,
+)
 
 
 def _verify_vrs_ids(resolution_rows: list[ResolutionRow]) -> tuple[list[str], list[str]]:
@@ -18,8 +25,8 @@ def _verify_vrs_ids(resolution_rows: list[ResolutionRow]) -> tuple[list[str], li
     to run this (Goal 2). A mismatch means the row was tampered with, or the producer and this
     implementation disagree — either way the id is not usable as an identity.
 
-    Every row lands in exactly one of **three** outcomes, and the distinction between the last two is
-    the one that matters:
+    Every allele lands in exactly one of **four** outcomes, and the distinction between the middle two
+    is the one that matters:
 
     - **verified** — recomputed and equal. Silent.
     - **mismatch** — recomputed and *different*. Always an **error**, in both modes: this computation
@@ -27,6 +34,15 @@ def _verify_vrs_ids(resolution_rows: list[ResolutionRow]) -> tuple[list[str], li
     - **unverifiable** — could not be recomputed at all (see `_recompute_vrs_id` for the five reasons).
       Severity follows **whose limit it is**, not the mode alone: `_BLAME_ROW` is an **error** in both
       modes, `_BLAME_TIER` is a **warning** in both.
+
+    - **minted under another VRS version** (RM304) — the row's `vrs_spec` states a VRS minor other
+      than the one this tier implements and the manifest pins (`VRS_SPEC_VERSION`). Not recomputed:
+      VRS 2.1 re-ids some ambiguous insertions, so a recomputation under this tier's rule would report
+      a difference that is neither corruption nor a wrong event. A **warning** in both modes, coded
+      `vrs_version_differs`, one line per stated version; re-minting clears it, so it is actionable,
+      never carried. Decided after a `_BLAME_ROW` contradiction, which no version excuses, and before
+      everything else. A row stating **no** version is the unknown arm and is verified as before — no
+      version is not another version (`@currency-cannot-be-a-column`).
 
     The third case is emphatically *not* "an indel mismatch". This tier cannot recompute an indel's id,
     so it can never detect that one disagrees — it can only report that it did not check. Calling that
@@ -67,9 +83,14 @@ def _verify_vrs_ids(resolution_rows: list[ResolutionRow]) -> tuple[list[str], li
     # 85. Grouping by reason is what `_vrs_coverage_warnings` already does one function away, on the
     # argument its own docstring makes.
     carried: dict[str, list[str]] = {}
+    #: stated version -> the rows minted under it, when it is not the pinned one (RM304). Per ROW, not
+    #: per allele: `vrs_spec` is one cell per row, written by the run that minted the row's ids.
+    other_version: dict[str, list[str]] = {}
     for row in resolution_rows:
         if row.vrs_id is None:
             continue
+        stated = vrs_spec_release(row.vrs_spec)
+        differs = stated is not None and stated != VRS_SPEC_VERSION
         stored = split_vrs_ids(row.vrs_id)
         alts = [alt.strip() for alt in row.alts.split(",")] if row.alts else []
         for index, vrs_id in enumerate(stored):
@@ -79,16 +100,22 @@ def _verify_vrs_ids(resolution_rows: list[ResolutionRow]) -> tuple[list[str], li
             alt = alts[index] if index < len(alts) else None
             where = f"{row.variant_key} allele {alt}" if len(stored) > 1 else str(row.variant_key)
             recomputed, reason, blame = _recompute_vrs_id(row, alt)
+            if recomputed is None and blame == _BLAME_ROW:
+                errors.append(
+                    f"{where}: vrs_id {vrs_id} could not be verified — {reason}. An id recorded "
+                    f"against nothing to check it with is a contradiction in the table, not a limit of "
+                    f"this tier: resolve the row, or drop the vrs_id."
+                )
+                continue
+            if differs:
+                # `stated` is not None here: `differs` implies it. Keyed on the stated value so an
+                # unreadable spelling is quoted back as written rather than folded into another.
+                wheres = other_version.setdefault(stated or "", [])
+                if str(row.variant_key) not in wheres:
+                    wheres.append(str(row.variant_key))
+                continue
             if recomputed is None:
-                message = f"{where}: vrs_id {vrs_id} could not be verified — {reason}"
-                if blame == _BLAME_ROW:
-                    errors.append(
-                        f"{message}. An id recorded against nothing to check it with is a "
-                        f"contradiction in the table, not a limit of this tier: resolve the row, or "
-                        f"drop the vrs_id."
-                    )
-                else:
-                    carried.setdefault(reason, []).append(where)
+                carried.setdefault(reason or "", []).append(where)
                 continue
             if recomputed != vrs_id:
                 errors.append(
@@ -96,7 +123,7 @@ def _verify_vrs_ids(resolution_rows: list[ResolutionRow]) -> tuple[list[str], li
                     f"from {row.chrom}:{row.start} {row.ref}>{alt} ({recomputed}) — a substitution's "
                     f"id is deterministic here, so this is corruption, not a difference of opinion."
                 )
-    return errors, _carried_vrs_warnings(carried)
+    return errors, _carried_vrs_warnings(carried) + _other_version_warnings(other_version)
 
 
 #: How many `variant_key`s a grouped finding names before it says "and N more". Three, matching
@@ -128,6 +155,32 @@ def _carried_vrs_warnings(carried: dict[str, list[str]]) -> list[str]:
                 "vrs_id_unverifiable",
                 f"{len(wheres)} allele(s): vrs_id could not be verified — {reason}; carried unverified "
                 f"({named}{more}).",
+            )
+        )
+    return lines
+
+
+def _other_version_warnings(other_version: dict[str, list[str]]) -> list[str]:
+    """One `vrs_version_differs` line per stated version, with a row count and named examples (RM304).
+
+    Grouped the way `_carried_vrs_warnings` groups, for the reason its docstring gives: every row in a
+    group differs for the identical cause, and a per-row line is noise that runs with module size.
+    The stated value is quoted with `!r`, so an unreadable spelling reads back exactly as written.
+    """
+    lines: list[str] = []
+    for stated, wheres in sorted(other_version.items(), key=lambda kv: (-len(kv[1]), kv[0])):
+        named = ", ".join(wheres[:_VRS_CARRIED_EXAMPLES])
+        more = (
+            f", and {len(wheres) - _VRS_CARRIED_EXAMPLES} more" if len(wheres) > _VRS_CARRIED_EXAMPLES else ""
+        )
+        lines.append(
+            CodedWarning(
+                "vrs_version_differs",
+                f"{len(wheres)} row(s) carry a vrs_id minted under VRS {stated!r}, and this module's ids "
+                f"are pinned to VRS {VRS_SPEC_VERSION!r} (manifest.compilation.vrs_version); not "
+                f"recomputed, since an id minted under another VRS rule is neither corrupt nor a wrong "
+                f"event. Clear vrs_id and vrs_spec on those rows and re-run `just-dna-enricher vrs mint` "
+                f"to re-mint them under the pinned version ({named}{more}).",
             )
         )
     return lines

@@ -436,6 +436,20 @@ class Compilation(BaseModel):
     vrs_alleles_identified: int = Field(
         default=0, description="Of those, how many carry a ga4gh:VA. allele id"
     )
+    # RM304, the module-wide half of "which VRS minted this id"; the per-row half is
+    # `ResolutionRow.vrs_spec`. A pin alone cannot survive a merge-not-clobber table mixing runs, and a
+    # per-row column alone cannot say which version is intended — so both. The compiler cannot import
+    # `ga4gh.vrs` (P2, Goal 2), so the pin is the rule this tier itself implements and verifies against,
+    # and the verify pass compares each row against this same constant: consistent by construction.
+    vrs_version: str | None = Field(
+        default=None,
+        description=(
+            "The VRS spec version, at its minor ('2.0'), this module's `vrs_id`s are pinned to: the rule "
+            "this compiler verifies against. A `resolution.csv` row stating another version in "
+            "`vrs_spec` is reported as `vrs_version_differs` and not recomputed. None = no allele in "
+            "resolution.csv carries an id, so there is nothing to pin (RM304)."
+        ),
+    )
 
     # ── 0.6: how much of the 0.4 families a consumer can join by position (S31) ──
     # The counterpart of `resolution_subjects` for the three positional table kinds

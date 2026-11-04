@@ -1032,6 +1032,8 @@ def _run_enrichment(
         # indel offline or a build with no refget table, are fixable by no authored edit.
         for line in mint_result.coverage_warnings():
             logger.warning("VRS coverage — %s", line)
+        for line in mint_result.version_warnings():
+            logger.warning("VRS version — %s", line)
 
     # Validation pass: does the authored data agree with the genome? (Reported, never repaired.)
     ref_check = (
