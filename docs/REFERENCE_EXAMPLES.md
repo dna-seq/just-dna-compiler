@@ -596,3 +596,20 @@ state it and the values differ. Deelen's ≥90th and ≥99th percentile analyses
 broke: reverse drops the LD proxy's `resolution.csv` row (RM331); Timmers 2019 states two different effect
 alleles for one estimate, so its band rows withhold `effect_allele`; the audit's age bands were v2's pooling,
 not the paper's; and an r² cannot say which lead allele a proxy allele tags.
+
+## 13. HLA alleles — `allele_function.csv` items on `meta.csv`, by sex and by DOI
+
+Built for real as [`reference_examples/hla_alleles/`](../reference_examples/hla_alleles) (audit candidate 10).
+An HLA allele is an `allele_function.csv` item under RM334's grammar, and its finding is a `meta.csv` row:
+
+```csv
+members,trait_efo_id,direction,sex,pmid,doi
+"allele_function[gene=HLA-DRB1, allele=*15:01]",OBA_VT0005372,risk,male,41116190,10.1186/s13073-025-01554-1
+"allele_function[gene=HLA-DRB1, allele=*15:01]",OBA_VT0005372,,female,41116190,10.1186/s13073-025-01554-1
+"allele_function[gene=HLA-A, allele=*02:01]",OBA_VT0005372,risk,,NONE,10.1101/2025.03.30.25324899
+```
+
+`sex` is part of the key, so a male finding and its female counterpart are two statements. A preprint allele
+cites by `pmid=NONE` plus `doi`, which closes the hole the audit's second run left open. Still open: an
+allele's odds ratio has no numeric home (a study row names a variant or nothing), and a tag SNP standing for
+an allele has no column (RM331's proxy points from variant to variant).
