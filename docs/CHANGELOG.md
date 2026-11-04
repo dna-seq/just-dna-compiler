@@ -41,6 +41,23 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM292: every verification check names its witness, and a check that reads its own source says so (0.8, uncut)
+
+A record in `verification.json` (and `manifest.verification.checks[]`) now states what the check read
+and what it read it against. `VerificationRecord` gains `checked_source`, `witness_source`, `undecided`
+and `independence` (all optional, `since 0.8.0`); `independence` is derived from the two sources over the
+new closed `VALID_VERIFICATION_INDEPENDENCE` — `self_consistent` when they are one source, `independent`
+when they differ, `null` when either is unknown. The enricher's roster
+`just_dna_enricher.verification.CHECK_WITNESSES` declares both sides for every emitting check, and
+`ran()`/`skipped()` fill every record from it, so a check with no entry cannot be recorded; an equality
+test over the roster and the vocabulary keeps it whole, and ENRICHER.md's check table gains `Reads` and
+`Against` columns asserted equal to it. `record_verification` settles `authored` against the module's
+licence table: a ClinVar-drafted, unedited `clin_sig` column now reads `clinvar` against `clinvar`, and a
+licence row naming the witness with no digest withholds the side. `rsid_coordinate_agreement` publishes
+the indel pairs its RM31 tolerance abstains on as `undecided` (`@tautology-zero`). **An old-reader
+break:** a 0.7 reader refuses a 0.8-written record (`extra="forbid"`, 0.7's `producer` shape again) —
+[INTEGRATION_0_8 § 1.10](INTEGRATION_0_8.md). No published `verification.signature` moved.
+
 ## 2026-11-04 — RM348: `logs/` discovery stops trusting the filesystem (0.8, uncut)
 
 **compiler** — Every path log discovery considers, the top-level `*.log` included, must resolve to

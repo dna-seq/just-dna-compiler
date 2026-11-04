@@ -597,6 +597,8 @@ def _function_check_record(
         source=answered[0] if len(answered) == 1 else None,
         release=releases.get(answered[0]) if len(answered) == 1 else None,
         detail=detail,
+        # RM292: the witness is the authorities that answered, all of them, where `source` can carry one.
+        witness_source="+".join(sorted(answered)),
     )
 
 

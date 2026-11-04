@@ -35,6 +35,69 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM292 — a verification check does not say what it checked against, so a check that witnesses itself reads as verified
+
+**0.8, decided 2026-11-03.** Taken into 0.8 by the maintainer, with the rest of the indel-placement fixes (RM304, RM267, RM270, RM292, RM305). The status line below predates that decision.
+
+**Severity** high · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor**
+([PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §5 C2) · **Owner** format (`VerificationRecord`) +
+enricher (the check roster) · **Motivating case** the 2026-09-27 postmortem, blindspot B2 and
+mitigation M3, decided with the maintainer that day · *related* RM267, RM270, RM274, RM305,
+`@start-1based`, `@registry-completeness`
+
+**Residuals** RM305 — ClinVar-GKM's allele table is the independent witness for indel placement that
+no check reads yet; it gets a roster entry when a check reads it · RM267 — comparing two placement
+authorities is the check that would turn `rsid_coordinate_agreement`'s counted `undecided` indels into
+verdicts · won't fix — a CIViC-drafted module's `published_refutation` reads its checked side as
+withheld rather than `self_consistent`, because CIViC's drafter is a judgement drafter and records no
+digest that could establish which cells it supplied
+
+Every check that could have seen the indel anchor error either compared a source with itself or was
+tolerant by design. The reference-allele check passes a wrong anchor because the anchor base is a real
+genome base. `check_rsid_coordinates` abstains on every indel position difference and counts none of
+them. The ClinVar snapshot was loaded in the same run and used only as a fallback. `@start-1based`
+wrote the lesson down on 2026-08-06 (*validate-by-redundancy assumes independence*), but only as a
+sentence.
+
+**The change.** Each check declares two things: the source of what it checks, and the source it checks
+against. When those are the same source, the record reads *self-consistent*, never *verified*. A
+tolerance that makes a class undecided counts that class and publishes the count (`@tautology-zero`).
+It is carried as a field on the check registry and asserted by an equality over the roster, so a new
+check cannot ship without stating its witness.
+
+**Why a minor.** The field on `VerificationRecord` is a new member of a published document, and
+*self-consistent* is a new verdict vocabulary member. Both are additive and minor-legal (P3, P8).
+Price: the record is machine-written, so half cost (P9). Not on `main`.
+
+**What shipped (2026-11-04).** Four optional fields on `VerificationRecord`, all `since 0.8.0`:
+`checked_source`, `witness_source`, `undecided`, and `independence` over a new closed vocabulary
+`VALID_VERIFICATION_INDEPENDENCE` = {`independent`, `self_consistent`}. The field is named for its axis
+rather than `verdict` (P5: an outcome verdict is a likely later field on the same record), and the
+member opposite `self_consistent` is `independent` rather than `verified`, because a record with
+findings was not "verified". `independence` is derived on the model from the two sources and refused
+when it contradicts them; the other three join `VERIFICATION_FACT_FIELDS`, and since `fact_signature`
+drops `None` no published signature moved. `witness_source` is not `source`: `source` is a single
+licence join key (null on a two-authority check), the witness names them all, `+`-joined.
+
+The roster is `just_dna_enricher.verification.CHECK_WITNESSES`, one `CheckWitness` per emitting check
+(`checked`, `witness`, `reason`, the `columns` a drafter digest could cover, and a `tolerance`). `ran()`
+and `skipped()` fill every record from it: a check with no entry raises, a `source` outside the
+declared witness is refused, a tolerant check's run without `undecided` is refused, and a non-tolerant
+check carrying one is refused. `record_verification` then settles `authored` against the licence
+table, over carried records too (the table is outside the binding), three-valued: one source whose
+drafter digest still covers the cells → that source (so a ClinVar-drafted, unedited `clin_sig` reads
+`clinvar` against `clinvar`, `self_consistent`), unless the witness is also named at the `annotation`
+layer and is another source; the witness named with nothing establishing which cells → withheld;
+nothing recorded → `authored`; an unreadable table (`licensing.load_sources_file`, the tri-state core
+`read_sources_file` now folds) → withheld. A checked side that is one of several witnesses withholds
+`independence`; `citation_existence` names Crossref only when a DOI verdict is among its subjects. The currency checks (`evidence_status_currency`,
+`dataset_currency`) are `self_consistent` by construction. `rsid_coordinate_agreement` publishes the
+indel pairs it abstains on as `undecided`, on the ran record and on the `no_reference` skip whose
+snapshot settled nothing. Tests: `enricher/tests/test_check_witness.py` (the equality over the roster,
+red with one entry dropped), `test_enricher_doc_registries.py` (ENRICHER.md's new `Reads`/`Against`
+columns equal the roster, red with one cell changed), and the record tests in `test_verification.py`,
+`test_rsid_coordinate_agreement.py` and `test_clinical.py`.
+
 ## RM303 — the snapshot layout is a contract with six parties and no model, so it belongs in `just-dna-format`
 
 **0.8, confirmed 2026-11-03** by the maintainer when scoping 0.8.

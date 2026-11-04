@@ -842,6 +842,10 @@ def test_the_three_checks_are_recorded_with_their_own_denominators(tmp_path: Pat
     # Half a check is reported as half a check: `--no-doi` leaves a DOI-only citation unasked, and a
     # record that did not say so would let a reader read the zero as covering both registries.
     assert "--no-doi" in (existence.detail or "")
+    # RM292: no DOI verdict is among the subjects, so the witness is PubMed alone — never a Crossref
+    # comparison nobody made.
+    assert existence.witness_source == "pubmed"
+    assert (existence.checked_source, existence.independence) == ("authored", "independent")
 
     # No authored doi or PMC id anywhere: nothing to compare, and that is not a clean pass.
     assert records["citation_identifier"].skipped == "nothing_to_check"
@@ -893,6 +897,7 @@ def test_a_citation_that_resolves_in_neither_registry_is_one_finding(tmp_path: P
     assert (existence.subjects, existence.findings) == (1, 1)
     assert "no PubMed record" in (existence.detail or "")
     assert "do not resolve in Crossref" in (existence.detail or "")
+    assert existence.witness_source == "crossref+pubmed", "a Crossref verdict is among the subjects"
 
 
 def test_an_authored_identifier_is_compared_and_the_disagreement_recorded(tmp_path: Path) -> None:

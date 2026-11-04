@@ -36,7 +36,12 @@ from just_dna_format.verification import (
     verification_signature,
     write_verification,
 )
-from just_dna_format.vocab import VALID_VERIFICATION_CHECKS, VALID_VERIFICATION_SKIPS
+from just_dna_format.vocab import (
+    AUTHORED_SOURCE,
+    VALID_VERIFICATION_CHECKS,
+    VALID_VERIFICATION_INDEPENDENCE,
+    VALID_VERIFICATION_SKIPS,
+)
 
 _EASY = 8  # bits; enough to prove the mechanism, cheap enough to run dozens of times
 _HASH = "sha256:" + "ab" * 32
@@ -484,3 +489,109 @@ def test_each_skip_names_a_different_remedy() -> None:
     saw a licensing skip spelled `offline` would go looking for a network problem that does not exist.
     """
     assert {"not_requested", "offline", "not_permitted"} <= VALID_VERIFICATION_SKIPS
+
+
+# ── RM292: a check names its witness ─────────────────────────────────────────────────────────────
+
+
+def _witnessed(checked: str | None, witness: str | None, **over) -> VerificationRecord:
+    return VerificationRecord(
+        check="rsid_coordinate_agreement",
+        subjects=4,
+        findings=1,
+        source="ensembl",
+        checked_source=checked,
+        witness_source=witness,
+        checked_at="2026-11-04T00:00:00Z",
+        **over,
+    )
+
+
+def test_two_sources_that_differ_read_independent() -> None:
+    record = _witnessed(AUTHORED_SOURCE, "ensembl")
+    assert record.independence == "independent"
+
+
+def test_the_same_source_on_both_sides_reads_self_consistent_never_independent() -> None:
+    """The whole of RM292's rule: a value checked against the source it came from establishes nothing
+    about the claim, so the record says *self-consistent* and the word a reader keys on cannot be the
+    one an independent witness earns."""
+    record = _witnessed("ensembl", "ensembl")
+    assert record.independence == "self_consistent"
+    with pytest.raises(ValueError, match="self_consistent"):
+        _witnessed("ensembl", "ensembl", independence="independent")
+    with pytest.raises(ValueError, match="independent"):
+        _witnessed(AUTHORED_SOURCE, "ensembl", independence="self_consistent")
+
+
+@pytest.mark.parametrize("checked, witness", [(None, "ensembl"), (AUTHORED_SOURCE, None), (None, None)])
+def test_an_unstated_side_withholds_the_independence(checked: str | None, witness: str | None) -> None:
+    """Unknown is withheld, never guessed: a record missing either side cannot say whether its witness
+    was independent, and a stated value with nothing under it is refused rather than kept."""
+    assert _witnessed(checked, witness).independence is None
+    with pytest.raises(ValueError, match="independence"):
+        _witnessed(checked, witness, independence="independent")
+
+
+def test_the_independence_vocabulary_is_closed() -> None:
+    assert {"independent", "self_consistent"} == set(VALID_VERIFICATION_INDEPENDENCE)
+    with pytest.raises(ValueError, match="independence"):
+        VerificationRecord(check="reference_allele", independence="verified")
+
+
+def test_an_undecided_count_is_outside_the_subjects_and_may_ride_a_skip() -> None:
+    """A tolerance's undecided class is never a subject — the check reached no verdict on it — so a
+    record that reached a verdict on nothing (a skip) can still publish how many it abstained on.
+    That is the `@tautology-zero` rule applied to an abstention: the count is published, never a zero
+    that looks like agreement."""
+    ran_record = _witnessed(AUTHORED_SOURCE, "ensembl", undecided=3)
+    assert (ran_record.subjects, ran_record.undecided) == (4, 3)
+    skip = VerificationRecord(check="rsid_coordinate_agreement", skipped="no_reference", undecided=2)
+    assert skip.undecided == 2
+    with pytest.raises(ValueError, match="negative"):
+        _witnessed(AUTHORED_SOURCE, "ensembl", undecided=-1)
+
+
+def test_a_record_written_before_rm292_hashes_as_it_always_did() -> None:
+    """The three new facts join `VERIFICATION_FACT_FIELDS`, and `fact_signature` drops a `None` — so
+    every attestation already on disk keeps its signature and its proof-of-work. A stated value moves
+    it, which is the point of being a fact: re-labelling a self-consistent check as independent is an
+    edit to the claim."""
+    base = _records()
+    assert {"checked_source", "witness_source", "undecided"} <= set(VERIFICATION_FACT_FIELDS)
+    before = verification_signature(base)
+    # The same records, constructed through the new model with the new fields left unstated.
+    assert verification_signature([VerificationRecord(**r.model_dump()) for r in base]) == before
+    relabelled = [base[0].model_copy(update={"witness_source": "clinvar"}), base[1]]
+    assert verification_signature(relabelled) != before
+    # `independence` is derived from the two sources, so it is not a second fact that could disagree.
+    assert "independence" not in VERIFICATION_FACT_FIELDS
+
+
+def test_the_derived_independence_survives_a_round_trip_unchanged() -> None:
+    """A fixed point (P7): dump and reload, and the derived value is the one it was."""
+    record = _witnessed("civic", "civic", undecided=0)
+    again = VerificationRecord.model_validate(json.loads(record.model_dump_json()))
+    assert again == record
+    assert again.independence == "self_consistent"
+
+
+def test_a_copy_of_one_of_several_witnesses_withholds() -> None:
+    """Part of the comparison read the values against their own source and part did not, so neither
+    word is true of the record. A value copied from neither is independent of both."""
+    partial = VerificationRecord(
+        check="allele_function", subjects=2, checked_source="cpic", witness_source="cpic+pharmvar"
+    )
+    assert partial.independence is None
+    with pytest.raises(ValueError, match="independence"):
+        VerificationRecord(
+            check="allele_function",
+            subjects=2,
+            checked_source="cpic",
+            witness_source="cpic+pharmvar",
+            independence="independent",
+        )
+    both = VerificationRecord(
+        check="allele_function", subjects=2, checked_source=AUTHORED_SOURCE, witness_source="cpic+pharmvar"
+    )
+    assert both.independence == "independent"

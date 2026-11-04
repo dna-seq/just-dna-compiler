@@ -26,10 +26,12 @@ from just_dna_enricher.clinvar_draft import draft_gene_panel
 from just_dna_enricher.enrich import enrich
 from just_dna_enricher.licensing import CLINVAR_TERMS, merge_sources_file
 from just_dna_enricher.locations import RELEASE_FILENAME
-from just_dna_format.layout import SOURCES_CSV, preferred_spelling
+from just_dna_format.layout import SOURCES_CSV, VERIFICATION_JSON, preferred_spelling
+from just_dna_format.manifest import VerificationRecord
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.snapshot import clinvar_release_label, release_label
 from just_dna_format.spec import VariantRow
+from just_dna_format.verification import read_verification
 
 FIXTURE = Path(__file__).parents[2] / "assets" / "clinvar_GRCh38_slice.vcf.gz"
 
@@ -475,6 +477,36 @@ def test_drafting_records_which_release_the_rows_were_copied_out_of(snapshot: Pa
     result = enrich(spec, offline=True, clinvar_cache=snapshot, use_gnomad=False)
     assert "drafted from" in (result.clin_sig_not_checked or "")
     assert result.clin_sig_comparison is None  # nothing was compared; the skip held
+
+
+def test_a_drafted_column_reads_self_consistent_and_an_edit_withholds_it(
+    snapshot: Path, tmp_path: Path
+) -> None:
+    """RM292 through the real writer: the drafter's digest establishes the `clin_sig` cells as
+    ClinVar's copy, so the record names ClinVar on both sides and reads `self_consistent`. One hand
+    edit moves the digest, and with a ClinVar annotation row still recorded nothing can say which
+    cells are copies — the side is withheld, never claimed `authored`."""
+    spec = _drafted_panel(tmp_path / "panel-witness", snapshot)
+    enrich(spec, offline=True, clinvar_cache=snapshot, use_gnomad=False)
+    record = _attested(spec, "clinical_significance")
+    assert record.skipped == "tautology"
+    assert (record.checked_source, record.witness_source) == ("clinvar", "clinvar")
+    assert record.independence == "self_consistent"
+
+    def disagree(rows: list[dict]) -> None:
+        rows[0].update({"clin_sig": "benign", "pathogenic": "", "benign": "true"})
+
+    _rewrite_variants(spec, disagree)
+    enrich(spec, offline=True, clinvar_cache=snapshot, use_gnomad=False)
+    record = _attested(spec, "clinical_significance")
+    assert record.skipped is None and record.findings >= 1
+    assert record.checked_source is None
+    assert record.independence is None
+
+
+def _attested(spec: Path, check: str) -> VerificationRecord:
+    by_check = {r.check: r for r in read_verification(spec / VERIFICATION_JSON).records}
+    return by_check[check]
 
 
 def test_widening_from_a_newer_release_withdraws_the_label_rather_than_re_labelling(

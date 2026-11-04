@@ -1209,17 +1209,31 @@ def read_sources_file(spec_dir: Path) -> list[SourceRow]:
     *writes* must still fail loudly on an unreadable table — merging into one that did not load would
     drop rows already recorded — and `merge_sources_file` does.
     """
+    rows = load_sources_file(spec_dir)
+    if rows is None:
+        logger.warning("This module's licence table could not be read; treating it as unrecorded.")
+        return []
+    return rows
+
+
+def load_sources_file(spec_dir: Path) -> list[SourceRow] | None:
+    """The module's licence rows, **three-valued**: `[]` when it has none, `None` when unreadable.
+
+    The core `read_sources_file` folds to `[]`, published for the reader for whom the fold is the false
+    half: RM292's witness resolution, where `[]` means *nothing was drafted from any source* and an
+    unreadable table has established no such thing. Logs why it could not read, and nothing else.
+    """
     try:
         path = sidecar_write_path(spec_dir, SOURCES_CSV)
     except SidecarCollision as exc:
-        logger.warning("Cannot read this module's licence table (%s); treating it as unrecorded.", exc)
-        return []
+        logger.warning("Cannot read this module's licence table: %s", exc)
+        return None
     if not path.exists():
         return []
     rows, errors, _ = load_csv_rows(path, SourceRow, path.name)
     if errors:
-        logger.warning("%s is invalid (%s); treating it as unrecorded.", path.name, errors[0])
-        return []
+        logger.warning("%s is invalid: %s", path.name, errors[0])
+        return None
     return rows
 
 

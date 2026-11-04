@@ -779,7 +779,7 @@ def test_producer_is_outside_the_fact_set_so_adding_it_moved_no_signature() -> N
     from just_dna_format.verification import VERIFICATION_FACT_FIELDS, verification_signature
 
     assert "producer" not in VERIFICATION_FACT_FIELDS
-    record = ran("reference_allele", subjects=30, findings=0, source="ensembl", release="113")
+    record = ran("reference_allele", subjects=30, findings=0, source="seqrepo", release="113")
     assert verification_signature([record]) == verification_signature(
         [record.model_copy(update={"producer": None})]
     )

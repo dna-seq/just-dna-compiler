@@ -154,6 +154,36 @@ import from there keeps working.
 | --- | --- | --- |
 | log discovery in `compile_module` | RM348 | A symlinked `*.log` (beside the spec or under `logs/`), anything under a `logs/` that is itself a link, and any discovered file over `LOG_MAX_BYTES` (5 MiB) used to ship, the `*.log` ones since before RM338; they now stay behind with `log_file_not_shipped`. A file the compile cannot read stays behind the same way instead of failing the compile, and a directory it cannot list is named in place of the files it hides. An explicit `log_files` list is unaffected. The ceiling is now `LOG_MAX_BYTES`; `LOG_IMAGE_MAX_BYTES`, RM338's name on `main`, stays as an alias of it. |
 
+## 1.10 Every verification record names its witness (RM292) — an old-reader break
+
+`VerificationRecord` (`verification.json`, and `manifest.verification.checks[]`) gains four optional
+fields, all `null` on a record written before 0.8:
+
+| Field | What it holds |
+| --- | --- |
+| `checked_source` | Where the values the check read came from: `authored` (`vocab.AUTHORED_SOURCE`) for cells no run established as a copy of a named source, or that source when a drafter's digest establishes it; `recorded_source` / `reporting_source` / `civic` for the checks whose subject is a source's own earlier answer. `null` when nothing could settle it (the licence table names the witness and no digest says which cells it supplied, or the table is unreadable). |
+| `witness_source` | The source(s) the values were compared against, `+`-joined in sorted order (`cpic+pharmvar`). Not `source`, which stays a single licence-table join key. |
+| `independence` | `VALID_VERIFICATION_INDEPENDENCE` (closed): `self_consistent` when the checked side is the witness, `independent` when it is not among the witnesses, `null` when either side is unstated or the checked side is one of several witnesses. Derived on the model; a stated value its two sources contradict is refused. |
+| `undecided` | How many rows a tolerance abstained on, outside `subjects`. Only `rsid_coordinate_agreement` has one (indel pairs a re-anchoring may explain, RM31); `null` for every other check. May ride a skip. |
+
+**This breaks a 0.7 reader, unconditionally.** `VerificationRecord` forbids unknown keys, so a reader
+pinned to 0.7 refuses every 0.8-written `verification.json`, and every manifest whose `verification`
+block a 0.8 enricher wrote — unlike § 1's codes, which appear only when a module triggers them. It is
+0.7's `producer` break again ([INTEGRATION_0_7 § 1](INTEGRATION_0_7.md)), with the same remedy:
+upgrade `just-dna-format` to 0.8 before reading 0.8-attested modules. A 0.8 reader parses every older
+record and leaves the four fields `null`.
+
+**`independence` is validated on read**, like `check` and `skipped`: a member a later release adds
+would be refused by a 0.8 reader, so the vocabulary is fixed for the major. The fact hash
+(`verification.signature`) takes `checked_source`, `witness_source` and `undecided`; `null` is dropped
+from it, so no signature or proof-of-work published before 0.8 moved.
+
+**What to do with it.** A check reading `self_consistent` compared a value with the source it was
+copied from (or, for the currency checks, a source's earlier answer with its answer now). Its
+**agreement** is not evidence for the value, and a consumer weighting a module by its checks should not
+count it as such; its **findings** still are findings — the source moved since the value was taken —
+so do not drop the record. `null` is unknown, never independent.
+
 ## 2. What to change
 
 1. If you parse `manifest.json` with `just-dna-format`, move your pin to 0.8 when you start reading
@@ -180,3 +210,5 @@ import from there keeps working.
    the reader returns a model, and three keys are spelled differently in a snapshot built by 0.8.
 7. If you read a module's findings, read `meta.parquet` too: a row with `replaces` true whose members all
    match the sample replaces the findings of the rows in its `matches` (§ 1.2.1).
+8. If you read `verification.json` or `manifest.verification`, upgrade to 0.8 first (§ 1.10), and do not
+   count a `self_consistent` check's agreement as evidence for the value it checked (its findings stand).

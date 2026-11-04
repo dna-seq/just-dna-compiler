@@ -280,6 +280,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
   | `VALID_SOURCE_LAYERS` | 9 (closed) |  |
   | `VALID_VERIFICATION_CHECKS` | 26 (closed) |  |
   | `VALID_VERIFICATION_SKIPS` | 8 (closed) |  |
+  | `VALID_VERIFICATION_INDEPENDENCE` | 2 (closed) | `VerificationRecord.independence`, derived from the record's two sources and never typed (RM292) |
   | `VALID_WARNING_CODES` | 80 (closed) | every code a compile may stamp on a finding (members in `RETIRED_WARNING_CODES` are no longer emitted); the catalogue with texts is in [COMPILER.md](COMPILER.md) |
 
   Vocabularies owned by a leaf rather than by `vocab` (`spec`, `binning`, `pgx`, `pgs`, `manifest`,
@@ -2191,9 +2192,27 @@ everything" and "never compared"). The layer that outlives the run had inherited
 
 **Shape.** `manifest.VerificationDoc` — an attestation over `VerificationRecord`s, one per check:
 `check` (`VALID_VERIFICATION_CHECKS`), `subjects`, `findings`, `skipped?`
-(`VALID_VERIFICATION_SKIPS`), `detail?`, `source?`, `release?`, `checked_at?`. Facts:
-`check`/`subjects`/`findings`/`skipped`/`source`/`release`; prose and the timestamp are out, as
-everywhere else. The compiler confirms it and stamps `manifest.verification`.
+(`VALID_VERIFICATION_SKIPS`), `detail?`, `source?`, `release?`, `checked_at?`, and since 0.8
+`checked_source?`, `witness_source?`, `independence?` (`VALID_VERIFICATION_INDEPENDENCE`) and
+`undecided?`. Facts: `check`/`subjects`/`findings`/`skipped`/`source`/`release`/`checked_source`/
+`witness_source`/`undecided`; prose, the timestamp and the derived `independence` are out. The compiler
+confirms it and stamps `manifest.verification`.
+
+- **A check names its witness (RM292, 0.8).** `checked_source` is where the values the check read came
+  from — `authored` (`vocab.AUTHORED_SOURCE`) for cells the module's author wrote, or a source key when
+  the run established they are that source's copy — and `witness_source` is what they were compared
+  against. When the checked side is the witness the record's `independence` reads `self_consistent`,
+  never `independent`: agreement with the source a value was copied from proves nothing about the value
+  (a disagreement still says the source moved). It is derived on the model
+  (`VerificationRecord.derived_independence`), so a record cannot state one its two sources contradict,
+  and it is withheld when either side is unknown or the checked side is one of several witnesses. `witness_source` is not `source`: `source` is a single licence-table
+  join key and stays null on a check with two authorities, where `witness_source` names them all,
+  `+`-joined in sorted order. **`undecided`** is the count a tolerance abstained on, outside `subjects`
+  (`@tautology-zero`): null for a check with no tolerance class, 0 for one whose class was empty, and
+  allowed on a skip, because a check that reached a verdict on nothing may still have abstained on
+  something. The values each check states, and why, are the enricher's roster
+  ([ENRICHER.md](ENRICHER.md), the check table). All four are optional and `None` on every record
+  written before 0.8, and `fact_signature` drops a `None`, so no attestation already on disk moved.
 
 - **A JSON document, not a fifth fact CSV, and the reason is structural.** The object has two levels —
   one attestation over many records — and a CSV expresses that only with a non-data service row (the
