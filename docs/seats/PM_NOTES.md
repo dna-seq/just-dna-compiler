@@ -53,6 +53,16 @@ purpose; normalization is the compiled parquet's job (RM346, 1.0).
     effect-allele rules). The second run is audit §6, and the shape is agreed as sufficient and necessary for
     v2.
 
+- **Drift read of `0.8`, 2026-11-04, at c3ac4d8** (RM253, RM322/334, RM336, RM304, RM337, RM342, RM239's
+  columns): no drift. RM253's repeat rows carry no rsID and key on the coordinate, which fits "must not rely
+  on rs3064744". RM342 keeps the `polars>=1.42.0` floor and locks 2.1.0, because polars-bio still caps <2.
+  The next read starts after c3ac4d8.
+- **The `0.8` push is the lead's, under its grant**, not the person's. I said otherwise in chat on
+  2026-11-04 and withdrew it in `#just-dna-compiler>scope`.
+- **Charter wording before the cut**: P4 and P7 changed on `0.8` and the person's vetting of the wording is
+  not recorded. That is the lead's desk question, and I flagged it to the lead (2026-11-04).
+- **Unattended from 04:10Z, 2026-11-04**: the desk holds no pm question, and none was waiting in chat.
+  The licensing points below stay unraised: no work waits on them.
 - RM149's gate: **decided 2026-11-03, it stays** (option 1). Written under RM149 in ROADMAP_0_9.md.
 - The test registry `_ENTRY_FILES` → a `ROADMAP*.md` glob: the person asked whether a naming convention can
   replace the hard-coded list. It can (the glob finds the same 8 files). Handed to the lead on 2026-11-03.
