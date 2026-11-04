@@ -63,6 +63,7 @@ from just_dna_enricher.enrich.outcome import (
 )
 from just_dna_enricher.enrich.resolution_csv import _write_resolution_csv
 from just_dna_enricher.enrich.subjects import (
+    Subject,
     _authored_alt,
     _check_authored_pairs,
     collect_subjects,
@@ -94,12 +95,18 @@ from just_dna_enricher.placement import (
     answered_placements,
     compare_placements,
     load_witnesses,
+    locus_key,
 )
 from just_dna_enricher.resolver import AlleleMismatch, lookup_loci
 from just_dna_enricher.sequences import (
     RefCheck,
     SequenceProxy,
+    SpellingCheck,
+    SpellingVerdict,
     _indel_payloads,
+    _spelled,
+    normalize_locus,
+    spelling_verdict,
     summarize_ref_mismatches,
     verify_reference_alleles,
 )
@@ -308,6 +315,61 @@ def _settle_by_reference(
     if unreadable:
         return None
     return False if same_size else None
+
+
+ReadWindow = Callable[[str, int, int], str | None]
+
+
+def _spelling_of(locus: Mapping[str, object], read_window: ReadWindow | None) -> SpellingVerdict:
+    """`spelling_verdict` over a locus dict as a link gives it."""
+    return spelling_verdict(
+        str(locus.get("chrom")),
+        locus.get("start"),  # type: ignore[arg-type]
+        locus.get("ref"),  # type: ignore[arg-type]
+        locus.get("alts"),  # type: ignore[arg-type]
+        read_window,
+    )
+
+
+def _authored_verdict(judged: Mapping[str, SpellingVerdict], v: Subject) -> bool | None:
+    """`left_aligned` for a row recorded with the subject's own coordinate, judged once per subject."""
+    verdict = judged.get(v.variant_key)
+    return None if verdict is None else verdict.verdict
+
+
+def _filled_pieces(
+    constraint: str | None, locus: Mapping[str, object], read_window: ReadWindow | None
+) -> list[tuple[dict[str, object], bool | None]]:
+    """The loci a filled locus is written as, each with its `left_aligned` verdict (RM270).
+
+    One locus whose ALTs share a leftmost `(start, ref)` is written once in that spelling. One whose
+    ALTs land on two references splits (`normalize_locus`), and the hosting filter that kept the
+    source locus is asked again of each piece, because the row is about the alleles its genotype names:
+
+    * a genotype spelled in the source locus's own frame names its ALTs exactly, so the piece holding
+      them is written — `AGAG/AG` on Ensembl's SHOX site is the deletion, never the duplication;
+    * a genotype naming ALTs that landed in two pieces (`AG/AGAGAG`, the deletion and the duplication)
+      has no one left-aligned locus to sit on, so the source locus is written whole, as the link gave
+      it, and judged;
+    * otherwise each piece that can host the genotype is written (`C/CAG` fits either reading, as it
+      fitted the source locus), and when none can, the source locus is written whole.
+    """
+    normalized = normalize_locus(locus, read_window)
+    whole = [(dict(locus), _spelling_of(locus, read_window).verdict)]
+    if normalized.aligned is None or len(normalized.loci) == 1 or constraint is None:
+        return [(piece, normalized.aligned) for piece in normalized.loci]
+    ref = str(locus.get("ref") or "").upper()
+    alts = [alt.strip().upper() for alt in str(locus.get("alts") or "").split(",")]
+    called = {a.upper() for a in split_genotype(constraint) if not is_unobservable_allele(a)}
+    named = {normalized.piece_of[alts.index(a)] for a in called if a != ref and a in alts}
+    if called and called <= {ref, *alts} and named:
+        return [(normalized.loci[named.pop()], True)] if len(named) == 1 else whole
+    hosting = [
+        (piece, True)
+        for piece in normalized.loci
+        if hosting_verdict(constraint, piece.get("ref"), piece.get("alts")) is not False  # type: ignore[arg-type]
+    ]
+    return hosting or whole
 
 
 def _run_enrichment(
@@ -733,6 +795,26 @@ def _run_enrichment(
     for line in placement.sentences():
         logger.info("Placement witness — %s.", line)
 
+    # ── an authored coordinate's spelling (RM270): judged, reported, never rewritten ─────────────
+    # Every subject that authored a whole coordinate, every run, whether or not a recorded row covers it:
+    # the check is about the module's own cells, not about the sidecar (the pair check's reasoning).
+    # The cell is the row's identity, so a respelling is the finding and the row's `vrs_id` is what
+    # joins it to a caller's spelling (`@enrichment-is-validation`). Judged once per subject, here, and
+    # the same verdict is stamped on the row the assembly below writes for it.
+    spelling = SpellingCheck()
+    authored_spelling: dict[str, SpellingVerdict] = {}
+    for v in subjects:
+        if (
+            v.chrom is None
+            or v.start is None
+            or not v.ref
+            or not v.alts
+            or v.variant_key in authored_spelling
+        ):
+            continue
+        authored_spelling[v.variant_key] = spelling_verdict(v.chrom, v.start, v.ref, v.alts, read_window)
+        spelling.judge(v.variant_key, v.chrom, v.start, v.ref, v.alts, authored_spelling[v.variant_key])
+
     # ── assemble the table (a row for every subject; expansion → N rows) ───────────────────────
     # **Was any rsID link consulted at all?** (RM98.) Every one of them is gated: the two caches on
     # having resolved to a snapshot, the live Ensembl and gnomAD links on `not offline`. When all four
@@ -912,8 +994,31 @@ def _run_enrichment(
                 )
             if loci:
                 src = source_of_rsid.get(v.rsid, "cache")
-                for i, locus in enumerate(loci):
-                    witness, verdict = placement.row_columns(v.rsid, locus)
+                # **A coordinate this run fills is written left-aligned (RM270)** — the spelling a
+                # caller's `bcftools norm -m -any` writes, so an exact join meets it. Only for an
+                # rsID-only subject: a pair's coordinate is its author's, and the compiler compares the
+                # recorded locus with it by spelling (`_verify`), so respelling that locus would turn
+                # agreement into a disagreement; it is judged instead. After the hosting filter and the
+                # PAR choice, which read the link's spelling as before; RM267's verdict is keyed on it
+                # too, so each piece keeps its source locus beside it.
+                written: list[tuple[dict[str, object], Mapping[str, object], bool | None]] = []
+                for locus in loci:
+                    if v.chrom is None:
+                        pieces = _filled_pieces(v.constraint, locus, read_window)
+                        if [locus_key(p) for p, _ in pieces] != [locus_key(locus)]:
+                            spelling.respelled.append(
+                                f"{v.rsid} {_spelled(*locus_key(locus))} → "
+                                + " + ".join(_spelled(*locus_key(p)) for p, _ in pieces)
+                            )
+                    else:
+                        pieces = [(dict(locus), _spelling_of(locus, read_window).verdict)]
+                    written.extend(
+                        (piece, locus, aligned)
+                        for piece, aligned in pieces
+                        if locus_key(piece) not in {locus_key(w) for w, _, _ in written}
+                    )
+                for i, (locus, source_locus, aligned) in enumerate(written):
+                    witness, verdict = placement.row_columns(v.rsid, source_locus)
                     out.append(
                         ResolutionRow(
                             variant_key=key,
@@ -924,6 +1029,7 @@ def _run_enrichment(
                             status="resolved",
                             placement_witness=witness,
                             placement_verdict=verdict,
+                            left_aligned=aligned,
                             **locus,
                         )
                     )
@@ -943,6 +1049,7 @@ def _run_enrichment(
                         genome_build=genome_build,
                         source="authored",
                         status="resolved",
+                        left_aligned=_authored_verdict(authored_spelling, v),
                     )
                 )
             elif genome_build == "GRCh38" and v.rsid in unreachable_rsids | unanchored_rsids:
@@ -1014,6 +1121,7 @@ def _run_enrichment(
                     source=src,
                     status=status,
                     rsid_alternates=alternates,
+                    left_aligned=_authored_verdict(authored_spelling, v),
                 )
             )
         else:
@@ -1032,6 +1140,7 @@ def _run_enrichment(
                     genome_build=genome_build,
                     source="authored",
                     status="resolved",
+                    left_aligned=_authored_verdict(authored_spelling, v),
                 )
             )
 
@@ -1101,6 +1210,29 @@ def _run_enrichment(
             "--keep-par-twin to record both.",
             len(par_twins_dropped),
             ", ".join(f"{rsid} {chrom}:{start}" for rsid, chrom, start in par_twins_dropped),
+        )
+
+    if spelling.respelled:
+        logger.info(
+            "Left-aligned %d filled locus/loci (RM270): the coordinate a link gave is written in the "
+            "spelling a caller's normalized VCF uses, so an exact join meets it (%s).",
+            len(spelling.respelled),
+            examples(spelling.respelled),
+        )
+    if spelling.findings:
+        logger.warning(
+            "Authored spelling — %d of %d authored coordinate(s) checked are not in their left-aligned "
+            "spelling, so a caller's normalized VCF misses them on an exact (chrom, pos, ref, alt) join; "
+            "they are left as authored, and their vrs_id joins either spelling (RM270): %s",
+            len(spelling.findings),
+            spelling.checked,
+            examples(spelling.findings),
+        )
+    if spelling.unknown:
+        logger.info(
+            "Authored spelling — %d authored coordinate(s) could not be judged (an indel with no "
+            "reference read this run, or a non-nucleotide allele).",
+            spelling.unknown,
         )
 
     # Content-addressed allele identity, stamped after the chain has settled the coordinates (there is
@@ -1456,7 +1588,9 @@ def _run_enrichment(
     rederived: list[SubjectDrift] | None = None
     if rederive:
         rederived, compared = _rederived_drift(existing, out, skip=carried_keys)
-        if rederived:
+        moved = [d for d in rederived if not d.respelled]
+        respelled = [d for d in rederived if d.respelled]
+        if moved:
             # The denominator travels with the finding: "3 subjects moved" is unreadable without the
             # number re-asked. Nothing is printed when nothing moved — a comparison whose empty result
             # is the normal case must not announce a zero as though it were evidence.
@@ -1465,9 +1599,19 @@ def _run_enrichment(
                 "recorded table — %s. The fresh answer is committed and the old one is not kept; a "
                 "value you decided rather than derived belongs in overrides.csv, where re-deriving "
                 "cannot reach it.",
-                len(rederived),
+                len(moved),
                 compared,
-                "; ".join(str(d) for d in rederived),
+                "; ".join(str(d) for d in moved),
+            )
+        if respelled:
+            # Apart from the drift above: the source did not move, this release's spelling did (RM270),
+            # and a canary that blamed the source for it would cry wolf on every pre-0.8 indel.
+            logger.info(
+                "Re-derivation: %d of %d re-asked subject(s) are the same alleles respelled left-aligned "
+                "(RM270), every vrs_id unchanged — %s.",
+                len(respelled),
+                compared,
+                "; ".join(str(d) for d in respelled),
             )
 
     # Fifth validation pass, and the only one whose subject is a claim the module makes about its own
@@ -1534,6 +1678,7 @@ def _run_enrichment(
         reference_rejected_loci=list(reference_rejected),
         rsid_coordinates=pair_check,
         placement=placement,
+        spelling=spelling,
         rederived=rederived,
         dataset_currency=dataset_currency,
         clin_sig_record=clin_sig_record,

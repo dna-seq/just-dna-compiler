@@ -41,20 +41,31 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
-## 2026-11-04 — RM270: an indel's spelling-independent `vrs_id` reaches every variant parquet and survives a round trip (0.8, uncut)
+## 2026-11-04 — RM270: an indel's spelling-independent `vrs_id` reaches every variant parquet, and a filled coordinate is written left-aligned (0.8, uncut)
 
 - **`weights.parquet` gains `vrs_id` (`List(Utf8)`, parallel to `alts`) and `vrs_spec`**; the three
   positional parquets (`pharm_variants`, `haplotypes`, `heteroplasmy`) gain the same pair as the
   comma-joined cell `resolution.csv` uses, and `studies.parquet`'s `proxy_loci` struct gains both fields.
   Both spellings of `rs72613567` (`4:87310240 T>TA`, `4:87310241 A>AA`) now carry one id on the parquet
   and `rs8176719`'s two placements carry two, so a consumer that mints VRS from its VCF has a join key
-  that does not depend on the spelling. The ids are copied from `resolution.csv` by allele, never minted
-  by the compiler (`compiler/vrs_columns.py`); an allele two rows record with two ids is withheld.
+  that does not depend on the spelling. Each row's ids are copied from its own `resolution.csv` row by
+  allele, never minted by the compiler (`compiler/vrs_columns.py`); an allele its key records with two
+  ids is withheld.
 - **`reverse` writes `vrs_id`/`vrs_spec` back** into `resolution.csv`, so `compile → reverse → compile`
   keeps every id and the second lap's `vrs_alleles_identified` (RM241's residual).
 - Every module carrying `variants.csv` or a positional table gets a new `artifact.digest` on a 0.8
   recompile; `content_signature` does not move. INTEGRATION_0_8 § 1.19, COMPILER.md § *The VRS ids on
-  the variant parquets*.
+  the variant parquets*. Digest parity with the deprecated DuckDB path now holds when the table records
+  no id; with ids, the two `weights.parquet` differ in those two columns only.
+- **`enrich` writes a coordinate it fills from an rsID left-aligned**, ALT by ALT (`sequences.normalize_locus`,
+  through the same `_left_align` RM267 compares with), so a caller's normalized VCF meets it on an exact
+  join; a multi-allelic locus whose ALTs land on two references becomes two loci. An authored coordinate
+  is judged and never rewritten: a warning names its leftmost spelling (`EnrichmentResult.spelling`). Every
+  written row carries the verdict in a new `resolution.csv` column, `left_aligned` (tri-state, outside
+  `resolution_signature`). A recorded row is respelled only under `--rederive`.
+- **`reference_examples/shox_par1` re-derived**: `rs1569493663` is now `X:634689 CAG>C` and `X:634689
+  C>CAG`, and `compiler/tests/test_consumer_join.py` passes with its RM270 pin removed — every row ClinVar
+  carries joins.
 
 ## 2026-11-04 — PT2 §6: three reference examples carry the 0.8 study, HLA and model-organism shapes (0.8, uncut)
 

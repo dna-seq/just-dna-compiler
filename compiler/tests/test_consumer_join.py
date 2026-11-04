@@ -23,10 +23,13 @@ does. Whether it *does* match is the consumer's exact join. So the expected set 
 the normalization under test, and a miss is a row ClinVar carries under a spelling the module does
 not use.
 
-**It fails today, on purpose, and the failures are pinned.** `_MISSES_PINNED_TO_RM270` are the rows
-RM270 describes (the artifact keys an indel on its source's spelling). `_REF_DISAGREES` held the one
-row whose `ref` the reference does not have until RM295 corrected it. Each is an equality, so a row leaving either set, fixed or
-newly broken, fails the test, and the sets can only shrink as those items ship.
+**Every row ClinVar carries joins.** Until RM270 (0.8) two SHOX rows were pinned as expected misses:
+Ensembl spells the 2 bp AG deletion and its duplication at `X:634690` (`AGAG>AG`, `AGAG>AGAGAG`), ClinVar
+and every caller at `X:634689` (`CAG>C`, `C>CAG`). The enricher now writes a coordinate it fills from an
+rsID left-aligned, splitting that multi-allelic locus into the two spellings a caller writes, and
+`shox_par1`'s `resolution.csv` was re-derived with it, so the miss set is empty — the proof RM270 asked
+for. `_REF_DISAGREES` held the one row whose `ref` the reference does not have until RM295 corrected it.
+Both are equalities, so a row entering either set fails the test.
 
 **Regenerating.** A new reference example with rows outside the windows fails
 `test_every_joinable_row_is_inside_the_fixture` by name. Rebuild both files with the commands above
@@ -52,16 +55,6 @@ from just_dna_compiler.compiler import compile_module
 _ROOT = Path(__file__).resolve().parents[2]
 _EXAMPLES = _ROOT / "reference_examples"
 _FIXTURE = _ROOT / "assets" / "consumer_join"
-
-#: `(example, table, chrom, start, ref, alt)` rows ClinVar carries at another spelling (RM270). The
-#: SHOX 2 bp AG deletion and duplication: Ensembl spells them at `X:634690` (`AGAG>AG`, `AGAG>AGAGAG`),
-#: ClinVar and every caller at `X:634689` (`CAG>C`, `C>CAG`).
-_MISSES_PINNED_TO_RM270: frozenset[tuple[str, str, str, int, str, str]] = frozenset(
-    {
-        ("shox_par1", "weights", "X", 634690, "AGAG", "AG"),
-        ("shox_par1", "weights", "X", 634690, "AGAG", "AGAGAG"),
-    }
-)
 
 #: Rows whose `ref` the GRCh38 reference does not have at their `start`. Empty since RM295 moved
 #: `cyp2d6_structural`'s CYP2D6*4 row from `22:42127941` (where GRCh38 has `G`) to `22:42128945`.
@@ -157,10 +150,10 @@ def test_every_joinable_row_is_inside_the_fixture(join: dict[str, set]) -> None:
     assert join["outside"] == set(), f"rebuild assets/consumer_join for: {sorted(join['outside'])}"
 
 
-def test_every_row_clinvar_carries_joins_except_the_pinned_rm270_set(join: dict[str, set]) -> None:
-    """The consumer's join. Equality with the pinned set: fixed or newly broken, either fails here."""
+def test_every_row_clinvar_carries_joins(join: dict[str, set]) -> None:
+    """The consumer's join: no row ClinVar carries is missed for its spelling (RM270)."""
     assert join["matched"], "the join matched nothing, so it is not testing a join"
-    assert join["missed"] == _MISSES_PINNED_TO_RM270
+    assert join["missed"] == set()
 
 
 def test_no_row_states_a_ref_the_reference_lacks(

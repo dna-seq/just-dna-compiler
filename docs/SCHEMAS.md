@@ -2489,6 +2489,15 @@ does not carry a coordinate, and it is the wrong one — RM43 (0.6) is the right
   ALT of the row was placed the same; one ALT no witness holds makes the row `unplaced`. Before 0.8 every coordinate here had one
   witness and `authority=ensembl` read the same whether a second authority agreed, disagreed or was
   never asked (S117, S121). Reverse cannot emit them, for `authority`'s reason above.
+- **`left_aligned` is the spelling verdict the enricher stamps (0.8, RM270).** Tri-state, outside the
+  fact set: `true` when the row's spelling was checked to be the leftmost parsimonious one ALT by ALT
+  (the spelling a caller's `bcftools norm -m -any` writes), `false` when it was checked and is not,
+  empty when unknown (no reference read, a non-nucleotide allele, a row written before 0.8). A coordinate
+  the enricher fills from an rsID is written left-aligned, so it reads `true` wherever a read was made;
+  a coordinate a module authored, and a pair's recorded reference locus, are recorded as given and only
+  judged. A stamped verdict rather than an authored `coordinate_normalization` key: an author's claim of
+  a convention is one no offline tier can check. A `false` row's indel joins a caller's spelling only
+  through `vrs_id`. Reverse cannot emit it, for `authority`'s reason above.
 - **`RESOLUTION_FACT_FIELDS`** names the fact columns; `integrity.resolution_signature` hashes only
   those (provenance deliberately excluded), so a human-filled and an Ensembl-filled table with identical
   facts hash equal.

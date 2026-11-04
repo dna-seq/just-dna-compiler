@@ -35,6 +35,112 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM270 — an indel's artifact key is its source's spelling: a left-aligned VCF misses a respelled row, and the spelling-independent id the enricher mints never reaches the artifact
+
+**0.8, decided 2026-11-03.** Taken into 0.8 by the maintainer, with the rest of the indel-placement fixes (RM304, RM267, RM270, RM292, RM305). The status line below predates that decision.
+
+**Residuals** won't fix — an authored coordinate is never rewritten, because it is the row's identity inside `content_signature` (PT2 §5 C5) · won't fix — a pair row's recorded reference locus keeps the snapshot's spelling, because re-anchoring the snapshot at build is `just-dna-pipelines`' builder, outside this repository, so a pair authored in the other spelling carries no `vrs_id` on its parquet row · won't fix — a consumer who cannot mint VRS still joins an authored respelling only by normalizing both sides, which CONSUMING.md says
+
+**What shipped (2026-11-04).** The build is 3 + 4 with 2's stamped verdict, as decided below, and it
+carries the residuals four closed items pointed here: RM241's and RM304's (no parquet carried a `vrs_id`
+or its version, so a round trip dropped both), RM267's (a respelling it judged `same_event` was still
+written in the snapshot's spelling) and RM291's (the two SHOX misses pinned to this item).
+
+- **(4) The per-ALT `vrs_id` and its `vrs_spec` on every variant parquet** (`compiler/vrs_columns.py`):
+  `weights.parquet` as a `List(Utf8)` parallel to `alts`, the three positional parquets
+  (`pharm_variants`, `haplotypes`, `heteroplasmy`) as `resolution.csv`'s comma-joined cell, and
+  `studies.parquet`'s `proxy_loci` struct. Copied from the row's own `resolution.csv` row (filed under
+  its authored key, `vrs_columns.resolution_key`, which reverse shares) by allele, never minted by the
+  compiler (P2) and never borrowed from another subject's row for the same spelling: either would reach
+  `resolution.csv` on reverse and move the second lap's count. An allele its key records with two ids is
+  withheld. `annotations.parquet` carries `variant_key` but no allele, and `frequencies.parquet`'s
+  id is gnomAD's, so neither gains one. **`reverse` writes both back**, so `compile → reverse → compile`
+  keeps every id and `vrs_alleles_identified`. Digest parity with the deprecated DuckDB path now holds
+  when the table records no id.
+- **(3) A coordinate `enrich` fills from an rsID is written left-aligned**, ALT by ALT
+  (`sequences.left_normalize`, `normalize_locus`), through RM267's own `_left_align`
+  (`@one-normalizer-two-spellings`): a substitution by trimming with no read, an indel against the
+  reference window. ALTs landing on two references become two loci, the split `bcftools norm -m -any`
+  makes, after the hosting filter; the piece the row's genotype names is written (a genotype naming ALTs
+  in both pieces keeps the source locus whole), and each keeps the RM267 verdict of the locus it came
+  from. Undecidable (offline, a non-nucleotide allele) means the locus is written as the link gave it,
+  whole. Under `--rederive` the drift canary names a respelling apart from a source that moved, by the
+  alleles' unchanged `vrs_id`s. **An authored coordinate is judged and never rewritten**: a
+  warning names its leftmost spelling (`EnrichmentResult.spelling`, `findings` over `checked`, `unknown`
+  apart), and so is a pair's recorded reference locus, which the compiler compares by spelling. A
+  recorded row is respelled only under `--rederive` (`@sidecar-authoritative`).
+- **(2) The stamped verdict**, `resolution.csv` `left_aligned` (tri-state, outside
+  `resolution_signature`). P5: named for the convention it checks, so a future 3′-shifted (HGVS)
+  verdict is its own column rather than a member squeezed in beside it; no collision with `vrs_*` or
+  `placement_*`, and no reserved name. Not a `verification.json` check: it compares a spelling with a
+  convention, not a claim with a witness.
+- **The proof**: `reference_examples/shox_par1` re-derived (`enrich --rederive --no-clinvar`), so
+  `rs1569493663` is `X:634689 CAG>C` and `X:634689 C>CAG`, and `compiler/tests/test_consumer_join.py`
+  passes with its pin removed and the miss set empty.
+
+Tests: `compiler/tests/test_vrs_on_parquets.py` (both spellings of `rs72613567` → one id on the parquet,
+`rs8176719`'s two placements → two, the hole kept, the contested allele withheld, the round trip) and the
+RM270 block of `enricher/tests/test_placement_witness.py` (the filled respelling written left-aligned and
+compiled to its id, the authored coordinates judged with cells byte-identical, offline unknown, respelled
+only on `--rederive`, the pair's locus kept, the SHOX split over the consumer-join fixture's real bases,
+the piece a genotype names, and a respelling on `--rederive` named apart from drift).
+Each was shown red on the branch before the change and each new rule was mutated once.
+
+**Severity** high · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** (a new optional
+`resolution.csv` column and four parquets' new columns; [PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md)
+§5 C5) · **Owner** enricher (resolution fill, `vrs.mint_resolution_rows`) + compiler (the parquet column) ·
+**Motivating case**
+[S120](CONSUMER_SUGGESTIONS_HISTORY.md#s120--the-format-declares-no-coordinate-normalization-convention-so-a-legal-respelling-of-an-indel-is-a-silent-position-join-miss-no-one-is-wrong-is-the-footgun)
+
+**What was confirmed.** The three cases S120 cites (`rs72613567`, `rs77944059`, `rs333` CCR5-Δ32) sit
+in our Ensembl snapshot one base right of ClinVar's left-aligned spelling, which is also what the
+callers emit. Against GRCh38 (UCSC `hg38`; Ensembl REST was down) each pair gives the same haplotype,
+so they are one event spelled two legal ways. That is RM267's harmless +1 class, not its wrong-event
+−1 class. Nothing in the contract names a normalization. The compiler cannot apply one either, because
+left-alignment reads flanking sequence and the compiler has no sequence (P2). So an indel's
+`variant_key` is `chrom:start:ref:alts` in whatever spelling its source used. Compiling
+`reference_examples/hboc_palb2` keys `rs1555461597` as `16:23635706:G:GT`.
+
+**The identity that would join them already exists and is dropped.** The enricher mints each indel's
+`vrs_id` over the *fully justified* allele. Probed: both spellings of `rs72613567` mint
+`ga4gh:VA.Jml7SNku3QQBCVIj78BGiFvR21bNkos7`, and both of `rs77944059` mint
+`ga4gh:VA.ks2GTWYOW0aKfGbJ2aeQUOZxOT_xC2ts`. S117's `rs8176719` pair mints **two different** ids, so the
+id also tells RM267's wrong event apart from a respelling instead of masking it. That id lives in
+`resolution.csv`, which has no parquet by design. Of the compiled parquets only `frequencies.parquet`
+carries a `vrs_id`, and that one is gnomAD's. `@dont-discard-computed`.
+
+**Candidate repairs, and why each is wrong or partial.**
+
+1. **Compiler left-normalizes and stamps a field** (the reporter's preferred option). Refused twice.
+   It needs reference sequence in the compile path, the line COMPILER.md § the VRS verify pass says
+   not to cross (P2). And on an *authored* coordinate it rewrites a value `reverse_module` then
+   re-emits, so lap 1 moves `content_signature` (P7).
+2. **An authored `coordinate_normalization` key.** It is a claim no offline tier can check. It costs
+   the full authored price (P9) and would be believed by exactly the consumer it misleads. As a
+   **verdict the enricher stamps** (tri-state: checked left-aligned / not / unknown), it is honest and
+   minor-legal, and it is part of the answer.
+3. **The enricher left-normalizes the coordinates it fills.** Legal: a resolution fill is outside
+   `content_signature` (`@rm43-positional-fill`). It fixes the +1 class for rsID-authored rows. It
+   does not reach an authored coordinate. For those the enricher reports the normalized spelling as a
+   finding and never rewrites the cell (`@enrichment-is-validation`). `@sidecar-authoritative`: it
+   reaches an existing table only on `--rederive`.
+4. **Carry the per-ALT `vrs_id` onto the variant parquets.** A parquet column is approximately free
+   (P9) and it is already computed. It gives a consumer who can mint VRS from its VCF a key that does
+   not depend on spelling. Alone it is not enough, because minting an indel needs sequence access the
+   consumer may not have. Hence it pairs with 3.
+
+The build is 3 + 4, plus the stamped verdict from 2. The part that ships without a decision, the
+consumer guide stating that no normalization is guaranteed, landed with the S120 reply.
+
+
+**Carries RM241's residual.** RM241 (shipped on `0.8`) left a round trip that drops every `vrs_id`, because no
+variant parquet carries one. Candidate 4 below, the per-ALT `vrs_id` on the variant parquets, is what closes it.
+
+**Pinned by RM291 (2026-09-27).** `compiler/tests/test_consumer_join.py` joins every reference example
+against a bcftools-normalized ClinVar slice, and the two SHOX rows Ensembl spells at `X:634690`
+(`AGAG>AG`, `AGAG>AGAGAG`; ClinVar and callers write `X:634689`) are its expected misses, pinned to
+this item. Shipping this empties that set, and the test fails until the pin is removed.
+
 ## RM331 — a study measured on an LD proxy cannot say so, and filing it under the lead checks the proxy's allele against the lead's
 
 **Built on 0.8, 2026-11-04: `proxy_rsid` and the allele check.** `StudyRow.proxy_rsid` (refused on a row naming no variant, or equal to its own `rsid`) reaches `studies.parquet` and `reverse`; `_check_study_effect_alleles` reads the proxy's resolved alleles when one is stated and withholds when it has none; `enrich.collect_subjects` admits each proxy as a subject, last, and the GWAS pass leaves them out. The computed pair followed the same day (below).

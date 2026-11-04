@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 
 from just_dna_format.base import merge_key
 from just_dna_format.resolution import RESOLUTION_FACT_FIELDS, ResolutionRow
+from just_dna_format.vrs import split_vrs_ids
 
 from just_dna_enricher.civic_citations import EvidenceStatusCheck
 from just_dna_enricher.civic_refutation import RefutationFinding
@@ -17,7 +18,7 @@ from just_dna_enricher.grch37 import BuildDiagnosis
 from just_dna_enricher.identifiers import RsidStatus
 from just_dna_enricher.placement import PlacementCheck
 from just_dna_enricher.resolver import AlleleMismatch, PairCheck
-from just_dna_enricher.sequences import RefMismatch
+from just_dna_enricher.sequences import RefMismatch, SpellingCheck
 from just_dna_enricher.vrs import MintResult
 
 
@@ -44,9 +45,34 @@ class SubjectDrift:
     variant_key: str
     before: str
     after: str
+    #: The facts moved but the events did not (RM270): every allele on both sides carries a `vrs_id`
+    #: and the two sides name the same ids, so the fresh table spells the same alleles another way —
+    #: the left-aligned fill this release writes — rather than the source answering differently.
+    respelled: bool = False
 
     def __str__(self) -> str:
-        return f"{self.variant_key}: {self.before} → {self.after}"
+        suffix = " (respelled; every allele's vrs_id unchanged)" if self.respelled else ""
+        return f"{self.variant_key}: {self.before} → {self.after}{suffix}"
+
+
+def _allele_ids(rows: Sequence[ResolutionRow]) -> list[str] | None:
+    """Every allele's `vrs_id` across a subject's rows, sorted, or `None` when any allele has none."""
+    ids: list[str] = []
+    for row in rows:
+        alts = row.alts.split(",") if row.alts else []
+        members = split_vrs_ids(row.vrs_id)
+        if not alts or len(members) != len(alts) or None in members:
+            return None
+        ids.extend(m for m in members if m is not None)
+    return sorted(ids)
+
+
+def _same_events(before: Sequence[ResolutionRow], after: Sequence[ResolutionRow]) -> bool:
+    """Whether two answers for one subject name the same alleles, by id, on the same build and rsID."""
+    if {(r.rsid, r.genome_build) for r in before} != {(r.rsid, r.genome_build) for r in after}:
+        return False
+    was, now = _allele_ids(before), _allele_ids(after)
+    return was is not None and was == now
 
 
 def _render_facts(rows: Sequence[ResolutionRow]) -> str:
@@ -90,7 +116,7 @@ def _rederived_drift(
         compared += 1
         was, now = _render_facts(old_rows), _render_facts(new_rows)
         if was != now:
-            drift.append(SubjectDrift(old_rows[0].variant_key, was, now))
+            drift.append(SubjectDrift(old_rows[0].variant_key, was, now, _same_events(old_rows, new_rows)))
     return sorted(drift, key=lambda d: d.variant_key), compared
 
 
@@ -223,6 +249,10 @@ class EnrichmentResult:
     # respellings nothing could settle, and the rsIDs with one witness only. `None` only for a caller
     # that built the result by hand; `enrich()` always sets it, with `not_checked` when it could not run.
     placement: PlacementCheck | None = None
+    # What the spelling pass did (RM270): the fills this run wrote left-aligned, and the authored
+    # coordinates it judged, with the ones whose leftmost spelling differs named. `None` only for a
+    # caller that built the result by hand; `enrich()` always sets it.
+    spelling: SpellingCheck | None = None
     # What a full re-derivation found had moved since the recorded table was written — `rederive=True`
     # only. **`None` is not `[]`**: `None` says nobody re-derived, and an empty list says every
     # recorded subject was re-asked and every one still answers the same. Only the second of those is

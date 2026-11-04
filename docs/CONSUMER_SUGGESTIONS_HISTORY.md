@@ -5577,7 +5577,7 @@ So it argues for a two-subject key, not a predicate, and it is recorded as unbui
 ## S120 — the format declares no coordinate-normalization convention, so a legal respelling of an indel is a silent position-join miss ("no one is wrong" is the footgun)
 
 **Status — accepted; filed as
-[RM270](ROADMAP.md#rm270--an-indels-artifact-key-is-its-sources-spelling-a-left-aligned-vcf-misses-a-respelled-row-and-the-spelling-independent-id-the-enricher-mints-never-reaches-the-artifact)
+[RM270](ROADMAP_HISTORY.md#rm270--an-indels-artifact-key-is-its-sources-spelling-a-left-aligned-vcf-misses-a-respelled-row-and-the-spelling-independent-id-the-enricher-mints-never-reaches-the-artifact)
 (a minor, release undecided). The documentation half shipped: [CONSUMING.md § Identity](CONSUMING.md#identity)
 now says indel coordinates are not normalized and tells a consumer to normalize both sides.** No
 package change.

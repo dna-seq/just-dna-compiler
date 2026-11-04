@@ -304,7 +304,7 @@ unresolved state. Each witness a written row names gets a `resolution`-layer `So
 `clinvar_gkm`), and the compiler counts it as used. S117's
 `rs8176719` (ABO O1) is the motivating case: the Ensembl snapshot's `9:133257520 G>GC` against the
 `9:133257521 T>TC` dbSNP and Ensembl REST give, two haplotypes. Probed 2026-11-04 on real data: neither loaded witness holds `rs8176719` (ClinVar's 2026-06-27 VCF has no record at `9:133257510–529` and no `RS=8176719`; ClinVar-GKM lacks it, RM305), so against today's witnesses S117's own case is counted in the one-witness class and named in `detail`, not withheld. The spelling `9:133257521 T>TC` is dbSNP's and Ensembl REST's; the tests supply it as a ClinVar row to exercise the withhold. A respelling (`rs72613567`, `rs77944059`) mints one VRS id and is
-written as before.
+written, left-aligned since RM270 (§ 1.19).
 
 | Surface | What changed |
 | --- | --- |
@@ -325,14 +325,15 @@ compared. A subject that comes back unresolved with a *placement disagreement* w
 contradicting another; check the spelling against the reference and record the one you stand behind in
 `overrides.csv`.
 
-## 1.19 An indel's spelling-independent id on every variant parquet (RM270, no break)
+## 1.19 An indel's spelling-independent id on every variant parquet, and a filled coordinate written left-aligned (RM270) — an old-reader break
 
 The `vrs_id` the enricher records in `resolution.csv` now reaches the artifact. Both legal spellings of
 one indel carry one id (`rs72613567` at `4:87310240 T>TA` and at `4:87310241 A>AA`), and two events carry
 two (`rs8176719`'s two placements), so a consumer that can mint VRS from its own VCF has a key that does
-not depend on how either side spelled the event. The ids are copied from `resolution.csv` by allele,
-never minted by the compiler; an allele with no recorded id is a null member, and an allele two rows
-record with two ids is withheld.
+not depend on how either side spelled the event. Each row's ids are copied from its own
+`resolution.csv` row (the one filed under its authored key, at its coordinate) by allele, never minted by
+the compiler and never borrowed from another subject's row; an allele with no recorded id is a null
+member, and an allele its key records with two ids is withheld.
 
 | Surface | What changed |
 | --- | --- |
@@ -343,6 +344,25 @@ record with two ids is withheld.
 
 Not on `annotations.parquet` (no allele to be parallel to; join it to `weights.parquet` on
 `variant_key`) and not on `frequencies.parquet`, whose `vrs_id` is gnomAD's.
+
+**The enricher writes a coordinate it fills left-aligned, and judges an authored one.** A coordinate
+`enrich` fills from an rsID is now written in its leftmost parsimonious spelling, ALT by ALT, the spelling
+a caller's `bcftools norm -m -any` writes, so an exact `(chrom, pos, ref, alt)` join meets it. A
+multi-allelic locus whose ALTs land on two references becomes two loci (SHOX's `X:634690
+AGAG>AG,AGAGAG` is now `X:634689 CAG>C` and `X:634689 C>CAG`, and the compiler expands the rsID onto
+both). An authored coordinate is never rewritten: a non-left-aligned one draws a warning naming its
+leftmost spelling, and its `vrs_id` is what joins it.
+
+| Surface | What changed |
+| --- | --- |
+| `resolution.csv` `left_aligned` | New optional verdict column, tri-state: `true` checked left-aligned, `false` checked and not, empty unknown. Outside `resolution_signature`; no parquet carries it. |
+| `resolution.csv` filled rows | Written left-aligned on a fresh fill or under `--rederive`; a recorded row is untouched otherwise. The respelling moves `resolution_signature` and `artifact.digest` on the next compile, never `content_signature`. |
+| `EnrichmentResult.spelling`, `sequences.SpellingCheck`, `left_normalize`, `normalize_locus` (returns `NormalizedLocus`), `spelling_verdict` | What the pass did (the fills respelled, the authored coordinates judged and the ones not left-aligned, with the counts), and the normalizer. |
+| `SubjectDrift.respelled` | `--rederive`'s drift canary names a subject whose facts moved while every allele's `vrs_id` stayed the same (the left-aligned fill) apart from one the source changed; it is logged at INFO, not in the drift warning. A new field with a default, so an existing constructor call is unchanged. |
+| `reference_examples/shox_par1` | `resolution.csv` re-derived (`enrich --rederive --no-clinvar`): `rs1569493663` is two left-aligned loci, and every row carries RM267's and RM270's columns. `test_consumer_join` now passes with no expected miss. |
+
+**This breaks a 0.7 reader of a 0.8-enriched `resolution.csv`**, for § 1.18's reason: `ResolutionRow`
+forbids unknown columns. Same remedy.
 
 ## 2. What to change
 
