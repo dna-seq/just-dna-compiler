@@ -48,6 +48,10 @@ purpose; normalization is the compiled parquet's job (RM346, 1.0).
   - The handout went to the lead on 2026-11-04 (in the clone, the live session and the messenger). The lead
     plans the branching, the specification, the order, the parallel work, the implementation and the tests.
   - The pm reads the lead's plan for scope drift only.
+  - Three addenda followed the handout: the tag selector; the selector widened to `column=value`; and the
+    second run's decisions (pmid/doi on every citing table, narrower outranks across tables, the role and
+    effect-allele rules). The second run is audit §6, and the shape is agreed as sufficient and necessary for
+    v2.
 
 - RM149's gate: **decided 2026-11-03, it stays** (option 1). Written under RM149 in ROADMAP_0_9.md.
 - The test registry `_ENTRY_FILES` → a `ROADMAP*.md` glob: the person asked whether a naming convention can
