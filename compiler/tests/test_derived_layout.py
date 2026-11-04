@@ -68,6 +68,9 @@ _MOVABLE = (
     "clin_sig_concordance.csv",
     "clin_sig_authority_calls.csv",
     "expression_effects.csv",
+    "locus_to_gene.csv",
+    "colocalisations.csv",
+    "consequences.csv",
     "sources.csv",
     LICENSING_CSV,
 )

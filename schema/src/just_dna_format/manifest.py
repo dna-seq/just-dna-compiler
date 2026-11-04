@@ -757,6 +757,29 @@ class ClinicalAssertions(BaseModel):
     )
 
 
+class OpenTargetsTable(BaseModel):
+    """Summary of one of the Open Targets lane's three derived tables (0.8, RM333/RM236).
+
+    One shape for `locus_to_gene`, `colocalisations` and `consequences` because a consumer asks the same
+    two questions of each before reading the parquet: which release is this, and how many of my variants
+    does it reach. `variant_count` against the module's own variant count is the second answer; the
+    table holds rows only for variants the release covers, so a low count is a fact about the release,
+    not a defect.
+    """
+
+    signature: str | None = Field(
+        default=None,
+        description="Fact-hash of the table (integrity.<table>_signature); out of artifact.digest",
+    )
+    sources: list[str] = Field(default_factory=list, description="Sorted union of the rows' `source` values")
+    datasets: list[str] = Field(
+        default_factory=list,
+        description="Sorted union of the releases these rows are from, e.g. ['opentargets_26.09']",
+    )
+    row_count: int = Field(default=0, description="Rows in the table")
+    variant_count: int = Field(default=0, description="Distinct `variant_key`s the rows reach")
+
+
 class ExpressionEffects(BaseModel):
     """Summary of a module's injected expression-effect sidecar (0.7, RM194/RM200).
 
@@ -901,6 +924,15 @@ class GwasEffects(BaseModel):
         description=(
             "Sorted union of `effect_unit` values present. More than one entry means the betas here "
             "are on different scales and must not be pooled."
+        ),
+    )
+    with_posterior: int = Field(
+        default=0,
+        json_schema_extra=since("0.8.0"),
+        description=(
+            "Associations carrying a fine-mapping `posterior_probability` (RM239). The rest were left "
+            "empty, never zeroed: the study had no credible set, the variant was not in it, or it sat "
+            "in several with different posteriors."
         ),
     )
     traits: list[str] = Field(default_factory=list, description="Sorted union of the EFO trait ids present")
@@ -1897,6 +1929,21 @@ class ModuleManifest(BaseModel):
             "direction, because both decide whether these effects can be thresholded at all — and "
             "neither is visible from a row count."
         ),
+    )
+    locus_to_gene: OpenTargetsTable | None = Field(
+        default=None,
+        json_schema_extra=since("0.8.0"),
+        description="Summary of the locus-to-gene sidecar (0.8, RM333), when the module carries one.",
+    )
+    colocalisations: OpenTargetsTable | None = Field(
+        default=None,
+        json_schema_extra=since("0.8.0"),
+        description="Summary of the colocalisation sidecar (0.8, RM333), when the module carries one.",
+    )
+    consequences: OpenTargetsTable | None = Field(
+        default=None,
+        json_schema_extra=since("0.8.0"),
+        description="Summary of the per-transcript consequence sidecar (0.8, RM236), when the module carries one.",
     )
     literature: Literature | None = Field(
         default=None,

@@ -82,6 +82,12 @@ GWAS_FACT_FIELDS: tuple[str, ...] = (
     "study_accession",
     "ancestry",
     "dataset",
+    # RM239 (0.8): what fine-mapping says about this (variant, study) pair. Inside, because the posterior
+    # is WHAT a source said rather than who wrote it down or when; a module without them hashes as before
+    # because an unset cell is dropped. Their release is NOT `dataset` (that names the Catalog's): it is
+    # the `(opentargets, gwas_effect)` row in `sources.csv` the filling pass writes.
+    "posterior_probability",
+    "fine_mapping_method",
 )
 
 
@@ -278,6 +284,33 @@ class GwasEffectRow(CitationPair):
         ),
     )
 
+    # ── fine-mapping (RM239, filled by `opentargets enrich`, a second writer of this table) ──
+    posterior_probability: float | None = Field(
+        default=None,
+        ge=0,
+        le=1,
+        json_schema_extra=since("0.8.0"),
+        description=(
+            "The variant's posterior inclusion probability in this study's fine-mapped credible set, "
+            "verbatim from Open Targets' `credible_set.locus[].posteriorProbability`. Means nothing "
+            "without `fine_mapping_method`, which is why the two are filled together. **Null is never "
+            "zero**: it is left empty when the study has no credible set in the release, when the "
+            "variant is not in the study's 95% set, and when the variant sits in several of the "
+            "study's sets with different posteriors; the filling pass counts each case. The release "
+            "it came from is the `opentargets` row of `sources.csv`, not this row's `dataset`."
+        ),
+    )
+    fine_mapping_method: str | None = Field(
+        default=None,
+        json_schema_extra=since("0.8.0"),
+        description=(
+            "The method that produced `posterior_probability`, verbatim as the source spells it "
+            "(`SuSiE-inf`, `SuSie`, `PICS` in Open Targets 26.09, the second's casing the source's "
+            "own). Open, because the methods change between releases. No credible-set level beside "
+            "it: the source publishes the 95% set only, so a level column would have no case."
+        ),
+    )
+
     # ── provenance (EXCLUDED from gwas_effect_signature) ──
     source: str | None = Field(
         json_schema_extra=since("0.6.0"),
@@ -347,7 +380,7 @@ class GwasEffectRow(CitationPair):
     def _check_status(cls, v: str | None) -> str | None:
         return check_vocab(v, VALID_RESOLUTION_STATUS, "status")
 
-    @field_validator("effect_size", "standard_error")
+    @field_validator("effect_size", "standard_error", "posterior_probability")
     @classmethod
     def _check_finite(cls, v: float | None, info) -> float | None:
         # `info.field_name`, not a hardcoded name: registered for two fields, this reported

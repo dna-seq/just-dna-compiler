@@ -55,6 +55,7 @@ from pydantic import BaseModel, Field, ValidationError, ValidationInfo, field_va
 from just_dna_format.assertions import ClinicalAssertionRow
 from just_dna_format.base import OUTSIDE_CONTENT_IDENTITY, AuthoredModel, since, vocabulary
 from just_dna_format.concordance import ClinSigConcordanceRow
+from just_dna_format.consequences import ConsequenceRow
 from just_dna_format.expression import ExpressionEffectRow
 from just_dna_format.findings import CodedWarning
 from just_dna_format.frequency import FrequencyRow
@@ -62,6 +63,7 @@ from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.gene_validity import GeneValidityRow
 from just_dna_format.gwas import GwasEffectRow
 from just_dna_format.literature import LiteratureRow
+from just_dna_format.locus_genes import ColocalisationRow, LocusToGeneRow
 from just_dna_format.normalize import normalize_utc_timestamp
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.vocab import check_vocab
@@ -156,6 +158,11 @@ _MERGED = (
 #:   directions, so the subject alone reaches a group rather than a row. The ninth, and the one that
 #:   reaches rows naming variants the module does not author — an overlay here corrects a claim about
 #:   a locus, not about an annotation.
+#: * `locus_to_gene.csv` / `colocalisations.csv` — `gene_id` / `right_study_locus_id` under the subject
+#:   `study_locus_id`, the source's own grain (RM333). One variant leads several study loci, so a
+#:   correction names the credible set it corrects; the corrected value is an input to the module's
+#:   effector rubric, never a label (RM323's cut).
+#: * `consequences.csv` — `transcript`. One variant carries a row per transcript (RM236).
 #:
 #: **`clin_sig_authority_calls.csv` is deliberately outside, and it is the pair's second decision.**
 #: The author answers the question; they do not get to rewrite what an archive published. An overlay
@@ -195,6 +202,13 @@ OVERRIDABLE_TABLES: dict[str, OverlayTarget] = {
         "the disagreement ended (RM117)",
     ),
     "expression_effects.csv": OverlayTarget(ExpressionEffectRow, "variant_key", "gene", *_MERGED),
+    # The Open Targets lane (0.8, RM333/RM236): where longevitymap v2's hand-curated causal and
+    # effector inputs go, as corrections to a derived input rather than an authored label (RM323's cut).
+    "locus_to_gene.csv": OverlayTarget(LocusToGeneRow, "study_locus_id", "gene_id", *_MERGED),
+    "colocalisations.csv": OverlayTarget(
+        ColocalisationRow, "study_locus_id", "right_study_locus_id", *_MERGED
+    ),
+    "consequences.csv": OverlayTarget(ConsequenceRow, "variant_key", "transcript", *_MERGED),
 }
 
 

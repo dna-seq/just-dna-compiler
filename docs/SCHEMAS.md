@@ -46,6 +46,8 @@ maintained one, and where the two disagree this one is what a consumer may rely 
 | `gwas` | `GwasEffectRow` (the 0.6 GWAS-effect table, RM90) | `base`, `normalize`, `spec`, `vocab` |
 | `concordance` | `ClinSigConcordanceRow` + `AuthorityCallRow` (the 0.7 paired concordance record, RM130) | `base`, `normalize`, `vocab` |
 | `expression` | `ExpressionEffectRow` (the 0.7 expression-effect table, RM194/RM200) | `base`, `normalize`, `vocab` |
+| `locus_genes` | `LocusToGeneRow`, `ColocalisationRow` (the 0.8 Open Targets study-locus tables, RM333) | `base`, `normalize`, `vocab` |
+| `consequences` | `ConsequenceRow` (the 0.8 per-transcript consequence table, RM236) | `base`, `normalize`, `vocab` |
 | `spec` | Authored DSL — `ModuleSpecConfig`, `VariantRow`, `StudyRow` | `base`, `derive`, `identity`, `manifest`, `vocab` |
 | `binning` | Measure→phenotype binning rows (4 table kinds) | `base`, `spec`, `vocab` |
 | `pgx` | PGx star-allele rows (4 table kinds) | `base`, `spec`, `vocab` |
@@ -101,9 +103,10 @@ existence and identifiers exactly like a study-grounded one. `sources.csv` does 
 either: it records a *dataset's* terms and attribution, which answers where a table came from, never
 why a bound is where it is. `resolution.csv` is compiler *input*, produced by the enricher, not authored
 annotation (see [§ resolution table](#the-resolution-table-05-provisional)) — and the same is true of
-the **ten** derived-fact sidecars `frequencies.csv` / `gene_metrics.csv` / `literature.csv` /
+the **thirteen** derived-fact sidecars `frequencies.csv` / `gene_metrics.csv` / `literature.csv` /
 `gene_validity.csv` / `clinical_assertions.csv` / `gwas_effects.csv` / `clin_sig_concordance.csv` /
-`clin_sig_authority_calls.csv` / `expression_effects.csv` / `sources.csv`, which are therefore absent
+`clin_sig_authority_calls.csv` / `expression_effects.csv` / `locus_to_gene.csv` /
+`colocalisations.csv` / `consequences.csv` / `sources.csv`, which are therefore absent
 from the table below. **The number is `len(_FACT_TABLES)`** — stated here so a release that lands a
 sidecar moves it by one, rather than left to be recounted off a list that has gone stale twice.
 Since 0.7 an author corrects them through `overrides.csv`, which *is* authored and therefore *is* in
@@ -113,7 +116,7 @@ excluded for the opposite reason: it records what each archive published, and an
 question a conflict asks rather than rewriting the answer an archive gave. `resolution.csv` *is*
 covered — see [§ the authored overlay](#the-authored-overlay-07-rm124--overridescsv).
 
-**`sources.csv` is the one of those ten a human is expected to write, and 0.5.4 stopped pretending
+**`sources.csv` is the one of those thirteen a human is expected to write, and 0.5.4 stopped pretending
 otherwise (S21).** The others are produced by an enricher pass, so an author never starts one by
 hand; this one the schema tells them to write — a source read **by hand** leaves no `source` cell
 anywhere for the compiler's coverage check to find, so declaring it as a row here is the only route
@@ -253,6 +256,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
   | `RECOMMENDED_ANCESTRY_GROUPS` | 11 (open) | gnomAD's population labels — **open**, and deliberately not merged with `PgsRow.training_ancestry`'s 1000G superpopulations |
   | `RECOMMENDED_AUTHOR_KINDS` | 7 (open) |  |
   | `RECOMMENDED_EFFECT_MEASURES` | 7 (open) | the units a `StudyRow` effect size is usually in — **open**, since a real study may report another |
+  | `RECOMMENDED_QTL_STUDY_TYPES` | 6 (open) | what the right-hand study of a colocalisation measured, as Open Targets spells it (RM333) — **open**, since the source adds QTL kinds |
   | `VALID_ACTIONABILITY` | 7 (closed) | what a consumer's return-of-results policy may act on. Shipped as `ACTIONABILITY_SEED`, which survives as a working alias — the `_SEED` name and a comment beside it both read as open while the validator refuses a non-member (RM225) |
   | `VALID_AUTHORED_POSITION` | 5 (closed) | what an `overrides.csv` row claims about the author's own standing on the value |
   | `VALID_AUTHORITY_CALL_STATUS` | 3 (closed) | whether an authority was asked, answered, or not consulted |
@@ -268,6 +272,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
   | `VALID_FREQUENCY_STATUS` | 3 (closed) |  |
   | `VALID_FULLTEXT_STATUS` | 3 (closed) | how the literature pass's fulltext question ended (RM258); a null cell is the fourth reading, *not asked* |
   | `VALID_GENE_VALIDITY` | 9 (closed) |  |
+  | `VALID_IMPACTS` | 4 (closed) | VEP's impact class on one transcript, `consequences.csv.impact` (RM236) |
   | `VALID_INHERITANCE_MODE` | 9 (closed) |  |
   | `VALID_PHENOTYPE_CATEGORIES` | 6 (closed) |  |
   | `VALID_QUOTE_SOURCE` | 2 (closed) |  |
@@ -277,7 +282,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
   | `VALID_RESOLUTION_STATUS` | 3 (closed) |  |
   | `VALID_RSID_STATUS` | 4 (closed) |  |
   | `VALID_SIGNIFICANCE` | 4 (closed) |  |
-  | `VALID_SOURCE_LAYERS` | 9 (closed) |  |
+  | `VALID_SOURCE_LAYERS` | 12 (closed) |  |
   | `VALID_VERIFICATION_CHECKS` | 26 (closed) |  |
   | `VALID_VERIFICATION_SKIPS` | 8 (closed) |  |
   | `VALID_WARNING_CODES` | 80 (closed) | every code a compile may stamp on a finding (members in `RETIRED_WARNING_CODES` are no longer emitted); the catalogue with texts is in [COMPILER.md](COMPILER.md) |
@@ -2393,12 +2398,12 @@ does not carry a coordinate, and it is the wrong one — RM43 (0.6) is the right
 
 ## The hash family — the complete roster
 
-Seventeen functions, in three groups, and **the rule that fixes the number is stated here rather than
+Twenty functions, in three groups, and **the rule that fixes the number is stated here rather than
 the number being restated elsewhere**: it is one `*_signature` per derived sidecar, plus the shared
 `fact_signature` they are built on, plus the two identity halves, plus the three on the verification
 side. So a release that lands a new sidecar moves this count by one and nothing else has to be edited
-to agree. RM130 landed two at once (0.7) and RM194/RM200 landed a tenth sidecar, which is why the
-fact-signature family is now **twelve** where older prose says nine — a reader counting to nine and
+to agree. RM130 landed two at once (0.7), RM194/RM200 landed a tenth sidecar and RM333/RM236 three
+more (0.8), which is why the fact-signature family is now **fifteen** where older prose says nine — a reader counting to nine and
 stopping would miss `module_binding` and `pow_digest` entirely, which is the reason this section
 exists at all.
 
@@ -2412,6 +2417,7 @@ bytes, from this compiler*.
 built on it: `frequency_signature`, `gene_metrics_signature`, `literature_signature`,
 `gene_validity_signature`, `clinical_assertion_signature`, `gwas_effect_signature`,
 `clin_sig_concordance_signature`, `clin_sig_authority_call_signature`, `expression_effect_signature`,
+`locus_to_gene_signature`, `colocalisation_signature`, `consequence_signature`,
 `source_signature`, `resolution_signature`. Each hashes a **normalized fact tuple** rather than raw bytes, which is the
 whole point — these tables are multi-producer (enricher, human, `reverse`), so a raw-bytes hash would be
 unstable across producers writing the same facts. It is also why none of them appears in
@@ -3079,6 +3085,48 @@ module's own resolution and would make two modules holding the same records hash
 Catalog is *queried* by rsID and echoes it back inside `riskAlleleName`, so it is part of what the
 source said. `trait` is outside, on `gene_validity`'s rule: a label that churns between releases for an
 unchanged `trait_efo_id` describes the association rather than being it.
+
+**The fine-mapping pair (0.8, RM239): `posterior_probability` and `fine_mapping_method`.** A second
+writer fills them: `opentargets enrich` reads Open Targets' GWAS credible sets and sets both on a row
+when exactly one value answers for its `(variant_key, study_accession)`. The posterior means nothing
+without its method (SuSiE, SuSiE-inf and PICS stand behind one column, the method spelled as the source
+spells it), the rule a magnitude and its unit follow. There is **no credible-set level beside them**:
+the release publishes the 95% set only (`is95 = is99 = true` on all 40,967,780 GWAS member rows,
+`probes/LANES_0_8.md` § 0), so a level column would have no case. **Empty is never zero**: the study has
+no credible set in the release, the variant is not in the study's set, or it sits in several of the
+study's sets with different values; the pass counts each, and the manifest's `gwas_effects.with_posterior`
+counts the filled rows. Both are inside `GWAS_FACT_FIELDS` (a module without them hashes as before, since
+an unset cell is dropped). Their release is **not** the row's `dataset`, which names the Catalog's: it is
+the `(opentargets, gwas_effect)` row of `sources.csv`.
+
+## The Open Targets tables (0.8, RM333 + RM236)
+
+Three derived-fact sidecars filled by `opentargets enrich` from one release of the Open Targets Platform
+(CC0-marked; `sources.csv` records its terms with the third-party-rights clause in `notice`). They are
+the **inputs** to a causal or effector judgement, never the judgement: no C or E label is authored or
+computed by the format (RM323's cut), and a curator's correction to an input goes in `overrides.csv`.
+
+| table | model (`locus_genes`, `consequences`) | key | what one row says |
+|---|---|---|---|
+| `locus_to_gene.csv` | `LocusToGeneRow` | `(study_locus_id, gene_id)` | the L2G score Open Targets gives one candidate gene of one credible set the module's variant leads |
+| `colocalisations.csv` | `ColocalisationRow` | `(study_locus_id, right_study_locus_id)` | that credible set colocalises with a molecular-QTL credible set: `h4`, `clpp`, the right study's type, gene and tissue |
+| `consequences.csv` | `ConsequenceRow` | `(variant_key, transcript)` | VEP's consequence (Sequence Ontology accessions) and impact class on one transcript |
+
+**The study locus is the grain, and several per variant are kept.** A variant leads one credible set per
+study that fine-mapped its region, each with its own candidate genes and scores. A row per variant would
+pick a study for the module (`@multiplicity-is-a-finding`). `variant_key` is the module's own key for the
+lead, so the rows join the weights directly; `lead_variant_id` keeps the source's spelling for tracing.
+
+**Coloc is a sibling table, not columns on the L2G row**, because the probe found many right-hand study
+loci per `(study locus, gene)` pair (one per tissue and QTL kind): `h4` on the L2G row would have to pick a
+tissue. `right_gene_id` is what joins a colocalisation to an L2G row.
+
+**`consequences.csv` settles RM23's grain too.** One consequence per transcript is the shape RM236 chose
+over a MANE-only column (lossy, and a column cannot later be retyped into a table) and a most-severe
+column (a ranking policy). The transcript set is Open Targets' choice, one Ensembl-canonical transcript
+per nearby gene, which `canonical` records; `mane_select` names the MANE transcript where there is one.
+`consequence_so_ids` holds accessions (`SO_0001583`), verbatim; the name `consequence` stays free for a
+term label.
 
 ## The expression-effect table (0.7, RM194 + RM200)
 

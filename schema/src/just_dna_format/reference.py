@@ -26,12 +26,14 @@ from just_dna_format.binning import (
     RepeatAlleleRow,
 )
 from just_dna_format.concordance import ClinSigAuthorityCallRow, ClinSigConcordanceRow
+from just_dna_format.consequences import ConsequenceRow
 from just_dna_format.expression import ExpressionEffectRow
 from just_dna_format.frequency import FrequencyRow
 from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.gene_validity import GeneValidityRow
 from just_dna_format.gwas import GwasEffectRow
 from just_dna_format.literature import LiteratureRow
+from just_dna_format.locus_genes import ColocalisationRow, LocusToGeneRow
 from just_dna_format.manifest import (
     RECOMMENDED_COLORS,
     RECOMMENDED_ICONS,
@@ -158,6 +160,12 @@ _FACT_MODELS: dict[str, type[BaseModel]] = {
     # point worth recording — sharing `VALID_EFFECT_DIRECTIONS` rather than minting a parallel
     # increase/decrease set is what keeps the two tables' signs comparable.
     "ExpressionEffectRow": ExpressionEffectRow,
+    # The Open Targets lane's three tables (0.8, RM333/RM236), on the `ExpressionEffectRow` argument:
+    # nobody hand-writes one, and `ConsequenceRow.impact` binds a new closed vocabulary that only this
+    # registry's walk can find undeclared.
+    "LocusToGeneRow": LocusToGeneRow,
+    "ColocalisationRow": ColocalisationRow,
+    "ConsequenceRow": ConsequenceRow,
     "VerificationRecord": VerificationRecord,
 }
 

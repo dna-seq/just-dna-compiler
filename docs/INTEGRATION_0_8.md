@@ -79,6 +79,24 @@ A `variants` match is keyed by the authored `(variant_key, genotype)`; for an rs
 onto several loci, `weights.parquet` keys those rows by coordinate, and they are reached through `rsid`.
 `module_spec.yaml` gains the optional `tier_scale:`; a `tier` cell without it is refused.
 
+## 1.2.2 Three derived tables, three parquets, and RM239's two columns (no break)
+
+The Open Targets lane (RM333, RM239, RM236) adds three machine-written sidecars beside the spec, each
+compiled to its own parquet listed after `expression_effects.parquet` in `ARTIFACT_PARQUETS` (none is a
+`LEAD_PARQUET`; a module carrying none of them keeps its digest), each summarised by a new top-level
+manifest block that `ModuleManifest` lets a 0.7 reader drop. No new warning code.
+
+| Surface | One row per / what it holds |
+| --- | --- |
+| `locus_to_gene.csv` → `locus_to_gene.parquet`, manifest `locus_to_gene` | (study locus, gene): the L2G score of a GWAS credible set the module's variant leads; key `(study_locus_id, gene_id)` |
+| `colocalisations.csv` → `colocalisations.parquet`, manifest `colocalisations` | (left, right study locus): `h4`, `clpp`, the right study's type, gene and tissue; key `(study_locus_id, right_study_locus_id)` |
+| `consequences.csv` → `consequences.parquet`, manifest `consequences` | (variant, transcript): `consequence_so_ids`, `impact` (closed: HIGH, MODERATE, LOW, MODIFIER), `mane_select`, `canonical` |
+| `gwas_effects.csv` / `.parquet` `posterior_probability`, `fine_mapping_method`; manifest `gwas_effects.with_posterior` | two optional columns, empty unless exactly one fine-mapping value answers; a 0.7 reader of the parquet sees two more columns, and a 0.7 `validate_spec` refuses a `gwas_effects.csv` carrying them (`extra="forbid"`), so upgrade before enriching |
+
+The manifest blocks are `{signature, sources, datasets, row_count, variant_count}`. `VALID_SOURCE_LAYERS`
+gains `locus_to_gene`, `colocalisation` and `consequence`; a 0.7 reader refuses a `sources.csv` row
+carrying one, which is the same upgrade-first rule.
+
 ## 1.3 New derived column and client method (no break)
 
 | Surface | Item | What changed |

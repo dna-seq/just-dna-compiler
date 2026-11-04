@@ -660,9 +660,26 @@ VALID_SOURCE_LAYERS: frozenset[str] = frozenset(
         # predicted direction is a value the service publishes identically to everyone. Written by
         # `alphagenome expression`, which is the half that matters.
         "expression_effect",
+        # 0.8 (RM333/RM236) — the Open Targets lane's three tables, same fact class: a locus-to-gene
+        # score, a colocalisation and a VEP consequence are values the release publishes identically to
+        # everyone. Each is written by `opentargets enrich`, which also writes the lane's `gwas_effect`
+        # row when it fills RM239's posterior on `gwas_effects.csv`.
+        "locus_to_gene",
+        "colocalisation",
+        "consequence",
         "annotation",
     }
 )
+
+# VEP's impact classes (RM236), the closed set `consequences.csv.impact` carries. Closed (Principle 6)
+# because VEP's own documentation defines exactly these four and every annotator that reports an impact
+# reports one of them; a fifth would be a different scale, not a new member.
+VALID_IMPACTS: frozenset[str] = frozenset({"HIGH", "MODERATE", "LOW", "MODIFIER"})
+
+# What the right-hand study of a colocalisation measured (RM333), as Open Targets 26.09 spells it.
+# Recommended, not closed: a source may add QTL kinds between releases, and a
+# closed set would make the next release unloadable.
+RECOMMENDED_QTL_STUDY_TYPES: frozenset[str] = frozenset({"eqtl", "sqtl", "pqtl", "tuqtl", "sceqtl", "gwas"})
 
 # `effect_measure` is intentionally NOT a closed vocabulary (kept permissive so PGS-Catalog
 # `weight_type` additions survive). These are the recommended values, for documentation only.
