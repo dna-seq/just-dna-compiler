@@ -2143,6 +2143,15 @@ fixed-compiler tree's manifests record the old version. A previous release recor
 gate cannot read BEFORE's; the per-module digest equality with the fixed-compiler tree is what shows it
 was the same toolchain and the same bytes.
 
+Step 1 pins `just-dna-format==<previous>` only when the format was published at that number too. It
+is not always: on 2026-11-04 PyPI held compiler 0.7.2 but format 0.7.1, so the 0.8 cut pins
+`--with just-dna-compiler==0.7.2` alone and lets the resolver pick its published partner. `<previous>`
+is the newest **published** compiler, read off PyPI at the cut, never off a local tag (`v0.7.3` was
+tagged and unpublished), and the record's `previous` must equal what BEFORE is stamped with. If the
+overlay ever stops shadowing the lock (a `polars>=2` floor would refuse it), build the fixed-compiler
+tree with `uv run --isolated --no-project --with ./schema --with ./compiler --with polars==<previous
+polars>` instead.
+
 ```bash
 TC_BEFORE=$(mktemp -d)
 for d in reference_examples/*/; do
