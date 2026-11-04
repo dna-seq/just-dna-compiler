@@ -47,5 +47,4 @@ three scripts are the kit's, two of them copied into `.claude/` for CI.
 | RM337 (S125, silent drop under `logs/`) | handed on: it needs a new warning code, so it is a minor (`172a215`, sized wrong at filing). The pm placed it, now in `ROADMAP_0_8.md` (`f3377a6`) |
 | RM340 (S127, VRS warning names `verification.json`) | `done`: `280813b`, on `origin/main` (the pm's fast-forward pushes carried it) |
 | RM338 (S125, which files under `logs/` ship) | the lead's: taken into its plan and put to the maintainer, 2026-11-03 |
-| SSH agent emptied (2026-11-04): every fetch/push to origin refused, watchers blind | `blocked: desk #190` (a step: the person runs `ssh-add`); withdraw it `moot:` once `git fetch origin` works |
 | push of `main` | the maintainer's: auto mode denies a seat's granted push (kit #238), so the maintainer pushes until it lands; the lead asked triage not to push its commits |
