@@ -72,6 +72,10 @@ compiler change, and no identity moves.
   study locus: `h4`, `clpp`, the right side's gene and tissue) and `consequences.csv` (one row per variant
   and transcript: SO accessions and `impact`). Several study loci per variant are kept, never collapsed.
   Members, not lead-only, so HFE C282Y, which sits in 82 GWAS sets and leads none, gets their rows.
+  In `overrides.csv` a correction to either table keys on the pair and reaches every member's row; an
+  `update` of `variant_key` is refused as re-keying, an `insert` matches on the `variant_key` it supplies, and
+  a `suppress` removes every member's row. Two module keys naming one release allele have these rows withheld
+  and are named in the pass's `shared_allele_keys`.
 - **`gwas_effects.csv` gains `posterior_probability` and `fine_mapping_method` (RM239)**, filled by the same
   pass when exactly one fine-mapping value answers for a row's variant and study, and left empty and counted
   when the study has no credible set, the variant is not in it, or several sets disagree. No credible-set
