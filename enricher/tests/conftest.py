@@ -235,12 +235,28 @@ def _checks_written_in(paths) -> CheckWalk:
             and isinstance(node.value, ast.Constant)
             and isinstance(node.value.value, str)
         }
+        # The two constructors under any local name they were imported as (`ran as _ran`), called
+        # bare or through a module (`verification.ran(...)`), plus the model built directly with a
+        # `check=` — every spelling a record can be made with, so a new one cannot slip past unread.
+        constructors = {"ran", "skipped"} | {
+            alias.asname
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom) and (node.module or "").endswith("verification")
+            for alias in node.names
+            if alias.name in {"ran", "skipped"} and alias.asname
+        }
         for node in ast.walk(tree):
-            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)):
+            if not isinstance(node, ast.Call):
                 continue
-            if node.func.id not in {"ran", "skipped"} or not node.args:
+            callee = node.func.id if isinstance(node.func, ast.Name) else getattr(node.func, "attr", None)
+            if callee in constructors and node.args:
+                first = node.args[0]
+            elif callee == "VerificationRecord":
+                first = next((kw.value for kw in node.keywords if kw.arg == "check"), None)
+                if first is None:
+                    continue
+            else:
                 continue
-            first = node.args[0]
             if isinstance(first, ast.Constant) and isinstance(first.value, str):
                 names.add(first.value)
             elif isinstance(first, ast.Name) and first.id in constants:

@@ -76,8 +76,9 @@ from just_dna_format.vocab import (
 # provenance columns, out as they are in every sibling.
 #
 # `doi_exists` / `doi_checked` are **out, and no reason was ever recorded** (RM365 found them so). They
-# arrived in the 0.6 dogfood round (2026-08-14) as the DOI half of the existence verdict beside
-# `exists`, which is inside, without joining this tuple. Adding them now would move every literature
+# are the DOI half of the existence verdict beside `exists`, which is inside: `doi_exists` since 0.5.0,
+# and `doi_checked`, which names the DOI it is a verdict about, since the 0.6 dogfood round. Neither
+# ever joined this tuple. Adding them now would move every literature
 # signature on disk — a correction a release has to declare — so the question is named here rather
 # than settled by a test fix.
 #

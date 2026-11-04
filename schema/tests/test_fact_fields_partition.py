@@ -37,7 +37,7 @@ def _fact_field_lists() -> dict[str, tuple[tuple[str, ...], str]]:
     """`{name: (fields, the comment block directly above its assignment)}` for every module-level
     `*_FACT_FIELDS` tuple in the package, found by walking the sources rather than by a list."""
     found: dict[str, tuple[tuple[str, ...], str]] = {}
-    for info in pkgutil.iter_modules(just_dna_format.__path__, "just_dna_format."):
+    for info in pkgutil.walk_packages(just_dna_format.__path__, "just_dna_format."):
         module = importlib.import_module(info.name)
         lines = Path(module.__file__).read_text(encoding="utf-8").splitlines()
         for node in ast.parse("\n".join(lines)).body:
@@ -79,15 +79,33 @@ def test_the_walk_found_every_list_a_signature_hashes() -> None:
     assert set(_LISTS) == used, sorted(set(_LISTS) ^ used)
 
 
+#: A sentence that excludes: the words each module already uses to say a column is not in the set.
+_EXCLUDING = re.compile(r"\b(out|outside|excluding|except|everything but|not here)\b", re.IGNORECASE)
+
+
+def _named_as_outside(comment: str) -> set[str]:
+    """Backticked names in the sentences of `comment` that say something is OUT of the set.
+
+    Per sentence, not per comment: "`dataset` is inside" names `dataset` too, and a column a sentence
+    calls *inside* must not count as declared outside — or deleting it from the tuple would pass."""
+    text = " ".join(line.lstrip().lstrip("#:").strip() for line in comment.splitlines())
+    return {
+        name
+        for sentence in re.split(r"(?<=[.!?])\s+", text)
+        if _EXCLUDING.search(sentence)
+        for name in re.findall(r"`(\w+)`", sentence)
+    }
+
+
 @pytest.mark.parametrize("name", sorted(_LISTS))
 def test_every_column_is_in_the_fact_set_or_named_outside_it(name: str) -> None:
     fields, comment = _LISTS[name]
     model = _owner(fields)
     outside = set(model.model_fields) - set(fields)
-    named = set(re.findall(r"`(\w+)`", comment))
+    named = _named_as_outside(comment)
     unnamed = sorted(outside - named)
     assert not unnamed, (
-        f"{model.__name__} has columns outside {name} that the comment above it never mentions: "
+        f"{model.__name__} has columns outside {name} that no sentence of the comment above it excludes: "
         f"{unnamed}. Either the column is a fact (add it to the tuple — which moves every signature on "
         f"disk, so it is a declared correction) or it is outside on purpose (say why, in that comment)."
     )

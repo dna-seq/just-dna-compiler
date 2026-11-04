@@ -25,13 +25,13 @@ import inspect
 import pkgutil
 import re
 import subprocess
+import tomllib
 import typing
-from importlib import metadata
 from pathlib import Path
 
 import just_dna_format
 import pytest
-from just_dna_format.base import field_first_seen, since
+from just_dna_format.base import AuthoredModel, field_first_seen, since
 from just_dna_format.manifest import ModuleManifest, ProvenanceDoc, VerificationDoc
 from just_dna_format.reference import _ALL_MODELS
 from just_dna_format.release_records import ReleaseRecord
@@ -75,9 +75,12 @@ _RELEASES: frozenset[str] = frozenset(
     }
 )
 
-#: The release a field in no tag lands in: the format package's own version, read from its metadata
-#: rather than restated, so the cut that bumps it moves this answer with it.
-_UNCUT = metadata.version("just-dna-format")
+#: The release a field in no tag lands in: the format package's own version, read from its
+#: `pyproject.toml` (where versions live) rather than restated or taken from an installed distribution's
+#: metadata, which lags a bump until the next sync. The cut that bumps it moves this answer with it.
+_UNCUT = tomllib.loads((_ROOT / "schema" / "pyproject.toml").read_text(encoding="utf-8"))["project"][
+    "version"
+]
 
 
 # ── the guard ───────────────────────────────────────────────────────────────────────────────────
@@ -177,6 +180,10 @@ def test_the_registry_really_covers_the_authored_surface() -> None:
         f"{sorted(m.__name__ for m in unaccounted)} — add a table model to the registry"
     )
     assert registry <= defined, "the registry holds a model the package does not define"
+    # An authored row inherits `AuthoredModel`, so being reachable from a written document is no
+    # exemption for one: a new row model the manifest also embeds must still be registered.
+    authored = {model for model in defined if issubclass(model, AuthoredModel)} - bases
+    assert authored <= registry, sorted(m.__name__ for m in authored - registry)
     assert not (bases & (registry | written)), "a named base is also a table or a record"
 
 
@@ -184,13 +191,20 @@ def test_the_registry_really_covers_the_authored_surface() -> None:
 
 
 def _git(*args: str) -> str | None:
-    """`git <args>` at the repository root, or `None` where git cannot answer."""
-    done = subprocess.run(["git", *args], cwd=_ROOT, capture_output=True, text=True)
+    """`git <args>` at the repository root, or `None` where git cannot answer (or is not installed)."""
+    try:
+        done = subprocess.run(["git", *args], cwd=_ROOT, capture_output=True, text=True)
+    except FileNotFoundError:
+        return None
     return done.stdout if done.returncode == 0 else None
 
 
 def _release_tags() -> list[str]:
-    """`vX.Y.Z` tags in SemVer order — empty in a checkout that carries none (a shallow CI clone)."""
+    """`vX.Y.Z` tags in SemVer order — empty where this checkout cannot be measured: no git, no tags,
+    or a shallow clone (CI's default), whose tags, if any, are a partial history that would measure an
+    old field as new."""
+    if (_git("rev-parse", "--is-shallow-repository") or "").strip() != "false":
+        return []
     listing = _git("tag", "--list", "v*") or ""
     tags = [tag for tag in listing.split() if _SEMVER.match(tag[1:])]
     return sorted(tags, key=lambda tag: tuple(int(part) for part in tag[1:].split(".")))
@@ -234,7 +248,7 @@ def test_the_release_list_is_the_tags_and_the_uncut_one() -> None:
     """`_RELEASES` is a list, so it is held equal to what it lists: it was three patch tags short."""
     tags = _release_tags()
     if not tags:
-        pytest.skip("this checkout carries no release tags (a shallow clone); nothing to measure against")
+        pytest.skip("no full history with release tags here (shallow clone or no git); nothing to measure")
     assert _RELEASES == {tag[1:] for tag in tags} | {_UNCUT}
 
 
@@ -246,12 +260,14 @@ def test_every_field_declares_the_first_release_whose_model_carries_it() -> None
     disputed by two builders' prose and settled by nobody. It measures `0.5.0`, which is right: the
     "0.8" in that dispute is the parquet that began carrying the column (RM270), not the column.
 
-    The same walk enforces Principle 3 from the other side: a field some release published that the
-    model no longer has is a removal, which is major-only.
+    The same walk enforces Principle 3 from the other side: a field some release published on a model
+    that still exists under its name, and that the model no longer has, is a removal, which is
+    major-only. A model removed or renamed outright is outside this walk — the tags hold no registry to
+    say which of their classes were authored ones.
     """
     tags = _release_tags()
     if not tags:
-        pytest.skip("this checkout carries no release tags (a shallow clone); nothing to measure against")
+        pytest.skip("no full history with release tags here (shallow clone or no git); nothing to measure")
     first: dict[tuple[str, str], str] = {}
     for tag in tags:
         at_tag = _fields_by_class_at(tag)

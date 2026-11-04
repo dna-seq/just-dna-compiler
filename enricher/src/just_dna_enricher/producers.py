@@ -84,6 +84,11 @@ DERIVED_PRODUCERS: dict[str, tuple[DerivedProducer, ...]] = {
             sources=(ENSEMBL_TERMS.source, CLINVAR_TERMS.source, GNOMAD_TERMS.source),
             # Every check `enrich` writes into `verification.json`, asserted equal to the names its
             # record builder passes to `ran`/`skipped` (RM365: this listed six while it wrote nine).
+            # A run writes its records once, so they sit on the producer of the table the run exists
+            # to fill. Two read CIViC, which `sources` above does not name because no row of this
+            # table comes from it: `published_refutation` (an authored `direction` against CIViC's
+            # refutations) and `evidence_status_currency` (a recorded CIViC curation status against
+            # what CIViC says now).
             checks=(
                 "reference_allele",
                 "rsid_currency",
