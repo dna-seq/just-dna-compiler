@@ -210,6 +210,19 @@ Feature: The licence gate, the closure, and the PGx cross-checks
     # deliberately did not write. `*1` is exempt in any case.
 
   # source: compiler/src/just_dna_compiler/compiler/table_checks.py
+  # anchor: _cross_validate_haplotype_definitions
+  Scenario: an allele is its gene and its name, and a typed allele is not undefined
+    Given haplotypes.csv defines CYP2C19 *2 and an HLA-B allele has no haplotypes.csv row
+    And allele_function.csv names CYP2C9 *2, defined nowhere
+    When the module is validated
+    Then the warning lists the gap per gene, "By gene: " then CYP2C9 *2
+    And it says "an HLA allele is typed by its name and defined by no variant"
+    But a module whose only undefined alleles are HLA alleles gets no warning at all
+    # RM351. Keyed on the bare name, CYP2C19's `*2` defined CYP2C9's, and every HLA allele (RM334)
+    # was reported as one that "can never match". A haplotypes.csv row naming no gene is the unknown
+    # arm: it defines its name for every gene, so a gene-less module reads exactly as before.
+
+  # source: compiler/src/just_dna_compiler/compiler/table_checks.py
   # anchor: _cross_validate_phase_ambiguity
   @code:diplotype_phase_ambiguous @actionable @both_modes
   Scenario: two diplotype rows unphased data cannot tell apart, disagreeing

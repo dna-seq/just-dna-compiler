@@ -35,6 +35,51 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM351 — a PGx check keys a named allele on its bare name, so `star_allele_undefined` fires on every HLA allele
+
+**0.8, filed 2026-11-04 by the lead** as a second-pass item: found while building RM334.
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** · **Owner** compiler (`table_checks._cross_validate_haplotype_definitions` and its siblings) · **Motivating case** the RM322/RM334 builder's e2e: `['*15:01', '*57:01:01']` reported as used but not defined · *related* RM334, RM28
+
+**One class.** The cross-table PGx checks collect allele names into sets keyed on the bare `allele` string, not on
+`(gene, allele)`. A typed allele that has no defining variants by design (an HLA allele, called by a typer, not a
+SNP) is then reported as "can never match", which is false, and two genes sharing an allele name (`*2`) are
+conflated. The meta-table's `allele_function` members (RM28) make this the v2 shape. The fix keys every such set
+on `(gene, allele)` and exempts a gene whose alleles are typed rather than defined (the HLA grammar's genes). Grep
+for the class, not the instance: every `used.setdefault(row.allele` and set of bare allele names in the compiler.
+
+**What shipped.** The class had two instances, both in `compiler/.../table_checks.py`:
+
+- `_cross_validate_haplotype_definitions` (`star_allele_undefined`): `defined` and `used` were sets of
+  bare names. They are `(gene, allele)` now. A `haplotypes.csv` row with no `gene` (the column is
+  optional there and required on the other two tables) is the unknown arm: it defines its name for every
+  gene, which is what the bare-name key did, so a module that leaves `gene` out of `haplotypes.csv` is
+  warned about the same alleles as before. Genes compare through `_gene_key` (case and surrounding
+  space ignored), because the bare-name key never read the gene and a stricter comparison would have
+  turned a spelling into a finding. An HLA gene (`pgx.is_hla_gene`) that `haplotypes.csv` defines
+  nothing for is exempt, since its alleles are typed; one the module defines by variants (a tag SNP)
+  is checked like any other. The predicate is new, it states the `HLA-` prefix once, and RM334's
+  `hla_allele_refusal` now reads it too. The message keeps its wording and appends
+  `By gene: <gene> <allele>, …; <gene> …`, then, when an HLA allele was skipped, the HLA genes it did
+  not check. When every undefined allele is an HLA allele, nothing fires.
+- `_cross_validate_phase_ambiguity` (`diplotype_definitions_identical`, `diplotype_phase_ambiguous`):
+  `definitions` was keyed on the haplotype name, so a second gene's `*2` merged its defining variants
+  into the first gene's `*2`, and a real finding about the first went silent. Definitions are keyed
+  `(gene, name)` now, through the same `_gene_key`. A diplotype reads its gene's own rows laid over
+  any gene-less ones (`_defined_for`), resolved once per `(gene, name)` rather than once per row.
+
+Not instances, read and left alone: `compiler/meta.py`'s allele-to-diplotype reach (gated on
+`diplotype.gene == target.gene`), and in the enricher `pgx.py`'s function cross-check (keyed
+`(row.gene, row.allele)`), `drug_labels.authored_subjects` (passes `row.gene`), and `pgx_draft` (one gene
+per draft, so its allele sets are already per gene). Tests: `compiler/tests/test_pgx_allele_identity.py`
+(the HLA case and the shared-`*2` case, both failing before the change; the phase leak; both gene-less
+cases; a gene spelled in another case; an HLA gene defined by a tag SNP; the per-gene grouping; and the
+six PGx reference examples, checked against the bare-name rule restated in the test, and for the phase
+check against a run with `haplotypes.csv`'s genes blanked); one scenario in
+`features/compiler/licensing_closure_pgx.feature`.
+
+**Residuals** none
+
 ## RM327 — pleiotropy has no per-trait row, so a trade-off can only be prose, and `tradeoff` is computed rather than authored
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut** — a minor, taken into 0.8 on 2026-11-03 as a priority; the per-trait rows shipped with the meta-table (RM28), `tradeoff` with [PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §3 item 9, §5 B2 · **Owner** format + compiler · **Motivating case** longevitymap v2 requirements §4.2 (pleiotropy, mediator), §10 · *for* longevitymap v2 · *related* RM28, RM321, RM323, USE_CASES § 6a
@@ -435,6 +480,8 @@ count and on the gene test) and `compiler/tests/test_rm334_hla_refusal.py` (vali
 a well-formed HLA row through compile → reverse → compile).
 
 **Residuals** none
+
+**2026-11-04, RM351.** Building this item turned up a defect in a neighbouring check: `star_allele_undefined` reported every HLA allele as one that "can never match" (its e2e reported `['*15:01', '*57:01:01']`), because the PGx cross-table checks keyed an allele on its bare name. RM351 keys them on `(gene, allele)` and exempts an HLA gene through `pgx.is_hla_gene`, which `hla_allele_refusal` now reads as well.
 
 **Need.** HLA-DRB1\*15:01 and B\*57:01 are v2's most consistent non-APOE signals, and the plan defers
 them to tag SNPs flagged with r².

@@ -174,6 +174,12 @@ member is legal on `axis: parquet_bytes` only; the model refuses it on any other
 cover `declared`. A registry that spends a PATCH only on `corrections` needs no change: a toolchain
 move is not one. `output_differs` still reads `True` for it, because the bytes do differ.
 
+## 1.12 Which alleles `star_allele_undefined` reports (no new code)
+
+| Surface | Item | What changed |
+| --- | --- | --- |
+| `star_allele_undefined` (validate and compile) | RM351 | Matched on `(gene, allele)`, not the bare name: a gene that uses an allele another gene defines (CYP2C9 `*2` beside CYP2C19 `*2`) is now reported, and an HLA gene that `haplotypes.csv` defines nothing for is no longer reported (its alleles are typed). A `haplotypes.csv` row with no `gene` still defines its name for every gene. The text keeps every phrase and appends `By gene: <gene> <alleles>; …`, then, when an HLA gene was skipped, `Not checked for <genes>: …`. `diplotype_definitions_identical` and `diplotype_phase_ambiguous` read each gene's own definitions, so one gene's `*2` no longer hides a finding about another's. |
+
 ## 2. What to change
 
 1. If you parse `manifest.json` with `just-dna-format`, move your pin to 0.8 when you start reading
