@@ -674,22 +674,23 @@ running duckdb cannot read rather than mocking `connect`.
 
 **Residuals** none yet.
 
-## RM347 — the HuggingFace module publisher uploads no logs, although `manifest.logs` lists them
+## RM353 — the module publisher diverges from what the manifest declares: provenance is never uploaded, snapshot names are not glob-escaped, and a logs-only republish overwrites a version
 
-**Severity** low · **Status** open — **a patch**, filed 2026-11-04 by the lead · **Owner** enricher
-(`upload._ALLOW_PATTERNS`) · **Motivating case** found while building RM338 · *related* RM338, RM337, S125
+**Severity** medium · **Status** open — **a patch**, filed 2026-11-04 by the lead · **Owner** enricher (`upload`) · **Motivating case** found while building RM347 · *related* RM347
 
-**Reproduced by reading the code (2026-11-04).** `upload._ALLOW_PATTERNS` is the artifact parquets,
-`manifest.json`, the logo and the README candidates. No `logs/` path is in it, not even `*.log`, so a module
-published through the enricher's HuggingFace publisher carries a manifest whose `logs` names files the repository
-does not hold. `verify --check-logs` skips an absent log by design, so nothing reports the gap. RM338 widened what
-`logs/` ships at compile, which makes the difference larger: an author who sees `log ships: …` at compile then
-publishes a module without it.
+**One class: the publisher's plan and guard are not derived from what the manifest says it holds.** Three instances:
 
-**The patch.** The allowlist takes every path `manifest.logs` names, derived from the manifest the directory
-carries rather than restated as a pattern (`@publisher-allowlist-derived`). A test publishes (plans the upload of)
-a module with `.log`, `.jsonl` and `.png` logs and asserts each is in the plan. Not decided here: whether a log
-the manifest does not name, present on disk, is uploaded; the default is no.
+1. `provenance.json` is named with a sha256 in `manifest.provenance.file`, and no allowlist includes it, so it is
+   never uploaded;
+2. `publish_reference_snapshot` passes file names to the hub as glob patterns unescaped (RM347 escaped the module
+   publisher's), so a name with `[` selects a different file;
+3. the overwrite guard for `data/<name>/v<version>/` compares only `artifact.digest`, which excludes logs by design,
+   so a second publish with changed logs replaces them without `--force`.
+
+The fix derives the upload set from every file entry the manifest declares (artifact, logs, provenance, logo, readme),
+escapes every pattern in both publishers through one helper, and widens the guard's comparison to the declared
+files' hashes. Not in scope, under the existing rule: the flat `data/<name>/` path keeps stale files, since a publish
+deletes only what was declared (`@a-publish-may-not-orphan-the-bytes-it-stops-describing`).
 
 **Residuals** none yet.
 
