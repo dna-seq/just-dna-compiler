@@ -157,10 +157,15 @@ compiler change, and no identity moves.
   The hand-run build is `probes/LANES_0_8.md` § 5.
 - **`opentargets enrich <spec>`** reads the snapshot only (it never fetches) and the module's `resolution.csv`,
   and writes three new derived tables, each with its `(opentargets, <layer>)` licence row inside its own commit:
-  `locus_to_gene.csv` (one row per study locus and gene a module variant leads, the L2G score),
-  `colocalisations.csv` (that study locus against a molecular-QTL study locus: `h4`, `clpp`, the right side's
-  gene and tissue) and `consequences.csv` (one row per variant and transcript: SO accessions and `impact`).
-  Several study loci per variant are kept, never collapsed.
+  `locus_to_gene.csv` (one row per study locus, gene and module variant, for every set the variant is a
+  member of, led or not: the L2G score), `colocalisations.csv` (that study locus against a molecular-QTL
+  study locus: `h4`, `clpp`, the right side's gene and tissue) and `consequences.csv` (one row per variant
+  and transcript: SO accessions and `impact`). Several study loci per variant are kept, never collapsed.
+  Members, not lead-only, so HFE C282Y, which sits in 82 GWAS sets and leads none, gets their rows.
+  In `overrides.csv` a correction to either table keys on the pair and reaches every member's row; an
+  `update` of `variant_key` is refused as re-keying, an `insert` matches on the `variant_key` it supplies, and
+  a `suppress` removes every member's row. Two module keys naming one release allele have these rows withheld
+  and are named in the pass's `shared_allele_keys`.
 - **`gwas_effects.csv` gains `posterior_probability` and `fine_mapping_method` (RM239)**, filled by the same
   pass when exactly one fine-mapping value answers for a row's variant and study, and left empty and counted
   when the study has no credible set, the variant is not in it, or several sets disagree. No credible-set

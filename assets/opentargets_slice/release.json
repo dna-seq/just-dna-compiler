@@ -1,6 +1,6 @@
 {
   "builder_version": "0.7.3",
-  "built_at": "2026-11-04T05:43:03Z",
+  "built_at": "2026-11-04T14:35:33Z",
   "croissant": {
     "date_published": "2026-09-18",
     "license": "https://creativecommons.org/publicdomain/zero/1.0/",
@@ -24,12 +24,12 @@
     "variant": 25
   },
   "row_counts": {
-    "colocalisations-00000.parquet": 185,
-    "consequences-00000.parquet": 1200,
-    "credible_set_members-00000.parquet": 257,
-    "credible_sets.parquet": 24915,
-    "l2g.parquet": 88,
-    "variants.parquet": 13
+    "colocalisations-00000.parquet": 2347,
+    "consequences-00000.parquet": 1296,
+    "credible_set_members-00000.parquet": 361,
+    "credible_sets.parquet": 24937,
+    "l2g.parquet": 651,
+    "variants.parquet": 14
   },
   "source_sha256": "b2559522d93e0c524b315c2da8a7263fc45acf86cf2607241045a9317a17663b",
   "source_url": "https://ftp.ebi.ac.uk/pub/databases/opentargets/platform/26.09/output/",
@@ -46,6 +46,7 @@
     "6_26092916_A_C",
     "6_26092960_G_T",
     "6_26093233_G_A",
-    "6_26094198_GGCACTACGTCTTA_G"
+    "6_26094198_GGCACTACGTCTTA_G",
+    "6_26072764_C_T"
   ]
 }

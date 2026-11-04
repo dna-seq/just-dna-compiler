@@ -6,11 +6,17 @@ effector-gene judgement and never the judgement itself: the format does not auth
 causal or effector confidence label (RM323's cut). A module that wants one states its rubric over
 these columns, and a corrected input goes in `overrides.csv`.
 
-**Both are keyed on the study locus, Open Targets' own grain.** A study locus is one credible set from
-one study (`studyLocusId`, a hash the source mints). One variant leads several of them, one per study
-that fine-mapped the region, and each names its own candidate genes with its own score, so a row per
-variant would have to pick a study on the module's behalf. Several study loci per variant are kept
-and counted, never collapsed to a winner (`@multiplicity-is-a-finding`).
+**Both are keyed on the study locus, Open Targets' own grain, and on the module variant.** A study locus
+is one credible set from one study (`studyLocusId`, a hash the source mints). One variant sits in several
+of them, one per study that fine-mapped the region, and each names its own candidate genes with its own
+score, so a row per variant would have to pick a study on the module's behalf. Several study loci per
+variant are kept and counted, never collapsed to a winner (`@multiplicity-is-a-finding`).
+
+**Members, not lead-only (decided 2026-11-04).** A row exists for every credible set a module variant is a
+**member** of, whether or not it leads it: HFE C282Y (rs1800562) sits in 82 GWAS sets of the 26.09 release
+and leads none, so a lead-only table would be empty for the module the lane exists for. Two module
+variants in one set each get the set's rows, so `variant_key` is in both keys. The member's own weight in
+the set is its posterior on `gwas_effects.csv` (RM239), not a column here.
 
 **Why coloc is a second table and not columns on the first.** A colocalisation pairs one GWAS study
 locus with one molecular-QTL study locus, and the gene and tissue sit on the right-hand study. The
@@ -19,10 +25,11 @@ release measured 2026-11-04 (`probes/LANES_0_8.md` § built) has many right-hand
 have to pick a tissue. The pair is kept at the source's own grain instead, and the gene it names is
 a column a consumer joins on.
 
-**`variant_key` is the module's own key for the lead variant**, the subject the pass asked about, so
-these rows join the module's weights directly. The source's own spelling of the lead
+**`variant_key` is the module's own key for the member variant**, the subject the pass asked about, so
+these rows join the module's weights directly. The source's own spelling of the set's lead
 (`19_44908684_T_C`, or an `OTVAR_…` hash for a long allele) is kept beside it as `lead_variant_id`
-for tracing back to the release, and is never parsed.
+for tracing back to the release, and is never parsed; it names another variant whenever the module's
+variant is a member and not the lead.
 """
 
 from typing import ClassVar
@@ -81,8 +88,9 @@ class LocusToGeneRow(BaseModel):
     fact, not an authored annotation, with `extra="forbid"` so a typo'd column is caught.
     """
 
-    #: The source's own grain. A study locus names several candidate genes, each scored.
-    _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("study_locus_id", "gene_id")
+    #: The source's grain, `(study locus, gene)`, per module variant in the set: a study locus names
+    #: several candidate genes, each scored, and several module variants can be members of one set.
+    _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("study_locus_id", "gene_id", "variant_key")
 
     model_config = ConfigDict(extra="forbid")
 
@@ -91,7 +99,7 @@ class LocusToGeneRow(BaseModel):
         json_schema_extra=since("0.8.0"),
         description=(
             "The source's id for one credible set from one study (Open Targets' `studyLocusId`, a "
-            "32-hex hash). Half this row's identity. Opaque: it is a join key back to the release, "
+            "32-hex hash). Part of this row's identity. Opaque: it is a join key back to the release, "
             "and it changes when the source re-runs fine-mapping."
         ),
     )
@@ -99,24 +107,26 @@ class LocusToGeneRow(BaseModel):
         json_schema_extra=since("0.8.0"),
         description=(
             "Ensembl gene accession of the candidate gene (`ENSG…`), as the source publishes it. "
-            "The other half of the identity. No symbol: the source's L2G table carries none, and a "
+            "Part of the identity. No symbol: the source's L2G table carries none, and a "
             "symbol looked up elsewhere would be another source's claim on this row."
         ),
     )
     variant_key: str = Field(
         json_schema_extra=since("0.8.0"),
         description=(
-            "The module's key for the credible set's lead variant: the subject the pass asked about. "
-            "A row exists only when the module's variant IS the lead, so this joins "
-            "`weights.parquet.variant_key` directly."
+            "The module's key for the variant the pass asked about, a member of this credible set "
+            "(its lead or not): part of the identity, so two module variants in one set each get "
+            "the set's rows. Joins `weights.parquet.variant_key` directly; the member's own weight "
+            "in the set is its `gwas_effects.csv` posterior."
         ),
     )
     lead_variant_id: str | None = Field(
         default=None,
         json_schema_extra=since("0.8.0"),
         description=(
-            "The source's own spelling of the lead variant (`19_44908684_T_C`, or an `OTVAR_…` hash "
-            "for a long allele), kept for tracing back to the release. Never parsed: the alleles "
+            "The source's own spelling of the credible set's lead variant (`19_44908684_T_C`, or an "
+            "`OTVAR_…` hash for a long allele), kept for tracing back to the release. Names another "
+            "variant when `variant_key` is a member and not the lead. Never parsed: the alleles "
             "come from the source's columns, not from this id."
         ),
     )
@@ -163,12 +173,12 @@ class LocusToGeneRow(BaseModel):
     @field_validator("study_locus_id")
     @classmethod
     def _check_study_locus_id(cls, v: str) -> str:
-        return _required_text(v, "study_locus_id", "it is half this row's identity")
+        return _required_text(v, "study_locus_id", "it is part of this row's identity")
 
     @field_validator("gene_id")
     @classmethod
     def _check_gene_id(cls, v: str) -> str:
-        return _required_text(v, "gene_id", "it is half this row's identity")
+        return _required_text(v, "gene_id", "it is part of this row's identity")
 
     @field_validator("variant_key")
     @classmethod
@@ -192,10 +202,10 @@ class LocusToGeneRow(BaseModel):
 
 
 class ColocalisationRow(BaseModel):
-    """One colocalisation between a GWAS study locus the module's variant leads and a molecular-QTL study locus."""
+    """One colocalisation between a GWAS study locus the module's variant is a member of and a molecular-QTL study locus."""
 
-    #: The source's own grain: one row per (left, right) study-locus pair.
-    _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("study_locus_id", "right_study_locus_id")
+    #: The source's grain, one row per (left, right) study-locus pair, per module variant in the left set.
+    _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("study_locus_id", "right_study_locus_id", "variant_key")
 
     model_config = ConfigDict(extra="forbid")
 
@@ -204,16 +214,19 @@ class ColocalisationRow(BaseModel):
         json_schema_extra=since("0.8.0"),
         description=(
             "The GWAS credible set on the left of the pair (`leftStudyLocusId`), the same id "
-            "`locus_to_gene.csv` keys on. Half this row's identity."
+            "`locus_to_gene.csv` keys on. Part of this row's identity."
         ),
     )
     right_study_locus_id: str = Field(
         json_schema_extra=since("0.8.0"),
-        description="The molecular-QTL credible set on the right of the pair. The other half of the identity.",
+        description="The molecular-QTL credible set on the right of the pair. Part of the identity.",
     )
     variant_key: str = Field(
         json_schema_extra=since("0.8.0"),
-        description="The module's key for the left credible set's lead variant, as in `locus_to_gene.csv`.",
+        description=(
+            "The module's key for the variant the pass asked about, a member of the left credible set "
+            "(its lead or not), as in `locus_to_gene.csv`. Part of the identity."
+        ),
     )
     study_accession: str | None = Field(
         default=None,
@@ -309,7 +322,7 @@ class ColocalisationRow(BaseModel):
     @field_validator("study_locus_id", "right_study_locus_id")
     @classmethod
     def _check_ids(cls, v: str, info) -> str:
-        return _required_text(v, info.field_name or "study_locus_id", "it is half this row's identity")
+        return _required_text(v, info.field_name or "study_locus_id", "it is part of this row's identity")
 
     @field_validator("variant_key")
     @classmethod
