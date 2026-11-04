@@ -76,6 +76,7 @@ from pydantic import BaseModel
 from just_dna_enricher.licensing import (
     OPENTARGETS_TERMS,
     merge_sources_file,
+    nothing_to_write,
     overlaid_input_rows,
     require_sources_file,
     sidecar_path,
@@ -313,6 +314,8 @@ def _write(
     rows: list[BaseModel], model: type[BaseModel], path: Path, before_commit: Callable[[], None] | None
 ) -> None:
     fieldnames = list(model.model_fields)
+    if nothing_to_write(path, rows):
+        return  # RM370: a pass that answered nothing leaves no table
     with atomic_writer(path, newline="", before_commit=before_commit) as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()

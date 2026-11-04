@@ -57,6 +57,7 @@ from just_dna_enricher.licensing import (
     check_declared_use,
     effective_declared_use,
     merge_sources_file,
+    nothing_to_write,
     require_sources_file,
     sidecar_path,
 )
@@ -340,6 +341,8 @@ def _write_csv(
     A pure build product: a correction to a derived row belongs in `overrides.csv`, which is what
     makes deleting this file and re-running cost nothing (`@sidecar-authoritative`).
     """
+    if nothing_to_write(output_path, rows):
+        return  # RM370: a pass that answered nothing leaves no table
     with atomic_writer(output_path, newline="", before_commit=before_commit) as handle:
         writer = csv.DictWriter(handle, fieldnames=_FIELDNAMES)
         writer.writeheader()

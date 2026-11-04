@@ -35,6 +35,64 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM370 — a pass that answered nothing still writes its table: a bare header is the claim *this module carries these facts* made about nothing
+
+**0.8, the 0.8 audit, round 1.** **Severity** low · **Status** SHIPPED 2026-11-04 on `0.8`, uncut — a minor (the
+0.8 audit, round 1) · **Owner** enricher · *related* `@write-the-sourcerow`, `@rederive-never-shortens`, RM142
+
+**The class.** `@write-the-sourcerow` says a pass that contributes nothing writes no licence row, because a row in
+`sources.csv` is the claim *this module uses this source*. A data table beside the spec makes the same claim one
+file over, and nine sidecar writers made it about nothing: whenever a run had no subject to ask about (no clin_sig
+cell, no gene, no on-build allele, no PMID, no source reachable), the writer still renamed a header-only table into
+the module. The 0.8 reference examples carried the most visible pair.
+
+**Instances, re-verified on the `0.8` tip** (each a parametrized case in the new test, red on `0.8`):
+
+| Table | Pass, and the run that answered nothing | Before → after |
+| --- | --- | --- |
+| `clin_sig_concordance.csv`, `clin_sig_authority_calls.csv` | `enrich` (`concordance.py` `_write_table`), a ClinVar snapshot to consult and no `clin_sig` cell | header-only pair → no file |
+| `resolution.csv` | `enrich` (`enrich/resolution_csv.py` `_write_resolution_csv`), an rsID-only module `--offline` with no cache: nobody could be asked | header-only → no file |
+| `frequencies.csv` | `frequencies` (`frequencies.py` `_write_frequencies_csv`), every resolved row off-build | header-only → no file |
+| `gene_metrics.csv` | `gene-metrics` and `dosage` (`gene_metrics.py` `_write_gene_metrics_csv`, which `clingen.py` shares), a module with no gene | header-only → no file |
+| `gene_validity.csv` | `gene-validity` (`gene_validity.py` `_write_gene_validity_csv`), no gene | header-only → no file |
+| `clinical_assertions.csv` | `assertions` (`assertions.py` `_write_assertions_csv`), every resolved row off-build | header-only → no file |
+| `literature.csv` | `literature` online (`literature.py` `_write_literature_csv`), every citation DOI-only (`pmid=NONE`) | header-only → no file |
+| `licensing.csv` | `licensing.write_sources_csv`, a merge adding no row to a module with none | header-only → no file (no caller reaches it today; the predicate covers it anyway) |
+
+Already clean, by an early return or a local guard, and now under the same predicate: `gwas` (no rsID),
+`opentargets enrich` and its four tables (`if not rows and not existing`), `alphagenome expression`
+(`result.written`), `ld-pairs` (no proxy pair), the drafting surface (`draft.append_rows` returns on
+`not to_write`). The listed `hla_alleles` instance does not hold on the `0.8` tip: that example carries
+neither file. The six files in `cpic_gene_pairs`, `longevity_studies` and `model_organisms` are removed
+(`git rm`); no closure binds a derived file, each still validates `--strict`, and compile → reverse →
+compile reproduces `artifact.digest` and `content_signature` with no `clin_sig_*` parquet in the artifact.
+
+**The mechanism: one predicate, `licensing.nothing_to_write(path, rows)`**, called first by every enricher
+sidecar writer: zero rows and no file there already writes nothing, and since the licence row lands only
+inside the table's commit (`before_commit`, RM231) it is skipped with the table. It never suppresses a write
+over a file already there, and that is the smaller of the two readings the item named: zero rows over an
+existing table is a pass's answer, not a run that covered nothing. The concordance record clears a subject
+the authorities stopped contesting (a test pins it), and a merge pass prunes rows whose variant the author
+deleted; keeping those rows would publish a disagreement nobody has. A run that could not ask already keeps
+its file by never reaching the writer (`@rederive-never-shortens`). What the empty concordance pair used to
+say, *asked and found nothing contested*, is the `clinical_significance` record's denominator in
+`verification.json`; the compiler already read an empty record and an absent one alike (no manifest block),
+and `answered_call_shift` withholds an answered call as `no_prior_record` for both.
+
+**Guards.** `enricher/tests/test_a_pass_that_answered_nothing_writes_nothing.py`: (1) one nothing-to-answer
+runner per `(table, command)` in `producers.DERIVED_PRODUCERS`, the runner set asserted **equal** to the
+registry, each asserting the table is absent and, where no other table answered, no licence row; (2) an AST
+walk asserting every enricher function that writes a CSV through `atomic_writer` calls the predicate, with
+the two non-module writers (`transaction._flush`'s journal, `acmg_build`'s lane) named with reasons and
+asserted equal. Mutating the predicate to `False` turned eleven cases red; deleting the call from
+`ld_pairs._write` turned the AST walk red. Two existing tests pinned the old behaviour and now pin the
+new one: `test_clingen.py`'s S77 test asserted *"the empty table is still written: an author must be
+able to see the pass ran"* (the author sees it in `ClinGenResult.missing`, which the same test already
+asserts), and `test_build_awareness.py` asserted a header-only `resolution.csv` for a GRCh37 module
+nothing could resolve.
+
+**Residuals** none
+
 ## RM270 — an indel's artifact key is its source's spelling: a left-aligned VCF misses a respelled row, and the spelling-independent id the enricher mints never reaches the artifact
 
 **0.8, decided 2026-11-03.** Taken into 0.8 by the maintainer, with the rest of the indel-placement fixes (RM304, RM267, RM270, RM292, RM305). The status line below predates that decision.

@@ -75,7 +75,7 @@ from tenacity import (
 )
 
 from just_dna_enricher.eutils import EutilsClient, EutilsError, is_missing
-from just_dna_enricher.licensing import article_terms, sidecar_path
+from just_dna_enricher.licensing import article_terms, nothing_to_write, sidecar_path
 from just_dna_enricher.locations import env_value
 from just_dna_enricher.net import PacingGate, attempt_floor, batched, dedupe, raise_if_retired
 from just_dna_enricher.verification import examples, ran, record_verification, skipped
@@ -2594,6 +2594,8 @@ def _write_literature_csv(rows: list[LiteratureRow], output_path: Path) -> None:
     value. The re-run itself is unchanged, and still gap-fills rather than re-asking every subject;
     what changed is that leaving a recorded row alone now risks nothing.
     """
+    if nothing_to_write(output_path, rows):
+        return  # RM370: a pass that answered nothing leaves no table
     with atomic_writer(output_path, newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=_FIELDNAMES)
         writer.writeheader()

@@ -57,6 +57,7 @@ from tenacity import retry, wait_exponential_jitter
 from just_dna_enricher.ensembl import DEFAULT_REST_ENDPOINT
 from just_dna_enricher.licensing import (
     ENSEMBL_TERMS,
+    nothing_to_write,
     overlaid_input_rows,
     record_source_terms,
     require_sources_file,
@@ -345,6 +346,8 @@ def _cell(value: object) -> str:
 
 def _write(rows: list[LdPairRow], path: Path, *, before_commit: Callable[[], None] | None) -> None:
     fieldnames = list(LdPairRow.model_fields)  # derived from the model, never hand-kept
+    if nothing_to_write(path, rows):
+        return  # RM370: a pass that answered nothing leaves no table
     with atomic_writer(path, newline="", before_commit=before_commit) as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()

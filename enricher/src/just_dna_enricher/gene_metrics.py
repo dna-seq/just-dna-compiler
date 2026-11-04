@@ -43,7 +43,12 @@ from just_dna_enricher.gnomad import (
     normalize_constraint_flags,
 )
 from just_dna_enricher.identifiers import authored_identifiers
-from just_dna_enricher.licensing import record_source_terms, require_sources_file, sidecar_path
+from just_dna_enricher.licensing import (
+    nothing_to_write,
+    record_source_terms,
+    require_sources_file,
+    sidecar_path,
+)
 from just_dna_enricher.locations import resolve_constraint_reference
 
 logger = logging.getLogger(__name__)
@@ -471,6 +476,8 @@ def _write_gene_metrics_csv(
     rather than re-asking every subject; what changed is that leaving a recorded row alone now risks
     nothing.
     """
+    if nothing_to_write(output_path, rows):
+        return  # RM370: a pass that answered nothing leaves no table
     with atomic_writer(output_path, newline="", before_commit=before_commit) as handle:
         writer = csv.DictWriter(handle, fieldnames=_FIELDNAMES)
         writer.writeheader()

@@ -83,8 +83,9 @@ def test_a_grch37_module_records_no_lookup_result(tmp_path: Path, caplog) -> Non
     assert result.unresolved == ["rs1800562"]
     assert result.rows == []
     assert "GRCh38-bound" in caplog.text
-    written = (spec / "resolution.csv").read_text().strip().splitlines()
-    assert len(written) == 1, f"header only, no fabricated rows: {written}"
+    # No fabricated row, and no header-only table either (RM370): a run that answered nothing writes
+    # no file, so the module's absence of a resolution table says *nobody resolved anything*.
+    assert not (spec / "resolution.csv").exists()
 
 
 def test_an_authored_coordinate_is_still_transcribed_on_another_build(tmp_path: Path) -> None:

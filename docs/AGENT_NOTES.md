@@ -1762,6 +1762,21 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `not missing` inverts it — that would drop a real obligation from any module carrying one uncurated
   gene beside a curated one.
 
+  **The data table makes the same claim one file over, and nine writers made it about nothing
+  (RM370).** A header-only `clin_sig_concordance.csv` beside a module with no `clin_sig` cell says
+  *this module carries a concordance record*, and the 0.8 reference examples shipped three such pairs;
+  `resolution.csv` (nobody reachable), `frequencies.csv` and `clinical_assertions.csv` (every row
+  off-build), `gene_metrics.csv` and `gene_validity.csv` (no gene) and `literature.csv` (DOI-only
+  citations) did the same. The rule lives in **one predicate in front of every writer**,
+  `licensing.nothing_to_write(path, rows)`: zero rows and no file there writes nothing, and the licence
+  row, which lands only inside the table's commit, goes with it. The tempting stronger reading, *zero
+  rows never overwrites a file*, was refused: zero rows over an existing table is an answer — the
+  concordance record clearing a subject nobody contests any more, a merge pass pruning a deleted
+  variant's rows — and a run that could not ask already keeps its file by never reaching the writer
+  (`@rederive-never-shortens`). Two guards keep it a rule rather than a habit: a run per
+  `DERIVED_PRODUCERS` entry on a module that gives it nothing to answer, and an AST walk over every
+  enricher CSV writer.
+
   **A second surface of an already-declared source may not claim the lane's row either (RM166).**
   `merge_sources_csv` keys on `(source, layer)` and takes the row already there, so `clinpgx`/`annotation`
   is one slot with one occupant. `clinpgx check` and `draft-clinpgx` own it, and its `dataset` is

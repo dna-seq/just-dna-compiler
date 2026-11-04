@@ -387,6 +387,13 @@ leftmost spelling, and its `vrs_id` is what joins it.
 **This breaks a 0.7 reader of a 0.8-enriched `resolution.csv`**, for § 1.18's reason: `ResolutionRow`
 forbids unknown columns. Same remedy.
 
+## 1.20 A pass that answered nothing leaves no table (RM370, no new code)
+
+| Surface | What changed | What to do |
+| --- | --- | --- |
+| Every enricher sidecar (`resolution.csv`, `clin_sig_concordance.csv`, `clin_sig_authority_calls.csv`, `frequencies.csv`, `gene_metrics.csv`, `gene_validity.csv`, `clinical_assertions.csv`, `literature.csv`, and the licence table) | A run with no subject to ask about used to write a header-only table; it now writes none, and so no licence row. A table already on disk is still rewritten, emptied where the pass's answer is empty (a concordance record whose subjects stopped being contested). | A tool that took a sidecar's *presence* as "this pass ran" reads `verification.json`'s record for the check instead, which is where a run that asked and found nothing is recorded. A compiled artifact no longer carries the empty parquet such a table became; the manifest already reported no block for an empty concordance record. |
+| `reference_examples/cpic_gene_pairs`, `longevity_studies`, `model_organisms` | Their header-only `clin_sig_concordance.csv` / `clin_sig_authority_calls.csv` are removed, so `artifact.files` loses the two empty parquets and `artifact.digest` moves. `content_signature` does not. | None. |
+
 ## 2. What to change
 
 1. If you parse `manifest.json` with `just-dna-format`, move your pin to 0.8 when you start reading

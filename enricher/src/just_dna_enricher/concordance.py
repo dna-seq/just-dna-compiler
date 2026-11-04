@@ -43,6 +43,8 @@ from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.concordance import ClinSigAuthorityCallRow, ClinSigConcordanceRow
 from just_dna_format.layout import atomic_writer, resolve_sidecar, sidecar_write_path
 
+from just_dna_enricher.licensing import nothing_to_write
+
 logger = logging.getLogger(__name__)
 
 #: The CSV names, public because four parties agree on them — the enricher writes, the compiler
@@ -315,6 +317,8 @@ def _write_table(rows: Sequence[object], fieldnames: list[str], path: Path) -> N
     a file that is syntactically valid and simply short, which is the one failure mode a table cannot
     report about itself.
     """
+    if nothing_to_write(path, rows):
+        return  # RM370: a pass that answered nothing leaves no table
     with atomic_writer(path, newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
@@ -337,10 +341,13 @@ def write_concordance_tables(
     *leave* the record, since a conflict that stops being reported is exactly how an author learns
     the archive caught up with them.
 
-    A run that found nothing contested therefore writes two empty tables rather than leaving the
-    previous run's rows in place — an empty record is a claim (*nothing is contested*), and it is a
-    different claim from no record at all, which is what a run that could not put the question leaves
-    behind by writing nothing.
+    A run that found nothing contested therefore empties a record already on disk rather than leaving
+    the previous run's rows in place. Where there is no record yet it writes none (RM370,
+    `licensing.nothing_to_write`): a header-only table beside a module with no `clin_sig` cell said
+    nothing, and the compiler already reads an empty record and an absent one alike (no manifest
+    block). How many subjects were compared is the check's denominator in `verification.json`, which
+    is where *asked and found nothing contested* is recorded; a run that could not put the question
+    returns no record at all and leaves the previous one exactly as it was.
 
     Resolved through `layout` so a module carrying its sidecars under `derived/` gets them written
     where it keeps the rest, rather than growing a second copy at the root.
@@ -369,9 +376,10 @@ def read_recorded_calls(spec_dir: Path) -> list[ClinSigAuthorityCallRow] | None:
     the unrelated reason that a refused `strict` run must change nothing, and that ordering is what
     makes this readable at all.
 
-    `None` rather than `[]` for a module that has never had a record written, because the two are
-    different claims and the whole check turns on the difference: no file is *nobody asked at record
-    time*, an empty file is a run that asked and found nothing contested.
+    `None` for a module with no record on disk, `[]` for one whose record is empty. Since RM370 no
+    record is also what a run that asked and found nothing contested leaves where there was none
+    before (`licensing.nothing_to_write`); `answered_call_shift` reads the two alike — every lookup
+    misses, and an answered call is withheld as `no_prior_record` either way.
 
     A file that will not parse is `None` too, and says so. Guessing at a half-read baseline would
     manufacture a movement out of our own inability to read, which is the one wrong answer available.

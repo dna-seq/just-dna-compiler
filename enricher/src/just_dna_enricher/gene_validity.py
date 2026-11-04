@@ -58,6 +58,7 @@ from just_dna_enricher.gene_metrics import GeneMetricsEnrichmentError, module_ge
 from just_dna_enricher.licensing import (
     CLINGEN_TERMS,
     GENCC_TERMS,
+    nothing_to_write,
     record_source_terms,
     require_sources_file,
     sidecar_path,
@@ -654,6 +655,8 @@ def _write_gene_validity_csv(
     when the source published one. A row keyed only on the gene's grain can be corrected
     group-scoped, by `gene`, and not more finely than that.
     """
+    if nothing_to_write(output_path, rows):
+        return  # RM370: a pass that answered nothing leaves no table
     with atomic_writer(output_path, newline="", before_commit=before_commit) as handle:
         writer = csv.DictWriter(handle, fieldnames=_FIELDNAMES)
         writer.writeheader()

@@ -41,6 +41,25 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM370: a pass that answered nothing leaves no table behind (0.8, uncut)
+
+- **An enrichment pass with no subject to ask about writes no sidecar, and so no licence row.** Nine
+  writers left a header-only table instead: `enrich`'s `clin_sig_concordance.csv` and
+  `clin_sig_authority_calls.csv` on a module with no `clin_sig` cell, and its `resolution.csv` when no
+  source could be asked; `frequencies.csv` and `clinical_assertions.csv` when every resolved row is
+  off-build; `gene_metrics.csv` (both the constraint and dosage passes) and `gene_validity.csv` on a
+  module with no gene; and `literature.csv` when every citation is DOI-only. One predicate,
+  `licensing.nothing_to_write`, now sits in front of every enricher sidecar writer.
+- **A table already on disk is still the pass's to empty.** The concordance record still clears a
+  subject the authorities stopped contesting, and a merge pass still prunes rows whose variant was
+  deleted; only the creation of a file that says nothing is withheld.
+- **`cpic_gene_pairs`, `longevity_studies` and `model_organisms` lose their header-only concordance
+  pair**, so their compiled artifacts carry no empty `clin_sig_concordance.parquet` /
+  `clin_sig_authority_calls.parquet`. The manifest already reported no concordance block for them.
+- Guarded by a test running every `DERIVED_PRODUCERS` pass on a module that gives it nothing to answer
+  (runner set equal to the registry), and an AST walk asserting every enricher CSV writer calls the
+  predicate.
+
 ## 2026-11-04 — RM28: a `meta.csv` row can be scoped to a drug, so one phenotype pair states each thiopurine's recommendation (0.8, uncut)
 
 - **`meta.csv` gains an optional `drug`** (`MetaRow.drug`, free text as on `diplotypes.csv`, first in

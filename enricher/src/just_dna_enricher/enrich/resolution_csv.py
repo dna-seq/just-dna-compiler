@@ -9,6 +9,8 @@ from pathlib import Path
 from just_dna_format.layout import atomic_writer
 from just_dna_format.resolution import ResolutionRow
 
+from just_dna_enricher.licensing import nothing_to_write
+
 #: Derived from the model, never restated beside it (`@fieldnames-from-model`). This was a hand-kept
 #: literal in sync with `ResolutionRow` by coincidence, paired with a per-column dict literal in the
 #: writer below — the shape `SOURCES_FIELDNAMES` had when it lost `redistribution`. Here the loss
@@ -32,6 +34,8 @@ def _write_resolution_csv(
     are not in here to lose. The re-run itself is unchanged, and still gap-fills rather than re-asking
     every subject; what changed is that leaving a recorded row alone now risks nothing.
     """
+    if nothing_to_write(output_path, rows):
+        return  # RM370: a pass that answered nothing leaves no table
     with atomic_writer(output_path, newline="", before_commit=before_commit) as f:
         writer = csv.DictWriter(f, fieldnames=_FIELDNAMES)
         writer.writeheader()

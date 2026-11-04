@@ -47,6 +47,7 @@ from just_dna_enricher.enrich.outcome import EnrichmentError
 from just_dna_enricher.enrich.subjects import study_proxy_rsids
 from just_dna_enricher.licensing import (
     CLINVAR_TERMS,
+    nothing_to_write,
     overlaid_input_rows,
     record_source_terms,
     require_sources_file,
@@ -450,6 +451,8 @@ def _write_assertions_csv(
     are not in here to lose. The re-run itself is unchanged, and still gap-fills rather than re-asking
     every subject; what changed is that leaving a recorded row alone now risks nothing.
     """
+    if nothing_to_write(output_path, rows):
+        return  # RM370: a pass that answered nothing leaves no table
     with atomic_writer(output_path, newline="", before_commit=before_commit) as handle:
         writer = csv.DictWriter(handle, fieldnames=_FIELDNAMES)
         writer.writeheader()
