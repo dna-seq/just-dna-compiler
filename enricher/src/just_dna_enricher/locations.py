@@ -22,18 +22,22 @@ import os
 from pathlib import Path
 
 from dotenv import dotenv_values, find_dotenv, load_dotenv
+from just_dna_format.integrity import sha256_file
 from just_dna_format.snapshot import ACMG_SNAPSHOT_FILENAME as ACMG_SNAPSHOT_FILENAME
 from just_dna_format.snapshot import ALPHAGENOME_KNOTS_FILENAME as ALPHAGENOME_KNOTS_FILENAME
 from just_dna_format.snapshot import CITATIONS_DIRNAME as CITATIONS_DIRNAME
 from just_dna_format.snapshot import RELEASE_FILENAME as RELEASE_FILENAME
 from just_dna_format.snapshot import SNAPSHOT_DATA_DIRNAME as SNAPSHOT_DATA_DIRNAME
 from just_dna_format.snapshot import SNAPSHOT_LICENSE_FILENAME as SNAPSHOT_LICENSE_FILENAME
+from just_dna_format.snapshot import SNAPSHOT_MANIFEST_FILENAME as SNAPSHOT_MANIFEST_FILENAME
 from just_dna_format.snapshot import SNAPSHOT_ROOT_FILENAMES as SNAPSHOT_ROOT_FILENAMES
 from just_dna_format.snapshot import SNAPSHOT_SIDECAR_DIRNAMES as SNAPSHOT_SIDECAR_DIRNAMES
 from just_dna_format.snapshot import STRCHIVE_CATALOGUE_FILENAME as STRCHIVE_CATALOGUE_FILENAME
 from just_dna_format.snapshot import holds_snapshot_payload as holds_snapshot_payload
 from just_dna_format.snapshot import read_release as read_release
+from just_dna_format.snapshot import release_label as snapshot_release_label
 from platformdirs import user_cache_dir
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -281,6 +285,185 @@ def snapshot_record_missing(cache_dir: Path) -> list[str] | None:
     return [name for name in files if not parquet_footer_ok(Path(cache_dir) / name)]
 
 
+#: The pull-record key a repo switch writes beside `repo` while it is under way (RM372): the repo the
+#: cache's bytes came from until the switch finishes. The provisioner drops it once every file is the
+#: new repo's, so a switch interrupted half-way still reads as a cache of the old repo.
+PULL_RECORD_REPLACING_KEY = "replacing"
+
+
+def pull_record_repo(cache_dir: Path) -> str | None:
+    """The repo `cache_dir`'s bytes were pulled from, by its pull record, or `None` when it says none.
+
+    During an unfinished repo switch that is the repo being replaced (`PULL_RECORD_REPLACING_KEY`),
+    not the one the record names: some files are still the old repo's, and nothing but the record can
+    say so when no `manifest.json` attests them. `None` covers no record, an unreadable one, and one
+    written before the repo was recorded: none of them states another repo, so none is taken for one.
+    Since the Ensembl lane moved to a new repo **under the same file names**, this is what tells a cache
+    of the old release from one of the new where no manifest is present.
+    """
+    path = Path(cache_dir) / PULL_RECORD_FILENAME
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    for key in (PULL_RECORD_REPLACING_KEY, "repo"):
+        repo = payload.get(key)
+        if isinstance(repo, str) and repo.strip():
+            return repo
+    return None
+
+
+def pulled_from(cache_dir: Path, repo: str) -> str | None:
+    """The repo `cache_dir` was pulled from when its pull record names one other than `repo`, else `None`.
+
+    The one answer to "is this cache another repo's snapshot", for the provisioner and for `cache pull`.
+    A cache that names no repo is not another repo's: only a record naming one is evidence.
+    """
+    recorded = pull_record_repo(cache_dir)
+    return recorded if recorded is not None and recorded != repo else None
+
+
+# ── a snapshot's per-file manifest (RM372) ──────────────────────────────────────────────────────
+
+
+class SnapshotManifestFile(BaseModel):
+    """One file `manifest.json` attests: its path under the snapshot root, its size and its sha256.
+
+    Unstated is `None`, and a `None` size or digest attests nothing. Keys this reader does not type are
+    dropped rather than carried (`extra="ignore"`), so nothing downstream can read one untyped.
+    """
+
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    path: str
+    group: str | None = None
+    chrom: str | None = None
+    rows: int | None = None
+    size: int | None = Field(default=None, alias="bytes")
+    sha256: str | None = None
+
+
+class SnapshotManifest(BaseModel):
+    """prepare-annotations' `manifest.json`, the record its Ensembl release carries instead of `release.json`.
+
+    Typed for the four things a reader here acts on: which release (`release_id`), when it was cut,
+    the layout version, and the files it attests. The rest of the file (the VEP header, the column
+    groups, per-chromosome counts) is the builder's own and is not read here.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    release_id: str | None = None
+    layout_version: int | None = None
+    built_at: str | None = None
+    files: list[SnapshotManifestFile] | None = None
+
+    def entry(self, relative: str) -> SnapshotManifestFile | None:
+        """The attestation for `relative` (`data/<name>`), or `None` when the manifest names no such file."""
+        return next((f for f in self.files or () if f.path == relative), None)
+
+
+def read_snapshot_manifest(path: Path) -> SnapshotManifest | None:
+    """The manifest at `path` (a file), or `None` when it is absent or cannot be read whole.
+
+    A caller that has to tell the two apart checks `path.is_file()`: present and unreadable is a
+    refusal (`manifest_unattested` attests nothing under it), absent is the unknown arm.
+    """
+    path = Path(path)
+    if not path.is_file():
+        return None
+    try:
+        return SnapshotManifest.model_validate_json(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, ValidationError) as exc:
+        logger.warning("Could not read %s (%s); it attests no file.", path, type(exc).__name__)
+        return None
+
+
+def manifest_attests(manifest: SnapshotManifest, relative: str, local: Path) -> bool:
+    """Whether `local` is the file `manifest` states for `relative`, by size and then by sha256.
+
+    The full check, for the provisioner, which already pays for the bytes. The size comparison comes
+    first so a file of another release costs a `stat`, not a hash.
+    """
+    entry = manifest.entry(relative)
+    if entry is None or entry.size is None or not entry.sha256 or not local.is_file():
+        return False
+    if local.stat().st_size != entry.size:
+        return False
+    return sha256_file(local).removeprefix("sha256:") == entry.sha256.removeprefix("sha256:").lower()
+
+
+def manifest_unattested(cache_dir: Path) -> list[str] | None:
+    """The `data/*.parquet` files in `cache_dir` its `manifest.json` does not attest, or `None` with no manifest.
+
+    Three answers (RM372). `None`: no manifest, so nothing here can say which release each file is
+    (the old repo published none) and a reader treats the cache as it always did. `[]`: every
+    payload file is one the manifest names, at the size it states. A non-empty list: these files are
+    not this release's, and **a cache holding one is withheld whole**, never merged: old chrMT beside
+    new chr21 answered rsIDs and nothing complained. A manifest present and unreadable attests
+    nothing, so every payload file is listed.
+
+    **Read time compares the manifest's `bytes`, never its sha256.** Hashing 14.5 GB on every enrich
+    is not a read; a size is a `stat`, and every core file of the two releases differs in size. The
+    sha256 is compared where the bytes are already being paid for, by the provisioner
+    (`manifest_attests`), which never keeps a file the manifest does not attest by digest.
+    """
+    cache_dir = Path(cache_dir)
+    path = cache_dir / SNAPSHOT_MANIFEST_FILENAME
+    if not path.is_file():
+        return None
+    manifest = read_snapshot_manifest(path)
+    data_dir = cache_dir / SNAPSHOT_DATA_DIRNAME
+    payload = sorted(data_dir.glob("*.parquet")) if data_dir.is_dir() else []
+    unattested = []
+    for local in payload:
+        relative = f"{SNAPSHOT_DATA_DIRNAME}/{local.name}"
+        entry = manifest.entry(relative) if manifest is not None else None
+        if entry is None or entry.size is None or local.stat().st_size != entry.size:
+            unattested.append(relative)
+    return unattested
+
+
+def _withheld_as_mixed(cache_dir: Path) -> bool:
+    """Whether `cache_dir` holds payload its own manifest does not attest; logs which and what fixes it."""
+    unattested = manifest_unattested(cache_dir)
+    if not unattested:
+        return False
+    logger.warning(
+        "The snapshot at %s holds %d file(s) its %s does not attest (%s), so it mixes releases or "
+        "holds a file of another one. Withheld whole rather than read: run `just-dna-enricher cache "
+        "pull` to re-fetch what the manifest names.",
+        cache_dir,
+        len(unattested),
+        SNAPSHOT_MANIFEST_FILENAME,
+        ", ".join(unattested[:5]) + (", …" if len(unattested) > 5 else ""),
+    )
+    return True
+
+
+def ensembl_release_label(reference: Path) -> str | None:
+    """The release an Ensembl snapshot states: `release.json`'s `dataset`, else `manifest.json`'s `release_id`.
+
+    The lane's own label (`CacheLane.release_label`, `@the-reporter-cannot-compose-a-lanes-label`),
+    because the split repo states its release only in its manifest. `None` when the snapshot states
+    neither, which the old repo's never did: an unknown, withheld rather than guessed. A `.duckdb`
+    pointed at directly states nothing either.
+    """
+    reference = Path(reference)
+    if not reference.is_dir():
+        return None
+    stated = snapshot_release_label(reference)
+    if stated is not None:
+        return stated
+    manifest = read_snapshot_manifest(reference / SNAPSHOT_MANIFEST_FILENAME)
+    label = (manifest.release_id or "").strip() if manifest is not None else ""
+    return label or None
+
+
 def load_env(override: bool = False) -> str | None:
     """Load the nearest `.env` (walking up from CWD) into `os.environ`, so cache paths can be set there.
     Returns the loaded path, or None.
@@ -379,6 +562,10 @@ def resolve_ensembl_reference(
     # Otherwise return the cache directory if it holds a prebuilt db or parquet data; the
     # connection layer decides whether the db is usable and falls back to parquet if not.
     if search_dir.is_dir():
+        # A cache mixing releases is withheld whole (RM372), and before the prebuilt `.duckdb` is
+        # considered: just-dna-lite's db is a view over this same `data/*.parquet` glob.
+        if _withheld_as_mixed(search_dir):
+            return None
         data_dir = search_dir / "data"
         has_db = (search_dir / DUCKDB_NAME).is_file()
         has_parquet = (data_dir.is_dir() and any(data_dir.glob("*.parquet"))) or any(
@@ -454,8 +641,13 @@ def _resolve_parquet_cache(
 
     if accept_bare_file and search_dir.is_file() and search_dir.suffix == ".parquet":
         return search_dir
-    # A pull that never finished is not a snapshot, however whole each of its files is (RM339).
-    if holds_snapshot_payload(search_dir) and not snapshot_record_missing(search_dir):
+    # A pull that never finished is not a snapshot, however whole each of its files is (RM339); nor is
+    # one mixing releases its own manifest does not attest (RM372).
+    if (
+        holds_snapshot_payload(search_dir)
+        and not snapshot_record_missing(search_dir)
+        and not _withheld_as_mixed(search_dir)
+    ):
         return search_dir
     return None
 

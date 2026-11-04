@@ -44,7 +44,7 @@ _SRC = Path(caches.__file__).parent
 #: lane appearing has to be argued for here instead of slipping past an inequality.
 #: The lanes with **no `rebuild` adapter**, and the two are not the same kind of absence — which is
 #: why they are named individually rather than counted. `ensembl`'s snapshot is cut by
-#: just-dna-pipelines, so a rebuild here would be this repository claiming another's artifact.
+#: prepare-annotations, so a rebuild here would be this repository claiming another's artifact.
 #: `alphagenome_avi` has a builder and no adapter: its input is 88.5 GB behind a sign-in whose
 #: eligibility clause bars classes of holder, so there is nothing for an unattended rebuild to fetch
 #: and the operator supplies the file (RM191, `@acquisition-gate-is-not-a-read-gate`).
@@ -136,7 +136,7 @@ def test_an_absent_stage_states_its_reason_and_a_present_one_does_not() -> None:
         assert (lane.unbuilt is None) == (lane.rebuild is not None), lane.name
         if lane.name in _BUILT_ELSEWHERE:
             # Ensembl is pullable and has no `publish_repo`, and that is not the same defect: the
-            # snapshot on HuggingFace is real, and just-dna-pipelines is what uploads it. The field
+            # snapshot on HuggingFace is real, and prepare-annotations is what uploads it. The field
             # means "the repo THIS tier publishes to", so a lane this tier does not build cannot
             # have one — which is why the biconditional below is scoped to the lanes it builds.
             assert lane.publish_repo is None, lane.name
@@ -175,10 +175,12 @@ def test_the_lane_that_reads_its_release_differently_is_exactly_the_one_named() 
     A second lane that stops writing `dataset` should have to say so here rather than start printing
     a blank label, which is how ClinVar's went unnoticed. Since RM303 the set is empty: ClinVar's
     builder writes `dataset`, and the snapshot model reads an older ClinVar release's
-    `clinvar_file_date` through the same formula, so its override went.
+    `clinvar_file_date` through the same formula, so its override went. Since RM372 it is `ensembl`:
+    the split release states its release in `manifest.json`, built by prepare-annotations, and carries
+    no `release.json` (`test_ensembl_split_release.py` pins what its label reads).
     """
     overridden = {lane.name for lane in CACHE_LANES if lane.release_label is not snapshot_release_label}
-    assert overridden == set()
+    assert overridden == {"ensembl"}
 
 
 def test_the_clinvar_label_is_the_one_the_drafter_writes(tmp_path: Path) -> None:
@@ -317,7 +319,7 @@ def test_a_lane_that_cannot_run_unattended_is_not_a_failure(
     assert result.exit_code == 0, result.output
     printed = result.output + (result.stderr if result.stderr_bytes else "")
     assert "rebuilt 0, failed 0, not run 4" in printed
-    for expected in ("workbook", "release date to pin", "forbids sale", "just-dna-pipelines"):
+    for expected in ("workbook", "release date to pin", "forbids sale", "prepare-annotations"):
         assert expected in printed, printed
 
 
@@ -864,7 +866,7 @@ def test_rebuild_caches_and_prepare_caches_are_the_cli_loops(tmp_path: Path) -> 
 
     rebuilt = caches.rebuild_caches([LANES_BY_NAME["ensembl"]], out=tmp_path)
     assert [o.lane for o in rebuilt] == ["ensembl"]
-    assert rebuilt[0].built is None, "ensembl is built by just-dna-pipelines, not here"
+    assert rebuilt[0].built is None, "ensembl is built by prepare-annotations, not here"
 
 
 def test_a_builder_that_writes_nothing_is_a_failure_not_a_crash(

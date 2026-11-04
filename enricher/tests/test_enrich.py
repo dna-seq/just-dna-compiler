@@ -744,27 +744,44 @@ def test_unqueryable_clinvar_cache_degrades_instead_of_crashing(
     assert any("not queryable" in message for message in caplog.messages)
 
 
-# ── multi-allelic snapshot rows: pipe-joined `alt` cells ─────────────────────────────────────────
-@pytest.fixture
-def multiallelic_cache(tmp_path: Path) -> Path:
-    """A cache whose multi-allelic site is stored the way the real snapshot stores it.
+# ── multi-allelic snapshot rows: two spellings of one site ───────────────────────────────────────
+#: The old repo (`just-dna-seq/ensembl_variations`) stores a multi-allelic site as ONE row whose `alt`
+#: is pipe-joined; the split repo (`ensembl_variations_split`, RM372) stores one row per ALT, with a
+#: `row_idx`. Both are real published shapes, and every test below must read them the same way.
+_MULTIALLELIC_SITES = (
+    ("rs4244285", 94781859, "G", ("A", "C", "T")),
+    ("rs12248560", 94761900, "C", ("A", "T")),
+)
 
-    The shipped Ensembl snapshot records a multi-allelic locus as ONE row whose `alt` is
-    **pipe-joined** (`rs4244285` is `10:94781859 G>A|C|T`), not one row per alt. Every other link in
-    the chain emits commas, so this shape only ever appears via the cache — which is why the whole
-    unit suite missed it.
+
+@pytest.fixture(params=["pipe_joined", "one_row_per_alt"])
+def multiallelic_cache(request, tmp_path: Path) -> Path:
+    """A cache whose multi-allelic site is stored the way a real snapshot stores it.
+
+    The old Ensembl snapshot records a multi-allelic locus as ONE row whose `alt` is **pipe-joined**
+    (`rs4244285` is `10:94781859 G>A|C|T`); every other link in the chain emits commas, so that shape
+    only ever appears via the cache — which is why the whole unit suite missed it. The split repo
+    writes one row per ALT instead, which the resolver's `string_agg` groups back into one locus.
     """
     data = tmp_path / "mcache" / "data"
     data.mkdir(parents=True)
-    pl.DataFrame(
+    if request.param == "pipe_joined":
+        rows = [(rsid, start, ref, "|".join(alts)) for rsid, start, ref, alts in _MULTIALLELIC_SITES]
+    else:
+        rows = [(rsid, start, ref, alt) for rsid, start, ref, alts in _MULTIALLELIC_SITES for alt in alts]
+    frame = pl.DataFrame(
         {
-            "id": ["rs4244285", "rs12248560"],
-            "chrom": ["10", "10"],
-            "start": [94781859, 94761900],
-            "ref": ["G", "C"],
-            "alt": ["A|C|T", "A|T"],
+            "id": [r[0] for r in rows],
+            "chrom": ["10"] * len(rows),
+            "start": [r[1] for r in rows],
+            "ref": [r[2] for r in rows],
+            "alt": [r[3] for r in rows],
         }
-    ).write_parquet(data / "chr.parquet")
+    )
+    if request.param == "one_row_per_alt":
+        assert frame.height > len(_MULTIALLELIC_SITES), "the fixture must hold several rows for one site"
+        frame = frame.with_row_index("row_idx")
+    frame.write_parquet(data / "chr.parquet")
     return tmp_path / "mcache"
 
 

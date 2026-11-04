@@ -453,14 +453,18 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   authored rows before `resolve_from_table` — a per-expanded-row comparison flags the siblings the
   genotype was never about. Severity is the mode ladder, never an unconditional error. Pinned by tests.
 
-- `@snapshot-pipe-alt` — **The Ensembl snapshot's `alt` is PIPE-joined; every other link uses commas.** A multi-allelic site
-  is one snapshot row (`A|C|T`), not one row per alt. `resolver._snapshot_alleles` normalizes at that
-  boundary — don't remove it, and don't "fix" it by widening the hosting predicate instead (the locus-dict
-  contract is comma-separated, and the snapshot is the deviation). This silently broke *all*
-  cache-resolved genotyped variants until 0.5: the comma-only split made `A|C|T` one opaque allele, so
-  the allele-aware filter dropped every locus and `rs4244285` with genotype `A/G` came back
-  `not_found`. Unit fixtures were comma-separated, so only a real cache showed it — when adding a
-  resolver fixture, use the pipe shape for multi-allelic sites.
+- `@snapshot-pipe-alt` — **The Ensembl snapshot has two published spellings of a multi-allelic site, and neither is
+  the comma list every other link emits.** The old repo (`just-dna-seq/ensembl_variations`, read until 0.8)
+  writes one row with a PIPE-joined `alt` (`A|C|T`); the split repo (`ensembl_variations_split`, RM372) writes
+  one row per ALT, which the lookup's `string_agg(DISTINCT alt, ',')` groups back into one locus. Both reach
+  `resolver._snapshot_alleles`, which normalizes at that boundary — don't remove it while an old-repo cache
+  can still be served (the resolver serves one until somebody pulls), and don't "fix" either shape by
+  widening the hosting predicate (the locus-dict contract is comma-separated, and the snapshot is the
+  deviation). The pipe shape silently broke *all* cache-resolved genotyped variants until 0.5: the
+  comma-only split made `A|C|T` one opaque allele, so the allele-aware filter dropped every locus and
+  `rs4244285` with genotype `A/G` came back `not_found`. Unit fixtures were comma-separated, so only a real
+  cache showed it. A multi-allelic resolver fixture covers **both** spellings: `test_enrich.py`'s
+  `multiallelic_cache` is parametrized over `pipe_joined` and `one_row_per_alt`.
 
 - `@resolution-reads-pgx-tables` — **Resolution reads `pharm_variants.csv` and `haplotypes.csv` too, not just `variants.csv`** (0.5,
   `enrich.collect_subjects`). PGx modules carry no `variants.csv`, so they used to enrich to an empty

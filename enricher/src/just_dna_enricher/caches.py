@@ -70,6 +70,7 @@ from just_dna_enricher import (
 from just_dna_enricher.clinvar_gkm import ClinVarGkmClient, ClinVarGkmError
 from just_dna_enricher.download import (
     SNAPSHOT_FILE_GLOBS,
+    SNAPSHOT_REPO_PREFIXES,
     SnapshotNotPublished,
     ensure_alphagenome_avi_snapshot,
     ensure_civic_snapshot,
@@ -82,6 +83,7 @@ from just_dna_enricher.download import (
     ensure_mitomap_snapshot,
     ensure_snapshot,
     ensure_strchive_snapshot,
+    pulled_from_elsewhere,
 )
 from just_dna_enricher.licensing import (
     ALPHAGENOME_AVI_TERMS,
@@ -146,6 +148,7 @@ from just_dna_enricher.locations import (
     default_pharmvar_cache_dir,
     default_pubmind_cache_dir,
     default_strchive_cache_dir,
+    ensembl_release_label,
     env_value,
     missing_credential_reason,
     resolve_acmg_reference,
@@ -271,7 +274,7 @@ class CacheLane:
     rebuild: RebuildAdapter | None
     ensure: Callable[..., Path] | None
     #: The repo **this tier** publishes to. Ensembl's snapshot is on HuggingFace and this field is
-    #: still `None` for it, which is not the omission it looks like: just-dna-pipelines cuts and
+    #: still `None` for it, which is not the omission it looks like: prepare-annotations cuts and
     #: uploads that slice, so a publish command here would be this repository claiming another's
     #: artifact. Pullable-without-publishable is therefore a real state, and only for a lane whose
     #: `rebuild` is also `None`.
@@ -283,7 +286,7 @@ class CacheLane:
     unpublished: str | None = None
     #: Why there is no `rebuild` adapter. **Two members, for two different reasons**, and the pair is
     #: worth naming because they look alike and are not: `ensembl`'s snapshot is built by
-    #: just-dna-pipelines rather than here, so a rebuild command would be this repository claiming
+    #: prepare-annotations rather than here, so a rebuild command would be this repository claiming
     #: another's artifact; `alphagenome_avi` cannot be rebuilt by *anyone* without a file the tier is
     #: not allowed to fetch, so the adapter has no bytes to start from. The first is a division of
     #: labour, the second is an acquisition gate (`@acquisition-gate-is-not-a-read-gate`).
@@ -294,7 +297,8 @@ class CacheLane:
     #: a blank label for the one lane that moves weekly, and this field carried a ClinVar override.
     #: The builder now writes `dataset`, and the snapshot model reads an older ClinVar release's
     #: `clinvar_file_date` through the same formula, so the override is gone. The field stays for a
-    #: lane whose snapshot cannot state its label in `release.json` at all; none does today.
+    #: lane whose snapshot cannot state its label in `release.json` at all: since RM372 that is
+    #: `ensembl`, whose split release carries a `manifest.json` and no `release.json`.
     #:
     #: Named `release_label` and not `label` because `RebuildOutcome.label` next door is the
     #: built/failed/not-run word, and one file with two `label`s that mean different things is how a
@@ -942,9 +946,11 @@ CACHE_LANES: list[CacheLane] = [
         publish_repo=None,
         terms=None,
         unbuilt=(
-            "built by just-dna-pipelines, not here: the slice is cut from Ensembl's variation dumps "
+            "built by prepare-annotations, not here: the snapshot is cut from Ensembl's variation VCF "
             "by that repository's pipeline, and this tier only consumes it"
         ),
+        # The split release states its release only in `manifest.json` (RM372).
+        release_label=ensembl_release_label,
     ),
     CacheLane(
         name="clinvar",
@@ -1502,12 +1508,17 @@ def _present_or_completed(lane: CacheLane, existing: Path, request: RebuildReque
     only where `ensure` writes (the default directory, not an override pointing elsewhere) and only
     when the terms would let it be pulled at all. A gated lane under `--use unstated` stays present as
     before rather than turning into skipped.
+
+    **A cache whose pull record names another repo goes the same way** (RM372). The Ensembl lane moved
+    to a new repo under the same file names, and such a cache resolves (it is a whole snapshot of the
+    old release), so without this `cache pull` would call it present forever.
     """
     present = PrepareOutcome(lane.name, True, "present", f"already provisioned at {existing}", existing)
+    elsewhere = pulled_from_elsewhere(lane.name, existing)
     if (
         lane.ensure is None
         or lane.name not in SNAPSHOT_FILE_GLOBS
-        or snapshot_record_missing(existing) is not None
+        or (snapshot_record_missing(existing) is not None and elsewhere is None)
         or existing.resolve() != lane.default_dir().resolve()
     ):
         return present
@@ -1521,12 +1532,22 @@ def _present_or_completed(lane: CacheLane, existing: Path, request: RebuildReque
     try:
         path = lane.ensure()
     except Exception as exc:
+        tried = (
+            f"re-pulling it from {SNAPSHOT_REPO_PREFIXES[lane.name]} (it was pulled from {elsewhere}) failed"
+            if elsewhere is not None
+            else "checking it against the published listing failed"
+        )
+        return PrepareOutcome(
+            lane.name, True, "present", f"already provisioned at {existing}; {tried}: {exc}", existing
+        )
+    if elsewhere is not None:
         return PrepareOutcome(
             lane.name,
             True,
-            "present",
-            f"already provisioned at {existing}; checking it against the published listing failed: {exc}",
-            existing,
+            "pulled",
+            f"re-pulled at {path}: the cache was pulled from {elsewhere}, and the lane now publishes at "
+            f"{SNAPSHOT_REPO_PREFIXES[lane.name]}",
+            path,
         )
     fetched = sorted(_payload_names(path) - before)
     if fetched:

@@ -1,7 +1,8 @@
 """HuggingFace snapshot provisioning — the bulk-fetch side of the resolver chain.
 
-Two reference snapshots share one download body: the Ensembl parquet slice (popular rsIDs) and the
-ClinVar parquet slice (clinically-curated GRCh38 records). Neither is a *canonical* reference — each
+Two reference snapshots share one download body: the Ensembl variation parquet (dbSNP's rsIDs with
+Ensembl's alleles, built by prepare-annotations) and the ClinVar parquet slice (clinically-curated
+GRCh38 records). Neither is a *canonical* reference — each
 is a static slice with the usual pains (incompleteness, versions, reachability; HF has gone dark
 mid-demo) — so each is one resolver-chain source downloaded into a cache the resolver reads directly
 (`<cache>/data/*.parquet`), with a miss falling through to the next link.
@@ -24,11 +25,14 @@ from just_dna_format.layout import atomic_write_text
 from just_dna_enricher.clinvar import ClinVarReferenceError
 from just_dna_enricher.locations import (
     PULL_RECORD_FILENAME,
+    PULL_RECORD_REPLACING_KEY,
     RELEASE_FILENAME,
     SNAPSHOT_DATA_DIRNAME,
+    SNAPSHOT_MANIFEST_FILENAME,
     SNAPSHOT_ROOT_FILENAMES,
     SNAPSHOT_SIDECAR_DIRNAMES,
     STRCHIVE_CATALOGUE_FILENAME,
+    SnapshotManifest,
     default_alphagenome_avi_cache_dir,
     default_civic_cache_dir,
     default_clinpgx_cache_dir,
@@ -41,14 +45,23 @@ from just_dna_enricher.locations import (
     default_mitomap_cache_dir,
     default_strchive_cache_dir,
     env_value,
+    manifest_attests,
+    manifest_unattested,
     parquet_footer_ok,
+    pull_record_repo,
+    pulled_from,
+    read_snapshot_manifest,
     snapshot_record_missing,
 )
 from just_dna_enricher.resolver import EnsemblReferenceError
 
 logger = logging.getLogger(__name__)
 
-_ENSEMBL_HF_PREFIX = "datasets/just-dna-seq/ensembl_variations/data"
+#: The split release since RM372: prepare-annotations publishes dbSNP 157 / VEP 116 as a **separate**
+#: repo, one row per ALT, left-aligned indels, with a `manifest.json` (release id, per-file sha256) and
+#: no `release.json`. The old repo, `just-dna-seq/ensembl_variations`, is no longer written and keeps
+#: the same file names, which is why a warm cache compares its pull record's repo with this one.
+_ENSEMBL_HF_PREFIX = "datasets/just-dna-seq/ensembl_variations_split/data"
 _CLINVAR_HF_PREFIX = "datasets/just-dna-seq/clinvar/data"
 _CONSTRAINT_HF_PREFIX = "datasets/just-dna-seq/gnomad_constraint/data"
 
@@ -141,6 +154,30 @@ SNAPSHOT_FILE_GLOBS: dict[str, str] = {
 }
 
 
+#: Where each lane in `SNAPSHOT_FILE_GLOBS` is pulled from, by lane name: the second half of what a
+#: pull is (RM372). A cache whose pull record names another repo is not this lane's snapshot, however
+#: complete, so `cache pull` sends it down the pull route; asserted equal in keys to the globs, so a
+#: lane cannot gain one and not the other.
+SNAPSHOT_REPO_PREFIXES: dict[str, str] = {
+    "ensembl": _ENSEMBL_HF_PREFIX,
+    "clinvar": _CLINVAR_HF_PREFIX,
+    "constraint": _CONSTRAINT_HF_PREFIX,
+    "clinpgx": _CLINPGX_HF_PREFIX,
+    "cpic": _CPIC_HF_PREFIX,
+    "drug_labels": _DRUG_LABELS_HF_PREFIX,
+    "civic": _CIVIC_HF_PREFIX,
+    "mitomap": _MITOMAP_HF_PREFIX,
+    "alphagenome_avi": _ALPHAGENOME_AVI_HF_PREFIX,
+    "clinvar_gkm": _CLINVAR_GKM_HF_PREFIX,
+}
+
+
+def pulled_from_elsewhere(lane: str, cache_dir: Path) -> str | None:
+    """The repo `cache_dir` was pulled from when that is not `lane`'s repo, else `None` (`locations.pulled_from`)."""
+    current = SNAPSHOT_REPO_PREFIXES.get(lane)
+    return pulled_from(cache_dir, current) if current is not None else None
+
+
 class ConstraintReferenceError(FileNotFoundError):
     """Raised when the gnomAD constraint snapshot cannot be provisioned or has no usable parquet."""
 
@@ -188,8 +225,22 @@ class SnapshotNotPublished(FileNotFoundError):
 _parquet_footer_ok = parquet_footer_ok
 
 
+def _timeout_knob() -> str:
+    """Where `huggingface_hub`'s read timeout came from, for a message about one (RM339)."""
+    configured = os.environ.get("HF_HUB_DOWNLOAD_TIMEOUT")
+    return f"HF_HUB_DOWNLOAD_TIMEOUT is {configured + ' s' if configured else 'unset, so 10 s'}"
+
+
 def _fetch_parquet(
-    fs, remote_path: str, local_path: Path, *, display: str, label: str, error_cls: type[Exception]
+    fs,
+    remote_path: str,
+    local_path: Path,
+    *,
+    display: str,
+    label: str,
+    error_cls: type[Exception],
+    manifest: SnapshotManifest | None = None,
+    relative: str | None = None,
 ) -> None:
     """One parquet, staged through `.part` and renamed only once its footer verifies, so an interrupted
     download never leaves a truncated file under the real name.
@@ -198,6 +249,10 @@ def _fetch_parquet(
     by default, and these files run to 0.5–1 GB, so a slow link failed on a bare `httpx.ReadTimeout`
     that said nothing about where the 10 s came from. Translated to the lane's own error type, after
     the transport's retries, with the files already fetched kept for the re-run.
+
+    **With a manifest, a download is renamed into place only if the manifest attests it by sha256**
+    (RM372): a file of another release, or one corrupted in transit with an intact footer, never
+    becomes part of the cache.
     """
     tmp_path = local_path.with_suffix(".part")
     logger.info("  Downloading %s ...", display)
@@ -205,16 +260,21 @@ def _fetch_parquet(
         fs.get(remote_path, str(tmp_path))
     except httpx.TimeoutException as exc:
         tmp_path.unlink(missing_ok=True)
-        configured = os.environ.get("HF_HUB_DOWNLOAD_TIMEOUT")
         raise error_cls(
-            f"Downloading {display} for the {label} snapshot timed out "
-            f"(HF_HUB_DOWNLOAD_TIMEOUT is {configured + ' s' if configured else 'unset, so 10 s'}). "
+            f"Downloading {display} for the {label} snapshot timed out ({_timeout_knob()}). "
             f"Raise it, for example `export HF_HUB_DOWNLOAD_TIMEOUT=120`, and re-run: the files "
             f"already fetched are kept, and the pull record names the rest."
         ) from exc
     if not parquet_footer_ok(tmp_path):
         tmp_path.unlink(missing_ok=True)
         raise error_cls(f"Downloaded {display} is incomplete (missing parquet footer magic)")
+    if manifest is not None and relative is not None and not manifest_attests(manifest, relative, tmp_path):
+        tmp_path.unlink(missing_ok=True)
+        raise error_cls(
+            f"Downloaded {display} for the {label} snapshot does not match the size and sha256 its "
+            f"{SNAPSHOT_MANIFEST_FILENAME} states: the repo changed mid-pull, or the bytes were damaged "
+            f"in transit. Re-run the pull."
+        )
     tmp_path.replace(local_path)
 
 
@@ -268,15 +328,32 @@ def _provision_snapshot(
         )
     corrupt = [p for p in existing if not parquet_footer_ok(p)]
     missing = snapshot_record_missing(cache_dir)
-    if existing and not corrupt and missing == []:
+    # RM372: a complete pull of **another** repo is not this snapshot. The Ensembl lane moved repos
+    # under identical file names, so a record naming the old one used to be returned untouched here.
+    recorded_repo = pull_record_repo(cache_dir)
+    switched_from = pulled_from(cache_dir, hf_repo_prefix)
+    switched = switched_from is not None
+    if existing and not corrupt and missing == [] and not switched and not manifest_unattested(cache_dir):
         return cache_dir
-    # No record, and nothing here contradicts the cache: the one state that may still serve when the
-    # listing cannot be read.
-    unrecorded = missing is None and bool(existing) and not corrupt
+    # Nothing on disk says this cache is unfinished: the one state that may still serve, as it is,
+    # when the published listing cannot be read. Since RM372 that includes a whole cache of another
+    # repo (the resolver reads it as the older release it is): a network outage is not a reason to
+    # take it away, and "nothing is published" would be false about it.
+    servable = bool(existing) and not corrupt and missing in (None, [])
+    unrecorded = missing is None and servable
 
     for p in corrupt:
         logger.warning("Corrupt/truncated %s parquet %s — removing for re-download", label, p.name)
         p.unlink()
+    if switched:
+        logger.warning(
+            "%s cache at %s was pulled from %s; this snapshot is published at %s now. Re-pulling: a "
+            "file is kept only where the new release's manifest attests it.",
+            label,
+            cache_dir,
+            recorded_repo,
+            hf_repo_prefix,
+        )
     if missing:
         logger.warning(
             "%s cache at %s is an unfinished pull: %d file(s) its pull record names are absent or "
@@ -291,7 +368,7 @@ def _provision_snapshot(
     try:
         from huggingface_hub import HfFileSystem, get_token
     except ImportError as exc:  # the one guarded optional import (CLAUDE.md)
-        if unrecorded:
+        if servable:
             return _unverified(cache_dir, label, "huggingface_hub is not installed")
         raise error_cls(
             f"huggingface_hub is required to download the {label} snapshot; install "
@@ -307,7 +384,7 @@ def _provision_snapshot(
     try:
         listing = fs.ls(hf_repo_prefix, detail=False)
     except Exception as exc:
-        if unrecorded:
+        if servable:
             return _unverified(
                 cache_dir, label, f"the published listing could not be read ({type(exc).__name__})"
             )
@@ -326,7 +403,7 @@ def _provision_snapshot(
             ", ".join(ignored),
         )
     if not remote_files:
-        if unrecorded:
+        if servable:
             return _unverified(cache_dir, label, f"{hf_repo_prefix} publishes no {filename_glob}")
         raise error_cls(
             f"no {filename_glob} in {hf_repo_prefix} — the published snapshot carries "
@@ -336,6 +413,48 @@ def _provision_snapshot(
     logger.info("Found %d remote parquet files", len(remote_files))
 
     repo_root = hf_repo_prefix.rsplit("/", 1)[0]
+
+    # The release's manifest (RM372), fetched **first** and staged beside the cache rather than in it:
+    # it is what a kept or a downloaded file is checked against, so it has to be in hand before the
+    # first one; and it is renamed into place with the other root files at the end, so it never
+    # describes bytes that have not arrived. A repo that publishes none (every lane but Ensembl) or
+    # one that does not parse leaves the footer rule as it was.
+    manifest_part = cache_dir / f"{SNAPSHOT_MANIFEST_FILENAME}.part"
+    try:
+        manifest = _stage_manifest(fs, f"{repo_root}/{SNAPSHOT_MANIFEST_FILENAME}", manifest_part, label)
+    except OSError as exc:
+        # Could not ask, which is not "publishes none": pulling on without it would accept every byte
+        # unverified, so this pull stops here, and a cache nothing contradicts is served as it is.
+        manifest_part.unlink(missing_ok=True)
+        if servable:
+            return _unverified(
+                cache_dir, label, f"its {SNAPSHOT_MANIFEST_FILENAME} could not be fetched ({exc})"
+            )
+        raise error_cls(
+            f"the {label} repo's {SNAPSHOT_MANIFEST_FILENAME} could not be fetched ({exc}); nothing was "
+            f"downloaded, because without it no file can be checked. Re-run the pull."
+        ) from exc
+    if manifest is not None:
+        unnamed = sorted(
+            name
+            for name in (f.rsplit("/", 1)[-1] for f in remote_files)
+            if manifest.entry(f"{SNAPSHOT_DATA_DIRNAME}/{name}") is None
+        )
+        if unnamed:
+            manifest_part.unlink(missing_ok=True)
+            raise error_cls(
+                f"{hf_repo_prefix} publishes {len(unnamed)} file(s) its own {SNAPSHOT_MANIFEST_FILENAME} "
+                f"does not attest ({', '.join(unnamed[:5])}); a cache holding them would be withheld, "
+                f"so nothing was downloaded."
+            )
+        # Placed **now**, before the record and the first byte, unlike `release.json`. A manifest only
+        # ever refuses: a reader withholds whatever it does not attest. So an interrupted pull leaves a
+        # cache whose old files the new manifest disowns (withheld, re-pulled on the next call) rather
+        # than one whose mixture nothing on disk can see.
+        manifest_part.replace(cache_dir / SNAPSHOT_MANIFEST_FILENAME)
+    else:
+        # The repo answered that it publishes none: a manifest already here describes other bytes.
+        (cache_dir / SNAPSHOT_MANIFEST_FILENAME).unlink(missing_ok=True)
 
     # The optional parquet **sidecars** beside `data/` — ClinVar's `citations/` today. Fetched here so a
     # provisioned snapshot is the same artifact a built one is: without the citations table a consumer has
@@ -367,24 +486,40 @@ def _provision_snapshot(
                 len(planned),
                 ", ".join(absent[:5]) + (", …" if len(absent) > 5 else ""),
             )
-    atomic_write_text(
-        cache_dir / PULL_RECORD_FILENAME,
-        json.dumps({"repo": hf_repo_prefix, "files": planned}, indent=2) + "\n",
-    )
+    # A switch is recorded as under way until every file is the new repo's: `pull_record_repo` reads
+    # `replacing` first, so an interrupted switch is still a cache of the old repo on the next call.
+    record: dict[str, object] = {"repo": hf_repo_prefix, "files": planned}
+    if switched_from is not None:
+        record[PULL_RECORD_REPLACING_KEY] = switched_from
+    atomic_write_text(cache_dir / PULL_RECORD_FILENAME, json.dumps(record, indent=2) + "\n")
+    # A file this repo's own pull already placed was checked by sha256 on its way in; only a file of
+    # unknown origin (no record, or another repo's) is hashed again.
+    placed_here = recorded_repo == hf_repo_prefix
 
     for remote_path in remote_files:
         filename = remote_path.rsplit("/", 1)[-1]
         local_path = data_dir / filename
-        if parquet_footer_ok(local_path):
+        relative = f"{SNAPSHOT_DATA_DIRNAME}/{filename}"
+        if _keep(local_path, relative, manifest, switched=switched, placed_here=placed_here):
             continue
-        _fetch_parquet(fs, remote_path, local_path, display=filename, label=label, error_cls=error_cls)
+        _fetch_parquet(
+            fs,
+            remote_path,
+            local_path,
+            display=filename,
+            label=label,
+            error_cls=error_cls,
+            manifest=manifest,
+            relative=relative,
+        )
 
     for sidecar, remote_path in remote_sidecars:
         filename = remote_path.rsplit("/", 1)[-1]
         target_dir = cache_dir / sidecar
         target_dir.mkdir(parents=True, exist_ok=True)
         local_path = target_dir / filename
-        if parquet_footer_ok(local_path):
+        # After a switch a whole sidecar may be the old repo's, and no manifest names `citations/`.
+        if parquet_footer_ok(local_path) and not switched:
             continue
         _fetch_parquet(
             fs, remote_path, local_path, display=f"{sidecar}/{filename}", label=label, error_cls=error_cls
@@ -421,20 +556,84 @@ def _provision_snapshot(
     for optional in SNAPSHOT_ROOT_FILENAMES:
         target = cache_dir / optional
         tmp_path = target.with_suffix(target.suffix + ".part")
+        if optional == SNAPSHOT_MANIFEST_FILENAME:
+            continue  # asked for and placed before the data
         try:
             fs.get(f"{repo_root}/{optional}", str(tmp_path))
             tmp_path.replace(target)
         except Exception as exc:
             tmp_path.unlink(missing_ok=True)
+            if switched and target.is_file():
+                # The old repo's file, describing (or licensing) bytes this pull replaced.
+                target.unlink()
+                logger.info(
+                    "Removed %s: it came with %s, and %s has none.", optional, switched_from, hf_repo_prefix
+                )
             logger.info(
                 "No %s in the %s repo (%s); the cache carries data only.", optional, label, type(exc).__name__
             )
+    if switched_from is not None:
+        atomic_write_text(
+            cache_dir / PULL_RECORD_FILENAME,
+            json.dumps({"repo": hf_repo_prefix, "files": planned}, indent=2) + "\n",
+        )
     logger.info("Download complete: %s", cache_dir)
     return cache_dir
 
 
+def _stage_manifest(fs, remote_path: str, staged: Path, label: str) -> SnapshotManifest | None:
+    """Fetch the repo's manifest to `staged` and read it, or `None` when it publishes none or it does not parse.
+
+    Three answers. A `FileNotFoundError` is the repo saying it publishes none (`None`). Any other
+    `OSError` (a timeout, a refused connection, a 5xx surfaced as one) is could-not-ask and propagates,
+    because pulling on as if there were none would accept every byte unverified. An unreadable one is
+    `None` and is not left staged: placing it would make the resolver withhold the cache it describes
+    (`manifest_unattested` attests nothing under an unreadable manifest).
+    """
+    try:
+        fs.get(remote_path, str(staged))
+    except FileNotFoundError as exc:
+        staged.unlink(missing_ok=True)
+        logger.info("No %s in the %s repo (%s).", SNAPSHOT_MANIFEST_FILENAME, label, type(exc).__name__)
+        return None
+    except httpx.TimeoutException as exc:
+        raise OSError(f"{type(exc).__name__}: {exc}; {_timeout_knob()}") from exc
+    except httpx.HTTPError as exc:
+        raise OSError(f"{type(exc).__name__}: {exc}") from exc
+    manifest = read_snapshot_manifest(staged)
+    if manifest is None:
+        staged.unlink(missing_ok=True)
+        logger.warning(
+            "The %s repo's %s could not be read; pulling without it, and it is not placed in the cache.",
+            label,
+            SNAPSHOT_MANIFEST_FILENAME,
+        )
+    return manifest
+
+
+def _keep(
+    local_path: Path, relative: str, manifest: SnapshotManifest | None, *, switched: bool, placed_here: bool
+) -> bool:
+    """Whether a file already in the cache is kept rather than fetched again.
+
+    With the release's manifest in hand, only a file it attests is kept (RM372): a whole file under the
+    right name may be another release's, which is the whole defect. A file this repo's own pull placed
+    (`placed_here`) was hashed on its way in, so its size is compared; a file of unknown origin is
+    hashed. Without a manifest, a whole file is kept as before, except after a repo switch, where
+    nothing on disk can say which repo a file came from.
+    """
+    if not parquet_footer_ok(local_path):
+        return False
+    if manifest is not None:
+        if placed_here:
+            entry = manifest.entry(relative)
+            return entry is not None and entry.size == local_path.stat().st_size
+        return manifest_attests(manifest, relative, local_path)
+    return not switched
+
+
 def _unverified(cache_dir: Path, label: str, why: str) -> Path:
-    """Serve a cache with no pull record whose completeness could not be checked, and say so.
+    """Serve a cache nothing on disk calls unfinished, whose completeness could not be checked, and say so.
 
     The unknown arm of the three (RM339): neither trusted as complete, which is the defect, nor refused,
     which would take a working cache away from a machine with no network. The record is not written,

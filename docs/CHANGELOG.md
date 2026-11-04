@@ -41,6 +41,22 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM372: the enricher reads the Ensembl snapshot from its new repo, and never serves two releases as one (0.8, uncut)
+
+- **`ensure_snapshot` pulls `just-dna-seq/ensembl_variations_split`** (dbSNP 157, VEP 116, one row per ALT,
+  left-aligned indels), prepare-annotations' release of 2026-11-04. Every lane's repo is a row of
+  `download.SNAPSHOT_REPO_PREFIXES`.
+- **A cache pulled from the old repo is re-pulled by `cache pull`**, never returned as current: the file names
+  are the same, so the pull record's `repo` is what tells them apart. `enrich` still reads such a cache as the
+  older release it is.
+- **The release's `manifest.json` is pulled first and attests every file**: a kept or downloaded file whose
+  size and sha256 differ is refetched or refused. A cache holding a `data/` file its manifest does not attest
+  (old chrMT beside new chr21) is withheld whole by the resolvers, with a warning naming the files.
+- **`cache status` and `rsid_coordinate_agreement.release` name the release** (`ensembl-variation-2026_07_13-vep116.0`),
+  read from the manifest by `locations.ensembl_release_label`.
+- **No test reaches the real HuggingFace hub unasked** (`@no-test-reaches-the-real-hub`): an autouse fence in the
+  enricher conftest, after a test re-pulled six chromosomes of a shared cache on this branch.
+
 ## 2026-11-04 — RM362: the orphan checks, `stats.genes` and the enricher agree on which genes and loci a module is about (0.8, uncut)
 
 - **One answer, `just_dna_compiler.compiler.subjects.module_subjects`**, over two rosters derived from the table
