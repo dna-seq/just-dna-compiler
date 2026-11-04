@@ -77,6 +77,8 @@ answers v2's §8 consumer requests 1 and 2 (category prose from the module, no "
 
 ## RM322 — `diplotypes.csv` carries none of the axes a scored finding needs, so APOE, the module's headline result, cannot state its tier, mechanism or trade-off
 
+**Decided 2026-11-04 by the maintainer: four columns, no `flags`.** `DiplotypeRow` gains `negatives`, `category`, `priority` and `actionability`, each full price, with RM70 as the precedent. `flags` stays off: no tier acts on its tags (RM321), and v2's flag tokens are what RM323–RM330's typed columns replace. Per-locus facts go on RM323's table, with APOE ε2 and ε4 as `haplotype` subjects.
+
 **Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format (`DiplotypeRow`) + compiler (the diplotype parquet and `reverse`) · **Motivating case** longevitymap v2 requirements §6.4, decision D2 · *for* longevitymap v2 · *related* RM323, RM28
 
 **What was confirmed.** `DiplotypeRow` has `gene`, `haplotype_a`, `haplotype_b`, `trait_efo_id`,
@@ -165,6 +167,8 @@ clinical severity; dna-engine carries a `tier`) and RM294 (whether a source's ev
 into a module), since all three are one column family.
 
 ## RM325 — `studies.csv` has no sample size, and v2's tier A rule is stated in N
+
+**Decided 2026-11-04 by the maintainer: `sample_size`, a closed `sample_unit` beside it (individuals / lives), and `n_cases`.** A magnitude carries its unit beside it (`@weight-has-no-unit`), so v2's "N ≥ 100k lives" is checkable from the artifact. The names still get the P5 audit in the proposal.
 
 **Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format (+ enricher, if a derived N is filled) · **Motivating case** longevitymap v2 requirements §4.1 · *for* longevitymap v2 · *related* RM324, RM326
 
@@ -287,6 +291,8 @@ recruitment). Full ×2–3. The names need the P5 audit before they are fixed. T
 
 ## RM330 — an effect measured in one sex, one smoking stratum or one genotype has no row
 
+**Decided 2026-11-04 by the maintainer: the study's stratum and a sex condition.** `StudyRow` gains the stratum an estimate was measured in, a modifier and its level (full ×2). Conclusion rows gain one closed `sex` condition (male/female), which the consumer matches against karyotype. This is RM28's "plain column on demand" rule, with sex as its first class. A modifier that is another locus's genotype stays RM28's (0.9).
+
 **Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format · **Motivating case** longevitymap v2 requirements §4.2 (context), §10 (`effect_modifiers`) · *for* longevitymap v2 · *related* RM188 (axis 3), RM28
 
 **Need.** FOXO3 rs2802292 is positive in men only, HLA-DRB1\*15:01 is anti-longevity in men, and some
@@ -365,7 +371,7 @@ The `SourceRow` therefore records `commercial_use=True`, `share_alike=False`, `r
 
 **For 0.9:** the host licence defers to the original owners, and an L2G row cannot name its owner
 (`@a-hosts-terms-are-not-its-contents-terms` assumes a record can override). That is a `SourceRow` axis
-gap, owed an `RMn` beside AlphaGenome's four (`probes/ALPHAGENOME_ATLAS.md` §2.6).
+gap, filed as [RM345](ROADMAP_0_9.md#rm345--sourcerow-cannot-state-five-licence-shapes-alphagenomes-four-and-a-host-licence-that-defers-to-owners-a-row-cannot-name) with AlphaGenome's four (`probes/ALPHAGENOME_ATLAS.md` §2.6).
 
 **Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** enricher (a new lane) + format (a derived table's columns) · **Motivating case** longevitymap v2 requirements §4.2 (causal and effector confidence, R-CAUSAL) · *for* longevitymap v2 · *related* RM239, RM238, RM236
 

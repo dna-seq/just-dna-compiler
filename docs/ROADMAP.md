@@ -766,6 +766,8 @@ variants per tier are wanted too, since the existing counts are per genotype row
 
 ## RM302 — one `conclusion` serves every place a report shows it; a table cell, a details card and an explanatory mode want different wordings
 
+**Decided 2026-11-04 by the maintainer: two optional columns, `conclusion_lay` and `conclusion_concise`.** They go on `VariantRow`, `DiplotypeRow`, `PharmVariantRow` and the bin kinds, but not `StudyRow`, because a study's finding is not the report's claim. Both are **inside `content_signature`**, as authored claim text. The name `language` is reserved now, as a separate axis from register. Tools never write a register; that was decided on 2026-09-27.
+
 **0.8, decided 2026-11-03.** Taken into 0.8 by the maintainer as a longevitymap v2 requirement. The status line below predates that decision.
 
 **Severity** medium · **Status** open — **a minor, release undecided**; principle decided, shape kept
