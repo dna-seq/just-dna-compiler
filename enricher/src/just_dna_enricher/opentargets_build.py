@@ -484,7 +484,7 @@ def subset_snapshot(
 
     For a test fixture or a regional snapshot: every table keeps exactly the rows the runtime pass would
     read for those alleles (their variants and consequences, their credible-set memberships, the sets
-    they lead, those sets' L2G and coloc rows), so a pass over the subset answers as it would over the
+    they are members of, those sets' L2G and coloc rows), so a pass over the subset answers as it would over the
     whole release for those variants. `studies` keeps every credible-set head of those studies too,
     so "the study has credible sets, and the variant is in none" answers on the subset as it does on
     the release. The `release.json` is the parent's with `subset_of` added.
@@ -511,7 +511,10 @@ def subset_snapshot(
         on="study_locus_id",
         how="semi",
     ).sort("study_locus_id")
-    loci = led.select("study_locus_id")
+    # Every set a wanted allele is a MEMBER of (RM333, members not lead-only). A lead is a member of its
+    # own set: over the whole 26.09 release no GWAS set's lead is missing from its member list, so the
+    # member loci already hold the led ones.
+    loci = members.select("study_locus_id").unique()
     tables = {
         VARIANTS_FILE: variants,
         "consequences-00000.parquet": pl.scan_parquet(str(src / CONSEQUENCES_GLOB))

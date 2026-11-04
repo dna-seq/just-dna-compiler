@@ -159,9 +159,13 @@ _MERGED = (
 #:   reaches rows naming variants the module does not author — an overlay here corrects a claim about
 #:   a locus, not about an annotation.
 #: * `locus_to_gene.csv` / `colocalisations.csv` — `gene_id` / `right_study_locus_id` under the subject
-#:   `study_locus_id`, the source's own grain (RM333). One variant leads several study loci, so a
-#:   correction names the credible set it corrects; the corrected value is an input to the module's
-#:   effector rubric, never a label (RM323's cut).
+#:   `study_locus_id`, the source's own grain (RM333). One variant is a member of several study loci, so
+#:   a correction names the credible set it corrects; the corrected value is an input to the module's
+#:   effector rubric, never a label (RM323's cut). Both tables also key on `variant_key` (members, not
+#:   lead-only, 2026-11-04), and the overlay deliberately does not: a score or a colocalisation is a
+#:   fact of the set and gene, whichever member asked, so a correction reaches every member's row of
+#:   that pair. The limit is `insert`: a pair already present for one member counts as present, so an
+#:   insert cannot add a second member's row to it (the pass writes those).
 #: * `consequences.csv` — `transcript`. One variant carries a row per transcript (RM236).
 #:
 #: **`clin_sig_authority_calls.csv` is deliberately outside, and it is the pair's second decision.**

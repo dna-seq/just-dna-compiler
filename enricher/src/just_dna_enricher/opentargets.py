@@ -4,8 +4,8 @@ One pass, four writes, one licence row per write:
 
 | table | grain | from the snapshot |
 |---|---|---|
-| `locus_to_gene.csv` | (study locus, gene) | the L2G score of every GWAS credible set a module variant leads |
-| `colocalisations.csv` | (study locus, right study locus) | those credible sets' molecular-QTL colocalisations |
+| `locus_to_gene.csv` | (study locus, gene, variant) | the L2G score of every GWAS credible set a module variant is a member of |
+| `colocalisations.csv` | (study locus, right study locus, variant) | those credible sets' molecular-QTL colocalisations |
 | `consequences.csv` | (variant, transcript) | every module variant's per-transcript VEP consequence (RM236) |
 | `gwas_effects.csv` | (association) | RM239's `posterior_probability` and `fine_mapping_method`, filled on rows another pass wrote |
 
@@ -18,6 +18,14 @@ parsed). Open Targets is GRCh38-only, so a row on another build is skipped and c
 skips with a warning and writes nothing: nobody asked, which is not "Open Targets holds nothing"
 (`@unreachable-not-absent`). There is no `--offline` flag for that reason: the off switch would be a
 flag the pass never sees.
+
+**Members, not lead-only** (RM333, decided 2026-11-04). A variant gets the L2G and coloc rows of every
+GWAS credible set it sits in, whether or not it leads it: HFE C282Y (rs1800562) is in 82 sets of the
+26.09 release and leads none, so a lead-only table would be empty for the module the lane exists for.
+`variant_key` is the module variant asked about and is in both tables' keys; `lead_variant_id` still
+names the source's lead, and the member's own weight in the set is its posterior on `gwas_effects.csv`.
+The snapshot holds GWAS sets only (the builder filters on `studyType`), so a member of a molecular-QTL
+set gets no row here; that side arrives as the right half of a colocalisation.
 
 **Three answers per question, kept apart.** For each `gwas_effects.csv` row the posterior is filled
 only when exactly one value answers; otherwise it is left empty and the reason is counted: the study
@@ -123,8 +131,10 @@ class OpenTargetsResult:
     off_build: list[str] = field(default_factory=list)
     #: Resolved to several of the release's alleles, so its per-transcript rows would collide: withheld.
     allele_ambiguous: list[str] = field(default_factory=list)
-    #: Module keys sharing one release allele with another key: the study loci that allele leads are
-    #: withheld, because two keys cannot own one (study locus, gene) row.
+    #: Module keys sharing one release allele with another key: the rows of the study loci that allele
+    #: is a member of are withheld for those keys and the keys are named. With `variant_key` in the key
+    #: the two keys' rows would no longer collide; the arm is kept because one release allele stated
+    #: twice under two module keys is a module defect to name, not a fact to write twice.
     lead_key_ambiguous: list[str] = field(default_factory=list)
     #: Datasets the snapshot read only some parts of, `{dataset: (read, total)}`.
     partial: dict[str, tuple[int, int]] = field(default_factory=dict)
@@ -376,46 +386,56 @@ def enrich_opentargets(
                     )
                 )
 
-        # ── the credible sets a module variant leads: L2G and coloc ──
+        # ── the credible sets a module variant is a member of: L2G and coloc ──
         all_ids = sorted(keys_by_id)
         probe_table(con, "ids", [("variant_id", "VARCHAR")], [(i,) for i in all_ids])
-        leads = con.execute(
-            "SELECT cs.study_locus_id, cs.study_id, cs.lead_variant_id FROM credible_sets cs "
-            "JOIN ids ON ids.variant_id = cs.lead_variant_id ORDER BY cs.study_locus_id"
+        memberships_by_locus = con.execute(
+            "SELECT DISTINCT m.study_locus_id, m.variant_id, cs.study_id, cs.lead_variant_id "
+            "FROM members m JOIN ids ON ids.variant_id = m.variant_id "
+            "JOIN credible_sets cs ON cs.study_locus_id = m.study_locus_id "
+            "ORDER BY m.study_locus_id, m.variant_id"
         ).fetchall()
-        lead_info: dict[str, tuple[str, str | None, str]] = {}
+        # `locus_info` is `{study locus: (study, lead)}`, `member_keys` `{study locus: module keys that are
+        # members}`. A key whose two release alleles sit in one set is one member of it, not two.
+        locus_info: dict[str, tuple[str | None, str]] = {}
+        member_keys: dict[str, set[str]] = {}
         shared: set[str] = set()
-        for locus, study, lead_id in leads:
-            keys = keys_by_id.get(lead_id, [])
-            # Two module keys naming one release allele cannot both own a study locus without a
-            # duplicate key; it is withheld rather than given to the first one sorted, and counted.
-            if len(keys) == 1:
-                lead_info[locus] = (keys[0], study, lead_id)
-            else:
+        for locus, variant_id, study, lead_id in memberships_by_locus:
+            keys = keys_by_id.get(variant_id, [])
+            if len(keys) > 1:
                 shared.update(keys)
+            locus_info[locus] = (study, lead_id)
+            member_keys.setdefault(locus, set()).update(keys)
+        # Two module keys naming one release allele are withheld rather than written twice, and counted,
+        # in every set (a multi-ALT key's other allele included); the other keys of a set keep their rows.
+        for locus in list(member_keys):
+            member_keys[locus] -= shared
+            if not member_keys[locus]:
+                del member_keys[locus], locus_info[locus]
         result.lead_key_ambiguous = sorted(shared)
-        if lead_info:
+        if locus_info:
             probe_table(
-                con, "loci", [("study_locus_id", "VARCHAR")], [(locus,) for locus in sorted(lead_info)]
+                con, "loci", [("study_locus_id", "VARCHAR")], [(locus,) for locus in sorted(locus_info)]
             )
             for locus, gene_id, score in con.execute(
                 "SELECT l.study_locus_id, l.gene_id, l.l2g_score FROM l2g l "
                 "JOIN loci ON loci.study_locus_id = l.study_locus_id ORDER BY l.study_locus_id, l.gene_id"
             ).fetchall():
-                key, study, lead_id = lead_info[locus]
-                result.locus_to_gene.append(
-                    LocusToGeneRow(
-                        study_locus_id=locus,
-                        gene_id=gene_id,
-                        variant_key=key,
-                        lead_variant_id=lead_id,
-                        study_accession=study,
-                        l2g_score=score,
-                        dataset=dataset,
-                        source=SOURCE_NAME,
-                        fetched_at=fetched_at,
+                study, lead_id = locus_info[locus]
+                for key in sorted(member_keys[locus]):
+                    result.locus_to_gene.append(
+                        LocusToGeneRow(
+                            study_locus_id=locus,
+                            gene_id=gene_id,
+                            variant_key=key,
+                            lead_variant_id=lead_id,
+                            study_accession=study,
+                            l2g_score=score,
+                            dataset=dataset,
+                            source=SOURCE_NAME,
+                            fetched_at=fetched_at,
+                        )
                     )
-                )
             for row in con.execute(
                 "SELECT c.study_locus_id, c.right_study_locus_id, c.right_study_id, c.right_study_type, "
                 "c.right_gene_id, c.right_biosample_id, c.method, c.h4, c.clpp, c.colocalising_variants "
@@ -432,28 +452,29 @@ def enrich_opentargets(
                     method,
                     h4,
                     clpp,
-                    shared,
+                    colocalising,
                 ) = row
-                key, study, _lead_id = lead_info[locus]
-                result.colocalisations.append(
-                    ColocalisationRow(
-                        study_locus_id=locus,
-                        right_study_locus_id=right_locus,
-                        variant_key=key,
-                        study_accession=study,
-                        right_study_id=right_study,
-                        right_study_type=right_type,
-                        right_gene_id=right_gene,
-                        right_biosample_id=biosample,
-                        method=method,
-                        h4=h4,
-                        clpp=clpp,
-                        colocalising_variants=shared,
-                        dataset=dataset,
-                        source=SOURCE_NAME,
-                        fetched_at=fetched_at,
+                study, _lead_id = locus_info[locus]
+                for key in sorted(member_keys[locus]):
+                    result.colocalisations.append(
+                        ColocalisationRow(
+                            study_locus_id=locus,
+                            right_study_locus_id=right_locus,
+                            variant_key=key,
+                            study_accession=study,
+                            right_study_id=right_study,
+                            right_study_type=right_type,
+                            right_gene_id=right_gene,
+                            right_biosample_id=biosample,
+                            method=method,
+                            h4=h4,
+                            clpp=clpp,
+                            colocalising_variants=colocalising,
+                            dataset=dataset,
+                            source=SOURCE_NAME,
+                            fetched_at=fetched_at,
+                        )
                     )
-                )
 
         # ── RM239: the posterior on gwas_effects.csv ──
         gwas_path = sidecar_path(spec_dir, "gwas_effects.csv", error=OpenTargetsError)
@@ -540,8 +561,9 @@ def enrich_opentargets(
         )
     if result.lead_key_ambiguous:
         logger.warning(
-            "Open Targets pass withheld the L2G and coloc rows of study loci led by an allele that %d "
-            "module key(s) share: one (study locus, gene) row cannot belong to two keys. Examples: %s",
+            "Open Targets pass withheld the L2G and coloc rows of %d module key(s) that share one "
+            "release allele with another key: one allele stated under two keys is a module defect to "
+            "name, not a fact to write twice. Examples: %s",
             len(result.lead_key_ambiguous),
             result.lead_key_ambiguous[:3],
         )

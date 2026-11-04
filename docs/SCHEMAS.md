@@ -3200,14 +3200,21 @@ computed by the format (RM323's cut), and a curator's correction to an input goe
 
 | table | model (`locus_genes`, `consequences`) | key | what one row says |
 |---|---|---|---|
-| `locus_to_gene.csv` | `LocusToGeneRow` | `(study_locus_id, gene_id)` | the L2G score Open Targets gives one candidate gene of one credible set the module's variant leads |
-| `colocalisations.csv` | `ColocalisationRow` | `(study_locus_id, right_study_locus_id)` | that credible set colocalises with a molecular-QTL credible set: `h4`, `clpp`, the right study's type, gene and tissue |
+| `locus_to_gene.csv` | `LocusToGeneRow` | `(study_locus_id, gene_id, variant_key)` | the L2G score Open Targets gives one candidate gene of one credible set the module's variant is a member of |
+| `colocalisations.csv` | `ColocalisationRow` | `(study_locus_id, right_study_locus_id, variant_key)` | that credible set colocalises with a molecular-QTL credible set: `h4`, `clpp`, the right study's type, gene and tissue |
 | `consequences.csv` | `ConsequenceRow` | `(variant_key, transcript)` | VEP's consequence (Sequence Ontology accessions) and impact class on one transcript |
 
-**The study locus is the grain, and several per variant are kept.** A variant leads one credible set per
+**The study locus is the grain, and several per variant are kept.** A variant sits in one credible set per
 study that fine-mapped its region, each with its own candidate genes and scores. A row per variant would
-pick a study for the module (`@multiplicity-is-a-finding`). `variant_key` is the module's own key for the
-lead, so the rows join the weights directly; `lead_variant_id` keeps the source's spelling for tracing.
+pick a study for the module (`@multiplicity-is-a-finding`).
+
+**Members, not lead-only.** A row exists for every set the module's variant is a **member** of, whether or
+not it leads it: HFE C282Y sits in 82 GWAS sets of the 26.09 release and leads none, so a lead-only table
+would be empty for it. `variant_key` is the module's own key for the member asked about and is part of both
+keys, because two module variants in one set each get its rows; the rows join the weights directly.
+`lead_variant_id` keeps the source's spelling of the set's lead, which names another variant when the
+module's is a member only. The member's own weight in the set is its posterior on `gwas_effects.csv`. A
+heavily fine-mapped variant makes coloc large: rs646776's 2,061 sets carry 309,634 coloc rows.
 
 **Coloc is a sibling table, not columns on the L2G row**, because the probe found many right-hand study
 loci per `(study locus, gene)` pair (one per tissue and QTL kind): `h4` on the L2G row would have to pick a

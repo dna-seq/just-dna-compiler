@@ -106,8 +106,8 @@ manifest block that `ModuleManifest` lets a 0.7 reader drop. No new warning code
 
 | Surface | One row per / what it holds |
 | --- | --- |
-| `locus_to_gene.csv` → `locus_to_gene.parquet`, manifest `locus_to_gene` | (study locus, gene): the L2G score of a GWAS credible set the module's variant leads; key `(study_locus_id, gene_id)` |
-| `colocalisations.csv` → `colocalisations.parquet`, manifest `colocalisations` | (left, right study locus): `h4`, `clpp`, the right study's type, gene and tissue; key `(study_locus_id, right_study_locus_id)` |
+| `locus_to_gene.csv` → `locus_to_gene.parquet`, manifest `locus_to_gene` | (study locus, gene, module variant): the L2G score of every GWAS credible set the module's variant is a member of, led or not; key `(study_locus_id, gene_id, variant_key)`; `lead_variant_id` names the set's lead |
+| `colocalisations.csv` → `colocalisations.parquet`, manifest `colocalisations` | (left, right study locus, module variant): `h4`, `clpp`, the right study's type, gene and tissue; key `(study_locus_id, right_study_locus_id, variant_key)` |
 | `consequences.csv` → `consequences.parquet`, manifest `consequences` | (variant, transcript): `consequence_so_ids`, `impact` (closed: HIGH, MODERATE, LOW, MODIFIER), `mane_select`, `canonical` |
 | `gwas_effects.csv` / `.parquet` `posterior_probability`, `fine_mapping_method`; manifest `gwas_effects.with_posterior` | two optional columns, empty unless exactly one fine-mapping value answers; a 0.7 reader of the parquet sees two more columns, and a 0.7 `validate_spec` refuses a `gwas_effects.csv` carrying them (`extra="forbid"`), so upgrade before enriching |
 

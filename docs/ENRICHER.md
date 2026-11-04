@@ -3318,8 +3318,8 @@ release's allele table on `(chrom, position, ref, alt)`. Then:
 
 | table | what a row is | the rule that keeps it honest |
 |---|---|---|
-| `locus_to_gene.csv` | one (study locus, gene) pair of a credible set the module's variant **leads**, with its L2G score | several study loci per variant are all kept (`@multiplicity-is-a-finding`); a member that is not the lead gets no row, and the posterior covers it |
-| `colocalisations.csv` | one (left, right) study-locus pair for those same sets | at the source's grain, because one gene colocalises in several tissues and QTL kinds: `h4` and `clpp` both kept, never one picked |
+| `locus_to_gene.csv` | one (study locus, gene, module variant) row for every credible set the module's variant is a **member** of, led or not, with its L2G score | several study loci per variant are all kept (`@multiplicity-is-a-finding`); two module variants in one set each get its rows; `lead_variant_id` names the set's lead, and the member's own weight is its posterior |
+| `colocalisations.csv` | one (left, right study locus, module variant) row for those same sets | at the source's grain, because one gene colocalises in several tissues and QTL kinds: `h4` and `clpp` both kept, never one picked |
 | `consequences.csv` | one (variant, transcript) pair | the transcript set is Open Targets' (one canonical transcript per nearby gene); a variant resolving to two of the release's alleles is withheld, since its rows would share a key |
 | `gwas_effects.csv` | RM239's `posterior_probability` + `fine_mapping_method` on the rows the `gwas` pass wrote | filled only when exactly one value answers for `(variant, study_accession)`; empty, and counted, for a study with no credible set, a variant not in the 95% set, and a variant in several of the study's sets with different values |
 
@@ -3328,8 +3328,10 @@ the run contributed a row to it. A variant this run looked up has its rows repla
 look up (unresolved, off-build) keeps what it had (`@rederive-never-shortens`). With no snapshot the
 pass writes nothing and says nobody asked. It never fetches, so it has no `--offline`; `--strict`
 refuses a snapshot built from part of the release, and one that does not record its part totals (unknown
-completeness is not completeness). Two module keys on one release allele cannot both own its study loci:
-those rows are withheld and the keys named (`lead_key_ambiguous`).
+completeness is not completeness). Two module keys on one release allele have that allele's L2G and coloc
+rows withheld and the keys named (`lead_key_ambiguous`): one allele stated under two keys is a module
+defect to name, not a fact to write twice. The member-wide grain (decided 2026-11-04) makes coloc large for
+a heavily fine-mapped variant: rs646776's 2,061 sets carry 309,634 coloc rows.
 
 **What the lane does not do.** It computes no causal or effector confidence label (RM323's cut): the
 three tables and the posterior are the inputs, a module states its rubric, and a hand-curated input is a

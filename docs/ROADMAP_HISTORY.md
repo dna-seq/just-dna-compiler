@@ -39,6 +39,16 @@ the `0.8` branch lane by lane. Newest first.
 
 **Placement settled 2026-11-04.** The effector-confidence label is never authored (RM323's cut). This lane's derived table is one of its inputs, beside coloc and the coding consequence.
 
+**Grain widened 2026-11-04 (pm, on the lead's measurement).** `locus_to_gene.csv` covers every study locus a
+module variant is a **member** of, not only the ones it leads. Measured on the full 26.09 build: rs1800562
+(HFE C282Y) sits in 82 credible sets and leads none, and rs646776 leads 205 of the 2,061 it is in. A lead-only
+table is empty for an HFE module, so it fails the case the lane exists for. `variant_key` joins the key
+`(study_locus_id, gene_id, variant_key)` and means the module variant asked about. `lead_variant_id` still
+names the source's lead, and the member's weight is its posterior on `gwas_effects.csv` (RM239). The cost is
+one row per member variant and no new column, in a machine-written table. `colocalisations.csv` takes the
+same rule if it is lead-only too. Chosen over two alternatives: lead-only, which fails HFE, and a
+`study_locus_id` column on `gwas_effects.csv`, which adds a column.
+
 **Licence probed 2026-11-04 (all claims checked at the source); decided by the maintainer: build, under Open
 Targets' own terms plus its notice.**
 
@@ -81,6 +91,8 @@ Open Targets.
 once the inputs exist, never authored.
 
 **Built 2026-11-04 on `0.8` (build/RM333).** The lane `opentargets` (`opentargets build`, `opentargets_build.py`) mirrors release 26.09 from EBI's FTP over https and flattens it; `opentargets enrich` (`opentargets.py`) fills `locus_to_gene.csv` at Open Targets' own grain, one row per (study locus, gene) a module variant **leads**, and `colocalisations.csv` at the source's (left, right) study-locus grain, the sibling the probe chose: one (study locus, gene) pair colocalises with up to 1,738 right-hand loci (2,308,572 of 10,326,986 pairs have more than one), so `h4`/`clpp` on the L2G row would have picked a tissue. Several study loci per variant are kept. The `SourceRow` is `OPENTARGETS_TERMS` (CC0-1.0, `commercial_use=True`, `share_alike=False`, `redistribution=True`, `notice` = Data Services items 2 and 4 of the terms of use, verbatim). No C or E label is computed. The hand-run build and its counts are [probes/LANES_0_8.md § 5](probes/LANES_0_8.md#5-built-2026-11-04-the-opentargets-lane). **The lead-only predicate is the contract's and it is narrow:** measured over the whole release, rs1800562 sits in 82 GWAS credible sets and leads none, rs646776 leads 205 of 2,061; a members-wide L2G table would need `variant_key` in its key, a decision left to the pm.
+
+**Members, not lead-only: built 2026-11-04 on `0.8` (build/RM333-members), on the pm's grain decision above.** `opentargets enrich` now writes the L2G and coloc rows of every GWAS credible set a module variant is a member of, read off `credible_set_members`, which the snapshot already held for the posterior. `LocusToGeneRow` is keyed `(study_locus_id, gene_id, variant_key)` and `ColocalisationRow` `(study_locus_id, right_study_locus_id, variant_key)`, since coloc was lead-only too; both models are new in 0.8 and unreleased, so re-keying them breaks no reader. No new column: `lead_variant_id` still names the source's lead and now names another variant whenever the module's is a member only. Over the whole release no GWAS set's lead is missing from its own member list, so the member-wide table holds every lead-only row. On the HFE example C282Y now gets 121 L2G rows over its 82 sets and 13 coloc rows (it had none). Measured against the full snapshot, rs646776 gets 6,182 L2G rows over its 2,061 sets (615 over 205 lead-only) and 309,634 coloc rows (29,885 lead-only), so a module with a heavily fine-mapped variant now carries a coloc table in the hundreds of thousands of rows. The overlay stays keyed `(study_locus_id, gene_id)` / `(study_locus_id, right_study_locus_id)`: a score is the set's fact whichever member asked, so a correction reaches every member's row of the pair. `lead_key_ambiguous` is kept as it was (two module keys on one release allele have their rows withheld and are named), although its old reason, a key collision, no longer holds under the wider key. `subset_snapshot` cuts member loci, and the committed slice was recut from the full build with one more allele, `6_26072764_C_T`, a member of all 82 of C282Y's sets, so two module variants share study loci in a test.
 
 **Residuals** RM238 · RM345
 
