@@ -3,7 +3,7 @@
 The cache side uses a tiny synthetic `ensembl_variations` parquet (the injectable shape the compiler
 resolver reads); the live-Ensembl side uses an `httpx.MockTransport`, so nothing here opens a socket.
 Coverage: offline enrich → resolution.csv → the compiler consumes it and reproduces the DuckDB
-digest; `--offline` never calls the network; the V2→V1 fallback on 503; tenacity retrying a transient
+digest; `--offline` never calls the network; the live link asking REST alone; tenacity retrying a transient
 error; strict failing on an unresolved variant; one-to-many expansion written as N rows.
 """
 

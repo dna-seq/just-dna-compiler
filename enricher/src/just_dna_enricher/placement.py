@@ -236,7 +236,8 @@ class PlacementCheck:
       snapshot placement): a disagreement there is a finding, an agreement proves nothing.
     * `not_asked` — rsIDs a live witness was due to be asked about and got no answer for: unknown.
     * `not_asked_reason` — why, when one reason covers them all (an injected resolver without the
-      REST method); `None` means per rsID, unreachable after retries or an anchor base not read.
+      REST method); `None` means per rsID: unreachable after retries, held by a `Retry-After` the
+      resolver is honouring, or an anchor base not read.
     * `reported_by` — the authorities whose placements were compared, the record's checked side.
     * `placed_by` — the authorities of every placement looked at, which a skip names instead.
     * `placed` — every rsID the comparison looked at, the denominator `single_witness` is a part of.
@@ -303,7 +304,8 @@ class PlacementCheck:
                 f"({examples(self.not_asked)}) — "
                 + (
                     self.not_asked_reason
-                    or "unreachable after retries, or an answer whose anchor base could not be read"
+                    or "unreachable after retries, held by Ensembl's Retry-After, or an answer whose "
+                    "anchor base could not be read"
                 )
                 + " — so it is unknown there, never agreement"
             )

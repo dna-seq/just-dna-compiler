@@ -682,7 +682,7 @@ def _run_enrichment(
             ", ".join(sorted(set(dropped_link))),
         )
 
-    # ── live Ensembl link (V2→V1), for cache misses, unless offline ────────────────────────────
+    # ── live Ensembl link (REST), for cache misses, unless offline ─────────────────────────────
     if live_ensembl_runs:
         missing = [v.rsid for v in need_pos if v.rsid and v.rsid not in rsid_to_loci]
         if missing:

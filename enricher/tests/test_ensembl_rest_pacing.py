@@ -11,12 +11,19 @@ sleeper, so nothing waits for real and every wait is observed.
 """
 
 import email.utils
+import inspect
 import os
+import time
 
 import httpx
 import pytest
 from just_dna_enricher.ensembl import EnsemblResolver
-from just_dna_enricher.net import RETRY_AFTER_CEILING, PacingGate, retry_after_seconds
+from just_dna_enricher.net import (
+    RETRY_AFTER_CEILING,
+    PacingGate,
+    retry_after_seconds,
+    retry_if_transient_within,
+)
 
 _MAPPING = {"seq_region_name": "1", "start": 11856377, "allele_string": "G/A", "assembly_name": "GRCh38"}
 _LOCI = [{"chrom": "1", "start": 11856377, "ref": "G", "alts": "A"}]
@@ -63,6 +70,25 @@ def test_retry_after_reads_seconds_and_an_http_date_and_nothing_else() -> None:
     assert retry_after_seconds(_status_error(404, {"Retry-After": "5"})) is None
     assert retry_after_seconds(httpx.ConnectError("down")) is None
     assert retry_after_seconds(None) is None
+
+
+def test_an_http_date_with_no_zone_is_gmt_never_the_hosts_local_time(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`-0000` parses to a naive datetime; read as local time it was off by the host's UTC offset."""
+    monkeypatch.setenv("TZ", "Europe/Berlin")
+    time.tzset()
+    try:
+        raw = email.utils.formatdate(1_000_030, usegmt=True).replace("GMT", "-0000")
+        assert retry_after_seconds(_status_error(429, {"Retry-After": raw}), now=lambda: 1_000_000) == 30.0
+    finally:
+        monkeypatch.undo()
+        time.tzset()
+
+
+def test_the_ceiling_is_keyword_only_so_an_exception_type_cannot_bind_to_it() -> None:
+    """`retry_if_transient(httpx.ReadError)`'s call shape, copied, must add a type, never set the ceiling."""
+    parameters = inspect.signature(retry_if_transient_within).parameters
+    assert parameters["ceiling"].kind is inspect.Parameter.KEYWORD_ONLY
+    assert parameters["also"].kind is inspect.Parameter.VAR_POSITIONAL
 
 
 def _resolver(handler, clock: _Clock) -> EnsemblResolver:

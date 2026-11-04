@@ -17,6 +17,7 @@ written before 0.8 may carry.
 """
 
 import logging
+import threading
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
@@ -66,7 +67,8 @@ class RsidResolver(Protocol):
     method `enrich` calls beyond this one is an **optional capability**, checked against its own named
     Protocol before the call (`RestWitness`), so a resolver written against an older enricher keeps
     working and the capability it lacks is reported as not asked rather than raised as an
-    `AttributeError` mid-run. `close` is called only on a resolver `enrich` built itself.
+    `AttributeError` mid-run. The one optional attribute, `non_nucleotide_rsids` (RM272), is read with
+    an empty default. `close` is called only on a resolver `enrich` built itself.
     """
 
     def resolve_rsid(self, rsid: str) -> tuple[list[dict] | None, str | None]: ...
@@ -99,8 +101,10 @@ class EnsemblResolver:
     # threads; the gate is thread-safe) paces every request it makes. Injectable for a test's clock.
     gate: PacingGate | None = None
     # The gate's clock reading before which nothing is asked: set when a throttle's `Retry-After`
-    # exceeds `net.RETRY_AFTER_CEILING`, so the server's "not before" is honoured across rsIDs.
+    # outlived the retries, so the server's "not before" is honoured across rsIDs. Under its own lock,
+    # because a host shares one resolver across threads and a stale reset would drop a fresh hold.
     _resume_at: float | None = None
+    _hold_lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if self.gate is None:
@@ -159,18 +163,20 @@ class EnsemblResolver:
         answer from any surface. It is an optional capability of an injected one (`RestWitness`).
         """
         assert self.gate is not None
-        if self._resume_at is not None:
-            if self.gate.clock() < self._resume_at:
-                logger.info("V1 REST for %s not asked: Ensembl asked for no request before then", rsid)
-                return None, None
-            self._resume_at = None
+        with self._hold_lock:
+            held = self._resume_at is not None and self.gate.clock() < self._resume_at
+        if held:
+            logger.info("V1 REST for %s not asked: Ensembl's Retry-After has not passed", rsid)
+            return None, None
         try:
             loci, withheld, unplaceable = self._rest_rsid(rsid)
         except httpx.HTTPStatusError as exc:
             asked = retry_after_seconds(exc)
             if asked is not None:
                 # The retries are spent or the wait was too long to sleep: honour it for every rsID after.
-                self._resume_at = self.gate.clock() + asked
+                resume_at = self.gate.clock() + asked
+                with self._hold_lock:
+                    self._resume_at = max(self._resume_at or resume_at, resume_at)
             # A 5xx or a 429 after the retries is a request that got no answer, never "no record"
             # (`@unreachable-not-absent`): a throttle used to fall through to the 4xx arm below.
             if is_transient_status(exc):

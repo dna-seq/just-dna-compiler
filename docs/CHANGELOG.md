@@ -84,7 +84,7 @@ after the retries is unreachable rather than "no record". New: `verification.ran
   waits on it once per attempt, so a host's shared resolver is really paced (just-dna-marketplace's
   pacing table already said it was). A retried 5xx or 429 waits at least the answer's `Retry-After`
   (`net.wait_retry_after`, `net.retry_after_seconds`: delta-seconds or an HTTP-date); one past
-  `net.RETRY_AFTER_CEILING` (60 s) is not retried (`net.retry_if_transient_within`), and the resolver
+  `net.RETRY_AFTER_CEILING` (10 s) is not retried (`net.retry_if_transient_within`), and the resolver
   asks nothing, answering could-not-ask, until the time the server named.
 
 ## 2026-11-04 — RM270: an indel's spelling-independent `vrs_id` reaches every variant parquet, and a filled coordinate is written left-aligned (0.8, uncut)

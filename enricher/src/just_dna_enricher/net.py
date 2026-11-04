@@ -15,6 +15,7 @@ Two of these look trivial and are not:
 """
 
 import dataclasses
+import datetime
 import email.utils
 import hashlib
 import itertools
@@ -28,7 +29,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
-from tenacity import retry, retry_if_exception, retry_if_exception_type, wait_exponential_jitter
+from tenacity import (
+    RetryCallState,
+    retry,
+    retry_if_exception,
+    retry_if_exception_type,
+    wait_exponential_jitter,
+)
 from tenacity.retry import retry_base
 from tenacity.stop import stop_base
 from tenacity.wait import wait_base
@@ -400,10 +407,12 @@ def stream_to_file(
 # which starts at half a second, so a throttled client asked again before it was allowed to. Ensembl
 # REST was the first client found doing it; it was also unpaced.
 
-#: The longest `Retry-After` a retry sleeps through. Ensembl's hourly budget answers with the time to
-#: its reset, which can be most of an hour: a run does not sleep that out in a retry loop. Past this,
-#: the request is not retried, and a client that honours the header asks nothing until it passes.
-RETRY_AFTER_CEILING: float = 60.0
+#: The longest `Retry-After` a retry sleeps through: about the longest backoff a retry here already
+#: waits (8 s). Ensembl's per-second budget asks for a fraction of a second; its hourly one answers
+#: with the time to its reset, which can be most of an hour, and a maintenance 503 may ask for minutes.
+#: Past this the request is not retried, and a client that honours the header asks nothing until the
+#: time passes — so a long ask costs a batch one request, not two long sleeps per subject.
+RETRY_AFTER_CEILING: float = 10.0
 
 
 def retry_after_seconds(exc: BaseException | None, *, now: Callable[[], float] = time.time) -> float | None:
@@ -426,6 +435,9 @@ def retry_after_seconds(exc: BaseException | None, *, now: Callable[[], float] =
             when = email.utils.parsedate_to_datetime(raw)
         except (TypeError, ValueError):
             return None
+        if when.tzinfo is None:
+            # `-0000` parses naive; an HTTP-date is GMT by definition, never the host's local time.
+            when = when.replace(tzinfo=datetime.UTC)
         seconds = when.timestamp() - now()
     if not math.isfinite(seconds):
         return None
@@ -438,7 +450,7 @@ def asks_past_ceiling(exc: BaseException | None, ceiling: float = RETRY_AFTER_CE
     return asked is not None and asked > ceiling
 
 
-def retry_if_transient_within(ceiling: float = RETRY_AFTER_CEILING, *also: type[BaseException]) -> retry_base:
+def retry_if_transient_within(*also: type[BaseException], ceiling: float = RETRY_AFTER_CEILING) -> retry_base:
     """`retry_if_transient`, except a throttle whose `Retry-After` exceeds `ceiling` is not retried."""
     return retry_if_transient(*also) & retry_if_exception(lambda exc: not asks_past_ceiling(exc, ceiling))
 
@@ -454,7 +466,7 @@ class wait_retry_after(wait_base):
         self.fallback = fallback
         self.ceiling = ceiling
 
-    def __call__(self, retry_state) -> float:
+    def __call__(self, retry_state: RetryCallState) -> float:
         backoff = self.fallback(retry_state)
         outcome = retry_state.outcome
         asked = retry_after_seconds(outcome.exception() if outcome is not None and outcome.failed else None)
