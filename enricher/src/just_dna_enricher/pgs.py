@@ -43,7 +43,7 @@ from dataclasses import dataclass
 import httpx
 from tenacity import retry, retry_if_exception_type, wait_exponential_jitter
 
-from just_dna_enricher.net import PacingGate, attempt_floor
+from just_dna_enricher.net import GONE, PacingGate, attempt_floor, retired_message
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +81,15 @@ class PgsCatalogUnavailable(PgsCatalogError):
     `IdentifierReport.pgs_not_checked` and only the two PGS records read it. `currency._pgs_release` is
     the one caller that does translate, into `ReleaseUnavailable`, because a `ReleaseProbe`'s contract
     is an exception and its reason is read off the subclass.
+    """
+
+
+class PgsCatalogRetired(PgsCatalogUnavailable):
+    """The PGS Catalog answered HTTP 410: it retired the endpoint asked (RM354).
+
+    A fact about the source, not an outage, and not retried; a `PgsCatalogUnavailable` so every
+    existing handler still catches it. A 404 keeps its meaning here: the request went somewhere
+    unexpected, since this service says "no such score" with an empty 200.
     """
 
 
@@ -423,6 +432,8 @@ class PgsCatalogClient:
             response = self._request(url)
         except (httpx.TransportError, httpx.TimeoutException) as exc:
             raise PgsCatalogUnavailable(f"{url} could not be reached: {exc}") from exc
+        if response.status_code == GONE:
+            raise PgsCatalogRetired(retired_message("The PGS Catalog", response))
         if response.status_code >= 400:
             # Including 404. This service says "no such score" with an empty body on a 200, so a 404
             # here means the request went somewhere unexpected rather than that the score is absent.

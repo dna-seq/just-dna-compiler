@@ -27,20 +27,20 @@ from collections.abc import Callable
 
 import httpx
 import pytest
-from just_dna_enricher.civic_api import CivicApiClient, CivicApiUnavailable
-from just_dna_enricher.cpic import CpicClient, CpicError
-from just_dna_enricher.currency import ClinVarReleaseClient, ReleaseUnavailable
+from just_dna_enricher.civic_api import CivicApiClient, CivicApiRetired, CivicApiUnavailable
+from just_dna_enricher.cpic import CpicClient, CpicError, CpicRetired
+from just_dna_enricher.currency import ClinVarReleaseClient, ReleaseRetired, ReleaseUnavailable
 from just_dna_enricher.ensembl import EnsemblResolver, EnsemblSettings
-from just_dna_enricher.eutils import EutilsClient, EutilsError, EutilsSettings
-from just_dna_enricher.gnomad import GnomadClient, GnomadError, GnomadSettings
+from just_dna_enricher.eutils import EutilsClient, EutilsError, EutilsRetired, EutilsSettings
+from just_dna_enricher.gnomad import GnomadClient, GnomadError, GnomadRetired, GnomadSettings
 from just_dna_enricher.grch37 import Grch37Client
-from just_dna_enricher.gwas import GwasCatalogClient, GwasError
-from just_dna_enricher.identifiers import IdentifierUnavailable, OntologyClient
-from just_dna_enricher.literature import EuropePmcClient, LiteratureUnavailable
-from just_dna_enricher.litvar import LitvarClient, LitvarUnavailable
+from just_dna_enricher.gwas import GwasCatalogClient, GwasError, GwasRetired
+from just_dna_enricher.identifiers import IdentifierRetired, IdentifierUnavailable, OntologyClient
+from just_dna_enricher.literature import EuropePmcClient, LiteratureRetired, LiteratureUnavailable
+from just_dna_enricher.litvar import LitvarClient, LitvarRetired, LitvarUnavailable
 from just_dna_enricher.net import PacingGate
-from just_dna_enricher.pgs import PgsCatalogClient, PgsCatalogUnavailable
-from just_dna_enricher.pharmvar import PharmVarClient, PharmVarError
+from just_dna_enricher.pgs import PgsCatalogClient, PgsCatalogRetired, PgsCatalogUnavailable
+from just_dna_enricher.pharmvar import PharmVarClient, PharmVarError, PharmVarRetired
 
 
 @pytest.fixture(autouse=True)
@@ -227,8 +227,8 @@ CLIENTS = [
     # unreachable are cleared by different things.
     ("civic_api", _civic_api, CivicApiUnavailable),
     # `GwasError` is the whole vocabulary here — this client has no `*Unavailable` subclass, so the
-    # parent is the exact assertion rather than a weakened one. `GwasNotFound` is the 404 arm and is
-    # an *answer*, not a failure, so it is deliberately not what these cases drive.
+    # parent is the exact assertion rather than a weakened one. `GwasNotFound` is the 404 arm, and
+    # since v2 (RM354) only `follow` reads it as an answer; `GwasRetired` is the 410 arm.
     ("gwas", _gwas, GwasError),
 ]
 
@@ -350,12 +350,12 @@ def test_an_exhausted_transport_failure_surfaces_as_the_tiers_own_error(label, b
 #: the collapse this tier refuses everywhere else. Keeping the case in the table rather than dropping
 #: the client from it means the *semantics* are asserted either way, and a client that silently
 #: changed its mind about 404 fails one of these two tests.
-#: `gwas` joins it for a different reason worth stating, since the two are not the same fact: OLS4
-#: answers 404 for a term it does not define, while the GWAS Catalog holds only variants carrying a
-#: published association, so it 404s on a rare clinical variant that simply has none. Both are the
-#: source saying *absent*, and `associations_for` turns it into the empty ANSWER `[]` — which is the
-#: third outcome that must stay distinct from `GwasError`'s could-not-ask.
-FOUR_OH_FOUR_IS_AN_ANSWER = {"identifiers", "gwas"}
+#: `gwas` was in it until RM354 and left with the legacy API. That API was resource-shaped and 404'd
+#: on a rare clinical variant, which was the Catalog saying *absent*. v2 is a search: it answers a
+#: variant it holds nothing for with a 200 and zero elements, and the only 404 measured on it
+#: (2026-11-04) was a path that does not exist — so a 404 there is could-not-ask, and reading it as
+#: absent would write `not_found` for every variant the day the path moves.
+FOUR_OH_FOUR_IS_AN_ANSWER = {"identifiers"}
 
 
 @pytest.mark.parametrize("label,builder,error", CLIENTS, ids=[c[0] for c in CLIENTS])
@@ -400,6 +400,119 @@ def test_a_200_that_is_not_json_surfaces_as_the_tiers_own_error(label, builder, 
     # on purpose, since a body that cannot be read is a shape failure rather than unreachability,
     # and their `CLIENTS` rows say so.
     assert issubclass(error, raised), f"{label} raised {raised.__name__}, outside {error.__name__}'s family"
+
+
+#: Every client's name for a 410 Gone — the source retiring the endpoint (RM354), each a subclass of
+#: the client's could-not-ask type so every existing handler still catches it.
+#:
+#: The GWAS Catalog's legacy API began answering 410 on every path, and the client filed it as the
+#: same `GwasError` an outage raises, so a source that MOVED read as one that was down. The class was
+#: wider than that lane: no client named a 410, and six retried it — with every other 4xx — three or
+#: four times first. Keyed on the `CLIENTS` labels and asserted equal to them below, so a new row
+#: cannot join without naming its 410.
+RETIRED_IS_NAMED = {
+    "gnomad": GnomadRetired,
+    "europepmc": LiteratureRetired,
+    "eutils": EutilsRetired,
+    "cpic": CpicRetired,
+    "cpic.row_count": CpicRetired,
+    "pharmvar": PharmVarRetired,
+    "identifiers": IdentifierRetired,
+    "currency": ReleaseRetired,
+    "pgs": PgsCatalogRetired,
+    "litvar": LitvarRetired,
+    "civic_api": CivicApiRetired,
+    "gwas": GwasRetired,
+}
+
+#: A permanent 4xx answers the same on every attempt. 400 and 404 are here beside 410 because the
+#: six predicates that retried one retried all three.
+PERMANENT_STATUSES = (400, 404, 410)
+
+
+def test_every_client_names_its_410() -> None:
+    assert set(RETIRED_IS_NAMED) == {label for label, _builder, _error in CLIENTS}
+
+
+@pytest.mark.parametrize("status", PERMANENT_STATUSES)
+@pytest.mark.parametrize("label,builder,error", CLIENTS, ids=[c[0] for c in CLIENTS])
+def test_a_permanent_4xx_is_asked_once(label, builder, error, status) -> None:
+    """Never retried, in any client — whatever the status means to that client.
+
+    A 404 is an answer to `identifiers` and a failure to the rest, and a 400 is LitVar's answered
+    absence when its body says so; this test reads none of that, only how many times it was asked.
+    """
+    asked: list[str] = []
+
+    def permanent(request: httpx.Request) -> httpx.Response:
+        asked.append(str(request.url))
+        return httpx.Response(status, text="This API is no longer available.")
+
+    call = builder(permanent)
+    try:
+        call()
+    except Exception as exc:  # noqa: BLE001 -- the outcome is pinned by the tests beside this one
+        assert not isinstance(exc, httpx.HTTPError), f"{label} leaked {type(exc).__name__}"
+    assert len(asked) == 1, f"{label} asked {len(asked)} times for a {status}"
+
+
+@pytest.mark.parametrize("label,builder,error", CLIENTS, ids=[c[0] for c in CLIENTS])
+def test_a_410_is_the_clients_named_retired_error(label, builder, error) -> None:
+    """The named type arrives, inside the client's own family — never the plain could-not-ask."""
+
+    def gone(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(410, text="This legacy API is no longer available. See the v2 guide.")
+
+    with pytest.raises(error) as caught:
+        builder(gone)()
+    assert isinstance(caught.value, RETIRED_IS_NAMED[label]), type(caught.value).__name__
+    assert issubclass(RETIRED_IS_NAMED[label], error)
+    assert "410" in str(caught.value) and "v2 guide" in str(caught.value)
+
+
+def test_no_retry_policy_in_the_tier_retries_a_permanent_4xx() -> None:
+    """The decorator half, over every `@retry` the package defines — walked, never listed.
+
+    The behavioural test above covers the `CLIENTS` rows; this one covers the policies those rows do
+    not reach (the withholding clients, the builders' download), by handing each policy's own `retry`
+    predicate a synthetic `HTTPStatusError` and asking whether it would try again.
+    """
+    import importlib
+    import pkgutil
+
+    import just_dna_enricher
+    from tenacity import BaseRetrying, RetryCallState
+
+    policies: dict[str, BaseRetrying] = {}
+    for info in pkgutil.iter_modules(just_dna_enricher.__path__):
+        module = importlib.import_module(f"just_dna_enricher.{info.name}")
+        here = module.__name__
+        owners = [v for v in vars(module).values() if getattr(v, "__module__", None) == here]
+        owners += [
+            m
+            for v in vars(module).values()
+            if isinstance(v, type) and getattr(v, "__module__", None) == here
+            for m in vars(v).values()
+            if getattr(m, "__module__", None) == here
+        ]
+        for owner in owners:
+            policy = getattr(owner, "retry", None)
+            if isinstance(policy, BaseRetrying):
+                policies[f"{info.name}.{getattr(owner, '__qualname__', owner)}"] = policy
+    assert policies, "the walk found no retry policy at all"
+
+    request = httpx.Request("GET", "https://example.test/x")
+    retried = []
+    for name, policy in sorted(policies.items()):
+        for status in PERMANENT_STATUSES:
+            exc = httpx.HTTPStatusError(
+                "x", request=request, response=httpx.Response(status, request=request)
+            )
+            state = RetryCallState(retry_object=policy, fn=None, args=(), kwargs={})
+            state.set_exception((type(exc), exc, None))
+            if policy.retry(state):
+                retried.append(f"{name}:{status}")
+    assert retried == []
 
 
 #: Clients whose answer is not a JSON body at all — `cpic.row_count` reads a `Content-Range` header

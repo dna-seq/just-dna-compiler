@@ -973,29 +973,6 @@ running duckdb cannot read rather than mocking `connect`.
 
 **Residuals** none yet.
 
-## RM354 — the GWAS Catalog retired the legacy REST API the `gwas` pass reads, so `gwas_effects.csv` cannot be filled for a new module
-
-**Severity** high · **Status** open — **a patch** · **Owner** enricher (`gwas`) · **Motivating case** the RM333
-builder's report, 2026-11-04, recorded in `docs/probes/LANES_0_8.md` §5.5 on `build/RM333` · *related* RM239,
-RM333, `@client-exception-contract`
-
-**One class: a source retired an API surface, and the client has no finding for it.** `GwasCatalogClient` asks
-`https://www.ebi.ac.uk/gwas/rest/api/singleNucleotidePolymorphisms/<rsid>/associations` (`DEFAULT_GWAS_ENDPOINT`).
-That endpoint now answers HTTP 410, "This legacy GWAS Catalog REST API is no longer available", pointing at the
-v2 migration guide; `/gwas/rest/api/v2/associations?rs_id=` answers 200. The 410 falls into the generic
-`httpx.HTTPError` arm and becomes a plain `GwasError`, which the pass records as could-not-ask. So every rsID of
-every new module reads as an outage, nothing is filled, and nothing says the source moved. RM239's posterior is
-filled only on `gwas_effects.csv` rows that already exist.
-
-**The fix, as one rule.** The client moves to the v2 endpoint (its response shape probed from the real answer
-first, `@probe-the-real-file`), and a 410 from any endpoint raises a named retired-endpoint error, a `GwasError`
-subclass whose message carries the URL and the source's own text, never the generic failure. A subclass makes a
-caller's `except` order load-bearing, so the handler shapes are enumerated before it lands. Every other client
-that maps status codes gets the same 410 arm, since retirement is a currency fact about the source, not one
-lane's bug.
-
-**Residuals** none yet.
-
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.

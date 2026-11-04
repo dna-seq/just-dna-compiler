@@ -66,7 +66,7 @@ from just_dna_enricher.licensing import (
     pgs_score_terms,
     withdraw_stale_dataset,
 )
-from just_dna_enricher.net import PacingGate, attempt_floor, dedupe
+from just_dna_enricher.net import PacingGate, attempt_floor, dedupe, raise_if_retired
 from just_dna_enricher.pgs import (
     PGS_SOURCE,
     CatalogRelease,
@@ -124,6 +124,14 @@ class IdentifierUnavailable(IdentifierCheckError):
     from several places that mean different skips, so the raiser is the only thing that knows which;
     here every raise means the same one, and `unreachable_records()` already owns it for all three
     checks at once. Putting it on the exception would be a second place to keep the same fact.
+    """
+
+
+class IdentifierRetired(IdentifierUnavailable):
+    """OLS4 or HGNC answered HTTP 410: it retired the endpoint asked (RM354).
+
+    A fact about the source, not an outage, and not retried; an `IdentifierUnavailable` so every
+    existing handler still catches it. A 404 keeps its meaning here — the source answering *absent*.
     """
 
 
@@ -637,6 +645,7 @@ class OntologyClient:
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
+            raise_if_retired(exc, IdentifierRetired, "The identifier registry")
             raise IdentifierUnavailable(f"{url} answered {response.status_code}: {exc}") from exc
         return response
 

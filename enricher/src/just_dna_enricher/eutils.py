@@ -28,12 +28,18 @@ from typing import Any
 import httpx
 from tenacity import (
     retry,
-    retry_if_exception_type,
     wait_exponential_jitter,
 )
 
 from just_dna_enricher.locations import env_value
-from just_dna_enricher.net import PacingGate, attempt_floor, batched, dedupe
+from just_dna_enricher.net import (
+    PacingGate,
+    attempt_floor,
+    batched,
+    dedupe,
+    raise_if_retired,
+    retry_if_transient,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +61,11 @@ class EutilsError(RuntimeError):
 
 class EutilsRateLimitedError(EutilsError):
     """NCBI answered HTTP 429. Retried with backoff; the pacing gate should normally prevent it."""
+
+
+class EutilsRetired(EutilsError):
+    """NCBI answered HTTP 410: it retired the eutils endpoint asked (RM354). A fact about the source,
+    not an outage, and not retried; an `EutilsError` so every existing handler still catches it."""
 
 
 @dataclass
@@ -130,14 +141,8 @@ class EutilsClient:
     @retry(
         stop=attempt_floor(4),
         wait=wait_exponential_jitter(initial=1.0, max=20.0),
-        retry=retry_if_exception_type(
-            (
-                EutilsRateLimitedError,
-                httpx.TransportError,
-                httpx.TimeoutException,
-                httpx.HTTPStatusError,
-            )
-        ),
+        # A 5xx or a 429 only (RM354): a permanent 4xx answers the same on every attempt.
+        retry=retry_if_transient(EutilsRateLimitedError),
         reraise=True,
     )
     def _request(self, path: str, params: dict[str, str]) -> dict:
@@ -178,6 +183,7 @@ class EutilsClient:
         try:
             return self._request(path, params)
         except (httpx.TransportError, httpx.HTTPStatusError) as exc:
+            raise_if_retired(exc, EutilsRetired, "NCBI eutils")
             raise EutilsError(f"eutils request failed: {exc}") from exc
         except ValueError as exc:
             raise EutilsError(f"eutils returned a non-JSON body for {path}: {exc}") from exc

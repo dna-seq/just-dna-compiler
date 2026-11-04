@@ -77,7 +77,7 @@ from tenacity import (
 from just_dna_enricher.eutils import EutilsClient, EutilsError, is_missing
 from just_dna_enricher.licensing import article_terms, sidecar_path
 from just_dna_enricher.locations import env_value
-from just_dna_enricher.net import PacingGate, attempt_floor, batched, dedupe
+from just_dna_enricher.net import PacingGate, attempt_floor, batched, dedupe, raise_if_retired
 from just_dna_enricher.verification import ran, record_verification, skipped
 
 logger = logging.getLogger(__name__)
@@ -128,6 +128,15 @@ class LiteratureUnavailable(LiteratureEnrichmentError):
     already answer a transport failure with `None` rather than an exception — the tri-state withhold
     this codebase uses for "could not be retrieved" — and turning either into an error here would
     convert a withheld answer into a failed run.
+    """
+
+
+class LiteratureRetired(LiteratureUnavailable):
+    """Europe PMC answered HTTP 410: it retired the endpoint asked (RM354).
+
+    A fact about the source, not an outage, and not retried; a `LiteratureUnavailable` so every
+    existing handler still catches it. Raised by `EuropePmcClient.lookup` only: `fulltext` keeps its
+    withhold, since a missing fulltext there is already `None` whatever the cause.
     """
 
 
@@ -374,6 +383,7 @@ class EuropePmcClient:
                 response = self._get("search", {"query": query, "resultType": "core", "format": "json"})
                 payload = response.json()
             except httpx.HTTPError as exc:
+                raise_if_retired(exc, LiteratureRetired, "Europe PMC")
                 raise LiteratureUnavailable(f"Europe PMC could not be asked: {exc}") from exc
             except ValueError as exc:
                 raise LiteratureUnavailable(

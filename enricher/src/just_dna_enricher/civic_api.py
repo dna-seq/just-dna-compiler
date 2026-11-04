@@ -49,7 +49,7 @@ from dataclasses import dataclass
 import httpx
 from tenacity import retry, retry_if_exception_type, wait_exponential_jitter
 
-from just_dna_enricher.net import PacingGate, attempt_floor
+from just_dna_enricher.net import PacingGate, attempt_floor, raise_if_retired
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +125,14 @@ class CivicApiUnavailable(CivicApiError):
     by type rather than by reading `__cause__` (`@client-exception-contract`). Only this one means
     nobody was asked — a payload this client cannot read is a `CivicApiError`, because the service did
     answer and the defect is in the reading.
+    """
+
+
+class CivicApiRetired(CivicApiUnavailable):
+    """CIViC answered HTTP 410: it retired the endpoint asked (RM354).
+
+    A fact about the source, not an outage, and not retried; a `CivicApiUnavailable` so every existing
+    handler still catches it.
     """
 
 
@@ -302,6 +310,7 @@ class CivicApiClient:
         try:
             response = self._request(variables)
         except httpx.HTTPStatusError as exc:
+            raise_if_retired(exc, CivicApiRetired, "CIViC")
             raise CivicApiUnavailable(
                 f"CIViC answered {exc.response.status_code} for the evidence query"
             ) from exc

@@ -2842,8 +2842,8 @@ spellings of one and `g/dL`/`g/dl` differ only in case, while 138 rows carry the
 uninformative `unit`. Those betas are not poolable, and the manifest's `gwas_effects.units` is what
 makes that visible without reading the parquet.
 
-**`effect_direction` is not `direction`.** It is the Catalog's `betaDirection` — which way the effect
-allele moves the *measured trait* — while `VariantRow.direction` is a clinical judgement
+**`effect_direction` is not `direction`.** It is the Catalog's `betaDirection` (the last word of `beta`
+since its REST API v2, RM354) — which way the effect allele moves the *measured trait* — while `VariantRow.direction` is a clinical judgement
 (protective|risk|neutral|unknown|contested). Increasing HDL and increasing LDL are both `increase`; one field
 carrying both axes is the Principle 5 overloading `state` is being unwound for.
 
@@ -2860,7 +2860,7 @@ fact rather than the source's. `variant_key` joins it to the weights rows.
 `rsid` is **inside** `GWAS_FACT_FIELDS` — the inverse of `CLINICAL_ASSERTION_FACT_FIELDS`, and not by
 oversight. There the archive lookup is allele-exact and returns no rsID, so the column comes from the
 module's own resolution and would make two modules holding the same records hash differently. Here the
-Catalog is *queried* by rsID and echoes it back inside `riskAlleleName`, so it is part of what the
+Catalog is *queried* by rsID and echoes it back inside `riskAlleleName` (`snp_effect_allele` on v2), so it is part of what the
 source said. `trait` is outside, on `gene_validity`'s rule: a label that churns between releases for an
 unchanged `trait_efo_id` describes the association rather than being it.
 

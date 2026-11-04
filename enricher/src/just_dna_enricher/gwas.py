@@ -1,34 +1,45 @@
 """The NHGRI-EBI GWAS Catalog pass — published effect sizes as a derived fact table (0.6, RM90).
 
-Fills `gwas_effects.csv` for the variants `variants.csv` names, from the Catalog's REST API. What it
-does **not** do is fill `weight`: a consumer asked for exactly that and it is barred — MODULE_LIFECYCLE
-§ Stage 3 names `weight`/`direction`/`effect_size` in the cells no tool fills, and every check in this
-tier reports rather than repairs. The effect lands in its own table beside the authored column, and a
-consumer chooses between them wholesale.
+Fills `gwas_effects.csv` for the variants `variants.csv` names, from the Catalog's REST API **v2**
+(RM354). What it does **not** do is fill `weight`: a consumer asked for exactly that and it is barred —
+MODULE_LIFECYCLE § Stage 3 names `weight`/`direction`/`effect_size` in the cells no tool fills, and
+every check in this tier reports rather than repairs. The effect lands in its own table beside the
+authored column, and a consumer chooses between them wholesale.
 
-**Everything below was established by probing the real API on 2026-08-17**, not from its
-documentation, and three findings shaped the pass:
+**The legacy API is gone.** `/gwas/rest/api/singleNucleotidePolymorphisms/<rsid>/associations`, which
+this pass read from 0.6 until 2026-11-04, answers HTTP 410 on every path with "This legacy GWAS
+Catalog REST API is no longer available". A 410 now raises `GwasRetired`, never the plain could-not-ask
+`GwasError`, because a source that moved and a source that is down are cleared by different things.
 
-* **The association payload is thin.** It carries the effect, the p-value and the risk allele, and
-  nothing else — `pmid`, `study_accession`, `ancestry`, `trait` and `trait_efo_id` all sit behind
-  `_links.study` and `_links.efoTraits`. So a complete row costs two extra requests, and the pass
-  costs `1 + 2N` per variant with N associations.
+**Everything below was established by probing v2 on 2026-11-04** (`/gwas/rest/api/v2/associations?
+rs_id=`), not from its migration guide, and these findings shaped the pass:
 
-  **`_LinkCache` memoizes by resolved URL, and the measurement corrected the prediction that
-  motivated it.** The expectation was that associations share studies heavily, so caching would
-  collapse most of the cost. Run against `reference_examples/hfe_hemochromatosis`, it saved
-  **nothing**: rs1800562 alone carries 189 associations and each names its *own* study, so the real
-  figure was 382 requests and 0 cache hits. The cache stays — it costs a dict and it does pay on a
-  module whose variants share literature — but the honest budget is `1 + 2N`, and `--no-study-facts`
-  exists because of that measurement rather than in anticipation of it. The pass reports both halves
-  so an operator sees the real number instead of this docstring's guess.
-* **`riskAlleleName` is `rs4149056-C`, or `rs4149056-?` when the study never established which allele
-  carries the effect** — 2 of the first 3 associations for that variant. `-?` becomes `None`, never a
-  guess, and the row is still written: an effect relative to an unknown allele is real evidence that
-  cannot be used as a weight, and dropping it would hide that from a consumer who needs to know.
-* **`betaUnit` is free text and frequently uninterpretable** — `umol/l` on one association and `unit`
-  on two others for the same variant. It is stored verbatim including the useless values, because
+* **The association is fat now, and the request budget collapsed with it.** `pubmed_id`,
+  `accession_id` and `efo_traits` sit on the association itself, so the legacy `1 + 2N` per variant
+  (a study and a trait link per association, measured at 382 requests for one real module) is gone.
+  Ancestry is the one fact still behind a request — `/studies/<accession>/ancestries` — so the cost is
+  one request per page plus one per **distinct** study, and `_LinkCache` keyed on that URL now pays.
+* **It pages, 20 per page by default.** rs4149056 carries 386 associations. The pass asks for large
+  pages and follows `_links.next` until there is none, so a server that caps the size loses nothing,
+  and every page is counted in the request total.
+* **The empty answer is a 200 with no `_embedded` key at all**, `page.totalElements: 0` — for an rsID
+  the Catalog has never heard of as much as for a rare clinical one. The legacy API 404'd there
+  instead, so the meaning of a 404 flipped: on the v2 search path it is a wrong path, never an answer.
+* **The effect is one composite string**, `"0.05 umol/l increase"` (or `"-"` when the association is
+  an odds ratio, which sits in `or_per_copy_num`). The legacy `betaNum` / `betaUnit` /
+  `betaDirection` come out of it by one grammar; a string outside it is withheld whole and counted.
+  The unit is kept verbatim between the number and the direction — one study writes U+2009 in it.
+* **`snp_effect_allele` is `rs4149056-C`, or `rs4149056-?` when the study never established which
+  allele carries the effect** — the legacy `riskAlleleName` grammar, unchanged. `-?` becomes `None`,
+  never a guess, and the row is still written: an effect relative to an unknown allele is real
+  evidence that cannot be used as a weight.
+* **The unit is free text and frequently uninterpretable** — `umol/l` on one association and `unit`
+  on many others for the same variant. It is stored verbatim including the useless values, because
   "these betas are on unknown and possibly different scales" is the fact a consumer must have.
+* **v2 publishes no standard error.** `standard_error` stays null on every row this pass writes.
+* **The p-value has its curated pair back.** `p_value` is `0.0` past float64's range, as before, but
+  `pvalue_mantissa`/`pvalue_exponent` beside it still say `3e-493`; the verbatim string is built
+  from the pair, and the queryable number is read from that same string.
 
 **Rate limits are NOT established.** EBI publishes no numeric budget that could be found, which makes
 this pass unlike `gnomad.py`, whose 10-requests-per-60-seconds is real, documented and load-bearing.
@@ -38,6 +49,7 @@ nobody later "corrects" it against a number that does not exist.
 
 import csv
 import logging
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -63,11 +75,11 @@ from just_dna_enricher.licensing import (
     require_sources_file,
     sidecar_path,
 )
-from just_dna_enricher.net import PacingGate, attempt_floor
+from just_dna_enricher.net import PacingGate, attempt_floor, raise_if_retired
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_GWAS_ENDPOINT = "https://www.ebi.ac.uk/gwas/rest/api"
+DEFAULT_GWAS_ENDPOINT = "https://www.ebi.ac.uk/gwas/rest/api/v2"
 GWAS_SOURCE = GWAS_CATALOG_TERMS.source
 
 #: Derived from the model, never hand-kept — a parallel list is how `SOURCES_FIELDNAMES` lost a column.
@@ -78,6 +90,17 @@ _UNKNOWN_ALLELE = "?"
 
 #: What it writes for a number the study did not report. An ABSENCE, not a value we cannot hold.
 _NOT_REPORTED = "NR"
+
+#: What v2 writes in a composite string field (`beta`, `range`) that has no value — an odds-ratio
+#: association's `beta`, say. v2's own null, distinct from a study's `NR`, and also an absence.
+_V2_NO_VALUE = "-"
+
+#: v2's `beta`: `<number> [<unit>] <increase|decrease>`. The unit is everything between, verbatim —
+#: recorded with a U+2009 in it, which a split-and-join would have rewritten.
+_BETA_GRAMMAR = re.compile(r"^(?P<size>\S+)(?:\s+(?P<unit>.*?))?\s+(?P<direction>increase|decrease)$")
+
+#: Associations per page asked for. v2 defaults to 20; the pass still follows `_links.next`.
+_PAGE_SIZE = 1000
 
 #: Seconds between requests. **Not a transcribed limit** — see the module docstring. Conservative
 #: because the pass can issue several requests per variant and EBI publishes no budget to respect.
@@ -103,9 +126,27 @@ class GwasNotFound(GwasError):
     in the module, which is every clinically-authored module.
 
     It stays inside `GwasError` so a caller that does not care about the distinction still catches
-    one type; `associations_for` catches it and reports the empty answer, which the pass records as
-    `not_found`. What must never happen is the reverse — a transport failure read as "no
-    associations", which would write a confident negative about a variant nobody could ask about.
+    one type. **Since v2 (RM354) only `follow` treats it as an answer** — one study's ancestry
+    withheld. The v2 search answers a variant it holds nothing for with a 200 and zero elements, and
+    its only measured 404 was a path that does not exist, so `associations_for` lets this propagate:
+    reading it as "no associations" would write a confident negative about a variant nobody could ask
+    about.
+    """
+
+
+class GwasRetired(GwasError):
+    """The Catalog answered HTTP 410 Gone: it retired the endpoint this client asked (RM354).
+
+    **A fact about the source, not an outage.** The legacy REST API began answering 410 on every path
+    with "This legacy GWAS Catalog REST API is no longer available", and the generic status arm
+    turned that into a plain `GwasError` — the same could-not-ask an outage raises — so a source
+    that had moved read as one that was down, and nothing said to upgrade. The message carries the
+    URL and the source's own text, which names where it went.
+
+    Not retried: a 410 is an `HTTPStatusError`, which is outside the retry predicate by construction,
+    and asking again changes nothing. A subclass of `GwasError` so every existing `except GwasError`
+    still catches it; nothing in the tier catches `GwasNotFound` before `GwasError` on a path that
+    could see a 410, and `follow`'s `except GwasNotFound` does not match it, so it propagates.
     """
 
 
@@ -119,6 +160,9 @@ class GwasResult:
     requests_made: int = 0
     requests_saved: int = 0
     p_value_underflows: int = 0
+    #: Associations whose composite effect string (`beta`) is outside the grammar this pass reads, so
+    #: their effect columns are withheld whole. Counted for `strict`, like `unusable` (RM354).
+    unparsed_effects: int = 0
     #: Associations the Catalog served that this pass could not key on, so they are in no row. Counted
     #: because `strict` reads it (RM100) and because "we dropped some" is not a thing to leave in a log.
     unusable: int = 0
@@ -127,7 +171,10 @@ class GwasResult:
 
 @dataclass
 class _LinkCache:
-    """Memoize `_links` follows by resolved URL, and count what the memoization saved.
+    """Memoize the per-study follow by URL, and count what the memoization saved.
+
+    On v2 the only follow left is a study's ancestries, so this pays whenever two associations share
+    a study (rs4149056: 386 associations, 371 studies). On the legacy API it paid nothing at all.
 
     The counting is not decoration. The pass's cost is dominated by these follows, the budget it is
     spending is somebody else's, and a number this workspace computes and discards is one every
@@ -201,6 +248,7 @@ class GwasCatalogClient:
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 404:
                 raise GwasNotFound(f"GWAS Catalog has no record at {url}") from exc
+            raise_if_retired(exc, GwasRetired, "The GWAS Catalog")
             raise GwasError(f"GWAS Catalog returned {exc.response.status_code} for {url}") from exc
         except ValueError as exc:
             raise GwasError(f"GWAS Catalog returned unparseable JSON for {url}: {exc}") from exc
@@ -219,43 +267,64 @@ class GwasCatalogClient:
         except httpx.HTTPError as exc:
             raise GwasError(f"GWAS Catalog request failed for {url}: {exc}") from exc
 
-    def associations_for(self, rsid: str) -> list[dict]:
-        """Every association the Catalog holds for one rsID.
+    def association_pages(self, rsid: str) -> list[list[dict]]:
+        """Every page of the Catalog's associations for one rsID, one list per request made.
 
-        **Three outcomes, not two** — the S20 shape. A non-empty list is an answer; `[]` is *also* an
-        answer (the Catalog was reached and holds nothing for this variant, which the caller records
-        as `not_found`); and a raised `GwasError` means it could not be asked, which is unchecked
-        rather than empty. Fusing the last two would turn a failed request into a definite negative.
+        Pages rather than a flat list so the pass can count what it spent (`@dont-discard-computed`).
+        **Three outcomes, not two** — the S20 shape. Associations are an answer; a single empty page
+        is *also* an answer (the Catalog was reached and holds nothing for this variant, which the
+        caller records as `not_found`); and a raised `GwasError` means it could not be asked, which is
+        unchecked rather than empty. Fusing the last two would turn a failed request into a definite
+        negative — which is why a 404 here raises (see `GwasNotFound`).
         """
-        url = f"{self.endpoint}/singleNucleotidePolymorphisms/{rsid}/associations"
-        try:
+        url: str | None = str(
+            httpx.URL(f"{self.endpoint}/associations", params={"rs_id": rsid, "size": _PAGE_SIZE})
+        )
+        pages: list[list[dict]] = []
+        asked: set[str] = set()
+        while url:
+            if url in asked:
+                raise GwasError(f"GWAS Catalog paging for {rsid} links back to {url}; refusing to loop")
+            asked.add(url)
             payload = self._get(url)
-        except GwasNotFound:
-            # The Catalog holds only variants with a published association, so it 404s on a rare
-            # clinical variant rather than returning an empty list. That is the empty ANSWER.
-            return []
-        embedded = payload.get("_embedded") or {}
-        associations = embedded.get("associations")
-        if associations is None:
-            # A 200 with neither `_embedded.associations` nor an empty list is a shape we do not
-            # model. Raising beats returning `[]`, which would record a definite "no associations".
-            raise GwasError(
-                f"GWAS Catalog response for {rsid} carries no `_embedded.associations` — the API "
-                f"shape has changed and this pass would otherwise record a false negative"
-            )
-        return list(associations)
+            associations = (payload.get("_embedded") or {}).get("associations")
+            if associations is None:
+                # v2's empty answer is a 200 with no `_embedded` key and a page block saying zero.
+                # Anything else without associations is a shape this pass does not model, and
+                # returning `[]` for it would record a definite "no associations".
+                if (payload.get("page") or {}).get("totalElements") == 0:
+                    pages.append([])
+                    break
+                raise GwasError(
+                    f"GWAS Catalog response for {rsid} carries no `_embedded.associations` and does "
+                    f"not say it is empty — the API shape has changed and this pass would otherwise "
+                    f"record a false negative"
+                )
+            pages.append(list(associations))
+            url = (((payload.get("_links") or {}).get("next")) or {}).get("href")
+        return pages
+
+    def associations_for(self, rsid: str) -> list[dict]:
+        """Every association the Catalog holds for one rsID, all pages joined. `[]` is an answer."""
+        return [association for page in self.association_pages(rsid) for association in page]
+
+    def study_ancestries_url(self, accession: str) -> str:
+        """Where v2 keeps one study's ancestries. Built from the accession: v2 associations carry no
+        `_links.study`, only `self`, `loci` and `snp`."""
+        return f"{self.endpoint}/studies/{accession}/ancestries"
 
     def follow(self, url: str) -> dict:
         """A linked sub-resource, or `{}` when the Catalog has none.
 
-        A 404 here withholds the study/trait facts for one association rather than sinking the pass:
-        the association itself is still a real published effect, and dropping it because its study
-        record moved would lose evidence over metadata.
+        A 404 here withholds the ancestry for one association rather than sinking the pass: the
+        association itself is still a real published effect, and dropping it because its study record
+        moved would lose evidence over metadata. A 410 is not caught: `GwasRetired` is the source
+        moving, and swallowing it here would null every row's ancestry and say nothing.
         """
         try:
             return self._get(url)
         except GwasNotFound:
-            logger.warning("GWAS Catalog has no record at %s; that association keeps null study facts", url)
+            logger.warning("GWAS Catalog has no record at %s; that association keeps a null ancestry", url)
             return {}
 
 
@@ -320,21 +389,74 @@ def _queryable_p_value(raw: object) -> tuple[float | None, bool]:
     return value, False
 
 
-def _effect_from(association: dict) -> tuple[float | None, str | None, str | None]:
-    """`(size, measure, unit)` from the two mutually exclusive fields the Catalog publishes.
+#: `(size, measure, unit, direction)` — the effect columns of one association.
+_Effect = tuple[float | None, str | None, str | None, str | None]
 
-    `orPerCopyNum` and `betaNum` are separate keys — unlike the download TSV's single ambiguous
-    "OR or BETA" column — so the mapping is exact rather than a guess. An OR carries no unit, which
-    is why `unit` is null on that branch instead of being filled with something.
+_NO_EFFECT: _Effect = (None, None, None, None)
+
+
+def _effect_from(association: dict) -> _Effect | None:
+    """The effect columns, or `None` when v2's `beta` string is outside the grammar (RM354).
+
+    An odds ratio sits in `or_per_copy_num` as a number and carries no unit — `unit` stays null on
+    that branch instead of being filled with something. A beta sits in the composite `beta` string,
+    `<number> [<unit>] <increase|decrease>`, where the legacy API served `betaNum`, `betaUnit` and
+    `betaDirection` apart; `"-"` is v2's own no-value and means no beta at all.
+
+    **A string outside the grammar is withheld whole, never read in part.** A number without the unit
+    it is in is not a smaller answer but a different one, and a unit guessed from a malformed tail is
+    a fabrication. The caller counts it, and `strict` refuses on the count.
     """
-    odds = _float_or_none(association.get("orPerCopyNum"))
+    odds = _float_or_none(association.get("or_per_copy_num"))
     if odds is not None:
-        return odds, "OR", None
-    beta = _float_or_none(association.get("betaNum"))
-    if beta is None:
-        return None, None, None
-    unit = association.get("betaUnit")
-    return beta, "beta", (str(unit).strip() or None) if unit else None
+        return odds, "OR", None, None
+    raw = association.get("beta")
+    text = str(raw).strip() if raw is not None else ""
+    if not text or text == _V2_NO_VALUE or text.upper() == _NOT_REPORTED:
+        return _NO_EFFECT
+    match = _BETA_GRAMMAR.match(text)
+    if match is None:
+        # A bare number is the one other shape a study can publish: a magnitude with neither unit nor
+        # direction stated. Anything else is unread.
+        size = _float_or_none(text) if len(text.split()) == 1 else None
+        return (size, "beta", None, None) if size is not None else None
+    size = _float_or_none(match["size"])
+    if size is None:
+        return None
+    return size, "beta", (match["unit"] or None), match["direction"]
+
+
+def _p_value_text(association: dict) -> str | None:
+    """The p-value as the Catalog curated it: `<mantissa>e<exponent>` when v2 serves the pair.
+
+    v2's float `p_value` is `0.0` past float64's range and `2.9999999999999997e-29` for `3e-29`; the
+    pair beside it is what the study reported. Falls back to the float's string where the pair is
+    absent, which is the legacy pass's verbatim rule.
+    """
+    mantissa, exponent = association.get("pvalue_mantissa"), association.get("pvalue_exponent")
+    numeric = (int, float)
+    if (
+        isinstance(mantissa, numeric)
+        and isinstance(exponent, int)
+        and not isinstance(mantissa, bool)
+        and not isinstance(exponent, bool)
+    ):
+        shown = int(mantissa) if float(mantissa).is_integer() else mantissa
+        return f"{shown}e{exponent}"
+    raw = association.get("p_value")
+    return str(raw) if raw is not None else None
+
+
+def _verbatim_or_none(value: object) -> str | None:
+    """A free-text cell kept verbatim, with v2's own `-` no-value read as the absence it is.
+
+    `NR` is left alone here: on `range` it is the study's own "[NR]"-style statement, which the column
+    description promises to keep.
+    """
+    if value is None:
+        return None
+    text = str(value).strip()
+    return None if not text or text == _V2_NO_VALUE else text
 
 
 def _first_link(association: dict, name: str) -> str | None:
@@ -342,33 +464,33 @@ def _first_link(association: dict, name: str) -> str | None:
     return str(link).split("{")[0] if link else None
 
 
-def _study_facts(payload: dict) -> dict[str, str | None]:
-    """`pmid`, `study_accession` and `ancestry` out of a study payload."""
-    publication = payload.get("publicationInfo") or {}
-    ancestries = payload.get("ancestries") or []
-    groups = [
-        str(g.get("ancestralGroup") or "").strip()
-        for a in ancestries
-        for g in (a.get("ancestralGroups") or [])
-    ]
-    named = sorted({g for g in groups if g})
-    return {
-        "pmid": str(publication.get("pubmedId")).strip() if publication.get("pubmedId") else None,
-        "study_accession": str(payload.get("accessionId")).strip() or None
-        if payload.get("accessionId")
-        else None,
-        "ancestry": ", ".join(named) or None,
+def _ancestry(payload: dict) -> str | None:
+    """The study's ancestral groups from v2's `/studies/<accession>/ancestries`, every stage, sorted.
+
+    `NR` is the study not reporting one, an absence, so a study whose every group is `NR` has a null
+    ancestry rather than the string "NR".
+    """
+    entries = (payload.get("_embedded") or {}).get("ancestries") or []
+    groups = {
+        str(g.get("ancestral_group") or "").strip()
+        for entry in entries
+        if isinstance(entry, dict)
+        for g in (entry.get("ancestral_groups") or [])
+        if isinstance(g, dict)
     }
+    named = sorted(g for g in groups if g and g.upper() != _NOT_REPORTED)
+    return ", ".join(named) or None
 
 
-def _trait_facts(payload: dict) -> dict[str, str | None]:
-    """The reported trait label and its EFO id(s), joined when a study reports several."""
-    embedded = (payload.get("_embedded") or {}).get("efoTraits") or []
-    traits = [t for t in embedded if isinstance(t, dict)]
-    if not traits and payload.get("trait"):
-        traits = [payload]
-    labels = [str(t.get("trait") or "").strip() for t in traits]
-    ids = [str(t.get("shortForm") or "").strip() for t in traits]
+def _trait_facts(association: dict) -> dict[str, str | None]:
+    """The EFO trait label(s) and id(s) v2 carries on the association, joined in the same order.
+
+    `trait` is the EFO label (`efo_trait`), the same thing the legacy efoTraits link served, kept
+    parallel to `trait_efo_id`. v2's `reported_trait` is the study's own wording and is not read.
+    """
+    traits = [t for t in (association.get("efo_traits") or []) if isinstance(t, dict)]
+    labels = [str(t.get("efo_trait") or "").strip() for t in traits]
+    ids = [str(t.get("efo_id") or "").strip() for t in traits]
     return {
         "trait": ", ".join(x for x in labels if x) or None,
         "trait_efo_id": ", ".join(x for x in ids if x) or None,
@@ -547,9 +669,12 @@ def enrich_gwas(
         direct_requests = 0
         underflows: list[str] = []
 
+        unparsed: list[str] = []
+
         for rsid, variant_key in subjects:
-            associations = catalog.associations_for(rsid)
-            direct_requests += 1
+            pages = catalog.association_pages(rsid)
+            direct_requests += len(pages)
+            associations = [association for page in pages for association in page]
             if not associations:
                 missing.append(rsid)
                 row = GwasEffectRow(
@@ -572,9 +697,11 @@ def enrich_gwas(
                     rsid=rsid,
                     variant_key=variant_key,
                     cache=cache,
+                    study_url=catalog.study_ancestries_url,
                     release=release,
                     fetched_at=fetched_at,
                     underflows=underflows,
+                    unparsed=unparsed,
                     study_facts=study_facts,
                 )
                 if built is None:
@@ -604,6 +731,15 @@ def enrich_gwas(
                 unusable,
             )
 
+        if unparsed:
+            # Aggregated by reason, once, like the two above.
+            logger.warning(
+                "GWAS pass withheld the effect columns of %d association(s) whose `beta` string is "
+                "outside the grammar it reads (`<number> [<unit>] <increase|decrease>`); the rows are "
+                "recorded with every other column.",
+                len(unparsed),
+            )
+
         out.sort(key=_sort_key)
         result = GwasResult(
             rows=out,
@@ -613,6 +749,7 @@ def enrich_gwas(
             requests_saved=cache.hits,
             p_value_underflows=len(underflows),
             unusable=unusable,
+            unparsed_effects=len(unparsed),
         )
 
         if write:
@@ -641,12 +778,14 @@ def enrich_gwas(
     # association served without an id to key on, and a p-value below float64 whose queryable
     # number is therefore withheld. Both are already warned about in `best_effort`, aggregated
     # by reason; `strict` means a reproducible artifact, and both of these are places where the
-    # artifact is missing something the Catalog published.
-    if mode == "strict" and (result.unusable or result.p_value_underflows):
+    # artifact is missing something the Catalog published. RM354 adds the third of the kind: an
+    # effect string this pass could not read, whose columns were withheld.
+    if mode == "strict" and (result.unusable or result.p_value_underflows or result.unparsed_effects):
         raise GwasError(
             f"strict GWAS enrichment: {result.unusable} association(s) were served without an "
-            f"id this pass can key on and {result.p_value_underflows} carried a p-value below "
-            f"float64's range, so the artifact does not hold everything the Catalog published. "
+            f"id this pass can key on, {result.p_value_underflows} carried a p-value below "
+            f"float64's range and this pass could not read the effect of "
+            f"{result.unparsed_effects}, so the artifact does not hold everything the Catalog published. "
             f"Both are the Catalog's shape rather than an authoring mistake -- use "
             f"mode='best_effort' to record what is holdable and read the warnings."
         )
@@ -659,47 +798,44 @@ def _build_row(
     rsid: str,
     variant_key: str,
     cache: _LinkCache,
+    study_url: Callable[[str], str],
     release: str,
     fetched_at: str,
     underflows: list[str],
+    unparsed: list[str],
     study_facts: bool = True,
 ) -> GwasEffectRow | None:
-    """One `GwasEffectRow` from one association payload, or `None` when it carries no usable id.
+    """One `GwasEffectRow` from one v2 association payload, or `None` when it carries no usable id.
 
     `ValidationError` is caught narrowly and reported as a skip rather than allowed to escape as a
     pydantic traceback: a CLI printing one has told the operator nothing they can act on.
     """
-    association_id = association.get("associationId") or association.get("id")
+    association_id = association.get("association_id")
     if association_id is None:
-        self_link = _first_link(association, "association") or _first_link(association, "self")
+        self_link = _first_link(association, "self")
         association_id = self_link.rstrip("/").rpartition("/")[2] if self_link else None
-    if not association_id:
+    if association_id is None or not str(association_id).strip():
         return None
 
-    loci = association.get("loci") or []
-    risk_alleles = [
-        allele
-        for locus in loci
-        for allele in (locus.get("strongestRiskAlleles") or [])
-        if isinstance(allele, dict)
-    ]
-    allele_name = risk_alleles[0].get("riskAlleleName") if risk_alleles else None
-    reported_rsid, effect_allele = _parse_risk_allele(allele_name)
-    size, measure, unit = _effect_from(association)
+    allele_names = association.get("snp_effect_allele") or []
+    reported_rsid, effect_allele = _parse_risk_allele(allele_names[0] if allele_names else None)
+    effect = _effect_from(association)
+    if effect is None:
+        unparsed.append(str(association_id))
+        effect = _NO_EFFECT
+    size, measure, unit, direction = effect
 
-    queryable_p, underflowed = _queryable_p_value(association.get("pvalue"))
+    p_value = _p_value_text(association)
+    queryable_p, underflowed = _queryable_p_value(p_value)
     if underflowed:
         underflows.append(str(association_id))
 
-    facts: dict[str, str | None] = {"pmid": None, "study_accession": None, "ancestry": None}
-    traits: dict[str, str | None] = {"trait": None, "trait_efo_id": None}
-    if study_facts:
-        study_link = _first_link(association, "study")
-        if study_link:
-            facts = _study_facts(cache.get(study_link))
-        trait_link = _first_link(association, "efoTraits")
-        if trait_link:
-            traits = _trait_facts(cache.get(trait_link))
+    accession = _verbatim_or_none(association.get("accession_id"))
+    pmid = association.get("pubmed_id")
+    ancestry = None
+    if study_facts and accession:
+        ancestry = _ancestry(cache.get(study_url(accession)))
+    traits = _trait_facts(association)
 
     try:
         return GwasEffectRow(
@@ -710,19 +846,18 @@ def _build_row(
             effect_size=size,
             effect_measure=measure,
             effect_unit=unit,
-            effect_direction=(association.get("betaDirection") or None),
-            standard_error=_float_or_none(association.get("standardError")),
-            confidence_interval=(str(association.get("range")).strip() or None)
-            if association.get("range")
-            else None,
-            risk_allele_frequency=_float_or_none(association.get("riskFrequency")),
-            p_value=str(association["pvalue"]) if association.get("pvalue") is not None else None,
+            effect_direction=direction,
+            # v2 publishes no standard error on an association; withheld, never derived from the CI.
+            standard_error=None,
+            confidence_interval=_verbatim_or_none(association.get("range")),
+            risk_allele_frequency=_float_or_none(association.get("risk_frequency")),
+            p_value=p_value,
             p_value_num=queryable_p,
             trait=traits["trait"],
             trait_efo_id=traits["trait_efo_id"],
-            pmid=facts["pmid"],
-            study_accession=facts["study_accession"],
-            ancestry=facts["ancestry"],
+            pmid=str(pmid).strip() or None if pmid is not None else None,
+            study_accession=accession,
+            ancestry=ancestry,
             dataset=release,
             source=GWAS_SOURCE,
             status="resolved",

@@ -39,12 +39,11 @@ import duckdb
 import httpx
 from tenacity import (
     retry,
-    retry_if_exception_type,
     wait_exponential_jitter,
 )
 
 from just_dna_enricher.locations import RELEASE_FILENAME, SNAPSHOT_DATA_DIRNAME, env_value
-from just_dna_enricher.net import PacingGate, attempt_floor
+from just_dna_enricher.net import PacingGate, attempt_floor, raise_if_retired, retry_if_transient
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +87,11 @@ PHARMVAR_GENOME_BUILD = "GRCh38"
 
 class PharmVarError(RuntimeError):
     """A PharmVar request failed in a way the caller must see (auth, or a broken query)."""
+
+
+class PharmVarRetired(PharmVarError):
+    """PharmVar answered HTTP 410: it retired the endpoint asked (RM354). A fact about the source, not
+    an outage, and not retried; a `PharmVarError` so every existing handler still catches it."""
 
 
 def chrom_from_accession(num: str) -> str | None:
@@ -241,7 +245,8 @@ class PharmVarClient:
             self._client.close()
 
     @retry(
-        retry=retry_if_exception_type((httpx.TransportError, httpx.HTTPStatusError)),
+        # A 5xx or a 429 only (RM354): a permanent 4xx answers the same on every attempt.
+        retry=retry_if_transient(),
         stop=attempt_floor(3),
         wait=wait_exponential_jitter(initial=1, max=10),
         reraise=True,
@@ -281,6 +286,7 @@ class PharmVarClient:
         try:
             return self._request(path, params)
         except (httpx.TransportError, httpx.HTTPStatusError, ValueError) as exc:
+            raise_if_retired(exc, PharmVarRetired, "PharmVar")
             raise PharmVarError(f"PharmVar {path} could not be read: {exc}") from exc
 
     def alleles_for_gene(self, gene: str, *, include_sub_alleles: bool = False) -> list[PharmVarAllele]:

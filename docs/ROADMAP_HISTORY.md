@@ -333,6 +333,61 @@ mutated once and went red: the dry run moved back outside the `try`, a second re
 
 **Residuals** none
 
+## RM354 — the GWAS Catalog retired the legacy REST API the `gwas` pass reads, so `gwas_effects.csv` cannot be filled for a new module
+
+**Severity** high · **Status** ✅ **SHIPPED 2026-11-04 on `main`, uncut — a patch** (filed 2026-11-04 by the lead; widened to the class by the lead the same day) · **Owner** enricher (`gwas`, `net`, and every client in `test_client_exception_contract.CLIENTS`) · **Motivating case** the RM333
+builder's report, 2026-11-04, recorded in `docs/probes/LANES_0_8.md` §5.5 on `build/RM333` · *related* RM239,
+RM333, `@client-exception-contract`
+
+**One class: a source retired an API surface, and the client has no finding for it.** `GwasCatalogClient` asks
+`https://www.ebi.ac.uk/gwas/rest/api/singleNucleotidePolymorphisms/<rsid>/associations` (`DEFAULT_GWAS_ENDPOINT`).
+That endpoint now answers HTTP 410, "This legacy GWAS Catalog REST API is no longer available", pointing at the
+v2 migration guide; `/gwas/rest/api/v2/associations?rs_id=` answers 200. The 410 falls into the generic
+`httpx.HTTPError` arm and becomes a plain `GwasError`, which the pass records as could-not-ask. So every rsID of
+every new module reads as an outage, nothing is filled, and nothing says the source moved. RM239's posterior is
+filled only on `gwas_effects.csv` rows that already exist.
+
+**The fix, as one rule.** The client moves to the v2 endpoint (its response shape probed from the real answer
+first, `@probe-the-real-file`), and a 410 from any endpoint raises a named retired-endpoint error, a `GwasError`
+subclass whose message carries the URL and the source's own text, never the generic failure. A subclass makes a
+caller's `except` order load-bearing, so the handler shapes are enumerated before it lands. Every other client
+that maps status codes gets the same 410 arm, since retirement is a currency fact about the source, not one
+lane's bug.
+
+**What the hand-run found (2026-11-04).** The legacy path answers 410, `text/plain`, on every path
+including `/studies/<accession>`. v2 answers `associations?rs_id=rs4149056` with 20 of 386 per page and a
+`_links.next`; `size=1000` returns all of them. Three facts shaped the client. **The empty answer is a 200
+with no `_embedded` key at all** (`page.totalElements: 0`), for a rare variant and a nonexistent rsID alike,
+so the legacy guard ("no `_embedded.associations` means the shape changed") would have refused every
+clinically-authored module on its first rare variant; it now raises only when the page does not say zero.
+**A 404 stopped being an answer**: the only one v2's search gave was a wrong path, so `associations_for` no
+longer reads it as "no associations" and `gwas` left `FOUR_OH_FOUR_IS_AN_ANSWER`. **The effect is one
+composite string** (`"0.05 umol/l increase"`, `"-"` beside an odds ratio), parsed by one grammar and withheld
+whole outside it. `standard_error` has no v2 field and stays null; `pmid`, accession and EFO trait are inline,
+so ancestry (`/studies/<accession>/ancestries`) is the only follow and the request budget on
+`hfe_hemochromatosis` fell from 382 to 190. The association ids carried over (legacy 13069 and 55421052 are
+v2's too), so a legacy-filled table merges rather than doubling. The full field map is ENRICHER.md § GWAS
+effect sizes.
+
+**The class, built in the same item at the lead's call.** The contract test written for the GWAS 410 was run
+over every `CLIENTS` row and measured the rest of the class: no client named a 410, and six (`gnomad`,
+`eutils`, `cpic` and its `row_count`, `pharmvar`, `currency`) retried every `HTTPStatusError`, asking a 400,
+404 or 410 three or four times. Now a retry predicate retries transport, timeout, 5xx and 429 only
+(`net.retry_if_transient`), and a 410 raises the client's own `*Retired`, a subclass of its could-not-ask type
+(`net.raise_if_retired` builds the one message). Three tests hold it: `test_every_client_names_its_410` (an
+equality with the `CLIENTS` labels), `test_a_permanent_4xx_is_asked_once` (400, 404, 410 over every row), and
+`test_no_retry_policy_in_the_tier_retries_a_permanent_4xx`, which walks every `@retry` in the package and asks
+its predicate directly, so the withholding clients and the builders' download are covered too. Each client's
+404 meaning was checked and kept; ENRICHER.md tables it. Each guard was broken once to watch it go red: the
+410 arm in `gwas`, a widened `pharmvar` predicate, and `litvar`'s 410 arm.
+
+**Bounded on purpose.** The withholding clients (`grch37`, `ensembl`, `clingen_allele`, Crossref,
+`EuropePmcClient.fulltext`) raise nothing by contract. A 410 there is withheld like any other failure, and is
+not retried. A handler that records a client's could-not-ask type as `unreachable` records a `*Retired`
+there too, with the retirement in its reason, since the subclass keeps every handler catching it.
+
+**Residuals** none
+
 ## RM338 — which files under `logs/` ship: `*.log` only, a text allowlist, content-checked text, or images too
 
 **Severity** low · **Status** ✅ **SHIPPED 2026-11-04 on `main`, uncut — a patch** (decided 2026-11-03,

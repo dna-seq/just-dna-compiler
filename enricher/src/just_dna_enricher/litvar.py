@@ -83,7 +83,7 @@ from tenacity import retry, retry_if_exception_type, wait_exponential_jitter
 
 from just_dna_enricher.clingen_allele import ClingenAlleleClient, anchor_indel
 from just_dna_enricher.licensing import overlaid_input_rows
-from just_dna_enricher.net import PacingGate, attempt_floor, dedupe
+from just_dna_enricher.net import PacingGate, attempt_floor, dedupe, raise_if_retired
 from just_dna_enricher.verification import examples, ran, skipped
 
 logger = logging.getLogger(__name__)
@@ -173,6 +173,15 @@ class LitvarUnavailable(LitvarError):
     A subclass rather than a second exception: every existing `except LitvarError` still fires, and a
     caller that needs to separate *the index said no* from *the index never answered* can, without
     reading `__cause__`. Only this one means nobody was asked.
+    """
+
+
+class LitvarRetired(LitvarUnavailable):
+    """LitVar answered HTTP 410: it retired the endpoint asked (RM354).
+
+    A fact about the source, not an outage, and not retried; a `LitvarUnavailable` so every existing
+    handler still catches it. LitVar's answered absence stays what it was — a 400 whose body opens
+    `Variant not found`; a 404 is a failure, as before.
     """
 
 
@@ -374,6 +383,7 @@ class LitvarClient:
             detail = _detail(exc.response)
             if exc.response.status_code == 400 and detail.startswith(_NOT_FOUND_DETAIL):
                 return None, ""
+            raise_if_retired(exc, LitvarRetired, "LitVar")
             raise LitvarUnavailable(
                 f"LitVar answered {exc.response.status_code} for {path}" + (f" ({detail})" if detail else "")
             ) from exc

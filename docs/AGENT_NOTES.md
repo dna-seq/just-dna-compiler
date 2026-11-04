@@ -2141,6 +2141,22 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   constructs its own `httpx.Client` and was invisible for as long as the suffix was the test — the
   RM101 blind spot one more time, on the oldest client in the tier. Owning a transport is the
   criterion now, and the name is only the usual spelling.
+
+  **A permanent 4xx is a fifth leg, and a 410 is a fact rather than a failure (RM354, 2026-11-04).**
+  The GWAS Catalog retired its legacy REST API and every path began answering 410. The client filed
+  it in the generic status arm, the same `GwasError` an outage raises, so the pass died saying the
+  source had failed when it had moved — and a re-run tomorrow would have looked like the fix. The
+  same day's contract test found the class behind it: no client named a 410, and six retried *every*
+  `HTTPStatusError`, so a 400, a 404 and a 410 were each asked three or four times before anything was
+  said. Two rules came out. A retry predicate names what a second attempt could change — transport,
+  timeout, 5xx, 429 (`net.retry_if_transient`) — and a walk hands every `@retry` in the package a
+  synthetic 400/404/410 to prove none retries it. And a 410 raises the client's own `*Retired`, a
+  subclass of its could-not-ask type (the same additive move as `*Unavailable`), so handlers keep
+  catching it while the message says what happened. **What a 404 means did not move, and it is not one
+  thing**: an answer to `identifiers`, a failure to most, and for `gwas` it flipped *with the API* —
+  the legacy resource 404'd on a rare variant, the v2 search answers it with an empty 200 — so the
+  `FOUR_OH_FOUR_IS_AN_ANSWER` row went. A status's meaning is a property of the endpoint, and a new
+  endpoint re-asks it.
 - `@draft-appends` — **Drafting appends, it never mutates — that word is the whole line.** `just_dna_compiler.draft`
   appends rows into an authored CSV at **row** granularity (a file-level "refuse if it exists" rule
   self-defuses after the first gene and makes a multi-gene module unbuildable). A row whose key exists
