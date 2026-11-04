@@ -39,6 +39,13 @@ three scripts are the kit's, two of them copied into `.claude/` for CI.
 **First pass**: S125–S127 answered and archived (`5e2cc18`), after committing the items alone
 (`1ee5925`). Filed RM337–RM340.
 
+## Routes with other repos' triage seats
+
+- **just-dna-registry/triage** (agreed 2026-11-04): a registry consumer item whose fix belongs to format,
+  compiler or enricher arrives in `docs/CONSUMER_SUGGESTIONS.md`, restated, with an `Sn` from this ledger
+  and a message naming it. An item this seat moves back to the registry gets a message to that seat
+  naming it, so neither inbox holds the other's.
+
 ## Items this seat owns
 
 | Item | State |
