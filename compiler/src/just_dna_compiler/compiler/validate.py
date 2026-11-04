@@ -67,7 +67,7 @@ from just_dna_compiler.compiler.manifest import (
     module_stats,
     sources_in_use,
 )
-from just_dna_compiler.compiler.meta import build_meta, member_tables, member_variant_rows
+from just_dna_compiler.compiler.meta import build_meta, member_tables
 from just_dna_compiler.compiler.positional import (
     _GENE_BEARING_TABLE_KINDS,
     _POSITIONAL_TABLE_KINDS,
@@ -81,6 +81,7 @@ from just_dna_compiler.compiler.resolution_step import (
     resolve_variants,
     unplaced_refusal,
 )
+from just_dna_compiler.compiler.subjects import module_subjects
 from just_dna_compiler.compiler.table_checks import (
     _check_misspelled_tables,
     _check_phenotype_classes,
@@ -396,6 +397,8 @@ def _validate_spec(
     source_rows: list[SourceRow] = []
     #: Every sidecar's post-overlay rows, by model, for `sources_in_use` after the loop.
     fact_rows: dict[type, list[Any]] = {}
+    # The two gene-keyed orphan checks' rows, held until the module's subjects are known below (RM362).
+    gene_keyed_rows: list[tuple[str, list[Any]]] = []
 
     # The injected tables: `resolution.csv` and the four 0.5 fact sidecars. They are not
     # `_TABLE_KINDS` — they are machine-produced and fact-hashed rather than authored DSL — but they
@@ -509,13 +512,15 @@ def _validate_spec(
                 # The orphan check rides along because its key is a **gene**: `gene` is authored and
                 # nothing fills it, so the answer here is the answer the compile reaches. Its three
                 # position-keyed cousins stay compile-only, and that is the standing exemption
-                # working rather than an oversight — see `_frequency_checks` below.
+                # working rather than an oversight — see `_frequency_checks` below. Held rather than
+                # run here: the module's genes are every gene-bearing table's (RM362), and those are
+                # asked once, below, beside the study check that reads the same subjects.
                 all_warnings.extend(_check_gene_metrics_arithmetic(injected_rows))
-                all_warnings.extend(_cross_check_gene_metrics(injected_rows, variants))
+                gene_keyed_rows.append(("gene_metrics.csv", injected_rows))
             if model is GeneValidityRow:
                 # Same rule, same key. The currency finding above already runs here; the orphan one
                 # is the other half of the same table's coherence and was reachable only at compile.
-                all_warnings.extend(_cross_check_gene_validity(injected_rows, variants))
+                gene_keyed_rows.append(("gene_validity.csv", injected_rows))
             if model is SourceRow:
                 # Reads `sources.csv` against `module_spec.yaml`'s own `license:` — two authored
                 # files, no sidecar join and no resolution. `_source_checks` is deliberately NOT
@@ -677,6 +682,21 @@ def _validate_spec(
             survivors, injected.named_table, declared_build, fill_applied=fill_applied
         )
     )
+    # What the module carries, asked once (RM362): its genes, loci and identities over `variants.csv` and
+    # every table kind on `subjects`' rosters, the set `stats.genes` publishes and the enricher's scopes
+    # ask about. After the positional fill, which is in place, so a placed haplotype row carries its
+    # position. A roster table present and loaded no row withholds (its load errors are the report).
+    # Two views of one function, never two rosters: `kept` is the rows a compile keeps (the symbolic
+    # drops applied), the view `compile_module` asks with, so the gene orphans and the overlay's
+    # reachability say the same sentence on both sides; `subjects` keeps every authored row, because the
+    # study check counts a dropped row as carried (the lead, 2026-11-04) and runs in this pass only.
+    unreadable = {"variants.csv"} if has_variants and not variants else set()
+    unreadable |= {csv_name for csv_name, rows in loaded_kinds.items() if not rows}
+    subjects = module_subjects({"variants.csv": variants, **loaded_kinds}, unreadable=unreadable)
+    kept = module_subjects(
+        {"variants.csv": _apply_symbolic_drops(variants, would_drop.get("variants.csv", set())), **survivors},
+        unreadable=unreadable,
+    )
 
     # Composition: a module must carry at least one recognized table kind.
     if not has_variants and not kind_row_counts:
@@ -725,8 +745,6 @@ def _validate_spec(
     meta_rows, meta_errors, meta_warnings = non_kind[META_CSV]
     all_errors.extend(meta_errors)
     all_warnings.extend(meta_warnings)
-    # The variants a meta member reaches, for the study-orphan check below (RM28's widening).
-    meta_carried: list[Any] = []
     # A refused meta.csv keeps its rows for the citing view below (RM357), but is not expanded: its own
     # findings are the refusal, and a duplicate key would read as a precedence conflict.
     if meta_rows and not meta_errors:
@@ -736,7 +754,6 @@ def _validate_spec(
         meta_build = build_meta(meta_rows, meta_tables, config.tier_scale if config else None)
         all_errors.extend(meta_build.errors)
         all_warnings.extend(meta_build.warnings)
-        meta_carried = member_variant_rows(meta_build, meta_tables)
     # The model-organism table (0.8, RM335): parse, the present-but-empty refusal and the duplicate key,
     # nothing else. It names no row of another table and no rule reads it, so it needs no other check.
     # It does not take part in the composition check above (`tables.MODEL_ORGANISMS_CSV` says why).
@@ -759,7 +776,7 @@ def _validate_spec(
             deferred_unmatched,
             studies,
             citing_kinds,
-            variants,
+            kept,
             [row for rows in membership_table.values() for row in rows],
         )
     )
@@ -848,13 +865,16 @@ def _validate_spec(
     # asks them against, since an rsID-only variant has a position only now (RM367). Warning-only in both
     # modes; they were compile-only under the resolved-rows exemption this pass no longer needs.
     if not legacy_resolves:
+        # The module's subjects over the resolved rows (RM362's one answer, RM367's view): the same call
+        # `compile_module` makes over its resolved variants and kept table kinds.
+        resolved_subjects = module_subjects({"variants.csv": resolved_variants, **survivors})
         frequency_rows = fact_rows.get(FrequencyRow, [])
-        all_warnings.extend(_cross_check_frequencies(frequency_rows, resolved_variants))
+        all_warnings.extend(_cross_check_frequencies(frequency_rows, resolved_subjects))
         all_warnings.extend(_check_ba1_lint(frequency_rows, resolved_variants, threshold=ba1_threshold))
         all_warnings.extend(
-            _cross_check_clinical_assertions(fact_rows.get(ClinicalAssertionRow, []), resolved_variants)
+            _cross_check_clinical_assertions(fact_rows.get(ClinicalAssertionRow, []), resolved_subjects)
         )
-        all_warnings.extend(_cross_check_gwas_effects(fact_rows.get(GwasEffectRow, []), resolved_variants))
+        all_warnings.extend(_cross_check_gwas_effects(fact_rows.get(GwasEffectRow, []), resolved_subjects))
 
     # Same rule about where a check belongs: the VCF pointer columns are authored cells read against
     # two spec-derived constants, with no resolution step and no `output_dir` in sight, so the
@@ -893,29 +913,20 @@ def _validate_spec(
     # RM326's class check, outside `if variants:` for the same reason: a citation-only `studies.csv`
     # (RM47) beside a table kind and no `variants.csv` is legal, and its classes need the same check.
     all_warnings.extend(_check_phenotype_classes(studies))
-    # The study-orphan check, outside `if variants:` too (the lead, 2026-11-04): a diplotype-only or
+    # The two gene-keyed orphan checks, over `kept` (above): the compile's view, so one sentence each.
+    # Called by name, one branch each, so RM367's path roster (`check_paths`) sees both on this path.
+    for table, rows in gene_keyed_rows:
+        if table == "gene_metrics.csv":
+            all_warnings.extend(_cross_check_gene_metrics(rows, kept))
+        else:
+            all_warnings.extend(_cross_check_gene_validity(rows, kept))
+    # The study-orphan check, outside `if variants:` (the lead, 2026-11-04): a diplotype-only or
     # PGx-only module cites variants as much as a SNP module does, and the gate skipped it outright
-    # (`@roster-is-as-wide-as-the-tables-it-reads`). A study's variant is carried when it is a
-    # `variants.csv` row's, a defining variant in `haplotypes.csv`, a `pharm_variants.csv` row's, or one
-    # a meta member reached (RM28's widening). The three table arms read the authored rows, the view
-    # `variants` is read in (the positional fill is in place, so they carry it): a symbolic-allele row
-    # the compile drops stays carried, in `pharm_variants.csv` as in `variants.csv`. The meta arm reads
-    # `survivors`, and reaches only rows of those two tables, so it adds nothing they miss. An arm whose
-    # file is present but loaded no row withholds the orphan half (its load errors are the report); the
-    # gate used to withhold that case for `variants.csv` by accident.
+    # (`@roster-is-as-wide-as-the-tables-it-reads`). A study's variant is carried when a row on the
+    # locus roster carries it, a symbolic-allele row the compile drops included; a meta member reaches
+    # only rows already on it (RM28's widening, now a subset the roster covers by construction).
     if studies:
-        carried = [
-            *(loaded_kinds.get("haplotypes.csv") or []),
-            *(loaded_kinds.get("pharm_variants.csv") or []),
-            *meta_carried,
-        ]
-        unreadable_arm = (has_variants and not variants) or any(
-            csv_name in loaded_kinds and not loaded_kinds[csv_name]
-            for csv_name in ("haplotypes.csv", "pharm_variants.csv")
-        )
-        _, study_warnings = _cross_validate_studies(
-            studies, variants, carried, carried_unknown=unreadable_arm
-        )
+        _, study_warnings = _cross_validate_studies(studies, subjects)
         all_warnings.extend(study_warnings)
 
     if variants:

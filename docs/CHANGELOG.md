@@ -41,6 +41,22 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM362: the orphan checks, `stats.genes` and the enricher agree on which genes and loci a module is about (0.8, uncut)
+
+- **One answer, `just_dna_compiler.compiler.subjects.module_subjects`**, over two rosters derived from the table
+  registry: `MODULE_GENE_TABLES` (`variants.csv` and every gene-bearing table kind) and `MODULE_LOCUS_TABLES`
+  (`variants.csv` and every positional table kind). `model_organisms.csv` is on neither.
+- **The five derived-row orphan checks** (`gene_metrics.csv`, `gene_validity.csv`, `frequencies.csv`,
+  `clinical_assertions.csv`, `gwas_effects.csv`) read it instead of `variants.csv` alone. A diplotype-scored APOE
+  module no longer warns that its own `gene_metrics.csv` row names "a gene this module never mentions", and a module
+  without `variants.csv` is now checked rather than skipped. Each keeps its join and its sentence.
+- **`study_variant_orphan`** reads the locus roster, so a study on a `heteroplasmy.csv` locus is carried; its tail names
+  the roster's tables. The meta arm is gone: a member reaches rows already on the roster.
+- **The overlay's `resolution.csv` reachability** counts a positioned row of a positional table, which `reverse` writes
+  back: a correction aimed at one is no longer "no artifact of this module can carry" on lap 1 only.
+- `manifest.stats.genes` and the enricher's `module_genes` call the same function; neither answer moves.
+- Measured on every reference example: no warning gained or lost, `stats.genes` unchanged.
+
 ## 2026-11-04 — RM371: the enricher no longer warns at import under tenacity 9.2.1, and floors it (patch, on `main`)
 
 **enricher** — Importing any retried enricher client under tenacity 9.2.1 printed `DeprecationWarning:

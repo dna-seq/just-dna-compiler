@@ -344,6 +344,10 @@ from just_dna_compiler.compiler.reverse import _write_studies_csv as _write_stud
 from just_dna_compiler.compiler.reverse import _write_variants_csv as _write_variants_csv
 from just_dna_compiler.compiler.reverse import logger as logger
 from just_dna_compiler.compiler.reverse import reverse_module as reverse_module
+from just_dna_compiler.compiler.subjects import MODULE_GENE_TABLES as MODULE_GENE_TABLES
+from just_dna_compiler.compiler.subjects import MODULE_LOCUS_TABLES as MODULE_LOCUS_TABLES
+from just_dna_compiler.compiler.subjects import ModuleSubjects as ModuleSubjects
+from just_dna_compiler.compiler.subjects import module_subjects as module_subjects
 from just_dna_compiler.compiler.table_checks import _IMPLIED_REFERENCE as _IMPLIED_REFERENCE
 from just_dna_compiler.compiler.table_checks import _KNOWN_SPEC_FILES as _KNOWN_SPEC_FILES
 from just_dna_compiler.compiler.table_checks import _REFERENCE_HAPLOTYPE as _REFERENCE_HAPLOTYPE

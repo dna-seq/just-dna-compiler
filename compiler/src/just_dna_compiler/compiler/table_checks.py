@@ -4,7 +4,6 @@ keys, and misspelled table names.
 
 import difflib
 from collections import defaultdict
-from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -13,11 +12,12 @@ from just_dna_format.binning import MeasureBinRow, format_group_key, validate_bi
 from just_dna_format.findings import CodedWarning, restate
 from just_dna_format.layout import DERIVED_SUBDIR, VERIFICATION_JSON, sidecar_spellings
 from just_dna_format.pgx import is_hla_gene
-from just_dna_format.spec import StudyRow, VariantRow, citation_key, cited_as
+from just_dna_format.spec import StudyRow, citation_key, cited_as
 from just_dna_format.spelling import gene_key
 from just_dna_format.vocab import RECOMMENDED_PHENOTYPE_CLASSES
 from pydantic import BaseModel
 
+from just_dna_compiler.compiler.subjects import MODULE_LOCUS_TABLES, VARIANTS_CSV, ModuleSubjects
 from just_dna_compiler.compiler.tables import (
     _DERIVED_FILES,
     _FACT_TABLES,
@@ -26,7 +26,6 @@ from just_dna_compiler.compiler.tables import (
     _TABLE_KIND_CSVS,
     AUTHORED_NON_KIND_TABLES,
     same_row,
-    study_coordinate_key,
 )
 
 #: The reference star allele by CYP naming, exempt from the used-but-not-defined warning for every
@@ -305,13 +304,7 @@ def _examples(groups: list[str], limit: int = 3) -> str:
     return f"e.g. {shown}" + (f" (+{extra} more)" if extra > 0 else "")
 
 
-def _cross_validate_studies(
-    studies: list[StudyRow],
-    variants: list[VariantRow],
-    carried: Sequence[Any] = (),
-    *,
-    carried_unknown: bool = False,
-) -> tuple[list[str], list[str]]:
+def _cross_validate_studies(studies: list[StudyRow], subjects: ModuleSubjects) -> tuple[list[str], list[str]]:
     """Validate study rows against the variants the module carries. Returns (errors, warnings).
 
     A study matches a variant on **any shared identifier** — same rsid or same `chrom:start:ref` —
@@ -330,43 +323,35 @@ def _cross_validate_studies(
     claim written twice. Only *both stated and different* suppresses: an absent analysis is unknown,
     and unknown cannot establish distinctness.
 
-    **Since 0.8 a variant is carried by more than `variants.csv`** (RM28, the study-orphan widening).
-    `carried` is every other row naming a variant the module carries: a defining variant in
-    `haplotypes.csv`, every `pharm_variants.csv` row (an arm of its own since the lead's 2026-11-04
-    decision, whether or not a member reaches it), and each `variants.csv` / `pharm_variants.csv` row a
-    `meta.csv` member reached (`meta.member_variant_rows`, read off `build_meta`'s expansion, never a
-    second matcher). The meta arm reaches only `LOCUS_TABLES`, both arms of their own, so today it adds
-    nothing; it stays so a locus table that is not an arm is still covered through its members. A module
-    that scores APOE as diplotypes cites rs429358 and rs7412, the SNPs that define the ε alleles; they
-    are `haplotypes.csv` rows and no `variants.csv` row, and every such link used to draw this warning.
-    The match is the same "any shared identifier" rule over the wider set, and `variants` may be empty:
-    a module with no `variants.csv` is checked against the other arms. The message keeps its pinned
-    prefix (`@warning-text-is-api`) and names the wider search after the keys.
+    **Since 0.8 a variant is carried by more than `variants.csv`** (RM28, the study-orphan widening;
+    RM362 made it the module's one answer). `subjects` is `subjects.module_subjects`: every row on the
+    locus roster, `variants.csv` and each positional table kind (`haplotypes.csv`'s defining variants,
+    `pharm_variants.csv`'s rows, `heteroplasmy.csv`'s loci). A `meta.csv` member reaches rows of
+    `meta.LOCUS_TABLES` only, each on that roster, so the rows a member reaches are carried already and
+    need no arm of their own (a test asserts the inclusion). A module that scores APOE as diplotypes
+    cites rs429358 and rs7412, the SNPs that define the ε alleles; they are `haplotypes.csv` rows and no
+    `variants.csv` row, and every such link used to draw this warning. The match is the same "any shared
+    identifier" rule (an `rsid` the module carries, or a `chrom:start:ref` a module row sits at) over the
+    wider set; a module with no `variants.csv` is checked against the other tables. The message keeps its
+    pinned prefix (`@warning-text-is-api`) and names the wider search, read off the roster, after the keys.
 
-    **`carried_unknown` withholds the orphan half** when an arm's file is present and no row of it could
-    be read: what the module carries is then unknown, and naming every study as an orphan would bury
-    the load errors that are the real report. The duplicate half reads only `studies` and still runs."""
+    **`subjects.loci_unknown` withholds the orphan half** when a roster table is present and no row of it
+    could be read: what the module carries is then unknown, and naming every study as an orphan would
+    bury the load errors that are the real report. The duplicate half reads only `studies` and still runs."""
     warnings: list[str] = []
-    subjects: list[Any] = [*variants, *carried]
-    variant_rsids = {v.rsid for v in subjects if v.rsid is not None}
-    variant_coords = {study_coordinate_key(v.chrom, v.start, v.ref) for v in subjects if v.chrom is not None}
     orphans: list[str] = []
     for row in studies:
-        if row.variant_key is None or carried_unknown:
+        if row.variant_key is None or subjects.loci_unknown:
             continue
-        by_rsid = row.rsid is not None and row.rsid in variant_rsids
-        by_coord = (
-            row.chrom is not None and study_coordinate_key(row.chrom, row.start, row.ref) in variant_coords
-        )
-        if not by_rsid and not by_coord:
+        if not subjects.carries(row.rsid) and not subjects.sits_at(row.chrom, row.start, row.ref):
             orphans.append(row.variant_key)
     if orphans:
+        others = ", ".join(name for name in MODULE_LOCUS_TABLES if name != VARIANTS_CSV)
         warnings.append(
             CodedWarning(
                 "study_variant_orphan",
-                f"Studies reference variants not in variants.csv: {sorted(set(orphans))} — nor among "
-                f"haplotypes.csv's defining variants, pharm_variants.csv's rows or the rows a meta.csv "
-                f"member reaches.",
+                f"Studies reference variants not in variants.csv: {sorted(set(orphans))} — nor at a row of "
+                f"the module's other locus tables ({others}), which hold every row a meta.csv member reaches.",
             )
         )
     # `(variant_key, pmid)` is the dedup key, and since RM140 a *stated* `statistical_test` splits it

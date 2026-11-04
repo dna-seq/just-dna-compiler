@@ -10,6 +10,10 @@ The lead's 2026-11-04 decision took the widening two steps further: `pharm_varia
 own, whether or not a member reaches a row, and the check no longer waits for a `variants.csv`, so a
 diplotype-only or PGx-only module is checked too (`@roster-is-as-wide-as-the-tables-it-reads`).
 
+RM362 made the carried set the module's one locus roster (`subjects.module_subjects`), which a member's
+reach is a subset of, so the meta arm and the test pinning its reach went; the tests below that a member
+changes no orphan still hold, now by construction.
+
 Every expected key set is computed from the CSV rows the test writes.
 """
 
@@ -19,9 +23,6 @@ import shutil
 from pathlib import Path
 
 from just_dna_compiler.compiler import compile_module, validate_spec
-from just_dna_compiler.compiler.load import load_authored_table, load_csv_rows
-from just_dna_compiler.compiler.meta import build_meta, member_tables, member_variant_rows
-from just_dna_format.pgx import PharmVariantRow
 
 _APOE = Path(__file__).resolve().parents[2] / "reference_examples" / "apoe_epsilon"
 _CODE = "study_variant_orphan"
@@ -218,32 +219,6 @@ def test_a_selector_member_changes_no_orphan(tmp_path: Path) -> None:
     without = _orphans(validate_spec(_pgx_module(tmp_path / "base", meta=None, studies=studies)).warnings)
     assert len(without) == 1 and "rs1801133" in without[0]
     assert with_member == without
-
-
-def _reach(spec: Path) -> set[str]:
-    """The rsIDs of the rows the meta arm hands the check: `member_variant_rows` over `build_meta`'s
-    expansion of this module's `meta.csv`, the call `validate_spec` makes."""
-    pharm, errors, _ = load_csv_rows(spec / "pharm_variants.csv", PharmVariantRow, "pharm_variants.csv")
-    assert errors == []
-    rows, errors, _ = load_authored_table(spec, "meta.csv")
-    assert errors == []
-    tables = member_tables([], {"pharm_variants.csv": pharm})
-    return {row.rsid for row in member_variant_rows(build_meta(rows, tables, None), tables)}
-
-
-def test_the_meta_arm_reaches_exactly_the_rows_its_members_matched(tmp_path: Path) -> None:
-    """The meta arm adds nothing the table arms miss today, so its reach is pinned where it is computed:
-    a selector reaches the rows it matched, the locus form the loci it names, a member matching
-    nothing reaches nothing."""
-    selector = "members,conclusion\npharm_variants[gene=VKORC1],VKORC1.\n"
-    locus = "members,conclusion\npharm_variants[variant_key=rs1057910],CYP2C9.\n"
-    nothing = "members,conclusion\npharm_variants[gene=CYP4F2],No such rows here.\n"
-    by_gene = {
-        gene: {row["rsid"] for row in _rows(_PHARM) if row["gene"] == gene} for gene in ("VKORC1", "CYP2C9")
-    }
-    assert _reach(_pgx_module(tmp_path / "selector", meta=selector)) == by_gene["VKORC1"]
-    assert _reach(_pgx_module(tmp_path / "locus", meta=locus)) == {"rs1057910"} == by_gene["CYP2C9"]
-    assert _reach(_pgx_module(tmp_path / "nothing", meta=nothing)) == set()
 
 
 def test_a_member_matching_nothing_covers_nothing(tmp_path: Path) -> None:

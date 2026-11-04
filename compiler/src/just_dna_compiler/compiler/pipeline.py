@@ -127,6 +127,7 @@ from just_dna_compiler.compiler.resolution_step import (
     resolve_variants,
     unplaced_refusal,
 )
+from just_dna_compiler.compiler.subjects import module_subjects
 from just_dna_compiler.compiler.tables import (
     _FACT_TABLES,
     _TABLE_KINDS,
@@ -537,6 +538,27 @@ def compile_module(
     # One branch per sidecar, keyed by model. A two-way `if/else` was fine for two tables and stops
     # being readable at three, so each entry states its own checks and its own builder; the loop below
     # stays generic. Errors are fatal, warnings accumulate — the same contract the SNP core uses.
+    #
+    # The positional fill (RM43), on the rows that survive. It runs **after** the symbolic-allele
+    # ladder (RM5) and before `_build_table`, and that order is the only correct one: the drop decides
+    # which rows exist, so filling first would resolve a coordinate onto a row about to be discarded
+    # and — worse — leave the joinability report below counting rows the artifact does not contain.
+    # The two never disagree because the drop happens up at load time, long before the resolution
+    # table is even read; this comment is here so the distance between them does not read as accident.
+    # Gated on `resolve_with_ensembl` like every other resolution, so `--no-resolve` consults nothing.
+    # Before `mkdir` since RM362 met RM367: the orphan checks below ask `module_subjects` over the
+    # filled positional tables, and those checks refuse before the first write.
+    fill_warnings, fill_applied = _apply_positional_resolution(
+        kind_rows, resolution_table, config.genome_build, resolve=resolve_with_ensembl
+    )
+    all_warnings.extend(w for w in fill_warnings if w not in all_warnings)
+
+    # "What the module carries" is asked once, of `module_subjects` (RM362), over the resolved variants
+    # and the filled positional tables — the rows the artifact holds — so every orphan check below, the
+    # manifest's `stats.genes` and the enricher's scopes give one answer. A load failure has already
+    # refused the compile, so no table is unreadable here.
+    subjects = module_subjects({"variants.csv": variants, **kind_rows})
+
     def _frequency_checks(rows: list) -> tuple[list[str], list[str]]:
         # De-duplicated on the message, the `_literature_checks` idiom eleven lines below and the
         # `_check_contig_ploidy` one before it: `compile_module` runs `validate_spec`, which has run
@@ -547,7 +569,7 @@ def compile_module(
         # Only the warnings need it — validate's errors abort the compile before this closure runs.
         errors, warns = _check_frequency_arithmetic(rows)
         warns = [w for w in warns if w not in all_warnings]
-        warns.extend(_cross_check_frequencies(rows, variants))
+        warns.extend(_cross_check_frequencies(rows, subjects))
         warns.extend(_check_ba1_lint(rows, variants, threshold=ba1_threshold))
         return errors, warns
 
@@ -558,7 +580,7 @@ def compile_module(
         # this one carries no filter of its own and `_gene_validity_checks` below carries none
         # either. Re-running is the normal case; what would break it is a message embedding a count,
         # and neither of these does.
-        return [], [*_check_gene_metrics_arithmetic(rows), *_cross_check_gene_metrics(rows, variants)]
+        return [], [*_check_gene_metrics_arithmetic(rows), *_cross_check_gene_metrics(rows, subjects)]
 
     def _literature_checks(rows: list) -> tuple[list[str], list[str]]:
         # De-duplicated on the message: `compile_module` runs `validate_spec`, which runs this same
@@ -570,15 +592,15 @@ def compile_module(
         # Both warn in either mode (see `_check_gene_validity_currency`), so nothing here reads
         # `strict` — the errors list stays empty by construction rather than by a branch.
         return [], [
-            *_cross_check_gene_validity(rows, variants),
+            *_cross_check_gene_validity(rows, subjects),
             *_check_gene_validity_currency(rows),
         ]
 
     def _clinical_assertion_checks(rows: list) -> tuple[list[str], list[str]]:
-        return [], list(_cross_check_clinical_assertions(rows, variants))
+        return [], list(_cross_check_clinical_assertions(rows, subjects))
 
     def _gwas_effect_checks(rows: list) -> tuple[list[str], list[str]]:
-        return [], list(_cross_check_gwas_effects(rows, variants))
+        return [], list(_cross_check_gwas_effects(rows, subjects))
 
     def _expression_effect_checks(rows: list) -> tuple[list[str], list[str]]:
         """No checks, and the absence is a decision rather than a gap (RM194/RM200).
@@ -776,18 +798,6 @@ def compile_module(
     if studies_df is not None:
         studies_df.write_parquet(output_dir / _studies_name, compression=compression)
 
-    # The positional fill (RM43), on the rows that survive. It runs **after** the symbolic-allele
-    # ladder (RM5) and before `_build_table`, and that order is the only correct one: the drop decides
-    # which rows exist, so filling first would resolve a coordinate onto a row about to be discarded
-    # and — worse — leave the joinability report below counting rows the artifact does not contain.
-    # The two never disagree because the drop happens up at load time, long before the resolution
-    # table is even read; this comment is here so the distance between them does not read as accident.
-    # Gated on `resolve_with_ensembl` like every other resolution, so `--no-resolve` consults nothing.
-    fill_warnings, fill_applied = _apply_positional_resolution(
-        kind_rows, resolution_table, config.genome_build, resolve=resolve_with_ensembl
-    )
-    all_warnings.extend(w for w in fill_warnings if w not in all_warnings)
-
     # The meta expansion (0.8), on the same view as the pre-flight's: the positional tables filled, and
     # `variants` as authored (resolution copies the rows it changes, so `authored_variants` is untouched).
     meta_build = (
@@ -868,7 +878,7 @@ def compile_module(
     all_warnings.extend(
         w
         for w in _classify_deferred_overlay_updates(
-            compile_deferred, studies, citing_rows, variants, resolution_rows
+            compile_deferred, studies, citing_rows, subjects, resolution_rows
         )
         if w not in all_warnings
     )

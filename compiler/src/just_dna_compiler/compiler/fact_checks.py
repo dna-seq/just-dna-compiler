@@ -34,9 +34,10 @@ from just_dna_format.overrides import (
 )
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.spec import StudyRow, VariantRow, extract_pmids
-from just_dna_format.spelling import distinct_spellings, gene_key
+from just_dna_format.spelling import distinct_spellings
 
 from just_dna_compiler.compiler.load import table_citations
+from just_dna_compiler.compiler.subjects import ModuleSubjects
 from just_dna_compiler.compiler.tables import BA1_ALLELE_FREQUENCY_THRESHOLD
 
 # Relative tolerance for the float redundancy checks. These are published numbers rendered through a
@@ -208,24 +209,25 @@ def _check_gene_metrics_arithmetic(rows: list[GeneMetricsRow]) -> list[str]:
     return warnings_out
 
 
-def _cross_check_frequencies(rows: list[FrequencyRow], variants: list[VariantRow]) -> list[str]:
-    """Warn when a frequency row describes a coordinate no variant in the module sits at.
+def _cross_check_frequencies(rows: list[FrequencyRow], subjects: ModuleSubjects) -> list[str]:
+    """Warn when a frequency row describes a coordinate no row of the module sits at.
 
     Matched at *position* level (`chrom:start:ref`, no alt) rather than on `variant_key` equality: the
     sidecar is keyed per-allele while a module row may be position-only or multi-allelic, so key
     equality would false-alarm on rows that are in fact about the same locus. The same reasoning the
     study/variant orphan check already uses.
+
+    **The module's loci are `subjects.module_subjects`' (RM362)**: `variants.csv` and every positional
+    table kind, the rows the frequency pass asks gnomAD about. Reading `variants.csv` alone named an
+    ε-defining `haplotypes.csv` locus an orphan, and checked a module without `variants.csv` not at all.
     """
-    if not variants:
-        return []
-    positions = {derive_variant_key(None, v.chrom, v.start, v.ref) for v in variants if v.chrom is not None}
-    if not positions:
+    if subjects.loci_unknown or not subjects.positions:
         return []
     orphans = sorted(
         {
             f"{r.chrom}:{r.start}:{r.ref}"
             for r in rows
-            if r.chrom is not None and derive_variant_key(None, r.chrom, r.start, r.ref) not in positions
+            if r.chrom is not None and not subjects.sits_at(r.chrom, r.start, r.ref)
         }
     )
     if not orphans:
@@ -385,7 +387,7 @@ def literature_target_survives(
 
 
 def resolution_target_survives(
-    variants: list[VariantRow], resolution_rows: list[ResolutionRow]
+    subjects: ModuleSubjects, resolution_rows: list[ResolutionRow]
 ) -> Callable[[str], bool]:
     """Can an artifact of this module carry a `resolution.csv` row for this `variant_key`? (RM137)
 
@@ -397,9 +399,14 @@ def resolution_target_survives(
     answer the same on both laps: on lap 1 the unpositioned row is present and its own cells say it is
     unpositioned; on lap 2 the row is gone and the authored side still says the same thing. Neither
     reading depends on the row being there to be matched.
+
+    **The authored half is every locus row's, not `variants.csv`'s alone (RM362).** `reverse_module`
+    writes a `resolution.csv` row for each placed row of a positional table too (RM43), so a
+    `heteroplasmy.csv` row with authored coordinates was reported "no artifact of this module can
+    carry" on lap 1 and matched on lap 2. `subjects.placed` is `module_subjects`' answer.
     """
     placed: set[str] = {row.variant_key for row in resolution_rows if row.chrom and row.start is not None}
-    placed.update(v.variant_key for v in variants if v.chrom and v.start is not None)
+    placed.update(subjects.placed)
     return lambda subject: subject in placed
 
 
@@ -581,14 +588,15 @@ def _check_ba1_lint(
     return findings
 
 
-def _cross_check_gene_metrics(rows: list[GeneMetricsRow], variants: list[VariantRow]) -> list[str]:
-    """Warn when a gene-metrics row names a gene the module never mentions."""
-    if not variants:
+def _cross_check_gene_metrics(rows: list[GeneMetricsRow], subjects: ModuleSubjects) -> list[str]:
+    """Warn when a gene-metrics row names a gene the module never mentions.
+
+    The module's genes are `subjects.module_subjects`' (RM362): the set `manifest.stats.genes` publishes
+    and the enricher's `module_genes` asks about, so a gene the pass looked up is never an orphan.
+    """
+    if subjects.genes_unknown or not subjects.genes:
         return []
-    genes = {gene_key(v.gene) for v in variants if v.gene}
-    if not genes:
-        return []
-    orphans = distinct_spellings((r.gene for r in rows if gene_key(r.gene) not in genes), "gene")
+    orphans = distinct_spellings((r.gene for r in rows if not subjects.names_gene(r.gene)), "gene")
     if not orphans:
         return []
     return [
@@ -603,7 +611,7 @@ def _classify_deferred_overlay_updates(
     deferred: dict[str, list[tuple[tuple[str, str], bool]]],
     studies: list[StudyRow],
     kind_rows: dict[str, list[Any]],
-    variants: list[VariantRow],
+    subjects: ModuleSubjects,
     resolution_rows: list[ResolutionRow],
 ) -> list[str]:
     """Split each deferred unmatched set by whether the artifact could carry the row (RM137).
@@ -625,7 +633,7 @@ def _classify_deferred_overlay_updates(
         if table == "literature.csv":
             survives = literature_target_survives(studies, kind_rows)
         elif table == "resolution.csv":
-            survives = resolution_target_survives(variants, resolution_rows)
+            survives = resolution_target_survives(subjects, resolution_rows)
         else:  # pragma: no cover - only the deferred tables reach here
             survives = None
         findings.extend(classify_update_targets(table, targets, survives))
@@ -693,20 +701,18 @@ def _currency_group_names(groups: list[tuple]) -> str:
     return f"{shown}{more}"
 
 
-def _cross_check_gene_validity(rows: list[GeneValidityRow], variants: list[VariantRow]) -> list[str]:
+def _cross_check_gene_validity(rows: list[GeneValidityRow], subjects: ModuleSubjects) -> list[str]:
     """Warn when a gene-validity row names a gene the module never mentions (RM24).
 
     The gene-metrics orphan check with one table swapped, deliberately: the two sidecars answer
     different questions about the same key, so an over-broad table fails the same way and a reader
     should see the same sentence. Warning-only for the same reason — an extra row is harmless, and the
-    compiler cannot tell a stale row from a curator's deliberate context.
+    compiler cannot tell a stale row from a curator's deliberate context. The module's genes are
+    `subjects.module_subjects`' (RM362), as for gene metrics.
     """
-    if not variants:
+    if subjects.genes_unknown or not subjects.genes:
         return []
-    genes = {gene_key(v.gene) for v in variants if v.gene}
-    if not genes:
-        return []
-    orphans = distinct_spellings((r.gene for r in rows if gene_key(r.gene) not in genes), "gene")
+    orphans = distinct_spellings((r.gene for r in rows if not subjects.names_gene(r.gene)), "gene")
     if not orphans:
         return []
     return [
@@ -717,9 +723,7 @@ def _cross_check_gene_validity(rows: list[GeneValidityRow], variants: list[Varia
     ]
 
 
-def _cross_check_clinical_assertions(
-    rows: list[ClinicalAssertionRow], variants: list[VariantRow]
-) -> list[str]:
+def _cross_check_clinical_assertions(rows: list[ClinicalAssertionRow], subjects: ModuleSubjects) -> list[str]:
     """Warn when a clinical-assertion row describes a coordinate no variant in the module sits at.
 
     Matched at *position* level (`chrom:start:ref`, no alt), exactly as `_cross_check_frequencies`
@@ -732,17 +736,16 @@ def _cross_check_clinical_assertions(
     from holding, and it warns in both modes on purpose because failing would make the format
     arbitrate a clinical dispute. Recording the archive's side in a table does not move that line, and
     a coherence check here must not quietly become the escalation that was parked.
+
+    The module's loci are `subjects.module_subjects`' (RM362), the rows the assertion pass asks about.
     """
-    if not variants:
-        return []
-    positions = {derive_variant_key(None, v.chrom, v.start, v.ref) for v in variants if v.chrom is not None}
-    if not positions:
+    if subjects.loci_unknown or not subjects.positions:
         return []
     orphans = sorted(
         {
             f"{r.chrom}:{r.start}:{r.ref}"
             for r in rows
-            if r.chrom is not None and derive_variant_key(None, r.chrom, r.start, r.ref) not in positions
+            if r.chrom is not None and not subjects.sits_at(r.chrom, r.start, r.ref)
         }
     )
     if not orphans:
@@ -792,7 +795,7 @@ def _cross_check_clin_sig_concordance(rows: list, variants: list[VariantRow], *,
     ]
 
 
-def _cross_check_gwas_effects(rows: list[GwasEffectRow], variants: list[VariantRow]) -> list[str]:
+def _cross_check_gwas_effects(rows: list[GwasEffectRow], subjects: ModuleSubjects) -> list[str]:
     """Warn when a GWAS-effect row is about a locus no variant in the module carries.
 
     Matched on `variant_key`, not on position, and the difference from
@@ -804,14 +807,13 @@ def _cross_check_gwas_effects(rows: list[GwasEffectRow], variants: list[VariantR
 
     **Warning-only, in both modes.** An over-broad sidecar is the ordinary result of enriching a
     module and then narrowing its variant list, and it must not fail a compile that is otherwise fine.
+
+    The module's identities are `subjects.module_subjects`' (RM362): every locus table, the rsIDs the
+    GWAS pass asks the Catalog about (`collect_subjects` without study proxies).
     """
-    if not variants or not rows:
+    if subjects.loci_unknown or not subjects.identities or not rows:
         return []
-    known = {v.variant_key for v in variants if v.variant_key}
-    known |= {v.rsid for v in variants if v.rsid}
-    if not known:
-        return []
-    orphans = sorted({r.variant_key for r in rows if r.variant_key not in known and r.rsid not in known})
+    orphans = sorted({r.variant_key for r in rows if not subjects.carries(r.variant_key, r.rsid)})
     if not orphans:
         return []
     return [

@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import duckdb
-from just_dna_compiler.compiler import AUTHORED_NON_KIND_TABLES, load_csv_rows
+from just_dna_compiler.compiler import MODULE_GENE_TABLES, load_csv_rows, module_subjects
 from just_dna_format.base import merge_key
 from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.layout import atomic_writer, nothing_to_write
@@ -43,7 +43,7 @@ from just_dna_enricher.gnomad import (
     GnomadError,
     normalize_constraint_flags,
 )
-from just_dna_enricher.identifiers import authored_identifiers
+from just_dna_enricher.identifiers import _id_bearing_tables, authored_rows
 from just_dna_enricher.licensing import record_source_terms, require_sources_file, sidecar_path
 from just_dna_enricher.locations import resolve_constraint_reference
 
@@ -128,12 +128,11 @@ class GeneMetricsResult:
 
 
 #: Authored tables whose `gene` is not a gene the module's findings are about, so it is outside the scope
-#: below while `check-identifiers` still reads it: every authored table that is not a table kind, read off
-#: the compiler's registry (RM357) rather than named here. `manifest.stats.genes` reads `variants.csv` and
-#: the table kinds only, and this scope follows that published set rather than widening past it. The one
-#: such table carrying `gene` today is `model_organisms.csv` (0.8, RM335), whose gene is the one a mouse
-#: experiment altered; a registered table with no `gene` column is excluded harmlessly.
-_NOT_THE_MODULES_GENES: frozenset[str] = frozenset(table.csv for table in AUTHORED_NON_KIND_TABLES)
+#: below while `check-identifiers` still reads it: every gene-bearing authored table off the compiler's
+#: `MODULE_GENE_TABLES` roster (RM362), the one `manifest.stats.genes` and the orphan checks read. The one
+#: such table today is `model_organisms.csv` (0.8, RM335), whose gene is the one a mouse experiment
+#: altered. Derived as a difference rather than named, so this scope cannot widen past the published set.
+_NOT_THE_MODULES_GENES: frozenset[str] = frozenset(_id_bearing_tables("gene")) - frozenset(MODULE_GENE_TABLES)
 
 
 def module_genes(spec_dir: Path) -> list[str]:
@@ -159,7 +158,7 @@ def module_genes(spec_dir: Path) -> list[str]:
     one table wider. `read_errors` carries the loader's own message so the sentence is unchanged for
     `variants.csv`, which is what `gene_validity` re-raises as its own error type.
     """
-    roster = authored_identifiers(Path(spec_dir), "gene", exclude=_NOT_THE_MODULES_GENES)
+    rows, roster = authored_rows(Path(spec_dir), "gene", exclude=_NOT_THE_MODULES_GENES)
     for name, error in sorted(roster.read_errors.items()):
         raise GeneMetricsEnrichmentError(f"{name} is invalid: {error}")
     # `read_errors` is the PARSE failures alone. A `SidecarCollision` — the same table present both
@@ -171,7 +170,14 @@ def module_genes(spec_dir: Path) -> list[str]:
     for name, why in sorted(roster.unreadable.items()):
         if name not in roster.read_errors:
             raise GeneMetricsEnrichmentError(f"{name} could not be read: {why}")
-    return roster.ids
+    # The answer is `module_subjects`' (RM362), the function `stats.genes` and the orphan checks call, so
+    # a gene this scope asks about is never one the compile names an orphan. Grouped by table in the
+    # roster's reading order, which keeps first occurrence where it was.
+    table_of = {model: name for name, model in _id_bearing_tables("gene").items()}
+    by_table: dict[str, list] = {}
+    for row in rows:
+        by_table.setdefault(table_of[type(row)], []).append(row)
+    return list(module_subjects(by_table).gene_symbols)
 
 
 def lookup_snapshot(reference: Path, genes: list[str]) -> dict[str, dict]:
