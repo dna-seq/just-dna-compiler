@@ -814,6 +814,21 @@ the column; hashing it would make a reworded note move the digest, which is the 
 
 ## RM28 — Meta-conclusions (the predicate half)
 
+**A fifth member form, decided 2026-11-04 by the maintainer: the tag selector.** A member may be
+`flags:<tag>`, which means every single-statement row carrying that tag. v2's 528 legacy variants all carry
+`legacy_longevitymap` (R-LEGACY-1), so one row (`flags:legacy_longevitymap`, tier D) replaces 528 one-line rows.
+
+The decided rules still apply:
+
+- A one-member row naming a specific variant is more specific, and wins. That covers the legacy loci tiered
+  C, or A/B on modern evidence, such as APOE.
+- A row in two tag sets that disagree on a column has that column withheld.
+- An untagged locus is untouched.
+
+**Rejected:** a module-wide default tier. It would silently turn v2's 31 untiered and 4 tier-X seed loci into D,
+a stated value standing in for an unstated one. Raised by a side agent from the final run's audit
+(`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §2, R-LEGACY-1).
+
 **Two columns added 2026-11-04 by the maintainer, after the final measuring run** (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §4, gaps 3 and 4):
 
 - **A citation (`pmid`) on meta-table rows.** A row cites when its claim is finer-grained than `studies.csv`'s key, the RM47 pattern. The study-orphan check accepts meta-table members, so APOE's 14 study links, the 8 HLA alleles and KL-VS × ε4 can cite.

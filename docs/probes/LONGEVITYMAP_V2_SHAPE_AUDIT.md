@@ -60,7 +60,7 @@ decision is recorded in its roadmap entry.
 | R-DEF-2 (protection type) | D/X | BUFFERING follows from a combination row; PRESENCE/ABSENCE needs allele frequency | 1 buffering, 3 presence (M) |
 | R-RARE-1 | T+N | haplotypes/diplotypes; KL-VS heterozygote modifier as a combination | APOE, KL-VS, d3-GHR (M) |
 | R-RARE-2 | N+D | tier cap checkable from `phenotype_class` = MR | 4 lipid LoF genes (M) |
-| R-LEGACY-1 | N | `tier` lives only on the meta-table, so 528 one-member rows for the legacy layer | 528 rsIDs, 671 study rows (M) |
+| R-LEGACY-1 | N | one meta-table row with a tag-selector member (`flags:legacy_longevitymap`, tier D), decided 2026-11-04, instead of 528 one-member rows | 528 rsIDs, 671 study rows (M) |
 | R-CAT-2 | X | hallmark tags in `flags` work on variants, not on diplotypes | APOE (1) |
 | R-APOE-1 | T, warns | haplotypes + diplotypes; studies on rs429358/rs7412 draw `study_variant_orphan` | 14 (rsid, pmid) links (M) |
 | R-APOE-2 | N | per-trait diplotype rows + RM322's columns | 6 diplotypes × 2 traits |
