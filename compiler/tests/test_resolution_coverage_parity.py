@@ -81,7 +81,7 @@ def test_strict_validate_refuses_a_partial_table_with_the_compile_s_own_error(tm
     Asserting the error strings are **equal** rather than that both are non-empty is the point — a
     pre-flight that refuses for its own differently-worded reason still sends the author hunting, and a
     second implementation of "which rows are unplaceable" would drift from the first at the next
-    change to `_usable_loci`.
+    change to `usable_loci`.
     """
     spec = _spec(tmp_path / "spec", resolution=_PARTIAL)
 
@@ -197,7 +197,7 @@ def test_no_resolve_suppresses_the_per_row_warnings_and_strict_still_refuses(tmp
 def test_the_predicate_is_the_one_resolution_applies(tmp_path: Path) -> None:
     """Shared rather than restated, which is what keeps the two sides from drifting apart.
 
-    Three table states a naive membership test gets wrong and `_usable_loci` does not: a `not_found`
+    Three table states a naive membership test gets wrong and `usable_loci` does not: a `not_found`
     sentinel is a recorded answer of *no locus*, a row under another build is not this module's, and a
     row with no `chrom` places nothing. All three leave the subject unplaceable.
     """

@@ -2428,7 +2428,11 @@ half of them, and a downstream reader keying on it would be reading the *lookup*
 which is materialized into `weights.parquet` and the positional tables where it belongs. This is written
 down here because "publish it as a parquet" is the first repair anyone proposes on finding a table that
 does not carry a coordinate, and it is the wrong one — RM43 (0.6) is the right one, and it is what makes
-"materialized into the positional tables where it belongs" true rather than aspirational.
+"materialized into the positional tables where it belongs" true rather than aspirational. What does ride
+a parquet is the answer **per row**, beside the row it answers: `studies.parquet.proxy_loci` (RM331) and,
+on `weights.parquet` and every positional parquet, `resolution_loci` (RM364), the loci the table files
+under the row's authored key, so `reverse` can rebuild the table from the artifact when the fill left the
+row's own cells alone.
 
 - **Join key:** `variant_key` (the frozen authored identity). **Facts** (feed `resolution_signature`):
   `rsid?`, `chrom?`, `start? (ge=0)`, `ref?`, `alts?`, `genome_build="GRCh38"` (the RM15 forward hook),
@@ -2441,7 +2445,7 @@ does not carry a coordinate, and it is the wrong one — RM43 (0.6) is the right
   `fetched_at?`, `placement_witness?`, `placement_verdict?` (0.8, below).
 - **`source` names the link; `authority` names the licensed source it speaks for (RM33).** `source` is
   `ensembl-rest`/`ensembl-graphql`/`cache`/`clinvar`/`gnomad`/`authored`/`reversed`/`manual` — *which link
-  answered*, which matters for diagnosing a compile and has no other home. `authority` is the thing
+  answered* (`ensembl-graphql` is no longer written since its leg was retired in 0.8, and still reads), which matters for diagnosing a compile and has no other home. `authority` is the thing
   `sources.csv.source` joins on (`ensembl`, `clinvar`, `gnomad`), and it is **empty** where there is no
   external source to name: `authored` is the module's own bytes, `reversed` is the compiler, `manual` is a
   human. Before the split, the compiler compared the link against `sources.csv` by string and every
@@ -2498,11 +2502,14 @@ does not carry a coordinate, and it is the wrong one — RM43 (0.6) is the right
   `frequencies.parquet`'s `vrs_id` is gnomAD's and gets no `vrs_spec`.
 - **`placement_witness` and `placement_verdict` say who else placed the row, and what they said (0.8,
   RM267).** Provenance, outside the fact set: which second authority the enricher asked where this rsID
-  sits (`clinvar`, `clinvar_gkm`, or both `+`-joined), independent of the link that gave the row, and its
+  sits (`clinvar`, `clinvar_gkm`, and on an online run `ensembl` for a snapshot indel neither of those
+  holds, `+`-joined), and its
   answer (`VALID_PLACEMENT_VERDICTS`: `same_event` — one VRS id, or one left-aligned spelling;
   `undecided` — another spelling nothing this run held could settle, an offline run; `unplaced` — the
-  witness holds no placement of this allele, so the row has one witness only). Both empty means no
-  independent authority was asked: none was loaded, or the row's own link is ClinVar's. Two columns, not
+  witness holds no placement of this allele, so the row has one witness only). `ensembl` is Ensembl
+  REST, the snapshot's own authority: its `same_event` is self-consistent rather than independent, and
+  the row still has one independent witness only. Both empty means nobody was asked: none was loaded,
+  the row's own link is ClinVar's, or REST could not be reached. Two columns, not
   one, because who was asked and what they answered are two axes (P5). There is no `different_event`:
   a placement two authorities give as two events is **withheld** — that locus gets no row, and an rsID
   left with none is unresolved — so that answer never reaches a written row. `same_event` means every

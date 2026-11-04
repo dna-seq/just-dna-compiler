@@ -732,6 +732,68 @@ turns 10 of these red; narrowing the enricher's gene scope turns the roster equa
 **Measured** (validate and compile over every reference example, before and after): no warning gained or lost, and
 `stats.genes` unchanged on all 22 — no shipped module carries a fact table about a gene or locus outside `variants.csv`.
 
+**2026-11-04, found merging RM364: a position is every spelling the module's own resolution gives a carried
+identity.** The class: *a "does the module sit at this locus" question answered from one spelling of a position, when
+the module's own `resolution.csv` says the identity sits at another.* An indel has several valid spellings. RM364
+restores NUDT15 `*1` `rs1457579126` in `cpic_gene_pairs`: `haplotypes.csv` spells it 13:48040982 `A` (CPIC,
+right-shifted), the re-enriched `resolution.csv` places the rsID at 13:48040978 `AA` (left-aligned), and the
+frequency pass, which asks gnomAD about the resolution row, wrote `frequencies.csv` at 13:48040978. `module_subjects`
+took a row's position from its own cells only, so the frequency orphan check named the pass's own row "a coordinate
+no variant in this module sits at", and `test_module_subjects_one_answer[cpic_gene_pairs]` went red. RM270 never
+rewrites an authored coordinate, so the row cannot be respelled. The lead's option (a), the `@membership-union` rule:
+every locus the injected table places a carried identity at, on the module's build, joins the row's own position.
+
+Instances (hunted across all three packages, at `84dbb2a`):
+
+1. `subjects.module_subjects` (`positions`), asked by `fact_checks._cross_check_frequencies`,
+   `fact_checks._cross_check_clinical_assertions` and `table_checks._cross_validate_studies` (`sits_at`), in both
+   `compile_module` and `validate_spec` (three views there: `subjects`, `kept`, `resolved_subjects`).
+2. `fact_checks._check_ba1_lint` — the pathogenic map was keyed by the variant's own `chrom:start:ref`, so a common
+   frequency at the table's spelling never met the variant and BA1 stayed silent. The entry above listed it as
+   "checked and held", which was right about the table it reads and wrong about the spelling.
+3. `parquets._StudyIndex.supporting` — the study join behind `weights.parquet`'s study facts (`effect_unit`,
+   `eur_only_evidence`, the outcome strip) matched a coordinate-only study by the variant's own spelling: a study at
+   the table's spelling fed nothing, while the orphan check (instance 1) now says it is about the module.
+4. A locus a 1:N rsID resolves to that cannot host the authored genotype: the compile expands onto the others and
+   re-keys them by coordinate, so the table's third row was reachable through no row's position and no row's key. The
+   frequency pass asks about it, and its row was an orphan. Reached now through the rows' `rsid`.
+
+**Checked and held.** `resolve_from_table._verify` and `resolve_positional_rows` compare an authored position with the
+table on purpose (that comparison is the contradiction report). `unresolved_subjects` already reads the table.
+`allele_checks._check_study_effect_alleles` keys rsID first and withholds on a missing key; `table_checks` haplotype
+signatures key rsID first, so two spellings of one rsID collapse. `fact_checks.resolution_target_survives` is keyed by
+identity and already unions the table. The enricher's `collect_subjects`, `gwas._module_subjects` and the frequency,
+assertion, clinical and Open Targets passes are the askers that read resolution rows, never an authored spelling. The
+RM364 `resolution_loci` path is not on `0.8`.
+
+**The mechanism.** `subjects.identity_placements(row, resolution, genome_build)`: every usable locus
+(`resolution.usable_loci`, the fill's predicate, public now) the injected table files under the row's `variant_key`
+**or** `rsid`, empty without a table, under `--no-resolve` (the callers pass `None`) and off GRCh38 (where the fills
+decline to join, RM15). Three-valued by that predicate: a `not_found` row, a row with no `chrom` and a row on another
+build place nothing. `module_subjects(..., resolution=, genome_build=)` unions it into `positions` and records it apart
+as `resolved_positions`. `subjects.row_positions` is the per-row answer for a check that attributes a finding to a row
+(BA1, the study join): a row the table places where it stands (same `chrom:start`, and `ref` where the row states one)
+sits at its own locus only, so one expansion copy is never handed a sibling's evidence; a row the table places at
+exactly one other position sits there too; with several other positions it keeps its own only, because which one it
+means is unknown and the house algebra withholds. BA1 reports a variant once per ALT, at its strongest evidence, when
+both spellings carry a frequency. `position_key` is the one `chrom:start:ref` key both sides of a position join use
+(`sits_at` and the module's rows). A PAR locus
+needs no branch: the table holds whichever contig the enricher kept (`@par-one-place`), and that is the placement.
+
+**The guard.** `compiler/tests/test_module_subjects_placement.py`: over all 22 reference examples, the GRCh38
+placements `resolution.csv` files under a carried identity, computed off the raw table, equal `resolved_positions`
+(dropping the union turns 16 of them red); a NUDT15-shape fixture (red on `84dbb2a`: the orphan fired, BA1 was silent,
+`effect_unit` was null); the `not_found`, other-build and `--no-resolve` arms, each still an orphan (mutating the
+predicate turns two red); `--no-resolve` keeping BA1 and the study join on the authored spelling; `strict` refusing the
+fixture (`rsid_coordinate_disagrees`), so no strict artifact's `weights.parquet` moves; BA1 once across two spellings;
+`row_positions`' four arms; `validate`/`compile` parity; and the expanded-rsID fixture, which alone goes red when the
+`rsid` lookup is dropped. Measured on all 22 reference examples, `84dbb2a` against this change: `artifact.digest`,
+`content_signature` and every compile and validate warning identical.
+
+**Lap 2.** On bare `0.8`, `reverse` writes the authored spelling back as the resolution fact (RM364's finding), so a
+module in this state is not a fixed point before or after this change: the second lap's orphan returns and a study
+fact joined through the table's spelling is lost. RM364's `resolution_loci` makes it one; nothing here depends on it.
+
 **Residuals** won't fix — gene symbols compare as written here; folding case and space is the gene-key class (the
 audit's class 3), not this one.
 
@@ -859,6 +921,173 @@ from one. An undecided regex withholds the row's whole `quotes_found`, not one m
 no place keys as `""`. A `retired` fulltext row is asked again. An unparsable `studies.csv` skips as
 `no_reference`, no new vocabulary member. Atlas `UNIMPLEMENTED` on an SNV is read as a retired method
 (unprobed: the probe that classified the status used an indel).
+
+## RM368 — what the module publisher plans, checks and sends are three readings of the disk
+
+**SHIPPED 2026-11-04 on `0.8`, uncut — a minor (the 0.8 audit, round 1).** Owner enricher, severity
+medium. Reported by four builders of the 0.8 round, each instance re-verified on `0.8` at `0a5293b`.
+
+**Residuals** won't fix — the reference-snapshot send stays an allowlist over the plan's names: a snapshot records no per-file hash (`SnapshotRelease` has none), so there is no attestation a re-read at send time could defeat, and byte-verifying a 32 GB lane at send would read it twice
+
+**The class.** A publisher states what it will send (the plan), checks it (the plan's refusals and the
+remote guard), and sends it. Each of the three read the disk, the manifest or the remote on its own,
+so they could disagree: a check ran over one reading and the send shipped another; a field read as
+absent dropped the check that field feeds; the dry run ran a different set of checks from the real
+run; a refusal came out as a type no caller could tell from an unrelated failure; and the prose
+describing the checks counted them wrong.
+
+**Instances** (file:line on `0.8` at `0a5293b` → after):
+
+1. `enricher/src/just_dna_enricher/upload.py:918`, `:928` — `upload_folder(folder_path=…)` re-read
+   the directory after the plan hashed the declared files and the guard compared the in-memory
+   manifest; `manifest.json` itself was re-read by the hub. A recompile between the two shipped bytes
+   nothing checked → the plan records every planned file's sha256 (`UploadPlan.sha256`, the
+   manifest's from the very bytes parsed), and the send reads each file once more, compares, and
+   commits those bytes through `create_commit` (`_verified_payload`); a change is `PlanChangedError`.
+2. `upload.py:452–457` (`_file_entries`) and `:644–646` — an `artifact.files` that was not a list
+   read as absent and fell back to the allowlist, dropping the attestation check; `:449`
+   (`_named_entry`) read a non-string `sha256` as unknown, dropping the hash check (`:740`);
+   `:502–512` (`_declared_files`) dropped a `logs`, `logo`, `readme` or `provenance` of the wrong
+   shape → `_declarations` walks `DECLARED_FILE_FIELDS` once and the plan refuses a present-but-
+   malformed field, quoting it (`ModuleNotPublishable`); absent or `null` is still the unknown arm.
+3. `upload.py:743–830` (`_versioned_conflict`) compared the digest and the declared files, never
+   `manifest.json`: the same data under a new title replaced the published manifest of a version
+   without `--force` → a third arm, `_manifest_differences`, names the dotted paths of every other
+   field that differs; a remote manifest whose bytes hash to the plan's is the same release.
+4. `cli/module_commands.py:141` — `upload --dry-run` called `plan_upload` alone and skipped the
+   versioned-path check the real run refuses on, while RM355's title read as parity → `rehearse_upload`
+   (the plan plus the read, read-only, no repo created). The same in the snapshot commands:
+   `civic_commands.py:318`, `gene_reference_commands.py:103`, `mitomap_commands.py:238`,
+   `pgx_commands.py:228`, `:262`, `:548`, `strchive_commands.py:110`, `alphagenome_commands.py:496`
+   skipped the orphan check that `clinvar_commands.py:97` and `cache_commands.py:483` ran →
+   `rehearse_reference_snapshot` for every one.
+5. `enricher/tests/test_upload.py:1389` — the RM355 dry-run test ran a real `upload` with no network
+   guard, offline only because the plan refused first → an autouse fixture blocks `HfApi` and
+   `hf_hub_download` for the whole file.
+6. `upload.py:446` — a whitespace-only `name` named a file → blank is no name. The attested-entry
+   refusal (`:460–473`) covers every entry that is not an object with a non-blank string `name`, wider
+   than the `""` RM355's CHANGELOG entry and ENRICHER bullet describe → ENRICHER states the whole
+   class (RM355's shipped CHANGELOG entry is left as written).
+7. `upload.py:650`, `:661`, `:684`, `:693`, `:700`, `:967`, `:980` raised `FileNotFoundError` for a
+   refusal → `PublishRefused` is the family: `ModuleNotPublishable`, `SnapshotNotPublishable` (both
+   keep `FileNotFoundError` as a second base within 0.8), `PlanChangedError`, and the existing
+   `PublishCollisionError`, `ToolchainDiffersError`, `OrphanedSidecarError` re-based under it. Every
+   CLI `try` around a publish catches the family; `pgx_commands.py:231` and `:265` (`cpic publish`,
+   `clinpgx publish`) caught nothing and tracebacked.
+8. `upload.py:299` "the three refusals `plan_upload` raises" and `cli/module_commands.py:158` "the
+   three `plan_upload` refusals" (there were five); ENRICHER.md "Three consequences" above four
+   bullets, "Four things about the gate" above five, "Three positive rules" → the counts are gone.
+
+**The mechanism.** One plan, read once, is what every check reads and what the send carries: paths
+and hashes, the manifest among them, verified again at send time with the verified bytes sent. One
+walker over a registry of declared fields decides absent (withhold) against malformed (refuse). One
+rehearsal per publisher is the dry run. One error family. The guards: `test_the_publisher_reads_every_field_that_names_a_file`
+(the `ModuleManifest` fields reaching a `FileEntry` or a `Provenance` equal `DECLARED_FILE_FIELDS` ∪
+`SPEC_SIDE_FILE_FIELDS`); `test_every_declared_field_has_a_malformed_case` (the parametrization walks
+that registry); `test_every_refusal_the_publisher_raises_is_in_its_family` (an AST walk: the names
+`upload.py` raises equal `PublishRefused`'s subclasses plus `PermissionError` and `ImportError`);
+`test_every_publish_command_catches_the_refusal_family` (every CLI `try` calling the publisher names
+`PublishRefused`); `test_every_dry_run_is_a_rehearsal` (the CLI's bare-plan callers equal one
+allowlisted reproduction check); and the file-wide network block. Each was mutated once and went red.
+
+**Decisions taken.** Two commits stay two (one `create_commit` carrying both paths is now a small
+change, not taken). The manifest arm leaves out the stamps of the act of compiling
+(`COMPILATION_STAMPS`: `compiled_at`, `compiled_by`, each with its reason), so a recompile of an
+unchanged spec republishes as a no-op, as it did before; `toolchain` stays compared, since RM342 reads
+it. A test holds those stamps and `COMPILATION_COMPARED` equal to `Compilation`'s fields. The two plan
+refusals keep `FileNotFoundError` as a second base within 0.8, so no existing handler stops
+catching them. RM355's decision that an optional entry naming no file (an empty or blank name) is
+dropped stands; a name present and not a string is malformed and refuses. The send holds the module's
+bytes in memory for the two commits, which a module affords; it is the reason the snapshot send is a
+residual rather than the same mechanism.
+
+## RM364 — reverse drops what compile carried: shipped files, the table's answer for a row the fill left alone, and a table the module never had
+
+**SHIPPED 2026-11-04 on `0.8`, uncut — a minor (the 0.8 audit, round 1)** · **Severity** medium ·
+**Owner** compiler · **Principle** 7 · **Found by** the 0.8 four-model audit (class C)
+
+**Residuals** won't fix — the second lap's warnings lose the resolution provenance reverse discards (`authority`, `placement_witness`), so eight examples gain `source_row_unused` on lap two; carrying provenance into a parquet reverses the documented reverse-discards-provenance decision and is the pm's call · won't fix — a `resolution.csv` row about a variant the module does not carry has no row in the artifact to ride on, and `resolution.csv` gets no parquet (SCHEMAS) · won't fix — a `not_found` sentinel carries no locus to ride `resolution_loci`, and `strict` refuses the module that holds one · won't fix — a coordinate-authored row the table files nothing under is still rebuilt from its own cells, so the second lap's table gains a row the first did not hold; telling that null apart from a reproduced one would cost the `ensembl_cache` digest parity, and the pm decides whether that path is worth keeping
+
+**The class.** Everything `compile_module` reads from a spec directory and carries into the artifact or
+the manifest is either reconstructed by `reverse_module`, so the next compile reproduces it, or excluded
+with a reason. Nothing said which was which: RM241 put the *spec* fields on a registry, and the files and
+facts beside them were each handled, or not, on their own. The round-trip gates compared what they had
+been told to compare, so a loss outside that list was green.
+
+**Instances, re-verified on `0.8` and found by walking every input, manifest block and resolution path:**
+
+1. `compiler/reverse.py:412-413` (on `0.8`): reverse copied back the README and logo only.
+   `provenance.json` (`manifest._collect_provenance`) and the logs (`manifest._collect_logs`) are copied
+   into the artifact and hashed into `manifest.provenance` / `manifest.logs` by every compile, and the
+   second lap had neither. → `reverse.shipped_files(manifest)` lists all four kinds; one helper,
+   `_copy_shipped_file`, copies each byte for byte after a hash check and refuses a name that leaves the
+   module directory, and `_discovered` asks each kind's own discovery rule (`_log_left_behind_reason`
+   for a log) before naming a file the next compile would not find.
+2. `compiler/reverse.py:659-678` (on `0.8`): the positional pass rebuilt `resolution.csv` from a
+   positional row's own cells. For a row the fill leaves alone (an authored coordinate the table
+   contradicts, a key naming several loci, every row of a module whose build the fill skips) those cells
+   hold the author's coordinate or nothing, so reverse lost the table's row and, for the first shape,
+   wrote the **authored** coordinate back as a resolution fact: the second lap's
+   `positional_identity_contradicted` went silent and `resolution_signature` moved, with `strict`
+   accepting the module throughout. `reference_examples/cpic_gene_pairs` had dropped NUDT15's
+   `rs1457579126` (CPIC 48040982, Ensembl `48040978 AA>A`) to stay green, and RM331's guard
+   (`SUBJECT_TABLES == RESOLUTION_SOURCE_TABLES`) could not see it, since the table is a subject source.
+3. `compiler/reverse.py:630-656` (on `0.8`): the weights pass had the same shape on the SNP core: a
+   locus dropped as unable to host the genotype, a one-to-many none of whose loci could host it, an
+   authored coordinate or `ref` the table contradicts, and every row of a non-GRCh38 module with a table.
+   `strict` refuses the first three, which is why the round-trip matrix filed them as unstable rather
+   than as defects; a cross-build module it accepts.
+   → for 2 and 3, `weights.parquet` and the three positional parquets carry `resolution_loci` (the
+   `proxy_loci` struct, one helper `parquets.resolution_loci` shared with it, keyed on the authored key
+   `vrs_columns.resolution_key` already computes), and reverse emits those loci. The column is null
+   where the row's own cells already rebuild the key's loci exactly (`withhold_reproduced_loci`), which
+   keeps every clean module's parquets equal to the deprecated `ensembl_cache` path's
+   (`test_digest_parity_and_offline_roundtrip` caught the first cut, which filled every row); reverse
+   rebuilds a null row from its cells, as before.
+4. `compiler/reverse.py:479` (on `0.8`): reverse wrote a `resolution.csv` for a module whose compile read
+   none, rebuilt from authored coordinates, so the second lap published a `resolution_signature`, VRS
+   coverage and expansion counts the first did not (`grch37_build`, `mt_heteroplasmy`,
+   `cyp2d6_structural`; recorded as "not a defect" in RM69 and in the corpus sweep). →
+   `_no_table_was_read`: no signature in the manifest, no `resolution.csv` in `manifest.derived` (a
+   header-only table comes back header-only), and no parquet cell its `authored_ident` does not name, so
+   an older compile or the deprecated `ensembl_cache` path, which fill without a signature, still gets
+   its table.
+5. `compiler/reverse.py` `_copy_shipped_file`, found by review of the first cut: a name check alone
+   follows a symlink, so a downloaded artifact's `logs/x.log` linked elsewhere would be copied into the
+   reversed spec. → `_leaves_through_a_link` refuses a link on either side, as compile never ships one.
+6. `compiler/tests/test_reference_examples_roundtrip.py`: the lap-1 `resolution_signature` comparison was
+   exempt on a non-GRCh38 build, which hid `cyp2c9_warfarin_grch37` (instance 2's third shape, RM69).
+   The exemption is gone.
+
+**The mechanism.** `reverse.REVERSE_MANIFEST_RECONSTRUCTED` / `REVERSE_MANIFEST_EXCLUDED` place every
+`ModuleManifest` field and every `Compilation` field (walked one level down), and
+`test_every_manifest_field_is_reconstructed_or_excluded` asserts the walk equals their union, disjoint,
+each exclusion with a reason. `reconstructed_projection(manifest)` is what every round-trip gate now
+compares lap against lap: the corpus sweep (all 22 examples, from the first lap, `resolution_signature`
+included) and a fixture carrying every shipped file kind (README, logo, `provenance.json`, a top-level
+log, three files under `logs/`), since the corpus carries no provenance and no logs. The corpus sweep also
+asserts every `manifest.inputs[]` and `manifest.derived[]` name comes back under a legal spelling.
+`test_every_file_the_manifest_names_beside_the_parquets_is_shipped_back` derives the file-bearing
+manifest fields from the model's annotations and asserts `shipped_files` reads exactly those, bar
+`inputs`/`derived` (files beside the spec). The round-trip matrix's two positional `table_says_more`
+cases are now plain fixed points, and five weights-side cases `strict` refuses are now stable as well
+(the matrix's contract, unstable implies refused, still holds; only `not_found` still moves).
+
+**Tests.** Red on `0.8` first: the two matrix cases (`expected a fixed point, but
+['resolution_signature'] moved`), the every-field fixture (lap two's `logs == []`, `provenance is None`).
+Each mechanism broken once: `with_resolution_loci` returning the table unchanged fails the two matrix
+cases, `cyp2c9_warfarin_grch37` and the contradicted-row test; `weights.parquet`'s column left null fails
+15 matrix cases; `_no_table_was_read` returning `False` fails `grch37_build`, `mt_heteroplasmy`,
+`cyp2d6_structural` and the no-table test; the link guard and the `derived` read each fail their test.
+`test_build_roundtrip.test_reversed_resolution_csv_carries_the_module_build` now injects a table, since
+the module it built read none.
+
+**Not this class, and why.** The verification attestation stays excluded (not in the artifact, bound to
+bytes reverse re-emits; reverse says so). RM69's own record refused a `resolution.parquet` and four
+other repairs; `resolution_loci` is none of them (nothing joined, the row's coordinate and key untouched,
+the loci on the module's build) and its addendum says so. The enricher's publisher enumerates the same
+four shipped kinds from raw JSON (`upload._declared_files`, RM353), deliberately tolerant of a manifest
+the model rejects, so it keeps its own reader.
 
 ## RM270 — an indel's artifact key is its source's spelling: a left-aligned VCF misses a respelled row, and the spelling-independent id the enricher mints never reaches the artifact
 
@@ -1020,7 +1249,7 @@ now holds `enrich.subjects.SUBJECT_TABLES` (walked from every `Subject(...)` ori
 
 **0.8, decided 2026-11-03.** Taken into 0.8 by the maintainer, with the rest of the indel-placement fixes (RM304, RM267, RM270, RM292, RM305). The status line below predates that decision.
 
-**Residuals** RM270 · won't fix — re-anchoring the snapshot at build is `just-dna-pipelines`' builder, outside this repository (candidate 1 below) · won't fix — writing a corrected spelling was refused for 0.8 by PROPOSAL_0_8_PT2 §4 question 3 · won't fix — a live Ensembl REST witness is outside PT2 §5 C4's two loaded authorities, so S117's own rsID stays one-witness until the pm decides otherwise
+**Residuals** RM270 · won't fix — re-anchoring the snapshot at build is `just-dna-pipelines`' builder, outside this repository (candidate 1 below) · won't fix — writing a corrected spelling was refused for 0.8 by PROPOSAL_0_8_PT2 §4 question 3
 
 **What shipped (2026-11-04).** Candidate 4 as S121's addendum generalised it, in `placement.py`, run by
 `enrich()` after every link and before the table is assembled:
@@ -1056,7 +1285,51 @@ ids RM270 and ClinVar-GKM recorded for `rs72613567` and `rs77944059`, and `rs817
 four-rsID module against this machine's real Ensembl and ClinVar snapshots wrote `rs72613567`,
 `rs77944059` and `rs4988235` as `same_event` and `rs8176719` as `unplaced`. A witness that holds it is
 the live REST rung (candidate 4's original "else REST"), which the 0.8 contract's "two loaded
-authorities" leaves out, and the third residual above records that.
+authorities" left out; it was built the same day (below).
+
+**2026-11-04: Ensembl REST is the third witness, online only** (the lead's call under the default offered
+to the maintainer that day; it replaces the won't-fix residual "a live Ensembl REST witness is outside
+PT2 §5 C4's two loaded authorities"). For an rsID the Ensembl snapshot placed, with an allele that is not
+a substitution, and that neither ClinVar nor ClinVar-GKM holds, an online run asks the live REST rung
+through the run's resolver (RM268's anchored path) and compares by the same ladder, so S117's own
+`rs8176719` is now **withheld** against the real witnesses: REST answered `-/C` at `start 133257522,
+end 133257521` by hand on 2026-11-04 (17:33Z, after 503s and timeouts from 17:26Z), which anchors to
+`9:133257521 T>TC` and mints a different id from the snapshot's `9:133257520 G>GC`. The witness is named
+`ensembl`, the licensed source `placement_witness` joins `sources.csv` on (an `ensembl_rest` key would
+have no terms row and warn as an unaccounted source on every module). REST and the snapshot are one
+authority, so by RM292's rule the comparison is **self-consistent, not independent**: the record names
+its checked side `ensembl` once REST answered (`verification.ran(reported_by=)`), so `independence`
+derives `self_consistent` for REST alone and withholds beside ClinVar, and an rsID only REST agreed with
+stays in the one-witness count with its own sentence in `detail`. That keeps the comparison's value for
+S117's class, the dump disagreeing with Ensembl's own REST mapping, while saying it cannot catch an error
+both surfaces share. Unanswered after retries (the REST leg now retries a 5xx and a 429) or unanchorable
+is *not asked*, counted in `detail`, never agreement; `--offline` asks nothing; answers are never
+journalled. Tests in `enricher/tests/test_placement_witness.py` (recorded REST answers for `rs8176719` and
+`rs77944059`, one live test under `JUST_DNA_NETWORK_TESTS=1`), each arm mutated once.
+
+**2026-11-04: an injected resolver without `resolve_rsid_rest` leaves REST not asked, never a crash.**
+The witness above called the new method on whatever resolver the host injected, so a resolver written
+against 0.7 (just-dna-marketplace's test fake is one) raised `AttributeError` at the first eligible
+indel. `enrich(resolver=)` now requires `ensembl.RsidResolver` (`resolve_rsid`) and asks the optional
+`ensembl.RestWitness` capability only where it exists; otherwise every eligible rsID is not asked,
+counted, with `PlacementCheck.not_asked_reason` in `detail` and one warning. Hunted across `enrich`'s
+other injected collaborators (gnomAD, GRCh37, the release probes): each calls only its parameter's
+original contract. Test red before, the reason's wiring mutated once.
+
+**2026-11-04: the retired beta GraphQL leg is no longer asked.** `resolve_rsid` POSTed to
+`beta.ensembl.org/api/graphql/variation` before every REST request. Probed by hand (19:19Z): 301 to
+`www.ensembl.org`, where the query no longer validates (HTTP 400) and a bare rsID is
+`VARIANT_ID_NOT_FOUND`. Removed with its settings and dead tests; `resolve_rsid` is REST alone.
+`ensembl-graphql` stays a readable `source` value. Every other client endpoint was probed once that day,
+redirects unfollowed: only GenCC's bulk download answered 301 (`search.thegencc.org` → `thegencc.org`),
+and its default now names the new host; ClinPGx's 303 to S3 and ClinVar-GKM's directory 302 are hops to
+files that answer 200.
+
+**2026-11-04: the REST rung is paced and honours `Retry-After`.** Neither existed on it (the review of
+the REST witness reported both). `EnsemblResolver` holds a `PacingGate` (0.1 s, Ensembl's 15 req/s)
+waited once per attempt; a retried 5xx or 429 waits at least the answer's `Retry-After`
+(`net.wait_retry_after`, the first in the tier), and one past `net.RETRY_AFTER_CEILING` is not retried
+and holds every later request until it passes. Tests on a fake clock, each arm mutated once.
 
 **Severity** high · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** (two optional
 `resolution.csv` columns and a new check; [PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §5 C4) ·

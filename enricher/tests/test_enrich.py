@@ -3,7 +3,7 @@
 The cache side uses a tiny synthetic `ensembl_variations` parquet (the injectable shape the compiler
 resolver reads); the live-Ensembl side uses an `httpx.MockTransport`, so nothing here opens a socket.
 Coverage: offline enrich → resolution.csv → the compiler consumes it and reproduces the DuckDB
-digest; `--offline` never calls the network; the V2→V1 fallback on 503; tenacity retrying a transient
+digest; `--offline` never calls the network; the live link asking REST alone; tenacity retrying a transient
 error; strict failing on an unresolved variant; one-to-many expansion written as N rows.
 """
 
@@ -248,7 +248,7 @@ def test_offline_never_calls_network(cache: Path, tmp_path: Path) -> None:
     assert result.unresolved == ["rs55555555"]  # recorded, not fetched
 
 
-# ── live Ensembl: V2 GraphQL 503 → V1 REST fallback; tenacity retries a transient error ────────
+# ── live Ensembl: REST alone (the beta GraphQL surface is retired); tenacity retries a transient error ──
 
 
 def _rest_variation_response() -> httpx.Response:
@@ -274,51 +274,42 @@ def _rest_variation_response() -> httpx.Response:
     )
 
 
-def test_v2_graphql_503_falls_back_to_v1_rest() -> None:
+def test_resolve_rsid_asks_rest_alone_never_the_retired_graphql_surface() -> None:
+    """The beta GraphQL endpoint answers 301 to `www.ensembl.org`, where the query's shape no longer
+    validates and a bare rsID is `VARIANT_ID_NOT_FOUND` (probed 2026-11-04). Asking it first cost a
+    request per rsID and never answered one, so `resolve_rsid` asks REST and nothing else."""
+    requested: list[str] = []
+
     def handler(request: httpx.Request) -> httpx.Response:
-        if "graphql" in str(request.url):
-            return httpx.Response(503, text="beta down")
+        requested.append(f"{request.method} {request.url.host}{request.url.path}")
+        if request.url.host != "rest.ensembl.org":
+            return httpx.Response(301, headers={"Location": "https://www.ensembl.org/api/graphql/variation"})
         return _rest_variation_response()
 
     resolver = EnsemblResolver()
     resolver._client = httpx.Client(transport=httpx.MockTransport(handler))
     loci, source = resolver.resolve_rsid("rs1801133")
+    assert requested == ["GET rest.ensembl.org/variation/human/rs1801133"]
     assert source == "ensembl-rest"
     assert loci == [{"chrom": "1", "start": 11856377, "ref": "G", "alts": "A"}]  # GRCh38 only
 
 
-def test_tenacity_retries_transient_then_succeeds() -> None:
-    calls = {"graphql": 0}
+def test_tenacity_retries_a_transient_rest_error_then_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("time.sleep", lambda _seconds: None)  # tenacity's backoff
+    calls = {"rest": 0}
 
     def handler(request: httpx.Request) -> httpx.Response:
-        if "graphql" in str(request.url):
-            calls["graphql"] += 1
-            if calls["graphql"] == 1:
-                raise httpx.ConnectError("transient", request=request)
-            # second attempt: valid GraphQL variant node
-            return httpx.Response(
-                200,
-                json={
-                    "data": {
-                        "variant": {
-                            "name": "rs1801133",
-                            "alleles": [
-                                {"allele_type": {"value": "reference"}, "reference_sequence": "G"},
-                                {"allele_type": {"value": "alt"}, "reference_sequence": "A"},
-                            ],
-                            "slice": {"location": {"region_name": "1", "start": 11856377}},
-                        }
-                    }
-                },
-            )
+        calls["rest"] += 1
+        if calls["rest"] == 1:
+            raise httpx.ConnectError("transient", request=request)
         return _rest_variation_response()
 
     resolver = EnsemblResolver()
     resolver._client = httpx.Client(transport=httpx.MockTransport(handler))
     loci, source = resolver.resolve_rsid("rs1801133")
-    assert calls["graphql"] == 2  # retried the transient error
-    assert source == "ensembl-graphql"
-    assert loci[0]["chrom"] == "1" and loci[0]["ref"] == "G"
+    assert calls["rest"] == 2  # retried the transient error
+    assert source == "ensembl-rest"
+    assert loci == [{"chrom": "1", "start": 11856377, "ref": "G", "alts": "A"}]
 
 
 # ── S20: an unreachable Ensembl is unchecked, never absent ────────────────────────────────────
@@ -339,8 +330,6 @@ def test_a_transport_failure_returns_none_where_an_empty_answer_returns_a_list()
     loci, source = unreachable.resolve_rsid("rs6567160")
 
     def empty(request: httpx.Request) -> httpx.Response:
-        if "graphql" in str(request.url):
-            return httpx.Response(200, json={"data": {"variant": None}})
         return httpx.Response(200, json={"name": "rs2000000000", "mappings": []})
 
     answered = EnsemblResolver()
@@ -405,8 +394,6 @@ def test_an_unanchorable_ensembl_answer_writes_no_row_and_is_named_apart(
     named by its own warning — not in `unreachable_rsids`, because the request did not fail."""
 
     def rest_insertion(request: httpx.Request) -> httpx.Response:
-        if "graphql" in str(request.url):
-            return httpx.Response(200, json={"data": {"variant": None}})
         mapping = {
             "assembly_name": "GRCh38",
             "seq_region_name": "9",
@@ -455,8 +442,6 @@ def test_three_answered_or_failed_states_are_named_apart_and_stay_unresolved(
     }
 
     def handler(request: httpx.Request) -> httpx.Response:
-        if "graphql" in str(request.url):
-            return httpx.Response(200, json={"data": {"variant": None}})
         rsid = str(request.url).rstrip("/").split("/")[-1].split("?")[0]
         if rsid not in mappings:
             raise httpx.ConnectError("egress down", request=request)

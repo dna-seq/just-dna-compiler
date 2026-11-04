@@ -334,13 +334,28 @@ unresolved state. Each witness a written row names gets a `resolution`-layer `So
 `9:133257521 T>TC` dbSNP and Ensembl REST give, two haplotypes. Probed 2026-11-04 on real data: neither loaded witness holds `rs8176719` (ClinVar's 2026-06-27 VCF has no record at `9:133257510–529` and no `RS=8176719`; ClinVar-GKM lacks it, RM305), so against today's witnesses S117's own case is counted in the one-witness class and named in `detail`, not withheld. The spelling `9:133257521 T>TC` is dbSNP's and Ensembl REST's; the tests supply it as a ClinVar row to exercise the withhold. A respelling (`rs72613567`, `rs77944059`) mints one VRS id and is
 written, left-aligned since RM270 (§ 1.19).
 
+**Ensembl REST as the third witness (2026-11-04, after the first build).** An online run now also asks
+Ensembl REST about an indel the Ensembl snapshot placed and neither ClinVar nor ClinVar-GKM holds, so
+S117's own `rs8176719` is withheld against the real witnesses: REST answers `-/C` at the interbase point,
+which anchors to `9:133257521 T>TC`. REST is Ensembl, so the comparison is self-consistent, not
+independent: the row names `ensembl`, the record's checked side becomes `ensembl` and its `independence`
+reads `self_consistent` (REST alone) or withholds (REST beside ClinVar), and an rsID only REST agreed
+with stays in the one-witness count. A REST request still unanswered after its retries leaves REST not
+asked for that rsID, counted in `detail`. `--offline` asks nothing. A consumer reading `independence`
+off a `placement_agreement` record sees it withheld on a typical online run that asked REST anything.
+
 | Surface | What changed |
 | --- | --- |
-| `resolution.csv` `placement_witness` | New optional provenance column: which second authority was asked (`clinvar`, `clinvar_gkm`, or both `+`-joined). Empty means nobody independent was asked. Outside `resolution_signature`. |
+| `resolution.csv` `placement_witness` | New optional provenance column: which second authority was asked (`clinvar`, `clinvar_gkm`, and online `ensembl` for a snapshot indel neither holds, `+`-joined). `ensembl` is Ensembl REST, self-consistent with the snapshot rather than independent. Empty means nobody was asked. Outside `resolution_signature`. |
 | `resolution.csv` `placement_verdict` | New optional provenance column, `VALID_PLACEMENT_VERDICTS` (closed): `same_event`, `undecided`, `unplaced`. Outside `resolution_signature`. |
-| `VALID_VERIFICATION_CHECKS` | Gains `placement_agreement` (`checked_source` `reporting_source`, witness `clinvar+clinvar_gkm`, with an `undecided` count; the one-witness count is in `detail`). |
+| `VALID_VERIFICATION_CHECKS` | Gains `placement_agreement` (`checked_source` `reporting_source`, or `ensembl` once Ensembl REST answered; witness `clinvar+clinvar_gkm+ensembl`, narrowed to the ones that answered; with an `undecided` count; the one-witness count, the REST-only and the REST-not-asked counts are in `detail`). |
 | `enrich(clinvar_gkm_cache=)`, `enrich --clinvar-gkm-cache` | Where the ClinVar-GKM witness is read from; `$JUST_DNA_CLINVAR_GKM_CACHE` otherwise. Read locally, never downloaded by `enrich`. |
-| `EnrichmentResult.placement`, `placement.PlacementCheck`, `ClinVarGkmWitness.by_rsids` | What the comparison did, and the batch lookup it uses. |
+| `EnrichmentResult.placement`, `placement.PlacementCheck`, `ClinVarGkmWitness.by_rsids` | What the comparison did, and the batch lookup it uses. `PlacementCheck` gains `self_consistent`, `not_asked` and `reported_by` with the REST witness. |
+| `verification.ran(reported_by=)`, `skipped(reported_by=)` | Names the sources a `reporting_source` check's values came from; the checked side becomes that source once it is also a witness, so `independence` derives `self_consistent` or withholds. A `placement_agreement` skip over Ensembl placements now reads `checked_source` `ensembl` with `independence` withheld, where it read `reporting_source` / `independent`. |
+| `EnsemblResolver.resolve_rsid_rest` | New: REST's mapping under the witness's name, same four outcomes; `resolve_rsid` is now this request alone. The witness asks this where an injected resolver has it (`ensembl.RestWitness`); a resolver without it leaves REST not asked for the run, counted, with one warning. |
+| `EnsemblResolver(gate=)`, `EnsemblSettings.interval`; `net.RETRY_AFTER_CEILING`, `retry_after_seconds`, `retry_if_transient_within`, `wait_retry_after` | New: the REST rung's `PacingGate` (0.1 s, waited once per attempt) and `Retry-After` honoured on a retried 5xx/429. A `Retry-After` past the ceiling (10 s) is not retried, and the resolver then answers could-not-ask (`(None, None)`) without a request until that time passes; a caller already reads that as unreachable. |
+| `ensembl.RsidResolver`, `ensembl.RestWitness`, `PlacementCheck.not_asked_reason` | New: the Protocol `enrich(resolver=)` requires (`resolve_rsid`), the optional capability the witness asks, and the one reason a run's not-asked rsIDs share when the resolver lacks it. An injected resolver written against 0.7 keeps working. |
+| `EnsemblResolver.resolve_rsid`, `EnsemblSettings` | No longer POSTs to the beta GraphQL endpoint first (it answers 301 and never answered a bare rsID); every answer's source is `ensembl-rest`. **Removed:** `EnsemblSettings.graphql_endpoint`, `EnsemblSettings.human_genome_id`, `ensembl.DEFAULT_GRAPHQL_ENDPOINT`; a caller constructing `EnsemblSettings` with either field gets a `TypeError` (none found in the ecosystem repos). A recorded `source` of `ensembl-graphql` still reads. The REST leg now retries a 5xx and a 429 (`net.retry_if_transient_within`: not one whose `Retry-After` is past the ceiling, see the row above), and a 429 left after the retries is unreachable (`(None, None)`), no longer "no record" (`[]`). |
 
 **This breaks a 0.7 reader of a 0.8-enriched `resolution.csv`.** `ResolutionRow` forbids unknown
 columns, so a 0.7 compiler refuses the table once a 0.8 enricher has written it, and a 0.7 reader of a
@@ -473,6 +488,9 @@ names, `sex` and rsIDs compare as written; each already has one rule.
 | `derived_row_orphan` on `gene_metrics.csv`, `gene_validity.csv`, `frequencies.csv`, `clinical_assertions.csv`, `gwas_effects.csv` (compile; the two gene tables in validate too) | A row is about the module when any table on the module's roster names its gene, locus or identity: `variants.csv` and every gene-bearing table kind for a gene (the set `manifest.stats.genes` publishes), `variants.csv` and every positional table kind for a locus or an rsID. Before, only `variants.csv` counted, and a module without one was never checked. So a diplotype-scored module no longer warns about its own gene's fact rows, and a PGx-only module now warns about a fact row for a gene or locus it does not carry. The sentences and the code are unchanged; the concordance pair (`clin_sig_concordance.csv`) still reads `variants.csv`, the only table its pass compares. No reference example gains or loses a warning. | Nothing. If you read these warnings off a PGx-only module, expect them where 0.7 said nothing. |
 | The overlay's `resolution.csv` reachability (`overrides.csv` finding) | A correction aimed at the locus of a positioned `haplotypes.csv`, `heteroplasmy.csv` or `pharm_variants.csv` row counts as one an artifact can carry, as `reverse_module` writes that row back. Before, lap 1 called it unreachable and lap 2 matched it. | Nothing. |
 | `just_dna_compiler.compiler.subjects` (new module) | `MODULE_GENE_TABLES`, `MODULE_LOCUS_TABLES`, `module_subjects(rows_by_table)`, `ModuleSubjects`: the one answer to "which genes, loci and identities is this module about". The enricher's gene scope (`gene_metrics.module_genes`) and the compiler's checks call it. | If you compute a module's genes or loci yourself, call it instead. |
+| `derived_row_orphan` on `frequencies.csv` and `clinical_assertions.csv`, and `study_variant_orphan` (validate and compile; amended 2026-11-04) | A locus is also one the module sits at when the module's own `resolution.csv` places an identity a row carries there (its `variant_key` or `rsid`; GRCh38, resolution on, any status but `not_found`). An indel authored in one spelling and resolved in another no longer has the enricher's own frequency row at the resolved spelling called an orphan. Fewer warnings, never more; no reference example changes. | Nothing. |
+| `clin_sig_contradicts_frequency` (BA1) and `weights.parquet`'s study columns (`effect_unit`, `eur_only_evidence`, `outcome_*`) | Matched at every spelling the variant sits at: its own, and the table's when its own is not one the table gives and the table gives exactly one other. BA1 reports a variant once per ALT. A pathogenic variant can now warn where it was silent, and a coordinate-only study at the table's spelling now feeds the variant's row (only for a row whose authored coordinate the table contradicts, which `strict` refuses). | Nothing. |
+| `module_subjects(rows_by_table, *, unreadable=(), resolution=None, genome_build="GRCh38")` | Two keyword arguments; `ModuleSubjects.resolved_positions`; `identity_placements`, `row_positions` and `position_key` beside it; `just_dna_compiler.resolution.usable_loci` (was private). | Pass the injected table if you ask the question yourself. |
 
 ## 1.26 A failed or retired request is never recorded as an answer (RM361) — an old-reader break
 
@@ -486,7 +504,32 @@ names, `sex` and rsIDs compare as written; each already has one rule.
 | Clients | `EutilsClient.esummary` raises `EutilsError` on a body with no summary block; OLS4/HGNC raise `IdentifierUnavailable` on a body without their answer block; `EnsemblResolver.resolve_rsid` returns `(None, None)` for any REST status but 400; a Hub failure other than not-found raises the lane's error instead of `SnapshotNotPublished`; `cpic_build` refuses a table with no stated count. | A host that caught only the old negative answer catches the could-not-ask type it already catches for an outage. |
 | `dataset` labels | A ClinGen or GenCC file with no release line labels its rows with the bare lane (`clingen_dosage`), not `clingen_dosage_unknown`. | Nothing. |
 
-## 1.27 The Ensembl snapshot moved repos, and resolutions move as data (RM372, no new code)
+## 1.27 The publisher's refusal family, and what a publish sends (RM368, no break)
+
+| surface | change |
+| --- | --- |
+| `upload.PublishRefused` | New base of every refusal a publish raises. `ModuleNotPublishable` (`plan_upload`'s refusals) and `SnapshotNotPublishable` (`plan_reference_snapshot`'s) are new and **still `FileNotFoundError`s within 0.8**, so an `except FileNotFoundError` keeps catching them; `PlanChangedError` is new; `PublishCollisionError`, `ToolchainDiffersError` and `OrphanedSidecarError` are re-based under it, names and attributes unchanged. A missing token stays `PermissionError`, a missing `huggingface_hub` `ImportError`. |
+| `UploadPlan.sha256` | New field with a default: each planned file's sha256 as the plan read it, `manifest.json` included. |
+| `upload_module` | Sends through `create_commit` carrying the plan's bytes, verified at send time; a file that changed since the plan raises `PlanChangedError` before either commit. Two commits, flat path first, as before. |
+| `plan_upload` | **A tightening:** a declared field present in a shape the compiler never writes (`artifact.files` not a list, a `sha256` not a string, `logs` not a list, `logo`/`readme`/`provenance` not an object) refuses, quoting it, where it read as absent and dropped a check. An absent or `null` field still withholds. A blank `name` names no file. No compiled manifest holds such a field. |
+| the versioned-path guard | Also compares every other field of `manifest.json`, naming the dotted paths that differ. `compiled_at` and `compiled_by` (`upload.COMPILATION_STAMPS`) are not compared, so a recompile of an unchanged spec republishes as a no-op. |
+| `rehearse_upload`, `rehearse_reference_snapshot` | New: the dry runs, running every check the real publish runs. `upload --dry-run` now reads the published manifest of the version (read-only, anonymous when there is no token) and every snapshot `publish --dry-run` the repo's file list. |
+
+## 1.28 `reverse` gives back what the compile carried, and the positional parquets carry `resolution_loci` (RM364, no break)
+
+Which manifest fields `compile → reverse → compile` gives back is now a registry,
+`just_dna_compiler.compiler.reverse.REVERSE_MANIFEST_RECONSTRUCTED`, with every other field in
+`REVERSE_MANIFEST_EXCLUDED` and a reason each; `reconstructed_projection(manifest)` is the comparison the
+round-trip gates make, lap against lap.
+
+| Surface | What changed |
+| --- | --- |
+| `reverse` | Copies `provenance.json` and every shipped log back into the reversed spec, byte for byte after a hash check against the manifest, as it already did the README and logo (`reverse.shipped_files`). A file that disagrees with its record, or a recorded name that leaves the module directory, is not copied and is logged. Before, `manifest.provenance` and `manifest.logs` were empty on the second lap. |
+| `weights.parquet`, `pharm_variants.parquet`, `haplotypes.parquet`, `heteroplasmy.parquet` `resolution_loci` (compiler-filled) | `List(Struct{rsid, chrom, start, ref, alts, locus_index, vrs_id, vrs_spec})`, the `proxy_loci` shape: the loci the post-overlay `resolution.csv` files under the row's authored key (on `weights.parquet` the key the author wrote, not an expanded row's locus key), on the module's build. **Null wherever the row's own cells already rebuild those loci exactly** (every cleanly resolved row), and null when the table files none or under `--no-resolve`; so it is filled exactly on a row the fill left alone, and then repeated on every genotype row and expanded locus of that authored row. Not authored and never written to a CSV; `reverse` rebuilds `resolution.csv` from it, so a row whose authored coordinate the table contradicts no longer comes back with that coordinate written as a resolution fact. It is the lookup's answer kept for the round trip; a consumer joining a VCF reads the row's own `chrom`/`start`/`ref`/`alts`. Appended last, so **every module carrying `variants.csv` or a positional table gets a new `artifact.digest` on a 0.8 recompile** (a new column, null on a clean module); `content_signature` does not move. |
+| `reverse`, a module that read no table | Writes no `resolution.csv` when the manifest records no `resolution_signature`, its `derived` list names none, and no parquet row carries a filled identity cell. It used to rebuild one from the authored coordinates, and the second lap's manifest then published a `resolution_signature`, VRS coverage and expansion counts the first did not. A spec that carried a table with no rows gets a header-only one back. |
+| `reference_examples/cpic_gene_pairs` | The NUDT15 `*1` row `rs1457579126` (removed while the example was built, for this defect) is back in `haplotypes.csv`, with its `resolution.csv` row and a ClinVar `licensing.csv` row (the placement's witness). The module was re-enriched and re-closed. |
+
+## 1.29 The Ensembl snapshot moved repos, and resolutions move as data (RM372, no new code)
 
 | Surface | What changed | What to do |
 | --- | --- | --- |
@@ -536,3 +579,7 @@ names, `sex` and rsIDs compare as written; each already has one rule.
 
 10. If you read `verification.json` or `manifest.verification`, upgrade to 0.8 first (§ 1.13), and do not
    count a `self_consistent` check's agreement as evidence for the value it checked (its findings stand).
+
+11. **Publishers (RM368).** Catch `upload.PublishRefused` around a publish rather than
+   `FileNotFoundError`: the two plan refusals keep `FileNotFoundError` as a second base only until 1.0.
+   A `--dry-run` of `upload` or a snapshot `publish` now reads the hub (§ 1.20).

@@ -28,6 +28,8 @@ _NOT_A_LOCAL_FETCH = {
     "HfApi": "the publisher's client; its tests stub `_hf_api` and `get_token`, and `HF_TOKEN` is blanked",
     "get_token": "reads a credential; the autouse `_no_ambient_hf_token` blanks the environment's",
     "DEFAULT_IGNORE_PATTERNS": "a constant",
+    "CommitOperationAdd": "a commit operation the publisher builds in memory (RM368); it reads and sends "
+    "nothing until the stubbed `HfApi` is asked to commit it",
 }
 
 

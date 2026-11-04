@@ -20,7 +20,7 @@ the mode** (`best_effort` warns and carries on; `strict` refuses). What exists t
 | **Wrong build** | a ref-mismatched row vs the same coordinate on GRCh37 (0.6) | `grch37.diagnose_wrong_build` (**warns in both modes**) | `authored` | `ensembl-grch37` | `genome_build_agreement` |
 | **VRS cross-check** | a source's own `vrs_id` vs the locally-minted one | `vrs.mint_resolution_rows` | `reporting_source` | `seqrepo` | `vrs_allele_id` |
 | **rsid↔coordinate** | an authored pair vs what the reference says | `compiler/resolution.py::_verify` over the injected table (warning), and `enrich()` against the injected Ensembl snapshot (`resolver.check_rsid_coordinates`, warning in both modes) — one question, two tiers, so one attestation name, and the enricher's half is the one that attests | `authored`; abstentions counted in `undecided` | `ensembl` | `rsid_coordinate_agreement` |
-| **Placement agreement** | where the run's own link placed an rsID vs where ClinVar and ClinVar-GKM place it (0.8, RM267); a disagreement **withholds** the disputed locus | `placement.compare_placements`, called by `enrich()` before the table is assembled (warns in both modes; `strict` refuses through the unresolved gate, since a withheld rsID-only row is unresolved) | `reporting_source`; abstentions counted in `undecided` | `clinvar`, `clinvar_gkm` | `placement_agreement` |
+| **Placement agreement** | where the run's own link placed an rsID vs where ClinVar and ClinVar-GKM place it, and, online, where Ensembl REST places a snapshot indel neither holds (0.8, RM267); a disagreement **withholds** the disputed locus | `placement.compare_placements`, called by `enrich()` before the table is assembled (warns in both modes; `strict` refuses through the unresolved gate, since a withheld rsID-only row is unresolved) | `reporting_source`, or `ensembl` once REST answered (Ensembl against itself); abstentions counted in `undecided` | `clinvar`, `clinvar_gkm`, `ensembl` | `placement_agreement` |
 | **Ambiguous back-fill** | ≥2 rsIDs for one exact allele → recorded, never guessed | `resolver._lookup_rsid_candidates` | — | — | — *(recorded onto the row, not attested)* |
 | **Clinical significance** | authored `clin_sig` vs **every annotation authority** consulted — ClinVar and, since 0.7, PubMind — allele-exactly | `clinical.verify_clin_sig` (**warns in both modes**), persisted as the N-authority concordance record by `clinical.clin_sig_concordance` (0.7, RM130 + RM134 § B) | `authored` | `clinvar` | `clinical_significance` |
 | **Answered-call currency** | an authority's call **now** vs what it said when the author's `overrides.csv` answer was written (0.7, RM151) | `clinical.answered_call_shift` → `concordance.shifted_authority_calls` (**warns in both modes**; the baseline is the previous run's `clin_sig_authority_calls.csv`, so it is read before the commit rewrites it and a move is observable exactly once) | — | — | — *(logged; the record it reads is the attestation)* |
@@ -465,7 +465,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `constraint_build` | **`[dev]`** builder: gnomAD constraint TSV → gene-level parquet + `release.json` | `polars` (lazy), `httpx` |
 | `vrs` | GA4GH VRS allele-id minting onto `resolution.csv` (substitutions stdlib, indels normalized) | `ga4gh.vrs` |
 | `sequences` | reference-sequence access (cached), the reference-allele check, and the one left-alignment every pass uses (`left_normalize`, `normalize_locus`, `spelling_verdict`; RM270 writes a fill left-aligned with it) | `ga4gh.vrs` |
-| `placement` | **0.8** (RM267): where the run's own link placed each rsID against where ClinVar and ClinVar-GKM place it — by VRS id, else the left-aligned spelling; a disagreement withholds the rsID | `sequences`, `clinvar`, `clinvar_gkm` |
+| `placement` | **0.8** (RM267): where the run's own link placed each rsID against where ClinVar and ClinVar-GKM place it, and, online, where Ensembl REST places a snapshot indel neither holds — by VRS id, else the left-aligned spelling; a disagreement withholds the rsID | `sequences`, `clinvar`, `clinvar_gkm` |
 | `locations` | cache-location resolution — **one `resolve`/`default_dir`/`env_var` triple per lane in `CACHE_LANES`**, paired by a test rather than counted here — plus `.env` and the pull record. The snapshot layout names and `read_release` are imported from `just_dna_format.snapshot` since 0.8 (RM303) and stay importable from here | `platformdirs`, `python-dotenv` |
 | `download` | HuggingFace **snapshot** download, footer-checked and atomic — **one `ensure_*` per lane whose `publish_repo` is set**, which is the registry's own answer to which lanes may be pulled rather than a second list. A lane with no repo is operator-built; see *The caches* | `huggingface_hub` (lazy) |
 | `cpic_build` | **`[dev]`** builder (0.5.1): the whole CPIC PostgREST database → parquets + `release.json` | `polars` (lazy), `cpic` |
@@ -476,7 +476,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `strchive` | RM165: the STRchive repeat-locus catalogue — the `repeat_alleles.csv` band cross-check (offline, reports only) | format `binning`, compiler `load_csv_rows` |
 | `strchive_build` | RM165 builder: download `STRchive-loci.json` + `release.json`. Core `httpx` only, no parquet and no `[dev]` extra | `httpx` |
 | `strchive_draft` | RM165: STRchive → `repeat_alleles.csv` **partial** rows — identity only, bands left to a human | `strchive`, compiler `draft` |
-| `ensembl` | live Ensembl: V2 GraphQL → V1 REST fallback, tenacity | `httpx`, `tenacity` |
+| `ensembl` | live Ensembl REST (the beta GraphQL leg was retired on 2026-11-04), tenacity | `httpx`, `tenacity` |
 | `upload` | publisher surface — push a compiled module or a reference snapshot to HF (`[dev]`) | `huggingface_hub` (lazy) |
 | `litvar` | RM167: LitVar2/PubTator3 literature coverage per locus, **with the tier that answered** (allele node / position node / absent). Reports only; writes no row and no `SourceRow` | `httpx`, `tenacity`, `clingen_allele` |
 | `drug_labels` | RM166: five regulators' drug labels — the `(gene[, allele], drug)` cross-check at two join tiers (offline, reports only, writes no `SourceRow`) | `duckdb`, format `pgx`, compiler `load_csv_rows` |
@@ -530,8 +530,7 @@ per service, put a semaphore around your call site; the gate will not give you t
 | **ClinGen Allele Registry** (`reg.clinicalgenome.org/allele`) | `clingen_allele` → the identity-from-a-name procedure (0.7, RM153) | none published | `_REQUEST_INTERVAL=0.1` (courtesy) | none |
 | **Ensembl GRCh37 REST** (`grch37.rest.ensembl.org`) | `grch37.diagnose_wrong_build` (0.6), `hint recover` | Ensembl publishes **15 req/s** | `_REQUEST_INTERVAL=0.1` — keeps a whole panel inside it while still interactive | none |
 | **ClinVar release probe** | `currency.ClinVarReleaseClient` — one bounded read of the VCF's header (`HEADER_PROBE_BYTES`) per `--verify-datasets` run (0.7) | NCBI asks for no particular pacing on the FTP-over-HTTPS mirror | `CLINVAR_MIN_INTERVAL=0.5` — this tier paces every service it touches, and one probe per run is inside any budget | none |
-| **Ensembl REST** (`rest.ensembl.org`) | `ensembl` V1 fallback | **15 req/s** per IP, **~55 000 / rolling hour**; 429 + `Retry-After` / `X-RateLimit-*` | **no `PacingGate`** — live path is the last link after cache/snapshot, so volume stays low; tenacity on transport only | none |
-| **Ensembl GraphQL** (`beta.ensembl.org`) | `ensembl` V2 first try | unpublished (beta) | **no `PacingGate`**; 5xx falls through to REST | none |
+| **Ensembl REST** (`rest.ensembl.org`) | `ensembl` (the live link); the placement witness (0.8, RM267), one sequential request per snapshot indel no loaded witness holds | **15 req/s** per IP, **~55 000 / rolling hour**; 429 + `Retry-After` / `X-RateLimit-*` | `_REQUEST_INTERVAL=0.1` (`EnsemblSettings.interval`), one `PacingGate` per resolver, waited once per attempt (since 2026-11-04); tenacity on transport, 5xx and 429, waiting at least the answer's `Retry-After` (`net.wait_retry_after`); one longer than `net.RETRY_AFTER_CEILING` (10 s) is not retried, and the resolver asks nothing until it passes | none |
 | **CPIC** (`api.cpicpgx.org`) | `cpic` / `pgx_draft` | unpublished | **no `PacingGate`** — coarse PostgREST GETs (gene-scoped), not per-allele loops | none |
 | **ClinPGx** | `clinpgx` / `clinpgx_draft` | n/a at runtime | **offline snapshot only** for the check/draft path — no live poll budget | none (live API retired → snapshot) |
 | **seqrepo REST** (`services.genomicmedlab.org`) | `sequences` / VRS indel mint | unpublished | **no `PacingGate`**; in-process memo of window reads | none |
@@ -734,7 +733,8 @@ coord but no rsid), runs a **first-hit-wins chain**, and writes/merges `resoluti
    is a complementary reference (4.4M clinically-curated records, 1.54M with no rsid) that makes an
    offline clinical enrich possible without provisioning the 14 GB dbSNP cache.
 5. **Live Ensembl** — for rsIDs every cache missed, `ensembl.EnsemblResolver.resolve_rsid`
-   (V2 GraphQL → V1 REST fallback). Sources `ensembl-graphql` / `ensembl-rest`. It has **four**
+   (REST). Source `ensembl-rest`; a row written before 0.8 may carry `ensembl-graphql`, the retired
+   leg's. It has **four**
    outcomes: loci, an answered `[]`, `(None, None)` for could-not-ask, and `(None, source)` for an
    answer whose one-sided indels could not be anchored (RM268) — see *Live Ensembl* below, and note
    that neither `None` leaves **any `resolution.csv` row at all**.
@@ -1174,23 +1174,57 @@ ids are VRS 2.1.1 and ours 2.0, so its VCF spelling is minted here rather than i
 - **A ClinVar fill has no independent witness here.** ClinVar-GKM is ClinVar's own release, so a row the
   ClinVar link filled is counted with the one-witness class and its two columns stay empty.
 - **Each written row says who was asked and what they answered**: `placement_witness` and
-  `placement_verdict` ([SCHEMAS.md](SCHEMAS.md)). Both empty means nobody independent was asked. Every
+  `placement_verdict` ([SCHEMAS.md](SCHEMAS.md)). Both empty means nobody was asked. Every
   witness a written row names gets its `SourceRow` at the `resolution` layer (`@write-the-sourcerow`),
   and the compiler's orphan check counts those names as used.
 - **It attests as `placement_agreement`**: `subjects` is the rsIDs compared, `findings` the rsIDs
   with a disputed placement, `undecided` the respellings nothing could settle, and `detail` the one-witness count over
-  every placed rsID.
+  every placed rsID, the rsIDs only Ensembl REST compared, and the rsIDs REST could not be asked about.
 - **Recorded rows are not re-asked.** Merge-not-clobber holds, so a `resolution.csv` written before 0.8
   meets the comparison only under `--rederive` or after the file is deleted. Under `--rederive` a
   disputed subject counts as answered, so its recorded placement is not carried forward.
 
-Probed 2026-11-04 on real data: neither loaded witness holds `rs8176719` (ClinVar's 2026-06-27 VCF has no record at `9:133257510–529` and no `RS=8176719`; ClinVar-GKM lacks it, RM305), so against today's witnesses S117's own case is counted in the one-witness class and named in `detail`, not withheld. The spelling `9:133257521 T>TC` is dbSNP's and Ensembl REST's; the tests supply it as a ClinVar row to exercise the withhold. Catching it needs a witness that holds it: the live REST rung is the obvious one and is
-not asked (below).
+Probed 2026-11-04 on real data: neither loaded witness holds `rs8176719` (ClinVar's 2026-06-27 VCF has
+no record at `9:133257510–529` and no `RS=8176719`; ClinVar-GKM lacks it, RM305). Catching S117's own
+case needs a witness that holds it, which is why REST is asked:
+
+- **Ensembl REST is the third witness, online only.** For an rsID the Ensembl snapshot placed with at
+  least one allele that is not a substitution, and that neither loaded witness holds, an online run asks
+  the live REST rung (`EnsemblResolver.resolve_rsid_rest`, the V1 half of `resolve_rsid` on its own, so
+  the beta GraphQL surface is never asked; through the run's own resolver, so an injected one is
+  honoured), one request at a time, and compares its answer by the same ladder. REST answers `rs8176719` as `-/C` at
+  `start 133257522, end 133257521`, which RM268's anchor turns into `9:133257521 T>TC`; the snapshot's
+  `9:133257520 G>GC` mints a different id, so the rsID is withheld with both placements named. A row the
+  live rung gave itself, a substitution, and an rsID ClinVar or ClinVar-GKM holds are not asked. Answers
+  are never journalled: a witness's answer is not a placement the run writes.
+- **REST is Ensembl, so it is self-consistent, not independent** (RM292). The witness is named
+  `ensembl`, the licensed source `placement_witness` joins `sources.csv` on, and the record names its
+  checked side `ensembl` once REST answered, so `independence` derives `self_consistent` when REST was the
+  only witness and is withheld when ClinVar answered for other rsIDs in the same run. A skipped record
+  names the authorities of what it placed the same way, so an Ensembl-placed module's skip does not
+  read `independent` against a witness list that names Ensembl. That does not empty
+  the comparison of value: it catches the snapshot's VCF dump disagreeing with Ensembl's own REST mapping,
+  which is exactly S117's mechanism (the dump anchors a class of insertions one base left of Ensembl's
+  interbase point). It cannot catch an error both surfaces share, so an rsID only REST agreed with stays
+  in the one-witness count, and `detail` names those apart.
+- **Unreachable is not asked.** REST is retried on a transport error, a 5xx and a 429. A request still
+  unanswered, or an answer whose anchor base could not be read, leaves REST not asked for that rsID: the
+  row does not name `ensembl`, nothing is withheld, and `detail` counts the rsIDs. A 4xx is an answer:
+  REST holds no placement, so the row names `ensembl` with `unplaced`. `--offline` asks nothing.
+- **An injected resolver need only have `resolve_rsid`** (`ensembl.RsidResolver`). REST's mapping is an
+  optional capability, `ensembl.RestWitness` (`resolve_rsid_rest`), asked only where the injected
+  resolver has it. One written before 0.8 leaves REST not asked for the run: every eligible rsID is
+  counted as not asked, `detail` says the resolver has no such method, and one warning names the class.
+  Before this, the first eligible indel raised `AttributeError` and the run died.
+- **Paced, and told when to come back.** The rung waits on its resolver's `PacingGate` before every
+  attempt and honours a throttle's `Retry-After` (the rate table above). During an outage each asked rsID
+  still costs three attempts; a `Retry-After` past the ceiling leaves every later rsID not asked, with no
+  request, until the time the server named.
+
 
 The ClinVar witness is the snapshot the run locates for its link and the `clin_sig` check, so
-`--no-clinvar --no-verify-clinsig` leaves only ClinVar-GKM. The live REST rung is not a witness: the
-0.8 contract compares loaded authorities only (PROPOSAL_0_8_PT2 §5 C4), and asking REST would cost one
-request per indel.
+`--no-clinvar --no-verify-clinsig` leaves only ClinVar-GKM. The live REST rung is asked only as the
+third witness above, for a snapshot indel neither loaded witness holds, one request per such rsID.
 
 ### A filled coordinate is written left-aligned; an authored one is judged (0.8, RM270)
 
@@ -1286,19 +1320,26 @@ fixpoint** (`artifact.digest`, `content_signature`, and the provisional `resolut
 [SCHEMAS.md](SCHEMAS.md) (`derive_variant_key`, `ResolutionRow.rsid_alternates`) and
 `reference_examples/pathogenic_clinvar/README.md` (the ClinVar dogfood these fixes came from).
 
-## Live Ensembl — V2 GraphQL + V1 REST fallback (`ensembl.py`)
+## Live Ensembl — REST (`ensembl.py`)
 
-`EnsemblResolver.resolve_rsid(rsid) -> (list[locus] | None, source | None)` tries two backends in order:
+`EnsemblResolver.resolve_rsid(rsid) -> (list[locus] | None, source | None)` asks one backend, REST
+(`_rest_rsid`, `DEFAULT_REST_ENDPOINT` = `rest.ensembl.org/variation/{species}/{rsid}`), and parses its
+GRCh38 `mappings` into loci; `resolve_rsid_rest` is the same request under the name the placement witness
+asks for (an optional capability of an injected resolver, `RestWitness`). **`tenacity`** (`@retry`,
+exponential jitter, 3 attempts) retries a transport error, a timeout, a 5xx and a 429, each attempt
+paced by the resolver's `PacingGate` (`EnsemblSettings.interval`, 0.1 s against Ensembl's 15 req/s), and
+a retry waits at least what the answer's `Retry-After` asked for (`net.wait_retry_after`). A wait past
+`net.RETRY_AFTER_CEILING` (10 s, about the longest backoff; Ensembl's hourly budget answers with the time to its reset) is not
+slept: the request is could-not-ask, and the resolver asks nothing until that time has passed.
 
-- **V2 — beta GraphQL** (`_graphql_rsid`, `DEFAULT_GRAPHQL_ENDPOINT`): the endpoint + variant-query shape
-  leeched from ensembl-mcp, `eliot.start_action` swapped for stdlib `logging`.
-- **V1 — legacy REST** (`_rest_rsid`, `DEFAULT_REST_ENDPOINT` = `rest.ensembl.org/variation/{species}/{rsid}`):
-  newly written for this repo (it did not exist in ensembl-mcp); parses GRCh38 `mappings` into loci.
-
-`resolve_rsid` falls back V2→V1 on a status in `_FALLBACK_STATUS = {500, 502, 503, 504}` (or a
-GraphQL/transport error, or an empty V2 result). **`tenacity`** (`@retry`, exponential jitter, 3 attempts,
-on `httpx.TransportError`/timeout) wraps *each* backend independently, so an endpoint is retried before
-the fallback triggers.
+**The beta GraphQL leg is retired (2026-11-04).** `beta.ensembl.org/api/graphql/variation`, its query
+leeched from ensembl-mcp, was POSTed before every REST request. Probed by hand that day (19:19Z): the
+endpoint answers **301** to `www.ensembl.org/api/graphql/variation`; there the query no longer validates
+(`Cannot query field 'region_name' on type 'Location'`, HTTP 400); and even a valid query answers a bare
+rsID with `VARIANT_ID_NOT_FOUND`, because that API wants a composite `region:pos:rsid` id. It never
+answered a bare rsID, so it cost a request per rsID and handed every one to REST. It was removed with its
+settings (`EnsemblSettings.graphql_endpoint`, `human_genome_id`) rather than pointed at the new host:
+nothing it could say there is a question this resolver asks.
 
 **Three outcomes, because two of them used to be one (S20, 0.5.4).** A non-empty list is an answer; `[]`
 is *also* an answer — Ensembl was reached and has no GRCh38 locus for this rsID — and **`None` means
@@ -1326,13 +1367,12 @@ a lazy `SequenceProxy`), giving `9:133257521 T>TC`. An allele string with no `-`
 anchored and reads nothing. When the base cannot be read the locus is withheld, and an answer whose
 every locus was withheld returns `(None, "ensembl-rest")`: unchecked like a failed request, but
 `enrich` names it in its own warning (a structured field is RM272, minor), and `lookup` gives it its
-own finding, because the request did not fail. The GraphQL leg's convention is unprobed, so a one-sided
-node there answers `[]` and the rsID goes to REST.
+own finding, because the request did not fail.
 
 **A non-base allele is not a locus, at either rung (RM271, 2026-09-27).** REST serves the literals
 `dbSNP_novariation` and `dbSNP_variant` as an `allele_string`; the VCF-dump snapshot serves an empty
 alt, `<.>`, IUPAC placeholders (`<R>`, `<Y>`), `N` runs and N-masked chrY refs. One private predicate,
-`ensembl._placeable_alleles`, runs at every read of both (REST, GraphQL, and the four snapshot reads in
+`ensembl._placeable_alleles`, runs at every read of both (REST and the four snapshot reads in
 `resolver`): a `ref` outside `^[ACGT]+$` withholds the locus, an alt outside it is dropped, and a locus
 with no alt left is withheld. REST with nothing left answers the ordinary `[]` (it is permanent, so no
 re-run helps), and the snapshot names such rsIDs in one warning instead of `rsid_unresolved`.
@@ -1347,11 +1387,7 @@ resolved to for every snapshot the lookup opened or tried to (`ensembl`, `clinva
 one field a host drops to keep its layout private. duckdb's own first line may still name a file; that
 is upstream's sentence and stays as evidence.
 
-> **Honest caveat (bare rsID).** The beta variation GraphQL wants a composite `region:pos:rsid` id, so a
-> *bare* rsID typically won't resolve through V2 and **falls through to V1 REST, which does the real
-> work** — mirroring ensembl-mcp itself. Today V1 is the workhorse; V2 is wired, retried, and first in
-> line but mostly hands off. Adding a REST→composite-id step (a follow-up) would make V2 a genuine first
-> responder. Endpoints and the human GRCh38 genome id are configurable via `EnsemblSettings`.
+The REST endpoint, species and timeout are configurable via `EnsemblSettings`.
 
 ## The caches
 
@@ -2589,9 +2625,11 @@ The author/publisher half of the enricher's HF use (snapshot *download* is a run
 
 ```python
 ensure_repo(repo_id, token=None)                                       # create-or-update (create_repo exist_ok=True)
-plan_upload(module_dir, name, repo_id=None) -> UploadPlan              # dry-run; validates artifacts present
+plan_upload(module_dir, name, repo_id=None) -> UploadPlan              # the plan alone, offline; every local refusal
+rehearse_upload(module_dir, name, repo_id=None, token=None, force=False) -> UploadPlan   # the dry run: plan + the versioned-path read
 upload_module(module_dir, name, repo_id=None, token=None, commit_message=None, force=False) -> UploadPlan
-plan_reference_snapshot(snapshot_dir, repo_id=None, *, payload=None) -> SnapshotPlan     # dry-run for a reference snapshot
+plan_reference_snapshot(snapshot_dir, repo_id=None, *, payload=None) -> SnapshotPlan     # the snapshot plan alone, offline
+rehearse_reference_snapshot(snapshot_dir, repo_id=None, *, payload=None, token=None) -> SnapshotPlan   # the dry run: plan + orphan check
 publish_reference_snapshot(snapshot_dir, repo_id=None, token=None, commit_message=None, *, payload=None) -> SnapshotPlan
 ```
 
@@ -2618,7 +2656,8 @@ the repo pre-existed).
 > single-file `clinvar.parquet` causes. Absence is normal (only ClinVar has one, only after
 > `clinvar citations`), so neither end treats it as an error.
 Each needs a write token (`hf auth login` or `HF_TOKEN`) — a missing one raises `PermissionError`;
-`huggingface_hub` is a guarded lazy import.
+`huggingface_hub` is a guarded lazy import. Every refusal is a `PublishRefused` (RM368, below); the
+token and the import are the two failures outside that family.
 
 ### What publishes, and what refuses (RM89)
 
@@ -2638,8 +2677,8 @@ because the table carrying them was dropped at upload.
   hand-kept version of this list is the same defect as a hand-kept `fieldnames` — `@fieldnames-from-model`
   one tier further out, and the consumer named the property they most wanted preserved as *"adding a
   family becomes one edit that discovery and the publisher learn together"*.
-- **Three positive rules replace the required triple**, ordered most specific first so a refusal names
-  the actual fault:
+- **Positive rules replace the required triple**, ordered most specific first so a refusal names the
+  actual fault:
 
   | rule | refuses | why it is not the old rule |
   | --- | --- | --- |
@@ -2667,22 +2706,23 @@ because the table carrying them was dropped at upload.
   - a named path that is absolute, climbs out with `..`, or resolves outside the module directory (a
     symlink) is skipped with a warning naming the reason, and the rest of the publish goes ahead. So is
     a hidden path the compiler would not have shipped: RM338's discovery skips a hidden path for every
-    kind except `*.log`, so a hidden `.log` uploads and a hidden `.env` does not. Anything
-    `upload_folder`'s own default ignore list drops (`.git`, `.cache/huggingface`, read from
-    `huggingface_hub`) is skipped even when it is a `.log`, since the hub would never send it and the
-    dry run would promise a file that does not arrive;
+    kind except `*.log`, so a hidden `.log` uploads and a hidden `.env` does not. Anything the hub's
+    own default ignore list names (`.git`, `.cache/huggingface`, read from `huggingface_hub`) is
+    skipped even when it is a `.log`: tool state, never a module file. Since RM368 the send is a
+    `create_commit`, which applies no ignore list, so this rule is what keeps such a path out;
   - a named log absent from disk is skipped quietly (logs are optional), and an absent or unreadable
     manifest plans no logs, exactly as before.
 
-  `upload_module` passes the plan itself to `upload_folder` as its allowlist, each path glob-escaped
-  (the hub matches with `fnmatch`, so `logs/fig[1].png` unescaped would select `logs/fig1.png`), so the
-  dry run lists exactly what is sent — the rule `publish_reference_snapshot` already followed.
+  The dry run lists exactly what is sent — the rule `publish_reference_snapshot` already followed.
+  Until RM368 `upload_module` passed the plan to `upload_folder` as a glob-escaped allowlist (the hub
+  matches with `fnmatch`, so `logs/fig[1].png` unescaped would select `logs/fig1.png`); it now commits
+  the planned files' bytes themselves, so no pattern is involved.
 - **Every declared file travels, and nothing else does (RM353).** `provenance.json` is named and
   hashed in `manifest.provenance` and was in no list, so it was never uploaded. The plan is now
   `manifest.json` plus every file the manifest declares in the module directory, read by one helper
   (`_declared_files`) from five fields: `artifact.files`, `logo`, `readme`, `provenance` (a summary
   carrying `file` and `sha256`, not a `FileEntry`) and `logs`. `inputs` and `derived` describe files
-  beside the spec and are not sent. Three consequences:
+  beside the spec and are not sent (`SPEC_SIDE_FILE_FIELDS`, with the reason). The consequences:
   - a file on disk the manifest does not declare is **not sent** — a parquet an earlier compile left in
     the directory, or a logo the manifest does not name. On the flat path a stale parquet reads to
     discovery as part of the module, so this is narrower than the old allowlist on purpose;
@@ -2711,8 +2751,47 @@ because the table carrying them was dropped at upload.
   file (a `logo` with an empty name) is outside the digest and is dropped, as before. `upload --dry-run`
   sits inside the same `try` as the real run: a refusal the plan raises prints the same
   `UPLOAD FAILED: …` line and exits 1 from either, where the dry run used to end in a traceback. The
-  dry run still contacts nothing, so the versioned-path guard (a remote read) is the one refusal only
-  the real run can give.
+  dry run then still contacted nothing, so the versioned-path guard was a refusal only the real run
+  could give; RM368 closed that (next bullet).
+- **What the publisher plans, checks and sends is one reading of the disk (RM368).** They used to be
+  three: the plan hashed the declared files, the guard compared the manifest in memory, and
+  `upload_folder` read the directory again, so a recompile landing between the guard and the send
+  shipped bytes nothing had checked. The class and its mechanism:
+  - **The plan is paths and hashes.** `UploadPlan.sha256` holds every planned file's sha256 as the plan
+    read it, `manifest.json` from the very bytes it was parsed from. After the guard, each file is read
+    once more, checked against its entry, and those bytes are what `create_commit` carries — never a
+    path the hub reads later. A file that changed, went missing or became unreadable in between is a
+    `PlanChangedError`, naming each, before either commit. The cost is memory: the module's files are
+    held for the two commits, which a module's size (megabytes) affords and a 32 GB snapshot would not,
+    so the snapshot publisher keeps its allowlist send.
+  - **A malformed declared field refuses; an absent one withholds**
+    (`@an-absent-input-is-the-unknown-arm-and-a-malformed-one-is-the-refusal`). `artifact.files`
+    present but not a list used to fall back to the allowlist and drop the attestation check; a
+    `sha256` present but not a string used to read as unknown and drop the hash check, and a `name` (or
+    `provenance.file`) present but not a string used to read as no file and drop the file. The fields
+    walked are `upload.DECLARED_FILE_FIELDS`, and a test asserts they and `SPEC_SIDE_FILE_FIELDS` are
+    exactly the `ModuleManifest` fields that reach a `FileEntry` or a `Provenance`, so a new
+    file-naming field goes red until the publisher decides whether it travels. A missing or `null`
+    `artifact.files` is still the unknown arm and falls back as before.
+  - **A blank name is no name.** `_named_entry` keeps an object whose `name` is a string that is not
+    blank; a whitespace-only name used to name a file. The attested refusal is wider than an empty
+    `name`: it covers every `artifact.files` entry that is not an object with a non-blank string
+    `name` (a missing name, a number, a bare string), quoting each.
+  - **The manifest itself is compared at the versioned path** (below): every key except the ones the
+    digest and declared-file arms compare (`digest`, `files`, `name`, `file`, `sha256`, `size`).
+  - **The dry run rehearses.** `upload --dry-run` calls `rehearse_upload`: the plan plus the
+    versioned-path read, with a read-only client (a token when there is one, anonymous otherwise),
+    creating no repo and committing nothing; it refuses as `ALREADY PUBLISHED` or `TOOLCHAIN DIFFERS`
+    exactly as the real run would, and an unreachable hub is the same fail-open warning. Every
+    snapshot `publish --dry-run` likewise calls `rehearse_reference_snapshot` (plan plus the orphan
+    check); two commands ran that check in their dry run and the rest did not.
+  - **One error family.** Every refusal is a `PublishRefused`: `ModuleNotPublishable` and
+    `SnapshotNotPublishable` for the plans' refusals, `PlanChangedError`, and the existing
+    `PublishCollisionError` / `ToolchainDiffersError` / `OrphanedSidecarError` re-based under it. The
+    plans' refusals were bare `FileNotFoundError`s, which a caller could not tell from a missing
+    directory; within 0.8 the two plan types keep `FileNotFoundError` as a second base, so an existing
+    handler keeps catching them. Every CLI `try` around a publish catches the family (an AST walk
+    asserts it), and `cpic publish` / `clinpgx publish`, which caught nothing, now print one line.
 
 ### A module is published twice, and the second path is the one that can name a release (RM84)
 
@@ -2746,25 +2825,33 @@ of the reader. The half this tier owns is the layout, and it is written twice no
   directory without one has always been publishable; RM84 is not a licence to tighten what the publisher
   accepts. An unreadable manifest is a withheld version, not a failed upload.
 - **Two commits, not one — and the docs say so rather than implying an atomicity the code lacks.**
-  `upload_folder` commits per call, so a reader can briefly see the flat path refreshed while the
+  Each path is its own `create_commit`, so a reader can briefly see the flat path refreshed while the
   versioned copy is not there yet. The flat path goes first, because it is the one anything reads today.
   If the second call fails, the first has already landed: latest is the new release and the versioned
-  copy is absent until a re-run, which is idempotent. Making it atomic means `create_commit` over an
-  explicit operation list, a different shape from the allow-pattern plumbing every publish here uses; it
-  was not worth holding the fix for, and if the window ever matters that is the change to make.
+  copy is absent until a re-run, which is idempotent. Since RM368 the send is already `create_commit`
+  over an explicit operation list, so one commit carrying both paths is a small change; it was not
+  taken there, because two commits is the documented behaviour and nothing has needed the window
+  closed.
 - **A versioned path is only as stable as the author's `version:` is.** Nothing reads the remote before
   writing, so re-publishing without bumping the version overwrote `data/<name>/v<version>/` with
   different bytes — the same overwrite the flat path has always done, but under a name that invites
   caching. **Closed in 0.6.1 (RM88): the versioned path refuses unless `--force`.** Before either
   write, the published `manifest.json` at that path is read and its `artifact.digest` compared with
-  this module's — and, **since RM353, the sha256 of every file each manifest declares**. The digest
-  excludes logs, provenance, logo and readme by design, so comparing it alone let a second publish of
-  one version replace its logs without `--force`. A different digest, a declared file whose hash
-  differs, or one declared on one side only raises `PublishCollisionError`, whose message names the
-  arm (*a different artifact*, or *the same compiled data but different declared files* with the
-  names); a declaration with no legible hash is not compared. The CLI reports it as
-  `ALREADY PUBLISHED` rather than `UPLOAD FAILED`, because the module is fine and the remote is what
-  disagrees. Four things about the gate that are decisions rather than details:
+  this module's — and, **since RM353, the sha256 of every file each manifest declares**, and **since
+  RM368, every other field of the manifest**. The digest excludes logs, provenance, logo and readme by
+  design, so comparing it alone let a second publish of one version replace its logs without
+  `--force`; and the published manifest is replaced by the upload too, so the same data under a new
+  title replaced it with no arm noticing. A different digest, a declared file whose hash differs, one
+  declared on one side only, or any other field that differs raises `PublishCollisionError`, whose
+  message names the arm (*a different artifact*; *the same compiled data but different declared
+  files* with the names; *a different `manifest.json`, at* the dotted paths). A remote manifest whose
+  bytes hash to this one's is the same release with no field compared; a declaration with no legible
+  hash is not compared. The stamps of the act of compiling (`upload.COMPILATION_STAMPS`:
+  `compiled_at`, `compiled_by`) are left out, so a recompile of an unchanged spec republishes as a
+  no-op; every other `Compilation` field (`COMPILATION_COMPARED`, `toolchain` among them) is compared,
+  and a test holds the two sets equal to the model's fields so a new one must be classified. The CLI reports it as `ALREADY PUBLISHED` rather
+  than `UPLOAD FAILED`, because the module is fine and the remote is what disagrees. What about the gate
+  is a decision rather than a detail:
   - **Identical bytes are not a collision.** The comparator is the digest and the declared hashes,
     not presence — a presence check would refuse exactly the re-run this section documents as the
     recovery when the second commit fails.
@@ -2772,7 +2859,8 @@ of the reader. The half this tier owns is the layout, and it is written twice no
     whole point of the versioned copy is that it is the one that does not move.
   - **It fails open.** An unreadable published manifest is an *unknown*, and nothing established a
     collision, so the publish proceeds with a warning. Failing closed would make a network flake
-    demand `--force` and train an author to pass it by default.
+    demand `--force` and train an author to pass it by default. The dry run's read fails open the same
+    way (RM368).
   - **A recompile under a newer compiler trips it**, correctly: P4 pins byte-reproducibility to
     `compiler_version`, the recorded toolchain and the resolved reference, so the path really would
     come to hold different bytes than the ones it was published with. The refusal says so, because
@@ -5510,8 +5598,7 @@ caller and `except` order never matters. RM310 was the list shape failing: `cach
 | `mane_build` | `ManeBuildError` | `ManeUnavailable` |
 | `opentargets_build` | `OpenTargetsBuildError` | `OpenTargetsUnavailable` |
 | `pubmind_build` | `PubMindBuildError` | `PubMindUnavailable` |
-| `upload` | `OrphanedSidecarError` | — |
-| `upload` | `PublishCollisionError` | `ToolchainDiffersError` (RM342: the two recorded toolchains differ) |
+| `upload` | `PublishRefused` (RM368: every refusal a publish raises) | `ModuleNotPublishable`, `SnapshotNotPublishable` (both still a `FileNotFoundError` within 0.8), `PlanChangedError`, `OrphanedSidecarError`, `PublishCollisionError` → `ToolchainDiffersError` (RM342: the two recorded toolchains differ) |
 
 **Snapshot readers — an absent or unreadable cache, deliberately a `FileNotFoundError`**
 
@@ -5615,11 +5702,11 @@ just-dna-enricher hint citation --pmcid PMC3110566           # the PubMed id for
 just-dna-enricher hint trait EFO_0004340                     # current | obsolete | absent
 just-dna-enricher hint gene MTHFR                            # approved | retired | unknown
 just-dna-enricher enrich-and-compile spec/ out/    # enrich, then compile from resolution.csv (offline)
-just-dna-enricher upload out/coronary --dry-run    # plan a module HF upload ([dev]); names both paths
+just-dna-enricher upload out/coronary --dry-run    # rehearse a module HF upload ([dev]); names both paths, reads the published version
 just-dna-enricher upload out/coronary              # push to data/coronary/ and data/coronary/v<version>/
 just-dna-enricher clinvar build --vcf clinvar.vcf.gz            # VCF → snapshot parquet ([dev]), data/repro/clinvar
 just-dna-enricher clinvar build --download                      # fetch the NCBI VCF first, then build
-just-dna-enricher clinvar publish data/repro/clinvar --dry-run  # plan the reference-snapshot upload
+just-dna-enricher clinvar publish data/repro/clinvar --dry-run  # rehearse the reference-snapshot upload
 just-dna-enricher clinvar publish data/repro/clinvar            # create-or-update datasets/just-dna-seq/clinvar
 ```
 

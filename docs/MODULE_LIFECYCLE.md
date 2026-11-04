@@ -690,17 +690,18 @@ not do is restore a module:
 - **Kept since RM241, although they are manifest-only:** the display block, `version`, the
   defaults' `curator`/`method`, `license`, `weighting`, `authorship`, `authority_precedence`, `panel`,
   and the README and logo (copied back after a hash check). Before 0.8 these were lost too.
-- **Lost, because it is manifest-only and not authored:** `provenance`.
+- **Kept since RM364:** `provenance.json` and every shipped log, copied back after the same hash check.
 - **Lost, because it is not in the artifact:** `verification.json` — every check record *and* the
   closure. A reversed spec is open and warns until a human closes it again, which is deliberate:
   reverse holds no key and no standing to declare someone else's authoring finished.
 - **Lost, because they were deliberately never materialized:** `resolution.csv`'s provenance —
   `authority`, `rsid_alternates`, `rsid_current`, `rsid_status`; `source` resets to `reversed` and
   `status` to `resolved`. Recovering them means re-running the enricher.
-- **Lost on a non-GRCh38 module:** hand-authored resolution rows for the positional tables, because
-  the positional fill is gated on GRCh38 (RM15) and there is nothing in the parquet to rebuild them
-  from. This is [RM69](ROADMAP_1_0.md#rm69--resolution_signature-is-not-a-round-trip-invariant-when-the-positional-fill-is-skipped),
-  and it is a documented limit of P7, not a breach: `resolution.csv` is not an authored value.
+- **Kept since RM364, on any build:** the resolution rows filed under a positional row's key, because
+  every positional parquet carries them as `resolution_loci`. Before that, a non-GRCh38 module lost its
+  hand-authored positional rows, since the fill is gated on GRCh38 (RM15) and the parquet held nothing
+  to rebuild them from ([RM69](ROADMAP_1_0.md#rm69--resolution_signature-is-not-a-round-trip-invariant-when-the-positional-fill-is-skipped));
+  the fill itself is still skipped there.
 
 The module in your repository is the source of truth. Reverse is for reading back somebody else's
 artifact and for proving the fixed point — not for getting your spec back.

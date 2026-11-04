@@ -140,9 +140,12 @@ is materialized into `weights.parquet` and the positional tables where it belong
 → [SCHEMAS § The resolution table](SCHEMAS.md#the-resolution-table-05-provisional).
 
 **Does `reverse` give me my spec back?**
-No. It is a fixed point, not a backup. Since 0.8 (RM241) it does write back every spec field the
-manifest carries, and the README and logo. What is still lost is what the artifact does not hold: the
-verification attestation *and its closure*, `provenance`, and `resolution.csv`'s provenance. → [COMPILER § Reverse](COMPILER.md#reverse) and
+No. It is a fixed point, not a backup. Since 0.8 it does write back every spec field the manifest
+carries (RM241), and every file the compile shipped beside the parquets: the README, the logo,
+`provenance.json` and the logs (RM364). What is still lost is what the artifact does not hold: the
+verification attestation *and its closure*, and `resolution.csv`'s provenance. Which manifest fields a
+round trip gives back is a registry, `reverse.REVERSE_MANIFEST_RECONSTRUCTED`, with the rest in
+`REVERSE_MANIFEST_EXCLUDED` and a reason each. → [COMPILER § Reverse](COMPILER.md#reverse) and
 [MODULE_LIFECYCLE § 6.9](MODULE_LIFECYCLE.md).
 
 **My reversed module lost its title, colour, `weighting` or README. Is that expected?**

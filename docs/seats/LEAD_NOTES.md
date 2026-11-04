@@ -16,6 +16,9 @@ The lead's working state, rewritten to the present before each reset. Last rewri
 
 ## Standing rules from the person
 
+- **Registry wakes (2026-11-04):** `just-dna-registry/liaison` wakes the lead; it and `just-dna-registry/triage` wake
+  our triage. If these cause false-positive wakes, report it to the person in a Zulip DM.
+
 - **Upstream adoption (2026-11-04):** the liaison decides adoption blockers and hands the lead an adoption map.
   Pin only when a new major is proven to break something, until support is integrated. If the liaison is
   unavailable and work must move, the lead may pin as a safety. (RM341's cap was reverted under this rule.)

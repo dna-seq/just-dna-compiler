@@ -222,13 +222,21 @@ def cpic_publish_(
     share-alike plus attribution, which `sources.csv` carries. PharmVar has no equivalent command, and
     that is the design rather than an omission.
     """
-    from just_dna_enricher.upload import plan_reference_snapshot, publish_reference_snapshot
+    from just_dna_enricher.upload import (
+        PublishRefused,
+        publish_reference_snapshot,
+        rehearse_reference_snapshot,
+    )
 
-    if dry_run:
-        plan = plan_reference_snapshot(snapshot_dir, repo)
-        typer.echo(f"would upload {len(plan.files)} file(s) to {plan.repo_id}: {plan.files}")
-        return
-    plan = publish_reference_snapshot(snapshot_dir, repo, commit_message=commit_message)
+    try:
+        if dry_run:
+            plan = rehearse_reference_snapshot(snapshot_dir, repo)
+            typer.echo(f"would upload {len(plan.files)} file(s) to {plan.repo_id}: {plan.files}")
+            return
+        plan = publish_reference_snapshot(snapshot_dir, repo, commit_message=commit_message)
+    except (PublishRefused, PermissionError, ImportError) as exc:
+        typer.secho(f"PUBLISH FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
     typer.secho(
         f"published: {snapshot_dir} → {plan.repo_id} ({len(plan.files)} files)",
         fg=typer.colors.GREEN,
@@ -256,13 +264,21 @@ def clinpgx_publish_(
     `LICENSE.txt` travels with the parquet — the terms ClinPGx ships inside its own archive are what
     `license_sha256` pins, and a published snapshot without them pins nothing for whoever downloads it.
     """
-    from just_dna_enricher.upload import plan_reference_snapshot, publish_reference_snapshot
+    from just_dna_enricher.upload import (
+        PublishRefused,
+        publish_reference_snapshot,
+        rehearse_reference_snapshot,
+    )
 
-    if dry_run:
-        plan = plan_reference_snapshot(snapshot_dir, repo)
-        typer.echo(f"would upload {len(plan.files)} file(s) to {plan.repo_id}: {plan.files}")
-        return
-    plan = publish_reference_snapshot(snapshot_dir, repo, commit_message=commit_message)
+    try:
+        if dry_run:
+            plan = rehearse_reference_snapshot(snapshot_dir, repo)
+            typer.echo(f"would upload {len(plan.files)} file(s) to {plan.repo_id}: {plan.files}")
+            return
+        plan = publish_reference_snapshot(snapshot_dir, repo, commit_message=commit_message)
+    except (PublishRefused, PermissionError, ImportError) as exc:
+        typer.secho(f"PUBLISH FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
     typer.secho(
         f"published: {snapshot_dir} → {plan.repo_id} ({len(plan.files)} files)",
         fg=typer.colors.GREEN,
@@ -541,15 +557,19 @@ def clinpgx_publish_labels_(
     attribution, which `sources.csv` carries. `LICENSE.txt` travels with the parquet: a share-alike
     snapshot whose terms did not travel pins nothing for whoever downloads it.
     """
-    from just_dna_enricher.upload import plan_reference_snapshot, publish_reference_snapshot
+    from just_dna_enricher.upload import (
+        PublishRefused,
+        publish_reference_snapshot,
+        rehearse_reference_snapshot,
+    )
 
     try:
         if dry_run:
-            plan = plan_reference_snapshot(snapshot_dir, repo)
+            plan = rehearse_reference_snapshot(snapshot_dir, repo)
             typer.echo(f"would upload {len(plan.files)} file(s) to {plan.repo_id}: {plan.files}")
             return
         plan = publish_reference_snapshot(snapshot_dir, repo, commit_message=commit_message)
-    except (FileNotFoundError, PermissionError, ImportError) as exc:
+    except (PublishRefused, PermissionError, ImportError) as exc:
         typer.secho(f"PUBLISH FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
     if SNAPSHOT_LICENSE_FILENAME not in plan.files:

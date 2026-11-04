@@ -452,6 +452,12 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
 - `@membership-union` — **The allele-membership check compares against the UNION of every locus a key resolves to**, on the
   authored rows before `resolve_from_table` — a per-expanded-row comparison flags the siblings the
   genotype was never about. Severity is the mode ladder, never an unconditional error. Pinned by tests.
+  **The same union answers "does the module sit here" (RM362, amended 2026-11-04).** `module_subjects` read a
+  row's own spelling only, and RM364's NUDT15 row (CPIC right-shifted, Ensembl left-aligned) had the frequency
+  pass's own row called an orphan. `subjects.identity_placements` is the one lookup — by `variant_key` **and**
+  `rsid`, because an expanded row is re-keyed by coordinate and only its rsID still reaches a locus the genotype
+  could not host — and `row_positions` is its per-row form for a check that attributes (BA1, the study join).
+  The rejected repair was respelling the row: an authored coordinate is identity (RM270).
 
 - `@snapshot-pipe-alt` — **The Ensembl snapshot has two published spellings of a multi-allelic site, and neither is
   the comma list every other link emits.** The old repo (`just-dna-seq/ensembl_variations`, read until 0.8)

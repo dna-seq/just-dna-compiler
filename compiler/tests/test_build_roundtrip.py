@@ -21,6 +21,7 @@ from pathlib import Path
 import polars as pl
 import pytest
 from just_dna_compiler.compiler import compile_module, reverse_module, validate_spec
+from just_dna_format.base import derive_variant_key
 from just_dna_format.manifest import read_manifest
 from pydantic import ValidationError
 
@@ -127,8 +128,18 @@ def test_a_bare_parquet_dir_falls_back_rather_than_inventing(tmp_path: Path) -> 
 
 def test_reversed_resolution_csv_carries_the_module_build(tmp_path: Path) -> None:
     """`resolution.csv`'s own `genome_build` column was hardcoded too, and `resolve_from_table`
-    filters rows on it — so a mislabelled reversed table is also an unjoinable one."""
-    compile_module(_spec(tmp_path / "spec", "GRCh37"), tmp_path / "a1")
+    filters rows on it — so a mislabelled reversed table is also an unjoinable one.
+
+    The module injects a table, because since RM364 reverse writes none for a module that read none."""
+    spec = _spec(tmp_path / "spec", "GRCh37")
+    pos = _C282Y["GRCh37"]
+    key = derive_variant_key(None, "6", pos, "G", "A", build="GRCh37")
+    (spec / "resolution.csv").write_text(
+        "variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,source,status\n"
+        f"{key},rs1800562,6,{pos},G,A,GRCh37,0,manual,resolved\n",
+        encoding="utf-8",
+    )
+    compile_module(spec, tmp_path / "a1")
     reverse_module(tmp_path / "a1", tmp_path / "rev")
     lines = (tmp_path / "rev" / "resolution.csv").read_text().strip().splitlines()
     header, row = lines[0].split(","), lines[1].split(",")

@@ -19,8 +19,10 @@ first test proves the windows: the two RM270 alleles mint the ids RM270 and Clin
 import gzip
 import hashlib
 import json
+import os
 from pathlib import Path
 
+import httpx
 import polars as pl
 import pytest
 from ga4gh.vrs.dataproxy import _DataProxy
@@ -30,9 +32,11 @@ from just_dna_enricher.clinvar_gkm_build import build_snapshot
 from just_dna_enricher.enrich import EnrichmentError, enrich
 from just_dna_enricher.enrich.orchestration import _filled_pieces
 from just_dna_enricher.enrich.resolution_csv import _write_resolution_csv
+from just_dna_enricher.ensembl import EnsemblResolver
 from just_dna_enricher.licensing import sources_path
 from just_dna_enricher.placement import Allele, compare_placements, same_event
 from just_dna_enricher.sequences import SequenceProxy, normalize_locus, spelling_verdict
+from just_dna_enricher.verification import ran
 from just_dna_enricher.vrs import VrsMinter
 from just_dna_format.integrity import resolution_signature
 from just_dna_format.layout import VERIFICATION_JSON
@@ -271,10 +275,22 @@ def _spec(root: Path, rows: dict[str, str] = GENOTYPES, *, pairs: dict[str, tupl
 
 
 class _NoLiveEnsembl:
-    """Every rsID here is in the snapshot, so a live request is a defect in the test's arrangement."""
+    """Every rsID here is in the snapshot, so a live-link request is a defect in the test's arrangement,
+    and so is a REST witness request unless the test says REST is unreachable (`rest_unreachable`); then
+    the witness gets the could-not-ask answer and `asked` records what it tried."""
+
+    def __init__(self, *, rest_unreachable: bool = False) -> None:
+        self.rest_unreachable = rest_unreachable
+        self.asked: list[str] = []
 
     def resolve_rsid(self, rsid: str):
         raise AssertionError(f"live Ensembl asked about {rsid}")
+
+    def resolve_rsid_rest(self, rsid: str):
+        if not self.rest_unreachable:
+            raise AssertionError(f"the REST witness asked about {rsid}")
+        self.asked.append(rsid)
+        return None, None
 
     def close(self) -> None:
         return None
@@ -371,6 +387,9 @@ def test_offline_with_no_witness_asks_nobody_and_says_so(
     record = _record(spec)
     assert record["skipped"] == "no_reference"
     assert "4 of 4 placed rsID(s) had one witness only" in record["detail"]
+    # The question names Ensembl REST beside ClinVar, and these placements are Ensembl's: the skip says
+    # so rather than reading `independent`.
+    assert (record["checked_source"], record.get("independence")) == ("ensembl", None)
 
 
 def test_offline_with_a_local_clinvar_snapshot_withholds_only_what_needs_no_sequence(
@@ -511,7 +530,13 @@ def test_an_unreadable_clinvar_gkm_snapshot_is_a_missing_witness_not_a_crash(
     # The lane's own file name, holding a frame the reader cannot map onto a placement.
     pl.DataFrame({"unrelated": [1]}).write_parquet(broken / WITNESS_PARQUET)
     spec = _spec(tmp_path, {"rs72613567": "T/TA"})
-    result = _enrich(spec, tmp_path, monkeypatch, clinvar_gkm_cache=tmp_path / "gkm")
+    result = _enrich(
+        spec,
+        tmp_path,
+        monkeypatch,
+        resolver=_NoLiveEnsembl(rest_unreachable=True),
+        clinvar_gkm_cache=tmp_path / "gkm",
+    )
     assert result.placement is not None and result.placement.not_checked == "no_reference"
 
 
@@ -524,6 +549,208 @@ def test_witnesses_holding_nothing_record_a_skip_never_a_zero_of_zero(
     record = _record(spec)
     assert record["skipped"] == "nothing_to_check" and record.get("subjects") in (None, 0)
     assert "1 of 1 placed rsID(s) had one witness only" in record["detail"]
+
+
+# ── Ensembl REST, the third witness: online only, for an indel no loaded witness holds ──────────────
+#
+# The mappings are what `rest.ensembl.org/variation/human/<rsid>?content-type=application/json` answered
+# by hand on 2026-11-04 (17:33Z, after a run of 503s and timeouts from 17:26Z): rs8176719 is `-/C` with
+# `start = end + 1`, the interbase point RM268 anchors on the base before it; rs77944059 is a two-sided
+# `AAACAAACAAA/AAACAAA`, a four-base deletion spelled over its whole repeat. Only the fields the parser
+# reads are kept.
+
+REST_MAPPINGS: dict[str, list[dict]] = {
+    "rs8176719": [
+        {
+            "assembly_name": "GRCh38",
+            "seq_region_name": "9",
+            "start": 133257522,
+            "end": 133257521,
+            "allele_string": "-/C",
+        }
+    ],
+    "rs77944059": [
+        {
+            "assembly_name": "GRCh38",
+            "seq_region_name": "2",
+            "start": 166204471,
+            "end": 166204481,
+            "allele_string": "AAACAAACAAA/AAACAAA",
+        }
+    ],
+}
+
+
+class _Rest:
+    """The live resolver over recorded REST answers: the real parse, the real RM268 anchor."""
+
+    def __init__(self, status: int = 200) -> None:
+        self.requested: list[str] = []
+        self.status = status
+
+    def resolver(self) -> EnsemblResolver:
+        def handler(request: httpx.Request) -> httpx.Response:
+            assert request.url.host == "rest.ensembl.org", f"asked {request.url}, not Ensembl REST"
+            rsid = request.url.path.rsplit("/", 1)[-1]
+            self.requested.append(rsid)
+            if self.status != 200:
+                return httpx.Response(self.status, text="No server is available to handle this request.")
+            return httpx.Response(200, json={"name": rsid, "mappings": REST_MAPPINGS.get(rsid, [])})
+
+        resolver = EnsemblResolver()
+        resolver._client = httpx.Client(transport=httpx.MockTransport(handler))
+        resolver._read_base = lambda chrom, pos: read(chrom, pos, pos)
+        return resolver
+
+
+def _without(*rsids: str) -> dict[str, tuple[str, int, str, str]]:
+    return {k: v for k, v in CLINVAR.items() if k not in rsids}
+
+
+def test_rest_withholds_s117_when_no_loaded_witness_holds_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_ambient_caches: Path
+) -> None:
+    """S117's own case, as the real witnesses stand: ClinVar and ClinVar-GKM lack `rs8176719`, REST has it."""
+    spec = _spec(tmp_path)
+    rest = _Rest()
+    result = _enrich(
+        spec,
+        tmp_path,
+        monkeypatch,
+        clinvar_cache=_clinvar_snapshot(tmp_path, _without("rs8176719")),
+        clinvar_gkm_cache=_gkm_snapshot(tmp_path),
+        resolver=rest.resolver(),
+    )
+    # Asked about the one indel nobody loaded holds: not the SNV, not the indels ClinVar holds.
+    assert rest.requested == ["rs8176719"]
+    rows = {r.rsid: r for r in result.rows}
+    assert "rs8176719" not in rows and "rs8176719" in result.unresolved
+    assert result.placement is not None and result.placement.withheld == ["rs8176719"]
+    (finding,) = result.placement.disagreements
+    assert (finding.authority, finding.witness) == ("ensembl", "ensembl")
+    assert finding.placed == ("9:133257520 G>GC",) and finding.witness_placed == ("9:133257521 T>TC",)
+    # The rows REST was not asked about do not name it.
+    assert rows["rs72613567"].placement_witness == "clinvar+clinvar_gkm"
+    record = _record(spec)
+    assert record["findings"] == 1 and record["witness_source"] == "clinvar+clinvar_gkm+ensembl"
+    # Part of the comparison is Ensembl against Ensembl, so neither word is true of the whole record.
+    assert record["checked_source"] == "ensembl" and record.get("independence") is None
+    assert "Ensembl REST" in record["detail"]
+
+
+def test_a_rest_agreed_indel_is_written_with_ensembl_as_its_self_consistent_witness(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_ambient_caches: Path
+) -> None:
+    """No snapshot witness at all: REST is the only second answer, and it is Ensembl's own."""
+    spec = _spec(tmp_path, {"rs77944059": "G/GAAAC"})
+    rest = _Rest()
+    result = _enrich(spec, tmp_path, monkeypatch, resolver=rest.resolver())
+    assert rest.requested == ["rs77944059"]
+    (row,) = result.rows
+    assert (row.placement_witness, row.placement_verdict) == ("ensembl", "same_event")
+    assert row.vrs_id == RS77944059_ID
+    # Agreement with its own source proves nothing about the placement: still one witness.
+    assert result.placement is not None and result.placement.single_witness == ["rs77944059"]
+    assert result.placement.self_consistent == ["rs77944059"]
+    record = _record(spec)
+    assert (record["subjects"], record["findings"]) == (1, 0)
+    assert (record["checked_source"], record["witness_source"], record["independence"]) == (
+        "ensembl",
+        "ensembl",
+        "self_consistent",
+    )
+    assert "1 of 1 placed rsID(s) had one witness only" in record["detail"]
+    sources = sources_path(spec, error=EnrichmentError).read_text(encoding="utf-8")
+    assert "ensembl,resolution" in sources
+
+
+def test_rest_unreachable_is_not_asked_and_counted_never_agreement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_ambient_caches: Path
+) -> None:
+    monkeypatch.setattr("time.sleep", lambda _seconds: None)  # tenacity's backoff
+    spec = _spec(tmp_path, {"rs8176719": "T/TC"})
+    rest = _Rest(status=503)
+    result = _enrich(
+        spec,
+        tmp_path,
+        monkeypatch,
+        clinvar_cache=_clinvar_snapshot(tmp_path, _without("rs8176719")),
+        resolver=rest.resolver(),
+    )
+    assert len(rest.requested) > 1, "a 503 is retried before the witness counts as not asked"
+    # Nobody contradicted the snapshot, so it is written as before — and the row does not name REST.
+    (row,) = result.rows
+    assert (row.placement_witness, row.placement_verdict) == ("clinvar", "unplaced")
+    assert result.placement is not None and result.placement.not_asked == ["rs8176719"]
+    record = _record(spec)
+    assert record["skipped"] == "nothing_to_check"
+    assert "1 rsID(s) Ensembl REST could not be asked about" in record["detail"]
+
+
+class _ResolverBeforeTheRestWitness:
+    """An injected resolver written before `resolve_rsid_rest` existed: the shape a host hands `enrich`
+    (just-dna-marketplace's test fake is exactly this, `resolve_rsid` and `close` only). Every rsID here
+    is in the snapshot, so the live link must not ask it either."""
+
+    def resolve_rsid(self, rsid: str):
+        raise AssertionError(f"live Ensembl asked about {rsid}")
+
+    def close(self) -> None:
+        return None
+
+
+def test_an_injected_resolver_without_the_rest_method_leaves_rest_not_asked_and_says_why(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_ambient_caches: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The REST witness is an optional capability of an injected resolver. A resolver without it is a
+    witness this run could not ask: the run completes, the snapshot's placement is written as it would
+    have been with REST unreachable, the rsID is counted as not asked, and one warning names why."""
+    spec = _spec(tmp_path, {"rs8176719": "T/TC", "rs77944059": "G/GAAAC"})
+    with caplog.at_level("WARNING", logger="just_dna_enricher.enrich"):
+        result = _enrich(
+            spec,
+            tmp_path,
+            monkeypatch,
+            clinvar_cache=_clinvar_snapshot(tmp_path, _without("rs8176719", "rs77944059")),
+            resolver=_ResolverBeforeTheRestWitness(),
+        )
+    rows = {r.rsid: r for r in result.rows}
+    assert set(rows) == {"rs8176719", "rs77944059"}
+    assert all(row.placement_witness != "ensembl" for row in rows.values())
+    assert result.placement is not None
+    assert result.placement.not_asked == ["rs77944059", "rs8176719"]
+    assert result.placement.not_asked_reason is not None
+    (warning,) = [r for r in caplog.records if "resolve_rsid_rest" in r.getMessage()]
+    assert "2 snapshot indel(s)" in warning.getMessage()
+    record = _record(spec)
+    assert "2 rsID(s) Ensembl REST could not be asked about" in record["detail"]
+    assert "resolve_rsid_rest" in record["detail"]
+    assert "unreachable after retries" not in record["detail"]
+
+
+def test_offline_asks_rest_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_ambient_caches: Path
+) -> None:
+    spec = _spec(tmp_path, {"rs8176719": "T/TC"})
+    rest = _Rest()
+    result = _enrich(spec, tmp_path, monkeypatch, offline=True, resolver=rest.resolver())
+    assert rest.requested == []
+    (row,) = result.rows
+    assert (row.placement_witness, row.placement_verdict) == (None, None)
+    assert result.placement is not None and result.placement.not_asked == []
+
+
+@pytest.mark.skipif(os.environ.get("JUST_DNA_NETWORK_TESTS") != "1", reason="set JUST_DNA_NETWORK_TESTS=1")
+def test_live_rest_places_s117_as_dbsnp_does() -> None:
+    """The live rung, unmocked: REST's `-/C` anchors on GRCh38's own base to ClinVar/dbSNP's spelling,
+    which the snapshot's `9:133257520 G>GC` is not."""
+    resolver = EnsemblResolver()
+    try:
+        loci, source = resolver.resolve_rsid("rs8176719")
+    finally:
+        resolver.close()
+    assert source == "ensembl-rest"
+    assert loci == [dict(zip(("chrom", "start", "ref", "alts"), CLINVAR["rs8176719"], strict=True))]
 
 
 # ── RM270: a fill is written left-aligned, an authored coordinate is judged, the id joins both ─────
@@ -560,7 +787,7 @@ def test_rm270_a_filled_respelling_is_written_left_aligned_and_compiles_to_its_i
     outside `content_signature`, so the run writes it left-aligned — the spelling ClinVar and a
     caller's normalized VCF use — and the parquet carries the one id both spellings mint."""
     spec = _spec(tmp_path, {"rs72613567": "T/TA", "rs77944059": "G/GAAAC"})
-    result = _enrich(spec, tmp_path, monkeypatch)
+    result = _enrich(spec, tmp_path, monkeypatch, resolver=_NoLiveEnsembl(rest_unreachable=True))
     rows = {r.rsid: r for r in result.rows}
     for rsid in ("rs72613567", "rs77944059"):
         assert (rows[rsid].chrom, rows[rsid].start, rows[rsid].ref, rows[rsid].alts) == CLINVAR[rsid]
@@ -647,9 +874,11 @@ def test_rm270_a_recorded_fill_is_respelled_only_on_rederive(
         "variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,source,status\n"
         f"rs72613567,rs72613567,{chrom},{start},{ref},{alt},GRCh38,0,cache,resolved\n"
     )
-    (row,) = _enrich(spec, tmp_path, monkeypatch).rows
+    (row,) = _enrich(spec, tmp_path, monkeypatch, resolver=_NoLiveEnsembl(rest_unreachable=True)).rows
     assert (row.start, row.left_aligned) == (start, None)
-    (row,) = _enrich(spec, tmp_path, monkeypatch, rederive=True).rows
+    (row,) = _enrich(
+        spec, tmp_path, monkeypatch, resolver=_NoLiveEnsembl(rest_unreachable=True), rederive=True
+    ).rows
     assert ((row.chrom, row.start, row.ref, row.alts), row.left_aligned) == (CLINVAR["rs72613567"], True)
 
 
@@ -706,7 +935,7 @@ def test_rm270_a_pairs_recorded_locus_is_judged_and_kept_in_the_links_spelling(
     authored one for the compiler's spelling comparison (S104), so respelling it would manufacture an
     agreement or a disagreement the sources never stated. It is judged and kept as the link gave it."""
     spec = _spec(tmp_path, {"rs72613567": "T/TA"}, pairs={"rs72613567": ENSEMBL["rs72613567"]})
-    result = _enrich(spec, tmp_path, monkeypatch)
+    result = _enrich(spec, tmp_path, monkeypatch, resolver=_NoLiveEnsembl(rest_unreachable=True))
     (row,) = result.rows
     assert ((row.chrom, row.start, row.ref, row.alts), row.left_aligned) == (ENSEMBL["rs72613567"], False)
     assert result.spelling is not None and result.spelling.respelled == []
@@ -747,9 +976,67 @@ def test_rm270_a_respelling_on_rederive_is_not_reported_as_the_source_moving(
         # A recorded answer the source no longer gives: real drift, and it must still read as drift.
         "rs4988235,rs4988235,2,135851077,G,A,GRCh38,0,,,cache,resolved\n"
     )
-    result = _enrich(spec, tmp_path, monkeypatch, rederive=True)
+    result = _enrich(
+        spec, tmp_path, monkeypatch, resolver=_NoLiveEnsembl(rest_unreachable=True), rederive=True
+    )
     assert result.rederived is not None
     assert {(d.variant_key, d.respelled) for d in result.rederived} == {
         ("rs72613567", True),
         ("rs4988235", False),
     }
+
+
+def test_a_reporting_source_record_names_its_reporter_only_once_a_reporter_is_a_witness() -> None:
+    """`_reporting_side`'s arms, through the record the model derives `independence` on."""
+
+    def record(reported_by: set[str], witness: str):
+        return ran(
+            "placement_agreement",
+            subjects=1,
+            findings=0,
+            witness_source=witness,
+            undecided=0,
+            reported_by=reported_by,
+        )
+
+    # No reporter is a witness: the record reads as it did before REST, independent.
+    plain = record({"ensembl", "gnomad"}, "clinvar+clinvar_gkm")
+    assert (plain.checked_source, plain.independence) == ("reporting_source", "independent")
+    # The one reporter is the only witness: Ensembl against Ensembl.
+    alone = record({"ensembl"}, "ensembl")
+    assert (alone.checked_source, alone.independence) == ("ensembl", "self_consistent")
+    # Several reporters, one a witness: which side is which is per row, so the checked side withholds.
+    mixed = record({"ensembl", "gnomad"}, "clinvar+ensembl")
+    assert (mixed.checked_source, mixed.independence) == (None, None)
+    with pytest.raises(ValueError, match="reporting_source"):
+        ran("reference_allele", subjects=1, findings=0, reported_by={"ensembl"})
+
+
+def test_a_placement_with_no_licensed_authority_names_no_reporter() -> None:
+    """A link outside the authority map reports nothing a record could name, so it cannot make a run's
+    checked side look like two reporters."""
+    locus = {"chrom": "2", "start": 5, "ref": "G", "alts": "A"}
+    check = compare_placements(
+        {"rs1": [locus]},
+        {"rs1": None},
+        {"clinvar": {"rs1": [locus]}},
+        mint=_mint(VrsMinter(offline=True)),
+        read_window=None,
+    )
+    assert check.subjects == 1 and check.reported_by == set() and check.placed_by == set()
+
+
+def test_a_witness_of_the_placements_own_authority_never_counts_as_independent() -> None:
+    """A witness asked about a placement of its own authority (REST about the snapshot's) compares, and
+    its agreement leaves the rsID with one witness; a loaded witness holding nothing is still named."""
+    locus = {"chrom": "2", "start": 5, "ref": "G", "alts": "A"}
+    check = compare_placements(
+        {"rs1": [locus]},
+        {"rs1": "ensembl"},
+        {"ensembl": {"rs1": [locus]}, "clinvar_gkm": {}},
+        mint=_mint(VrsMinter(offline=True)),
+        read_window=None,
+        asked_about={"ensembl": {"rs1"}},
+    )
+    assert check.single_witness == ["rs1"] and check.self_consistent == ["rs1"]
+    assert check.row_columns("rs1", locus) == ("clinvar_gkm+ensembl", "same_event")

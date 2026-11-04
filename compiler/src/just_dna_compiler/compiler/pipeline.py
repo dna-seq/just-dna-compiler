@@ -113,8 +113,10 @@ from just_dna_compiler.compiler.parquets import (
     _build_frequencies,
     _build_studies,
     _build_weights,
+    with_resolution_loci,
 )
 from just_dna_compiler.compiler.positional import (
+    _POSITIONAL_TABLE_CSVS,
     _VRS_BEARING_TABLES,
     _apply_positional_resolution,
     _check_positional_joinability,
@@ -379,9 +381,11 @@ def compile_module(
     # The table's identity, stamped where the table is READ (a table-only module carries one too), and
     # gated on the active view having ROWS: a header-only table hashes to the empty-set digest, which
     # would cost `resolution_signature is not None` its meaning ("this module was resolved"), and under
-    # `--no-resolve` the view is empty, so no signature names a table that shaped nothing. The residual
-    # (a table saying more than the module uses does not reproduce across reverse) is pinned in
-    # `test_resolution_matrix.py` (`Case.table_says_more`).
+    # `--no-resolve` the view is empty, so no signature names a table that shaped nothing. The residual,
+    # measured: since RM364 every row filed under a subject the artifact carries rides on a variant
+    # parquet's `resolution_loci` (a proxy's on `studies.parquet.proxy_loci`, RM331), so the signature
+    # reproduces across reverse; a row about a variant the module does not carry has no parquet row to
+    # ride on, and is pinned in `test_resolution_matrix.py` (`Case.table_says_more`).
     if resolution_rows:
         resolution_sources = sorted({row.source for row in resolution_rows if row.source})
         resolution_sig = _resolution_signature(resolution_rows)
@@ -556,8 +560,12 @@ def compile_module(
     # "What the module carries" is asked once, of `module_subjects` (RM362), over the resolved variants
     # and the filled positional tables — the rows the artifact holds — so every orphan check below, the
     # manifest's `stats.genes` and the enricher's scopes give one answer. A load failure has already
-    # refused the compile, so no table is unreadable here.
-    subjects = module_subjects({"variants.csv": variants, **kind_rows})
+    # refused the compile, so no table is unreadable here. The injected table's placements of every
+    # carried identity are positions too (RM362, 2026-11-04), under the fill's own switch.
+    placements = resolution_table if resolve_with_ensembl else None
+    subjects = module_subjects(
+        {"variants.csv": variants, **kind_rows}, resolution=placements, genome_build=config.genome_build
+    )
 
     def _frequency_checks(rows: list) -> tuple[list[str], list[str]]:
         # De-duplicated on the message, the `_literature_checks` idiom eleven lines below and the
@@ -570,7 +578,15 @@ def compile_module(
         errors, warns = _check_frequency_arithmetic(rows)
         warns = [w for w in warns if w not in all_warnings]
         warns.extend(_cross_check_frequencies(rows, subjects))
-        warns.extend(_check_ba1_lint(rows, variants, threshold=ba1_threshold))
+        warns.extend(
+            _check_ba1_lint(
+                rows,
+                variants,
+                threshold=ba1_threshold,
+                resolution=placements,
+                genome_build=config.genome_build,
+            )
+        )
         return errors, warns
 
     def _gene_metrics_checks(rows: list) -> tuple[list[str], list[str]]:
@@ -776,7 +792,9 @@ def compile_module(
     # resolution read: under `--no-resolve` the table was not read, so no id reaches the artifact.
     vrs_ids = VrsIds.of(resolution_rows, config.genome_build) if resolve_with_ensembl else VrsIds()
     # SNP core: weights/annotations only when the module actually has variants.
-    weights_df = _build_weights(variants, config, studies, vrs_ids) if variants else None
+    weights_df = (
+        _build_weights(variants, config, studies, vrs_ids, resolution=placements) if variants else None
+    )
     annotations_df = _build_annotations(variants, module_name) if variants else None
     studies_df = (
         # Gated like every resolution read: under `--no-resolve` the table was not read, so no proxy's
@@ -819,6 +837,11 @@ def compile_module(
         table_df = _build_table(rows, model, module_name)
         if csv_name in _VRS_BEARING_TABLES:
             table_df = with_vrs_columns(table_df, vrs_ids, config.genome_build)
+        if csv_name in _POSITIONAL_TABLE_CSVS:
+            # RM364: what the table said under each row's key, so `reverse` rebuilds `resolution.csv`
+            # from the table's answer rather than from the row's own cells. Gated like every resolution
+            # read, and NOT on the fill having applied: a row the fill left alone is the reason for it.
+            table_df = with_resolution_loci(table_df, placements or {}, config.genome_build)
         table_df.write_parquet(output_dir / parquet_name, compression=compression)
         table_rows[parquet_name] = table_df.height
 

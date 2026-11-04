@@ -28,7 +28,8 @@ check has nothing to ask, and a pass that answered nothing writes no table (RM37
 the table small: TPMT `*1`, `*2`, `*3A` and NUDT15 `*1`, `*3` give six and three diplotypes covering the
 Normal, Intermediate and Poor Metabolizer phenotypes of each gene. The drafter wrote `haplotypes.csv`,
 `allele_function.csv`, `diplotypes.csv` and the CPIC row of `licensing.csv`: CC-BY-SA-4.0, share-alike,
-no sale, `declared_use=non_commercial` (`@pgx-research-only`). `enrich` added the Ensembl row.
+no sale, `declared_use=non_commercial` (`@pgx-research-only`). `enrich` added the Ensembl row, and the
+ClinVar row for the one NUDT15 deletion whose placement ClinVar witnessed (below).
 
 ## What it exercises
 
@@ -99,19 +100,17 @@ same nine azathioprine texts as the first, byte for byte, and the 18 other rows 
 
 ## What building it broke
 
-- **One `haplotypes.csv` row was removed: `*1,rs1457579126,13,48040982,A,NUDT15`.** CPIC places this
-  NUDT15 deletion at 48040982; the Ensembl cache places it at `48040978 AA>A`, the left-aligned spelling.
-  The compiler warns that the row "authored an identity the resolution table disagrees with" and leaves
-  it as authored, so no parquet carries the resolution table's placement. `reverse` rebuilds
-  `resolution.csv` from the parquets, the injected fact is gone, and the round trip's lap-1
-  `resolution_signature` moves:
-  `test_reference_example_round_trips_to_a_fixed_point[cpic_gene_pairs]` failed with
-  *"reverse lost injected resolution facts on a module the fill was applied to"*. That is a compiler
-  defect in the indel-placement family (RM267's lane), reported to the 0.8 lead for filing and not
-  fixed here. The removed row is a
-  `*1` reference row, so no phenotype the module states depends on it, and removal is the
-  `cyp2c19_star_alleles` precedent (curated by removal). Correcting the start by hand was not done: it is
-  the rewrite RM267's open half withholds from the enricher.
+- **`*1,rs1457579126,13,48040982,A,NUDT15` keeps the start CPIC gives, and the compile says so.** CPIC
+  places this NUDT15 deletion at 48040982; the Ensembl cache places it at `48040978 AA>A`, the
+  left-aligned spelling. The compiler warns that the row "authored an identity the resolution table
+  disagrees with" and leaves it as authored. The row was removed while this example was first built,
+  because `reverse` then rebuilt `resolution.csv` from the row's own cells: it wrote the authored
+  48040982 back as a resolution fact, the second lap's warning went silent, and the first lap's
+  `resolution_signature` moved (`test_reference_example_round_trips_to_a_fixed_point[cpic_gene_pairs]`).
+  RM364 fixed that in the compiler: `haplotypes.parquet` carries `resolution_loci`, the table's own
+  answer under each row's key, and `reverse` writes that back. The row was restored, `enrich --strict`
+  added its `resolution.csv` row, and the module was closed again. Correcting the start by hand was not
+  done: it is the rewrite RM267's open half withholds from the enricher.
 - **Rows with no rsID and no `ref` key as `13:48037749`.** Nine of the drafted `*1` rows carry a
   position and an allele but no rsID and no reference base. Until RM361 `derive_variant_key` formatted
   the missing `ref` as the Python literal (`13:48037749:None`); an absent cell is now an empty segment

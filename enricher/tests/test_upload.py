@@ -1,17 +1,21 @@
 """Unit tests for the HF module-upload publisher surface (no network)."""
 
+import ast
 import builtins
 import io
 import json
 import shutil
+import typing
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import huggingface_hub
+import just_dna_compiler.compiler.manifest as compiler_manifest
+import just_dna_enricher.upload as upload
 import pytest
 import yaml
-from huggingface_hub.hf_api import DEFAULT_IGNORE_PATTERNS
 from huggingface_hub.utils import filter_repo_objects
 from just_dna_compiler.compiler import ARTIFACT_PARQUETS, compile_module
 from just_dna_enricher.cli import app
@@ -35,16 +39,19 @@ from just_dna_enricher.upload import (
     publish_reference_snapshot,
     upload_module,
 )
-from just_dna_format.integrity import build_artifact, file_entry
+from just_dna_format.integrity import build_artifact, file_entry, sha256_bytes, sha256_file
 from just_dna_format.layout import VERIFICATION_JSON
 from just_dna_format.manifest import (
     LOGO_EXTENSIONS,
     README_CANDIDATES,
     TOOLCHAIN_DIFFERS,
     Artifact,
+    Compilation,
     Display,
+    FileEntry,
     Identity,
     ModuleManifest,
+    Provenance,
     read_manifest,
     write_manifest,
 )
@@ -62,6 +69,36 @@ _AUTHORED_VERSION = "2.1.0"
 # SNP core at all — the seven the old rule refused outright) and a weights-led one carrying a
 # `sources.parquet` (the licence table the old allowlist dropped).
 _SHAPES = ("pgx_slco1b1_simvastatin", "hfe_hemochromatosis")
+
+
+class _UnreachableHub:
+    """An `HfApi` whose every call fails the way an unreachable hub does (RM368).
+
+    Constructing one succeeds, as `HfApi(token=...)` does offline; any method raises. A test that
+    means to talk to a hub patches `huggingface_hub.HfApi` itself, inside the test, and that patch
+    sits on top of this one."""
+
+    def __init__(self, *args: Any, token: str | None = None, **kwargs: Any) -> None:
+        self.token = token
+
+    def __getattr__(self, name: str) -> Any:
+        def unreachable(*args: Any, **kwargs: Any) -> Any:
+            raise ConnectionError(f"network blocked in tests: HfApi.{name}")
+
+        return unreachable
+
+
+def _unreachable_download(*args: Any, **kwargs: Any) -> Any:
+    raise ConnectionError("network blocked in tests: hf_hub_download")
+
+
+@pytest.fixture(autouse=True)
+def _no_hub(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test in this file reaches HuggingFace (RM368). The RM355 dry-run test ran a real `upload`
+    and was offline only because the plan happened to refuse first; with the hub blocked here, a
+    publish that gets further than its refusal fails loudly rather than reaching the network."""
+    monkeypatch.setattr(huggingface_hub, "HfApi", _UnreachableHub)
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", _unreachable_download)
 
 
 def _manifest(name: str, version: str | None) -> ModuleManifest:
@@ -145,6 +182,7 @@ def test_plan_upload_lists_present_artifacts(tmp_path: Path) -> None:
             "manifest.json",
             "logo.png",
         ],
+        sha256={name: sha256_file(module_dir / name) for name in plan.files},
     )
 
 
@@ -410,24 +448,24 @@ def test_upload_module_calls_hf_api(tmp_path: Path) -> None:
     api_cls.assert_called_once_with(token="hf_test_token")
     # upload routes through ensure_repo → create-or-update the repo, then writes both paths.
     mock_api.create_repo.assert_called_once_with(repo_id=DEFAULT_REPO_ID, repo_type="dataset", exist_ok=True)
-    # Two calls, flat first: `upload_folder` commits per call, so this is deliberately two commits and
-    # the path everything reads today is the one refreshed first.
-    assert [c.kwargs["path_in_repo"] for c in mock_api.upload_folder.call_args_list] == [
-        "data/lipidmetabolism",
-        "data/lipidmetabolism/v0.4.0",
-    ]
-    for call in mock_api.upload_folder.call_args_list:
+    # Two commits, flat first: deliberately two, and the path everything reads today is the one
+    # refreshed first.
+    assert _destinations(mock_api) == ["data/lipidmetabolism", "data/lipidmetabolism/v0.4.0"]
+    for call in mock_api.create_commit.call_args_list:
         kwargs: dict[str, Any] = call.kwargs
-        assert kwargs["folder_path"] == str(module_dir)
         assert kwargs["repo_id"] == DEFAULT_REPO_ID
         assert kwargs["repo_type"] == "dataset"
         # An explicit message is the caller's and is used verbatim for both commits.
         assert kwargs["commit_message"] == "Port lipidmetabolism"
-    # The same allowlist both times — a versioned copy carrying a different file set would not be a
-    # copy of the thing at the flat path.
-    patterns = {tuple(c.kwargs["allow_patterns"]) for c in mock_api.upload_folder.call_args_list}
-    assert len(patterns) == 1
-    assert set(_SNP_CORE) <= set(next(iter(patterns)))
+    # The same files both times — a versioned copy carrying a different file set would not be a copy
+    # of the thing at the flat path.
+    contents = [
+        {path.split("/", 2)[-1].removeprefix("v0.4.0/"): data for path, data in sent.items()}
+        for _, sent in _commits(mock_api)
+    ]
+    assert contents[0] == contents[1]
+    assert set(_SNP_CORE) <= set(contents[0])
+    mock_api.upload_folder.assert_not_called()
     assert plan.module == "lipidmetabolism"
     assert plan.versioned_path_in_repo == "data/lipidmetabolism/v0.4.0"
 
@@ -441,8 +479,7 @@ def test_upload_module_writes_one_path_when_the_version_is_unknown(tmp_path: Pat
         patch("huggingface_hub.get_token", return_value="hf_test_token"),
     ):
         plan = upload_module(module_dir, "superhuman")
-    mock_api.upload_folder.assert_called_once()
-    assert mock_api.upload_folder.call_args.kwargs["path_in_repo"] == "data/superhuman"
+    assert _destinations(mock_api) == ["data/superhuman"]
     assert plan.versioned_path_in_repo is None
 
 
@@ -457,7 +494,7 @@ def test_the_default_commit_messages_name_which_copy_they_are(tmp_path: Path) ->
         patch("huggingface_hub.get_token", return_value="hf_test_token"),
     ):
         upload_module(module_dir, "coronary")
-    assert [c.kwargs["commit_message"] for c in mock_api.upload_folder.call_args_list] == [
+    assert [message for message, _ in _commits(mock_api)] == [
         "Add coronary module",
         "Add coronary module v1.0.0",
     ]
@@ -633,6 +670,25 @@ def _upload(module_dir: Path, api: MagicMock, published: Path | None, **kwargs):
         return upload_module(module_dir, "test_module", **kwargs)
 
 
+def _commits(api: MagicMock) -> list[tuple[str, dict[str, bytes]]]:
+    """Each `create_commit` the module publish made, as `(commit message, {path in repo: bytes})`."""
+    return [
+        (
+            call.kwargs["commit_message"],
+            {op.path_in_repo: op.path_or_fileobj for op in call.kwargs["operations"]},
+        )
+        for call in api.create_commit.call_args_list
+    ]
+
+
+def _destinations(api: MagicMock) -> list[str]:
+    """The directory each module commit wrote to, in commit order, read off where `manifest.json` went."""
+    return [
+        next(path for path in sent if path.endswith("/manifest.json")).removesuffix("/manifest.json")
+        for _, sent in _commits(api)
+    ]
+
+
 def test_a_versioned_path_holding_a_different_artifact_refuses(tmp_path: Path) -> None:
     """RM88: republishing without bumping `version:` used to overwrite the versioned copy silently.
 
@@ -651,7 +707,7 @@ def test_a_versioned_path_holding_a_different_artifact_refuses(tmp_path: Path) -
     assert "--force" in message
     assert "version:" in message  # names the fix, not just the fault
     assert "newer compiler" in message  # pre-answers "but I changed nothing"
-    api.upload_folder.assert_not_called()  # refused BEFORE either write
+    api.create_commit.assert_not_called()  # refused BEFORE either write
 
 
 def test_the_same_artifact_republished_is_not_a_collision(tmp_path: Path) -> None:
@@ -666,7 +722,7 @@ def test_the_same_artifact_republished_is_not_a_collision(tmp_path: Path) -> Non
 
     plan = _upload(module_dir, api, published)
 
-    assert [c.kwargs["path_in_repo"] for c in api.upload_folder.call_args_list] == [
+    assert _destinations(api) == [
         "data/test_module",
         "data/test_module/v1.2.3",
     ]
@@ -681,7 +737,7 @@ def test_a_first_publish_of_a_version_is_never_a_collision(tmp_path: Path) -> No
     _upload(module_dir, api, published)
 
     assert api.file_exists.call_args.kwargs["filename"] == "data/test_module/v1.2.3/manifest.json"
-    assert len(api.upload_folder.call_args_list) == 2
+    assert len(api.create_commit.call_args_list) == 2
 
 
 def test_force_overwrites_and_does_not_even_ask(tmp_path: Path) -> None:
@@ -694,7 +750,7 @@ def test_force_overwrites_and_does_not_even_ask(tmp_path: Path) -> None:
     _upload(module_dir, api, published, force=True)
 
     api.file_exists.assert_not_called()
-    assert len(api.upload_folder.call_args_list) == 2
+    assert len(api.create_commit.call_args_list) == 2
 
 
 def test_a_module_with_no_version_is_not_gated_at_all(tmp_path: Path) -> None:
@@ -706,7 +762,7 @@ def test_a_module_with_no_version_is_not_gated_at_all(tmp_path: Path) -> None:
 
     api.file_exists.assert_not_called()
     assert plan.versioned_path_in_repo is None
-    api.upload_folder.assert_called_once()
+    api.create_commit.assert_called_once()
 
 
 def test_the_flat_path_is_deliberately_not_guarded(tmp_path: Path) -> None:
@@ -718,7 +774,7 @@ def test_the_flat_path_is_deliberately_not_guarded(tmp_path: Path) -> None:
 
     _upload(module_dir, api, published)
 
-    assert api.upload_folder.call_args.kwargs["path_in_repo"] == "data/test_module"
+    assert _destinations(api) == ["data/test_module"]
 
 
 def test_an_unreadable_published_manifest_proceeds_with_a_warning(tmp_path: Path, caplog) -> None:
@@ -740,7 +796,7 @@ def test_an_unreadable_published_manifest_proceeds_with_a_warning(tmp_path: Path
     ):
         plan = upload_module(module_dir, "test_module")
 
-    assert len(api.upload_folder.call_args_list) == 2
+    assert len(api.create_commit.call_args_list) == 2
     assert plan.versioned_path_in_repo == "data/test_module/v1.2.3"
     assert any("Nothing established a collision" in r.message for r in caplog.records)
 
@@ -807,7 +863,7 @@ def test_a_collision_under_a_different_polars_is_reported_as_toolchain_differs(t
     assert caught.value.local_toolchain == local
     assert caught.value.content_unchanged is True
     assert "1.39.0" in str(caught.value)
-    api.upload_folder.assert_not_called()
+    api.create_commit.assert_not_called()
 
 
 def test_a_content_change_under_a_different_polars_does_not_claim_the_content_is_unchanged(
@@ -1067,10 +1123,10 @@ def test_a_log_on_disk_the_manifest_does_not_name_stays_behind(tmp_path: Path) -
 
 
 def test_the_module_upload_sends_exactly_what_the_plan_promises(tmp_path: Path) -> None:
-    """The dry run is a promise: what `upload_folder`'s allowlist matches among the files actually on
-    disk is the plan, nothing more — so the unnamed log is not sent and every named one is. Matched
-    through huggingface_hub's own filter, the one `upload_folder` applies. `logs/fig1.png` is the
-    decoy an unescaped `logs/fig[1].png` pattern would match in its place."""
+    """The dry run is a promise: what each commit carries is the plan, nothing more — so the unnamed
+    log is not sent and every named one is. `logs/fig1.png` is the decoy an unescaped `logs/fig[1].png`
+    pattern selected in its place while the send was an allowlist (RM347); since RM368 the commit
+    carries the planned files themselves, and the decoy stays a decoy."""
     out, named = _compile_with_logs(tmp_path)
     (out / "logs" / "scratch.log").write_text("not attested\n", encoding="utf-8")
     (out / "logs" / "fig1.png").write_bytes(_PNG_BYTES)
@@ -1081,16 +1137,13 @@ def test_the_module_upload_sends_exactly_what_the_plan_promises(tmp_path: Path) 
         patch("huggingface_hub.get_token", return_value="hf_test_token"),
     ):
         upload_module(out, _LOGS_EXAMPLE, force=True)
-    on_disk = _files_under(out)
-    assert api.upload_folder.call_args_list, "the upload must have been attempted"
-    for call in api.upload_folder.call_args_list:
-        sent = set(
-            filter_repo_objects(
-                on_disk, allow_patterns=call.kwargs["allow_patterns"], ignore_patterns=DEFAULT_IGNORE_PATTERNS
-            )
-        )
-        assert sent == set(promised)
-        assert set(named) <= sent
+    commits = _commits(api)
+    assert commits, "the upload must have been attempted"
+    for prefix, (_, sent) in zip(_destinations(api), commits, strict=True):
+        names = {path.removeprefix(f"{prefix}/") for path in sent}
+        assert names == set(promised)
+        assert set(named) <= names
+        assert "logs/fig1.png" not in names
 
 
 def test_a_log_path_that_leaves_the_module_directory_is_never_planned(tmp_path: Path, caplog) -> None:
@@ -1185,20 +1238,15 @@ def test_every_file_the_manifest_declares_is_planned(tmp_path: Path) -> None:
     plan = plan_upload(out, _LOGS_EXAMPLE)
     assert set(plan.files) == {*declared, "manifest.json"}
 
-    # What `upload_folder` would select from the directory is the plan, provenance included.
+    # What the commit carries is the plan, provenance included.
     api = MagicMock()
     with (
         patch("huggingface_hub.HfApi", return_value=api),
         patch("huggingface_hub.get_token", return_value="hf_test_token"),
     ):
         upload_module(out, _LOGS_EXAMPLE, force=True)
-    sent = set(
-        filter_repo_objects(
-            _files_under(out),
-            allow_patterns=api.upload_folder.call_args.kwargs["allow_patterns"],
-            ignore_patterns=DEFAULT_IGNORE_PATTERNS,
-        )
-    )
+    (prefix,) = _destinations(api)
+    sent = {path.removeprefix(f"{prefix}/") for path in _commits(api)[0][1]}
     assert sent == set(plan.files)
 
 
@@ -1305,7 +1353,7 @@ def test_a_logs_only_change_at_the_versioned_path_refuses_without_force(tmp_path
     # The same release arriving twice is not a collision, declared files included.
     api, remote = _remote(tmp_path, published)
     _upload(out, api, remote)
-    assert len(api.upload_folder.call_args_list) == 2
+    assert len(api.create_commit.call_args_list) == 2
 
     # Recompile with one log changed: same data, same digest (P7), a different declared log.
     (tmp_path / "spec" / "logs" / "authoring.log").write_text("drafted, then reviewed\n", encoding="utf-8")
@@ -1322,11 +1370,11 @@ def test_a_logs_only_change_at_the_versioned_path_refuses_without_force(tmp_path
     assert f"data/test_module/v{_AUTHORED_VERSION}" in message
     assert "logs/authoring.log" in message
     assert "--force" in message
-    api.upload_folder.assert_not_called()
+    api.create_commit.assert_not_called()
 
     api, remote = _remote(tmp_path, published)
     _upload(out, api, remote, force=True)
-    assert len(api.upload_folder.call_args_list) == 2
+    assert len(api.create_commit.call_args_list) == 2
 
 
 def test_a_declared_file_on_one_side_only_is_a_collision(tmp_path: Path) -> None:
@@ -1338,7 +1386,7 @@ def test_a_declared_file_on_one_side_only_is_a_collision(tmp_path: Path) -> None
     api, remote = _remote(tmp_path, published)
     with pytest.raises(PublishCollisionError, match="logs/run.log"):
         _upload(module_dir, api, remote)
-    api.upload_folder.assert_not_called()
+    api.create_commit.assert_not_called()
 
 
 def test_a_declared_file_difference_under_another_toolchain_is_the_plain_collision(tmp_path: Path) -> None:
@@ -1356,7 +1404,7 @@ def test_a_declared_file_difference_under_another_toolchain_is_the_plain_collisi
 
     assert type(caught.value) is PublishCollisionError
     assert caught.value.reason is None
-    api.upload_folder.assert_not_called()
+    api.create_commit.assert_not_called()
 
 
 def test_a_declaration_with_no_legible_hash_is_not_compared(tmp_path: Path) -> None:
@@ -1367,7 +1415,7 @@ def test_a_declaration_with_no_legible_hash_is_not_compared(tmp_path: Path) -> N
     published["provenance"]["sha256"] = None
     api, remote = _remote(tmp_path, published)
     _upload(out, api, remote)
-    assert len(api.upload_folder.call_args_list) == 2
+    assert len(api.create_commit.call_args_list) == 2
 
 
 def test_a_declared_file_edited_after_the_compile_refuses(tmp_path: Path) -> None:
@@ -1384,7 +1432,7 @@ def test_a_declared_file_edited_after_the_compile_refuses(tmp_path: Path) -> Non
     api, remote = _remote(tmp_path, published)
     with pytest.raises(FileNotFoundError, match="Re-compile"):
         _upload(out, api, remote)
-    api.upload_folder.assert_not_called()
+    api.create_commit.assert_not_called()
 
 
 # ── one manifest, one reader, one filter (RM355) ─────────────────────────────────────────────────
@@ -1418,8 +1466,9 @@ def test_a_dry_run_reports_a_refusal_exactly_as_the_real_run_does(tmp_path: Path
 def test_the_plan_reads_the_manifest_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """`_module_version` opened and parsed `manifest.json` itself, beside `_manifest_document`, so the
     version and the file list of one plan came from two reads of one file. One reader now: a plan reads
-    the manifest once, and so does a publish, whose guard compares the same document the plan was
-    built from.
+    the manifest once, and a publish's plan and guard share that one read. The send reads it once
+    more (RM368), to check its bytes still hash to the plan's and to send those very bytes — so a
+    publish reads it twice, and never once per commit.
 
     Counted at `io.open` (and the builtin, the same function under another name), which every way of
     reading a file goes through — `Path.read_text`, `read_bytes`, `Path.open`, `open()` — so a second
@@ -1444,8 +1493,8 @@ def test_the_plan_reads_the_manifest_once(tmp_path: Path, monkeypatch: pytest.Mo
     reads.clear()
     api, remote = _remote(tmp_path, None)
     _upload(out, api, remote)
-    assert len(api.upload_folder.call_args_list) == 2
-    assert len(reads) == 1
+    assert len(api.create_commit.call_args_list) == 2
+    assert len(reads) == 2
 
 
 def test_an_entry_naming_no_file_is_read_one_way_and_refused(tmp_path: Path) -> None:
@@ -1483,3 +1532,373 @@ def test_an_entry_naming_no_file_is_read_one_way_and_refused(tmp_path: Path) -> 
     (module_dir / "manifest.json").write_text(json.dumps(document), encoding="utf-8")
     assert "" not in [name for name, _ in _declared_files(document)]
     assert plan_upload(module_dir, "test_module").files == baseline
+
+
+# ── what the publisher plans, checks and sends is one reading of the disk (RM368) ───────────────
+
+
+def test_the_plan_states_the_hash_of_every_file_it_sends(tmp_path: Path) -> None:
+    """The plan is paths and the sha256 each one had when it was read, `manifest.json` among them, and
+    each commit carries exactly those bytes under both paths."""
+    out = _compile_with_everything(tmp_path, version=_AUTHORED_VERSION)
+    plan = plan_upload(out, "apoe")
+    assert set(plan.sha256) == set(plan.files)
+    assert "manifest.json" in plan.sha256
+    assert plan.sha256 == {name: sha256_file(out / name) for name in plan.files}
+
+    api, remote = _remote(tmp_path, None)
+    _upload(out, api, remote)
+    commits = _commits(api)
+    prefixes = ["data/test_module", f"data/test_module/v{_AUTHORED_VERSION}"]
+    assert len(commits) == len(prefixes)
+    for prefix, (_, sent) in zip(prefixes, commits, strict=True):
+        assert set(sent) == {f"{prefix}/{name}" for name in plan.files}
+        assert {path.removeprefix(f"{prefix}/"): sha256_bytes(data) for path, data in sent.items()} == (
+            plan.sha256
+        )
+    api.upload_folder.assert_not_called()
+
+
+def test_a_file_that_changes_after_the_check_is_never_sent(tmp_path: Path) -> None:
+    """The guard compared the in-memory manifest, and `upload_folder` then read the directory again,
+    so a recompile landing between the two shipped bytes nothing had checked. The send now reads each
+    planned file once more, refuses when its hash is not the plan's, and sends the bytes it hashed."""
+    out = _compile_with_everything(tmp_path, version=_AUTHORED_VERSION)
+    api, remote = _remote(tmp_path, None)
+    log = out / "logs" / "authoring.log"
+
+    def a_recompile_in_the_window(**kwargs: Any) -> bool:
+        log.write_text("written after the plan was checked\n", encoding="utf-8")
+        return False
+
+    api.file_exists.side_effect = a_recompile_in_the_window
+    with pytest.raises(upload.PlanChangedError, match="logs/authoring.log") as caught:
+        _upload(out, api, remote)
+    assert isinstance(caught.value, upload.PublishRefused)
+    api.create_commit.assert_not_called()
+    api.upload_folder.assert_not_called()
+
+
+def _rewrite(module_dir: Path, edit: typing.Callable[[dict], None]) -> None:
+    path = module_dir / "manifest.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    edit(document)
+    path.write_text(json.dumps(document), encoding="utf-8")
+
+
+#: Each declared field written as a shape the compiler never writes. Present and unreadable is the
+#: refusal (`@an-absent-input-is-the-unknown-arm-and-a-malformed-one-is-the-refusal`): reading it as
+#: absent dropped a gate — the attestation check for `artifact.files`, the hash check for a `sha256`.
+_MALFORMED: dict[str, typing.Callable[[dict], None]] = {
+    "artifact": lambda d: d.__setitem__("artifact", "sha256:" + "0" * 64),
+    "artifact.files": lambda d: d["artifact"].__setitem__("files", {"annotations.parquet": "x"}),
+    "artifact.files[0].sha256": lambda d: d["artifact"]["files"][0].__setitem__("sha256", 123),
+    "logs": lambda d: d.__setitem__("logs", "logs/authoring.log"),
+    "logs[0].sha256": lambda d: d["logs"][0].__setitem__("sha256", ["sha256:" + "0" * 64]),
+    "logo": lambda d: d.__setitem__("logo", "logo.png"),
+    "logo.name": lambda d: d["logo"].__setitem__("name", ["logo.png"]),
+    "provenance.file": lambda d: d["provenance"].__setitem__("file", 7),
+    "readme": lambda d: d.__setitem__("readme", ["README.md"]),
+    "provenance": lambda d: d.__setitem__("provenance", "provenance.json"),
+    "provenance.sha256": lambda d: d["provenance"].__setitem__("sha256", 5),
+}
+
+
+def test_a_file_that_goes_missing_after_the_check_is_a_refusal_not_a_traceback(tmp_path: Path) -> None:
+    """A planned file deleted between the check and the send (a recompile unlinking it) is the same
+    `PlanChangedError`, never a bare `FileNotFoundError` the CLI no longer catches."""
+    out = _compile_with_everything(tmp_path, version=_AUTHORED_VERSION)
+    api, remote = _remote(tmp_path, None)
+
+    def a_recompile_unlinks_it(**kwargs: Any) -> bool:
+        (out / "logs" / "authoring.log").unlink()
+        return False
+
+    api.file_exists.side_effect = a_recompile_unlinks_it
+    with pytest.raises(upload.PlanChangedError, match=r"logs/authoring.log \(unreadable"):
+        _upload(out, api, remote)
+    api.create_commit.assert_not_called()
+
+
+@pytest.mark.parametrize("field", sorted(_MALFORMED))
+def test_a_malformed_declaration_refuses_rather_than_dropping_its_gate(tmp_path: Path, field: str) -> None:
+    out = _compile_with_everything(tmp_path)
+    _rewrite(out, _MALFORMED[field])
+    with pytest.raises(upload.ModuleNotPublishable) as caught:
+        plan_upload(out, "apoe")
+    assert field in str(caught.value)
+    assert isinstance(caught.value, upload.PublishRefused)
+
+
+def test_every_declared_field_has_a_malformed_case() -> None:
+    """The parametrization above walks the publisher's own registry of declared fields."""
+    assert {field.split(".")[0].split("[")[0] for field in _MALFORMED} == set(upload.DECLARED_FILE_FIELDS)
+
+
+def test_an_absent_file_list_still_withholds(tmp_path: Path) -> None:
+    """The other arm of the same rule: `artifact.files` null or missing is unknown, and the plan falls
+    back to the allowlist found on disk exactly as an unreadable manifest does."""
+    module_dir = _compiled_module(tmp_path / "m", version="1.2.3")
+    _rewrite(module_dir, lambda d: d["artifact"].__setitem__("files", None))
+    assert set(_SNP_CORE) <= set(plan_upload(module_dir, "test_module").files)
+    _rewrite(module_dir, lambda d: d["artifact"].pop("files"))
+    assert set(_SNP_CORE) <= set(plan_upload(module_dir, "test_module").files)
+
+
+def test_a_blank_name_names_no_file(tmp_path: Path) -> None:
+    """`_named_entry` took a whitespace-only `name` for a file, so the attested refusal read `attests
+    ['  ']` and asked for a recompile "if the file is missing". A blank name is no name: the attested
+    entry is refused quoting it, and an optional one is dropped, as an empty name is."""
+    module_dir = _compiled_module(tmp_path / "m", version="1.2.3")
+    baseline = plan_upload(module_dir, "test_module").files
+    blank = {"name": "  ", "sha256": "sha256:" + "3" * 64, "size": 1}
+    _rewrite(module_dir, lambda d: d["artifact"]["files"].append(blank))
+    with pytest.raises(upload.ModuleNotPublishable) as caught:
+        plan_upload(module_dir, "test_module")
+    assert repr(blank) in str(caught.value)
+    assert "attests" not in str(caught.value)
+
+    _rewrite(module_dir, lambda d: d["artifact"]["files"].remove(blank))
+    _rewrite(module_dir, lambda d: d.__setitem__("logo", blank))
+    assert plan_upload(module_dir, "test_module").files == baseline
+
+
+def test_the_manifest_itself_is_compared_at_the_versioned_path(tmp_path: Path) -> None:
+    """The guard compared the digest and each declared file, never `manifest.json`: the same data under
+    a new title replaced the published manifest of that version without `--force`. The manifest is
+    part of what the version names, so a field that differs is a collision, named by its path."""
+    module_dir = _compiled_module(tmp_path / "m", version="1.2.3")
+    published = _published_as(module_dir)
+    published["display"]["title"] = "the title it was published under"
+    api, remote = _remote(tmp_path, published)
+    with pytest.raises(PublishCollisionError, match=r"display\.title") as caught:
+        _upload(module_dir, api, remote)
+    assert type(caught.value) is PublishCollisionError
+    api.create_commit.assert_not_called()
+    api.upload_folder.assert_not_called()
+
+
+def test_a_non_file_key_inside_a_declared_field_is_compared(tmp_path: Path) -> None:
+    """The manifest arm skips only the keys the other two arms compare (name, hash, size, digest), so
+    `provenance.generator` differing under one version is a collision named by its path."""
+    out = _compile_with_everything(tmp_path, version=_AUTHORED_VERSION)
+    published = _published_as(out)
+    published["provenance"]["generator"] = "another generator"
+    api, remote = _remote(tmp_path, published)
+    with pytest.raises(PublishCollisionError, match=r"provenance\.generator"):
+        _upload(out, api, remote)
+    api.create_commit.assert_not_called()
+
+
+def test_the_dry_run_runs_the_versioned_path_check_and_writes_nothing(tmp_path: Path) -> None:
+    """A rehearsal that skips the check the real run refuses on is a different operation (the snapshot
+    dry runs' rule). The dry run now reads the published manifest, read-only, and refuses as the real
+    run does; it creates no repo and commits nothing."""
+    module_dir = _compiled_module(tmp_path / "m", version="1.2.3")
+    api, remote = _remote(tmp_path, _published_as(module_dir, digest=_OTHER_DIGEST))
+    with (
+        patch("huggingface_hub.HfApi", return_value=api),
+        patch("huggingface_hub.hf_hub_download", MagicMock(return_value=str(remote))),
+    ):
+        dry = CliRunner().invoke(app, ["upload", str(module_dir), "--name", "test_module", "--dry-run"])
+    assert dry.exit_code == 1, dry.output
+    assert "ALREADY PUBLISHED" in dry.output
+    assert "Would upload" not in dry.output
+    api.create_repo.assert_not_called()
+    api.create_commit.assert_not_called()
+    api.upload_folder.assert_not_called()
+
+
+def test_an_unreachable_hub_leaves_the_dry_run_a_plan(tmp_path: Path, caplog) -> None:
+    """The dry run's read fails open as the real run's does: unreachable is unknown, never a refusal."""
+    module_dir = _compiled_module(tmp_path / "m", version="1.2.3")
+    with caplog.at_level("WARNING", logger="just_dna_enricher.upload"):
+        plan = upload.rehearse_upload(module_dir, "test_module")
+    assert plan.versioned_path_in_repo == "data/test_module/v1.2.3"
+    assert any("Nothing established a collision" in r.getMessage() for r in caplog.records)
+
+
+def test_a_snapshot_refusal_is_a_publish_refusal(tmp_path: Path) -> None:
+    """Typed in the publisher's own family, and still a `FileNotFoundError` within 0.8 so a caller's
+    existing handler keeps catching it."""
+    (tmp_path / "data").mkdir()
+    with pytest.raises(upload.SnapshotNotPublishable) as caught:
+        plan_reference_snapshot(tmp_path)
+    assert isinstance(caught.value, upload.PublishRefused)
+    assert isinstance(caught.value, FileNotFoundError)
+    with pytest.raises(upload.SnapshotNotPublishable):
+        plan_reference_snapshot(tmp_path, payload="STRchive-loci.json")
+
+
+def test_a_module_refusal_is_a_publish_refusal(tmp_path: Path) -> None:
+    d = tmp_path / "m"
+    d.mkdir()
+    (d / "README.md").write_text("no data\n", encoding="utf-8")
+    with pytest.raises(upload.ModuleNotPublishable) as caught:
+        plan_upload(d, "m")
+    assert isinstance(caught.value, upload.PublishRefused)
+    assert isinstance(caught.value, FileNotFoundError)
+
+
+_UPLOAD_SOURCE = Path(upload.__file__)
+_CLI_DIR = _UPLOAD_SOURCE.parent / "cli"
+#: Raised by the publisher and outside its refusal family on purpose: neither says anything about what
+#: would be sent. A missing write token is a credential, a missing `huggingface_hub` a dependency.
+_NOT_REFUSALS = {"PermissionError", "ImportError"}
+
+
+def _raised_names(tree: ast.AST) -> set[str]:
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Raise) and node.exc is not None:
+            target = node.exc.func if isinstance(node.exc, ast.Call) else node.exc
+            names.add(target.id if isinstance(target, ast.Name) else ast.unparse(target))
+    return names
+
+
+def _subclasses(cls: type) -> set[type]:
+    found = set(cls.__subclasses__())
+    for sub in list(found):
+        found |= _subclasses(sub)
+    return found
+
+
+def test_every_refusal_the_publisher_raises_is_in_its_family() -> None:
+    """An AST walk over `upload.py`: what it raises is its refusal family plus the two non-refusals,
+    and every member of the family is raised somewhere. A `FileNotFoundError` for "this module is not
+    publishable" was the wrong type: a caller could not tell it from a missing directory."""
+    family = {cls.__name__ for cls in _subclasses(upload.PublishRefused)}
+    raised = _raised_names(ast.parse(_UPLOAD_SOURCE.read_text(encoding="utf-8")))
+    assert raised == family | _NOT_REFUSALS
+
+
+#: Functions in `upload` a command reaches the publisher through.
+_PUBLISH_ENTRIES = {
+    "upload_module",
+    "rehearse_upload",
+    "plan_upload",
+    "publish_reference_snapshot",
+    "rehearse_reference_snapshot",
+    "plan_reference_snapshot",
+    "check_publish_orphans_no_sidecar",
+}
+#: The one command calling a bare plan, and why that is not a dry run: `civic reproduce` asserts the
+#: plan's file list offline as one of its reproduction checks, and publishes nothing.
+_BARE_PLAN_CALLERS = {("civic_commands.py", "plan_reference_snapshot")}
+
+
+def _calls(node: ast.AST) -> set[str]:
+    return {
+        n.func.id
+        for n in ast.walk(node)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in _PUBLISH_ENTRIES
+    }
+
+
+def test_every_publish_command_catches_the_refusal_family() -> None:
+    """Every `try` in the CLI that calls into the publisher has a handler naming `PublishRefused`, so a
+    refusal reads as one line from every command, whichever member raised it."""
+    missing: list[str] = []
+    for path in sorted(_CLI_DIR.glob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if not isinstance(node, ast.Try) or not any(_calls(stmt) for stmt in node.body):
+                continue
+            handled = {
+                n.id
+                for handler in node.handlers
+                if handler.type is not None
+                for n in ast.walk(handler.type)
+                if isinstance(n, ast.Name)
+            }
+            if "PublishRefused" not in handled:
+                missing.append(f"{path.name}:{node.lineno}")
+    assert missing == []
+
+
+def test_every_dry_run_is_a_rehearsal() -> None:
+    """A dry run calls the rehearsal, which runs every check the real publish runs; a bare plan in the
+    CLI is the one allowlisted caller. Equality, so the allowlist cannot outlive its reason."""
+    bare = {
+        (path.name, name)
+        for path in sorted(_CLI_DIR.glob("*.py"))
+        for name in _calls(ast.parse(path.read_text(encoding="utf-8")))
+        & {"plan_upload", "plan_reference_snapshot", "check_publish_orphans_no_sidecar"}
+    }
+    assert bare == _BARE_PLAN_CALLERS
+
+
+def _file_models(annotation: Any) -> set[type]:
+    """The pydantic models an annotation reaches, through unions, lists and nested models."""
+    found: set[type] = set()
+    stack = [annotation]
+    seen: set[int] = set()
+    while stack:
+        current = stack.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        stack.extend(typing.get_args(current))
+        if isinstance(current, type) and hasattr(current, "model_fields"):
+            found.add(current)
+            stack.extend(field.annotation for field in current.model_fields.values())
+    return found
+
+
+def test_the_publisher_reads_every_field_that_names_a_file() -> None:
+    """`ModuleManifest`'s fields that reach a `FileEntry` or a `Provenance` are exactly the publisher's
+    declared fields plus the spec-side ones it states a reason for skipping — so a field the compiler
+    starts writing a file into goes red here until the publisher decides whether it travels."""
+    naming = {
+        name
+        for name, field in ModuleManifest.model_fields.items()
+        if _file_models(field.annotation) & {FileEntry, Provenance}
+    }
+    assert naming == set(upload.DECLARED_FILE_FIELDS) | set(upload.SPEC_SIDE_FILE_FIELDS)
+    assert not set(upload.DECLARED_FILE_FIELDS) & set(upload.SPEC_SIDE_FILE_FIELDS)
+
+
+# ── a republish of an unchanged spec stays idempotent (RM368, lead review) ──────────────────────
+
+
+def test_a_recompile_of_an_unchanged_spec_republishes_as_a_no_op(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Comparing every manifest field made a recompile of the same spec at the same version a
+    collision only because `compiled_at` moved. The stamps of the act of compiling are not what the
+    version names; the digest, the declared files and the toolchain still are."""
+    out = _compile_with_everything(tmp_path, version=_AUTHORED_VERSION)
+    published = _published_as(out)
+
+    # The same spec compiled again, later, by someone else: only the act's stamps move.
+    monkeypatch.setattr(compiler_manifest, "_now_iso", lambda: "2031-01-01T00:00:00Z")
+    shutil.rmtree(out)
+    assert compile_module(tmp_path / "spec", out, compiled_by="another-host").success
+    local = _published_as(out)
+    assert local["compilation"]["compiled_at"] != published["compilation"]["compiled_at"]
+    assert local["artifact"]["digest"] == published["artifact"]["digest"], "the data must not have moved"
+
+    api, remote = _remote(tmp_path, published)
+    _upload(out, api, remote)
+    assert len(api.create_commit.call_args_list) == 2
+
+    # A changed log is still a different release of that version.
+    (tmp_path / "spec" / "logs" / "authoring.log").write_text("drafted, then reviewed\n", encoding="utf-8")
+    shutil.rmtree(out)
+    assert compile_module(tmp_path / "spec", out).success
+    api, remote = _remote(tmp_path, published)
+    with pytest.raises(PublishCollisionError, match="logs/authoring.log"):
+        _upload(out, api, remote)
+    api.create_commit.assert_not_called()
+
+
+def test_every_compilation_field_is_classified_for_the_versioned_path() -> None:
+    """Each `Compilation` field either describes the module (compared at the versioned path) or
+    stamps the act of compiling (excluded, with its reason): a new field goes red here until it is
+    classified, so a new stamp cannot turn every republish into a collision, and a new fact about the
+    module cannot slip out of the comparison."""
+    stamps = set(upload.COMPILATION_STAMPS)
+    compared = set(upload.COMPILATION_COMPARED)
+    assert not stamps & compared
+    assert stamps | compared == set(Compilation.model_fields)
+    assert "toolchain" in compared, "RM342's toolchain-differs refusal reads it"
+    assert all(reason.strip() for reason in upload.COMPILATION_STAMPS.values())

@@ -58,6 +58,124 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 - **No test reaches the real HuggingFace hub unasked** (`@no-test-reaches-the-real-hub`): an autouse fence in the
   enricher conftest, after a test re-pulled six chromosomes of a shared cache on this branch.
 
+## 2026-11-04 — RM364: `reverse` gives back everything the compile carried, or names why not (0.8, uncut)
+
+- **`provenance.json` and the logs come back.** A compile copies both into the artifact and hashes
+  them into `manifest.provenance` / `manifest.logs`; reverse copied back only the README and logo, so
+  the second lap's manifest had neither. All four now go through one list, `reverse.shipped_files`, each
+  copied byte for byte after a hash check; a file that disagrees with its record, or a name that leaves
+  the module directory, is not copied.
+- **Every manifest field is on one side of a registry.** `REVERSE_MANIFEST_RECONSTRUCTED` and
+  `REVERSE_MANIFEST_EXCLUDED` (with a reason each) cover every `ModuleManifest` and `Compilation` field,
+  asserted by a walk over both models. The corpus sweep and the every-field fixture compare
+  `reconstructed_projection` lap against lap, which replaced two hand-kept projections that both missed
+  logs and provenance.
+- **A variant row is rebuilt from what the table said.** `weights.parquet` and the three positional
+  parquets gain `resolution_loci`, the loci `resolution.csv` files under each row's authored key (the
+  `proxy_loci` shape), kept wherever the row's own cells would not rebuild them and null on a cleanly
+  resolved row. Reverse used to rebuild a row the fill
+  left alone from its own cells, losing the rows the fill did not take and writing the **authored**
+  coordinate back as a resolution fact: the contradiction went silent on the second lap and
+  `resolution_signature` moved. Two positional matrix cases `strict` accepts, and five weights-side cases
+  it refuses, are now fixed points. Every module carrying `variants.csv` or a positional table gets a new
+  `artifact.digest` on recompile (a new column); `content_signature` does not move.
+- **No `resolution.csv` comes back for a module that read none** (`grch37_build`, `mt_heteroplasmy`,
+  `cyp2d6_structural`), so the second lap no longer publishes a signature and VRS coverage the first did
+  not. `resolution_signature` is now compared from the first lap on every reference example, with no
+  exemption; `cyp2c9_warfarin_grch37` was the one the GRCh37 exemption hid (RM69, addendum).
+- **`reference_examples/cpic_gene_pairs` has its NUDT15 `*1` row `rs1457579126` back**, removed while the
+  example was built because of this defect; re-enriched (`enrich --strict`, which added the ClinVar
+  licence row for the placement's witness) and re-closed.
+- Not fixed, and named in `REVERSE_MANIFEST_EXCLUDED`: the second lap's warnings, which lose the
+  attestation and the resolution provenance reverse discards. On eight examples that provenance
+  (`authority`, `placement_witness`) is why the second lap says a `licensing.csv` source is unused.
+
+## 2026-11-04 — RM362 (amended): a fact row at the resolved spelling of an identity the module carries is not an orphan (0.8, uncut)
+
+- **A position is every spelling the module's own `resolution.csv` gives a carried identity.** A row authored at one
+  spelling of an indel (CPIC's right-shifted NUDT15 allele) and the table placing its rsID at another (Ensembl's
+  left-aligned one) are one place, and the frequency pass asks gnomAD at the table's. `module_subjects` now joins every
+  usable locus the injected table files under a row's `variant_key` or `rsid`, on the module's build, so
+  `frequencies.csv`, `clinical_assertions.csv` and `studies.csv` rows there are no longer orphans. Only the injected
+  table counts, only where the fill reads it (GRCh38, resolution on), and a `not_found` row places nothing.
+- **BA1 and the study facts reach the same spelling.** `clin_sig_contradicts_frequency` now fires for a pathogenic
+  variant whose common frequency sits at the table's spelling, and a coordinate-only study there feeds the variant's
+  `weights.parquet` study columns (a variant `strict` refuses for the contradiction). A row the table placed keeps its
+  own locus only, and one the table places at several other positions keeps its own only, so no row is handed a
+  locus it may not mean. BA1 reports a variant once per ALT when both spellings carry a frequency.
+- New in `just_dna_compiler.compiler.subjects`: `identity_placements`, `row_positions`, `position_key`,
+  `ModuleSubjects.resolved_positions`; `resolution.usable_loci` is public. No reference example gains or loses a warning.
+
+## 2026-11-04 — RM368: a module publish sends exactly the bytes it checked, and every dry run runs the real run's checks (0.8, uncut)
+
+**enricher** — what the publisher plans, checks and sends is now one reading of the disk.
+
+- **The plan's bytes are what is sent.** `UploadPlan.sha256` records every planned file's hash,
+  `manifest.json` from the bytes it was parsed from. After the versioned-path check each file is read
+  once more, compared, and those bytes are committed through `create_commit`; a file that changed in
+  between (a recompile still writing) raises `PlanChangedError` before either commit. It used to be
+  re-read by `upload_folder` after the check.
+- **A malformed declared field refuses.** `artifact.files` that is not a list, a `sha256` that is not
+  a string, a `logs`/`logo`/`readme`/`provenance` of the wrong shape used to read as absent and drop
+  the check it feeds; the plan now refuses, quoting the field. Absent or `null` still withholds. A
+  whitespace-only `name` names no file.
+- **The manifest itself is compared at the versioned path.** The same data under a new title replaced
+  the published manifest of a version without `--force`; the refusal now names the dotted paths that
+  differ.
+- **Every dry run rehearses.** `upload --dry-run` reads the published manifest of the version
+  (read-only, anonymous without a token) and refuses as the real run would; every snapshot
+  `publish --dry-run` runs the orphan check that two of them ran and the rest skipped.
+- **One error family**, `upload.PublishRefused`: `ModuleNotPublishable` and `SnapshotNotPublishable`
+  (still `FileNotFoundError`s within 0.8), `PlanChangedError`, and the collision and orphan types
+  re-based under it. `cpic publish` and `clinpgx publish` print a refusal as one line instead of a
+  traceback. INTEGRATION_0_8 § 1.27. No format or compiler change, and no identity moves.
+
+## 2026-11-04 — RM267: Ensembl REST is the placement's third witness online, so S117's `rs8176719` is withheld against the real witnesses (0.8, uncut)
+
+**enricher, format (a description)** — For an rsID the Ensembl snapshot placed, with an allele that is
+not a substitution, and that neither the ClinVar snapshot nor ClinVar-GKM holds, an online `enrich` now
+asks Ensembl REST where it sits (through the run's resolver and RM268's anchored path) and compares the
+answer by RM267's ladder. REST places `rs8176719` (ABO O1) at `9:133257521 T>TC`, the snapshot at
+`9:133257520 G>GC`, so the rsID is withheld with both placements named; before, neither loaded witness
+held it and it was counted as one witness. The witness is named `ensembl` on the row
+(`placement_witness`), the licensed source `sources.csv` already carries. REST is Ensembl, so the
+comparison is **self-consistent, not independent**: the `placement_agreement` record names its checked
+side `ensembl` once REST answered, so `independence` reads `self_consistent` (REST alone) or is withheld
+(REST beside ClinVar), and an rsID only REST agreed with stays in the one-witness count. A REST request
+unanswered after its retries is *not asked* for that rsID and counted in `detail`; `--offline` asks
+nothing. The REST leg of `EnsemblResolver.resolve_rsid` now retries a 5xx and a 429, and a 429 left
+after the retries is unreachable rather than "no record". New: `verification.ran(reported_by=)` and
+`skipped(reported_by=)`, `EnsemblResolver.resolve_rsid_rest` (REST's half of `resolve_rsid`),
+`PlacementCheck.self_consistent`/`not_asked`/`reported_by`/`placed_by`,
+`placement.live_witness_subjects` and `ask_live_witness`. No new column, no warning code. INTEGRATION_0_8 § 1.18.
+
+- **An injected resolver without `resolve_rsid_rest` no longer kills the run.** `enrich(resolver=)` asks
+  for `resolve_rsid` only (`ensembl.RsidResolver`); REST's mapping is an optional capability
+  (`ensembl.RestWitness`), asked where the resolver has it. A host resolver written before 0.8 (the
+  shape just-dna-marketplace's own test fake has) raised `AttributeError` at the first eligible indel;
+  now REST is not asked for that run, the rsIDs are counted (`PlacementCheck.not_asked`, with
+  `not_asked_reason` naming the missing method in `detail`), and one warning says why. The class was
+  hunted across `enrich`'s other injected collaborators: `gnomad_client.resolve_rsids`,
+  `grch37_client.reference_bases`/`variants_at` and the `release_probes` callables are each their
+  parameter's original contract, and `non_nucleotide_rsids` was already read by `getattr` (RM272).
+- **`resolve_rsid` no longer asks the retired beta GraphQL surface before REST.** Probed 2026-11-04:
+  `beta.ensembl.org/api/graphql/variation` answers 301 to `www.ensembl.org`, where the query no longer
+  validates and a bare rsID is `VARIANT_ID_NOT_FOUND`; it never answered one, so it cost a request per
+  rsID. The leg is removed with `EnsemblSettings.graphql_endpoint` and `human_genome_id`;
+  `resolve_rsid` is REST alone and every row it writes says `ensembl-rest`. `ensembl-graphql` stays a
+  readable `source` value (rows written before 0.8) and keeps its `ensembl` authority. The other
+  clients' endpoints were probed the same day, redirects unfollowed: GenCC's bulk download answered 301
+  (`search.thegencc.org` → `thegencc.org`) and `gene_validity.DEFAULT_GENCC_URL` now names the new
+  host; every other one answers where it is named (ClinPGx's 303 and ClinVar-GKM's directory 302 are
+  hops to files that answer 200).
+- **The REST rung is paced and honours `Retry-After`.** `EnsemblResolver` holds a `PacingGate`
+  (`EnsemblSettings.interval`, 0.1 s against Ensembl's published 15 req/s; injectable as `gate=`) and
+  waits on it once per attempt, so a host's shared resolver is really paced (just-dna-marketplace's
+  pacing table already said it was). A retried 5xx or 429 waits at least the answer's `Retry-After`
+  (`net.wait_retry_after`, `net.retry_after_seconds`: delta-seconds or an HTTP-date); one past
+  `net.RETRY_AFTER_CEILING` (10 s) is not retried (`net.retry_if_transient_within`), and the resolver
+  asks nothing, answering could-not-ask, until the time the server named.
+
 ## 2026-11-04 — RM361: a failed, retired, unread or undecided answer is never recorded as a definite one (0.8, uncut)
 
 - **A 410 is `retired`, never `unreachable`.** Every `*Retired` error carries `net.EndpointRetired`, and every

@@ -224,7 +224,11 @@ def mitomap_publish_(
     increment whose own currency check cannot be run by whoever pulled it; it is rebuilt locally from
     the parents instead, which is cheaper than the download and cannot be stale.
     """
-    from just_dna_enricher.upload import plan_reference_snapshot, publish_reference_snapshot
+    from just_dna_enricher.upload import (
+        PublishRefused,
+        publish_reference_snapshot,
+        rehearse_reference_snapshot,
+    )
 
     if release_label(snapshot_dir) is None:
         typer.secho(
@@ -235,11 +239,11 @@ def mitomap_publish_(
         )
     try:
         if dry_run:
-            plan = plan_reference_snapshot(snapshot_dir, repo)
+            plan = rehearse_reference_snapshot(snapshot_dir, repo)
             typer.echo(f"would upload {len(plan.files)} file(s) to {plan.repo_id}: {plan.files}")
             return
         plan = publish_reference_snapshot(snapshot_dir, repo, commit_message=commit_message)
-    except (FileNotFoundError, PermissionError, ImportError) as exc:
+    except (PublishRefused, PermissionError, ImportError) as exc:
         typer.secho(f"PUBLISH FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
     typer.secho(

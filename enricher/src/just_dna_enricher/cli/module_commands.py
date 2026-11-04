@@ -100,14 +100,17 @@ def upload_(
     dry_run: bool = typer.Option(
         False,
         "--dry-run",
-        help="Show what would be uploaded without contacting HuggingFace.",
+        help=(
+            "Show what would be uploaded, after every check the upload runs — the versioned "
+            "path's collision check reads the published manifest (read-only). Writes nothing."
+        ),
     ),
     force: bool = typer.Option(
         False,
         "--force",
         help=(
-            "Overwrite data/<name>/v<version>/ even when it already holds a different artifact "
-            "or different declared files (logs, provenance, logo, readme). "
+            "Overwrite data/<name>/v<version>/ even when it already holds a different artifact, "
+            "different declared files (logs, provenance, logo, readme) or a different manifest. "
             "Without this the publish refuses; the flat path is always overwritten."
         ),
     ),
@@ -120,25 +123,28 @@ def upload_(
     and the reason why.
 
     Sends what manifest.json declares: the artifact files, the logo,
-    the readme, provenance.json and every log. Refuses when the versioned
-    path already holds a different artifact or a different declared file
-    (compare by artifact.digest and each declared sha256), unless --force.
+    the readme, provenance.json and every log, as the bytes the plan
+    hashed; a file that changed since is refused. Refuses when the
+    versioned path already holds a different manifest (compared by
+    artifact.digest, each declared sha256 and every other field),
+    unless --force.
     The flat path means latest and is overwritten either way.
     """
     from just_dna_enricher.upload import (
         PublishCollisionError,
+        PublishRefused,
         ToolchainDiffersError,
-        plan_upload,
+        rehearse_upload,
         upload_module,
     )
 
     module_name = name or module_dir.name
     # The dry run sits inside the same `try` as the real run, so a refusal reads the same from either
-    # (RM355): the plan refuses before anything contacts the hub, and a dry run that tracebacks on a
-    # refusal the real run prints as one line is the run an author reads first.
+    # (RM355), and it is a rehearsal rather than a bare plan (RM368): it runs the versioned-path check
+    # too, read-only, so it refuses wherever the real run would.
     try:
         if dry_run:
-            plan = plan_upload(module_dir, module_name, repo_id)
+            plan = rehearse_upload(module_dir, module_name, repo_id, force=force)
         else:
             plan = upload_module(
                 module_dir,
@@ -155,11 +161,11 @@ def upload_(
         raise typer.Exit(code=1) from exc
     except PublishCollisionError as exc:
         # Its own branch, and its own word: this module is publishable and the remote already has
-        # this version. "UPLOAD FAILED" beside the three `plan_upload` refusals would read as
-        # "your module is broken", which is the opposite of what happened.
+        # this version. "UPLOAD FAILED" beside the plan's refusals would read as "your module is
+        # broken", which is the opposite of what happened.
         typer.secho(f"ALREADY PUBLISHED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
-    except (FileNotFoundError, PermissionError, ImportError) as exc:
+    except (PublishRefused, PermissionError, ImportError) as exc:
         typer.secho(f"UPLOAD FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
     if dry_run:

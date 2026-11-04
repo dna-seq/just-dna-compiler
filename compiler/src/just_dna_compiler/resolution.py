@@ -16,7 +16,7 @@ Since 0.8 the parity holds when the table records no `vrs_id`: the ids it does r
 """
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
 from just_dna_format.alleles import (
@@ -165,7 +165,7 @@ def resolve_from_table(
     expansions: dict[str, list[list[ResolutionRow]]] = {}
     for v in variants:
         rows = resolution.get(v.variant_key or "")
-        loci = _usable_loci(rows, genome_build)
+        loci = usable_loci(rows, genome_build)
 
         if v.rsid is not None and v.chrom is None:
             # need position: fill from the table, or expand a one-to-many rsid
@@ -417,7 +417,7 @@ def resolve_positional_rows(
     """
     report = PositionalFill()
     for row in rows:
-        loci = _usable_loci(resolution.get(getattr(row, "variant_key", None) or ""), genome_build)
+        loci = usable_loci(resolution.get(getattr(row, "variant_key", None) or ""), genome_build)
         fillable = [
             name
             for name in ("rsid", "chrom", "start", "ref", "alts")
@@ -510,8 +510,13 @@ def _examples(labels: list[str], limit: int = 3) -> str:
     return shown if len(labels) <= limit else f"{shown} … and {len(labels) - limit} more"
 
 
-def _usable_loci(rows: list[ResolutionRow] | None, genome_build: str) -> list[ResolutionRow]:
-    """Rows that are for this build and record an actual locus (not a `not_found` sentinel)."""
+def usable_loci(rows: Sequence[ResolutionRow] | None, genome_build: str) -> list[ResolutionRow]:
+    """Rows that are for this build and record an actual locus (not a `not_found` sentinel).
+
+    The one placement predicate: the SNP-core fill, the positional fill, `unresolved_subjects` and
+    `subjects.identity_placements` (RM362's "does the module sit here") all read a table through it, so
+    a row that places nothing places nothing for every one of them. Public since that fourth caller.
+    """
     if not rows:
         return []
     return [
@@ -625,7 +630,7 @@ def unresolved_subjects(
     The predicate `resolve_from_table` will apply, factored out so the pre-flight can ask it **before**
     resolution runs and reach the same answer the compile does (S76). A row is unplaceable when it
     authors no coordinate of its own and the table holds no usable locus for its key — the same
-    `_usable_loci` filter the fill uses, so a `not_found` sentinel and a row recorded under another
+    `usable_loci` filter the fill uses, so a `not_found` sentinel and a row recorded under another
     build count as no locus here exactly as they do there.
 
     Deliberately **not** a re-derivation of the compile's check: `compile_module` runs its refusal over
@@ -642,7 +647,7 @@ def unresolved_subjects(
     return sorted(
         v.rsid or v.variant_key or ""
         for v in variants
-        if v.chrom is None and not _usable_loci(resolution.get(v.variant_key or ""), genome_build)
+        if v.chrom is None and not usable_loci(resolution.get(v.variant_key or ""), genome_build)
     )
 
 
