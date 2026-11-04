@@ -147,7 +147,7 @@ from typing import ClassVar, NamedTuple
 
 from pydantic import Field, field_validator, model_validator
 
-from just_dna_format.base import AuthoredModel, since, stamped_identity_field, vocabulary
+from just_dna_format.base import AuthoredModel, Companion, since, stamped_identity_field, vocabulary
 from just_dna_format.findings import CodedWarning
 from just_dna_format.spec import CitationPair, validate_pmid_cell
 from just_dna_format.vocab import check_vocab, validate_finite
@@ -470,6 +470,13 @@ class ActivityPhenotypeRow(MeasureBinRow):
     )
 
 
+#: Why `CopyNumberRow`'s modifier gene and dosage travel together — one sentence for all three entries.
+_MODIFIER_PAIR = (
+    "modifier_gene and the modifier copy number (modifier_copy_number, or the deprecated modifier_cn) "
+    "are set together or both left null: a second locus read in context needs both its name and its dosage"
+)
+
+
 class CopyNumberRow(MeasureBinRow):
     """Whole-gene dosage phenotype by copy number (SMN1 SMA). Sharp dosages are
     `measure_min == measure_max` (0 copies = [0, 0]); `3+` is `measure_min=3, measure_max=None`.
@@ -496,6 +503,13 @@ class CopyNumberRow(MeasureBinRow):
         "gene",
         "modifier_gene",
         "effective_modifier_copy_number",
+    )
+    #: The modifier gene and its dosage are set together or both left null (RM366, `base.Companion`),
+    #: refused since 0.4. The dosage half names both spellings, either of which is the dosage.
+    _PAIRED_FIELDS: ClassVar[tuple[Companion, ...]] = (
+        Companion("modifier_gene", ("modifier_copy_number", "modifier_cn"), _MODIFIER_PAIR),
+        Companion("modifier_copy_number", ("modifier_gene",), _MODIFIER_PAIR),
+        Companion("modifier_cn", ("modifier_gene",), _MODIFIER_PAIR),
     )
 
     gene: str = Field(
@@ -573,13 +587,6 @@ class CopyNumberRow(MeasureBinRow):
                 "one may be set (modifier_cn is deprecated — prefer modifier_copy_number), got "
                 f"modifier_cn={self.modifier_cn!r}, "
                 f"modifier_copy_number={self.modifier_copy_number!r}"
-            )
-        if (self.modifier_gene is None) != (self.effective_modifier_copy_number is None):
-            raise ValueError(
-                "modifier_gene and the modifier copy number (modifier_copy_number, or the "
-                "deprecated modifier_cn) are set together or both left null, got "
-                f"modifier_gene={self.modifier_gene!r}, "
-                f"modifier copy number={self.effective_modifier_copy_number!r}"
             )
         return self
 

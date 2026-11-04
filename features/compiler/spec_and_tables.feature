@@ -138,6 +138,20 @@ Feature: The spec directory and the cells inside it
     # out of an upstream export, so refusing it would refuse a faithful transcription. `stats.genes` is
     # what a registry's gene index reads, which is what makes a composite cell a third gene.
 
+  # source: compiler/src/just_dna_compiler/compiler/validate.py
+  # anchor: _check_half_stated_pairs
+  @code:paired_field_half_stated @actionable @both_modes
+  Scenario: a published column stated without its companion
+    Given 11 studies.csv rows stating an effect_size with no effect_measure
+    When the module is compiled
+    Then one warning fires, not 11, and it counts the rows
+    And it says "Reported rather than refused"
+    And the module compiles
+    # The pairs are declared on the models (`_PAIRED_FIELDS`, RM366). A pair whose columns are new in 0.8
+    # refuses the row at load and never reaches this check; one a published module may already hold
+    # half-stated is reported, because refusing it would stop that module validating (P3). Nothing is
+    # filled: which measure a number is, is a claim.
+
   # source: compiler/src/just_dna_compiler/compiler/vcf_checks.py
   # anchor: _check_vcf_pointers
   @code:vcf_pointer_key_collision @actionable @both_modes

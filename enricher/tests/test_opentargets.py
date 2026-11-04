@@ -1134,3 +1134,38 @@ def test_an_author_corrects_the_supplied_allele_and_fills_a_withheld_site_throug
     m2 = json.loads((tmp_path / "out2" / "manifest.json").read_text())
     assert m1["artifact"]["digest"] == m2["artifact"]["digest"]
     assert m1["content_signature"] == m2["content_signature"]
+
+
+def test_a_statistic_whose_method_the_release_left_empty_is_withheld_not_a_crash(
+    module: Path, tmp_path: Path
+) -> None:
+    """RM366: both tables refuse a statistic with no method, so the pass withholds the number instead.
+
+    26.09 states a method on every credible set and every colocalisation (measured on the full release),
+    so the slice is copied and its method columns emptied. The rows the pass writes keep everything else
+    the release said; only the statistics that need the missing method are left empty.
+    """
+    complete = enrich_opentargets(module, snapshot=SLICE, write=False)
+    assert any(r.posterior_probability is not None for r in complete.gwas_effects)
+    assert any(r.h4 is not None or r.clpp is not None for r in complete.colocalisations)
+
+    blank = tmp_path / "no_method"
+    shutil.copytree(SLICE, blank)
+    data = blank / "data"
+    sets = pl.read_parquet(data / "credible_sets.parquet")
+    sets.with_columns(pl.lit(None, dtype=pl.Utf8).alias("fine_mapping_method")).write_parquet(
+        data / "credible_sets.parquet"
+    )
+    for part in sorted(data.glob("colocalisations-*.parquet")):
+        frame = pl.read_parquet(part)
+        frame.with_columns(pl.lit(None, dtype=pl.Utf8).alias("method")).write_parquet(part)
+
+    result = enrich_opentargets(module, snapshot=blank, write=False)
+    assert all(r.posterior_probability is None and r.fine_mapping_method is None for r in result.gwas_effects)
+    # Counted as its own reason, never as "not in the set": the variant is in it, the method is not.
+    assert result.posterior.method_missing == complete.posterior.filled
+    assert result.posterior.not_in_credible_set == complete.posterior.not_in_credible_set
+    assert {(r.study_locus_id, r.right_study_locus_id, r.variant_key) for r in result.colocalisations} == {
+        (r.study_locus_id, r.right_study_locus_id, r.variant_key) for r in complete.colocalisations
+    }
+    assert all(r.method is None and r.h4 is None and r.clpp is None for r in result.colocalisations)

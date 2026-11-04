@@ -19,9 +19,9 @@ must hash equal — see `RESOLUTION_FACT_FIELDS`).
 
 from typing import ClassVar
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 
-from just_dna_format.base import since, vocabulary
+from just_dna_format.base import Companion, PairedFields, both_or_neither, since, vocabulary
 from just_dna_format.normalize import normalize_utc_timestamp
 from just_dna_format.vocab import (
     VALID_PLACEMENT_VERDICTS,
@@ -48,7 +48,7 @@ RESOLUTION_FACT_FIELDS: tuple[str, ...] = (
 )
 
 
-class ResolutionRow(BaseModel):
+class ResolutionRow(PairedFields):
     """One resolved (or attempted) locus for an authored variant, keyed by the frozen `variant_key`.
 
     Standalone (not an `AuthoredModel`/`VariantRow` subclass): a resolution fact is not an annotation
@@ -64,6 +64,18 @@ class ResolutionRow(BaseModel):
     #: this like an equality key would call a legal one-to-many file a duplicate (S51).
     _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("variant_key",)
     _KEY_RULE: ClassVar[str] = "subject"
+    #: Columns meaningless without a companion (RM366, `base.Companion`). A witness names who was asked
+    #: and a verdict what they answered, so one without the other is half a record (both new in 0.8).
+    #:
+    #: `vrs_spec` with no `vrs_id` is deliberately **not** a pair. Both columns are 0.5, and clearing an
+    #: id while keeping its row is the shape an expansion and the `vrs_version_differs` remedy leave
+    #: behind; the compiler already reads it as "nothing to pin" (`compilation.vrs_version` is null).
+    _PAIRED_FIELDS: ClassVar[tuple[Companion, ...]] = both_or_neither(
+        "placement_witness",
+        "placement_verdict",
+        "a placement witness and its verdict are written together: who was asked, and what they "
+        "answered (RM267)",
+    )
 
     model_config = ConfigDict(extra="forbid")
 

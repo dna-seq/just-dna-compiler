@@ -41,6 +41,26 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM366: a column that means nothing without its companion is refused half-stated (0.8, uncut)
+
+- **Refused at load, on columns new in 0.8:** `gwas_effects.csv` `posterior_probability` and
+  `fine_mapping_method` (both or neither); `colocalisations.csv` `h4` or `clpp` without `method`;
+  `resolution.csv` `placement_witness` and `placement_verdict` (both or neither).
+- **One mechanism.** Each model declares `_PAIRED_FIELDS` (`base.Companion`: a field and the columns one
+  of which it needs), and one validator on the `base.PairedFields` mixin enforces every declaration.
+  `paired_fields(model)` reads them, the element-rule pair included. The eight pair validators written by
+  hand (`quality_from`/`min_quality`, `confidence`→`confidence_unit` on two tables,
+  `sample_size`→`sample_unit`, `stratum`/`stratum_level`, the copy-number modifier, `source_element`,
+  `trait_role`) are now declarations: the same rules, one message shape —
+  `<field>=<value> is set and <companion> is empty — <why>`, each rule keeping its own explanation, so a
+  consumer that matched an old full sentence should match the explanation.
+- **A new warning code, `paired_field_half_stated`,** for a pair a published module may already hold:
+  `effect_size` with no `effect_measure` on `variants.csv` or `studies.csv`. Reported once per table and
+  column, in both modes, never refused.
+- **The `opentargets` pass withholds** a posterior or a colocalisation statistic whose method the release
+  left empty, rather than stopping on the refusal, and counts the posterior as its own reason
+  (`PosteriorCounts.method_missing`); 26.09 has none.
+
 ## 2026-11-04 — RM28: a `meta.csv` row can be scoped to a drug, so one phenotype pair states each thiopurine's recommendation (0.8, uncut)
 
 - **`meta.csv` gains an optional `drug`** (`MetaRow.drug`, free text as on `diplotypes.csv`, first in

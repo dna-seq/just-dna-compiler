@@ -430,7 +430,9 @@ def test_the_two_columns_are_outside_the_fact_signature() -> None:
 
 def test_the_verdict_is_a_closed_vocabulary() -> None:
     for verdict in ("same_event", "undecided", "unplaced"):
-        assert ResolutionRow(variant_key="rs1", placement_verdict=verdict).placement_verdict == verdict
+        # A verdict names what a witness answered, so it is written beside one (RM366).
+        row = ResolutionRow(variant_key="rs1", placement_witness="clinvar", placement_verdict=verdict)
+        assert row.placement_verdict == verdict
     with pytest.raises(ValueError, match="placement_verdict"):
         ResolutionRow(variant_key="rs1", placement_witness="clinvar", placement_verdict="agrees")
 

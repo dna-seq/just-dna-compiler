@@ -4,7 +4,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from just_dna_format.base import DEFAULT_GENOME_BUILD
+from just_dna_format.base import DEFAULT_GENOME_BUILD, Companion, half_stated
 from just_dna_format.concordance import ClinSigAuthorityCallRow, ClinSigConcordanceRow
 from just_dna_format.findings import CodedWarning
 from just_dna_format.frequency import FrequencyRow
@@ -1005,6 +1005,17 @@ def _validate_spec(
     if variants or any(gene_bearing.values()):
         stats.update(module_stats(variants, gene_bearing))
     all_warnings.extend(_check_composite_gene_cells(variants, gene_bearing))
+    # RM366. Authored cells only, so the compile inherits the finding from this pre-flight.
+    all_warnings.extend(
+        _check_half_stated_pairs(
+            {
+                "variants.csv": variants,
+                "studies.csv": studies,
+                **loaded_kinds,
+                **{table.csv: non_kind[table.csv][0] for table in AUTHORED_NON_KIND_TABLES},
+            }
+        )
+    )
 
     return (
         ValidationResult(
@@ -1016,6 +1027,34 @@ def _validate_spec(
         ),
         all_warnings,
     )
+
+
+def _check_half_stated_pairs(tables: dict[str, list[Any]]) -> list[str]:
+    """Report every column stated without its companion, on a pair a published module may hold (RM366).
+
+    The pairs are declared on the models (`_PAIRED_FIELDS`, `base.Companion`) and the ones that refuse
+    never reach here — the row failed to load. What is left is `refuse=False`: a pair whose columns
+    predate the rule, so refusing would stop a module that validated under an earlier release of this
+    line from validating (P3). It reports and never fills: the companion is a claim (which measure a
+    number is), and no tool may supply one.
+
+    One warning per (table, column, companion), with the row count and one example value, never one
+    per row — a table missing a measure is usually missing it on every row.
+    """
+    found: dict[tuple[str, Companion], list[object]] = {}
+    for csv_name, rows in tables.items():
+        for row in rows:
+            for rule in half_stated(row):
+                found.setdefault((csv_name, rule), []).append(getattr(row, rule.field))
+    return [
+        CodedWarning(
+            "paired_field_half_stated",
+            f"{csv_name}: {len(values)} row(s) state {rule.field} with {' or '.join(rule.needs)} empty "
+            f"(e.g. {rule.field}={values[0]!r}) — {rule.reason}. Reported rather than refused: a "
+            f"module published before this rule may hold the half.",
+        )
+        for (csv_name, rule), values in sorted(found.items(), key=lambda item: (item[0][0], item[0][1].field))
+    ]
 
 
 #: Separators that make a `gene` cell look like a list. Not a splitting rule — a detection one. `;`

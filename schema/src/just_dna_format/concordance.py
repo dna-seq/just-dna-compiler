@@ -61,7 +61,7 @@ from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from just_dna_format.base import since, vocabulary
+from just_dna_format.base import Companion, PairedFields, since, vocabulary
 from just_dna_format.normalize import normalize_utc_timestamp
 from just_dna_format.vocab import (
     VALID_AUTHORED_POSITION,
@@ -224,7 +224,7 @@ class ClinSigConcordanceRow(BaseModel):
         return normalize_utc_timestamp(v if v is None or isinstance(v, str) else str(v))
 
 
-class ClinSigAuthorityCallRow(BaseModel):
+class ClinSigAuthorityCallRow(PairedFields):
     """What one authority said about one subject, in that authority's own terms.
 
     The detail half of the record, keyed `(variant_key, genotype, authority)` — so a subject carries
@@ -243,6 +243,17 @@ class ClinSigAuthorityCallRow(BaseModel):
     """
 
     _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("variant_key", "genotype", "authority")
+    #: A magnitude needs its instrument (RM366, `base.Companion`), refused since 0.7; a unit with no
+    #: magnitude names an instrument nothing was measured on, and is harmless.
+    _PAIRED_FIELDS: ClassVar[tuple[Companion, ...]] = (
+        Companion(
+            "confidence",
+            ("confidence_unit",),
+            "it names a magnitude with no instrument beside it — set confidence_unit (e.g. "
+            "'review_stars'), because two authorities publish numbers on scales that are not the same "
+            "quantity",
+        ),
+    )
 
     model_config = ConfigDict(extra="forbid")
 
@@ -371,25 +382,16 @@ class ClinSigAuthorityCallRow(BaseModel):
         return (v or "").strip() or None
 
     def model_post_init(self, __context: object) -> None:
-        """Refuse a magnitude with no unit, and a call with no classification.
+        """Refuse a call with no classification, and a classification on a call that made none.
 
-        Two coherence rules the field validators cannot see on their own, both of them the same
-        mistake in different clothes — a cell that reads as an answer and is not one.
-
-        `confidence` without `confidence_unit` is the `weight` lesson restated: nothing downstream can
-        read `2` without being told it is a gold-star count, and the two authorities this record is
-        built for publish numbers on the same scale that mean different things.
+        A coherence rule the field validators cannot see on their own — a cell that reads as an answer
+        and is not one. (`confidence` without `confidence_unit` is the same mistake, and is a declared
+        pair: `_PAIRED_FIELDS`.)
 
         `status='recorded'` with no `clin_sig` claims an authority classified this subject while
         naming no classification, which is the shape an unknown takes when it is written down as an
         answer. `no_record` and `unchecked` are how a consultation with nothing to report is said.
         """
-        if self.confidence is not None and self.confidence_unit is None:
-            raise ValueError(
-                f"confidence={self.confidence!r} names a magnitude with no instrument beside it — "
-                f"set confidence_unit (e.g. 'review_stars'), because two authorities publish numbers "
-                f"on scales that are not the same quantity"
-            )
         if self.status == "recorded" and self.clin_sig is None:
             raise ValueError(
                 "status='recorded' says this authority classified the subject, so clin_sig must "

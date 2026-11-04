@@ -36,7 +36,7 @@ from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from just_dna_format.base import since, vocabulary
+from just_dna_format.base import Companion, PairedFields, since, vocabulary
 from just_dna_format.normalize import normalize_utc_timestamp
 from just_dna_format.vocab import RECOMMENDED_QTL_STUDY_TYPES, validate_finite
 
@@ -201,11 +201,21 @@ class LocusToGeneRow(BaseModel):
         return normalize_utc_timestamp(v)
 
 
-class ColocalisationRow(BaseModel):
+class ColocalisationRow(PairedFields):
     """One colocalisation between a GWAS study locus the module's variant is a member of and a molecular-QTL study locus."""
 
     #: The source's grain, one row per (left, right) study-locus pair, per module variant in the left set.
     _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("study_locus_id", "right_study_locus_id", "variant_key")
+    #: A statistic needs the method that computed it (RM366, `base.Companion`); a method with no
+    #: statistic is a pair the source reported without numbers, which is harmless and kept.
+    _PAIRED_FIELDS: ClassVar[tuple[Companion, ...]] = tuple(
+        Companion(
+            statistic,
+            ("method",),
+            "a colocalisation statistic means nothing without the method that computed it",
+        )
+        for statistic in ("h4", "clpp")
+    )
 
     model_config = ConfigDict(extra="forbid")
 

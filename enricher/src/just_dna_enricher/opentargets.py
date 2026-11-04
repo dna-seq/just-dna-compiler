@@ -127,6 +127,10 @@ class PosteriorCounts:
     not_in_credible_set: int = 0
     #: The variant sits in several of the study's sets with different values: withheld, never picked.
     contested: int = 0
+    #: The variant is in one of the study's sets, and the release left that set's method empty: the
+    #: posterior means nothing without it (`GwasEffectRow` refuses the half, RM366), so it is withheld.
+    #: 26.09 has no such set (0 of 1,519,507 measured); this is the next release's possible shape.
+    method_missing: int = 0
     #: The module row states no ALT and the release supplied none (several candidate alleles, no rsID,
     #: or a snapshot without rsIDs). The row keeps its value.
     allele_withheld: int = 0
@@ -584,6 +588,11 @@ def enrich_opentargets(
                     colocalising,
                 ) = row
                 study, _lead_id = locus_info[locus]
+                if method is None:
+                    # A statistic with no method is refused by `ColocalisationRow` (RM366); the pair is
+                    # kept and its numbers withheld. The release that was measured has none (0 of
+                    # 79,887,470 rows), so this is the shape the next release may take, not this one.
+                    h4 = clpp = None
                 for key in member_keys[locus]:
                     result.colocalisations.append(
                         ColocalisationRow(
@@ -663,6 +672,9 @@ def enrich_opentargets(
                 counts.not_in_credible_set += 1
             elif len(values) > 1:
                 counts.contested += 1
+        if len(values) == 1 and next(iter(values))[1] is None:
+            counts.method_missing += 1
+            values = set()
         if len(values) == 1:
             posterior, method = next(iter(values))
             counts.filled += 1
@@ -683,11 +695,13 @@ def enrich_opentargets(
         logger.info(
             "Open Targets posterior on gwas_effects.csv: %d filled; left empty: %d study without a "
             "credible set, %d variant not in the study's set, %d contested (several sets, different "
-            "values), %d variant not in the release; untouched: %d naming no study, %d not looked up.",
+            "values), %d with no fine-mapping method in the release, %d variant not in the release; "
+            "untouched: %d naming no study, %d not looked up.",
             counts.filled,
             counts.study_without_credible_set,
             counts.not_in_credible_set,
             counts.contested,
+            counts.method_missing,
             counts.variant_not_in_release,
             counts.no_study,
             counts.not_looked_up,
