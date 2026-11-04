@@ -31,6 +31,7 @@ an absence. It blanks `CACHE_BASE_VAR` and every lane's `env_var`, walked off `C
 than listed, so a fifteenth lane is covered the day it is declared.
 """
 
+import ast
 import gzip
 import re
 from dataclasses import dataclass
@@ -193,6 +194,66 @@ def _cli_text(result) -> str:
     for glyph in "│┃╭╮╰╯─━┌┐└┘":
         plain = plain.replace(glyph, " ")
     return " ".join(plain.split())
+
+
+@dataclass(frozen=True)
+class CheckWalk:
+    """What a static walk read off `ran(...)`/`skipped(...)` calls: the check names, and the sites it
+    could not read. Kept apart so a caller asserting an equality can also refuse a blind spot."""
+
+    #: Every check name passed as a string literal, or as a module-level `NAME = "..."` constant.
+    names: frozenset[str]
+    #: `file:line` of each call whose first argument the walk could not resolve to a string — a name
+    #: built at runtime, an attribute (`record.check`). A walk that skipped them silently would report
+    #: an equality over the calls it happened to understand.
+    unresolved: tuple[str, ...]
+
+
+def _checks_written_in(paths) -> CheckWalk:
+    """Walk `paths` (files, or packages walked recursively) for the checks their record calls name.
+
+    **RM365: the one walker every file-level check-roster guard calls.** The vocabulary-wide guard in
+    `test_verification_record.py` had its own copy, and `DERIVED_PRODUCERS` had none, so its `checks`
+    field was asserted only to be vocabulary members and fell three `enrich` checks and one
+    `literature` check behind what the passes write. A module-
+    level `CHECK = "..."` counts as a literal: a pass naming its check once is better code than one
+    repeating the string, and a walk blind to the idiom it should encourage would stop covering it.
+    """
+    names: set[str] = set()
+    unresolved: list[str] = []
+    files: list[Path] = []
+    for path in paths:
+        files.extend(sorted(path.rglob("*.py")) if path.is_dir() else [path])
+    for path in files:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        constants = {
+            node.targets[0].id: node.value.value
+            for node in tree.body
+            if isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and isinstance(node.value, ast.Constant)
+            and isinstance(node.value.value, str)
+        }
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)):
+                continue
+            if node.func.id not in {"ran", "skipped"} or not node.args:
+                continue
+            first = node.args[0]
+            if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                names.add(first.value)
+            elif isinstance(first, ast.Name) and first.id in constants:
+                names.add(constants[first.id])
+            else:
+                unresolved.append(f"{path.name}:{node.lineno}")
+    return CheckWalk(names=frozenset(names), unresolved=tuple(unresolved))
+
+
+@pytest.fixture
+def checks_written_in():
+    """`_checks_written_in` as a fixture — the importlib-mode route, as `cli_text` explains."""
+    return _checks_written_in
 
 
 @pytest.fixture

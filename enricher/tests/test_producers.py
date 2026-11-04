@@ -12,6 +12,10 @@ composed `f"{name} build"` and printed two commands that do not exist, because t
 that convention. A string an operator is asked to type is pinned against the tree that defines it.
 """
 
+from pathlib import Path
+
+import just_dna_enricher
+import pytest
 import typer
 from just_dna_compiler.compiler import _FACT_TABLES
 from just_dna_enricher import cli as enricher_cli
@@ -26,6 +30,8 @@ from just_dna_enricher.producers import (
 )
 from just_dna_format.layout import sidecar_spellings
 from just_dna_format.vocab import VALID_VERIFICATION_CHECKS
+
+_PACKAGE = Path(just_dna_enricher.__file__).resolve().parent
 
 
 def _declared_sources() -> set[str]:
@@ -107,9 +113,48 @@ def test_every_source_is_one_this_tier_declares_terms_for():
 
 
 def test_every_check_a_producer_claims_is_a_vocabulary_member():
+    """Membership is the right shape HERE: the vocabulary also holds checks no table-filling pass
+    writes (`check-acmg`, `pgx`, …), so this direction is the only one entailed. The completeness
+    claim is the equality below, against what each pass's code actually writes."""
     claimed = {check for group in DERIVED_PRODUCERS.values() for p in group for check in p.checks}
     assert claimed <= VALID_VERIFICATION_CHECKS, (
         f"checks no vocabulary member covers: {sorted(claimed - VALID_VERIFICATION_CHECKS)}"
+    )
+
+
+def _module_source(module: str) -> Path:
+    """The file or package `DerivedProducer.module` names. Exactly one must exist, or the walk below
+    covers nothing for that pass and an equality over nothing is a pass on an empty set."""
+    candidates = [_PACKAGE / f"{module}.py", _PACKAGE / module]
+    found = [path for path in candidates if path.exists()]
+    assert len(found) == 1, f"producer module {module!r} resolves to {found}, expected exactly one"
+    return found[0]
+
+
+@pytest.mark.parametrize("command", sorted(ALL_PRODUCER_COMMANDS))
+def test_each_pass_claims_exactly_the_checks_its_code_writes(command: str, checks_written_in) -> None:
+    """**RM365 — an equality, never a subset.** `checks` says which checks a pass attests while it
+    writes, and the only test it had asked whether its names were vocabulary members. So
+    `DERIVED_PRODUCERS["resolution.csv"]` stayed at the six names it shipped with while `enrich` grew
+    `published_refutation`, `evidence_status_currency` and `placement_agreement`, and the literature
+    pass wrote `provenance_quote` beside the two it claimed. A page or tool built from the registry
+    named four fewer attestations than `verification.json` carries.
+
+    Grouped by **command**, because a check is attested by a run, not by a table: `enrich` fills three
+    tables and writes its records once, from `enrich/verification_records.py`, while the concordance
+    tables it also fills name `clinical_significance` from a module that writes no record itself. The
+    walk is the shared one in `conftest.py`, over every module the command's producers name, and a
+    call whose check name it cannot read is refused rather than skipped.
+    """
+    group = [p for csv in DERIVED_PRODUCERS.values() for p in csv if p.command == command]
+    claimed = {check for p in group for check in p.checks}
+    walk = checks_written_in(sorted({_module_source(p.module) for p in group}))
+    assert not walk.unresolved, (
+        f"{command}: record calls whose check name a walk cannot read: {walk.unresolved}"
+    )
+    assert claimed == walk.names, (
+        f"`{command}` writes checks its producers do not claim: {sorted(walk.names - claimed)}; "
+        f"claims checks it does not write: {sorted(claimed - walk.names)}"
     )
 
 
