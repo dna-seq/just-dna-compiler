@@ -41,6 +41,16 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM322: a diplotype row states its trade-off and its report group (0.8, uncut)
+
+**format, compiler** — `diplotypes.csv` gains two optional free-text columns, `negatives` and
+`category`, the `variants.csv` columns of the same names with the same descriptions. A scored diplotype
+such as APOE ε, which v2 scores once as a pair, can now carry the trade-off and the report group a
+variant row could. Both reach `diplotypes.parquet` and come back through `reverse`. `category` binds no
+vocabulary, as on `VariantRow`. A stated cell moves `content_signature`; a module that leaves both out
+keeps its signature, but its `artifact.digest` moves on a 0.8 recompile because the parquet has two more
+columns. The maintainer cut `priority`, `actionability` and `flags` from the item.
+
 ## 2026-11-04 — RM340: the VRS-coverage warning points at the record that explains its no-ALT rows (patch, on `main`)
 
 **compiler, enricher** — When an attested `verification.json` carries an `rsid_coordinate_agreement` record

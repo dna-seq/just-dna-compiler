@@ -326,6 +326,23 @@ class DiplotypeRow(AuthoredModel):
     conclusion: str = Field(
         json_schema_extra=since("0.4.0"), description="Human-readable interpretation for this diplotype"
     )
+    # ── 0.8: RM322, the two general annotation columns `VariantRow` has carried since 0.2. A scored
+    # diplotype (APOE ε, scored once as a pair) is a module's headline finding, and before these it
+    # could state neither its trade-off nor its report group. Copied from `VariantRow`, descriptions
+    # included, and `category` binds no vocabulary there, so it binds none here: one word, one
+    # grammar across the two tables. The maintainer cut `priority`, `actionability` and `flags` from
+    # the item (2026-11-04); they are not deferred. ──
+    negatives: str | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description=(
+            "Optional free-text adverse/antagonistic-pleiotropy counterpart to `conclusion` "
+            "(e.g. a protective allele's known trade-off). Consumers ignore it when absent."
+        ),
+    )
+    category: str | None = Field(
+        json_schema_extra=since("0.8.0"), default=None, description="Grouping category within the module"
+    )
 
     # ── Optional PharmGKB drug context (item 9) — a diplotype → drug response. Diplotype-keyed, so it
     # rides here; single-variant drug response lives in the separate PharmVariantRow. ──

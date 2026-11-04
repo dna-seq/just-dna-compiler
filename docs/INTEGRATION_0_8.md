@@ -61,6 +61,16 @@ COMPILER.md § The phrases, under *retired*, for grepping old manifests.
 | --- | --- | --- |
 | `archive_last_modified` in the ClinPGx snapshot's `release.json` | RM283 | `Last-Modified` of the lane's archive and its sibling archives at build time (name → ISO date, `null` where the `HEAD` did not answer). Absent on a snapshot built from a local archive. RM303 will give `release.json` a model on this branch; this key is one it has to carry. |
 
+## 1.5 New optional authored columns (no break)
+
+A new optional column is minor-legal (Principle 3). A 0.7 `just-dna-format` refuses a CSV carrying one
+(`extra="forbid"`), so an authoring tool reading 0.8 specs upgrades with them; a reader of the parquet
+sees more columns.
+
+| Surface | Item | What changed |
+| --- | --- | --- |
+| `diplotypes.csv` / `diplotypes.parquet` `negatives`, `category` | RM322 | Free text, the `VariantRow` columns of the same names; `category` has no vocabulary. Null when unstated. Every module carrying `diplotypes.csv` gets a new `artifact.digest` on a 0.8 recompile, with `content_signature` unchanged unless a cell is filled. |
+
 ## 2. What to change
 
 1. If you parse `manifest.json` with `just-dna-format`, move your pin to 0.8 when you start reading

@@ -778,8 +778,8 @@ tie-break has nothing to order.
 structural allele — see *The allele grammar* above);
 `AlleleFunctionRow` (`gene`+star `allele` verbatim identity, `function_status` in `VALID_FUNCTION_STATUS`,
 `activity_value?`, CN/SV conveniences); `DiplotypeRow` (`gene`+`haplotype_a`/`haplotype_b` canonicalized
-`a ≤ b`, `conclusion`, PharmGKB `drug?`/`response?`/`evidence_level?`, CPIC `recommendation_strength?`
-and `clinical_context?`); `PharmVariantRow` (`drug`+
+`a ≤ b`, `conclusion`, `negatives?`/`category?` (0.8, RM322), PharmGKB `drug?`/`response?`/
+`evidence_level?`, CPIC `recommendation_strength?` and `clinical_context?`); `PharmVariantRow` (`drug`+
 `conclusion`, single-variant, `evidence_level?` 1A…4, `genotype?`, `phenotype_category?`,
 `annotation_id?`, and **`pmid?` — the claim citation added in 0.7 (RM132)**, free-form under the same
 grammar as `StudyRow.pmid`, a separate axis from `evidence_level` because one points at the evidence
@@ -822,6 +822,13 @@ grammar is the shared `AuthoredModel` one, so a genotype means the same thing he
 allele (`del/del`) is now spellable — RM5 shipped in 0.6 — but ClinPGx publishes no **length** for it,
 and a lengthless symbolic allele is a rule the compiler drops, so `clinpgx_draft` still declines to
 write those rows and now says which of the two reasons it is.
+
+**`negatives?` and `category?` on `DiplotypeRow` (0.8, RM322)** are `VariantRow`'s columns of the same
+names, copied with their descriptions: free text, outside the key, and `category` binds no vocabulary
+on either table. They exist because a scored diplotype is often a module's headline finding (APOE ε is
+scored once, as a pair) and could state neither its trade-off nor its report group. Both are authored
+content, so a stated cell moves `content_signature`; an absent or empty one does not. The item was cut
+to these two by the maintainer: `priority`, `actionability` and `flags` were cut, not deferred.
 
 `DiplotypeRow.clinical_context` (0.5, RM29b) is the same shape of fix one table over: CPIC scopes a
 gene/drug recommendation to a **setting**, and the settings disagree. Clopidogrel carries three

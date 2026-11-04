@@ -35,6 +35,52 @@ up.
 The bugfix round [PROPOSAL_0_8_PT1.md](proposals/PROPOSAL_0_8_PT1.md) decided on 2026-09-29, built on
 the `0.8` branch in the proposal's order. Newest first.
 
+## RM322 — `diplotypes.csv` carries none of the axes a scored finding needs, so APOE, the module's headline result, cannot state its tier, mechanism or trade-off
+
+**Cut 2026-11-04 by the maintainer, after the final measuring run** (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §3): `priority` (it restates the tier; v2 says it is "derived from tier") and `actionability` (v2's policy "late-acting ⇒ descriptive" belongs in its README). `DiplotypeRow` gains only **`negatives` and `category`**.
+
+**Decided 2026-11-04 by the maintainer: four columns, no `flags`.** `DiplotypeRow` gains `negatives`, `category`, `priority` and `actionability`, each full price, with RM70 as the precedent. `flags` stays off: no tier acts on its tags (RM321), and v2's flag tokens are what RM323–RM330's typed columns replace. Per-locus facts go on RM323's table, with APOE ε2 and ε4 as `haplotype` subjects.
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** ([PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §5 A3), taken into 0.8 on 2026-11-03 as a priority · **Owner** format (`DiplotypeRow`) + compiler (the diplotype parquet and `reverse`) · **Motivating case** longevitymap v2 requirements §6.4, decision D2 · *for* longevitymap v2 · *related* RM323, RM28
+
+**What shipped.** `DiplotypeRow` gains `negatives` and `category`, both optional free text with
+first release 0.8.0. Each is `VariantRow`'s column of the same name, description included, and
+`category` binds no vocabulary on either table. They reach `diplotypes.parquet` as nullable strings
+through the generic table materializer, `reverse` writes them back, and both are inside
+`content_signature` when stated; a module that leaves them out or empty keeps its signature. Every
+module carrying `diplotypes.csv` gets a new `artifact.digest` on a 0.8 recompile, because the parquet
+gains two columns. `priority`, `actionability` and `flags` were cut by the maintainer on 2026-11-04 and
+are not deferred: `priority` restates the tier, `actionability` is v2's README policy, and per-locus
+facts live on the meta-table (RM323). Tests: `compiler/tests/test_rm322_diplotype_axes.py` (a copy of
+`reference_examples/apoe_epsilon` with both columns filled, compile → reverse → compile to a fixed
+point on both identities).
+
+**Residuals** none
+
+**What was confirmed.** `DiplotypeRow` has `gene`, `haplotype_a`, `haplotype_b`, `trait_efo_id`,
+`direction`, `clin_sig`, `phenotype`, `conclusion` and the PharmGKB drug block (`drug`, `response`,
+`evidence_level`, `recommendation_strength`, `clinical_context`). It has no `negatives`, `category`,
+`priority`, `flags`, `actionability`, `stat_significance` or `effect_*`. v2 scores APOE once, as an ε
+diplotype (R-APOE-1), so its tier A locus is the one locus that can say none of the things the report
+groups and orders by.
+
+**What already fits.** The key includes `trait_efo_id`, so one row per (diplotype, trait) is legal: an
+Alzheimer's row and a lifespan row per ε pair, which is how the plan's two framings coexist.
+
+**Shapes, priced.**
+
+- **Widen `DiplotypeRow`** with the general annotation columns: `negatives`, `category`, `priority`,
+  `flags`, and possibly `actionability`. Full price each, minor-legal; RM70 is the precedent for
+  carrying a `VariantRow` column to a PGx table. `VariantRow` itself calls these axes general ("any
+  variant finding may carry them"), so this is not a foreign domain's columns on a PGx table. Each
+  is three touch points, plus the diplotype parquet and `reverse`.
+- **Author APOE as rs429358/rs7412 genotype rows in `variants.csv`.** Refused: a per-SNP row cannot
+  say ε2/ε4, and the plan's own rule is to score APOE once.
+- **README prose.** Drops the axes out of the data entirely.
+
+**To design.** Which columns, and whether the home RM323 decides for locus-level facts also reaches a
+gene-pair subject (it does not if that home is keyed on `variant_key`).
+
 ## RM288 — two snapshot builders and the PGx drafter make every caller enumerate their exception family, a question RM101 named and left in a test's exemption block
 
 **Severity** low · **Status** ✅ **SHIPPED 2026-09-30 on `0.8`, uncut** — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) (a public exception base) ·

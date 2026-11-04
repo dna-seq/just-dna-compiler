@@ -105,6 +105,12 @@ haplotypes were callable" — a fact about `haplotypes.csv` rows, restated one t
 the moment a definition is edited. One concept, one home. `extra="forbid"` is what enforces it, so
 adding the column by hand is a compile error rather than a silent second source of truth.
 
+**`negatives` and `category` are the `variants.csv` columns, carried over (0.8).** A scored diplotype is
+often the finding a module exists for (APOE ε is scored once, as a pair, never as two SNP rows), so it
+needs the trade-off and the report group a variant row can state. The symptom of the old shape was a
+headline row whose trade-off lived only in the README. `category` is free text here as there; the
+same word in both tables means the same group.
+
 ## pharm_variants.csv
 
 **One row is (variant, drug, genotype) → response**, at a PharmGKB evidence level. It is a distinct
