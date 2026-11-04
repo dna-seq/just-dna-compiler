@@ -115,11 +115,13 @@ _WRITTEN_DOCUMENTS: tuple[type[BaseModel], ...] = (
 )
 
 #: Models defined in the package that are neither a table nor part of a written document, each with
-#: why. Both are bases: they carry no row of their own and every concrete model built on them is
+#: why. Each is a base: it carries no row of its own and every concrete model built on it is
 #: walked in its own right.
 _ABSTRACT_BASES: dict[str, str] = {
     "AuthoredModel": "the base every authored row inherits; it declares no field",
     "CitationPair": "the `pmid`/`doi` mixin (RM336); every model with `pmid` inherits it and is walked",
+    "PairedFields": "the `_PAIRED_FIELDS` validator mixin (RM366); it declares no field, and every model "
+    "inheriting it is walked",
 }
 
 
