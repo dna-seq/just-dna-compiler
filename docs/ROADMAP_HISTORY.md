@@ -91,8 +91,9 @@ Tests: `compiler/tests/test_authored_non_kind_tables.py` (the registry against t
 the input files, `DRAFTABLE`, the artifact listing, `LEAD_PARQUETS` and the gene facet; the one loader's
 absent and empty arms; a module carrying all three tables round-trips to the same digest and signature);
 a malformed overlay is not applied; `test_meta_compile.py`'s two RM357 tests (the duplicate-key case, red
-before; the parse-error case, red before). Each
-derivation was broken once and its test went red. The 16 reference examples and the meta, model-organism and
+before; the parse-error case, red before). Broken
+once each, and a test went red: the loader's two arms, the reverse loop, `_INPUT_FILES`, `DRAFTABLE`,
+`table_bindings()`, `_TABLE_DUPE_KEYS`, `_CITING_TABLE_KINDS`, `_KNOWN_SPEC_FILES` and the reference group. The 16 reference examples and the meta, model-organism and
 overlay fixtures give identical validate and compile warnings and errors, digests, `artifact.files`,
 signatures and reversed files before and after.
 
