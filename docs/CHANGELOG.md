@@ -48,10 +48,12 @@ not, and the recorded toolchain (`compilation.toolchain`, RM342) says why. It is
 `parquet_bytes` only, and `RecompileAnswer.toolchain_moves` reads it beside `corrections` and
 `additions`. The release gate accepts it only when a second sweep backs it, with this release's
 compiler on both sides and only the toolchain varied (`sweep --toolchain-before DIR`). Both sides must
-record different toolchains, `content_signature` must not move, and, when it is the axis's only kind,
-every module whose bytes moved must have moved under the toolchain alone. Each condition has its own
-`TOOLCHAIN_*` finding phrase. `SweepMeasurement` records each side's toolchain
-(`before_toolchain` / `after_toolchain`). Measured on this branch: the sixteen reference examples
+record different toolchains, the sweep must share the release's AFTER tree, and `content_signature`
+must not move. A module's move counts as the toolchain's only where the previous compiler and this one
+wrote the same bytes under the previous toolchain, so the cut builds its BEFORE tree under the previous
+polars too. When `toolchain` is the axis's only kind every moved module must pass that test. Each
+condition has its own `TOOLCHAIN_*` finding phrase. `SweepMeasurement` records each side's toolchain
+and digests (`before_toolchain` / `after_toolchain`, `before_digests` / `after_digests`). Measured on this branch: the sixteen reference examples
 compiled by one compiler under polars 1.44.2 and 2.1.0 move `parquet_bytes` on 16 of 16 and
 `content_signature` on none. The Constitution's Goals sentence on integrity now names the recorded
 toolchain beside the pinned compiler version. A 0.7 `just-dna-format` refuses a serialized record

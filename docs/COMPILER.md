@@ -2062,10 +2062,20 @@ tell the two apart. The only clean separation is a **second sweep with the compi
 release's compiler on both sides, only the toolchain varied. `sweep --toolchain-before DIR` takes the
 tree this release compiled under the previous toolchain; the release sweep's AFTER tree is the other
 side. Each `SweepMeasurement` records `before_toolchain` / `after_toolchain`, the one toolchain each side
-recorded (`None` when a module recorded none or the side mixes two).
+recorded (`None` when a module recorded none or the side mixes two), and `before_digests` /
+`after_digests`, each module's `artifact.digest` per side.
 
-When a record declares `toolchain` on `parquet_bytes` and the bytes moved, the gate reads that second
-measurement's **fields**, never a sentence in `evidence`, and fails the release unless:
+**That sweep alone is not enough, and the separation is per module.** It shows the toolchain is
+*enough* to move a module's bytes, never that the compiler did not move them as well: polars 2 writes
+its version into every footer, so every module moves under it whatever else this release changed. A
+module's release move is the toolchain's only when **the previous compiler and this one wrote the same
+bytes under the previous toolchain**: the release sweep's BEFORE digest equals the fixed-compiler sweep's
+BEFORE digest, and the two sweeps share one AFTER tree. The whole move then lies between the two
+toolchains. So the release sweep's BEFORE tree is built under the previous toolchain too (the sequence
+below pins it).
+
+When a record declares `toolchain` on `parquet_bytes` and the bytes moved, the gate reads those
+**fields**, never a sentence in `evidence`, and fails the release unless:
 
 | condition | finding when it fails |
 | --- | --- |
@@ -2073,12 +2083,15 @@ measurement's **fields**, never a sentence in `evidence`, and fails the release 
 | its two sides carry the same `compiler_version` | `TOOLCHAIN_ACROSS_COMPILERS_PHRASE` |
 | that version is the release being gated | `TOOLCHAIN_WRONG_COMPILER_PHRASE` |
 | both sides record a toolchain and the two differ (unrecorded is unknown, never a difference) | `TOOLCHAIN_NOT_DIFFERENT_PHRASE` |
-| `content_signature` did not move under the toolchain, nor across the release on a module the toolchain moved | `TOOLCHAIN_CONTENT_MOVED_PHRASE`, per module |
-| when `toolchain` is the axis's only kind: every module whose bytes moved across the release moved under the toolchain alone too | `TOOLCHAIN_UNEXPLAINED_PHRASE`, per module |
+| its AFTER side is the release sweep's AFTER tree, digest for digest | `TOOLCHAIN_OTHER_AFTER_PHRASE` |
+| `content_signature` did not move under the toolchain on a module the toolchain moved, nor across the release on a module the toolchain explains | `TOOLCHAIN_CONTENT_MOVED_PHRASE`, per module |
+| when `toolchain` is the axis's only kind: every module whose bytes moved is explained (measured by the second sweep, moved under the toolchain, and the same bytes from both compilers under the previous toolchain) | `TOOLCHAIN_UNEXPLAINED_PHRASE`, per module, with which of the three failed |
+| when another kind is declared beside it: the toolchain explains at least one module | `TOOLCHAIN_EXPLAINS_NOTHING_PHRASE` |
 
-The last row is what separates a compiler move from a toolchain move. A module the toolchain did not
-move moved for a compiler reason, which is a `correction` or an `addition` and is declared as one;
-declared beside the `toolchain` declaration, it covers those modules.
+A module the toolchain does not explain moved for a compiler reason, a `correction` or an `addition`,
+and is declared as one. Beside such a declaration it is covered, and a note names it. A second sweep
+passed while no `toolchain` declaration reads it is a note too (`TOOLCHAIN_SWEEP_UNUSED_NOTE_PHRASE`),
+so an operator does not believe it was checked.
 
 **A list is a leaf.** Indexing into one would make an inserted element rename every path after it, and
 `stats.genes` is what a consumer keys on anyway. A missing key and a present `null` are distinguished
@@ -2122,9 +2135,13 @@ done
 uv run just-dna-compiler sweep "$BEFORE" "$AFTER" --spec-root reference_examples/ --release <new>
 ```
 
-**A release that moves the toolchain too** (0.8: polars 1 → 2) adds the fixed-compiler tree before
-step 2, built by **this** release's compiler (after the bump and `uv sync`) under the previous toolchain.
-`uv run --with` overlays the locked polars; check that the tree's manifests record the old version.
+**A release that moves the toolchain too** (0.8: polars 1 → 2) builds step 1's BEFORE tree under the
+previous toolchain, by adding `--with polars==<previous polars>` to that `uv run`, and adds the
+fixed-compiler tree before step 2, built by **this** release's compiler (after the bump and `uv sync`)
+under the same previous toolchain. `uv run --with` overlays the locked polars; check that the
+fixed-compiler tree's manifests record the old version. A previous release records no toolchain, so the
+gate cannot read BEFORE's; the per-module digest equality with the fixed-compiler tree is what shows it
+was the same toolchain and the same bytes.
 
 ```bash
 TC_BEFORE=$(mktemp -d)
@@ -2183,11 +2200,14 @@ TOOLCHAIN_ACROSS_COMPILERS_PHRASE = "compares two compiler versions, so it canno
 TOOLCHAIN_WRONG_COMPILER_PHRASE   = "held fixed a compiler other than the release being gated"
 TOOLCHAIN_NOT_DIFFERENT_PHRASE    = "does not record two different toolchains, one per side"
 TOOLCHAIN_CONTENT_MOVED_PHRASE    = "moved its content_signature, so a toolchain move cannot cover it"
-TOOLCHAIN_UNEXPLAINED_PHRASE      = "moved its bytes across the release and not under the toolchain alone, so a toolchain move does not cover it"
+TOOLCHAIN_UNEXPLAINED_PHRASE      = "moved its bytes across the release and the toolchain alone does not explain it, so a toolchain move does not cover it"
+TOOLCHAIN_OTHER_AFTER_PHRASE      = "does not share the release sweep's AFTER tree, so it says nothing about the bytes being released"
+TOOLCHAIN_EXPLAINS_NOTHING_PHRASE = "is declared a toolchain move and the toolchain alone explains no module's bytes"
+TOOLCHAIN_SWEEP_UNUSED_NOTE_PHRASE = "was passed and no toolchain declaration on a moved parquet_bytes reads it"
 ```
 
 `UNDECLARED_KIND_PHRASE` keeps its wording, since scripts grep it; on `parquet_bytes` the message
-appends `(or, on this axis, a toolchain move)`. The `TOOLCHAIN_*` six are RM352's, tabled above.
+appends `(or, on this axis, a toolchain move)`. The `TOOLCHAIN_*` nine are RM352's, tabled above; the last is a note.
 
 The middle four are about the **sweep** rather than about the record, and they exist because a gate
 that only asked *is this movement declared?* passed every sweep that measured nothing. A stale

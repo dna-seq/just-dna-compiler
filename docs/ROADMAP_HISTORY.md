@@ -66,26 +66,35 @@ held fixed and only the toolchain varied, and the gate reads that sweep's fields
   `parquet_bytes` (a model validator), since only a byte measurement can back it.
   `RecompileAnswer.toolchain_moves` sits beside `corrections` and `additions`, and the three cover
   `declared` (asserted over a synthetic record holding one of each).
-- `SweepMeasurement.before_toolchain` / `after_toolchain`: the one toolchain each side recorded, `None`
-  when a module recorded none or the side mixes two. `measurement_json` carries both.
+- `SweepMeasurement.before_toolchain` / `after_toolchain` (the one toolchain each side recorded, `None`
+  when a module recorded none or the side mixes two) and `before_digests` / `after_digests` (each
+  module's `artifact.digest`). `measurement_json` carries all four.
 - `gate_findings(..., toolchain_measurement=)` and `sweep --toolchain-before DIR` (the release's compiler
   under the previous toolchain; the release sweep's AFTER tree is the other side, nested under
   `toolchain_sweep` in `--json`). A `toolchain` declaration on a moved `parquet_bytes` passes only when
   that sweep was passed, its two sides carry one `compiler_version` and it is the release gated, both
-  sides record a toolchain and they differ (unrecorded is unknown and never satisfies), `content_signature`
-  did not move under the toolchain nor across the release on a module the toolchain moved, and, when
-  `toolchain` is the axis's only kind, every module whose bytes moved across the release moved under the
-  toolchain alone too. Six `TOOLCHAIN_*` phrases, one per remediation. `UNDECLARED_KIND_PHRASE` keeps its
-  wording and appends `(or, on this axis, a toolchain move)` on `parquet_bytes`.
+  sides record a toolchain and they differ (unrecorded is unknown and never satisfies), its AFTER side
+  is the release's AFTER tree digest for digest, and `content_signature` did not move on the modules it
+  speaks for. **Which modules the toolchain explains is per module and a digest equality**: the previous
+  compiler and this one wrote the same bytes under the previous toolchain (the release BEFORE digest
+  equals the fixed-compiler BEFORE digest). The code review caught the first build accepting a module
+  merely because it also moved under the toolchain, which polars 2 does to every module, so a compiler
+  byte change would have shipped labelled `toolchain`. When `toolchain` is the axis's only kind every
+  moved module must be explained; beside another kind it must explain at least one. Nine `TOOLCHAIN_*`
+  phrases (one a note). `UNDECLARED_KIND_PHRASE` keeps its wording and appends `(or, on this axis, a
+  toolchain move)` on `parquet_bytes`.
 - The Goals bullet *Make integrity the identity* now ends "holding the inputs, the pinned compiler version
   and the recorded toolchain." The why is in CONSTITUTION_AMENDMENTS_HISTORY.md.
 
-**Measured, not assumed.** The sixteen `reference_examples/` compiled by one compiler under
-`uv run --with polars==1.44.2` and under the locked polars 2.1.0 move `parquet_bytes` on 16 of 16 and
-`content_signature`, `manifest_fields`, `parquet_schema` and `warnings` on none; the gate accepts a
-synthetic 0.8.0-like record declaring `parquet_bytes` as `toolchain` over that pair and refuses it with no
-backing sweep, with one across compilers, and with one toolchain on both sides. The 0.8.0 record itself is
-the cut's to write, after measuring. Tests: `compiler/tests/test_release_kind_toolchain.py`, the kind tests
+**Measured, not assumed (2026-11-04, the `0.8` branch at this item).** Three real trees of the sixteen
+`reference_examples/`: published `just-dna-compiler` 0.7.2 under polars 1.44.2, this branch's compiler
+under polars 1.44.2 (`uv run --with`), and this branch's compiler under the locked polars 2.1.0. Under
+the toolchain alone `parquet_bytes` moves on 16 of 16 and nothing else moves. With polars held at 1.44.2,
+the compiler alone moves `parquet_bytes` on 3 of 16 (`fmr1_cgg_repeat`, `hboc_palb2`,
+`pathogenic_clinvar`, the three whose `parquet_schema` moved too) and `manifest_fields` on all 16. So a
+`toolchain`-only declaration over the real interval is refused for exactly those three, and `toolchain`
+beside an `addition` passes with a note naming them: the review's case, measured. The 0.8.0 record
+itself is the cut's to write, after measuring. Tests: `compiler/tests/test_release_kind_toolchain.py`, the kind tests
 in `schema/tests/test_release_records.py`.
 
 ## RM304 — a `vrs_id` does not say which VRS minted it, and VRS 2.1 moves some insertion ids

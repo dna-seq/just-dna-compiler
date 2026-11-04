@@ -103,5 +103,6 @@ move is not one. `output_differs` still reads `True` for it, because the bytes d
 5. **Release-record readers (RM352).** If you switch on `DeclaredChange.kind`, add the third arm,
    `toolchain` (§ 1.5), or read `RecompileAnswer.corrections` / `additions` / `toolchain_moves` rather
    than the raw kind. `SweepMeasurement` gains `before_toolchain` / `after_toolchain` (the one toolchain
-   each side recorded, `null` when unrecorded or mixed), `measurement_json` carries both, and
+   each side recorded, `null` when unrecorded or mixed) and `before_digests` / `after_digests` (each
+   module's `artifact.digest`), `measurement_json` carries all four, and
    `sweep --toolchain-before DIR --json` nests the fixed-compiler sweep under `toolchain_sweep`.

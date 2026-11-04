@@ -731,11 +731,17 @@ def sweep(
     measurement = compare_outputs(before_outputs, after_outputs, build_failures)
     # The fixed-compiler sweep's other side is AFTER itself: this release's compiler on the new
     # toolchain is already built, so only the old-toolchain tree is passed in.
-    toolchain_measurement = (
-        compare_outputs(read_outputs(toolchain_before), after_outputs)
-        if toolchain_before is not None
-        else None
-    )
+    toolchain_measurement = None
+    if toolchain_before is not None:
+        # A half-built or mixed-stamp tree is an operator's error to report, never a traceback: under
+        # `--json` it would also leave stdout without its one JSON document.
+        try:
+            toolchain_measurement = compare_outputs(read_outputs(toolchain_before), after_outputs)
+        except ValueError as exc:
+            typer.secho(
+                f"  error: --toolchain-before {toolchain_before}: {exc}", fg=typer.colors.RED, err=True
+            )
+            raise typer.Exit(code=1) from exc
     if as_json:
         payload = measurement_json(measurement)
         if toolchain_measurement is not None:
