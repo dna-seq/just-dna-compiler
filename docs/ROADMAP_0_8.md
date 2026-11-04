@@ -1286,6 +1286,51 @@ point narrows what a `*.log` did before RM338, so its CHANGELOG line says so.
 
 **Residuals** none yet.
 
+## RM349 — a `pmid=NONE` row's DOI is never checked to exist, and its quote is never matched against the paper
+
+**0.8, filed 2026-11-04 by the lead** as a second-pass item: RM336's residual.
+
+**Severity** medium · **Status** open — **a minor**, joins 0.8 · **Owner** enricher (`literature`, `lookup`) · **Motivating case** the RM336 builder's report · *related* RM336, RM263
+
+RM336 lets a study cite a DOI-only preprint through `pmid=NONE` + `doi`. The literature pass then has nothing to look
+up: a `NONE` row's quote or citation is recorded as an `unsupported` skip, so a fabricated DOI and a real one read the
+same, and `provenance_quote` is never matched against the preprint's text. The DOI is the only identifier the row
+carries, so it is the one the pass must check: existence through Crossref (`CrossrefClient.exists`, which already
+answers three-valued) and, where a full text is reachable (bioRxiv/medRxiv), the quote. `@existence-not-identity`
+applies: the check names the title it found.
+
+**Residuals** none yet.
+
+## RM351 — a PGx check keys a named allele on its bare name, so `star_allele_undefined` fires on every HLA allele
+
+**0.8, filed 2026-11-04 by the lead** as a second-pass item: found while building RM334.
+
+**Severity** medium · **Status** open — **a minor**, joins 0.8 · **Owner** compiler (`table_checks._cross_validate_haplotype_definitions` and its siblings) · **Motivating case** the RM322/RM334 builder's e2e: `['*15:01', '*57:01:01']` reported as used but not defined · *related* RM334, RM28
+
+**One class.** The cross-table PGx checks collect allele names into sets keyed on the bare `allele` string, not on
+`(gene, allele)`. A typed allele that has no defining variants by design (an HLA allele, called by a typer, not a
+SNP) is then reported as "can never match", which is false, and two genes sharing an allele name (`*2`) are
+conflated. The meta-table's `allele_function` members (RM28) make this the v2 shape. The fix keys every such set
+on `(gene, allele)` and exempts a gene whose alleles are typed rather than defined (the HLA grammar's genes). Grep
+for the class, not the instance: every `used.setdefault(row.allele` and set of bare allele names in the compiler.
+
+**Residuals** none yet.
+
+## RM352 — release records have no change kind for a toolchain-only byte move, so the 0.8 cut cannot declare polars 2
+
+**0.8, filed 2026-11-04 by the lead** as a second-pass item: RM342's residual, and a cut gate.
+
+**Severity** high · **Status** open — **a minor**, joins 0.8, **blocks the cut** · **Owner** format (`release_records.VALID_RELEASE_CHANGE_KINDS`) + `sweep.py` · **Motivating case** the RM342 builder's report · *related* RM342, RM341
+
+`VALID_RELEASE_CHANGE_KINDS` is `{correction, addition}`, and the sweep's gate (`UNDECLARED_KIND_PHRASE`) needs one of
+them for every moved axis. polars 1 → 2 moves `parquet_bytes` on every module with no value wrong and nothing added,
+so the 0.8.0 record cannot be written. A third member, `toolchain` (bytes moved, content unchanged, the toolchain
+record says why), is additive and minor-legal. The 0.8.0 record then declares the polars move with it. The
+Constitution's Goals sentence on reproducibility ("anyone holding the inputs and the pinned compiler version") gains
+"and the recorded toolchain", matching RM342's Principle 4 amendment, with a line in the amendments history.
+
+**Residuals** none yet.
+
 ## RM342 — the manifest does not record the toolchain that wrote the bytes, so a digest that moves cannot say why
 
 **Where the toolchain reason fires, corrected 2026-11-04 (the lead's PT2 §4 question 7, accepted by the pm seat).** `verify_manifest` re-hashes files and never recompiles, so it cannot see a toolchain. The reason `toolchain_differs` therefore fires where a fresh compile is compared with a recorded digest: the publish collision check and the release sweeps. This keeps the maintainer's intent: an explainable difference is never reported as corruption.
