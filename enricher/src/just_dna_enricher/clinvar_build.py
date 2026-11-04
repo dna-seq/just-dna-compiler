@@ -19,7 +19,6 @@ record (this is a resolution reference, not a pathogenic gene panel).
 
 import gzip
 import hashlib
-import json
 import logging
 import re
 from collections.abc import Iterator
@@ -27,12 +26,18 @@ from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
+from just_dna_format.snapshot import (
+    SnapshotRelease,
+    clinvar_release_label,
+    read_release,
+    release_is_unreadable,
+    write_release,
+)
 from just_dna_format.spec import extract_pmids
 
 from just_dna_enricher.clin_sig import normalize_clin_sig
-from just_dna_enricher.locations import CITATIONS_DIRNAME, RELEASE_FILENAME
+from just_dna_enricher.locations import CITATIONS_DIRNAME
 from just_dna_enricher.net import stream_to_file
 
 try:  # the one guarded optional import (CLAUDE.md): polars is builder-only ([dev] extra)
@@ -436,25 +441,18 @@ def _merge_release_block(out_dir: Path, name: str, block: dict) -> bool:
     and a citations build must never erase the records' provenance. An unparseable existing file is left
     alone and reported — overwriting it would destroy the only statement of where the data came from.
     """
-    path = out_dir / RELEASE_FILENAME
-    release: dict = {}
-    if path.is_file():
-        try:
-            release = json.loads(path.read_text(encoding="utf-8"))
-        except (ValueError, OSError) as exc:
-            logger.warning(
-                "%s is present but unreadable (%s); leaving it alone rather than overwriting the "
-                "snapshot's provenance. The %s block was not recorded.",
-                path,
-                exc,
-                name,
-            )
-            return False
-        if not isinstance(release, dict):
-            logger.warning("%s is not a JSON object; not recording the %s block.", path, name)
-            return False
-    release[name] = block
-    atomic_write_text(path, json.dumps(release, indent=2, sort_keys=True) + "\n")
+    if release_is_unreadable(out_dir):
+        # `read_release` has already said why; the block is the part that is lost, and it says so.
+        logger.warning(
+            "the snapshot's release.json in %s is present but unreadable; leaving it alone rather than "
+            "overwriting its provenance. The %s block was not recorded.",
+            out_dir,
+            name,
+        )
+        return False
+    existing = read_release(out_dir)
+    stated = existing.model_dump(exclude_unset=True) if existing is not None else {}
+    write_release(out_dir, SnapshotRelease.model_validate({**stated, name: block}))
     return True
 
 
@@ -585,14 +583,15 @@ def _write_release_json(
 ) -> Path:
     """Write ``release.json`` — the provenance that feeds `GenePanelSpec.reference`/`reference_sha256`
     (RM4). `built_at` is deliberately outside the parquet so the parquet stays byte-reproducible."""
-    release = {
-        "clinvar_file_date": clinvar_file_date,
-        "source_url": source_url,
-        "source_sha256": source_sha256,
-        "record_count": record_count,
-        "built_at": now_utc_iso(),
-        "builder_version": _builder_version(),
-    }
-    path = out_dir / RELEASE_FILENAME
-    atomic_write_text(path, json.dumps(release, indent=2, sort_keys=True) + "\n")
-    return path
+    release = SnapshotRelease(
+        # The label `cache status` prints and `SourceRow.dataset` carries (RM303): written by the same
+        # formula the snapshot model reads an older ClinVar release's `clinvar_file_date` through.
+        dataset=clinvar_release_label(clinvar_file_date, source_sha256),
+        clinvar_file_date=clinvar_file_date,
+        source_url=source_url,
+        source_sha256=source_sha256,
+        record_count=record_count,
+        built_at=now_utc_iso(),
+        builder_version=_builder_version(),
+    )
+    return write_release(out_dir, release)

@@ -22,6 +22,11 @@ and only where a rule turns on one.
   multi-parquet artifact (the three-parquet SNP core — weights/annotations/studies — plus one parquet
   per optional table kind a composed module adds), carrying per-input and per-artifact hashes and a
   Merkle `artifact.digest`.
+- Be the contract for the **reference-snapshot layout** as well: `just-dna-format` defines the on-disk
+  names of a reference snapshot (its data directory, sidecar directories, licence file and provenance
+  record) and the model of that provenance record (`release.json`), which every party that builds,
+  publishes, provisions or reads a snapshot uses rather than restating. It reads no environment and
+  fetches nothing; where a snapshot lives on a machine, and how it is fetched, stay in the network tier.
 - Stay **dependency-light, in tiers.** `just-dna-format` (schema + integrity) costs only `pydantic`
   plus `cryptography` (the latter solely for Ed25519 signature verify/sign, added in 0.2 — a small,
   pure-verify dependency, never a heavy transitive tree), so any verify-only client can depend on it;

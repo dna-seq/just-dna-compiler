@@ -45,6 +45,9 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from just_dna_format.snapshot import release_is_unreadable
+from just_dna_format.snapshot import release_label as snapshot_release_label
+
 from just_dna_enricher import (
     acmg_build,
     civic_build,
@@ -62,7 +65,6 @@ from just_dna_enricher import (
     pubmind_build,
     strchive_build,
 )
-from just_dna_enricher.clinvar import clinvar_dataset_label
 from just_dna_enricher.download import (
     SNAPSHOT_FILE_GLOBS,
     SnapshotNotPublished,
@@ -116,7 +118,6 @@ from just_dna_enricher.locations import (
     PHARMVAR_SUBDIR,
     PUBMIND_CACHE_VAR,
     PUBMIND_SUBDIR,
-    RELEASE_FILENAME,
     SNAPSHOT_DATA_DIRNAME,
     STRCHIVE_CACHE_VAR,
     STRCHIVE_SUBDIR,
@@ -137,7 +138,6 @@ from just_dna_enricher.locations import (
     default_strchive_cache_dir,
     env_value,
     missing_credential_reason,
-    read_release,
     resolve_acmg_reference,
     resolve_alphagenome_avi_reference,
     resolve_civic_reference,
@@ -228,16 +228,6 @@ class RebuildOutcome:
 RebuildAdapter = Callable[[RebuildRequest], RebuildOutcome]
 
 
-def _dataset_label(reference: Path) -> str | None:
-    """Which release a snapshot on disk holds, as `release.json`'s own `dataset` states it.
-
-    The default for every lane, and `None` when the snapshot does not say — never a placeholder, since
-    a caller must be able to tell a release from a snapshot that cannot name one.
-    """
-    release = read_release(reference)
-    return (release or {}).get("dataset") or None
-
-
 @dataclass(frozen=True)
 class CacheLane:
     """One snapshot, all three of its stages, and the reason for each stage it does not have."""
@@ -285,21 +275,18 @@ class CacheLane:
     #: not allowed to fetch, so the adapter has no bytes to start from. The first is a division of
     #: labour, the second is an acquisition gate (`@acquisition-gate-is-not-a-read-gate`).
     unbuilt: str | None = None
-    #: How this lane's snapshot names the release it holds (RM180). The default reads `release.json`'s
-    #: `dataset`, which eleven lanes write; ClinVar does not, so `cache status` printed a blank label
-    #: for the one lane that moves weekly while naming the release of every lane that does not.
+    #: How this lane's snapshot names the release it holds (RM180). The default is the format
+    #: tier's `snapshot.release_label`, `release.json`'s `dataset`, and since RM303 every lane uses it:
+    #: ClinVar's builder used to write `clinvar_file_date` and no `dataset`, so `cache status` printed
+    #: a blank label for the one lane that moves weekly, and this field carried a ClinVar override.
+    #: The builder now writes `dataset`, and the snapshot model reads an older ClinVar release's
+    #: `clinvar_file_date` through the same formula, so the override is gone. The field stays for a
+    #: lane whose snapshot cannot state its label in `release.json` at all; none does today.
     #:
     #: Named `release_label` and not `label` because `RebuildOutcome.label` next door is the
     #: built/failed/not-run word, and one file with two `label`s that mean different things is how a
     #: reader learns the wrong one first.
-    #:
-    #: A field rather than a `if lane.name == "clinvar"` in the reporter, for the reason
-    #: `build_command` is one: a convention that holds for eleven of twelve is not a convention, and
-    #: the exception belongs where the lane is declared. ClinVar's is `clinvar_dataset_label`, the
-    #: function `clinvar_draft` writes onto its licence row and `clinical.tautology_reason` recomputes
-    #: — shared rather than mirrored, because two spellings of one label do not fail, they simply
-    #: never match.
-    release_label: Callable[[Path], str | None] = _dataset_label
+    release_label: Callable[[Path], str | None] = snapshot_release_label
     #: This lane's own publish command, for a lane that **cannot be reached by
     #: `cache rebuild --publish`** (RM202). That loop walks lanes with a `rebuild` adapter, which is
     #: every publishable lane but one: `alphagenome_avi` has a `publish_repo` and no adapter, because
@@ -873,7 +860,6 @@ CACHE_LANES: list[CacheLane] = [
         name="clinvar",
         approx_mb=300,
         build_command="clinvar build",
-        release_label=clinvar_dataset_label,
         subdir=CLINVAR_SUBDIR,
         env_var=CLINVAR_CACHE_VAR,
         serves="clinical records (enrich, draft-panel)",
@@ -1338,7 +1324,7 @@ def lane_status(lanes: list[CacheLane] | None = None) -> list[LaneStatus]:
         looked_in = Path(override).expanduser() if override else lane.default_dir()
         if path is not None:
             release = lane.release_label(path)
-            unreadable = release is None and (path / RELEASE_FILENAME).exists() and read_release(path) is None
+            unreadable = release is None and release_is_unreadable(path)
             out.append(
                 LaneStatus(lane, "present", looked_in, path, release, unreadable, snapshot_bytes(path))
             )

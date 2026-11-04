@@ -37,11 +37,11 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
-from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
+from just_dna_format.snapshot import SnapshotRelease, write_release
 
 from just_dna_enricher.cpic import DEFAULT_CPIC_ENDPOINT, CpicClient, CpicError, normalize_chrom
-from just_dna_enricher.locations import RELEASE_FILENAME, SNAPSHOT_DATA_DIRNAME
+from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME
 
 try:  # the one guarded optional import (CLAUDE.md): polars is builder-only ([dev] extra)
     import polars as pl
@@ -303,19 +303,19 @@ def build_snapshot(
 
     digest = _content_digest(by_file)
     dataset = _dataset_label(digest)
-    release = {
-        "source_url": endpoint,
+    release = SnapshotRelease(
+        source_url=endpoint,
         # CPIC publishes no release id, so the snapshot is identified by *content*: a digest over the
         # rows it holds. Deterministic (the records are sorted), and unlike a build date it changes
         # exactly when the data does — which is what makes `dataset` a fact a module can be compared on.
-        "content_sha256": digest,
-        "dataset": dataset,
-        "row_counts": counts,
-        "gene_count": len(gene_records),
-        "built_at": now_utc_iso(),
-        "builder_version": _builder_version(),
-    }
-    atomic_write_text((out_dir / RELEASE_FILENAME), json.dumps(release, indent=2, sort_keys=True) + "\n")
+        content_sha256=digest,
+        dataset=dataset,
+        row_counts=counts,
+        gene_count=len(gene_records),
+        built_at=now_utc_iso(),
+        builder_version=_builder_version(),
+    )
+    write_release(out_dir, release)
     logger.info(
         "CPIC snapshot: %d genes, %d alleles, %d diplotypes, %d defining variants, %d recommendations → %s",
         len(gene_records),

@@ -400,7 +400,7 @@ def draft_pharm_variants(
     commit_licence = licence_commit(
         sources=[CLINPGX_TERMS.source],
         spec_dir=spec_dir,
-        dataset=release.get("dataset"),
+        dataset=release.dataset,
         declared_use=declared_use,
         error=ClinPgxEnrichmentError,
         license_texts={CLINPGX_TERMS.source: license_text} if license_text else None,
@@ -448,7 +448,7 @@ def draft_pharm_variants(
                 provider=_PROVIDER,
                 sources=[CLINPGX_TERMS.source],
                 spec_dir=spec_dir,
-                dataset=release.get("dataset"),
+                dataset=release.dataset,
                 covered=True,
                 drafted=any(report.added for report in reports),
                 declared_use=declared_use,

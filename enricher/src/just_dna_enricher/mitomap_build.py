@@ -21,17 +21,15 @@ first.
 """
 
 import hashlib
-import json
 import logging
 from collections import Counter
 from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
+from just_dna_format.snapshot import SnapshotRelease, write_release
 
-from just_dna_enricher.locations import RELEASE_FILENAME
 from just_dna_enricher.mitomap import (
     DUMP_TABLES,
     EDIT_DATE_NAMES,
@@ -407,23 +405,21 @@ def _write_release_json(out_dir: Path, result: MitomapBuildResult, *, source_url
     figures are re-derived on every build, which is what stops a diff snapshot from becoming a
     hardcoded inventory.
     """
-    release = {
-        "dataset": result.dataset,
-        "source_url": source_url,
-        "source_sha256": result.source_sha256,
-        "source_last_modified": result.source_last_modified,
-        "rows": result.rows,
-        "table_edit_dates": result.edit_dates,
-        "reference_rows": result.reference_rows,
-        "references_with_pmid": result.references_with_pmid,
-        "references_without_nlmid": result.references_without_nlmid,
-        "references_not_a_pmid": result.references_not_a_pmid,
-        "citation_links": result.citation_links,
-        "unmintable": result.unmintable,
-        "withheld_brackets": result.withheld_brackets,
-        "built_at": now_utc_iso(),
-        "builder_version": _builder_version(),
-    }
-    path = out_dir / RELEASE_FILENAME
-    atomic_write_text(path, json.dumps(release, indent=2, sort_keys=True) + "\n")
-    return path
+    release = SnapshotRelease(
+        dataset=result.dataset,
+        source_url=source_url,
+        source_sha256=result.source_sha256,
+        source_last_modified=result.source_last_modified,
+        row_counts=result.rows,
+        table_edit_dates=result.edit_dates,
+        reference_rows=result.reference_rows,
+        references_with_pmid=result.references_with_pmid,
+        references_without_nlmid=result.references_without_nlmid,
+        references_not_a_pmid=result.references_not_a_pmid,
+        citation_links=result.citation_links,
+        unmintable=result.unmintable,
+        withheld_brackets=result.withheld_brackets,
+        built_at=now_utc_iso(),
+        builder_version=_builder_version(),
+    )
+    return write_release(out_dir, release)

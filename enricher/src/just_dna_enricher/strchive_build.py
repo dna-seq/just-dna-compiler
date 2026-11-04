@@ -17,7 +17,6 @@ off-switch is passing the local file instead of `--download`, and `check_declare
 """
 
 import hashlib
-import json
 import logging
 from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
@@ -25,6 +24,7 @@ from pathlib import Path
 
 from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
+from just_dna_format.snapshot import SnapshotRelease, write_release
 
 from just_dna_enricher.locations import RELEASE_FILENAME, STRCHIVE_CATALOGUE_FILENAME
 from just_dna_enricher.net import stream_to_file
@@ -176,16 +176,14 @@ def _write_release_json(
     fields that matter differ per source. `built_at` is the only per-run-varying byte and it lives
     here rather than in the catalogue, which stays identical to what upstream published.
     """
-    release = {
-        "source": SOURCE_NAME,
-        "source_url": source_url,
-        "source_sha256": source_sha256,
-        "locus_count": locus_count,
-        "dataset": dataset,
-        "license": "MIT",
-        "built_at": now_utc_iso(),
-        "builder_version": _builder_version(),
-    }
-    path = out_dir / RELEASE_FILENAME
-    atomic_write_text(path, json.dumps(release, indent=2, sort_keys=True) + "\n")
-    return path
+    release = SnapshotRelease(
+        source=SOURCE_NAME,
+        source_url=source_url,
+        source_sha256=source_sha256,
+        locus_count=locus_count,
+        dataset=dataset,
+        license="MIT",
+        built_at=now_utc_iso(),
+        builder_version=_builder_version(),
+    )
+    return write_release(out_dir, release)

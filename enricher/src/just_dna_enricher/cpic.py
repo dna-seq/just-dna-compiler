@@ -38,7 +38,6 @@ rightly refused — a star allele's defining variant is in the gene the allele b
 location row already names that gene.
 """
 
-import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -47,13 +46,14 @@ from typing import Any
 import duckdb
 import httpx
 from just_dna_format.alleles import non_nucleotide_reason, symbolic_allele_defect
+from just_dna_format.snapshot import SnapshotRelease, read_release
 from tenacity import (
     retry,
     retry_if_exception_type,
     wait_exponential_jitter,
 )
 
-from just_dna_enricher.locations import RELEASE_FILENAME, SNAPSHOT_DATA_DIRNAME
+from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME
 from just_dna_enricher.net import attempt_floor
 
 logger = logging.getLogger(__name__)
@@ -587,8 +587,7 @@ class CpicSnapshotClient:
         if not data_dir.is_dir() or not any(data_dir.glob("*.parquet")):
             raise CpicError(f"no CPIC snapshot at {data_dir} — build one with `just-dna-enricher cpic build`")
         self._data_dir = data_dir
-        release_path = self.reference / RELEASE_FILENAME
-        self.release: dict[str, Any] = json.loads(release_path.read_text()) if release_path.is_file() else {}
+        self.release: SnapshotRelease = read_release(self.reference) or SnapshotRelease()
 
     @property
     def dataset(self) -> str | None:
@@ -597,7 +596,7 @@ class CpicSnapshotClient:
         A consumer must be able to tell a pinned file from a live API: the two can differ by a release,
         and `dataset` is inside the fact set where `source` is not.
         """
-        return self.release.get("dataset")
+        return self.release.dataset
 
     def close(self) -> None:
         """No-op, so a caller can `close()` this and a live client identically."""

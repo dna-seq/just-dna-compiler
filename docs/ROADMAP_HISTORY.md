@@ -35,6 +35,127 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM303 — the snapshot layout is a contract with six parties and no model, so it belongs in `just-dna-format`
+
+**0.8, confirmed 2026-11-03** by the maintainer when scoping 0.8.
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut** — filed 2026-09-28 at the
+maintainer's request, **taken into 0.8** ([PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §3 item 21,
+§5 D1) · **Owner** format (the model) + enricher (the writers and readers) · **Motivating case** the
+builders' `release.json` keys have drifted, and one drift already reached `cache status`
+
+**Residuals** won't fix — snapshots already published on HuggingFace keep their old keys until a republish, because a published file is never edited in place and the model reads them · won't fix — the acmg and mitomap_miss lanes write no `dataset`, so `cache status` prints no label for either; that predates this item, changes no spelling, and was reported to the lead for a number of its own
+
+**The problem.** A reference snapshot is `data/*.parquet`, optional sidecars, `LICENSE.txt` and
+`release.json`, and `locations.py`'s own header says that at least four parties (builder, publisher,
+provisioner, reader) have to agree on those names. The names are constants in the enricher, so any
+other repo that wants the layout has to import the network tier to get them. `release.json` has no
+model at all. `read_release` returns a `dict`, and the 14 builders write it by hand at 15 sites. The
+keys have drifted:
+
+| Key | Writers |
+|---|---|
+| `built_at` | all 15 sites |
+| `builder_version` | 13 |
+| `source_url`, `source_sha256`, `dataset` | 11 each |
+| `rows` | alphagenome_avi, mane, mitomap |
+| `row_count` | clinvar, clinpgx, acmg |
+| `license` / `licence` | strchive / civic |
+| `builder`, `release`, `parents` | acmg; civic; mitomap_miss |
+
+ClinVar writes no `dataset`, so `cache status` printed a blank release label for it. The repair was a
+per-lane exception (`clinvar_dataset_label`, see `caches.py` near `_dataset_label`). That is the drift
+surfacing as an incident, and it was repaired at the reader rather than at the contract.
+
+**The split.** The two files mix two kinds of thing, and they are separated by what each is tied to:
+
+- **Contract → `just_dna_format.snapshot`**, pydantic + stdlib only, no environment, no network: the
+  layout names (`data/`, `release.json`, `LICENSE.txt`, the sidecar and root-filename tuples), a
+  `SnapshotRelease` model, `read_release(dir) -> SnapshotRelease | None`, and a payload predicate
+  ("this directory holds a snapshot") that reads no environment.
+- **Deployment → stays in the enricher**: `CACHE_BASE_VAR` and the per-lane variables, `.env` loading,
+  platformdirs and `APPNAME`, the per-lane resolvers, `CACHE_LANES`, prepare, rebuild and publish. It
+  provisions and fetches, and it is tied to specific lanes. The enricher's `locations` names become
+  imports from format.
+
+**Charter checks.**
+
+- **Goals: an amendment is owed.** Goal 1 scopes format to "annotation modules", and a snapshot is not
+  a module. No principle forbids the move (no network, no new dependency), but it widens what the
+  package is for, so it lands as a deliberate one-bullet Goals amendment, with the reasoning in
+  CONSTITUTION_AMENDMENTS_HISTORY.md.
+- **P3 from then on.** Once the model is published, `release.json` keys are additive-only within the
+  major. That makes the drift above a decision to take **before** the first publish: which spelling
+  of each drifted pair becomes the field, and whether the other is read as an alias.
+- **P9.** A derived file that no human authors: half price at most, and no authored schema moves.
+- **The tri-state rule.** `read_release` keeps `None` for both absent and unreadable, as it does
+  today. A key the model makes optional stays `None` when it is unstated, never a default, because
+  the ClinVar label bug above is exactly a missing key being read as a blank answer.
+
+**Open questions.**
+
+1. **Core plus extension.** `parents` (the derived lane) and lane-specific keys either get typed
+   optional fields or ride in `extra="allow"`. Typed fields are safer; extra keys keep the model small.
+   Decide by listing what each reader actually reads.
+2. **The drifted pairs.** `rows`/`row_count` and `license`/`licence` pick one spelling each; the old
+   spelling is read on input and never written again. `builder` against `builder_version` needs a look
+   at what acmg means by it.
+3. **A guard.** Every builder writes through the model rather than through `json.dumps`. An AST walk
+   over `*_build.py` refusing a hand-built `release.json` dict is the usual shape
+   (`@registry-completeness`).
+4. **Published snapshots.** Snapshots already on HuggingFace keep their old keys. The model reads
+   them, and a republish writes the canonical spelling, never an in-place edit.
+
+**Considered and refused on the same day.**
+
+- **Renaming `just-dna-format`** (e.g. to `just-dna-schema`, the workspace directory's name). With the
+  snapshot contract added, "format" becomes *more* accurate: the package defines two on-disk formats.
+  A rename would touch about 130 importing files across five repos and keep two distribution names
+  alive for a major. Refused by the maintainer.
+- **A `just-dna-datasets` / `just-dna-builders` package.** First offered on 2026-09-25 (the RM261
+  round) as the recommended way to take the builders out of the wheel, and declined then without being
+  recorded. Weighed again now, it forms a cycle: builders need the layout from the enricher, and
+  `cache rebuild` needs the builders. Breaking the cycle means moving the layout below both, which is
+  this item, and after that the separate package buys nothing. Its dependencies are the enricher's
+  own, and the columns it writes are read by enricher passes, so every snapshot change would become
+  a release of two packages. It would also need a Goal 2 / Principle 2 amendment, since builders fetch
+  and the enricher is named as the only tier that may. Builders and readers stay beside the pass that
+  reads their columns. just-prs's parquet lanes stay in just-prs (`PRS_CACHE_DIR`), and the v1 port is
+  a consumer (pipelines → enricher), not a dataset.
+- **A nano-library holding only the convention.** Too small to be its own package. Format already
+  depends on pydantic and already owns the module's provenance record (`manifest.json`), and
+  `release.json` is that record's snapshot twin.
+
+**What shipped (2026-11-04).** `just_dna_format.snapshot`: the layout names, `SnapshotRelease`,
+`read_release` (`None` for absent and unreadable, as before), `write_release` (`exclude_unset`, sorted,
+atomic), `release_label`, `release_is_unreadable`, `holds_snapshot_payload`, and `clinvar_release_label`.
+The open questions, answered by §3 item 21 and by reading every reader first (the reader×key table is
+in the commit message):
+
+1. **Core plus extension.** Every key some reader reads is a typed optional field (`dataset`,
+   `source_url`, `source_sha256`, `built_at`, `builder_version`, `license`, `license_sha256`,
+   `row_count`, `row_counts`, `record_count`, `genome_build`, `parents`, `clinvar_file_date`,
+   `status_basis`, `sf_version`); everything else rides in `extra="allow"`. Reading the real MANE
+   snapshot showed `source_url` and `source_sha256` per input there, so both are `str` or a per-input map.
+2. **The drifted pairs.** `license` is the field and `licence` is read. `rows` was two things: a total
+   (AlphaGenome AVI) reads into `row_count`, a per-file map (MANE, MITOMAP) into `row_counts`, CPIC's
+   spelling, rather than one field holding two kinds of value. acmg's `builder` is the module path
+   `just_dna_enricher.acmg_build`, not a version, so it is no alias of `builder_version` and rides in
+   extra. ClinVar's builder now writes `dataset` through `clinvar_release_label`, and a release written
+   before has `clinvar_file_date` and no `dataset`, which the model reads into `dataset` through the
+   same formula. So `CacheLane.release_label`'s ClinVar override is gone and the lane set overriding it
+   is empty; `cache status` prints the same labels before and after.
+3. **The guard.** `enricher/tests/test_release_json_through_the_model.py` walks every `*_build.py`: no
+   builder may name `release.json` (constant or literal) outside an import or an `.unlink`, and the
+   builders calling `write_release` equal the builders. It was red on all fourteen before the
+   conversion. `mitomap_miss`'s parent pins compare both sides in canonical spelling, so a parent
+   rebuilt with `row_counts` is not reported as moved from a pin that says `rows`.
+4. **Published snapshots** read through the model, and a republish writes the canonical spellings.
+
+Every reader of `release.json` in the enricher now goes through `read_release` or `release_label`,
+including the eight that parsed it by hand. The Goals amendment is in CONSTITUTION.md, with its reasoning
+in CONSTITUTION_AMENDMENTS_HISTORY.md.
+
 ## RM253 — a repeat-count star allele (UGT1A1 `*28` = TA(8)) has no home a diplotype can name, and the CPIC drafter translates none of CPIC's notation
 
 **What shipped (2026-11-04).** All three seams, as decided, in the enricher alone: no model, column or

@@ -332,7 +332,8 @@ def test_release_json_records_the_status_basis_and_the_licence(built):
     release = json.loads((built.out_dir / RELEASE_FILENAME).read_text())
     assert release["status_basis"] == "accepted"
     assert release["genome_build"] == "GRCh38"
-    assert release["licence"] == "CC0-1.0"
+    assert release["license"] == "CC0-1.0"
+    assert "licence" not in release  # the old spelling is read, never written (RM303)
     assert release["redistributable"] is True, "CC0 — the first snapshot here that may be published"
     assert release["dataset"] == "civic_01-Aug-2026"
     assert set(release["dropped"]) == set(CIVIC_DROP_REASONS)

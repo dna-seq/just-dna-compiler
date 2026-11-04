@@ -51,7 +51,6 @@ one: ClinPGx's terms are accepted when the data is taken, so a `commercial` decl
 too, and the skip is `not_permitted` — what clears it is a *declaration*, not egress.
 """
 
-import json
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -61,10 +60,10 @@ import duckdb
 from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.manifest import VerificationRecord
 from just_dna_format.pgx import DiplotypeRow, PharmVariantRow
+from just_dna_format.snapshot import read_release
 
 from just_dna_enricher.licensing import CLINPGX_TERMS, check_declared_use, effective_declared_use
 from just_dna_enricher.locations import (
-    RELEASE_FILENAME,
     SNAPSHOT_DATA_DIRNAME,
     resolve_drug_labels_reference,
 )
@@ -387,17 +386,10 @@ def load_drug_labels(reference: Path) -> DrugLabelIndex:
     parquet = reference / SNAPSHOT_DATA_DIRNAME / LABELS_PARQUET
     if not parquet.is_file():
         raise DrugLabelUnavailable(f"no drug-label snapshot at {parquet}")
-    release_path = reference / RELEASE_FILENAME
-    dataset: str | None = None
-    if release_path.is_file():
-        try:
-            release = json.loads(release_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError) as exc:
-            # A snapshot whose provenance file is damaged still holds readable labels; losing the
-            # label is a weaker outcome than refusing the comparison, and the record says `None`.
-            logger.warning("Could not read %s (%s); the release label is unknown.", release_path, exc)
-        else:
-            dataset = (release.get("dataset") or None) if isinstance(release, dict) else None
+    # A snapshot whose provenance file is damaged still holds readable labels; losing the label is
+    # a weaker outcome than refusing the comparison, and the record says `None`.
+    release = read_release(reference)
+    dataset = (release.dataset or None) if release is not None else None
 
     pattern = str(parquet).replace("'", "''")
     con = duckdb.connect(":memory:")

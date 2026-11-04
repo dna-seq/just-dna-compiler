@@ -431,7 +431,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `constraint_build` | **`[dev]`** builder: gnomAD constraint TSV → gene-level parquet + `release.json` | `polars` (lazy), `httpx` |
 | `vrs` | GA4GH VRS allele-id minting onto `resolution.csv` (substitutions stdlib, indels normalized) | `ga4gh.vrs` |
 | `sequences` | reference-sequence access (cached) + the reference-allele check | `ga4gh.vrs` |
-| `locations` | cache-location resolution — **one `resolve`/`default_dir`/`env_var` triple per lane in `CACHE_LANES`**, paired by a test rather than counted here — plus `.env` and the snapshot root filenames (moved from the compiler) | `platformdirs`, `python-dotenv` |
+| `locations` | cache-location resolution — **one `resolve`/`default_dir`/`env_var` triple per lane in `CACHE_LANES`**, paired by a test rather than counted here — plus `.env` and the pull record. The snapshot layout names and `read_release` are imported from `just_dna_format.snapshot` since 0.8 (RM303) and stay importable from here | `platformdirs`, `python-dotenv` |
 | `download` | HuggingFace **snapshot** download, footer-checked and atomic — **one `ensure_*` per lane whose `publish_repo` is set**, which is the registry's own answer to which lanes may be pulled rather than a second list. A lane with no repo is operator-built; see *The caches* | `huggingface_hub` (lazy) |
 | `cpic_build` | **`[dev]`** builder (0.5.1): the whole CPIC PostgREST database → five parquets + `release.json` | `polars` (lazy), `cpic` |
 | `pharmvar_build` | **`[dev]`** builder (0.5.1): `/genes` → alleles + defining variants. Operator-built, never published | `polars` (lazy), `pharmvar` |
@@ -2052,8 +2052,9 @@ every lap (`@a-set-that-silences-is-narrower-than-one-that-raises`, taken the ot
   families asserting each takes the parameter, so a seventh snapshot's resolver cannot quietly reopen
   it. Same shape as the watcher's `${BRANCH:-main}`: a knob's disabling value is its own case and needs
   its own probe, not a reading.
-- **`locations.read_release(reference)`** — a snapshot's `release.json` as a dict, or `None` when it is
-  absent or unreadable. Written by every builder and, until 0.5.2, read by nothing but `cache status`;
+- **`locations.read_release(reference)`** — `just_dna_format.snapshot.read_release` since 0.8 (RM303): a
+  snapshot's `release.json` as a `SnapshotRelease`, or `None` when it is absent or unreadable (it was a
+  dict until 0.8; a caller reading `.get("dataset")` now reads `.dataset`, or `snapshot.release_label`). Written by every builder and, until 0.5.2, read by nothing but `cache status`;
   it is what lets `enrich()` compare a module's `panel:` pin against the snapshot in front of it. `None`
   for both absence and corruption on purpose: a caller must not be able to mistake "this snapshot does
   not say" for a release id.
@@ -2407,9 +2408,9 @@ the repo pre-existed).
 > **The sidecar was the gap, and it made downloaded snapshots second-class.** ClinVar's `citations/` was
 > built and published nowhere, so a consumer who *provisioned* the snapshot had no PMIDs while one who
 > *built* it did — and `draft-panel` cannot produce a compilable module without them, because
-> `studies.csv` is mandatory. The layout lives once in `locations`
-> (`SNAPSHOT_DATA_DIRNAME` / `SNAPSHOT_SIDECAR_DIRNAMES` / `CITATIONS_DIRNAME` / `RELEASE_FILENAME`)
-> because four parties have to agree on those names — builder, publisher, provisioner, reader — and every
+> `studies.csv` is mandatory. The layout lives once, in `just_dna_format.snapshot` since 0.8
+> (`SNAPSHOT_DATA_DIRNAME` / `SNAPSHOT_SIDECAR_DIRNAMES` / `CITATIONS_DIRNAME` / `RELEASE_FILENAME`,
+> imported by `locations`), because four parties have to agree on those names — builder, publisher, provisioner, reader — and every
 > disagreement so far has been silent. A sidecar stays a **sibling** of `data/`: the readers glob
 > `data/*.parquet`, so a two-column citations table inside it is the same poisoning a stale
 > single-file `clinvar.parquet` causes. Absence is normal (only ClinVar has one, only after
@@ -2698,8 +2699,10 @@ are a real fact with a different meaning.
 
 **The marker is machine-written, not authored (RM4, 0.6).** `clinvar_draft` stamps the release it
 copied the rows out of into the `dataset` column of the `clinvar`/`annotation` row it already had to
-write in the licence table — `clinvar_2026-06-27`, from `clinvar.clinvar_dataset_label`, which prefers
-`release.json`'s `clinvar_file_date` and falls back to its `source_sha256`. `clinical.tautology_reason`
+write in the licence table — `clinvar_2026-06-27`, from `clinvar.clinvar_dataset_label`, which reads
+`release.json`'s `dataset`. Since 0.8 (RM303) `clinvar build` writes that `dataset` through
+`snapshot.clinvar_release_label` (`clinvar_file_date`, falling back to `source_sha256`), and the snapshot
+model reads an older ClinVar release, which has only `clinvar_file_date`, through the same formula. `clinical.tautology_reason`
 recomputes that same label from the snapshot in hand and compares. **Both sides call the one function**,
 so the writer and the reader cannot drift apart — and this drift would be silent, since a disagreement
 about the label does not fail, it just never matches.

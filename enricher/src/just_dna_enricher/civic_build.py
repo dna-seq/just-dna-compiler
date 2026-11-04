@@ -49,7 +49,6 @@ Builder-only: `polars` is a guarded `[dev]` import, exactly as in the sibling bu
 
 import collections
 import csv
-import json
 import logging
 import re
 from dataclasses import dataclass, field
@@ -58,6 +57,7 @@ from pathlib import Path
 
 from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
+from just_dna_format.snapshot import SnapshotRelease, write_release
 
 from just_dna_enricher.civic_identities import (
     CIVIC_CURATION_STATES,
@@ -73,7 +73,6 @@ from just_dna_enricher.civic_vcf import (
     summarize,
 )
 from just_dna_enricher.locations import (
-    RELEASE_FILENAME,
     SNAPSHOT_DATA_DIRNAME,
     SNAPSHOT_LICENSE_FILENAME,
 )
@@ -1082,32 +1081,32 @@ def _status_notice(result: CivicBuildResult) -> str:
 
 def _write_release_json(out_dir: Path, result: CivicBuildResult, *, release: str | None) -> Path:
     """Write `release.json` — the provenance, the status basis, and every count the build made."""
-    payload = {
-        "source": "civic",
-        "release": release,
-        "dataset": result.dataset,
-        "evidence_sha256": result.evidence_sha256,
-        "variant_sha256": result.variant_sha256,
-        "profile_sha256": result.profile_sha256,
-        "genome_build": CIVIC_GENOME_BUILD,
-        "status_basis": result.status_basis,
-        "status_counts": result.status_counts,
-        "unjoinable_submitted": result.unjoinable_submitted,
-        "composite_profile_rows": result.composite_profile_rows,
-        "vcf_evidence": result.vcf_evidence,
-        "input_rows": result.input_rows,
-        "record_count": result.record_count,
-        "dropped": result.dropped,
-        "identity_derivations": result.identity_derivations,
-        "curated_identities": result.curated_identities,
-        "variants": result.variants,
-        "withheld_direction": result.withheld_direction,
-        "contested_variants": result.contested_variants,
-        "unresolvable_with_caid": result.unresolvable_with_caid,
-        "unparsable_hgvs": result.unparsable_hgvs,
-        "redistributable": True,
-        "licence": "CC0-1.0",
-        "notice": (
+    payload = SnapshotRelease(
+        source="civic",
+        release=release,
+        dataset=result.dataset,
+        evidence_sha256=result.evidence_sha256,
+        variant_sha256=result.variant_sha256,
+        profile_sha256=result.profile_sha256,
+        genome_build=CIVIC_GENOME_BUILD,
+        status_basis=result.status_basis,
+        status_counts=result.status_counts,
+        unjoinable_submitted=result.unjoinable_submitted,
+        composite_profile_rows=result.composite_profile_rows,
+        vcf_evidence=result.vcf_evidence,
+        input_rows=result.input_rows,
+        record_count=result.record_count,
+        dropped=result.dropped,
+        identity_derivations=result.identity_derivations,
+        curated_identities=result.curated_identities,
+        variants=result.variants,
+        withheld_direction=result.withheld_direction,
+        contested_variants=result.contested_variants,
+        unresolvable_with_caid=result.unresolvable_with_caid,
+        unparsable_hgvs=result.unparsable_hgvs,
+        redistributable=True,
+        license="CC0-1.0",
+        notice=(
             "CIViC content is CC0 1.0 Universal, so this snapshot may be redistributed. "
             + _status_notice(result)
             + " Coordinates are GRCh38, "
@@ -1118,12 +1117,10 @@ def _write_release_json(out_dir: Path, result: CivicBuildResult, *, release: str
             "CIVIC_IDENTITY_PROTOCOL.md and the per-variant evidence docs/probes/"
             "CIVIC_UNRESOLVED.md. Nothing here may enter resolution.csv."
         ),
-        "built_at": now_utc_iso(),
-        "builder_version": _builder_version(),
-    }
-    path = out_dir / RELEASE_FILENAME
-    atomic_write_text(path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
-    return path
+        built_at=now_utc_iso(),
+        builder_version=_builder_version(),
+    )
+    return write_release(out_dir, payload)
 
 
 def _builder_version() -> str:

@@ -40,6 +40,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from just_dna_compiler.compiler import load_csv_rows
+from just_dna_format.snapshot import release_label
 from just_dna_format.spec import VariantRow
 
 from just_dna_enricher.alphagenome_avi_build import (
@@ -574,9 +575,7 @@ def check_variant_impact(
 
 
 def _dataset_of(reference: Path) -> str | None:
-    from just_dna_enricher.locations import read_release
-
-    return (read_release(reference) or {}).get("dataset") or None
+    return release_label(reference)
 
 
 def _attest(result: VariantImpactResult, spec_dir: Path, *, write: bool, record) -> VariantImpactResult:

@@ -43,7 +43,6 @@ Collapsing the two would be `@unreachable-not-absent` at nine-billion-row scale.
 """
 
 import hashlib
-import json
 import logging
 import re
 import shutil
@@ -57,10 +56,10 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from just_dna_format.layout import atomic_write_text
+from just_dna_format.snapshot import SnapshotRelease, write_release
 
 from just_dna_enricher.locations import (
     ALPHAGENOME_KNOTS_FILENAME,
-    RELEASE_FILENAME,
     SNAPSHOT_DATA_DIRNAME,
     SNAPSHOT_LICENSE_FILENAME,
 )
@@ -668,24 +667,22 @@ def _write_release_json(out_dir: Path, result: AviBuildResult, *, artifact_stamp
     (§ 2.7c), so `artifact_mtime` is not provenance hygiene: it fixes which terms govern these bytes,
     permanently. Recorded beside `license_sha256` for the same reason `licensing.py` records both.
     """
-    release = {
-        "dataset": result.dataset,
-        "source_name": result.source_path.name,
-        "source_sha256": result.source_sha256,
-        "artifact_mtime": artifact_stamp,
-        "contigs": list(result.contig_names),
-        "rows": result.rows,
-        "knots": result.knots,
-        "negative_rows": result.negative_rows,
-        "zero_rows": result.zero_rows,
-        "raw_score_scale": RAW_SCORE_SCALE,
-        "phred_stored": False,
-        "built_at": datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z"),
-        "builder_version": _builder_version(),
-    }
-    path = out_dir / RELEASE_FILENAME
-    atomic_write_text(path, json.dumps(release, indent=2, sort_keys=True) + "\n")
-    return path
+    release = SnapshotRelease(
+        dataset=result.dataset,
+        source_name=result.source_path.name,
+        source_sha256=result.source_sha256,
+        artifact_mtime=artifact_stamp,
+        contigs=list(result.contig_names),
+        row_count=result.rows,
+        knots=result.knots,
+        negative_rows=result.negative_rows,
+        zero_rows=result.zero_rows,
+        raw_score_scale=RAW_SCORE_SCALE,
+        phred_stored=False,
+        built_at=datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z"),
+        builder_version=_builder_version(),
+    )
+    return write_release(out_dir, release)
 
 
 def build_snapshot(

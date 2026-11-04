@@ -7,6 +7,7 @@ from pathlib import Path
 
 from just_dna_compiler.compiler import SNAPSHOT_UNPLACED_PHRASE
 from just_dna_format.manifest import VerificationRecord
+from just_dna_format.snapshot import release_label
 
 from just_dna_enricher.civic_citations import EvidenceStatusCheck
 from just_dna_enricher.civic_refutation import (
@@ -19,7 +20,6 @@ from just_dna_enricher.clinvar import clinvar_dataset_label
 from just_dna_enricher.currency import CurrencyCheck, summarize_currency
 from just_dna_enricher.grch37 import BuildDiagnosisResult
 from just_dna_enricher.identifiers import RsidStatus
-from just_dna_enricher.locations import read_release
 from just_dna_enricher.resolver import PairCheck
 from just_dna_enricher.sequences import RefCheck, summarize_ref_mismatches
 from just_dna_enricher.verification import DETAIL_LIMIT, examples, ran, skipped
@@ -465,10 +465,7 @@ def _snapshot_release(reference: Path | None) -> str | None:
     """
     if reference is None:
         return None
-    release = read_release(Path(reference))
-    if not release:
-        return None
-    return str(release.get("dataset") or "").strip() or None
+    return release_label(Path(reference))
 
 
 def _clinvar_release(reference: Path | None) -> str | None:

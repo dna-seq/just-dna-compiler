@@ -22,6 +22,17 @@ import os
 from pathlib import Path
 
 from dotenv import dotenv_values, find_dotenv, load_dotenv
+from just_dna_format.snapshot import ACMG_SNAPSHOT_FILENAME as ACMG_SNAPSHOT_FILENAME
+from just_dna_format.snapshot import ALPHAGENOME_KNOTS_FILENAME as ALPHAGENOME_KNOTS_FILENAME
+from just_dna_format.snapshot import CITATIONS_DIRNAME as CITATIONS_DIRNAME
+from just_dna_format.snapshot import RELEASE_FILENAME as RELEASE_FILENAME
+from just_dna_format.snapshot import SNAPSHOT_DATA_DIRNAME as SNAPSHOT_DATA_DIRNAME
+from just_dna_format.snapshot import SNAPSHOT_LICENSE_FILENAME as SNAPSHOT_LICENSE_FILENAME
+from just_dna_format.snapshot import SNAPSHOT_ROOT_FILENAMES as SNAPSHOT_ROOT_FILENAMES
+from just_dna_format.snapshot import SNAPSHOT_SIDECAR_DIRNAMES as SNAPSHOT_SIDECAR_DIRNAMES
+from just_dna_format.snapshot import STRCHIVE_CATALOGUE_FILENAME as STRCHIVE_CATALOGUE_FILENAME
+from just_dna_format.snapshot import holds_snapshot_payload as holds_snapshot_payload
+from just_dna_format.snapshot import read_release as read_release
 from platformdirs import user_cache_dir
 
 logger = logging.getLogger(__name__)
@@ -30,16 +41,15 @@ APPNAME: str = "just-dna-pipelines"
 
 # ── the snapshot layout ─────────────────────────────────────────────────────────────────────────
 #
-# A reference snapshot is `data/*.parquet` + optional parquet **sidecars** beside it + `release.json`.
-# Four parties have to agree on those names — the builder writes them, the publisher uploads them, the
-# provisioner fetches them, the reader queries them — and every disagreement so far has been silent:
-# `release.json` was uploaded and never fetched (so a provisioned snapshot could not say which release
-# it was), and `citations/` was built and never published (so anyone who downloaded rather than built
-# had no PMIDs, and a drafted gene panel could not compile for them — `studies.csv` is mandatory).
-# One definition, imported by all four.
-
-#: The records: what the readers glob.
-SNAPSHOT_DATA_DIRNAME = "data"
+# A reference snapshot is `data/*.parquet` + optional parquet **sidecars** beside it + `LICENSE.txt` +
+# `release.json`. Six parties have to agree on those names — the builder writes them, the publisher
+# uploads them, the provisioner fetches them, the resolver judges the directory, the reporter prints
+# the label, a pass reads the release — and every disagreement so far has been silent: `release.json`
+# was uploaded and never fetched, `citations/` was built and never published. The names, the model of
+# `release.json` and its reader are the format tier's contract since 0.8 (RM303,
+# `just_dna_format.snapshot`); this module imports them, so `from just_dna_enricher.locations import
+# RELEASE_FILENAME` keeps working for every caller, and adds only what is deployment: where a snapshot
+# lives on this machine, and the pull record of one machine's copy.
 
 #: Where a build writes when the operator names nowhere. **Never the repository root**, which is the
 #: rule this constant exists to make impossible to forget: nine `--out` defaults were bare relative
@@ -66,65 +76,6 @@ def repro_out(name: str) -> Path:
     return Path(REPRO_DIRNAME) / name
 
 
-#: ClinVar's literature links. A **sibling of** `data/`, never inside it: the readers build their view
-#: from `data/*.parquet`, so a two-column citations file dropped in there unions with the 17-column
-#: variant parquet and every query breaks. (Learned the direct way — and again, from the other end, when
-#: a stale single-file `clinvar.parquet` in a published repo did the same thing.)
-CITATIONS_DIRNAME = "citations"
-
-#: Optional parquet sidecars a snapshot may carry. Shared by the publisher (which takes a directory and
-#: cannot know which snapshot kind it is) and the provisioner, so a sidecar cannot be publishable but
-#: unfetchable. Absent is normal: only ClinVar has one, and only when `clinvar citations` was run.
-SNAPSHOT_SIDECAR_DIRNAMES: tuple[str, ...] = (CITATIONS_DIRNAME,)
-
-#: The provenance beside the data. It describes **every** part of the snapshot, which is why the
-#: citations builder merges its own block in rather than leaving a mixed-vintage artifact whose
-#: `release.json` documents half of it: ClinVar publishes `var_citations.txt` on its own cadence, so the
-#: records and the citations in one snapshot need not come from the same release.
-RELEASE_FILENAME = "release.json"
-
-#: The terms a snapshot was taken under, kept beside the bytes they govern. ClinPGx bundles a
-#: `LICENSE.txt` inside `summaryAnnotations.zip`, and the builder extracts it precisely so a holder of
-#: the snapshot can read the terms without the archive — which only works if the publisher sends it and
-#: the provisioner fetches it. It was in neither: `upload`'s allow-patterns were `data/*.parquet`,
-#: `citations/*.parquet` and `release.json`, so publishing a share-alike snapshot silently dropped the
-#: one file the pinned-licence design exists for. Fifth party to the layout agreement, same as the rest.
-SNAPSHOT_LICENSE_FILENAME = "LICENSE.txt"
-
-#: The payload of a snapshot that holds no parquet. Two caches are shaped this way and both were
-#: named in the module that *reads* them, which is exactly the split `RELEASE_FILENAME` and
-#: `SNAPSHOT_LICENSE_FILENAME` were pulled up here to stop: a resolver, a builder and a reader each
-#: have to agree on the name, and a resolver living in this module cannot import the reader's copy
-#: without a cycle. One definition, in the module that already owns the layout.
-#: The AVI lane's reconstruction curve, a **root-level sibling of `data/`** rather than a sidecar
-#: directory (RM191). It is one small parquet, not a directory of them, and it is not optional: the
-#: artifact deliberately does not store `PHRED`, so without this file a puller holds scores they
-#: cannot rank and `alphagenome check` refuses outright. Named here rather than in the builder for
-#: the reason this whole section exists — the builder writes it, the publisher has to carry it, and
-#: the provisioner has to fetch it, so a name only one of the three knows is a name the other two
-#: will silently drop.
-ALPHAGENOME_KNOTS_FILENAME = "avi_knots.parquet"
-
-#: Every file a snapshot may carry **beside** `data/` and its sidecar directories, as the publisher
-#: and the provisioner must agree on it.
-#:
-#: **This is a registry because the alternative already failed twice.** `plan_reference_snapshot`
-#: iterated a hardcoded pair, `release.json` and `LICENSE.txt`, and the second of those is only in it
-#: because publishing a share-alike snapshot had silently dropped the terms it exists to carry
-#: (`@publisher-allowlist-derived`). The AVI knot table is the third such file and would have been
-#: the third such incident: a published snapshot missing it looks complete — every parquet present,
-#: `release.json` valid — and cannot answer the question the lane exists for.
-#: **The order is the publish order, and `RELEASE_FILENAME` is last on purpose** (RM199). It is the
-#: file a puller reads to learn which release it holds, so it must never arrive before the bytes it
-#: describes — a publish that lands the description and then fails leaves a snapshot that *reads as*
-#: provisioned and is not. Keeping the constraint in the tuple rather than in the publisher means the
-#: plan a `--dry-run` prints is already in the order the upload sends.
-SNAPSHOT_ROOT_FILENAMES: tuple[str, ...] = (
-    SNAPSHOT_LICENSE_FILENAME,
-    ALPHAGENOME_KNOTS_FILENAME,
-    RELEASE_FILENAME,
-)
-
 #: The provisioner's record of what a pull of this snapshot consists of (RM339): every file under
 #: `data/` and the sidecar directories the remote listing named, written **before** the first
 #: download rather than after the last. That order is the fix. Each file is staged through `.part` and
@@ -136,9 +87,6 @@ SNAPSHOT_ROOT_FILENAMES: tuple[str, ...] = (
 #: **Not in `SNAPSHOT_ROOT_FILENAMES`, on purpose.** That registry is what a publish uploads and a
 #: pull fetches. This file describes one machine's copy, never the published snapshot.
 PULL_RECORD_FILENAME = "pull-record.json"
-
-ACMG_SNAPSHOT_FILENAME = "acmg_sf.csv"
-STRCHIVE_CATALOGUE_FILENAME = "STRchive-loci.json"
 
 ENSEMBL_SUBDIR: str = "ensembl_variations"
 DUCKDB_NAME: str = "ensembl_variations.duckdb"
@@ -268,26 +216,6 @@ MANE_CACHE_VAR: str = "JUST_DNA_MANE_CACHE"
 MITOMAP_CACHE_VAR: str = "JUST_DNA_MITOMAP_CACHE"
 MITOMAP_MISS_CACHE_VAR: str = "JUST_DNA_MITOMAP_MISS_CACHE"
 ALPHAGENOME_AVI_CACHE_VAR: str = "JUST_DNA_ALPHAGENOME_AVI_CACHE"
-
-
-def read_release(reference: Path) -> dict | None:
-    """A snapshot's `release.json` as a dict, or `None` when it is absent or unreadable.
-
-    Sixth party to the layout agreement above, and the first *reader* of it outside `cache status`:
-    the file was written by every builder and consulted by nothing, so a caller who needed to know
-    which release a local snapshot is could only guess. `None` is the honest answer for both absence
-    and corruption — a caller must not be able to mistake "this snapshot does not say" for a release
-    id, so callers branch on `None` rather than on a default (the tri-state rule).
-    """
-    path = Path(reference) / RELEASE_FILENAME
-    if not path.is_file():
-        return None
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        logger.warning("Could not read %s (%s); treating the release as unstated.", path, exc)
-        return None
-    return payload if isinstance(payload, dict) else None
 
 
 _PARQUET_MAGIC = b"PAR1"
@@ -509,14 +437,9 @@ def _resolve_parquet_cache(
 
     if accept_bare_file and search_dir.is_file() and search_dir.suffix == ".parquet":
         return search_dir
-    if search_dir.is_dir():
-        data_dir = search_dir / SNAPSHOT_DATA_DIRNAME
-        has_parquet = (data_dir.is_dir() and any(data_dir.glob("*.parquet"))) or any(
-            search_dir.glob("*.parquet")
-        )
-        # A pull that never finished is not a snapshot, however whole each of its files is (RM339).
-        if has_parquet and not snapshot_record_missing(search_dir):
-            return search_dir
+    # A pull that never finished is not a snapshot, however whole each of its files is (RM339).
+    if holds_snapshot_payload(search_dir) and not snapshot_record_missing(search_dir):
+        return search_dir
     return None
 
 
@@ -724,7 +647,7 @@ def _resolve_named_cache(
 
     if search.is_file() and search.name == payload:
         return search
-    if search.is_dir() and (search / payload).is_file():
+    if holds_snapshot_payload(search, payload_filename=payload):
         return search
     return None
 

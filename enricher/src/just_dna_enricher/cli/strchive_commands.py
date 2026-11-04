@@ -6,10 +6,11 @@ from pathlib import Path
 
 import typer
 from just_dna_compiler.draft import DraftError
+from just_dna_format.snapshot import release_label
 from just_dna_format.vocab import VALID_DECLARED_USE
 
 from just_dna_enricher.cli._shared import _mode, _use, app
-from just_dna_enricher.locations import STRCHIVE_CATALOGUE_FILENAME, read_release, repro_out
+from just_dna_enricher.locations import STRCHIVE_CATALOGUE_FILENAME, repro_out
 from just_dna_enricher.strchive import StrchiveError, check_repeat_bands
 from just_dna_enricher.strchive_draft import StrchiveDraftError, draft_repeat_loci
 from just_dna_enricher.upload import DEFAULT_STRCHIVE_REPO_ID
@@ -97,7 +98,7 @@ def strchive_publish_(
     """
     from just_dna_enricher.upload import plan_reference_snapshot, publish_reference_snapshot
 
-    if not (read_release(snapshot_dir) or {}).get("dataset"):
+    if release_label(snapshot_dir) is None:
         typer.secho(
             "  this snapshot carries no release label, so everyone who pulls it inherits a "
             "comparison that cannot name its own reference. Rebuild with `strchive build --release`.",

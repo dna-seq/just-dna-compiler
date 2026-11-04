@@ -3145,6 +3145,14 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   it — the readers glob `data/*.parquet`. Absence is normal at both ends: only ClinVar has a sidecar, and
   only after `clinvar citations`.
 
+  **Since 0.8 the layout is the format tier's (RM303, 2026-11-04).** The names, `SnapshotRelease` (the
+  model of `release.json`) and its reader moved to `just_dna_format.snapshot`, because six parties had
+  to agree and the names lived in the network tier, and because fourteen hand-written `release.json`
+  dicts had drifted (`rows`/`row_count`, `licence`/`license`, a ClinVar release with no `dataset`).
+  `locations` imports the names. A builder writes the record with `write_release(out_dir,
+  SnapshotRelease(...))`; `test_release_json_through_the_model.py` refuses any builder that spells
+  `release.json` outside an import or an `.unlink`. Old spellings are read, never written.
+
 - `@release-json-provenance` — **Publishing a second artifact makes provenance a question — answer it in `release.json`.** ClinVar
   publishes `var_citations.txt` on its own cadence, so a snapshot can carry records and citations from
   different releases; `build_citations` merges its own block (read-modify-write, so the VCF's keys
@@ -3535,6 +3543,12 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   repairs nothing already on disk or already published — every existing snapshot still prints blank
   until rebuilt — and it makes a second writer of a label that function owns. Additive later; not the
   fix.
+
+  **Done later, by RM303 (2026-11-04), with both objections answered.** The builder writes `dataset`
+  through `snapshot.clinvar_release_label`, the same formula the snapshot model reads an older ClinVar
+  release's `clinvar_file_date` through, so a snapshot already on disk or published still prints its
+  label and the formula has one home. The override and the `{"clinvar"}` exception set are gone; the
+  set is asserted empty.
 
 - `@a-publish-may-not-orphan-the-bytes-it-stops-describing` — **What a publish may delete, and what it
   may stop describing (RM185, RM186, 2026-09-03; maintainer's policy).**
