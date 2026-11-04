@@ -105,7 +105,7 @@ def test_every_retired_error_carries_the_marker() -> None:
                 inspect.isclass(obj) and issubclass(obj, BaseException) and obj.__module__ == module.__name__
             ):
                 continue
-            if name.endswith("Retired"):
+            if name.endswith("Retired") and obj is not EndpointRetired:
                 named.add(f"{module.__name__}.{name}")
             if issubclass(obj, EndpointRetired) and obj is not EndpointRetired:
                 marked.add(f"{module.__name__}.{name}")
