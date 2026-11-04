@@ -105,6 +105,29 @@ gene-pair subject (it does not if that home is keyed on `variant_key`).
 
 ## RM323 — a fact about a locus has no authored home, so every per-locus axis is copied onto each genotype row and nothing checks the copies agree
 
+**Decided 2026-11-04 by the maintainer: a per-locus fact table keyed `(subject_kind, subject)`.** It has three
+kinds:
+
+- `variant`: a `variant_key`;
+- `gene`: a symbol, for gene-level facts such as LoF burden;
+- `haplotype`: `(gene, allele name)`, resolved against `haplotypes.csv` or RM334's HLA allele table.
+
+It deliberately has no region or locus kind. A combination of several subjects is RM28's meta-table
+in 0.9, which ties any number of subjects' states and builds on this identity.
+
+**What the shape was tested against.** A subagent checked it against v2's full research archive
+(`data/input/4bf03886-….zip`, the seed's 161 loci): **121 fit, 37 strain, 3 break**. All three breaks are
+named alleles, and the `haplotype` kind holds them:
+
+- APOE ε2 and ε4 carry different age-of-action confidence;
+- HLA-B\*57:01 and HLA-DRB1\*15:01 carry facts that belong to the allele, not its tag SNP.
+
+**The strains need no new key, but they do need three authoring rules, stated in the proposal:**
+
+1. Which study's fine-mapping posterior sets a causal-confidence level (the seed uses the maximum).
+2. A fact measured on a proxy is marked as such (RM331's columns).
+3. A European-only tier is scoped by ancestry (RM328's derived flag), never transferred.
+
 **Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first, and **decide this before RM324, RM326 and RM329** · **Owner** format + compiler · **Motivating case** longevitymap v2 requirements §4.2 · *for* longevitymap v2 · *related* RM322, RM324
 
 **What was confirmed.** `VariantRow` keys on `(variant_key, genotype)`. v2's tier, causal confidence,
@@ -315,6 +338,34 @@ mirroring the derived table. Full ×1–2. A sign convention ("positive = shorte
 `effect_allele` with `direction` already says it.
 
 ## RM333 — the effector gene behind a GWAS locus has no source and no column
+
+**Licence probed 2026-11-04 (all claims checked at the source); decided by the maintainer: build, under Open
+Targets' own terms plus its notice.**
+
+What the probe found:
+
+- L2G now lives in the Platform: release 26.09, dataset `l2g_prediction`, on EBI's FTP. There is no
+  Hugging Face copy.
+- The release is marked CC0 1.0 (the licence page, and the croissant's only `license` key).
+- The terms of use add "no additional restrictions … other than those provided by the original data
+  owners" and a third-party-rights disclaimer.
+
+The `SourceRow` therefore records `commercial_use=True`, `share_alike=False`, `redistribution=True`, and
+`notice` carries that disclaimer verbatim.
+
+**For a lawyer, named and not settled:**
+
+- "marked with" CC0 against "dedicates", for data Open Targets did not wholly author;
+- whether "all Open Targets users" reaches a module's buyer;
+- whether the CC BY-SA 3.0 of ChEMBL and HPA, as training inputs, reaches the scores;
+- whether a CC0 mark satisfies the CC BY 4.0 attribution owed to eQTL Catalogue and GTEx;
+- FinnGen's terms, unstated at its source;
+- the 26.09 inputs missing from Open Targets' licence table;
+- PanelApp's "commercial use for Open Targets".
+
+**For 0.9:** the host licence defers to the original owners, and an L2G row cannot name its owner
+(`@a-hosts-terms-are-not-its-contents-terms` assumes a record can override). That is a `SourceRow` axis
+gap, owed an `RMn` beside AlphaGenome's four (`probes/ALPHAGENOME_ATLAS.md` §2.6).
 
 **Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** enricher (a new lane) + format (a derived table's columns) · **Motivating case** longevitymap v2 requirements §4.2 (causal and effector confidence, R-CAUSAL) · *for* longevitymap v2 · *related* RM239, RM238, RM236
 
