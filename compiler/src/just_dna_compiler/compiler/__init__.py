@@ -363,6 +363,9 @@ from just_dna_compiler.compiler.tables import _TABLE_KINDS as _TABLE_KINDS
 from just_dna_compiler.compiler.tables import ARTIFACT_PARQUETS as ARTIFACT_PARQUETS
 from just_dna_compiler.compiler.tables import BA1_ALLELE_FREQUENCY_THRESHOLD as BA1_ALLELE_FREQUENCY_THRESHOLD
 from just_dna_compiler.compiler.tables import LEAD_PARQUETS as LEAD_PARQUETS
+from just_dna_compiler.compiler.tables import META_CSV as META_CSV
+from just_dna_compiler.compiler.tables import META_PARQUET as META_PARQUET
+from just_dna_compiler.compiler.tables import META_RESOLVED_PARQUET as META_RESOLVED_PARQUET
 from just_dna_compiler.compiler.tables import OVERRIDES_CSV as OVERRIDES_CSV
 from just_dna_compiler.compiler.tables import OVERRIDES_PARQUET as OVERRIDES_PARQUET
 from just_dna_compiler.compiler.tables import SNP_CORE_PARQUETS as SNP_CORE_PARQUETS

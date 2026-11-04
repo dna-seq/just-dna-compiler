@@ -1760,6 +1760,21 @@ class Weighting(BaseModel):
     )
 
 
+class MetaSelectorCount(BaseModel):
+    """How many rows one member of one `meta.csv` row matched at compile (0.8, RM28).
+
+    The compiler expands every selector into the rows it matches and would otherwise discard the count
+    (`@dont-discard-computed`); a consumer or a catalog reads it here without opening `meta.parquet`. A
+    zero is the `meta_selector_matches_nothing` finding, stated as a number.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    row: int = Field(description="0-based index of the authored row in `meta.csv` (and `meta.parquet`).")
+    selector: str = Field(description="The member, verbatim as authored in the row's `members` cell.")
+    matches: int = Field(ge=0, description="How many rows of the member's table it matched.")
+
+
 class ModuleManifest(BaseModel):
     """Full module manifest (SPEC §4). Written next to the parquets as `manifest.json`."""
 
@@ -1801,6 +1816,21 @@ class ModuleManifest(BaseModel):
             "combining it (RM92). Author-declared via `module_spec.yaml`'s `weighting:` and copied "
             "through; absent means the module has not said, which is not the same as saying its "
             "weights are comparable. Out of `artifact.digest` and `content_signature`."
+        ),
+    )
+    tier_scale: str | None = Field(
+        default=None,
+        description=(
+            "The scale `meta.csv`'s `tier` column grades on (0.8, RM324), author-declared once via "
+            "`module_spec.yaml`'s `tier_scale:` and copied through. Absent on a module stating no "
+            "tier. Out of `artifact.digest` and `content_signature`."
+        ),
+    )
+    meta_selectors: list[MetaSelectorCount] | None = Field(
+        default=None,
+        description=(
+            "Every member of every `meta.csv` row with the number of rows it matched at compile, in "
+            "authored order (0.8, RM28). `None` when the module carries no meta.csv."
         ),
     )
 

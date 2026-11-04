@@ -1390,6 +1390,69 @@ disagrees with the table used to be a warning and nothing more. It has to be str
 keeps what the author wrote, so the table's position does not survive a reverse, and the next compile
 resolves from a table that no longer says what it said.
 
+## The meta-table (0.8) — expansion, precedence and the two parquets
+
+`meta.csv` (RM28, RM323, RM324, RM327's rows, RM330's `sex`) maps a member set to a finding and/or the
+per-locus facts; the grammar and the model are in [SCHEMAS.md § The meta-table](SCHEMAS.md#the-meta-table-08--metacsv).
+The compiler's part is to **expand every member into the rows it matches**, so a consumer evaluates no
+rule (P1), and to resolve which fact wins where two rows reach one row.
+
+**Which rows a member is matched against.** The authored rows, after the symbolic-allele drop and
+before resolution, on both sides: `validate_spec` and `compile_module` hand `build_meta` the same view,
+so a member matches the same rows in the pre-flight and in the compile, and each finding is one
+sentence the compile de-duplicates (`@parity-by-check`). Conditions are AND-ed and compared against the
+value the model **stores** (a diplotype pair is canonicalized `haplotype_a <= haplotype_b`, a genotype
+sorted); on a list column such as `flags`, `=` means contains. Inside a combination a member is
+existential: any row it matches.
+
+**The one residual is an rsID resolution expands.** A `variants.csv` match is recorded by its authored
+key `(variant_key, genotype)`, which is `weights.parquet`'s key for every row resolution did not
+expand. An rsID that resolves onto several loci is written to `weights.parquet` coordinate-keyed
+(`locus_count > 1`), so a consumer reaches those rows from a meta key through their `rsid` column.
+
+**Precedence, per row reached and per column.** Only **one-member** rows naming **no trait** contribute
+facts: a combination's facts are about the combination and a per-trait row's are about its trait (a
+separate statement by the key), so both stay on their own `meta.parquet` row. A per-trait row still
+reaches the row (it is listed in `meta_rows`). A member naming both halves of a diplotype pair is matched
+as the model stores the pair (`haplotype_a <= haplotype_b`); the authored cell is kept. Among the rows that **state**
+a column (unstated is not different), the maximal ones under this order win:
+
+1. a sex-scoped row outranks the row with the same key and no `sex`, for that sex;
+2. a `diplotypes` member outranks an `allele_function` member reaching the same diplotype through one
+   of its two haplotypes (an allele reaches every diplotype of its gene that contains it);
+3. otherwise `member_rank` decides: a concrete row key (the conditions name every key column the row
+   fills), then a locus (`variant_key` alone), then a selector with more conditions, then fewer.
+
+Equal ranks are incomparable. One distinct value among the winners fills the column; two or more
+withhold it and name it in `withheld`.
+
+**What the compile writes.** Both parquets whenever the module carries `meta.csv`, after the overlay in
+`ARTIFACT_PARQUETS`; neither is a lead table, and `meta.csv` alone does not satisfy "a module must carry
+at least one recognized table".
+
+- `meta.parquet`: one row per authored row, in authored order. Every authored cell verbatim (what
+  `reverse` writes back), the stamped `members_key`, `match_count`, `matches` (a list of
+  `{member, table, key}` structs, `key` in the table's `_KEY_FIELDS` order), `replaces` (true on a row of
+  two or more members stating a finding: a matching combination replaces the findings of exactly the
+  rows in `matches`), and `withheld` (`direction`, when a bare-locus member on a direction row fixes no
+  allele).
+- `meta_resolved.parquet`: one row per (row reached, `sex` scope), with `table`, `key`, `sex`, the four
+  fact columns after precedence, `withheld` and `meta_rows` (the 0-based `meta.parquet` rows that reach
+  it). This is the grain RM327's computed `tradeoff` joins at; it is not written yet.
+
+**The manifest** records every member's match count as `meta_selectors` (`{row, selector, matches}`,
+in authored order) and the module's `tier_scale`. `reverse` writes `meta.csv` back from `meta.parquet`
+(the derived columns fall away) and `tier_scale` back from the manifest.
+
+**Refusals and findings.** The grammar's refusals are the model's (SCHEMAS). Three need the module and
+run in `validate` and `compile` alike: a `tier` in a module with no `tier_scale` (refused);
+`meta_selector_matches_nothing` (a warning: almost always a typo); and `meta_member_allele_ambiguous` (a
+warning: a bare-locus member on a direction row whose `variants.csv` rows do not share one
+`effect_allele`, so the direction is withheld). A duplicate key (`A & B` against `B & A`) is refused
+through `_TABLE_DUPE_KEYS` like every keyed table's. The enricher's rsID currency pass asks dbSNP about
+every rsID a member names, so one variant written under two keys is caught where NCBI is the oracle
+(ENRICHER.md).
+
 ## Reverse
 
 `reverse_module` reads the parquets for every row, and the artifact's `manifest.json` for every
@@ -1483,6 +1546,7 @@ clinical_assertions  gwas_effects  expression_effects
 clin_sig_concordance  clin_sig_authority_calls                     ← the derived-fact sidecars (the last two: RM130, 0.7)
 sources                                                           ← the licence table
 overrides                                                         ← the authored overlay (0.7)
+meta  meta_resolved                                               ← the meta-table (0.8); not lead tables
 ```
 
 **It is not digest order, and this section said it was.** `artifact_digest` sorts the listing by name
@@ -1493,7 +1557,7 @@ late it sits in the tuple. What the position does govern is the order a consumer
 listing, not the hash; what keeps an already-published digest still is that the module has no such
 file at all.
 
-Twenty-three names. `LEAD_PARQUETS` is the ten carrying a module's own annotation rows — `weights` plus the
+Twenty-five names. `LEAD_PARQUETS` is the ten carrying a module's own annotation rows — `weights` plus the
 nine table kinds — which is the publisher's *is this a module* rule and what discovery probes.
 
 **The per-parquet column lists are deliberately not reproduced here.** They are derivable from the
@@ -1567,6 +1631,12 @@ asymmetry below is intended: **rows are preserved, presentation is normalized.**
   *other* manifest facet list is sorted — this one is the exception, deliberately.
 - **`_write_resolution_csv`** emits weights first and never re-emits a key from the positional pass, so
   `variants.csv`'s `alts` always wins.
+- **The meta-table's two parquets** (0.8). `meta.parquet` is in authored row order, and each row's
+  `matches` list is in member order, then in the matched table's authored row order.
+  `meta_resolved.parquet` is sorted by member table (`META_MEMBER_TABLES` order), then the matched
+  row's authored position, then the `sex` scope (none, `female`, `male`); its `meta_rows` are ascending.
+  No set or dict iteration reaches either file, and `test_meta_compile.py` compiles twice and compares
+  the bytes.
 
 **Normalized, not preserved.** Column order and cell formatting in every reversed CSV; the
 `curator`/`method` blank-vs-explicit split; unphased genotype allele order.
@@ -1650,6 +1720,7 @@ actionable, which is `vocab.ACTIONABLE_WARNING_CODES`, derived by subtraction:
   `gene_validity_currency_undecidable`
 - **the overlay** — `overlay_update_unmatched`, `overlay_update_target_unreachable`,
   `overlay_answer_vindicated`, `overlay_targets_missing_table`, `overlay_rows_suppressed`
+- **the meta-table** (0.8) — `meta_selector_matches_nothing`, `meta_member_allele_ambiguous`
 - **verification and closure** — `verification_two_copies`, `verification_unreadable`,
   `verification_stale`, `verification_findings_recorded`, `module_not_closed`,
   `closure_discarded_unreadable_record`

@@ -525,6 +525,8 @@ _FILL_BY_KIND = {
     # `allele` is a star-allele here and a nucleotide on HaplotypeRow — same name, different grammar.
     "allele_function.csv": {"allele": "*4"},
     "haplotypes.csv": {"allele": "A"},
+    # A member is grammar, not a free string: one locus member is the smallest legal cell.
+    "meta.csv": {"members": "variants[variant_key=rs1]"},
 }
 
 

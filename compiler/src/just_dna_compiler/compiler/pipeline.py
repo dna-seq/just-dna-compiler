@@ -93,6 +93,14 @@ from just_dna_compiler.compiler.manifest import (
     build_disagreement_error,
     module_stats,
 )
+from just_dna_compiler.compiler.meta import (
+    build_meta,
+    load_meta,
+    member_tables,
+    meta_frame,
+    meta_resolved_frame,
+    meta_scale_errors,
+)
 from just_dna_compiler.compiler.parquets import (
     _build_annotations,
     _build_frequencies,
@@ -108,6 +116,9 @@ from just_dna_compiler.compiler.tables import (
     _FACT_TABLES,
     _TABLE_KINDS,
     BA1_ALLELE_FREQUENCY_THRESHOLD,
+    META_CSV,
+    META_PARQUET,
+    META_RESOLVED_PARQUET,
     OVERRIDES_PARQUET,
     SNP_CORE_PARQUETS,
     _build_table,
@@ -265,6 +276,20 @@ def compile_module(
         # gene facets on every authored kind, a drop that empties the last row naming a gene in a
         # *kind* table has to move `genes` too, and the old placement could not see one.
         validation.stats.update(module_stats(variants, kind_rows))
+
+    # The meta-table (0.8), loaded and refused here, before `mkdir`, so a refusal leaves nothing written
+    # (the pre-flight has already refused anything these could, so the arms are defensive). It is
+    # EXPANDED further down, after the positional fill, against `authored_variants`: the post-drop,
+    # pre-resolution rows. That is the view `validate_spec` expands against (its survivors are filled
+    # too), so a member matches the same rows on both sides and each finding is one sentence.
+    meta_rows, meta_errors, _ = load_meta(spec_dir)
+    meta_errors = meta_errors or meta_scale_errors(meta_rows, config.tier_scale)
+    if meta_errors:
+        return CompilationResult(success=False, errors=meta_errors, warnings=all_warnings)
+    authored_variants = variants
+    # The citation view: the table kinds plus the meta rows, whose `pmid` is a citation site
+    # (`_CITING_TABLE_KINDS`). Every literature check below reads this rather than `kind_rows`.
+    citing_rows: dict[str, list[Any]] = {**kind_rows, META_CSV: meta_rows}
 
     # The source-independent resolution table (0.5), if authored/produced beside the spec. When
     # present it is the *preferred* resolution path: the compiler consumes already-resolved facts and
@@ -651,6 +676,16 @@ def compile_module(
     )
     all_warnings.extend(w for w in fill_warnings if w not in all_warnings)
 
+    # The meta expansion (0.8), on the same view as the pre-flight's: the positional tables filled, and
+    # `variants` as authored (resolution copies the rows it changes, so `authored_variants` is untouched).
+    meta_build = (
+        build_meta(meta_rows, member_tables(authored_variants, kind_rows), config.tier_scale)
+        if meta_rows
+        else None
+    )
+    if meta_build is not None:
+        all_warnings.extend(w for w in meta_build.warnings if w not in all_warnings)
+
     # 0.4 table kinds (RM1): materialize each present CSV via the generic materializer. The rows were
     # loaded above, before `mkdir`, so the symbolic-allele check could refuse without leaving a
     # half-written directory behind — and so a row it dropped is absent from the parquet here.
@@ -738,7 +773,7 @@ def compile_module(
         # De-duplicated on the message: `compile_module` runs `validate_spec`, which runs this same
         # check, so a finding living in both places would otherwise print twice (the
         # `_check_contig_ploidy` idiom).
-        return [], [w for w in _cross_check_literature(rows, studies, kind_rows) if w not in all_warnings]
+        return [], [w for w in _cross_check_literature(rows, studies, citing_rows) if w not in all_warnings]
 
     def _gene_validity_checks(rows: list) -> tuple[list[str], list[str]]:
         # Both warn in either mode (see `_check_gene_validity_currency`), so nothing here reads
@@ -895,7 +930,7 @@ def compile_module(
         # merge-not-clobber on purpose, and that pin is what makes a re-run cheap.
         check_errors, check_warnings = check(rows)
         if model is LiteratureRow:
-            rows, _dropped = split_cited_literature(rows, studies, kind_rows)
+            rows, _dropped = split_cited_literature(rows, studies, citing_rows)
         fact_rows[model] = rows
         if check_errors:
             return CompilationResult(success=False, errors=check_errors, warnings=all_warnings)
@@ -921,7 +956,7 @@ def compile_module(
     all_warnings.extend(
         w
         for w in _classify_deferred_overlay_updates(
-            compile_deferred, studies, kind_rows, variants, resolution_rows
+            compile_deferred, studies, citing_rows, variants, resolution_rows
         )
         if w not in all_warnings
     )
@@ -933,6 +968,17 @@ def compile_module(
         overlay_df = _build_table(overrides, OverrideRow, module_name)
         overlay_df.write_parquet(output_dir / OVERRIDES_PARQUET, compression=compression)
         table_rows[OVERRIDES_PARQUET] = overlay_df.height
+
+    # The meta-table's pair (0.8), from the expansion computed before anything was written. Both are
+    # written whenever the module carries meta.csv, `meta_resolved.parquet` with zero rows when no
+    # one-member row reached anything, so a reader finds the file it was promised.
+    if meta_build is not None:
+        for parquet_name, frame in (
+            (META_PARQUET, meta_frame(meta_build, module_name)),
+            (META_RESOLVED_PARQUET, meta_resolved_frame(meta_build, module_name)),
+        ):
+            frame.write_parquet(output_dir / parquet_name, compression=compression)
+            table_rows[parquet_name] = frame.height
 
     frequency_rows: list[FrequencyRow] = fact_rows.get(FrequencyRow, [])
     gene_metrics_rows: list[GeneMetricsRow] = fact_rows.get(GeneMetricsRow, [])
@@ -1011,6 +1057,7 @@ def compile_module(
         literature=_literature_block(literature_rows),
         sources=_sources_block(source_rows),
         verification=verification,
+        meta_selectors=meta_build.selector_counts() if meta_build is not None else None,
     )
     write_manifest(manifest, output_dir / "manifest.json")
 

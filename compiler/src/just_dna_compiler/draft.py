@@ -55,6 +55,7 @@ from just_dna_format.layout import (
     sidecar_key,
     sidecar_spellings,
 )
+from just_dna_format.meta import MetaRow
 from just_dna_format.overrides import OverrideRow
 from just_dna_format.sources import SourceRow
 from just_dna_format.spec import StudyRow, VariantRow
@@ -64,6 +65,7 @@ from pydantic import BaseModel
 from just_dna_compiler.compiler import (
     _TABLE_DUPE_KEYS,
     _TABLE_KINDS,
+    META_CSV,
     OVERRIDES_CSV,
     _key_of,
     _list_cell,
@@ -96,6 +98,8 @@ DRAFTABLE: dict[str, type[BaseModel]] = {
     **{csv_name: model for csv_name, _, model in _TABLE_KINDS},
     **dict.fromkeys(sidecar_spellings(SOURCES_CSV), SourceRow),
     OVERRIDES_CSV: OverrideRow,
+    # The meta-table (0.8): authored, one legal name, so every authoring surface answers for it.
+    META_CSV: MetaRow,
 }
 
 # The SNP core's natural keys, the two `_TABLE_DUPE_KEYS` does not carry because the compiler checks

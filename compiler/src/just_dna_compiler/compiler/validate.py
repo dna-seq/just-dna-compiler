@@ -59,6 +59,7 @@ from just_dna_compiler.compiler.manifest import (
     build_disagreement_error,
     module_stats,
 )
+from just_dna_compiler.compiler.meta import build_meta, load_meta, member_tables
 from just_dna_compiler.compiler.positional import (
     _GENE_BEARING_TABLE_KINDS,
     _POSITIONAL_TABLE_KINDS,
@@ -72,7 +73,13 @@ from just_dna_compiler.compiler.table_checks import (
     _cross_validate_studies,
     _validate_table_kind,
 )
-from just_dna_compiler.compiler.tables import _FACT_TABLES, _TABLE_KINDS, OVERRIDES_CSV, _locate_sidecar
+from just_dna_compiler.compiler.tables import (
+    _FACT_TABLES,
+    _TABLE_KINDS,
+    META_CSV,
+    OVERRIDES_CSV,
+    _locate_sidecar,
+)
 from just_dna_compiler.compiler.variant_checks import (
     _check_build_coordinates,
     _check_conclusion_genotypes,
@@ -668,6 +675,26 @@ def _validate_spec(
             "studies.csv is missing. Grounding evidence is mandatory; add study rows with PMIDs."
         )
 
+    # The meta-table (0.8). Loaded here, once `studies` and the survivors are in hand: its rows name
+    # rows of the other tables, and its `pmid` is a citation site the literature checks below read
+    # (`_CITING_TABLE_KINDS`), so the citing view is the table kinds plus these rows. Expansion reads the
+    # post-drop authored rows — the view `compile_module` hands it too — so a member matches the same
+    # rows on both sides and each finding is one sentence (`@parity-by-check`). Every check here is
+    # pure computation over authored bytes; none is a mode ladder.
+    meta_rows, meta_errors, meta_warnings = load_meta(spec_dir)
+    all_errors.extend(meta_errors)
+    all_warnings.extend(meta_warnings)
+    if meta_rows:
+        meta_build = build_meta(
+            meta_rows,
+            member_tables(_apply_symbolic_drops(variants, would_drop.get("variants.csv", set())), survivors),
+            config.tier_scale if config else None,
+        )
+        all_errors.extend(meta_build.errors)
+        all_warnings.extend(meta_build.warnings)
+    citing_kinds: dict[str, list[Any]] = {**loaded_kinds, META_CSV: meta_rows}
+    citing_survivors: dict[str, list[Any]] = {**survivors, META_CSV: meta_rows}
+
     # RM137, and this is the point the loop above deferred to: `studies` and the citing tables are both
     # in scope now, so "could an artifact of this module carry that row" is answerable. Split here in
     # `validate_spec` as well as in `compile_module` because the two must report the same findings
@@ -677,7 +704,7 @@ def _validate_spec(
         _classify_deferred_overlay_updates(
             deferred_unmatched,
             studies,
-            loaded_kinds,
+            citing_kinds,
             variants,
             [row for rows in membership_table.values() for row in rows],
         )
@@ -842,7 +869,7 @@ def _validate_spec(
     # stop re-running, because a citing table that is also symbolic-droppable (`pharm_variants.csv` is
     # both) is the only thing that separated them. `survivors` is the same post-drop view the
     # positional fill above already uses, computed once for exactly this reason.
-    all_warnings.extend(_cross_check_literature(literature_rows, studies, survivors))
+    all_warnings.extend(_cross_check_literature(literature_rows, studies, citing_survivors))
 
     # The study-side half of allele membership (RM91), here for the same parity reason as the check
     # below: it is a mode ladder, so leaving it compile-only would let `validate --strict` report valid

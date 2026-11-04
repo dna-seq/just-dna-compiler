@@ -25,6 +25,7 @@ from just_dna_format.integrity import newline_normalized_file_entries
 from just_dna_format.layout import VERIFICATION_JSON, SidecarCollision, deprecation_notice, resolve_sidecar
 from just_dna_format.literature import LiteratureRow
 from just_dna_format.manifest import FileEntry
+from just_dna_format.meta import MetaRow
 from just_dna_format.overrides import OverrideRow
 from just_dna_format.pgs import PgsRow
 from just_dna_format.pgx import AlleleFunctionRow, DiplotypeRow, HaplotypeRow, PharmVariantRow
@@ -128,6 +129,10 @@ _TABLE_DUPE_KEYS: dict[type[BaseModel], Callable[[Any], tuple]] = dict.fromkeys(
         # `SourceRow` failure one table over: a pair free to carry opposite values in the file a
         # later stage keys on.
         OverrideRow,
+        # `MetaRow` keys on `(members_key, trait_efo_id, sex)` (0.8): the member set normalized, so
+        # `A & B` and `B & A` are one key. The same key twice is the one place two meta values can
+        # contradict each other, so it is refused here like every other keyed table's duplicate.
+        MetaRow,
     ),
     _key_of,
 )
@@ -160,12 +165,34 @@ OVERRIDES_CSV: str = "overrides.csv"
 OVERRIDES_PARQUET: str = "overrides.parquet"
 
 
+#: The meta-table (0.8, RM28/RM323/RM324). Authored, so it is input (raw-byte hashed into
+#: `manifest.inputs`, inside `content_signature`), and keyed, so it is in `_TABLE_DUPE_KEYS`.
+#:
+#: **Not a `_TABLE_KINDS` entry, on the overlay's argument.** Those are the module's own annotation
+#: tables: one of them satisfies "a module must carry at least one recognized table", and each is a
+#: `LEAD_PARQUETS` member the reference consumer's discovery probes on. A meta row names rows of those
+#: tables and states nothing a genome is matched against by itself, so a directory carrying only
+#: `meta.csv` has nothing to select and is not a module, and `meta.parquet` is not a lead table.
+#:
+#: It compiles to **two** parquets, the `variants.csv` shape: `meta.parquet` (one row per authored row,
+#: the selector verbatim for `reverse`, and what it matched) and `meta_resolved.parquet` (one row per
+#: single-statement row a one-member meta row reaches, each fact after precedence).
+META_CSV: str = "meta.csv"
+
+
+META_PARQUET: str = "meta.parquet"
+
+
+META_RESOLVED_PARQUET: str = "meta_resolved.parquet"
+
+
 _INPUT_FILES: tuple[str, ...] = (
     "module_spec.yaml",
     "variants.csv",
     "studies.csv",
     *_TABLE_KIND_CSVS,
     OVERRIDES_CSV,
+    META_CSV,
 )
 
 
@@ -237,6 +264,10 @@ ARTIFACT_PARQUETS: tuple[str, ...] = (
     # It is also the only member here that is not derived from a source — see `OVERRIDES_CSV` for why
     # it needs a parquet at all.
     OVERRIDES_PARQUET,
+    # The meta-table's pair (0.8), after the overlay for the overlay's reason: last is where a new
+    # member belongs, and a module carrying no meta.csv carries neither file and keeps its digest.
+    META_PARQUET,
+    META_RESOLVED_PARQUET,
 )
 
 
@@ -315,9 +346,10 @@ def table_bindings() -> dict[str, tuple[str, ...]]:
     new table kind whose parquet is written by a literal at its own write site fails the test instead of
     quietly missing a reference page.
 
-    Four registries, each owning its own slice: `SNP_CORE_PARQUETS` (the core, where `variants.csv`
-    fans out to two), `_TABLE_KINDS` (the optional authored kinds), `_FACT_TABLES` (the derived facts)
-    and `OVERRIDES_PARQUET` (the overlay, whose CSV is authored but is not a table kind).
+    Five registries, each owning its own slice: `SNP_CORE_PARQUETS` (the core, where `variants.csv`
+    fans out to two), `_TABLE_KINDS` (the optional authored kinds), `_FACT_TABLES` (the derived facts),
+    `OVERRIDES_PARQUET` (the overlay, whose CSV is authored but is not a table kind) and the meta-table's
+    pair (`META_CSV`, which fans out to two like `variants.csv`).
     """
     bound: dict[str, tuple[str, ...]] = dict(SNP_CORE_PARQUETS)
     for csv_name, parquet, _model in _TABLE_KINDS:
@@ -325,6 +357,7 @@ def table_bindings() -> dict[str, tuple[str, ...]]:
     for csv_name, parquet, _model in _FACT_TABLES:
         bound[csv_name] = (parquet,)
     bound[OVERRIDES_CSV] = (OVERRIDES_PARQUET,)
+    bound[META_CSV] = (META_PARQUET, META_RESOLVED_PARQUET)
     return bound
 
 

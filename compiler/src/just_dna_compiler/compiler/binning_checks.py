@@ -4,10 +4,11 @@ from typing import Any
 
 from just_dna_format.binning import MeasureBinRow, deprecation_warnings, measurement_shape_warnings
 from just_dna_format.findings import CodedWarning, restate
+from just_dna_format.meta import MetaRow
 from just_dna_format.spec import StudyRow
 from pydantic import BaseModel
 
-from just_dna_compiler.compiler.tables import _TABLE_KINDS
+from just_dna_compiler.compiler.tables import _TABLE_KINDS, META_CSV
 
 #: The binning table kinds, derived from the models for the same reason `_POSITIONAL_TABLE_KINDS` is:
 #: a kind is a binning kind exactly when its model is a `MeasureBinRow`, and a hand-kept list of the
@@ -33,8 +34,18 @@ _BINNING_TABLE_KINDS: tuple[tuple[str, type[BaseModel]], ...] = tuple(
 #: against* rather than a member of it, `LiteratureRow.pmid` is the subject being checked, and
 #: `GwasEffectRow.pmid` is a machine-written fact table's provenance column — none of the three is an
 #: authored annotation row grounding its own claim, which is what a member here is.
+#:
+#: **The meta-table joins it (0.8)**, walked by the same `pmid` test: a meta row cites when its claim is
+#: finer than `studies.csv`'s key (the RM47 pattern), so it is an authored row grounding its own claim.
+#: It is not a `_TABLE_KINDS` entry (see `tables.META_CSV`), so it is appended rather than swept up — a
+#: caller handing these functions its `kind_rows` adds the meta rows under `META_CSV` to be read.
 _CITING_TABLE_KINDS: tuple[tuple[str, type[BaseModel]], ...] = tuple(
-    (csv_name, model) for csv_name, _parquet, model in _TABLE_KINDS if "pmid" in model.model_fields
+    (csv_name, model)
+    for csv_name, model in (
+        *((csv_name, model) for csv_name, _parquet, model in _TABLE_KINDS),
+        (META_CSV, MetaRow),
+    )
+    if "pmid" in model.model_fields
 )
 
 

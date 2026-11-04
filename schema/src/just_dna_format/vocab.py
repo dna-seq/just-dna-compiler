@@ -1604,6 +1604,9 @@ VALID_WARNING_CODES: frozenset[str] = frozenset(
         "overlay_answer_vindicated",  # a contested subject the authorities have since agreed on
         "overlay_targets_missing_table",  # an overlay correcting a table this module does not carry
         "overlay_rows_suppressed",  # rows removed by a `suppress`, invisible in the build product
+        # ── the meta-table (meta.csv, 0.8) ──
+        "meta_selector_matches_nothing",  # a meta member that matches no row of its table — a typo
+        "meta_member_allele_ambiguous",  # a bare-locus member on a direction row whose rows disagree on effect_allele
         # ── verification and closure ──
         "verification_two_copies",  # an attestation under two legal spellings; neither is preferred
         "verification_unreadable",  # a `verification.json` that could not be read

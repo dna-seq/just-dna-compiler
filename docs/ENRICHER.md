@@ -3521,7 +3521,11 @@ module perfectly well-formed and quietly out of date.
 - **rsIDs** run inside `enrich()` (`--verify-rsids`), because the verdict lands on `resolution.csv`'s
   `rsid_current`/`rsid_status` columns. Three states from `esummary db=snp`: **live** (`snp_id` ==
   requested, `merged_sort='0'`), **merged** (`snp_id` != requested, `merged_sort='1'`), **absent**
-  (`{'uid': …, 'error': 'cannot get document summary'}`).
+  (`{'uid': …, 'error': 'cannot get document summary'}`). Since 0.8 the pass also asks about every rsID a
+  `meta.csv` member names (`variant_key=` or `rsid=`, `subjects.meta_member_rsids`): one variant written
+  under two keys, IL6R's rs8192284 merged into rs2228145, hides a disagreement as a difference, and NCBI
+  is where it shows. Those ids are asked and reported (`stale_rsids`, and the usual ladder), never resolved:
+  no `resolution.csv` row is written for an id the module does not carry.
 - **Traits and gene symbols** are module-level with no sidecar column to fill, so they get their own
   command, `just-dna-enricher check-identifiers`. HGNC uses the **exact** `fetch/symbol` and
   `fetch/prev_symbol` endpoints, never `search/` — `search/BRCA1` is fuzzy and returns 19 hits including

@@ -48,7 +48,12 @@ _FILL = {
     "tissue": "blood",
     "reference_sequence": "NC_012920.1",
 }
-_FILL_BY_KIND = {"allele_function.csv": {"allele": "*4"}, "haplotypes.csv": {"allele": "A"}}
+_FILL_BY_KIND = {
+    "allele_function.csv": {"allele": "*4"},
+    "haplotypes.csv": {"allele": "A"},
+    # A member is grammar, not a free string: one locus member is the smallest legal cell.
+    "meta.csv": {"members": "variants[variant_key=rs1]"},
+}
 
 
 def _fill_csv(path: Path) -> None:

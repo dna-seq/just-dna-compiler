@@ -20,12 +20,15 @@ from just_dna_format.manifest import (
     Verification,
     read_manifest,
 )
+from just_dna_format.meta import MetaRow
 from just_dna_format.overrides import OverrideRow
 
 from just_dna_compiler.compiler.positional import _POSITIONAL_TABLE_KINDS
 from just_dna_compiler.compiler.tables import (
     _FACT_TABLES,
     _TABLE_KINDS,
+    META_CSV,
+    META_PARQUET,
     OVERRIDES_CSV,
     OVERRIDES_PARQUET,
     _list_cell,
@@ -82,6 +85,7 @@ REVERSE_RECONSTRUCTED: frozenset[str] = frozenset(
         "authorship",
         "license",
         "weighting",
+        "tier_scale",
         "authority_precedence",
         "module.name",
         "module.version",
@@ -402,6 +406,8 @@ def reverse_module(
             spec["weighting"] = manifest.weighting.model_dump(mode="json", exclude_none=True)
         if manifest.authority_precedence:
             spec["authority_precedence"] = list(manifest.authority_precedence)
+        if manifest.tier_scale is not None:
+            spec["tier_scale"] = manifest.tier_scale
     (output_dir / "module_spec.yaml").write_text(
         yaml.dump(spec, default_flow_style=False, sort_keys=False, allow_unicode=True), encoding="utf-8"
     )
@@ -515,6 +521,15 @@ def reverse_module(
     overlay_parquet = parquet_dir / OVERRIDES_PARQUET
     if overlay_parquet.is_file():
         _write_table_csv(pl.read_parquet(overlay_parquet), OverrideRow, output_dir / OVERRIDES_CSV)
+
+    # The meta-table (0.8), at the spec root like the overlay. `meta.parquet` carries every authored
+    # cell verbatim — the selectors included — beside what the compile derived (`members_key`, the
+    # matches, `withheld`), and `_write_table_csv` writes the authored columns only, so the derived
+    # ones fall away and the recompile derives them again. `meta_resolved.parquet` has no CSV: it is
+    # rebuilt from these rows and the tables they name.
+    meta_parquet = parquet_dir / META_PARQUET
+    if meta_parquet.is_file():
+        _write_table_csv(pl.read_parquet(meta_parquet), MetaRow, output_dir / META_CSV)
 
     return output_dir
 

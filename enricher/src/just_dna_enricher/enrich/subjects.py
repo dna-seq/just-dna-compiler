@@ -3,14 +3,16 @@ authored-pair check, and the pseudoautosomal representative (RM260 split this ou
 single-file `enrich.py`).
 """
 
+import re
 from collections.abc import Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from pathlib import Path
 
-from just_dna_compiler.compiler import load_csv_rows
+from just_dna_compiler.compiler import META_CSV, load_csv_rows
 from just_dna_format.base import derive_variant_key
 from just_dna_format.binning import HeteroplasmyRow
+from just_dna_format.meta import MetaRow, parse_members
 from just_dna_format.pgx import HaplotypeRow, PharmVariantRow
 from just_dna_format.spec import VariantRow
 from just_dna_format.vrs import normalize_chrom, par_partner
@@ -153,6 +155,34 @@ def collect_subjects(
     for s in subjects:
         deduped.setdefault(s.variant_key, s)
     return list(deduped.values())
+
+
+#: An rsID as a member condition writes it: the stamped `variant_key` of an rsID-authored row is the rsID.
+_RSID_VALUE: re.Pattern[str] = re.compile(r"^rs\d+$")
+
+
+def meta_member_rsids(spec_dir: Path) -> list[str]:
+    """Every rsID a `meta.csv` member names, sorted and de-duplicated (0.8, PT2 §5 B1 step 5).
+
+    Read off the `variant_key=` and `rsid=` conditions whose value is an rsID. These are **asked, never
+    resolved**: the currency pass puts them to dbSNP beside the rows `resolution.csv` carries, so one
+    variant written under two keys (IL6R's rs8192284, merged into rs2228145) is caught where NCBI is
+    the oracle, and no row is written for an id the module does not carry.
+    """
+    path = Path(spec_dir) / META_CSV
+    if not path.is_file():
+        return []
+    rows, errors, _ = load_csv_rows(path, MetaRow, META_CSV)
+    if errors:
+        raise EnrichmentError(f"{META_CSV} is invalid: {errors[0]}")
+    named = {
+        value
+        for row in rows
+        for member in parse_members(row.members)
+        for column, value in member.conditions
+        if column in ("variant_key", "rsid") and _RSID_VALUE.match(value)
+    }
+    return sorted(named)
 
 
 def _authored_alt(v: Subject) -> str | None:
