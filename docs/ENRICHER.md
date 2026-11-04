@@ -2458,9 +2458,11 @@ because the table carrying them was dropped at upload.
   publish and the publish's guard read `manifest.json` once, through `_manifest_document`, and pass the
   object on; the version and the file list of one plan come from that one read (the version reader
   used to open the file a second time). Every file entry, attested or declared, goes through one
-  filter, `_file_entries`, which drops an entry that is not an object or whose `name` is not a
-  non-empty string, so an `artifact.files` entry named `""` is dropped everywhere instead of being
-  dropped from the declared list and refused as `attests ['']` by the attested one. `upload --dry-run`
+  filter, `_named_entry`, which keeps an object whose `name` is a non-empty string, so the attested
+  and the declared list agree about an `artifact.files` entry named `""` (the declared list used to
+  drop it while the attested one kept it). The plan refuses such an entry, quoting it: it is inside
+  `artifact.digest`, so no upload can carry what the digest covers. An optional declaration naming no
+  file (a `logo` with an empty name) is outside the digest and is dropped, as before. `upload --dry-run`
   sits inside the same `try` as the real run: a refusal the plan raises prints the same
   `UPLOAD FAILED: …` line and exits 1 from either, where the dry run used to end in a traceback. The
   dry run still contacts nothing, so the versioned-path guard (a remote read) is the one refusal only

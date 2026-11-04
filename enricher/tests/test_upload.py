@@ -1,5 +1,7 @@
 """Unit tests for the HF module-upload publisher surface (no network)."""
 
+import builtins
+import io
 import json
 import shutil
 from pathlib import Path
@@ -1259,18 +1261,23 @@ def test_the_plan_reads_the_manifest_once(tmp_path: Path, monkeypatch: pytest.Mo
     """`_module_version` opened and parsed `manifest.json` itself, beside `_manifest_document`, so the
     version and the file list of one plan came from two reads of one file. One reader now: a plan reads
     the manifest once, and so does a publish, whose guard compares the same document the plan was
-    built from."""
+    built from.
+
+    Counted at `io.open` (and the builtin, the same function under another name), which every way of
+    reading a file goes through — `Path.read_text`, `read_bytes`, `Path.open`, `open()` — so a second
+    read cannot pass by choosing a different spelling."""
     out = _compile_with_everything(tmp_path, version=_AUTHORED_VERSION)
     manifest_path = out / "manifest.json"
-    reads: list[Path] = []
-    original = Path.read_text
+    reads: list[object] = []
+    original = io.open
 
-    def counting_read_text(self: Path, *args: Any, **kwargs: Any) -> str:
-        if self == manifest_path:
-            reads.append(self)
-        return original(self, *args, **kwargs)
+    def counting_open(file: Any, *args: Any, **kwargs: Any) -> Any:
+        if isinstance(file, (str, Path)) and Path(file) == manifest_path:
+            reads.append(file)
+        return original(file, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "read_text", counting_read_text)
+    monkeypatch.setattr(io, "open", counting_open)
+    monkeypatch.setattr(builtins, "open", counting_open)
 
     plan = plan_upload(out, "apoe")
     assert plan.versioned_path_in_repo == f"data/apoe/v{_AUTHORED_VERSION}"
@@ -1283,15 +1290,23 @@ def test_the_plan_reads_the_manifest_once(tmp_path: Path, monkeypatch: pytest.Mo
     assert len(reads) == 1
 
 
-def test_an_entry_with_an_empty_name_is_dropped_by_the_one_filter(tmp_path: Path) -> None:
+def test_an_entry_naming_no_file_is_read_one_way_and_refused(tmp_path: Path) -> None:
     """`_named_entries` kept an `artifact.files` entry whose `name` is `""`, which `_declared_files`
     dropped, so one manifest gave the attested list and the declared list two answers about the same
-    entry — and the plan refused with `attests ['']`, a file no publish could ever carry. One filter
-    over file entries now, and every reader drops it."""
+    entry, and the plan refused with `attests ['']` and a hint to recompile "if the file is missing".
+
+    One filter now: neither list carries the entry. The plan still refuses, because the attested list
+    is what `artifact.digest` covers and an entry naming no file is a digest no upload can satisfy;
+    dropping it quietly would publish that false claim. The refusal quotes the entry, as a malformed
+    input's refusal does. An optional declaration naming no file (a `logo` with an empty name) is
+    outside the digest and is dropped without a refusal, as before."""
     module_dir = _compiled_module(tmp_path / "m", version="1.2.3")
     baseline = plan_upload(module_dir, "test_module").files
-    document = json.loads((module_dir / "manifest.json").read_text(encoding="utf-8"))
-    document["artifact"]["files"].append({"name": "", "sha256": "sha256:" + "3" * 64, "size": 1})
+    original = json.loads((module_dir / "manifest.json").read_text(encoding="utf-8"))
+
+    unnamed = {"name": "", "sha256": "sha256:" + "3" * 64, "size": 1}
+    document = json.loads(json.dumps(original))
+    document["artifact"]["files"].append(unnamed)
     (module_dir / "manifest.json").write_text(json.dumps(document), encoding="utf-8")
 
     attested = _attested_parquets(document)
@@ -1300,4 +1315,13 @@ def test_an_entry_with_an_empty_name_is_dropped_by_the_one_filter(tmp_path: Path
     assert "" not in attested
     assert "" not in declared
     assert set(attested) <= set(declared)
+    with pytest.raises(FileNotFoundError) as caught:
+        plan_upload(module_dir, "test_module")
+    assert repr(unnamed) in str(caught.value)
+    assert "attests ['']" not in str(caught.value)
+
+    document = json.loads(json.dumps(original))
+    document["logo"] = {"name": "", "sha256": "sha256:" + "4" * 64, "size": 1}
+    (module_dir / "manifest.json").write_text(json.dumps(document), encoding="utf-8")
+    assert "" not in [name for name, _ in _declared_files(document)]
     assert plan_upload(module_dir, "test_module").files == baseline

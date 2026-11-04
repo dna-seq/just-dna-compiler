@@ -48,8 +48,8 @@ missing, a declared file edited after the compile, no annotation table) now prin
 `UPLOAD FAILED: …` line as the real run and exits 1, where it used to end in a traceback. The dry run still
 contacts nothing, so a versioned-path collision is reported by the real run only. The plan and the publish
 read `manifest.json` once (the version used to come from a second read), and an `artifact.files` entry whose
-`name` is `""` is now dropped like any other nameless entry instead of refusing the plan with
-`attests ['']`. No format or compiler change, and no identity moves.
+`name` is `""` is refused with the entry quoted, where the refusal used to read `attests ['']` and suggest the
+file was missing. No format or compiler change, and no identity moves.
 
 ## 2026-11-04 — RM353: the module publisher sends and guards exactly what the manifest declares (patch, on `main`)
 

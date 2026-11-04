@@ -381,25 +381,43 @@ def _literal_patterns(paths: Iterable[str]) -> list[str]:
     return [glob_escape(path) for path in paths]
 
 
-def _file_entries(entries: object) -> list[tuple[str, str | None]] | None:
-    """The ``(name, sha256)`` of each ``FileEntry``-shaped entry in a manifest list, or ``None`` when
-    the field is not a list at all.
+def _named_entry(entry: object) -> tuple[str, str | None] | None:
+    """``(name, sha256)`` of one ``FileEntry``-shaped manifest entry, or ``None`` when it names no file.
 
-    **The one filter over file entries (RM355).** An entry is kept when it is an object whose ``name``
-    is a non-empty string; a ``sha256`` that is not a string is ``None`` (unknown, never a hash). The
-    attested list and the declared list both go through here, so one manifest gives one answer about
-    an entry: ``_named_entries`` used to keep a ``""`` that ``_declared_files`` dropped, and the plan
-    then refused with ``attests ['']``, a file no publish could carry.
+    **The one filter over file entries (RM355).** An entry names a file when it is an object whose
+    ``name`` is a non-empty string; a ``sha256`` that is not a string is ``None`` (unknown, never a
+    hash). The attested list, the declared list and the plan's refusal of an unnamed attested entry all
+    read through here, so one manifest gives one answer about an entry: ``_named_entries`` used to keep
+    a ``""`` that ``_declared_files`` dropped.
     """
+    if not isinstance(entry, dict) or not isinstance(entry.get("name"), str) or not entry["name"]:
+        return None
+    sha256 = entry.get("sha256")
+    return entry["name"], sha256 if isinstance(sha256, str) else None
+
+
+def _file_entries(entries: object) -> list[tuple[str, str | None]] | None:
+    """The entries of a manifest list that name a file (``_named_entry``), or ``None`` when the field
+    is not a list at all."""
     if not isinstance(entries, list):
         return None
-    kept: list[tuple[str, str | None]] = []
-    for entry in entries:
-        if not isinstance(entry, dict) or not isinstance(entry.get("name"), str) or not entry["name"]:
-            continue
-        sha256 = entry.get("sha256")
-        kept.append((entry["name"], sha256 if isinstance(sha256, str) else None))
-    return kept
+    return [named for entry in entries if (named := _named_entry(entry)) is not None]
+
+
+def _unnamed_attested(document: dict) -> list[object]:
+    """The ``artifact.files`` entries that name no file — present, and unreadable as a file entry.
+
+    The filter drops them from every list, and the plan refuses on them, quoting each: the attested
+    list is the one ``artifact.digest`` is computed over, so an entry that cannot be sent is a digest
+    no upload can satisfy, and dropping it quietly would publish that false claim
+    (``@an-absent-input-is-the-unknown-arm-and-a-malformed-one-is-the-refusal``). The compiler never
+    writes one; a hand edit does.
+    """
+    artifact = document.get("artifact")
+    files = artifact.get("files") if isinstance(artifact, dict) else None
+    if not isinstance(files, list):
+        return []
+    return [entry for entry in files if _named_entry(entry) is None]
 
 
 def _attested_parquets(document: dict) -> list[str] | None:
@@ -426,7 +444,7 @@ def _declared_files(document: dict) -> list[tuple[str, str | None]]:
     the *spec*, which a compile does not copy into the module directory.
 
     A field that is not the shape it should be contributes nothing; every entry passes the one filter,
-    ``_file_entries``, that ``_attested_parquets`` reads through too (RM355).
+    ``_named_entry``, that ``_attested_parquets`` reads through too (RM355).
     """
     entries: list[object] = []
     artifact = document.get("artifact")
@@ -438,7 +456,7 @@ def _declared_files(document: dict) -> list[tuple[str, str | None]]:
         entries.append({"name": provenance.get("file"), "sha256": provenance.get("sha256")})
     if isinstance(document.get("logs"), list):
         entries.extend(document["logs"])
-    return _file_entries(entries) or []
+    return [named for entry in entries if (named := _named_entry(entry)) is not None]
 
 
 def _hub_ignore_patterns() -> list[str]:
@@ -574,6 +592,15 @@ def _plan_from_document(
         files = [f for f in _ALLOW_PATTERNS if (module_dir / f).exists()]
         optional = declared
     else:
+        unnamed = _unnamed_attested(document)
+        if unnamed:
+            raise FileNotFoundError(
+                f"{name}: {_MANIFEST_FILENAME}'s artifact.files carries "
+                f"{'an entry' if len(unnamed) == 1 else f'{len(unnamed)} entries'} naming no file: "
+                f"{unnamed!r} — `artifact.digest` is computed over every attested entry, so no upload "
+                f"could carry what it covers. The compiler never writes such an entry; re-compile "
+                f"{module_dir}."
+            )
         artifact_files, refused = _sendable(module_dir, attested)
         unsent = [f for f in attested if f not in artifact_files]
         if unsent:

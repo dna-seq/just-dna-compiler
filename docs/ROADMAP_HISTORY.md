@@ -312,19 +312,24 @@ helper calls; the dry run goes through the same refusal handling as the real run
 (absent, unparseable, not an object), and `_module_version` is now a pure function of that pair, so the four
 `version_unknown_reason` strings are unchanged. `plan_upload` reads once and builds the plan through
 `_plan_from_document`; `upload_module` reads once and hands the same object to the plan and to
-`_versioned_conflict`, where it used to read the file a third time. One filter: `_file_entries` keeps an
-object whose `name` is a non-empty string, with its `sha256` or `None`, and both `_attested_parquets` and
-`_declared_files` read through it (`_named_entries` is gone), so an `artifact.files` entry named `""` is dropped
-from both lists; the plan used to refuse it as `attests ['']`. `upload --dry-run` now calls `plan_upload`
+`_versioned_conflict`, where it used to read the file a third time. One filter: `_named_entry` keeps an
+object whose `name` is a non-empty string, with its `sha256` or `None`, and `_attested_parquets`,
+`_declared_files` and the plan's new refusal all read through it (`_named_entries` is gone), so the two lists
+agree about an `artifact.files` entry named `""`. The plan refuses that entry, quoting it, rather than dropping
+it: it is inside `artifact.digest`, so dropping it quietly would publish a digest no upload can satisfy
+(`@an-absent-input-is-the-unknown-arm-and-a-malformed-one-is-the-refusal`; found in review, after a first
+build that dropped it). It used to refuse too, as `attests ['']` with a hint to recompile "if the file is
+missing". An optional declaration naming no file stays dropped, since it is outside the digest. `upload --dry-run` now calls `plan_upload`
 inside the same `try` as the real run, so a refusal prints the same `UPLOAD FAILED: …` line and exits 1
 without a traceback. The dry run still contacts nothing, so it cannot report a versioned-path collision,
 which needs the published manifest; the test uses a refusal the plan raises (a declared log appended to after
 the compile) and compares the dry run's stderr with the real run's. ENRICHER.md's signature block gains
 `upload_module`'s `force` and both snapshot functions' keyword-only `payload`. Tests: the dry run and the real
 run on one refused module (same stderr, `SystemExit` rather than the refusal), a counting test over
-`Path.read_text` on `manifest.json` (one read for a plan and one for a publish), and an empty-name entry. Each
-was mutated once and went red: the dry run moved back outside the `try`, a second read inside the plan, and the
-filter without its empty-name guard.
+`io.open` on `manifest.json`, which every way of reading a file passes through (one read for a plan and one
+for a publish), and an empty-name entry (absent from both lists, refused with the entry quoted). Each was
+mutated once and went red: the dry run moved back outside the `try`, a second read inside the plan (through
+`read_text`, then `read_bytes`), the filter without its empty-name guard, and the refusal removed.
 
 **Residuals** none
 
