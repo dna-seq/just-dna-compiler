@@ -40,6 +40,7 @@ from just_dna_format.base import merge_key
 from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.sources import SourceRow
+from just_dna_format.spelling import gene_key
 from just_dna_format.vocab import DOSAGE_SENSITIVITY_BY_CODE
 
 from just_dna_enricher.gene_metrics import _write_gene_metrics_csv, module_genes
@@ -235,11 +236,13 @@ def enrich_dosage_sensitivity(
     missing: list[str] = []
     # Read off the rows rather than rebuilding the merge key here — same reason the dict now reads
     # `GeneMetricsRow._KEY_FIELDS` instead of restating `(gene, dataset)` (S51).
-    done = {row.gene for row in existing.values() if row.dataset == dataset}
+    # Both sides by `gene_key` (RM363): ClinGen writes `APOE`, and an authored `Apoe` is that gene.
+    done = {gene_key(row.gene) for row in existing.values() if row.dataset == dataset}
+    rated = {gene_key(symbol): rating for symbol, rating in ratings.items()}
     for gene in module_genes(spec_dir):
-        if gene in done:
+        if gene_key(gene) in done:
             continue
-        rating = ratings.get(gene)
+        rating = rated.get(gene_key(gene))
         if rating is None or (rating.haploinsufficiency is None and rating.triplosensitivity is None):
             missing.append(gene)
             continue

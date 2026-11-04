@@ -29,6 +29,7 @@ maintained one, and where the two disagree this one is what a consumer may rely 
 | `derive` | Legacy→0.3 column derivations + read-time aliases | — (stdlib leaf) |
 | `normalize` | Inject-only authority-key stripper, `normalize_version` | — (stdlib leaf) |
 | `vrs` | GA4GH VRS allele ids: `derive_vrs_allele_id`, the GRCh38 refget table, the `vrs_id` cell codec and the PAR geometry (stdlib only) | — (stdlib leaf) |
+| `spelling` | One comparison per compared kind (RM363): `gene_key`, `drug_key`, `doi_key`/`doi_token`, `COMPARISON_KEYS` + `comparison_key`, and the `chrom` input fold `ChromCell` every model with a `chrom` declares; also `VALID_CHROMOSOMES` and `DOI_PATTERN` (0.8) | `vrs` |
 | `alleles` | Reference-free allele algebra: `parsimony_reduce`, `event_profile` — what two spellings of one indel have in common (0.5, RM31) — plus `split_genotype`, the genotype cell → allele list rule every tier and every consumer reads (0.6, S30) | — (stdlib leaf) |
 | `layout` | Where a module's machine-written sidecars live, what they may be called, and the atomic write that puts one there (S66) | — (stdlib leaf) |
 | `snapshot` | The reference-snapshot layout (`data/`, sidecars, `LICENSE.txt`, `release.json`), the `SnapshotRelease` record, `read_release`/`write_release` and the payload predicate (0.8, RM303) | `layout` |
@@ -36,22 +37,22 @@ maintained one, and where the two disagree this one is what a consumer may rely 
 | `manifest` | The `manifest.json` contract | `identity`, `vocab` |
 | `findings` | `CodedWarning` — a `str` subclass carrying the code its emission site named, and the carried/actionable split (0.7, RM131) | `vocab` |
 | `release_records` | What each release changed about compiled output + `needs_recompile` + the recomputation roster (0.7, RM126) | `base`, `identity`, `vocab` |
-| `resolution` | `ResolutionRow` (the 0.5 resolution table) | `vocab`, `vrs` |
-| `frequency` | `FrequencyRow` (the 0.5 allele-frequency table) | `vocab`, `vrs` |
+| `resolution` | `ResolutionRow` (the 0.5 resolution table) | `spelling`, `vocab`, `vrs` |
+| `frequency` | `FrequencyRow` (the 0.5 allele-frequency table) | `spelling`, `vocab`, `vrs` |
 | `gene_metrics` | `GeneMetricsRow` (the 0.5 gene-constraint table) | `vocab` |
-| `literature` | `LiteratureRow` (the 0.5 citation table) | `spec`, `vocab` |
+| `literature` | `LiteratureRow` (the 0.5 citation table) | `base`, `normalize`, `spelling`, `vocab` |
 | `sources` | `SourceRow` (the 0.5 data-source licensing table) | `vocab` |
 | `gene_validity` | `GeneValidityRow` (the 0.6 gene–disease validity table, RM24) | `base`, `normalize`, `vocab` |
-| `assertions` | `ClinicalAssertionRow` (the 0.6 clinical-assertion table, RM25) | `base`, `normalize`, `vocab` |
+| `assertions` | `ClinicalAssertionRow` (the 0.6 clinical-assertion table, RM25) | `base`, `normalize`, `spelling`, `vocab` |
 | `gwas` | `GwasEffectRow` (the 0.6 GWAS-effect table, RM90) | `base`, `normalize`, `spec`, `vocab` |
 | `concordance` | `ClinSigConcordanceRow` + `AuthorityCallRow` (the 0.7 paired concordance record, RM130) | `base`, `normalize`, `vocab` |
-| `expression` | `ExpressionEffectRow` (the 0.7 expression-effect table, RM194/RM200) | `base`, `normalize`, `vocab` |
+| `expression` | `ExpressionEffectRow` (the 0.7 expression-effect table, RM194/RM200) | `base`, `normalize`, `spelling`, `vocab` |
 | `locus_genes` | `LocusToGeneRow`, `ColocalisationRow` (the 0.8 Open Targets study-locus tables, RM333) | `base`, `normalize`, `vocab` |
 | `consequences` | `ConsequenceRow` (the 0.8 per-transcript consequence table, RM236) | `base`, `normalize`, `vocab` |
 | `ld_pairs` | `LdPairRow` (the 0.8 computed LD pair behind a proxy-measured study, RM331) | `base`, `normalize`, `vocab` |
-| `spec` | Authored DSL — `ModuleSpecConfig`, `VariantRow`, `StudyRow` | `base`, `derive`, `identity`, `manifest`, `vocab` |
-| `binning` | Measure→phenotype binning rows (the binning table kinds) | `base`, `spec`, `vocab` |
-| `pgx` | PGx star-allele rows (the PGx table kinds) | `base`, `spec`, `vocab` |
+| `spec` | Authored DSL — `ModuleSpecConfig`, `VariantRow`, `StudyRow` | `base`, `derive`, `identity`, `manifest`, `spelling`, `vocab` |
+| `binning` | Measure→phenotype binning rows (the binning table kinds) | `base`, `spec`, `spelling`, `vocab` |
+| `pgx` | PGx star-allele rows (the PGx table kinds) | `base`, `spec`, `spelling`, `vocab` |
 | `pgs` | `PgsRow` (PGS-Catalog-ID manifest) | `base`, `vocab` |
 | `overrides` | `OverrideRow` + `OVERRIDABLE_TABLES` + `apply_overrides` — the 0.7 authored overlay over the covered derived tables (RM124) | `base`, `normalize`, `vocab`, and the covered derived row models |
 | `meta` | `MetaRow` + the member grammar (`parse_members`, `normalize_members`, `member_rank`) — the 0.8 meta-table (RM28/RM323/RM324) | `base`, `pgx`, `spec`, `vocab` |
@@ -298,7 +299,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
   | `VALID_VERIFICATION_CHECKS` | 27 (closed) |  |
   | `VALID_VERIFICATION_SKIPS` | 8 (closed) |  |
   | `VALID_VERIFICATION_INDEPENDENCE` | 2 (closed) | `VerificationRecord.independence`, derived from the record's two sources and never typed (RM292) |
-  | `VALID_WARNING_CODES` | 81 (closed) | every code a compile may stamp on a finding (members in `RETIRED_WARNING_CODES` are no longer emitted); the catalogue with texts is in [COMPILER.md](COMPILER.md) |
+  | `VALID_WARNING_CODES` | 82 (closed) | every code a compile may stamp on a finding (members in `RETIRED_WARNING_CODES` are no longer emitted); the catalogue with texts is in [COMPILER.md](COMPILER.md) |
 
   Vocabularies owned by a leaf rather than by `vocab` (`spec`, `binning`, `pgx`, `pgs`, `manifest`,
   `sources`) are reached through the field markers above and not listed here, for the reason the bullet

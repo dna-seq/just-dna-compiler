@@ -41,6 +41,32 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM363: a gene, drug, DOI, PMID and contig compare by one rule in every tier (0.8, uncut)
+
+The 0.8 audit's class B2 (`@one-normalizer-two-spellings`). What now works:
+
+- An `Apoe` diplotype is reached by its `APOE` allele in `meta_resolved.parquet`, and `diplotypes[gene=apoe]`
+  matches `APOE` rows; the phase checks, the derived-row orphan checks and `manifest.stats.genes` treat a
+  gene written in two cases as one gene.
+- `chr12` on `studies.csv`, `haplotypes.csv`, `pharm_variants.csv` and `heteroplasmy.csv` (and the four
+  derived tables) is stored as `12`, the way `variants.csv` has stored it since 0.5, so a coordinate study
+  no longer false-orphans against its coordinate variant. Nothing that validated stops validating.
+- `Azathioprine` and `azathioprine` are one `(sex, drug)` scope in `meta_resolved.parquet`, and a new warning,
+  `meta_member_drug_disagrees`, says when a drug-scoped meta row's member reaches rows about another drug.
+- `duplicate_study_citation` treats `[PMID: N]` and `N`, and a DOI with or without trailing punctuation, as
+  one citation (`spec.citation_key`); the literature pass keys a DOI-only row by the same token as its
+  PubMed path.
+- The enricher compares an authored gene or drug with PharmVar, ClinPGx, the drug labels, ClinGen, GenCC
+  and HGNC by the same keys, and the drafters' `--gene`/`--drug` filters do too.
+
+The mechanism is `just_dna_format.spelling` (`COMPARISON_KEYS`, `comparison_key`, `ChromCell`), with three
+guards: a model walk asserting the set of gene/drug/DOI/contig fields equals the registry and every `chrom`
+field folds; an AST walk over the compiler and the enricher asserting no site compares one of them raw
+(six sites comparing one source's own records are listed with their reason); and an AST walk refusing a
+hand-typed `.lower()`/`.casefold()` on one, and `DOI_PATTERN` outside the module owning the DOI rule.
+Gene and drug cells stay as written; the duplicate-row refusal is unchanged. Consumer view:
+[INTEGRATION_0_8 § 1.20](INTEGRATION_0_8.md).
+
 ## 2026-11-04 — RM28: a `meta.csv` row can be scoped to a drug, so one phenotype pair states each thiopurine's recommendation (0.8, uncut)
 
 - **`meta.csv` gains an optional `drug`** (`MetaRow.drug`, free text as on `diplotypes.csv`, first in

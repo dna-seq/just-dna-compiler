@@ -1595,9 +1595,13 @@ in authored order) and the module's `tier_scale`. `reverse` writes `meta.csv` ba
 
 **Refusals and findings.** The grammar's refusals are the model's (SCHEMAS). Three need the module and
 run in `validate` and `compile` alike: a `tier` in a module with no `tier_scale` (refused);
-`meta_selector_matches_nothing` (a warning: almost always a typo); and `meta_member_allele_ambiguous` (a
+`meta_selector_matches_nothing` (a warning: almost always a typo); `meta_member_allele_ambiguous` (a
 warning: a bare-locus member on a direction row whose `variants.csv` rows do not share one
-`effect_allele`, so the direction is withheld). A duplicate key (`A & B` against `B & A`) is refused
+`effect_allele`, so the direction is withheld); and `meta_member_drug_disagrees` (a warning, RM363: a
+row scoped to a `drug` whose member reaches rows stating another drug; nothing is withheld). A member's
+conditions, the `(sex, drug)` scopes and an allele's reach into its gene's diplotypes compare `gene`,
+`drug`, `doi` and `chrom` through `spelling.comparison_key`, so a value written in another case is the
+same value; ``meta_resolved.parquet`` names a scope by its first spelling in `meta.csv` row order. A duplicate key (`A & B` against `B & A`) is refused
 through `_TABLE_DUPE_KEYS` like every keyed table's. The enricher's rsID currency pass asks dbSNP about
 every rsID a member names, so one variant written under two keys is caught where NCBI is the oracle
 (ENRICHER.md).
@@ -1943,7 +1947,8 @@ actionable, which is `vocab.ACTIONABLE_WARNING_CODES`, derived by subtraction:
   `gene_validity_currency_undecidable`
 - **the overlay** — `overlay_update_unmatched`, `overlay_update_target_unreachable`,
   `overlay_answer_vindicated`, `overlay_targets_missing_table`, `overlay_rows_suppressed`
-- **the meta-table** (0.8) — `meta_selector_matches_nothing`, `meta_member_allele_ambiguous`
+- **the meta-table** (0.8) — `meta_selector_matches_nothing`, `meta_member_allele_ambiguous`,
+  `meta_member_drug_disagrees`
 - **verification and closure** — `verification_two_copies`, `verification_unreadable`,
   `verification_stale`, `verification_findings_recorded`, `module_not_closed`,
   `closure_discarded_unreadable_record`

@@ -32,6 +32,7 @@ rely on that.
 | `meta_selector_matches_nothing` | RM28 | A `meta.csv` member matches no row of its table, almost always a value spelled other than the table stores it. A warning in both modes. Actionable. |
 | `phenotype_class_unrecognized` | RM326 | A `studies.csv` `phenotype_class` outside the recommended twelve (`RECOMMENDED_PHENOTYPE_CLASSES`), one finding naming each token with its row count. The set is open and the rows stand. A warning in both modes. Actionable: respell a second spelling of a recommended class, or leave a genuinely new class. |
 | `meta_member_allele_ambiguous` | RM28 / RM327 | A bare-locus member (`variants[variant_key=…]`) on a `meta.csv` row stating a `direction`, whose `variants.csv` rows do not share one `effect_allele`; the row's direction is withheld (`meta.parquet` `withheld`). A warning in both modes. Actionable. |
+| `meta_member_drug_disagrees` | RM363 | A `meta.csv` row scoped to a `drug` whose member reaches rows (`diplotypes.csv`, `pharm_variants.csv`) stating another drug, compared by `spelling.drug_key` so case is never a disagreement; the message names the drugs and the line. Nothing is withheld: the expansion is unchanged. A warning in both modes. Actionable. |
 
 ### 1.1 A retired code: `quality_floor_inverted`
 
@@ -386,6 +387,29 @@ leftmost spelling, and its `vrs_id` is what joins it.
 
 **This breaks a 0.7 reader of a 0.8-enriched `resolution.csv`**, for § 1.18's reason: `ResolutionRow`
 forbids unknown columns. Same remedy.
+
+## 1.20 One value, one comparison: gene, drug, DOI, PMID and contig (RM363)
+
+A gene symbol, a drug, a DOI, a PMID and a contig are each compared through one rule now, in every tier:
+`just_dna_format.spelling` (`gene_key`, `drug_key`, `doi_key`, `comparison_key`, `ChromCell`) and
+`spec.citation_key`. Gene and drug cells are **stored as written**; only the comparison changed. A
+module that writes each value one way compiles to the same bytes as before.
+
+| Surface | What changed | What to do |
+| --- | --- | --- |
+| `studies.parquet`, `haplotypes.parquet`, `pharm_variants.parquet`, `heteroplasmy.parquet` `chrom` (and the four derived tables' `chrom`) | A spelling of a primary-assembly contig is stored as the member, as `variants.csv`'s has been since 0.5: `chr12` → `12`, `chrM` → `MT`. Any other value is kept as written, and no model refuses anything it accepted before. So a coordinate study meets its coordinate variant (`study_variant_orphan` stops firing on the `chr` prefix alone), and a positional row's stamped `variant_key` is the one `variants.csv` mints. `content_signature` moves for a module that wrote `chr`-prefixed contigs on those tables. | Nothing, unless you joined those parquets on a `chr`-prefixed contig: join on the bare name, which is what every other table carries. |
+| `meta_resolved.parquet` | An `allele_function` member reaches a diplotype whose gene is written in another case (the audit's case: an `Apoe` diplotype lost its tier and age). Two `drug` spellings are one scope, named by the first spelling in `meta.csv` row order. A member's conditions compare `gene`, `drug`, `doi` and `chrom` by their key, so `diplotypes[gene=apoe]` matches `APOE` rows. | Nothing, unless you resolve scopes yourself: compare `drug` with `spelling.drug_key`. |
+| `manifest.stats.genes` / `gene_count`, and `genes` on the `gene_metrics`, `gene_validity` and `expression_effects` blocks | One entry per gene by `gene_key`, in its first spelling, sorted. A module writing one gene two ways published both before. | Nothing. |
+| `duplicate_study_citation` | Keyed on `spec.citation_key`: a PMID written `[PMID: N]` beside a bare `N`, and a DOI with a trailing `.`/`,`/`;` beside the clean token, are one citation and now warn. | Nothing; the text is unchanged. |
+| `diplotype_definitions_identical`, `diplotype_phase_ambiguous`, `derived_row_orphan` (`gene_metrics.csv`, `gene_validity.csv`) | Group and compare genes by `gene_key`; a message names a gene by its first spelling. | Nothing. |
+| `literature.csv`, Crossref and Europe PMC lookups for a DOI-only (`pmid=NONE`) row | The DOI key strips trailing `.`/`,`/`;`, as the PubMed-path check already did. A sidecar written by 0.8 before this change from a cell ending in punctuation holds the old key and gains a second row on the next pass (merge-not-clobber). | Delete `literature.csv` and re-run the pass if a DOI-only cell of yours ended in punctuation (`@sidecar-authoritative`). |
+| `spec.doi_key`, `spec.DOI_PATTERN`, `spec.VALID_CHROMOSOMES` | Defined in `just_dna_format.spelling` now; `spec` imports all three, so the old import path still resolves. `doi_key` strips trailing `.`/`,`/`;` and case-folds. | Import them from `spelling` in new code. |
+| The enricher's PGx, ClinPGx, drug-label, ClinGen, gene-validity, gene-metrics and HGNC passes, and the drafters' `--gene`/`--drug` filters | An authored gene or drug is compared with the source's by `gene_key`/`drug_key`: an authored `Cyp2c19` is checked against PharmVar's `CYP2C19` rather than counted as an allele no authority lists. | Nothing. |
+
+**Unchanged on purpose.** The duplicate-row **refusal** (`<table>.csv: duplicate row for key …`) still keys
+on the stored cells, so two rows differing only in a gene's or a drug's case are not refused: folding the
+key would refuse data a published module may hold (Principle 3). `trait_efo_id`, haplotype and allele
+names, `sex` and rsIDs compare as written; each already has one rule.
 
 ## 2. What to change
 

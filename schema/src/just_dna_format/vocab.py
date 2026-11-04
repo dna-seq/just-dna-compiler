@@ -1742,6 +1742,7 @@ VALID_WARNING_CODES: frozenset[str] = frozenset(
         # ── the meta-table (meta.csv, 0.8) ──
         "meta_selector_matches_nothing",  # a meta member that matches no row of its table — a typo
         "meta_member_allele_ambiguous",  # a bare-locus member on a direction row whose rows disagree on effect_allele
+        "meta_member_drug_disagrees",  # a drug-scoped meta row whose member reaches rows about another drug
         # ── verification and closure ──
         "verification_two_copies",  # an attestation under two legal spellings; neither is preferred
         "verification_unreadable",  # a `verification.json` that could not be read

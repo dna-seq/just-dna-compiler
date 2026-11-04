@@ -50,6 +50,7 @@ from just_dna_format.manifest import (
     Weighting,
 )
 from just_dna_format.normalize import normalize_version, reject_authority_keys
+from just_dna_format.spelling import DOI_PATTERN, VALID_CHROMOSOMES, ChromCell, doi_key
 from just_dna_format.vocab import (
     ACTIONABILITY_SEED,
     ALLELE_PATTERN,  # noqa: F401 — re-exported for backward compat (genotype grammar moved to base)
@@ -74,7 +75,6 @@ from just_dna_format.vrs import normalize_chrom, sole_build_naming_contig
 # authored models). `VALID_DIRECTIONS`/`VALID_SIGNIFICANCE`/`VALID_CLIN_SIG` (and `ALLELE_PATTERN`)
 # are re-exported here for backward compatibility. Spec-only vocabularies stay below.
 VALID_STATES: frozenset[str] = frozenset({"risk", "protective", "neutral", "significant", "alt", "ref"})
-VALID_CHROMOSOMES: frozenset[str] = frozenset({str(i) for i in range(1, 23)} | {"X", "Y", "MT"})
 # `flags` is an OPEN list. These are the reserved tags the tooling acts on; any other tag is
 # accepted and surfaced as INFO (not a warning) by the compiler. Never put direction / clinical
 # / consequence / drug words here — those have (or get) typed columns.
@@ -91,11 +91,6 @@ PMID_PATTERN: re.Pattern[str] = re.compile(r"\b(\d{1,8})\b")
 # `PMC-3110566`, `pmcid: 3110566`), so `extract_pmids` can decline the digits inside it and the
 # refusal can say which id it saw rather than which one it wanted.
 PMCID_PATTERN: re.Pattern[str] = re.compile(r"PMC(?:ID)?\s*[:\-]?\s*(\d{1,9})", re.IGNORECASE)
-# A DOI is `10.<registrant>/<suffix>` (Crockford/Handle grammar). Real sources present it bare
-# (`10.1234/abc.def`) or wrapped in a URL (`https://doi.org/10.1234/abc`); we accept any string that
-# carries one DOI token and keep it verbatim, mirroring the PMID contract. Wider than a PMID: it also
-# covers preprints/books/datasets with no PubMed id (docs/USE_CASES.md §4a, RM11).
-DOI_PATTERN: re.Pattern[str] = re.compile(r"10\.\d{4,9}/\S+")
 # The one sentinel `pmid` accepts in place of a PubMed id (RM336): the row cites a work PubMed does not
 # index (a preprint, a book, a dataset), so `doi` carries the citation instead and becomes mandatory —
 # `check_citation_pair` is that rule. Exactly `NONE`, case-sensitive: the spellings an author reaches for
@@ -226,14 +221,17 @@ def cited_as(pmid: str | None, doi: str | None) -> str | None:
     return pmid
 
 
-def doi_key(doi: str) -> str:
-    """The DOI token of a `doi` cell, lower-cased: what two spellings of one DOI share.
+def citation_key(pmid: str | None, doi: str | None) -> tuple[str, ...] | None:
+    """The work a row cites, as two rows compare it (RM363): one key however the cell is spelled.
 
-    DOIs are case-insensitive and a cell may hold the bare token or a doi.org URL, so a key built from
-    the cell verbatim would read one preprint written two ways as two citations.
-    """
-    match = DOI_PATTERN.search(doi)
-    return (match.group(0) if match else doi.strip()).lower()
+    A PubMed citation is its PMIDs (`extract_pmids`, sorted), so `30642433` and `[PMID: 30642433]` are one
+    paper; a `NONE` row is its DOI (`spelling.doi_key`), so a bare token and a doi.org URL with a trailing
+    `.` are one preprint. `None` for a row citing nothing (`pmid` is optional on some citing models)."""
+    if pmid is None:
+        return None
+    if pmid == PMID_NONE:
+        return (PMID_NONE, doi_key(doi)) if doi else (PMID_NONE,)
+    return tuple(sorted(extract_pmids(pmid))) or (pmid,)
 
 
 def validate_doi_cell(value: str | None) -> str | None:
@@ -569,7 +567,7 @@ class VariantRow(AuthoredModel):
     rsid: str | None = Field(
         json_schema_extra=since("0.2.0"), default=None, description="dbSNP identifier, e.g. rs1801133"
     )
-    chrom: str | None = Field(
+    chrom: ChromCell = Field(
         default=None,
         json_schema_extra={**vocabulary("chromosome", VALID_CHROMOSOMES), **since("0.2.0")},
         description=(
@@ -1195,7 +1193,7 @@ class StudyRow(CitationPair, AuthoredModel):
     )
     # No `chromosome` marker: `StudyRow` runs no chrom validator (only `VariantRow` does), and a
     # marker must describe what actually rejects. Same call as the PGx tables — see `pgx.py`.
-    chrom: str | None = Field(
+    chrom: ChromCell = Field(
         json_schema_extra=since("0.2.0"), default=None, description="Chromosome (for position-only variants)"
     )
     start: int | None = Field(

@@ -42,6 +42,7 @@ from pathlib import Path
 from just_dna_compiler.draft import DraftReport, PartialRow, append_partial_rows
 from just_dna_format.snapshot import SnapshotRelease, read_release
 from just_dna_format.spec import StudyRow, VariantRow
+from just_dna_format.spelling import gene_key
 from just_dna_format.vrs import UnsupportedBuildError, refget_accession
 
 from just_dna_enricher.civic_build import CIVIC_PARQUET
@@ -458,11 +459,11 @@ def draft_panel_from_civic(
 
     rows = _snapshot_rows(Path(reference))
     result.dataset = civic_dataset_label(Path(reference))
-    wanted = {g.strip().upper() for g in genes if g.strip()}
+    wanted = {gene_key(g) for g in genes if g.strip()}
 
     admitted: list[dict] = []
     for row in rows:
-        if wanted and (row["gene"] or "").upper() not in wanted:
+        if wanted and gene_key(row["gene"] or "") not in wanted:
             result.withheld["gene_not_requested"] += 1
             continue
         admitted.append(row)

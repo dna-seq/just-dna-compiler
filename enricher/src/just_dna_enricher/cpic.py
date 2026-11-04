@@ -47,6 +47,7 @@ import duckdb
 import httpx
 from just_dna_format.alleles import non_nucleotide_reason, symbolic_allele_defect
 from just_dna_format.snapshot import SnapshotRelease, read_release
+from just_dna_format.spelling import drug_key
 from tenacity import (
     retry,
     wait_exponential_jitter,
@@ -435,7 +436,7 @@ class CpicClient:
         Deterministically ordered (population, phenotype) so a re-draft emits the same rows in the
         same order (Principle 7).
         """
-        found = self._get("drug", {"select": "drugid,name", "name": f"eq.{drug.strip().lower()}"})
+        found = self._get("drug", {"select": "drugid,name", "name": f"eq.{drug_key(drug)}"})
         if not found:
             return []
         rows = self._get(
@@ -459,7 +460,7 @@ class CpicClient:
                 CpicRecommendation(
                     gene=gene,
                     phenotype=phenotype,
-                    drug=drug.strip().lower(),
+                    drug=drug_key(drug),
                     population=(row.get("population") or "").strip(),
                     classification=map_classification(row.get("classification")),
                     recommendation=(row.get("drugrecommendation") or "").strip() or None,
@@ -483,7 +484,7 @@ class CpicClient:
         explain a *negative*: the ordinary path already knows the drug exists, and paying a second
         request on every successful draft to answer a question nobody asked is the wrong trade.
         """
-        return bool(self._get("drug", {"select": "name", "name": f"eq.{drug.strip().lower()}"}))
+        return bool(self._get("drug", {"select": "name", "name": f"eq.{drug_key(drug)}"}))
 
     def partner_genes(self, gene: str, drug: str) -> list[str]:
         """The genes CPIC keys this drug's recommendations on *together with* `gene` (S102).
@@ -500,7 +501,7 @@ class CpicClient:
         same thing. Empty means no multi-gene row names `gene` for this drug, which is also what an
         unknown drug returns — `knows_drug` is the one that tells those apart.
         """
-        found = self._get("drug", {"select": "drugid,name", "name": f"eq.{drug.strip().lower()}"})
+        found = self._get("drug", {"select": "drugid,name", "name": f"eq.{drug_key(drug)}"})
         if not found:
             return []
         rows = self._get("recommendation", {"select": "phenotypes", "drugid": f"eq.{found[0]['drugid']}"})
@@ -680,7 +681,7 @@ class CpicSnapshotClient:
         rows = self._rows(
             "recommendations.parquet",
             "gene = ? AND drug = ? AND gene_count = 1",
-            [gene, drug.strip().lower()],
+            [gene, drug_key(drug)],
             "gene, phenotype, drug, population, classification, recommendation, implication, activity_score",
         )
         out = [
@@ -729,7 +730,7 @@ class CpicSnapshotClient:
         named = self._rows(
             "recommendations.parquet",
             "gene = ? AND drug = ? AND gene_count > 1",
-            [gene, drug.strip().lower()],
+            [gene, drug_key(drug)],
             "gene",
         )
         if not named:
@@ -737,7 +738,7 @@ class CpicSnapshotClient:
         others = self._rows(
             "recommendations.parquet",
             "drug = ? AND gene_count > 1 AND gene <> ?",
-            [drug.strip().lower(), gene],
+            [drug_key(drug), gene],
             "DISTINCT gene",
             "gene",
         )

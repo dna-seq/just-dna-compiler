@@ -35,6 +35,73 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM363 — one value, several normalizers: a gene, a drug, a DOI, a PMID and a contig were each compared by more than one rule
+
+**Severity** medium · **Status** SHIPPED 2026-11-04 on `0.8`, uncut — a minor (the 0.8 audit, round 1) · **Owner**
+format (`spelling.py`) + compiler + enricher · **Motivating case** the 0.8 four-model audit, class B2 · *related*
+`@one-normalizer-two-spellings`, `@registry-completeness`, RM351, RM356
+
+**The class.** A value that people and sources write more than one way, compared or keyed in more than one
+place, where a second place compares by a different rule than the first (or by none). Each site is right
+alone; the module answers two ways. RM356 made gene comparison case-insensitive in the PGx duplicate
+checks, and the meta-table's expansion two files away still compared raw.
+
+**Instances, re-verified on `0.8` at `0a5293b`** (line numbers before → the site after):
+
+- **Gene.** `compiler/.../meta.py:320` `diplotype.gene == target.gene` → `gene_key` both sides (reproduced:
+  `apoe_klvs_meta` with the ε3/ε4 diplotype's gene `Apoe` compiled green and `meta_resolved.parquet` lost
+  that row's tier A / LATE); `meta.py:171` member conditions compared `str(stored) == value`, so
+  `diplotypes[gene=apoe]` matched nothing → `comparison_key`; `table_checks.py:227` grouped the phase check
+  by the raw gene two lines after `:220` normalized it → the key, named by first spelling;
+  `manifest.py:445/507/548/579/709` published `APOE` and `Apoe` as two genes → `distinct_spellings`;
+  `fact_checks.py:587-590/705-708` (`derived_row_orphan`) → `gene_key`; `tables.py:244` `_gene_key`, a
+  compiler-private copy → `spelling.gene_key`. Enricher: `pgx.py:229/232/294/596` (authored gene against
+  PharmVar's/CPIC's), `clingen.py:238/242`, `gene_validity.py:472/480`, `gene_metrics.py:284`,
+  `identifiers.py:1424/1434`, `drug_labels.py:353/368/555`, and four drafters' `--gene` filters
+  re-typing `.strip().upper()` (`clinpgx_draft.py:183/198/344`, `mitomap_draft.py:259/263`,
+  `strchive_draft.py:234/235`, `civic_draft.py:461/465`) → `gene_key`.
+- **Contig.** `VariantRow` folded `chr12` → `12`; `StudyRow` (`spec.py:1198`), `HaplotypeRow` (`pgx.py:159`),
+  `PharmVariantRow` (`pgx.py:558`), `HeteroplasmyRow` (`binning.py:670`) and the four derived models kept
+  `chr12` (reproduced: a `chr12` coordinate study against a `chr12` coordinate variant warned
+  `['chr12:111446804:C']` as an orphan). → every `chrom` field is `spelling.ChromCell`, an input fold to the
+  member for a primary-assembly spelling and verbatim otherwise; the canonical spelling is the one
+  `variant_key` and `resolution.csv` already used (bare, `MT`).
+- **DOI.** `spec.doi_key` (`spec.py:236`) kept trailing punctuation and `literature._doi_token`
+  (`literature.py:2521`) stripped `.,;` (measured: `10.1101/2024.01.01.123456.` keyed two ways). The DOI-only
+  path (`literature.py:567-570/1663/1668`, Crossref's request) and `duplicate_study_citation`
+  (`table_checks.py:394`) used the first; the PubMed path (`:1764/:2484/:2489`) the second; schema
+  `literature.py:282` ran `DOI_PATTERN` itself. → one body, `spelling.doi_token`/`doi_key`.
+- **PMID.** `duplicate_study_citation` keyed the raw `pmid` cell, so `[PMID: 30642433]` and `30642433` were
+  two citations while `cited_pmids` read them as one → `spec.citation_key` (PMIDs through `extract_pmids`, or
+  `NONE` + the DOI key).
+- **Drug.** No rule anywhere: `MetaRow.drug` scopes (`meta.py:_scope`) and member conditions compared raw, so
+  `Azathioprine` and `azathioprine` were two scopes; `clinpgx.py:356/370`, `cpic.py` (seven queries),
+  `clinpgx_draft.py:182/223` and `drug_labels.py:348/364/368` each re-typed `.strip().lower()` or
+  `.casefold()` → `drug_key`; `meta_resolved.parquet` names a folded scope by its first spelling. A meta
+  row's `drug` was never compared with its member rows' → `meta_member_drug_disagrees` (new code, warning in
+  both modes, nothing withheld).
+
+**Hunted and not instances.** `trait_efo_id`, haplotype and allele names, `sex` (a closed vocabulary stored
+as its member), rsIDs (`^rs\d+$`, one spelling), ancestry and population labels (`normalize_population`,
+one rule): each is compared by one rule everywhere. Six enricher sites compare one source's records among
+themselves (the ACMG SF list, STRchive's loci) and stay raw, listed with that reason in the guard.
+
+**The mechanism.** `just_dna_format.spelling` holds one comparison per kind (`gene_key`, `drug_key`,
+`doi_key`/`doi_token`, and `fold_chrom` as `ChromCell`), `COMPARISON_KEYS` maps a column name to it, and
+`comparison_key(column, value)` is what generic code (meta selectors, `same_row`'s distinct-when-stated
+columns, meta scopes) calls. Gene and drug cells are stored as written (`@verbatim-except-order`); `chrom`
+keeps the input fold `VariantRow` already had. The guards (`schema/tests/test_one_normalizer_per_kind.py`):
+the set of string fields named `gene`/`*_gene`/`drug`/`doi`/`chrom` over `_ALL_MODELS` equals the registry;
+the set of `chrom` fields equals the set declared `ChromCell`; an AST walk over `compiler/src` and
+`enricher/src` finds no comparison, set or dict key, or `setdefault`/`add`/`get` key over a compared
+attribute outside a key function, the six one-source sites excepted by equality; no tier types
+`.lower()`/`.upper()`/`.casefold()` onto a value named as a compared kind; `DOI_PATTERN` is matched only in
+`spelling.py` and `spec.py`. Each was mutated once (a reverted `meta.py:320`, a `chrom` field un-typed, a
+`partner_gene` field added) and went red. Behaviour on the real compile path:
+`compiler/tests/test_one_normalizer_per_kind.py`, with a round trip carrying two spellings of each kind.
+
+**Residuals** won't fix — the duplicate-row refusal still keys on stored cells, because folding gene or drug case there would refuse rows a published module may hold (Principle 3) · won't fix — `trait_efo_id` written `EFO_n` and `EFO:n` stays two values, because unifying an ontology CURIE's two legal forms is a vocabulary decision and not a second normalizer · won't fix — an enricher query to a remote source (PharmVar's alleles for a gene, gnomAD's constraint, HGNC) still sends the authored spelling, because which case each remote accepts is that source's convention and the answers are now compared by key
+
 ## RM270 — an indel's artifact key is its source's spelling: a left-aligned VCF misses a respelled row, and the spelling-independent id the enricher mints never reaches the artifact
 
 **0.8, decided 2026-11-03.** Taken into 0.8 by the maintainer, with the rest of the indel-placement fixes (RM304, RM267, RM270, RM292, RM305). The status line below predates that decision.

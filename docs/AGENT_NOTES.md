@@ -1207,6 +1207,12 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   reach**; comparing them only to each other passes when both land on `other`. `clin_sig.py` imports
   `VALID_CLIN_SIG` and nothing else, so a runtime pass reads it without the builders' `[dev]` extra —
   which is the argument for a shared module rather than one builder importing another.
+  **The same class, one level up (RM363):** a value *compared* in several places is the same hazard as a
+  vocabulary mapped in several. RM356 made gene comparison case-insensitive in the PGx checks and the
+  meta-table two files away still compared raw, so an `Apoe` diplotype silently lost its tier. One
+  comparison per kind lives in `just_dna_format.spelling` (`COMPARISON_KEYS`, `comparison_key`,
+  `ChromCell`), and the guard is an AST walk for the *site*, not a test of the function: the function
+  was right both times, and what drifted was a caller that never called it.
 
 - `@the-tier-is-a-property-of-the-subject` — **A join with two granularities needs two kinds of subject,
   or the coarse answer is reported once per fine claim (RM166).** ClinPGx's drug labels name a gene on

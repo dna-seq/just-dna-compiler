@@ -53,6 +53,7 @@ from just_dna_format.gene_validity import (
 )
 from just_dna_format.layout import atomic_writer
 from just_dna_format.normalize import normalize_utc_timestamp, now_utc_iso
+from just_dna_format.spelling import gene_key
 
 from just_dna_enricher.gene_metrics import GeneMetricsEnrichmentError, module_genes
 from just_dna_enricher.licensing import (
@@ -469,7 +470,7 @@ def enrich_gene_validity(
 
     by_gene: dict[str, list[ValidityAssertion]] = {}
     for assertion in assertions:
-        by_gene.setdefault(assertion.gene, []).append(assertion)
+        by_gene.setdefault(gene_key(assertion.gene), []).append(assertion)
 
     fetched_at = now_utc_iso()
     seen = {_merge_key(row) for row in existing_rows}
@@ -477,7 +478,7 @@ def enrich_gene_validity(
     covered: list[str] = []
     missing: list[str] = []
     for gene in _module_genes(spec_dir):
-        found = by_gene.get(gene, [])
+        found = by_gene.get(gene_key(gene), [])
         if not found:
             missing.append(gene)
             continue

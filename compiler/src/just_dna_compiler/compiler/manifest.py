@@ -74,6 +74,7 @@ from just_dna_format.manifest import (
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.sources import SourceRow, taints_commercial_use, taints_redistribution
 from just_dna_format.spec import ModuleSpecConfig, VariantRow
+from just_dna_format.spelling import distinct_spellings
 from just_dna_format.verification import (
     attestation_failure,
     module_binding,
@@ -442,7 +443,7 @@ def variant_stats(variants: list[VariantRow]) -> dict[str, Any]:
     published manifest claimed a `variant_count` one higher than the artifact contained — the RM44
     class of defect exactly, a manifest number a catalog keys on and cannot check.
     """
-    genes = sorted({v.gene for v in variants if v.gene})
+    genes = distinct_spellings((v.gene for v in variants), "gene")
     return {
         "variant_count": len({v.variant_key for v in variants}),
         "unique_rsids": len({v.rsid for v in variants if v.rsid is not None}),
@@ -504,13 +505,19 @@ def module_stats(variants: list[VariantRow], kind_rows: dict[str, list[Any]] | N
     pass looked it up never becomes a gene the module claims to be about.
     """
     stats = variant_stats(variants)
-    genes = set(stats["genes"])
-    for csv_name, _model in _GENE_BEARING_TABLE_KINDS:
-        for row in (kind_rows or {}).get(csv_name) or []:
-            gene = getattr(row, "gene", None)
-            if gene:
-                genes.add(gene)
-    ordered = sorted(genes)
+    # One gene however it is written (RM363): `APOE` and `Apoe` are one entry, in its first spelling —
+    # `variants.csv` first, then the table kinds in registry order.
+    ordered = distinct_spellings(
+        [
+            *(v.gene for v in variants),
+            *(
+                getattr(row, "gene", None)
+                for csv_name, _model in _GENE_BEARING_TABLE_KINDS
+                for row in (kind_rows or {}).get(csv_name) or []
+            ),
+        ],
+        "gene",
+    )
     stats["gene_count"] = len(ordered)
     stats["genes"] = ordered
     return stats
@@ -545,7 +552,7 @@ def _gene_metrics_block(rows: list[GeneMetricsRow]) -> GeneMetrics | None:
         sources=sorted({r.source for r in rows if r.source}),
         datasets=sorted({r.dataset for r in rows if r.dataset}),
         row_count=len(rows),
-        genes=sorted({r.gene for r in rows}),
+        genes=distinct_spellings((r.gene for r in rows), "gene"),
     )
 
 
@@ -576,7 +583,7 @@ def _gene_validity_block(rows: list[GeneValidityRow]) -> GeneValidity | None:
         sources=sorted({r.source for r in rows if r.source}),
         datasets=sorted({r.dataset for r in rows if r.dataset}),
         row_count=len(rows),
-        genes=sorted({r.gene for r in rows}),
+        genes=distinct_spellings((r.gene for r in rows), "gene"),
         diseases=sorted({r.disease_id for r in rows if r.disease_id}),
         classifications=sorted({r.classification for r in live if r.classification}),
         submitters=sorted({r.submitter for r in rows if r.submitter}),
@@ -706,7 +713,7 @@ def _expression_effects_block(rows: list[ExpressionEffectRow]) -> ExpressionEffe
         datasets=sorted({r.dataset for r in rows if r.dataset}),
         row_count=len(rows),
         variant_count=len({r.variant_key for r in rows}),
-        genes=sorted({r.gene for r in rows if r.gene}),
+        genes=distinct_spellings((r.gene for r in rows), "gene"),
         measures=sorted({r.effect_measure for r in rows if r.effect_measure}),
         with_direction=sum(1 for r in rows if r.effect_direction),
         without_direction=sum(1 for r in rows if not r.effect_direction),

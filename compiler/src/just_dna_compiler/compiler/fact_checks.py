@@ -34,6 +34,7 @@ from just_dna_format.overrides import (
 )
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.spec import StudyRow, VariantRow, extract_pmids
+from just_dna_format.spelling import distinct_spellings, gene_key
 
 from just_dna_compiler.compiler.load import table_citations
 from just_dna_compiler.compiler.tables import BA1_ALLELE_FREQUENCY_THRESHOLD
@@ -584,10 +585,10 @@ def _cross_check_gene_metrics(rows: list[GeneMetricsRow], variants: list[Variant
     """Warn when a gene-metrics row names a gene the module never mentions."""
     if not variants:
         return []
-    genes = {v.gene for v in variants if v.gene}
+    genes = {gene_key(v.gene) for v in variants if v.gene}
     if not genes:
         return []
-    orphans = sorted({r.gene for r in rows if r.gene not in genes})
+    orphans = distinct_spellings((r.gene for r in rows if gene_key(r.gene) not in genes), "gene")
     if not orphans:
         return []
     return [
@@ -702,10 +703,10 @@ def _cross_check_gene_validity(rows: list[GeneValidityRow], variants: list[Varia
     """
     if not variants:
         return []
-    genes = {v.gene for v in variants if v.gene}
+    genes = {gene_key(v.gene) for v in variants if v.gene}
     if not genes:
         return []
-    orphans = sorted({r.gene for r in rows if r.gene not in genes})
+    orphans = distinct_spellings((r.gene for r in rows if gene_key(r.gene) not in genes), "gene")
     if not orphans:
         return []
     return [

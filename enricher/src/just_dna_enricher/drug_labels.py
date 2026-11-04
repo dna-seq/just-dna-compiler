@@ -61,6 +61,7 @@ from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.manifest import VerificationRecord
 from just_dna_format.pgx import DiplotypeRow, PharmVariantRow
 from just_dna_format.snapshot import read_release
+from just_dna_format.spelling import drug_key, gene_key
 
 from just_dna_enricher.licensing import CLINPGX_TERMS, check_declared_use, effective_declared_use
 from just_dna_enricher.locations import (
@@ -345,12 +346,12 @@ class DrugLabelIndex:
         self._by_allele.clear()
         self._by_gene.clear()
         for row in self.labels:
-            chemicals = {value.casefold() for value in row.chemicals}
+            chemicals = {drug_key(value) for value in row.chemicals}
             for chemical in chemicals:
                 for token in row.variants:
                     self._by_allele.setdefault((token.casefold(), chemical), []).append(row)
                 for gene in row.genes:
-                    self._by_gene.setdefault((gene.casefold(), chemical), []).append(row)
+                    self._by_gene.setdefault((gene_key(gene), chemical), []).append(row)
 
     def testing_levels(self) -> frozenset[str]:
         """Every level this snapshot actually states — the walked set the vocabulary is asserted against."""
@@ -361,11 +362,11 @@ class DrugLabelIndex:
 
     def by_allele(self, allele: str, drug: str) -> tuple[LabelRow, ...]:
         """Labels naming this allele token and this chemical, in file order."""
-        return tuple(self._by_allele.get((allele.casefold(), drug.casefold()), ()))
+        return tuple(self._by_allele.get((allele.casefold(), drug_key(drug)), ()))
 
     def by_gene(self, gene: str, drug: str) -> tuple[LabelRow, ...]:
         """Labels naming this gene symbol and this chemical, in file order."""
-        return tuple(self._by_gene.get((gene.casefold(), drug.casefold()), ()))
+        return tuple(self._by_gene.get((gene_key(gene), drug_key(drug)), ()))
 
 
 def _split(cell: str | None) -> tuple[str, ...]:
@@ -552,7 +553,7 @@ def _allele_keys(gene: str, allele: str) -> tuple[str, ...]:
     stripped = allele.strip()
     if not stripped:
         return ()
-    if stripped.casefold().startswith(gene.casefold()):
+    if gene_key(stripped).startswith(gene_key(gene)):
         return (stripped,)
     return (f"{gene}{stripped}", f"{gene} {stripped}", stripped)
 

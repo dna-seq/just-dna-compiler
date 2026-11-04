@@ -37,3 +37,16 @@ Feature: The meta-table's members and what they match
     # Three-valued: a locus whose rows share one effect_allele bears that allele (no finding); one
     # whose rows disagree or state none is unknown, so the direction is withheld, never guessed; a
     # tag or gene selector fixes no allele at all and is refused by the model.
+
+  # source: compiler/src/just_dna_compiler/compiler/meta.py
+  # anchor: build_meta
+  @code:meta_member_drug_disagrees @actionable @both_modes @tri_state
+  Scenario: a drug-scoped meta row whose member reaches rows about another drug
+    Given a meta.csv row with drug "mercaptopurine" whose member is "diplotypes[gene=TPMT, haplotype_b=*3B]"
+    And diplotypes.csv rows that member matches stating drug "azathioprine"
+    When the module is compiled
+    Then a warning fires whose text contains "A drug-scoped row's facts apply where "
+    And it states that "Name the drug in the member ("
+    # Drugs compare by `spelling.drug_key`, so "Azathioprine" against "azathioprine" is no finding. A
+    # matched row stating no drug, or a meta row stating none, is unknown and adds nothing. Never a
+    # refusal and nothing is withheld: the expansion is unchanged, only the pairing is named.

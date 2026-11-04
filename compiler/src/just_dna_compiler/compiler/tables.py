@@ -35,6 +35,7 @@ from just_dna_format.overrides import OverrideRow, overlay_coherence_errors
 from just_dna_format.pgs import PgsRow
 from just_dna_format.pgx import AlleleFunctionRow, DiplotypeRow, HaplotypeRow, PharmVariantRow
 from just_dna_format.sources import SourceRow
+from just_dna_format.spelling import comparison_key
 from pydantic import BaseModel
 
 # Genotype allele separators: `/` (unphased), `|` (phased). See ROADMAP 0.3 item 5b. The split
@@ -241,24 +242,20 @@ def _key_of(row: Any) -> tuple:
     return tuple(getattr(row, name) for name in row._KEY_FIELDS)
 
 
-def _gene_key(gene: str) -> str:
-    """A gene symbol as the PGx checks compare it (RM351, RM356). Case and surrounding space do not
-    make two genes: the bare-name key ignored the gene entirely, so a symbol spelled `Cyp2c19` in one
-    place and `CYP2C19` in another must not turn every allele of it into a new finding or a new row."""
-    return gene.strip().casefold()
-
-
 def _distinct_when_stated(row: Any, other: Any) -> bool:
     """Whether a `_KEY_DISTINCT_WHEN_STATED` column tells two rows apart (RM356): both state it and the
     stated values differ. An unstated cell is unknown and never "different" (`@absent-is-not-different`),
     so a model declaring no such column answers `False` for every pair.
 
-    The comparison is a gene symbol's (`_gene_key`, case- and space-insensitive), because the one
-    declared column is a gene. A test pins every declared column as a gene-named `str | None` field, so a
-    column that would need another comparison fails CI rather than being case-folded here."""
+    The comparison is the column's own (`spelling.comparison_key`, RM363): a gene symbol's is case- and
+    space-insensitive, and a column of no compared kind compares verbatim."""
     for name in getattr(row, "_KEY_DISTINCT_WHEN_STATED", ()):
         mine, theirs = getattr(row, name, None), getattr(other, name, None)
-        if mine is not None and theirs is not None and _gene_key(mine) != _gene_key(theirs):
+        if (
+            mine is not None
+            and theirs is not None
+            and comparison_key(name, mine) != comparison_key(name, theirs)
+        ):
             return True
     return False
 

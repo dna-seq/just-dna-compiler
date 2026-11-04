@@ -41,6 +41,7 @@ from just_dna_compiler.draft import (
 )
 from just_dna_format.base import authored_field_names
 from just_dna_format.binning import RepeatAlleleRow
+from just_dna_format.spelling import gene_key
 
 from just_dna_enricher.drafting import (
     DRAFT_PROVIDERS,
@@ -231,8 +232,8 @@ def draft_repeat_loci(
     loaded = catalogue if isinstance(catalogue, StrchiveCatalogue) else load_strchive_catalogue(catalogue)
     result.dataset = loaded.dataset
 
-    wanted = {g.strip().upper() for g in genes if g.strip()}
-    admitted = [locus for locus in loaded.loci if not wanted or locus.gene.upper() in wanted]
+    wanted = {gene_key(g) for g in genes if g.strip()}
+    admitted = [locus for locus in loaded.loci if not wanted or gene_key(locus.gene) in wanted]
     result.candidates = len(admitted)
 
     # Over the admitted set, before any row is built.

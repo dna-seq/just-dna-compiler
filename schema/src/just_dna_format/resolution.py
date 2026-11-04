@@ -23,6 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from just_dna_format.base import since, vocabulary
 from just_dna_format.normalize import normalize_utc_timestamp
+from just_dna_format.spelling import ChromCell
 from just_dna_format.vocab import (
     VALID_PLACEMENT_VERDICTS,
     VALID_RESOLUTION_STATUS,
@@ -77,7 +78,7 @@ class ResolutionRow(BaseModel):
     rsid: str | None = Field(
         json_schema_extra=since("0.5.0"), default=None, description="Resolved dbSNP identifier"
     )
-    chrom: str | None = Field(
+    chrom: ChromCell = Field(
         json_schema_extra=since("0.5.0"), default=None, description="Chromosome without 'chr' prefix"
     )
     start: int | None = Field(

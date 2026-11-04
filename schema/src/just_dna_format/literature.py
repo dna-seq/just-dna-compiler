@@ -44,7 +44,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from just_dna_format.base import since, vocabulary
 from just_dna_format.normalize import normalize_utc_timestamp
-from just_dna_format.spec import DOI_PATTERN
+from just_dna_format.spelling import doi_token
 from just_dna_format.vocab import (
     VALID_FULLTEXT_STATUS,
     VALID_QUOTE_SOURCE,
@@ -279,7 +279,7 @@ class LiteratureRow(BaseModel):
         if v is None or not v.strip():
             return None
         v = v.strip()
-        if not DOI_PATTERN.search(v):
+        if doi_token(v) is None:
             raise ValueError(f"doi must contain a DOI token (10.<registrant>/<suffix>), got: {v!r}")
         return v
 

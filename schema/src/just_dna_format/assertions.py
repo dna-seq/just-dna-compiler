@@ -37,6 +37,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from just_dna_format.base import since, vocabulary
 from just_dna_format.normalize import normalize_utc_timestamp
+from just_dna_format.spelling import ChromCell
 from just_dna_format.vocab import VALID_CLIN_SIG, VALID_RESOLUTION_STATUS, check_vocab
 
 # Fact columns feeding `integrity.clinical_assertion_signature` — everything but the provenance
@@ -110,7 +111,7 @@ class ClinicalAssertionRow(BaseModel):
             "than this record's allele, and `variant_key` is what identifies the row."
         ),
     )
-    chrom: str | None = Field(
+    chrom: ChromCell = Field(
         json_schema_extra=since("0.6.0"), default=None, description="Chromosome without 'chr' prefix"
     )
     start: int | None = Field(
