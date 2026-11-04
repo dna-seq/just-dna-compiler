@@ -111,8 +111,27 @@ def test_the_fixture_carries_distinct_values_and_empty_cells_in_both_columns(tmp
     for name in _NEW_COLUMNS:
         values = [cells[name] for cells in authored.values()]
         assert None in values
-        assert len({v for v in values if v is not None}) >= 1
-    assert len({cells["category"] for cells in authored.values()} - {None}) == 2
+        # More than one distinct stated value per column, so a writer that copied one cell over
+        # another, or collapsed them, changes the mapping the round trip compares.
+        assert len({v for v in values if v is not None}) > 1, name
+
+
+def test_the_new_columns_come_last_so_no_0_7_column_moves(tmp_path: Path) -> None:
+    """A reader of `diplotypes.parquet` by position sees every 0.7 column where it was.
+
+    Asserted off the model's own release markers rather than a hand-kept 0.7 column list: every field
+    declared before 0.8 precedes both new ones, in the model and in the compiled parquet.
+    """
+    first_seen = field_first_seen(DiplotypeRow)
+    fields = list(DiplotypeRow.model_fields)
+    assert fields[-len(_NEW_COLUMNS) :] == list(_NEW_COLUMNS)
+    assert all(first_seen[name] != "0.8.0" for name in fields[: -len(_NEW_COLUMNS)])
+
+    spec = _spec_with_axes(tmp_path, "filled", fill=True)
+    result = compile_module(spec, tmp_path / "out")
+    assert result.success, result.errors
+    columns = pl.read_parquet(tmp_path / "out" / "diplotypes.parquet").columns
+    assert columns[-len(_NEW_COLUMNS) :] == list(_NEW_COLUMNS)
 
 
 def test_both_columns_reach_the_diplotype_parquet_as_nullable_strings(tmp_path: Path) -> None:
