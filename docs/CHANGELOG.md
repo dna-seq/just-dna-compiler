@@ -41,6 +41,21 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM270: an indel's spelling-independent `vrs_id` reaches every variant parquet and survives a round trip (0.8, uncut)
+
+- **`weights.parquet` gains `vrs_id` (`List(Utf8)`, parallel to `alts`) and `vrs_spec`**; the three
+  positional parquets (`pharm_variants`, `haplotypes`, `heteroplasmy`) gain the same pair as the
+  comma-joined cell `resolution.csv` uses, and `studies.parquet`'s `proxy_loci` struct gains both fields.
+  Both spellings of `rs72613567` (`4:87310240 T>TA`, `4:87310241 A>AA`) now carry one id on the parquet
+  and `rs8176719`'s two placements carry two, so a consumer that mints VRS from its VCF has a join key
+  that does not depend on the spelling. The ids are copied from `resolution.csv` by allele, never minted
+  by the compiler (`compiler/vrs_columns.py`); an allele two rows record with two ids is withheld.
+- **`reverse` writes `vrs_id`/`vrs_spec` back** into `resolution.csv`, so `compile → reverse → compile`
+  keeps every id and the second lap's `vrs_alleles_identified` (RM241's residual).
+- Every module carrying `variants.csv` or a positional table gets a new `artifact.digest` on a 0.8
+  recompile; `content_signature` does not move. INTEGRATION_0_8 § 1.19, COMPILER.md § *The VRS ids on
+  the variant parquets*.
+
 ## 2026-11-04 — PT2 §6: three reference examples carry the 0.8 study, HLA and model-organism shapes (0.8, uncut)
 
 - **`reference_examples/longevity_studies/`**: five longevity loci and thirteen `studies.csv` rows from

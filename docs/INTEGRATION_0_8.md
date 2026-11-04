@@ -325,6 +325,25 @@ compared. A subject that comes back unresolved with a *placement disagreement* w
 contradicting another; check the spelling against the reference and record the one you stand behind in
 `overrides.csv`.
 
+## 1.19 An indel's spelling-independent id on every variant parquet (RM270, no break)
+
+The `vrs_id` the enricher records in `resolution.csv` now reaches the artifact. Both legal spellings of
+one indel carry one id (`rs72613567` at `4:87310240 T>TA` and at `4:87310241 A>AA`), and two events carry
+two (`rs8176719`'s two placements), so a consumer that can mint VRS from its own VCF has a key that does
+not depend on how either side spelled the event. The ids are copied from `resolution.csv` by allele,
+never minted by the compiler; an allele with no recorded id is a null member, and an allele two rows
+record with two ids is withheld.
+
+| Surface | What changed |
+| --- | --- |
+| `weights.parquet` `vrs_id`, `vrs_spec` | `List(Utf8)` parallel to `alts` (null where no id is recorded; the cell is null when none is) and the VRS version the ids were minted under (`Utf8`, null unless every id on the row states the same one). Appended after every other column, so **every module carrying `variants.csv` gets a new `artifact.digest` on a 0.8 recompile**; `content_signature` does not move. |
+| `pharm_variants.parquet`, `haplotypes.parquet`, `heteroplasmy.parquet` `vrs_id`, `vrs_spec` | `Utf8`, the comma-joined cell `resolution.csv` uses (parallel to the table's own `alts`, holes kept). Appended last; same digest note. |
+| `studies.parquet` `proxy_loci` | The struct gains `vrs_id` and `vrs_spec`, the proxy row's cells. |
+| `reverse` | Writes `vrs_id` and `vrs_spec` back into `resolution.csv`, so `compile → reverse → compile` keeps every id and `vrs_alleles_identified` (before 0.8 the second lap counted 0). |
+
+Not on `annotations.parquet` (no allele to be parallel to; join it to `weights.parquet` on
+`variant_key`) and not on `frequencies.parquet`, whose `vrs_id` is gnomAD's.
+
 ## 2. What to change
 
 1. If you parse `manifest.json` with `just-dna-format`, move your pin to 0.8 when you start reading

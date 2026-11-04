@@ -39,6 +39,13 @@ _POSITIONAL_TABLE_KINDS: tuple[tuple[str, type[BaseModel]], ...] = tuple(
 )
 
 
+#: The positional kinds that carry `alts` as well, so a `vrs_id` parallel to it has a frame: their
+#: parquets gain `vrs_id`/`vrs_spec` (RM270). Derived for the reason the set above is.
+_VRS_BEARING_TABLES: frozenset[str] = frozenset(
+    csv_name for csv_name, model in _POSITIONAL_TABLE_KINDS if "alts" in model.model_fields
+)
+
+
 #: The table kinds carrying a `gene` column, derived from `_TABLE_KINDS` the same way and for the same
 #: reason: a hand-kept list goes stale the moment a kind is added, and this one feeds a **published
 #: manifest number** (S57). Seven of the eight non-variant kinds make `gene` *required*, so a module
