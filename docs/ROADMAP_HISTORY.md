@@ -49,7 +49,9 @@ full: `*`, two to four colon-separated numeric fields of at least two digits eac
 expression suffix from `N`, `L`, `S`, `C`, `A`, `Q`. The field count is the stated resolution, so a
 one-field name is refused, and so is the colon-less `*1501`. A malformed name is a refusal at the model
 (`validate_hla_allele`), so `validate` and `compile` refuse it alike in both modes, naming the row, the
-shape and an example. Every other gene keeps the permissive haplotype-name rule.
+shape and an example. Every other gene keeps the permissive haplotype-name rule. The rule has one
+statement, `pgx.hla_allele_refusal` (a reason or `None`): the model raises it, and the CPIC drafter
+(`pgx_draft`) skips an HLA allele it refuses with the same reason instead of failing the draft.
 
 **The published-module scan (2026-11-04), which the refusal was gated on.** The reference examples:
 two `allele_function.csv` files (`cyp2c19_star_alleles`, `cyp2c9_warfarin_grch37`), no `HLA-` row. The
@@ -94,7 +96,7 @@ first release 0.8.0. Each is `VariantRow`'s column of the same name, description
 through the generic table materializer, `reverse` writes them back, and both are inside
 `content_signature` when stated; a module that leaves them out or empty keeps its signature. Every
 module carrying `diplotypes.csv` gets a new `artifact.digest` on a 0.8 recompile, because the parquet
-gains two columns. `priority`, `actionability` and `flags` were cut by the maintainer on 2026-11-04 and
+gains two columns; they are declared last, so no 0.7 column changes position. `priority`, `actionability` and `flags` were cut by the maintainer on 2026-11-04 and
 are not deferred: `priority` restates the tier, `actionability` is v2's README policy, and per-locus
 facts live on the meta-table (RM323). Tests: `compiler/tests/test_rm322_diplotype_axes.py` (a copy of
 `reference_examples/apoe_epsilon` with both columns filled, compile → reverse → compile to a fixed
