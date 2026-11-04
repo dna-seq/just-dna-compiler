@@ -39,6 +39,10 @@ three scripts are the kit's, two of them copied into `.claude/` for CI.
 **First pass**: S125–S127 answered and archived (`5e2cc18`), after committing the items alone
 (`1ee5925`). Filed RM337–RM340.
 
+**Sign every commit `Seat: just-dna-compiler/triage`** (a trailer line above `Co-Authored-By`). The
+`inbox-commits` watcher is the kit's `watch-remote.sh --path`, which drops a commit carrying the seat's own
+`Seat:` line; without it, triage's own S129 commits woke triage twice (2026-11-04).
+
 ## Routes with other repos' triage seats
 
 - **just-dna-registry/triage** (agreed 2026-11-04): a registry consumer item whose fix belongs to format,
@@ -53,6 +57,8 @@ three scripts are the kit's, two of them copied into `.claude/` for CI.
 | RM339 (S126, snapshot cache trusted when partial) | `done`: `74e0e87`, unpushed when built (the pm pushed it in `e2fed68`). A pull writes `pull-record.json` before its first download |
 | RM337 (S125, silent drop under `logs/`) | handed on: it needs a new warning code, so it is a minor (`172a215`, sized wrong at filing). The pm placed it, now in `ROADMAP_0_8.md` (`f3377a6`) |
 | RM340 (S127, VRS warning names `verification.json`) | `done`: `280813b`, on `origin/main` (the pm's fast-forward pushes carried it) |
-| RM371 (S128, tenacity `initial=` deprecated at every enricher import) | `done`: `742b1ff`, unpushed. 18 sites renamed `multiplier=`, floor `tenacity>=9.2.1`, AST guard; `0.8` has 21 sites, so the guard goes red at the merge until the lead renames the 3 extra |
+| RM371 (S128, tenacity `initial=` deprecated at every enricher import) | `done`: `742b1ff`, on `origin/main`. 18 sites renamed `multiplier=`, floor `tenacity>=9.2.1`, AST guard; `0.8` has 21 sites, so the guard goes red at the merge until the lead renames the 3 extra |
+| RM377 (S129, strict-only refusals told apart by wording) | `done`: `2a4655e7`, on `origin/main`. Two phrases published in COMPILER.md, read by `test_strict_refusal_phrases.py`; doc + test only, so it passes unchanged on `origin/0.8`. Beside it: on `main`, `validate --strict` with resolution off passes what `compile` refuses; `0.8` closes it as RM367, so no item |
+| RM378 (S129, coded errors with an `errors_summary`) | handed on: a minor, filed `0b99facb`; the pm placed it in **0.9** (`f8b595d6`): 0.8 is near its cut, and the code vocabulary is permanent and has two open questions. The registry's liaison was told its interim (the RM377 phrases) holds through 0.8 |
 | RM338 (S125, which files under `logs/` ship) | the lead's: taken into its plan and put to the maintainer, 2026-11-03 |
 | push of `main` | the maintainer's: auto mode denies a seat's granted push (kit #238), so the maintainer pushes until it lands; the lead asked triage not to push its commits |

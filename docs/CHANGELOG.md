@@ -41,6 +41,16 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM377: the two refusals only `strict` adds have published phrases (patch, on `main`)
+
+**compiler** — `errors` carries no code, so a consumer telling one strict refusal from another reads its
+words. The two refusals `strict` adds rather than promotes now have phrases that are API, published in
+COMPILER.md's *Warning texts a consumer keys on*: `have unresolved genomic positions after resolution`
+(resolution left rows without a coordinate) and `whose coordinates the enricher diagnosed as another
+assembly's` (the module's rows contradict its `genome_build`). Both open with `strict compile: `, which
+nothing else opens with. A test reads the phrases from that table and walks the source, so a third such
+refusal cannot ship unpublished. No message, field or identity moves. Coded errors are RM378, a minor.
+
 ## 2026-11-04 — RM372: the enricher reads the Ensembl snapshot from its new repo, and never serves two releases as one (0.8, uncut)
 
 - **`ensure_snapshot` pulls `just-dna-seq/ensembl_variations_split`** (dbSNP 157, VEP 116, one row per ALT,

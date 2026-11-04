@@ -16,8 +16,10 @@ The lead's working state, rewritten to the present before each reset. Last rewri
 
 ## Standing rules from the person
 
-- **Registry wakes (2026-11-04):** `just-dna-registry/liaison` wakes the lead; it and `just-dna-registry/triage` wake
-  our triage. If these cause false-positive wakes, report it to the person in a Zulip DM.
+- **Registry wakes (2026-11-04, amended 2026-11-05):** `just-dna-registry/liaison` and `just-dna-registry/triage` wake
+  our triage. The lead's entry was dropped (f144c276) after two false wakes, both posts to our triage. The kit wish for
+  per-kind wake grants (dm, mention, important, …) is winternewt/agent-seat-blueprints#269. The person's Zulip account
+  for DMs is id 1213223.
 
 - **Upstream adoption (2026-11-04):** the liaison decides adoption blockers and hands the lead an adoption map.
   Pin only when a new major is proven to break something, until support is integrated. If the liaison is

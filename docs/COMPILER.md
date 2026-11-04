@@ -2289,6 +2289,27 @@ passes reach a byte-identical sentence and the existing de-duplication collapses
 `"not valid YAML"`, `"must be a mapping"`; `test_strict_compile.py` holds `"unresolved genomic
 positions"`; `test_roundtrip_regressions.py` holds `"pointer, not an expression"`.
 
+### The refusals only `strict` adds
+
+`errors` is `list[str]` on every result type and carries **no code**: RM131 classified the warnings
+channel and left errors as prose. Most strict errors are a mode-laddered warning raised to an error, in
+the same sentence. Two are not: under `strict` they are *added* rather than promoted (RM218), and a
+consumer grading a dry run needs to tell them apart. Both open with `strict compile: `, and **no other
+message in any list opens with it**, so that prefix alone says *a refusal `strict` added*. Which one it is
+is told by the phrase below, which `validate_spec(strict=True)` and `compile_module(strict=True)` both
+return:
+
+| Finding | Phrase | What it says |
+|---|---|---|
+| `unresolved_positions` | `have unresolved genomic positions after resolution` | resolution left rows without a coordinate, so the parquet bytes would not be reproducible. Cleared by a complete resolution, never by an authored edit to the rows |
+| `genome_build_disagreement` | `whose coordinates the enricher diagnosed as another assembly's` | `verification.json` records the enricher's finding that rows sit on a different assembly than the module's `genome_build`: two authored files contradict each other. Cleared by fixing the coordinates and re-running the checks |
+
+Both phrases are contract, as the four constants above are, and the table is the registry:
+`test_strict_refusal_phrases.py` reads the phrases from it, walks the compiler's source for every
+`strict compile:` literal and refuses one that carries no published phrase, so a third strict-only
+refusal fails the suite until it has a row here. The counts in both sentences vary; the phrases do not.
+Coded errors, with an `errors_summary` beside `warnings_summary`, are RM378, a minor.
+
 ## CLI, and what it maps onto
 
 `just-dna-compiler` (Typer) is a thin shell over the Python API. Exit 0/1, CI/registry-gateable.

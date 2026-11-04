@@ -3789,6 +3789,48 @@ neither of this entry's guards caught, so the CLI died again beside anything pin
 
 **Residuals** RM254
 
+## RM377 — the two refusals only `strict` adds carry no code, and their wording was the only way to tell them apart
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-11-04 on `main`, uncut — a patch** (docs and a test: two
+phrases published as API) · **Owner** compiler · **Motivating case** S129 in CONSUMER_SUGGESTIONS_HISTORY.md
+(just-dna-registry's liaison seat, 2026-11-04) · *related* RM131, RM218, RM143, RM378
+
+**What was observed.** `errors` is `list[str]` on every result type, with no code: RM131 classified the
+warnings channel and left errors as prose. RM218 corrected `validate_spec`'s docstring to say that `strict`
+*adds* two aggregate refusals rather than only promoting warnings: the unresolved-position refusal and
+`build_disagreement_error`. A registry grading a dry run treats the two differently (one says resolution
+was incomplete, the other that two authored files disagree about the genome build), and it could tell them
+apart only by sentences nothing published or pinned. `test_strict_compile.py` held `"unresolved genomic
+positions"`; nothing held the build refusal's wording.
+
+**Sizing.** Two items. Codes on errors, with an `errors_summary`, are a new published vocabulary and a new
+field on public result types: additive and legal, and a minor (RM378). Publishing the two phrases moves no
+model, field or message, so it is a patch, and it holds a 0.7 consumer until RM378 ships.
+
+**Not taken.** Named constants for the two phrases, the way `UNJOINABLE_PHRASE` and its three siblings are:
+a new importable name is new public surface, and `0.8` has split `compiler.py` into a package, so moving
+both emission sites onto a constant on `main` would conflict at every merge for a name RM378 is about to
+supersede. The table in the document is the registry instead, and the test reads it.
+
+**Found beside it, and already closed elsewhere.** Probing the fixture showed that on `main`,
+`validate_spec(strict=True, resolve_with_ensembl=False)` passes an rsID-only row that `compile_module` with
+the same arguments refuses. The CLI's `validate` has no resolution switch, so only the API reaches it. The
+`0.8` line closes it as RM367, measured the same day on `origin/0.8`, so it gets no item of its own here.
+
+**Residuals** RM378
+
+**What shipped.** COMPILER.md's *Warning texts a consumer keys on* gains *The refusals only `strict` adds*:
+the two findings, each with its phrase and what clears it, and the rule that `strict compile: ` opens
+exactly these two and nothing else, in any list, in either mode.
+
+Tests: `compiler/tests/test_strict_refusal_phrases.py` reads the phrases from that table, so the document and
+the guard cannot drift. It walks the compiler package's source for every literal opening `strict compile: `
+and refuses one that carries no published phrase, or more than one. It asserts that both entry points return
+each phrase for its own case and only that one, and that best-effort says the prefix nowhere. Both
+failures were shown before landing: rewording the build phrase in the document fails two tests, and a third
+`strict compile:` literal planted in the package fails the walk. The file passes unchanged on `origin/0.8`,
+whose emission sites live in other modules.
+
 ## RM371 — the enricher spells tenacity's backoff `initial`, which tenacity 9.2.1 deprecates, so every import warns and a release that drops it would stop the enricher importing
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `main`, uncut — a patch** (enricher: a

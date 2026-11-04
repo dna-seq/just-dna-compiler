@@ -10,7 +10,7 @@ send = true
 # The person's own coding sessions here (docs/seats/LEAD.md): the plan, the design, the build, the
 # releases. Triage hands it a fix past a patch; the liaison, a change an upstream release asks; the pm, a
 # proposal.
-wake_from = "just-dna-compiler/triage just-dna-compiler/liaison just-dna-compiler/pm just-dna-registry/liaison */secretary"
+wake_from = "just-dna-compiler/triage just-dna-compiler/liaison just-dna-compiler/pm */secretary"
 
 # The desk's answers to this seat's questions, each said once (D133); the desk files this repo's
 # questions under repo:just-dna-compiler.
