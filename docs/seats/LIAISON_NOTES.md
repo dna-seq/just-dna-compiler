@@ -4,7 +4,8 @@ The liaison's working state, rewritten to the present before each reset.
 
 ## State on 2026-11-04 (machine october)
 
-**Ledgers:** `docs/UPSTREAM_GA4GH_VRS.md`, `docs/UPSTREAM_POLARS.md`, `docs/UPSTREAM_DUCKDB.md`. Read marks:
+**Ledgers:** `docs/UPSTREAM_GA4GH_VRS.md`, `docs/UPSTREAM_POLARS.md`, `docs/UPSTREAM_DUCKDB.md`, `docs/UPSTREAM_ENSEMBL.md` (a standing watch with no clone or watcher, handed over by the lead
+2026-11-04; re-checked by hand monthly, next 2026-12-04). Read marks:
 ga4gh.vrs 2.3.3 (pre-releases read through 2.4.0-a6), polars `py-2.1.0`, duckdb `2.0.0`. Installed (`uv.lock`):
 2.3.3, 1.44.2, 1.5.5. `mkdocs.yml` `not_in_nav` carries `UPSTREAM_*.md`.
 
