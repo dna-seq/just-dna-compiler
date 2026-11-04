@@ -61,6 +61,7 @@ from just_dna_enricher.licensing import (
     write_sources_csv,
 )
 from just_dna_enricher.locations import resolve_cpic_reference, resolve_pharmvar_reference
+from just_dna_enricher.net import could_not_ask_reason
 from just_dna_enricher.pharmvar import PharmVarClient, PharmVarError, PharmVarSnapshotClient
 from just_dna_enricher.verification import ran, record_verification, skipped
 
@@ -82,6 +83,7 @@ _ANSWERED = "answered"
 _SKIP_PRECEDENCE: tuple[str, ...] = (
     "not_permitted",
     "no_reference",
+    "retired",
     "offline",
     "unreachable",
     "not_requested",
@@ -395,7 +397,7 @@ def enrich_pgx(
             # One source failing must not sink the pass — the other may still answer.
             note = f"{terms.source} unavailable ({exc}); continuing without it."
             result.warnings.append(note)
-            legs[terms.source] = ("unreachable", note)
+            legs[terms.source] = (could_not_ask_reason(exc), note)
             return
         finally:
             if owned:

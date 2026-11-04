@@ -319,7 +319,8 @@ class _RaisingStub:
 @pytest.mark.parametrize(
     ("code", "details", "expected"),
     [
-        (grpc.StatusCode.UNIMPLEMENTED, "Operation is not implemented", ac.AtlasNotScored),
+        # On an SNV, which the precomputed set covers, UNIMPLEMENTED is the method missing (RM361).
+        (grpc.StatusCode.UNIMPLEMENTED, "Operation is not implemented", ac.AtlasRetired),
         (
             grpc.StatusCode.INVALID_ARGUMENT,
             "reference base does not match the expected reference base: G.",
@@ -345,6 +346,25 @@ def test_every_transport_error_becomes_this_modules_contract(code, details, expe
     assert not isinstance(caught.value, grpc.RpcError)
     if details:
         assert details.split(":")[0][:20] in str(caught.value), "the server's own words are dropped"
+
+
+def test_unimplemented_on_an_indel_is_not_scored_and_is_never_retried(no_backoff):
+    """The indel arm of UNIMPLEMENTED, and the SNV arm's `AtlasRetired` asked exactly once (RM361)."""
+    calls: list[str] = []
+
+    class _Counting(_RaisingStub):
+        def GetDenseVariantScores(self, request, metadata=None):  # camelCase: the proto's own method name
+            calls.append(request.variant.alternate_bases)
+            raise self._error
+
+    client = ac.AtlasClient(
+        _Counting(_RpcError(grpc.StatusCode.UNIMPLEMENTED, "not implemented")), api_key="x"
+    )
+    with pytest.raises(ac.AtlasNotScored):
+        client.score_variant("chr22", 1, "AC", "A")
+    with pytest.raises(ac.AtlasRetired):
+        client.score_variant("chr22", 1, "A", "C")
+    assert calls == ["A", "C"]
 
 
 def test_not_scored_is_not_a_refusal():
@@ -712,7 +732,9 @@ class _CountingStub:
 
 def _is_retryable_per_translate(code) -> bool:
     """What `_translate` says about a status — the classification the retry layer must follow."""
-    return isinstance(ac._translate(_RpcError(code, ""), variant=""), ac.AtlasUnavailable)
+    translated = ac._translate(_RpcError(code, ""), variant="")
+    # A retired method is could-not-ask and permanent: never retried (RM361).
+    return isinstance(translated, ac.AtlasUnavailable) and not isinstance(translated, ac.AtlasRetired)
 
 
 @pytest.mark.parametrize(

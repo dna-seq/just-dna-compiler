@@ -49,7 +49,7 @@ from just_dna_enricher.literature import (
     PmcBiocClient,
 )
 from just_dna_enricher.litvar import LitvarClient, LitvarRetired, LitvarUnavailable
-from just_dna_enricher.net import PacingGate
+from just_dna_enricher.net import PacingGate, could_not_ask_reason
 from just_dna_enricher.pgs import PgsCatalogClient, PgsCatalogRetired, PgsCatalogUnavailable
 from just_dna_enricher.pharmvar import PharmVarClient, PharmVarError, PharmVarRetired
 from tenacity import BaseRetrying, RetryCallState
@@ -523,6 +523,23 @@ def test_a_410_is_the_clients_named_retired_error(label, builder, error) -> None
     assert isinstance(caught.value, RETIRED_IS_NAMED[label]), type(caught.value).__name__
     assert issubclass(RETIRED_IS_NAMED[label], error)
     assert "410" in str(caught.value) and "v2 guide" in str(caught.value)
+
+
+@pytest.mark.parametrize("label,builder,error", CLIENTS, ids=[c[0] for c in CLIENTS])
+def test_a_handler_reads_a_410_as_retired_and_an_outage_as_unreachable(label, builder, error) -> None:
+    """What a handler records is read off the exception it caught, never written as `unreachable` (RM361).
+
+    Every `*Retired` error is its client's could-not-ask type, so the handler that records an outage
+    caught a 410 too, and before RM361 wrote `unreachable` about a source that had moved.
+    """
+
+    def gone(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(410, text="This legacy API is no longer available.")
+
+    for handler, reason in ((gone, "retired"), (_serve(503), "unreachable"), (_refuse, "unreachable")):
+        with pytest.raises(error) as caught:
+            builder(handler)()
+        assert could_not_ask_reason(caught.value) == reason, f"{label}: {type(caught.value).__name__}"
 
 
 def test_no_retry_policy_in_the_tier_retries_a_permanent_4xx() -> None:

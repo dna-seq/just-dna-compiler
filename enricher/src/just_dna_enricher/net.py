@@ -263,6 +263,95 @@ def raise_if_retired(exc: BaseException, error: type[Exception], source: str) ->
         raise error(retired_message(source, exc.response)) from exc
 
 
+# ── the reason a question went unanswered (RM361) ───────────────────────────────────────────────
+#
+# A `*Retired` error is a subclass of its client's could-not-ask type (RM354), so every handler that
+# records could-not-ask caught it — and wrote `unreachable`, the reason for an outage, about a source
+# that had moved. An outage clears on a re-run; a retired endpoint clears only on an upgrade, so the
+# two are different reasons and the record says which. The marker below is the one thing every
+# `*Retired` class shares, and `could_not_ask_reason` is the one place a handler turns the exception
+# it caught into the reason it records. `test_could_not_ask.py` walks the tier for both.
+
+#: The reason a record carries when the source answered 410: a `VALID_VERIFICATION_SKIPS` member, and
+#: a `VALID_FULLTEXT_STATUS` one. Never `unreachable`, which is the reason for an outage.
+RETIRED: str = "retired"
+#: The reason for a question asked and never answered: a failed request, not a no.
+UNREACHABLE: str = "unreachable"
+
+
+class EndpointRetired(Exception):
+    """Mixed into every client's `*Retired` error: the source answered HTTP 410 (RM361).
+
+    A marker, not a catchable family of its own: handlers keep catching their client's could-not-ask
+    type, and read the reason off the exception with `could_not_ask_reason`.
+    """
+
+
+def could_not_ask_reason(exc: BaseException) -> str:
+    """`retired` when `exc` says the source retired the endpoint, else `unreachable` (RM361).
+
+    For a handler that caught a client's could-not-ask type and is about to record why the question
+    went unanswered. A retired endpoint is a fact about the source and is cleared by an upgrade; an
+    outage is cleared by a re-run; writing the second about the first sends the reader to the wrong
+    remedy. The exception's causes are read too, so a client that translates a 410 into its plain
+    could-not-ask type (`raise XUnavailable(...) from exc`) is still read as retired.
+    """
+    seen: BaseException | None = exc
+    while seen is not None:
+        if isinstance(seen, EndpointRetired) or (
+            isinstance(seen, httpx.HTTPStatusError) and seen.response.status_code == GONE
+        ):
+            return RETIRED
+        seen = seen.__cause__
+    return UNREACHABLE
+
+
+def aggregate_reason(reasons: Iterable[str | None]) -> str:
+    """The reason a group of unanswered questions is recorded under: `retired` if any one was (RM361).
+
+    For a record that aggregates several requests: one retired endpoint means the run needs an upgrade
+    whatever else happened, which is the remedy the record must lead with. Otherwise `unreachable`.
+    """
+    return RETIRED if RETIRED in set(reasons) else UNREACHABLE
+
+
+class Withholding:
+    """Mixed into every client whose contract is a withheld value rather than an exception (RM361).
+
+    Such a client answers a failed request with `None` (or its outcome's could-not-ask arm), so a 410
+    reached its caller as an outage. `retired` is how it says otherwise without raising: the
+    `retired_message` of the first 410 the client met, `None` until then. Sticky for the client's
+    life, because a retired route is a fact about the source rather than about one request; a caller
+    recording why a question went unanswered reads it with `withheld_reason`.
+    """
+
+    retired: str | None = None
+
+    def note_retired(self, source: str, failure: BaseException | httpx.Response) -> bool:
+        """Record a 410 from `failure` (an exception or a response); `True` when it was one."""
+        response = failure.response if isinstance(failure, httpx.HTTPStatusError) else failure
+        if not isinstance(response, httpx.Response) or response.status_code != GONE:
+            return False
+        if self.retired is None:
+            self.retired = retired_message(source, response)
+            logger.warning("%s", self.retired)
+        return True
+
+
+def withheld_reason(withholder: object) -> str:
+    """`retired` when a withholding client met a 410, else `unreachable` (RM361)."""
+    return RETIRED if getattr(withholder, "retired", None) else UNREACHABLE
+
+
+def release_dataset(lane: str, released: str | None) -> str:
+    """A `dataset` label, `<lane>_<release>`, or the bare lane when the source stated no release (RM361).
+
+    The label is a merge-key member and a `sources.csv` cell; a release the file did not state is
+    withheld from it, never spelled `unknown` (a release of that name) or `None`.
+    """
+    return f"{lane}_{released}" if released else lane
+
+
 # ── bulk file downloads: one body, translated and retried (RM187) ───────────────────────────────
 #
 # Eleven builders stream one file from a source's FTP or bulk endpoint, and until RM187 each carried

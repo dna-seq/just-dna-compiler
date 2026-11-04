@@ -49,11 +49,18 @@ from datetime import date
 from pathlib import Path
 
 import httpx
+from just_dna_format.base import coordinate_key
 from just_dna_format.snapshot import SNAPSHOT_DATA_DIRNAME, SnapshotRelease, read_release
 from just_dna_format.vrs import vrs_spec_release
 from tenacity import retry, wait_exponential_jitter
 
-from just_dna_enricher.net import PacingGate, attempt_floor, raise_if_retired, retry_if_transient
+from just_dna_enricher.net import (
+    EndpointRetired,
+    PacingGate,
+    attempt_floor,
+    raise_if_retired,
+    retry_if_transient,
+)
 
 try:  # the one guarded optional import (CLAUDE.md): polars reads the slice
     import polars as pl
@@ -118,7 +125,7 @@ class ClinVarGkmUnavailable(ClinVarGkmError):
     """
 
 
-class ClinVarGkmRetired(ClinVarGkmUnavailable):
+class ClinVarGkmRetired(ClinVarGkmUnavailable, EndpointRetired):
     """The source answered HTTP 410: it retired the file asked for (RM354).
 
     A fact about the source, not an outage, and not retried. A `ClinVarGkmUnavailable` so every existing
@@ -481,7 +488,7 @@ class WitnessPlacement:
     @property
     def vcf_key(self) -> str:
         """`chrom:pos:ref:alt`, the coordinate form `variant_key` uses for one ALT."""
-        return f"{self.chrom}:{self.pos}:{self.ref}:{self.alt}"
+        return coordinate_key(self.chrom, self.pos, self.ref, self.alt)
 
 
 def normalize_chrom(chrom: str) -> str:

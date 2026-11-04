@@ -45,6 +45,7 @@ from just_dna_format.vocab import DOSAGE_SENSITIVITY_BY_CODE
 
 from just_dna_enricher.gene_metrics import _write_gene_metrics_csv, module_genes
 from just_dna_enricher.licensing import CLINGEN_TERMS, merge_sources_file, require_sources_file, sidecar_path
+from just_dna_enricher.net import release_dataset
 
 logger = logging.getLogger(__name__)
 
@@ -119,12 +120,12 @@ def decode_rating(cell: str | None) -> str | None:
     return term
 
 
-def parse_curation_list(text: str) -> tuple[dict[str, DosageRating], str]:
+def parse_curation_list(text: str) -> tuple[dict[str, DosageRating], str | None]:
     """Parse the gene-curation TSV → `{gene: DosageRating}` plus the release date it declares.
 
     The release line (`#01 Aug,2026`) is the only version this file carries — ClinGen publishes no
     numbered release — so it becomes the `dataset` label the same way the ClinPGx snapshot uses its
-    `CREATED_<date>` marker."""
+    `CREATED_<date>` marker. `None` when the file states no release line (RM361), never a word."""
     lines = text.splitlines()
     header_index = next((i for i, line in enumerate(lines) if line.startswith(_HEADER_PREFIX)), None)
     if header_index is None:
@@ -133,7 +134,7 @@ def parse_curation_list(text: str) -> tuple[dict[str, DosageRating], str]:
         )
     released = next(
         (line.lstrip("#").strip() for line in lines[:header_index] if line[1:2].isdigit()),
-        "unknown",
+        None,
     )
     body = [lines[header_index].lstrip("#"), *lines[header_index + 1 :]]
     reader = csv.DictReader(io.StringIO("\n".join(body)), delimiter="\t")
@@ -228,7 +229,7 @@ def enrich_dosage_sensitivity(
             existing[merge_key(row)] = row
 
     ratings, released = parse_curation_list(curation_text or fetch_curation_list(url))
-    dataset = f"clingen_dosage_{released}"
+    dataset = release_dataset("clingen_dosage", released)
     fetched_at = now_utc_iso()
 
     out: list[GeneMetricsRow] = list(existing.values())

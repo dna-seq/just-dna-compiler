@@ -121,7 +121,8 @@ class GeneMetricsResult:
     # which means gnomAD was asked and has no constraint: that is a real and common fact about small
     # or non-coding genes, and this is the absence of a question. These genes appear in `missing` too,
     # because `strict` must still refuse a run that established nothing, but no ROW is written for
-    # them -- a `not_found` row here would name a release nobody opened.
+    # them -- a `not_found` row here would name a release nobody opened. A gene the live route answered
+    # with an error rather than a record or an absence is here too (RM361): nothing was established.
     unconsulted: list[str] = field(default_factory=list)
     sources: list[str] = field(default_factory=list)
     mode: str = "best_effort"
@@ -333,6 +334,7 @@ def enrich_gene_metrics(
 
     # ── live API link (for what the snapshot missed, unless offline) ───────────────────────────
     from_api: dict[str, dict] = {}
+    api_unanswered: set[str] = set()
     still_missing = [g for g in wanted if g not in from_snapshot]
     if still_missing and not offline:
         owned = client is None
@@ -344,6 +346,7 @@ def enrich_gene_metrics(
         finally:
             if owned:
                 gnomad.close()
+        api_unanswered = set(getattr(gnomad, "unanswered", {})) & set(still_missing)
 
     # Which release a `not_found` row is reporting absence *from*: the last route actually consulted.
     absent_from = dataset if offline else API_CONSTRAINT_DATASET_LABEL
@@ -375,7 +378,7 @@ def enrich_gene_metrics(
             # A `not_found` row is a fact — the gene was looked up and gnomAD has no constraint for
             # it, which is genuinely true for many small or non-coding genes — and is different from
             # a gene that was never queried (no row at all).
-            if not constraint_routes_consulted:
+            if not constraint_routes_consulted or gene in api_unanswered:
                 unconsulted.append(gene)
                 continue
             out.append(

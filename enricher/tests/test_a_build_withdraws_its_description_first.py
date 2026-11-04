@@ -170,9 +170,13 @@ def _gkm_slice_manifest() -> GkmManifest:
 
 def _cpic_client() -> CpicClient:
     def handler(request: httpx.Request) -> httpx.Response:
+        # Each answer states its count, as the service does: since RM361 a CPIC read with no
+        # `Content-Range` refuses rather than write a snapshot that may be short.
         if request.url.path.endswith("/gene"):
-            return httpx.Response(200, json=[{"symbol": "CYP2C19", "chr": "chr10"}])
-        return httpx.Response(200, json=[])
+            return httpx.Response(
+                200, json=[{"symbol": "CYP2C19", "chr": "chr10"}], headers={"Content-Range": "0-0/1"}
+            )
+        return httpx.Response(200, json=[], headers={"Content-Range": "*/0"})
 
     return CpicClient(client=httpx.Client(transport=httpx.MockTransport(handler)))
 

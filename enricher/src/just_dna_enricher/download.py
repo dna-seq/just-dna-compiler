@@ -231,6 +231,32 @@ def _timeout_knob() -> str:
     return f"HF_HUB_DOWNLOAD_TIMEOUT is {configured + ' s' if configured else 'unset, so 10 s'}"
 
 
+#: The Hub's own names for "this repo, revision or file does not exist" (`huggingface_hub.errors`), read
+#: by name so this module keeps its one guarded import. `HfFileSystem` raises `FileNotFoundError` for a
+#: missing path itself.
+_HUB_ABSENT_ERRORS: frozenset[str] = frozenset(
+    {"RepositoryNotFoundError", "RevisionNotFoundError", "EntryNotFoundError", "RemoteEntryNotFoundError"}
+)
+
+
+def _hub_says_absent(exc: BaseException) -> bool:
+    """Whether a Hub failure is the Hub saying *nothing is there* rather than failing to answer (RM361).
+
+    Only that answer is `SnapshotNotPublished`, which `cache pull` reports as "not published yet" and
+    does not count as a failure. A timeout, a 429, a 401/403 or a DNS failure answered nothing about
+    whether anything is published, and reading it as "nothing is published" hid every outage of the
+    one command that provisions a deployment.
+    """
+    if type(exc).__name__ == "GatedRepoError":
+        return False  # a subclass of RepositoryNotFoundError that means "not allowed", not "absent"
+    response = getattr(exc, "response", None)
+    if getattr(response, "status_code", None) in (401, 403):
+        return False  # the Hub answers a private repo and an expired token as "not found" with a 401
+    return isinstance(exc, FileNotFoundError) or any(
+        cls.__name__ in _HUB_ABSENT_ERRORS for cls in type(exc).__mro__
+    )
+
+
 def _fetch_parquet(
     fs,
     remote_path: str,
@@ -388,6 +414,11 @@ def _provision_snapshot(
             return _unverified(
                 cache_dir, label, f"the published listing could not be read ({type(exc).__name__})"
             )
+        if not _hub_says_absent(exc):
+            raise error_cls(
+                f"the {label} snapshot's listing at {hf_repo_prefix} could not be read "
+                f"({type(exc).__name__}: {exc}); whether anything is published there is unknown"
+            ) from exc
         raise SnapshotNotPublished(
             f"nothing is published at {hf_repo_prefix} — the repo or its data/ does not exist. "
             f"Build the snapshot locally (`cache rebuild --only …`), or publish one."
@@ -584,22 +615,21 @@ def _provision_snapshot(
 def _stage_manifest(fs, remote_path: str, staged: Path, label: str) -> SnapshotManifest | None:
     """Fetch the repo's manifest to `staged` and read it, or `None` when it publishes none or it does not parse.
 
-    Three answers. A `FileNotFoundError` is the repo saying it publishes none (`None`). Any other
-    `OSError` (a timeout, a refused connection, a 5xx surfaced as one) is could-not-ask and propagates,
+    Three answers. The Hub saying nothing is there (`_hub_says_absent`, RM361) is `None`. Any other
+    failure (a timeout, a 429, a 401/403, a 5xx) is could-not-ask and propagates as an `OSError`,
     because pulling on as if there were none would accept every byte unverified. An unreadable one is
     `None` and is not left staged: placing it would make the resolver withhold the cache it describes
     (`manifest_unattested` attests nothing under an unreadable manifest).
     """
     try:
         fs.get(remote_path, str(staged))
-    except FileNotFoundError as exc:
+    except Exception as exc:
         staged.unlink(missing_ok=True)
-        logger.info("No %s in the %s repo (%s).", SNAPSHOT_MANIFEST_FILENAME, label, type(exc).__name__)
-        return None
-    except httpx.TimeoutException as exc:
-        raise OSError(f"{type(exc).__name__}: {exc}; {_timeout_knob()}") from exc
-    except httpx.HTTPError as exc:
-        raise OSError(f"{type(exc).__name__}: {exc}") from exc
+        if _hub_says_absent(exc):
+            logger.info("No %s in the %s repo (%s).", SNAPSHOT_MANIFEST_FILENAME, label, type(exc).__name__)
+            return None
+        knob = f"; {_timeout_knob()}" if isinstance(exc, httpx.TimeoutException) else ""
+        raise OSError(f"{type(exc).__name__}: {exc}{knob}") from exc
     manifest = read_snapshot_manifest(staged)
     if manifest is None:
         staged.unlink(missing_ok=True)
@@ -892,6 +922,11 @@ def _provision_root_file_snapshot(
         fs.get(f"{hf_repo}/{payload}", str(tmp_path))
     except Exception as exc:
         tmp_path.unlink(missing_ok=True)
+        if not _hub_says_absent(exc):
+            raise error_cls(
+                f"{payload} in {hf_repo} could not be fetched ({type(exc).__name__}: {exc}); whether it "
+                f"is published there is unknown"
+            ) from exc
         raise SnapshotNotPublished(
             f"no {payload} in {hf_repo} — nothing has been published there yet. Build your own with "
             f"`just-dna-enricher {label.lower()} build --out <dir>`."

@@ -71,14 +71,29 @@ from just_dna_format.spec import StudyRow, extract_pmcids, extract_pmids
 from just_dna_format.spelling import doi_key, doi_token
 from tenacity import (
     retry,
-    retry_if_exception_type,
     wait_exponential_jitter,
 )
 
 from just_dna_enricher.eutils import EutilsClient, EutilsError, is_missing
 from just_dna_enricher.licensing import article_terms, sidecar_path
 from just_dna_enricher.locations import env_value
-from just_dna_enricher.net import PacingGate, attempt_floor, batched, dedupe, raise_if_retired
+from just_dna_enricher.net import (
+    GONE,
+    RETIRED,
+    UNREACHABLE,
+    EndpointRetired,
+    PacingGate,
+    Withholding,
+    aggregate_reason,
+    attempt_floor,
+    batched,
+    could_not_ask_reason,
+    dedupe,
+    raise_if_retired,
+    retired_message,
+    retry_if_transient,
+    withheld_reason,
+)
 from just_dna_enricher.verification import examples, ran, record_verification, skipped
 
 logger = logging.getLogger(__name__)
@@ -115,6 +130,13 @@ _REGISTRY_SOURCE = "pubmed"
 
 _WHITESPACE = re.compile(r"\s+")
 
+#: The one status a fulltext service answers "no copy" with: an embargoed or author-manuscript-only
+#: record is a 404 on Europe PMC. Every other 4xx, a 429 and a 5xx never answered the question (RM361).
+FULLTEXT_ABSENT_STATUS = 404
+#: How PMC's BioC service opens its 200 "no copy" body, recorded in `assets/pmc_bioc_no_result.txt`.
+#: Only this body is an answer; any other 200 that is not JSON (a maintenance page) is not (RM361).
+BIOC_NO_RESULT_PREFIX = "[Error] : No result can be found."
+
 
 class LiteratureEnrichmentError(RuntimeError):
     """Raised in strict mode when a citation does not resolve, or contradicts its own identifiers."""
@@ -150,13 +172,48 @@ class FulltextUnavailable(LiteratureUnavailable):
     """
 
 
-class LiteratureRetired(LiteratureUnavailable):
+class LiteratureRetired(LiteratureUnavailable, EndpointRetired):
     """Europe PMC answered HTTP 410: it retired the endpoint asked (RM354).
 
     A fact about the source, not an outage, and not retried; a `LiteratureUnavailable` so every
-    existing handler still catches it. Raised by `EuropePmcClient.lookup` only: the fulltext route
-    keeps its own answers, `None` for absent and `FulltextUnavailable` for unreachable (RM258).
+    existing handler still catches it. Raised by `EuropePmcClient.lookup` only: the fulltext routes
+    raise `FulltextRetired`, which their callers already catch as `FulltextUnavailable`.
     """
+
+
+class FulltextRetired(FulltextUnavailable, EndpointRetired):
+    """A fulltext service answered HTTP 410 for the route asked (RM361).
+
+    Before RM361 every status below 500 read as *absent*, so a retired route wrote a permanent
+    `fulltext_status="absent"` about every article it was asked for. A `FulltextUnavailable`, so the
+    pass's handler still catches it; the pass records `retired` and asks again on the next run.
+    """
+
+
+def _yes_no(flag: object) -> bool | None:
+    """Europe PMC's `'Y'`/`'N'` flag as a tri-state: `None` when the record does not carry it (RM361).
+
+    `str(flag or "").upper() == "Y"` read a missing flag as `N`, so a record silent about open access
+    was written to `literature.csv` as closed, and the pass skipped Europe PMC's fulltext for it.
+    """
+    said = str(flag).strip().upper() if flag is not None else ""
+    return {"Y": True, "N": False}.get(said)
+
+
+def _fulltext_absent_or_raise(exc: httpx.HTTPStatusError, service: str, subject: str) -> None:
+    """Return when `exc` is a service's "no copy" answer (a 404); raise the right error otherwise (RM361).
+
+    The one status mapping every fulltext route goes through: a 410 is `FulltextRetired`, and a 429,
+    any other 4xx and a 5xx are `FulltextUnavailable`, a question that was never answered. A 429 and a
+    5xx reach here only after the transient retries.
+    """
+    status = exc.response.status_code
+    if status == FULLTEXT_ABSENT_STATUS:
+        logger.info("No retrievable fulltext for %s from %s (HTTP %s)", subject, service, status)
+        return
+    if status == GONE:
+        raise FulltextRetired(retired_message(service, exc.response)) from exc
+    raise FulltextUnavailable(f"{service} answered {status} for {subject}'s fulltext") from exc
 
 
 @dataclass
@@ -258,6 +315,8 @@ class LiteratureResult:
 
     rows: list[LiteratureRow]
     missing: list[str] = field(default_factory=list)  # PMIDs PubMed has no record of
+    #: Why Crossref never answered, when it did not: `retired` once it answered 410 (RM361).
+    crossref_unanswered: str = UNREACHABLE
     doi_conflicts: list[DoiConflict] = field(default_factory=list)
     pmcid_conflicts: list[PmcidConflict] = field(default_factory=list)
     cited: list[str] = field(default_factory=list)  # the PMIDs the module cites right now
@@ -399,11 +458,11 @@ class EuropePmcClient:
     @retry(
         stop=attempt_floor(3),
         wait=wait_exponential_jitter(multiplier=1.0, max=10.0),
-        retry=retry_if_exception_type((httpx.TransportError, httpx.TimeoutException)),
+        retry=retry_if_transient(),
         reraise=True,
     )
     def _fetch(self, url: str, params: dict | None = None) -> httpx.Response:
-        """One paced request to any Europe PMC host, retried on transport failures only."""
+        """One paced request to any Europe PMC host, retried on a transport failure, a 5xx or a 429."""
         assert self.gate is not None
         self.gate.wait()
         response = self._http().get(url, params=params)
@@ -470,10 +529,10 @@ class EuropePmcClient:
                     "pmcid": record.get("pmcid"),
                     "doi": record.get("doi"),
                     # The API answers with the strings 'Y'/'N', not booleans.
-                    "is_open_access": str(record.get("isOpenAccess") or "").upper() == "Y",
+                    "is_open_access": _yes_no(record.get("isOpenAccess")),
                     # `inEPMC` is NOT a fulltext signal: a record can be in Europe PMC with
                     # `isOpenAccess=N`, and `fullTextXML` then answers 404. Probed on PMID 23788249.
-                    "in_epmc": str(record.get("inEPMC") or "").upper() == "Y",
+                    "in_epmc": _yes_no(record.get("inEPMC")),
                     # Verbatim, and `None` when the field is absent — an article whose terms Europe
                     # PMC does not state is unknown, not unlicensed.
                     "license": (record.get("license") or None),
@@ -507,26 +566,29 @@ class EuropePmcClient:
 
     def fetch_fulltext(self, pmcid: str) -> str | None:
         """Whitespace-normalized article text; `None` when Europe PMC holds no copy; raises
-        `FulltextUnavailable` when the request never got an answer (RM258).
+        `FulltextUnavailable` when the request never got an answer (RM258, RM361).
 
-        A 4xx is an answer: an embargoed or author-manuscript-only record answers 404, which is
-        *absent*. A 5xx or a transport failure, after the transport retries, is *unreachable*, and the
-        caller asks again on a later run.
+        A 404 is an answer: an embargoed or author-manuscript-only record answers it, which is
+        *absent*. A 410 raises `FulltextRetired`. A 429, any other 4xx, a 5xx, a transport failure
+        and a 200 whose body does not parse as XML are *unreachable*, and the caller asks again on a
+        later run.
         """
         try:
             response = self._get(f"{pmcid}/fullTextXML")
         except httpx.HTTPStatusError as exc:
-            if exc.response.status_code >= 500:
-                raise FulltextUnavailable(
-                    f"Europe PMC answered {exc.response.status_code} for {pmcid}'s fulltext"
-                ) from exc
-            logger.info("No retrievable fulltext for %s (HTTP %s)", pmcid, exc.response.status_code)
+            _fulltext_absent_or_raise(exc, "Europe PMC", pmcid)
             return None
         except httpx.HTTPError as exc:
             raise FulltextUnavailable(
                 f"Europe PMC could not be reached for {pmcid}'s fulltext: {exc}"
             ) from exc
-        return extract_text(response.text)
+        text = extract_text(response.text)
+        if text is None:
+            # A 200 that is not JATS (a maintenance page) is the fourth leg: withheld, never `absent`.
+            raise FulltextUnavailable(
+                f"Europe PMC answered 200 for {pmcid}'s fulltext with a body that does not parse"
+            )
+        return text
 
     def fulltext(self, pmcid: str) -> str | None:
         """`fetch_fulltext` with its two negative answers folded into one `None`, as before 0.8.
@@ -578,7 +640,7 @@ class EuropePmcClient:
                     "id": record_id or None,
                     "source": record.get("source"),
                     "pmcid": record.get("pmcid"),
-                    "is_open_access": str(record.get("isOpenAccess") or "").upper() == "Y",
+                    "is_open_access": _yes_no(record.get("isOpenAccess")),
                     # Verbatim, and `None` when absent: unknown terms are unknown, never unlicensed.
                     "license": record.get("license") or None,
                     "abstract": record.get("abstractText"),
@@ -624,11 +686,7 @@ class EuropePmcClient:
                 },
             )
         except httpx.HTTPStatusError as exc:
-            if exc.response.status_code >= 500:
-                raise FulltextUnavailable(
-                    f"Europe PMC's preprint repository answered {exc.response.status_code} for {preprint_id}"
-                ) from exc
-            logger.info("No preprint full text for %s (HTTP %s)", preprint_id, exc.response.status_code)
+            _fulltext_absent_or_raise(exc, "Europe PMC's preprint repository", preprint_id)
             return None
         except httpx.HTTPError as exc:
             raise FulltextUnavailable(
@@ -708,7 +766,7 @@ def crossref_bibliographic(message: dict) -> dict[str, str | None]:
 
 
 @dataclass
-class CrossrefClient:
+class CrossrefClient(Withholding):
     """DOI existence, for the citations PubMed does not index.
 
     PubMed answers "does this article exist" for anything it indexes — **including paywalled work**;
@@ -767,7 +825,7 @@ class CrossrefClient:
     @retry(
         stop=attempt_floor(3),
         wait=wait_exponential_jitter(multiplier=1.0, max=10.0),
-        retry=retry_if_exception_type((httpx.TransportError, httpx.TimeoutException)),
+        retry=retry_if_transient(),
         reraise=True,
     )
     def _request(self, doi: str) -> httpx.Response:
@@ -814,6 +872,7 @@ class CrossrefClient:
         if response.status_code == 404:
             return self._registered_elsewhere(doi)
         if response.status_code != 200:
+            self.note_retired("Crossref", response)
             logger.warning("Crossref answered HTTP %s for %s; not checked", response.status_code, doi)
             return CrossrefWork(exists=None)
         try:
@@ -843,6 +902,7 @@ class CrossrefClient:
             return CrossrefWork(exists=None)
         if response.status_code == 404:
             return CrossrefWork(exists=False)
+        self.note_retired("Crossref", response)
         try:
             agency = response.json()["message"]["agency"]["id"] if response.status_code == 200 else None
         except (ValueError, KeyError, TypeError):
@@ -866,7 +926,7 @@ class PmcIdRecord:
 
 
 @dataclass
-class PmcIdConverterClient:
+class PmcIdConverterClient(Withholding):
     """PMCID → PMID, for a curator holding the wrong half of the pair (RM50).
 
     **It reports; it never fills.** The PMID it returns is handed back as an advisory the author types
@@ -925,7 +985,7 @@ class PmcIdConverterClient:
     @retry(
         stop=attempt_floor(3),
         wait=wait_exponential_jitter(multiplier=1.0, max=10.0),
-        retry=retry_if_exception_type((httpx.TransportError, httpx.TimeoutException)),
+        retry=retry_if_transient(),
         reraise=True,
     )
     def _get(self, params: dict) -> httpx.Response:
@@ -953,6 +1013,7 @@ class PmcIdConverterClient:
             try:
                 payload = self._get(params).json()
             except httpx.HTTPError as exc:
+                self.note_retired("The PMC id converter", exc)
                 logger.warning("PMC id converter could not be asked for %s (%s)", batch, exc)
                 continue
             for record in payload.get("records") or []:
@@ -970,7 +1031,7 @@ class PmcIdConverterClient:
 
 
 @dataclass
-class PmcBiocClient:
+class PmcBiocClient(Withholding):
     """PMC's BioC text-mining service: the body text of an article Europe PMC will not serve (RM257, S110).
 
     **The records this reaches are the ones the Europe PMC rung cannot.** An NIH author manuscript is
@@ -1022,7 +1083,7 @@ class PmcBiocClient:
     @retry(
         stop=attempt_floor(3),
         wait=wait_exponential_jitter(multiplier=1.0, max=10.0),
-        retry=retry_if_exception_type((httpx.TransportError, httpx.TimeoutException)),
+        retry=retry_if_transient(),
         reraise=True,
     )
     def _get(self, pmcid: str) -> httpx.Response:
@@ -1036,27 +1097,30 @@ class PmcBiocClient:
         """Body text with the reference list removed; `None` when the service holds no copy; raises
         `FulltextUnavailable` when the request never got an answer (RM258).
 
-        **A 200 that is not JSON is an answer here, not the fourth leg.** The service's recorded "no
-        copy" reply is a 200 with a plain-text body, so it reads as *absent*. A 4xx is absent too; a
-        5xx or a transport failure, after the transport retries, is *unreachable*.
+        **Only the recorded "no copy" 200 is an answer** (RM361). The service's reply for an article
+        outside its set is a 200 with a plain-text body opening `BIOC_NO_RESULT_PREFIX`
+        (`assets/pmc_bioc_no_result.txt`), so it reads as *absent*, as a 404 does. Any other 200 that
+        is not JSON (a maintenance page) is the fourth leg and *unreachable*; a 410 raises
+        `FulltextRetired`; a 429, any other 4xx, a 5xx or a transport failure, after the retries, is
+        *unreachable*.
         """
         try:
             response = self._get(pmcid)
         except httpx.HTTPStatusError as exc:
-            if exc.response.status_code >= 500:
-                raise FulltextUnavailable(
-                    f"PMC BioC answered {exc.response.status_code} for {pmcid}"
-                ) from exc
-            logger.info("No BioC text for %s (HTTP %s)", pmcid, exc.response.status_code)
+            _fulltext_absent_or_raise(exc, "PMC BioC", pmcid)
             return None
         except httpx.HTTPError as exc:
             raise FulltextUnavailable(f"PMC BioC could not be reached for {pmcid}: {exc}") from exc
         try:
             payload = response.json()
-        except ValueError:
-            # The service's "no copy" answer is a 200 with a plain-text body, not JSON.
-            logger.info("No BioC text for %s (%s)", pmcid, response.text.strip()[:80])
-            return None
+        except ValueError as exc:
+            if response.text.lstrip().startswith(BIOC_NO_RESULT_PREFIX):
+                logger.info("No BioC text for %s (the service's 'no result' answer)", pmcid)
+                return None
+            raise FulltextUnavailable(
+                f"PMC BioC answered 200 for {pmcid} with a body that is neither JSON nor its 'no result' "
+                f"answer: {' '.join(response.text.split())[:80]!r}"
+            ) from exc
         return extract_bioc_text(payload)
 
     def fulltext(self, pmcid: str) -> str | None:
@@ -1064,6 +1128,8 @@ class PmcBiocClient:
         try:
             return self.fetch_fulltext(pmcid)
         except FulltextUnavailable as exc:
+            if isinstance(exc, FulltextRetired) and isinstance(exc.__cause__, httpx.HTTPStatusError):
+                self.note_retired("PMC BioC", exc.__cause__)
             logger.warning("BioC fetch failed for %s (%s)", pmcid, exc)
             return None
 
@@ -1090,16 +1156,23 @@ def extract_bioc_text(payload: object) -> str | None:
 
 
 def extract_text(xml: str) -> str | None:
-    """JATS XML → one normalized string, or `None` if it does not parse.
+    """JATS XML → one normalized string, or `None` if it is not a JATS article.
 
     `itertext()` rather than a tag-stripping regex: real JATS carries nested inline markup inside
     sentences (`<italic>`, `<xref>`, `<sup>`), and a regex that removes tags without joining their
     text would silently glue words together and break matches that should succeed.
+
+    **A document that parses is not yet an article** (RM361): a maintenance page served as XHTML is
+    well-formed XML, and reading its text as the article's would make every quote a miss against a
+    fulltext, which settles it. Only a root element named `article` is JATS.
     """
     try:
         root = ET.fromstring(xml)
     except ET.ParseError as exc:
         logger.warning("Fulltext did not parse as XML (%s)", exc)
+        return None
+    if root.tag.rsplit("}", 1)[-1] != "article":
+        logger.warning("Fulltext parsed as XML with a <%s> root, not a JATS <article>", root.tag)
         return None
     return _WHITESPACE.sub(" ", " ".join(root.itertext())).strip()
 
@@ -1205,19 +1278,19 @@ def _ask_fulltext(
 
     Europe PMC first when it calls the article open, then PMC's BioC service, which serves author
     manuscripts Europe PMC calls closed (RM257). `retrieved` when either answered with text;
-    `unreachable` when neither did and at least one request never got an answer, because that one
-    may answer next time; `absent` otherwise, including an article with no PMCID, which neither
-    service can hold.
+    `retired` or `unreachable` when neither did and at least one request never got an answer
+    (`aggregate_reason`: a 410 leads), because that one may answer next time; `absent` otherwise,
+    including an article with no PMCID, which neither service can hold.
     """
     if not pmcid:
         return None, "absent"
-    unreachable = False
+    unanswered: list[str] = []
     if is_open:
         try:
             text = epmc.fetch_fulltext(pmcid)
         except FulltextUnavailable as exc:
             logger.warning("Europe PMC fulltext for %s was not answered (%s)", pmcid, exc)
-            unreachable = True
+            unanswered.append(could_not_ask_reason(exc))
         else:
             if text is not None:
                 return text, "retrieved"
@@ -1225,21 +1298,22 @@ def _ask_fulltext(
         text = bioc.fetch_fulltext(pmcid)
     except FulltextUnavailable as exc:
         logger.warning("BioC text for %s was not answered (%s)", pmcid, exc)
-        unreachable = True
+        unanswered.append(could_not_ask_reason(exc))
     else:
         if text is not None:
             return text, "retrieved"
-    return None, "unreachable" if unreachable else "absent"
+    return None, aggregate_reason(unanswered) if unanswered else "absent"
 
 
 def _needs_reask(row: LiteratureRow) -> bool:
     """A pinned row whose fulltext question is still open (RM258).
 
-    `unreachable` was asked and never answered. A null status on a row that did not match against a
-    fulltext was written before the column existed, and is asked once; a null row whose quotes were
-    matched against a fulltext already has its answer. `absent` and `retrieved` are settled.
+    `unreachable` and `retired` were asked and never answered (RM361). A null status on a row that did
+    not match against a fulltext was written before the column existed, and is asked once; a null row
+    whose quotes were matched against a fulltext already has its answer. `absent` and `retrieved` are
+    settled.
     """
-    if row.fulltext_status == "unreachable":
+    if row.fulltext_status in (UNREACHABLE, RETIRED):
         return True
     return row.fulltext_status is None and row.quote_source != "fulltext"
 
@@ -1511,9 +1585,7 @@ def enrich_literature(
                             result.abstract_checked.append(pmid)
                             quote_source = "abstract"
                     if text:
-                        found = sum(
-                            1 for s in quotes if _study_quote_found(s, text, regex_timeout=regex_timeout)
-                        )
+                        found = _quotes_found(quotes, text, regex_timeout=regex_timeout)
                 # Costs no request: the title arrived in the same `esummary` response that answered
                 # existence. Outside the `check_fulltext` guard deliberately — this compares the quote
                 # against metadata already held, so it answers even for a paywalled article whose
@@ -1563,9 +1635,7 @@ def enrich_literature(
                     quotes = [s for s in citations[row.pmid] if s.provenance_quote or s.provenance_regex]
                     update |= {
                         "quote_source": "fulltext",
-                        "quotes_found": sum(
-                            1 for s in quotes if _study_quote_found(s, text, regex_timeout=regex_timeout)
-                        ),
+                        "quotes_found": _quotes_found(quotes, text, regex_timeout=regex_timeout),
                     }
                     result.fulltext_checked.append(row.pmid)
                 if all(getattr(row, name) == value for name, value in update.items()):
@@ -1595,6 +1665,7 @@ def enrich_literature(
                     )
                     for key in sorted(doi_cited)
                 ]
+            result.crossref_unanswered = withheld_reason(crossref)
         finally:
             if owned_epmc:
                 epmc.close()
@@ -1708,7 +1779,7 @@ def _check_doi_citation(
             text = record["abstract"]
             quote_source = "abstract"
         if text:
-            found = sum(1 for s in quotes if _study_quote_found(s, text, regex_timeout=regex_timeout))
+            found = _quotes_found(quotes, text, regex_timeout=regex_timeout)
     return DoiCitation(
         doi=doi,
         exists=work.exists,
@@ -1738,7 +1809,7 @@ def _ask_doi_fulltext(
         record = epmc.record_for_doi(doi)
     except LiteratureUnavailable as exc:
         logger.warning("Europe PMC could not be asked for DOI %s (%s)", doi, exc)
-        return None, "unreachable", None
+        return None, could_not_ask_reason(exc), None
     if record is None:
         return None, "absent", None
     if record.get("pmcid"):
@@ -1750,7 +1821,7 @@ def _ask_doi_fulltext(
         text = epmc.fetch_preprint_fulltext(record["preprint_id"])
     except FulltextUnavailable as exc:
         logger.warning("Preprint text for %s was not answered (%s)", doi, exc)
-        return None, "unreachable", record
+        return None, could_not_ask_reason(exc), record
     return text, "retrieved" if text is not None else "absent", record
 
 
@@ -2051,7 +2122,12 @@ def _verification_records(
             )
         elif result.doi_citations:
             records.append(
-                skipped("citation_existence", "unreachable", detail="; ".join(doi_parts), source="crossref")
+                skipped(
+                    "citation_existence",
+                    result.crossref_unanswered,
+                    detail="; ".join(doi_parts),
+                    source="crossref",
+                )
             )
         else:
             records.append(
@@ -2309,8 +2385,9 @@ def _doi_quote_gap(result: LiteratureResult) -> str:
         unsettled = c.quotes_authored - c.quotes_checked()
         if not unsettled:
             continue
-        # Unreachable first, whatever the abstract said: it is the one a re-run clears.
-        if c.fulltext_status == "unreachable":
+        # Unreachable first, whatever the abstract said: it is the one a re-run clears. A retired
+        # route is asked again too (RM361), so it is counted with it rather than as absent.
+        if c.fulltext_status in (UNREACHABLE, RETIRED):
             unreachable += unsettled
         elif c.quote_source == "abstract":
             abstract += unsettled
@@ -2416,7 +2493,7 @@ def _quote_gap_detail(result: LiteratureResult) -> str:
     if unretrievable:
         parts.append(
             f"{unretrievable} in articles whose fulltext could not be read (or only an abstract "
-            f"could, where a miss is not a verdict)"
+            f"could, where a miss is not a verdict, or a provenance_regex could not be evaluated)"
         )
     if result.quotes_unexamined:
         parts.append(
@@ -2563,18 +2640,35 @@ def _quote_is_the_title(quotes: list[StudyRow], summary: dict) -> bool:
     return all(_normalized_title(q) == target for q in located)
 
 
-def _study_quote_found(study: StudyRow, fulltext: str, *, regex_timeout: float) -> bool:
-    """Whether this study's locator appears in the article. A quote and a regex both count.
+def _study_quote_found(study: StudyRow, fulltext: str, *, regex_timeout: float) -> bool | None:
+    """Whether this study's locator appears in the article: `True`, `False`, or `None` when the regex
+    could not be evaluated (a timeout, or a pattern that does not compile). A quote and a regex both
+    count, and a literal hit settles it without the regex.
 
-    An unbounded/uncheckable regex returns `None` from `regex_matches` and is treated here as
-    not-found *for this row's tally only* when a literal quote also failed — the row-level count stays
-    conservative, while the run-level `quotes_unchecked` records the coverage gap.
+    `None` is never folded into `False` (RM361). It used to be, with a docstring promising that the
+    run-level unchecked count would record the gap; it did not, because a quote matched against a
+    fulltext counts as settled, so an undecided regex was published as a quote absent from the paper.
     """
     if study.provenance_quote and quote_matches(study.provenance_quote, fulltext):
         return True
     if study.provenance_regex:
-        return regex_matches(study.provenance_regex, fulltext, timeout=regex_timeout) is True
+        return regex_matches(study.provenance_regex, fulltext, timeout=regex_timeout)
     return False
+
+
+def _quotes_found(quotes: list[StudyRow], text: str, *, regex_timeout: float) -> int | None:
+    """How many of `quotes` the text contains, or `None` when any one of them could not be decided.
+
+    The one count every quote tally writes (`quotes_found` on a row, a re-ask's heal, a DOI-only
+    citation's). `None` withholds the whole count rather than one member of it: `quotes_found` is one
+    cell, and a count missing one undecided quote would be read against fulltext as that quote
+    checked and missed (`settled_quotes`). With the count withheld nothing on the row is settled, and
+    every quote on it is reported unchecked, which is what an undecided regex is (RM361).
+    """
+    verdicts = [_study_quote_found(s, text, regex_timeout=regex_timeout) for s in quotes]
+    if any(verdict is None for verdict in verdicts):
+        return None
+    return sum(1 for verdict in verdicts if verdict)
 
 
 def _write_literature_csv(rows: list[LiteratureRow], output_path: Path) -> None:

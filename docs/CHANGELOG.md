@@ -57,6 +57,38 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 - **No test reaches the real HuggingFace hub unasked** (`@no-test-reaches-the-real-hub`): an autouse fence in the
   enricher conftest, after a test re-pulled six chromosomes of a shared cache on this branch.
 
+## 2026-11-04 — RM361: a failed, retired, unread or undecided answer is never recorded as a definite one (0.8, uncut)
+
+- **A 410 is `retired`, never `unreachable`.** Every `*Retired` error carries `net.EndpointRetired`, and every
+  handler that records why a question went unanswered reads it with `net.could_not_ask_reason`. A client
+  whose contract is a withheld value (Crossref, the PMC id converter, BioC, GRCh37 REST, Ensembl, the ClinGen
+  Allele Registry) mixes in `net.Withholding` and says it through `retired` without raising. `retired` is a
+  new member of `VALID_VERIFICATION_SKIPS` and of `VALID_FULLTEXT_STATUS` (asked again on the next run);
+  LitVar's coverage reasons gain `index_retired`.
+- **"No copy" and "no record" are one named status per client.** A fulltext route's 404 and BioC's recorded
+  "no result" body are `absent`; a 429, any other 4xx, a 200 that is not JSON or not a JATS `<article>` are
+  `unreachable`. Ensembl REST's and GRCh37 REST's 400 are their "nothing there"; every other status is
+  could-not-ask. The Hub's own not-found errors are `SnapshotNotPublished`; a timeout or a refused token is
+  the lane's failure, and `cache pull` counts it. Those routes retry a 5xx and a 429.
+- **A body of another shape is could-not-ask**: an esummary with no summary block (it made every uid "no
+  such document"), an OLS4 or HGNC body without its answer block, a Registry body that is not an allele.
+- **Open Targets answers only from datasets it read whole** (`opentargets.read_is_complete`, `READS`): a
+  partial or unstated snapshot replaces no row, names unmatched keys `not_read` rather than
+  `not_in_release`, and leaves the posterior as it was; `strict` refuses either.
+- **gnomAD's per-alias errors are unanswered, not `not_found`** (`GnomadClient.unanswered`,
+  `FrequencyResult.unanswered`); a CIViC read short of its stated total withholds "rejected or withdrawn";
+  an unparsable `studies.csv` is no longer `nothing_to_check`; an Atlas `UNIMPLEMENTED` on an SNV is
+  `AtlasRetired`; a CPIC table with no stated count refuses; a reference read that fails is `unread`, and
+  all failing is `unreachable`; a dbSNP outage is a skip of `rsid_currency`, not `ran(findings=0)`.
+- **An undecided `provenance_regex` withholds `quotes_found`** instead of counting a quote checked and
+  missing; a Europe PMC flag the record does not state is `None`, not closed.
+- **An absent cell is never formatted into an identifier.** `just_dna_format.base.coordinate_key` writes an
+  absent `ref` as an empty segment (`13:48037749`, `13:48037749::A`), and a release a ClinGen or GenCC file
+  did not state is withheld from the `dataset` label (`net.release_dataset`) instead of spelled `unknown`.
+  The nine `:None` keys in `reference_examples/cpic_gene_pairs/resolution.csv` are corrected, which moves
+  that example's `haplotypes.parquet` and its `derived` hash (`content_signature` unchanged): a corrected
+  derivation the 0.8 cut's release record declares.
+
 ## 2026-11-04 — RM362: the orphan checks, `stats.genes` and the enricher agree on which genes and loci a module is about (0.8, uncut)
 
 - **One answer, `just_dna_compiler.compiler.subjects.module_subjects`**, over two rosters derived from the table

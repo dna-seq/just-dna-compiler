@@ -474,7 +474,19 @@ names, `sex` and rsIDs compare as written; each already has one rule.
 | The overlay's `resolution.csv` reachability (`overrides.csv` finding) | A correction aimed at the locus of a positioned `haplotypes.csv`, `heteroplasmy.csv` or `pharm_variants.csv` row counts as one an artifact can carry, as `reverse_module` writes that row back. Before, lap 1 called it unreachable and lap 2 matched it. | Nothing. |
 | `just_dna_compiler.compiler.subjects` (new module) | `MODULE_GENE_TABLES`, `MODULE_LOCUS_TABLES`, `module_subjects(rows_by_table)`, `ModuleSubjects`: the one answer to "which genes, loci and identities is this module about". The enricher's gene scope (`gene_metrics.module_genes`) and the compiler's checks call it. | If you compute a module's genes or loci yourself, call it instead. |
 
-## 1.26 The Ensembl snapshot moved repos, and resolutions move as data (RM372, no new code)
+## 1.26 A failed or retired request is never recorded as an answer (RM361) — an old-reader break
+
+| Surface | What changed | What to do |
+| --- | --- | --- |
+| `VALID_VERIFICATION_SKIPS`, `VALID_FULLTEXT_STATUS` | Each gains `retired`: the source answered HTTP 410. Records and `literature.csv` rows that used to say `unreachable` (or `absent`, for a fulltext 410) about a retired endpoint say `retired`. | A reader branching on the skip reason adds the arm; its remedy is an upgrade of the enricher, not a re-run. A 0.7 `LiteratureRow` refuses a `retired` cell (`extra` vocab), so read 0.8-enriched `literature.csv` with 0.8. |
+| `literature.csv` `fulltext_status` | `absent` now means only a 404 or BioC's "no result" body. A 429, another 4xx, or a 200 that is not the text is `unreachable` and is asked again. | Nothing; rows written `absent` by 0.7 for such a response stay pinned until the sidecar is re-derived. |
+| `literature.csv` `quotes_found` | Null when a `provenance_regex` could not be evaluated against the retrieved text, where it was a count with the quote as a miss. | Read null as unchecked, as `quotes_checked()` already does. |
+| `just_dna_format.base.coordinate_key`, `derive_variant_key` | An absent cell is an empty segment: `13:48037749` (was `13:48037749:None`), `13:48037749::A`; a row naming nothing keys as `""`. | A consumer joining a stored `:None` key re-enriches, and an `overrides.csv` row naming one is respelled (`13:48037749:None` → `13:48037749`), or it stops matching; `reference_examples/cpic_gene_pairs` is corrected. |
+| Enricher results | `OpenTargetsResult.not_read`, `PosteriorCounts.not_read`, `FrequencyResult.unanswered`, `RefCheck.unread`, `GnomadClient.unanswered`, `CivicApiClient.short_reads`, `Withholding.retired`, `FulltextRetired`, `AtlasRetired`. Open Targets keys a snapshot did not read whole are `not_read`, never `not_in_release`. | A host reading `not_in_release` as an answer reads `not_read` as unknown. |
+| Clients | `EutilsClient.esummary` raises `EutilsError` on a body with no summary block; OLS4/HGNC raise `IdentifierUnavailable` on a body without their answer block; `EnsemblResolver.resolve_rsid` returns `(None, None)` for any REST status but 400; a Hub failure other than not-found raises the lane's error instead of `SnapshotNotPublished`; `cpic_build` refuses a table with no stated count. | A host that caught only the old negative answer catches the could-not-ask type it already catches for an outage. |
+| `dataset` labels | A ClinGen or GenCC file with no release line labels its rows with the bare lane (`clingen_dosage`), not `clingen_dosage_unknown`. | Nothing. |
+
+## 1.27 The Ensembl snapshot moved repos, and resolutions move as data (RM372, no new code)
 
 | Surface | What changed | What to do |
 | --- | --- | --- |

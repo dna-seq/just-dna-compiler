@@ -49,7 +49,7 @@ from dataclasses import dataclass
 import httpx
 from tenacity import retry, retry_if_exception_type, wait_exponential_jitter
 
-from just_dna_enricher.net import PacingGate, attempt_floor, raise_if_retired
+from just_dna_enricher.net import EndpointRetired, PacingGate, attempt_floor, raise_if_retired
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +128,7 @@ class CivicApiUnavailable(CivicApiError):
     """
 
 
-class CivicApiRetired(CivicApiUnavailable):
+class CivicApiRetired(CivicApiUnavailable, EndpointRetired):
     """CIViC answered HTTP 410: it retired the endpoint asked (RM354).
 
     A fact about the source, not an outage, and not retried; a `CivicApiUnavailable` so every existing
@@ -229,6 +229,9 @@ class CivicApiClient:
         self._gate = gate or PacingGate(_REQUEST_INTERVAL)
         self._offline = offline
         self._items: dict[int, list[CivicEvidenceItem]] = {}
+        #: Variants whose read was short of the total CIViC stated (RM361): their served items are
+        #: answers, and an item missing from them is unknown, never "rejected or withdrawn".
+        self.short_reads: set[int] = set()
 
     @property
     def offline(self) -> bool:
@@ -283,6 +286,7 @@ class CivicApiClient:
                 )
             after = str(cursor)
         if stated is not None and stated != len(items):
+            self.short_reads.add(int(variant_id))
             # The response carries its own denominator, so a truncated read is checkable without a
             # second request (`@dont-discard-computed`). A warning rather than a refusal: the items
             # really were served, and discarding them would turn a partial answer into no answer.

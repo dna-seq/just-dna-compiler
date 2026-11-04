@@ -63,7 +63,7 @@ import grpc
 from tenacity import retry, retry_if_exception, wait_random_exponential
 
 from just_dna_enricher.atlas_protos import OUT_DIR, SERVICE_CONFIG_NAME
-from just_dna_enricher.net import PacingGate, attempt_floor
+from just_dna_enricher.net import EndpointRetired, PacingGate, attempt_floor
 
 # The one guarded module-level import the house rules allow, and the reason it is guarded is that
 # the bindings are a build product rather than source: `generated/` is git-ignored, so a fresh
@@ -236,6 +236,12 @@ class AtlasRefMismatch(AtlasRefused):
     """
 
 
+class AtlasRetired(AtlasUnavailable, EndpointRetired):
+    """The Atlas answered UNIMPLEMENTED for a method it was asked to run on a question it does score
+    (RM361): gRPC's word for a method the server does not have, its 410. Not `AtlasNotScored`, which
+    is the same status on an indel the precomputed set leaves out; a handler records `retired`."""
+
+
 class AtlasNotScored(AtlasError):
     """The variant is outside the precomputed set — indels, today.
 
@@ -382,16 +388,27 @@ def interval_filter(*, scorers: tuple[str, ...] = (), gene_names: tuple[str, ...
     return " AND ".join(f"({c})" for c in clauses)
 
 
-def _translate(error: grpc.RpcError, *, variant: str) -> AtlasError:
+def _translate(error: grpc.RpcError, *, variant: str, indel: bool = False) -> AtlasError:
     """One place where a transport exception becomes this module's contract.
 
     Keyed on the status code, and the server's own text is carried through rather than
     paraphrased: a refusal that cannot quote its reason is a refusal the caller cannot act on.
+
+    UNIMPLEMENTED is two answers (RM361): on a single-variant request for an indel it is the Atlas
+    saying the precomputed set leaves indels out (`AtlasNotScored`); anywhere else — an SNV, an
+    interval, the metadata — it is the server not having the method asked (`AtlasRetired`), which
+    reading as "no score for this variant" would hide.
     """
     code = error.code()
     details = error.details() or ""
     if code is grpc.StatusCode.UNIMPLEMENTED:
-        return AtlasNotScored(f"{variant} is not in the precomputed Atlas (indels are not scored): {details}")
+        if indel:
+            return AtlasNotScored(
+                f"{variant} is not in the precomputed Atlas (indels are not scored): {details}"
+            )
+        return AtlasRetired(
+            f"{variant}: the Atlas does not implement the method asked (UNIMPLEMENTED): {details}"
+        )
     if code is grpc.StatusCode.INVALID_ARGUMENT:
         if "reference base" in details:
             return AtlasRefMismatch(f"{variant}: {details}")
@@ -413,7 +430,11 @@ def _retryable(exc: BaseException) -> bool:
     `INTERNAL`: upstream's config retries three codes and the translation names four. Asking the
     translation keeps the two from drifting apart again when a code moves between its arms.
     """
-    return isinstance(exc, grpc.RpcError) and isinstance(_translate(exc, variant=""), AtlasUnavailable)
+    if not isinstance(exc, grpc.RpcError):
+        return False
+    translated = _translate(exc, variant="")
+    # A retired method answers the same on every attempt (RM361, as RM354 for HTTP's 410).
+    return isinstance(translated, AtlasUnavailable) and not isinstance(translated, AtlasRetired)
 
 
 #: Seconds between Atlas attempts. Zero on a measurement, not by default: no throttle up to 21/s
@@ -478,7 +499,7 @@ class AtlasClient:
         try:
             response = self._call(self._stub.GetDenseVariantScores, request, self._metadata)
         except grpc.RpcError as exc:
-            raise _translate(exc, variant=label) from exc
+            raise _translate(exc, variant=label, indel=len(ref) != 1 or len(alt) != 1) from exc
         return tuple(
             VariantScore(
                 scorer=block.variant_scorer.name,
