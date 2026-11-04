@@ -12,6 +12,7 @@ from just_dna_format.binning import MeasureBinRow, format_group_key, validate_bi
 from just_dna_format.findings import CodedWarning, restate
 from just_dna_format.layout import DERIVED_SUBDIR, VERIFICATION_JSON, sidecar_spellings
 from just_dna_format.spec import PMID_NONE, StudyRow, VariantRow, cited_as, doi_key
+from just_dna_format.vocab import RECOMMENDED_PHENOTYPE_CLASSES
 from pydantic import BaseModel
 
 from just_dna_compiler.compiler.tables import (
@@ -316,7 +317,35 @@ def _cross_validate_studies(
             unstated[key] += 1
         else:
             stated[key].add(test)
+    warnings.extend(_check_phenotype_classes(studies))
     return [], warnings
+
+
+def _check_phenotype_classes(studies: list[StudyRow]) -> list[str]:
+    """`phenotype_class` outside the recommended set, one warning naming each token (RM326, 0.8).
+
+    The set is open on purpose — three real studies fit none of v2's twelve classes — so a token outside
+    it is kept, and this says so once rather than per row. What it exists to catch is the second
+    spelling: v2 itself writes `FAMILIAL_LONGEVITY` beside `FAMILIAL` and `MR_MEDIATOR` beside `MR`, and
+    a consumer grouping by class would otherwise read one class as two. Counted in authored order so
+    the message is deterministic, and a warning in both modes, never a refusal.
+    """
+    counts: dict[str, int] = {}
+    for row in studies:
+        token = row.phenotype_class
+        if token is not None and token not in RECOMMENDED_PHENOTYPE_CLASSES:
+            counts[token] = counts.get(token, 0) + 1
+    if not counts:
+        return []
+    named = ", ".join(f"{token!r} ({n} rows)" for token, n in sorted(counts.items()))
+    return [
+        CodedWarning(
+            "phenotype_class_unrecognized",
+            f"studies.csv phenotype_class outside the recommended set: {named} — the set is open, so the "
+            f"rows stand; check each is not a second spelling of a recommended class "
+            f"({', '.join(sorted(RECOMMENDED_PHENOTYPE_CLASSES))})",
+        )
+    ]
 
 
 def _validate_table_kind(

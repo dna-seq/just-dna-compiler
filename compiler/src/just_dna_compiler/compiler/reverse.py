@@ -1024,6 +1024,7 @@ def _write_studies_csv(studies_df: pl.DataFrame, output_path: Path) -> None:
         "sample_size",
         "sample_unit",
         "n_cases",
+        "phenotype_class",
     ]
     with open(output_path, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -1060,5 +1061,6 @@ def _write_studies_csv(studies_df: pl.DataFrame, output_path: Path) -> None:
                     "sample_size": _scalar_cell(row.get("sample_size")),
                     "sample_unit": _scalar_cell(row.get("sample_unit")),
                     "n_cases": _scalar_cell(row.get("n_cases")),
+                    "phenotype_class": _scalar_cell(row.get("phenotype_class")),
                 }
             )

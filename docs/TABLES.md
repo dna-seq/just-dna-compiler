@@ -234,6 +234,11 @@ total analysed, cases included, and `sample_unit` says whether it counts people 
 parental-lifespan study counts two lives per participant, so the same number means half as many
 genotyped people. A size without its unit is refused, and so is an `n_cases` larger than the size.
 
+**`phenotype_class` says what was measured; `study_design` says how.** A case-control GWAS of
+centenarians and a Cox model of parental lifespan are both "GWAS" in `study_design`, and the class is
+what separates them. The recommended twelve are v2's; a token outside them is kept and warned about
+once, because the commonest cause is a second spelling of one of them.
+
 **The symptom of confusing it with `literature.csv` is a dropped row.** `literature.csv` is
 machine-produced and keeps every article it found; the compiler **discards an uncited literature row**
 when nothing references it. `studies.csv` is the authored side and is never dropped. If a citation

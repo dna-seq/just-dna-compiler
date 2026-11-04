@@ -53,6 +53,7 @@ from just_dna_format.vocab import (
     ACTIONABILITY_SEED,
     ALLELE_PATTERN,  # noqa: F401 — re-exported for backward compat (genotype grammar moved to base)
     RECOMMENDED_EFFECT_MEASURES,
+    RECOMMENDED_PHENOTYPE_CLASSES,
     VALID_CLIN_SIG,  # noqa: F401 — re-exported for backward compat (see note below)
     VALID_DIRECTIONS,  # noqa: F401 — re-exported for backward compat
     VALID_SAMPLE_UNITS,
@@ -1443,6 +1444,21 @@ class StudyRow(CitationPair, AuthoredModel):
         description=(
             "How many of the analysed were cases, for a case-control or extreme-phenotype design. "
             "Never more than `sample_size` when both are stated."
+        ),
+    )
+    # RM326: which OUTCOME the study measured, a different axis from `study_design` (which describes
+    # the study) and one the trait term does not separate. Open, with v2's twelve as the recommended
+    # members; a token outside them warns (`phenotype_class_unrecognized`) and is kept.
+    phenotype_class: str | None = Field(
+        default=None,
+        json_schema_extra={
+            **vocabulary("phenotype_class", RECOMMENDED_PHENOTYPE_CLASSES, closed=False),
+            **since("0.8.0"),
+        },
+        description=(
+            "Which outcome this study measured, e.g. `PARENTAL_LIFESPAN`, `EXTREME_SURVIVAL_CC`, "
+            "`HEALTHSPAN` (recommended, open; another token warns and is kept). `study_design` "
+            "describes the study; this describes what it measured, and one paper may measure several."
         ),
     )
 

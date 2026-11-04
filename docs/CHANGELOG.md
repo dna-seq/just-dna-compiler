@@ -41,6 +41,16 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM326: a study row states which outcome it measured (0.8, uncut)
+
+**format, compiler** — `studies.csv` gains `phenotype_class`, optional and open, with longevitymap v2's
+twelve classes as the recommended members (`RECOMMENDED_PHENOTYPE_CLASSES`: `EXTREME_SURVIVAL_CC`,
+`PARENTAL_LIFESPAN`, `OWN_SURVIVAL`, `VIABILITY_AF`, `HEALTHSPAN`, `MULTIVARIATE_AGEING`, `FAMILIAL`,
+`DISEASE_DEPLETION`, `RARE_BURDEN`, `EVOLUTIONARY`, `MR`, `BIOMARKER`). A token outside them is kept and
+draws the new warning `phenotype_class_unrecognized`, once per module, naming each token with its row
+count, in both modes. It reaches `studies.parquet` and `reverse` writes it back. **New warning code:** a
+reader pinned to 0.7 refuses a manifest carrying it (INTEGRATION_0_8 § 1).
+
 ## 2026-11-04 — RM325: a study row states how many were analysed, in what unit, and how many were cases (0.8, uncut)
 
 **format, compiler** — `studies.csv` gains `sample_size` (the total analysed, cases included),

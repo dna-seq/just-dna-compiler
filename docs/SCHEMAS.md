@@ -252,6 +252,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
   |---|---|---|
   | `RECOMMENDED_ANCESTRY_GROUPS` | 11 (open) | gnomAD's population labels — **open**, and deliberately not merged with `PgsRow.training_ancestry`'s 1000G superpopulations |
   | `RECOMMENDED_AUTHOR_KINDS` | 7 (open) |  |
+  | `RECOMMENDED_PHENOTYPE_CLASSES` | 12 (open) | which outcome a `StudyRow` measured — longevitymap v2's twelve classes; a token outside them warns (`phenotype_class_unrecognized`) and is kept (RM326) |
   | `RECOMMENDED_EFFECT_MEASURES` | 7 (open) | the units a `StudyRow` effect size is usually in — **open**, since a real study may report another |
   | `VALID_ACTIONABILITY` | 7 (closed) | what a consumer's return-of-results policy may act on. Shipped as `ACTIONABILITY_SEED`, which survives as a working alias — the `_SEED` name and a comment beside it both read as open while the validator refuses a non-member (RM225) |
   | `VALID_AUTHORED_POSITION` | 5 (closed) | what an `overrides.csv` row claims about the author's own standing on the value |
@@ -281,7 +282,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
   | `VALID_SOURCE_LAYERS` | 9 (closed) |  |
   | `VALID_VERIFICATION_CHECKS` | 26 (closed) |  |
   | `VALID_VERIFICATION_SKIPS` | 8 (closed) |  |
-  | `VALID_WARNING_CODES` | 80 (closed) | every code a compile may stamp on a finding (members in `RETIRED_WARNING_CODES` are no longer emitted); the catalogue with texts is in [COMPILER.md](COMPILER.md) |
+  | `VALID_WARNING_CODES` | 81 (closed) | every code a compile may stamp on a finding (members in `RETIRED_WARNING_CODES` are no longer emitted); the catalogue with texts is in [COMPILER.md](COMPILER.md) |
 
   Vocabularies owned by a leaf rather than by `vocab` (`spec`, `binning`, `pgx`, `pgs`, `manifest`,
   `sources`) are reached through the field markers above and not listed here, for the reason the bullet
@@ -556,7 +557,10 @@ that source's own units (RM160).
 each optional and declared after every 0.7 column: **`sample_size?`/`sample_unit?`/`n_cases?`**
 (RM325) — `sample_size` is the total analysed, cases included, and is refused without its unit
 (`VALID_SAMPLE_UNITS`: `individuals`, or `lives` where a study counts each participant's parents); a
-row whose `n_cases` exceeds its `sample_size` is refused.
+row whose `n_cases` exceeds its `sample_size` is refused. **`phenotype_class?`** (RM326) — which
+*outcome* the study measured, a different axis from `study_design`; open over
+`RECOMMENDED_PHENOTYPE_CLASSES` (v2's twelve), and a token outside them draws
+`phenotype_class_unrecognized` once per module, naming each token with its row count.
 
 **The pmid/doi pair (0.8, RM336) — one rule on every table that cites.** `pmid` never holds a DOI: a
 cell whose only identifier is a DOI is refused, naming the DOI, the way RM50 refuses a PMC id, because

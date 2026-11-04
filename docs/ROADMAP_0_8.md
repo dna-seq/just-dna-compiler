@@ -78,6 +78,8 @@ answers v2's §8 consumer requests 1 and 2 (category prose from the module, no "
 
 ## RM326 — a study row cannot say which outcome it measured, so the definition of "pro-longevity" lives in a `study_design` prefix
 
+**Built on 0.8, 2026-11-04: the column and its warning.** `StudyRow.phenotype_class`, open over `RECOMMENDED_PHENOTYPE_CLASSES` (v2's twelve), reaches `studies.parquet` and `reverse`; a token outside the twelve draws `phenotype_class_unrecognized`, once per module. Still open: the duplicate-citation narrowing by class and the outcome strip on `weights.parquet`, both later in the same `StudyRow` batch.
+
 **Measured 2026-11-04, then decided by the maintainer.**
 
 The measurement was run by a subagent against both ported longevitymap `studies.csv` files, v2's

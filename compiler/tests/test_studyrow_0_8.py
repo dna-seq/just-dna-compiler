@@ -83,10 +83,36 @@ def _fill_sample_size(i: int, row: dict[str, str]) -> None:
         row["sample_unit"] = "lives"
 
 
+#: v2's twelve classes as RM326 spells them; the test restates them so a drift in either is caught.
+_V2_CLASSES: frozenset[str] = frozenset(
+    {
+        "EXTREME_SURVIVAL_CC",
+        "PARENTAL_LIFESPAN",
+        "OWN_SURVIVAL",
+        "VIABILITY_AF",
+        "HEALTHSPAN",
+        "MULTIVARIATE_AGEING",
+        "FAMILIAL",
+        "DISEASE_DEPLETION",
+        "RARE_BURDEN",
+        "EVOLUTIONARY",
+        "MR",
+        "BIOMARKER",
+    }
+)
+
+
+def _fill_phenotype_class(i: int, row: dict[str, str]) -> None:
+    """Every recommended class in turn, with every fourth row left unstated."""
+    if i % 4 != 3:
+        row["phenotype_class"] = sorted(_V2_CLASSES)[i % len(_V2_CLASSES)]
+
+
 #: Each column group this batch adds, with a fill that gives it distinct stated values and empty
 #: cells, and how a parquet cell reads back as the CSV cell it came from.
 _GROUPS: dict[str, tuple[tuple[str, ...], Fill]] = {
     "RM325": (("sample_size", "sample_unit", "n_cases"), _fill_sample_size),
+    "RM326": (("phenotype_class",), _fill_phenotype_class),
 }
 
 
@@ -213,3 +239,48 @@ def test_a_negative_count_is_refused() -> None:
     for cells in ({"sample_size": -1, "sample_unit": "lives"}, {"n_cases": -1}):
         with pytest.raises(ValidationError):
             _study(**cells)
+
+
+# ── RM326: the outcome a study measured ─────────────────────────────────────────────────────────
+
+
+def _summary(tmp_path: Path, spec: Path, *, strict: bool) -> dict[str, int]:
+    result = compile_module(spec, tmp_path / f"out_{strict}", strict=strict)
+    assert result.success, result.errors
+    return dict(result.manifest.compilation.warnings_summary)
+
+
+def test_phenotype_class_is_open_over_v2s_twelve() -> None:
+    marker = field_vocabularies(StudyRow)["phenotype_class"]
+    assert marker["closed"] is False
+    assert set(marker["options"]) == _V2_CLASSES
+    # Open: a class outside the twelve is a row, not a refusal (three real studies fit none of them).
+    assert _study(phenotype_class="NOVEL_CLASS").phenotype_class == "NOVEL_CLASS"
+
+
+@pytest.mark.parametrize("strict", [False, True])
+def test_a_class_outside_the_recommended_set_warns_in_both_modes(tmp_path: Path, strict: bool) -> None:
+    """v2 spells three classes two ways; the long form draws the warning, the recommended one does not."""
+
+    def drift(i: int, row: dict[str, str]) -> None:
+        row["phenotype_class"] = ("FAMILIAL_LONGEVITY", "MR_MEDIATOR", "FAMILIAL", "")[i % 4]
+
+    spec = _spec(tmp_path, "drift", ("phenotype_class",), drift)
+    summary = _summary(tmp_path, spec, strict=strict)
+    assert summary.get("phenotype_class_unrecognized") == 1
+    validation = validate_spec(spec, strict=strict)
+    # `validate_spec` returns plain strings; the code is asserted on the manifest above, the text here.
+    found = [w for w in validation.warnings if "phenotype_class outside the recommended set" in w]
+    assert len(found) == 1
+    # Each token is named once with its row count, and a recommended token is never named.
+    _, rows = _read_rows(spec / "studies.csv")
+    for token in ("FAMILIAL_LONGEVITY", "MR_MEDIATOR"):
+        count = sum(1 for row in rows if row["phenotype_class"] == token)
+        assert f"{token!r} ({count} rows)" in found[0]
+    assert "'FAMILIAL'" not in found[0]
+
+
+def test_only_recommended_classes_draw_no_warning(tmp_path: Path) -> None:
+    columns, fill = _GROUPS["RM326"]
+    spec = _spec(tmp_path, "clean", columns, fill)
+    assert "phenotype_class_unrecognized" not in _summary(tmp_path, spec, strict=False)

@@ -199,6 +199,19 @@ Feature: Derived sidecars, their arithmetic, and their orphans
       | "logistic"       | absent           | reported   |
       | absent           | absent           | reported   |
 
+  # source: compiler/src/just_dna_compiler/compiler/table_checks.py
+  # anchor: _check_phenotype_classes
+  @code:phenotype_class_unrecognized @actionable @both_modes
+  Scenario: a study's outcome class outside the recommended twelve
+    Given studies.csv rows whose phenotype_class is FAMILIAL_LONGEVITY and MR_MEDIATOR
+    When the module is compiled
+    Then the compile succeeds
+    And one warning fires whose text contains "phenotype_class outside the recommended set"
+    And it names each token once with its row count
+    # RM326: the set is open, because three real studies fit none of v2's twelve classes, so the rows
+    # stand. The warning is for the second spelling — v2 itself writes the long forms beside FAMILIAL
+    # and MR — which a consumer grouping by class would otherwise read as two classes.
+
   # source: compiler/src/just_dna_compiler/compiler/fact_checks.py
   # anchor: _cross_check_literature
   @code:citation_not_in_pubmed @actionable @both_modes

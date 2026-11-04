@@ -278,6 +278,8 @@ def _build_studies(studies: list[StudyRow], module_name: str) -> pl.DataFrame:
                 "sample_size": s.sample_size,
                 "sample_unit": s.sample_unit,
                 "n_cases": s.n_cases,
+                # RM326: which outcome the study measured.
+                "phenotype_class": s.phenotype_class,
             }
         )
     schema = {
@@ -310,5 +312,6 @@ def _build_studies(studies: list[StudyRow], module_name: str) -> pl.DataFrame:
         "sample_size": pl.Int64,
         "sample_unit": pl.Utf8,
         "n_cases": pl.Int64,
+        "phenotype_class": pl.Utf8,
     }
     return pl.DataFrame(records, schema=schema)

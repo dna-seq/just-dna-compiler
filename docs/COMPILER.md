@@ -430,6 +430,13 @@ message names the cell as written (`Duplicate (variant, pmid): (rs…, NONE doi 
 real `pmid` is keyed and worded as before. The two other study findings that print a row's `pmid`
 (`study_effect_allele_not_at_locus`, `p_value_encodings_disagree`) name a `NONE` row the same way.
 
+**A study's outcome class outside the recommended set warns once (0.8, RM326).**
+`phenotype_class_unrecognized` names every `phenotype_class` token outside
+`RECOMMENDED_PHENOTYPE_CLASSES` with its row count, in one finding, in both modes. The set is open, so
+the rows stand; the warning exists for the second spelling, since v2 writes `FAMILIAL_LONGEVITY` beside
+`FAMILIAL` and `MR_MEDIATOR` beside `MR`. Text: `studies.csv phenotype_class outside the recommended
+set: 'FAMILIAL_LONGEVITY' (2 rows), … — the set is open, so the rows stand; …`.
+
 **Only *both stated and different* suppresses the warning.** The rule is Kleene rather than `a != b`:
 an absent `statistical_test` is **unknown**, and unknown against a stated value cannot establish that
 two rows describe separate work. So a pair where neither row names an analysis, where both name the
@@ -1716,7 +1723,8 @@ actionable, which is `vocab.ACTIONABLE_WARNING_CODES`, derived by subtraction:
 - **PGx tables** — `star_allele_undefined`, `diplotype_definitions_identical`,
   `diplotype_phase_ambiguous`
 - **studies and literature** — `study_variant_orphan`, `duplicate_study_citation`,
-  `p_value_encodings_disagree`, `study_effect_allele_not_at_locus`, `citation_not_in_pubmed`,
+  `p_value_encodings_disagree`, `study_effect_allele_not_at_locus`, `phenotype_class_unrecognized`,
+  `citation_not_in_pubmed`,
   `literature_row_uncited`, `quote_counter_stale`, `quoted_article_license_restrictive`
 - **sources and licensing** — `source_row_unused`, `source_terms_unrecorded`,
   `declared_license_disagrees`

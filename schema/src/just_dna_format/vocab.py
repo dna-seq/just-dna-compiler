@@ -681,6 +681,29 @@ RECOMMENDED_EFFECT_MEASURES: frozenset[str] = frozenset(
 # with no unit beside it is refused (`@weight-has-no-unit`). Closed: a third unit is a new member.
 VALID_SAMPLE_UNITS: frozenset[str] = frozenset({"individuals", "lives"})
 
+# Which outcome a study measured (RM326): longevitymap v2's twelve phenotype classes, spelled as v2's
+# requirements spell them (`FAMILIAL`, `MR`, `BIOMARKER`, never the long forms v2 also uses). OPEN,
+# because three real studies fit none of them: a token outside the set is kept and draws
+# `phenotype_class_unrecognized`, which catches a second spelling without refusing a new class. The
+# trait term cannot stand in for it: measured on 2026-11-04, it separates 0 of the 12 classes in real
+# rows, and OBA_VT0005372 alone covers at least four.
+RECOMMENDED_PHENOTYPE_CLASSES: frozenset[str] = frozenset(
+    {
+        "EXTREME_SURVIVAL_CC",
+        "PARENTAL_LIFESPAN",
+        "OWN_SURVIVAL",
+        "VIABILITY_AF",
+        "HEALTHSPAN",
+        "MULTIVARIATE_AGEING",
+        "FAMILIAL",
+        "DISEASE_DEPLETION",
+        "RARE_BURDEN",
+        "EVOLUTIONARY",
+        "MR",
+        "BIOMARKER",
+    }
+)
+
 # Which way the effect allele moves the MEASURED TRAIT — the GWAS Catalog's `betaDirection` (RM90).
 #
 # **Not `VALID_DIRECTIONS`, and the separation is structural rather than stylistic.** That vocabulary
@@ -1585,6 +1608,7 @@ VALID_WARNING_CODES: frozenset[str] = frozenset(
         "duplicate_study_citation",  # two study rows on one (variant, pmid)
         "p_value_encodings_disagree",  # `p_value` and `p_value_num` are two readings of one number
         "study_effect_allele_not_at_locus",  # a study's `effect_allele` is not among the resolved alleles
+        "phenotype_class_unrecognized",  # a study's `phenotype_class` outside the recommended set (RM326)
         "citation_not_in_pubmed",  # a `pmid` PubMed has no record of
         "literature_row_uncited",  # a literature row nothing in the module cites — kept in the CSV
         "quote_counter_stale",  # `quotes_authored` disagrees with the quotes that cite it
