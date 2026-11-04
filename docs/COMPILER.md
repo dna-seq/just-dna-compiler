@@ -1443,8 +1443,26 @@ at least one recognized table".
   rows in `matches`), and `withheld` (`direction`, when a bare-locus member on a direction row fixes no
   allele).
 - `meta_resolved.parquet`: one row per (row reached, `sex` scope), with `table`, `key`, `sex`, the four
-  fact columns after precedence, `withheld` and `meta_rows` (the 0-based `meta.parquet` rows that reach
-  it). This is the grain RM327's computed `tradeoff` joins at; it is not written yet.
+  fact columns after precedence, `tradeoff`, `withheld` and `meta_rows` (the 0-based `meta.parquet` rows
+  that reach it).
+
+**`tradeoff` (RM327), computed and never authored.** A nullable boolean, `true` or null and never
+`false`. A per-trait judgement is a one-member row with `trait_efo_id` and a `direction`; the verdict is
+taken **per member** (its `members_key`) and is `true` when that member has a `protective` row on one
+trait and a `risk` row on another. It then lands on every row the member reaches: each genotype row of a
+bare locus (the reference homozygote included, since the verdict is about the locus's shared
+`effect_allele`), and each diplotype carrying a named `allele_function` allele. A row two members reach
+is `true` when either is; two alleles' judgements are never pooled, so ε2 protective on one trait and ε4
+risk on another leaves the ε2/ε4 row null. **On one trait at one row, the precedence above runs first**:
+a judgement on that trait outranked by another (a sex-scoped row over the same key unscoped, a
+`diplotypes` member over an allele it contains, a genotype over its locus) is dropped there, so a
+diplotype row stating ε3/ε4 `neutral` on the trait ε4 is `risk` on clears ε4's trade-off at ε3/ε4
+only. A `mediator` row counts (its direction is still a benefit or a harm);
+`neutral`, `unknown` and `contested` are not signs, and a direction the compile withheld
+(`meta_member_allele_ambiguous`) is unknown and adds none. **The false arm is unreachable**: RM327 makes
+`false` mean every trait's judgement is stated and none opposes another, and a module states no closed
+list of the traits an allele touches, so one sign alone is null. The name is refused on every authored
+table with its own reason (`vocab.MISPLACED_COLUMN_REASONS`).
 
 **The manifest** records every member's match count as `meta_selectors` (`{row, selector, matches}`,
 in authored order) and the module's `tier_scale`. `reverse` writes `meta.csv` back from `meta.parquet`
@@ -2442,7 +2460,8 @@ modules silently vanishing from a catalogue.
 | **RM29a call-confidence cofactor: `quality_from` + `min_quality` (0.5)** | ✅ shared pointer grammar (`source_field`/`callable_from`/`quality_from`, one validator, namespace-qualifiable since 0.6); finite floor; **both-or-neither** model rule | ✅ `weights.parquet` (`Utf8` + `Float64`); absent floor is null, never `0.0` | **materialized** |
 | **RM29b clinical cofactor: `DiplotypeRow.clinical_context` (0.5)** | ✅ whitespace-stripped, open (no vocabulary — guideline bodies scope differently) | ✅ generic table materializer, no compiler change | **in `_TABLE_DUPE_KEYS`** — disagreeing CPIC contexts coexist as distinct rows |
 | PGS `PgsRow` (declared interface; ancestry-validity fields) | ✅ `PGS<digits>`, ancestry/tier vocab, `match_rate_floor∈[0,1]` | ✅ | **materialized** |
-| reserved namespace (`reference_db` / `callable_element` / `quality_element` / `tradeoff`) | ✅ specific diagnosis via `reject_reserved` on top of `extra=forbid` | — | reserved |
+| reserved namespace (`reference_db` / `callable_element` / `quality_element`) | ✅ specific diagnosis via `reject_reserved` on top of `extra=forbid` | — | reserved |
+| **RM327 `tradeoff` (0.8)** | ✅ refused on every authored table via `reject_misplaced` (`MISPLACED_COLUMN_REASONS`), never authored | ✅ `meta_resolved.parquet` (`Boolean`, true or null, never false) | **derived** |
 | authoring reference + palette (`reference.authoring_reference()`/`json_schemas()`) | ✅ generated from live models (drift-proof) | n/a | **shipped** (RM8/RM9) |
 | frozen `variant_key` identity (`base.derive_variant_key`) | ✅ stamped once, never re-keyed by resolution (P7); excluded from `authoring_reference()` | ✅ `weights.parquet` (compiler-managed) | **shipped** |
 | rsid↔coord resolution: one-to-many expansion, deterministic order, inject-only consistency check | ✅ `ORDER BY`; disagreement → warning; non-GRCh38 skipped | ✅ N coord-keyed rows per one-to-many rsid; idempotent | **shipped** (the DuckDB engine now lives in `just-dna-enricher`; GRCh38-only; multi-build RM15) |

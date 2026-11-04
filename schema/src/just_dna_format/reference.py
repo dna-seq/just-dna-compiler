@@ -64,6 +64,7 @@ from just_dna_format.spec import (
     VariantRow,
 )
 from just_dna_format.vocab import (
+    MISPLACED_COLUMN_REASONS,
     RESERVED_NAMES_0_4,
 )
 
@@ -321,6 +322,11 @@ def authoring_reference() -> dict[str, Any]:
             if getattr(model, "REQUIRED_ANY_OF", ())
         },
         "reserved_names": sorted(RESERVED_NAMES_0_4),
+        # Names real on a generated table (or, like `tradeoff`, only on a compiled parquet) that an
+        # authored table refuses with a reason (`vocab.reject_misplaced`). Beside `reserved_names` so a
+        # tool listing what an author may not write sees both kinds; a model that declares one of them
+        # (`FrequencyRow.source`) still accepts it.
+        "misplaced_columns": dict(sorted(MISPLACED_COLUMN_REASONS.items())),
         # Field-ownership boundary for the `module:` block (S2): keys the format knows about but that
         # a *publishing registry* stamps, so an author must omit them. Distinct from `reserved_names`
         # (future module columns) — these will never be authored. A consumer strips them before

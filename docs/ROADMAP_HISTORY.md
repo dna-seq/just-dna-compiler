@@ -35,6 +35,79 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM327 — pleiotropy has no per-trait row, so a trade-off can only be prose, and `tradeoff` is computed rather than authored
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut** — a minor, taken into 0.8 on 2026-11-03 as a priority; the per-trait rows shipped with the meta-table (RM28), `tradeoff` with [PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §3 item 9, §5 B2 · **Owner** format + compiler · **Motivating case** longevitymap v2 requirements §4.2 (pleiotropy, mediator), §10 · *for* longevitymap v2 · *related* RM28, RM321, RM323, USE_CASES § 6a
+
+**Residuals** won't fix — `false` stays unreachable in 0.8, because a module states no closed list of the traits an allele touches, and the reason is in this entry
+
+**What shipped (B2, 2026-11-04).** `tradeoff` is a nullable boolean column of `meta_resolved.parquet`,
+computed and never authored. A per-trait judgement is a one-member `meta.csv` row with `trait_efo_id` and a
+`direction`. The verdict is taken **per member** (its `members_key`): `true` when the member has a
+`protective` row on one trait and a `risk` row on another, and it lands on every row the member reaches (each
+genotype row of a bare locus, the reference homozygote included, and each diplotype carrying a named
+`allele_function` allele). A row two members reach is `true` when either is. Two alleles are never pooled:
+ε2 protective on one trait and ε4 risk on another leave the ε2/ε4 row null, since neither allele has a
+trade-off. On one trait at one row the fact columns' precedence runs first, so a narrower judgement on
+that trait (a sex-scoped row, a diplotype over the allele it contains, a genotype over its locus) drops
+the broader one there; that came out of the code review, whose case was ε3/ε4 stated `neutral` on the
+trait ε4 is `risk` on. **Defaults
+taken:** a `mediator` row counts, because its direction is still a benefit or a harm; `neutral`, `unknown` and
+`contested` are not signs; a direction the compile withheld (`meta_member_allele_ambiguous`) is unknown and
+adds no sign; a `direction` with no `trait_efo_id` is not a per-trait row. The name left
+`RESERVED_NAMES_0_4` for `MISPLACED_COLUMN_REASONS` in the same commit, so a `tradeoff` column on any
+authored table is refused with the reason that the compiler computes it. Tests:
+`compiler/tests/test_meta_compile.py` (the audit's example 4, a parametrized Kleene table, per-member versus
+pooled, sex precedence, the round trip and byte determinism) and `schema/tests/test_v04.py` (the refusal,
+walked over every authored model).
+
+**Why `false` is never written.** RM327's Kleene rule makes `false` mean that every trait's judgement is
+present and none opposes another. A module cannot say it has listed every trait an allele touches: there is no
+closed trait list in the format, and the absence of a `risk` row is not a judgement that there is no harm. So
+one sign alone is null. Reaching `false` would need a declared closure (for example a module-level statement
+that its per-trait rows for a member are complete), which no consumer has asked for; it is not filed.
+
+The dated lines below are the record as it stood, newest first. The oldest of them, the
+`(subject_kind, subject, trait_efo_id)` key, was superseded by the re-derivation above it once RM323
+dropped subject kinds: what shipped is the meta-table's key, `(members_key, trait_efo_id, sex)`, with
+APOE ε4's per-trait rows written as `allele_function` members. The **Shape** below is the pre-design
+sketch; its authored per-trait table was not built, and the reservation it describes has moved.
+
+**Built on 0.8, 2026-11-04: the meta rows.** A per-trait judgement is a one-member `meta.csv` row with `trait_efo_id`, `direction` and an allele-bearing member (a bare locus bears one when its rows share an `effect_allele`, else `meta_member_allele_ambiguous` and the direction is withheld), `trait_role` (`mediator`) beside it. Still open: `tradeoff` and the resolved facts' Kleene table (B2), computed at `meta_resolved.parquet`'s grain; the name stays reserved until then.
+
+**Default under the 2026-11-04 reduction rule (the pm seat's reading; the maintainer may veto):** a per-trait judgement is a row of RM28's meta-table: one member, `trait_efo_id`, and `direction` (`protective`/`risk`). `tradeoff` is computed over those rows, and no new table kind is built for this item.
+
+**Key to re-derive, 2026-11-04.** RM323 no longer has subject kinds, so "align on RM323's subject" now means: a per-trait row is keyed on an item of a single-statement table plus `trait_efo_id`, using the same item references as the meta-table's members. The proposal settles the exact spelling.
+
+**Decided 2026-11-04 by the maintainer: the key aligns on RM323's subject.** It is `(subject_kind, subject, trait_efo_id)`, and `effect_allele` is kept for `variant` subjects only; a haplotype or gene subject is its own allele. RM323, this table and later RM28 then share one identity, so APOE ε4's per-trait rows are `haplotype` rows.
+
+**What was confirmed.** `VariantRow` keys on `(variant_key, genotype)`, so a genotype row states one
+claim about one trait. Re-keying a shipped authored table is major-only (P3; RM140's text). `DiplotypeRow`
+already keys on `trait_efo_id`, so the two tables disagree on whether pleiotropy is a row. The per-trait
+*facts* already arrive in `gwas_effects.csv` (derived, with `effect_direction` increase/decrease). What
+has no home is the curator's per-trait *judgement*: whether this allele's effect on that trait is a
+benefit or a harm, which `VALID_EFFECT_DIRECTIONS` deliberately does not say.
+
+**`direction: contested` is not the interim.** Its description says the sources disagree about the sign.
+At a trade-off nobody disagrees: two known effects point opposite ways. SH2B3 and CDKN2B-AS1 are
+genome-wide-significant lifespan hits, so their lifespan sign is established, and the trade-off belongs
+in `negatives` until this table exists.
+
+**Shape.**
+
+- **An authored per-trait table** keyed on `(variant_key, effect_allele, trait_efo_id)`, carrying the
+  existing `direction` vocabulary, a role (`outcome` or `mediator`), and a citation. The mediator EFO the
+  plan parks in `flags: mediator:` folds in here, so `trait_efo_id` stays role-free. Full, a new table
+  kind.
+- **`tradeoff`, computed, never authored** (decided). True when an allele has a `protective` and a `risk`
+  row across traits. Kleene: false only when every trait's judgement is present and none of them is
+  opposite, and unknown otherwise, unless both signs are already present. A derived column, near-zero.
+- **Reserve the name `tradeoff`** in `RESERVED_NAMES_0_4` with a reason, so nobody authors it before
+  the computed one lands. **Done 2026-11-03, on `main`** as a patch: every authored model now refuses
+  the column with that reason rather than the generic stray-column message. When the derived column
+  ships, the name moves from the reserved set to `MISPLACED_COLUMN_REASONS`, since it will then be real
+  on a generated table and still never authored.
+
 ## RM352 — release records have no change kind for a toolchain-only byte move, so the 0.8 cut cannot declare polars 2
 
 **0.8, filed 2026-11-04 by the lead** as a second-pass item: RM342's residual, and a cut gate.

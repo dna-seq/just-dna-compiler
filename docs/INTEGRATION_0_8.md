@@ -73,11 +73,16 @@ replaces it (the accepted cost, RM28).
 | Parquet | One row per | Columns a consumer reads |
 | --- | --- | --- |
 | `meta.parquet` | authored `meta.csv` row, in authored order | every authored cell; `members_key`; `match_count`; `matches` (list of `{member, table, key}`, `key` in that table's `_KEY_FIELDS` order); `replaces` (a matching combination replaces the findings of exactly the rows in `matches`); `withheld` |
-| `meta_resolved.parquet` | (single-statement row a one-member meta row reaches, `sex` scope) | `table`, `key`, `sex`, `tier`, `age_of_action`, `age_of_action_confidence`, `flags` after precedence; `withheld`; `meta_rows` |
+| `meta_resolved.parquet` | (single-statement row a one-member meta row reaches, `sex` scope) | `table`, `key`, `sex`, `tier`, `age_of_action`, `age_of_action_confidence`, `flags` after precedence; `tradeoff` (RM327: true when one member reaching the row has a `protective` and a `risk` per-trait row, otherwise null, **never false**); `withheld`; `meta_rows` |
 
 A `variants` match is keyed by the authored `(variant_key, genotype)`; for an rsID that resolution expands
 onto several loci, `weights.parquet` keys those rows by coordinate, and they are reached through `rsid`.
 `module_spec.yaml` gains the optional `tier_scale:`; a `tier` cell without it is refused.
+
+`tradeoff` leaves `vocab.RESERVED_NAMES_0_4` (three names now) for `vocab.MISPLACED_COLUMN_REASONS`: a
+`tradeoff` column on any authored table is still refused, now with the reason that the compiler computes
+it. A consumer reading `RESERVED_NAMES_0_4` to list unwritable names should read both maps;
+`authoring_reference()` carries the second as the new key `misplaced_columns`.
 
 ## 1.3 New derived column and client method (no break)
 

@@ -17,6 +17,19 @@ reaches, per `sex` scope, with each fact column (`tier`, `age_of_action`, `age_o
 `flags`) after precedence and a `withheld` list naming the columns two incomparable, disagreeing rows
 left unresolved. A row of two or more members states facts about the **combination**, so its facts stay
 on its own `meta.parquet` row and never reach a member row by itself.
+
+**`tradeoff` (RM327)** is computed there too, per allele-bearing **member** and never pooled across
+members: `True` when one member has a `protective` per-trait row and a `risk` per-trait row (a
+one-member row with `trait_efo_id` and a direction not withheld; a `mediator` row counts, since its
+direction is still a benefit/harm judgement), and that verdict lands on every row the member reaches,
+including the diplotypes an `allele_function` member reaches through the allele they carry. On one
+trait at one row, the fact columns' precedence applies first, so a narrower judgement the author made
+about that row (a diplotype member over the allele it contains, a genotype over its locus, a sex-scoped
+row over the unscoped one) drops the broader judgement on that trait. A row two members reach is `True`
+when either member is. **Never `False`**: RM327's false arm needs every trait's
+judgement stated, and a module states no closed list of the traits an allele touches, so absence of an
+opposing row is unknown, not a negative. Two alleles meeting at a heterozygous diplotype are two
+members, so ε2 protective on one trait and ε4 risk on another is not a trade-off of either.
 """
 
 from collections.abc import Mapping
@@ -215,11 +228,52 @@ def _comparable(value: Any) -> Any:
     return tuple(sorted(set(value))) if isinstance(value, list) else value
 
 
+#: The two directions that oppose each other across traits. `neutral`, `unknown` and `contested` are not
+#: a benefit or a harm (RM327: `contested` means the sources disagree about the sign, not a trade-off).
+_TRADEOFF_SIGNS: frozenset[str] = frozenset({"protective", "risk"})
+
+
+def _tradeoff(applicable: list[_Candidate], rows: list[MetaRow], withheld: list[list[str]]) -> bool | None:
+    """RM327's verdict for one `(target, sex)`: `True` when a member reaching it has both signs, else `None`.
+
+    `applicable` is already the sex scope's candidates. A per-trait judgement is a candidate with a
+    `trait_efo_id` and a `direction`; every member carrying one is allele-bearing, because `MetaRow`
+    refuses a direction on any other member and a bare locus whose rows share no `effect_allele` has its
+    direction withheld here.
+
+    1. **Precedence per trait, as the fact columns take it** (`_outranks`): among the judgements on one
+       trait at this target, one that a more specific judgement on the same trait outranks is dropped —
+       a sex-scoped row over the same key unscoped, a `diplotypes` member over an allele it contains, a
+       concrete row key over a locus. So an author's narrower statement about this row wins.
+    2. **Signs per member** (`members_key`), never pooled across members: two alleles meeting at a
+       heterozygous diplotype are two members, and neither has a trade-off because of the other.
+    3. A direction the compile withheld still takes part in precedence (it is a statement about the
+       trait) but is unknown, so it adds no sign. Kleene with the false arm unreachable: a module states
+       no closed trait list, so one sign alone is `None`, never `False`.
+    """
+    stating = [
+        c for c in applicable if rows[c.meta].trait_efo_id is not None and rows[c.meta].direction is not None
+    ]
+    signs: dict[str, set[str]] = {}
+    for candidate in stating:
+        row = rows[candidate.meta]
+        if any(
+            rows[other.meta].trait_efo_id == row.trait_efo_id and _outranks(other, candidate, rows)
+            for other in stating
+        ):
+            continue
+        if "direction" in withheld[candidate.meta] or row.direction not in _TRADEOFF_SIGNS:
+            continue
+        signs.setdefault(row.members_key or "", set()).add(row.direction)
+    return True if any(member == _TRADEOFF_SIGNS for member in signs.values()) else None
+
+
 def _resolve(
     rows: list[MetaRow],
     members: list[list[MetaMember]],
     matches: list[list[MetaMatch]],
     tables: dict[str, list[Any]],
+    withheld_by_row: list[list[str]],
 ) -> list[dict[str, Any]]:
     """`meta_resolved.parquet`'s rows: each target a one-member row reaches, per sex scope, after precedence."""
     reach: dict[tuple[int, int], dict[int, _Candidate]] = {}
@@ -281,6 +335,7 @@ def _resolve(
                     record[column] = None
                     if values:
                         withheld.append(column)
+            record["tradeoff"] = _tradeoff(applicable, rows, withheld_by_row)
             record["withheld"] = withheld
             record["meta_rows"] = [c.meta for c in applicable]
             resolved.append(record)
@@ -365,7 +420,7 @@ def build_meta(rows: list[MetaRow], tables: dict[str, list[Any]], tier_scale: st
         texts=all_texts,
         matches=all_matches,
         withheld=all_withheld,
-        resolved=_resolve(rows, all_members, all_matches, tables),
+        resolved=_resolve(rows, all_members, all_matches, tables, all_withheld),
         errors=errors,
         warnings=warnings,
     )
@@ -409,7 +464,8 @@ def meta_resolved_frame(build: MetaBuild, module_name: str) -> pl.DataFrame:
     """`meta_resolved.parquet`: one row per (single-statement row, sex scope) a one-member row reaches.
 
     Sorted by member table (`META_MEMBER_TABLES` order), then the row's authored position in its table,
-    then the scope (none, female, male). `meta_rows` are the 0-based `meta.parquet` rows that reached it.
+    then the scope (none, female, male). `tradeoff` is RM327's verdict (`True` or null, never `False`).
+    `meta_rows` are the 0-based `meta.parquet` rows that reached it.
     """
     schema: dict[str, Any] = {
         "module": pl.Utf8,
@@ -417,6 +473,7 @@ def meta_resolved_frame(build: MetaBuild, module_name: str) -> pl.DataFrame:
         "key": pl.List(pl.Utf8),
         "sex": pl.Utf8,
         **{name: _polars_type(MetaRow.model_fields[name].annotation) for name in META_FACT_COLUMNS},
+        "tradeoff": pl.Boolean,
         "withheld": pl.List(pl.Utf8),
         "meta_rows": pl.List(pl.Int64),
     }
