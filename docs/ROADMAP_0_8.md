@@ -107,6 +107,20 @@ gene-pair subject (it does not if that home is keyed on `variant_key`).
 
 ## RM323 — a fact about a locus has no authored home, so every per-locus axis is copied onto each genotype row and nothing checks the copies agree
 
+**Final, 2026-11-04, the maintainer: "go with C".** This supersedes both decisions below. The per-locus facts
+(tier, causal and effector confidence, age of action and its confidence) are columns of **the meta-table only**.
+They are never repeated on `variants.csv` or `diplotypes.csv`.
+
+- A single locus's facts are a meta-table row with **one member** and no finding.
+- A member is an item of a single-statement table. It may be a locus-level reference (a `variant_key` alone),
+  for a fact that does not depend on the genotype, or a full row's key.
+- APOE ε2 and ε4 are each a one-member row naming their allele.
+
+One new table holds facts and combinations. Priced at about 20 (a new table at about 10, plus five fact columns
+and the finding's columns), against about 30 for a separate fact table or for facts repeated on the
+existing tables. The maintainer's standing rule from this decision is in [RM28](#rm28--meta-conclusions-the-predicate-half):
+weight toward fewer entities.
+
 **Re-decided 2026-11-04 by the maintainer: no new fact table, and no subject kinds.** This supersedes the
 `(subject_kind, subject)` key below.
 
@@ -171,7 +185,7 @@ RM329's age-of-action class all land wherever this decides.
 
 ## RM324 — there is no evidence-tier column, so the axis that gates visibility is a `flags: tier:A` token
 
-**Placement updated 2026-11-04.** The one `tier` column goes on the single-statement tables and the meta-table (RM323's re-decision), not on a fact table. The scale is still declared once per module.
+**Placement updated 2026-11-04.** The one `tier` column goes on the meta-table only (RM323's final decision, "go with C"). The scale is still declared once per module.
 
 **Decided 2026-11-04 by the maintainer: one `tier` column, with the scale declared once per module.** The tier column goes on RM323's fact table. The module names the scale it grades on once in `module_spec.yaml`, as `weighting:` names its scale. A module therefore holds one scale, and a source's own grade cannot sit beside the module's tier in this column. RM294 (STRchive's grade) moved to 0.9 for that reason.
 
@@ -253,6 +267,8 @@ Two things become **derived, near-zero**, once it exists:
   two-valued: a locus with no study row of a class is **untested** and withheld, never "no effect".
 
 ## RM327 — pleiotropy has no per-trait row, so a trade-off can only be prose, and `tradeoff` is computed rather than authored
+
+**Default under the 2026-11-04 reduction rule (the pm seat's reading; the maintainer may veto):** a per-trait judgement is a row of RM28's meta-table: one member, `trait_efo_id`, and `direction` (`protective`/`risk`). `tradeoff` is computed over those rows, and no new table kind is built for this item.
 
 **Key to re-derive, 2026-11-04.** RM323 no longer has subject kinds, so "align on RM323's subject" now means: a per-trait row is keyed on an item of a single-statement table plus `trait_efo_id`, using the same item references as the meta-table's members. The proposal settles the exact spelling.
 
@@ -777,6 +793,16 @@ the column; hashing it would make a reworded note move the digest, which is the 
 [FAQ](FAQ.md) already answers twice.
 
 ## RM28 — Meta-conclusions (the predicate half)
+
+**Final shape, 2026-11-04 ("go with C").** One new table. A row is a composite statement, meaning one or more
+members, each an item of a single-statement table, mapped to a finding and/or the per-locus facts. A one-member
+row with only facts is how a single locus gets its tier, so RM323 needs no table of its own.
+
+**The rule the maintainer set with it, for every proposal here:** "Always weight your proposals towards
+reduction of entities. If something can be built with 20 score, don't build it with 30 for 'tidiness', it is
+clutter and bloat in guise of strict-typing of non-strict typed data." Under it, RM327's per-trait benefit/harm
+judgements default to rows of this same table (one member, a trait, a direction) rather than a table of their
+own; the proposal confirms that or says why not.
 
 **Shape decided 2026-11-04 by the maintainer: the meta-table is a map from a composite statement to a finding.**
 A composite statement is keyed on **items of the single-statement tables**: a `variants.csv` row's
