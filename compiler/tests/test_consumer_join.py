@@ -31,6 +31,14 @@ newly broken, fails the test, and the sets can only shrink as those items ship.
 **Regenerating.** A new reference example with rows outside the windows fails
 `test_every_joinable_row_is_inside_the_fixture` by name. Rebuild both files with the commands above
 over the new row set, and keep the ClinVar release in the filename.
+
+**Extended 2026-11-04 for `longevity_studies` and `model_organisms`** (six SNV windows: 1:109275908,
+3:12351626, 6:63910997, 6:108587315, 6:160589086, 19:44908684), without bcftools or a local FASTA. Each window
+is `[pos-100, pos+len(ref)+100]`, read from UCSC's hg38 sequence API (`api.genome.ucsc.edu/getData/sequence`),
+with the row's `ref` asserted at its offset. The records are the same 2026-06-27 ClinVar GRCh38 VCF cut to
+those windows, with INFO reduced to `CLNSIG`, `RS` and one ALT per record. They were not run through
+`bcftools norm`, which realigned none of the first 5,281. Existing lines are unchanged, and the new ones
+are merged in sort order.
 """
 
 import gzip
