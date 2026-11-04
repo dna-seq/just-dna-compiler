@@ -157,11 +157,25 @@ def test_a_transport_failure_is_retried_and_then_withheld() -> None:
 
 
 def test_a_definite_answer_is_not_retried() -> None:
-    """404 is Crossref answering. Retrying it would spend the budget on a settled question."""
-    client, calls = _counting_client(lambda request: httpx.Response(404))
+    """404 is Crossref answering. Retrying it would spend the budget on a settled question.
+
+    Since RM349 a `/works` 404 is followed by one `/works/{doi}/agency` request, because `/works`
+    404s for every DOI another agency registered: two questions, each asked once and never retried.
+    """
+    asked: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        asked.append(str(request.url))
+        return httpx.Response(404)
+
+    client, calls = _counting_client(handler)
 
     assert client.exists("10.1000/no-such-doi") is False
-    assert calls["n"] == 1
+    assert asked == [
+        "https://api.crossref.org/works/10.1000/no-such-doi",
+        "https://api.crossref.org/works/10.1000/no-such-doi/agency",
+    ]
+    assert calls["n"] == len(asked)
 
 
 def test_an_unexpected_status_withholds_without_retrying() -> None:

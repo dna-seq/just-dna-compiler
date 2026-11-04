@@ -912,6 +912,20 @@ def _check_doi(hint: CitationHint, doi: str, clients: LookupClients) -> None:
     for name in ("title", "journal", "year", "first_author"):
         if getattr(hint, name) is None:
             setattr(hint, name, getattr(work, name))
+    if work.title is None and work.agency not in (None, "crossref"):
+        # Registered with another agency (a DataCite dataset, RM349): it exists, and Crossref holds no
+        # record that could name it, so "Crossref has a record" below would be false.
+        hint.findings.append(
+            Finding(
+                None,
+                "doi",
+                "info",
+                f"DOI {doi} is registered with {work.agency}, not Crossref, so no title is in hand — "
+                f"existence is not identity, so confirm this is the work you meant from the DOI's "
+                f"landing page.",
+            )
+        )
+        return
     if work.title is None:
         # Datasets and some preprints carry a record and no title. Said, so a null title is not read
         # as "no such paper" or as "nobody asked" — the S113 shape, one case narrower.

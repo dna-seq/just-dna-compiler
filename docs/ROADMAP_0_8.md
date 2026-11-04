@@ -787,21 +787,6 @@ remaining class gets the same treatment — a plain column, on demand, one at a 
 
 Neither is built until a real module needs it.
 
-## RM349 — a `pmid=NONE` row's DOI is never checked to exist, and its quote is never matched against the paper
-
-**0.8, filed 2026-11-04 by the lead** as a second-pass item: RM336's residual.
-
-**Severity** medium · **Status** open — **a minor**, joins 0.8 · **Owner** enricher (`literature`, `lookup`) · **Motivating case** the RM336 builder's report · *related* RM336, RM263
-
-RM336 lets a study cite a DOI-only preprint through `pmid=NONE` + `doi`. The literature pass then has nothing to look
-up: a `NONE` row's quote or citation is recorded as an `unsupported` skip, so a fabricated DOI and a real one read the
-same, and `provenance_quote` is never matched against the preprint's text. The DOI is the only identifier the row
-carries, so it is the one the pass must check: existence through Crossref (`CrossrefClient.exists`, which already
-answers three-valued) and, where a full text is reachable (bioRxiv/medRxiv), the quote. `@existence-not-identity`
-applies: the check names the title it found.
-
-**Residuals** none yet.
-
 ## RM352 — release records have no change kind for a toolchain-only byte move, so the 0.8 cut cannot declare polars 2
 
 **0.8, filed 2026-11-04 by the lead** as a second-pass item: RM342's residual, and a cut gate.

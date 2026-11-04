@@ -572,8 +572,10 @@ derived `GwasEffectRow`, the last three gaining `doi?` in 0.8 — and a test wal
 and asserts that equality, with `LiteratureRow` the one named exemption (its `pmid` is the article's
 digit identity, not a citation). `pmid` stays required on `StudyRow`: the sentinel is a value in the
 cell, so the change is additive (P8). Two `NONE` study rows on one variant are told apart by their DOI
-in the duplicate-citation check. A `NONE` row's DOI is not looked up by the literature pass, which
-works from PMIDs; `just-dna-enricher hint citation --doi` reports a PMID where PubMed has one (RM263).
+in the duplicate-citation check. The literature pass asks Crossref whether a `NONE` row's DOI exists
+and matches its quote against the text Europe PMC holds for it (RM349), and writes neither answer to
+`literature.csv`, whose rows stay keyed on a PubMed id; `just-dna-enricher hint citation --doi` reports
+a PMID where PubMed has one (RM263).
 
 - **Row-level, because the work is mixed at row granularity.** A human may read a review while an
   agent traverses its citations, in one module, in one pass, and a module-level contributor list
