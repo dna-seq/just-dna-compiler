@@ -606,8 +606,8 @@ def _validate_spec(
     # And the one recorded finding `strict` acts on (S78, RM143), here so the pre-flight refuses what
     # the compile refuses — the standing parity rule, and this file has now closed that gap four
     # times. Pure computation over an injected sidecar with no `output_dir`, so it belongs on this
-    # side by the rule's own test; the compile re-runs it because `compile_module` runs the pre-flight
-    # in best_effort whatever its own mode, and only the compile knows the real severity.
+    # side by the rule's own test. `compile_module` runs this pre-flight in its own mode (RM359), so a
+    # strict compile refuses here, and re-reads the block itself only as a defensive second gate.
     if strict:
         build_error = build_disagreement_error(verification_doc)
         if build_error is not None:
@@ -795,7 +795,7 @@ def _validate_spec(
     #
     # Both severities mirror the compile exactly. The per-subject warnings carry `rsid_unresolved`,
     # the code `resolve_from_table` already emits for the identical sentence, so `compile_module` —
-    # which runs this pre-flight in best_effort whatever its own mode — de-duplicates them on the
+    # whose pre-flight emits them in both modes — de-duplicates them on the
     # message rather than publishing each twice (the `_check_contig_ploidy` idiom). Neither message
     # embeds a count that resolution could change, which is what makes re-running one safe here.
     #
@@ -857,9 +857,8 @@ def _validate_spec(
     # `resolution: …` and `strict resolution: …`, and that text is what a consumer greps
     # (`@warning-text-is-api`). Emitting the bare sentence here would change the published string on
     # every module that carries one — so the *sentence* is shared, from one helper, and only the
-    # channel label is restated. The pre-flight's own mode is not `compile_module`'s: it always runs
-    # this side in best_effort, so the `strict` arm below is `validate --strict`'s, and the compile
-    # reaches the identical text by its own strict path.
+    # channel label is restated. Since RM359 `compile_module` runs this pre-flight in its own mode, so
+    # the `strict` arm below is both `validate --strict`'s and `compile --strict`'s first refusal.
     if variants and resolve_with_ensembl and membership_table:
         all_errors.extend(
             f"resolution: {e}" for e in withdrawn_refusals(variants, membership_table, declared_build)

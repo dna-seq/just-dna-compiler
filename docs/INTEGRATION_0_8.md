@@ -260,6 +260,12 @@ so do not drop the record. `null` is unknown, never independent.
 | `currency.PROBE_SOURCES` | Gains `clinvar_gkm`, so `--verify-datasets` can answer for a `sources.csv` row naming it. | Nothing; a row with that source was `unsupported` before. |
 | `licensing.TERMS_BY_SOURCE` | Gains `clinvar_gkm` (CC0-1.0 over ClinGen's transformation). | Nothing, until a check writes that `SourceRow`. |
 
+## 1.15 Under `strict`, an escalated finding is in `errors` only (RM359, no new code)
+
+| Surface | What changed | What to do |
+| --- | --- | --- |
+| `CompilationResult` of `compile_module(strict=True)` | A mode-ladder finding (the `@ladder` codes, plus `symbolic_allele_unusable`'s droppable half) used to arrive in `errors` **and** in `warnings`; a resolution ladder carried its warning beside its longer refusal. It is now in `errors` only. The pre-flight runs in the compile's mode, so a strict compile refuses with `validate --strict`'s accumulated errors, where it used to stop at the first ladder that refused. | A consumer that matched an escalated finding in a strict run's `warnings` reads `errors`. One that counted findings across both lists stops counting the escalated ones twice. `best_effort` is unchanged. |
+
 ## 2. What to change
 
 1. If you parse `manifest.json` with `just-dna-format`, move your pin to 0.8 when you start reading

@@ -184,6 +184,13 @@ detectable without any reference. This is where most real authoring bugs are cau
 | star allele used but not defined | `allele_function`/`diplotypes` name it; `haplotypes` defines it — matched on `(gene, allele)`, a `haplotypes` row with no `gene` defining its name for every gene, genes compared case-blind, and an HLA gene that `haplotypes` defines nothing for exempt, since its alleles are typed (RM351) | warning |
 | **phase-ambiguous diplotypes** (0.5) | two *different* haplotype pairs of one gene whose unphased genotype is identical while their conclusions differ; each haplotype's defining variants are that gene's own (RM351) | warning |
 
+**"warning / error in `strict`" names one channel per mode, never both (RM359).** Under `strict` such a
+finding is in `errors` and is not also in `warnings`: `compile_module` runs its pre-flight in its own
+mode, and a resolution finding whose refusal is a longer sentence publishes the refusal *instead of*
+the warning. Before RM359 a `strict` compile carried both, so a consumer counting findings counted one
+twice. `compiler/tests/test_one_channel_under_strict.py` asserts the rule over every mode-ladder code
+on a real compile.
+
 Four of these deserve their reasoning rather than just their row.
 
 **The phase-ambiguity check is RM28's cis/trans motivation, closed by computation rather than by a
@@ -1383,8 +1390,8 @@ Three behaviours to know:
 `--no-resolve` silences the check the way it silences the fill: resolution is off by request, and
 `resolution_disabled` already says so once with its row count.
 
-**One finding, though two passes produce it.** `compile_module` runs the pre-flight in `best_effort`
-whatever its own mode, so both reach this finding for the same subject; the compile de-duplicates on
+**One finding, though two passes produce it.** `compile_module` runs the pre-flight, which emits the
+per-subject warning in both modes, so both reach this finding for the same subject; the compile de-duplicates on
 the message (the `_check_contig_ploidy` idiom). That is safe here for the reason the rule requires —
 neither message embeds a count resolution could change, so two passes over one subject produce the
 identical sentence rather than two differing by a number.

@@ -31,7 +31,7 @@ from just_dna_format.resolution import ResolutionRow
 from just_dna_format.spec import VariantRow
 from just_dna_format.vrs import par_partner
 
-from just_dna_compiler.ladder import LadderFinding
+from just_dna_compiler.ladder import LadderFinding, route
 from just_dna_compiler.resolution_findings import (
     ambiguous_pick,
     coordinate_disagrees,
@@ -87,12 +87,22 @@ class ResolutionOutcome:
     def warnings(self) -> list[str]:
         """Everything `best_effort` reports: the findings that never escalate, then each ladder's own.
 
-        Both halves, because a ladder member IS a warning under `best_effort` — and under `strict` too,
-        where the refusal is published beside it rather than instead of it. Derived rather than stored
-        for the same reason `strict_errors` is: the pair is the unit, and a stored list could carry one
-        half of it.
+        `best_effort`'s view only. Under `strict` a ladder's refusal is published **instead of** its
+        warning, never beside it (RM359: a finding lives on the one channel its severity under the mode
+        picks), so a caller that knows its mode reads `channels`. Derived rather than stored for the
+        same reason `strict_errors` is: the pair is the unit, and a stored list could carry one half.
         """
         return self.plain_warnings + [finding.warning for finding in self.ladders]
+
+    def channels(self, *, strict: bool) -> tuple[list[str], list[str]]:
+        """`(strict refusals, warnings)` in one mode — each ladder through `route`, so on one channel.
+
+        The plain warnings are reported in both modes; a ladder is a warning under `best_effort` and a
+        refusal under `strict`, never both. `errors` (fatal in both modes) is not here: it is not a
+        ladder and its caller refuses on it before reading either list.
+        """
+        refusals, ladder_warnings = route(self.ladders, strict=strict)
+        return refusals, self.plain_warnings + ladder_warnings
 
     @property
     def strict_errors(self) -> list[str]:

@@ -236,6 +236,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - Ask whether the signal already fires with the wrong words; pin adjudicating words on a boundary. `@the-signal-may-already-be-firing-with-the-wrong-words`
 - A source re-curating is not a `strict` matter; the two currency findings stay apart, and both edges withhold. `@a-source-recuring-is-not-a-strict-matter`
 - A check running on both sides dedupes on the message; re-running is the normal case. `@no-rerun-with-counts`
+- Under `strict` an escalated finding is an error only, never also a warning; the pre-flight runs in the compile's mode. `@one-finding-one-channel`
 - The ClinVar `clin_sig` cross-check never escalates under `strict`, deliberately. `@clinsig-never-escalates`
 - Splitting a dedup key on a new optional column: **both stated and different**, and narrow the check rather than the key. `@absent-is-not-different`
 - A check that cannot fail must not report a zero. `@tautology-zero`

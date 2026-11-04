@@ -211,12 +211,18 @@ def compile_module(
     spec_dir = Path(spec_dir)
     output_dir = Path(output_dir)
 
-    # `strict` is deliberately NOT passed (the pre-flight runs in best_effort whatever this compile's
-    # mode, which is why every mode-ladder check re-runs below); `resolve_with_ensembl` is, because it
-    # is not a severity — it decides whether the injected table is consulted at all, and a pre-flight
-    # answering that differently would seed `all_warnings` with a finding this compile contradicts.
+    # The pre-flight runs in THIS compile's mode (RM359). It used to run in best_effort whatever the
+    # mode, so it seeded `all_warnings` with every mode-ladder sentence and a `strict` compile then
+    # refused with the same finding in `errors`: one finding on two channels, counted twice by any
+    # consumer. In the compile's mode a ladder finding lands where its severity puts it, and only
+    # there; and the pre-flight's refusal is `validate --strict`'s, which is the parity contract
+    # (`validate(strict=x)` and `compile(strict=x)` reach the same verdict) made literal. The ladder
+    # checks still re-run below, over the rows the compile changes (post-drop, post-resolution).
+    # `resolve_with_ensembl` is passed for its own reason: it is not a severity, it decides whether the
+    # injected table is consulted at all, and a pre-flight answering that differently would seed
+    # `all_warnings` with a finding this compile contradicts.
     validation, validation_findings = _validate_spec(
-        spec_dir, authority_keys, resolve_with_ensembl=resolve_with_ensembl
+        spec_dir, authority_keys, strict=strict, resolve_with_ensembl=resolve_with_ensembl
     )
     if not validation.valid:
         # The classified list, not `validation.warnings` — a failed compile publishes the same
@@ -263,9 +269,9 @@ def compile_module(
     # Symbolic/structural alleles the module cannot apply (RM5). Runs before anything is written, and
     # before resolution, because it decides which rows exist: under `best_effort` a row stating an
     # unusable rule is **dropped** (the warning says so — `reverse` will not re-emit it), under
-    # `strict` the compile refuses. Re-run here rather than trusted from `validate_spec`, which ran in
-    # `best_effort` whatever this compile's mode; the warnings it already produced are de-duplicated
-    # on the message, the way ploidy's and allele-membership's are.
+    # `strict` the compile refuses. Re-run here because this pass also yields the DROPS the pre-flight
+    # only predicts; the warnings the pre-flight already produced are de-duplicated on the message, the
+    # way ploidy's and allele-membership's are.
     symbolic_errors, symbolic_warnings, symbolic_drops = _check_symbolic_alleles(
         {"variants.csv": variants, **kind_rows}, strict=strict
     )
@@ -429,10 +435,10 @@ def compile_module(
     # that expansion the check reports the siblings it was never about. See `_check_allele_membership`.
     allele_errors, allele_warnings = _check_allele_membership(variants, resolution_table, strict=strict)
     # De-duplicated on the message, the same way `_check_contig_ploidy` below is and for the same
-    # reason: `compile_module` runs `validate_spec` first, in **best_effort** regardless of this
-    # compile's mode, so a check living in both places emits its warning twice. Re-running it here is
-    # not redundant — it is how a mode ladder reaches its real severity, since the inner pass cannot
-    # know `strict`. What is redundant is printing the identical sentence a second time.
+    # reason: `compile_module` runs `validate_spec` first, in this compile's mode (RM359), so under
+    # `best_effort` a check living in both places emits its warning twice. Under `strict` the pre-flight
+    # has already refused anything this could, so the re-run is defensive there; what is never wanted
+    # is the identical sentence printed a second time.
     all_warnings.extend(w for w in allele_warnings if w not in all_warnings)
     if allele_errors:
         return CompilationResult(success=False, errors=allele_errors, warnings=all_warnings)
@@ -453,9 +459,8 @@ def compile_module(
     # neighbours already follow is the one to take from it: a check that runs on both sides dedupes on
     # the message, and re-running it is the normal case rather than the exception.
     #
-    # The re-run itself earns its place and is not what was removed. `compile_module` runs
-    # `validate_spec` in best_effort regardless of this compile's mode, so this second pass in the
-    # caller's mode is the only thing that lets `--strict` escalate the warning into a refusal.
+    # The re-run is kept as the compile's own word in its own mode. Since RM359 the pre-flight runs in
+    # this compile's mode too, so under `--strict` it has already refused; this pass is defensive.
     p_value_errors, p_value_warnings = _check_p_value_num(studies, strict=strict)
     all_warnings.extend(w for w in p_value_warnings if w not in all_warnings)
     if p_value_errors:
@@ -496,8 +501,9 @@ def compile_module(
         if resolution_table:
             outcome = resolve_from_table(variants, resolution_table, genome_build=config.genome_build)
             variants = outcome.variants
-            resolve_warnings = outcome.warnings
-            resolve_strict_errors = outcome.strict_errors
+            # One channel per ladder in this mode (RM359): under `strict` a round-trip finding is its
+            # refusal and is not also published as its warning.
+            resolve_strict_errors, resolve_warnings = outcome.channels(strict=strict)
             # S33. Only this branch can answer it: the deprecated `ensembl_cache` path returns a bare
             # (variants, warnings) pair and is removed at 1.0, so its modules keep `None` — "not
             # established", never "no expansion". Assigned here rather than derived from `variants`
@@ -507,10 +513,12 @@ def compile_module(
             expanded_rows = outcome.expanded_rows
             if outcome.errors:
                 # Fatal in both modes — today only a curator-recorded `withdrawn` rsID. See
-                # `ResolutionOutcome`.
+                # `ResolutionOutcome`. Under `strict` the round-trip refusals go with it: they are
+                # errors in this mode and `resolve_warnings` no longer carries them (RM359).
                 return CompilationResult(
                     success=False,
-                    errors=[f"resolution: {e}" for e in outcome.errors],
+                    errors=[f"resolution: {e}" for e in outcome.errors]
+                    + [f"strict resolution: {e}" for e in resolve_strict_errors],
                     warnings=all_warnings + resolve_warnings,
                 )
             # `resolution_sources` / `resolution_sig` are stamped where the table is READ, several
@@ -558,8 +566,8 @@ def compile_module(
                 )
             ]
         # De-duplicated on the message, the `_check_contig_ploidy` idiom: since S76 the pre-flight
-        # emits the `rsid_unresolved` sentence for the same subjects, and `compile_module` runs that
-        # pre-flight whatever its own mode, so appending blind published every such finding twice —
+        # emits the `rsid_unresolved` sentence for the same subjects, and that sentence fires in both
+        # modes, so appending blind published every such finding twice —
         # and `warnings_summary` counted 24 for 12 subjects. Safe here for the reason the rule
         # requires: no message resolution re-derives embeds a count, so two passes over one subject
         # produce the identical sentence rather than two that differ by a number.
