@@ -412,6 +412,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `lookup` | authoring lookups — rsID validity/loci, ref/alts + populations, which paper a PMID names. **Writes nothing** | every client above, compiler `hints` |
 | `pharmvar` | star-allele definitions + function (`Api-Key` header, 2 rps) | `httpx`, `tenacity` |
 | `cpic` | allele function, diplotype→phenotype, defining variants (PostgREST) | `httpx`, `tenacity` |
+| `cpic_notation` | CPIC's `DEL<bases>`/`INS<bases>`/`UNIT(n)` → a VCF-anchored, left-normalized REF/ALT (RM253); never reads on its own, the caller passes the reference reader | `sequences` |
 | `pgx` | pass 5: cross-check star-allele tables, write the licence table | the three above |
 | `clinpgx_build` | `[dev]`: `summaryAnnotations.zip` → snapshot parquet + pinned `LICENSE.txt`; refuses the retired `clinicalAnnotations.zip` by name | `polars`, `httpx` |
 | `clinpgx` | pass 6: evidence-level cross-check over the snapshot (offline) | `duckdb` (core, not polars) |
