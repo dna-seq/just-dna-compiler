@@ -43,7 +43,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from just_dna_format.base import vocabulary
 from just_dna_format.identity import parse_version
@@ -120,8 +120,11 @@ class DeclaredChange(BaseModel):
     kind: str = Field(
         json_schema_extra=vocabulary("release_change_kind", VALID_RELEASE_CHANGE_KINDS),
         description=(
-            "`correction` when the value we published was wrong, `addition` when it was absent. "
-            "The distinction is declared, never measured."
+            "`correction` when the value we published was wrong, `addition` when it was absent, "
+            "`toolchain` (0.8, `parquet_bytes` only) when the bytes moved with the content unchanged "
+            "because the recorded toolchain (`compilation.toolchain`) did. The distinction is "
+            "declared, never measured; the release gate accepts `toolchain` only when a sweep with "
+            "the compiler held fixed backs it."
         ),
     )
     detail: str = Field(description="The sentence a consumer reads: what moved, and why.")
@@ -180,6 +183,21 @@ class DeclaredChange(BaseModel):
     @classmethod
     def _check_kind(cls, value: str) -> str:
         return check_vocab(value, VALID_RELEASE_CHANGE_KINDS, "kind")
+
+    @model_validator(mode="after")
+    def _toolchain_explains_bytes_only(self) -> "DeclaredChange":
+        """A `toolchain` move is a byte move by definition (RM352).
+
+        The evidence that can back it is a byte measurement with the compiler held fixed, so on any
+        other axis the claim could never be backed; refused here rather than left for the release
+        gate to find a declaration it could never accept.
+        """
+        if self.kind == "toolchain" and self.axis != "parquet_bytes":
+            raise ValueError(
+                f"kind 'toolchain' declares bytes that moved with the content unchanged, so it belongs "
+                f"on axis 'parquet_bytes', got axis {self.axis!r}"
+            )
+        return self
 
 
 _MISSING = object()
@@ -259,7 +277,7 @@ class ReleaseRecord(BaseModel):
     )
     declared: list[DeclaredChange] = Field(
         default_factory=list,
-        description="The correction-versus-addition split — declared by the author, never measured.",
+        description="The correction / addition / toolchain split — declared by the author, never measured.",
     )
     unmeasured: list[str] = Field(
         default_factory=list,
@@ -387,6 +405,15 @@ class RecompileAnswer:
     @property
     def additions(self) -> tuple[DeclaredChange, ...]:
         return tuple(change for change in self.declared if change.kind == "addition")
+
+    @property
+    def toolchain_moves(self) -> tuple[DeclaredChange, ...]:
+        """The declared byte moves the recorded toolchain explains, content unchanged (RM352).
+
+        Nothing published was wrong and nothing was absent, so a registry that spends a PATCH only on
+        `corrections` skips these; the bytes still differ, so `output_differs` still says so.
+        """
+        return tuple(change for change in self.declared if change.kind == "toolchain")
 
     def declared_for(self, manifest: ModuleManifest | Mapping[str, Any]) -> tuple[DeclaredChange, ...]:
         """The declarations that can reach the module `manifest` describes (S90, RM201).

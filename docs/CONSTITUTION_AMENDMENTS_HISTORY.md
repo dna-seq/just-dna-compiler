@@ -14,6 +14,29 @@ the disagreement is a defect in this file.
 
 Newest first.
 
+## 0.8 — the Goals' integrity sentence names the recorded toolchain (2026-11-04)
+
+Recorded in the Goals bullet *Make integrity the identity*, whose last sentence now says the two
+identities are reproducible by anyone holding the inputs, the pinned compiler version *and the recorded
+toolchain*. The added words are the maintainer's, vetted on 2026-11-04; only the comma that a list of
+three needs was adjusted.
+
+**What it fixes.** RM342 amended Principles 4 and 7 the same day (the entry below) and left this
+sentence as it was, naming it for the next amendment. After RM342 the charter contradicted itself:
+Principle 4 pinned reproducibility on `compiler_version` *and* the recorded toolchain, while the Goals
+still promised it to anyone holding the inputs and the compiler version alone, which polars 2 makes
+false (one compiler beside two polars releases mints two digests for equal content).
+
+**Why now.** [RM352](ROADMAP_HISTORY.md#rm352--release-records-have-no-change-kind-for-a-toolchain-only-byte-move-so-the-08-cut-cannot-declare-polars-2)
+gave the release records a third change kind, `toolchain`, so the 0.8.0 record can declare the polars
+1 → 2 byte move as what it is: bytes moved, content unchanged, the recorded toolchain says why. A
+release record that declares a move the Goals said could not happen to anyone holding the compiler
+version would have been one more place the charter and the shipped surface disagreed, so the sentence
+moved with the item.
+
+**What it does not change.** No principle moved, and nothing about legality: the `toolchain` kind is a
+new member of a closed vocabulary, additive and minor-legal under Principle 3.
+
 ## 0.8 — the format package also defines the reference-snapshot layout (2026-11-04)
 
 Recorded in Goals as the second bullet, *Be the contract for the reference-snapshot layout as well*.
@@ -87,7 +110,7 @@ comparison then keeps its old answer: an unknown never explains anything.
 
 **Left as it was.** The Goals' sentence on integrity still says the two identities are reproducible by
 anyone holding the inputs and *the pinned compiler version*; it was outside this amendment's decision
-and is named for the next one.
+and is named for the next one. (That next one is the entry above, RM352, the same day.)
 
 **Wording vetted.** The maintainer read the changed sentences old → new in chat on 2026-11-04 and accepted them as written ("Good, I accept"). Deciding that an amendment happens is not approving its sentences, so the acceptance is recorded here.
 

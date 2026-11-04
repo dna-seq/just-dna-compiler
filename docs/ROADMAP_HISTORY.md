@@ -35,6 +35,68 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM352 — release records have no change kind for a toolchain-only byte move, so the 0.8 cut cannot declare polars 2
+
+**0.8, filed 2026-11-04 by the lead** as a second-pass item: RM342's residual, and a cut gate.
+
+**Severity** high · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** (a new member of a
+closed published vocabulary, and a Goals amendment) · **Owner** format (`release_records.VALID_RELEASE_CHANGE_KINDS`)
++ compiler (`sweep.py`) · **Motivating case** the RM342 builder's report · *related* RM342, RM341
+
+**Residuals** none
+
+**Why it was filed.** `VALID_RELEASE_CHANGE_KINDS` was `{correction, addition}`, and the sweep's gate
+(`UNDECLARED_KIND_PHRASE`) needs one of them for every moved axis. polars 1 → 2 moves `parquet_bytes` on
+every module with no value wrong and nothing added, so the 0.8.0 record could not be written. A third
+member, `toolchain` (bytes moved, content unchanged, the toolchain record says why), is additive and
+minor-legal. The 0.8.0 record then declares the polars move with it. The Constitution's Goals sentence on
+reproducibility ("anyone holding the inputs and the pinned compiler version") gains "and the recorded
+toolchain", matching RM342's Principle 4 amendment, with a line in the amendments history.
+
+**Decided 2026-11-04 by the lead with the maintainer, during the build.** Content unchanged is not enough
+to accept a `toolchain` declaration: a compiler bug moves bytes without moving content, and at the 0.8 cut
+the compiler version changes together with polars, so RM342's `toolchain_differs` co-occurs with every move
+in the release sweep and separates nothing. The only clean separation is a second sweep with the compiler
+held fixed and only the toolchain varied, and the gate reads that sweep's fields, never a sentence in
+`evidence` (`@one-side-only-has-two-causes`).
+
+**What shipped.**
+
+- `VALID_RELEASE_CHANGE_KINDS` gains `toolchain`. `DeclaredChange` refuses it on any axis but
+  `parquet_bytes` (a model validator), since only a byte measurement can back it.
+  `RecompileAnswer.toolchain_moves` sits beside `corrections` and `additions`, and the three cover
+  `declared` (asserted over a synthetic record holding one of each).
+- `SweepMeasurement.before_toolchain` / `after_toolchain` (the one toolchain each side recorded, `None`
+  when a module recorded none or the side mixes two) and `before_digests` / `after_digests` (each
+  module's `artifact.digest`). `measurement_json` carries all four.
+- `gate_findings(..., toolchain_measurement=)` and `sweep --toolchain-before DIR` (the release's compiler
+  under the previous toolchain; the release sweep's AFTER tree is the other side, nested under
+  `toolchain_sweep` in `--json`). A `toolchain` declaration on a moved `parquet_bytes` passes only when
+  that sweep was passed, its two sides carry one `compiler_version` and it is the release gated, both
+  sides record a toolchain and they differ (unrecorded is unknown and never satisfies), its AFTER side
+  is the release's AFTER tree digest for digest, and `content_signature` did not move on the modules it
+  speaks for. **Which modules the toolchain explains is per module and a digest equality**: the previous
+  compiler and this one wrote the same bytes under the previous toolchain (the release BEFORE digest
+  equals the fixed-compiler BEFORE digest). The code review caught the first build accepting a module
+  merely because it also moved under the toolchain, which polars 2 does to every module, so a compiler
+  byte change would have shipped labelled `toolchain`. When `toolchain` is the axis's only kind every
+  moved module must be explained; beside another kind it must explain at least one. Nine `TOOLCHAIN_*`
+  phrases (one a note). `UNDECLARED_KIND_PHRASE` keeps its wording and appends `(or, on this axis, a
+  toolchain move)` on `parquet_bytes`.
+- The Goals bullet *Make integrity the identity* now ends "holding the inputs, the pinned compiler version
+  and the recorded toolchain." The why is in CONSTITUTION_AMENDMENTS_HISTORY.md.
+
+**Measured, not assumed (2026-11-04, the `0.8` branch at this item).** Three real trees of the sixteen
+`reference_examples/`: published `just-dna-compiler` 0.7.2 under polars 1.44.2, this branch's compiler
+under polars 1.44.2 (`uv run --with`), and this branch's compiler under the locked polars 2.1.0. Under
+the toolchain alone `parquet_bytes` moves on 16 of 16 and nothing else moves. With polars held at 1.44.2,
+the compiler alone moves `parquet_bytes` on 3 of 16 (`fmr1_cgg_repeat`, `hboc_palb2`,
+`pathogenic_clinvar`, the three whose `parquet_schema` moved too) and `manifest_fields` on all 16. So a
+`toolchain`-only declaration over the real interval is refused for exactly those three, and `toolchain`
+beside an `addition` passes with a note naming them: the review's case, measured. The 0.8.0 record
+itself is the cut's to write, after measuring. Tests: `compiler/tests/test_release_kind_toolchain.py`, the kind tests
+in `schema/tests/test_release_records.py`.
+
 ## RM303 — the snapshot layout is a contract with six parties and no model, so it belongs in `just-dna-format`
 
 **0.8, confirmed 2026-11-03** by the maintainer when scoping 0.8.
@@ -576,7 +638,7 @@ manifest field, a new exception subclass, and a Principle 4 amendment), [PROPOSA
 §3 item 19, §4 question 7, §5 block A1 · **Owner** format + compiler + enricher · **Motivating case** RM341 ·
 *related* RM304, RM341
 
-**Residuals** none
+**Residuals** RM352
 
 **What shipped.** `Compilation.toolchain: dict[str, str] | None`, stamped at compile as
 `{"polars": pl.__version__, "python": platform.python_version()}` of the running process, outside

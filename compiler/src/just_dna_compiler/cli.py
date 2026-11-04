@@ -697,6 +697,17 @@ def sweep(
             "stamped `just-dna-compiler 0.7.0`). Exit 1 on a finding."
         ),
     ),
+    toolchain_before: Path | None = typer.Option(
+        None,
+        "--toolchain-before",
+        exists=True,
+        file_okay=False,
+        help=(
+            "Compiled output tree from THIS release's compiler under the previous toolchain (e.g. "
+            "`uv run --with polars==<old>`). Compared with AFTER as a second, fixed-compiler sweep "
+            "that backs a `kind: toolchain` declaration (RM352)."
+        ),
+    ),
     as_json: bool = typer.Option(False, "--json", help="Emit the measurement as JSON."),
 ) -> None:
     """Measure what this release changed about compiled output, against a previous release's (RM126).
@@ -704,6 +715,10 @@ def sweep(
     BEFORE must have been produced by the previous release — one `compile` per module spec, from the
     SAME spec root this run uses, so the compiler is the only variable. With `--release` the release
     gate runs and a measured movement that no `ReleaseRecord` declares exits 1.
+
+    `--toolchain-before` adds the sweep a `toolchain` declaration needs (RM352): this release's
+    compiler on both sides, only the toolchain varied, so a byte move it shows is the toolchain's and
+    not the compiler's. Under `--json` it is nested as `toolchain_sweep`.
 
     This is a release-sequence command, not an ordinary test: it needs the previous release actually
     installed. COMPILER.md carries the full sequence.
@@ -714,8 +729,24 @@ def sweep(
     else:
         after_outputs, build_failures = read_outputs(after), {}
     measurement = compare_outputs(before_outputs, after_outputs, build_failures)
+    # The fixed-compiler sweep's other side is AFTER itself: this release's compiler on the new
+    # toolchain is already built, so only the old-toolchain tree is passed in.
+    toolchain_measurement = None
+    if toolchain_before is not None:
+        # A half-built or mixed-stamp tree is an operator's error to report, never a traceback: under
+        # `--json` it would also leave stdout without its one JSON document.
+        try:
+            toolchain_measurement = compare_outputs(read_outputs(toolchain_before), after_outputs)
+        except ValueError as exc:
+            typer.secho(
+                f"  error: --toolchain-before {toolchain_before}: {exc}", fg=typer.colors.RED, err=True
+            )
+            raise typer.Exit(code=1) from exc
     if as_json:
-        typer.echo(json.dumps(measurement_json(measurement), indent=2))
+        payload = measurement_json(measurement)
+        if toolchain_measurement is not None:
+            payload["toolchain_sweep"] = measurement_json(toolchain_measurement)
+        typer.echo(json.dumps(payload, indent=2))
     else:
         typer.echo(f"{measurement.before} -> {measurement.after}: {measurement.evidence}")
         for axis, moved in sorted(measurement.axes.items()):
@@ -725,6 +756,12 @@ def sweep(
             )
         for field in measurement.manifest_fields:
             typer.echo(f"    manifest field moved: {field}")
+        if toolchain_measurement is not None:
+            typer.echo(
+                f"toolchain sweep, {toolchain_measurement.before} -> {toolchain_measurement.after}: "
+                f"{toolchain_measurement.before_toolchain} -> {toolchain_measurement.after_toolchain}; "
+                f"{toolchain_measurement.evidence}"
+            )
     if release is None:
         return
     # Under `--json` stdout is one JSON document and nothing else may join it: the caller of this
@@ -739,7 +776,7 @@ def sweep(
     except ValueError as exc:
         typer.secho(f"  error: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
-    findings, notes = gate_findings(measurement, gated)
+    findings, notes = gate_findings(measurement, gated, toolchain_measurement=toolchain_measurement)
     for note in notes:
         typer.secho(f"  note: {note}", fg=typer.colors.BLUE, err=gate_stream)
     for finding in findings:

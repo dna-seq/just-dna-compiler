@@ -41,6 +41,24 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM352: a release record can declare a toolchain-only byte move, backed by a fixed-compiler sweep (0.8, uncut)
+
+**format, compiler** — `VALID_RELEASE_CHANGE_KINDS` gains `toolchain`: the bytes moved, the content did
+not, and the recorded toolchain (`compilation.toolchain`, RM342) says why. It is legal on
+`parquet_bytes` only, and `RecompileAnswer.toolchain_moves` reads it beside `corrections` and
+`additions`. The release gate accepts it only when a second sweep backs it, with this release's
+compiler on both sides and only the toolchain varied (`sweep --toolchain-before DIR`). Both sides must
+record different toolchains, the sweep must share the release's AFTER tree, and `content_signature`
+must not move. A module's move counts as the toolchain's only where the previous compiler and this one
+wrote the same bytes under the previous toolchain, so the cut builds its BEFORE tree under the previous
+polars too. When `toolchain` is the axis's only kind every moved module must pass that test. Each
+condition has its own `TOOLCHAIN_*` finding phrase. `SweepMeasurement` records each side's toolchain
+and digests (`before_toolchain` / `after_toolchain`, `before_digests` / `after_digests`). Measured on this branch: the sixteen reference examples
+compiled by one compiler under polars 1.44.2 and 2.1.0 move `parquet_bytes` on 16 of 16 and
+`content_signature` on none. The Constitution's Goals sentence on integrity now names the recorded
+toolchain beside the pinned compiler version. A 0.7 `just-dna-format` refuses a serialized record
+carrying `kind: toolchain`; see [INTEGRATION_0_8.md](INTEGRATION_0_8.md) § 1.11.
+
 ## 2026-11-04 — RM347: the HuggingFace publisher uploads the logs a module's manifest names (patch, on `main`)
 
 **enricher** — `upload_module` (and `just-dna-enricher upload`) now sends every path `manifest.logs`

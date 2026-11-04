@@ -272,7 +272,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
   | `VALID_PHENOTYPE_CATEGORIES` | 6 (closed) |  |
   | `VALID_QUOTE_SOURCE` | 2 (closed) |  |
   | `VALID_RECOMMENDATION_STRENGTH` | 4 (closed) |  |
-  | `VALID_RELEASE_CHANGE_KINDS` | 2 (closed) |  |
+  | `VALID_RELEASE_CHANGE_KINDS` | 3 (closed) |  |
   | `VALID_RELEASE_OUTPUT_AXES` | 5 (closed) |  |
   | `VALID_RESOLUTION_STATUS` | 3 (closed) |  |
   | `VALID_RSID_STATUS` | 4 (closed) |  |
@@ -2908,6 +2908,14 @@ split is the half **no diff can compute**: `stats.genes` was *wrong* and `curato
 and only the person who fixed the bug knows which. Both are closed sets with a marker and a validator
 on `DeclaredChange`, so `describe`-style surfaces and the separator canonicalisation reach them like
 any other vocabulary.
+
+**`toolchain` is the third kind (0.8, RM352)**: nothing was wrong and nothing was absent; the bytes
+moved with the content unchanged because the recorded toolchain (`compilation.toolchain`, RM342) did.
+polars 1 → 2 is the case, since from 2.0 every parquet footer names its polars release. A model
+validator refuses it on any axis but `parquet_bytes`, and the release gate accepts it only when a sweep
+with the compiler held fixed backs it ([COMPILER § The release-record sweep](COMPILER.md#the-release-record-sweep-rm126)).
+`RecompileAnswer.toolchain_moves` reads them beside `corrections` and `additions`; a toolchain move
+still sets `parquet_bytes`, so `output_differs` still says the bytes differ.
 
 `warnings` is a member and is **outside** `RECOMPILE_DRIVING_AXES`, derived by subtraction from
 `NON_RECOMPILE_AXES`. `compilation.warnings` is a published manifest field, so folding it into

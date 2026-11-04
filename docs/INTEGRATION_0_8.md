@@ -148,11 +148,26 @@ import from there keeps working.
 | `CacheLane.release_label` | No lane overrides it; ClinVar's per-lane reader (`clinvar_dataset_label` as the lane's `release_label`) is gone. ClinVar's label is unchanged, for snapshots built before and after 0.8. | Nothing, unless you compared `lane.release_label` against `caches._dataset_label`, which no longer exists: compare against `snapshot.release_label`. |
 | `clinpgx.load_snapshot`, `CpicSnapshotClient.release`, `PharmVarSnapshotClient.release`, `mitomap_miss_build.read_miss_release` | Return or hold a `SnapshotRelease` (empty when the file is absent), not a `dict`. | Attribute access instead of `.get`. |
 
-## 1.5 A behaviour narrowing: what a `*.log` ships (no new code)
+## 1.10 A behaviour narrowing: what a `*.log` ships (no new code)
 
 | Surface | Item | What changed |
 | --- | --- | --- |
 | log discovery in `compile_module` | RM348 | A symlinked `*.log` (beside the spec or under `logs/`), anything under a `logs/` that is itself a link, and any discovered file over `LOG_MAX_BYTES` (5 MiB) used to ship, the `*.log` ones since before RM338; they now stay behind with `log_file_not_shipped`. A file the compile cannot read stays behind the same way instead of failing the compile, and a directory it cannot list is named in place of the files it hides. An explicit `log_files` list is unaffected. The ceiling is now `LOG_MAX_BYTES`; `LOG_IMAGE_MAX_BYTES`, RM338's name on `main`, stays as an alias of it. |
+
+## 1.11 A new release-change kind: `toolchain` (an old-reader break)
+
+`DeclaredChange.kind` (in `just_dna_format.release_records`) validates against
+`VALID_RELEASE_CHANGE_KINDS`, a closed vocabulary that gains `toolchain` in 0.8 (RM352): the bytes
+moved, the content did not, and the recorded toolchain (`compilation.toolchain`) says why. The 0.8.0
+record is expected to declare the polars 1 → 2 byte move with it. The records ship inside the package,
+so a 0.7 install never holds the 0.8.0 one; the break reaches a consumer that **serializes** a record
+(JSON, a cache, an API response) and validates it again with a 0.7 `just-dna-format`, which refuses
+`kind: toolchain`. That is the same shape as § 1 and has the same remedy: validate with 0.8. The
+member is legal on `axis: parquet_bytes` only; the model refuses it on any other axis.
+
+`RecompileAnswer` gains `toolchain_moves` beside `corrections` and `additions`, and the three together
+cover `declared`. A registry that spends a PATCH only on `corrections` needs no change: a toolchain
+move is not one. `output_differs` still reads `True` for it, because the bytes do differ.
 
 ## 2. What to change
 
@@ -180,3 +195,9 @@ import from there keeps working.
    the reader returns a model, and three keys are spelled differently in a snapshot built by 0.8.
 7. If you read a module's findings, read `meta.parquet` too: a row with `replaces` true whose members all
    match the sample replaces the findings of the rows in its `matches` (§ 1.2.1).
+8. **Release-record readers (RM352).** If you switch on `DeclaredChange.kind`, add the third arm,
+   `toolchain` (§ 1.11), or read `RecompileAnswer.corrections` / `additions` / `toolchain_moves` rather
+   than the raw kind. `SweepMeasurement` gains `before_toolchain` / `after_toolchain` (the one toolchain
+   each side recorded, `null` when unrecorded or mixed) and `before_digests` / `after_digests` (each
+   module's `artifact.digest`), `measurement_json` carries all four, and
+   `sweep --toolchain-before DIR --json` nests the fixed-compiler sweep under `toolchain_sweep`.

@@ -305,14 +305,64 @@ def test_the_declared_split_is_exhaustive_over_the_kind_vocabulary() -> None:
     # What the docstring actually promises, and what nothing asserted: every member is reachable
     # through an accessor. A third kind added with no property beside it leaves its declarations
     # readable through neither, and the containment above cannot see that.
-    reachable = {"correction", "addition"}
+    reachable = {"correction", "addition", "toolchain"}
     assert reachable == set(VALID_RELEASE_CHANGE_KINDS), (
-        "a change kind gained or lost a member; `corrections`/`additions` must still cover all of them"
+        "a change kind gained or lost a member; `corrections`/`additions`/`toolchain_moves` must "
+        "still cover all of them"
     )
     for version in RELEASE_RECORDS:
         answer = needs_recompile(RELEASE_RECORDS[version].previous, version)
-        split = sorted(answer.corrections + answer.additions, key=lambda c: (c.axis, c.target))
+        split = sorted(
+            answer.corrections + answer.additions + answer.toolchain_moves, key=lambda c: (c.axis, c.target)
+        )
         assert split == sorted(answer.declared, key=lambda c: (c.axis, c.target)), version
+
+
+def test_a_toolchain_move_is_its_own_kind_and_its_own_accessor() -> None:
+    """RM352: bytes moved, content unchanged, and the recorded toolchain says why.
+
+    The shipped records hold no `toolchain` declaration yet (the 0.8.0 cut writes the first), so the
+    split above walks none; a synthetic record with one of each kind is what shows every member is
+    reachable through exactly one accessor.
+    """
+    assert "toolchain" in VALID_RELEASE_CHANGE_KINDS
+    declared = [
+        DeclaredChange(axis="manifest_fields", target="stats.genes", kind="correction", detail="d"),
+        DeclaredChange(axis="parquet_schema", target="studies.parquet", kind="addition", detail="d"),
+        DeclaredChange(axis="parquet_bytes", target="parquet_bytes", kind="toolchain", detail="polars 2"),
+    ]
+    record = ReleaseRecord(
+        version="1.1.0",
+        previous="1.0.0",
+        axes={
+            **dict.fromkeys(VALID_RELEASE_OUTPUT_AXES, False),
+            "manifest_fields": True,
+            "parquet_schema": True,
+            "parquet_bytes": True,
+        },
+        manifest_fields=["stats.genes"],
+        declared=declared,
+        evidence="synthetic",
+    )
+    answer = needs_recompile("1.0.0", "1.1.0", {"1.1.0": record})
+
+    assert [c.kind for c in answer.toolchain_moves] == ["toolchain"]
+    assert [c.kind for c in answer.corrections] == ["correction"]
+    assert [c.kind for c in answer.additions] == ["addition"]
+    # The bytes still differ: a toolchain move is a reason, never a claim that nothing moved.
+    assert answer.output_differs is True
+
+
+def test_a_toolchain_kind_is_refused_on_any_axis_but_parquet_bytes() -> None:
+    """A toolchain explains bytes, and only bytes: the gate's evidence for it is a byte measurement.
+
+    On any other axis the claim would have no measurement able to back it, so the model refuses it
+    rather than leaving the gate to find a declaration it could never accept.
+    """
+    for axis in sorted(VALID_RELEASE_OUTPUT_AXES - {"parquet_bytes"}):
+        with pytest.raises(ValidationError, match="parquet_bytes"):
+            DeclaredChange(axis=axis, target=axis, kind="toolchain", detail="d")
+    assert DeclaredChange(axis="parquet_bytes", target="parquet_bytes", kind="toolchain", detail="d")
 
 
 def test_every_recorded_manifest_field_is_a_path_the_manifest_really_has() -> None:
