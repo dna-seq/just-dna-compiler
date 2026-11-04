@@ -913,12 +913,12 @@ def _validate_spec(
     # PGx-only module cites variants as much as a SNP module does, and the gate skipped it outright
     # (`@roster-is-as-wide-as-the-tables-it-reads`). A study's variant is carried when it is a
     # `variants.csv` row's, a defining variant in `haplotypes.csv`, a `pharm_variants.csv` row's, or one
-    # a meta member reached (RM28's widening). Every arm is the authored rows, the view `variants` is
-    # read in (the positional fill is in place, so they carry it). No authored haplotype row reaches the
-    # symbolic-allele drop today; a `pharm_variants.csv` row can, and stays carried here exactly as a
-    # dropped `variants.csv` row does, so the arms read one view. An arm whose file is present but
-    # loaded no row withholds the orphan half (its load errors are the report); the gate used to
-    # withhold that case for `variants.csv` by accident.
+    # a meta member reached (RM28's widening). The three table arms read the authored rows, the view
+    # `variants` is read in (the positional fill is in place, so they carry it): a symbolic-allele row
+    # the compile drops stays carried, in `pharm_variants.csv` as in `variants.csv`. The meta arm reads
+    # `survivors`, and reaches only rows of those two tables, so it adds nothing they miss. An arm whose
+    # file is present but loaded no row withholds the orphan half (its load errors are the report); the
+    # gate used to withhold that case for `variants.csv` by accident.
     if studies:
         carried = [
             *(loaded_kinds.get("haplotypes.csv") or []),
