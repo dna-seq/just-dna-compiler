@@ -1,0 +1,14 @@
+schema_version: '1.0'
+module:
+  name: model_organisms
+  title: Model-organism lifespan evidence beside a human variant
+  description: PPARG Pro12Ala annotated for type 2 diabetes, with the mouse lifespan experiments on
+    PPARG and IGF1R held in model_organisms.csv as annotation, never as a score.
+  report_title: Model-organism lifespan evidence
+  icon: paw
+  icon_set: fomantic
+  color: '#a5673f'
+defaults:
+  curator: ai-module-creator
+  method: literature-review
+genome_build: GRCh38

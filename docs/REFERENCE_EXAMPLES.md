@@ -613,3 +613,21 @@ members,trait_efo_id,direction,sex,pmid,doi
 cites by `pmid=NONE` plus `doi`, which closes the hole the audit's second run left open. Still open: an
 allele's odds ratio has no numeric home (a study row names a variant or nothing), and a tag SNP standing for
 an allele has no column (RM331's proxy points from variant to variant).
+
+## 14. Model-organism lifespan evidence — `model_organisms.csv` beside a lead table
+
+Built for real as [`reference_examples/model_organisms/`](../reference_examples/model_organisms) (audit
+candidate 12/13, RM335). The table is annotation only and is not a lead table, so the module also carries
+`variants.csv` (PPARG Pro12Ala for type 2 diabetes):
+
+```csv
+gene,orthologue,species,model_type,sex,diet,lifespan_effect,concordance,pmid
+PPARG,Pparg,Mus musculus,knock-in Pro12Ala (Ala/Ala),,chow,Ala/Ala mice lived longer; the abstract gives no figure,,19117549
+IGF1R,Igf1r,Mus musculus,heterozygous knockout (Igf1r+/-),female,,+33% against wild-type females (P < 0.001),concordant,12483226
+IGF1R,Igf1r,Mus musculus,heterozygous knockout (Igf1r+/-),male,,+16% against wild-type males (not significant),,12483226
+```
+
+One experiment in two sexes is two keys. `concordance` stays empty where no human lifespan direction exists to
+agree with. The README records that the audit's PPARG row read a metabolic result as a lifespan one, that the
+v2 "uncited" rows checked here have a primary reference GenAge loads by script, and that a database entry has
+no citation column.
