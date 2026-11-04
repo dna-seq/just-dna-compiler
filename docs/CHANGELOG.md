@@ -41,6 +41,13 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM330: a study row states the stratum its estimate was measured in (0.8, uncut)
+
+**format, compiler** — `studies.csv` gains `stratum` and `stratum_level`, free text and written both or
+neither (`sex`/`male`, `parent_sex`/`father`); one without the other is refused. They reach
+`studies.parquet` and `reverse` writes them back. This is RM330's study half; its conclusion half,
+`meta.csv`'s `sex`, shipped with the meta-table.
+
 ## 2026-11-04 — RM329: a study row states the age band its estimate covers, and whose age it is (0.8, uncut)
 
 **format, compiler** — `studies.csv` gains `age_min` and `age_max` (years, finite and non-negative;

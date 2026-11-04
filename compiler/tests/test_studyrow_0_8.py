@@ -127,6 +127,12 @@ def _fill_age_band(i: int, row: dict[str, str]) -> None:
     row["age_min"], row["age_max"], row["age_of"] = band[i % len(band)]
 
 
+def _fill_stratum(i: int, row: dict[str, str]) -> None:
+    """Pilling's parent-sex strata, CHAMP's sex stratum, and nothing."""
+    pair = (("parent_sex", "father"), ("parent_sex", "mother"), ("sex", "male"), ("", ""))
+    row["stratum"], row["stratum_level"] = pair[i % len(pair)]
+
+
 #: Each column group this batch adds, with a fill that gives it distinct stated values and empty
 #: cells, and how a parquet cell reads back as the CSV cell it came from.
 _GROUPS: dict[str, tuple[tuple[str, ...], Fill]] = {
@@ -134,6 +140,7 @@ _GROUPS: dict[str, tuple[tuple[str, ...], Fill]] = {
     "RM326": (("phenotype_class",), _fill_phenotype_class),
     "RM328": (("ancestry",), _fill_ancestry),
     "RM329": (("age_min", "age_max", "age_of"), _fill_age_band),
+    "RM330": (("stratum", "stratum_level"), _fill_stratum),
 }
 
 
@@ -357,3 +364,15 @@ def test_an_age_is_a_finite_non_negative_number_of_years() -> None:
     for cells in ({"age_min": -1}, {"age_max": float("inf")}, {"age_min": float("nan")}):
         with pytest.raises(ValidationError):
             _study(**cells)
+
+
+# ── RM330: the stratum an estimate was measured in ──────────────────────────────────────────────
+
+
+def test_a_stratum_and_its_level_are_written_both_or_neither() -> None:
+    assert _study(stratum="parent_sex", stratum_level="father").stratum_level == "father"
+    for cells in ({"stratum": "sex"}, {"stratum_level": "male"}):
+        with pytest.raises(ValidationError, match="stratum"):
+            _study(**cells)
+    # Free text: no vocabulary on either half.
+    assert not {"stratum", "stratum_level"} & set(field_vocabularies(StudyRow))

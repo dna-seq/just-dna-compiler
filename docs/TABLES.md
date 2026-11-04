@@ -248,6 +248,10 @@ is why a locus whose evidence is partly unstated is never reported as European-o
 empty bound leaves it open (Timmers 2019's top parental band is 80 and over), and `age_of` says whose
 age it is: a parental-lifespan study bands by the parent's age at death, not the participant's.
 
+**A stratum is a pair.** `stratum` names the modifier an estimate was measured within and
+`stratum_level` the level (`sex`/`male`, `parent_sex`/`father`); one without the other is refused. One
+pair holds one modifier, so "hypertensive men" keeps its second modifier in `statistical_test`.
+
 **The symptom of confusing it with `literature.csv` is a dropped row.** `literature.csv` is
 machine-produced and keeps every article it found; the compiler **discards an uncited literature row**
 when nothing references it. `studies.csv` is the authored side and is never dropped. If a citation

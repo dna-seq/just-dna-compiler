@@ -1029,6 +1029,8 @@ def _write_studies_csv(studies_df: pl.DataFrame, output_path: Path) -> None:
         "age_min",
         "age_max",
         "age_of",
+        "stratum",
+        "stratum_level",
     ]
     with open(output_path, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -1070,5 +1072,7 @@ def _write_studies_csv(studies_df: pl.DataFrame, output_path: Path) -> None:
                     "age_min": _scalar_cell(row.get("age_min")),
                     "age_max": _scalar_cell(row.get("age_max")),
                     "age_of": _scalar_cell(row.get("age_of")),
+                    "stratum": _scalar_cell(row.get("stratum")),
+                    "stratum_level": _scalar_cell(row.get("stratum_level")),
                 }
             )

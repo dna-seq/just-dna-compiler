@@ -286,6 +286,9 @@ def _build_studies(studies: list[StudyRow], module_name: str) -> pl.DataFrame:
                 "age_min": s.age_min,
                 "age_max": s.age_max,
                 "age_of": s.age_of,
+                # RM330: the stratum the estimate was measured in, and its level.
+                "stratum": s.stratum,
+                "stratum_level": s.stratum_level,
             }
         )
     schema = {
@@ -323,5 +326,7 @@ def _build_studies(studies: list[StudyRow], module_name: str) -> pl.DataFrame:
         "age_min": pl.Float64,
         "age_max": pl.Float64,
         "age_of": pl.Utf8,
+        "stratum": pl.Utf8,
+        "stratum_level": pl.Utf8,
     }
     return pl.DataFrame(records, schema=schema)

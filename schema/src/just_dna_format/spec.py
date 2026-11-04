@@ -1498,6 +1498,22 @@ class StudyRow(CitationPair, AuthoredModel):
             "by the parent's age at death."
         ),
     )
+    # RM330, the study's half: the stratum an estimate was measured in — a modifier and its level, free
+    # text and written both or neither. A conclusion that DEPENDS on a modifier is a different thing and
+    # lives on `meta.csv` (`sex`); a modifier that is another locus's genotype is RM28's.
+    stratum: str | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description=(
+            "The modifier this estimate was measured within, e.g. `sex`, `parent_sex`, `smoking`. "
+            "Free text, and only with `stratum_level` beside it."
+        ),
+    )
+    stratum_level: str | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description="The level of `stratum` this estimate was measured in, e.g. `male`, `father`, `never`.",
+    )
 
     @property
     def variant_key(self) -> str | None:
@@ -1571,6 +1587,18 @@ class StudyRow(CitationPair, AuthoredModel):
                 f"confidence={self.confidence!r} names a magnitude with no instrument beside it — "
                 f"set confidence_unit (e.g. 'civic_evidence_status'), because two sources publish "
                 f"values on scales that are not the same quantity"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _refuse_half_a_stratum(self) -> "StudyRow":
+        # RM330. A modifier with no level says the estimate was stratified without saying in which
+        # stratum it sits, and a level with no modifier (`male`) cannot be told from another axis.
+        if (self.stratum is None) != (self.stratum_level is None):
+            stated, missing = ("stratum", "stratum_level") if self.stratum else ("stratum_level", "stratum")
+            raise ValueError(
+                f"{stated} is set and {missing} is not — a stratum is written as both or neither (the "
+                f"modifier, and the level of it this estimate was measured in)"
             )
         return self
 

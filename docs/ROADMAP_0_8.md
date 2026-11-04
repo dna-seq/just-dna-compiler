@@ -201,6 +201,8 @@ recruitment). Full ×2–3. The names need the P5 audit before they are fixed. T
 
 ## RM330 — an effect measured in one sex, one smoking stratum or one genotype has no row
 
+**Built on 0.8, 2026-11-04: the study stratum.** `StudyRow.stratum` and `stratum_level`, free text and both or neither, reach `studies.parquet` and `reverse`. Still open: the duplicate-citation narrowing by stratum, later in the same `StudyRow` batch.
+
 **Built on 0.8, 2026-11-04: `sex`.** `meta.csv` gains the closed `sex` condition (`male`, `female`), part of the row key; a sex-scoped row outranks the same key without one, for that sex, and `meta_resolved.parquet` carries one row per scope. Still open: the study's stratum, `StudyRow`'s half (the `StudyRow` batch).
 
 **Narrowing extended 2026-11-04** (the final run's gap 12). Two rows that differ only by stratum do not count as a duplicate citation, RM140's pattern.

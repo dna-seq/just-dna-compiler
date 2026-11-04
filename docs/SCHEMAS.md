@@ -569,7 +569,10 @@ trans-ethnic study lists its codes, never `multi`, and `population` stays free t
 `PgsRow.training_ancestry`'s set is now derived from the same constant plus `multi`.
 **`age_min?`/`age_max?`/`age_of?`** (RM329) — the age band an age-stratified estimate covers, in years
 (finite, ≥ 0; either bound may be empty for an open band), and whose age it is (`VALID_AGE_OF`:
-`participant`, `parent`). No refusal ties the three together.
+`participant`, `parent`). No refusal ties the three together. **`stratum?`/`stratum_level?`**
+(RM330, the study's half) — the modifier an estimate was measured within and its level, free text,
+written both or neither (`sex`/`male`, `parent_sex`/`father`). A conclusion that *depends* on sex is
+`meta.csv`'s `sex` condition, a different thing.
 
 **The pmid/doi pair (0.8, RM336) — one rule on every table that cites.** `pmid` never holds a DOI: a
 cell whose only identifier is a DOI is refused, naming the DOI, the way RM50 refuses a PMC id, because
