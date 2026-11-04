@@ -5407,7 +5407,7 @@ needed.
 
 ## S117 — the Ensembl variation cache spells indel rsIDs at a different anchor from ClinVar for every insertion, and for some it names a different event
 
-**Status — accepted; filed as [RM267](ROADMAP.md#rm267--the-ensembl-snapshot-anchors-a-class-of-insertions-one-base-early-and-resolutioncsv-serves-them-as-a-different-event)
+**Status — accepted; filed as [RM267](ROADMAP_HISTORY.md#rm267--the-ensembl-snapshot-anchors-a-class-of-insertions-one-base-early-and-resolutioncsv-serves-them-as-a-different-event)
 (a minor, release undecided), with a second defect found while reproducing it filed as
 [RM268](ROADMAP_HISTORY.md#rm268--the-live-ensembl-rest-rung-writes-an-unanchored-insertion-into-resolutioncsv-ref--at-the-interbase-start)
 (a patch).** Nothing has shipped.
@@ -5672,7 +5672,7 @@ no schema change to the authored side. Not checked: whether `DiplotypeRow`/`Repe
 ## S121 — the enricher resolves a coordinate from one authority and validates it against that same authority, so a wrong anchor is confirmed rather than caught; a cross-authority discordance should warn/withhold, not resolve silently
 
 **Status — accepted, and folded into
-[RM267](ROADMAP.md#rm267--the-ensembl-snapshot-anchors-a-class-of-insertions-one-base-early-and-resolutioncsv-serves-them-as-a-different-event)
+[RM267](ROADMAP_HISTORY.md#rm267--the-ensembl-snapshot-anchors-a-class-of-insertions-one-base-early-and-resolutioncsv-serves-them-as-a-different-event)
 as a dated addendum rather than filed separately.** Your generalization is exactly RM267's candidate 4,
 so one item carries it and the remediation is not counted twice. Nothing has shipped.
 

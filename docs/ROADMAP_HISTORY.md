@@ -35,6 +35,124 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM267 — the Ensembl snapshot anchors a class of insertions one base early, and `resolution.csv` serves them as a different event
+
+**0.8, decided 2026-11-03.** Taken into 0.8 by the maintainer, with the rest of the indel-placement fixes (RM304, RM267, RM270, RM292, RM305). The status line below predates that decision.
+
+**Residuals** RM270 · won't fix — re-anchoring the snapshot at build is `just-dna-pipelines`' builder, outside this repository (candidate 1 below) · won't fix — writing a corrected spelling was refused for 0.8 by PROPOSAL_0_8_PT2 §4 question 3 · won't fix — a live Ensembl REST witness is outside PT2 §5 C4's two loaded authorities, so S117's own rsID stays one-witness until the pm decides otherwise
+
+**What shipped (2026-11-04).** Candidate 4 as S121's addendum generalised it, in `placement.py`, run by
+`enrich()` after every link and before the table is assembled:
+
+- **Every rsID the run placed fresh is compared** with the ClinVar snapshot and ClinVar-GKM where either
+  is located (`--clinvar-gkm-cache`; read locally, never downloaded by `enrich`). Per allele, the
+  witness's counterparts are its alleles for that rsID on the same contig, within the left-align window,
+  of the same kind (an indel of the same length, or a substitution to the same bases). A counterpart is
+  the same event when the spellings are identical, when two substitutions trim to one spelling, when both
+  mint one VRS id, or when both left-align to one spelling; otherwise **undecided**, counted. ClinVar-GKM's
+  ids are VRS 2.1.1 against our 2.0, so its VCF spelling is minted here rather than its id compared.
+- **A disagreement withholds the locus holding the disputed allele** and names both placements; an
+  undisputed locus of the same rsID is still written. An rsID left with none is unresolved, with no
+  `not_found` row, and the strict sentence names the disagreement; a pair row keeps its authored
+  coordinate; an `overrides.csv` answer on the subject clears the unresolved state. Nothing is rewritten.
+- **Every witness a written row names writes its `SourceRow`** at the `resolution` layer, and the
+  compiler's orphan check counts `placement_witness` members as used.
+- **A different allele is `unplaced`**, never a disagreement, and the rsIDs with no counterpart anywhere
+  are the published one-witness count (`@tautology-zero`). A ClinVar fill has no independent witness here.
+- **The witness is recorded on the row**: `placement_witness` (who was asked) and `placement_verdict`
+  (`same_event` only when every ALT was placed the same / `undecided` / `unplaced`), two columns because who and what are two axes (P5), both
+  outside `resolution_signature`. No `different_event` member: that row is never written.
+- **It attests as `placement_agreement`** (checked side `reporting_source`, witness `clinvar+clinvar_gkm`,
+  `undecided` counted, the one-witness count in `detail`).
+- **Merge-not-clobber holds**: a recorded row meets the comparison only under `--rederive`, where a
+  disputed subject counts as answered and its old placement is not carried forward.
+
+Tests (`enricher/tests/test_placement_witness.py`) run the real chain over recorded GRCh38 windows served
+to the run's own `SequenceProxy`, so every id is minted by `ga4gh.vrs` offline; the windows reproduce the
+ids RM270 and ClinVar-GKM recorded for `rs72613567` and `rs77944059`, and `rs8176719`'s pair mints two.
+
+**What the real witnesses hold (measured 2026-11-04).** Probed 2026-11-04 on real data: neither loaded witness holds `rs8176719` (ClinVar's 2026-06-27 VCF has no record at `9:133257510–529` and no `RS=8176719`; ClinVar-GKM lacks it, RM305), so against today's witnesses S117's own case is counted in the one-witness class and named in `detail`, not withheld. The spelling `9:133257521 T>TC` is dbSNP's and Ensembl REST's; the tests supply it as a ClinVar row to exercise the withhold. An `enrich` of a
+four-rsID module against this machine's real Ensembl and ClinVar snapshots wrote `rs72613567`,
+`rs77944059` and `rs4988235` as `same_event` and `rs8176719` as `unplaced`. A witness that holds it is
+the live REST rung (candidate 4's original "else REST"), which the 0.8 contract's "two loaded
+authorities" leaves out, and the third residual above records that.
+
+**Severity** high · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** (two optional
+`resolution.csv` columns and a new check; [PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §5 C4) ·
+**Owner** enricher (the resolver chain's snapshot link), with the upstream half in `just-dna-pipelines` · **Motivating case**
+[S117](CONSUMER_SUGGESTIONS_HISTORY.md#s117--the-ensembl-variation-cache-spells-indel-rsids-at-a-different-anchor-from-clinvar-for-every-insertion-and-for-some-it-names-a-different-event)
+
+**What was confirmed.** `lookup_loci` against the local snapshot returns `rs8176719` (ABO O1, MAF 0.34)
+as `9:133257520 G>GC`. GRCh38 reads `GGGG T ACC` at 517–524, so that spelling is the haplotype
+`GGGGCTACC` and ClinVar/dbSNP's `521 T>TC` is `GGGGTCACC`: two events, not one respelled. Both of the
+report's other −1 examples reproduce the same way against the reference (`rs546596010`: `CCATTCC`
+vs `CCTATCC`; `rs1553364018`: `GTCCCC` vs `GCTCCCC`).
+
+**The mechanism, and where it lives.** The snapshot is faithful: Ensembl's own current VCF dump
+(`homo_sapiens-chr9.vcf.gz`, read by remote `bcftools`) carries `133257520 rs8176719 G GC`. Ensembl's
+**REST** mapping for the same rsID disagrees with its VCF and agrees with ClinVar — `start 133257522,
+end 133257521, -/C`, an insertion between 521 and 522, which VCF-anchors at `521 T>TC`. Across seven
+insertions (the two cited plus five sampled from the −1 class on chr3/5/12/16) the dump's POS is REST
+`end` − 1 every time, and REST `end` is ClinVar's POS every time. So the dump anchors a class of
+insertions one base left of Ensembl's own interbase point: invisible inside a run of the anchor base,
+a different event outside one. `@two-surfaces-two-denominators` applies to Ensembl against itself.
+
+**Why no check here sees it.** The wrong anchor base is a real genome base, so
+`sequences.verify_reference_alleles` passes it by construction. `check_rsid_coordinates` calls every
+indel position difference *undecided* (RM31: an indel re-anchors legitimately). And for an rsID-only row
+`_verify` never runs. A module resolving `rs8176719` through the table therefore compiles green and
+matches no sample.
+
+**Why each candidate repair is wrong alone.**
+
+1. **Re-anchor at snapshot build.** Correct, and it is `just-dna-pipelines`' build, not this tier's
+   (`CACHE_LANES["ensembl"].unbuilt`). It also leaves every deployed snapshot wrong until rebuilt.
+2. **Left-normalize in `resolve_variants`** (the reporter's first candidate). It fixes the +1 class,
+   which is harmless respelling one base right of VCF left-normalization. It cannot fix the −1 class:
+   `G>GC` after `GGGG` has no left-shift room, so it normalizes to itself and stays the wrong event.
+3. **Re-derive insertions from REST.** Right values, but it turns a bulk snapshot into one request
+   per insertion rsID, and REST's rung has its own defect (RM268) to fix first.
+4. **A finding that withholds** (the reporter's second candidate): for each insertion the snapshot
+   resolves, compare against a second placement the enricher holds (the ClinVar snapshot on rsID,
+   else REST). Apply both spellings to the reference window, report a different haplotype, and
+   withhold the row rather than choosing. It reports without repairing (`@enrichment-is-validation`)
+   and is the part that fits here. What it does not settle is whether the enricher may then
+   **write** the corrected spelling. Under `@provenance-beside-a-claim-is-outside-content-identity` a
+   rewritten snapshot value should say so on its row, which is a new optional `resolution.csv`
+   column. That column is minor-legal, and it is why this item is sized as a minor, not a patch.
+
+`content_signature` is unaffected either way (a resolution fill is `authored_ident`, `@rm43-positional-fill`).
+`@sidecar-authoritative` applies: a corrected spelling reaches an existing `resolution.csv` only on
+`--rederive` or a deleted sidecar, so the release that ships it must say so.
+Measured scale (the reporter's join, not re-run here): 5,788 insertion and 2,111 deletion alleles in
+the −1 class, of which roughly three in four of the sampled insertions are a different event.
+
+**Addendum 2026-09-27, [S121](CONSUMER_SUGGESTIONS_HISTORY.md#s121--the-enricher-resolves-a-coordinate-from-one-authority-and-validates-it-against-that-same-authority-so-a-wrong-anchor-is-confirmed-rather-than-caught-a-cross-authority-discordance-should-warnwithhold-not-resolve-silently):
+candidate 4 is the general rule, not an Ensembl special case.** Confirmed in code: the ClinVar link
+(`enrich.py`, the "ClinVar cache link" block) fills only what the Ensembl cache missed. The same run
+already holds the ClinVar snapshot for the `clin_sig` cross-check, yet it never compares a placement.
+The comment gives the reason for that order as *"so no compiled module's artifact.digest moves"*, which
+is the one reason the house rules say is never enough on its own. So every
+coordinate in `resolution.csv` has one witness, and `authority=ensembl` reads the same whether a
+second authority agreed, disagreed, or was never asked. The build is therefore:
+
+- **Compare every placement two loaded authorities give for one rsID, and withhold on disagreement.**
+  Compare by minted `vrs_id` where both sides can be minted, because it needs no tolerance. Probed for
+  RM270: a respelling mints one id (`rs72613567`, `rs77944059`) and S117's wrong event mints two
+  (`rs8176719`). Elsewhere, use `parsimony_reduce` plus a reference window. A disagreement is a finding
+  naming both placements, and the row is not written. The count of rsIDs that had only one witness is
+  published beside it (`@tautology-zero`).
+- **Record the witness on the row.** A new optional `resolution.csv` column saying which second
+  authority was asked and what it answered, tri-state. This is the minor-legal addition this item was
+  already sized for.
+- **S121's third ask is inverted, not adopted.** The VRS id is the arbiter, not the hazard: the three
+  rows S121 cites mint the *same* id as ClinVar's spelling, so their ids are correct. A −1-class row
+  is withheld whole, id included, by the first bullet.
+
+This is the same failure `@start-1based` recorded on 2026-08-06 ("validate-by-redundancy assumes
+independence"), and the RM31 residual (0.5) that went unfiled. The postmortem of the 2026-09-27 round
+covers the procedure side.
+
 ## RM359 — under `--strict`, `study_effect_allele_not_at_locus` arrives as both an error and a warning, and SCHEMAS.md states a count the code has outgrown
 
 **0.8, filed 2026-11-04 by the lead** as a second-pass item: found by a 0.8 builder.

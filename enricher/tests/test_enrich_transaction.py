@@ -758,6 +758,8 @@ def test_the_written_columns_are_derived_from_the_model(tmp_path: Path) -> None:
         rsid_alternates="rs77121243",
         rsid_current="rs334",
         rsid_status="live",
+        placement_witness="clinvar+clinvar_gkm",
+        placement_verdict="same_event",
         fetched_at="2026-09-09T00:00:00Z",
     )
     # Every field set, so a column the renderer skipped would show as a blank cell on reload.

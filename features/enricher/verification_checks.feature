@@ -88,6 +88,19 @@ Feature: The verification checks and their three outcomes
 
   # source: enricher/src/just_dna_enricher/enrich/verification_records.py
   # anchor: _verification_records
+  @check:placement_agreement
+  Scenario: where the run's own link placed an rsID against where a second authority places it
+    Given a variants.csv row naming an rsID the Ensembl snapshot and the ClinVar snapshot place as two different events
+    When `enrich` runs
+    Then no row is written for that rsID and the record names both placements
+    And the record counts the rsIDs that had one witness only
+    # S117's `rs8176719` is the case: Ensembl's VCF dump anchors the ABO O1 insertion one base early, a
+    # different haplotype from ClinVar's. Compared by minted VRS id where both mint, else by the
+    # left-aligned spelling; a respelling nothing could settle is undecided, never agreement
+    # (`@tautology-zero`). Nothing is rewritten (`@enrichment-is-validation`).
+
+  # source: enricher/src/just_dna_enricher/enrich/verification_records.py
+  # anchor: _verification_records
   @check:rsid_currency
   Scenario: an authored rsID against dbSNP's own status
     Given a variants.csv row whose rsID dbSNP reports as merged

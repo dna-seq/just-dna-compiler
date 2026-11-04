@@ -15,6 +15,7 @@ from just_dna_enricher.concordance import AnsweredCallReport
 from just_dna_enricher.currency import CurrencyCheck
 from just_dna_enricher.grch37 import BuildDiagnosis
 from just_dna_enricher.identifiers import RsidStatus
+from just_dna_enricher.placement import PlacementCheck
 from just_dna_enricher.resolver import AlleleMismatch, PairCheck
 from just_dna_enricher.sequences import RefMismatch
 from just_dna_enricher.vrs import MintResult
@@ -217,6 +218,11 @@ class EnrichmentResult:
     # built the result by hand; `enrich()` always sets it, carrying `not_checked` when the pass could
     # not run rather than an empty finding list that reads as a clean bill.
     rsid_coordinates: PairCheck | None = None
+    # What the placement comparison did (RM267): the rsIDs compared against a second loaded authority,
+    # the ones two authorities place as different events (withheld — no row was written for them), the
+    # respellings nothing could settle, and the rsIDs with one witness only. `None` only for a caller
+    # that built the result by hand; `enrich()` always sets it, with `not_checked` when it could not run.
+    placement: PlacementCheck | None = None
     # What a full re-derivation found had moved since the recorded table was written — `rederive=True`
     # only. **`None` is not `[]`**: `None` says nobody re-derived, and an empty list says every
     # recorded subject was re-asked and every one still answers the same. Only the second of those is

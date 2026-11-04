@@ -762,6 +762,18 @@ VALID_DECLARED_USE: frozenset[str] = frozenset({"unstated", "non_commercial", "c
 # locus (rare — a one-to-many rsid is expanded to distinct rows instead, so it is not `ambiguous`).
 VALID_RESOLUTION_STATUS: frozenset[str] = frozenset({"resolved", "not_found", "ambiguous"})
 
+# ── Placement verdict (0.8, RM267) ───────────────────────────────────────────────────────────────
+# What a second authority answered about a `ResolutionRow`'s placement, beside `placement_witness`
+# naming which one was asked. Three answers; an empty cell is the fourth state, nobody was asked.
+# There is no `different_event` member on purpose: a placement two authorities disagree about is
+# withheld, so that answer never reaches a written row.
+#
+# * `same_event`  — the witness places the same event (one VRS id, or one left-aligned spelling).
+# * `undecided`   — the witness placed it in another spelling and nothing this run held could settle
+#                   whether the two are one event (no sequence: an offline run). Never agreement.
+# * `unplaced`    — the witness was asked and holds no placement of this allele: one witness only.
+VALID_PLACEMENT_VERDICTS: frozenset[str] = frozenset({"same_event", "undecided", "unplaced"})
+
 # ── Frequency status (0.5.1) ────────────────────────────────────────────────────────────────────
 # Closed vocabulary (Principle 6) for a `FrequencyRow`'s outcome. It borrows two members from the
 # resolution table above and adds a third, because an allele-frequency source has one more way to
@@ -943,6 +955,9 @@ VALID_VERIFICATION_CHECKS: frozenset[str] = frozenset(
         "rsid_currency",  # authored rsID vs dbSNP (live / merged / absent) — `enrich`
         "clinical_significance",  # authored `clin_sig` vs ClinVar's own, allele-exactly — `enrich`
         "rsid_coordinate_agreement",  # an authored rsID+coordinate PAIR vs the reference — `enrich`
+        "placement_agreement",  # the placement one authority gives an rsID vs a second loaded
+        #   authority's (ClinVar, ClinVar-GKM) — `enrich` (RM267). A
+        #   disagreement withholds the rsID's rows.
         "genome_build_agreement",  # authored coordinates vs the declared assembly — `enrich`
         "dataset_currency",  # a recorded `SourceRow.dataset` vs the release that source
         #   publishes NOW — `enrich`. The subject is the module's own

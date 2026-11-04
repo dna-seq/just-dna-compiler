@@ -429,6 +429,7 @@ def test_every_check_name_is_a_verification_question() -> None:
         "reference_allele",
         "rsid_currency",
         "rsid_coordinate_agreement",
+        "placement_agreement",
         "clinical_significance",
         "acmg_secondary_findings",
         "gene_symbol_currency",

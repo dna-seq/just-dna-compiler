@@ -179,6 +179,17 @@ CHECK_WITNESSES: dict[str, CheckWitness] = {
             "move it legitimately (RM31), so no verdict is reached and the pair is counted"
         ),
     ),
+    "placement_agreement": CheckWitness(
+        REPORTING_SOURCE,
+        ("clinvar", "clinvar_gkm"),
+        "the placement the run's own link gave an rsID (the Ensembl snapshot, live Ensembl or gnomAD — "
+        "per row) against where ClinVar and ClinVar-GKM place it; a ClinVar fill has no independent "
+        "witness here and is counted with the one-witness class (RM267)",
+        tolerance=(
+            "an indel the witness spells differently, with no reference sequence this run to settle "
+            "whether the two spellings are one event — counted, never read as agreement"
+        ),
+    ),
     "dataset_currency": CheckWitness(
         RECORDED_SOURCE,
         (RECORDED_SOURCE,),

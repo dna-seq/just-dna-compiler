@@ -20,6 +20,7 @@ from just_dna_enricher.clinvar import clinvar_dataset_label
 from just_dna_enricher.currency import CurrencyCheck, summarize_currency
 from just_dna_enricher.grch37 import BuildDiagnosisResult
 from just_dna_enricher.identifiers import RsidStatus
+from just_dna_enricher.placement import PlacementCheck
 from just_dna_enricher.resolver import PairCheck
 from just_dna_enricher.sequences import RefCheck, summarize_ref_mismatches
 from just_dna_enricher.verification import DETAIL_LIMIT, examples, ran, skipped
@@ -107,6 +108,7 @@ def _verification_records(
     stale_rsids: list[RsidStatus],
     pairs: PairCheck,
     ensembl_ref: Path | None,
+    placement: PlacementCheck,
     currency: CurrencyCheck | None,
 ) -> list[VerificationRecord]:
     """The checks this pass puts, as records `verification.json` can carry (RM45).
@@ -419,6 +421,52 @@ def _verification_records(
                 # RM292 / `@tautology-zero`: the RM31 tolerance abstains on every indel position
                 # difference, so the abstentions are counted here rather than left to read as agreement.
                 undecided=len(pairs.undecided),
+            )
+        )
+
+    # Placement agreement (RM267): where the run's own links placed each rsID, against the second
+    # authorities it had loaded. `witness_source` narrows the roster's two to the ones that were
+    # loaded; the one-witness count rides in `detail` with its own denominator, because it is the
+    # class a bare `findings: 0` would otherwise read as agreement (`@tautology-zero`).
+    placement_notes = placement.sentences()
+    if placement.not_checked is not None:
+        records.append(
+            skipped(
+                "placement_agreement",
+                placement.not_checked,
+                detail=(
+                    "; ".join(
+                        [
+                            {
+                                "unsupported": "placement is GRCh38-bound, so nothing on another assembly "
+                                "was compared (RM15)",
+                                "nothing_to_check": "no placement this run made was also placed by a "
+                                "loaded witness, so none was compared — recorded rows are compared only "
+                                "under --rederive",
+                                "no_reference": "no second authority (a ClinVar or ClinVar-GKM snapshot) "
+                                "was located, so every placement has the one witness that gave it",
+                            }.get(placement.not_checked, placement.not_checked),
+                            *placement_notes,
+                        ]
+                    )
+                ),
+            )
+        )
+    else:
+        withheld = [str(d) for d in placement.disagreements]
+        notes = withheld[:DETAIL_LIMIT]
+        if len(withheld) > DETAIL_LIMIT:
+            notes.append(
+                f"{len(withheld) - DETAIL_LIMIT} further disagreement(s); the run's log names every one"
+            )
+        records.append(
+            ran(
+                "placement_agreement",
+                subjects=placement.subjects,
+                findings=len(placement.contested),
+                witness_source="+".join(placement.witnesses),
+                detail="; ".join(notes + placement_notes) or None,
+                undecided=len(placement.undecided),
             )
         )
 
