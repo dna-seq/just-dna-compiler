@@ -13,13 +13,14 @@ arm's sentence raises nothing and reads as a diagnosis (`@answered-is-not-absent
 
 import itertools
 import json
+import os
 import shutil
 from pathlib import Path
 
 import pytest
 from just_dna_compiler.cli import app
 from just_dna_compiler.compiler import (
-    LOG_IMAGE_MAX_BYTES,
+    LOG_MAX_BYTES,
     LOG_NOT_SHIPPED_PHRASE,
     LOG_NOT_SHIPPED_REASONS,
     _log_left_behind_reason,
@@ -80,7 +81,7 @@ def _apoe_with_logs(tmp_path: Path) -> tuple[Path, dict[str, str]]:
     _write(spec, _SHIPPED)
     _write(spec, {rel: data for rel, (data, _) in _LEFT_BEHIND.items()})
     expected = {rel: arm for rel, (_, arm) in _LEFT_BEHIND.items()}
-    (spec / "logs" / "big.png").write_bytes(_PNG + b"\x00" * (LOG_IMAGE_MAX_BYTES + 1 - len(_PNG)))
+    (spec / "logs" / "big.png").write_bytes(_PNG + b"\x00" * (LOG_MAX_BYTES + 1 - len(_PNG)))
     expected["logs/big.png"] = "oversize"
     outside = tmp_path / "outside.json"
     outside.write_text('{"token": "not for publishing"}')
@@ -91,6 +92,15 @@ def _apoe_with_logs(tmp_path: Path) -> tuple[Path, dict[str, str]]:
     expected["logs/gone.log"] = "symlink"
     (spec / "logs" / "elsewhere").symlink_to(tmp_path, target_is_directory=True)
     expected["logs/elsewhere"] = "symlink"
+    # A file the compile cannot read stays behind rather than raising (RM348). Root reads anything and
+    # some filesystems ignore the mode, so the arm is reached only where the lock takes.
+    locked = spec / "logs" / "locked.json"
+    locked.write_bytes(b'{"ok": 1}')
+    locked.chmod(0)
+    if not os.access(locked, os.R_OK):
+        expected["logs/locked.json"] = "unreadable"
+    else:
+        locked.unlink()
     return spec, expected
 
 
@@ -137,8 +147,8 @@ def test_rm337_each_file_left_behind_is_named_once_with_its_reason(tmp_path: Pat
     assert "line 3" in by_path["logs/bad.jsonl"]
     assert "at offset 3)" in by_path["logs/latin1.txt"]
     assert "at offset 5)" in by_path["logs/bom notes.md"]
-    assert str(LOG_IMAGE_MAX_BYTES + 1) in by_path["logs/big.png"]
-    assert str(LOG_IMAGE_MAX_BYTES) in by_path["logs/big.png"].replace(str(LOG_IMAGE_MAX_BYTES + 1), "")
+    assert str(LOG_MAX_BYTES + 1) in by_path["logs/big.png"]
+    assert str(LOG_MAX_BYTES) in by_path["logs/big.png"].replace(str(LOG_MAX_BYTES + 1), "")
 
     # It reaches the manifest, counted, and nothing else in the channel moved.
     assert manifest.compilation.warnings_summary[_CODE] == len(expected)
@@ -163,15 +173,17 @@ def test_rm337_the_reason_arms_are_pairwise_distinct(tmp_path: Path) -> None:
 
     spec, expected = _apoe_with_logs(tmp_path)
     logs_dir = spec / "logs"
-    # Every arm is reached by at least one file, so the walk is over the arms and not a sample.
-    assert set(expected.values()) == set(LOG_NOT_SHIPPED_REASONS)
+    # Every arm is reached by at least one file, so the walk is over the arms and not a sample; the
+    # one exception is `unreadable` where no file can be made so (root), and RM348's test says so.
+    assert set(LOG_NOT_SHIPPED_REASONS) - set(expected.values()) <= {"unreadable"}
+    assert set(expected.values()) <= set(LOG_NOT_SHIPPED_REASONS)
     for rel, arm in expected.items():
-        reason = _log_left_behind_reason(spec / rel, logs_dir)
+        reason = _log_left_behind_reason(spec / rel, logs_dir, spec)
         assert reason is not None, rel
         hit = {name for name, phrase in LOG_NOT_SHIPPED_REASONS.items() if phrase in reason}
         assert hit == {arm}, (rel, reason)
     for rel in _SHIPPED:
-        assert _log_left_behind_reason(spec / rel, logs_dir) is None, rel
+        assert _log_left_behind_reason(spec / rel, logs_dir, spec) is None, rel
 
 
 def test_rm337_reason_text_is_stable_across_laps(tmp_path: Path) -> None:

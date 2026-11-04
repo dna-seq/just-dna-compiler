@@ -701,26 +701,32 @@ and still publishes `manifest.sources`. Both of those are renames only a major m
    over it would punish the author for the enricher's generosity).
 9. **Collect** logs / `provenance.json` / logo / readme (a malformed one fails the compile, not
    raises). Log discovery takes `*.log` beside the spec and, under `logs/` at any depth, every `*.log`
-   unchecked, exactly as before, plus each file whose content matches its name (RM338): `.txt`/`.md`
+   unchecked for content, plus each file whose content matches its name (RM338): `.txt`/`.md`
    decode as UTF-8 (a byte-order mark allowed), `.json` parses, every non-blank `\n`-terminated `.jsonl`
-   line parses, and a `.png`/`.jpg`/`.jpeg` starts with its format's magic and is at most
-   `LOG_IMAGE_MAX_BYTES` (5 MiB). Only an exact `.log` suffix skips the check; any other extension is
-   compared lowercased, so a `.LOG` is checked as text. A hidden path (any part starting with `.`) or a
-   symlink never takes the checked route. Each file that ships and is not `*.log` is named by an info
-   line on `just_dna_compiler.compiler` and, in `just-dna-compiler compile`, by a `log ships: <name>`
-   line. **Every other path under `logs/` draws `log_file_not_shipped` (RM337)**, a warning in both
-   modes and never a refusal, one line per path: `<path> does not ship with the module: <reason>.` The
-   reason is a fixed sentence from `LOG_NOT_SHIPPED_REASONS`, one per arm, decided by the same
+   line parses, and a `.png`/`.jpg`/`.jpeg` starts with its format's magic. Only an exact `.log` suffix
+   skips the content check; any other extension is compared lowercased, so a `.LOG` is checked as text.
+   A hidden path (any part starting with `.`) never takes the checked route. **Discovery does not trust
+   the filesystem (RM348)**, for `*.log` too, beside the spec or under `logs/`: a path must resolve to
+   exactly where it lies inside the spec directory, so a symlink at any level stays behind, and a
+   `logs/` that is itself a link is not walked (one finding names `logs`); every file is held to
+   `LOG_MAX_BYTES` (5 MiB), read from `stat` before any byte; and a file the compile cannot stat or open
+   stays behind rather than raising, while a directory it cannot list and search (`logs/` included) is
+   named in place of the files it hides, which a walk would otherwise skip without a word. Each file
+   that ships and is not `*.log` is named by an info line on `just_dna_compiler.compiler` and, in
+   `just-dna-compiler compile`, by a `log ships: <name>` line. **Every other path discovery considers draws `log_file_not_shipped` (RM337)**, a warning in
+   both modes and never a refusal, one line per path: `<path> does not ship with the module: <reason>.`
+   The reason is a fixed sentence from `LOG_NOT_SHIPPED_REASONS`, one per arm, decided by the same
    function that decides the verdict (`_log_left_behind_reason`), so the two cannot drift: a hidden
-   path, a symlink (to a file, a directory, or nothing), an image over the ceiling (both sizes named),
-   an image whose first bytes are not its format's signature, an SVG (*"XML that can carry script"*),
+   path, a symlink or a path under one (to a file, a directory, or nothing), a file over the ceiling
+   (both sizes named), a file the compile could not read (*"the compile could not read it"*, RM348), an
+   image whose first bytes are not its format's signature, an SVG (*"XML that can carry script"*),
    any other extension, text that is not UTF-8 (the offset of the first bad byte named), a `.json` that
    does not parse, and a `.jsonl` line that does not parse (the first such line numbered, blanks
    counted). The reason carries no interpreter error message, since it reaches `manifest.json`. There is
    no cap and no `_examples` truncation: the decision was to name each file, and `warnings_summary`
    counts them. An explicit `log_files` list skips discovery, ships what it names and draws no warning.
-   A file beside the spec that is not `*.log` is outside this: the top level was left as it was, and an
-   unknown file there is the spec directory's ordinary tolerance. The readme is discovered from
+   A file beside the spec that is not `*.log` is outside this: the top level discovers `*.log` only, and
+   an unknown file there is the spec directory's ordinary tolerance. The readme is discovered from
    `manifest.README_CANDIDATES` and hashed into `manifest.readme`, outside `artifact.files` — so it is attested without being content (S25).
 10. **Read the verification attestation** (`verification.json`, RM45): recompute the binding over the
     authored inputs — with `\r\n` read as `\n` since 0.6 (RM82), so an editor's line endings are not an

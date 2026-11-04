@@ -26,7 +26,7 @@ rely on that.
 | --- | --- | --- |
 | `conclusion_names_other_genotype` | RM308 | A `variants.csv` conclusion names another genotype at its locus and never its own row's: two conclusions look swapped, or one was copied from a neighbour. RM279's hint rule, now at `validate`/`compile`. A warning in both modes. Actionable. |
 | `qual_floor_on_reference_evidence` | RM313 | A `requires_callable` row states its `min_quality` floor against QUAL, which the reference record it is decided from usually leaves missing. Replaces `quality_floor_inverted` (§ 1.1). A warning in both modes. Actionable. |
-| `log_file_not_shipped` | RM337 | A file under the module's `logs/` that compile discovery left behind, with the path and its reason (one of `LOG_NOT_SHIPPED_REASONS`: hidden path, symlink, image over the ceiling or with the wrong signature, SVG, another extension, not UTF-8, `.json` or a `.jsonl` line that does not parse). Text: `<path> does not ship with the module: <reason>.` A warning in both modes. Actionable: fix, rename or remove the file. |
+| `log_file_not_shipped` | RM337 | A file under the module's `logs/` that compile discovery left behind, with the path and its reason (one of `LOG_NOT_SHIPPED_REASONS`: hidden path, symlink or a path under one, a file over the ceiling, a file the compile could not read, an image with the wrong signature, SVG, another extension, not UTF-8, `.json` or a `.jsonl` line that does not parse; RM348 adds the unreadable arm and holds a top-level `*.log` to the same rules). Text: `<path> does not ship with the module: <reason>.` A warning in both modes. Actionable: fix, rename or remove the file. |
 | `fact_rows_contradict` | RM275 | Two rows of a derived fact table (`frequencies`, `gene_metrics`, `literature`, `gene_validity`, `clinical_assertions`, `gwas_effects`, `expression_effects`) share a merge key and state different values for one fact. A warning in both modes; refused from 1.0. Actionable: delete the wrong row, or delete the table and re-run the pass. |
 
 ### 1.1 A retired code: `quality_floor_inverted`
@@ -61,6 +61,12 @@ COMPILER.md § The phrases, under *retired*, for grepping old manifests.
 | Key | Item | What it holds |
 | --- | --- | --- |
 | `archive_last_modified` in the ClinPGx snapshot's `release.json` | RM283 | `Last-Modified` of the lane's archive and its sibling archives at build time (name → ISO date, `null` where the `HEAD` did not answer). Absent on a snapshot built from a local archive. RM303 will give `release.json` a model on this branch; this key is one it has to carry. |
+
+## 1.5 A behaviour narrowing: what a `*.log` ships (no new code)
+
+| Surface | Item | What changed |
+| --- | --- | --- |
+| log discovery in `compile_module` | RM348 | A symlinked `*.log` (beside the spec or under `logs/`), anything under a `logs/` that is itself a link, and any discovered file over `LOG_MAX_BYTES` (5 MiB) used to ship, the `*.log` ones since before RM338; they now stay behind with `log_file_not_shipped`. A file the compile cannot read stays behind the same way instead of failing the compile, and a directory it cannot list is named in place of the files it hides. An explicit `log_files` list is unaffected. `LOG_IMAGE_MAX_BYTES` is renamed `LOG_MAX_BYTES`; no release carried the old name. |
 
 ## 2. What to change
 
