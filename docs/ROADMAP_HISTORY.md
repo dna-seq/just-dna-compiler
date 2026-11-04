@@ -72,7 +72,7 @@ PubMed Central number and naming it. A DOI is the next registry whose digits rea
 (P3/P8), while a new warning code is minor-class (RM308's rule). The real fix for preprints stays the 1.0
 doi-first demotion. RM263 is the route from a DOI to its PMID.
 
-**Residuals** won't fix — a `NONE` row's DOI is never existence-checked, because the literature pass keys `literature.csv` on PubMed ids; a DOI lane there is new scope, reported to the lead to file
+**Residuals** won't fix — a `NONE` row's DOI is never existence-checked and its quote never matched, because the literature pass keys `literature.csv` on PubMed ids; a DOI lane there is new scope, reported to the lead to file
 
 **The published-module scan, run before the refusal was built (2026-11-04).** The prod registry, all
 24 modules and every one of their 47 versions (inputs, parquets and derived sidecars, fetched read-only
@@ -96,8 +96,13 @@ the refusal breaks no published module, and the decision's gate was met.
   `validate_pmid_cell`, which its description had always promised; `doi` joined `GWAS_FACT_FIELDS`, and
   an unset one moves no fact signature (`None` is dropped from the hash). Compile, parquet and
   `reverse` needed no edit: all four tables go through the model-driven writers.
-- The duplicate-citation check keys a `NONE` row on its DOI, so two preprints on one variant are two
-  citations and the same preprint twice still warns, naming the DOI.
+- The duplicate-citation check keys a `NONE` row on its DOI token, lower-cased (`spec.doi_key`), so
+  two preprints on one variant are two citations and the same preprint twice, in either spelling, still
+  warns, naming the DOI (`spec.cited_as`, which the two other study findings printing a `pmid` use too).
+- **Found in review, and the same item:** a quote on a `NONE` row sat in none of the literature pass's
+  counts, so `verification.json` said "no provenance quote or regex on any citation" about a module
+  carrying one. `LiteratureResult.quotes_without_pmid` counts them; alone they make the record an
+  `unsupported` skip, beside others they are a clause in its detail.
 
 **P5 audit.** `doi` is `StudyRow.doi`'s name for the same fact on a finer-grained row; it collides with
 nothing on those models and is not in `RESERVED_NAMES_0_4`; `LiteratureRow.doi` is the registry's answer
@@ -112,7 +117,7 @@ citing model; `NONE` with and without `doi`; the other spellings' pointer; `extr
 `_CITING_TABLE_KINDS` inside it; round trips with `NONE`+`doi` on `studies.csv`, `repeat_alleles.csv`
 and `pharm_variants.csv`, and a `gwas_effects.csv` `doi` reaching its parquet; the duplicate key);
 `enricher/tests/test_literature_doi_cells.py` (the pass's lookup list holds only the PMID beside a DOI,
-and nothing for `NONE` or a DOI-only cell). Each new arm was broken once and its test went red.
+and nothing for `NONE` or a DOI-only cell; a `NONE` row's quote is reported, never read as no quote). Each new arm was broken once and its test went red.
 
 
 # The 0.8 PT1 build round

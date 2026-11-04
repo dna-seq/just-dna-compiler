@@ -208,6 +208,28 @@ def check_citation_pair(pmid: str | None, doi: str | None) -> None:
         )
 
 
+def cited_as(pmid: str | None, doi: str | None) -> str | None:
+    """How a message names the work a row cites: its `pmid`, or `NONE doi <doi>` for a DOI-only row.
+
+    Every `NONE` row would otherwise print as `PMID NONE`, and two preprints on one variant would read
+    as one citation in the finding that names them (RM336). Verbatim, for a human; a key comparing two
+    rows normalizes the DOI first (`doi_key`).
+    """
+    if pmid == PMID_NONE:
+        return f"{PMID_NONE} doi {doi}"
+    return pmid
+
+
+def doi_key(doi: str) -> str:
+    """The DOI token of a `doi` cell, lower-cased: what two spellings of one DOI share.
+
+    DOIs are case-insensitive and a cell may hold the bare token or a doi.org URL, so a key built from
+    the cell verbatim would read one preprint written two ways as two citations.
+    """
+    match = DOI_PATTERN.search(doi)
+    return (match.group(0) if match else doi.strip()).lower()
+
+
 def validate_doi_cell(value: str | None) -> str | None:
     """A `doi` cell: optional, kept verbatim, and carrying one DOI token when present."""
     if value is None:

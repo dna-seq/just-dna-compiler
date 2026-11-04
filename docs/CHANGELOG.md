@@ -50,7 +50,10 @@ index is cited as `pmid=NONE` (exactly), which makes `doi` mandatory and DOI-sha
 `spec.CitationPair`, on every model with a `pmid` (`StudyRow`, the four binning kinds,
 `PharmVariantRow`, `GwasEffectRow`), asserted by an equality over the model registry; the last three
 gain an optional `doi` column (nullable in their parquets, so their `artifact.digest` moves on
-recompile). Two `NONE` study rows on one variant are told apart by their DOI in the duplicate check.
+recompile). Two `NONE` study rows on one variant are told apart by their DOI in the duplicate check,
+and study findings name a `NONE` row by its DOI. A quote on a `NONE` row, which the literature pass
+cannot match (it reads text by PubMed id), is counted and reported as `unsupported` rather than as no
+quote.
 Every published module (the prod registry, 24 modules, all 47 versions, and `reference_examples/`) was
 scanned first: no `pmid` cell holds a DOI. A 0.7 reader refuses `NONE` and the new columns
 ([INTEGRATION_0_8 § 1.5](INTEGRATION_0_8.md)).

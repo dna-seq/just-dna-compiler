@@ -221,3 +221,26 @@ def test_the_same_preprint_twice_is_still_a_duplicate(tmp_path: Path) -> None:
     warnings = _duplicate_warnings(_with_preprint_studies(tmp_path / "b", second_doi=_DOI_A))
     assert len(warnings) == 1
     assert PMID_NONE in warnings[0] and _DOI_A in warnings[0]
+
+
+def test_one_preprint_spelled_two_ways_is_still_a_duplicate(tmp_path: Path) -> None:
+    """DOIs are case-insensitive and a cell may hold a doi.org URL, so the key compares the token."""
+    spelled = f"https://doi.org/{_DOI_A.upper()}"
+    warnings = _duplicate_warnings(_with_preprint_studies(tmp_path / "c", second_doi=spelled))
+    assert len(warnings) == 1
+    assert spelled in warnings[0], "the message names the cell as written"
+
+
+def test_a_finding_on_a_preprint_row_names_its_doi(tmp_path: Path) -> None:
+    """A study finding used to print `pmid NONE` for every DOI-only row, so two of them read alike."""
+    spec = _with_preprint_studies(tmp_path / "d")
+    rows = _rows(spec / "studies.csv")
+    for row in rows:
+        row.setdefault("p_value", "")
+        row.setdefault("p_value_num", "")
+        if row["pmid"] == PMID_NONE:
+            row.update({"p_value": "0.05", "p_value_num": "0.5"})
+    _write(spec / "studies.csv", rows)
+    slips = [w for w in validate_spec(spec).warnings if "two encodings of one number disagree" in w]
+    assert len(slips) == 2
+    assert {doi for doi in (_DOI_A, _DOI_B) for w in slips if doi in w} == {_DOI_A, _DOI_B}

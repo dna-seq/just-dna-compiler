@@ -200,6 +200,12 @@ stale, one function does not. Four things to hold onto when wiring a new pass in
   reached only by the citations having changed, which is the case the merge rule above deliberately
   lets a skip win. (This bullet used to argue the silence from the merge replacing per check. That was
   the merge's defect rather than an argument, and RM72 fixed it.)
+- **A quote on a `pmid=NONE` study row is counted apart, and never as "no quote" (0.8, RM336).** Such a
+  row cites by DOI alone, the pass reaches an article's text through its PubMed id, and so the quote is
+  in none of the denominators below (`LiteratureResult.quotes_without_pmid` counts it). When it is the
+  only kind there is, `provenance_quote` is skipped as `unsupported` and the detail says how many;
+  otherwise the same clause is appended to the record's detail. The DOI itself is not existence-checked
+  either: `literature.csv` is keyed on PubMed ids.
 - **`literature` puts three questions with three different denominators, and one record cannot carry
   them.** Every citation gets an existence verdict; only some carry an authored DOI or PMC id to
   compare; fewer still carry a quote whose article could be read. So `provenance_quote` counts the

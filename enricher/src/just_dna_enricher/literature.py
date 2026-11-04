@@ -223,6 +223,7 @@ class LiteratureResult:
     quotes_checked: int = 0  # quotes a retrieved text settled
     quotes_unchecked: int = 0  # unretrievable + never examined
     quotes_unexamined: int = 0  # authored after the sidecar pinned the row
+    quotes_without_pmid: int = 0  # quotes on `pmid=NONE` study rows, which no PMID reaches (RM336)
     fulltext_checked: list[str] = field(default_factory=list)  # PMIDs whose fulltext was read
     abstract_checked: list[str] = field(default_factory=list)  # PMIDs matched against the abstract only
     doi_missing: list[str] = field(default_factory=list)  # DOIs Crossref has no record of
@@ -1119,6 +1120,13 @@ def enrich_literature(
     authored_total = sum(
         1 for rows in citations.values() for s in rows if s.provenance_quote or s.provenance_regex
     )
+    # A `pmid=NONE` row cites by DOI alone (RM336), so `_citations` has no key for it and its quote is
+    # in none of the counts above. Counted apart so the record never says "no quote on any citation"
+    # about a module carrying one; matching it would need a DOI route to the text, which this pass
+    # does not have.
+    without_pmid = sum(
+        1 for s in studies if not extract_pmids(s.pmid) and (s.provenance_quote or s.provenance_regex)
+    )
 
     if offline:
         logger.warning(
@@ -1136,6 +1144,7 @@ def enrich_literature(
                 sources=sorted({r.source for r in out if r.source}),
                 cited=sorted(citations, key=int),
                 quotes_authored=authored_total,
+                quotes_without_pmid=without_pmid,
                 fulltext_requested=check_fulltext,
             ),
             spec_dir,
@@ -1390,6 +1399,7 @@ def enrich_literature(
         )
     if write:
         _write_literature_csv(result.rows, output_path)
+    result.quotes_without_pmid = without_pmid
     return _attest(result, spec_dir, write=write, check_fulltext=check_fulltext, check_doi=check_doi)
 
 
@@ -1800,6 +1810,15 @@ def _verification_records(
                 source="europepmc",
             )
         )
+    elif result.quotes_authored == 0 and result.quotes_without_pmid:
+        records.append(
+            skipped(
+                "provenance_quote",
+                "unsupported",
+                detail=_without_pmid_clause(result),
+                source="europepmc",
+            )
+        )
     elif result.quotes_authored == 0:
         records.append(
             skipped(
@@ -1814,9 +1833,10 @@ def _verification_records(
             skipped(
                 "provenance_quote",
                 "offline",
-                detail=(
+                detail=_with_without_pmid(
                     f"{result.quotes_authored} authored quote(s); an article's text can only come "
-                    f"over the network, and there is no offline fulltext archive"
+                    f"over the network, and there is no offline fulltext archive",
+                    result,
                 ),
                 source="europepmc",
             )
@@ -1831,9 +1851,10 @@ def _verification_records(
             skipped(
                 "provenance_quote",
                 "no_reference",
-                detail=(
+                detail=_with_without_pmid(
                     f"{result.quotes_authored} authored quote(s), none of them settled: "
-                    + _quote_gap_detail(result)
+                    + _quote_gap_detail(result),
+                    result,
                 ),
                 source="europepmc",
             )
@@ -1845,15 +1866,31 @@ def _verification_records(
                 subjects=result.quotes_checked,
                 findings=result.quotes_checked - result.quotes_found,
                 source="europepmc",
-                detail=(
+                detail=_with_without_pmid(
                     f"{result.quotes_unchecked} further authored quote(s) outside this denominator: "
                     + _quote_gap_detail(result)
                     if result.quotes_unchecked
-                    else None
+                    else None,
+                    result,
                 ),
             )
         )
     return records
+
+
+def _without_pmid_clause(result: LiteratureResult) -> str:
+    """The quotes no PMID reaches, said once: they sit on `pmid=NONE` rows (RM336)."""
+    return (
+        f"{result.quotes_without_pmid} authored quote(s) sit on citation(s) whose pmid is NONE, and "
+        f"this pass reaches an article's text through its PubMed id, so none of them was matched"
+    )
+
+
+def _with_without_pmid(detail: str | None, result: LiteratureResult) -> str | None:
+    """`detail`, with the quotes no PMID reaches appended when there are any."""
+    if not result.quotes_without_pmid:
+        return detail
+    return "; ".join(part for part in (detail, _without_pmid_clause(result)) if part)
 
 
 def _quote_gap_detail(result: LiteratureResult) -> str:
