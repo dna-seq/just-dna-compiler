@@ -5,14 +5,15 @@ into CSV cells.
 
 import csv
 import types
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Union, get_args, get_origin
 
 import polars as pl
 from just_dna_format.alleles import split_genotype
 from just_dna_format.assertions import ClinicalAssertionRow
-from just_dna_format.base import IDENTITY_FIELDS, authored_field_names, derive_variant_key
+from just_dna_format.base import IDENTITY_FIELDS, AuthoredModel, authored_field_names, derive_variant_key
 from just_dna_format.binning import ActivityPhenotypeRow, CopyNumberRow, HeteroplasmyRow, RepeatAlleleRow
 from just_dna_format.concordance import ClinSigAuthorityCallRow, ClinSigConcordanceRow
 from just_dna_format.consequences import ConsequenceRow
@@ -29,7 +30,7 @@ from just_dna_format.locus_genes import ColocalisationRow, LocusToGeneRow
 from just_dna_format.manifest import FileEntry
 from just_dna_format.meta import MetaRow
 from just_dna_format.model_organisms import ModelOrganismRow
-from just_dna_format.overrides import OverrideRow
+from just_dna_format.overrides import OverrideRow, overlay_coherence_errors
 from just_dna_format.pgs import PgsRow
 from just_dna_format.pgx import AlleleFunctionRow, DiplotypeRow, HaplotypeRow, PharmVariantRow
 from just_dna_format.sources import SourceRow
@@ -72,6 +73,128 @@ _TABLE_KINDS: tuple[tuple[str, str, type[BaseModel]], ...] = (
 
 
 _TABLE_KIND_CSVS: tuple[str, ...] = tuple(csv for csv, _, _ in _TABLE_KINDS)
+
+
+#: The authored overlay (RM124). A **third category**, registered nowhere else on purpose.
+#:
+#: Not a `_TABLE_KINDS` entry: those are the module's own annotation tables, so one of them satisfies
+#: the "a module must carry at least one recognized table" check and each is a `LEAD_PARQUETS` member
+#: the reference consumer's discovery probes on. A directory carrying only corrections is not a
+#: module, and an overlay states nothing about a genotype.
+#:
+#: Not a `_FACT_TABLES` entry either, and so **not** in `_DERIVED_FILES`: those are machine-produced,
+#: fact-hashed and byte-hashed into `manifest.derived`. Every row of this one is written by a human,
+#: which is what puts it in `_INPUT_FILES` (raw-byte hashed into `manifest.inputs`, and so inside the
+#: verification binding — editing a correction un-closes a module, correctly) and inside
+#: `content_signature`.
+#:
+#: It carries a parquet regardless, and that is forced rather than chosen: `reverse_module` rebuilds a
+#: spec from the artifact and has nothing else to read the overlay back from, so without one
+#: `compile → reverse → compile` would silently drop every correction and move `content_signature` —
+#: Principle 7. The entry sits **last** in `ARTIFACT_PARQUETS`, where a module that carries no overlay
+#: keeps the digest it already had.
+#: **PUBLIC**, both of them, for the reason `ARTIFACT_PARQUETS` is: a downstream repo rebuilding a
+#: spec directory keeps a hand-written mirror of these names, and a name missing from it is a file
+#: silently dropped on the next re-publish. `draft.DRAFTABLE` reads the CSV name from here too.
+OVERRIDES_CSV: str = "overrides.csv"
+
+
+OVERRIDES_PARQUET: str = "overrides.parquet"
+
+
+#: The meta-table (0.8, RM28/RM323/RM324). Authored, so it is input (raw-byte hashed into
+#: `manifest.inputs`, inside `content_signature`), and keyed, so it is in `_TABLE_DUPE_KEYS`.
+#:
+#: **Not a `_TABLE_KINDS` entry, on the overlay's argument.** Those are the module's own annotation
+#: tables: one of them satisfies "a module must carry at least one recognized table", and each is a
+#: `LEAD_PARQUETS` member the reference consumer's discovery probes on. A meta row names rows of those
+#: tables and states nothing a genome is matched against by itself, so a directory carrying only
+#: `meta.csv` has nothing to select and is not a module, and `meta.parquet` is not a lead table.
+#:
+#: It compiles to **two** parquets, the `variants.csv` shape: `meta.parquet` (one row per authored row,
+#: the selector verbatim for `reverse`, and what it matched) and `meta_resolved.parquet` (one row per
+#: single-statement row a one-member meta row reaches, each fact after precedence).
+META_CSV: str = "meta.csv"
+
+
+META_PARQUET: str = "meta.parquet"
+
+
+META_RESOLVED_PARQUET: str = "meta_resolved.parquet"
+
+
+#: The model-organism evidence table (0.8, RM335). Authored, so it is input (raw-byte hashed into
+#: `manifest.inputs`, inside `content_signature`), keyed (`_TABLE_DUPE_KEYS`), and a citation site
+#: (`_CITING_TABLE_KINDS`).
+#:
+#: **Not a `_TABLE_KINDS` entry, on the meta-table's argument** (PT2 §5 A6 says "a `_TABLE_KINDS`
+#: entry"; the registration follows the meta-table's 0.8 precedent instead, and this is why). A table
+#: kind satisfies "a module must carry at least one recognized table", is a `LEAD_PARQUETS` member the
+#: reference consumer's discovery and the publish gate key on, and feeds `_GENE_BEARING_TABLE_KINDS`,
+#: which publishes `manifest.stats.genes`. A model-organism row is annotation only (R-ANIMAL-1): it states
+#: what happened to a mouse, never anything a genome is matched against, so a directory carrying only
+#: this file is not a module and its genes are not genes the module's findings are about.
+#:
+#: One parquet, appended last in `ARTIFACT_PARQUETS`, where a module carrying no such file keeps its
+#: digest.
+MODEL_ORGANISMS_CSV: str = "model_organisms.csv"
+
+
+MODEL_ORGANISMS_PARQUET: str = "model_organisms.parquet"
+
+
+@dataclass(frozen=True)
+class NonKindTable:
+    """One authored table that is deliberately **not** a `_TABLE_KINDS` entry (RM357).
+
+    What the three have in common is the category the constants above argue one by one: a human writes
+    every row, so the CSV is input (raw-byte hashed into `manifest.inputs`, inside `content_signature`);
+    the rows are keyed, so a duplicate is refused through `_TABLE_DUPE_KEYS`; and the table is never a
+    lead table, so a directory carrying only it is not a module and none of its parquets is in
+    `LEAD_PARQUETS`. Membership here **is** that last statement, so there is no `lead` flag to set, and
+    it is also why no `gene` here is a gene the module's findings are about: `manifest.stats.genes` reads
+    `variants.csv` and the table kinds, and the enricher's gene scope follows that published set by
+    excluding every table registered here. Whether an entry cites is read off its model (`cites`), and
+    every entry is draftable (`draft.DRAFTABLE`), so neither is a flag either.
+
+    Every list that names these tables is derived from `AUTHORED_NON_KIND_TABLES` rather than kept by
+    hand, and one loader body reads them all (`load.load_authored_table`). Before RM357 each had its own
+    copy of the loader and about ten lists named them, and the copy that dropped its rows on a duplicate
+    key made a `literature.csv` row cited only by `meta.csv` read as uncited in the same run.
+    """
+
+    #: The one legal name, at the spec root.
+    csv: str
+    #: Every parquet the table compiles to, in `manifest.artifact.files` listing order. The **first** is
+    #: the one that carries every authored cell verbatim, which is what `reverse_module` reads back.
+    parquets: tuple[str, ...]
+    model: type[AuthoredModel]
+    #: Table-level errors beyond the parse and the duplicate key, run over the parsed rows after both.
+    row_checks: Callable[[Sequence[Any]], list[str]] | None = None
+
+    @property
+    def cites(self) -> bool:
+        """A citation site exactly when the model declares `pmid` (RM132's rule, `_CITING_TABLE_KINDS`)."""
+        return "pmid" in self.model.model_fields
+
+
+#: The registry, in `ARTIFACT_PARQUETS` order: each entry's parquets are appended there in this order,
+#: so this order **is** the `manifest.artifact.files` listing order a reader sees (never the digest,
+#: which name-sorts). Append a new member last, where a module carrying no such file keeps its digest.
+#: **PUBLIC** because the enricher derives a scope from it, and a private name reached across a package
+#: is the RM41 shape.
+AUTHORED_NON_KIND_TABLES: tuple[NonKindTable, ...] = (
+    NonKindTable(
+        OVERRIDES_CSV,
+        (OVERRIDES_PARQUET,),
+        OverrideRow,
+        # A key group carrying several operations is the overlay's own refusal (RM124).
+        row_checks=overlay_coherence_errors,
+    ),
+    NonKindTable(META_CSV, (META_PARQUET, META_RESOLVED_PARQUET), MetaRow),
+    # Its `gene` names the gene a mouse experiment altered, not a gene the module's findings are about.
+    NonKindTable(MODEL_ORGANISMS_CSV, (MODEL_ORGANISMS_PARQUET,), ModelOrganismRow),
+)
 
 
 # Natural identity key per table kind, for duplicate-row detection (the 0.4 analog of the SNP core's
@@ -173,90 +296,15 @@ _TABLE_DUPE_KEYS: dict[type[BaseModel], Callable[[Any], tuple]] = dict.fromkeys(
         # be answering a question the module states twice.
         ClinSigConcordanceRow,
         ClinSigAuthorityCallRow,
-        # `OverrideRow` keys on `(table, subject, member, field)` — the overlay's own key. Two rows
-        # under it are two answers to one question with no defined order between them, which is the
-        # `SourceRow` failure one table over: a pair free to carry opposite values in the file a
-        # later stage keys on.
-        OverrideRow,
-        # `MetaRow` keys on `(members_key, trait_efo_id, sex)` (0.8): the member set normalized, so
-        # `A & B` and `B & A` are one key. The same key twice is the one place two meta values can
-        # contradict each other, so it is refused here like every other keyed table's duplicate.
-        MetaRow,
-        # `ModelOrganismRow` keys on every column but the finding's two (0.8, RM335): one gene,
-        # orthologue, species, intervention, sex, diet and citation are one experiment, and the same
-        # experiment stated twice with two lifespan effects is two answers with no order between them.
-        ModelOrganismRow,
+        # The authored tables that are not table kinds (RM357), every one of them keyed: the overlay on
+        # `(table, subject, member, field)`, the meta-table on `(members_key, trait_efo_id, sex)` (the
+        # member set normalized, so `A & B` and `B & A` are one key), the model-organism table on every
+        # column but the finding's two. Under each key two rows are two answers to one question with no
+        # order between them, the `SourceRow` failure one table over.
+        *(table.model for table in AUTHORED_NON_KIND_TABLES),
     ),
     _key_of,
 )
-
-
-#: The authored overlay (RM124). A **third category**, registered nowhere else on purpose.
-#:
-#: Not a `_TABLE_KINDS` entry: those are the module's own annotation tables, so one of them satisfies
-#: the "a module must carry at least one recognized table" check and each is a `LEAD_PARQUETS` member
-#: the reference consumer's discovery probes on. A directory carrying only corrections is not a
-#: module, and an overlay states nothing about a genotype.
-#:
-#: Not a `_FACT_TABLES` entry either, and so **not** in `_DERIVED_FILES`: those are machine-produced,
-#: fact-hashed and byte-hashed into `manifest.derived`. Every row of this one is written by a human,
-#: which is what puts it in `_INPUT_FILES` (raw-byte hashed into `manifest.inputs`, and so inside the
-#: verification binding — editing a correction un-closes a module, correctly) and inside
-#: `content_signature`.
-#:
-#: It carries a parquet regardless, and that is forced rather than chosen: `reverse_module` rebuilds a
-#: spec from the artifact and has nothing else to read the overlay back from, so without one
-#: `compile → reverse → compile` would silently drop every correction and move `content_signature` —
-#: Principle 7. The entry sits **last** in `ARTIFACT_PARQUETS`, where a module that carries no overlay
-#: keeps the digest it already had.
-#: **PUBLIC**, both of them, for the reason `ARTIFACT_PARQUETS` is: a downstream repo rebuilding a
-#: spec directory keeps a hand-written mirror of these names, and a name missing from it is a file
-#: silently dropped on the next re-publish. `draft.DRAFTABLE` reads the CSV name from here too.
-OVERRIDES_CSV: str = "overrides.csv"
-
-
-OVERRIDES_PARQUET: str = "overrides.parquet"
-
-
-#: The meta-table (0.8, RM28/RM323/RM324). Authored, so it is input (raw-byte hashed into
-#: `manifest.inputs`, inside `content_signature`), and keyed, so it is in `_TABLE_DUPE_KEYS`.
-#:
-#: **Not a `_TABLE_KINDS` entry, on the overlay's argument.** Those are the module's own annotation
-#: tables: one of them satisfies "a module must carry at least one recognized table", and each is a
-#: `LEAD_PARQUETS` member the reference consumer's discovery probes on. A meta row names rows of those
-#: tables and states nothing a genome is matched against by itself, so a directory carrying only
-#: `meta.csv` has nothing to select and is not a module, and `meta.parquet` is not a lead table.
-#:
-#: It compiles to **two** parquets, the `variants.csv` shape: `meta.parquet` (one row per authored row,
-#: the selector verbatim for `reverse`, and what it matched) and `meta_resolved.parquet` (one row per
-#: single-statement row a one-member meta row reaches, each fact after precedence).
-META_CSV: str = "meta.csv"
-
-
-META_PARQUET: str = "meta.parquet"
-
-
-META_RESOLVED_PARQUET: str = "meta_resolved.parquet"
-
-
-#: The model-organism evidence table (0.8, RM335). Authored, so it is input (raw-byte hashed into
-#: `manifest.inputs`, inside `content_signature`), keyed (`_TABLE_DUPE_KEYS`), and a citation site
-#: (`_CITING_TABLE_KINDS`).
-#:
-#: **Not a `_TABLE_KINDS` entry, on the meta-table's argument** (PT2 §5 A6 says "a `_TABLE_KINDS`
-#: entry"; the registration follows the meta-table's 0.8 precedent instead, and this is why). A table
-#: kind satisfies "a module must carry at least one recognized table", is a `LEAD_PARQUETS` member the
-#: reference consumer's discovery and the publish gate key on, and feeds `_GENE_BEARING_TABLE_KINDS`,
-#: which publishes `manifest.stats.genes`. A model-organism row is annotation only (R-ANIMAL-1): it states
-#: what happened to a mouse, never anything a genome is matched against, so a directory carrying only
-#: this file is not a module and its genes are not genes the module's findings are about.
-#:
-#: One parquet, appended last in `ARTIFACT_PARQUETS`, where a module carrying no such file keeps its
-#: digest.
-MODEL_ORGANISMS_CSV: str = "model_organisms.csv"
-
-
-MODEL_ORGANISMS_PARQUET: str = "model_organisms.parquet"
 
 
 _INPUT_FILES: tuple[str, ...] = (
@@ -264,9 +312,7 @@ _INPUT_FILES: tuple[str, ...] = (
     "variants.csv",
     "studies.csv",
     *_TABLE_KIND_CSVS,
-    OVERRIDES_CSV,
-    META_CSV,
-    MODEL_ORGANISMS_CSV,
+    *(table.csv for table in AUTHORED_NON_KIND_TABLES),
 )
 
 
@@ -281,8 +327,8 @@ _INPUT_FILES: tuple[str, ...] = (
 # which is `@fieldnames-from-model` one tier out. The sixteen is history and not the current size —
 # spelled out because a bare number beside a registry reads as the registry's (RM218).
 #: The SNP core's `csv -> parquet(s)` binding, the one part of the artifact map that was spelled
-#: per-call. `_TABLE_KINDS` and `_FACT_TABLES` each carry their own binding, and `OVERRIDES_PARQUET`
-#: names the overlay's, but the three core parquets were three literals at the write site and three more
+#: per-call. `_TABLE_KINDS`, `_FACT_TABLES` and `AUTHORED_NON_KIND_TABLES` each carry their own
+#: binding, but the three core parquets were three literals at the write site and three more
 #: in `ARTIFACT_PARQUETS` — so nothing could answer *"which parquet does `variants.csv` become"* without
 #: a human reading `_write_*`. That question has two callers now: `ARTIFACT_PARQUETS` below, and the
 #: docs site's generated per-table reference, which must not hand-keep a fourth copy
@@ -334,21 +380,14 @@ ARTIFACT_PARQUETS: tuple[str, ...] = (
     "colocalisations.parquet",
     "consequences.parquet",
     "sources.parquet",
-    # RM124 (0.7), last — and **not for the digest reason the entries above give**, which does not
-    # reach it. `integrity.artifact_digest` sorts the listing by name before hashing, so a member's
-    # position in this tuple is invisible to the digest; what protects every already-published module
-    # is that they carry no `overrides.csv`, so the file is absent and contributes nothing. (The
-    # position rule two entries up is about `manifest.artifact.files` and the emission order a reader
-    # sees, which is a real thing and a different one.) Last is simply where a new member belongs.
-    # It is also the only member here that is not derived from a source — see `OVERRIDES_CSV` for why
-    # it needs a parquet at all.
-    OVERRIDES_PARQUET,
-    # The meta-table's pair (0.8), after the overlay for the overlay's reason: last is where a new
-    # member belongs, and a module carrying no meta.csv carries neither file and keeps its digest.
-    META_PARQUET,
-    META_RESOLVED_PARQUET,
-    # The model-organism table (0.8, RM335), last for the same reason.
-    MODEL_ORGANISMS_PARQUET,
+    # The authored tables that are not table kinds (RM357), last, in the registry's order: the overlay
+    # (RM124, 0.7), the meta-table's pair (0.8) and the model-organism table (0.8, RM335). Last is where
+    # a new member belongs, and **not for the digest reason the fact-table entries above give**, which
+    # does not reach these: `integrity.artifact_digest` sorts the listing by name before hashing, so a
+    # member's position here is invisible to the digest. What protects every already-published module
+    # is that it carries none of these files, so each is absent and contributes nothing. The overlay is
+    # also the only member here not derived from a source; `OVERRIDES_CSV` says why it needs a parquet.
+    *(parquet for table in AUTHORED_NON_KIND_TABLES for parquet in table.parquets),
 )
 
 
@@ -430,20 +469,18 @@ def table_bindings() -> dict[str, tuple[str, ...]]:
     new table kind whose parquet is written by a literal at its own write site fails the test instead of
     quietly missing a reference page.
 
-    Six registries, each owning its own slice: `SNP_CORE_PARQUETS` (the core, where `variants.csv`
-    fans out to two), `_TABLE_KINDS` (the optional authored kinds), `_FACT_TABLES` (the derived facts),
-    `OVERRIDES_PARQUET` (the overlay, whose CSV is authored but is not a table kind), the meta-table's
-    pair (`META_CSV`, which fans out to two like `variants.csv`) and the model-organism table
-    (`MODEL_ORGANISMS_CSV`).
+    Four registries, each owning its own slice: `SNP_CORE_PARQUETS` (the core, where `variants.csv`
+    fans out to two), `_TABLE_KINDS` (the optional authored kinds), `_FACT_TABLES` (the derived facts)
+    and `AUTHORED_NON_KIND_TABLES` (the authored tables that are not kinds, where `meta.csv` fans out to
+    two like `variants.csv`).
     """
     bound: dict[str, tuple[str, ...]] = dict(SNP_CORE_PARQUETS)
     for csv_name, parquet, _model in _TABLE_KINDS:
         bound[csv_name] = (parquet,)
     for csv_name, parquet, _model in _FACT_TABLES:
         bound[csv_name] = (parquet,)
-    bound[OVERRIDES_CSV] = (OVERRIDES_PARQUET,)
-    bound[META_CSV] = (META_PARQUET, META_RESOLVED_PARQUET)
-    bound[MODEL_ORGANISMS_CSV] = (MODEL_ORGANISMS_PARQUET,)
+    for table in AUTHORED_NON_KIND_TABLES:
+        bound[table.csv] = table.parquets
     return bound
 
 

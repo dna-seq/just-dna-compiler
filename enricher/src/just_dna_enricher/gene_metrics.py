@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import duckdb
-from just_dna_compiler.compiler import MODEL_ORGANISMS_CSV, load_csv_rows
+from just_dna_compiler.compiler import AUTHORED_NON_KIND_TABLES, load_csv_rows
 from just_dna_format.base import merge_key
 from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.layout import atomic_writer
@@ -127,10 +127,12 @@ class GeneMetricsResult:
 
 
 #: Authored tables whose `gene` is not a gene the module's findings are about, so it is outside the scope
-#: below while `check-identifiers` still reads it. `model_organisms.csv` (0.8, RM335) names the gene a
-#: mouse experiment altered; the compiler leaves it out of `manifest.stats.genes` for the same reason, and
-#: this scope follows that published set rather than widening past it.
-_NOT_THE_MODULES_GENES: frozenset[str] = frozenset({MODEL_ORGANISMS_CSV})
+#: below while `check-identifiers` still reads it: every authored table that is not a table kind, read off
+#: the compiler's registry (RM357) rather than named here. `manifest.stats.genes` reads `variants.csv` and
+#: the table kinds only, and this scope follows that published set rather than widening past it. The one
+#: such table carrying `gene` today is `model_organisms.csv` (0.8, RM335), whose gene is the one a mouse
+#: experiment altered; a registered table with no `gene` column is excluded harmlessly.
+_NOT_THE_MODULES_GENES: frozenset[str] = frozenset(table.csv for table in AUTHORED_NON_KIND_TABLES)
 
 
 def module_genes(spec_dir: Path) -> list[str]:

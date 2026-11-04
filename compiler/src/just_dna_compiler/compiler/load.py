@@ -11,15 +11,13 @@ import yaml
 from just_dna_format.base import DEFAULT_GENOME_BUILD, AuthoredModel
 from just_dna_format.binning import MeasureBinRow
 from just_dna_format.integrity import content_signature as _content_signature
-from just_dna_format.meta import MetaRow
-from just_dna_format.model_organisms import ModelOrganismRow
 from just_dna_format.normalize import strip_authority_keys
-from just_dna_format.overrides import OverrideRow
 from just_dna_format.spec import Defaults, ModuleSpecConfig, StudyRow, VariantRow, extract_pmids
 from pydantic import BaseModel, ValidationError
 
 from just_dna_compiler.compiler.binning_checks import _BINNING_TABLE_KINDS, _CITING_TABLE_KINDS
-from just_dna_compiler.compiler.tables import _TABLE_KINDS, META_CSV, MODEL_ORGANISMS_CSV, OVERRIDES_CSV
+from just_dna_compiler.compiler.table_checks import _validate_table_kind
+from just_dna_compiler.compiler.tables import _TABLE_KINDS, AUTHORED_NON_KIND_TABLES
 from just_dna_compiler.compiler.variant_checks import _restamp_for_build
 
 # ── File loading helpers ───────────────────────────────────────────────────────
@@ -182,6 +180,48 @@ def load_csv_rows(
 #: outside this workspace; a rename that breaks them buys nothing. Not deprecated — same function,
 #: two names, one of which no longer lies about being internal.
 _load_csv_rows = load_csv_rows
+
+
+def load_authored_table(spec_dir: Path, csv_name: str) -> tuple[list[Any], list[str], list[str]]:
+    """Read one authored table that is not a table kind and answer `(rows, errors, warnings)` (RM357).
+
+    The one loader body for every `AUTHORED_NON_KIND_TABLES` entry, called by `validate_spec` and
+    `compile_module` alike, so the two cannot come to disagree about a row (`@validate-refuses-all`).
+    `([], [], [])` when the file is absent. Otherwise, in this order: the rows parse or they do not; a
+    present file with no rows is an error, the answer every authored table gives (a header somebody
+    meant to fill); the duplicate key goes through `_validate_table_kind`, so it reads as every other
+    keyed table's does; and the entry's own `row_checks` run last.
+
+    **A refused table keeps its rows for the other checks.** Both callers refuse on any error before a
+    parquet could be built from them, but the pre-flight's other checks still read them: a
+    `literature.csv` row cited only by a refused `meta.csv` would otherwise be reported as uncited in
+    the same run, sending the author to the wrong file. On a duplicate key or a `row_checks` error every
+    row parsed, so all of them are kept. On a **parse** error the set is incomplete, and the rows that
+    parsed are kept only for a table that cites (`NonKindTable.cites`): the citing view is the one reader
+    for which a partial set is better than none (only the malformed row's own citation can then read as
+    uncited), while the overlay applied half-parsed would raise findings against the tables it corrects.
+    A parse error returns before the key and the row checks, which read only a whole table.
+
+    Not for the derived sidecars: those live under `derived/` or beside the spec through
+    `_locate_sidecar`, and an authored table has exactly one legal name in exactly one legal place.
+    """
+    table = next((entry for entry in AUTHORED_NON_KIND_TABLES if entry.csv == csv_name), None)
+    if table is None:
+        raise ValueError(f"{csv_name} is not an authored table outside the table kinds")
+    path = Path(spec_dir) / table.csv
+    if not path.is_file():
+        return [], [], []
+    rows, errors, warnings = load_csv_rows(path, table.model, table.csv)
+    if errors:
+        return (rows if table.cites else []), errors, warnings
+    if not rows:
+        return [], [f"{table.csv} is present but has no rows."], warnings
+    key_errors, key_warnings = _validate_table_kind(table.csv, table.model, rows)
+    errors.extend(key_errors)
+    warnings.extend(key_warnings)
+    if table.row_checks is not None:
+        errors.extend(table.row_checks(rows))
+    return rows, errors, warnings
 
 
 def load_spec_variants(spec_dir: Path) -> tuple[list[VariantRow], list[str], list[str]]:
@@ -379,18 +419,13 @@ def spec_tables(spec_dir: Path) -> tuple[dict[str, list[Any]], str]:
         ("variants.csv", VariantRow),
         ("studies.csv", StudyRow),
         *((csv_name, model) for csv_name, _parquet, model in _TABLE_KINDS),
-        # The overlay is authored input, so it is content (RM124) — by its value cells. Its three
-        # provenance cells (`reason`/`decided_by`/`decided_at`) are `exclude=True` on the model and
-        # so outside the hash (S87): rewording a reason is a patch, not a new identity. No published
-        # module's signature moves: `content_signature` skips a table this loop finds no file for,
-        # exactly as an unset optional column contributes nothing, and no module published to date
-        # carries one.
-        (OVERRIDES_CSV, OverrideRow),
-        # The meta-table (0.8) is authored input, so it is content: the selectors verbatim and every
-        # finding and fact cell. `members_key` is stamped and `exclude=True`, so it adds nothing.
-        (META_CSV, MetaRow),
-        # The model-organism table (0.8, RM335) is authored input, so it is content: every cell.
-        (MODEL_ORGANISMS_CSV, ModelOrganismRow),
+        # The authored tables that are not table kinds (RM357) are authored input, so they are content.
+        # A cell a model marks `exclude=True` stays outside the hash: the overlay's three provenance
+        # cells (`reason`/`decided_by`/`decided_at`, S87: rewording a reason is a patch, not a new
+        # identity) and the meta-table's stamped `members_key`. No published module's signature moves:
+        # `content_signature` skips a table this loop finds no file for, exactly as an unset optional
+        # column contributes nothing.
+        *((table.csv, table.model) for table in AUTHORED_NON_KIND_TABLES),
     ]
     tables: dict[str, list[Any]] = {}
     for csv_name, model in kinds:

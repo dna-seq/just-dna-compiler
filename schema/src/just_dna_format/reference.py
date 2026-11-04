@@ -171,28 +171,23 @@ _FACT_MODELS: dict[str, type[BaseModel]] = {
     "VerificationRecord": VerificationRecord,
 }
 
-# `overrides.csv` is a **third** category and gets its own group rather than joining either
-# neighbour, because it belongs to neither and blurring the line is what the 0.5 rework spent a
-# release undoing. It is not an annotation table like `_VARIANT_MODELS`/`_PGX_MODELS`: it asserts
-# nothing about a genotype, it is not a *lead* table, and a directory carrying only this file is not
-# a module. It is not a `_FACT_MODELS` sidecar either: a human writes every row of it, so it carries
-# `AuthoredModel`'s reserved-namespace guard, it is inside `content_signature`, and it is byte-hashed
+# The authored tables that are **not** table kinds get one group of their own (RM357): the overlay
+# (`overrides.csv`), the meta-table (`meta.csv`, 0.8) and the model-organism table
+# (`model_organisms.csv`, 0.8, RM335). They belong to neither neighbour, and blurring the line is what the
+# 0.5 rework spent a release undoing. None is an annotation table like `_VARIANT_MODELS`/`_PGX_MODELS`:
+# none is a *lead* table, and a directory carrying only one of them is not a module (an overlay asserts
+# nothing about a genotype, a meta row names rows of the other tables, a model-organism row states what
+# happened to a mouse). None is a `_FACT_MODELS` sidecar either: a human writes every row, so each
+# carries `AuthoredModel`'s reserved-namespace guard, is inside `content_signature`, and is byte-hashed
 # into `manifest.inputs` rather than fact-hashed.
 #
-# What it *is* is the overlay that makes the covered derived tables pure build products (RM124), so a
-# reader of the authoring reference meets it beside them and not inside them. The count is
-# `OVERRIDABLE_TABLES`' to state and moved once already; it is not restated here.
-_OVERLAY_MODELS: dict[str, type[BaseModel]] = {"OverrideRow": OverrideRow}
-
-# `meta.csv` (0.8) is authored and keyed like the PGx tables, but it is not one: its rows name rows of
-# the other tables rather than a genotype, and a module carrying only this file has nothing to select.
-# Its own group, for the reason the overlay has one, so a reader meets it beside the tables it names.
-_META_MODELS: dict[str, type[BaseModel]] = {"MetaRow": MetaRow}
-
-# `model_organisms.csv` (0.8, RM335) is authored and keyed, on the gene itself, and annotation only: it
-# asserts nothing a genome is matched against, so it is not a lead table and a module carrying only this
-# file is not a module. Its own group, for the reason the overlay and the meta-table have theirs.
-_MODEL_ORGANISM_MODELS: dict[str, type[BaseModel]] = {"ModelOrganismRow": ModelOrganismRow}
+# The compiler's `tables.AUTHORED_NON_KIND_TABLES` is the registry these models come from; this tier
+# cannot import it, so the group is declared here and the compiler's tests assert the two are equal.
+_AUTHORED_NON_KIND_MODELS: dict[str, type[BaseModel]] = {
+    "OverrideRow": OverrideRow,
+    "MetaRow": MetaRow,
+    "ModelOrganismRow": ModelOrganismRow,
+}
 
 _ALL_MODELS: dict[str, type[BaseModel]] = {
     **_MODULE_MODELS,
@@ -201,9 +196,7 @@ _ALL_MODELS: dict[str, type[BaseModel]] = {
     **_PGX_MODELS,
     **_PGS_MODELS,
     **_FACT_MODELS,
-    **_OVERLAY_MODELS,
-    **_META_MODELS,
-    **_MODEL_ORGANISM_MODELS,
+    **_AUTHORED_NON_KIND_MODELS,
 }
 
 

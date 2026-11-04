@@ -4,12 +4,10 @@ from typing import Any
 
 from just_dna_format.binning import MeasureBinRow, deprecation_warnings, measurement_shape_warnings
 from just_dna_format.findings import CodedWarning, restate
-from just_dna_format.meta import MetaRow
-from just_dna_format.model_organisms import ModelOrganismRow
 from just_dna_format.spec import StudyRow
 from pydantic import BaseModel
 
-from just_dna_compiler.compiler.tables import _TABLE_KINDS, META_CSV, MODEL_ORGANISMS_CSV
+from just_dna_compiler.compiler.tables import _TABLE_KINDS, AUTHORED_NON_KIND_TABLES
 
 #: The binning table kinds, derived from the models for the same reason `_POSITIONAL_TABLE_KINDS` is:
 #: a kind is a binning kind exactly when its model is a `MeasureBinRow`, and a hand-kept list of the
@@ -36,20 +34,18 @@ _BINNING_TABLE_KINDS: tuple[tuple[str, type[BaseModel]], ...] = tuple(
 #: `GwasEffectRow.pmid` is a machine-written fact table's provenance column — none of the three is an
 #: authored annotation row grounding its own claim, which is what a member here is.
 #:
-#: **The meta-table joins it (0.8)**, walked by the same `pmid` test: a meta row cites when its claim is
-#: finer than `studies.csv`'s key (the RM47 pattern), so it is an authored row grounding its own claim.
-#: It is not a `_TABLE_KINDS` entry (see `tables.META_CSV`), so it is appended rather than swept up — a
-#: caller handing these functions its `kind_rows` adds the meta rows under `META_CSV` to be read.
-#:
-#: **So does the model-organism table (0.8, RM335)**, on the same terms: its `pmid` grounds the row's own
-#: finding, and it is not a `_TABLE_KINDS` entry (see `tables.MODEL_ORGANISMS_CSV`). A citing kind whose
-#: rows are not handed over reads as an orphan citation in one direction and is unchecked in the other.
+#: **The authored tables that are not table kinds join it (0.8)**, walked by the same `pmid` test off
+#: `tables.AUTHORED_NON_KIND_TABLES` (RM357): a meta row cites when its claim is finer than
+#: `studies.csv`'s key (the RM47 pattern), and a model-organism row's `pmid` grounds its own finding, so
+#: each is an authored row grounding its own claim. The overlay declares no `pmid` and stays out. A caller
+#: handing these functions its `kind_rows` adds those tables' rows under their CSV names; a citing table
+#: whose rows are not handed over reads as an orphan citation in one direction and is unchecked in the
+#: other.
 _CITING_TABLE_KINDS: tuple[tuple[str, type[BaseModel]], ...] = tuple(
     (csv_name, model)
     for csv_name, model in (
         *((csv_name, model) for csv_name, _parquet, model in _TABLE_KINDS),
-        (META_CSV, MetaRow),
-        (MODEL_ORGANISMS_CSV, ModelOrganismRow),
+        *((table.csv, table.model) for table in AUTHORED_NON_KIND_TABLES),
     )
     if "pmid" in model.model_fields
 )

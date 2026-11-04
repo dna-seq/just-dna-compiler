@@ -546,31 +546,6 @@ drafted before the change must re-draft to the same rows (a lap test).
 
 **Residuals** none yet.
 
-## RM357 — the authored tables that are not table kinds have no registry: three copies of one loader, and a refused `meta.csv` reports its citations as uncited
-
-**0.8, filed 2026-11-04 by the lead** as a second-pass item: found by a 0.8 builder.
-
-**Severity** medium · **Status** open — **a minor**, joins 0.8 · **Owner** compiler (`load_meta`, `load_model_organisms`,
-`load_overlay` and the lists that name them) · **Motivating case** a 0.8 builder's report, 2026-11-04 · *related*
-RM335, RM28, `@registry-completeness`, `@overlay-not-inside`
-
-**One class: a category of table with no registry.** `meta.csv` (RM28, `compiler/meta.py` on `0.8`),
-`model_organisms.csv` (RM335, `compiler/model_organisms.py` on `build/RM335`) and `overrides.csv`
-(`load_overlay`) are authored tables outside the table-kind registry. Each has its own copy of one loader body,
-and about ten hand-kept lists say which of them cites literature, names a gene or is a lead table. A fourth such
-table means another copy and ten more edits, and a list that misses one fails silently.
-
-**The instance that misleads an author.** `load_meta` drops all its rows on a duplicate-key error. In the same run,
-a `literature.csv` row cited only by `meta.csv` is then reported as uncited, which points the author at
-`literature.csv` when the defect is in `meta.csv`.
-
-**The fix, as one rule.** One registry of authored non-kind tables, each entry carrying its loader and its citing,
-gene and lead flags; every list is derived from it and a test asserts equality over the walked set. A loader that
-refuses still hands its parsed rows to the other checks, so one table's error never becomes another table's
-finding.
-
-**Residuals** none yet.
-
 ## RM359 — under `--strict`, `study_effect_allele_not_at_locus` arrives as both an error and a warning, and SCHEMAS.md states a count the code has outgrown
 
 **0.8, filed 2026-11-04 by the lead** as a second-pass item: found by a 0.8 builder.

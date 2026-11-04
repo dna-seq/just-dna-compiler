@@ -1558,8 +1558,8 @@ every rsID a member names, so one variant written under two keys is caught where
 The compiler's part is small and deliberately so:
 
 - **One loader on both sides.** `validate_spec` and `compile_module` call
-  `compiler.model_organisms.load_model_organisms`: the rows parse, a present file with no rows is refused,
-  and a duplicate key (every column but `lifespan_effect` and `concordance`) is refused through
+  `load_authored_table` (the next section): the rows parse, a present file with no rows is refused, and
+  a duplicate key (every column but `lifespan_effect` and `concordance`) is refused through
   `_TABLE_DUPE_KEYS`. Nothing else reads the rows, so nothing else can refuse them.
 - **Verbatim to `model_organisms.parquet`**, through the generic materializer, in authored order;
   `reverse` writes `model_organisms.csv` back from it through the generic writer. The rows are inside
@@ -1573,6 +1573,38 @@ The compiler's part is small and deliberately so:
   reason is at `tables.MODEL_ORGANISMS_CSV`: a mouse lifespan finding is nothing a genome is matched
   against.
 
+## The authored tables that are not table kinds (0.8, RM357) — one registry, one loader
+
+`overrides.csv`, `meta.csv` and `model_organisms.csv` share a category: a human writes every row, so
+the CSV is input (in `manifest.inputs`, inside `content_signature`); the rows are keyed; and none is a
+lead table, so a directory carrying only one of them is not a module. `tables.AUTHORED_NON_KIND_TABLES`
+registers them, each entry carrying its CSV name, its parquet(s) (the first holds every authored cell,
+and is what `reverse` reads back), its row model and its own table-level `row_checks` (the overlay's
+coherence check). Whether an entry cites is read off its model (`pmid`), never declared; that none is a
+lead table, and that no `gene` in one is a gene the module's findings are about (`manifest.stats.genes`
+reads `variants.csv` and the kinds), is membership itself.
+
+Every list that names these tables is derived from the registry: `_INPUT_FILES`, `ARTIFACT_PARQUETS`
+(appended last, in registry order, which is the `manifest.artifact.files` listing order),
+`table_bindings()`, `_TABLE_DUPE_KEYS`, `spec_tables`' roster, `_CITING_TABLE_KINDS`,
+`_KNOWN_SPEC_FILES`, the citing view `validate_spec` and `compile_module` hand the literature checks,
+`reverse`, `draft.DRAFTABLE` (and through it `describe`/`template`/`requirements`/`stub` and the
+enricher's identifier rosters), and the enricher's `gene_metrics._NOT_THE_MODULES_GENES`. The format
+tier cannot import the compiler, so `reference._AUTHORED_NON_KIND_MODELS` is declared there and a test
+asserts it equals the registry's models.
+
+**One loader**, `load_authored_table(spec_dir, csv_name)`, in this order: absent is `([], [], [])`; the
+rows parse or they do not; a present file with no rows is refused; the duplicate key; the entry's
+`row_checks`. Both entry points load all three once, through this loader. **A refused table keeps its
+rows for the other checks.** Both entry points refuse before a parquet is built, but the pre-flight's
+citing view still reads them, so a `literature.csv` row cited only by a refused `meta.csv` is not also
+reported as uncited (before 0.8's RM357, `meta.csv` dropped every row on a duplicate key, and the author
+was sent to `literature.csv`). On a duplicate key every row parsed and all are kept. On a parse error
+the set is incomplete, and the rows that parsed are kept only for a table that cites: the malformed
+row's own citation can still read as uncited, and the overlay is never applied half-parsed. A refused
+`meta.csv` is not expanded: its findings are the refusal. `load_overlay` stays public (the enricher calls
+it) and is this loader on `overrides.csv`.
+
 ## Reverse
 
 `reverse_module` reads the parquets for every row, and the artifact's `manifest.json` for every
@@ -1581,7 +1613,8 @@ The compiler's part is small and deliberately so:
 `resolution.csv` gated on `write_resolution=True`), `studies.csv` (when present), one CSV per present
 table kind, and one CSV per derived-fact sidecar whose parquet is present (`frequencies.csv`,
 `gene_metrics.csv`, `literature.csv`, `gene_validity.csv`, `clinical_assertions.csv`, `sources.csv`),
-plus `overrides.csv` when `overrides.parquet` is present (0.7, RM124).
+plus each authored table that is not a kind (`overrides.csv` since 0.7, RM124; `meta.csv` and
+`model_organisms.csv` since 0.8) when the first of its parquets is present (`AUTHORED_NON_KIND_TABLES`).
 
 - **Preserved (round-trip-critical, Principle 7):** every authored `VariantRow`/`StudyRow`/table value;
   genotype phase (the `phased` bit re-emits `A|G` vs sorted `A/G`); tri-state bools; `priority` verbatim;

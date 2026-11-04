@@ -248,6 +248,7 @@ from just_dna_compiler.compiler.load import _load_yaml as _load_yaml
 from just_dna_compiler.compiler.load import _resolve_spec_defaults as _resolve_spec_defaults
 from just_dna_compiler.compiler.load import binning_citations as binning_citations
 from just_dna_compiler.compiler.load import content_signature as content_signature
+from just_dna_compiler.compiler.load import load_authored_table as load_authored_table
 from just_dna_compiler.compiler.load import load_binning_rows as load_binning_rows
 from just_dna_compiler.compiler.load import load_citing_rows as load_citing_rows
 from just_dna_compiler.compiler.load import load_csv_rows as load_csv_rows
@@ -365,6 +366,7 @@ from just_dna_compiler.compiler.tables import _TABLE_DUPE_KEYS as _TABLE_DUPE_KE
 from just_dna_compiler.compiler.tables import _TABLE_KIND_CSVS as _TABLE_KIND_CSVS
 from just_dna_compiler.compiler.tables import _TABLE_KINDS as _TABLE_KINDS
 from just_dna_compiler.compiler.tables import ARTIFACT_PARQUETS as ARTIFACT_PARQUETS
+from just_dna_compiler.compiler.tables import AUTHORED_NON_KIND_TABLES as AUTHORED_NON_KIND_TABLES
 from just_dna_compiler.compiler.tables import BA1_ALLELE_FREQUENCY_THRESHOLD as BA1_ALLELE_FREQUENCY_THRESHOLD
 from just_dna_compiler.compiler.tables import LEAD_PARQUETS as LEAD_PARQUETS
 from just_dna_compiler.compiler.tables import META_CSV as META_CSV
@@ -375,6 +377,7 @@ from just_dna_compiler.compiler.tables import MODEL_ORGANISMS_PARQUET as MODEL_O
 from just_dna_compiler.compiler.tables import OVERRIDES_CSV as OVERRIDES_CSV
 from just_dna_compiler.compiler.tables import OVERRIDES_PARQUET as OVERRIDES_PARQUET
 from just_dna_compiler.compiler.tables import SNP_CORE_PARQUETS as SNP_CORE_PARQUETS
+from just_dna_compiler.compiler.tables import NonKindTable as NonKindTable
 from just_dna_compiler.compiler.tables import _build_table as _build_table
 from just_dna_compiler.compiler.tables import _key_of as _key_of
 from just_dna_compiler.compiler.tables import _list_cell as _list_cell
