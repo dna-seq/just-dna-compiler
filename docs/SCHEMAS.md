@@ -42,12 +42,12 @@ maintained one, and where the two disagree this one is what a consumer may rely 
 | `sources` | `SourceRow` (the 0.5 data-source licensing table) | `vocab` |
 | `gene_validity` | `GeneValidityRow` (the 0.6 gene–disease validity table, RM24) | `base`, `normalize`, `vocab` |
 | `assertions` | `ClinicalAssertionRow` (the 0.6 clinical-assertion table, RM25) | `base`, `normalize`, `vocab` |
-| `gwas` | `GwasEffectRow` (the 0.6 GWAS-effect table, RM90) | `base`, `normalize`, `vocab` |
+| `gwas` | `GwasEffectRow` (the 0.6 GWAS-effect table, RM90) | `base`, `normalize`, `spec`, `vocab` |
 | `concordance` | `ClinSigConcordanceRow` + `AuthorityCallRow` (the 0.7 paired concordance record, RM130) | `base`, `normalize`, `vocab` |
 | `expression` | `ExpressionEffectRow` (the 0.7 expression-effect table, RM194/RM200) | `base`, `normalize`, `vocab` |
 | `spec` | Authored DSL — `ModuleSpecConfig`, `VariantRow`, `StudyRow` | `base`, `derive`, `identity`, `manifest`, `vocab` |
-| `binning` | Measure→phenotype binning rows (4 table kinds) | `base`, `vocab` |
-| `pgx` | PGx star-allele rows (4 table kinds) | `base`, `vocab` |
+| `binning` | Measure→phenotype binning rows (4 table kinds) | `base`, `spec`, `vocab` |
+| `pgx` | PGx star-allele rows (4 table kinds) | `base`, `spec`, `vocab` |
 | `pgs` | `PgsRow` (PGS-Catalog-ID manifest) | `base`, `vocab` |
 | `overrides` | `OverrideRow` + `OVERRIDABLE_TABLES` + `apply_overrides` — the 0.7 authored overlay over the covered derived tables (RM124) | `base`, `normalize`, `vocab`, and the covered derived row models |
 | `integrity` | SHA-256 hashing, the signatures, Ed25519 verify | `manifest`, `resolution`, `frequency`, `gene_metrics`, `literature`, `sources`, `cryptography` |
@@ -535,7 +535,7 @@ unphased `A/G` (must be sorted), or a single allele (hemizygous/homoplasmic). Re
 `effective_direction`/`effective_stat_significance`/`effective_clin_sig`/`effective_pathogenic`/
 `effective_benign`, `needs_upgrade`, and a materializing `upgraded()`.
 
-**`StudyRow` → `studies.csv`.** Required `pmid` (must contain a PubMed token — kept verbatim). Optional
+**`StudyRow` → `studies.csv`.** Required `pmid` (must contain a PubMed token, or be the sentinel `NONE` with a `doi` — kept verbatim; see *The pmid/doi pair* below). Optional
 `rsid`/`chrom`/`start`/`ref` — **all of them, since 0.6**: a citation row may name no variant at all
 and ground the module or a binning bound instead (RM47), in which case `variant_key` is `None` and the
 compiler's orphan check skips it. `population`, `p_value`, `conclusion`,
@@ -549,6 +549,24 @@ the manifest's `authorship` (S55). 0.7 adds **`statistical_test?`** — which *a
 row's `p_value`/`effect_size`, free text like `study_design` beside it (RM140) — and
 **`confidence?`/`confidence_unit?`**, how far the *citing source* stands behind this evidence link, in
 that source's own units (RM160).
+
+**The pmid/doi pair (0.8, RM336) — one rule on every table that cites.** `pmid` never holds a DOI: a
+cell whose only identifier is a DOI is refused, naming the DOI, the way RM50 refuses a PMC id, because
+`10.1101/2025.03.01.640000` used to parse as six PubMed ids (`10`, `1101`, …) that the literature pass
+looked up as the row's citations; `extract_pmids` now skips a DOI's digits, so a cell carrying a PMID
+beside a DOI keeps the PMID. A work PubMed does not index (a preprint, a book, a dataset) is cited as
+`pmid=NONE` — exactly that spelling; `NA`, `n/a`, `-` and `none` stay refused, with a pointer to it —
+and then `doi` is **mandatory** and must carry a DOI token (`spec.DOI_PATTERN`), the same check a
+stated `doi` gets anywhere. The rule lives once, as `spec.CitationPair` (a mixin carrying the `doi`
+check and the pair check, with `spec.check_citation_pair` the plain function behind it); the `pmid`
+grammar stays `validate_pmid_cell` on each model, because whether `pmid` is required differs between
+them. Every model with a `pmid` inherits it — `StudyRow`, the binning kinds, `PharmVariantRow` and the
+derived `GwasEffectRow`, the last three gaining `doi?` in 0.8 — and a test walks the model registry
+and asserts that equality, with `LiteratureRow` the one named exemption (its `pmid` is the article's
+digit identity, not a citation). `pmid` stays required on `StudyRow`: the sentinel is a value in the
+cell, so the change is additive (P8). Two `NONE` study rows on one variant are told apart by their DOI
+in the duplicate-citation check. A `NONE` row's DOI is not looked up by the literature pass, which
+works from PMIDs; `just-dna-enricher hint citation --doi` reports a PMID where PubMed has one (RM263).
 
 - **Row-level, because the work is mixed at row granularity.** A human may read a review while an
   agent traverses its citations, in one module, in one pass, and a module-level contributor list
@@ -630,6 +648,7 @@ row type), inclusive `[measure_min, measure_max]` (finite; `unresolved=True` car
 no-call sentinel, expected on every table but enforced only one-sidedly; see below), `conclusion`, plus `direction?`/`clin_sig?`/`phenotype?`/`trait_efo_id?`
 and the `source_field?` VCF pointer plus its `source_element?` rule, plus **`pmid?` — the boundary
 citation added in 0.6 (RM47)**, a free-form PubMed pointer under the same grammar as `StudyRow.pmid`,
+and its **`doi?`** (0.8, RM336) under the pmid/doi pair rule above (`pmid=NONE` makes it mandatory),
 plus **`measure_tiling?` — how the axis is divided, added in 0.6 (RM55)**, described below.
 The bin row cites; the citation table describes, which is what keeps `StudyRow`'s provenance column set
 from migrating here one column at a time. Per-kind key fields: `ActivityPhenotypeRow`→`(gene)`;
@@ -783,7 +802,7 @@ and `clinical_context?`); `PharmVariantRow` (`drug`+
 `conclusion`, single-variant, `evidence_level?` 1A…4, `genotype?`, `phenotype_category?`,
 `annotation_id?`, and **`pmid?` — the claim citation added in 0.7 (RM132)**, free-form under the same
 grammar as `StudyRow.pmid`, a separate axis from `evidence_level` because one points at the evidence
-and the other grades it).
+and the other grades it, with its **`doi?`** (0.8, RM336) under the pmid/doi pair rule).
 `HaplotypeRow` and `PharmVariantRow` also carry a **compiler-filled `alts`** since 0.6 — parquet-only,
 never authored, outside the key; see *Stamped identity on the positional tables* above.
 

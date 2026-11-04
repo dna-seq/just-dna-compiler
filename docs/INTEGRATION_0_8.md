@@ -66,6 +66,17 @@ COMPILER.md § The phrases, under *retired*, for grepping old manifests.
 | --- | --- | --- |
 | `archive_last_modified` in the ClinPGx snapshot's `release.json` | RM283 | `Last-Modified` of the lane's archive and its sibling archives at build time (name → ISO date, `null` where the `HEAD` did not answer). Absent on a snapshot built from a local archive. RM303 will give `release.json` a model on this branch; this key is one it has to carry. |
 
+## 1.5 The pmid/doi pair on every citing table (RM336)
+
+| Surface | What changed |
+| --- | --- |
+| `pmid` on `studies.csv`, the four binning kinds, `pharm_variants.csv`, `gwas_effects.csv` | **A tightening:** a cell whose only identifier is a DOI is refused, naming it (before, `10.1101/…` parsed as PubMed ids `10`, `1101`, …). Every published module was scanned first (the prod registry, all 24 modules and every version, and `reference_examples/`): no `pmid` cell holds a DOI, so nothing published stops validating. `gwas_effects.csv`'s `pmid` is now checked by the same grammar; it had none. |
+| `pmid` = `NONE` | **New accepted value**, exactly that spelling: the work has no PubMed record, and `doi` must then name it. A 0.7 reader **refuses** a module using it (`must contain at least one PubMed ID`), so a deployment validating 0.8 modules server-side upgrades with them. `extract_pmids("NONE")` is empty. |
+| `doi` on the binning kinds, `pharm_variants.csv`, `gwas_effects.csv` | **New optional column** (authored on the first two, derived on the third), checked for a DOI token when stated. A 0.7 reader refuses it as an unknown column (`extra="forbid"`). The compiled `*.parquet` for each gains a nullable `doi` column, so recompiling a module with one of those tables moves its `artifact.digest`; `content_signature` moves only where a `doi` is filled, and the `gwas_effects` fact signature does not move for an empty one. |
+| `spec.CitationPair`, `spec.check_citation_pair`, `spec.validate_doi_cell`, `spec.PMID_NONE`, `spec.cited_as`, `spec.doi_key` | New public names: the shared rule, for a consumer writing its own citing table, and how a message names a `NONE` row. |
+| `duplicate_study_citation`, `study_effect_allele_not_at_locus`, `p_value_encodings_disagree` | Unchanged codes, and unchanged text for every row with a real `pmid`. A `NONE` row is named `NONE doi <doi>`; two `NONE` rows on one variant are distinct when their DOI tokens differ (case and a doi.org prefix ignored). |
+| `verification.json` `provenance_quote` and `citation_existence` records | A quote on a `NONE` row is not matched and a `NONE` citation is not looked up (the pass works by PubMed id). When they are the only kind, the record is skipped as `unsupported`, an existing member of the skip vocabulary; otherwise its `detail` gains a clause counting them. A module citing only by DOI is no longer refused by `enrich_literature` as citing nothing. |
+
 ## 2. What to change
 
 1. If you parse `manifest.json` with `just-dna-format`, move your pin to 0.8 when you start reading
@@ -85,3 +96,6 @@ COMPILER.md § The phrases, under *retired*, for grepping old manifests.
    modules whose bytes moved under a different recorded toolchain), and `measurement_json` carries all
    three. `compilation.toolchain` joins `EXCLUDED_MANIFEST_FIELDS`, so it never appears in a record's
    `manifest_fields`.
+5. If you validate authored modules (a registry, a server-side `validate_spec`), upgrade before you
+   accept 0.8 modules: `pmid=NONE` and the new `doi` columns are refused by 0.7 (§ 1.5). If you parse
+   `pmid` yourself, skip `NONE` and take the citation from `doi` there.

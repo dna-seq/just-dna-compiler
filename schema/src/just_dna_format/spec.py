@@ -90,6 +90,12 @@ PMCID_PATTERN: re.Pattern[str] = re.compile(r"PMC(?:ID)?\s*[:\-]?\s*(\d{1,9})", 
 # carries one DOI token and keep it verbatim, mirroring the PMID contract. Wider than a PMID: it also
 # covers preprints/books/datasets with no PubMed id (docs/USE_CASES.md §4a, RM11).
 DOI_PATTERN: re.Pattern[str] = re.compile(r"10\.\d{4,9}/\S+")
+# The one sentinel `pmid` accepts in place of a PubMed id (RM336): the row cites a work PubMed does not
+# index (a preprint, a book, a dataset), so `doi` carries the citation instead and becomes mandatory —
+# `check_citation_pair` is that rule. Exactly `NONE`, case-sensitive: the spellings an author reaches for
+# (`NA`, `n/a`, `-`, `none`) stay refused, and the refusal points here. Upper case so it cannot be read
+# as a word of a free-form reference, and so it is not `None`, which is the unknown arm everywhere else.
+PMID_NONE: str = "NONE"
 
 
 def extract_pmcids(raw: str) -> list[str]:
@@ -118,8 +124,14 @@ def extract_pmids(raw: str) -> list[str]:
     confident citation of the wrong paper. A cell carrying both — `21551363; PMC3110566` — still
     yields the real PMID; only a cell whose sole numeric content is a PMC id comes back empty, which
     is what lets `validate_pmid_cell` name it.
+
+    **The same holds for a DOI** (RM336), whose digit runs (`10`, `1101`, …) are not PubMed ids, and for
+    the `NONE` sentinel, which carries no digits: both come back empty.
     """
     excluded = [match.span(1) for match in PMCID_PATTERN.finditer(raw)]
+    # A DOI's digits are not PubMed ids either (RM336): `10.1101/2025.03.01.640000` used to come back
+    # as six of them, and the literature pass looked each one up as the row's citation.
+    excluded += [match.span() for match in DOI_PATTERN.finditer(raw)]
     seen: dict[str, None] = {}
     for match in PMID_PATTERN.finditer(raw):
         start = match.start(1)
@@ -154,8 +166,18 @@ def validate_pmid_cell(value: str | None, field: str, *, required: bool) -> str 
         if required:
             raise ValueError(f"{field} must not be empty")
         return None
+    if value == PMID_NONE:
+        return value  # the sentinel (RM336); the model's `check_citation_pair` then requires `doi`
     if extract_pmids(value):
         return value  # kept verbatim; use extract_pmids(value) to recover digit-only ids
+    dois = [match.group(0) for match in DOI_PATTERN.finditer(value)]
+    if dois:
+        raise ValueError(
+            f"{field} names DOI(s) {dois} and no PubMed ID. A DOI's digits are not PubMed ids, so "
+            f"reading them as one would cite the wrong papers. Write the DOI in `doi`; if the work has "
+            f"a PubMed record, write its PMID here (`just-dna-enricher hint citation --doi {dois[0]}` "
+            f"looks it up), and if it has none, write '{PMID_NONE}' here. Got: {value!r}"
+        )
     pmcids = extract_pmcids(value)
     if pmcids:
         raise ValueError(
@@ -166,8 +188,82 @@ def validate_pmid_cell(value: str | None, field: str, *, required: bool) -> str 
         )
     raise ValueError(
         f"{field} must contain at least one PubMed ID (bare digits, or a bracketed/prefixed "
-        f"form like '[PMID: 9545397]'), got: {value!r}"
+        f"form like '[PMID: 9545397]'), got: {value!r}. A work with no PubMed record is cited as "
+        f"{field}='{PMID_NONE}' with its DOI in `doi`"
     )
+
+
+def check_citation_pair(pmid: str | None, doi: str | None) -> None:
+    """The pmid/doi pair rule every citing row obeys (RM336): `pmid='NONE'` makes `doi` mandatory.
+
+    The cell grammar of each half is checked where it lives — `validate_pmid_cell` on `pmid`, whose
+    requiredness differs per model (P8), and `CitationPair`'s `doi` validator — so this only ties them:
+    a row saying "this work has no PubMed id" must say which work it is. Raises `ValueError`; returns
+    nothing.
+    """
+    if pmid == PMID_NONE and doi is None:
+        raise ValueError(
+            f"pmid is '{PMID_NONE}', which says the cited work has no PubMed record, so `doi` must "
+            f"name it (10.<registrant>/<suffix>, bare or as a doi.org URL); doi is empty"
+        )
+
+
+def cited_as(pmid: str | None, doi: str | None) -> str | None:
+    """How a message names the work a row cites: its `pmid`, or `NONE doi <doi>` for a DOI-only row.
+
+    Every `NONE` row would otherwise print as `PMID NONE`, and two preprints on one variant would read
+    as one citation in the finding that names them (RM336). Verbatim, for a human; a key comparing two
+    rows normalizes the DOI first (`doi_key`).
+    """
+    if pmid == PMID_NONE:
+        return f"{PMID_NONE} doi {doi}"
+    return pmid
+
+
+def doi_key(doi: str) -> str:
+    """The DOI token of a `doi` cell, lower-cased: what two spellings of one DOI share.
+
+    DOIs are case-insensitive and a cell may hold the bare token or a doi.org URL, so a key built from
+    the cell verbatim would read one preprint written two ways as two citations.
+    """
+    match = DOI_PATTERN.search(doi)
+    return (match.group(0) if match else doi.strip()).lower()
+
+
+def validate_doi_cell(value: str | None) -> str | None:
+    """A `doi` cell: optional, kept verbatim, and carrying one DOI token when present."""
+    if value is None:
+        return value
+    if not DOI_PATTERN.search(value):
+        raise ValueError(
+            f"doi must contain a DOI token (10.<registrant>/<suffix>, bare or as a doi.org "
+            f"URL), got: {value!r}"
+        )
+    return value  # kept verbatim
+
+
+class CitationPair(BaseModel):
+    """The shared pmid/doi rule, as a mixin every model that cites with a `pmid` inherits (RM336).
+
+    One rule on every citing table, so it cannot drift between them as citing tables are added:
+    `StudyRow`, the binning kinds (`MeasureBinRow`), `PharmVariantRow` and the derived `GwasEffectRow`
+    today, and every later model declaring a `pmid` — a test walks the model registry and asserts the
+    set of models with a `pmid` equals the set carrying this mixin and a `doi`.
+
+    It carries the `doi` cell check and the pair check, never the `pmid` grammar: that one is
+    `validate_pmid_cell` on each model, because `required` differs between them and a shared validator
+    the strictest model has to override is a requiredness change wearing a refactor's clothes.
+    """
+
+    @field_validator("doi", check_fields=False)
+    @classmethod
+    def _validate_doi(cls, v: str | None) -> str | None:
+        return validate_doi_cell(v)
+
+    @model_validator(mode="after")
+    def _check_citation_pair(self) -> "CitationPair":
+        check_citation_pair(getattr(self, "pmid", None), getattr(self, "doi", None))
+        return self
 
 
 class ModuleInfo(Display):
@@ -1067,7 +1163,7 @@ class VariantRow(AuthoredModel):
         return self
 
 
-class StudyRow(AuthoredModel):
+class StudyRow(CitationPair, AuthoredModel):
     """One row of studies.csv: an (rsid, pmid) evidence link. Grounding evidence is mandatory.
 
     Inherits `AuthoredModel` (reserved-namespace guard + shared `rsid`/`trait_efo_id`/
@@ -1342,18 +1438,6 @@ class StudyRow(AuthoredModel):
         checked = validate_pmid_cell(v, "pmid", required=True)
         assert checked is not None
         return checked
-
-    @field_validator("doi")
-    @classmethod
-    def _validate_doi(cls, v: str | None) -> str | None:
-        if v is None:
-            return v
-        if not DOI_PATTERN.search(v):
-            raise ValueError(
-                f"doi must contain a DOI token (10.<registrant>/<suffix>, bare or as a doi.org "
-                f"URL), got: {v!r}"
-            )
-        return v  # kept verbatim
 
     @field_validator("provenance_regex")
     @classmethod

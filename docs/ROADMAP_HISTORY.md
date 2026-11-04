@@ -35,6 +35,93 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM336 — a DOI written into `pmid` parses as five or six PubMed ids, and the literature pass looks each one up
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** ([PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §3 items 18 and 23, §5 A2) · **Owner** format (`spec.validate_pmid_cell`) · **Motivating case** longevitymap v2 requirements §6.3 ("`pmid`, or `doi` for preprints") · *for* longevitymap v2 · *related* RM50, RM263, [ROADMAP § `StudyRow.pmid` required + PMID-shaped](ROADMAP.md#studyrowpmid-required--pmid-shaped)
+
+**Widened 2026-11-04 by the maintainer, after the second measuring run: "fix the error class on all tables".**
+The pmid/doi pair applies to **every table where a row cites**, not only `studies.csv`:
+
+- a DOI is never written into `pmid`;
+- `pmid` accepts the `NONE` sentinel, which makes `doi` mandatory and validated.
+
+Tables that cite with a `pmid` and no `doi` today gain `doi`:
+
+- `pharm_variants.csv` (RM132's `pmid`);
+- the binning kinds (RM47's `pmid`);
+- the derived `gwas_effects.csv` (half price);
+- the two new citing tables: the meta-table and RM335's model-organism table.
+
+The run measured 6 preprint-only HLA alleles and 17 PMID-less model-organism rows. The roster of citing
+tables is derived (the compiler's `_CITING_TABLE_KINDS`), never hand-kept.
+
+**Preprints, decided 2026-11-04 by the maintainer after the final run (17 v2 studies are DOI-only).** DOIs stay in `doi` and never in `pmid`. `pmid` accepts a typed sentinel (`NONE` or similar; the exact spelling gets its P5 audit). That sentinel makes `doi` the **mandatory substitute**, and the validator then checks the DOI instead. A DOI written into `pmid` is still refused. `pmid` stays required, because the cell is present, so this is minor-legal (P8). RM263's DOI-to-PMID lookup still fills a real PMID wherever PubMed indexes the paper.
+
+**Decided 2026-11-04 by the maintainer: a refusal, like RM50's PMCID arm.** `validate_pmid_cell` refuses a cell whose only token is a DOI, and names it. Principle 3 says a module that validated keeps validating, so before the build, check the published modules (the registry's catalogue and the reference examples) for a DOI in `pmid`. None found: the refusal breaks no published module. Any found: they go back to the maintainer before the arm ships.
+
+**Reproduced 2026-11-03.** `StudyRow(rsid="rs429358", pmid="10.1101/2025.03.01.640000")` validates.
+`extract_pmids` returns `['10', '1101', '2025', '03', '01', '640000']`, and `doi:10.1038/s41586-019-1234-5`
+gives five. `enricher/src/just_dna_enricher/literature.py` iterates `extract_pmids(study.pmid)`, so the
+literature pass checks PubMed records 10, 1101 and so on as the row's citations. A preprint-only row is
+exactly where an author writes this, because `pmid` is required and the paper has only a DOI.
+
+**Same class as RM50.** RM50 gave `validate_pmid_cell` a PMCID arm, refusing a cell whose only id is a
+PubMed Central number and naming it. A DOI is the next registry whose digits read as PMIDs.
+
+**The decision.** A refusal arm like RM50's makes cells that shipped modules may already hold invalid
+(P3/P8), while a new warning code is minor-class (RM308's rule). The real fix for preprints stays the 1.0
+doi-first demotion. RM263 is the route from a DOI to its PMID.
+
+**Residuals** won't fix — a `NONE` row's DOI is never existence-checked and its quote never matched, because the literature pass keys `literature.csv` on PubMed ids; a DOI lane there is new scope, reported to the lead to file
+
+**The published-module scan, run before the refusal was built (2026-11-04).** The prod registry, all
+24 modules and every one of their 47 versions (inputs, parquets and derived sidecars, fetched read-only
+from `module-registry.just-dna.life`): 138 files carry a `pmid` column, 1,792,856 cells, **no DOI and no
+`NA`/`n/a`/`-`/`none`/`null` spelling** anywhere. `reference_examples/`: 18 files, 667 cells, none. So
+the refusal breaks no published module, and the decision's gate was met.
+
+**What shipped.**
+
+- `spec.validate_pmid_cell` gained a DOI arm between the PMID success and the PMCID arm: a cell whose
+  only identifier is a DOI is refused, naming it and pointing at `doi`, `NONE` and
+  `just-dna-enricher hint citation --doi`. `extract_pmids` skips digit runs inside a `DOI_PATTERN`
+  span, as it skips a PMC id's, so `21551363; 10.1101/…` still yields the PMID and a DOI yields
+  nothing. The generic refusal keeps its leading phrase and appends a pointer to `NONE`.
+- `pmid` accepts `spec.PMID_NONE` = `NONE`, exactly. The rule that it makes `doi` mandatory is
+  `spec.check_citation_pair`, applied through the mixin `spec.CitationPair`, which also carries the
+  `doi` cell check (`spec.validate_doi_cell`, `StudyRow`'s old message, moved). The `pmid` grammar stays
+  on each model, because `required` differs.
+- `CitationPair` on `StudyRow`, `MeasureBinRow` (all four binning kinds), `PharmVariantRow` and
+  `GwasEffectRow`; `doi?` (since 0.8.0) on the last three. `GwasEffectRow.pmid` now runs
+  `validate_pmid_cell`, which its description had always promised; `doi` joined `GWAS_FACT_FIELDS`, and
+  an unset one moves no fact signature (`None` is dropped from the hash). Compile, parquet and
+  `reverse` needed no edit: all four tables go through the model-driven writers.
+- The duplicate-citation check keys a `NONE` row on its DOI token, lower-cased (`spec.doi_key`), so
+  two preprints on one variant are two citations and the same preprint twice, in either spelling, still
+  warns, naming the DOI (`spec.cited_as`, which the two other study findings printing a `pmid` use too).
+- **Found in review, and the same item:** a quote on a `NONE` row sat in none of the literature pass's
+  counts, so `verification.json` said "no provenance quote or regex on any citation" about a module
+  carrying one. `LiteratureResult.quotes_without_pmid` counts them; alone they make the record an
+  `unsupported` skip, beside others they are a clause in its detail. The same held for existence: a
+  module citing only by DOI was refused as "no citations", and past that would have recorded
+  `citation_existence` as `ran(0, 0)`; `citations_without_pmid` counts DOI-only citations on every
+  citing table, and the record is `unsupported` when they are all there is.
+
+**P5 audit.** `doi` is `StudyRow.doi`'s name for the same fact on a finer-grained row; it collides with
+nothing on those models and is not in `RESERVED_NAMES_0_4`; `LiteratureRow.doi` is the registry's answer
+about an article, a different table. `NONE` is upper case so it is not Python's `None` (the unknown arm
+everywhere else) or a word of a free-form reference, and it is the one spelling: `NA`/`n/a`/`-`/`none`
+stay refused. The meta-table and RM335's model-organism table (other builders) reuse `CitationPair`.
+
+**Tests.** `schema/tests/test_pmid_doi_pair.py` (the reproduction refused naming the DOI on every
+citing model; `NONE` with and without `doi`; the other spellings' pointer; `extract_pmids` on both);
+`compiler/tests/test_citation_pair.py` (an equality over `reference._ALL_MODELS` between models with a
+`pmid` and models carrying `CitationPair` and `doi`, `LiteratureRow` the one named exemption, with
+`_CITING_TABLE_KINDS` inside it; round trips with `NONE`+`doi` on `studies.csv`, `repeat_alleles.csv`
+and `pharm_variants.csv`, and a `gwas_effects.csv` `doi` reaching its parquet; the duplicate key);
+`enricher/tests/test_literature_doi_cells.py` (the pass's lookup list holds only the PMID beside a DOI,
+and nothing for `NONE` or a DOI-only cell; a `NONE` row's quote is reported, never read as no quote). Each new arm was broken once and its test went red.
+
 ## RM304 — a `vrs_id` does not say which VRS minted it, and VRS 2.1 moves some insertion ids
 
 **Decided 2026-11-04 by the maintainer: both, a module-wide pin and a per-row version.** The manifest pins the VRS version the module's ids are meant to be minted under, and each `vrs_id` carries the version that minted it, beside it. A row whose version differs from the pin is the one to invalidate against, with its own reason, never the mismatch error (question 2). A per-row column alone cannot say which version is intended; a pin alone cannot survive a merge-not-clobber table mixing runs.
@@ -157,11 +244,6 @@ will default to `SMALLEST`. Through 2.4.0-a6, no digest we compute moves (the li
 the keyword is released, the cap can be lifted with the id rule chosen on purpose: our call passes the mode
 explicitly, and question 1's recorded version says which rule minted each id.
 
-# The 0.8 PT1 build round
-
-The bugfix round [PROPOSAL_0_8_PT1.md](proposals/PROPOSAL_0_8_PT1.md) decided on 2026-09-29, built on
-the `0.8` branch in the proposal's order. Newest first.
-
 ## RM342 — the manifest does not record the toolchain that wrote the bytes, so a digest that moves cannot say why
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** (a new optional
@@ -216,6 +298,11 @@ amendment.
 appears, Python); whether `verify` reports a digest mismatch whose recorded toolchain differs from the running
 one as its own reason (`@vrs-three-outcomes` asks for that); and whether P4's sentence on reproducibility needs
 an amendment once the toolchain is recorded.
+
+# The 0.8 PT1 build round
+
+The bugfix round [PROPOSAL_0_8_PT1.md](proposals/PROPOSAL_0_8_PT1.md) decided on 2026-09-29, built on
+the `0.8` branch in the proposal's order. Newest first.
 
 ## RM288 — two snapshot builders and the PGx drafter make every caller enumerate their exception family, a question RM101 named and left in a test's exemption block
 

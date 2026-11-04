@@ -20,7 +20,7 @@ from just_dna_format.base import derive_variant_key
 from just_dna_format.findings import CodedWarning
 from just_dna_format.normalize import parse_p_value
 from just_dna_format.resolution import ResolutionRow
-from just_dna_format.spec import StudyRow, VariantRow
+from just_dna_format.spec import StudyRow, VariantRow, cited_as
 from just_dna_format.vocab import ALLELE_PATTERN
 
 from just_dna_compiler.compiler.table_checks import _examples
@@ -345,7 +345,7 @@ def _check_study_effect_alleles(
             LadderFinding(
                 CodedWarning(
                     "study_effect_allele_not_at_locus",
-                    f"{key} (PMID {study.pmid}): effect_allele {study.effect_allele!r} is not among "
+                    f"{key} (PMID {cited_as(study.pmid, study.doi)}): effect_allele {study.effect_allele!r} is not among "
                     f"the resolved alleles at this locus ({shown}) — effect_size is stated relative to "
                     f"it, so a wrong effect allele inverts the study's finding rather than breaking "
                     f"it; the resolving source's allele list may also be incomplete, so check which "
@@ -785,7 +785,7 @@ def _check_p_value_num(studies: list[StudyRow], *, strict: bool) -> tuple[list[s
             LadderFinding(
                 CodedWarning(
                     "p_value_encodings_disagree",
-                    f"{row.variant_key} pmid {row.pmid}: p_value {row.p_value!r} reads as {parsed:g}, "
+                    f"{row.variant_key} pmid {cited_as(row.pmid, row.doi)}: p_value {row.p_value!r} reads as {parsed:g}, "
                     f"but p_value_num says {row.p_value_num:g} — two encodings of one number disagree, "
                     f"so one of them is a transcription slip (the string is the record; the number is "
                     f"what a consumer filters on).",

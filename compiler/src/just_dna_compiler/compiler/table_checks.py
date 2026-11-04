@@ -11,7 +11,7 @@ from just_dna_format.base import derive_variant_key
 from just_dna_format.binning import MeasureBinRow, format_group_key, validate_bins
 from just_dna_format.findings import CodedWarning, restate
 from just_dna_format.layout import DERIVED_SUBDIR, VERIFICATION_JSON, sidecar_spellings
-from just_dna_format.spec import StudyRow, VariantRow
+from just_dna_format.spec import PMID_NONE, StudyRow, VariantRow, cited_as, doi_key
 from pydantic import BaseModel
 
 from just_dna_compiler.compiler.tables import (
@@ -288,10 +288,16 @@ def _cross_validate_studies(
     # silently retire the check for every module written before the column existed. So a row whose
     # analysis is unrecorded, or that repeats an analysis already stated for the same key, warns exactly
     # as it did; the message is unchanged for every case that still reports.
+    #
+    # **A `NONE` row's citation is its DOI** (RM336). Every DOI-only study reads `(v, NONE)`, so two
+    # different preprints on one variant would share a key; the cell key carries the DOI there
+    # (normalized: a bare token and a doi.org URL, in any case, are one DOI), and the message names it,
+    # so the same preprint written twice still warns.
     stated: dict[tuple[str | None, str], set[str]] = {}
     unstated: dict[tuple[str | None, str], int] = {}
     for row in studies:
-        key = (row.variant_key, row.pmid)
+        cites = f"{PMID_NONE} doi {doi_key(row.doi)}" if row.pmid == PMID_NONE and row.doi else row.pmid
+        key = (row.variant_key, cites)
         test = row.statistical_test.strip() if row.statistical_test else None
         if key not in stated:
             stated[key] = set()
@@ -302,7 +308,7 @@ def _cross_validate_studies(
                 warnings.append(
                     CodedWarning(
                         "duplicate_study_citation",
-                        f"Duplicate (variant, pmid): ({row.variant_key}, {row.pmid})",
+                        f"Duplicate (variant, pmid): ({row.variant_key}, {cited_as(row.pmid, row.doi)})",
                     )
                 )
         if test is None:

@@ -206,6 +206,14 @@ is a claim about the world and an unsourced one is the kind this format refuses 
 on the claiming row and this table describes the study instead. The two are not alternatives; asking
 which one a citation belongs in is asking how specific the claim is.
 
+**A work PubMed does not index is cited as `pmid` = `NONE`, with its DOI in `doi`.** Never the DOI in
+`pmid`: its digits read as PubMed ids, so `10.1101/2025.03.01.640000` would cite six unrelated papers,
+and the cell is refused for it. `NONE` makes `doi` mandatory, and the rule is the same on every table
+that cites with a `pmid` (the binning kinds, `pharm_variants.csv`), each of which carries a `doi` beside
+it since 0.8. The symptom of skipping it is a refusal naming the DOI you wrote; the fix is moving it one
+column over. When the preprint is later published, write its PMID instead of `NONE`
+(`just-dna-enricher hint citation --doi` finds it where PubMed has one).
+
 **The symptom of confusing it with `literature.csv` is a dropped row.** `literature.csv` is
 machine-produced and keeps every article it found; the compiler **discards an uncited literature row**
 when nothing references it. `studies.csv` is the authored side and is never dropped. If a citation

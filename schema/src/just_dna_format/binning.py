@@ -149,7 +149,7 @@ from pydantic import Field, field_validator, model_validator
 
 from just_dna_format.base import AuthoredModel, since, stamped_identity_field, vocabulary
 from just_dna_format.findings import CodedWarning
-from just_dna_format.spec import validate_pmid_cell
+from just_dna_format.spec import CitationPair, validate_pmid_cell
 from just_dna_format.vocab import check_vocab, validate_finite
 
 # Open, additive vocabulary of measured quantities (the `frozenset[str]` idiom, Principle 6). New
@@ -235,7 +235,7 @@ FRACTIONAL_MEASURE_PHRASE = "is not a whole number in VCF 4.4"
 SPANNING_MEASUREMENT_PHRASE = "one measurement can span several bins"
 
 
-class MeasureBinRow(AuthoredModel):
+class MeasureBinRow(CitationPair, AuthoredModel):
     """Base row of a binning table: a measured quantity range → the same orthogonal axes a
     `VariantRow` carries. Subclasses add the explicit key columns for their quantity.
 
@@ -372,6 +372,16 @@ class MeasureBinRow(AuthoredModel):
             "Optional PubMed id grounding THIS boundary — the literature the threshold is drawn "
             "from. Free-form like `StudyRow.pmid` (`9545397`, `[PMID: 9545397]`, a `;`-joined list). "
             "The bin row cites; studies.csv describes."
+        ),
+    )
+    doi: str | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description=(
+            "Digital Object Identifier of the work THIS row cites, kept verbatim (bare or as a doi.org "
+            "URL). Optional beside a PubMed id; **mandatory when `pmid` is `NONE`**, the sentinel for "
+            "a work PubMed does not index (a preprint, a book, a dataset), RM336. Same rule as "
+            "`StudyRow.doi`."
         ),
     )
 
