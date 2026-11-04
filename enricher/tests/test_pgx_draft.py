@@ -737,3 +737,35 @@ def test_an_unanswerable_knows_drug_keeps_the_draft_and_says_it_could_not_ask(tm
     # It must NOT reach for the snapshot wording — there is no snapshot here, and the two "could not
     # establish" readings have different remedies.
     assert "snapshot" not in could_not_ask
+
+
+def test_an_hla_allele_the_format_refuses_is_skipped_by_the_drafter_not_raised(tmp_path: Path) -> None:
+    """The drafter's allele guard follows the model's HLA rule (RM334), rather than a weaker one.
+
+    `STAR_ALLELE_PATTERN` accepts the colon-less pre-2010 spelling `*5701` and the one-field `*58`, and
+    since 0.8 `AlleleFunctionRow` refuses both for an `HLA-` gene. Guarded by the star pattern alone, a
+    CPIC allele table carrying either ended the whole draft on a pydantic traceback, the
+    `draft --gene CYP2C9` failure one rule over. Each row is skipped with the model's own reason.
+    """
+    hla_alleles = [
+        {"genesymbol": "HLA-B", "name": "*5701", "activityvalue": None, "clinicalfunctionalstatus": None},
+        {"genesymbol": "HLA-B", "name": "*58", "activityvalue": None, "clinicalfunctionalstatus": None},
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/gene"):
+            return httpx.Response(200, json=[{"symbol": "HLA-B", "chr": "chr6"}])
+        if path.endswith("/allele"):
+            return httpx.Response(200, json=hla_alleles)
+        if path.endswith(("/diplotype", "/allele_definition", "/allele_location_value")):
+            return httpx.Response(200, json=[])
+        return _dispatch(request)
+
+    client = CpicClient(client=httpx.Client(transport=httpx.MockTransport(handler)))
+    spec = _spec(tmp_path)
+    result = draft_gene(spec, "HLA-B", declared_use="non_commercial", client=client)
+
+    skipped = [w for w in result.warnings if "IPD-IMGT/HLA" in w]
+    assert {name for name in ("*5701", "*58") if any(repr(name) in w for w in skipped)} == {"*5701", "*58"}
+    assert not (spec / "allele_function.csv").exists()

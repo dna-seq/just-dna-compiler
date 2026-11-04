@@ -77,6 +77,26 @@ COMPILER.md § The phrases, under *retired*, for grepping old manifests.
 | `duplicate_study_citation`, `study_effect_allele_not_at_locus`, `p_value_encodings_disagree` | Unchanged codes, and unchanged text for every row with a real `pmid`. A `NONE` row is named `NONE doi <doi>`; two `NONE` rows on one variant are distinct when their DOI tokens differ (case and a doi.org prefix ignored). |
 | `verification.json` `provenance_quote` and `citation_existence` records | A quote on a `NONE` row is not matched and a `NONE` citation is not looked up (the pass works by PubMed id). When they are the only kind, the record is skipped as `unsupported`, an existing member of the skip vocabulary; otherwise its `detail` gains a clause counting them. A module citing only by DOI is no longer refused by `enrich_literature` as citing nothing. |
 
+## 1.6 New optional authored columns (no break)
+
+A new optional column is minor-legal (Principle 3). A 0.7 `just-dna-format` refuses a CSV carrying one
+(`extra="forbid"`), so an authoring tool reading 0.8 specs upgrades with them; a reader of the parquet
+sees more columns.
+
+| Surface | Item | What changed |
+| --- | --- | --- |
+| `diplotypes.csv` / `diplotypes.parquet` `negatives`, `category` | RM322 | Free text, the `VariantRow` columns of the same names; `category` has no vocabulary. Null when unstated. Appended as the last two columns, so every 0.7 column keeps its position. Every module carrying `diplotypes.csv` gets a new `artifact.digest` on a 0.8 recompile, with `content_signature` unchanged unless a cell is filled. |
+
+## 1.7 A new refusal: HLA allele names on `allele_function.csv`
+
+Where `gene` starts with `HLA-`, `allele` must follow IPD-IMGT/HLA's grammar (`*`, two to four
+colon-separated numeric fields, an optional `N`/`L`/`S`/`C`/`A`/`Q` suffix), or `validate` and
+`compile` refuse the row (RM334). Other genes are unaffected. Principle 3 holds: the published-module
+scan of 2026-11-04 found no `allele_function.csv` row with an `HLA-` gene in the reference examples (two
+files) or in the registry's prod catalogue (24 modules, 46 versions; the one module carrying the table,
+`antonkulaga/fut2_secretor`, names only `FUT2`). A tool that writes HLA alleles into this table, or a
+module built outside the catalogue, should spell them `*15:01`, never `*1501` or `HLA-DRB1*15:01`.
+
 ## 2. What to change
 
 1. If you parse `manifest.json` with `just-dna-format`, move your pin to 0.8 when you start reading

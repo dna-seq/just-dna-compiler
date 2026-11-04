@@ -93,6 +93,15 @@ truth**; the others exist so a consumer need not re-parse it.
 `suballele` is optional extra precision (Aldy's `Minor`, e.g. `1.001`) and never replaces the core
 star. A consumer keyed on the suballele silently misses every row that carries only the core.
 
+**An HLA allele lives here too, and its name is a grammar (0.8).** HLA-DRB1\*15:01 is a typed allele,
+not a set of defining variants, so it is an `allele_function.csv` row with `gene` `HLA-DRB1` and
+`allele` `*15:01`, never a `haplotypes.csv` definition: a tag SNP is an ancestry-dependent proxy, and
+writing it as a definition would be a false claim. Where `gene` starts with `HLA-`, the name must be
+IPD-IMGT/HLA's: `*`, then two to four colon-separated numeric fields, then an optional expression
+suffix. The field count is the resolution the name states, so `*15` and the old colon-less `*1501`
+are refused rather than guessed at. The symptom of the wrong spelling is a refusal naming the shape,
+never a row that silently joins nothing.
+
 ## diplotypes.csv
 
 **One row is one haplotype pair → one phenotype**, and the pair is canonicalised (`haplotype_a <=
@@ -104,6 +113,12 @@ names a *pair*, not a locus, so the column could only mean "the variants definin
 haplotypes were callable" — a fact about `haplotypes.csv` rows, restated one table over, free to drift
 the moment a definition is edited. One concept, one home. `extra="forbid"` is what enforces it, so
 adding the column by hand is a compile error rather than a silent second source of truth.
+
+**`negatives` and `category` are the `variants.csv` columns, carried over (0.8).** A scored diplotype is
+often the finding a module exists for (APOE ε is scored once, as a pair, never as two SNP rows), so it
+needs the trade-off and the report group a variant row can state. The symptom of the old shape was a
+headline row whose trade-off lived only in the README. `category` is free text here as there; the
+same word in both tables means the same group.
 
 ## pharm_variants.csv
 

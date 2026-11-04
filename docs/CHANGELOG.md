@@ -41,6 +41,28 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM334: an HLA allele name is checked against IPD-IMGT/HLA's grammar (0.8, uncut)
+
+**format, enricher** — An HLA allele is an `allele_function.csv` row (there is no HLA table). Where `gene` starts
+with `HLA-`, `allele` must be `*`, then two to four colon-separated numeric fields of at least two
+digits, then an optional expression suffix (`N`, `L`, `S`, `C`, `A`, `Q`): `*15:01`, `*57:01:01` and
+`*02:01:01:02N` pass, and `15:01`, `*1501`, `*15:01X` and `*15` are refused by `validate` and `compile`
+alike, with a message naming the shape. Every other gene keeps the permissive name rule. The
+published-module scan found no HLA row in any reference example or in any of the 46 versions in the
+registry's catalogue, so the refusal breaks no published module. Whether the allele exists in
+IPD-IMGT/HLA's list is not checked; that lane is in 0.9. The CPIC drafter skips an HLA allele the
+model refuses, with the same reason (`pgx.hla_allele_refusal`), instead of failing the draft.
+
+## 2026-11-04 — RM322: a diplotype row states its trade-off and its report group (0.8, uncut)
+
+**format, compiler** — `diplotypes.csv` gains two optional free-text columns, `negatives` and
+`category`, the `variants.csv` columns of the same names with the same descriptions. A scored diplotype
+such as APOE ε, which v2 scores once as a pair, can now carry the trade-off and the report group a
+variant row could. Both reach `diplotypes.parquet` and come back through `reverse`. `category` binds no
+vocabulary, as on `VariantRow`. A stated cell moves `content_signature`; a module that leaves both out
+keeps its signature, but its `artifact.digest` moves on a 0.8 recompile because the parquet has two more
+columns. They are the last two columns, so no 0.7 column changes position. The maintainer cut `priority`, `actionability` and `flags` from the item.
+
 ## 2026-11-04 — RM336: a DOI in `pmid` is refused, and `pmid=NONE` cites a preprint by its `doi`, on every citing table (0.8, uncut)
 
 **format, compiler, enricher** — A `pmid` cell whose only identifier is a DOI is refused, naming the

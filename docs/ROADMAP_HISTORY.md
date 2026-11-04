@@ -35,6 +35,99 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM334 — an HLA allele has no table, and tag SNPs cannot stand in for one
+
+**Cut 2026-11-04 by the maintainer, after the final measuring run** (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §3): **the new HLA table.** `allele_function.csv` (keyed `(gene, allele)`) holds the 8 v2 alleles, and meta-table rows hold their facts and findings. The nomenclature grammar check applies to HLA genes on `allele_function.csv`.
+
+**Decided 2026-11-04 by the maintainer: grammar now, the list in 0.9.** The format checks the nomenclature's grammar (`gene*field:field` at a stated resolution). Checking that an allele exists in IPD-IMGT/HLA's list is an enricher lane whose licence is unprobed, and it waits for 0.9.
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** ([PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §5 A4, §3 item 22), taken into 0.8 on 2026-11-03 as a priority · **Owner** format · **Motivating case** longevitymap v2 requirements §2 (R-HLA), §10 · *for* longevitymap v2 · *related* RM331
+
+**What shipped.** No new table, as the maintainer cut it: an HLA allele is an `allele_function.csv`
+row. Where `AlleleFunctionRow.gene` starts with `HLA-`, `allele` must match `pgx.HLA_ALLELE_PATTERN` in
+full: `*`, two to four colon-separated numeric fields of at least two digits each, and an optional
+expression suffix from `N`, `L`, `S`, `C`, `A`, `Q`. The field count is the stated resolution, so a
+one-field name is refused, and so is the colon-less `*1501`. A malformed name is a refusal at the model
+(`validate_hla_allele`), so `validate` and `compile` refuse it alike in both modes, naming the row, the
+shape and an example. Every other gene keeps the permissive haplotype-name rule. The rule has one
+statement, `pgx.hla_allele_refusal` (a reason or `None`): the model raises it, and the CPIC drafter
+(`pgx_draft`) skips an HLA allele it refuses with the same reason instead of failing the draft.
+
+**The published-module scan (2026-11-04), which the refusal was gated on.** The reference examples:
+two `allele_function.csv` files (`cyp2c19_star_alleles`, `cyp2c9_warfarin_grch37`), no `HLA-` row. The
+registry's prod catalogue: 24 modules and 46 versions, read through each version's manifest; one module
+carries `allele_function.csv` (`antonkulaga/fut2_secretor` 1.0.0 and 1.1.0, three `FUT2` rows each,
+downloaded and read), no `HLA-` row. The HLA genes in `big_five_personality_snps` and `pathogenic`
+are `variants.csv` genes, outside the check. The `test` group on prod lists nothing. So the refusal
+breaks no published module.
+
+Not in this item: checking that an allele exists in IPD-IMGT/HLA's list, which the maintainer put in
+0.9 as an enricher lane with an unprobed licence; no `RMn` carries it yet. Tests:
+`schema/tests/test_rm334_hla_grammar.py` (the accepted and refused names, mutation-checked on the field
+count and on the gene test) and `compiler/tests/test_rm334_hla_refusal.py` (validate/compile parity, and
+a well-formed HLA row through compile → reverse → compile).
+
+**Residuals** none
+
+**Need.** HLA-DRB1\*15:01 and B\*57:01 are v2's most consistent non-APOE signals, and the plan defers
+them to tag SNPs flagged with r².
+
+**Why no existing brick fits.** `HaplotypeRow` is a *definition*: the variants that are on one strand.
+An HLA tag SNP is a probabilistic proxy whose r² depends on ancestry, so writing it as a definition would
+be a false claim. `AlleleFunctionRow` has the nearest key, `(gene, allele)`, but its columns are PGx
+activity and function.
+
+**Shape.** A per-allele carrier table keyed on `(gene, allele)` at a stated field resolution (two-field),
+with `direction`, `trait_efo_id`, `conclusion` and a citation. The consumer joins it against an HLA
+typing call, which is a measurement a SNP VCF does not contain. The tag-SNP fallback reuses RM331's proxy
+shape. Full, a new table kind. Validating the nomenclature (IPD-IMGT/HLA) is an open question.
+
+## RM322 — `diplotypes.csv` carries none of the axes a scored finding needs, so APOE, the module's headline result, cannot state its tier, mechanism or trade-off
+
+**Cut 2026-11-04 by the maintainer, after the final measuring run** (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §3): `priority` (it restates the tier; v2 says it is "derived from tier") and `actionability` (v2's policy "late-acting ⇒ descriptive" belongs in its README). `DiplotypeRow` gains only **`negatives` and `category`**.
+
+**Decided 2026-11-04 by the maintainer: four columns, no `flags`.** `DiplotypeRow` gains `negatives`, `category`, `priority` and `actionability`, each full price, with RM70 as the precedent. `flags` stays off: no tier acts on its tags (RM321), and v2's flag tokens are what RM323–RM330's typed columns replace. Per-locus facts go on RM323's table, with APOE ε2 and ε4 as `haplotype` subjects.
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** ([PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §5 A3), taken into 0.8 on 2026-11-03 as a priority · **Owner** format (`DiplotypeRow`) + compiler (the diplotype parquet and `reverse`) · **Motivating case** longevitymap v2 requirements §6.4, decision D2 · *for* longevitymap v2 · *related* RM323, RM28
+
+**What shipped.** `DiplotypeRow` gains `negatives` and `category`, both optional free text with
+first release 0.8.0. Each is `VariantRow`'s column of the same name, description included, and
+`category` binds no vocabulary on either table. They reach `diplotypes.parquet` as nullable strings
+through the generic table materializer, `reverse` writes them back, and both are inside
+`content_signature` when stated; a module that leaves them out or empty keeps its signature. Every
+module carrying `diplotypes.csv` gets a new `artifact.digest` on a 0.8 recompile, because the parquet
+gains two columns; they are declared last, so no 0.7 column changes position. `priority`, `actionability` and `flags` were cut by the maintainer on 2026-11-04 and
+are not deferred: `priority` restates the tier, `actionability` is v2's README policy, and per-locus
+facts live on the meta-table (RM323). Tests: `compiler/tests/test_rm322_diplotype_axes.py` (a copy of
+`reference_examples/apoe_epsilon` with both columns filled, compile → reverse → compile to a fixed
+point on both identities).
+
+**Residuals** none
+
+**What was confirmed.** `DiplotypeRow` has `gene`, `haplotype_a`, `haplotype_b`, `trait_efo_id`,
+`direction`, `clin_sig`, `phenotype`, `conclusion` and the PharmGKB drug block (`drug`, `response`,
+`evidence_level`, `recommendation_strength`, `clinical_context`). It has no `negatives`, `category`,
+`priority`, `flags`, `actionability`, `stat_significance` or `effect_*`. v2 scores APOE once, as an ε
+diplotype (R-APOE-1), so its tier A locus is the one locus that can say none of the things the report
+groups and orders by.
+
+**What already fits.** The key includes `trait_efo_id`, so one row per (diplotype, trait) is legal: an
+Alzheimer's row and a lifespan row per ε pair, which is how the plan's two framings coexist.
+
+**Shapes, priced.**
+
+- **Widen `DiplotypeRow`** with the general annotation columns: `negatives`, `category`, `priority`,
+  `flags`, and possibly `actionability`. Full price each, minor-legal; RM70 is the precedent for
+  carrying a `VariantRow` column to a PGx table. `VariantRow` itself calls these axes general ("any
+  variant finding may carry them"), so this is not a foreign domain's columns on a PGx table. Each
+  is three touch points, plus the diplotype parquet and `reverse`.
+- **Author APOE as rs429358/rs7412 genotype rows in `variants.csv`.** Refused: a per-SNP row cannot
+  say ε2/ε4, and the plan's own rule is to score APOE once.
+- **README prose.** Drops the axes out of the data entirely.
+
+**To design.** Which columns, and whether the home RM323 decides for locus-level facts also reaches a
+gene-pair subject (it does not if that home is keyed on `variant_key`).
+
 ## RM336 — a DOI written into `pmid` parses as five or six PubMed ids, and the literature pass looks each one up
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** ([PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §3 items 18 and 23, §5 A2) · **Owner** format (`spec.validate_pmid_cell`) · **Motivating case** longevitymap v2 requirements §6.3 ("`pmid`, or `doi` for preprints") · *for* longevitymap v2 · *related* RM50, RM263, [ROADMAP § `StudyRow.pmid` required + PMID-shaped](ROADMAP.md#studyrowpmid-required--pmid-shaped)

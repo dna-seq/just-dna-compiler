@@ -61,6 +61,45 @@ STAR_ALLELE_PATTERN: re.Pattern[str] = re.compile(r"^\*[0-9A-Za-z][0-9A-Za-z.\-+
 # had no rule at all, and a negligible one — neither could ever have named a real haplotype.
 HAPLOTYPE_NAME_PATTERN: re.Pattern[str] = re.compile(r"^\S+$")
 
+# ── 0.8: RM334, where the name IS a grammar. ──
+#
+# The permissive rule above is right for a haplotype name in general, and wrong for one family: an HLA
+# allele's name is IPD-IMGT/HLA nomenclature, and its field count is the resolution the name states
+# (`*15:01` is a protein, `*57:01:01` a coding sequence, `*02:01:01:02N` a full-length allele that is
+# not expressed). So where `AlleleFunctionRow.gene` starts with `HLA-`, the allele must be `*`, then
+# two to four colon-separated numeric fields of at least two digits each, then an optional expression
+# suffix from `N`/`L`/`S`/`C`/`A`/`Q` (PROPOSAL_0_8_PT2 §3 item 22). One field (`*15`) states no
+# resolution and is refused; the pre-2010 colon-less spelling (`*1501`) is refused because it reads as
+# one field. No quantifier here nests, so the pattern is linear-time (Principle 1's ReDoS clause).
+# The gene decides, never the shape of the name: a non-HLA allele keeps the rule above whatever it
+# looks like. Whether an allele EXISTS in IPD-IMGT/HLA's list is a separate question, an enricher lane
+# the maintainer put in 0.9.
+HLA_GENE_PREFIX: str = "HLA-"
+HLA_ALLELE_PATTERN: re.Pattern[str] = re.compile(r"\*[0-9]{2,}(?::[0-9]{2,}){1,3}[NLSCAQ]?")
+
+
+def hla_allele_refusal(gene: str, allele: str) -> str | None:
+    """Why `allele` is refused for `gene` under IPD-IMGT/HLA's grammar (RM334), or `None` if it is not.
+
+    The one statement of the rule: the model's validator raises it, and a drafter skips on it, so the
+    two cannot disagree (`@drafting-scaffold`). Every gene outside `HLA-` answers `None`."""
+    if not gene.startswith(HLA_GENE_PREFIX) or HLA_ALLELE_PATTERN.fullmatch(allele):
+        return None
+    return (
+        f"{gene} is an HLA gene, so its allele must follow IPD-IMGT/HLA nomenclature: `*`, "
+        "then two to four colon-separated numeric fields of at least two digits each, then an "
+        "optional expression suffix (N, L, S, C, A or Q), e.g. *15:01, *57:01:01, *02:01:01:02N; "
+        f"the field count is the resolution the name states, so at least two are needed. Got: {allele!r}"
+    )
+
+
+def validate_hla_allele(gene: str, allele: str) -> str:
+    """Raise `hla_allele_refusal`'s reason when there is one; return `allele` unchanged otherwise."""
+    refusal = hla_allele_refusal(gene, allele)
+    if refusal is not None:
+        raise ValueError(refusal)
+    return allele
+
 
 def validate_haplotype_name(value: str, field_name: str) -> str:
     """One rule for a haplotype name, shared by all three PGx tables so they cannot disagree."""
@@ -218,6 +257,10 @@ class AlleleFunctionRow(AuthoredModel):
     identity. `copy_number`/`sv_type`/`hybrid_orientation` are optional parsed conveniences of the
     *cis* allele-unit — the star-string remains truth.
 
+    Since 0.8 (RM334) this is also where an HLA allele lives, and for an `HLA-` gene the name is
+    checked against IPD-IMGT/HLA's grammar (`validate_hla_allele`); every other gene keeps the
+    permissive haplotype-name rule.
+
     Inherits `AuthoredModel` (reserved-namespace guard)."""
 
     #: What makes two rows the same row (see `HaplotypeRow._KEY_FIELDS`).
@@ -226,7 +269,10 @@ class AlleleFunctionRow(AuthoredModel):
     gene: str = Field(json_schema_extra=since("0.4.0"), description="Gene symbol, e.g. CYP2D6")
     allele: str = Field(
         json_schema_extra=since("0.4.0"),
-        description="Star-allele string, verbatim canonical identity, e.g. *4",
+        description=(
+            "Star-allele string, verbatim canonical identity, e.g. *4. For an HLA- gene, an "
+            "IPD-IMGT/HLA name of two to four fields, e.g. *15:01 or *57:01:01 (0.8)"
+        ),
     )
     activity_value: float | None = Field(
         json_schema_extra=since("0.4.0"),
@@ -261,11 +307,18 @@ class AlleleFunctionRow(AuthoredModel):
 
     @field_validator("allele")
     @classmethod
-    def _validate_allele(cls, v: str) -> str:
+    def _validate_allele(cls, v: str, info: ValidationInfo) -> str:
         # A name, not a star-allele grammar — see `HAPLOTYPE_NAME_PATTERN`. This column used to be the
         # only one of the three that demanded a leading `*`, which made APOE's ε alleles unstateable
         # here while being perfectly legal in the other two tables.
-        return validate_haplotype_name(v, "allele")
+        validate_haplotype_name(v, "allele")
+        # RM334: an HLA gene's allele IS a grammar. A field validator rather than a model one, so the
+        # refusal names its column; `gene` is declared first, so it is in `info.data` once valid (a
+        # gene that failed has its own error, and the HLA question is then unanswerable).
+        gene = info.data.get("gene")
+        if gene is not None:
+            validate_hla_allele(gene, v)
+        return v
 
     @field_validator("activity_value")
     @classmethod
@@ -384,6 +437,25 @@ class DiplotypeRow(AuthoredModel):
             "Free text: guideline bodies scope differently and a closed set would reject the next "
             "one. Part of the row key, so contexts that disagree coexist and the consumer picks."
         ),
+    )
+
+    # ── 0.8: RM322, the two general annotation columns `VariantRow` has carried since 0.2. A scored
+    # diplotype (APOE ε, scored once as a pair) is a module's headline finding, and before these it
+    # could state neither its trade-off nor its report group. Declared last, as `clinical_context`
+    # was, so no column of the 0.7 parquet changes position. Copied from `VariantRow`, descriptions
+    # included, and `category` binds no vocabulary there, so it binds none here: one word, one
+    # grammar across the two tables. The maintainer cut `priority`, `actionability` and `flags` from
+    # the item (2026-11-04); they are not deferred. ──
+    negatives: str | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description=(
+            "Optional free-text adverse/antagonistic-pleiotropy counterpart to `conclusion` "
+            "(e.g. a protective allele's known trade-off). Consumers ignore it when absent."
+        ),
+    )
+    category: str | None = Field(
+        json_schema_extra=since("0.8.0"), default=None, description="Grouping category within the module"
     )
 
     @field_validator("recommendation_strength")

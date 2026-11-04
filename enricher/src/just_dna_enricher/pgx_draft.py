@@ -32,7 +32,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from just_dna_compiler.draft import DraftError, DraftReport, append_rows
-from just_dna_format.pgx import STAR_ALLELE_PATTERN, AlleleFunctionRow, DiplotypeRow, HaplotypeRow
+from just_dna_format.pgx import (
+    STAR_ALLELE_PATTERN,
+    AlleleFunctionRow,
+    DiplotypeRow,
+    HaplotypeRow,
+    hla_allele_refusal,
+)
 
 from just_dna_enricher.cpic import (
     CpicClient,
@@ -420,6 +426,12 @@ def draft_gene(
     for allele in published:
         if not STAR_ALLELE_PATTERN.match(allele.allele or ""):
             warnings.append(f"{gene}: allele {allele.allele!r} is not a star-allele string — skipped.")
+            continue
+        # The model's own HLA rule (RM334), asked rather than restated: the star pattern above accepts
+        # `*5701`, which `AlleleFunctionRow` refuses for an `HLA-` gene.
+        hla_refusal = hla_allele_refusal(allele.gene, allele.allele)
+        if hla_refusal is not None:
+            warnings.append(f"{gene}: allele skipped, {hla_refusal}")
             continue
         function_rows.append(
             AlleleFunctionRow(

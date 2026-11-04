@@ -796,9 +796,9 @@ tie-break has nothing to order.
 **PGx rows** (`pgx.py`). `HaplotypeRow` (variant↔`allele` junction; the allele is bases or a symbolic
 structural allele — see *The allele grammar* above);
 `AlleleFunctionRow` (`gene`+star `allele` verbatim identity, `function_status` in `VALID_FUNCTION_STATUS`,
-`activity_value?`, CN/SV conveniences); `DiplotypeRow` (`gene`+`haplotype_a`/`haplotype_b` canonicalized
-`a ≤ b`, `conclusion`, PharmGKB `drug?`/`response?`/`evidence_level?`, CPIC `recommendation_strength?`
-and `clinical_context?`); `PharmVariantRow` (`drug`+
+`activity_value?`, CN/SV conveniences; an `HLA-` gene's `allele` follows IPD-IMGT/HLA's grammar, 0.8); `DiplotypeRow` (`gene`+`haplotype_a`/`haplotype_b` canonicalized
+`a ≤ b`, `conclusion`, `negatives?`/`category?` (0.8, RM322), PharmGKB `drug?`/`response?`/
+`evidence_level?`, CPIC `recommendation_strength?` and `clinical_context?`); `PharmVariantRow` (`drug`+
 `conclusion`, single-variant, `evidence_level?` 1A…4, `genotype?`, `phenotype_category?`,
 `annotation_id?`, and **`pmid?` — the claim citation added in 0.7 (RM132)**, free-form under the same
 grammar as `StudyRow.pmid`, a separate axis from `evidence_level` because one points at the evidence
@@ -841,6 +841,27 @@ grammar is the shared `AuthoredModel` one, so a genotype means the same thing he
 allele (`del/del`) is now spellable — RM5 shipped in 0.6 — but ClinPGx publishes no **length** for it,
 and a lengthless symbolic allele is a rule the compiler drops, so `clinpgx_draft` still declines to
 write those rows and now says which of the two reasons it is.
+
+**The HLA nomenclature grammar on `AlleleFunctionRow` (0.8, RM334).** An HLA allele is an
+`allele_function.csv` row; there is no HLA table. Where `gene` starts with `HLA-`, `allele` must match
+`pgx.HLA_ALLELE_PATTERN` in full: `*`, then two to four colon-separated numeric fields of at least two
+digits each, then an optional expression suffix from `N`, `L`, `S`, `C`, `A`, `Q`
+(`*15:01`, `*57:01:01`, `*02:01:01:02N`). "At a stated resolution" is read off the name: its field
+count is the resolution, so no column states it, and a one-field name (`*15`) or the pre-2010
+colon-less spelling (`*1501`) is **refused** at the model, so `validate` and `compile` refuse alike, in
+both modes. The gene decides, never the name's shape: every other gene keeps the permissive
+haplotype-name rule. The refusal was legal under Principle 3 because the published-module scan of
+2026-11-04 found no `allele_function.csv` row with an `HLA-` gene (INTEGRATION_0_8 records it). G and P
+group designations (`*01:01:01G`, `*01:01P`) are outside the grammar PT2 decided and are refused too.
+Whether the allele exists in IPD-IMGT/HLA's list is not checked here; the maintainer put that enricher
+lane in 0.9.
+
+**`negatives?` and `category?` on `DiplotypeRow` (0.8, RM322)** are `VariantRow`'s columns of the same
+names, copied with their descriptions: free text, outside the key, and `category` binds no vocabulary
+on either table. They exist because a scored diplotype is often a module's headline finding (APOE ε is
+scored once, as a pair) and could state neither its trade-off nor its report group. Both are authored
+content, so a stated cell moves `content_signature`; an absent or empty one does not. The item was cut
+to these two by the maintainer: `priority`, `actionability` and `flags` were cut, not deferred.
 
 `DiplotypeRow.clinical_context` (0.5, RM29b) is the same shape of fix one table over: CPIC scopes a
 gene/drug recommendation to a **setting**, and the settings disagree. Clopidogrel carries three
