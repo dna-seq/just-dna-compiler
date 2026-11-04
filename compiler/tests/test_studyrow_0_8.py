@@ -32,6 +32,7 @@ from just_dna_compiler.compiler import (
     reverse_module,
     validate_spec,
 )
+from just_dna_compiler.compiler.subjects import module_subjects
 from just_dna_format.base import field_first_seen, field_vocabularies
 from just_dna_format.gwas import GwasEffectRow
 from just_dna_format.pgs import VALID_TRAINING_ANCESTRY, PgsRow
@@ -586,7 +587,7 @@ def _dupes(*rows: dict[str, object]) -> list[str]:
     variants = [
         VariantRow(rsid="rs10455872", genotype="A/G", state="protective", conclusion="c"),
     ]
-    _, warnings = _cross_validate_studies(studies, variants)
+    _, warnings = _cross_validate_studies(studies, module_subjects({"variants.csv": variants}))
     return [w for w in warnings if _DUP in w]
 
 

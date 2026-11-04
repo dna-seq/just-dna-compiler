@@ -82,7 +82,7 @@ from just_dna_format.verification import (
 )
 from just_dna_format.vocab import VALID_CLIN_SIG, population_sort_key
 
-from just_dna_compiler.compiler.positional import _GENE_BEARING_TABLE_KINDS
+from just_dna_compiler.compiler.subjects import module_subjects
 from just_dna_compiler.compiler.tables import (
     _DERIVED_FILES,
     _INPUT_FILES,
@@ -499,18 +499,13 @@ def module_stats(variants: list[VariantRow], kind_rows: dict[str, list[Any]] | N
     inventing an empty `variants.csv` to be discoverable — is what makes this ours to fix rather than a
     documentation note.
 
-    Only authored kinds count. `_GENE_BEARING_TABLE_KINDS` derives from `_TABLE_KINDS`, which
-    deliberately excludes the derived fact sidecars, so a gene reaching `gene_metrics.csv` because a
-    pass looked it up never becomes a gene the module claims to be about.
+    Only authored kinds count. The genes are `subjects.module_subjects`' (RM362), whose roster derives
+    from `_TABLE_KINDS`, which deliberately excludes the derived fact sidecars, so a gene reaching
+    `gene_metrics.csv` because a pass looked it up never becomes a gene the module claims to be about;
+    the orphan checks and the enricher's gene scope ask the same function, so the three cannot differ.
     """
     stats = variant_stats(variants)
-    genes = set(stats["genes"])
-    for csv_name, _model in _GENE_BEARING_TABLE_KINDS:
-        for row in (kind_rows or {}).get(csv_name) or []:
-            gene = getattr(row, "gene", None)
-            if gene:
-                genes.add(gene)
-    ordered = sorted(genes)
+    ordered = sorted(module_subjects({"variants.csv": variants, **(kind_rows or {})}).genes)
     stats["gene_count"] = len(ordered)
     stats["genes"] = ordered
     return stats

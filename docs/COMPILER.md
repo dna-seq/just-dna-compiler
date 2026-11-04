@@ -791,7 +791,11 @@ and still publishes `manifest.sources`. Both of those are renames only a major m
    each cross-checked
    against what the module actually contains (a frequency coordinate no variant sits at, or a gene the
    module never mentions, is a **warning** — an over-broad sidecar is harmless, and failing the compile
-   over it would punish the author for the enricher's generosity).
+   over it would punish the author for the enricher's generosity). "What the module contains" is one
+   answer, `subjects.module_subjects` (RM362): a gene any of `variants.csv` and the gene-bearing table
+   kinds names (the set `manifest.stats.genes` publishes and the enricher's gene scope asks about), and
+   a locus or rsID any of `variants.csv` and the positional table kinds names. A module without
+   `variants.csv` is checked the same way.
 9. **Collect** logs / `provenance.json` / logo / readme (a malformed one fails the compile, not
    raises). Log discovery takes `*.log` beside the spec and, under `logs/` at any depth, every `*.log`
    unchecked for content, plus each file whose content matches its name (RM338): `.txt`/`.md`

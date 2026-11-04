@@ -35,6 +35,26 @@ Feature: Derived sidecars, their arithmetic, and their orphans
       | clin_sig_concordance.csv  | variant_key, against the AUTHORED keys            |
       | gwas_effects.csv          | variant_key, against the AUTHORED keys            |
 
+  # source: compiler/src/just_dna_compiler/compiler/subjects.py
+  # anchor: module_subjects
+  Scenario Outline: what the module carries is one answer, read from every table that names it
+    Given a module whose <subject> is named only by <table>
+    And a <sidecar> row about that <subject>
+    When the module is compiled
+    Then no orphan is reported
+    And manifest.stats.genes and the enricher's gene scope give the same gene set
+    # RM362. The orphan checks read variants.csv alone and skipped a module without one, while
+    # stats.genes and the enricher read every gene-bearing table: a diplotype-scored APOE module was
+    # told its own gene_metrics.csv row for APOE named a gene it never mentions. model_organisms.csv is
+    # not on the roster, because its gene is the one a mouse experiment altered.
+    Examples:
+      | subject | table              | sidecar             |
+      | gene    | diplotypes.csv     | gene_metrics.csv    |
+      | gene    | allele_function.csv | gene_validity.csv  |
+      | locus   | haplotypes.csv     | frequencies.csv     |
+      | locus   | pharm_variants.csv | clinical_assertions.csv |
+      | rsID    | pharm_variants.csv | gwas_effects.csv    |
+
   # source: compiler/src/just_dna_compiler/compiler/fact_checks.py
   # anchor: _cross_check_frequencies
   Scenario: the position-level join is not a preference
@@ -160,14 +180,15 @@ Feature: Derived sidecars, their arithmetic, and their orphans
     When the module is compiled
     Then no orphan is reported
     # Since 0.8 (RM28). A module scoring APOE as diplotypes cites rs429358 and rs7412, which define the
-    # alleles and are no variants.csv row. A meta member's reach is read off the meta expansion, so a
-    # selector covers exactly the rows it matched; a pharm_variants.csv row is carried whether or not a
-    # member reaches it (the lead, 2026-11-04).
+    # alleles and are no variants.csv row. Since RM362 the carried set is the module's one locus roster
+    # (variants.csv and every positional table kind), so a heteroplasmy.csv locus counts too; a meta
+    # member reaches rows of variants.csv and pharm_variants.csv only, which that roster already holds.
     Examples:
       | variant                                                           |
       | a defining variant of a haplotypes.csv allele                     |
       | the variant of a pharm_variants.csv row                           |
       | the variant of a pharm_variants.csv row a meta.csv member reached |
+      | the locus of a heteroplasmy.csv row                               |
 
   # source: compiler/src/just_dna_compiler/compiler/table_checks.py
   # anchor: _cross_validate_studies

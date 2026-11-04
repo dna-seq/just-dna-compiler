@@ -35,6 +35,68 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM362 — one question, several answerers: the orphan checks read variants.csv alone while stats.genes and the enricher read every table
+
+**0.8, filed 2026-11-04 by the lead** from the 0.8 four-model audit, round 1.
+
+**Severity** medium · **Status** SHIPPED 2026-11-04 on `0.8`, uncut — a minor (the 0.8 audit, round 1) · **Owner**
+compiler (`subjects.py`, `fact_checks.py`, `table_checks.py`, `validate.py`, `pipeline.py`, `manifest.py`) + enricher
+(`gene_metrics.py`) · **Motivating case** the audit probe `apoe_klvs_meta` plus a `gene_metrics.csv` row for APOE ·
+*related* RM28, RM157, S57, `@roster-is-as-wide-as-the-tables-it-reads`, `@registry-completeness`
+
+**The class.** "Which genes, loci and variants is this module about" is one question, and each place that asked it
+read its own list of tables. `manifest.stats.genes` and the enricher's `module_genes` read `variants.csv` plus every
+gene-bearing table kind; the enricher's frequency, clinical-assertion and GWAS passes ask about every locus table; the
+study-orphan check read three tables and the rows a meta member reached; and the derived-row orphan checks read
+`variants.csv` alone and returned nothing without one. So `apoe_klvs_meta` warned "gene_metrics.csv names 1 gene(s)
+this module never mentions: ['APOE']" while its own manifest listed APOE in `stats.genes`, and a PGx-only module's
+fact tables were never checked at all.
+
+**Instances (re-verified on `0.8` at `0a5293b`; all held), before → after:**
+
+1. `fact_checks._cross_check_gene_metrics` — `{v.gene for v in variants}`, `[]` without `variants.csv` → `subjects.names_gene`.
+2. `fact_checks._cross_check_gene_validity` — the same line → the same predicate.
+3. `fact_checks._cross_check_frequencies` — positions of `variants` only → `subjects.sits_at`.
+4. `fact_checks._cross_check_clinical_assertions` — the same → `subjects.sits_at`.
+5. `fact_checks._cross_check_gwas_effects` — `variant_key`/`rsid` of `variants` only → `subjects.carries`.
+6. `table_checks._cross_validate_studies` — `variants` + `haplotypes.csv` + `pharm_variants.csv` + meta-reached rows,
+   with `heteroplasmy.csv` missing → the locus roster; the meta arm is gone because a member reaches rows of
+   `meta.LOCUS_TABLES` only, each already on the roster (a test asserts the inclusion).
+7. `fact_checks.resolution_target_survives` — the authored half placed `variants.csv` rows only, while `reverse` writes a
+   `resolution.csv` row for every placed positional row (RM43): an `overrides.csv` correction aimed at a positioned
+   `heteroplasmy.csv` row was "no artifact of this module can carry" on lap 1 and matched on lap 2 (reproduced on
+   `mt_heteroplasmy`) → `subjects.placed`.
+8. `manifest.module_stats` — its own loop over `_GENE_BEARING_TABLE_KINDS` → `module_subjects(...).genes` (no answer moves).
+9. `enricher.gene_metrics.module_genes` — its scope was every gene table minus the non-kind registry, stated beside the
+   compiler's → the difference from `MODULE_GENE_TABLES`, and the answer is `module_subjects(...).gene_symbols`.
+10. `enricher.enrich.subjects.SUBJECT_TABLES` — a hand list; left as it is (its order is precedence and each table has
+    its own subject shape) and pinned equal to `MODULE_LOCUS_TABLES` plus `studies.csv`.
+
+**Checked and held:** `_cross_check_clin_sig_concordance` reads `variants.csv` because its pass
+(`clinical.compare_clin_sig`) compares only `variants.csv`'s `clin_sig`; `_check_ba1_lint` (a `variants.csv` claim);
+`pgx._module_genes` (whether the star-allele tables are present, not the module's genes); `litvar.module_loci` and
+`check_identifiers` (every id any authored table writes, `studies.csv` and `model_organisms.csv` included, on purpose).
+
+**The mechanism.** `just_dna_compiler.compiler.subjects`: `MODULE_GENE_TABLES` and `MODULE_LOCUS_TABLES`, derived from
+`_TABLE_KINDS`, and `module_subjects(rows_by_table)` returning `ModuleSubjects` (genes as written, `gene_symbols` split on
+`MULTI_SEP`, positions, identities, placed keys, and `genes_unknown`/`loci_unknown`, which withhold when a roster table is
+present and loaded no row). A table off the rosters is ignored, so `model_organisms.csv`'s gene stays out by
+construction. Each check keeps its join (gene, `chrom:start:ref`, `variant_key`/`rsid`) and every pinned sentence;
+the study warning's tail is now read off the roster.
+
+**The guard.** Equalities: the rosters against the registry walk; the enricher's gene tables against
+`MODULE_GENE_TABLES`; `SUBJECT_TABLES` less `studies.csv` against `MODULE_LOCUS_TABLES`; meta's `LOCUS_TABLES` within the
+locus roster. And per reference example (all 22): the gene rows `module_genes` asks about, the loci the frequency pass
+asks about and the rsIDs the GWAS pass asks about, plus one decoy each, are compiled, and the orphan findings name the
+decoy and nothing else; `stats.genes` split equals `module_genes`. Mutating the compile's subjects back to `variants.csv`
+turns 10 of these red; narrowing the enricher's gene scope turns the roster equality red.
+
+**Measured** (validate and compile over every reference example, before and after): no warning gained or lost, and
+`stats.genes` unchanged on all 22 — no shipped module carries a fact table about a gene or locus outside `variants.csv`.
+
+**Residuals** won't fix — gene symbols compare as written here; folding case and space is the gene-key class (the
+audit's class 3), not this one.
+
 ## RM270 — an indel's artifact key is its source's spelling: a left-aligned VCF misses a respelled row, and the spelling-independent id the enricher mints never reaches the artifact
 
 **0.8, decided 2026-11-03.** Taken into 0.8 by the maintainer, with the rest of the indel-placement fixes (RM304, RM267, RM270, RM292, RM305). The status line below predates that decision.
