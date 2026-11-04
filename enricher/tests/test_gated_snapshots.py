@@ -606,7 +606,9 @@ def test_every_live_client_reads_the_floor_rather_than_a_frozen_constant(
         # body caught `httpx.HTTPError`, an ancestor of both retried types, so the retry was
         # unreachable and this roster recorded a budget nothing spent.
         "literature.CrossrefClient._request",
-        "literature.EuropePmcClient._get",
+        # `_fetch`, not `_get`, since RM349: the preprint repository is a second Europe PMC host, so
+        # the retried inner takes a URL and `_get` builds the REST one on top of it.
+        "literature.EuropePmcClient._fetch",
         "literature.PmcIdConverterClient._get",
         "literature.PmcBiocClient._get",
         # RM163's fourth registry. Same split as `identifiers.OntologyClient` above — the
