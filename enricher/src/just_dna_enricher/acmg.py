@@ -61,7 +61,6 @@ whereas a hand-kept gene list would make specific, confident, wrong claims about
 
 import csv
 import html
-import json
 import logging
 import re
 from dataclasses import dataclass, field
@@ -71,6 +70,7 @@ import httpx
 from just_dna_compiler.compiler import load_spec_variants
 from just_dna_format.manifest import VerificationRecord
 from just_dna_format.normalize import now_utc_iso
+from just_dna_format.snapshot import read_release
 from just_dna_format.spec import VariantRow
 
 from just_dna_enricher.locations import (
@@ -547,11 +547,11 @@ def load_acmg_snapshot(snapshot_dir: Path) -> AcmgSfList:
             f"expected) — build one with `just-dna-enricher acmg build <workbook.xlsx> <dir>`",
             skip="no_reference",
         )
-    release = json.loads(release_path.read_text(encoding="utf-8"))
-    version = release.get("sf_version")
-    if not version:
+    release = read_release(snapshot_dir)
+    version = release.sf_version if release is not None else None
+    if release is None or not version:
         raise AcmgListUnavailable(
-            f"{release_path} records no sf_version — the snapshot cannot be reported against",
+            f"{release_path} records no sf_version (or cannot be read) — the snapshot cannot be reported against",
             skip="no_reference",
         )
 
@@ -586,13 +586,13 @@ def load_acmg_snapshot(snapshot_dir: Path) -> AcmgSfList:
         version,
         len({f.gene for f in findings}),
         len(findings),
-        release.get("source_sha256", "?"),
+        release.source_sha256 or "?",
     )
     return AcmgSfList(
         version=str(version),
         findings=findings,
-        retrieved_at=release.get("built_at", ""),
-        source_url=release.get("source_url", str(snapshot_dir)),
+        retrieved_at=release.built_at or "",
+        source_url=release.source_url if isinstance(release.source_url, str) else str(snapshot_dir),
     )
 
 

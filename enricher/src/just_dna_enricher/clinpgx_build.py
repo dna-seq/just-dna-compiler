@@ -38,7 +38,6 @@ per-archive creation date is the only honest `dataset` label.
 import csv
 import hashlib
 import io
-import json
 import logging
 import re
 import zipfile
@@ -50,8 +49,9 @@ from pathlib import Path
 import httpx
 from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
+from just_dna_format.snapshot import SnapshotRelease, write_release
 
-from just_dna_enricher.locations import RELEASE_FILENAME, SNAPSHOT_LICENSE_FILENAME
+from just_dna_enricher.locations import SNAPSHOT_LICENSE_FILENAME
 from just_dna_enricher.net import stream_to_file
 
 try:  # polars is a `[dev]` dependency — the runtime pass reads parquet, only the builder writes it
@@ -406,20 +406,20 @@ def build_snapshot(
         atomic_write_text((out_dir / SNAPSHOT_LICENSE_FILENAME), license_text)
     genes = sorted({r["gene"] for r in records if r["gene"]})
     digest = source_sha256 or _sha256_file(zip_path)
-    release = {
-        "source_url": source_url,
-        "source_sha256": digest,
-        "created_date": created,
-        "dataset": f"clinpgx_{created}" if created else "clinpgx",
-        "license_sha256": license_sha,
-        "row_count": len(records),
-        "annotation_count": len(by_id),
-        "built_at": now_utc_iso(),
-    }
+    release = SnapshotRelease(
+        source_url=source_url,
+        source_sha256=digest,
+        created_date=created,
+        dataset=f"clinpgx_{created}" if created else "clinpgx",
+        license_sha256=license_sha,
+        row_count=len(records),
+        annotation_count=len(by_id),
+        built_at=now_utc_iso(),
+        # Stated only when the dates were probed: an unprobed archive date is not a null one.
+        **({"archive_last_modified": dict(archive_dates.dates)} if archive_dates is not None else {}),
+    )
     staleness = staleness_finding(archive_dates) if archive_dates is not None else None
-    if archive_dates is not None:
-        release["archive_last_modified"] = dict(archive_dates.dates)
-    atomic_write_text((out_dir / RELEASE_FILENAME), json.dumps(release, indent=2) + "\n")
+    write_release(out_dir, release)
     if staleness:
         logger.warning("%s", staleness)
     logger.info(

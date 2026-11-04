@@ -35,6 +35,7 @@ from just_dna_enricher.caches import (
 from just_dna_enricher.cli import app
 from just_dna_enricher.clinvar import clinvar_dataset_label
 from just_dna_enricher.licensing import CLINPGX_TERMS
+from just_dna_format.snapshot import release_label as snapshot_release_label
 from typer.testing import CliRunner
 
 _SRC = Path(caches.__file__).parent
@@ -172,12 +173,12 @@ def test_the_lane_that_reads_its_release_differently_is_exactly_the_one_named() 
     """The exception is enumerated, so it cannot quietly grow — the shape `build_command` needed.
 
     A second lane that stops writing `dataset` should have to say so here rather than start printing
-    a blank label, which is how this one went unnoticed.
+    a blank label, which is how ClinVar's went unnoticed. Since RM303 the set is empty: ClinVar's
+    builder writes `dataset`, and the snapshot model reads an older ClinVar release's
+    `clinvar_file_date` through the same formula, so its override went.
     """
-    from just_dna_enricher.caches import _dataset_label
-
-    overridden = {lane.name for lane in CACHE_LANES if lane.release_label is not _dataset_label}
-    assert overridden == {"clinvar"}
+    overridden = {lane.name for lane in CACHE_LANES if lane.release_label is not snapshot_release_label}
+    assert overridden == set()
 
 
 def test_the_clinvar_label_is_the_one_the_drafter_writes(tmp_path: Path) -> None:
@@ -1030,7 +1031,7 @@ def test_a_present_lane_reports_its_release_or_that_the_release_is_unreadable(
 ) -> None:
     """Present-and-unreadable is a provenance failure, not a data failure, and the field says which."""
     # Two lanes that read `dataset`; ClinVar reads a different key and is pinned by its own test.
-    named, broken = [lane for lane in CACHE_LANES if lane.release_label is caches._dataset_label][:2]
+    named, broken = [lane for lane in CACHE_LANES if lane.release_label is snapshot_release_label][:2]
     for lane, release_text in ((named, json.dumps({"dataset": "probe_2026-09-11"})), (broken, "{not json")):
         directory = tmp_path / lane.name
         (directory / "data").mkdir(parents=True)
@@ -1106,7 +1107,7 @@ def test_provisioning_closure_is_parents_first_in_registry_order() -> None:
 def test_a_present_lane_reports_its_size_and_an_absent_one_reports_none(
     tmp_path: Path, monkeypatch, no_ambient_caches: Path
 ) -> None:
-    lane = next(member for member in CACHE_LANES if member.release_label is caches._dataset_label)
+    lane = next(member for member in CACHE_LANES if member.release_label is snapshot_release_label)
     directory = tmp_path / lane.name
     (directory / "data").mkdir(parents=True)
     (directory / "data" / "a.parquet").write_bytes(b"PAR1" * 100)

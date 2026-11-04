@@ -5,9 +5,10 @@
 from pathlib import Path
 
 import typer
+from just_dna_format.snapshot import release_label
 
 from just_dna_enricher.caches import LANES_BY_NAME
-from just_dna_enricher.locations import read_release, repro_out
+from just_dna_enricher.locations import repro_out
 from just_dna_enricher.mitomap import MitomapError
 from just_dna_enricher.mitomap_build import DEFAULT_MITOMAP_URL
 from just_dna_enricher.upload import DEFAULT_MITOMAP_REPO_ID
@@ -225,7 +226,7 @@ def mitomap_publish_(
     """
     from just_dna_enricher.upload import plan_reference_snapshot, publish_reference_snapshot
 
-    if not (read_release(snapshot_dir) or {}).get("dataset"):
+    if release_label(snapshot_dir) is None:
         typer.secho(
             "  this snapshot carries no release label (it was built from a local dump), so everyone "
             "who pulls it inherits a comparison that cannot name its own MITOMAP release.",

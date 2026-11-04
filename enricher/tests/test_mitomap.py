@@ -248,7 +248,7 @@ def test_the_snapshot_holds_one_parquet_per_table_and_counts_what_it_read(
         assert set(frame["table"].to_list()) == {table}
 
     release = json.loads((tmp_path / "out" / "release.json").read_text())
-    assert release["rows"] == result.rows
+    assert release["row_counts"] == result.rows
     assert release["dataset"] == "mitomap_2026-08-21+2026-08-19"
     # The dump's own in-band statement of when each table was curated — a different fact from the
     # file's Last-Modified, so both are recorded rather than one standing in for the other.

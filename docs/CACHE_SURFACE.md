@@ -45,7 +45,7 @@ having said it.
 | `terms` | ✅ | the `SourceTerms`, or `None`. Drives the `declared_use` gate |
 | `publish_command` | — | needed **only** when the lane has a `publish_repo` and no `rebuild` (RM202) |
 | `unpublished` / `unbuilt` | — | stated iff the stage is absent |
-| `release_label` | — | override only if `release.json`'s `dataset` is not the label |
+| `release_label` | — | override only if `release.json`'s `dataset` is not the label. **No lane overrides it** since RM303: write `dataset` through `SnapshotRelease` instead |
 | `parents` | — | for a derived lane; an absent parent is *could not run*, never an empty result. Also a **cost** fact: `provisioning_closure` prices the lane by its parents |
 | `approx_mb` | ✅ | the provisioned size as an order of magnitude in whole MB, rounded up (`1` = at most a megabyte). Measured, never guessed; a test re-measures it against every snapshot the box holds (RM229) |
 
@@ -109,8 +109,11 @@ the point of the list is to not need the suite to find out.
       capability — that is the whole of RM202
 
 **Data and terms**
-- [ ] any root-level file the snapshot needs is in `SNAPSHOT_ROOT_FILENAMES`, with `release.json`
-      last (`test_a_publish_carries_the_knot_table_and_not_only_the_scores`)
+- [ ] any root-level file the snapshot needs is in `SNAPSHOT_ROOT_FILENAMES` (in `just_dna_format.snapshot`
+      since 0.8), with `release.json` last (`test_a_publish_carries_the_knot_table_and_not_only_the_scores`)
+- [ ] the builder writes `release.json` with `write_release(out_dir, SnapshotRelease(dataset=…, …))`, never
+      a hand-built dict, and names its release in `dataset`
+      (`test_release_json_through_the_model.py::test_every_builder_writes_through_the_model`)
 - [ ] `terms` is a `SourceTerms` whose permission axes are each either **documented** or recorded as
       a **reading**, and the difference is written down somewhere — `sources.csv` shows only booleans
       (`test_the_three_permission_axes_each_rest_on_a_different_kind_of_ground`)

@@ -132,7 +132,7 @@ def test_every_input_row_reaches_the_parquet(built) -> None:
     _, frames, release = built
     for name in MANE_TABLE_NAMES:
         assert frames[name].height == len(_raw_rows(INPUTS[name])), name
-    assert release["rows"] == {name: frames[name].height for name in MANE_TABLE_NAMES}
+    assert release["row_counts"] == {name: frames[name].height for name in MANE_TABLE_NAMES}
 
 
 def test_the_registry_and_the_written_files_agree(built) -> None:
@@ -144,7 +144,7 @@ def test_the_registry_and_the_written_files_agree(built) -> None:
     out, frames, release = built
     written = {path.name for path in (out / "data").glob("*.parquet")}
     assert written == {table.parquet for table in MANE_TABLES}
-    assert set(frames) == set(MANE_TABLE_NAMES) == set(release["rows"])
+    assert set(frames) == set(MANE_TABLE_NAMES) == set(release["row_counts"])
 
 
 def test_mane_status_is_a_column_and_the_plus_clinical_rows_survive(built) -> None:
@@ -476,7 +476,7 @@ def test_release_json_is_readable_by_the_cache_reader(built) -> None:
     out, _, _ = built
     payload = locations.read_release(out)
     assert payload is not None
-    assert payload["dataset"].startswith("mane_grch38_v")
+    assert payload.dataset is not None and payload.dataset.startswith("mane_grch38_v")
 
 
 # ── the command surface ─────────────────────────────────────────────────────────────────────────

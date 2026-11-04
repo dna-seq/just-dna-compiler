@@ -2686,7 +2686,7 @@ field; every other key rides in `extra="allow"` and survives a rewrite unchanged
 | Field | Type | Read by |
 |---|---|---|
 | `dataset` | `str` | the release label: `cache status`, every pass that stamps `SourceRow.dataset` |
-| `source_url`, `source_sha256` | `str` | ACMG, STRchive, the ClinVar label's digest fallback, `mitomap_miss`'s parent pin |
+| `source_url`, `source_sha256` | `str`, or `dict[str, str \| None]` per input (MANE) | ACMG, STRchive, the ClinVar label's digest fallback, `mitomap_miss`'s parent pin |
 | `built_at`, `builder_version` | `str` | ACMG's verification record (`built_at`); every builder writes both |
 | `license`, `license_sha256` | `str` | ClinPGx's licence-hash stamp (`license_sha256`) |
 | `row_count`, `row_counts` | `int`, `dict[str, int]` | `mitomap_miss`'s parent pin |
@@ -2725,7 +2725,9 @@ warning for the second. **`write_release(dir, release)`** is the one way a build
 atomic, sorted keys, newline-terminated. An AST walk over the enricher's `*_build.py` refuses any other
 write of `release.json` (`enricher/tests/test_release_json_through_the_model.py`).
 **`holds_snapshot_payload(dir, *, payload_filename=None)`** is the payload predicate: a directory holding
-only `release.json`, or nothing, is not a snapshot.
+only `release.json`, or nothing, is not a snapshot. **`release_label(dir)`** is the one reader of the
+label (`dataset`, stripped, `None` when blank or unstated), and **`release_is_unreadable(dir)`** tells a
+present-and-unreadable record from an absent one, for the caller that reports or must not overwrite it.
 
 ## The release record (0.7, RM126) — what a release changed about compiled output
 

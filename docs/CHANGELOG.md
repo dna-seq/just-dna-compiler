@@ -41,6 +41,21 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM303: the snapshot layout and `release.json`'s model move into `just-dna-format` (0.8, uncut)
+
+**format, enricher** — New module `just_dna_format.snapshot`: the reference-snapshot layout names
+(`data/`, the sidecar and root-filename tuples, `LICENSE.txt`, `release.json`, the two named payload files),
+`SnapshotRelease`, the model of `release.json`, and `read_release` / `write_release` / `release_label` /
+`release_is_unreadable` / `holds_snapshot_payload`. A Goals amendment records that the format package also
+defines this layout. `just_dna_enricher.locations` imports the names, so imports from there keep working,
+but **`read_release` now returns a `SnapshotRelease` or `None`, not a dict**. Every builder writes
+`release.json` through `write_release`, and an AST walk refuses a hand-built one. Keys are written in
+one spelling: `license` (CIViC wrote `licence`), `row_count` for a total and `row_counts` for a per-file
+map (three builders wrote `rows` for one or the other); the old spellings of published snapshots are read
+and never written. ClinVar's builder now writes `dataset`, and a ClinVar snapshot built before reads its
+label from `clinvar_file_date` through the same formula, so `CacheLane.release_label`'s ClinVar override
+is gone and `cache status` prints the same labels. See [INTEGRATION_0_8 § 1.5](INTEGRATION_0_8.md).
+
 ## 2026-11-04 — RM340: the VRS-coverage warning points at the record that explains its no-ALT rows (patch, on `main`)
 
 **compiler, enricher** — When an attested `verification.json` carries an `rsid_coordinate_agreement` record

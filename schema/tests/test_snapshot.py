@@ -25,6 +25,8 @@ from just_dna_format.snapshot import (
     clinvar_release_label,
     holds_snapshot_payload,
     read_release,
+    release_is_unreadable,
+    release_label,
     write_release,
 )
 
@@ -43,8 +45,16 @@ def test_absent_and_unreadable_are_both_none(tmp_path: Path) -> None:
     (broken / RELEASE_FILENAME).write_text('{"dataset": ', encoding="utf-8")
     assert read_release(broken) is None
     assert read_release(_release_file(tmp_path / "list", ["dataset"])) is None
-    # A file whose typed key holds a value of the wrong kind is unreadable, not half-read.
-    assert read_release(_release_file(tmp_path / "mistyped", {"row_count": {"a": "b"}})) is None
+
+    # A typed key holding the wrong kind of value costs that key, never the record: the label survives,
+    # and the record is reported as not read whole, so a merging writer leaves it alone.
+    mistyped = _release_file(
+        tmp_path / "mistyped", {"dataset": "civic_01-Sep-2026", "parents": {"x": "not-a-block"}, "licence": 7}
+    )
+    partial = read_release(mistyped)
+    assert partial is not None
+    assert (partial.dataset, partial.parents, partial.license) == ("civic_01-Sep-2026", None, None)
+    assert release_is_unreadable(mistyped) is True
 
 
 def test_an_unstated_key_is_none_and_never_a_default(tmp_path: Path) -> None:
@@ -179,3 +189,39 @@ def test_the_payload_predicate_reads_the_payload_not_the_directory(tmp_path: Pat
 def test_the_description_is_the_last_root_file() -> None:
     """RM199: `release.json` must never arrive before the bytes it describes."""
     assert SNAPSHOT_ROOT_FILENAMES[-1] == RELEASE_FILENAME
+
+
+def test_the_release_label_is_the_stated_dataset_or_none(tmp_path: Path) -> None:
+    assert (
+        release_label(_release_file(tmp_path / "stated", {"dataset": " mane_grch38_v1.5 "}))
+        == "mane_grch38_v1.5"
+    )
+    assert release_label(_release_file(tmp_path / "blank", {"dataset": "  "})) is None
+    assert release_label(_release_file(tmp_path / "null", {"dataset": None})) is None
+    assert release_label(_release_file(tmp_path / "unstated", {"built_at": "x"})) is None
+    assert release_label(tmp_path / "absent") is None
+    old_clinvar = _release_file(tmp_path / "clinvar", {"clinvar_file_date": "2026-06-27"})
+    assert release_label(old_clinvar) == "clinvar_2026-06-27"
+
+
+def test_a_snapshot_built_from_several_inputs_states_its_provenance_per_input(tmp_path: Path) -> None:
+    """MANE's shape, found by reading the real snapshot: one URL and one digest per downloaded file."""
+    stated = {
+        "source_url": {"summary": "https://ftp.ncbi.nlm.nih.gov/x.summary.txt.gz", "changed": None},
+        "source_sha256": {"summary": "d10a", "README_versions.txt": "2c9c"},
+        "rows": {"summary": 19437, "changed": 120},
+    }
+    release = read_release(_release_file(tmp_path / "mane", stated))
+    assert release is not None
+    assert release.source_url == stated["source_url"]
+    assert release.source_sha256 == stated["source_sha256"]
+    assert release.row_counts == stated["rows"]
+
+
+def test_unreadable_is_told_apart_from_absent(tmp_path: Path) -> None:
+    assert release_is_unreadable(tmp_path / "absent") is False
+    assert release_is_unreadable(_release_file(tmp_path / "fine", {"dataset": "x"})) is False
+    broken = tmp_path / "broken"
+    broken.mkdir()
+    (broken / RELEASE_FILENAME).write_text("{not json", encoding="utf-8")
+    assert release_is_unreadable(broken) is True

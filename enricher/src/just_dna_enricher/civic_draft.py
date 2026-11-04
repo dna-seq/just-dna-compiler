@@ -34,13 +34,13 @@ objection to a drafter and it is correct: a filter whose scope is narrower than 
 removed. The snapshot already counted the somatic majority; this counts what it withholds on top.
 """
 
-import json
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from just_dna_compiler.draft import DraftReport, PartialRow, append_partial_rows
+from just_dna_format.snapshot import SnapshotRelease, read_release
 from just_dna_format.spec import StudyRow, VariantRow
 from just_dna_format.vrs import UnsupportedBuildError, refget_accession
 
@@ -50,7 +50,7 @@ from just_dna_enricher.clingen_allele import ClingenAlleleClient, anchor_indel
 from just_dna_enricher.drafting import DRAFT_PROVIDERS, licence_commit, record_draft_provenance
 from just_dna_enricher.drafting import identity_refused_by_model as scaffold_identity_refused
 from just_dna_enricher.licensing import CIVIC_TERMS, CLINGEN_ALLELE_REGISTRY_TERMS
-from just_dna_enricher.locations import RELEASE_FILENAME, resolve_civic_reference
+from just_dna_enricher.locations import resolve_civic_reference
 from just_dna_enricher.sequences import SequenceProxy, _left_align
 from just_dna_enricher.verification import examples
 
@@ -173,25 +173,17 @@ def _snapshot_rows(reference: Path) -> list[dict]:
         return pq.read_table(parquet).to_pylist()
 
 
-def _release_payload(reference: Path | None) -> dict:
-    """A snapshot's own `release.json`, or `{}` when there is none or it cannot be read.
+def _release_payload(reference: Path | None) -> SnapshotRelease:
+    """A snapshot's own `release.json`, or an empty record when there is none or it cannot be read.
 
     One reader for both keys this module wants — `dataset` and `status_basis` — because the path rule
     (a directory means the snapshot root, a file means the parquet two levels down) is the sort of
     thing that gets copied and then diverges.
     """
     if reference is None:
-        return {}
-    release = (
-        reference / RELEASE_FILENAME if reference.is_dir() else reference.parent.parent / RELEASE_FILENAME
-    )
-    if not release.exists():
-        return {}
-    try:
-        payload = json.loads(release.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return payload if isinstance(payload, dict) else {}
+        return SnapshotRelease()
+    root = reference if reference.is_dir() else reference.parent.parent
+    return read_release(root) or SnapshotRelease()
 
 
 def civic_dataset_label(reference: Path | None) -> str | None:
@@ -199,7 +191,7 @@ def civic_dataset_label(reference: Path | None) -> str | None:
 
     `None` is an unknown release, never a fabricated one — the same answer the sibling labels give.
     """
-    return _release_payload(reference).get("dataset")
+    return _release_payload(reference).dataset
 
 
 def identity_refused_by_model(cells: dict) -> str | None:
@@ -313,7 +305,7 @@ def _study_row(row: dict) -> PartialRow | None:
 
 def _snapshot_status_basis(reference: Path) -> str | None:
     """`status_basis` from the snapshot's own `release.json`, or `None` when it states none."""
-    return _release_payload(reference).get("status_basis")
+    return _release_payload(reference).status_basis
 
 
 def _note_refuted(result: "CivicDraftResult", row: dict, refuting: dict[int, list[str]]) -> None:

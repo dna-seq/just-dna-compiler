@@ -22,7 +22,7 @@ Goal 1 scoped `just-dna-format` to "annotation modules", and a reference snapsho
 principle forbade moving the snapshot layout down into this package: it brings no network and no new
 dependency (pydantic and the standard library, plus the package's own atomic writer). But it widens
 what the package is for, so it is recorded as a deliberate amendment rather than as a side effect of
-[RM303](ROADMAP_HISTORY.md).
+[RM303](ROADMAP_HISTORY.md#rm303--the-snapshot-layout-is-a-contract-with-six-parties-and-no-model-so-it-belongs-in-just-dna-format).
 
 **What broke.** A snapshot is `data/*.parquet`, optional sidecars, `LICENSE.txt` and `release.json`, and
 six parties have to agree on those names: the builder, the publisher, the provisioner, the resolver, the

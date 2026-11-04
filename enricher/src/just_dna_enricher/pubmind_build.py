@@ -42,7 +42,6 @@ Builder-only: `polars` is a guarded `[dev]` import, exactly as in the sibling bu
 import csv
 import gzip
 import hashlib
-import json
 import logging
 import math
 import re
@@ -51,11 +50,11 @@ from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
+from just_dna_format.snapshot import SnapshotRelease, write_release
 
 from just_dna_enricher.clin_sig import normalize_clin_sig
-from just_dna_enricher.locations import RELEASE_FILENAME, SNAPSHOT_DATA_DIRNAME
+from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME
 from just_dna_enricher.net import stream_to_file
 
 try:  # the one guarded optional import (CLAUDE.md): polars is builder-only ([dev] extra)
@@ -497,25 +496,25 @@ def _write_release_json(
     off local disk — unknown rather than absent, which is why they are recorded as null instead of
     omitted, and why none of them takes a default the build did not establish.
     """
-    release = {
-        "source_url": source_url,
-        "source_sha256": result.source_sha256,
-        "dataset": result.dataset,
-        "source_etag": source_etag,
-        "source_last_modified": source_last_modified,
-        "genome_build": PUBMIND_GENOME_BUILD,
-        "input_rows": result.input_rows,
-        "record_count": result.record_count,
-        "dropped": result.dropped,
-        "derivations": result.derivations,
-        "allele_keys": result.allele_keys,
-        "multi_pvid_keys": result.multi_pvid_keys,
-        "max_pvids_per_key": result.max_pvids_per_key,
-        "contested_keys": result.contested_keys,
-        "unparsable_score": result.unparsable_score,
-        "unparsable_confidence": result.unparsable_confidence,
-        "redistributable": False,
-        "notice": (
+    release = SnapshotRelease(
+        source_url=source_url,
+        source_sha256=result.source_sha256,
+        dataset=result.dataset,
+        source_etag=source_etag,
+        source_last_modified=source_last_modified,
+        genome_build=PUBMIND_GENOME_BUILD,
+        input_rows=result.input_rows,
+        record_count=result.record_count,
+        dropped=result.dropped,
+        derivations=result.derivations,
+        allele_keys=result.allele_keys,
+        multi_pvid_keys=result.multi_pvid_keys,
+        max_pvids_per_key=result.max_pvids_per_key,
+        contested_keys=result.contested_keys,
+        unparsable_score=result.unparsable_score,
+        unparsable_confidence=result.unparsable_confidence,
+        redistributable=False,
+        notice=(
             "The ANNOVAR-distributed PubMind table is CC BY-NC-ND 4.0 (WGLab, in writing, "
             "2026-09-28). This snapshot decomposes and normalizes it, which makes it adapted material "
             "NoDerivatives forbids sharing, so it is operator-built and inject-only: do not publish or "
@@ -523,12 +522,10 @@ def _write_release_json(
             "verdict here is an LLM's reading of the literature, and a PVID is a record id keyed on "
             "extracted text rather than on a coordinate."
         ),
-        "built_at": now_utc_iso(),
-        "builder_version": _builder_version(),
-    }
-    path = out_dir / RELEASE_FILENAME
-    atomic_write_text(path, json.dumps(release, indent=2, sort_keys=True) + "\n")
-    return path
+        built_at=now_utc_iso(),
+        builder_version=_builder_version(),
+    )
+    return write_release(out_dir, release)
 
 
 def _builder_version() -> str:

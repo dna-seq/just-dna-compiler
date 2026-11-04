@@ -110,6 +110,28 @@ _OLD_ROWS_KEY = "rows"
 _CLINVAR_DATE_KEY = "clinvar_file_date"
 
 
+def _canonical(data: dict) -> dict:
+    """A raw `release.json` object with its old spellings mapped onto the canonical keys."""
+    data = dict(data)
+    if _OLD_LICENSE_KEY in data:
+        data.setdefault("license", data.pop(_OLD_LICENSE_KEY))
+    if _OLD_ROWS_KEY in data:
+        rows = data[_OLD_ROWS_KEY]
+        # A map is per payload file and a number is a total: two fields, never one overloaded one.
+        if isinstance(rows, dict):
+            data.setdefault("row_counts", data.pop(_OLD_ROWS_KEY))
+        elif rows is None or (isinstance(rows, int) and not isinstance(rows, bool)):
+            data.setdefault("row_count", data.pop(_OLD_ROWS_KEY))
+    if "dataset" not in data and _CLINVAR_DATE_KEY in data:
+        digest = data.get("source_sha256")
+        label = clinvar_release_label(
+            data.get(_CLINVAR_DATE_KEY), digest if isinstance(digest, str) else None
+        )
+        if label is not None:
+            data["dataset"] = label
+    return data
+
+
 class SnapshotRelease(BaseModel):
     """A snapshot's `release.json`: the keys some reader reads are typed, every other key rides along.
 
@@ -124,9 +146,11 @@ class SnapshotRelease(BaseModel):
 
     #: The release label: which release of the source this snapshot holds.
     dataset: str | None = None
-    #: Where the bytes came from, and their digest.
-    source_url: str | None = None
-    source_sha256: str | None = None
+    #: Where the bytes came from, and their digest. One per input, keyed by the input's name, for a
+    #: snapshot built from several downloads (MANE); a per-input `None` is an input that came off
+    #: local disk, whose origin the build did not see.
+    source_url: str | dict[str, str | None] | None = None
+    source_sha256: str | dict[str, str | None] | None = None
     #: When and by which builder version the snapshot was cut.
     built_at: str | None = None
     builder_version: str | None = None
@@ -153,56 +177,88 @@ class SnapshotRelease(BaseModel):
     @classmethod
     def _read_old_spellings(cls, data: Any) -> Any:
         """Map the old spellings onto the canonical fields. The canonical key wins when both are stated."""
-        if not isinstance(data, dict):
-            return data
-        data = dict(data)
-        if _OLD_LICENSE_KEY in data:
-            data.setdefault("license", data.pop(_OLD_LICENSE_KEY))
-        if _OLD_ROWS_KEY in data:
-            rows = data[_OLD_ROWS_KEY]
-            # A map is per payload file and a number is a total: two fields, never one overloaded one.
-            if isinstance(rows, dict):
-                data.setdefault("row_counts", data.pop(_OLD_ROWS_KEY))
-            elif rows is None or (isinstance(rows, int) and not isinstance(rows, bool)):
-                data.setdefault("row_count", data.pop(_OLD_ROWS_KEY))
-        if "dataset" not in data and _CLINVAR_DATE_KEY in data:
-            label = clinvar_release_label(data.get(_CLINVAR_DATE_KEY), data.get("source_sha256"))
-            if label is not None:
-                data["dataset"] = label
-        return data
+        return _canonical(data) if isinstance(data, dict) else data
 
     def to_json(self) -> str:
         """The bytes `write_release` puts on disk: the set keys only, sorted, newline-terminated."""
         return json.dumps(self.model_dump(mode="json", exclude_unset=True), indent=2, sort_keys=True) + "\n"
 
 
+def _load(path: Path) -> tuple[dict | None, str | None]:
+    """The parsed JSON object at `path`, or `None` and why it is not one."""
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return None, str(exc)
+    if not isinstance(payload, dict):
+        return None, "not a JSON object"
+    return payload, None
+
+
 def read_release(reference: Path) -> SnapshotRelease | None:
     """A snapshot directory's `release.json` as a `SnapshotRelease`, or `None` when absent or unreadable.
 
     `None` is the answer for both, as it was when this returned a dict: a caller must not be able to
-    mistake "this snapshot does not say" for a release, so callers branch on `None`. Unreadable
-    covers a file that does not parse, one that is not a JSON object, and one whose typed key holds a
-    value of the wrong kind. Each is logged, because a provenance failure is not a data failure and
-    the snapshot itself stays usable.
+    mistake "this snapshot does not say" for a release, so callers branch on `None`. Unreadable is a
+    file that does not parse, or one that is not a JSON object.
+
+    **A typed key holding the wrong kind of value costs that key, never the record.** It is read as
+    unstated and the warning names it; every other key, the label included, is still read. The
+    snapshot's own provenance is worth more than one malformed count. `release_is_unreadable` says
+    whether a record was read whole, for the writer that must not replace a file it could not read.
     """
     path = Path(reference) / RELEASE_FILENAME
     if not path.is_file():
         return None
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        logger.warning("Could not read %s (%s); treating the release as unstated.", path, exc)
+    payload, problem = _load(path)
+    if payload is None:
+        logger.warning("Could not read %s (%s); treating the release as unstated.", path, problem)
         return None
-    if not isinstance(payload, dict):
-        logger.warning("%s is not a JSON object; treating the release as unstated.", path)
-        return None
+    canonical = _canonical(payload)
     try:
-        return SnapshotRelease.model_validate(payload)
+        return SnapshotRelease.model_validate(canonical)
     except ValidationError as exc:
-        logger.warning(
-            "%s does not fit the snapshot record (%s); treating the release as unstated.", path, exc
-        )
+        bad = sorted({str(error["loc"][0]) for error in exc.errors() if error["loc"]})
+        logger.warning("%s: %s do not fit the snapshot record; read as unstated.", path, ", ".join(bad))
+    try:
+        return SnapshotRelease.model_validate({k: v for k, v in canonical.items() if k not in bad})
+    except ValidationError:
         return None
+
+
+def release_is_unreadable(reference: Path) -> bool:
+    """Whether `reference` holds a `release.json` that cannot be read whole.
+
+    Present and not parseable, not an object, or with a typed key `read_release` had to drop. Told
+    apart from absence for the caller that has to act on it: a provenance failure is not a data
+    failure, so the snapshot stays usable and says so; and a writer merging into the file must leave
+    it alone rather than replace the only statement of where the data came from. Logs nothing:
+    `read_release` is where the warning is said.
+    """
+    path = Path(reference) / RELEASE_FILENAME
+    if not path.is_file():
+        return False
+    payload, _ = _load(path)
+    if payload is None:
+        return True
+    try:
+        SnapshotRelease.model_validate(payload)
+    except ValidationError:
+        return True
+    return False
+
+
+def release_label(reference: Path) -> str | None:
+    """The release a snapshot directory states, its `dataset`, or `None` when it states none.
+
+    The one reader of the label, for `cache status` and for every pass that stamps it onto
+    `SourceRow.dataset`, so a reader of the cache and a reader of a module see the same string. No
+    fallback and no guess: a blank, absent or unreadable label is an unknown, and an unknown is
+    withheld rather than written as a label something could match.
+    """
+    release = read_release(reference)
+    label = (release.dataset or "").strip() if release is not None else ""
+    return label or None
 
 
 def write_release(directory: Path, release: SnapshotRelease) -> Path:

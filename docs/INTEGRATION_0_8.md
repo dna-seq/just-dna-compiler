@@ -59,7 +59,24 @@ COMPILER.md § The phrases, under *retired*, for grepping old manifests.
 
 | Key | Item | What it holds |
 | --- | --- | --- |
-| `archive_last_modified` in the ClinPGx snapshot's `release.json` | RM283 | `Last-Modified` of the lane's archive and its sibling archives at build time (name → ISO date, `null` where the `HEAD` did not answer). Absent on a snapshot built from a local archive. RM303 will give `release.json` a model on this branch; this key is one it has to carry. |
+| `archive_last_modified` in the ClinPGx snapshot's `release.json` | RM283 | `Last-Modified` of the lane's archive and its sibling archives at build time (name → ISO date, `null` where the `HEAD` did not answer). Absent on a snapshot built from a local archive. Carried by `SnapshotRelease` as an extra key (§ 1.5). |
+
+## 1.5 The reference-snapshot contract moves into `just-dna-format` (RM303)
+
+A new module, **`just_dna_format.snapshot`**, holds what a reference snapshot looks like on disk: the
+layout names (`SNAPSHOT_DATA_DIRNAME`, `SNAPSHOT_SIDECAR_DIRNAMES`, `CITATIONS_DIRNAME`,
+`RELEASE_FILENAME`, `SNAPSHOT_LICENSE_FILENAME`, `SNAPSHOT_ROOT_FILENAMES`, the two named payload files),
+**`SnapshotRelease`**, the model of `release.json`, and `read_release`, `write_release`, `release_label`,
+`release_is_unreadable` and `holds_snapshot_payload`. A repo that wanted the layout no longer has to
+import the network tier for it. `just_dna_enricher.locations` imports every one of these names, so an
+import from there keeps working.
+
+| Surface | What changed | What to do |
+| --- | --- | --- |
+| `locations.read_release(dir)` | Returns a `SnapshotRelease` or `None`, not a `dict` or `None`. `None` still means absent **or** unreadable. | `release.get("dataset")` becomes `release.dataset`, or call `snapshot.release_label(dir)`. A caller that only tests `is None` (just-dna-marketplace's `cache status`) changes nothing. |
+| `release.json` keys | Written in the canonical spelling by every builder: `license` (CIViC wrote `licence`), `row_count` for a total (AlphaGenome AVI wrote `rows`), `row_counts` for a per-file map (MANE and MITOMAP wrote `rows`). ClinVar's now carries `dataset` (`clinvar_<fileDate>`). | A reader of the raw JSON that keys on `rows` or `licence` reads the canonical key, or reads through `SnapshotRelease`, which maps the old spellings of snapshots already published. |
+| `CacheLane.release_label` | No lane overrides it; ClinVar's per-lane reader (`clinvar_dataset_label` as the lane's `release_label`) is gone. ClinVar's label is unchanged, for snapshots built before and after 0.8. | Nothing, unless you compared `lane.release_label` against `caches._dataset_label`, which no longer exists: compare against `snapshot.release_label`. |
+| `clinpgx.load_snapshot`, `CpicSnapshotClient.release`, `PharmVarSnapshotClient.release`, `mitomap_miss_build.read_miss_release` | Return or hold a `SnapshotRelease` (empty when the file is absent), not a `dict`. | Attribute access instead of `.get`. |
 
 ## 2. What to change
 
@@ -67,3 +84,5 @@ COMPILER.md § The phrases, under *retired*, for grepping old manifests.
    manifests compiled by 0.8 (§ 1).
 2. If you key on `warnings_summary`, the new codes are listed in § 1 with their meaning, and
    `quality_floor_inverted` will stop appearing (§ 1.1).
+3. If you read a snapshot's `release.json`, through `locations.read_release` or by hand, read § 1.5:
+   the reader returns a model, and three keys are spelled differently in a snapshot built by 0.8.

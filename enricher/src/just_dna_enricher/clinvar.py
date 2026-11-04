@@ -22,8 +22,10 @@ from collections import defaultdict
 from pathlib import Path
 
 import duckdb
+from just_dna_format.snapshot import CLINVAR_DATASET_PREFIX as CLINVAR_DATASET_PREFIX
+from just_dna_format.snapshot import clinvar_release_label, read_release, release_label
 
-from just_dna_enricher.locations import CITATIONS_DIRNAME, read_release
+from just_dna_enricher.locations import CITATIONS_DIRNAME
 from just_dna_enricher.resolver import _lookup_rsid_candidates, probe_table
 
 logger = logging.getLogger(__name__)
@@ -31,11 +33,6 @@ logger = logging.getLogger(__name__)
 
 class ClinVarReferenceError(FileNotFoundError):
     """Raised when a provided ClinVar reference has no usable parquet files."""
-
-
-#: Prefix of the `SourceRow.dataset` label a ClinVar-drafted module carries, matching the existing
-#: spelling of that column (`clinpgx_2026-07-05`).
-CLINVAR_DATASET_PREFIX = "clinvar_"
 
 
 def clinvar_dataset_label(reference: Path | None) -> str | None:
@@ -48,23 +45,26 @@ def clinvar_dataset_label(reference: Path | None) -> str | None:
     silent — a writer and a reader disagreeing about the label do not fail, they simply never match,
     and a check quietly stops being skippable.
 
-    `clinvar_file_date` first, because that is what `dataset` is for ("which release the data came
-    from"). A snapshot built from a VCF whose header stated no file date still has the digest of the
-    bytes it was built from, which names the release exactly, so that is the fallback rather than a
-    gap. `None` when the snapshot cannot state its release at all — an unreadable or absent
-    `release.json` is an unknown, and an unknown is withheld rather than written as a label something
-    could match.
+    Since 0.8 (RM303) the builder writes the label as `release.json`'s `dataset`, through
+    `just_dna_format.snapshot.clinvar_release_label`: `clinvar_<##fileDate>`, else the digest of the
+    bytes, which names the release exactly. A snapshot built before that carries only
+    `clinvar_file_date`, and the snapshot model reads it through the same formula, so this is the
+    generic label reader and old and new snapshots answer alike. One case the model cannot read, because
+    nothing in the file says it is ClinVar's: a release with a digest and no `clinvar_file_date` key at
+    all. This function knows the snapshot is ClinVar's, so it applies the formula there too. `None`
+    when the snapshot cannot state its release at all — an unreadable or absent `release.json` is an
+    unknown, and an unknown is withheld rather than written as a label something could match.
     """
     if reference is None:
         return None
+    stated = release_label(Path(reference))
+    if stated is not None:
+        return stated
     release = read_release(Path(reference))
-    if not release:
+    if release is None or "dataset" in release.model_fields_set:
         return None
-    file_date = str(release.get("clinvar_file_date") or "").strip()
-    if file_date:
-        return f"{CLINVAR_DATASET_PREFIX}{file_date}"
-    digest = str(release.get("source_sha256") or "").strip().removeprefix("sha256:")
-    return f"{CLINVAR_DATASET_PREFIX}sha256:{digest}" if digest else None
+    digest = release.source_sha256 if isinstance(release.source_sha256, str) else None
+    return clinvar_release_label(release.clinvar_file_date, digest)
 
 
 def _connect(reference: Path) -> duckdb.DuckDBPyConnection:

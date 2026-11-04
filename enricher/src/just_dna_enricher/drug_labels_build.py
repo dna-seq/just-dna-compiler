@@ -30,7 +30,6 @@ body for the same reason and this follows it rather than inventing a third answe
 import csv
 import hashlib
 import io
-import json
 import logging
 import zipfile
 from dataclasses import dataclass, field
@@ -39,6 +38,7 @@ from pathlib import Path
 
 from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
+from just_dna_format.snapshot import SnapshotRelease, write_release
 
 from just_dna_enricher.clinpgx_build import read_created_date, read_license
 from just_dna_enricher.drug_labels import (
@@ -50,7 +50,6 @@ from just_dna_enricher.drug_labels import (
     DrugLabelUnavailable,
 )
 from just_dna_enricher.locations import (
-    RELEASE_FILENAME,
     SNAPSHOT_DATA_DIRNAME,
     SNAPSHOT_LICENSE_FILENAME,
 )
@@ -280,19 +279,17 @@ def _write_release_json(
     *which agencies this snapshot could answer for*, and a number computed and dropped is one every
     reader recomputes (`@dont-discard-computed`).
     """
-    release = {
-        "source": SOURCE_NAME,
-        "source_url": source_url,
-        "source_sha256": source_sha256,
-        "created_date": created_date,
-        "dataset": dataset,
-        "license_sha256": license_sha256,
-        "label_count": label_count,
-        "regulators": regulators,
-        "testing_levels": testing_levels,
-        "built_at": now_utc_iso(),
-        "builder_version": _builder_version(),
-    }
-    path = out_dir / RELEASE_FILENAME
-    atomic_write_text(path, json.dumps(release, indent=2, sort_keys=True) + "\n")
-    return path
+    release = SnapshotRelease(
+        source=SOURCE_NAME,
+        source_url=source_url,
+        source_sha256=source_sha256,
+        created_date=created_date,
+        dataset=dataset,
+        license_sha256=license_sha256,
+        label_count=label_count,
+        regulators=regulators,
+        testing_levels=testing_levels,
+        built_at=now_utc_iso(),
+        builder_version=_builder_version(),
+    )
+    return write_release(out_dir, release)

@@ -33,15 +33,14 @@ polars-free (Goal 2).
 
 import csv
 import hashlib
-import json
 import logging
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
+from just_dna_format.snapshot import SnapshotRelease, write_release
 
 from just_dna_enricher.gnomad import normalize_constraint_flags
 from just_dna_enricher.net import stream_to_file
@@ -330,16 +329,14 @@ def _write_release_json(
 ) -> Path:
     """Write ``release.json`` — the provenance beside the parquet. `built_at` is deliberately outside
     the parquet so the parquet itself stays byte-reproducible."""
-    release = {
-        "source_url": source_url,
-        "source_sha256": source_sha256,
-        "gene_count": gene_count,
-        "source_rows": source_rows,
-        "unresolved_count": unresolved_count,
-        "dataset": "gnomad_v4.1_constraint",
-        "built_at": now_utc_iso(),
-        "builder_version": _builder_version(),
-    }
-    path = out_dir / "release.json"
-    atomic_write_text(path, json.dumps(release, indent=2, sort_keys=True) + "\n")
-    return path
+    release = SnapshotRelease(
+        source_url=source_url,
+        source_sha256=source_sha256,
+        gene_count=gene_count,
+        source_rows=source_rows,
+        unresolved_count=unresolved_count,
+        dataset="gnomad_v4.1_constraint",
+        built_at=now_utc_iso(),
+        builder_version=_builder_version(),
+    )
+    return write_release(out_dir, release)

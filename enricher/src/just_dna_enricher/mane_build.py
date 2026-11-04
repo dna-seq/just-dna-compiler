@@ -64,7 +64,6 @@ Builder-only: `polars` is a guarded `[dev]` import, exactly as in the sibling bu
 import csv
 import gzip
 import hashlib
-import json
 import logging
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
@@ -72,10 +71,10 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 import httpx
-from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
+from just_dna_format.snapshot import SnapshotRelease, write_release
 
-from just_dna_enricher.locations import RELEASE_FILENAME, SNAPSHOT_DATA_DIRNAME
+from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME
 from just_dna_enricher.net import stream_to_file
 
 try:  # the one guarded optional import (CLAUDE.md): polars is builder-only ([dev] extra)
@@ -767,26 +766,26 @@ def _write_release_json(
     snapshot built from local bytes would assert a provenance this build never saw. `release_url`
     likewise names the directory that was actually fetched from, not the one a release number implies.
     """
-    release = {
-        "dataset": result.dataset,
-        "mane_release": result.release,
-        "versions": result.versions,
-        "genome_build": MANE_GENOME_BUILD,
-        "release_url": (
+    release = SnapshotRelease(
+        dataset=result.dataset,
+        mane_release=result.release,
+        versions=result.versions,
+        genome_build=MANE_GENOME_BUILD,
+        release_url=(
             mane_release_dir_url(result.release) if downloads and result.release is not None else None
         ),
-        "source_url": _per_input(downloads, "url"),
-        "source_sha256": result.source_sha256,
-        "source_etag": _per_input(downloads, "etag"),
-        "source_last_modified": _per_input(downloads, "last_modified"),
-        "rows": result.rows,
-        "mane_status_counts": result.mane_status_counts,
-        "update_affects_cds_counts": result.update_affects_cds_counts,
-        "excluded_reasons": result.excluded_reasons,
-        "unparsable_gene_id": result.unparsable_gene_id,
-        "unparsable_update_affects_cds": result.unparsable_update_affects_cds,
-        "unparsable_coordinate": result.unparsable_coordinate,
-        "notice": (
+        source_url=_per_input(downloads, "url"),
+        source_sha256=result.source_sha256,
+        source_etag=_per_input(downloads, "etag"),
+        source_last_modified=_per_input(downloads, "last_modified"),
+        row_counts=result.rows,
+        mane_status_counts=result.mane_status_counts,
+        update_affects_cds_counts=result.update_affects_cds_counts,
+        excluded_reasons=result.excluded_reasons,
+        unparsable_gene_id=result.unparsable_gene_id,
+        unparsable_update_affects_cds=result.unparsable_update_affects_cds,
+        unparsable_coordinate=result.unparsable_coordinate,
+        notice=(
             "MANE is the default transcript, not the answer. A gene with two rows (MANE Select "
             "beside MANE Plus Clinical) has two CDS numbering frames and the column says which; a "
             "gene with one row says nothing about isoforms MANE does not carry, and a pass that "
@@ -795,12 +794,10 @@ def _write_release_json(
             "distribution and also declines to grant unrestricted permission, so every licence axis "
             "is unknown. Only NCBI's side of this joint NCBI/EMBL-EBI product was read."
         ),
-        "built_at": now_utc_iso(),
-        "builder_version": _builder_version(),
-    }
-    path = out_dir / RELEASE_FILENAME
-    atomic_write_text(path, json.dumps(release, indent=2, sort_keys=True) + "\n")
-    return path
+        built_at=now_utc_iso(),
+        builder_version=_builder_version(),
+    )
+    return write_release(out_dir, release)
 
 
 def _builder_version() -> str:

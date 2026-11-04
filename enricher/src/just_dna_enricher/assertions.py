@@ -149,7 +149,7 @@ def snapshot_dataset(reference: Path | None) -> str:
     written down as a plausible-looking value is worse than one written down as unknown.
     """
     release = read_release(reference) if reference is not None else None
-    stated = str((release or {}).get("clinvar_file_date") or "").strip()
+    stated = str((release.clinvar_file_date if release is not None else None) or "").strip()
     return f"{_DATASET_PREFIX}_{stated or 'unknown'}"
 
 

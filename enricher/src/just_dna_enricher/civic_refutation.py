@@ -37,18 +37,17 @@ refutations in the whole database turn out to stand against nothing at all. A sn
 must publish the basis it looked on; silence that does not name its basis reads as clear water.
 """
 
-import json
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from just_dna_format.resolution import ResolutionRow
+from just_dna_format.snapshot import read_release
 from just_dna_format.spec import VariantRow
 
 from just_dna_enricher.civic_build import CIVIC_PARQUET
 from just_dna_enricher.clinical import comparison_plan
-from just_dna_enricher.locations import RELEASE_FILENAME
 
 logger = logging.getLogger(__name__)
 
@@ -165,15 +164,8 @@ class RefutationComparison:
 
 def _snapshot_release_basis(reference: Path) -> str | None:
     """`status_basis` out of the snapshot's own `release.json`, or `None` when it cannot be read."""
-    release = (
-        reference / RELEASE_FILENAME if reference.is_dir() else reference.parent.parent / RELEASE_FILENAME
-    )
-    if not release.exists():
-        return None
-    try:
-        return json.loads(release.read_text(encoding="utf-8")).get("status_basis")
-    except (OSError, ValueError):
-        return None
+    release = read_release(reference if reference.is_dir() else reference.parent.parent)
+    return release.status_basis if release is not None else None
 
 
 def civic_snapshot_rows(reference: Path) -> list[dict]:

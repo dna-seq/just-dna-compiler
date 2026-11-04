@@ -37,19 +37,18 @@ disk and names the one that moved (`@currency-asks-the-source-not-the-cache`, ap
 lane: the "source" is the two parents).
 """
 
-import json
 import logging
 from collections import Counter
 from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
+from just_dna_format.snapshot import SnapshotRelease, read_release, write_release
+from pydantic import ValidationError
 
 from just_dna_enricher._rcrs import RCRS
 from just_dna_enricher.clinvar_build import chrom_parquet_name
-from just_dna_enricher.locations import RELEASE_FILENAME
 from just_dna_enricher.mitomap import MitomapError
 from just_dna_enricher.mitomap_build import (
     CITATIONS_PARQUET as MITOMAP_CITATIONS_PARQUET,
@@ -88,12 +87,18 @@ BUCKETS: tuple[str, ...] = ("photocopy", "rated_miss", "unrated_miss", "unmintab
 #: The keys a parent's `release.json` is pinned on. Read generically rather than per parent, so a
 #: parent that starts publishing a new identifying key is pinned on it without this module learning
 #: the parent's schema — and a key that *disappears* shows up as a moved pin rather than as silence.
+#:
+#: **Canonical spellings, on both sides of the comparison** (RM303). A pin recorded before the
+#: snapshot model existed says `rows`, and a parent rebuilt since says `row_counts`; ClinVar's old pin
+#: has no `dataset` and its rebuilt parent has one. Both the recorded pin and the fresh one are read
+#: through `SnapshotRelease`, so a spelling that moved is not a parent that moved.
 PIN_KEYS: tuple[str, ...] = (
     "dataset",
     "clinvar_file_date",
     "source_sha256",
     "record_count",
-    "rows",
+    "row_count",
+    "row_counts",
 )
 
 
@@ -138,6 +143,12 @@ class MissBuildResult:
         return sum(self.buckets.values()) == total
 
 
+def _pin_of(release: SnapshotRelease) -> dict:
+    """The `PIN_KEYS` a release states, in their canonical spelling."""
+    stated = release.model_dump(mode="json", exclude_unset=True)
+    return {key: stated[key] for key in PIN_KEYS if key in stated}
+
+
 def parent_pin(directory: Path | None) -> dict:
     """The identifying half of a parent's `release.json`, or `{}` when there is none to read.
 
@@ -147,16 +158,8 @@ def parent_pin(directory: Path | None) -> dict:
     """
     if directory is None:
         return {}
-    path = Path(directory) / RELEASE_FILENAME
-    if not path.is_file():
-        return {}
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    if not isinstance(payload, dict):
-        return {}
-    return {key: payload[key] for key in PIN_KEYS if key in payload}
+    release = read_release(Path(directory))
+    return _pin_of(release) if release is not None else {}
 
 
 def stale_parents(miss_dir: Path, *, parents: dict[str, Path] | None = None) -> dict[str, tuple[dict, dict]]:
@@ -171,16 +174,19 @@ def stale_parents(miss_dir: Path, *, parents: dict[str, Path] | None = None) -> 
     `parents` names where each parent lives when the caller knows; otherwise the path recorded in the
     child's own `release.json` is used, which is what a later `draft` run has.
     """
-    release = read_miss_release(miss_dir)
-    pinned = release.get("parents") or {}
-    if not isinstance(pinned, dict):
-        return {}
+    pinned = read_miss_release(miss_dir).parents or {}
     located = {name: Path(path) for name, path in (parents or {}).items()}
     moved: dict[str, tuple[dict, dict]] = {}
     for name, block in pinned.items():
         if not isinstance(block, dict):
             continue
-        recorded = {key: value for key, value in block.items() if key != "path"}
+        try:
+            recorded = _pin_of(
+                SnapshotRelease.model_validate({k: v for k, v in block.items() if k != "path"})
+            )
+        except ValidationError:
+            # A pin this module cannot read cannot be compared; that is not the parent moving.
+            continue
         directory = located.get(name) or (Path(block["path"]) if block.get("path") else None)
         if directory is None or not directory.is_dir():
             continue
@@ -190,19 +196,12 @@ def stale_parents(miss_dir: Path, *, parents: dict[str, Path] | None = None) -> 
     return moved
 
 
-def read_miss_release(directory: Path) -> dict:
-    """A miss snapshot's `release.json` as a dict, or `{}` when it is absent or unreadable."""
-    path = Path(directory) / RELEASE_FILENAME
-    if not path.is_file():
-        return {}
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return payload if isinstance(payload, dict) else {}
+def read_miss_release(directory: Path) -> SnapshotRelease:
+    """A miss snapshot's `release.json`, or an empty record when it is absent or unreadable."""
+    return read_release(Path(directory)) or SnapshotRelease()
 
 
-def miss_dataset_label(release: dict) -> str | None:
+def miss_dataset_label(release: SnapshotRelease) -> str | None:
     """The increment's own release label — **both parents, or nothing**.
 
     `mitomap_2026-08-24+clinvar_2026-06-27`. A derived artifact's identity is the pair it was derived
@@ -212,8 +211,8 @@ def miss_dataset_label(release: dict) -> str | None:
     licence row withholds it rather than writing a label that cannot be compared
     (`@currency-asks-the-source-not-the-cache`).
     """
-    parents = release.get("parents")
-    if not isinstance(parents, dict):
+    parents = release.parents
+    if parents is None:
         return None
     mitomap = (parents.get("mitomap") or {}).get("dataset")
     clinvar = (parents.get("clinvar") or {}).get("clinvar_file_date")
@@ -460,21 +459,19 @@ def _write_release_json(out_dir: Path, result: MissBuildResult, *, source_rows: 
     back as a constant — which is the difference between publishing an increment and hardcoding a
     diff.
     """
-    release = {
-        "parents": result.parents,
-        "contig": CONTIG,
-        "clinvar_keys": result.clinvar_keys,
-        "source_rows": source_rows,
-        "buckets": result.buckets,
-        "buckets_by_table": result.buckets_by_table,
-        "rated_miss_by_class": result.rated_miss_by_class,
-        "rated_miss_indels": result.rated_miss_indels,
-        "withheld_in_miss": result.withheld_in_miss,
-        "unmintable": result.unmintable,
-        "citation_links": result.citation_links,
-        "built_at": now_utc_iso(),
-        "builder_version": _builder_version(),
-    }
-    path = out_dir / RELEASE_FILENAME
-    atomic_write_text(path, json.dumps(release, indent=2, sort_keys=True) + "\n")
-    return path
+    release = SnapshotRelease(
+        parents=result.parents,
+        contig=CONTIG,
+        clinvar_keys=result.clinvar_keys,
+        source_rows=source_rows,
+        buckets=result.buckets,
+        buckets_by_table=result.buckets_by_table,
+        rated_miss_by_class=result.rated_miss_by_class,
+        rated_miss_indels=result.rated_miss_indels,
+        withheld_in_miss=result.withheld_in_miss,
+        unmintable=result.unmintable,
+        citation_links=result.citation_links,
+        built_at=now_utc_iso(),
+        builder_version=_builder_version(),
+    )
+    return write_release(out_dir, release)

@@ -30,10 +30,10 @@ from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
+from just_dna_format.snapshot import SnapshotRelease, write_release
 
-from just_dna_enricher.locations import RELEASE_FILENAME, SNAPSHOT_DATA_DIRNAME
+from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME
 from just_dna_enricher.pharmvar import (
     PHARMVAR_GENOME_BUILD,
     PharmVarClient,
@@ -169,27 +169,27 @@ def build_snapshot(
 
     digest = _content_digest(by_file)
     dataset = f"pharmvar_snapshot_{digest.removeprefix('sha256:')[:12]}"
-    release = {
+    release = SnapshotRelease(
         # PharmVar versions per gene rather than globally, so — as for CPIC — the release id is a
         # digest over the records: it changes when, and only when, the data does.
-        "content_sha256": digest,
-        "dataset": dataset,
+        content_sha256=digest,
+        dataset=dataset,
         # Recorded rather than implied. This snapshot holds coordinates on one assembly, chosen out of
         # the two PharmVar publishes, and a reader must be able to see which without re-deriving it.
-        "genome_build": PHARMVAR_GENOME_BUILD,
-        "gene_count": len(by_gene),
-        "allele_count": len(allele_records),
-        "variant_count": len(variant_records),
-        "genes": sorted(by_gene),
-        "redistributable": False,
-        "notice": (
+        genome_build=PHARMVAR_GENOME_BUILD,
+        gene_count=len(by_gene),
+        allele_count=len(allele_records),
+        variant_count=len(variant_records),
+        genes=sorted(by_gene),
+        redistributable=False,
+        notice=(
             "Built under a personal, non-transferable PharmVar API key (terms §2). Operator-built and "
             "inject-only: do not publish or pass on."
         ),
-        "built_at": now_utc_iso(),
-        "builder_version": _builder_version(),
-    }
-    atomic_write_text((out_dir / RELEASE_FILENAME), json.dumps(release, indent=2, sort_keys=True) + "\n")
+        built_at=now_utc_iso(),
+        builder_version=_builder_version(),
+    )
+    write_release(out_dir, release)
     logger.info(
         "PharmVar snapshot: %d gene(s), %d allele(s), %d defining variant(s) on %s → %s",
         len(by_gene),
