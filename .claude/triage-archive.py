@@ -20,7 +20,8 @@ The contents line is deliberately NOT written: naming what an item was and how i
 and a generated line would be a worse version of the thing the index exists for.
 
 Configuration (the environment, else .blueprints.toml [triage], all optional): INBOX, HISTORY, PREFIX — as for
-triage-state.py.
+triage-state.py, but resolved in the worktree it runs in, a linked one too, never the shared checkout's: the reply
+it moves was written there (#262).
 
 Python, and named `.py` for it: run it or pass it to `python3`, never to `bash`. See the extension
 gotcha in classes/triage/LOOP.md § 5 — under bash this docstring is executed as commands.
@@ -41,8 +42,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))  # triage_conf,
 import triage_conf as conf  # noqa: E402
 
 PREFIX = conf.text("PREFIX", "S")
-INBOX = conf.path("INBOX", "docs/FEEDBACK.md")
-HISTORY = conf.path("HISTORY", None) or (INBOX.with_name(f"{INBOX.stem}_HISTORY{INBOX.suffix}") if INBOX else None)
+INBOX = conf.path("INBOX", "docs/FEEDBACK.md", here=True)  # this worktree's, where the reply was written (#262)
+HISTORY = conf.path("HISTORY", None, here=True) or (INBOX.with_name(f"{INBOX.stem}_HISTORY{INBOX.suffix}") if INBOX else None)
 _need = conf.need
 INBOX = _need(INBOX, "INBOX")  # the archive always needs the inbox
 LEDGER = HERE / "triage-state.py"

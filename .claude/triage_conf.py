@@ -14,8 +14,11 @@ scripts bare:
 
 The clone is the working directory's, at its main worktree: these scripts run from the kit's copy, so their own
 location says nothing about the repository they serve (RM2), and the inbox a reporter leaves uncommitted, and the
-watcher reads, is the shared checkout's, never a linked worktree's committed copy. A `.blueprints.toml` that cannot
-be read is refused, never taken for an empty table.
+watcher reads, is the shared checkout's, never a linked worktree's committed copy. The archiver is the exception: it
+writes the inbox and the history, and a seat that wrote its reply in a linked worktree archives there, so it resolves
+them against the working directory's own worktree (`here=True`); run from a linked worktree, it had moved the shared
+checkout's section, unanswered, beside other seats' edits (#262). A `.blueprints.toml` that cannot be read is refused,
+never taken for an empty table.
 """
 from __future__ import annotations
 
@@ -40,6 +43,13 @@ def clone_root() -> pathlib.Path | None:
     r = subprocess.run(["git", "worktree", "list", "--porcelain"], capture_output=True, text=True)
     first = r.stdout.splitlines()[0] if r.returncode == 0 and r.stdout else ""
     return pathlib.Path(first[len("worktree "):]) if first.startswith("worktree ") else None
+
+
+@functools.cache
+def worktree_root() -> pathlib.Path | None:
+    """The worktree the working directory is in, linked or main; None outside one."""
+    r = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True)
+    return pathlib.Path(r.stdout.strip()) if r.returncode == 0 and r.stdout.strip() else None
 
 
 @functools.cache
@@ -74,12 +84,13 @@ def text(var: str, default: str) -> str:
     return str(got) if got else default
 
 
-def path(var: str, default: str | None) -> pathlib.Path | None:
+def path(var: str, default: str | None, here: bool = False) -> pathlib.Path | None:
     """A path setting, resolved: the environment's as given, the table's against the clone's root, else DEFAULT
-    (a path under the clone's root, or None for one the caller derives). None outside a clone with neither."""
+    (a path under the clone's root, or None for one the caller derives). None outside a clone with neither. HERE
+    resolves against the working directory's own worktree instead of the clone's main one (the archiver, #262)."""
     if os.environ.get(var):
         return pathlib.Path(os.environ[var]).resolve()
-    root = clone_root()
+    root = worktree_root() if here else clone_root()
     got = table().get(KEYS[var])
     if got:
         return (root / str(got)).resolve() if root else None
