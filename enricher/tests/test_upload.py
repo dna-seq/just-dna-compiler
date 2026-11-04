@@ -24,6 +24,8 @@ from just_dna_enricher.upload import (
     PrunePlan,
     PublishCollisionError,
     UploadPlan,
+    _attested_parquets,
+    _declared_files,
     plan_reference_snapshot,
     plan_upload,
     prune_repo,
@@ -1223,3 +1225,79 @@ def test_a_declared_file_edited_after_the_compile_refuses(tmp_path: Path) -> Non
     with pytest.raises(FileNotFoundError, match="Re-compile"):
         _upload(out, api, remote)
     api.upload_folder.assert_not_called()
+
+
+# ── one manifest, one reader, one filter (RM355) ─────────────────────────────────────────────────
+
+
+def test_a_dry_run_reports_a_refusal_exactly_as_the_real_run_does(tmp_path: Path) -> None:
+    """`--dry-run` called `plan_upload` outside the `try` the real run sits in, so a refusal the real
+    run prints as one line came out of the dry run as a traceback. The dry run is what an author reads
+    first, so it is where a refusal has to be legible.
+
+    An uncaught `FileNotFoundError` also exits 1 under `CliRunner`, so the exit code alone cannot tell
+    the two apart: the test compares the dry run's stderr with the real run's, and asserts the
+    exception that ended the run is the CLI's own exit rather than the refusal. The real run needs no
+    hub — the plan refuses before `ensure_repo` is reached."""
+    out = _compile_with_everything(tmp_path, version=_AUTHORED_VERSION)
+    with (out / "logs" / "authoring.log").open("a", encoding="utf-8") as handle:
+        handle.write("an override, after the compile\n")
+
+    dry = CliRunner().invoke(app, ["upload", str(out), "--name", "apoe", "--dry-run"])
+    real = CliRunner().invoke(app, ["upload", str(out), "--name", "apoe"])
+
+    for result in (dry, real):
+        assert result.exit_code == 1, result.output
+        assert isinstance(result.exception, SystemExit), repr(result.exception)
+        assert "UPLOAD FAILED:" in result.stderr
+        assert "logs/authoring.log" in result.stderr
+        assert "Would upload" not in result.output
+    assert dry.stderr == real.stderr
+
+
+def test_the_plan_reads_the_manifest_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`_module_version` opened and parsed `manifest.json` itself, beside `_manifest_document`, so the
+    version and the file list of one plan came from two reads of one file. One reader now: a plan reads
+    the manifest once, and so does a publish, whose guard compares the same document the plan was
+    built from."""
+    out = _compile_with_everything(tmp_path, version=_AUTHORED_VERSION)
+    manifest_path = out / "manifest.json"
+    reads: list[Path] = []
+    original = Path.read_text
+
+    def counting_read_text(self: Path, *args: Any, **kwargs: Any) -> str:
+        if self == manifest_path:
+            reads.append(self)
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", counting_read_text)
+
+    plan = plan_upload(out, "apoe")
+    assert plan.versioned_path_in_repo == f"data/apoe/v{_AUTHORED_VERSION}"
+    assert len(reads) == 1
+
+    reads.clear()
+    api, remote = _remote(tmp_path, None)
+    _upload(out, api, remote)
+    assert len(api.upload_folder.call_args_list) == 2
+    assert len(reads) == 1
+
+
+def test_an_entry_with_an_empty_name_is_dropped_by_the_one_filter(tmp_path: Path) -> None:
+    """`_named_entries` kept an `artifact.files` entry whose `name` is `""`, which `_declared_files`
+    dropped, so one manifest gave the attested list and the declared list two answers about the same
+    entry — and the plan refused with `attests ['']`, a file no publish could ever carry. One filter
+    over file entries now, and every reader drops it."""
+    module_dir = _compiled_module(tmp_path / "m", version="1.2.3")
+    baseline = plan_upload(module_dir, "test_module").files
+    document = json.loads((module_dir / "manifest.json").read_text(encoding="utf-8"))
+    document["artifact"]["files"].append({"name": "", "sha256": "sha256:" + "3" * 64, "size": 1})
+    (module_dir / "manifest.json").write_text(json.dumps(document), encoding="utf-8")
+
+    attested = _attested_parquets(document)
+    declared = [name for name, _ in _declared_files(document)]
+    assert attested is not None
+    assert "" not in attested
+    assert "" not in declared
+    assert set(attested) <= set(declared)
+    assert plan_upload(module_dir, "test_module").files == baseline

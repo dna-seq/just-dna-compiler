@@ -996,26 +996,6 @@ lane's bug.
 
 **Residuals** none yet.
 
-## RM355 — the module publisher reads one manifest three ways, so `upload --dry-run` tracebacks on every refusal
-
-**Severity** low · **Status** open — **a patch** · **Owner** enricher (`upload.py`, `cli.py upload`) · **Motivating
-case** a 0.8 builder's report, 2026-11-04, reading the RM353 publisher · *related* RM347, RM353
-
-**One class: one manifest, several readers and filters.** RM353 gave the plan and the guard one reader of what the
-manifest declares (`_declared_files`), but three readings are still apart:
-
-1. `upload --dry-run` calls `plan_upload` outside the `try` that the real run's `upload_module` sits in, so a
-   refusal the real run reports as a message comes out of a dry run as a traceback;
-2. `_module_version` opens and parses `manifest.json` itself instead of reading `_manifest_document`'s object, so
-   the version and the file list come from two reads;
-3. `_named_entries` keeps an entry whose `name` is `""`, which `_declared_files` drops, so the attested-parquet
-   list and the declared list disagree on the same entry.
-
-**The fix, as one rule.** One reader of the manifest document and one filter of its file entries, which every
-helper calls; the dry run goes through the same refusal handling as the real run and prints the same message.
-
-**Residuals** none yet.
-
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.

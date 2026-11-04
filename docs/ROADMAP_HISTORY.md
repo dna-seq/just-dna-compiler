@@ -290,6 +290,44 @@ plan (back to the allowlist union), the escaping helper, and the declared-hash c
 
 **Residuals** none
 
+## RM355 — the module publisher reads one manifest three ways, so `upload --dry-run` tracebacks on every refusal
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-11-04 on `main`, uncut — a patch** (filed 2026-11-04 by the lead) · **Owner** enricher (`upload.py`, `cli.py upload`) · **Motivating
+case** a 0.8 builder's report, 2026-11-04, reading the RM353 publisher · *related* RM347, RM353
+
+**One class: one manifest, several readers and filters.** RM353 gave the plan and the guard one reader of what the
+manifest declares (`_declared_files`), but three readings are still apart:
+
+1. `upload --dry-run` calls `plan_upload` outside the `try` that the real run's `upload_module` sits in, so a
+   refusal the real run reports as a message comes out of a dry run as a traceback;
+2. `_module_version` opens and parses `manifest.json` itself instead of reading `_manifest_document`'s object, so
+   the version and the file list come from two reads;
+3. `_named_entries` keeps an entry whose `name` is `""`, which `_declared_files` drops, so the attested-parquet
+   list and the declared list disagree on the same entry.
+
+**The fix, as one rule.** One reader of the manifest document and one filter of its file entries, which every
+helper calls; the dry run goes through the same refusal handling as the real run and prints the same message.
+
+**Shipped.** One reader: `_manifest_document` returns the parsed object together with the reason there is none
+(absent, unparseable, not an object), and `_module_version` is now a pure function of that pair, so the four
+`version_unknown_reason` strings are unchanged. `plan_upload` reads once and builds the plan through
+`_plan_from_document`; `upload_module` reads once and hands the same object to the plan and to
+`_versioned_conflict`, where it used to read the file a third time. One filter: `_file_entries` keeps an
+object whose `name` is a non-empty string, with its `sha256` or `None`, and both `_attested_parquets` and
+`_declared_files` read through it (`_named_entries` is gone), so an `artifact.files` entry named `""` is dropped
+from both lists; the plan used to refuse it as `attests ['']`. `upload --dry-run` now calls `plan_upload`
+inside the same `try` as the real run, so a refusal prints the same `UPLOAD FAILED: …` line and exits 1
+without a traceback. The dry run still contacts nothing, so it cannot report a versioned-path collision,
+which needs the published manifest; the test uses a refusal the plan raises (a declared log appended to after
+the compile) and compares the dry run's stderr with the real run's. ENRICHER.md's signature block gains
+`upload_module`'s `force` and both snapshot functions' keyword-only `payload`. Tests: the dry run and the real
+run on one refused module (same stderr, `SystemExit` rather than the refusal), a counting test over
+`Path.read_text` on `manifest.json` (one read for a plan and one for a publish), and an empty-name entry. Each
+was mutated once and went red: the dry run moved back outside the `try`, a second read inside the plan, and the
+filter without its empty-name guard.
+
+**Residuals** none
+
 ## RM338 — which files under `logs/` ship: `*.log` only, a text allowlist, content-checked text, or images too
 
 **Severity** low · **Status** ✅ **SHIPPED 2026-11-04 on `main`, uncut — a patch** (decided 2026-11-03,

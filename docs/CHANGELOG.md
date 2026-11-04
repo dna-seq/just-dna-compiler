@@ -41,6 +41,16 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM355: `upload --dry-run` reports a refusal as the real run does, and the publisher reads its manifest once (patch, on `main`)
+
+**enricher** — `just-dna-enricher upload --dry-run` on a module the publisher refuses (an attested file
+missing, a declared file edited after the compile, no annotation table) now prints the same
+`UPLOAD FAILED: …` line as the real run and exits 1, where it used to end in a traceback. The dry run still
+contacts nothing, so a versioned-path collision is reported by the real run only. The plan and the publish
+read `manifest.json` once (the version used to come from a second read), and an `artifact.files` entry whose
+`name` is `""` is now dropped like any other nameless entry instead of refusing the plan with
+`attests ['']`. No format or compiler change, and no identity moves.
+
 ## 2026-11-04 — RM353: the module publisher sends and guards exactly what the manifest declares (patch, on `main`)
 
 **enricher** — `upload_module` (and `just-dna-enricher upload`) now sends `manifest.json` plus every file

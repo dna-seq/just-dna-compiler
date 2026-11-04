@@ -313,25 +313,22 @@ class UploadPlan(BaseModel):
     )
 
 
-def _module_version(module_dir: Path) -> tuple[str | None, str | None]:
-    """Read ``identity.version`` out of the compiled manifest — ``(version, reason_it_is_unknown)``.
+def _manifest_document(module_dir: Path) -> tuple[dict | None, str | None]:
+    """The compiled ``manifest.json`` as a plain JSON object, and why there is none when there is none.
 
-    Exactly one member is ever set, which is the point: a bare `None` version cannot say whether the
-    manifest was missing, unparseable, silent about the version, or carrying something that is not a
-    version, and those are four different things for an author to do something about.
+    **The one reader of the manifest (RM355).** Every helper below reads fields out of the object this
+    returns, and every entry point — the plan, the publish and the publish's guard — calls it once and
+    hands the object on, so the version a plan states and the files it lists come from one read of
+    one file. ``_module_version`` used to open and parse the file itself, beside this reader.
 
-    **The one field is read out of the JSON rather than through ``read_manifest``, deliberately.**
-    Validating the whole ``ModuleManifest`` to reach one string means an unrelated defect — a hyphen in
-    ``identity.name``, an ``icon_set`` outside the vocabulary — withholds a version that is right there
-    and perfectly legible, and the resulting refusal names neither the field nor the value. The
-    SemVer rule is not restated here either: ``is_valid_version`` is the same predicate
-    ``Identity.version``'s own validator calls, and it is what keeps a stray ``/`` or ``..`` out of a
-    path segment.
+    Exactly one member is ever set. The reason is the one ``version_unknown_reason`` reports when the
+    document cannot be read, which is why it is returned rather than collapsed into ``None``: absent and
+    unparseable are two different things for an author to do something about. A document that parses
+    to something other than an object states no ``identity.version``, which is what it is reported as.
 
     Never raises: ``manifest.json`` is in ``_ALLOW_PATTERNS`` and is not required, so this publisher
     has always accepted a module directory without one, and neither RM84 nor RM89 is a licence to
-    tighten what it accepts. The attestation check in ``plan_upload`` withholds for the same reason a
-    version does — an unreadable manifest is an unknown, and an unknown is never a finding.
+    tighten what it accepts. Every caller answers a missing document the same way: unknown.
     """
     path = module_dir / _MANIFEST_FILENAME
     if not path.is_file():
@@ -340,29 +337,36 @@ def _module_version(module_dir: Path) -> tuple[str | None, str | None]:
         document = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return None, f"{_MANIFEST_FILENAME} could not be read as JSON"
-    identity = document.get("identity") if isinstance(document, dict) else None
+    if not isinstance(document, dict):
+        return None, f"{_MANIFEST_FILENAME} states no identity.version"
+    return document, None
+
+
+def _module_version(document: dict | None, unread_reason: str | None) -> tuple[str | None, str | None]:
+    """``identity.version`` out of the manifest ``_manifest_document`` read — ``(version, reason)``.
+
+    Exactly one member is ever set, which is the point: a bare `None` version cannot say whether the
+    manifest was missing, unparseable, silent about the version, or carrying something that is not a
+    version, and those are four different things for an author to do something about. The first two
+    are the reader's reason, passed through.
+
+    **The one field is read out of the JSON rather than through ``read_manifest``, deliberately.**
+    Validating the whole ``ModuleManifest`` to reach one string means an unrelated defect — a hyphen in
+    ``identity.name``, an ``icon_set`` outside the vocabulary — withholds a version that is right there
+    and perfectly legible, and the resulting refusal names neither the field nor the value. The
+    SemVer rule is not restated here either: ``is_valid_version`` is the same predicate
+    ``Identity.version``'s own validator calls, and it is what keeps a stray ``/`` or ``..`` out of a
+    path segment.
+    """
+    if document is None:
+        return None, unread_reason
+    identity = document.get("identity")
     version = identity.get("version") if isinstance(identity, dict) else None
     if version is None:
         return None, f"{_MANIFEST_FILENAME} states no identity.version"
     if not isinstance(version, str) or not is_valid_version(version):
         return None, f"{_MANIFEST_FILENAME}'s identity.version is not MAJOR.MINOR.PATCH: {version!r}"
     return version, None
-
-
-def _manifest_document(module_dir: Path) -> dict | None:
-    """The compiled ``manifest.json`` as a plain JSON object, or ``None`` when there is none to read.
-
-    The one reader the field-by-field helpers below share. ``None`` covers absent, unreadable,
-    unparseable and not-an-object alike, because each caller answers all four the same way: unknown.
-    """
-    path = module_dir / _MANIFEST_FILENAME
-    if not path.is_file():
-        return None
-    try:
-        document = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return None
-    return document if isinstance(document, dict) else None
 
 
 def _literal_patterns(paths: Iterable[str]) -> list[str]:
@@ -377,14 +381,25 @@ def _literal_patterns(paths: Iterable[str]) -> list[str]:
     return [glob_escape(path) for path in paths]
 
 
-def _named_entries(entries: object) -> list[str] | None:
-    """The string ``name`` of each ``FileEntry``-shaped dict in a manifest list, or ``None`` when the
-    field is not a list at all."""
+def _file_entries(entries: object) -> list[tuple[str, str | None]] | None:
+    """The ``(name, sha256)`` of each ``FileEntry``-shaped entry in a manifest list, or ``None`` when
+    the field is not a list at all.
+
+    **The one filter over file entries (RM355).** An entry is kept when it is an object whose ``name``
+    is a non-empty string; a ``sha256`` that is not a string is ``None`` (unknown, never a hash). The
+    attested list and the declared list both go through here, so one manifest gives one answer about
+    an entry: ``_named_entries`` used to keep a ``""`` that ``_declared_files`` dropped, and the plan
+    then refused with ``attests ['']``, a file no publish could carry.
+    """
     if not isinstance(entries, list):
         return None
-    return [
-        entry["name"] for entry in entries if isinstance(entry, dict) and isinstance(entry.get("name"), str)
-    ]
+    kept: list[tuple[str, str | None]] = []
+    for entry in entries:
+        if not isinstance(entry, dict) or not isinstance(entry.get("name"), str) or not entry["name"]:
+            continue
+        sha256 = entry.get("sha256")
+        kept.append((entry["name"], sha256 if isinstance(sha256, str) else None))
+    return kept
 
 
 def _attested_parquets(document: dict) -> list[str] | None:
@@ -396,7 +411,8 @@ def _attested_parquets(document: dict) -> list[str] | None:
     must not be able to turn a legible file list into a failed publish.
     """
     artifact = document.get("artifact")
-    return _named_entries(artifact.get("files") if isinstance(artifact, dict) else None)
+    entries = _file_entries(artifact.get("files") if isinstance(artifact, dict) else None)
+    return None if entries is None else [name for name, _ in entries]
 
 
 def _declared_files(document: dict) -> list[tuple[str, str | None]]:
@@ -409,8 +425,8 @@ def _declared_files(document: dict) -> list[tuple[str, str | None]]:
     had one and never uploaded. ``inputs`` and ``derived`` are not here: they describe files beside
     the *spec*, which a compile does not copy into the module directory.
 
-    A field that is not the shape it should be contributes nothing, and a ``sha256`` that is not a
-    string is ``None`` (unknown, never a hash).
+    A field that is not the shape it should be contributes nothing; every entry passes the one filter,
+    ``_file_entries``, that ``_attested_parquets`` reads through too (RM355).
     """
     entries: list[object] = []
     artifact = document.get("artifact")
@@ -422,13 +438,7 @@ def _declared_files(document: dict) -> list[tuple[str, str | None]]:
         entries.append({"name": provenance.get("file"), "sha256": provenance.get("sha256")})
     if isinstance(document.get("logs"), list):
         entries.extend(document["logs"])
-    declared: list[tuple[str, str | None]] = []
-    for entry in entries:
-        if not isinstance(entry, dict) or not isinstance(entry.get("name"), str) or not entry["name"]:
-            continue
-        sha256 = entry.get("sha256")
-        declared.append((entry["name"], sha256 if isinstance(sha256, str) else None))
-    return declared
+    return _file_entries(entries) or []
 
 
 def _hub_ignore_patterns() -> list[str]:
@@ -543,8 +553,21 @@ def plan_upload(
        a module; publishing one is the silent failure a bare widening of the old rule would have
        produced, and it is what discovery would then be unable to see.
     """
+    document, unread_reason = _manifest_document(module_dir)
+    return _plan_from_document(module_dir, name, repo_id, document, unread_reason)
+
+
+def _plan_from_document(
+    module_dir: Path,
+    name: str,
+    repo_id: str | None,
+    manifest: dict | None,
+    unread_reason: str | None,
+) -> UploadPlan:
+    """``plan_upload`` over a manifest already read, so a publish reads it once for the plan and its
+    guard (RM355)."""
     resolved_repo = repo_id or DEFAULT_REPO_ID
-    document = _manifest_document(module_dir) or {}
+    document = manifest or {}
     attested = _attested_parquets(document)
     declared = [declared_name for declared_name, _ in _declared_files(document)]
     if attested is None:
@@ -600,7 +623,7 @@ def plan_upload(
             f"`just-dna-enricher enrich-and-compile` or `just-dna-compiler compile`)."
         )
     flat = f"data/{name}"
-    version, reason = _module_version(module_dir)
+    version, reason = _module_version(manifest, unread_reason)
     return UploadPlan(
         module=name,
         repo_id=resolved_repo,
@@ -750,9 +773,10 @@ def upload_module(
 
     Raises PermissionError if no token is available and ImportError if huggingface_hub is absent.
     """
-    plan = plan_upload(module_dir, name, repo_id)
+    document, unread_reason = _manifest_document(module_dir)
+    plan = _plan_from_document(module_dir, name, repo_id, document, unread_reason)
     api = ensure_repo(plan.repo_id, token)
-    conflict = None if force else _versioned_conflict(api, plan, _manifest_document(module_dir))
+    conflict = None if force else _versioned_conflict(api, plan, document)
     if conflict is not None:
         raise PublishCollisionError(
             f"{name}: {plan.versioned_path_in_repo}/ is already published with {conflict}. This upload "

@@ -1576,8 +1576,30 @@ def upload_(
     from just_dna_enricher.upload import PublishCollisionError, plan_upload, upload_module
 
     module_name = name or module_dir.name
+    # The dry run sits inside the same `try` as the real run, so a refusal reads the same from either
+    # (RM355): the plan refuses before anything contacts the hub, and a dry run that tracebacks on a
+    # refusal the real run prints as one line is the run an author reads first.
+    try:
+        if dry_run:
+            plan = plan_upload(module_dir, module_name, repo_id)
+        else:
+            plan = upload_module(
+                module_dir,
+                module_name,
+                repo_id=repo_id,
+                commit_message=commit_message,
+                force=force,
+            )
+    except PublishCollisionError as exc:
+        # Its own branch, and its own word: this module is publishable and the remote already has
+        # this version. "UPLOAD FAILED" beside the three `plan_upload` refusals would read as
+        # "your module is broken", which is the opposite of what happened.
+        typer.secho(f"ALREADY PUBLISHED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    except (FileNotFoundError, PermissionError, ImportError) as exc:
+        typer.secho(f"UPLOAD FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
     if dry_run:
-        plan = plan_upload(module_dir, module_name, repo_id)
         typer.echo(f"Would upload to {plan.repo_id} at {plan.path_in_repo}/:")
         for f in plan.files:
             typer.echo(f"  • {f}")
@@ -1590,24 +1612,6 @@ def upload_(
                 err=True,
             )
         return
-
-    try:
-        plan = upload_module(
-            module_dir,
-            module_name,
-            repo_id=repo_id,
-            commit_message=commit_message,
-            force=force,
-        )
-    except PublishCollisionError as exc:
-        # Its own branch, and its own word: this module is publishable and the remote already has
-        # this version. "UPLOAD FAILED" beside the three `plan_upload` refusals would read as
-        # "your module is broken", which is the opposite of what happened.
-        typer.secho(f"ALREADY PUBLISHED: {exc}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(code=1) from exc
-    except (FileNotFoundError, PermissionError, ImportError) as exc:
-        typer.secho(f"UPLOAD FAILED: {exc}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(code=1) from exc
     typer.secho(
         f"uploaded: {module_name} → {plan.repo_id}/{plan.path_in_repo} ({len(plan.files)} files)",
         fg=typer.colors.GREEN,

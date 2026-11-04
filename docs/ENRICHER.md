@@ -2344,9 +2344,9 @@ The author/publisher half of the enricher's HF use (snapshot *download* is a run
 ```python
 ensure_repo(repo_id, token=None)                                       # create-or-update (create_repo exist_ok=True)
 plan_upload(module_dir, name, repo_id=None) -> UploadPlan              # dry-run; validates artifacts present
-upload_module(module_dir, name, repo_id=None, token=None, commit_message=None) -> UploadPlan
-plan_reference_snapshot(snapshot_dir, repo_id=None) -> SnapshotPlan     # dry-run for a reference snapshot
-publish_reference_snapshot(snapshot_dir, repo_id=None, token=None, commit_message=None) -> SnapshotPlan
+upload_module(module_dir, name, repo_id=None, token=None, commit_message=None, force=False) -> UploadPlan
+plan_reference_snapshot(snapshot_dir, repo_id=None, *, payload=None) -> SnapshotPlan     # dry-run for a reference snapshot
+publish_reference_snapshot(snapshot_dir, repo_id=None, token=None, commit_message=None, *, payload=None) -> SnapshotPlan
 ```
 
 `upload_module` uploads `manifest.json` and **every file it declares** — the parquets
@@ -2454,6 +2454,17 @@ because the table carrying them was dropped at upload.
   selected `data/chr1.parquet` and never itself), a declared retirement's `delete_patterns`
   (`LayoutShift.retires` is one name, never a glob) and `cache prune`'s `delete_patterns`, where an
   unescaped listed name would delete a file nobody was shown.
+- **One reader, one filter, and the dry run refuses as the real run does (RM355).** The plan, the
+  publish and the publish's guard read `manifest.json` once, through `_manifest_document`, and pass the
+  object on; the version and the file list of one plan come from that one read (the version reader
+  used to open the file a second time). Every file entry, attested or declared, goes through one
+  filter, `_file_entries`, which drops an entry that is not an object or whose `name` is not a
+  non-empty string, so an `artifact.files` entry named `""` is dropped everywhere instead of being
+  dropped from the declared list and refused as `attests ['']` by the attested one. `upload --dry-run`
+  sits inside the same `try` as the real run: a refusal the plan raises prints the same
+  `UPLOAD FAILED: …` line and exits 1 from either, where the dry run used to end in a traceback. The
+  dry run still contacts nothing, so the versioned-path guard (a remote read) is the one refusal only
+  the real run can give.
 
 ### A module is published twice, and the second path is the one that can name a release (RM84)
 
