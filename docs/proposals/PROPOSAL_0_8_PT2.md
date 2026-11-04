@@ -4,7 +4,8 @@
 build") and its two addenda (the tag selector, then `column=value` selectors). This is RELEASE_CYCLE § Minors
 step 2: the plan the build runs from without asking. PT1 (the bugfix round) is concluded on the `0.8` branch.
 A fresh critic read it the same day against the decision lines and the code; its findings that held are
-applied, and the ones that need the maintainer are §4 questions 5 to 7.
+applied, and the ones that need the maintainer are §4 questions 5 to 7. The pm's third addendum (the
+shape agreed after the second measuring run) is folded in.
 
 **How to read it.** The decisions are the maintainer's and live as dated lines under each item in
 [ROADMAP_0_8.md](../ROADMAP_0_8.md); where an item has several, the latest wins. This file does not restate
@@ -82,17 +83,16 @@ alternative is beside it. Names still get the P5 audit in §5, and the audit can
    one-member facts row), `meta_conclusions.csv` (a facts-only row concludes nothing).
 2. **One grammar for every member: `table[column=value, column=value]`.** A concrete row is the selector over
    its table's full key (`variants[variant_key=rs429358, genotype=C/C]`), a locus is
-   `variants[variant_key=rs10455872]`, a named allele is `haplotypes[gene=APOE, haplotype_name=ε4]`, a tag set
+   `variants[variant_key=rs10455872]`, a named allele is `allele_function[gene=APOE, allele=ε4]`, a tag set
    is `variants[flags=legacy_longevitymap]`. The precedence the maintainer decided then falls out of the
    conditions: the full key is a concrete row, `variant_key` alone is a locus, otherwise more conditions
    outrank fewer. Rejected: a bare `rs10455872` shorthand beside it (a second grammar; additive later if
    authors ask), and the typed prefixes of the audit's appendix (`allele:APOE=ε4`, `dip:…`), which were one
    grammar per member kind.
-   **A named allele is a `haplotypes.csv` selector** (`haplotypes[gene=APOE, haplotype_name=ε4]`), which
-   selects rows the module already has. Rejected: `allele_function[gene=APOE, allele=ε4]`, which makes the
-   author add a PGx activity row for APOE only so the member has something to name (the audit's appendix,
-   candidate 2). `allele_function` stays a legal table to select over, and RM334's HLA alleles live there
-   because they have no defining variants.
+   **A named allele is an `allele_function.csv` item** (the pm's setting in the third addendum, which
+   overrode this plan's first choice of `haplotypes.csv`). The cost accepted with it: a named allele the
+   module uses as a member needs an `allele_function.csv` row, every column but the key empty, which is
+   also where RM334's HLA alleles live.
 3. **Members are joined by `&` at bracket depth 0, in one `members` cell.** The parser is bracket-aware, so
    an `&` inside a value (RM253's DPYD names, `c.1129-5923C>G&c.1236G>A(HapB3)`) is data, and so is `|` in a
    phased genotype. The shared `MULTI_SEP` splitter is never used on this cell. A value may not contain `[`,
@@ -104,23 +104,25 @@ alternative is beside it. Names still get the P5 audit in §5, and the audit can
    sorted too. `sex` is in the key because it scopes the whole row, facts included: a `male` row and a
    `female` row for one member set are two statements, not a duplicate. A row with `sex` outranks the same
    key without it, for that sex.
-5. **Columns**, all optional except `members`: `trait_efo_id`, `trait_role` (closed: `outcome`, `mediator`),
+5. **Columns**, all optional except `members`: `trait_efo_id`, `trait_role` (closed: `mediator`; empty means
+   the trait is an effect, the maintainer's third addendum),
    `direction` (the existing vocabulary), `conclusion`, `negatives`, `tier`, `age_of_action`,
    `age_of_action_confidence`, `flags`, `pmid`, `doi`, `sex` (closed: `male`, `female`). A row stating none
    of the finding or fact columns is refused as empty. `trait_role` without `trait_efo_id` is refused.
-   `pmid` and `doi` follow `StudyRow`'s rules, the `NONE` sentinel included. **`doi` is a column nobody
-   decided, sent to the pm (§4 question 6)**: without it a meta row cannot cite a DOI-only preprint, and
-   six of v2's eight HLA alleles come from one.
+   `pmid` and `doi` follow `StudyRow`'s rules, the `NONE` sentinel included (decided in the third
+   addendum for every citing table, A2).
 6. **A per-trait row needs an allele-bearing member** (the audit's gap 2): every member of a row with
-   `direction` must fix an allele, meaning a `variants` member with a `genotype` condition, a `haplotypes`
-   or `diplotypes` member naming a haplotype, or an `allele_function` member. **A bare `variant_key`
+   `direction` must fix an allele, meaning a `variants` member with a `genotype` condition, a `diplotypes`
+   or `pharm_variants` member that names its alleles, or an `allele_function` member. **A bare `variant_key`
    member also fixes an allele when every `variants.csv` row of that locus states the same
    `effect_allele`**, and `direction` is then about that allele. This is the audit's second run (§6): v2
    is uniform on 228 of 228 loci, and the rule halves the per-trait rows (about 134 against 268 with
-   genotype keys), the reduction rule's direction. Any other member on such a row (a locus whose rows
-   disagree on `effect_allele` or state none, a tag selector) is refused, naming it. The four loci v2 marks
-   "allele not determined" honestly get no per-trait row. The member tables are `variants`, `haplotypes`,
-   `diplotypes` and `allele_function`; `studies` is excluded by the maintainer's bound.
+   genotype keys), the reduction rule's direction. A locus whose rows disagree on `effect_allele` or state
+   none draws the warning `meta_member_allele_ambiguous` and its `direction` is withheld (the maintainer:
+   a warning, not a refusal). A tag selector on such a row is refused, naming it. The four loci v2 marks
+   "allele not determined" honestly get no per-trait row. The member tables are `variants`, `diplotypes`,
+   `pharm_variants` and `allele_function` (the pm's setting); `studies` is excluded by the maintainer's
+   bound.
 7. **`tier` is open text, and `module_spec.yaml` gains `tier_scale`** (one free-text name, the `weighting:`
    pattern), copied into the manifest and listed in `REVERSE_RECONSTRUCTED` so `reverse` writes it back
    (else the recompile refuses every `tier` cell, a P7 break). A `tier` cell in a module with no
@@ -135,9 +137,9 @@ alternative is beside it. Names still get the P5 audit in §5, and the audit can
    Combination matching against a genome stays the consumer's join, as every table's is. Rejected: a third
    parquet for the expanded members (it folds into `meta.parquet`'s list column), and resolved facts on
    `weights.parquet` and `diplotypes.parquet` (two published parquets widened for one concern).
-   **Specificity across member kinds** (the audit's gap 1): a `diplotypes` member is more specific than a
-   `haplotypes` member naming either of its two haplotypes in the same gene, which is the relation
-   `_cross_validate_haplotype_definitions` already reads. This is an ordering of members, not a selector
+   **Specificity across member kinds** (the audit's gap 1, decided in the third addendum: "the narrower
+   condition wins across tables"): a `diplotypes` member is more specific than an `allele_function` member
+   naming either of its two haplotypes in the same gene. This is an ordering of members, not a selector
    condition, so the maintainer's bar on cross-table selectors is not crossed. With it the ε2/ε4 diplotype
    row settles the ε2 and ε4 rows' disagreement, and without it that column is withheld.
 9. **`tradeoff` is a column of `meta_resolved.parquet`**, Kleene as RM327 says: true when an allele-bearing
@@ -204,7 +206,7 @@ alternative is beside it. Names still get the P5 audit in §5, and the audit can
     check refuses a name with fewer than two fields; no column states it. A malformed name is a refusal,
     gated on the same published-module scan RM336's refusal owes (§5, A2).
 23. **RM335's `pmid` and `doi` are optional and draw no warning**, because 17 of v2's 77 rows have no PMID
-    and the table is annotation only (R-ANIMAL-1). Rejected: a fourth warning code for an uncited row. Its
+    and the table is annotation only (R-ANIMAL-1); when a row cites, the pmid/doi pair's rules apply (A2). Rejected: a fourth warning code for an uncited row. Its
     `concordance` is closed (`concordant`, `discordant`, `nonmonotone`); an empty cell is unstated, which
     is what v2's 55 "unclear" rows are.
 
@@ -229,8 +231,7 @@ alternative is beside it. Names still get the P5 audit in §5, and the audit can
    is a hand-run call.
 5. **RM332's "matching study row" is undefined**, since `VariantRow` names no study. Default: §3 item 17's
    unanimity rule (a unit joins only when every stating study row agrees).
-6. **`doi` on the meta-table**, a column the decisions did not list (§3 item 5). Default: added, on
-   `StudyRow`'s rules, because without it `hla_alleles` cannot be authored.
+6. **`doi` on the meta-table.** Answered in the third addendum: yes, on every citing table (A2).
 7. **Where RM342's toolchain reason fires.** The decision says `verify`, but `verify_manifest` never
    recompiles: it re-hashes the files on disk against the manifest, so the running polars cannot change
    its answer (checked in `integrity.py`). The places that compare a fresh compile against a recorded
@@ -260,8 +261,12 @@ registry catalogue through `registry_search` and `reference_examples/`) for a DO
 the pm, not into the build. Then: `validate_pmid_cell` refuses a cell whose only token is a DOI and names
 it (RM50's arm is the template); accepts `NONE` (§3 item 18), which makes `doi` required and validated;
 `extract_pmids` returns nothing for `NONE` and for a DOI, so the literature pass never looks up `10`,
-`1101`, and so on. Tests: the RM336 reproduction (`10.1101/2025.03.01.640000` → refused), `NONE` with and
-without `doi`, and the literature pass's lookup list for a DOI cell.
+`1101`, and so on. **The pair applies to every citing table** (the third addendum): `doi` is added to
+`pharm_variants.csv`, the binning kinds, `gwas_effects.csv` (derived), `meta.csv` and
+`model_organisms.csv`, and the roster is read from `_CITING_TABLE_KINDS`, asserted by an equality over it,
+never listed by hand. Tests: the RM336 reproduction (`10.1101/2025.03.01.640000` → refused), `NONE` with
+and without `doi` on every citing kind, and the literature pass's lookup list for a DOI cell. Lane A runs
+A2 before A5 and A6, which lean on it.
 
 **A3. RM322, `DiplotypeRow` gains `negatives` and `category`.** The three touch points (model, compile,
 `reverse`) and the diplotype parquet. Both are free text, as on `VariantRow` (which binds no vocabulary to
@@ -381,8 +386,8 @@ The eight hand-curated causal/effector inputs go in `overrides.csv` as correctio
 C or E label.
 
 **D3. RM331's computed LD pair.** After A5. For each study row with `proxy_rsid`, the enricher asks the LD
-reference (§4 question 4) for r² between proxy and lead in each of the study's `ancestry` codes (a
-mixed-ancestry study gets one row per code, never a blended panel; the audit's second run counts 3 such
+reference (§4 question 4) for r² between proxy and lead in the study's one `ancestry` code (a
+mixed-ancestry study gets its row with r² withheld, the pm's setting; the audit's second run counts 3 such
 links), and writes a
 machine-written `ld_pairs.csv` keyed `(proxy_rsid, variant_key, ancestry)` with r², the reference and its
 release. A study with no ancestry gets no row and is counted (unknown is not zero). First step: one hand-run
@@ -411,7 +416,8 @@ under `--strict`, reverses, and recompiles to the same digest.
   message; the three touch points plus the parquet; `reverse`; a round-trip test (P7).
 - **Each new warning code**: a `features/` scenario (the corpus gate stays on although RM149 is frozen) and
   a line in `docs/INTEGRATION_0_8.md`, since an older reader refuses an unknown code. The codes this plan
-  names: `phenotype_class_unrecognized`, `meta_selector_matches_nothing`, `log_file_not_shipped`. Any other
+  names: `phenotype_class_unrecognized`, `meta_selector_matches_nothing`, `meta_member_allele_ambiguous`,
+  `log_file_not_shipped`. Any other
   a builder adds is listed in its report.
 - **Each new check is broken on purpose** (mutate the condition, watch the test go red) before it lands.
 - **Real paths, real data**: the compile and reverse paths, the provisioned snapshots, expected values
