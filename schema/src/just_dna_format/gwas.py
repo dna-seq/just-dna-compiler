@@ -139,7 +139,8 @@ class GwasEffectRow(CitationPair):
         default=None,
         description=(
             "The allele `effect_size` is stated relative to, parsed from the Catalog's "
-            "`riskAlleleName` (`rs4149056-C` → `C`). **Null when the source wrote `-?`**, which it "
+            "`snp_effect_allele` (`riskAlleleName` before its REST API v2) (`rs4149056-C` → `C`). "
+            "**Null when the source wrote `-?`**, which it "
             "does often — 2 of the first 3 rs4149056 associations — meaning the study did not "
             "establish which allele carries the effect. An effect size relative to an unknown allele "
             "cannot be used as a weight, so the row is kept and counted rather than dropped: that is "
@@ -159,7 +160,7 @@ class GwasEffectRow(CitationPair):
         },
         description=(
             "What kind of magnitude it is — `OR` or `beta` in practice. The Catalog keeps these in "
-            "two mutually exclusive fields (`orPerCopyNum`, `betaNum`) rather than the single "
+            "two mutually exclusive fields (`or_per_copy_num` and `beta` in its REST API v2) rather than the single "
             "ambiguous 'OR or BETA' column its download TSV uses, so this maps cleanly. Open, "
             "matching `StudyRow.effect_measure`."
         ),
@@ -182,14 +183,17 @@ class GwasEffectRow(CitationPair):
             "direction** — `VariantRow.direction` is protective|risk|neutral|unknown and answers a "
             "different question, since increasing a trait may be good, bad or neither. Folding the "
             "two together would overload one field with two axes (Principle 5); the source keeps "
-            "them apart (`betaDirection`) and so does this."
+            "them apart (the last word of v2's `beta`, `betaDirection` before it) and so does this."
         ),
     )
     standard_error: float | None = Field(
         json_schema_extra=since("0.6.0"),
         default=None,
         ge=0,
-        description="Standard error of the effect size, when the study reported one.",
+        description=(
+            "Standard error of the effect size, when the study reported one. The Catalog's REST API "
+            "v2 publishes none, so the `gwas` pass leaves it null."
+        ),
     )
     confidence_interval: str | None = Field(
         json_schema_extra=since("0.6.0"),

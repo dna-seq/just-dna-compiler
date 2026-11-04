@@ -41,6 +41,43 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM354: `gwas` reads the GWAS Catalog's REST API v2, and every client names a retired endpoint (patch, on `main`)
+
+**enricher** — The GWAS Catalog retired the legacy REST API the `gwas` pass read; every legacy path now
+answers HTTP 410, so `gwas_effects.csv` could not be filled for any module. The pass now reads
+`/gwas/rest/api/v2/associations?rs_id=`, follows its paging, and takes `pmid`, study accession, trait and
+EFO id from the association itself; ancestry is one request per distinct study
+(`/studies/<accession>/ancestries`). Measured on `hfe_hemochromatosis`: 190 requests where the legacy API
+took 382. Same `GwasEffectRow` columns, and the association ids carried over, so a re-run merges into a
+table the legacy pass wrote. What changed in the values: `standard_error` is always empty (v2 publishes
+none); `p_value` is the Catalog's mantissa/exponent pair (`3e-493` where the legacy pass wrote `0.0`);
+an all-`NR` ancestry is empty rather than `NR`; an effect string outside v2's
+`<number> [<unit>] <increase|decrease>` is withheld and counted in the new `GwasResult.unparsed_effects`,
+which `--strict` refuses on and the CLI summary prints. The effect allele is taken from the
+`snp_effect_allele` entry naming the queried rsID, never the first of a multi-SNP list. The client now
+retries a 5xx and a 429 as well as a transport failure. `--no-study-facts` now skips only the ancestry request; pmid, accession and
+trait are filled either way. A 404 on the association search is now could-not-ask (v2 answers a variant
+it holds nothing for with an empty 200), so `gwas` left the 404-is-an-answer set.
+
+Across the tier: a 410 Gone raises each client's own `*Retired`, a subclass of its could-not-ask type,
+so existing handlers still catch it: `GwasRetired`, `GnomadRetired`, `EutilsRetired`, `CpicRetired`,
+`PharmVarRetired`, `ReleaseRetired`, `LiteratureRetired`, `IdentifierRetired`, `PgsCatalogRetired`,
+`LitvarRetired`, `CivicApiRetired`. The message carries the URL and the source's own text. `gnomad`,
+`eutils`, `cpic`, `pharmvar` and the ClinVar release probe no longer retry a 400, 404 or 410; they retry
+transport failures, 5xx and 429 (`net.retry_if_transient`). What a 404 means for each client is
+unchanged and is tabled in ENRICHER.md § Exception contract. No format or compiler change and no identity
+moves. One text-only change in format: the `GwasEffectRow` column descriptions name v2's fields.
+
+## 2026-11-04 — RM355: `upload --dry-run` reports a refusal as the real run does, and the publisher reads its manifest once (patch, on `main`)
+
+**enricher** — `just-dna-enricher upload --dry-run` on a module the publisher refuses (an attested file
+missing, a declared file edited after the compile, no annotation table) now prints the same
+`UPLOAD FAILED: …` line as the real run and exits 1, where it used to end in a traceback. The dry run still
+contacts nothing, so a versioned-path collision is reported by the real run only. The plan and the publish
+read `manifest.json` once (the version used to come from a second read), and an `artifact.files` entry whose
+`name` is `""` is refused with the entry quoted, where the refusal used to read `attests ['']` and suggest the
+file was missing. No format or compiler change, and no identity moves.
+
 ## 2026-11-04 — RM357: the authored tables that are not table kinds have one registry and one loader, and a refused `meta.csv` no longer reports its citations as uncited (0.8, uncut)
 
 - **One registry.** `just_dna_compiler.compiler.AUTHORED_NON_KIND_TABLES` registers `overrides.csv`,

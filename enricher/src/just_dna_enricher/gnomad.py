@@ -40,11 +40,17 @@ from just_dna_format.vocab import normalize_population, population_sort_key
 from just_dna_format.vrs import in_pseudoautosomal_region, normalize_chrom
 from tenacity import (
     retry,
-    retry_if_exception_type,
     wait_exponential_jitter,
 )
 
-from just_dna_enricher.net import PacingGate, attempt_floor, batched, dedupe
+from just_dna_enricher.net import (
+    PacingGate,
+    attempt_floor,
+    batched,
+    dedupe,
+    raise_if_retired,
+    retry_if_transient,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +137,11 @@ class GnomadError(RuntimeError):
 
 class RateLimitedError(GnomadError):
     """gnomAD answered HTTP 429. Retried with backoff; the pacing gate should normally prevent it."""
+
+
+class GnomadRetired(GnomadError):
+    """gnomAD answered HTTP 410: it retired the endpoint asked (RM354). A fact about the source, not an
+    outage, and not retried; a `GnomadError` so every existing handler still catches it."""
 
 
 @dataclass
@@ -304,9 +315,8 @@ class GnomadClient:
     @retry(
         stop=attempt_floor(4),
         wait=wait_exponential_jitter(initial=2.0, max=30.0),
-        retry=retry_if_exception_type(
-            (RateLimitedError, httpx.TransportError, httpx.TimeoutException, httpx.HTTPStatusError)
-        ),
+        # A 5xx or a 429 only (RM354): a permanent 4xx answers the same on every attempt.
+        retry=retry_if_transient(RateLimitedError),
         reraise=True,
     )
     def _request(self, query: str) -> dict:
@@ -348,6 +358,7 @@ class GnomadClient:
         try:
             return self._request(query)
         except (httpx.TransportError, httpx.HTTPStatusError, ValueError) as exc:
+            raise_if_retired(exc, GnomadRetired, "gnomAD")
             raise GnomadError(f"gnomAD request failed: {exc}") from exc
 
     def _post_batch(self, fields: list[str], *, what: str) -> tuple[dict[str, Any], dict[str, str]]:

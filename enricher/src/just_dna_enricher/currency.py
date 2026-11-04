@@ -45,7 +45,7 @@ from dataclasses import dataclass
 
 import httpx
 from just_dna_format.sources import SourceRow
-from tenacity import retry, retry_if_exception_type, wait_exponential_jitter
+from tenacity import retry, wait_exponential_jitter
 
 from just_dna_enricher.clinvar import CLINVAR_DATASET_PREFIX
 from just_dna_enricher.clinvar_build import DEFAULT_CLINVAR_URL, file_date_from_header
@@ -55,7 +55,7 @@ from just_dna_enricher.clinvar_gkm import (
     ClinVarGkmError,
     ClinVarGkmUnavailable,
 )
-from just_dna_enricher.net import PacingGate, attempt_floor
+from just_dna_enricher.net import PacingGate, attempt_floor, raise_if_retired, retry_if_transient
 from just_dna_enricher.pgs import (
     PGS_SOURCE,
     PgsCatalogClient,
@@ -77,6 +77,14 @@ class ReleaseUnavailable(ReleaseProbeError):
     A subclass, not a second type (P3): an existing `except ReleaseProbeError` keeps firing, while a
     caller that needs to separate *unreachable* from *unreadable* can. `@client-exception-contract`,
     which also makes a handler's `except` order load-bearing — the narrow arm goes first.
+    """
+
+
+class ReleaseRetired(ReleaseUnavailable):
+    """The source answered HTTP 410: it retired the file the probe asks for (RM354).
+
+    A fact about the source, not an outage, and not retried. A `ReleaseUnavailable` so every existing
+    handler still catches it; the message says the URL moved rather than that it was down.
     """
 
 
@@ -138,7 +146,8 @@ class ClinVarReleaseClient:
     @retry(
         stop=attempt_floor(3),
         wait=wait_exponential_jitter(initial=1.0, max=15.0),
-        retry=retry_if_exception_type((httpx.TransportError, httpx.TimeoutException, httpx.HTTPStatusError)),
+        # A 5xx or a 429 only (RM354): a permanent 4xx answers the same on every attempt.
+        retry=retry_if_transient(),
         reraise=True,
     )
     def _header_bytes(self) -> bytes:
@@ -148,6 +157,8 @@ class ClinVarReleaseClient:
         chunks: list[bytes] = []
         taken = 0
         with self._http().stream("GET", self.url) as response:
+            if response.is_error:
+                response.read()  # an error page is small, and a 410's says where the file went
             response.raise_for_status()
             for chunk in response.iter_bytes():
                 chunks.append(chunk)
@@ -165,6 +176,7 @@ class ClinVarReleaseClient:
         try:
             raw = self._header_bytes()
         except (httpx.TransportError, httpx.HTTPStatusError) as exc:
+            raise_if_retired(exc, ReleaseRetired, "ClinVar")
             raise ReleaseUnavailable(f"ClinVar release probe failed: {exc}") from exc
         date = file_date_from_header(_gunzip_prefix(raw))
         return f"{CLINVAR_DATASET_PREFIX}{date}" if date else None

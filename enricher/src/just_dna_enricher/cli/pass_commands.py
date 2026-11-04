@@ -423,11 +423,12 @@ def gwas_(
     study_facts: bool = typer.Option(
         True,
         "--study-facts/--no-study-facts",
-        help="Follow each association's study and trait links. Costs 2 requests per association; "
-        "measured at 382 requests for one real module. Off keeps effects, drops pmid/trait/ancestry "
-        "PERMANENTLY for the rows it writes: the merge is keyed on association_id, so a later run "
-        "with study facts on skips those rows rather than back-filling. Delete gwas_effects.csv to "
-        "re-derive them.",
+        help="Fetch each distinct study's ancestry, the one fact the Catalog's v2 API keeps behind a "
+        "request: 1 request per study, measured at 190 requests in all for one real module. pmid, "
+        "study accession and trait come with the association and are filled either way. Off drops "
+        "ancestry PERMANENTLY for the rows it writes: the merge is keyed on association_id, so a later "
+        "run with study facts on skips those rows rather than back-filling. Delete gwas_effects.csv to "
+        "re-derive it.",
     ),
 ) -> None:
     """Fill gwas_effects.csv with the GWAS Catalog's published effect sizes for this module's rsIDs.
@@ -459,7 +460,9 @@ def gwas_(
         f"gwas: {len(result.rows)} row(s) for {len(result.covered)} variant(s), "
         f"{len(result.missing)} with no published association; "
         f"{result.requests_made} request(s), {result.requests_saved} saved by caching, "
-        f"{result.p_value_underflows} p-value(s) below float64 range",
+        f"{result.p_value_underflows} p-value(s) below float64 range, "
+        f"{result.unparsed_effects} effect string(s) withheld as unreadable, "
+        f"{result.unusable} association(s) with no usable id",
         fg=typer.colors.GREEN,
     )
     # The path the pass actually wrote, never `spec_dir / <name>` — a module keeping its sidecars

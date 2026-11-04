@@ -77,7 +77,7 @@ from tenacity import (
 from just_dna_enricher.eutils import EutilsClient, EutilsError, is_missing
 from just_dna_enricher.licensing import article_terms, sidecar_path
 from just_dna_enricher.locations import env_value
-from just_dna_enricher.net import PacingGate, attempt_floor, batched, dedupe
+from just_dna_enricher.net import PacingGate, attempt_floor, batched, dedupe, raise_if_retired
 from just_dna_enricher.verification import examples, ran, record_verification, skipped
 
 logger = logging.getLogger(__name__)
@@ -146,6 +146,15 @@ class FulltextUnavailable(LiteratureUnavailable):
     (the service holds no copy). The two used to be one `None`, and the pass pinned an outage as an
     abstract-only row that merge-not-clobber never asked about again. A subclass, so an existing
     `except LiteratureUnavailable` still catches it.
+    """
+
+
+class LiteratureRetired(LiteratureUnavailable):
+    """Europe PMC answered HTTP 410: it retired the endpoint asked (RM354).
+
+    A fact about the source, not an outage, and not retried; a `LiteratureUnavailable` so every
+    existing handler still catches it. Raised by `EuropePmcClient.lookup` only: the fulltext route
+    keeps its own answers, `None` for absent and `FulltextUnavailable` for unreachable (RM258).
     """
 
 
@@ -446,6 +455,7 @@ class EuropePmcClient:
                 response = self._get("search", {"query": query, "resultType": "core", "format": "json"})
                 payload = response.json()
             except httpx.HTTPError as exc:
+                raise_if_retired(exc, LiteratureRetired, "Europe PMC")
                 raise LiteratureUnavailable(f"Europe PMC could not be asked: {exc}") from exc
             except ValueError as exc:
                 raise LiteratureUnavailable(

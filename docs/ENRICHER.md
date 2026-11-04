@@ -418,7 +418,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `clingen` | ClinGen dosage sensitivity → `gene_metrics.csv` rows (CC0, so a module stays sellable) | `httpx`, format |
 | `gene_validity` | RM24: curated gene–disease assertions → `gene_validity.csv` (ClinGen expert panels, GenCC's aggregate; both CC0) | `httpx`, format |
 | `assertions` | RM25: `resolution.csv` + the ClinVar snapshot → `clinical_assertions.csv` (the call **and** the review tier) | `duckdb` via `clinvar`, format |
-| `gwas` | RM90: the GWAS Catalog REST API → `gwas_effects.csv` (published effect sizes **with their units**). Fills no `weight` | `httpx`, format |
+| `gwas` | RM90: the GWAS Catalog REST API (v2 since RM354) → `gwas_effects.csv` (published effect sizes **with their units**). Fills no `weight` | `httpx`, format |
 | `expression` | RM194/RM200: the Atlas `ListDenseVariantScores` RNA_SEQ interval → `expression_effects.csv` (per-gene direction, **with the distance beside it**). Non-commercial, so an undeclared run writes nothing | `atlas_client`, `gene_spans`, format |
 | `opentargets` | **0.8** (RM333/RM239/RM236): the Open Targets snapshot → `locus_to_gene.csv`, `colocalisations.csv`, `consequences.csv`, and the fine-mapping posterior on `gwas_effects.csv`. Reads only the snapshot; coordinates from `resolution.csv` | `duckdb`, `opentargets` lane, format |
 | `gene_spans` | RM194: gene symbol → GRCh38 span, out of the operator-built MANE snapshot. A module with a plain name rather than a private helper, so the second caller can find it. RM259 added the reverse, `genes_covering`: a GRCh38 position → every gene whose span plus the 512 kb attribution horizon covers it, a **query hint** for a row with no authored `gene`, never an attribution (50 candidates at HFE H63D, 34 at APOE) | `polars`, `mane` lane |
@@ -533,7 +533,7 @@ per service, put a semaphore around your call site; the gate will not give you t
 | **CPIC** (`api.cpicpgx.org`) | `cpic` / `pgx_draft` | unpublished | **no `PacingGate`** — coarse PostgREST GETs (gene-scoped), not per-allele loops | none |
 | **ClinPGx** | `clinpgx` / `clinpgx_draft` | n/a at runtime | **offline snapshot only** for the check/draft path — no live poll budget | none (live API retired → snapshot) |
 | **seqrepo REST** (`services.genomicmedlab.org`) | `sequences` / VRS indel mint | unpublished | **no `PacingGate`**; in-process memo of window reads | none |
-| **GWAS Catalog REST** (`www.ebi.ac.uk/gwas/rest/api`) | `gwas` | **none established** — EBI publishes no numeric budget for this API, unlike gnomAD's real and load-bearing 10/60s | `DEFAULT_REQUEST_INTERVAL=1.0` — a **courtesy, not a transcribed limit**. Cost is `1 + 2N` per variant (the study/trait facts sit behind `_links`); measured at **382 requests for one real module**, and `--no-study-facts` drops it to one per variant | none |
+| **GWAS Catalog REST v2** (`www.ebi.ac.uk/gwas/rest/api/v2`) | `gwas` | **none established** — EBI publishes no numeric budget for this API, unlike gnomAD's real and load-bearing 10/60s | `DEFAULT_REQUEST_INTERVAL=1.0` — a **courtesy, not a transcribed limit**. Cost is one request per page of associations plus one per **distinct** study (its ancestries); measured at **190 requests for `hfe_hemochromatosis`** on v2 (11 saved by the cache), where the legacy API's `1 + 2N` cost 382. `--no-study-facts` drops it to the pages alone | none |
 | **AlphaGenome Atlas** (`gdmscience.googleapis.com`) | `alphagenome expression`, `alphagenome check` | **none published** — the Additional Terms bar classes of holder outright rather than metering requests, which is an eligibility bar and not a budget | measured **~1,091 SNVs/s** end to end; a gene plus its ±512 kb flanks is ~3.3 M SNVs ≈ 50 min, which the pass prints **before** the query rather than after | `ALPHAGENOME_API_KEY` |
 | **ClinGen** dosage TSV | `clingen` | n/a (one file) | single download, then local parse | none |
 | **ClinGen** gene-validity CSV | `gene_validity` | n/a (one file, ~1 MB) | single download, then local parse | none |
@@ -2449,9 +2449,9 @@ The author/publisher half of the enricher's HF use (snapshot *download* is a run
 ```python
 ensure_repo(repo_id, token=None)                                       # create-or-update (create_repo exist_ok=True)
 plan_upload(module_dir, name, repo_id=None) -> UploadPlan              # dry-run; validates artifacts present
-upload_module(module_dir, name, repo_id=None, token=None, commit_message=None) -> UploadPlan
-plan_reference_snapshot(snapshot_dir, repo_id=None) -> SnapshotPlan     # dry-run for a reference snapshot
-publish_reference_snapshot(snapshot_dir, repo_id=None, token=None, commit_message=None) -> SnapshotPlan
+upload_module(module_dir, name, repo_id=None, token=None, commit_message=None, force=False) -> UploadPlan
+plan_reference_snapshot(snapshot_dir, repo_id=None, *, payload=None) -> SnapshotPlan     # dry-run for a reference snapshot
+publish_reference_snapshot(snapshot_dir, repo_id=None, token=None, commit_message=None, *, payload=None) -> SnapshotPlan
 ```
 
 `upload_module` uploads `manifest.json` and **every file it declares** — the parquets
@@ -2559,6 +2559,19 @@ because the table carrying them was dropped at upload.
   selected `data/chr1.parquet` and never itself), a declared retirement's `delete_patterns`
   (`LayoutShift.retires` is one name, never a glob) and `cache prune`'s `delete_patterns`, where an
   unescaped listed name would delete a file nobody was shown.
+- **One reader, one filter, and the dry run refuses as the real run does (RM355).** The plan, the
+  publish and the publish's guard read `manifest.json` once, through `_manifest_document`, and pass the
+  object on; the version and the file list of one plan come from that one read (the version reader
+  used to open the file a second time). Every file entry, attested or declared, goes through one
+  filter, `_named_entry`, which keeps an object whose `name` is a non-empty string, so the attested
+  and the declared list agree about an `artifact.files` entry named `""` (the declared list used to
+  drop it while the attested one kept it). The plan refuses such an entry, quoting it: it is inside
+  `artifact.digest`, so no upload can carry what the digest covers. An optional declaration naming no
+  file (a `logo` with an empty name) is outside the digest and is dropped, as before. `upload --dry-run`
+  sits inside the same `try` as the real run: a refusal the plan raises prints the same
+  `UPLOAD FAILED: …` line and exits 1 from either, where the dry run used to end in a traceback. The
+  dry run still contacts nothing, so the versioned-path guard (a remote read) is the one refusal only
+  the real run can give.
 
 ### A module is published twice, and the second path is the one that can name a release (RM84)
 
@@ -5045,7 +5058,7 @@ client's type through and the documented handler was silent for exactly the fail
 | `enrich_dosage_sensitivity` | `ClinGenError` | `ClinGenUnavailable` |
 | `enrich_gene_validity` | `GeneValidityError` | `GeneValidityUnavailable` |
 | `verify_acmg_sf` | `AcmgSfError` | `AcmgListUnavailable` (carries `skip`) |
-| `enrich_gwas` | `GwasError` | — client and pass share the type |
+| `enrich_gwas` | `GwasError` | — client and pass share the type; a 410 is `GwasRetired` |
 | `enrich_pgx` | `PgxEnrichmentError` | — degrades per leg instead of raising |
 | `enrich()` | — | — degrades and withholds; see below |
 
@@ -5062,6 +5075,37 @@ had one of each:
 - **Re-raise for the decorator and translate nowhere and the last attempt leaks.** `GwasCatalogClient`
   re-raised the transport leg bare, correctly, and `reraise=True` then handed the raw
   `httpx.ConnectError` to a caller told to expect `GwasError`.
+
+**A permanent 4xx is never retried, and a 410 is the source moving (RM354).** Found when the GWAS
+Catalog retired its legacy API: every path answered HTTP 410 and `GwasCatalogClient` filed it as the
+same `GwasError` an outage raises, so a source that had moved read as one that was down. The class was
+wider than that lane. No client named a 410, and six (`gnomad`, `eutils`, `cpic` with its `row_count`,
+`pharmvar`, `currency`) retried every `HTTPStatusError`, so a 400, a 404 and a 410 were each asked
+three or four times first. Since RM354:
+
+- **Retried:** a transport failure, a timeout, a 5xx and a 429 — `net.retry_if_transient`, which the
+  six now use, and so does `gwas`, whose v2 pass makes one request per page and per study (one passing
+  503 used to sink all of them). The other clients that retried transport only keep that predicate.
+  `test_no_retry_policy_in_the_tier_retries_a_permanent_4xx` hands every `@retry` policy in the package
+  a synthetic 400, 404 and 410 and refuses any that would try again.
+- **A 410 raises the client's own `*Retired`**, a subclass of its could-not-ask type, so every
+  existing handler still catches it. The message carries the URL, the status and the source's own
+  text, which is usually where it says the endpoint went. `net.raise_if_retired` is the one place
+  the message is built. **A handler that records its could-not-ask type as `unreachable` records a
+  retired endpoint there too**: the type is a subclass, so the record's reason is the `*Retired`
+  message, and a handler wanting a separate outcome catches the subclass first.
+- **What a 404 means stayed per client**, and it is not the same everywhere:
+
+| client | a 404 is | so |
+| --- | --- | --- |
+| `identifiers.OntologyClient` | an answer: no such term / symbol | `absent` |
+| `gwas.GwasCatalogClient.follow` | an answer: no such study record | that row's ancestry withheld |
+| `gwas.GwasCatalogClient.associations_for` | a failure since v2 — the search answers an unknown rsID with an empty 200 | `GwasNotFound`, a `GwasError` |
+| `literature.EuropePmcClient.fulltext` | no retrievable fulltext | `None`, the withhold |
+| `literature.EuropePmcClient.lookup` | a failure | `LiteratureUnavailable` |
+| `pgs.PgsCatalogClient` | a failure — the Catalog says "no such score" with an empty 200 | `PgsCatalogUnavailable` |
+| `litvar.LitvarClient` | a failure — its absence is a 400 whose body opens `Variant not found` | `LitvarUnavailable` |
+| `gnomad`, `eutils`, `cpic`, `pharmvar`, `currency`, `civic_api` | a failure | the client's base or `*Unavailable` type |
 
 `test_retry_is_reachable.py` walks every `@retry`-decorated function **in the package** and refuses any
 whose body catches an ancestor of a type its decorator retries. It walks the package rather than the
@@ -5138,7 +5182,8 @@ joins this table by existing (`@registry-completeness`).
 
 **Read the third column as a ladder, not a set.** A subclass makes a caller's `except` **order**
 load-bearing (`@client-exception-contract`), so catching the base type first silently swallows every
-narrowing beside it. `AtlasRefMismatch` is the one entry two levels deep, under `AtlasRefused`.
+narrowing beside it. Two levels deep: `AtlasRefMismatch` under `AtlasRefused`, and since RM354 every
+`*Retired` that sits under its client's `*Unavailable`.
 
 **The `*Unavailable` convention is the tri-state, spelled as a type**: it means *the source could not
 be asked*, which is `unknown` and never a finding against the module. A base type with no narrowing
@@ -5155,19 +5200,19 @@ and `EnsemblResolver` are the latter, and are exempt from the contract suite for
 | `civic_citations` | `CivicCitationsError` | — |
 | `clingen` | `ClinGenError` | `ClinGenUnavailable` |
 | `clinpgx` | `ClinPgxEnrichmentError` | — |
-| `clinvar_gkm` | `ClinVarGkmError` | `ClinVarGkmUnavailable` (could not be asked), `ClinVarGkmMismatch` (bytes that are not the file the manifest states; RM305) |
-| `currency` | `ReleaseProbeError` | `ReleaseUnavailable` |
+| `clinvar_gkm` | `ClinVarGkmError` | `ClinVarGkmUnavailable` (could not be asked), `ClinVarGkmRetired` (under the one before it; RM354), `ClinVarGkmMismatch` (bytes that are not the file the manifest states; RM305) |
+| `currency` | `ReleaseProbeError` | `ReleaseUnavailable`, `ReleaseRetired` (under the one before it) |
 | `drug_labels` | `DrugLabelError` | `DrugLabelUnavailable` |
 | `enrich` | `EnrichmentError` | — |
 | `expression` | `ExpressionError` | `ExpressionUnavailable` |
 | `frequencies` | `FrequencyEnrichmentError` | `FrequencyUnavailable` |
 | `gene_metrics` | `GeneMetricsEnrichmentError` | `GeneMetricsUnavailable` |
 | `gene_validity` | `GeneValidityError` | `GeneValidityUnavailable` |
-| `gwas` | `GwasError` | `GwasNotFound` |
-| `identifiers` | `IdentifierCheckError` | `IdentifierUnavailable` |
-| `literature` | `LiteratureEnrichmentError` | `LiteratureUnavailable`, `FulltextUnavailable` (RM258: the fulltext clients' unanswered request) |
+| `gwas` | `GwasError` | `GwasNotFound`, `GwasRetired` |
+| `identifiers` | `IdentifierCheckError` | `IdentifierUnavailable`, `IdentifierRetired` (under the one before it) |
+| `literature` | `LiteratureEnrichmentError` | `LiteratureUnavailable`, `FulltextUnavailable` (RM258: the fulltext clients' unanswered request), `LiteratureRetired` (under `LiteratureUnavailable`) |
 | `opentargets` | `OpenTargetsError` | — (it never fetches) |
-| `litvar` | `LitvarError` | `LitvarUnavailable` |
+| `litvar` | `LitvarError` | `LitvarUnavailable`, `LitvarRetired` (under the one before it) |
 | `mitomap` | `MitomapError` | `MitomapUnavailable` |
 | `pgx` | `PgxEnrichmentError` | — |
 | `strchive` | `StrchiveError` | `StrchiveUnavailable` |
@@ -5184,15 +5229,15 @@ caller and `except` order never matters. RM310 was the list shape failing: `cach
 | module | base type | narrowed by |
 |---|---|---|
 | `atlas_client` | `AtlasError` | `AtlasNotScored`, `AtlasRefused`, `AtlasRefMismatch` (under the one before it), `AtlasUnavailable` |
-| `civic_api` | `CivicApiError` | `CivicApiUnavailable` |
+| `civic_api` | `CivicApiError` | `CivicApiUnavailable`, `CivicApiRetired` (under the one before it) |
 | `clingen_allele` | `ClingenAlleleError` | — |
-| `cpic` | `CpicError` | — |
+| `cpic` | `CpicError` | `CpicRetired` |
 | `ensembl` | `EnsemblError` | — |
-| `eutils` | `EutilsError` | `EutilsRateLimitedError` |
+| `eutils` | `EutilsError` | `EutilsRateLimitedError`, `EutilsRetired` |
 | `gene_spans` | `GeneSpanError` | — |
-| `gnomad` | `GnomadError` | `RateLimitedError` |
-| `pgs` | `PgsCatalogError` | `PgsCatalogUnavailable` |
-| `pharmvar` | `PharmVarError` | — |
+| `gnomad` | `GnomadError` | `RateLimitedError`, `GnomadRetired` |
+| `pgs` | `PgsCatalogError` | `PgsCatalogUnavailable`, `PgsCatalogRetired` (under the one before it) |
+| `pharmvar` | `PharmVarError` | `PharmVarRetired` |
 
 **Builders and the publisher (`[dev]`) — what `cache rebuild` and a `build` command raise**
 
@@ -5739,7 +5784,7 @@ letting the unit tests pass against a fiction.
 
 `just-dna-enricher gwas <spec-dir>` fills `gwas_effects.csv` with the NHGRI-EBI GWAS Catalog's
 published effect sizes for every rsID the module names. **One row per published association**, not
-per variant — rs1800562 alone carries 186 — keyed on the Catalog's own `association_id` and merged
+per variant — rs1800562 alone carries 191 (v2, 2026-11-04) — keyed on the Catalog's own `association_id` and merged
 never clobbered.
 
 **The subjects come from `enrich.collect_subjects` since RM158, not from `variants.csv` alone.** Five
@@ -5758,36 +5803,76 @@ consumer asked for exactly that (S36); `MODULE_LIFECYCLE` § Stage 3 names the c
 here reports rather than repairs. The effect sits beside the authored column and a consumer picks one
 wholesale.
 
+**The pass reads REST API v2 since RM354, because the legacy API is gone.** Probed by hand on
+2026-11-04:
+
+| request | status | what came back |
+| --- | --- | --- |
+| `GET /gwas/rest/api/singleNucleotidePolymorphisms/rs4149056/associations` (legacy, what the pass read) | **410** | `text/plain`: "This legacy GWAS Catalog REST API is no longer available.", pointing at the v2 migration guide. Every legacy path answers the same, `/gwas/rest/api/studies/<accession>` included |
+| `GET /gwas/rest/api/v2/associations?rs_id=rs4149056` | 200 | 20 associations of `page.totalElements: 386`, with `_links.next`; `size=1000` returns all 386 on one page |
+| `GET /gwas/rest/api/v2/associations?rs_id=rs111033563` (a rare clinical variant) | 200 | **no `_embedded` key at all**, `page.totalElements: 0` — the same for an rsID that does not exist |
+| `GET /gwas/rest/api/v2/associationz?rs_id=rs1` (a wrong path) | 404 | the only 404 the search gave |
+| `GET /gwas/rest/api/v2/studies/GCST000386/ancestries` | 200 | `_embedded.ancestries[].ancestral_groups[].ancestral_group` per stage (`initial`, `replication`) |
+
+A 410 raises **`GwasRetired`**, a `GwasError` subclass whose message carries the URL and the Catalog's
+own text, and it is asked once. It used to fall into the generic status arm as a plain `GwasError`,
+the could-not-ask an outage raises, so the pass died saying the source had failed rather than that it
+had moved. The class this belonged to, in every client of the tier, is § Exception contract.
+
+**How v2 maps onto `GwasEffectRow`** — the same columns the legacy payload filled, and the association
+ids carried over: legacy 13069 and 55421052 are v2 13069 and 55421052, so a re-run merges into a table
+the legacy pass wrote rather than doubling it (a test pins that).
+
+| column | v2 field | note |
+| --- | --- | --- |
+| `association_id` | `association_id` (an integer) | `_links.self`'s last segment as the fallback |
+| `effect_allele`, `rsid` | the `snp_effect_allele` entry naming the queried rsID | `rs4149056-C`, or `rs4149056-?` → null: the legacy `riskAlleleName` grammar, unchanged. A multi-SNP association lists one entry per SNP; none naming this variant withholds the allele rather than taking the first |
+| `effect_size`, `effect_measure` | `or_per_copy_num` → `OR`; else the number in `beta` → `beta` | `beta` is **one composite string** where the legacy API had three fields |
+| `effect_unit`, `effect_direction` | the middle and the last token of `beta` | `"0.05 umol/l increase"`; the unit kept verbatim (one study writes U+2009 in it). `"-"` is v2's no-value. A string outside `<number> [<unit>] <increase\|decrease>` is **withheld whole and counted** (`unparsed_effects`, and `--strict` refuses on it) |
+| `standard_error` | — | **v2 publishes none.** Always null; never derived from the CI |
+| `confidence_interval` | `range` | verbatim; v2's `"-"` → null, a study's `NR` kept |
+| `risk_allele_frequency` | `risk_frequency` | `NR` → null |
+| `p_value` | `pvalue_mantissa` + `pvalue_exponent` → `3e-493` | the pair the Catalog curated; the float beside it is `0.0` past float64's range and `2.9999999999999997e-29` for `3e-29`. `p_value_num` is read from the same string |
+| `trait`, `trait_efo_id` | `efo_traits[].efo_trait`, `efo_traits[].efo_id` | inline now. The EFO label, as the legacy efoTraits link served; `reported_trait` is not read |
+| `pmid`, `study_accession` | `pubmed_id`, `accession_id` | inline now; v2's `-` → null |
+| `ancestry` | `/studies/<accession>/ancestries` | **the one fact still behind a request.** Every stage, sorted; `NR` → absent |
+
 **Everything below came from probing the live API, not its documentation.**
 
-* **The association payload is thin.** `pmid`, `study_accession`, `ancestry`, `trait` and
-  `trait_efo_id` all sit behind `_links.study` and `_links.efoTraits`, so a complete row costs two
-  extra requests and the pass is `1 + 2N` per variant. `_LinkCache` memoizes by resolved URL — and the
-  measurement **refuted the prediction that motivated it**: on `hfe_hemochromatosis` it saved nothing,
-  because rs1800562's 189 associations each name their own study. 382 requests, zero cache hits.
-  `--no-study-facts` exists because of that number and drops the cost to one request per variant,
-  keeping the effects and losing the linked metadata.
+* **The request budget fell by half, and the cache finally pays.** On the legacy API `pmid`,
+  `study_accession`, `ancestry`, `trait` and `trait_efo_id` all sat behind `_links.study` and
+  `_links.efoTraits`, so the pass cost `1 + 2N` per variant, and `_LinkCache` — built on the prediction
+  that associations share studies — **saved nothing**: rs1800562's 189 associations each named their
+  own study, 382 requests, zero cache hits. On v2 only ancestry is behind a request, one per distinct
+  study, and the same module measured **190 requests with 11 saved** on 2026-11-04 (10 variants, 191
+  associations, 181 studies; 3 min 28 s at the 1 s courtesy interval).
+  `--no-study-facts` skips that follow and costs one request per page; the inline facts are filled
+  either way, because they cost nothing.
   **The loss is permanent for the rows it writes, and this is not the per-run trade the sentence above
   reads like** (S50). The merge is keyed on `association_id` alone, and the skip happens *before* the
-  row is built — so a row written with `--no-study-facts` keeps `pmid`, `study_accession`, `ancestry`,
-  `trait` and `trait_efo_id` null, and a later run **with** study facts skips it rather than filling
-  it in. **Delete `gwas_effects.csv` to re-derive them.** Every other delete-to-regenerate case in this
-  tier is about a *stale* value; this one is about a value that was never fetched, so the file looks
-  complete — every column present, most cells populated — and cannot be repaired incrementally.
+  row is built — so a row written with `--no-study-facts` keeps `ancestry` null, and a later run
+  **with** study facts skips it rather than filling it in. **Delete `gwas_effects.csv` to re-derive
+  it.** Every other delete-to-regenerate case in this tier is about a *stale* value; this one is about a
+  value that was never fetched, so the file looks complete and cannot be repaired incrementally.
   Back-filling instead was considered and refused: it would make the pass rewrite existing rows, which
-  is what merge-not-clobber exists to prevent, and a null `pmid` is not distinguishable from a study
-  record that has none — the case `follow`'s 404 arm deliberately produces.
-* **A 404 is the empty answer, not an outage.** The Catalog holds only variants with a published
-  association, so it 404s on a rare clinical one. `GwasNotFound` keeps that typed: `associations_for`
-  reports the empty answer (recorded as a `not_found` row), `follow` withholds one association's study
-  facts and keeps the effect. The first version of this pass read a 404 as a transport failure and
-  died on the first variant of the first real module it met.
-* **`pvalue: 0.0` is an underflow the Catalog really publishes.** `p_value_num` is `gt=0` because such
-  a value is not a probability; the pass withholds the number, keeps the verbatim `p_value` string, and
-  **keeps the row** — an early version let the `ValidationError` discard a real published effect over
-  one derived column (six on rs1800562; 189 rows became 195).
-* **`riskAlleleName` is `rs4149056-?`** when a study never established which allele carries the effect.
-  Null, never a guess, and the row is kept and counted — 42 of 195 on that module.
+  is what merge-not-clobber exists to prevent, and a null `ancestry` is not distinguishable from a study
+  that published none — the case `follow`'s 404 arm and an all-`NR` study deliberately produce. (Before
+  RM354 the flag dropped `pmid`, `study_accession`, `trait` and `trait_efo_id` too; rows written that
+  way keep them null.)
+* **The empty answer is a 200, and a 404 is no longer one.** The legacy API held only variants with a
+  published association and 404'd on a rare clinical one, which the pass read as the empty answer. v2
+  is a search and answers that variant with a 200 and zero elements, so `associations_for` lets a 404
+  propagate as `GwasNotFound` — could-not-ask — and reading it as "no associations" is the confident
+  negative this pass refuses. `follow` keeps its 404 arm: one study's ancestry withheld, the effect kept.
+  **Paging is followed, not trusted**: the pass asks for 1,000 per page and walks `_links.next`, and a
+  200 with no associations that does not say `totalElements: 0` is a shape change, which raises.
+* **`p_value: 0.0` is an underflow the Catalog really publishes.** `p_value_num` is `gt=0` because such
+  a value is not a probability; the pass withholds the number and **keeps the row** — an early version
+  let the `ValidationError` discard a real published effect over one derived column (six on
+  rs1800562, still six on v2). The verbatim string now says what the study reported (`3e-493`), where
+  the legacy pass could only write `0.0`.
+* **`snp_effect_allele` is `rs4149056-?`** when a study never established which allele carries the
+  effect. Null, never a guess, and the row is kept and counted — 33 of 191 on that module on v2.
 
 **Licensing.** `GWAS_CATALOG_TERMS` is the first entry here with **no named licence**: EBI states its
 terms in prose (read 2026-08-17). `redistribution=True` is directly supported; **`commercial_use` stays

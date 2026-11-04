@@ -49,12 +49,11 @@ from just_dna_format.alleles import non_nucleotide_reason, symbolic_allele_defec
 from just_dna_format.snapshot import SnapshotRelease, read_release
 from tenacity import (
     retry,
-    retry_if_exception_type,
     wait_exponential_jitter,
 )
 
 from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME
-from just_dna_enricher.net import attempt_floor
+from just_dna_enricher.net import attempt_floor, raise_if_retired, retry_if_transient
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +63,11 @@ CPIC_SOURCE = "cpic"
 
 class CpicError(RuntimeError):
     """A CPIC request failed in a way the caller must see."""
+
+
+class CpicRetired(CpicError):
+    """CPIC answered HTTP 410: it retired the endpoint asked (RM354). A fact about the source, not an
+    outage, and not retried; a `CpicError` so every existing handler still catches it."""
 
 
 def unusable_allele_reason(value: str) -> str | None:
@@ -287,7 +291,8 @@ class CpicClient:
             self._client.close()
 
     @retry(
-        retry=retry_if_exception_type((httpx.TransportError, httpx.HTTPStatusError)),
+        # A 5xx or a 429 only (RM354): a permanent 4xx answers the same on every attempt.
+        retry=retry_if_transient(),
         stop=attempt_floor(3),
         wait=wait_exponential_jitter(initial=1, max=10),
         reraise=True,
@@ -327,6 +332,7 @@ class CpicClient:
             response = self._request(path, params)
             payload = response.json()
         except (httpx.TransportError, httpx.HTTPStatusError, ValueError) as exc:
+            raise_if_retired(exc, CpicRetired, "CPIC")
             raise CpicError(f"CPIC {path} could not be read: {exc}") from exc
         if not isinstance(payload, list):
             raise CpicError(f"CPIC {path} returned {type(payload).__name__}, expected a list")
@@ -355,6 +361,7 @@ class CpicClient:
                 headers={"Prefer": "count=exact", "Range-Unit": "items", "Range": "0-0"},
             )
         except (httpx.TransportError, httpx.HTTPStatusError) as exc:
+            raise_if_retired(exc, CpicRetired, "CPIC")
             raise CpicError(f"CPIC {table} row count could not be read: {exc}") from exc
         header = response.headers.get("content-range", "")
         total = header.rsplit("/", 1)[-1] if "/" in header else ""

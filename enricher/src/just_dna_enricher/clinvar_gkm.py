@@ -50,9 +50,9 @@ from pathlib import Path
 import httpx
 from just_dna_format.snapshot import SNAPSHOT_DATA_DIRNAME, SnapshotRelease, read_release
 from just_dna_format.vrs import vrs_spec_release
-from tenacity import retry, retry_if_exception_type, wait_exponential_jitter
+from tenacity import retry, wait_exponential_jitter
 
-from just_dna_enricher.net import PacingGate, attempt_floor
+from just_dna_enricher.net import PacingGate, attempt_floor, raise_if_retired, retry_if_transient
 
 try:  # the one guarded optional import (CLAUDE.md): polars reads the slice
     import polars as pl
@@ -114,6 +114,14 @@ class ClinVarGkmUnavailable(ClinVarGkmError):
 
     A subclass so an `except ClinVarGkmError` keeps catching it, and a caller that has to tell
     *unreachable* from *unreadable* can (`@client-exception-contract`): the narrow arm goes first.
+    """
+
+
+class ClinVarGkmRetired(ClinVarGkmUnavailable):
+    """The source answered HTTP 410: it retired the file asked for (RM354).
+
+    A fact about the source, not an outage, and not retried. A `ClinVarGkmUnavailable` so every existing
+    handler still catches it; the message says the file moved rather than that the host was down.
     """
 
 
@@ -238,7 +246,8 @@ class ClinVarGkmClient:
     @retry(
         stop=attempt_floor(3),
         wait=wait_exponential_jitter(initial=1.0, max=15.0),
-        retry=retry_if_exception_type((httpx.TransportError, httpx.HTTPStatusError)),
+        # A 5xx or a 429 only (RM354): a permanent 4xx answers the same on every attempt.
+        retry=retry_if_transient(),
         reraise=True,
     )
     def _get_text(self, url: str) -> str:
@@ -252,6 +261,7 @@ class ClinVarGkmClient:
         try:
             return self._get_text(url)
         except httpx.HTTPError as exc:
+            raise_if_retired(exc, ClinVarGkmRetired, "ClinVar-GKM")
             raise ClinVarGkmUnavailable(f"could not read ClinVar-GKM's {what} ({url}): {exc}") from exc
 
     def file_url(self, name: str) -> str:

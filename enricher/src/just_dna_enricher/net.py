@@ -26,7 +26,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
-from tenacity import retry, retry_if_exception_type, wait_exponential_jitter
+from tenacity import retry, retry_if_exception, retry_if_exception_type, wait_exponential_jitter
+from tenacity.retry import retry_base
 from tenacity.stop import stop_base
 
 logger = logging.getLogger(__name__)
@@ -188,6 +189,78 @@ class attempt_floor(stop_base):
 
     def __call__(self, retry_state) -> bool:
         return retry_state.attempt_number >= retry_attempts(self.default)
+
+
+# ── a status a retry can change, and one that says the source moved (RM354) ────────────────────
+#
+# Six clients retried every `httpx.HTTPStatusError`, so a 400, a 404 and a 410 were each asked three
+# or four times before the client gave up — measured, not read off the decorators. A permanent 4xx
+# answers the same on every attempt; retrying it spends somebody else's budget to learn nothing, and
+# for a 410 it delays the one message that matters. The other clients already retried transport only.
+#
+# And a 410 Gone is the source retiring the endpoint. Filed under the same type an outage raises, the
+# GWAS Catalog's retired legacy API read as a source that was down rather than one that had moved, so
+# every client now names it with its own `*Retired` subclass of its could-not-ask type: every
+# existing handler still catches it, and the message says what happened.
+
+#: The statuses a retry can change: the server's own trouble, and a throttle.
+TRANSIENT_STATUS_FLOOR = 500
+THROTTLED = 429
+#: The source retired the endpoint. Permanent, and a fact about the source rather than an outage.
+GONE = 410
+#: How much of a 410's body a `*Retired` message quotes. Enough for a "moved to" sentence; a
+#: maintenance page served as HTML would otherwise land whole in a log line.
+RETIRED_QUOTE_CHARS = 400
+
+
+def is_transient_status(exc: BaseException) -> bool:
+    """Whether `exc` is an HTTP status a second attempt could change (a 5xx or a 429)."""
+    if not isinstance(exc, httpx.HTTPStatusError):
+        return False
+    status = exc.response.status_code
+    return status >= TRANSIENT_STATUS_FLOOR or status == THROTTLED
+
+
+def retry_if_transient(*also: type[BaseException]) -> retry_base:
+    """Retry a transport failure, a timeout, a 5xx or a 429 — never a permanent 4xx (RM354).
+
+    `also` adds a client's own retried type, such as the rate-limit error `gnomad` and `eutils` raise
+    on a 429 before `raise_for_status()`.
+    """
+    return retry_if_exception_type(
+        (httpx.TransportError, httpx.TimeoutException, *also)
+    ) | retry_if_exception(is_transient_status)
+
+
+def _body_text(response: httpx.Response) -> str:
+    """The body a status error carried, or a marker when it was streamed and never read."""
+    try:
+        return response.text
+    except httpx.ResponseNotRead:
+        return "(body not read: a streamed response)"
+
+
+def retired_message(source: str, response: httpx.Response) -> str:
+    """What a client's `*Retired` error says: the URL, the 410, and the source's own text.
+
+    For a client that reads the status itself rather than raising on it; `raise_if_retired` is the
+    same message for one that translates an `HTTPStatusError`.
+    """
+    said = " ".join(_body_text(response).split())[:RETIRED_QUOTE_CHARS] or "(no body)"
+    return (
+        f"{source} retired the endpoint {response.request.url} (HTTP 410): {said} — this enricher "
+        f"reads an API the source no longer serves; upgrade just-dna-enricher"
+    )
+
+
+def raise_if_retired(exc: BaseException, error: type[Exception], source: str) -> None:
+    """Raise `error` — a client's `*Retired` type — when `exc` is a 410; otherwise return.
+
+    Called first in a client's status-translating `except` arm, so the arm keeps translating every
+    other status the way it did.
+    """
+    if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == GONE:
+        raise error(retired_message(source, exc.response)) from exc
 
 
 # ── bulk file downloads: one body, translated and retried (RM187) ───────────────────────────────

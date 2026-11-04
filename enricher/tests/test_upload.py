@@ -1,5 +1,7 @@
 """Unit tests for the HF module-upload publisher surface (no network)."""
 
+import builtins
+import io
 import json
 import shutil
 from pathlib import Path
@@ -25,6 +27,8 @@ from just_dna_enricher.upload import (
     PublishCollisionError,
     ToolchainDiffersError,
     UploadPlan,
+    _attested_parquets,
+    _declared_files,
     plan_reference_snapshot,
     plan_upload,
     prune_repo,
@@ -1377,3 +1381,101 @@ def test_a_declared_file_edited_after_the_compile_refuses(tmp_path: Path) -> Non
     with pytest.raises(FileNotFoundError, match="Re-compile"):
         _upload(out, api, remote)
     api.upload_folder.assert_not_called()
+
+
+# ── one manifest, one reader, one filter (RM355) ─────────────────────────────────────────────────
+
+
+def test_a_dry_run_reports_a_refusal_exactly_as_the_real_run_does(tmp_path: Path) -> None:
+    """`--dry-run` called `plan_upload` outside the `try` the real run sits in, so a refusal the real
+    run prints as one line came out of the dry run as a traceback. The dry run is what an author reads
+    first, so it is where a refusal has to be legible.
+
+    An uncaught `FileNotFoundError` also exits 1 under `CliRunner`, so the exit code alone cannot tell
+    the two apart: the test compares the dry run's stderr with the real run's, and asserts the
+    exception that ended the run is the CLI's own exit rather than the refusal. The real run needs no
+    hub — the plan refuses before `ensure_repo` is reached."""
+    out = _compile_with_everything(tmp_path, version=_AUTHORED_VERSION)
+    with (out / "logs" / "authoring.log").open("a", encoding="utf-8") as handle:
+        handle.write("an override, after the compile\n")
+
+    dry = CliRunner().invoke(app, ["upload", str(out), "--name", "apoe", "--dry-run"])
+    real = CliRunner().invoke(app, ["upload", str(out), "--name", "apoe"])
+
+    for result in (dry, real):
+        assert result.exit_code == 1, result.output
+        assert isinstance(result.exception, SystemExit), repr(result.exception)
+        assert "UPLOAD FAILED:" in result.stderr
+        assert "logs/authoring.log" in result.stderr
+        assert "Would upload" not in result.output
+    assert dry.stderr == real.stderr
+
+
+def test_the_plan_reads_the_manifest_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`_module_version` opened and parsed `manifest.json` itself, beside `_manifest_document`, so the
+    version and the file list of one plan came from two reads of one file. One reader now: a plan reads
+    the manifest once, and so does a publish, whose guard compares the same document the plan was
+    built from.
+
+    Counted at `io.open` (and the builtin, the same function under another name), which every way of
+    reading a file goes through — `Path.read_text`, `read_bytes`, `Path.open`, `open()` — so a second
+    read cannot pass by choosing a different spelling."""
+    out = _compile_with_everything(tmp_path, version=_AUTHORED_VERSION)
+    manifest_path = out / "manifest.json"
+    reads: list[object] = []
+    original = io.open
+
+    def counting_open(file: Any, *args: Any, **kwargs: Any) -> Any:
+        if isinstance(file, (str, Path)) and Path(file) == manifest_path:
+            reads.append(file)
+        return original(file, *args, **kwargs)
+
+    monkeypatch.setattr(io, "open", counting_open)
+    monkeypatch.setattr(builtins, "open", counting_open)
+
+    plan = plan_upload(out, "apoe")
+    assert plan.versioned_path_in_repo == f"data/apoe/v{_AUTHORED_VERSION}"
+    assert len(reads) == 1
+
+    reads.clear()
+    api, remote = _remote(tmp_path, None)
+    _upload(out, api, remote)
+    assert len(api.upload_folder.call_args_list) == 2
+    assert len(reads) == 1
+
+
+def test_an_entry_naming_no_file_is_read_one_way_and_refused(tmp_path: Path) -> None:
+    """`_named_entries` kept an `artifact.files` entry whose `name` is `""`, which `_declared_files`
+    dropped, so one manifest gave the attested list and the declared list two answers about the same
+    entry, and the plan refused with `attests ['']` and a hint to recompile "if the file is missing".
+
+    One filter now: neither list carries the entry. The plan still refuses, because the attested list
+    is what `artifact.digest` covers and an entry naming no file is a digest no upload can satisfy;
+    dropping it quietly would publish that false claim. The refusal quotes the entry, as a malformed
+    input's refusal does. An optional declaration naming no file (a `logo` with an empty name) is
+    outside the digest and is dropped without a refusal, as before."""
+    module_dir = _compiled_module(tmp_path / "m", version="1.2.3")
+    baseline = plan_upload(module_dir, "test_module").files
+    original = json.loads((module_dir / "manifest.json").read_text(encoding="utf-8"))
+
+    unnamed = {"name": "", "sha256": "sha256:" + "3" * 64, "size": 1}
+    document = json.loads(json.dumps(original))
+    document["artifact"]["files"].append(unnamed)
+    (module_dir / "manifest.json").write_text(json.dumps(document), encoding="utf-8")
+
+    attested = _attested_parquets(document)
+    declared = [name for name, _ in _declared_files(document)]
+    assert attested is not None
+    assert "" not in attested
+    assert "" not in declared
+    assert set(attested) <= set(declared)
+    with pytest.raises(FileNotFoundError) as caught:
+        plan_upload(module_dir, "test_module")
+    assert repr(unnamed) in str(caught.value)
+    assert "attests ['']" not in str(caught.value)
+
+    document = json.loads(json.dumps(original))
+    document["logo"] = {"name": "", "sha256": "sha256:" + "4" * 64, "size": 1}
+    (module_dir / "manifest.json").write_text(json.dumps(document), encoding="utf-8")
+    assert "" not in [name for name, _ in _declared_files(document)]
+    assert plan_upload(module_dir, "test_module").files == baseline
