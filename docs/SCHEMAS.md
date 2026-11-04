@@ -270,7 +270,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
   | `VALID_PHENOTYPE_CATEGORIES` | 6 (closed) |  |
   | `VALID_QUOTE_SOURCE` | 2 (closed) |  |
   | `VALID_RECOMMENDATION_STRENGTH` | 4 (closed) |  |
-  | `VALID_RELEASE_CHANGE_KINDS` | 2 (closed) |  |
+  | `VALID_RELEASE_CHANGE_KINDS` | 3 (closed) |  |
   | `VALID_RELEASE_OUTPUT_AXES` | 5 (closed) |  |
   | `VALID_RESOLUTION_STATUS` | 3 (closed) |  |
   | `VALID_RSID_STATUS` | 4 (closed) |  |
