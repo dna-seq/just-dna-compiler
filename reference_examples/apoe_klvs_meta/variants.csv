@@ -1,0 +1,7 @@
+rsid,genotype,state,conclusion,gene,flags
+rs10455872,A/A,neutral,"Two copies of the common LPA version. No Lp(a)-raising allele at this site.",LPA,legacy_longevitymap
+rs10455872,A/G,risk,"One copy of the LPA version that raises lipoprotein(a), a cause of coronary disease, and shortens parental lifespan in UK Biobank.",LPA,legacy_longevitymap
+rs10455872,G/G,risk,"Two copies of the LPA version that raises lipoprotein(a), a cause of coronary disease, and shortens parental lifespan in UK Biobank.",LPA,legacy_longevitymap
+rs2075650,A/A,neutral,"Two copies of the common TOMM40 version.",TOMM40,legacy_longevitymap
+rs2075650,A/G,neutral,"One copy of the TOMM40 G version. It travels with APOE ε4, so its association is ε4's; read the APOE result instead.",TOMM40,legacy_longevitymap
+rs2075650,G/G,neutral,"Two copies of the TOMM40 G version. It travels with APOE ε4, so its association is ε4's; read the APOE result instead.",TOMM40,legacy_longevitymap

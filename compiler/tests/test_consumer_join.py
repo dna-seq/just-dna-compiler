@@ -39,6 +39,12 @@ with the row's `ref` asserted at its offset. The records are the same 2026-06-27
 those windows, with INFO reduced to `CLNSIG`, `RS` and one ALT per record. They were not run through
 `bcftools norm`, which realigned none of the first 5,281. Existing lines are unchanged, and the new ones
 are merged in sort order.
+
+**Extended again 2026-11-04 for `apoe_klvs_meta`, `pleiotropy_tradeoff` and `cpic_gene_pairs`** (58 rows
+outside every window, 16 new windows after merging the overlapping ones on chr6 and chr13, 228 records),
+the same way and on top of the extension above: one `[pos-100, pos+len(ref)+100]` window per row from
+UCSC's hg38 API with its `ref` asserted, overlapping windows merged, and the provisioned ClinVar VCF
+(`clinvar_2026-06-27`) cut to them with INFO reduced to `CLNSIG`/`RS`. No existing line moves.
 """
 
 import gzip

@@ -631,3 +631,69 @@ One experiment in two sexes is two keys. `concordance` stays empty where no huma
 agree with. The README records that the audit's PPARG row read a metabolic result as a lifespan one, that the
 v2 "uncited" rows checked here have a primary reference GenAge loads by script, and that a database entry has
 no citation column.
+
+## The meta-table (0.8): APOE alleles, KL-VS × ε4 and the legacy tier
+
+Built for real as [`reference_examples/apoe_klvs_meta/`](../reference_examples/apoe_klvs_meta), from the
+longevitymap v2 shape audit's candidates 1, 2 and 3 and its legacy tag selector (PROPOSAL_0_8_PT2 §6). APOE is
+scored only as ε diplotypes, ε2 and ε4 are `allele_function.csv` items so a `meta.csv` row can name them, and
+the per-allele facts live once on the meta-table:
+
+```csv
+members,tier,age_of_action,age_of_action_confidence,flags,pmid
+variants[flags=legacy_longevitymap],D,,,,
+variants[variant_key=rs10455872],A,MIDLIFE,DIRECT_WEAK,,30642433
+"allele_function[gene=APOE, allele=ε4]",A,LATE,DIRECT,ap:weak,30642433
+"allele_function[gene=APOE, allele=ε2]",A,LATE,DIRECT_WEAK,protect:presence,31413261
+"diplotypes[gene=APOE, haplotype_a=ε2, haplotype_b=ε4]",,,INFERRED,,
+```
+
+The tag selector gives tier D to every tagged row a locus row does not beat (TOMM40 rs2075650 stays D, LPA
+goes to A). The ε2/ε4 diplotype carries both alleles, which disagree on confidence and on flags; the
+diplotype row outranks the alleles it contains and settles the confidence, and the flags it does not state
+stay withheld. The combination `diplotypes[gene=KL, haplotype_a=KL-VS, haplotype_b=ref] &
+diplotypes[gene=APOE, haplotype_b=ε4]` is one row whose `meta.parquet` entry lists the four diplotype rows
+it replaces. APOE's study links on rs429358 and rs7412 draw no orphan warning, because `haplotypes.csv`
+defines the alleles on them. `compiler/tests/test_reference_examples_meta.py` asserts each value off the
+compiled parquets.
+
+## The meta-table (0.8): per-trait judgements and the computed trade-off
+
+Built for real as [`reference_examples/pleiotropy_tradeoff/`](../reference_examples/pleiotropy_tradeoff),
+the audit's candidate 4. One row per trait on a bare locus member, which bears an allele because every
+`variants.csv` row of the locus states the same `effect_allele`:
+
+```csv
+members,trait_efo_id,trait_role,direction,pmid
+variants[variant_key=rs3184504],MONDO:0005130,,risk,20560212
+variants[variant_key=rs3184504],MONDO:0005113,,protective,20560212
+variants[variant_key=rs10455872],EFO:0006925,mediator,protective,20032323
+variants[variant_key=rs10455872],MONDO:0005010,,protective,20032323
+variants[variant_key=rs5882],OBA:VT0005372,,protective,14559957
+```
+
+`meta_resolved.parquet` computes `tradeoff`: true on every SH2B3 genotype row (a harm and a benefit for one
+allele), null on LPA (protective only; false needs every trait stated, and no module states a closed trait
+list), null on CETP. CETP rs5882 states no `effect_allele`, so its row draws `meta_member_allele_ambiguous`
+and its direction is withheld. That row is there on purpose, to show the warning; v2 writes no per-trait
+row for a locus whose allele is not determined.
+
+## The meta-table (0.8): CPIC's TPMT × NUDT15 phenotype pairs
+
+Built for real as [`reference_examples/cpic_gene_pairs/`](../reference_examples/cpic_gene_pairs). The two
+genes are drafted from the CPIC snapshot (`draft --gene TPMT --allele '*2' --allele '*3A' --offline`, then
+NUDT15 with `*3`), and each of CPIC's azathioprine recommendations is one row over two existential phenotype
+selectors:
+
+```csv
+members,conclusion,pmid
+"diplotypes[gene=TPMT, phenotype=Poor Metabolizer] & diplotypes[gene=NUDT15, phenotype=Normal Metabolizer]",Consider alternative nonthiopurine immunosuppressant therapy.,30447069
+```
+
+Nine rows (three phenotypes per gene), each listing every drafted diplotype its two phenotypes match. The
+README records three findings: the CPIC snapshot keeps no recommendation id, so a pair cannot be
+reassembled from it and the rows came from one hand-run API call; `meta.csv` cannot scope a row to a drug,
+so mercaptopurine's and thioguanine's rows for the same pairs are duplicate keys and the module carries
+azathioprine only; and CPIC's `classification` has no column on a pair row. It also names one compiler
+defect the build hit (a haplotype row whose indel placement disagrees with `resolution.csv` loses the
+injected fact on reverse) and the one `*1` row removed to keep the round trip.

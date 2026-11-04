@@ -41,6 +41,21 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — PT2 §6: three meta-table reference examples compile, round-trip and state what they resolve (0.8, uncut)
+
+- **`reference_examples/apoe_klvs_meta/`**: the legacy tag selector beaten by a locus row, APOE ε2 and ε4 as
+  `allele_function.csv` items whose facts differ, the ε2/ε4 diplotype settling the confidence column and
+  leaving the unstated `flags` withheld, KL-VS × ε4 as one combination that replaces the four rows it
+  names, and APOE's study links on rs429358/rs7412 drawing no orphan warning.
+- **`reference_examples/pleiotropy_tradeoff/`**: per-trait rows on bare locus members; `tradeoff` true on
+  SH2B3, null on protective-only LPA, null with `meta_member_allele_ambiguous` on CETP rs5882 (on purpose).
+- **`reference_examples/cpic_gene_pairs/`**: TPMT and NUDT15 drafted from the CPIC snapshot, and CPIC's nine
+  azathioprine phenotype-pair recommendations as two-selector rows. Its README records three findings (the
+  snapshot cannot reassemble a pair, `meta.csv` has no drug scope so one module holds one thiopurine, a pair
+  row has no home for CPIC's `classification`) and one compiler defect it removed a `*1` row to avoid.
+- `compiler/tests/test_reference_examples_meta.py` asserts each README's stated values off the compiled
+  parquets, computed from the example's own CSVs.
+
 ## 2026-11-04 — PT2 §6: three reference examples carry the 0.8 study, HLA and model-organism shapes (0.8, uncut)
 
 - **`reference_examples/longevity_studies/`**: five longevity loci and thirteen `studies.csv` rows from
