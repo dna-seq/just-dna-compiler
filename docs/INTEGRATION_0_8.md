@@ -387,6 +387,16 @@ leftmost spelling, and its `vrs_id` is what joins it.
 **This breaks a 0.7 reader of a 0.8-enriched `resolution.csv`**, for § 1.18's reason: `ResolutionRow`
 forbids unknown columns. Same remedy.
 
+## 1.20 `validate` and `compile` reach one verdict; `--no-resolve` reads no table (RM367, no new code)
+
+| Surface | What changed | What to do |
+| --- | --- | --- |
+| `validate_spec(strict=True)` | Refuses where `compile_module(strict=True)` refuses: a GRCh37 rsID-only module, any rsID-only row under `resolve_with_ensembl=False`, `locus_cannot_host_genotype`, `rsid_coordinate_disagrees`, a post-resolution duplicate. | A caller that gated a compile on a green `validate --strict` gets the refusal one step earlier, in the compile's words. |
+| `validate_spec` warnings | Carries every code the compile emits for the same module and mode, including the resolution warnings, ploidy on a resolved row, `derived_row_orphan`, `clin_sig_contradicts_frequency`, `source_row_unused`, `log_file_not_shipped`. New keyword `ba1_threshold`. | Nothing; `warnings_summary` may hold more codes. |
+| `validate_spec` / `compile_module` refusals | A malformed `provenance.json` (any decoding error included), or a logo or readme with an unsupported extension, refuses at `validate`; `compile_module` refuses before creating `output_dir`, as it now does for every refusal. | A caller cleaning up a partial output directory after a refused compile no longer finds one. |
+| `compile_module(resolve_with_ensembl=False)` with a `resolution.csv` | The table is parsed for the `resolution_disabled` count and nothing else: no overlay, no VRS verification (a tampered id no longer refuses), `vrs_alleles` / `vrs_alleles_identified` 0 and `vrs_version` null, no allele membership against it. | A consumer reading `vrs_alleles_identified` from a `--no-resolve` manifest reads 0, which is what the parquets carry. |
+| `just-dna-compiler validate` | New `--resolve/--no-resolve` and `--ba1-threshold`. | Pass the switches the compile will get. |
+
 ## 2. What to change
 
 1. If you parse `manifest.json` with `just-dna-format`, move your pin to 0.8 when you start reading

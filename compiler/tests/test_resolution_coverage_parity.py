@@ -167,19 +167,28 @@ def test_no_table_at_all_is_reported_as_nobody_asked_rather_than_per_row(tmp_pat
     assert not validate_spec(spec, strict=True).valid
 
 
-def test_no_resolve_suppresses_the_check_the_way_it_suppresses_the_fill(tmp_path: Path) -> None:
+def test_no_resolve_suppresses_the_per_row_warnings_and_strict_still_refuses(tmp_path: Path) -> None:
     """The master switch means the same thing on both sides of the parity.
 
     `--no-resolve` turns resolution off entirely, so every variant compiles unpositioned **by
     request**. Reporting each one unplaceable there would restate that request once per row, and the
     existing `resolution_disabled` warning already says it once with the row count in it.
+
+    `strict` still refuses, on both sides: its promise is a reproducible artifact, and an unplaced row
+    breaks it whatever left it unplaced (`test_strict_compile.py` pins the compile's half). This test
+    used to pin the pre-flight as valid here, beside a compile that refused — the disagreement RM367
+    closed.
     """
     spec = _spec(tmp_path / "spec", resolution=_PARTIAL)
 
     validated = validate_spec(spec, strict=True, resolve_with_ensembl=False)
+    compiled = compile_module(spec, tmp_path / "out", strict=True, resolve_with_ensembl=False)
 
     assert _unplaced(validated) == []
-    assert validated.valid, validated.errors
+    assert not validated.valid and not compiled.success
+    assert validated.errors == compiled.errors
+    assert validated.warnings_summary["resolution_disabled"] == 1
+    assert validate_spec(spec, resolve_with_ensembl=False).valid
 
 
 # ── the shared predicate ────────────────────────────────────────────────────────────────────────

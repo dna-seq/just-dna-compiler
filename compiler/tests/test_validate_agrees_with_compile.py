@@ -74,8 +74,12 @@ def _spec(tmp_path: Path, **files: str) -> Path:
 
 
 def _both(spec: Path, out: Path) -> tuple[bool, bool]:
-    """(validate said valid, compile succeeded) — the pair that must never disagree."""
-    return validate_spec(spec).valid, compile_module(spec, out, resolve_with_ensembl=False).success
+    """(validate said valid, compile succeeded) — the pair that must never disagree.
+
+    In ONE mode. This compared a resolving `validate` with a `compile --no-resolve` until RM367, which is
+    how `--no-resolve` went on reading, verifying and refusing on the table it said it had not read: the
+    pair agreed only because the compile's off switch did not work."""
+    return validate_spec(spec).valid, compile_module(spec, out).success
 
 
 def test_the_licence_gate_refuses_at_validate_too(tmp_path: Path) -> None:
@@ -339,7 +343,7 @@ def _agree(spec: Path, out: Path, *, strict: bool) -> tuple[bool, bool]:
     """(validate said valid, compile succeeded) at one mode — the pair that must never disagree."""
     return (
         validate_spec(spec, strict=strict).valid,
-        compile_module(spec, out, resolve_with_ensembl=False, strict=strict).success,
+        compile_module(spec, out, strict=strict).success,
     )
 
 
@@ -363,7 +367,7 @@ def test_a_corrupt_vrs_id_refuses_at_validate_too_in_both_modes(tmp_path: Path, 
     """
     spec = _spec(tmp_path, resolution__csv=_resolution(_MTHFR_677))
     result = validate_spec(spec, strict=strict)
-    compiled = compile_module(spec, tmp_path / f"out_{strict}", resolve_with_ensembl=False, strict=strict)
+    compiled = compile_module(spec, tmp_path / f"out_{strict}", strict=strict)
 
     assert not result.valid and not compiled.success
     assert any("does not match the id recomputed" in e for e in result.errors), result.errors

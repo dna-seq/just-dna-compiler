@@ -769,14 +769,19 @@ and still publishes `manifest.sources`. Both of those are renames only a major m
 
 `compile_module` runs in this order:
 
-1. **Validate** (`validate_spec`); fail early if invalid.
+1. **Validate** (`validate_spec`), in this compile's mode and with its options; fail early if invalid.
+   Since RM367 the pre-flight runs the compile's own resolution step and every check the compile asks
+   (`compiler/check_paths.py` names the exceptions, asserted against both function bodies), so the
+   compile's own refusals below are defensive except on the deprecated `ensembl_cache` path.
 2. **Load** `module_spec.yaml` (authority-key pre-strip), then `variants.csv` / `studies.csv` if present.
-3. **Load `resolution.csv`** if present → group rows by `variant_key` into a resolution table (a
-   row-parse error fails the compile), then **verify every stored `vrs_id`** (below), and stamp
+3. **Load `resolution.csv`** if present, through `resolution_step.read_resolution` — the reader
+   `validate_spec` uses — into the **active view**: post-overlay rows, empty under `--no-resolve` (a
+   row-parse error fails the compile either way). Then **verify every stored `vrs_id`** (below), and stamp
    `resolution_signature`/`resolution_sources` **here** — where the table was read, so a module with
    no `variants.csv` records the identity of the table it carries rather than a null (0.6, RM45).
 4. **Resolve** (only if `resolve_with_ensembl and variants`) — the precedence block below.
-5. **Re-validate identity post-resolution** (`_cross_validate_variants`) — resolution can change identity
+5. **Re-validate identity post-resolution** (`identity_after_resolution`: `_cross_validate_variants`
+   plus the build-coordinate check) — resolution can change identity
    (fill a coord, expand a one-to-many rsid), so a post-resolution duplicate/inconsistency fails the
    compile (`"post-resolution: …"`).
 6. **Compute `fully_resolved`** = every variant has `chrom`+`start` (vacuously true for a variant-less
@@ -784,7 +789,12 @@ and still publishes `manifest.sources`. Both of those are renames only a major m
    flag cannot be published without its denominator (RM44).
 7. **Strict gate** — if `strict` and any variant still lacks `(chrom, start)`, fail **before any parquet
    is written** (refuse a non-reproducible partial artifact).
-8. **Write parquets** — SNP core (`weights`/`annotations`/`studies.parquet`, only when the relevant rows
+8. **Load, overlay and check the derived-fact sidecars, and judge the ancillary files**
+   (`ancillary_errors`: `provenance.json` parses, a logo's or readme's extension is one the manifest
+   carries) — still before `output_dir.mkdir()`. Every `CompilationResult(success=False, …)` in
+   `compile_module` sits above that call, held by an AST walk (`test_check_paths.py`, RM367): a refusal
+   after the first write leaves a half-written artifact, and seven did until 0.8.
+9. **Write parquets** — SNP core (`weights`/`annotations`/`studies.parquet`, only when the relevant rows
    exist) + one parquet per present table kind + the derived-fact sidecars
    (`frequencies.parquet`, `gene_metrics.parquet`, `literature.parquet`, and since 0.6
    `gene_validity.parquet`, `clinical_assertions.parquet`) when their CSVs are present,
@@ -792,8 +802,8 @@ and still publishes `manifest.sources`. Both of those are renames only a major m
    against what the module actually contains (a frequency coordinate no variant sits at, or a gene the
    module never mentions, is a **warning** — an over-broad sidecar is harmless, and failing the compile
    over it would punish the author for the enricher's generosity).
-9. **Collect** logs / `provenance.json` / logo / readme (a malformed one fails the compile, not
-   raises). Log discovery takes `*.log` beside the spec and, under `logs/` at any depth, every `*.log`
+10. **Collect** logs / `provenance.json` / logo / readme — copy and hash only; a malformed one was
+   refused at step 8, and by `validate_spec` before that. Log discovery takes `*.log` beside the spec and, under `logs/` at any depth, every `*.log`
    unchecked for content, plus each file whose content matches its name (RM338): `.txt`/`.md`
    decode as UTF-8 (a byte-order mark allowed), `.json` parses, every non-blank `\n`-terminated `.jsonl`
    line parses, and a `.png`/`.jpg`/`.jpeg` starts with its format's magic. Only an exact `.log` suffix
@@ -817,11 +827,12 @@ and still publishes `manifest.sources`. Both of those are renames only a major m
    does not parse, and a `.jsonl` line that does not parse (the first such line numbered, blanks
    counted). The reason carries no interpreter error message, since it reaches `manifest.json`. There is
    no cap and no `_examples` truncation: the decision was to name each file, and `warnings_summary`
-   counts them. An explicit `log_files` list skips discovery, ships what it names and draws no warning.
+   counts them. An explicit `log_files` list skips discovery, ships what it names and draws no warning. `validate_spec` runs the
+   same discovery (`discover_logs`), so the pre-flight names what will stay behind (RM367).
    A file beside the spec that is not `*.log` is outside this: the top level discovers `*.log` only, and
    an unknown file there is the spec directory's ordinary tolerance. The readme is discovered from
    `manifest.README_CANDIDATES` and hashed into `manifest.readme`, outside `artifact.files` — so it is attested without being content (S25).
-10. **Read the verification attestation** (`verification.json`, RM45): recompute the binding over the
+11. **Read the verification attestation** (`verification.json`, RM45): recompute the binding over the
     authored inputs — with `\r\n` read as `\n` since 0.6 (RM82), so an editor's line endings are not an
     edit, while `manifest.inputs[]` keeps listing the raw bytes and raw sizes because it answers *are
     these the exact bytes* — re-check the proof-of-work, and either carry the block into the manifest or
@@ -832,7 +843,7 @@ and still publishes `manifest.sources`. Both of those are renames only a major m
     identical sentence from `validate_spec` de-duplicates against it. Absence is the only thing said
     here, because the reason (never closed, closed then edited, no document at all) is already carried
     by whichever other warning applies.
-11. **Build the manifest** (`content_signature` re-read from raw disk, the resolution fields, the
+12. **Build the manifest** (`content_signature` re-read from raw disk, the resolution fields, the
     `frequency` / `gene_metrics` / `literature` / `verification` blocks, and `derived[]` — byte hashes
     of the sidecars *where they live beside the spec*, transport-only and never their identity) and
     write `manifest.json`.
@@ -1434,11 +1445,16 @@ compile-only is *a check reading resolved rows*; whether the injected table **ca
 row is arithmetic over bytes the pre-flight has already loaded, and needs no resolution to have run.
 The exemption is about resolved rows, not about the word "resolution".
 
-`resolution.unresolved_subjects` is the predicate `resolve_from_table` applies, shared by both callers
-rather than restated — a second implementation of `_usable_loci`'s three exclusions (a `not_found`
-sentinel, a row recorded under another build, a row with no `chrom`) is exactly the drift this avoids.
-Under `strict` the pre-flight appends the compile's error **verbatim**; a pre-flight that refused for
-its own differently-worded reason would still send an author hunting.
+**Since RM367 the pre-flight runs the compile's resolution step itself** (`compiler/resolution_step.py`:
+`resolve_variants`, `identity_after_resolution`, `unplaced_refusal`), over the rows the compile keeps,
+rather than a predicate shared with it. The predicate (`resolution.unresolved_subjects`) agreed with the
+compile only on GRCh38 with resolution switched on: on a GRCh37 rsID-only module, or under
+`--no-resolve`, `validate --strict` said valid and `compile --strict` refused. And the exemption itself
+did not hold for an injected table — resolving it is computation over bytes the pre-flight has
+already loaded — so `locus_cannot_host_genotype`, `rsid_coordinate_disagrees` and the post-resolution
+duplicate are refused by both commands now. What stays the compile's alone is the deprecated
+`ensembl_cache` reference, which the pre-flight is not handed. Under `strict` the pre-flight's error is
+the compile's, verbatim.
 
 Three behaviours to know:
 
@@ -1448,8 +1464,9 @@ Three behaviours to know:
 | present, covers some | `rsid_unresolved` per uncovered row, then the strict refusal — the row is absent from a file that **was** consulted |
 | absent entirely | `resolution_not_injected`, once, plus the strict refusal — nothing was consulted, so nothing is named row by row |
 
-`--no-resolve` silences the check the way it silences the fill: resolution is off by request, and
-`resolution_disabled` already says so once with its row count.
+`--no-resolve` silences the per-row findings the way it silences the fill: resolution is off by
+request, and `resolution_disabled` already says so once with its row count. The `strict` aggregate is
+not silenced, on either side.
 
 **One finding, though two passes produce it.** `compile_module` runs the pre-flight, which emits the
 per-subject warning in both modes, so both reach this finding for the same subject; the compile de-duplicates on
@@ -1489,7 +1506,8 @@ exist, and carrying it under `best_effort` would publish a claim its own source 
 never produced by the automated check (a retraction is indistinguishable from a never-assigned id
 through the live API), so it fires only where a curator recorded it deliberately. **`validate` refuses
 it too, in both modes** — it reads the injected table's own column and no resolved row, so the
-compile-only exemption does not cover it (RM207); the same is true of `ambiguous` under `strict`.
+compile-only exemption does not cover it (RM207); the same is true of `ambiguous` under `strict`, and,
+since RM367, of every row of this table, because the pre-flight runs the compile's resolution step.
 
 **Instability always means the *table* cannot be reproduced, never the bytes.** `artifact.digest` is a
 fixed point in every row above, including the unstable ones — a module that compiles at all compiles to
@@ -2225,7 +2243,7 @@ positions"`; `test_roundtrip_regressions.py` holds `"pointer, not an expression"
 
 | Command | Python API | Notes |
 |---|---|---|
-| `validate <spec>` | `compiler.validate_spec` | `--strip-identity` / `--authority-key`. Read-only — it never stamps a closure |
+| `validate <spec>` | `compiler.validate_spec` | `--strip-identity` / `--authority-key`, `--strict/--best-effort`, `--resolve/--no-resolve` and `--ba1-threshold` (RM367: pass the switches the compile will get). Read-only — it never stamps a closure. `test_check_paths.py` asserts the command forwards every `validate_spec` parameter |
 | `close <spec>` | `compiler.close_module` | `--by`, `--private-key`. Writes the RM73 closure into `verification.json`, bound to the authored bytes. Refuses an invalid spec; a warning does not refuse |
 | `compile <spec> <out>` | `compiler.compile_module` | `--strict/--no-strict`, `--resolve/--no-resolve`, `--compression`, `--compiled-by`, `--ensembl-reference`, `--ba1-threshold` (RM278), and the **deprecated** `--ensembl-cache` (routes to the enricher; removed at 1.0). Prints `digest`, `content_signature`, `resolution_mode`/`fully_resolved`/`resolution_signature` |
 | `signature <spec>` | `compiler.content_signature` | no compile, no reference |
@@ -2260,6 +2278,16 @@ a table should publish the denominator. The message also states that there is **
 reach the network"**, because the compiler never does (Principle 2, verified branch by branch including
 the deprecated `ensembl_cache` path, which reads an injected local cache) — omitting this flag *is* that
 request. Renaming the parameter is a 1.0 conversation; it is part of a published signature.
+
+**And the table really is not read (RM367).** Until 0.8 the warning was the only thing the switch
+reached: the table was still overlaid, its `vrs_id`s verified (a tampered one refused the compile),
+its coverage counted into `manifest.compilation.vrs_alleles_identified` while no id reached a parquet,
+and allele membership judged against it. Now both commands read it through one reader whose active view
+is empty under the switch, and it is parsed only for the row count above. The guard is the probe
+`@off-switch-needs-a-probe` asks for: over every reference example carrying a `resolution.csv`,
+`--no-resolve` compiles the same parquets and the same resolution facts as the spec with the table
+deleted (`test_one_verdict.py`). `strict` still refuses an rsID-only row under the switch, on both
+sides, because the artifact is not reproducible however the row came to be unplaced.
 
 **Four rows are bold because they belong to `just-dna-format`, which ships no CLI of its own** —
 Typer would breach its pydantic-plus-cryptography dependency floor (Goal 2). So anything the schema

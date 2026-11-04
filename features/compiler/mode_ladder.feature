@@ -75,8 +75,8 @@ Feature: The mode ladder and validate/compile parity
     # the same finding: a consumer counting findings counted one twice. The pre-flight now runs in the
     # compile's mode, and a resolution ladder publishes its refusal instead of its warning.
 
-  # source: compiler/src/just_dna_compiler/compiler/pipeline.py
-  # anchor: compile_module
+  # source: compiler/src/just_dna_compiler/compiler/resolution_step.py
+  # anchor: unplaced_refusal
   @strict_only @refusal
   Scenario: unresolved genomic positions refuse under strict and warn otherwise
     Given a module with 3 variants the resolution table does not place
@@ -187,23 +187,23 @@ Feature: The mode ladder and validate/compile parity
     # compile. Under `strict` the unresolved-position aggregate is genuinely ADDED rather than
     # promoted, because the per-row warning fires in both modes.
 
-  # source: compiler/src/just_dna_compiler/compiler/pipeline.py
-  # anchor: _frequency_checks
+  # source: compiler/src/just_dna_compiler/compiler/validate.py
+  # anchor: _validate_spec
   @parity
-  Scenario: the one check the pre-flight does not run, and why that is not a parity break
+  Scenario: the BA1 lint is asked by the pre-flight too, over the resolved rows
     Given a module whose frequencies.csv puts a pathogenic variant above the BA1 threshold
-    When `validate --strict` runs
-    Then it is silent about BA1
-    When the module is compiled
+    When `validate` runs
     Then a clin_sig_contradicts_frequency warning fires
-    # The parity rule is about REFUSALS: `validate_spec` must refuse everything `compile` refuses. This
-    # check warns in both modes and refuses in neither, so no refusal is hidden from the pre-flight.
-    # It is the resolved-rows exemption — the check needs the frequency rows matched against resolved
-    # coordinates, which only the compile holds (`@parity-by-check`, `@validate-refuses-all`).
+    When the module is compiled
+    Then the same warning fires, once
+    # Until RM367 this scenario recorded BA1 as the one check the pre-flight did not run, under the
+    # resolved-rows exemption. The pre-flight runs the compile's resolution step now, so the exemption
+    # no longer covers it: `validate` takes `--ba1-threshold` as the compile does, and the compile
+    # de-duplicates the identical sentence on the message (`@parity-by-check`).
 
   # source: compiler/src/just_dna_compiler/resolution.py
   # anchor: ResolutionOutcome
-  # text: compiler/src/just_dna_compiler/compiler/pipeline.py
+  # text: compiler/src/just_dna_compiler/compiler/resolution_step.py
   Scenario: resolution has three severity channels, not two
     Given a module whose resolution table produces one finding of each severity
     When it is compiled in best_effort mode

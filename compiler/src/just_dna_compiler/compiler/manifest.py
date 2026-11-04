@@ -72,6 +72,7 @@ from just_dna_format.manifest import (
     Verification,
 )
 from just_dna_format.normalize import now_utc_iso
+from just_dna_format.resolution import ResolutionRow
 from just_dna_format.sources import SourceRow, taints_commercial_use, taints_redistribution
 from just_dna_format.spec import ModuleSpecConfig, VariantRow
 from just_dna_format.verification import (
@@ -81,6 +82,7 @@ from just_dna_format.verification import (
     verification_block,
 )
 from just_dna_format.vocab import VALID_CLIN_SIG, population_sort_key
+from pydantic import ValidationError
 
 from just_dna_compiler.compiler.positional import _GENE_BEARING_TABLE_KINDS
 from just_dna_compiler.compiler.tables import (
@@ -282,6 +284,27 @@ def _collect_logs(
     Files are copied into `output_dir` (so they ship with the module) and returned as hashed
     `FileEntry` rows, beside the warnings. No logs → empty lists (a valid module).
     """
+    pairs, warnings = discover_logs(spec_dir, explicit)
+    seen: set[str] = set()
+    names: list[str] = []
+    for rel, src in pairs:
+        if rel in seen or not src.is_file():
+            continue
+        seen.add(rel)
+        dest = output_dir / rel
+        if dest.resolve() != src.resolve():
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(src, dest)
+        names.append(rel)
+    return file_entries(output_dir, names), warnings
+
+
+def discover_logs(spec_dir: Path, explicit: list[Path] | None) -> tuple[list[tuple[str, Path]], list[str]]:
+    """Which logs ship, as `(name in the module dir, source file)`, and a warning for each left behind.
+
+    Read-only, so the pre-flight asks it too (RM367): `log_file_not_shipped` used to reach an author only
+    from the compile, which also copied as it judged. `_collect_logs` copies what this returns.
+    """
     pairs: list[tuple[str, Path]] = []  # (relative name in module dir, source file)
     warnings: list[str] = []
     if explicit is not None:
@@ -329,18 +352,79 @@ def _collect_logs(
                 logger.info("%s ships with the module (its content matches its name)", rel)
             pairs.append((rel, path))
 
-    seen: set[str] = set()
-    names: list[str] = []
-    for rel, src in pairs:
-        if rel in seen or not src.is_file():
-            continue
-        seen.add(rel)
-        dest = output_dir / rel
-        if dest.resolve() != src.resolve():
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(src, dest)
-        names.append(rel)
-    return file_entries(output_dir, names), warnings
+    return pairs, warnings
+
+
+def _provenance_source(spec_dir: Path, explicit: Path | None) -> Path | None:
+    """The provenance document a compile ships: the explicit path, else `spec_dir/provenance.json`."""
+    src = Path(explicit) if explicit is not None else spec_dir / _PROVENANCE_FILE
+    return src if src.is_file() else None
+
+
+def _logo_source(spec_dir: Path, explicit: Path | None) -> Path | None:
+    """The logo a compile ships: the explicit path, else the first `logo.<ext>` in `LOGO_EXTENSIONS` order."""
+    if explicit is not None:
+        src: Path | None = Path(explicit)
+    else:
+        src = next(
+            (
+                spec_dir / f"logo.{ext}"
+                for ext in sorted(LOGO_EXTENSIONS)
+                if (spec_dir / f"logo.{ext}").is_file()
+            ),
+            None,
+        )
+    return src if src is not None and src.is_file() else None
+
+
+def _readme_source(spec_dir: Path, explicit: Path | None) -> Path | None:
+    """The readme a compile ships: the explicit path, else the first of `README_CANDIDATES` present."""
+    if explicit is not None:
+        src: Path | None = Path(explicit)
+    else:
+        src = next((spec_dir / name for name in README_CANDIDATES if (spec_dir / name).is_file()), None)
+    return src if src is not None and src.is_file() else None
+
+
+def _extension_error(what: str, src: Path, allowed: frozenset[str]) -> str | None:
+    """The refusal for an ancillary file whose extension the manifest cannot carry, or `None`."""
+    ext = src.suffix.lower().lstrip(".")
+    if ext in allowed:
+        return None
+    return f"{what} must be one of {sorted(allowed)}, got: {src.name!r}"
+
+
+def ancillary_errors(
+    spec_dir: Path,
+    *,
+    provenance_file: Path | None = None,
+    logo_file: Path | None = None,
+    readme_file: Path | None = None,
+) -> list[str]:
+    """Every refusal the ancillary files can draw, read-only, before anything is written (RM367).
+
+    The compile shipped `provenance.json`, the logo and the readme **after** the parquets were written,
+    and judged them while copying, so a malformed document refused a compile that had already filled its
+    output directory, and `validate_spec` never read them at all. A `provenance.json` that is not UTF-8
+    escaped as an exception. Both commands ask this now, the compile before `output_dir.mkdir()`, with
+    the same discovery the collectors use and the compile's own wording.
+    """
+    errors: list[str] = []
+    provenance = _provenance_source(spec_dir, provenance_file)
+    if provenance is not None:
+        try:
+            ProvenanceDoc.model_validate_json(provenance.read_bytes())
+        except ValidationError as exc:
+            errors.append(f"{_PROVENANCE_FILE} is invalid: {exc}")
+        except OSError as exc:
+            errors.append(f"{_PROVENANCE_FILE} could not be read: {exc}")
+    logo = _logo_source(spec_dir, logo_file)
+    if logo is not None:
+        errors.extend(e for e in [_extension_error("logo", logo, LOGO_EXTENSIONS)] if e is not None)
+    readme = _readme_source(spec_dir, readme_file)
+    if readme is not None:
+        errors.extend(e for e in [_extension_error("readme", readme, README_EXTENSIONS)] if e is not None)
+    return errors
 
 
 def _collect_provenance(spec_dir: Path, output_dir: Path, explicit: Path | None) -> Provenance | None:
@@ -351,8 +435,8 @@ def _collect_provenance(spec_dir: Path, output_dir: Path, explicit: Path | None)
     `artifact.digest`); the returned `Provenance` is the lean summary that rides in the manifest.
     Absent provenance → `None` (a valid module).
     """
-    src = Path(explicit) if explicit is not None else spec_dir / _PROVENANCE_FILE
-    if not src.is_file():
+    src = _provenance_source(spec_dir, explicit)
+    if src is None:
         return None
     doc = ProvenanceDoc.model_validate_json(src.read_text(encoding="utf-8"))
     dest = output_dir / _PROVENANCE_FILE
@@ -377,22 +461,12 @@ def _collect_logo(spec_dir: Path, output_dir: Path, explicit: Path | None) -> Fi
     kept OUT of `artifact.digest` (a logo swap is a PATCH, not a new content identity). Absent
     logo → `None`. Raises `ValueError` on an unsupported extension.
     """
-    if explicit is not None:
-        src: Path | None = Path(explicit)
-    else:
-        src = next(
-            (
-                spec_dir / f"logo.{ext}"
-                for ext in sorted(LOGO_EXTENSIONS)
-                if (spec_dir / f"logo.{ext}").is_file()
-            ),
-            None,
-        )
-    if src is None or not src.is_file():
+    src = _logo_source(spec_dir, explicit)
+    if src is None:
         return None
-    ext = src.suffix.lower().lstrip(".")
-    if ext not in LOGO_EXTENSIONS:
-        raise ValueError(f"logo must be one of {sorted(LOGO_EXTENSIONS)}, got: {src.name!r}")
+    error = _extension_error("logo", src, LOGO_EXTENSIONS)
+    if error is not None:
+        raise ValueError(error)
     dest = output_dir / src.name
     if dest.resolve() != src.resolve():
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -414,18 +488,12 @@ def _collect_readme(spec_dir: Path, output_dir: Path, explicit: Path | None) -> 
     (S25): on an immutable registry a fixed typo in a caveat would then cost a version number, and the
     corrected module would collide with its own predecessor under a content-dedup check. Nothing here
     reads the markup — the extension travels in the name for whoever renders it."""
-    if explicit is not None:
-        src: Path | None = Path(explicit)
-    else:
-        src = next(
-            (spec_dir / name for name in README_CANDIDATES if (spec_dir / name).is_file()),
-            None,
-        )
-    if src is None or not src.is_file():
+    src = _readme_source(spec_dir, explicit)
+    if src is None:
         return None
-    ext = src.suffix.lower().lstrip(".")
-    if ext not in README_EXTENSIONS:
-        raise ValueError(f"readme must be one of {sorted(README_EXTENSIONS)}, got: {src.name!r}")
+    error = _extension_error("readme", src, README_EXTENSIONS)
+    if error is not None:
+        raise ValueError(error)
     dest = output_dir / src.name
     if dest.resolve() != src.resolve():
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -834,6 +902,27 @@ def _check_license_gate(rows: list[SourceRow]) -> list[str]:
 #: The `sources.csv` layers no fact table's `source` column can ever corroborate, so a declaration at
 #: one of them is uncorroborable rather than stale. See `_source_checks` for why each is here.
 _UNCORROBORABLE_LAYERS: frozenset[str] = frozenset({"annotation", "literature"})
+
+
+def sources_in_use(resolution_rows: list[ResolutionRow], fact_rows: dict[type, list]) -> set[str]:
+    """The sources the module's derived tables name, which `_source_checks` reads `sources.csv` against.
+
+    One function for both commands (RM367): the compile asked it in a closure the pre-flight had no copy
+    of, so `source_row_unused` reached an author only at compile. `resolution_rows` are every row the file
+    holds, active or not: a source row is about the module's files, and `--no-resolve` does not make the
+    resolution layer's terms stale. Resolution contributes its **authority** (which link answered, RM33)
+    and each placement witness (RM267), never its `source`; `sources.csv` cannot vouch for itself, and a
+    literature row's `source` names the registry that answered, whose terms are per article (RM46).
+    """
+    used = {row.authority for row in resolution_rows if row.authority}
+    used |= {
+        w for row in resolution_rows if row.placement_witness for w in row.placement_witness.split("+") if w
+    }
+    for model, parsed in fact_rows.items():
+        if model in (SourceRow, LiteratureRow):
+            continue
+        used |= {getattr(r, "source", None) for r in parsed if getattr(r, "source", None)}
+    return {s for s in used if s}
 
 
 def _source_checks(rows: list[SourceRow], used_sources: set[str]) -> list[str]:

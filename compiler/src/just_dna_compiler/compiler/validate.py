@@ -4,12 +4,14 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
+from just_dna_format.assertions import ClinicalAssertionRow
 from just_dna_format.base import DEFAULT_GENOME_BUILD
 from just_dna_format.concordance import ClinSigAuthorityCallRow, ClinSigConcordanceRow
 from just_dna_format.findings import CodedWarning
 from just_dna_format.frequency import FrequencyRow
 from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.gene_validity import GeneValidityRow
+from just_dna_format.gwas import GwasEffectRow
 from just_dna_format.literature import LiteratureRow
 from just_dna_format.overrides import (
     LOSSY_OVERLAY_TABLES,
@@ -38,14 +40,18 @@ from just_dna_compiler.compiler.binning_checks import (
 )
 from just_dna_compiler.compiler.fact_checks import (
     FACT_CONTRADICTION_FIELDS,
+    _check_ba1_lint,
     _check_fact_rows_contradict,
     _check_frequency_arithmetic,
     _check_gene_metrics_arithmetic,
     _check_gene_validity_currency,
     _classify_deferred_overlay_updates,
     _cross_check_clin_sig_concordance,
+    _cross_check_clinical_assertions,
+    _cross_check_frequencies,
     _cross_check_gene_metrics,
     _cross_check_gene_validity,
+    _cross_check_gwas_effects,
     _cross_check_literature,
 )
 from just_dna_compiler.compiler.load import _load_csv_rows, _load_yaml, load_authored_table
@@ -53,10 +59,13 @@ from just_dna_compiler.compiler.manifest import (
     _check_declared_license_agrees,
     _check_license_gate,
     _concordance_warnings,
-    _snapshot_unplaced_rsids_recorded,
+    _source_checks,
     _verification_block,
+    ancillary_errors,
     build_disagreement_error,
+    discover_logs,
     module_stats,
+    sources_in_use,
 )
 from just_dna_compiler.compiler.meta import build_meta, member_tables, member_variant_rows
 from just_dna_compiler.compiler.positional import (
@@ -64,6 +73,13 @@ from just_dna_compiler.compiler.positional import (
     _POSITIONAL_TABLE_KINDS,
     _apply_positional_resolution,
     _check_positional_joinability,
+)
+from just_dna_compiler.compiler.resolution_step import (
+    identity_after_resolution,
+    ploidy_after_resolution,
+    read_resolution,
+    resolve_variants,
+    unplaced_refusal,
 )
 from just_dna_compiler.compiler.table_checks import (
     _check_misspelled_tables,
@@ -77,6 +93,7 @@ from just_dna_compiler.compiler.tables import (
     _FACT_TABLES,
     _TABLE_KINDS,
     AUTHORED_NON_KIND_TABLES,
+    BA1_ALLELE_FREQUENCY_THRESHOLD,
     META_CSV,
     MODEL_ORGANISMS_CSV,
     OVERRIDES_CSV,
@@ -95,10 +112,7 @@ from just_dna_compiler.compiler.vcf_checks import (
     _check_qual_floor_on_reference_evidence,
     _check_vcf_pointers,
 )
-from just_dna_compiler.compiler.vrs_checks import _verify_vrs_ids, _vrs_coverage_warnings
 from just_dna_compiler.models import ValidationResult
-from just_dna_compiler.resolution import ambiguous_refusals, unresolved_subjects, withdrawn_refusals
-from just_dna_compiler.resolution_findings import resolution_not_injected, unresolved_rsid
 
 
 def load_overlay(spec_dir: Path) -> tuple[list[OverrideRow], list[str], list[str]]:
@@ -151,6 +165,7 @@ def validate_spec(
     *,
     strict: bool = False,
     resolve_with_ensembl: bool = True,
+    ba1_threshold: float = BA1_ALLELE_FREQUENCY_THRESHOLD,
 ) -> ValidationResult:
     """Validate a module spec directory without producing output.
 
@@ -181,6 +196,9 @@ def validate_spec(
     switch would be *more optimistic* than the compile it precedes, which is the disagreement
     direction the parity rule exists to prevent.
 
+    `ba1_threshold` mirrors it too (RM367): the ACMG BA1 lint is warning-only, but the pre-flight owes
+    the same findings as the compile it precedes, and this number decides which variants it names.
+
     Stats include `genes`/`categories` as lists (filtering None) plus `variant_count`,
     `gene_count`, `study_count`, and the ClinVar quality counts
     (`clinvar_count`/`pathogenic_count`/`benign_count`) — the fields the manifest needs. See
@@ -191,9 +209,13 @@ def validate_spec(
     run's findings — as `compile_module` and `close_module` do — calls `_validate_spec` instead, for
     the reason given there.
     """
-    return _validate_spec(spec_dir, authority_keys, strict=strict, resolve_with_ensembl=resolve_with_ensembl)[
-        0
-    ]
+    return _validate_spec(
+        spec_dir,
+        authority_keys,
+        strict=strict,
+        resolve_with_ensembl=resolve_with_ensembl,
+        ba1_threshold=ba1_threshold,
+    )[0]
 
 
 def _validate_spec(
@@ -203,8 +225,17 @@ def _validate_spec(
     strict: bool = False,
     resolve_with_ensembl: bool = True,
     legacy_reference: bool = False,
+    ba1_threshold: float = BA1_ALLELE_FREQUENCY_THRESHOLD,
+    log_files: list[Path] | None = None,
+    provenance_file: Path | None = None,
+    logo_file: Path | None = None,
+    readme_file: Path | None = None,
 ) -> tuple[ValidationResult, list[str]]:
     """`validate_spec`'s body, plus the findings list the result cannot carry back out.
+
+    `log_files`/`provenance_file`/`logo_file`/`readme_file` are `compile_module`'s explicit ancillary
+    files, judged here before the compile writes anything (RM367); left `None`, discovery finds them
+    beside the spec, as the compile's would.
 
     `legacy_reference` is `compile_module` saying it holds the deprecated `ensembl_cache`. With no
     `resolution.csv`, that reference is what places the rows, and this pre-flight cannot see it, so the
@@ -262,6 +293,14 @@ def _validate_spec(
         )
 
     all_warnings.extend(_check_misspelled_tables(spec_dir))
+    # The files that ship beside the parquets (RM367): the compile judged them while copying them, after
+    # the parquets were written, and this pass never read them. Read-only here, with the compile's words.
+    all_errors.extend(
+        ancillary_errors(
+            spec_dir, provenance_file=provenance_file, logo_file=logo_file, readme_file=readme_file
+        )
+    )
+    all_warnings.extend(discover_logs(spec_dir, log_files)[1])
 
     config, yaml_errors, dropped_authority = _load_yaml(spec_dir / "module_spec.yaml", authority_keys)
     all_errors.extend(yaml_errors)
@@ -355,6 +394,8 @@ def _validate_spec(
     # Filled from `literature.csv` below; cross-checked once `studies.csv` is loaded further down.
     literature_rows: list[LiteratureRow] = []
     source_rows: list[SourceRow] = []
+    #: Every sidecar's post-overlay rows, by model, for `sources_in_use` after the loop.
+    fact_rows: dict[type, list[Any]] = {}
 
     # The injected tables: `resolution.csv` and the four 0.5 fact sidecars. They are not
     # `_TABLE_KINDS` — they are machine-produced and fact-hashed rather than authored DSL — but they
@@ -385,10 +426,20 @@ def _validate_spec(
     #: `apply_overrides` rebinds its input and an `insert` earlier in the same overlay would otherwise
     #: make a later update look matched.
     deferred_unmatched: dict[str, list[tuple[tuple[str, str], bool]]] = {}
-    for csv_name, model in (
-        ("resolution.csv", ResolutionRow),
-        *((name, model) for name, _parquet, model in _FACT_TABLES),
-    ):
+    # `resolution.csv` first, by the reader `compile_module` reads it with (RM367): the same self-checks,
+    # and the same ACTIVE view, which is empty under `--no-resolve` — so the switch reaches membership,
+    # the build check, the positional fill and resolution here exactly as it does in the compile.
+    injected = read_resolution(spec_dir, overrides, resolve=resolve_with_ensembl)
+    all_errors.extend(injected.errors)
+    all_warnings.extend(injected.warnings)
+    if injected.present:
+        overlaid.add("resolution.csv")
+    if injected.deferred is not None:
+        deferred_unmatched["resolution.csv"] = injected.deferred
+    membership_table = injected.table
+    for injected_row in injected.rows:
+        resolution_by_build.setdefault(injected_row.genome_build, []).append(injected_row)
+    for csv_name, model in ((name, model) for name, _parquet, model in _FACT_TABLES):
         injected_path, spelling_warnings, spelling_errors = _locate_sidecar(spec_dir, csv_name)
         all_warnings.extend(spelling_warnings)
         all_errors.extend(spelling_errors)
@@ -474,27 +525,6 @@ def _validate_spec(
                 all_warnings.extend(
                     _check_declared_license_agrees(injected_rows, config.license if config else None)
                 )
-        if model is ResolutionRow and not injected_errors:
-            for injected_row in injected_rows:
-                membership_table.setdefault(injected_row.variant_key, []).append(injected_row)
-                resolution_by_build.setdefault(injected_row.genome_build, []).append(injected_row)
-            # A `ga4gh:VA.…` is the one column checkable with no reference, no network and no
-            # dependency, so there is nothing about it that needs an `output_dir`. A **mismatch** is an
-            # error in *both* modes, which is why this gap was reachable without `--strict` at all:
-            # `validate` reported `valid` for a module a plain `compile` then refused as corrupt.
-            # Gated on `not injected_errors` for the same reason `compile_module` is — a row that
-            # failed to load cannot be re-derived from.
-            vrs_errors, vrs_warnings = _verify_vrs_ids(injected_rows)
-            all_errors.extend(vrs_errors)
-            all_warnings.extend(vrs_warnings)
-            # Coverage rides along for the same reason: counting absent ids reads injected bytes and
-            # nothing else. It reports here too so an author sees the shortfall at pre-flight, where
-            # the remedy (re-run the mint pass) is still cheap.
-            all_warnings.extend(
-                _vrs_coverage_warnings(
-                    injected_rows, unplaced_recorded=_snapshot_unplaced_rsids_recorded(spec_dir)
-                )
-            )
         if model is FrequencyRow and not injected_errors:
             # Validate-by-redundancy over the table's own numbers, here for the same parity reason as
             # `_verify_vrs_ids` above and missed for the same reason `_check_study_effect_alleles` was
@@ -524,6 +554,8 @@ def _validate_spec(
             # authored bytes with no `output_dir`, so it belongs to the pre-flight, and it was
             # compile-only for the same reason `_check_allele_membership` was: nobody asked.
             literature_rows = injected_rows
+        if not injected_errors:
+            fact_rows[model] = injected_rows
         if model is SourceRow and not injected_errors:
             # Stashed for the `panel:` deprecation below, which cannot fire until it knows whether
             # the replacement field is actually filled (S69) — the same reason `literature_rows` is
@@ -538,6 +570,11 @@ def _validate_spec(
 
     # After the loop, because it needs to know which covered tables were actually present.
     all_warnings.extend(_overlay_targets_missing(overrides, overlaid))
+    # And `sources.csv` against the sources the other derived tables name — after the loop for the same
+    # reason, since that set is complete only once every sidecar has been read. The compile asks the same
+    # two functions; this pass did not, so `source_row_unused` reached an author only at compile (RM367).
+    if source_rows:
+        all_warnings.extend(_source_checks(source_rows, sources_in_use(injected.loaded, fact_rows)))
 
     # The `panel:` block lost its last reader in 0.6 (RM4) and is removed at 1.0. Warn-only, and the
     # block still compiles and still reaches `manifest.panel` exactly as before — the charter's
@@ -635,7 +672,9 @@ def _validate_spec(
     )
     all_warnings.extend(fill_warnings)
     all_warnings.extend(
-        _check_positional_joinability(survivors, membership_table, declared_build, fill_applied=fill_applied)
+        _check_positional_joinability(
+            survivors, injected.named_table, declared_build, fill_applied=fill_applied
+        )
     )
 
     # Composition: a module must carry at least one recognized table kind.
@@ -778,93 +817,38 @@ def _validate_spec(
         )
     )
 
-    # Resolution *coverage*, by the same parity rule and for the case that reported it (S76). This is
-    # the standing exemption's edge: what stays compile-only is a check reading **resolved** rows, and
-    # this one does not — it asks whether the injected table *can* place each authored row, which is
-    # arithmetic over the bytes already loaded here. `unresolved_subjects` is the predicate
-    # `resolve_from_table` applies, shared rather than restated, so the two sides cannot drift into
-    # disagreeing about which rows are unplaceable.
-    #
-    # It matters because the gap was the loud half of a silent failure: a spec whose `resolution.csv`
-    # covers some of its variants passes `validate --strict` clean and is refused by
-    # `compile --strict`, which is the green-pre-flight-then-refusal shape this rule exists to stop.
-    # An author whose enrich run was killed partway sees nothing until the compile.
-    #
-    # Both severities mirror the compile exactly. The per-subject warnings carry `rsid_unresolved`,
-    # the code `resolve_from_table` already emits for the identical sentence, so `compile_module` —
-    # whose pre-flight emits them in both modes — de-duplicates them on the
-    # message rather than publishing each twice (the `_check_contig_ploidy` idiom). Neither message
-    # embeds a count that resolution could change, which is what makes re-running one safe here.
-    #
-    # **Nobody-asked is not asked-and-absent, and the two get different messages** — the compile's own
-    # split, mirrored rather than re-invented. With a table present, a row it does not cover is absent
-    # from something that was consulted, and `resolve_from_table` names each such row. With no table at
-    # all nothing was consulted, and the compile says so once, in one aggregated line, instead of
-    # blaming a file that does not exist once per variant. Both refuse under `strict`, because a
-    # partial artifact is unreproducible either way.
-    if variants and resolve_with_ensembl and (membership_table or not legacy_reference):
-        unplaceable = unresolved_subjects(variants, membership_table, declared_build)
-        if membership_table:
-            all_warnings.extend(
-                w
-                for w in (
-                    CodedWarning(
-                        "rsid_unresolved",
-                        unresolved_rsid(
-                            name,
-                            searched="the resolution table",
-                            consequence="position remains unset",
-                        ),
-                    )
-                    for name in unplaceable
-                )
-                if w not in all_warnings
-            )
-        elif unplaceable:
-            all_warnings.append(
-                CodedWarning(
-                    "resolution_not_injected",
-                    resolution_not_injected(
-                        missing="No resolution.csv and no ensembl_cache injected",
-                        remedy="Produce a resolution.csv with just-dna-enricher.",
-                    ),
-                )
-            )
-        if strict and unplaceable:
-            all_errors.append(
-                f"strict compile: {len(unplaceable)} variant(s) have unresolved genomic "
-                f"positions after resolution: {unplaceable}. A partial artifact would not be "
-                f"byte-reproducible; inject a complete Ensembl reference (ensembl_cache=) or "
-                f"compile without strict."
-            )
+    # The resolution step, the compile's own (RM367). The standing exemption kept a check over RESOLVED
+    # rows compile-only, and it never held for this table: applying it is pure computation over bytes
+    # this pass has already loaded, so the pre-flight runs the very function the compile runs, over the
+    # rows the compile keeps (the post-drop survivors), and publishes its refusals in the compile's
+    # words. That retired three hand-kept copies (coverage, `withdrawn`, `ambiguous`) and the two ladders
+    # that were pinned compile-only. What it still cannot run is the deprecated `ensembl_cache`
+    # reference, which it is not handed; with no table beside the spec that reference places the rows,
+    # so the coverage judgement is left to the compile (`legacy_reference`).
+    authored_survivors = _apply_symbolic_drops(variants, would_drop.get("variants.csv", set()))
+    resolved_variants = authored_survivors
+    legacy_places_rows = legacy_reference and not membership_table
+    resolution_ran = bool(variants) and resolve_with_ensembl and not legacy_places_rows
+    if resolution_ran:
+        resolved = resolve_variants(authored_survivors, membership_table, declared_build, strict=strict)
+        all_errors.extend(resolved.refusals)
+        all_warnings.extend(w for w in resolved.warnings if w not in all_warnings)
+        resolved_variants = resolved.variants
+    # `strict`'s aggregate over the rows resolution left unplaced — under `--no-resolve` and on a
+    # non-GRCh38 build too, where the compile refuses them and this pass used to say valid.
+    if strict and variants and not (resolve_with_ensembl and legacy_places_rows):
+        all_errors.extend(unplaced_refusal(resolved_variants))
 
-    # The two refusals `resolve_from_table` raises over the injected table itself, asked here for the
-    # same reason the coverage check above is: they read the table's own columns and no *resolved*
-    # row, so the standing compile-only exemption does not cover them (`@validate-refuses-all`).
-    # `withdrawn` is fatal in **both** modes and was the sharper gap — a green `validate --strict`
-    # followed by a plain `compile` refusing is the exact sequence this pre-flight exists to prevent,
-    # and it was reproducible on a reference example with one column changed (RM207).
-    #
-    # Both sentences come from the shared helpers rather than being re-phrased here, so there is one
-    # of each text. Neither embeds a count, which is what makes asking them on both sides safe
-    # (`@no-rerun-with-counts`); `compile_module` de-duplicates errors the way it already does for
-    # `rsid_unresolved`'s warnings.
-    #
-    # **The prefixes are copied deliberately.** `compile_module` publishes these two as
-    # `resolution: …` and `strict resolution: …`, and that text is what a consumer greps
-    # (`@warning-text-is-api`). Emitting the bare sentence here would change the published string on
-    # every module that carries one — so the *sentence* is shared, from one helper, and only the
-    # channel label is restated. Since RM359 `compile_module` runs this pre-flight in its own mode, so
-    # the `strict` arm below is both `validate --strict`'s and `compile --strict`'s first refusal.
-    if variants and resolve_with_ensembl and membership_table:
-        all_errors.extend(
-            f"resolution: {e}" for e in withdrawn_refusals(variants, membership_table, declared_build)
-        )
-        if strict:
-            all_errors.extend(
-                f"strict resolution: {e}"
-                for e in ambiguous_refusals(variants, membership_table, declared_build)
-            )
+    # The derived tables keyed by position or identity, against the resolved rows — the rows the compile
+    # asks them against, since an rsID-only variant has a position only now (RM367). Warning-only in both
+    # modes; they were compile-only under the resolved-rows exemption this pass no longer needs.
+    frequency_rows = fact_rows.get(FrequencyRow, [])
+    all_warnings.extend(_cross_check_frequencies(frequency_rows, resolved_variants))
+    all_warnings.extend(_check_ba1_lint(frequency_rows, resolved_variants, threshold=ba1_threshold))
+    all_warnings.extend(
+        _cross_check_clinical_assertions(fact_rows.get(ClinicalAssertionRow, []), resolved_variants)
+    )
+    all_warnings.extend(_cross_check_gwas_effects(fact_rows.get(GwasEffectRow, []), resolved_variants))
 
     # Same rule about where a check belongs: the VCF pointer columns are authored cells read against
     # two spec-derived constants, with no resolution step and no `output_dir` in sight, so the
@@ -969,6 +953,14 @@ def _validate_spec(
         # `config` is None when the spec itself failed to load; default rather than crash, since
         # the point of `validate` is to report every problem it can, not to stop at the first.
         all_warnings.extend(_check_contig_ploidy(variants, config.genome_build if config else "GRCh38"))
+        # And the resolved rows' answers, which the compile asks after resolution (RM367): ploidy on the
+        # `chrom` resolution filled, and the identity checks an expansion can break. The identity half is
+        # asked only on an otherwise clean pass, as the compile reaches it only after this pre-flight.
+        all_warnings.extend(
+            w for w in ploidy_after_resolution(resolved_variants, declared_build) if w not in all_warnings
+        )
+        if resolution_ran and not all_errors:
+            all_errors.extend(identity_after_resolution(resolved_variants, declared_build))
         # `flags` is an open vocabulary — surface non-reserved tags as INFO (not a warning; nothing
         # is wrong). ROADMAP 0.3 item 4.
         unknown_flags = sorted(

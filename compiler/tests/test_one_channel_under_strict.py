@@ -70,8 +70,9 @@ class Case:
     #: A fragment of the STRICT refusal, where it is a different sentence from the warning (the
     #: resolution ladders); `None` means the refusal is the warning's own sentence.
     refusal: str | None = None
-    #: Whether `validate --strict` asks this finding. Two resolution ladders read RESOLVED rows and are
-    #: compile-only (the standing exemption), so the pre-flight neither refuses nor warns on them.
+    #: Whether `validate --strict` asks this finding. Every ladder is asked by the pre-flight since RM367,
+    #: which runs the compile's own resolution step; two used to be pinned compile-only here, under an
+    #: exemption ("they read resolved rows") that did not hold for an injected table.
     preflight: bool = True
 
 
@@ -151,7 +152,6 @@ CASES = [
             + _res("rs999", "rs999", 6, 600, "A", "T", 1),
         },
         refusal="makes the compile non-reproducible from the injected table",
-        preflight=False,
     ),
     Case(
         "rsid_coordinate_disagrees",
@@ -162,7 +162,6 @@ CASES = [
             "resolution.csv": _RES_HEADER + _res("rs777", "rs777", 9, 900, "C", "G"),
         },
         refusal="The authored value is kept, so the table's position does not survive a",
-        preflight=False,
     ),
 ]
 
@@ -236,10 +235,9 @@ def test_validate_strict_keeps_the_same_rule(case: Case, tmp_path: Path) -> None
     assert not set(result.errors) & set(result.warnings)
     assert not [w for w in result.warnings if case.fragment in w]
     if case.preflight:
-        # `rsid_ambiguous`'s best_effort sentence is the compile's alone; the pre-flight asks only its
-        # strict refusal (`ambiguous_refusals`), so the warning half is proven on the compile test.
-        if case.refusal is None:
-            assert any(case.fragment in w for w in lenient.warnings), lenient.warnings
+        # Every ladder's best_effort sentence is the pre-flight's too since RM367 (it runs the compile's
+        # resolution step), so the warning half is proven here as well as on the compile.
+        assert any(case.fragment in w for w in lenient.warnings), lenient.warnings
         assert not result.valid
         assert any((case.refusal or case.fragment) in e for e in result.errors), result.errors
     else:
