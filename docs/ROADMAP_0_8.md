@@ -735,6 +735,16 @@ cannot be retyped into a table.
 
 ## RM239 — a fine-mapping posterior has no column, and `gwas_effects.csv` already has its key
 
+**Columns settled 2026-11-04 by the pm seat, on the lead's hand-run probe** (`probes/LANES_0_8.md` on `0.8`, 92eff12):
+`gwas_effects.csv` gains **`posterior_probability` and `fine_mapping_method`**, and no credible-set level.
+
+- Open Targets 26.09 publishes only the 95% set: `is95 = is99 = true` on all 40,967,780 GWAS member rows,
+  so a level column would have no case.
+- The posterior comes from three methods (SuSiE, SuSiE-inf, PICS), and the number means nothing without its
+  method, the same rule as a magnitude carrying its unit.
+
+The column count is the same, and every value has a case. It is a derived table, so half price.
+
 **0.8, decided 2026-11-03.** Kept in 0.8 as an input to longevitymap v2's causal and effector-gene confidence labels (RM333), while the rest of RM188's parity work moved to 0.9.
 
 **Severity** low · **Status** open — **filed 2026-09-13 from [RM188](ROADMAP_0_9.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)'s ClawBio half** ·
@@ -1181,6 +1191,31 @@ remaining class gets the same treatment — a plain column, on demand, one at a 
   life; it stays that way, here.
 
 Neither is built until a real module needs it.
+
+## RM348 — `logs/` discovery trusts the filesystem: a symlink ships what it points at, and a large or unreadable file reaches the compile
+
+**0.8, filed 2026-11-04 by the lead** as a second-pass item (RELEASE_CYCLE § Minors step 4): found while building
+RM337, in behaviour RM338 shipped.
+
+**Severity** medium · **Status** open — **a minor**, joins 0.8 · **Owner** compiler (`_collect_logs`) · **Motivating
+case** the RM337 builder's report, 2026-11-04 · *related* RM337, RM338, RM347
+
+**One class, four instances.** Discovery under `logs/` reads whatever the filesystem hands it, and a published file is
+permanent:
+
+1. a symlinked `*.log` ships, even when it points outside the module;
+2. a `logs/` directory that is itself a symlink is walked, and everything under it ships;
+3. a text file under `logs/` has no size ceiling and is read whole into memory;
+4. an unreadable file (a `PermissionError`) raises out of the compile instead of staying behind.
+
+**The fix, as one rule.** Every path discovery considers is resolved and must stay inside the spec directory; a symlink,
+at any level including `logs/` itself, stays behind with `log_file_not_shipped`'s symlink reason (an explicit
+`log_files` list is unaffected); text gets the same ceiling as images (`LOG_IMAGE_MAX_BYTES` becomes one
+`LOG_MAX_BYTES`, read from `stat` before any byte); a file that cannot be read stays behind with a new reason,
+never an exception. `*.log` keeps shipping unchecked for content, but not past the symlink and size rules. That last
+point narrows what a `*.log` did before RM338, so its CHANGELOG line says so.
+
+**Residuals** none yet.
 
 ## RM342 — the manifest does not record the toolchain that wrote the bytes, so a digest that moves cannot say why
 
