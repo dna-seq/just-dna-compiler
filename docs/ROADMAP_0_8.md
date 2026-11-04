@@ -55,7 +55,7 @@ land wherever RM323 puts per-locus facts. RM322 next, since APOE is the lead loc
 | [RM333](#rm333--the-effector-gene-behind-a-gwas-locus-has-no-source-and-no-column) | an Open Targets lane; effector gene, score, release on a derived table | half, plus a lane | licence unprobed |
 | [RM334](#rm334--an-hla-allele-has-no-table-and-tag-snps-cannot-stand-in-for-one) | an HLA allele table keyed `(gene, allele)` | full (new kind) |  |
 | [RM335](#rm335--model-organism-evidence-has-nowhere-to-go-and-a-study-row-naming-the-rsid-claims-the-mouse-study-was-about-the-human-variant) | a model-organism evidence table | full (new kind) |  |
-| [RM336](#rm336--a-doi-written-into-pmid-parses-as-five-or-six-pubmed-ids-and-the-literature-pass-looks-each-one-up) | a DOI-token arm in `validate_pmid_cell` | near-zero (a refusal or a warning code) | reproduced |
+| [RM336](ROADMAP_HISTORY.md#rm336--a-doi-written-into-pmid-parses-as-five-or-six-pubmed-ids-and-the-literature-pass-looks-each-one-up) | a DOI-token arm in `validate_pmid_cell` | near-zero (a refusal or a warning code) | **shipped 2026-11-04 on `0.8`, uncut** |
 
 **Older items the plan also needs, tagged rather than moved** (each keeps its own entry; the 2026-11-03
 scope decision put each in 0.8 or 0.9, as marked):
@@ -485,43 +485,6 @@ matching found 20 of the 22 genes NCBI orthologues found), species, model type, 
 effect, and the direction concordance with the human allele (`concordant`, `discordant`,
 `nonmonotone`), with a citation. Annotation only: it never reaches an effect column or a tier
 (R-ANIMAL-1). Full, a new table kind.
-
-## RM336 — a DOI written into `pmid` parses as five or six PubMed ids, and the literature pass looks each one up
-
-**Widened 2026-11-04 by the maintainer, after the second measuring run: "fix the error class on all tables".**
-The pmid/doi pair applies to **every table where a row cites**, not only `studies.csv`:
-
-- a DOI is never written into `pmid`;
-- `pmid` accepts the `NONE` sentinel, which makes `doi` mandatory and validated.
-
-Tables that cite with a `pmid` and no `doi` today gain `doi`:
-
-- `pharm_variants.csv` (RM132's `pmid`);
-- the binning kinds (RM47's `pmid`);
-- the derived `gwas_effects.csv` (half price);
-- the two new citing tables: the meta-table and RM335's model-organism table.
-
-The run measured 6 preprint-only HLA alleles and 17 PMID-less model-organism rows. The roster of citing
-tables is derived (the compiler's `_CITING_TABLE_KINDS`), never hand-kept.
-
-**Preprints, decided 2026-11-04 by the maintainer after the final run (17 v2 studies are DOI-only).** DOIs stay in `doi` and never in `pmid`. `pmid` accepts a typed sentinel (`NONE` or similar; the exact spelling gets its P5 audit). That sentinel makes `doi` the **mandatory substitute**, and the validator then checks the DOI instead. A DOI written into `pmid` is still refused. `pmid` stays required, because the cell is present, so this is minor-legal (P8). RM263's DOI-to-PMID lookup still fills a real PMID wherever PubMed indexes the paper.
-
-**Decided 2026-11-04 by the maintainer: a refusal, like RM50's PMCID arm.** `validate_pmid_cell` refuses a cell whose only token is a DOI, and names it. Principle 3 says a module that validated keeps validating, so before the build, check the published modules (the registry's catalogue and the reference examples) for a DOI in `pmid`. None found: the refusal breaks no published module. Any found: they go back to the maintainer before the arm ships.
-
-**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**; a refusal or a warning is the decision · **Owner** format (`spec.validate_pmid_cell`) · **Motivating case** longevitymap v2 requirements §6.3 ("`pmid`, or `doi` for preprints") · *for* longevitymap v2 · *related* RM50, RM263, [ROADMAP § `StudyRow.pmid` required + PMID-shaped](ROADMAP.md#studyrowpmid-required--pmid-shaped)
-
-**Reproduced 2026-11-03.** `StudyRow(rsid="rs429358", pmid="10.1101/2025.03.01.640000")` validates.
-`extract_pmids` returns `['10', '1101', '2025', '03', '01', '640000']`, and `doi:10.1038/s41586-019-1234-5`
-gives five. `enricher/src/just_dna_enricher/literature.py` iterates `extract_pmids(study.pmid)`, so the
-literature pass checks PubMed records 10, 1101 and so on as the row's citations. A preprint-only row is
-exactly where an author writes this, because `pmid` is required and the paper has only a DOI.
-
-**Same class as RM50.** RM50 gave `validate_pmid_cell` a PMCID arm, refusing a cell whose only id is a
-PubMed Central number and naming it. A DOI is the next registry whose digits read as PMIDs.
-
-**The decision.** A refusal arm like RM50's makes cells that shipped modules may already hold invalid
-(P3/P8), while a new warning code is minor-class (RM308's rule). The real fix for preprints stays the 1.0
-doi-first demotion. RM263 is the route from a DOI to its PMID.
 
 ## RM303 — the snapshot layout is a contract with six parties and no model, so it belongs in `just-dna-format`
 

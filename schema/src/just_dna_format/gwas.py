@@ -31,10 +31,11 @@ collapsing them would pick a trait on the author's behalf.
 
 from typing import ClassVar
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import ConfigDict, Field, field_validator
 
 from just_dna_format.base import since, vocabulary
 from just_dna_format.normalize import normalize_utc_timestamp
+from just_dna_format.spec import CitationPair, validate_pmid_cell
 from just_dna_format.vocab import (
     RECOMMENDED_EFFECT_MEASURES,
     VALID_EFFECT_DIRECTIONS,
@@ -77,13 +78,14 @@ GWAS_FACT_FIELDS: tuple[str, ...] = (
     "p_value_num",
     "trait_efo_id",
     "pmid",
+    "doi",
     "study_accession",
     "ancestry",
     "dataset",
 )
 
 
-class GwasEffectRow(BaseModel):
+class GwasEffectRow(CitationPair):
     """One published GWAS association: the magnitude, its unit, and the allele it is relative to.
 
     Standalone (not an `AuthoredModel`) for the same reason every fact row is — machine-produced
@@ -241,6 +243,17 @@ class GwasEffectRow(BaseModel):
         default=None,
         description="PubMed id of the publication, free-form under the same grammar as `StudyRow.pmid`.",
     )
+    doi: str | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description=(
+            "Digital Object Identifier of the publication, kept verbatim. Mandatory when `pmid` is "
+            "`NONE` (a work PubMed does not index, RM336) — the pmid/doi pair rule every citing table "
+            "obeys. The Catalog pass fills `pmid` from the study's `publicationInfo.pubmedId` and does "
+            "not fill this column. Inside `GWAS_FACT_FIELDS`, as `pmid` is: "
+            "which paper is part of what the source said, and an unset cell is dropped from the hash."
+        ),
+    )
     study_accession: str | None = Field(
         json_schema_extra=since("0.6.0"),
         default=None,
@@ -299,6 +312,14 @@ class GwasEffectRow(BaseModel):
         if not v:
             raise ValueError("association_id must not be empty — it is this row's identity")
         return v
+
+    @field_validator("pmid")
+    @classmethod
+    def _validate_pmid(cls, v: str | None) -> str | None:
+        # The description always promised `StudyRow.pmid`'s grammar and nothing enforced it, so a DOI
+        # written here would have parsed as five or six PubMed ids like anywhere else (RM336). Optional,
+        # as on the other non-study citing rows.
+        return validate_pmid_cell(v, "pmid", required=False)
 
     @field_validator("variant_key")
     @classmethod

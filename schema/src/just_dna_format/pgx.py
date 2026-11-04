@@ -30,7 +30,7 @@ from just_dna_format.base import (
     stamped_identity_field,
     vocabulary,
 )
-from just_dna_format.spec import validate_pmid_cell
+from just_dna_format.spec import CitationPair, validate_pmid_cell
 from just_dna_format.vocab import (
     VALID_PHENOTYPE_CATEGORIES,
     VALID_RECOMMENDATION_STRENGTH,
@@ -415,7 +415,7 @@ class DiplotypeRow(AuthoredModel):
         return self
 
 
-class PharmVariantRow(AuthoredModel):
+class PharmVariantRow(CitationPair, AuthoredModel):
     """Single-variant PharmGKB drug-response annotation (item 9) — `pharm_variants.csv`.
 
     A **distinct rowtype** rather than columns on `VariantRow`, so the SNP core stays free of the
@@ -607,6 +607,16 @@ class PharmVariantRow(AuthoredModel):
             "the whole variant. Free-form like `StudyRow.pmid` (`9545397`, `[PMID: 9545397]`, a "
             "`;`-joined list). The pharm row cites; studies.csv and literature.csv describe. "
             "Separate from `evidence_level`, which grades evidence rather than pointing at it."
+        ),
+    )
+    doi: str | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description=(
+            "Digital Object Identifier of the work THIS row cites, kept verbatim (bare or as a doi.org "
+            "URL). Optional beside a PubMed id; **mandatory when `pmid` is `NONE`**, the sentinel for "
+            "a work PubMed does not index (a preprint, a book, a dataset), RM336. Same rule as "
+            "`StudyRow.doi`."
         ),
     )
     trait_efo_id: str | None = Field(

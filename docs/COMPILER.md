@@ -422,6 +422,12 @@ verdict* and contains no statistic to witness.
 `duplicate_study_citation` fires on a repeated `(variant_key, pmid)` because the check's own reading of
 that pair is *the same claim written twice* — which two rows naming two analyses are not.
 
+**A `pmid=NONE` row is keyed on its DOI (0.8, RM336).** Every DOI-only citation reads `NONE`, so two
+different preprints on one variant would otherwise share `(variant_key, NONE)`. The check keys such a
+row on `NONE doi <doi>` and the message names it (`Duplicate (variant, pmid): (rs…, NONE doi 10.1101/…)`),
+so the same preprint written twice still warns; every row with a real `pmid` is keyed and worded as
+before.
+
 **Only *both stated and different* suppresses the warning.** The rule is Kleene rather than `a != b`:
 an absent `statistical_test` is **unknown**, and unknown against a stated value cannot establish that
 two rows describe separate work. So a pair where neither row names an analysis, where both name the

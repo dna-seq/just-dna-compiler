@@ -41,6 +41,20 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM336: a DOI in `pmid` is refused, and `pmid=NONE` cites a preprint by its `doi`, on every citing table (0.8, uncut)
+
+**format, compiler, enricher** — A `pmid` cell whose only identifier is a DOI is refused, naming the
+DOI; before, `10.1101/2025.03.01.640000` parsed as six PubMed ids and the literature pass looked each
+one up. `extract_pmids` skips a DOI's digits, so a PMID beside a DOI is kept. A work PubMed does not
+index is cited as `pmid=NONE` (exactly), which makes `doi` mandatory and DOI-shaped. One rule,
+`spec.CitationPair`, on every model with a `pmid` (`StudyRow`, the four binning kinds,
+`PharmVariantRow`, `GwasEffectRow`), asserted by an equality over the model registry; the last three
+gain an optional `doi` column (nullable in their parquets, so their `artifact.digest` moves on
+recompile). Two `NONE` study rows on one variant are told apart by their DOI in the duplicate check.
+Every published module (the prod registry, 24 modules, all 47 versions, and `reference_examples/`) was
+scanned first: no `pmid` cell holds a DOI. A 0.7 reader refuses `NONE` and the new columns
+([INTEGRATION_0_8 § 1.5](INTEGRATION_0_8.md)).
+
 ## 2026-11-04 — RM340: the VRS-coverage warning points at the record that explains its no-ALT rows (patch, on `main`)
 
 **compiler, enricher** — When an attested `verification.json` carries an `rsid_coordinate_agreement` record
