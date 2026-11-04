@@ -104,8 +104,10 @@ that registry); `test_every_refusal_the_publisher_raises_is_in_its_family` (an A
 allowlisted reproduction check); and the file-wide network block. Each was mutated once and went red.
 
 **Decisions taken.** Two commits stay two (one `create_commit` carrying both paths is now a small
-change, not taken). A recompile of an unchanged spec states a new `compiled_at`, so republishing it
-under the same version is a collision — the version's manifest would change (P4). The two plan
+change, not taken). The manifest arm leaves out the stamps of the act of compiling
+(`COMPILATION_STAMPS`: `compiled_at`, `compiled_by`, each with its reason), so a recompile of an
+unchanged spec republishes as a no-op, as it did before; `toolchain` stays compared, since RM342 reads
+it. A test holds those stamps and `COMPILATION_COMPARED` equal to `Compilation`'s fields. The two plan
 refusals keep `FileNotFoundError` as a second base within 0.8, so no existing handler stops
 catching them. RM355's decision that an optional entry naming no file (an empty or blank name) is
 dropped stands; a name present and not a string is malformed and refuses. The send holds the module's

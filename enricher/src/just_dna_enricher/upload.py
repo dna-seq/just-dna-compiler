@@ -941,7 +941,9 @@ def _manifest_differences(local: dict, published: dict) -> list[str]:
     The digest and every declared file's name, hash and size are `_versioned_conflict`'s own arms,
     with their unknown rule (a declaration with no legible hash does not disagree), so those keys
     (`_GOVERNED_KEYS`) are skipped here; every other key, inside a declared field or not —
-    `provenance.generator`, `provenance.item_count`, a new title, a new `compiled_at` — is compared.
+    `provenance.generator`, `provenance.item_count`, a new title — is compared, except the stamps of
+    the act of compiling (`COMPILATION_STAMPS`: `compiled_at`, `compiled_by`), so a recompile of an
+    unchanged spec republishes as the same release.
     """
     differing: list[str] = []
 
@@ -960,12 +962,56 @@ def _manifest_differences(local: dict, published: dict) -> list[str]:
             return {k: v for k, v in value.items() if k not in _GOVERNED_KEYS}
         return value
 
+    def unstamped(value: object) -> object:
+        """`compilation` less the stamps of the act of compiling (`COMPILATION_STAMPS`)."""
+        if isinstance(value, dict):
+            return {k: v for k, v in value.items() if k not in COMPILATION_STAMPS}
+        return value
+
     for key in sorted(local.keys() | published.keys()):
         left, right = local.get(key), published.get(key)
         if key in DECLARED_FILE_FIELDS:
             left, right = ungoverned(left), ungoverned(right)
+        elif key == "compilation":
+            left, right = unstamped(left), unstamped(right)
         walk(left, right, key)
     return differing
+
+
+#: The `Compilation` fields that stamp the **act** of compiling rather than describe the module, with
+#: the reason each is left out of the versioned-path comparison: a recompile of an unchanged spec moves
+#: them and nothing else, and a republish of that is the same release (RM368). Held equal, with
+#: `COMPILATION_COMPARED`, against `Compilation.model_fields` by a test, so a new field is classified.
+COMPILATION_STAMPS: dict[str, str] = {
+    "compiled_at": "when this compile ran; every recompile moves it",
+    "compiled_by": "who ran this compile (a host or a service); the same bytes compiled elsewhere differ here only",
+}
+#: The `Compilation` fields that describe the module and are compared: the compile's outcome, its
+#: findings, the resolution it used, and `toolchain`, which RM342's `ToolchainDiffersError` reads.
+COMPILATION_COMPARED: frozenset[str] = frozenset(
+    {
+        "compile_success",
+        "compiler_version",
+        "ensembl_reference",
+        "warnings",
+        "carried",
+        "warnings_summary",
+        "dropped_rows",
+        "resolution_mode",
+        "fully_resolved",
+        "resolution_subjects",
+        "expanded_keys",
+        "expanded_rows",
+        "resolution_signature",
+        "resolution_sources",
+        "vrs_alleles",
+        "vrs_alleles_identified",
+        "vrs_version",
+        "positional_rows",
+        "positional_rows_placed",
+        "toolchain",
+    }
+)
 
 
 #: The keys inside a declared field that the digest arm and the declared-file arm compare (with their

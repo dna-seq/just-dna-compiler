@@ -395,7 +395,7 @@ forbids unknown columns. Same remedy.
 | `UploadPlan.sha256` | New field with a default: each planned file's sha256 as the plan read it, `manifest.json` included. |
 | `upload_module` | Sends through `create_commit` carrying the plan's bytes, verified at send time; a file that changed since the plan raises `PlanChangedError` before either commit. Two commits, flat path first, as before. |
 | `plan_upload` | **A tightening:** a declared field present in a shape the compiler never writes (`artifact.files` not a list, a `sha256` not a string, `logs` not a list, `logo`/`readme`/`provenance` not an object) refuses, quoting it, where it read as absent and dropped a check. An absent or `null` field still withholds. A blank `name` names no file. No compiled manifest holds such a field. |
-| the versioned-path guard | Also compares every other field of `manifest.json`, naming the dotted paths that differ; a recompile of an unchanged spec (a new `compiled_at`) under the same version is a collision. |
+| the versioned-path guard | Also compares every other field of `manifest.json`, naming the dotted paths that differ. `compiled_at` and `compiled_by` (`upload.COMPILATION_STAMPS`) are not compared, so a recompile of an unchanged spec republishes as a no-op. |
 | `rehearse_upload`, `rehearse_reference_snapshot` | New: the dry runs, running every check the real publish runs. `upload --dry-run` now reads the published manifest of the version (read-only, anonymous when there is no token) and every snapshot `publish --dry-run` the repo's file list. |
 
 ## 2. What to change

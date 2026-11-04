@@ -12,6 +12,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import huggingface_hub
+import just_dna_compiler.compiler.manifest as compiler_manifest
 import just_dna_enricher.upload as upload
 import pytest
 import yaml
@@ -45,6 +46,7 @@ from just_dna_format.manifest import (
     README_CANDIDATES,
     TOOLCHAIN_DIFFERS,
     Artifact,
+    Compilation,
     Display,
     FileEntry,
     Identity,
@@ -1849,3 +1851,50 @@ def test_the_publisher_reads_every_field_that_names_a_file() -> None:
     }
     assert naming == set(upload.DECLARED_FILE_FIELDS) | set(upload.SPEC_SIDE_FILE_FIELDS)
     assert not set(upload.DECLARED_FILE_FIELDS) & set(upload.SPEC_SIDE_FILE_FIELDS)
+
+
+# ── a republish of an unchanged spec stays idempotent (RM368, lead review) ──────────────────────
+
+
+def test_a_recompile_of_an_unchanged_spec_republishes_as_a_no_op(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Comparing every manifest field made a recompile of the same spec at the same version a
+    collision only because `compiled_at` moved. The stamps of the act of compiling are not what the
+    version names; the digest, the declared files and the toolchain still are."""
+    out = _compile_with_everything(tmp_path, version=_AUTHORED_VERSION)
+    published = _published_as(out)
+
+    # The same spec compiled again, later, by someone else: only the act's stamps move.
+    monkeypatch.setattr(compiler_manifest, "_now_iso", lambda: "2031-01-01T00:00:00Z")
+    shutil.rmtree(out)
+    assert compile_module(tmp_path / "spec", out, compiled_by="another-host").success
+    local = _published_as(out)
+    assert local["compilation"]["compiled_at"] != published["compilation"]["compiled_at"]
+    assert local["artifact"]["digest"] == published["artifact"]["digest"], "the data must not have moved"
+
+    api, remote = _remote(tmp_path, published)
+    _upload(out, api, remote)
+    assert len(api.create_commit.call_args_list) == 2
+
+    # A changed log is still a different release of that version.
+    (tmp_path / "spec" / "logs" / "authoring.log").write_text("drafted, then reviewed\n", encoding="utf-8")
+    shutil.rmtree(out)
+    assert compile_module(tmp_path / "spec", out).success
+    api, remote = _remote(tmp_path, published)
+    with pytest.raises(PublishCollisionError, match="logs/authoring.log"):
+        _upload(out, api, remote)
+    api.create_commit.assert_not_called()
+
+
+def test_every_compilation_field_is_classified_for_the_versioned_path() -> None:
+    """Each `Compilation` field either describes the module (compared at the versioned path) or
+    stamps the act of compiling (excluded, with its reason): a new field goes red here until it is
+    classified, so a new stamp cannot turn every republish into a collision, and a new fact about the
+    module cannot slip out of the comparison."""
+    stamps = set(upload.COMPILATION_STAMPS)
+    compared = set(upload.COMPILATION_COMPARED)
+    assert not stamps & compared
+    assert stamps | compared == set(Compilation.model_fields)
+    assert "toolchain" in compared, "RM342's toolchain-differs refusal reads it"
+    assert all(reason.strip() for reason in upload.COMPILATION_STAMPS.values())

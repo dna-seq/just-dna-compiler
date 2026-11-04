@@ -2770,8 +2770,10 @@ of the reader. The half this tier owns is the layout, and it is written twice no
   message names the arm (*a different artifact*; *the same compiled data but different declared
   files* with the names; *a different `manifest.json`, at* the dotted paths). A remote manifest whose
   bytes hash to this one's is the same release with no field compared; a declaration with no legible
-  hash is not compared. A recompile of an unchanged spec states a new `compiled_at`, so it is a
-  collision too: the version's manifest would change. The CLI reports it as `ALREADY PUBLISHED` rather
+  hash is not compared. The stamps of the act of compiling (`upload.COMPILATION_STAMPS`:
+  `compiled_at`, `compiled_by`) are left out, so a recompile of an unchanged spec republishes as a
+  no-op; every other `Compilation` field (`COMPILATION_COMPARED`, `toolchain` among them) is compared,
+  and a test holds the two sets equal to the model's fields so a new one must be classified. The CLI reports it as `ALREADY PUBLISHED` rather
   than `UPLOAD FAILED`, because the module is fine and the remote is what disagrees. What about the gate
   is a decision rather than a detail:
   - **Identical bytes are not a collision.** The comparator is the digest and the declared hashes,
