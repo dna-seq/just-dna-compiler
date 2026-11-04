@@ -1697,6 +1697,32 @@ its own `SourceRow` and licence probe, not a branch inside an existing client.
 
 **Residuals** none yet.
 
+## RM360 — four longevitymap v2 rows the 0.8 shape cannot hold, found by writing 0.8's reference examples
+
+**0.9, filed 2026-11-04 by the pm**, from the lead's report on the 0.8 reference examples. None is built in 0.8.
+
+**Severity** low · **Status** open — **a minor**, 0.9, each gap weighed at 0.9's interview · **Owner** format
+(columns) · **Motivating case** the 0.8 reference examples, 2026-11-04 · *for* longevitymap v2 · *related* RM323,
+RM328, RM334, RM335
+
+**One class: a v2 fact has a value and no cell to put it in.** Four instances:
+
+1. **An allele's odds ratio has no numeric home on `meta.csv`.** A composite row states a direction and a
+   conclusion. It cannot state the number its citation gives for the allele.
+2. **A tag SNP standing for an HLA allele has no column.** `proxy_rsid` points from one variant to another. It
+   cannot point from a variant to an `allele_function.csv` allele such as an HLA type.
+3. **A GenAge entry cannot be cited in `model_organisms.csv`.** The row has `pmid`/`doi` and no slot for a
+   database entry id.
+4. **An r² cannot say which lead allele the proxy allele travels with.** The computed LD pair carries r² and the
+   population, but not the allele phase, so the effect allele cannot be carried across the proxy.
+
+**How to weigh them (the standing rule).** Fewest entities first. Before any new column, check whether an
+existing column or a meta-table row already holds the fact: for (1), a citing table's effect columns joined
+by the member; for (4), a computed field, since the phase comes from the same LD lookup that fills r². A gap
+whose only case is one example row waits for a second case.
+
+**Residuals** none yet.
+
 ## RM345 — `SourceRow` cannot state five licence shapes: AlphaGenome's four, and a host licence that defers to owners a row cannot name
 
 **Severity** medium · **Status** open — **a minor** (new optional `sources.csv` columns or a sibling table;
