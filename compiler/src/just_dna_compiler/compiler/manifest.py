@@ -2,6 +2,8 @@
 the sources and licence gate, the verification and closure blocks, and `_build_manifest`.
 """
 
+import json
+import logging
 import shutil
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -80,6 +82,8 @@ from just_dna_compiler.compiler.tables import (
 from just_dna_compiler.compiler.vrs_checks import SNAPSHOT_UNPLACED_PHRASE
 from just_dna_compiler.models import ValidationResult
 
+logger = logging.getLogger("just_dna_compiler.compiler")
+
 
 def _compiler_version() -> str:
     try:
@@ -96,13 +100,66 @@ def _now_iso() -> str:
     return now_utc_iso()
 
 
+# What discovery ships from under a module's `logs/` (RM338, decided 2026-11-03), keyed by lowercase
+# extension without the dot. Text ships when its content agrees with its name (`_log_content_agrees`);
+# an image ships when its leading bytes are the format's magic and it is no larger than the ceiling.
+# SVG is in neither set on purpose: it is XML that can carry script, so it never ships by discovery.
+LOG_TEXT_EXTENSIONS: frozenset[str] = frozenset({"log", "txt", "md", "json", "jsonl"})
+LOG_IMAGE_MAGIC: dict[str, bytes] = {
+    "png": b"\x89PNG\r\n\x1a\n",
+    "jpg": b"\xff\xd8\xff",
+    "jpeg": b"\xff\xd8\xff",
+}
+# 5 MiB: the line this repository already draws for anything that travels (a larger asset goes
+# through Git LFS), and far above a figure or screenshot, so an image over it is not a log.
+LOG_IMAGE_MAX_BYTES: int = 5 * 1024 * 1024
+
+
+def _log_content_agrees(path: Path, ext: str) -> bool:
+    """Whether a file under `logs/` with lowercase extension `ext` holds what its name says.
+
+    `.txt`/`.md`/`.log` decode as UTF-8, `.json` parses, every non-blank `.jsonl` line parses, and a
+    png/jpg/jpeg is at most `LOG_IMAGE_MAX_BYTES` and starts with its format's magic. Any other
+    extension, SVG included, is refused. The size is read before any byte, so an oversized image is
+    never loaded."""
+    magic = LOG_IMAGE_MAGIC.get(ext)
+    if magic is not None:
+        if path.stat().st_size > LOG_IMAGE_MAX_BYTES:
+            return False
+        with path.open("rb") as handle:
+            return handle.read(len(magic)) == magic
+    if ext not in LOG_TEXT_EXTENSIONS:
+        return False
+    try:
+        # `utf-8-sig`: a byte-order mark is UTF-8 a Windows editor writes, and no part of the JSON.
+        text = path.read_bytes().decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return False
+    if ext not in {"json", "jsonl"}:
+        return True
+    # A JSON Lines record ends at `\n` only: `str.splitlines()` also breaks at U+2028 and the other
+    # separators JSON allows raw inside a string, which would refuse a valid ledger.
+    documents = [text] if ext == "json" else [line for line in text.split("\n") if line.strip()]
+    try:
+        for document in documents:
+            json.loads(document)
+    # RecursionError is what `json.loads` raises on nesting past the interpreter's limit: a file
+    # this compile cannot parse stays behind rather than failing the compile.
+    except (ValueError, RecursionError):
+        return False
+    return True
+
+
 def _collect_logs(spec_dir: Path, output_dir: Path, explicit: list[Path] | None) -> list[FileEntry]:
     """Gather optional run/provenance logs into the module dir and hash them.
 
-    Auto-discovers a top-level aggregate log (`*.log` in `spec_dir`) plus per-role files under a
-    `spec_dir/logs/` folder, preserving each file's path relative to the module. An explicit
-    `log_files` list overrides discovery. Files are copied into `output_dir` (so they ship with the
-    module) and returned as hashed `FileEntry` rows. No logs → empty list (a valid module).
+    Auto-discovers a top-level aggregate log (`*.log` in `spec_dir`) plus files under a
+    `spec_dir/logs/` folder, preserving each file's path relative to the module. Under `logs/`, a
+    `*.log` ships as it always has, unchecked; a `.txt`/`.md`/`.json`/`.jsonl`/`.png`/`.jpg`/`.jpeg`
+    ships when `_log_content_agrees` (RM338) and is neither on a hidden path nor a symlink, and is
+    named by an info line so an author sees it before publishing; anything else stays behind. An
+    explicit `log_files` list overrides discovery and ships what it names. Files are copied into `output_dir` (so they ship with the module) and
+    returned as hashed `FileEntry` rows. No logs → empty list (a valid module).
     """
     pairs: list[tuple[str, Path]] = []  # (relative name in module dir, source file)
     if explicit is not None:
@@ -117,8 +174,25 @@ def _collect_logs(spec_dir: Path, output_dir: Path, explicit: list[Path] | None)
             pairs.append((path.name, path))
         logs_dir = spec_dir / "logs"
         if logs_dir.is_dir():
-            for path in sorted(logs_dir.rglob("*.log")):
-                pairs.append((path.relative_to(spec_dir).as_posix(), path))
+            for path in sorted(logs_dir.rglob("*")):
+                if not path.is_file():
+                    continue
+                rel = path.relative_to(spec_dir).as_posix()
+                # `*.log` keeps shipping unchecked, exactly as before RM338: checking it now would
+                # silently drop a `.log` that shipped yesterday, and the warning for a file left
+                # behind is RM337's, a minor.
+                if path.suffix == ".log":
+                    pairs.append((rel, path))
+                    continue
+                # The new kinds skip a hidden path (tool state: an editor's, a notebook's, an
+                # agent's settings) and a symlink (it can reach outside the module): a published
+                # file is permanent, and neither is a ledger the author put there to publish.
+                hidden = any(part.startswith(".") for part in path.relative_to(logs_dir).parts)
+                if hidden or path.is_symlink():
+                    continue
+                if _log_content_agrees(path, path.suffix.lower().lstrip(".")):
+                    logger.info("%s ships with the module (its content matches its name)", rel)
+                    pairs.append((rel, path))
 
     seen: set[str] = set()
     names: list[str] = []

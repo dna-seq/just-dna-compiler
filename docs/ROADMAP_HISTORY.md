@@ -693,6 +693,95 @@ The count is a log line, not a `MissBuildResult` field (minor-class). The three 
 Principle 2 (the lane docstring, the `mitomap miss` CLI note, the drafter note) and ENRICHER.md's
 bucket table now say what happens instead.
 
+## RM338 — which files under `logs/` ship: `*.log` only, a text allowlist, content-checked text, or images too
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-11-04 on `main`, uncut — a patch** (decided 2026-11-03,
+`unattended`) · **Owner** compiler (`_collect_logs`); built by the lead · **Motivating case** S125 in
+CONSUMER_SUGGESTIONS_HISTORY.md (just-module-creator `F116`, 2026-10-05) · *related* RM337, RM147
+
+**The ask.** The reporter wants a JSON Lines session ledger (search receipts, fetch receipts, decisions)
+to travel with a module, and offers, in order: decide on content rather than the name (`.log`, `.txt`
+and `.md` decode as UTF-8, `.json` parses, every non-blank `.jsonl` line parses); failing that, the
+allowlist `.log .txt .md .json .jsonl`; and images as a question rather than a request (`png`/`jpg` can
+be checked by magic bytes as `LOGO_EXTENSIONS` already is; SVG is XML that can carry script).
+
+**Legality.** No schema moves. `manifest.logs` is a list of `FileEntry`, and `artifact_digest` hashes
+`manifest.artifact.files` only, so no module's byte or content identity changes. P3 and P8 do not reach
+it. What it changes is exposure: a module that already has a stray `notes.md` under `logs/` starts
+shipping it at its next recompile, and a published file is permanent. That is why this waited for a
+decision instead of being built unasked.
+
+**Decided (the maintainer, 2026-11-03): content-checked text, plus images.** Of four options put to them, they chose
+"Text checked + images". Under `logs/`, `.log .txt .md .json .jsonl` ship when the content agrees: text decodes
+as UTF-8, `.json` parses, and every non-blank `.jsonl` line parses. `png`/`jpg`/`jpeg` ship when their magic bytes
+match, as `LOGO_EXTENSIONS` is checked, and under a size ceiling. **SVG never ships**, since it can carry script.
+A file that fails its check stays behind with RM337's warning, naming the reason. Each file that ships and is
+not `*.log` is named in the compile output, so an author sees it before publishing. The size ceiling is the
+lead's constant to pick. The rejected options: `*.log` only (the reporter's ledger would never reach a published
+module, because the registry compiles by discovery); an allowlist by extension alone (a binary named `.json`
+ships); and text without images (images were raised as a question, and the maintainer took them in).
+Whether a failed check refuses under `strict` was not put to the maintainer. The default is a warning in both
+modes, since this changes no verdict. RM147's advice against a `logs/` *writer* still stands
+and is not reopened: this carries the consumer's own ledger, it does not give the format a ledger
+schema.
+
+**The split (the lead, 2026-11-04).** RM337 became a minor the same day, because its warning needs a new
+`VALID_WARNING_CODES` member. So this patch ships only what needs no new code: the content checks, and each
+newly shipped file that is not `*.log` named by a standard-library `logging` line and listed in
+`manifest.logs`. The warning for a file left behind, the failed check's reason included, goes with RM337 in
+its minor. Until then a file that fails its check stays behind exactly as before, with nothing said.
+
+**What shipped.** `_collect_logs` walks everything under `logs/` and asks `_log_content_agrees` of each file
+whose lowercase extension is in `LOG_TEXT_EXTENSIONS` (`log txt md json jsonl`) or `LOG_IMAGE_MAGIC` (`png
+jpg jpeg`). Text must decode as UTF-8, a byte-order mark allowed (a Windows editor writes one, and
+`json.loads` refuses it); `.json` must parse as one document, and every non-blank `.jsonl` line on its own,
+a line being what ends at `\n` (`str.splitlines()` also breaks at U+2028, which JSON allows raw inside a
+string). A `.json` nested past the recursion limit raises `RecursionError` rather than `ValueError`; it is
+caught too, so the file stays behind instead of failing the compile. An image must be at most
+`LOG_IMAGE_MAX_BYTES` (5 MiB, read from `stat` before any byte) and begin with its format's magic:
+`\x89PNG\r\n\x1a\n` for png, `\xff\xd8\xff` for jpg and jpeg, so a JPEG named `.png` stays behind. Each file
+that ships this way is named by an info line on `just_dna_compiler.compiler` (*"logs/notes.md ships with the
+module (its content matches its name)"*) and, because the CLI configures no logging and an info line is
+therefore invisible there, by a `log ships: logs/notes.md` line in `just-dna-compiler compile`. Five choices
+the decision did not settle:
+
+- **`*.log` is not checked.** A `.log` under `logs/` ships whatever its bytes, as before. Checking it would
+  silently drop a `.log` with one latin-1 byte that shipped at the previous compile, and RM337's warning,
+  the only thing that could say so, has not landed. Only an exact lowercase `.log` takes this path; a
+  `.LOG` is checked as text.
+- **The ceiling is 5 MiB.** That is the line this repository already draws for anything that travels (a
+  larger asset goes through Git LFS), and it sits far above a figure or a screenshot. An image above it is
+  not a log.
+- **Hidden paths and symlinks do not take the new route.** A path with any part starting with `.` under
+  `logs/` is tool state (an editor's checkpoint, an agent's `settings.local.json`), and a symlink can reach
+  outside the module; either would ship a valid file nobody put there to publish, and a published file is
+  permanent. Both stay behind as they did before. A hidden or linked `*.log` still ships, as it always did.
+- **The top level is unchanged.** Beside the spec only `*.log` is discovered; the decision is about
+  `logs/`. An explicit `log_files` list still ships whatever it names, checks or not.
+- **Text has no size ceiling**, as `*.log` never had one; the decision asked for one on images only.
+
+`LOGO_EXTENSIONS` turned out to be checked by extension only, not by magic bytes, so there was nothing to
+reuse: the magic table is new, and the logo is left as it was.
+
+Tests: `compiler/tests/test_logs.py`. One module carries fourteen files that ship (three `.log`: one with a
+latin-1 byte, one under a hidden directory; a `.jsonl` with a blank line, one with a raw U+2028 in a string,
+and one with a byte-order mark; `.json`, and one with a byte-order mark; `.md`; `.txt`; png, jpg and jpeg
+with real magic; an upper-case `.JSON`) and a png exactly at the ceiling, beside sixteen that stay behind
+(malformed `.json`, a `.jsonl` with one bad line, a GIF named `.png`, a PNG named `.jpg`, an SVG, latin-1
+`.txt`/`.md`/`.json`, a `.json` nested past the recursion limit, a `.bin`, a `.zip`, three valid files on
+hidden paths, a symlink to valid JSON outside the module, and a real png one byte over the ceiling). It
+asserts the exact set in `manifest.logs` and in the output's `logs/`, the info line for each newly shipped
+file and for nothing else, warnings and `warnings_summary` identical to a compile with `authoring.log`
+alone, and both identities unchanged. `compiler/tests/test_cli.py` asserts the `log ships:` lines, which
+failed before the CLI printed them. Each of fifteen mutations (no magic test, no size test, `>=` at the
+ceiling, the first `.jsonl` line only, `.json` not parsed, latin-1 instead of UTF-8, the byte-order mark
+kept, `splitlines()` for `.jsonl`, `RecursionError` uncaught, a case-sensitive extension, no info line,
+`.log` checked, SVG admitted, hidden paths admitted, symlinks admitted) turned a test red before the code
+was kept.
+
+**Residuals** RM337 — the warning naming each file left behind under `logs/`, the failed check's reason
+included; the logo stays extension-checked and is not reopened here
+
 ## RM340 — the VRS-coverage warning counts alleles with no ALT and does not point at the record that says why
 
 **Severity** low · **Status** ✅ **SHIPPED 2026-11-04 on `main`, uncut — a patch** (message text) · **Owner**

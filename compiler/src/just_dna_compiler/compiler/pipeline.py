@@ -162,7 +162,9 @@ def compile_module(
             a local compile leaves it None, so downloaders treat it as untrusted).
         ensembl_reference: Pinned reference id recorded in the manifest for reproducibility.
         log_files: Explicit run/provenance log files to record. If None, auto-discovers a top-level
-            `*.log` plus per-role files under `spec_dir/logs/`. Logs are optional.
+            `*.log` plus, under `spec_dir/logs/`, every `*.log` and each `.txt`/`.md`/`.json`/
+            `.jsonl`/`.png`/`.jpg`/`.jpeg` whose content matches its name (`_collect_logs`, RM338).
+            Logs are optional.
         provenance_file: Explicit structured-provenance document. If None, auto-discovers
             `spec_dir/provenance.json`. Optional; summarized into `manifest.provenance`.
         logo_file: Explicit module logo image. If None, auto-discovers `spec_dir/logo.{png,jpg,jpeg}`.
