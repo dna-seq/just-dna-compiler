@@ -583,6 +583,9 @@ def test_every_live_client_reads_the_floor_rather_than_a_frozen_constant(
         # a payload it cannot read into the parent type. The only client here that POSTs.
         "civic_api.CivicApiClient._request",
         "clingen_allele.ClingenAlleleClient._fetch",
+        # RM305. ClinVar-GKM's manifest and release index: the retried inner GETs, the outer
+        # (`_fetch`) translates every `httpx` failure into `ClinVarGkmUnavailable`.
+        "clinvar_gkm.ClinVarGkmClient._get_text",
         "cpic.CpicClient._request",
         # RM85's release probe: the retried inner reads the header, the outer translates both legs.
         "currency.ClinVarReleaseClient._header_bytes",

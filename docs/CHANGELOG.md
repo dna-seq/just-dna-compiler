@@ -41,6 +41,30 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM305: ClinVar-GKM's indels are a lane, an offline witness for where an indel sits (0.8, uncut)
+
+**enricher** — A new cache lane, `clinvar_gkm`: ClinGen's ClinVar-GKM Parquet set cut to its
+GRCh38 net insertions and net deletions (309,405 alleles on the 2026-10-24 set), each with its VRS id,
+SPDI, gnomAD-style VCF spelling, ClinVar variation and rsID. It is a **witness**, not a check: it runs
+nothing of its own, and RM292's records and RM267's comparison name it as what they checked against.
+`clinvar-gkm build` downloads `allele.parquet` and `variation.parquet` whole (the source asks for whole
+downloads, not range reads) and refuses any file whose size or sha256 differs from the set's
+`manifest.json`, the new `ClinVarGkmMismatch`: the source overwrites its one Parquet set weekly, so
+the pin is `(source_release, sha256)`, and a release landing mid-build is named as such.
+`release.json` records `dataset` `clinvar_gkm_<source_release>`, both digests, the line's newest weekly
+release, and `vrs_version` 2.1.1 with its basis (declared by the source's changelog; the bytes state no
+version). `ClinVarGkmWitness.lookup` takes a VRS id, an rsID or a one-ALT `chrom:start:ref:alt` key and
+returns every placement, never a pick; `ids_comparable` says a VRS-id comparison is sound only at the
+same VRS minor, so against today's 2.0 minter the VCF spelling is the key. `clinvar-gkm currency` and
+`lane_currency` answer three questions apart: a newer Parquet set exists, the set was overwritten
+under the same release, or the set itself lags the newest weekly release (which a rebuild cannot fix).
+`clinvar_gkm` joins `currency.default_probes`, so `--verify-datasets` asks it for any module whose
+`sources.csv` names it, and `CLINVAR_GKM_TERMS` (CC0 over ClinGen's transformation, ClinVar's
+attribution and disclaimer verbatim) joins `TERMS_BY_SOURCE` under its own name. CC0 permits
+publishing, so the lane has `ensure_clinvar_gkm_snapshot` and a `just-dna-seq/clinvar_gkm` repo (not
+created yet), reached through `cache rebuild --only clinvar_gkm --publish`. No warning code, no model
+or parquet change.
+
 ## 2026-11-04 — RM326, RM328: `weights.parquet` says whether a locus's evidence is European-only, and which outcomes were studied (0.8, uncut)
 
 **format, compiler** — `weights.parquet` gains four derived columns, repeated on each genotype row of a

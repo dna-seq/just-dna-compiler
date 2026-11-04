@@ -234,6 +234,14 @@ copied from (or, for the currency checks, a source's earlier answer with its ans
 count it as such; its **findings** still are findings — the source moved since the value was taken —
 so do not drop the record. `null` is unknown, never independent.
 
+## 1.14 A new cache lane, `clinvar_gkm` (RM305, no break)
+
+| Surface | What changed | What to do |
+| --- | --- | --- |
+| `caches.CACHE_LANES` | Gains `clinvar_gkm`: ClinVar-GKM's GRCh38 indels, a placement witness (`$JUST_DNA_CLINVAR_GKM_CACHE`, `clinvar-gkm build`, publish repo `just-dna-seq/clinvar_gkm`, not created yet). | A consumer that renders or provisions the registry picks it up by walking it. One that hand-lists lanes adds it. |
+| `currency.PROBE_SOURCES` | Gains `clinvar_gkm`, so `--verify-datasets` can answer for a `sources.csv` row naming it. | Nothing; a row with that source was `unsupported` before. |
+| `licensing.TERMS_BY_SOURCE` | Gains `clinvar_gkm` (CC0-1.0 over ClinGen's transformation). | Nothing, until a check writes that `SourceRow`. |
+
 ## 2. What to change
 
 1. If you parse `manifest.json` with `just-dna-format`, move your pin to 0.8 when you start reading

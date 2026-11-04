@@ -5,7 +5,7 @@ marked shipped with a `publish_repo` no command could reach (RM202): every field
 every test passed, and nothing an operator could type would publish it. The checklist at the end is
 the thing that would have caught it.
 
-`CACHE_LANES` in `caches.py` is the registry — **15 lanes** — and it is the single source for
+`CACHE_LANES` in `caches.py` is the registry (count it from the registry, never from this sentence) and it is the single source for
 `cache status`, `cache pull`, `cache prepare`, `cache rebuild` and the publisher. It replaced a
 hand-kept list that had drifted three lanes behind reality (RM176), so the standing rule is
 `@registry-completeness`: **assert an equality over a walked set, never a count and never a list

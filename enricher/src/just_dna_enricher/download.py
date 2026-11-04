@@ -33,6 +33,7 @@ from just_dna_enricher.locations import (
     default_civic_cache_dir,
     default_clinpgx_cache_dir,
     default_clinvar_cache_dir,
+    default_clinvar_gkm_cache_dir,
     default_constraint_cache_dir,
     default_cpic_cache_dir,
     default_drug_labels_cache_dir,
@@ -104,6 +105,12 @@ _MITOMAP_FILES = "mitomap-*.parquet"
 _ALPHAGENOME_AVI_HF_PREFIX = "datasets/just-dna-seq/alphagenome_avi/data"
 _ALPHAGENOME_AVI_FILES = "alphagenome_avi-*.parquet"
 
+#: ClinVar-GKM's indel witness (RM305), added with the lane: CC0 over ClinGen's transformation of
+#: public-domain ClinVar grants redistribution, so a deployment pulls ~16 MB instead of downloading
+#: ~5 GB of Parquet to cut it. The attribution and ClinVar's disclaimer travel as `LICENSE.txt`.
+_CLINVAR_GKM_HF_PREFIX = "datasets/just-dna-seq/clinvar_gkm/data"
+_CLINVAR_GKM_FILES = "clinvar_gkm-*.parquet"
+
 #: STRchive's repo root, not a `data/` prefix: this snapshot is the upstream catalogue verbatim beside
 #: its provenance, and it holds no parquet at all.
 _STRCHIVE_HF_REPO = "datasets/just-dna-seq/strchive"
@@ -130,6 +137,7 @@ SNAPSHOT_FILE_GLOBS: dict[str, str] = {
     "civic": _CIVIC_FILES,
     "mitomap": _MITOMAP_FILES,
     "alphagenome_avi": _ALPHAGENOME_AVI_FILES,
+    "clinvar_gkm": _CLINVAR_GKM_FILES,
 }
 
 
@@ -576,6 +584,23 @@ def ensure_mitomap_snapshot(mitomap_cache: Path | None = None) -> Path:
         label="MITOMAP",
         error_cls=OpenSnapshotError,
         filename_glob=SNAPSHOT_FILE_GLOBS["mitomap"],
+    )
+
+
+def ensure_clinvar_gkm_snapshot(clinvar_gkm_cache: Path | None = None) -> Path:
+    """Provision the ClinVar-GKM indel witness from HuggingFace Hub (RM305).
+
+    Publishable on the source's own terms (CC0 over ClinGen's transformation, ClinVar public domain
+    underneath). A pulled copy is as current as the last publish, and `clinvar-gkm currency` asks the
+    source whether that is still the newest Parquet set.
+    """
+    cache_dir = Path(clinvar_gkm_cache) if clinvar_gkm_cache is not None else default_clinvar_gkm_cache_dir()
+    return _provision_snapshot(
+        cache_dir,
+        _CLINVAR_GKM_HF_PREFIX,
+        label="ClinVar-GKM",
+        error_cls=OpenSnapshotError,
+        filename_glob=SNAPSHOT_FILE_GLOBS["clinvar_gkm"],
     )
 
 

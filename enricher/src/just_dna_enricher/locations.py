@@ -191,6 +191,13 @@ MITOMAP_MISS_SUBDIR: str = "mitomap_miss"
 #: publishes it.
 ALPHAGENOME_AVI_SUBDIR: str = "alphagenome_avi"
 
+#: ClinGen's ClinVar-GKM, cut to the indels (RM305): the alleles whose placement is in doubt, each with
+#: its VRS id, its SPDI and its gnomAD-style VCF spelling, joined to the ClinVar variation and rsID that
+#: name it. A **witness**, not a source of calls: clinical significance still comes from the `clinvar`
+#: lane, and this one is read only to ask where an indel sits. CC0 over ClinGen's transformation of
+#: public-domain ClinVar, so it may be published.
+CLINVAR_GKM_SUBDIR: str = "clinvar_gkm"
+
 
 # ── The override variables, one per lane, plus the shared base ──────────────────────────────────
 # Named here rather than as a literal inside each resolver (S89, RM184), so `caches.CACHE_LANES`
@@ -216,6 +223,7 @@ MANE_CACHE_VAR: str = "JUST_DNA_MANE_CACHE"
 MITOMAP_CACHE_VAR: str = "JUST_DNA_MITOMAP_CACHE"
 MITOMAP_MISS_CACHE_VAR: str = "JUST_DNA_MITOMAP_MISS_CACHE"
 ALPHAGENOME_AVI_CACHE_VAR: str = "JUST_DNA_ALPHAGENOME_AVI_CACHE"
+CLINVAR_GKM_CACHE_VAR: str = "JUST_DNA_CLINVAR_GKM_CACHE"
 
 
 _PARQUET_MAGIC = b"PAR1"
@@ -764,6 +772,27 @@ def resolve_mitomap_miss_reference(
         mitomap_miss_cache,
         MITOMAP_MISS_CACHE_VAR,
         default_mitomap_miss_cache_dir(load_dotenv_file=load_dotenv_file),
+        load_dotenv_file=load_dotenv_file,
+    )
+
+
+def default_clinvar_gkm_cache_dir(*, load_dotenv_file: bool = True) -> Path:
+    """The `<base>/clinvar_gkm` directory — see `CLINVAR_GKM_SUBDIR`."""
+    return _cache_dir(CLINVAR_GKM_SUBDIR, load_dotenv_file=load_dotenv_file)
+
+
+def resolve_clinvar_gkm_reference(
+    clinvar_gkm_cache: Path | None = None, *, load_dotenv_file: bool = True
+) -> Path | None:
+    """Locate a built ClinVar-GKM indel snapshot (`$JUST_DNA_CLINVAR_GKM_CACHE`), without downloading.
+
+    Present says the slice is on disk, never that it is current: the source overwrites its one Parquet
+    set every week, so currency is `clinvar_gkm_build.lane_currency`, which asks the source.
+    """
+    return _resolve_parquet_cache(
+        clinvar_gkm_cache,
+        CLINVAR_GKM_CACHE_VAR,
+        default_clinvar_gkm_cache_dir(load_dotenv_file=load_dotenv_file),
         load_dotenv_file=load_dotenv_file,
     )
 

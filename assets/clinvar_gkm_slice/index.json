@@ -1,0 +1,353 @@
+{
+ "description": "ClinVar-GKM release index, line v1/1.1",
+ "line": "v1/1.1",
+ "status": "current",
+ "superseded_by": null,
+ "schema_version": "1.1.0",
+ "updated_at": "2026-11-04T01:07:03Z",
+ "base_url": "https://data.clinvar-gkm.org",
+ "current_month": "2026-10",
+ "latest_release": "2026-10-31",
+ "datasets": {
+  "monthly": [
+   {
+    "name": "clinvar-gkm_2026-07.json.gz",
+    "path": "v1/1.1/clinvar-gkm_2026-07.json.gz",
+    "size": 4548850780,
+    "sha256": "5bf1e9e2bf049a3be66e371b10b25c353cbbca35257e0aaf399ff651285a6c4e",
+    "modified": "2026-10-22",
+    "release": "2026-07",
+    "source_release": "2026-06-27",
+    "latest": false
+   },
+   {
+    "name": "clinvar-gkm_2026-08.json.gz",
+    "path": "v1/1.1/clinvar-gkm_2026-08.json.gz",
+    "size": 4575883476,
+    "sha256": "8da38053bfaf61661c5067efcaeaa19c06aea25dd3cfb6e4f2f6d4197fcb5380",
+    "modified": "2026-10-22",
+    "release": "2026-08",
+    "source_release": "2026-08-04",
+    "latest": false
+   },
+   {
+    "name": "clinvar-gkm_2026-09.json.gz",
+    "path": "v1/1.1/clinvar-gkm_2026-09.json.gz",
+    "size": 4592062217,
+    "sha256": "156edd5302ad91ea401416f39a6c77172bcb598420b5f43f5ac7110cd0b3fcc0",
+    "modified": "2026-10-22",
+    "release": "2026-09",
+    "source_release": "2026-08-29",
+    "latest": false
+   },
+   {
+    "name": "clinvar-gkm_2026-10.json.gz",
+    "path": "v1/1.1/clinvar-gkm_2026-10.json.gz",
+    "size": 4728682036,
+    "sha256": "e0a128455c2aef10991020fef6a02727d54982e2180793628f7b80e4f0163171",
+    "modified": "2026-10-22",
+    "release": "2026-10",
+    "source_release": "2026-09-28",
+    "latest": false
+   },
+   {
+    "name": "clinvar-gkm_00-latest.json.gz",
+    "path": "v1/1.1/clinvar-gkm_00-latest.json.gz",
+    "size": 4728682036,
+    "sha256": "e0a128455c2aef10991020fef6a02727d54982e2180793628f7b80e4f0163171",
+    "modified": "2026-10-22",
+    "latest": true,
+    "release": "2026-10",
+    "source_release": "2026-09-28"
+   }
+  ],
+  "weekly": [
+   {
+    "name": "clinvar-gkm_2026-1004.json.gz",
+    "path": "v1/1.1/weekly/clinvar-gkm_2026-1004.json.gz",
+    "size": 4781341635,
+    "sha256": "60c296eb9e40079586f7ff533543b19dbc6385a760c9cb59dce00a74a5c6c20d",
+    "modified": "2026-10-22",
+    "release": "2026-10-04",
+    "latest": false
+   },
+   {
+    "name": "clinvar-gkm_2026-1011.json.gz",
+    "path": "v1/1.1/weekly/clinvar-gkm_2026-1011.json.gz",
+    "size": 4790326165,
+    "sha256": "4a658626be32bf91a905f38335c864eb718a7c880d539b3fbdafc68ddf462ef1",
+    "modified": "2026-10-22",
+    "release": "2026-10-11",
+    "latest": false
+   },
+   {
+    "name": "clinvar-gkm_2026-1018.json.gz",
+    "path": "v1/1.1/weekly/clinvar-gkm_2026-1018.json.gz",
+    "size": 4786037776,
+    "sha256": "b0c39fdadc25680258e2bddea6bce9ed28f4e6d1faa7384552cbcca3bd31f474",
+    "modified": "2026-10-22",
+    "release": "2026-10-18",
+    "latest": false
+   },
+   {
+    "name": "clinvar-gkm_2026-1024.json.gz",
+    "path": "v1/1.1/weekly/clinvar-gkm_2026-1024.json.gz",
+    "size": 4790407537,
+    "sha256": "ab07df58f7677a567b5898d34b4fe1e955dffd9b97265232c4b4877fe7c2654c",
+    "modified": "2026-10-27",
+    "release": "2026-10-24",
+    "latest": false
+   },
+   {
+    "name": "clinvar-gkm_2026-1031.json.gz",
+    "path": "v1/1.1/weekly/clinvar-gkm_2026-1031.json.gz",
+    "size": 4807272930,
+    "sha256": "7105eba1d88f22359e94d8d813a1e7b3afd00afe1b2e528180ea312267392c20",
+    "modified": "2026-11-03",
+    "release": "2026-10-31",
+    "latest": false
+   },
+   {
+    "name": "clinvar-gkm_00-latest_weekly.json.gz",
+    "path": "v1/1.1/weekly/clinvar-gkm_00-latest_weekly.json.gz",
+    "size": 4807272930,
+    "sha256": "7105eba1d88f22359e94d8d813a1e7b3afd00afe1b2e528180ea312267392c20",
+    "modified": "2026-11-03",
+    "latest": true,
+    "release": "2026-10-31"
+   }
+  ]
+ },
+ "deltas": [
+  {
+   "release": "2026-07-06",
+   "month": "2026-07",
+   "path": "v1/1.1/deltas/2026-07/",
+   "manifest": "v1/1.1/deltas/2026-07/clinvar-gkm-delta_2026-0706.manifest.json",
+   "bundle": {
+    "path": "v1/1.1/deltas/2026-07/clinvar-gkm-delta_2026-0706.json.gz",
+    "sha256": "efcd583e8c9bca6fd995c79cfbdb071c60b0b78e1324d813c23a15a1bc221251",
+    "size": 1770445
+   },
+   "modified": "2026-10-22"
+  },
+  {
+   "release": "2026-07-15",
+   "month": "2026-07",
+   "path": "v1/1.1/deltas/2026-07/",
+   "manifest": "v1/1.1/deltas/2026-07/clinvar-gkm-delta_2026-0715.manifest.json",
+   "bundle": {
+    "path": "v1/1.1/deltas/2026-07/clinvar-gkm-delta_2026-0715.json.gz",
+    "sha256": "a57076f33f50ff4b7a119235a508f874046c084de48d8e5240e5f0a2783b1444",
+    "size": 2201337
+   },
+   "modified": "2026-10-22"
+  },
+  {
+   "release": "2026-07-20",
+   "month": "2026-07",
+   "path": "v1/1.1/deltas/2026-07/",
+   "manifest": "v1/1.1/deltas/2026-07/clinvar-gkm-delta_2026-0720.manifest.json",
+   "bundle": {
+    "path": "v1/1.1/deltas/2026-07/clinvar-gkm-delta_2026-0720.json.gz",
+    "sha256": "19b27d15cac30be46fada3baedca3cedad135a25758d3f6da072f82d48973f71",
+    "size": 19057386
+   },
+   "modified": "2026-10-22"
+  },
+  {
+   "release": "2026-07-27",
+   "month": "2026-07",
+   "path": "v1/1.1/deltas/2026-07/",
+   "manifest": "v1/1.1/deltas/2026-07/clinvar-gkm-delta_2026-0727.manifest.json",
+   "bundle": {
+    "path": "v1/1.1/deltas/2026-07/clinvar-gkm-delta_2026-0727.json.gz",
+    "sha256": "13de1a8fd20d6386cb18527fde062a3c563d63d3e118deb7b6a0ddb3d6e4459d",
+    "size": 59201234
+   },
+   "modified": "2026-10-22"
+  },
+  {
+   "release": "2026-08-04",
+   "month": "2026-08",
+   "path": "v1/1.1/deltas/2026-08/",
+   "manifest": "v1/1.1/deltas/2026-08/clinvar-gkm-delta_2026-0804.manifest.json",
+   "bundle": {
+    "path": "v1/1.1/deltas/2026-08/clinvar-gkm-delta_2026-0804.json.gz",
+    "sha256": "8b35ef48acb3f6f6472c14cce769f6fc9b73a1da44d79ea03999be8690d41f56",
+    "size": 6264228
+   },
+   "modified": "2026-10-22"
+  },
+  {
+   "release": "2026-08-08",
+   "month": "2026-08",
+   "path": "v1/1.1/deltas/2026-08/",
+   "manifest": "v1/1.1/deltas/2026-08/clinvar-gkm-delta_2026-0808.manifest.json",
+   "bundle": {
+    "path": "v1/1.1/deltas/2026-08/clinvar-gkm-delta_2026-0808.json.gz",
+    "sha256": "be9d03b6d3178e3f2a2cd46b95fc6a81b64e5ffce60cdb168ff8896e30af1748",
+    "size": 2165563
+   },
+   "modified": "2026-10-22"
+  },
+  {
+   "release": "2026-08-16",
+   "month": "2026-08",
+   "path": "v1/1.1/deltas/2026-08/",
+   "manifest": "v1/1.1/deltas/2026-08/clinvar-gkm-delta_2026-0816.manifest.json",
+   "bundle": {
+    "path": "v1/1.1/deltas/2026-08/clinvar-gkm-delta_2026-0816.json.gz",
+    "sha256": "91fcf692207873fbd502080e6c3518737a5d09b7acfcc4fe039928f542d1711e",
+    "size": 8040843
+   },
+   "modified": "2026-10-22"
+  },
+  {
+   "release": "2026-08-22",
+   "month": "2026-08",
+   "path": "v1/1.1/deltas/2026-08/",
+   "manifest": "v1/1.1/deltas/2026-08/clinvar-gkm-delta_2026-0822.manifest.json",
+   "bundle": {
+    "path": "v1/1.1/deltas/2026-08/clinvar-gkm-delta_2026-0822.json.gz",
+    "sha256": "440b065c42969b81be79381ff13179ddbdaa600d5cf1e65a481535898a97c642",
+    "size": 3385496
+   },
+   "modified": "2026-10-22"
+  },
+  {
+   "release": "2026-08-29",
+   "month": "2026-08",
+   "path": "v1/1.1/deltas/2026-08/",
+   "manifest": "v1/1.1/deltas/2026-08/clinvar-gkm-delta_2026-0829.manifest.json",
+   "bundle": {
+    "path": "v1/1.1/deltas/2026-08/clinvar-gkm-delta_2026-0829.json.gz",
+    "sha256": "05604a21162d9fedd40c1f2955fb03d9bcee3489a9a03a27c697c51fa85bd30b",
+    "size": 1852786
+   },
+   "modified": "2026-10-22"
+  },
+  {
+   "release": "2026-09-05",
+   "month": "2026-09",
+   "path": "v1/1.1/deltas/2026-09/",
+   "manifest": "v1/1.1/deltas/2026-09/clinvar-gkm-delta_2026-0905.manifest.json",
+   "bundle": {
+    "path": "v1/1.1/deltas/2026-09/clinvar-gkm-delta_2026-0905.json.gz",
+    "sha256": "968fe81c63b55e9a5613581908b7ac5027a03f847a986eabed96e48b279c559d",
+    "size": 5362122
+   },
+   "modified": "2026-10-22"
+  },
+  {
+   "release": "2026-09-13",
+   "month": "2026-09",
+   "path": "v1/1.1/deltas/2026-09/",
+   "manifest": "v1/1.1/deltas/2026-09/clinvar-gkm-delta_2026-0913.manifest.json",
+   "bundle": {
+    "path": "v1/1.1/deltas/2026-09/clinvar-gkm-delta_2026-0913.json.gz",
+    "sha256": "cf45f904365a61aa9139f4c04d4dc2c11447e37391f6f878d45d9a151d5add0c",
+    "size": 14767574
+   },
+   "modified": "2026-10-22"
+  },
+  {
+   "release": "2026-09-23",
+   "month": "2026-09",
+   "path": "v1/1.1/deltas/2026-09/",
+   "manifest": "v1/1.1/deltas/2026-09/clinvar-gkm-delta_2026-0923.manifest.json",
+   "bundle": {
+    "path": "v1/1.1/deltas/2026-09/clinvar-gkm-delta_2026-0923.json.gz",
+    "sha256": "3ed857f160da9ed39cd12d620c0d97f2d4e14612e96b0eb4d2545c3c37a59155",
+    "size": 152963247
+   },
+   "modified": "2026-10-22"
+  },
+  {
+   "release": "2026-09-28",
+   "month": "2026-09",
+   "path": "v1/1.1/deltas/2026-09/",
+   "manifest": "v1/1.1/deltas/2026-09/clinvar-gkm-delta_2026-0928.manifest.json",
+   "bundle": {
+    "path": "v1/1.1/deltas/2026-09/clinvar-gkm-delta_2026-0928.json.gz",
+    "sha256": "5cad43f93e4a851e769544eca823deeeef47ef0c53e3c81b6b43b87523c0b444",
+    "size": 24154550
+   },
+   "modified": "2026-10-22"
+  },
+  {
+   "release": "2026-10-04",
+   "month": "2026-10",
+   "path": "v1/1.1/deltas/",
+   "manifest": "v1/1.1/deltas/clinvar-gkm-delta_2026-1004.manifest.json",
+   "bundle": {
+    "path": "v1/1.1/deltas/clinvar-gkm-delta_2026-1004.json.gz",
+    "sha256": "76e3a75882368c738d34bd3207235230f37252824e01a8a4502d8787b1d0f53f",
+    "size": 73383592
+   },
+   "modified": "2026-10-22"
+  },
+  {
+   "release": "2026-10-11",
+   "month": "2026-10",
+   "path": "v1/1.1/deltas/",
+   "manifest": "v1/1.1/deltas/clinvar-gkm-delta_2026-1011.manifest.json",
+   "bundle": {
+    "path": "v1/1.1/deltas/clinvar-gkm-delta_2026-1011.json.gz",
+    "sha256": "6ac3b97a69ee214c32492f63ab7d6fcffcc5b5ff891b38fbadb2824c1cf1ffbe",
+    "size": 10087577
+   },
+   "modified": "2026-10-22"
+  },
+  {
+   "release": "2026-10-18",
+   "month": "2026-10",
+   "path": "v1/1.1/deltas/",
+   "manifest": "v1/1.1/deltas/clinvar-gkm-delta_2026-1018.manifest.json",
+   "bundle": {
+    "path": "v1/1.1/deltas/clinvar-gkm-delta_2026-1018.json.gz",
+    "sha256": "6fd717a7f8548693cc6e0f7c668f81b843f71b5412c4dc903b79b6f4455ae155",
+    "size": 24104085
+   },
+   "modified": "2026-10-22"
+  },
+  {
+   "release": "2026-10-24",
+   "month": "2026-10",
+   "path": "v1/1.1/deltas/",
+   "manifest": "v1/1.1/deltas/clinvar-gkm-delta_2026-1024.manifest.json",
+   "bundle": {
+    "path": "v1/1.1/deltas/clinvar-gkm-delta_2026-1024.json.gz",
+    "sha256": "cec160e7914e03e896398e5ec60da4e2d37e48ddd5d267f936eef5705b4e76f7",
+    "size": 6667189
+   },
+   "modified": "2026-10-27"
+  },
+  {
+   "release": "2026-10-31",
+   "month": "2026-10",
+   "path": "v1/1.1/deltas/",
+   "manifest": "v1/1.1/deltas/clinvar-gkm-delta_2026-1031.manifest.json",
+   "bundle": {
+    "path": "v1/1.1/deltas/clinvar-gkm-delta_2026-1031.json.gz",
+    "sha256": "443178d99f80ee0cb59419ab754fe1261fdb1815c2dba0b568e6be1a73750781",
+    "size": 26052563
+   },
+   "modified": "2026-11-03"
+  }
+ ],
+ "archives": {},
+ "parquet": {
+  "path": "v1/1.1/parquet/",
+  "manifest": "v1/1.1/parquet/manifest.json",
+  "source_release": "2026-10-24",
+  "dataset": "clinvar_2026_10_24_v2_6_1",
+  "build_date": "2026-10-27T19:50:32Z",
+  "builder": "BigQuery export",
+  "table_spec_version": null,
+  "schema_version": "1.1.0",
+  "file_count": 22,
+  "size": 13167316939
+ },
+ "notes": "Paths are relative to base_url. Each monthly's source_release is the weekly release it was built from (ADR 0002). datasets.weekly holds only the current month's weekly fulls; earlier weeks are rebuilt from a monthly plus the deltas. Parquet is one derived set, overwritten every release (parquet/manifest.json)."
+}

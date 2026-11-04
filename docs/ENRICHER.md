@@ -445,6 +445,8 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `mitomap` | RM171: MITOMAP's published `pg_dump` reader, and the **two-token grammar** its `status` column is written in | `duckdb` |
 | `mitomap_build` | RM171 builder: the 63 MB gzipped SQL dump → snapshot parquet + `release.json`. CC BY 3.0 with commercial use stated free, so a deployment may publish it | `polars` (lazy), `httpx` |
 | `mitomap_miss_build` | RM171: the **derived** lane — MITOMAP minus the ClinVar cache, recomputed from both parents rather than frozen as a diff | `polars` (lazy), `mitomap` + `clinvar` lanes |
+| `clinvar_gkm` | **0.8** (RM305): ClinGen's ClinVar-GKM as an indel-placement **witness**: the manifest/index client, the release label, the three-arm `lane_currency`, and `ClinVarGkmWitness`, the lookup by VRS id, VCF spelling or rsID a check calls. Runs no check of its own | `httpx`, `tenacity`, `polars` |
+| `clinvar_gkm_build` | RM305 builder: `allele.parquet` + `variation.parquet` downloaded whole and verified against the set's `manifest.json`, cut to the GRCh38 net insertions and deletions, joined to ClinVar variation and rsID | `polars` (lazy), `httpx` |
 | `_rcrs` | RM273: the revised Cambridge Reference Sequence (NC_012920.1, GRCh38's chrM) as a vendored constant, so `mitomap_miss_build` left-aligns both sides' indels without a fetch | none |
 | `mitomap_draft` | RM171: the rated misses → `variants.csv` + `studies.csv`. Only the rated ones; the photocopies and `VUS*` are each refused for their own stated reason | `mitomap_miss`, compiler `draft` |
 | `clinvar_build` | `[dev]`: VCF → snapshot parquet; `var_citations.txt` → `citations/` (+ its own `release.json` block) | `polars`, `httpx` |
@@ -1301,6 +1303,7 @@ service* below). Pre-provisioning is therefore a deployment step, not an optimiz
 | **MITOMAP** ✅ | `mitomap/` | `$JUST_DNA_MITOMAP_CACHE` | `ensure_mitomap_snapshot` | `just-dna-seq/mitomap` — CC BY 3.0, repo not created yet | curated mtDNA variants, both `mmutation` and `rtmutation` (RM171) |
 | **MITOMAP miss** ⛓ | `mitomap_miss/` | `$JUST_DNA_MITOMAP_MISS_CACHE` | **none — derived** | **not published, deliberately** | what MITOMAP publishes and the ClinVar cache does not (`draft-panel --source mitomap-miss`) |
 | **AlphaGenome AVI** 🔑 | `alphagenome_avi/` | `$JUST_DNA_ALPHAGENOME_AVI_CACHE` | `ensure_alphagenome_avi_snapshot` | `just-dna-seq/alphagenome_avi` — Permissive Use (RM195), repo not created yet | variant-impact scores for 8.8 B SNVs, `Int32`×10⁵ plus a 466 KB knot table (`alphagenome build --input`, RM191/RM198) |
+| **ClinVar-GKM** ✅ | `clinvar_gkm/` | `$JUST_DNA_CLINVAR_GKM_CACHE` | `ensure_clinvar_gkm_snapshot` | `just-dna-seq/clinvar_gkm` — CC0 (ClinGen's transformation), repo not created yet | the GRCh38 indels of ClinVar-GKM with VRS id, VCF spelling, ClinVar variation and rsID: a **placement witness** a check names (RM305; `clinvar-gkm build`, `currency`, `lookup`) |
 
 🔒 = licence-gated (`commercial_use=False`). ❓ = terms **unestablished** (`commercial_use=None`), which
 is a different state and not a weaker one: unknown is not permissive. ⛓ = **derived**: this lane has
@@ -4194,6 +4197,7 @@ absent from it has no recorded terms, which is a different state from having per
 | Source | Licence | Sellable | Share-alike | Redistributable | Note the column cannot hold |
 |---|---|---|---|---|---|
 | `clinvar` | public domain | ✅ | — | ✅ | |
+| `clinvar_gkm` | CC0-1.0 | ✅ | — | ✅ | CC0 covers **ClinGen's transformation** only; ClinVar underneath is public domain, and its attribution and disclaimer are owed (RM305) |
 | `ensembl` | Apache-2.0 | ✅ | — | ✅ | |
 | `gnomad` | CC0-1.0 | ✅ | — | ✅ | |
 | `clingen` | CC0-1.0 | ✅ | — | ✅ | |
@@ -4218,7 +4222,7 @@ either — so it is skipped in every `--use` column with a message saying which 
 is the house algebra landing on a licence: unknown never becomes permission, and it never becomes a
 refusal either.
 
-**Four of the eighteen are a floor rather than a total**, and that is a property of the source, not of
+**Four of the nineteen are a floor rather than a total**, and that is a property of the source, not of
 the constant: `mitomap` grants site-wide "unless otherwise noted", `pgs_catalog` is per score,
 `gwas_catalog` states one axis of three, and `alphagenome_avi`'s permissive *Output* terms sit behind
 an eligibility clause about the holder that no column models
@@ -5071,6 +5075,7 @@ and `EnsemblResolver` are the latter, and are exempt from the contract suite for
 | `civic_citations` | `CivicCitationsError` | — |
 | `clingen` | `ClinGenError` | `ClinGenUnavailable` |
 | `clinpgx` | `ClinPgxEnrichmentError` | — |
+| `clinvar_gkm` | `ClinVarGkmError` | `ClinVarGkmUnavailable` (could not be asked), `ClinVarGkmMismatch` (bytes that are not the file the manifest states; RM305) |
 | `currency` | `ReleaseProbeError` | `ReleaseUnavailable` |
 | `drug_labels` | `DrugLabelError` | `DrugLabelUnavailable` |
 | `enrich` | `EnrichmentError` | — |
