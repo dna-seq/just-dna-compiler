@@ -940,9 +940,15 @@ proxy's resolved alleles. A proxy is usually not a module variant (rs4970836 for
 rs646776), so without a subject of its own it has no `resolution.csv` row and the check withholds. It is
 admitted after every table above, so a proxy that is also a module variant keeps that row's subject,
 and a later run keeps its row in scope. The r² between proxy and lead is not computed here yet.
-Reading `studies.csv` for proxies means **an invalid `studies.csv` now stops `enrich`** with
-`studies.csv is invalid: …`, as an invalid `pharm_variants.csv` or `haplotypes.csv` always has; before
-0.8 resolution never opened the file. The GWAS pass does not read it and is unaffected.
+An invalid study row does **not** stop the run, unlike an invalid `pharm_variants.csv` or
+`haplotypes.csv` (coordinate sources, so a run that cannot read one has nothing honest to resolve):
+`studies.csv` only adds proxies, so the valid rows' proxies are asked for and one warning names the
+rest (`studies.csv has N invalid row(s), and any LD proxy on them is not asked for`); the compile refuses
+those rows anyway. **A proxy is not one of the module's loci**, so the passes that read `resolution.csv`
+as the module's own coordinates — the frequency pass and the clinical-assertion pass — leave out every
+row keyed by a proxy-only rsID (`enrich.subjects.study_proxy_rsids`), and the GWAS pass never asks about
+one. Otherwise each would spend a request on a locus the module does not annotate and write a fact row
+the compile reports as `derived_row_orphan`.
 
 **What the enricher resolves is not what the compiler applies.** These subjects all land in
 `resolution.csv`, and the compiler applies that table to `variants.csv` only; a PGx or heteroplasmy

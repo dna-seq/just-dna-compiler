@@ -30,6 +30,8 @@ from just_dna_format.normalize import now_utc_iso
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.vocab import population_sort_key
 
+from just_dna_enricher.enrich.outcome import EnrichmentError
+from just_dna_enricher.enrich.subjects import study_proxy_rsids
 from just_dna_enricher.gnomad import (
     FREQUENCY_DATASET_LABEL,
     FREQUENCY_GENOME_BUILD,
@@ -211,6 +213,13 @@ def enrich_frequencies(
     resolution_rows = overlaid_input_rows(
         spec_dir, "resolution.csv", resolution_rows, error=FrequencyEnrichmentError
     )
+    # A study's LD proxy has a row only for the compiler's allele check (RM331); it is not one of the
+    # module's loci, so this pass does not ask about it or write a fact row the compile calls an orphan.
+    try:
+        proxies = study_proxy_rsids(spec_dir)
+    except EnrichmentError as exc:
+        raise FrequencyEnrichmentError(str(exc)) from exc
+    resolution_rows = [row for row in resolution_rows if row.variant_key not in proxies]
 
     existing: dict[tuple, FrequencyRow] = {}
     if frequencies_path.exists():

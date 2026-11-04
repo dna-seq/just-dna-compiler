@@ -13,13 +13,20 @@ The snapshot rows are rs646776 and rs4970836 exactly as the provisioned Ensembl 
 so the run is offline and deterministic.
 """
 
+import json
+import logging
 from pathlib import Path
 
+import httpx
 import polars as pl
+import pytest
 from just_dna_compiler.compiler import compile_module
 from just_dna_enricher.enrich import enrich
-from just_dna_enricher.enrich.subjects import collect_subjects
+from just_dna_enricher.enrich.subjects import collect_subjects, study_proxy_rsids
+from just_dna_enricher.frequencies import enrich_frequencies
+from just_dna_enricher.gnomad import GnomadClient, GnomadSettings
 from just_dna_enricher.gwas import _module_subjects
+from just_dna_enricher.net import PacingGate
 from just_dna_format.spec import VariantRow
 
 _MODULE = (
@@ -108,3 +115,40 @@ def test_enrich_resolves_the_proxy_and_the_compile_checks_its_alleles(tmp_path: 
     )
     accepted = compile_module(spec, tmp_path / "ok", strict=True)
     assert accepted.success, accepted.errors
+
+
+def test_an_invalid_study_row_does_not_stop_the_run(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """studies.csv only adds proxies: a bad row is named once, and the good rows' proxies are still asked."""
+    spec = _spec(tmp_path, "G")
+    (spec / "studies.csv").write_text(
+        "rsid,pmid,proxy_rsid,sample_size\n"
+        "rs646776,30642433,rs4970836,\n"
+        "rs646776,31413261,rs602633,389166\n"  # a size with no unit: refused at the model
+    )
+    with caplog.at_level(logging.WARNING):
+        subjects = collect_subjects(spec, _variants(spec))
+    assert [s.variant_key for s in subjects] == ["rs646776", "rs4970836"]
+    assert any("studies.csv has 1 invalid row(s)" in r.getMessage() for r in caplog.records)
+
+
+def test_the_frequency_pass_does_not_ask_gnomad_about_a_proxy(tmp_path: Path) -> None:
+    """The proxy's resolution row serves the allele check only; it is not one of the module's loci."""
+    spec = _spec(tmp_path, "G")
+    enrich(spec, offline=True, ensembl_cache=_cache(tmp_path), clinvar_cache=tmp_path, mint_vrs=False)
+    resolved = pl.read_csv(spec / "resolution.csv", infer_schema=False)
+    assert set(resolved["rsid"]) >= {"rs646776", "rs4970836"}
+    assert study_proxy_rsids(spec) == {"rs4970836"}
+
+    asked: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        lines = [ln for ln in json.loads(request.content)["query"].splitlines() if "variant(" in ln]
+        asked.extend(lines)
+        return httpx.Response(200, json={"data": {f"v{i}": None for i in range(len(lines))}})
+
+    client = GnomadClient(settings=GnomadSettings())
+    client._client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.gate = PacingGate(interval=0.0, clock=lambda: 0.0, sleeper=lambda _s: None)
+    enrich_frequencies(spec, client=client, write=False)
+    assert any("1-109275908-C-G" in line for line in asked), asked
+    assert not any("109279175" in line for line in asked), asked

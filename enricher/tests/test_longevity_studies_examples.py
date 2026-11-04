@@ -220,8 +220,7 @@ def test_example_11s_doi_in_pmid_is_refused(tmp_path: Path) -> None:
         "11_refused",
         "rsid,pmid,doi,phenotype_class,effect_size,effect_measure\n"
         "rs75571981,10.21203/rs.3.rs-6869504/v1,,EXTREME_SURVIVAL_CC,,NR\n",
-        # `enrich` reads studies.csv for proxies since 0.8 and refuses the same row first; the compile
-        # is the refusal the appendix names.
+        # The refusal the appendix names is the compile's; `enrich` would only skip the row.
         enriched=False,
     )
     result = compile_module(spec, tmp_path / "out")

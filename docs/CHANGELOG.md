@@ -77,9 +77,10 @@ stood in for the row's lead. A proxy on a row naming no variant, or equal to its
 `study_effect_allele_not_at_locus` checks `effect_allele` against the proxy's resolved alleles when one is
 stated, never the lead's, and names both in its text; a proxy with no `resolution.csv` row withholds.
 `enrich` resolves each stated proxy as a subject (after every table naming a module variant), so the
-row exists; the GWAS pass leaves proxies out. Reading `studies.csv` for proxies means an invalid one
-now stops `enrich` (`studies.csv is invalid: …`), as an invalid `pharm_variants.csv` always has. The r²
-between proxy and lead, computed in the study's `ancestry`, is still to come on 0.8.
+row exists. A proxy is not one of the module's loci, so the GWAS, frequency and clinical-assertion passes
+leave proxy-only rows out. An invalid study row does not stop `enrich`: the valid rows' proxies are
+asked for and one warning names the rest. The r² between proxy and lead, computed in the study's
+`ancestry`, is still to come on 0.8.
 
 ## 2026-11-04 — RM330: a study row states the stratum its estimate was measured in (0.8, uncut)
 

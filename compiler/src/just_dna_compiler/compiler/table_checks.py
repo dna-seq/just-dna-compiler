@@ -23,6 +23,7 @@ from just_dna_compiler.compiler.tables import (
     _TABLE_KIND_CSVS,
     META_CSV,
     OVERRIDES_CSV,
+    study_coordinate_key,
 )
 
 #: The reference star allele by CYP naming, exempt from the used-but-not-defined warning for every
@@ -254,17 +255,14 @@ def _cross_validate_studies(
     and unknown cannot establish distinctness."""
     warnings: list[str] = []
     variant_rsids = {v.rsid for v in variants if v.rsid is not None}
-    variant_coords = {
-        derive_variant_key(None, v.chrom, v.start, v.ref) for v in variants if v.chrom is not None
-    }
+    variant_coords = {study_coordinate_key(v.chrom, v.start, v.ref) for v in variants if v.chrom is not None}
     orphans: list[str] = []
     for row in studies:
         if row.variant_key is None:
             continue
         by_rsid = row.rsid is not None and row.rsid in variant_rsids
         by_coord = (
-            row.chrom is not None
-            and derive_variant_key(None, row.chrom, row.start, row.ref) in variant_coords
+            row.chrom is not None and study_coordinate_key(row.chrom, row.start, row.ref) in variant_coords
         )
         if not by_rsid and not by_coord:
             orphans.append(row.variant_key)
@@ -314,7 +312,6 @@ def _cross_validate_studies(
                 )
             )
         siblings.append(row)
-    warnings.extend(_check_phenotype_classes(studies))
     return [], warnings
 
 

@@ -3,36 +3,47 @@
 from typing import Any
 
 import polars as pl
-from just_dna_format.base import derive_variant_key
 from just_dna_format.frequency import FrequencyRow
 from just_dna_format.spec import ModuleSpecConfig, StudyRow, VariantRow
 from just_dna_format.vocab import OUTCOME_STRIP_CELLS
 
-from just_dna_compiler.compiler.tables import _polars_type, _split_genotype
+from just_dna_compiler.compiler.tables import _polars_type, _split_genotype, study_coordinate_key
 
 # ── Parquet builders ───────────────────────────────────────────────────────────
 
 
-def _supporting_studies(variant: VariantRow, studies: list[StudyRow]) -> list[StudyRow]:
-    """The study rows that support `variant`'s locus, matched on any shared identifier (0.8).
+class _StudyIndex:
+    """The module's study rows, indexed once by the two identifiers a study can name a variant by.
 
-    The rule `_cross_validate_studies` uses to decide a study is not an orphan: the same rsid, or the
-    same `chrom:start:ref`. Frozen-key equality would contribute nothing for an rsid-authored study of
-    a coordinate-keyed variant, and silently, since a locus with no supporting rows reads as unknown.
-    `variant` is the post-resolution row, so a coordinate the enricher filled matches a coordinate-
-    authored study too. Authored order is kept, which is what makes every derivation below stable.
+    "Supporting" is the orphan check's rule — the same rsid, or the same `chrom:start:ref`
+    (`tables.study_coordinate_key`, shared with `_cross_validate_studies`). Frozen-key equality would
+    contribute nothing for an rsid-authored study of a coordinate-keyed variant, and silently, since a
+    locus with no supporting rows reads as unknown. Built once per compile, so a module with thousands
+    of genotype rows and study rows costs two dict lookups per weights row, not a scan.
     """
-    coord = derive_variant_key(None, variant.chrom, variant.start, variant.ref) if variant.chrom else None
-    return [
-        s
-        for s in studies
-        if (s.rsid is not None and s.rsid == variant.rsid)
-        or (
-            coord is not None
-            and s.chrom is not None
-            and derive_variant_key(None, s.chrom, s.start, s.ref) == coord
-        )
-    ]
+
+    def __init__(self, studies: list[StudyRow]) -> None:
+        self.studies = studies
+        self.by_rsid: dict[str, list[int]] = {}
+        self.by_coord: dict[str, list[int]] = {}
+        for i, s in enumerate(studies):
+            if s.rsid is not None:
+                self.by_rsid.setdefault(s.rsid, []).append(i)
+            coord = study_coordinate_key(s.chrom, s.start, s.ref)
+            if coord is not None:
+                self.by_coord.setdefault(coord, []).append(i)
+
+    def supporting(self, variant: VariantRow) -> list[StudyRow]:
+        """`variant`'s supporting study rows, in authored order (which keeps every derivation stable).
+
+        `variant` is the post-resolution row, so a coordinate the enricher filled matches a coordinate-
+        authored study too.
+        """
+        hits = set(self.by_rsid.get(variant.rsid or "", ()))
+        coord = study_coordinate_key(variant.chrom, variant.start, variant.ref)
+        if coord is not None:
+            hits.update(self.by_coord.get(coord, ()))
+        return [self.studies[i] for i in sorted(hits)]
 
 
 def _locus_study_facts(studies: list[StudyRow]) -> dict[str, Any]:
@@ -81,9 +92,10 @@ def _build_weights(
     defaults = config.defaults
     module_name = config.module.name
     records: list[dict[str, Any]] = []
+    index = _StudyIndex(studies or [])
     for v in variants:
         priority = v.priority if v.priority is not None else defaults.priority
-        derived = _locus_study_facts(_supporting_studies(v, studies or []))
+        derived = _locus_study_facts(index.supporting(v))
         records.append(
             {
                 "rsid": v.rsid,

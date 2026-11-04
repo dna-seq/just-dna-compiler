@@ -12,7 +12,7 @@ from typing import Any, Union, get_args, get_origin
 import polars as pl
 from just_dna_format.alleles import split_genotype
 from just_dna_format.assertions import ClinicalAssertionRow
-from just_dna_format.base import IDENTITY_FIELDS, authored_field_names
+from just_dna_format.base import IDENTITY_FIELDS, authored_field_names, derive_variant_key
 from just_dna_format.binning import ActivityPhenotypeRow, CopyNumberRow, HeteroplasmyRow, RepeatAlleleRow
 from just_dna_format.concordance import ClinSigAuthorityCallRow, ClinSigConcordanceRow
 from just_dna_format.expression import ExpressionEffectRow
@@ -95,6 +95,17 @@ _TABLE_KIND_CSVS: tuple[str, ...] = tuple(csv for csv, _, _ in _TABLE_KINDS)
 # The per-key reasoning stays with the declarations: `HaplotypeRow` keys on the *stamped*
 # `variant_key` (RM43), `DiplotypeRow` carries `clinical_context` since 0.5.1 (RM29b), and
 # `PharmVariantRow` carries the full ClinPGx key.
+def study_coordinate_key(chrom: str | None, start: int | None, ref: str | None) -> str | None:
+    """The `chrom:start:ref` half of "a study names a variant by ANY shared identifier", or `None`.
+
+    One expression for the two places that ask the question — `_cross_validate_studies`' orphan check
+    and the study facts `weights.parquet` derives (0.8) — so a study the check counts as naming a
+    variant is the study that variant's derived columns read, and the two cannot drift apart. The other
+    half is plain `rsid` equality.
+    """
+    return derive_variant_key(None, chrom, start, ref) if chrom is not None else None
+
+
 def _key_of(row: Any) -> tuple:
     """A keyed row's identity tuple, read off the model's declared `_KEY_FIELDS`."""
     return tuple(getattr(row, name) for name in row._KEY_FIELDS)

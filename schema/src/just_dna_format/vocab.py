@@ -687,34 +687,6 @@ VALID_SAMPLE_UNITS: frozenset[str] = frozenset({"individuals", "lives"})
 # `phenotype_class_unrecognized`, which catches a second spelling without refusing a new class. The
 # trait term cannot stand in for it: measured on 2026-11-04, it separates 0 of the 12 classes in real
 # rows, and OBA_VT0005372 alone covers at least four.
-# The 1000 Genomes superpopulation codes (RM328): the ancestry a study was measured in, and — with
-# `multi` added — the ancestry a PGS was trained in (`pgs.VALID_TRAINING_ANCESTRY` is derived from this,
-# so the five codes are one vocabulary, not two). Closed. A multi-ancestry study lists its codes rather
-# than writing `multi`. NOT `RECOMMENDED_ANCESTRY_GROUPS` below, which is gnomAD's population list and a
-# different axis (see the note beside it); a sub-superpopulation cohort (Ashkenazi, Finnish) stays in the
-# free-text `population` beside the code.
-VALID_SUPERPOPULATIONS: frozenset[str] = frozenset({"AFR", "AMR", "EAS", "EUR", "SAS"})
-
-# The outcome strip (PT2 §3 item 10, RM326): which recommended phenotype class marks a locus's outcome
-# cell as STUDIED on `weights.parquet` (`outcome_healthspan`, `outcome_lifespan`, `outcome_exceptional`).
-# A format constant over the recommended classes. v2's requirements §5.1 names the three cells (healthy
-# years / length of life / reaching very old age) and states no class map, so this is PT2's: every class
-# not listed — MULTIVARIATE_AGEING, the annotation-only classes, any token outside the twelve — maps to
-# no cell. A cell is true when a supporting study row of a mapped class exists and null otherwise, never
-# false: a locus with no study of an outcome is untested, not "no effect".
-OUTCOME_STRIP_CELLS: dict[str, str] = {
-    "HEALTHSPAN": "healthspan",
-    "PARENTAL_LIFESPAN": "lifespan",
-    "OWN_SURVIVAL": "lifespan",
-    "EXTREME_SURVIVAL_CC": "exceptional",
-    "FAMILIAL": "exceptional",
-}
-
-# Whose age a study row's band (`age_min`/`age_max`) is (RM329): the participant's own, or a parent's,
-# which is how a parental-lifespan study bands its estimates (Timmers 2019's 40–60, 60–80, 80+). Closed.
-# The event the age is taken at was cut on 2026-11-04 (no v2 row bands on anything but death).
-VALID_AGE_OF: frozenset[str] = frozenset({"participant", "parent"})
-
 RECOMMENDED_PHENOTYPE_CLASSES: frozenset[str] = frozenset(
     {
         "EXTREME_SURVIVAL_CC",
@@ -731,6 +703,34 @@ RECOMMENDED_PHENOTYPE_CLASSES: frozenset[str] = frozenset(
         "BIOMARKER",
     }
 )
+
+# The outcome strip (PT2 §3 item 10, RM326): which recommended phenotype class marks a locus's outcome
+# cell as STUDIED on `weights.parquet` (`outcome_healthspan`, `outcome_lifespan`, `outcome_exceptional`).
+# A format constant over the recommended classes. v2's requirements §5.1 names the three cells (healthy
+# years / length of life / reaching very old age) and states no class map, so this is PT2's: every class
+# not listed — MULTIVARIATE_AGEING, the annotation-only classes, any token outside the twelve — maps to
+# no cell. A cell is true when a supporting study row of a mapped class exists and null otherwise, never
+# false: a locus with no study of an outcome is untested, not "no effect".
+OUTCOME_STRIP_CELLS: dict[str, str] = {
+    "HEALTHSPAN": "healthspan",
+    "PARENTAL_LIFESPAN": "lifespan",
+    "OWN_SURVIVAL": "lifespan",
+    "EXTREME_SURVIVAL_CC": "exceptional",
+    "FAMILIAL": "exceptional",
+}
+
+# The 1000 Genomes superpopulation codes (RM328): the ancestry a study was measured in, and — with
+# `multi` added — the ancestry a PGS was trained in (`pgs.VALID_TRAINING_ANCESTRY` is derived from this,
+# so the five codes are one vocabulary, not two). Closed. A multi-ancestry study lists its codes rather
+# than writing `multi`. NOT `RECOMMENDED_ANCESTRY_GROUPS` below, which is gnomAD's population list and a
+# different axis (see the note beside it); a sub-superpopulation cohort (Ashkenazi, Finnish) stays in the
+# free-text `population` beside the code.
+VALID_SUPERPOPULATIONS: frozenset[str] = frozenset({"AFR", "AMR", "EAS", "EUR", "SAS"})
+
+# Whose age a study row's band (`age_min`/`age_max`) is (RM329): the participant's own, or a parent's,
+# which is how a parental-lifespan study bands its estimates (Timmers 2019's 40–60, 60–80, 80+). Closed.
+# The event the age is taken at was cut on 2026-11-04 (no v2 row bands on anything but death).
+VALID_AGE_OF: frozenset[str] = frozenset({"participant", "parent"})
 
 # Which way the effect allele moves the MEASURED TRAIT — the GWAS Catalog's `betaDirection` (RM90).
 #

@@ -350,6 +350,21 @@ def test_a_class_outside_the_recommended_set_warns_in_both_modes(tmp_path: Path,
     assert "'FAMILIAL'" not in found[0]
 
 
+def test_a_module_with_no_variants_csv_gets_the_class_warning_too(tmp_path: Path) -> None:
+    """A citation-only `studies.csv` beside a binning table is legal (RM47); its classes are checked too."""
+    spec = tmp_path / "fmr1"
+    shutil.copytree(_EXAMPLE.parent / "fmr1_cgg_repeat", spec)
+    (spec / "verification.json").unlink()
+    assert not (spec / "variants.csv").exists()
+    header, rows = _read_rows(spec / "studies.csv")
+    for row in rows:
+        row["phenotype_class"] = "FAMILIAL_LONGEVITY"
+    _write_rows(spec / "studies.csv", [*header, "phenotype_class"], rows)
+    found = [w for w in validate_spec(spec).warnings if "phenotype_class outside the recommended set" in w]
+    assert len(found) == 1 and f"'FAMILIAL_LONGEVITY' ({len(rows)} rows)" in found[0]
+    assert _summary(tmp_path, spec, strict=False).get("phenotype_class_unrecognized") == 1
+
+
 def test_only_recommended_classes_draw_no_warning(tmp_path: Path) -> None:
     columns, fill = _GROUPS["RM326"]
     spec = _spec(tmp_path, "clean", columns, fill)
