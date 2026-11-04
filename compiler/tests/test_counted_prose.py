@@ -155,7 +155,8 @@ def test_the_compiler_doc_input_files_are_input_files() -> None:
     """The same shape one bullet down (RM365): `_INPUT_FILES` was enumerated in prose and lacked the
     two 0.8 authored tables. The named files plus the table kinds (a stated, pinned number) must be
     exactly the tuple."""
-    doc = (_DOCS / "COMPILER.md").read_text(encoding="utf-8")
+    # Whitespace collapsed first: the clause boundary is a phrase, and a rewrap may break it anywhere.
+    doc = " ".join((_DOCS / "COMPILER.md").read_text(encoding="utf-8").split())
     bullet = doc.split("- **`_INPUT_FILES`**", 1)[1].split("— the authored surface", 1)[0]
     named = set(re.findall(r"`([\w.]+\.(?:csv|yaml))`", bullet))
     kinds = re.findall(r"the (\d+) table-kind CSVs", bullet)
