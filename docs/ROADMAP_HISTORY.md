@@ -35,6 +35,65 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM376 — one rsID, three ALTs offline and one online on the same snapshot: not a misread, RM270's reference-dependent spelling rule
+
+✖ **CLOSED 2026-11-04 on `0.8` — not a defect, no code change (the 0.8 Ensembl migration probe).** Owner
+enricher, severity low.
+
+**Residuals** won't fix — offline cannot left-align without reference bases, and RM270 refuses half a respelling, so an offline fill stays whole with `left_aligned` unknown · won't fix — `resolution_signature` moving between an offline and an online fill of one snapshot is that same rule, and `enrich --rederive` online is the documented migration
+
+**What the probe saw.** On `ensembl_variations_split@ee964d71`, `rs746071566` (NUDT15, genotype
+`A/AGGAGTC`) was written `13:48037782 AGGAGTC>A,AGGAGTCGGAGTC,AGGAGTCGGAGTCGGAGTC` offline and
+`13:48037782 AGGAGTC>A` by `--rederive` online. `alts` is a `RESOLUTION_FACT_FIELDS` member, so the
+module's `resolution_signature` depended on how the run was made. The mechanism was not traced.
+
+**The three readings the probe offered, each checked against its source.**
+
+- *The offline reader merges ALTs from different positions or rows.* No. The snapshot holds three rows for
+  the rsID, all at one `(13, 48037782, AGGAGTC)` (`row_idx` 16692972–16692974: ALTs `A`,
+  `AGGAGTCGGAGTC`, `AGGAGTCGGAGTCGGAGTC`), and `resolver._lookup_positions_by_rsid` groups on
+  `id, chrom, start, ref`, so no group crosses a position.
+- *REST reports one allele.* No. Ensembl REST `/variation/human/rs746071566` (read by hand 2026-11-04)
+  gives `13:48037783-48037801` with allele string
+  `GGAGTCGGAGTCGGAGTCG/GGAGTCGGAGTCG/GGAGTCGGAGTCGGAGTCGGAGTCG/GGAGTCGGAGTCGGAGTCGGAGTCGGAGTCG`: three
+  ALTs. And REST never answered in the probe's run at all: the online row records `source=cache`.
+- *The snapshot carries alleles REST does not.* No. dbSNP 157 (`/variation/v0/refsnp/746071566`, build
+  157) places the same three on NC_000013.11: `g.48037784GAGTCG[2]`, `[4]` and `[5]` against the
+  reference's three copies, so one copy deleted, one inserted, two inserted.
+
+The snapshot, Ensembl REST and dbSNP agree: one site with three alleles. Both readers read it right.
+
+**The mechanism: RM270's fill, which needs reference bases.** The only thing that differs between the
+two runs is whether `SequenceProxy` can read GRCh38. `orchestration._filled_pieces` hands the locus to
+`sequences.normalize_locus`, which left-aligns each ALT on its own:
+
+- **Offline** the window reads `None`, so `normalize_locus` returns the locus unchanged with
+  `aligned=None`, as RM270's "whole or not at all" says. The row is the link's locus, whole, with
+  `left_aligned` blank.
+- **Online** the window reads `CGGGCGGCGGCCAGGAGTCGGAGTCGGAGTCGTGGTGACCA` (48037770–48037810). The
+  deletion stays `48037782 AGGAGTC>A`, and both insertions land on `48037782 A>…`: two references, so
+  two pieces, the split `bcftools norm -m -any` makes. The genotype `A/AGGAGTC`, in the source locus's
+  own frame, names only the deletion, so the deletion piece is written, `left_aligned=true`. A genotype
+  naming the insertions (`AGGAGTC/AGGAGTCGGAGTC`) gets the insertion piece; one naming both
+  (`A/AGGAGTCGGAGTC`) gets the source locus whole and `left_aligned=false`.
+
+So the two answers are the same snapshot read under two reach conditions, and both rows say which they
+are. The online row is the more precise one; the offline row is the honest unknown. The cost the probe
+found is real: `resolution_signature` moves between the two, because `alts` is a fact field while
+`left_aligned` is not. RM270 chose that when it refused a partial respelling, and the stamped column is
+what tells a reader which kind of row it holds. `enrich --rederive` online respells an offline-written
+row (`@sidecar-authoritative`).
+
+**Already pinned.** `enricher/tests/test_placement_witness.py`:
+`test_rm270_offline_a_fill_keeps_its_links_spelling_and_says_unknown` (the offline half) and
+`test_rm270_a_split_writes_the_piece_the_genotype_is_about` (the online half). This case adds no new
+shape, so no test was added.
+
+**Next to it, owned elsewhere.** The probe's `--rederive` online log lists this row as one that "now
+answer[s] differently from the recorded table", with no respelled marker. The offline row has no
+`vrs_id`, so `outcome._same_events` returns `False` for an unknown; that is the migration probe's
+class 4, already reserved as its own item.
+
 ## RM372 — the Ensembl snapshot moved to a new Hugging Face repo, and a warm cache never migrates
 
 **SHIPPED 2026-11-04 on `0.8`, uncut — a minor.** Owner enricher + format, severity medium.
