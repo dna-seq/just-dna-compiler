@@ -294,6 +294,25 @@ def test_the_whole_download_builds_and_a_release_landing_mid_build_is_named(tmp_
         with pytest.raises(ClinVarGkmMismatch, match="published 2026-10-31 while this build was downloading"):
             download_and_build(tmp_path / "moved", client=client)
 
+        # The same release overwritten in place says so, rather than naming one release twice.
+        calls["n"] = 0
+        overwritten = json.loads(manifest_text)
+        for entry in overwritten["files"]:
+            if entry["name"] == VARIATION_FILE:
+                entry["sha256"] = "f" * 64
+        moved.clear()
+        moved.update(overwritten)
+        with pytest.raises(ClinVarGkmMismatch, match="overwrote its 2026-10-24 Parquet set in place"):
+            download_and_build(tmp_path / "inplace", client=client)
+
+        # A pinned manifest is the one built: the live one moving afterwards does not change the build.
+        routes["/parquet/variation.parquet"] = _static((SLICE / VARIATION_FILE).read_bytes())
+        routes["/parquet/manifest.json"] = _static(json.dumps(moved).encode())
+        pinned = download_and_build(
+            tmp_path / "pinned", client=client, manifest=parse_manifest(manifest_text.decode())
+        )
+        assert pinned.source_release == "2026-10-24"
+
 
 def test_an_unreachable_source_is_its_own_type_never_an_httpx_one(tmp_path: Path) -> None:
     with serve({}) as base:
@@ -340,6 +359,25 @@ def test_currency_reports_behind_drifted_and_the_sources_own_lag_apart(built: Pa
             entry["sha256"] = "0" * 64
     drifted = _currency_against(built, overwritten, index)
     assert (drifted.behind, drifted.drifted) == (False, True)
+    assert ALLELE_FILE in " ".join(drifted.sentences())
+
+    # The variation file carries the rsID and ClinVar links, so its overwrite is drift too.
+    relinked = json.loads(json.dumps(pinned))
+    for entry in relinked["files"]:
+        if entry["name"] == VARIATION_FILE:
+            entry["sha256"] = "f" * 64
+    relinked_now = _currency_against(built, relinked, index)
+    assert relinked_now.drifted is True
+    assert VARIATION_FILE in " ".join(relinked_now.sentences())
+
+
+def test_an_index_outage_withholds_the_lag_and_nothing_else(built: Path) -> None:
+    """`@one-registrys-outage-may-not-speak-for-another`: the manifest answers behind and drifted."""
+    pinned = _slice_manifest_text().encode()
+    with serve({"/m.json": _static(pinned)}) as base:
+        client = ClinVarGkmClient(manifest_url=f"{base}/m.json", index_url=f"{base}/gone.json")
+        currency = lane_currency(built, client=client)
+    assert (currency.behind, currency.drifted, currency.source_lags) == (False, False, None)
 
 
 def test_currency_is_unchecked_offline_and_when_unreachable(built: Path) -> None:
@@ -430,9 +468,17 @@ def test_the_cli_builds_from_local_files_and_looks_up_a_known_insertion(tmp_path
     assert half.exit_code == 1
 
 
-def test_a_build_with_nothing_to_verify_against_is_a_clinvar_gkm_error() -> None:
+def test_a_manifest_this_tier_cannot_read_is_a_clinvar_gkm_error_never_a_crash() -> None:
     with pytest.raises(ClinVarGkmError, match="source_release"):
         parse_manifest(json.dumps({"files": []}))
+    release = {"source_release": "2026-10-24"}
+    for files in (
+        ["allele.parquet"],
+        {"allele.parquet": 1},
+        [{"name": "allele.parquet", "size": True, "sha256": "ab"}],
+    ):
+        with pytest.raises(ClinVarGkmError):
+            parse_manifest(json.dumps({**release, "files": files}))
 
 
 # ── the provisioned snapshot, when this machine holds one ───────────────────────────────────────

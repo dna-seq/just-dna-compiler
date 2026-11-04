@@ -172,9 +172,15 @@ def parse_manifest(text: str) -> GkmManifest:
     if not release:
         raise ClinVarGkmError("manifest.json states no source_release, so nothing can be pinned")
     files: dict[str, ManifestFile] = {}
-    for entry in raw.get("files") or []:
+    entries = raw.get("files") or []
+    if not isinstance(entries, list):
+        raise ClinVarGkmError(f"manifest.json's files is not a list: {entries!r}")
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise ClinVarGkmError(f"manifest.json has a file entry that is not an object: {entry!r}")
         name, size, sha = entry.get("name"), entry.get("size"), entry.get("sha256")
-        if not isinstance(name, str) or not isinstance(size, int) or not isinstance(sha, str):
+        sized = isinstance(size, int) and not isinstance(size, bool)
+        if not isinstance(name, str) or not sized or not isinstance(sha, str):
             raise ClinVarGkmError(f"manifest.json has a file entry without name/size/sha256: {entry!r}")
         files[name] = ManifestFile(name, size, sha.strip().lower())
     licence = raw.get("license") if isinstance(raw.get("license"), dict) else {}
@@ -256,6 +262,19 @@ class ClinVarGkmClient:
         """The published Parquet set's manifest. Raises `ClinVarGkmUnavailable` when unreachable."""
         return parse_manifest(self._fetch(self.manifest_url, "Parquet manifest"))
 
+    def latest_release_or_none(self) -> str | None:
+        """`latest_release`, withheld as `None` when the index cannot be read.
+
+        The index answers one informational question (does the Parquet set lag the line?). Its
+        outage may not speak for the manifest's questions (`@one-registrys-outage-may-not-speak-for-
+        another`), so a build and a currency check go on without it and say the lag is unknown.
+        """
+        try:
+            return self.latest_release()
+        except ClinVarGkmError as exc:
+            logger.warning("ClinVar-GKM's release index could not be read (%s); the lag is unknown.", exc)
+            return None
+
     def latest_release(self) -> str | None:
         """The release line's newest weekly release, or `None` when the index states none."""
         try:
@@ -288,7 +307,7 @@ def release_older(first: str | None, second: str | None) -> bool | None:
     return date.fromisoformat(first) < date.fromisoformat(second)
 
 
-def _require_polars() -> None:
+def require_polars() -> None:
     if pl is None:  # pragma: no cover - exercised only without polars
         raise ImportError("polars is required to build or read the ClinVar-GKM snapshot")
 
@@ -312,9 +331,10 @@ class LaneCurrency:
     """
 
     pinned_release: str | None
-    pinned_sha256: str | None
+    #: `((input file, digest), …)` over both inputs, in `INPUT_FILES` order; `None` when not all stated.
+    pinned_sha256: tuple[tuple[str, str | None], ...] | None
     published_release: str | None = None
-    published_sha256: str | None = None
+    published_sha256: tuple[tuple[str, str | None], ...] | None = None
     latest_release: str | None = None
     unchecked: str | None = None
 
@@ -353,8 +373,15 @@ class LaneCurrency:
                 "clinvar_gkm: whether the snapshot is behind could not be decided (an unstated release)"
             )
         if self.drifted:
+            moved = [
+                name
+                for (name, ours), (_, theirs) in zip(
+                    self.pinned_sha256 or (), self.published_sha256 or (), strict=True
+                )
+                if ours != theirs
+            ]
             out.append(
-                f"clinvar_gkm: the source's {ALLELE_FILE} for {self.pinned_release} is no longer the "
+                f"clinvar_gkm: the source's {', '.join(moved)} for {self.pinned_release} is no longer the "
                 f"bytes this snapshot was cut from (overwritten in place); rebuild"
             )
         if self.source_lags:
@@ -365,12 +392,28 @@ class LaneCurrency:
         return out
 
 
-def _pinned_allele_sha(release: SnapshotRelease) -> str | None:
+def bare_digest(value: str | None) -> str | None:
+    """A digest without its `sha256:` prefix(es), lower case; `None` for blank."""
+    stated = (value or "").strip().lower()
+    while stated.startswith("sha256:"):
+        stated = stated.removeprefix("sha256:")
+    return stated or None
+
+
+def _pinned_digests(release: SnapshotRelease) -> tuple[tuple[str, str | None], ...] | None:
+    """Both inputs' digests as the snapshot records them, or `None` when it does not record both."""
     digests = release.source_sha256
     if not isinstance(digests, dict):
         return None
-    stated = digests.get(ALLELE_FILE)
-    return stated.removeprefix("sha256:").lower() if stated else None
+    pinned = tuple((name, bare_digest(digests.get(name))) for name in INPUT_FILES)
+    return pinned if all(digest for _, digest in pinned) else None
+
+
+def _published_digests(manifest: GkmManifest) -> tuple[tuple[str, str | None], ...] | None:
+    published = tuple(
+        (name, manifest.files[name].sha256 if name in manifest.files else None) for name in INPUT_FILES
+    )
+    return published if all(digest for _, digest in published) else None
 
 
 def lane_currency(
@@ -382,24 +425,22 @@ def lane_currency(
     """Ask the source whether `snapshot_dir` is current. Reads the snapshot; writes nothing."""
     release = read_release(Path(snapshot_dir)) or SnapshotRelease()
     pinned_release = getattr(release, "source_release", None)
-    pinned = LaneCurrency(pinned_release=pinned_release, pinned_sha256=_pinned_allele_sha(release))
+    pinned = LaneCurrency(pinned_release=pinned_release, pinned_sha256=_pinned_digests(release))
     if offline:
         return LaneCurrency(pinned.pinned_release, pinned.pinned_sha256, unchecked="offline")
     asker = client or ClinVarGkmClient()
     try:
         manifest = asker.parquet_manifest()
-        latest = asker.latest_release()
     except ClinVarGkmUnavailable as exc:
         return LaneCurrency(pinned.pinned_release, pinned.pinned_sha256, unchecked=f"unreachable ({exc})")
     except ClinVarGkmError as exc:
         return LaneCurrency(pinned.pinned_release, pinned.pinned_sha256, unchecked=f"unreadable ({exc})")
-    entry = manifest.files.get(ALLELE_FILE)
     return LaneCurrency(
         pinned_release=pinned.pinned_release,
         pinned_sha256=pinned.pinned_sha256,
         published_release=manifest.source_release,
-        published_sha256=entry.sha256 if entry is not None else None,
-        latest_release=latest,
+        published_sha256=_published_digests(manifest),
+        latest_release=asker.latest_release_or_none(),
     )
 
 
@@ -455,7 +496,7 @@ class ClinVarGkmWitness:
 
     @classmethod
     def load(cls, snapshot_dir: Path) -> "ClinVarGkmWitness":
-        _require_polars()
+        require_polars()
         directory = Path(snapshot_dir)
         path = directory / SNAPSHOT_DATA_DIRNAME / WITNESS_PARQUET
         if not path.is_file():

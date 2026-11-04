@@ -858,16 +858,18 @@ def _rebuild_clinvar_gkm(request: RebuildRequest) -> RebuildOutcome:
     request.out_dir.mkdir(parents=True, exist_ok=True)
     try:
         client = ClinVarGkmClient()
+        pinned = None
         if request.pin is not None:
-            served = client.parquet_manifest().source_release
-            if served != request.pin:
+            pinned = client.parquet_manifest()
+            if pinned.source_release != request.pin:
                 return RebuildOutcome(
                     "clinvar_gkm",
                     None,
                     f"pinned to {request.pin}, and ClinVar-GKM serves only its current Parquet set "
-                    f"({served}); no earlier set can be downloaded",
+                    f"({pinned.source_release}); no earlier set can be downloaded",
                 )
-        result = clinvar_gkm_build.download_and_build(request.out_dir, client=client)
+        # The manifest the pin was checked against is the one verified and built, never a re-read.
+        result = clinvar_gkm_build.download_and_build(request.out_dir, client=client, manifest=pinned)
     except (ClinVarGkmError, ImportError, OSError) as exc:
         return RebuildOutcome("clinvar_gkm", False, str(exc))
     lag = (

@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
+from just_dna_format.integrity import sha256_file
 from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.snapshot import (
@@ -33,7 +34,7 @@ from just_dna_format.snapshot import (
     write_release,
 )
 
-from just_dna_enricher.civic_build import _G38_ACCESSIONS
+from just_dna_enricher.civic_build import GRCH38_REFSEQ_ACCESSIONS
 from just_dna_enricher.clinvar_gkm import (
     ALLELE_FILE,
     CLINVAR_GKM_VRS_VERSION,
@@ -42,13 +43,16 @@ from just_dna_enricher.clinvar_gkm import (
     VARIATION_FILE,
     WITNESS_PARQUET,
     ClinVarGkmClient,
+    ClinVarGkmError,
     ClinVarGkmMismatch,
     ClinVarGkmUnavailable,
     GkmManifest,
     ManifestFile,
+    bare_digest,
     clinvar_gkm_release_label,
     parquet_url,
     release_older,
+    require_polars,
 )
 from just_dna_enricher.net import StreamedFile, stream_to_file
 
@@ -66,7 +70,7 @@ DEFINING_ALLELE_CONSTRAINT = "DefiningAlleleConstraint"
 
 #: GRCh38 primary-assembly accessions, per chromosome, with the mitochondrion. The same map `civic_build`
 #: scores accessions with (the version alone names no build, `@accession-version-names-no-build`).
-GRCH38_ACCESSIONS: dict[str, str] = {**_G38_ACCESSIONS, "NC_012920.1": "MT"}
+GRCH38_ACCESSIONS: dict[str, str] = {**GRCH38_REFSEQ_ACCESSIONS, "NC_012920.1": "MT"}
 
 
 # ── the download, verified against the manifest ─────────────────────────────────────────────────
@@ -86,7 +90,7 @@ def verify_against_manifest(path: Path, entry: ManifestFile, sha256: str) -> Non
             f"{entry.name} is {size} bytes and manifest.json states {entry.size}: a partial or "
             f"replaced body, refused"
         )
-    if sha256.strip().lower().removeprefix("sha256:") != entry.sha256:
+    if bare_digest(sha256) != entry.sha256:
         raise ClinVarGkmMismatch(
             f"{entry.name} hashes to {sha256} and manifest.json states {entry.sha256}: the set was "
             f"overwritten after the manifest was read, refused. Build again once the source settles"
@@ -109,11 +113,6 @@ def download_input(name: str, manifest: GkmManifest, dest: Path, *, url: str | N
 
 
 # ── the slice ───────────────────────────────────────────────────────────────────────────────────
-
-
-def _require_polars() -> None:
-    if pl is None:  # pragma: no cover - exercised only without the [dev] extra
-        raise ImportError("polars is required to build or read the ClinVar-GKM snapshot")
 
 
 def _witness_schema() -> dict:
@@ -165,7 +164,7 @@ def _expression(syntax: str):
 
 def indel_slice(allele_path: Path) -> tuple["pl.DataFrame", SliceCounts]:
     """The net insertions and net deletions of `allele.parquet`, keyed by VRS id and VCF spelling."""
-    _require_polars()
+    require_polars()
     frame = (
         pl.scan_parquet(allele_path)
         .select("id", "data")
@@ -228,7 +227,7 @@ def variation_links(variation_path: Path) -> "pl.DataFrame":
     the rsID is a dbSNP `mappings` code, prefixed here with `rs`. A variation with no rsID keeps its
     row with `rsid` null, so the left join below loses no allele.
     """
-    _require_polars()
+    require_polars()
     scan = pl.scan_parquet(variation_path).select("id", "mappings", "constraints")
     link = (
         scan.select("id", "constraints")
@@ -321,12 +320,12 @@ def build_snapshot(
     local disk and the caller passes none, they are hashed here and checked against `manifest` the
     same way a download is, so a stale local copy is refused rather than labelled with today's release.
     """
-    _require_polars()
+    require_polars()
     out_dir = Path(out_dir)
     digests = dict(source_sha256 or {})
     for name, path in ((ALLELE_FILE, allele_path), (VARIATION_FILE, variation_path)):
         if digests.get(name) is None:
-            digests[name] = _sha256_of(Path(path))
+            digests[name] = sha256_file(Path(path))
         verify_against_manifest(Path(path), manifest.file(name), str(digests[name]))
     slice_frame, counts = indel_slice(Path(allele_path))
     links = variation_links(Path(variation_path))
@@ -334,7 +333,7 @@ def build_snapshot(
         slice_frame.join(links, on="vrs_id", how="left")
         .select(list(_witness_schema()))
         .cast(_witness_schema())
-        .sort(["chrom", "pos", "ref", "alt", "vrs_id", "rsid"], nulls_last=True)
+        .sort(["chrom", "pos", "ref", "alt", "vrs_id", "rsid", "clinvar_variation_id"], nulls_last=True)
     )
     data_dir = out_dir / SNAPSHOT_DATA_DIRNAME
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -357,7 +356,7 @@ def build_snapshot(
         with_rsid=with_rsid.height,
         distinct_rsids=with_rsid["rsid"].n_unique(),
         latest_release=latest_release,
-        source_sha256={name: f"sha256:{digests[name]}" for name in INPUT_FILES},
+        source_sha256={name: f"sha256:{bare_digest(digests[name])}" for name in INPUT_FILES},
     )
     write_release(
         out_dir,
@@ -401,16 +400,34 @@ def build_snapshot(
     return result
 
 
-def _sha256_of(path: Path) -> str:
-    hasher = hashlib.sha256()
-    with Path(path).open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1 << 20), b""):
-            hasher.update(chunk)
-    return hasher.hexdigest()
-
-
 def _sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _named_mismatch(
+    asker: ClinVarGkmClient, read: GkmManifest, found: ClinVarGkmMismatch
+) -> ClinVarGkmMismatch:
+    """Name what moved when a download did not match the manifest read before it.
+
+    A release that landed mid-build, and an in-place overwrite under the same release, are two
+    different sentences. When the second manifest read fails, the mismatch itself is still the finding:
+    an unreachable re-read must not turn it into an outage.
+    """
+    try:
+        now = asker.parquet_manifest()
+    except ClinVarGkmError:
+        return found
+    if now.source_release != read.source_release:
+        return ClinVarGkmMismatch(
+            f"ClinVar-GKM published {now.source_release} while this build was downloading "
+            f"{read.source_release}; build again"
+        )
+    if now.files != read.files:
+        return ClinVarGkmMismatch(
+            f"ClinVar-GKM overwrote its {read.source_release} Parquet set in place while this build was "
+            f"downloading (the manifest's digests moved, its release did not); build again"
+        )
+    return found
 
 
 def download_and_build(
@@ -418,6 +435,7 @@ def download_and_build(
     *,
     client: ClinVarGkmClient | None = None,
     keep_downloads: bool = False,
+    manifest: GkmManifest | None = None,
 ) -> GkmBuildResult:
     """Read the manifest, download both inputs whole, verify them, cut the slice, drop the downloads.
 
@@ -426,8 +444,11 @@ def download_and_build(
     """
     asker = client or ClinVarGkmClient()
     out_dir = Path(out_dir)
-    manifest = asker.parquet_manifest()
-    latest = asker.latest_release()
+    # A caller that already read the manifest (a pinned rebuild checking its pin) passes it, so the
+    # release the pin was checked against is the one verified and built: a second read could land
+    # on a newer release and build it under a pin that named another.
+    manifest = manifest or asker.parquet_manifest()
+    latest = asker.latest_release_or_none()
     downloads = out_dir / "_downloads"
     fetched: dict[str, StreamedFile] = {}
     try:
@@ -435,13 +456,10 @@ def download_and_build(
             try:
                 fetched[name] = download_input(name, manifest, downloads / name, url=asker.file_url(name))
             except ClinVarGkmMismatch as exc:
-                now = asker.parquet_manifest()
-                if now.source_release != manifest.source_release or now.files != manifest.files:
-                    raise ClinVarGkmMismatch(
-                        f"ClinVar-GKM published {now.source_release} while this build was downloading "
-                        f"{manifest.source_release}; build again"
-                    ) from exc
-                raise
+                named = _named_mismatch(asker, manifest, exc)
+                if named is exc:
+                    raise
+                raise named from exc
         return build_snapshot(
             fetched[ALLELE_FILE].path,
             fetched[VARIATION_FILE].path,

@@ -137,7 +137,11 @@ def clinvar_gkm_lookup_(
     snapshot: Path | None = typer.Option(None, "--snapshot", exists=True, file_okay=False),
 ) -> None:
     """Where the witness places one allele. Nothing found means not witnessed, never placed wrong."""
-    witness = ClinVarGkmWitness.load(_snapshot_or_exit(snapshot))
+    try:
+        witness = ClinVarGkmWitness.load(_snapshot_or_exit(snapshot))
+    except ClinVarGkmError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
     try:
         rows = witness.lookup(key)
     except ValueError as exc:

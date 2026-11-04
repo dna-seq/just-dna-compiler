@@ -198,7 +198,7 @@ _G37_ACCESSIONS: dict[str, str] = {
         strict=True,
     )
 }
-_G38_ACCESSIONS: dict[str, str] = {
+GRCH38_REFSEQ_ACCESSIONS: dict[str, str] = {
     f"NC_{i:06d}.{v}": c
     for i, v, c in zip(
         range(1, 25),
@@ -207,7 +207,7 @@ _G38_ACCESSIONS: dict[str, str] = {
         strict=True,
     )
 }
-assert not (_G37_ACCESSIONS.keys() & _G38_ACCESSIONS.keys()), (
+assert not (_G37_ACCESSIONS.keys() & GRCH38_REFSEQ_ACCESSIONS.keys()), (
     "an accession cannot name both builds; the per-chromosome map is wrong"
 )
 
@@ -381,7 +381,7 @@ def parse_grch38_substitution(hgvs: str | None) -> tuple[str, int, str, str] | N
         if match is None:
             continue
         accession, position, ref, alt = match.groups()
-        chrom = _G38_ACCESSIONS.get(accession)
+        chrom = GRCH38_REFSEQ_ACCESSIONS.get(accession)
         if chrom is not None:
             return chrom, int(position), ref, alt
     return None
@@ -392,7 +392,7 @@ def has_unparsable_grch38(hgvs: str | None) -> bool:
     if parse_grch38_substitution(hgvs) is not None:
         return False
     return any(
-        token.split(":")[0] in _G38_ACCESSIONS
+        token.split(":")[0] in GRCH38_REFSEQ_ACCESSIONS
         for token in re.split(r"[,\s]+", (hgvs or "").strip())
         if ":" in token
     )
