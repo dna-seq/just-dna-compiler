@@ -144,6 +144,59 @@ authored rows in the appendix.
 | 12 | Model-organism evidence: three candidate homes | 77 rows (M) |
 | 13 | Two strata on one estimate | 2 loci (I) |
 
+## 6. Second run, against the reshaped shape (2026-11-04, the same agent, read at `0fb954f`)
+
+The run re-measured every requirement against the shape after §3's verdicts, the computed LD pair, the
+meta-table's citation, role and `flags`, the `pmid = NONE` sentinel and the widened selector.
+
+**Verdicts that moved.** These requirements now fit:
+
+- the tier scale, which accepts X, A- and B-;
+- the legacy layer: 528 rows become one tag-selector row. 8 seed-tiered v1 rsIDs need a concrete row to beat
+  D;
+- ADARB (R-RARE-4): 18 rows become 2, through an AND-ed selector (`gene=ADARB1, flags=legacy_longevitymap`);
+- hallmark and protection tags (R-CAT-2, R-DEF-2), through the meta-table's `flags`;
+- APOE's 14 study links, through the meta-table's citation;
+- the 17 DOI-only studies, through `NONE` + `doi`;
+- the 32 mediators, through `role`;
+- R-CAUSAL, now derived: the computed C agrees with v2's 18 curated assessments on 14 (longevity credible
+  sets) or 16 (any-trait sets).
+
+**Every addition has a v2 case** (the run's table, with counts). Two are in question:
+
+- `role=outcome` is derivable;
+- the meta-table's `flags` has one locus, which the maintainer accepted for parity.
+
+**Still not held:**
+
+1. **A meta-table row cannot cite a DOI-only preprint**, because there is no `doi` beside its `pmid`. That
+   affects 6 preprint HLA alleles (M), and RM335's 17 PMID-less rows have the same question.
+2. **ε2/ε4: two concrete keys from different tables tie** (an allele row from `allele_function.csv` and a
+   diplotype row). Precedence does not rank a diplotype over the alleles it contains, so no author row can
+   settle it (1, M).
+3. Two modifiers on one estimate (2 loci) and two causal-confidence judgements stay prose, as already
+   accepted.
+
+**Unstated rules the build needs:**
+
+- which tables count as member tables (`haplotypes.csv`?);
+- what the LD lookup does for a mixed-ancestry study (3 of 68 links);
+- whether `effect_allele` must be uniform across a locus's rows. That uniformity is what lets a locus-level
+  per-trait row count as allele-bearing: about 134 rows, against about 268 with genotype keys. v2
+  harmonises it (`allele_conflict` false on 228/228, M), but no format rule requires it.
+
+**Edges for the examples:**
+
+- 9 two-hop mediator chains (LDL → CAD) become unordered mediator rows.
+- 3 mixed-ancestry proxy links have no single LD panel, and Ashkenazi maps to EUR (12 rows).
+- "ε4 carrier" through a diplotype selector works only because pairs are canonicalised. The `(APOE, ε4)`
+  allele member says it directly.
+- v2 writes the legacy set twice, as `flags` and as `category=legacy_candidate`. That is for v2's README.
+- rs2075650 gets tier D from the tag while its seed says C, which is correct if "not scored" is the intent.
+
+The run's rewritten examples, in the final shape only, are in this report's appendix below the first run's;
+two of the first run's cases were dropped as trivial.
+
 ## Appendix: the candidate examples, as the run wrote them
 
 Working names throughout (the meta-table as `meta.csv`, members joined by ` & `). Every name still owes its
@@ -489,3 +542,371 @@ rsid,pmid,ancestry,stratum,stratum_level,effect_measure,statistical_test
 rs2802292,41837379,EUR,sex,male,NR,"men with hypertension/diabetes/angina"   # the second modifier has no column
 ```
 **Edge.** One pair holds one modifier. "Hypertensive men" is two, so the second goes back into prose.
+
+## Appendix 2: the examples in the final shape (second run)
+
+### Reference examples, second run: longevitymap v2 in the reshaped 0.8 shape
+
+Measured 2026-11-04 against `ROADMAP_0_8.md` at `0fb954f`, where the latest dated line under each item wins.
+v2's data is just-dna-lite `docs/longevitymap_v2/` (requirements, `data/`, `evidence/`).
+
+**Counts.** **M** means read off a column. **I** means a keyword or regex classification of free text, so
+treat it as approximate.
+
+**Columns that are gone.** Every row below is in the final shape only, so these never appear:
+- `causal_conf` and `effector_conf`;
+- `age_event`;
+- diplotype `priority` and `actionability`;
+- `effect_unit` on variants;
+- the HLA table;
+- `conclusion_lay` and `conclusion_concise`;
+- a hand-written `proxy_r2` or LD population.
+
+#### Conventions (illustrative; nothing below is decided spelling)
+
+- **The meta-table** is written as `meta.csv`, with these columns: `members, trait_efo_id, role, direction,
+  conclusion, negatives, sex, tier, age_of_action, age_conf, flags, pmid`.
+- **Members** are joined by ` & `. Each member is spelled `table[col=value, …]`.
+  - A member that names a table's full key is a **concrete row key**.
+  - `variants[rsid=…]` alone is a **locus-level key**.
+  - Anything else is a **selector**: conditions are AND-ed, and `=` on a list column means "contains".
+- **Precedence** follows RM28: a concrete key wins over a locus key, which wins over a selector with more
+  conditions, which wins over one with fewer.
+- **Trait ids** are v2's own terms (`OBA_VT0005372`, `EFO_0007796`, `EFO_0009762`), plus `EFO_0001645`
+  (CAD) and `MONDO_0004975` (AD). `TRAIT:<name>` marks a term still to be looked up.
+- **Conclusions** are abbreviated with `…`.
+
+**Dropped as trivial or decided:**
+- Run 1's standalone "facts-only one-member row" is now just a concrete override, folded into case 1.
+- "Two strata on one estimate" was decided as prose for its 2 loci (I).
+
+---
+
+#### 1. The legacy layer is one selector, and the rows that beat it
+
+**Exercises:**
+- the `flags=` list selector;
+- precedence of a concrete key over a selector;
+- a 2-condition selector against a 1-condition selector;
+- an open `tier` scale.
+
+**Count:**
+- 528 legacy rsIDs replaced by 1 row (M).
+- 12 seed rsIDs are also in v1 (M). 8 of them carry a seed tier and are not APOE proxies, so each needs a
+  concrete row to escape tier D: rs429358, rs7412, rs1063192, rs2802292, rs1333049, rs2149954, rs9536314
+  and rs5882.
+- R-RARE-4 puts 18 ADARB1/ADARB2 v1 rsIDs at tier C (M). That takes 2 selector rows instead of 18
+  concrete ones, but only if each one also names the legacy tag.
+
+```yaml
+# module_spec.yaml (excerpt): the scale is named once; values are open within it (X, A-, B- allowed)
+tier_scale: longevitymap_v2
+```
+```csv
+# meta.csv
+members,trait_efo_id,role,direction,conclusion,negatives,sex,tier,age_of_action,age_conf,flags,pmid
+variants[flags=legacy_longevitymap],,,,,,,D,,,,
+variants[gene=ADARB1, flags=legacy_longevitymap],,,,,,,C,,,,
+variants[gene=ADARB2, flags=legacy_longevitymap],,,,,,,C,,,,
+variants[rsid=rs2802292],,,,,,,B,UNKNOWN,UNKNOWN,,
+variants[rsid=rs10455872],,,,,,,A,MIDLIFE,DIRECT_WEAK,,
+```
+**Edges:**
+- `variants[gene=ADARB1]` has 1 condition, and so does the legacy row. They cannot be ordered and they
+  disagree (C against D), so the tier would be **withheld**. The author has to add the legacy condition to
+  win. 18 rows (M).
+- The tag selector matches v1's 1,022 genotype rows (M), and the compiler writes the tier onto each
+  matched row. The manifest records the match count.
+- Legacy rs429358 and rs7412 are `variants.csv` rows, so the tag makes them tier **D**, while the allele
+  rows in case 2 are tier **A**. These are different subjects, so precedence never compares them. The
+  report shows "not supported" for the SNP and "well established" for the allele unless the author also
+  writes `variants[rsid=rs429358]` with tier A. 2 rsIDs (M).
+- Two tag sets that disagree: v2 has **0** (I). `legacy` ∩ `preprint` is empty, and `legacy` ∩
+  `replication_failed` both give D. One overlap that agrees: `category=legacy_candidate` (v2 §5.2) is the
+  same 528-row set as `flags=legacy_longevitymap`, two spellings of one set.
+- The tier rows above carry no C or E label. Those are computed from parquet inputs (case 9).
+
+#### 2. APOE alleles: facts, flags and a citation; ε2/ε4 withheld
+
+**Exercises:**
+- the `allele_function.csv` (gene, allele) member;
+- meta `flags` and `pmid`;
+- diplotype `negatives` and `category`;
+- withholding when two concrete keys from different tables match.
+
+**Count:**
+- 2 allele rows and 6 diplotypes (M).
+- 1 diplotype (ε2/ε4) matches two allele rows that disagree on `age_conf` (M).
+- APOE has 14 study links (M).
+- APOE is the 1 locus whose `AP:`, NONADDITIVE and PROTECT tokens need meta `flags` (M, H file).
+
+```csv
+# allele_function.csv (key gene, allele; every other column empty)
+gene,allele
+APOE,ε2
+APOE,ε4
+```
+```csv
+# meta.csv
+members,trait_efo_id,role,direction,conclusion,negatives,sex,tier,age_of_action,age_conf,flags,pmid
+allele_function[gene=APOE, allele=ε4],,,,,,,A,LATE,DIRECT,ap:weak,30642433
+allele_function[gene=APOE, allele=ε2],,,,,,,A,LATE,DIRECT_WEAK,protect:presence,31413261
+```
+```csv
+# diplotypes.csv: RM322's two columns only
+gene,haplotype_a,haplotype_b,trait_efo_id,direction,phenotype,conclusion,negatives,category
+APOE,ε2,ε2,OBA_VT0005372,protective,APOE ε2/ε2,"You carry two copies of ε2…","Two copies of ε2 can raise rare blood-vessel problems…",brain_memory
+APOE,ε2,ε4,OBA_VT0005372,risk,APOE ε2/ε4,"…",,brain_memory
+APOE,ε3,ε4,MONDO_0004975,risk,APOE ε3/ε4 and Alzheimer's,"…",,brain_memory
+```
+**Edges:**
+- A genome that is ε2/ε4 carries both alleles:
+  - `tier` (A, A) and `age_of_action` (LATE, LATE) agree;
+  - `age_conf` (DIRECT against DIRECT_WEAK) disagrees and is **withheld**.
+- The author cannot settle it. A meta row keyed on the ε2/ε4 *diplotype* is also a concrete row key,
+  and nothing ranks one table's concrete key above another's. The tie stands unless the precedence gains
+  "a diplotype row over the allele rows it contains".
+- The `pmid` on the allele rows lets ε4's finding cite directly.
+
+#### 3. A combination with an existential selector: KL-VS × ε4 carriers
+
+**Exercises:**
+- a selector inside a combination ("any row of the set");
+- "a combination replaces what it names";
+- a meta `pmid` on a combination.
+
+**Count:** 1 combination row, replacing run 1's 3 rows (M). 2 study rows from 1 PMID (M).
+
+```csv
+# meta.csv
+members,trait_efo_id,role,direction,conclusion,negatives,sex,tier,age_of_action,age_conf,flags,pmid
+"diplotypes[gene=KL, haplotype_a=KL-VS, haplotype_b=ref, trait_efo_id=MONDO_0004975] & diplotypes[gene=APOE, haplotype_b=ε4, trait_efo_id=MONDO_0004975]",MONDO_0004975,outcome,protective,"You carry ε4 and one copy of KL-VS; in ε4 carriers over 60, one KL-VS copy was linked to lower Alzheimer's risk…",,,C,,,protect:buffering,32282020
+```
+**Edges:**
+- "ε4 carrier" is written as `haplotype_b=ε4`. It works only because pairs are canonicalised
+  `a <= b` and ε4 sorts last, so it matches ε2/ε4, ε3/ε4 and ε4/ε4.
+  - "ε2 carrier" works the same way, as `haplotype_a=ε2`.
+  - "ε3 carrier" would need OR (ε2/ε3 on b, ε3/ε4 on a), which is out of bounds. v2 has no such case
+    (0, M).
+- The KL diplotype row must still exist with its own required `conclusion`.
+- `protect:buffering` is derivable: a multi-member row exists. So that flag restates the shape.
+
+#### 4. Per-trait rows: role, allele-bearing members, computed tradeoff
+
+**Exercises:**
+- the `role` column (outcome or mediator);
+- the "allele-bearing member" rule;
+- `tradeoff` computed by Kleene logic.
+
+**Count:**
+- 32 loci name a mediator (M); 9 of them write a chain such as "LDL -> CAD" (M).
+- 15 of 32 loci carry both a benefit and a harm (I); about 134 per-trait items in total (I).
+- 4 loci have no determined allele, so they get no per-trait row (M).
+
+```csv
+# meta.csv: allele C of rs3184504; carrier genotypes are rows (no OR), so each trait is 2 rows
+members,trait_efo_id,role,direction,conclusion,negatives,sex,tier,age_of_action,age_conf,flags,pmid
+variants[rsid=rs3184504, genotype=C/C],TRAIT:hypothyroidism,,protective,,,,,,,,
+variants[rsid=rs3184504, genotype=C/T],TRAIT:hypothyroidism,,protective,,,,,,,,
+variants[rsid=rs3184504, genotype=C/C],TRAIT:sepsis_mortality,,risk,,,,,,,,
+variants[rsid=rs3184504, genotype=C/T],TRAIT:sepsis_mortality,,risk,,,,,,,,
+variants[rsid=rs10455872, genotype=A/A],TRAIT:lipoprotein_a,mediator,protective,,,,,,,,
+variants[rsid=rs10455872, genotype=A/A],EFO_0001645,mediator,protective,,,,,,,,
+# derived: tradeoff(rs3184504 C carriers) = true; tradeoff(rs10455872) = false only if every trait's judgement is present
+```
+**Edges:**
+- **No selector picks the carriers.** `effect_allele` is the same on all 3 genotype rows, and "genotype
+  contains C" would need OR. With genotype members, each trait costs 2 rows (about 268, I).
+- **The other reading costs 1 row per trait (about 134, I).** v2 §6.2 harmonises `effect_allele` per
+  locus, and the seed has one lifespan allele per rsID with `allele_conflict` False on 228 of 228 (M). So a
+  locus key `variants[rsid=rs3184504]` already bears an allele, provided the format requires `effect_allele`
+  to be uniform across a locus's rows (no such rule today). That is the cheaper reading of "allele-bearing".
+- **`role=outcome` is derivable only if the module declares its outcome-trait set once**, the way it names
+  `tier_scale`. Nothing declares that set today; given one, `role=outcome` holds exactly when `trait_efo_id`
+  is in it. Only `mediator` carries information: incidental pleiotropy (IL6R atopy, DEF8 vitiligo) is
+  neither outcome nor mediator and is written with no role.
+- **A chain like LDL → CAD** is two mediator rows with no order between them (9 loci, M).
+
+#### 5. Two classes, one paper: Timmers 2020
+
+**Exercises:** `phenotype_class` as part of the duplicate-citation narrowing; the derived outcome strip.
+
+**Count:**
+- 10 variants in PMID 32678081 (M).
+- Outcome cells per lead, counting study rows (I): 8 leads have all 3, 17 have 2, 91 have 1, 29 have none,
+  and 16 are mvAge only. The mvAge mapping is v2's to state in its README.
+
+```csv
+rsid,pmid,phenotype_class,effect_allele,effect_size,effect_measure,effect_unit,p_value,sample_size,sample_unit,statistical_test
+rs10455872,32678081,EXTREME_SURVIVAL_CC,A,0.124,log(OR),log-odds per allele,7e-03,,,longevity component of MANOVA
+rs10455872,32678081,PARENTAL_LIFESPAN,A,0.076,beta,-ln HR per allele,9e-25,1012240,lives,parental lifespan component
+rs10455872,32678081,HEALTHSPAN,A,0.057,beta,-ln HR per allele,1e-10,300447,individuals,healthspan component
+```
+
+#### 6. Same class, the analysis differs: Deelen percentiles, Pilling parent sex
+
+**Exercises:**
+- the duplicate-citation narrowing by stratum;
+- `age_of` set to the parent inside an extreme class;
+- a percentile threshold kept in `statistical_test`.
+
+**Count:**
+- Deelen has 3 variants with both a 90th- and a 99th-percentile row (M).
+- Pilling has 24 rows (M): fathers 11, mothers 2, attained age 7, age at death 2, both parents in the top
+  10% 2.
+
+```csv
+rsid,pmid,phenotype_class,effect_size,effect_measure,n_cases,sample_size,sample_unit,age_of,stratum,stratum_level,statistical_test
+rs7412,31413261,EXTREME_SURVIVAL_CC,1.28,OR,11262,36745,individuals,participant,,,">=90th percentile vs <=60th"
+rs7412,31413261,EXTREME_SURVIVAL_CC,1.47,OR,3484,28967,individuals,participant,,,">=99th percentile vs <=60th"
+rs74444983,29227965,PARENTAL_LIFESPAN,-0.0143,beta,,389166,individuals,parent,parent_sex,father,"BOLT-LMM fathers_attained"
+```
+**Edge.** Father against mother is written twice: `age_of=parent` plus `stratum=parent_sex`. That
+duplication is unchanged from run 1 (13 rows, M).
+
+#### 7. Parental lives against participants
+
+**Exercises:** `sample_unit`.
+
+**Count:** of 22 parental studies, 4 count lives, 9 count participants and 9 state no N (I). 2 studies
+outside the parental class count lives (I).
+
+```csv
+rsid,pmid,phenotype_class,sample_size,sample_unit
+rs10455872,30642433,PARENTAL_LIFESPAN,1012240,lives
+rs74444983,29227965,PARENTAL_LIFESPAN,389166,individuals
+```
+
+#### 8. Age bands with an open upper bound (no event column)
+
+**Exercises:**
+- `age_min`, `age_max` and `age_of`;
+- the narrowing by age band.
+
+**Count:**
+- 72 rows: 24 loci × 3 bands (M).
+- `age_conf` DIRECT ⇔ band-moderation q < 0.05 holds on 19 of 24 (M), so `age_conf` stays authored.
+
+```csv
+rsid,pmid,phenotype_class,effect_allele,effect_size,effect_measure,effect_unit,age_min,age_max,age_of
+rs10455872,30642433,PARENTAL_LIFESPAN,A,0.1089,beta,log protection ratio per allele,40,60,parent
+rs10455872,30642433,PARENTAL_LIFESPAN,A,0.0778,beta,log protection ratio per allele,60,80,parent
+rs10455872,30642433,PARENTAL_LIFESPAN,A,0.0530,beta,log protection ratio per allele,80,,parent
+```
+
+#### 9. Proxy-measured study: the author writes `proxy_rsid`, the enricher computes the LD pair
+
+**Exercises:** `proxy_rsid`, and the machine-written LD table looked up in the study's ancestry.
+
+**Count:**
+- 68 `(rsid, pmid)` links rest on 58 non-lead seed rsIDs (I). Of the 68:
+  - 64 have a single superpopulation, so a 1000G lookup is possible (62 EUR, 2 EAS);
+  - 3 are mixed (trans-ethnic), so there is no single panel;
+  - 1 is unmappable.
+- 5 non-leads sit more than 500 kb from their lead (M). They are likely independent signals, and the
+  computed r² would show that.
+- 2 age-band proxies (M), both EUR.
+
+```csv
+# studies.csv (authored)
+rsid,pmid,proxy_rsid,ancestry,effect_allele,effect_size,effect_measure,effect_unit,age_min,age_max,age_of
+rs646776,30642433,rs4970836,EUR,G,0.2234,beta,years of parental lifespan per allele,,,parent
+```
+```csv
+# the LD table (machine-written; illustrative columns; the r² cell is what the lookup fills)
+lead_rsid,proxy_rsid,population,r2,ld_reference,release
+rs646776,rs4970836,EUR,<computed>,<LD reference>,<release>
+```
+**Edges:**
+- A study with mixed ancestry has no single panel. 3 links: withhold, or pick one panel; the rule is
+  unstated.
+- Ashkenazi studies map to EUR, because 1000G has no Ashkenazi panel: 12 candidate rows (M).
+
+#### 10. HLA alleles via `allele_function.csv`, and the preprint ones that cannot cite
+
+**Exercises:**
+- the HLA grammar check on `allele_function.csv`;
+- the meta `sex` condition and `pmid`;
+- the hole: no `doi` on meta-table rows.
+
+**Count:**
+- 8 alleles (M). 2 are published (DRB1\*15:01, B\*57:01).
+- 6 come from one DOI-only medRxiv preprint (10.1101/2025.03.30.25324899).
+
+```csv
+# allele_function.csv
+gene,allele
+HLA-DRB1,*15:01
+HLA-B,*57:01
+HLA-A,*02:01
+```
+```csv
+# meta.csv
+members,trait_efo_id,role,direction,conclusion,negatives,sex,tier,age_of_action,age_conf,flags,pmid
+allele_function[gene=HLA-DRB1, allele=*15:01],OBA_VT0005372,outcome,risk,"Men who carry HLA-DRB1*15:01 were less common among long-lived men…",,male,B,LATE,INFERRED,,41116190
+allele_function[gene=HLA-A, allele=*02:01],OBA_VT0005372,outcome,protective,"…",,,C,,,,NONE   # NONE needs a doi; meta rows have none
+```
+**Edge.** The meta `pmid` follows RM47's pattern, and like `MeasureBinRow.pmid` and
+`PharmVariantRow.pmid` it has **no `doi` beside it**; only `StudyRow` carries `doi`. So `NONE` cannot be
+used, and the 6 preprint alleles' findings cannot cite (M). The only fallback is a studies.csv row with
+no subject, which cites the module, not the allele.
+
+#### 11. Preprint evidence on studies.csv: `pmid=NONE`, `doi` mandatory
+
+**Exercises:** the typed sentinel, and the DOI refusal kept.
+
+**Count:**
+- 17 DOI-only studies (M): 11 under prefix 10.64898, 4 under 10.1101, 2 under 10.21203.
+- 8 DOI-only candidate rows (M). The 2 that land on `studies.csv`: CGAS rs200818241 and EYS rs75571981.
+
+```csv
+rsid,pmid,doi,phenotype_class,effect_size,effect_measure
+rs75571981,NONE,10.21203/rs.3.rs-6869504/v1,EXTREME_SURVIVAL_CC,,NR
+rs75571981,10.21203/rs.3.rs-6869504/v1,,EXTREME_SURVIVAL_CC,,NR    # refused: a DOI in pmid
+```
+
+#### 12. C and E computed from inputs; an override corrects an input, never a judgement
+
+**Exercises:**
+- the cut of `causal_conf` and `effector_conf`;
+- the parquet inputs (RM239 posterior, RM236 consequence, RM333 L2G, RM238 coloc);
+- `overrides.csv`.
+
+**Count:** v2 has **no per-locus C or E label**, only the rubric (G synthesis). Compared with the 18
+curated assessments (I):
+- reading only longevity credible sets, computed C agrees on 14 of 18;
+- reading any trait's sets, it agrees on 16 of 18. That choice is a README policy.
+- The 2 residuals are judgements on true inputs:
+  - rs2075650: the curator calls it a "tag of ε4" with PIP 1.0 for some trait;
+  - rs16969968: the curator calls it "plausible causal (missense)" with max PIP 0.17.
+- Coloc changes the E level on 22 of 67 rows with L2G (M), so RM238 earns its place.
+- On the 10 curated rows that carry an L2G score, the L2G top gene equals the curated effector on 9 (M).
+  The miss is rs61905747: CLDN25 0.35, which v2 calls ambiguous and labels ZW10/USP28.
+
+```csv
+# overrides.csv: correct a derived input (key table, subject, member, field)
+table,subject,member,field,operation,value,reason
+gwas_effects.csv,<association_id of the rs7412 credible set>,,<posterior column>,insert,0.81,"median PIP across 500 examined credible sets (Open Targets 26.09); no longevity set contains rs7412"
+```
+**Edges:**
+- To force rs2075650 to C3, the author would have to write a false PIP. The rubric's output has no
+  override row, so the curator's call stays prose (2 rsIDs, I).
+- rs7412 needs `insert`, not `update`: no longevity set contains it, so there is no row to correct.
+
+#### 13. Model-organism evidence (RM335, unchanged)
+
+**Exercises:** the one table nothing else holds.
+
+**Count:**
+- 77 rows covering 40 genes (M).
+- 24 rows name no human variant (M) and 17 have no PMID (M).
+- Sex is mentioned on 10 rows and diet on 4 (I).
+- Concordance is 19 yes, 3 no, 55 unclear (M).
+
+```csv
+gene,orthologue,species,model_type,sex,diet,lifespan_effect,concordance,pmid
+PPARG,Pparg,Mus musculus,knock-in Pro12Ala,,high-fat,benefit lost on high-fat diet,nonmonotone,19117549
+IGF1R,Igf1r,Mus musculus,heterozygous knockout,female,,+33% (female),concordant,
+```
+**Edge.** 17 rows have no PMID, and GenAge entries have none either. The table's citation cell then needs
+the same `NONE`/`doi` rule, or a GenAge id.
