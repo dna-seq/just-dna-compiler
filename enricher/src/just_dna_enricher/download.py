@@ -188,6 +188,27 @@ class SnapshotNotPublished(FileNotFoundError):
 _parquet_footer_ok = parquet_footer_ok
 
 
+#: The Hub's own names for "this repo, revision or file does not exist" (`huggingface_hub.errors`), read
+#: by name so this module keeps its one guarded import. `HfFileSystem` raises `FileNotFoundError` for a
+#: missing path itself.
+_HUB_ABSENT_ERRORS: frozenset[str] = frozenset(
+    {"RepositoryNotFoundError", "RevisionNotFoundError", "EntryNotFoundError", "RemoteEntryNotFoundError"}
+)
+
+
+def _hub_says_absent(exc: BaseException) -> bool:
+    """Whether a Hub failure is the Hub saying *nothing is there* rather than failing to answer (RM361).
+
+    Only that answer is `SnapshotNotPublished`, which `cache pull` reports as "not published yet" and
+    does not count as a failure. A timeout, a 429, a 401/403 or a DNS failure answered nothing about
+    whether anything is published, and reading it as "nothing is published" hid every outage of the
+    one command that provisions a deployment.
+    """
+    return isinstance(exc, FileNotFoundError) or any(
+        cls.__name__ in _HUB_ABSENT_ERRORS for cls in type(exc).__mro__
+    )
+
+
 def _fetch_parquet(
     fs, remote_path: str, local_path: Path, *, display: str, label: str, error_cls: type[Exception]
 ) -> None:
@@ -311,6 +332,11 @@ def _provision_snapshot(
             return _unverified(
                 cache_dir, label, f"the published listing could not be read ({type(exc).__name__})"
             )
+        if not _hub_says_absent(exc):
+            raise error_cls(
+                f"the {label} snapshot's listing at {hf_repo_prefix} could not be read "
+                f"({type(exc).__name__}: {exc}); whether anything is published there is unknown"
+            ) from exc
         raise SnapshotNotPublished(
             f"nothing is published at {hf_repo_prefix} — the repo or its data/ does not exist. "
             f"Build the snapshot locally (`cache rebuild --only …`), or publish one."
@@ -693,6 +719,11 @@ def _provision_root_file_snapshot(
         fs.get(f"{hf_repo}/{payload}", str(tmp_path))
     except Exception as exc:
         tmp_path.unlink(missing_ok=True)
+        if not _hub_says_absent(exc):
+            raise error_cls(
+                f"{payload} in {hf_repo} could not be fetched ({type(exc).__name__}: {exc}); whether it "
+                f"is published there is unknown"
+            ) from exc
         raise SnapshotNotPublished(
             f"no {payload} in {hf_repo} — nothing has been published there yet. Build your own with "
             f"`just-dna-enricher {label.lower()} build --out <dir>`."
