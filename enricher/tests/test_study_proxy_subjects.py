@@ -212,3 +212,16 @@ def test_every_table_enrich_asks_a_coordinate_for_is_one_reverse_rebuilds_it_fro
             origins.add(arg.value)
     assert origins == set(SUBJECT_TABLES)
     assert set(SUBJECT_TABLES) == set(RESOLUTION_SOURCE_TABLES)
+
+
+def test_no_resolve_puts_no_proxy_locus_in_the_artifact(tmp_path: Path) -> None:
+    """`--no-resolve` reads no `resolution.csv`, so the proxy's loci may not reach `studies.parquet` either."""
+    spec = _spec(tmp_path, "A")
+    enrich(spec, offline=True, ensembl_cache=_cache(tmp_path), clinvar_cache=tmp_path, mint_vrs=False)
+    compile_module(spec, tmp_path / "on")
+    compile_module(spec, tmp_path / "off", resolve_with_ensembl=False)
+    loci = {
+        name: pl.read_parquet(tmp_path / name / "studies.parquet")["proxy_loci"].drop_nulls().len()
+        for name in ("on", "off")
+    }
+    assert loci == {"on": 1, "off": 0}

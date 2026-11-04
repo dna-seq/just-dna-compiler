@@ -1577,7 +1577,9 @@ plus `overrides.csv` when `overrides.parquet` is present (0.7, RM124).
   a study's LD proxy's resolved loci (RM331). A proxy is usually not a module variant, so before that
   column the reversed spec lost the proxy's row, `resolution_signature` moved, and the proxy allele check
   went silent on the second lap. Proxy rows come last and never replace a row another table emitted
-  under the same key.
+  under the same key. `proxy_loci` is read from the post-overlay `resolution.csv`, and not at all under
+  `--no-resolve`, so `studies.parquet` (like `weights.parquet`'s filled coordinates) moves with the injected
+  table while `content_signature` does not.
 - **The derived sidecars come back POST-overlay, and `overrides.csv` comes back beside them** (0.7,
   RM124). The overlay is applied at compile, so what reverse reads out of the parquets is already the
   corrected table — and it re-emits the overlay too, which means **the overlay applies twice and the

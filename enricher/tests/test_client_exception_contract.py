@@ -37,7 +37,7 @@ from just_dna_enricher.gnomad import GnomadClient, GnomadError, GnomadSettings
 from just_dna_enricher.grch37 import Grch37Client
 from just_dna_enricher.gwas import GwasCatalogClient, GwasError
 from just_dna_enricher.identifiers import IdentifierUnavailable, OntologyClient
-from just_dna_enricher.ld_pairs import LdClient, LdUnavailable
+from just_dna_enricher.ld_pairs import LdClient, LdError
 from just_dna_enricher.literature import CrossrefClient, EuropePmcClient, LiteratureUnavailable, PmcBiocClient
 from just_dna_enricher.litvar import LitvarClient, LitvarUnavailable
 from just_dna_enricher.net import PacingGate
@@ -252,10 +252,10 @@ CLIENTS = [
     # read rather than an unreachable source; the transport and status legs are the
     # `ClinVarGkmUnavailable` subclass, asserted in `test_clinvar_gkm.py`.
     ("clinvar_gkm", _clinvar_gkm, ClinVarGkmError),
-    # `LdUnavailable` rather than its parent: every leg this file drives (5xx, transport, 404, a 200 that
-    # is EBI's HTML error page) means Ensembl could not be asked. `LdError` is the parent and covers an
-    # answer the pass cannot use (a 400 for a population, a pair with no readable r²).
-    ("ld_pairs", _ld_pairs, LdUnavailable),
+    # The parent, because two legs this file drives are not outages: a 404 means the path moved or the
+    # species is wrong (a re-run repeats it), and a 200 HTML page is an answer that cannot be read. The
+    # 5xx and transport legs are the `LdUnavailable` subclass, asserted in `test_ld_pairs.py`.
+    ("ld_pairs", _ld_pairs, LdError),
 ]
 
 

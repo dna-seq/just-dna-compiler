@@ -64,8 +64,8 @@ class LdPairRow(BaseModel):
     variant_key: str = Field(
         json_schema_extra=since("0.8.0"),
         description=(
-            "The study row's lead variant, the module's key for it. Joins `weights.parquet.variant_key` "
-            "and `studies.parquet.variant_key`."
+            "The study row's lead, keyed as `StudyRow.variant_key` keys it: the rsID, or `chrom:start:ref` "
+            "for a coordinate-authored lead. For an rsID lead that is also `weights.parquet.variant_key`."
         ),
     )
     ld_population: str | None = Field(

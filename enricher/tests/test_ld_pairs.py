@@ -361,3 +361,76 @@ def test_live_ensembl_answers_the_longevitymap_pair_in_eur(tmp_path: Path) -> No
     assert row.status == "resolved" and row.r2 is not None and 0.9 < row.r2 <= 1.0
     assert row.ld_population == f"{LD_POPULATION_PREFIX}EUR" and row.answered_rsid == "rs4970836"
     assert row.dataset is not None and row.dataset.startswith("ensembl_")
+
+
+def test_a_coordinate_lead_is_asked_by_the_rsid_resolution_back_filled_at_its_place(tmp_path: Path) -> None:
+    """A study keys a coordinate lead as `chrom:start:ref`; the `VariantRow` resolution answered for keys
+    with `alts`, so the back-filled rsID is found by place, never by key (review finding, RM331)."""
+    spec = _spec(tmp_path, "chrom,start,ref,pmid,proxy_rsid,ancestry\n1,109275908,C,30642433,rs4970836,EUR\n")
+    (spec / "resolution.csv").write_text(
+        "variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,source,status\n"
+        "1:109275908:C:G,rs646776,1,109275908,C,G,GRCh38,0,ensembl,resolved\n"
+    )
+    ensembl = _Ensembl({"/ld/human/pairwise/rs4970836/rs646776": [_json(200, _EUR)]})
+    [row] = enrich_ld_pairs(spec, client=_client(ensembl)).rows
+    assert (row.status, row.variant_key, row.r2) == ("resolved", "1:109275908:C", 0.924767)
+
+
+def test_a_repeated_ancestry_code_is_one_superpopulation(tmp_path: Path) -> None:
+    spec = _spec(tmp_path, 'rsid,pmid,proxy_rsid,ancestry\nrs646776,30642433,rs4970836,"EUR;EUR"\n')
+    ensembl = _Ensembl({"/ld/human/pairwise/rs4970836/rs646776": [_json(200, _EUR)]})
+    [row] = enrich_ld_pairs(spec, client=_client(ensembl)).rows
+    assert (row.status, row.ld_population) == ("resolved", f"{LD_POPULATION_PREFIX}EUR")
+
+
+def test_an_unusable_answer_costs_its_pair_alone_and_the_rest_are_committed(tmp_path: Path) -> None:
+    """A pair Ensembl answers with something the pass cannot use (here a row with no r²) gets no row and
+    is named; the pairs already paid for in the same run are written before the pass raises."""
+    spec = _spec(
+        tmp_path,
+        "rsid,pmid,proxy_rsid,ancestry\nrs646776,30642433,rs4970836,EUR\nrs646776,31413261,rs602633,EUR\n",
+    )
+    broken = '[{"population_name":"1000GENOMES:phase_3:EUR","variation1":"rs602633","variation2":"rs646776"}]'
+    ensembl = _Ensembl(
+        {
+            "/ld/human/pairwise/rs4970836/rs646776": [_json(200, _EUR)],
+            "/ld/human/pairwise/rs602633/rs646776": [_json(200, broken)],
+        }
+    )
+    with pytest.raises(LdError) as caught:
+        enrich_ld_pairs(spec, client=_client(ensembl))
+    assert not isinstance(caught.value, LdUnavailable)
+    assert [(r["proxy_rsid"], r["status"]) for r in _rows(spec)] == [("rs4970836", "resolved")]
+
+
+def test_a_row_whose_study_changed_is_dropped_not_kept_beside_the_new_one(tmp_path: Path) -> None:
+    spec = _spec(tmp_path, "rsid,pmid,proxy_rsid,ancestry\nrs646776,30642433,rs4970836,\n")
+    enrich_ld_pairs(spec, client=_client(_Ensembl({})))
+    assert [r["status"] for r in _rows(spec)] == ["ancestry_unstated"]
+    (spec / "studies.csv").write_text(_ONE_EUR_STUDY)
+    result = enrich_ld_pairs(
+        spec, client=_client(_Ensembl({"/ld/human/pairwise/rs4970836/rs646776": [_json(200, _EUR)]}))
+    )
+    assert result.dropped == [("rs4970836", "rs646776", None)]
+    assert [r["status"] for r in _rows(spec)] == ["resolved"]
+
+
+@pytest.mark.parametrize(
+    "status,body,raised",
+    [
+        (404, '{"error":"page not found"}', LdError),
+        (400, "<html>bad request</html>", LdError),
+        (503, '{"error":"busy"}', LdUnavailable),
+        (500, _HTML_500, LdUnavailable),
+        (200, _HTML_500, LdError),
+    ],
+    ids=["404-defect", "400-not-json", "503-outage", "500-html", "200-html"],
+)
+def test_a_defect_and_an_outage_are_told_apart_by_type(status: int, body: str, raised: type) -> None:
+    """A defect a re-run repeats (a moved path, a refusal that is not JSON) is `LdError`; could-not-ask is
+    the `LdUnavailable` subclass, and only that one tells the operator a re-run helps."""
+    kind = "application/json" if body.startswith(("{", "[")) else "text/html"
+    client = _client(lambda _req: httpx.Response(status, text=body, headers={"content-type": kind}))
+    with pytest.raises(LdError) as caught:
+        client.pairwise("rs4970836", "rs646776", f"{LD_POPULATION_PREFIX}EUR")
+    assert isinstance(caught.value, LdUnavailable) is (raised is LdUnavailable)

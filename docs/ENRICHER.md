@@ -3366,16 +3366,27 @@ the table's write, and only on a run where Ensembl answered: a run that wrote wi
 source.
 
 **The client contract.** 5xx (EBI serves its 500 as an HTML page), 429 and transport errors are retried,
-then raised as `LdUnavailable`; a 200 that is not JSON is `LdUnavailable` too. The timeout is 90 seconds
-(the probe measured a 37-second answer) and the pacing gate one request per 100 ms, under Ensembl's 15 per
-second and its 55,000 per hour.
+then raised as `LdUnavailable`: could-not-ask, cleared by a re-run. Everything a re-run would repeat is
+the parent `LdError`: a 404 or other 4xx (a moved path, a wrong species), a 400 that is not JSON or names
+no variation, and a 200 that is not a JSON array of pairs. The timeout is 90 seconds (the probe measured a
+37-second answer) and the pacing gate one request per 100 ms, under Ensembl's 15 per second and its
+55,000 per hour.
+
+**Who the lead is.** The study row's own rsID; for a coordinate-authored lead, the rsID `resolution.csv`
+back-filled **at the same place** (`chrom`, `start`, `ref`), never looked up by key, since a `StudyRow`
+keys without `alts` and the `VariantRow` resolution answered for keys with them; a place two rows
+back-fill differently gives no rsID. A repeated `ancestry` code (`EUR;EUR`) is one superpopulation.
 
 **What a run commits.** A pair already in the file is not asked again (`@sidecar-authoritative`); delete
-the file to re-ask after a new release. `--offline` asks nothing and writes nothing: there is no LD
-snapshot, and a row for an unasked pair would claim an answer. When Ensembl stays down past the retries,
-the queue stops, the pairs answered this run are committed, nothing is written for the rest, and the pass
-raises `LdUnavailable` naming how many were not asked; a re-run asks only those. There is no `--strict`:
-every arm above is a reproducible answer or a stated reason, so a strict mode would refuse nothing.
+the file to re-ask after a new release. A recorded pair no study row names any more (its ancestry or proxy
+was edited) is dropped and counted (`LdPairsResult.dropped`), so a withheld row does not linger beside the
+answer that replaced it. `--offline` asks nothing and writes nothing: there is no LD snapshot, and a row for
+an unasked pair would claim an answer. A pair whose answer this pass cannot use gets no row and costs that
+pair alone: the queue goes on, the run's other rows are committed, and the pass then raises `LdError`
+naming it. When Ensembl stays down past the retries, the queue stops, the pairs answered this run are
+committed, nothing is written for the rest, and the pass raises `LdUnavailable` naming how many were not
+asked; a re-run asks only those. There is no `--strict`: every arm above is a reproducible answer or a
+stated reason, so a strict mode would refuse nothing.
 
 ## Gene–disease validity (`gene_validity.py`, online only) — RM24
 

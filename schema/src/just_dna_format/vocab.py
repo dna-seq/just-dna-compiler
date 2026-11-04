@@ -665,10 +665,12 @@ VALID_SOURCE_LAYERS: frozenset[str] = frozenset(
 )
 
 # What `ld_pairs.csv.status` says about a (proxy, lead, panel) pair (RM331). Closed: each member is an arm
-# the `ld-pairs` pass reaches, and only `resolved` carries a number. Prefixed for the lane, because
-# `resolved` and `not_found` already mean other things in `VALID_RESOLUTION_STATUS`
-# (`@a-lane-local-vocabulary-may-not-shadow-a-schema-one`); `not_reported` is Ensembl's `200 []`, which
-# is not "absent": below its floor, or not in LD, unknown which.
+# the `ld-pairs` pass reaches, and only `resolved` carries a number. The CONSTANT carries the lane's name
+# (`@a-lane-local-vocabulary-may-not-shadow-a-schema-one`), so it cannot be imported in place of
+# `VALID_RESOLUTION_STATUS`. One member is shared with it, `resolved`, in the same sense (the source
+# answered with the fact); `not_found` is deliberately not reused, because Ensembl's `200 []` is not
+# "absent" but below its floor or not in LD, unknown which (`not_reported`), and its 400 is about an id
+# (`rsid_unknown`). Read a `status` together with the table it sits in.
 VALID_LD_PAIR_STATUS: frozenset[str] = frozenset(
     {
         "resolved",

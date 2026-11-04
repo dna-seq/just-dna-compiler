@@ -676,7 +676,13 @@ def compile_module(
     weights_df = _build_weights(variants, config, studies) if variants else None
     annotations_df = _build_annotations(variants, module_name) if variants else None
     studies_df = (
-        _build_studies(studies, module_name, resolution_table, config.genome_build) if studies else None
+        # Gated like every resolution read: under `--no-resolve` the table was not read, so no proxy's
+        # loci may reach the artifact either (RM331).
+        _build_studies(
+            studies, module_name, resolution_table if resolve_with_ensembl else None, config.genome_build
+        )
+        if studies
+        else None
     )
     # Names taken from `SNP_CORE_PARQUETS` rather than spelled again: this is the site the binding was
     # extracted from, so a literal here would be the copy the constant exists to remove.

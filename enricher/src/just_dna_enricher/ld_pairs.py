@@ -116,8 +116,9 @@ class LdClient:
     """Ensembl REST pairwise LD, with the four legs of the client contract.
 
     A 200 is an answer (its JSON array); a 400 naming a variation is an answer too (`LdAnswer.unknown`);
-    every other 4xx, and a 200 that is not a JSON array, is `LdError`; 5xx, 429 and transport failures are
-    retried and then `LdUnavailable`.
+    every other 4xx (a 404 is a moved path or a wrong species, which a re-run repeats) and a 200 that is not
+    a JSON array of pairs is `LdError`; 5xx (EBI serves its 500 as an HTML page), 429 and transport
+    failures are retried and then `LdUnavailable`.
     """
 
     endpoint: str = DEFAULT_REST_ENDPOINT
@@ -162,7 +163,9 @@ class LdClient:
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code in _RETRY_STATUS:
                 raise LdUnavailable(f"Ensembl could not be asked ({path}): {exc}") from exc
-            raise LdUnavailable(f"Ensembl answered {exc.response.status_code} for {path}: {exc}") from exc
+            # A 404/401/405 is the service answering a request this client got wrong (a moved path, a
+            # wrong species): a defect, which a re-run repeats, never an outage.
+            raise LdError(f"Ensembl answered {exc.response.status_code} for {path}: {exc}") from exc
         except httpx.HTTPError as exc:
             raise LdUnavailable(f"Ensembl could not be reached ({path}): {exc}") from exc
 
@@ -170,12 +173,18 @@ class LdClient:
         """r² and D′ between `proxy` and `lead` in `population`, as the reference serves them."""
         path = f"ld/{self.species}/pairwise/{proxy}/{lead}"
         response = self._request(path, {"population_name": population})
-        payload = _json(response, path)
         if response.status_code == 400:
+            try:
+                payload = response.json()
+            except ValueError as exc:
+                raise LdError(
+                    f"Ensembl refused {path} for {population} with a body that is not JSON"
+                ) from exc
             message = payload.get("error") if isinstance(payload, dict) else None
             if isinstance(message, str) and _UNKNOWN_VARIATION.search(message):
                 return LdAnswer(unknown=message)
             raise LdError(f"Ensembl refused {path} for {population}: {message or payload!r}")
+        payload = _json(response, path)
         if not isinstance(payload, list) or not all(isinstance(row, dict) for row in payload):
             raise LdError(f"Ensembl answered {path} with {type(payload).__name__}, not a list of pairs")
         return LdAnswer(rows=tuple(payload))
@@ -190,12 +199,14 @@ class LdClient:
 
 
 def _json(response: httpx.Response, what: str) -> object:
-    """The body as JSON. A body that is not JSON (EBI's HTML error page served as a 200) is an answer
-    the service could not give, so it is could-not-ask, never a parse error leaking out."""
+    """The body as JSON, or `LdError`. A 200 whose body is not JSON (a proxy interstitial) is an answer
+    that cannot be read, the house's shape failure (the parent type, as `ClinVarGkmError` and
+    `LitvarError` raise it), never a parse error leaking out. EBI's own error page arrives as a 500, which
+    the status leg retries and reports as `LdUnavailable`."""
     try:
         return response.json()
     except ValueError as exc:
-        raise LdUnavailable(f"Ensembl answered {what} with a body that is not JSON: {exc}") from exc
+        raise LdError(f"Ensembl answered {what} with a body that is not JSON: {exc}") from exc
 
 
 # ── the pass ────────────────────────────────────────────────────────────────────────────────────
@@ -221,21 +232,37 @@ class LdPairsResult:
     written: list[LdPairRow] = field(default_factory=list)
     #: Pairs this run should have asked and did not: `--offline`, or Ensembl down past the retries.
     unasked: list[PairKey] = field(default_factory=list)
+    #: Pairs Ensembl answered with something this pass cannot use (`LdError`): no row, named, and the
+    #: run raises after committing the rest.
+    unusable: list[tuple[PairKey, str]] = field(default_factory=list)
+    #: Rows already in the file whose pair no study row names any more (its ancestry or proxy changed):
+    #: dropped, since a derived row with no study behind it is an orphan, and counted here.
+    dropped: list[PairKey] = field(default_factory=list)
     #: Pairwise requests made (each answered); the release probe is not counted.
     requests: int = 0
     dataset: str | None = None
     skipped_offline: bool = False
 
 
-def _lead_rsid(row: StudyRow, backfilled: dict[str, str]) -> str | None:
-    """The lead's rsID to send: the study row's own, else the one resolution back-filled for its key."""
+#: `(chrom, start, ref)` → the one rsID `resolution.csv` back-filled at that place, for a coordinate lead.
+Place = tuple[str, int, str | None]
+
+
+def _lead_rsid(row: StudyRow, backfilled: dict[Place, str]) -> str | None:
+    """The lead's rsID to send: the study row's own, else the one resolution back-filled at its place.
+
+    Matched on the coordinate, never on the key: a `StudyRow` keys without `alts` (`chrom:start:ref`)
+    while the `VariantRow` that resolution answered for keys with them, so the two keys differ for the
+    same variant.
+    """
     if row.rsid is not None and RSID_PATTERN.match(row.rsid):
         return row.rsid
-    key = row.variant_key
-    return backfilled.get(key) if key is not None else None
+    if row.chrom is None or row.start is None:
+        return None
+    return backfilled.get((str(row.chrom), row.start, row.ref))
 
 
-def _wanted(studies: list[StudyRow], backfilled: dict[str, str]) -> list[_Wanted]:
+def _wanted(studies: list[StudyRow], backfilled: dict[Place, str]) -> list[_Wanted]:
     """One entry per distinct pair key, in first-occurrence (authored) order.
 
     Two studies of one pair that land on one key with different withhold reasons (one mixed, one with no
@@ -246,7 +273,7 @@ def _wanted(studies: list[StudyRow], backfilled: dict[str, str]) -> list[_Wanted
     for row in studies:
         if row.proxy_rsid is None or row.variant_key is None:
             continue
-        codes = row.ancestry or []
+        codes = list(dict.fromkeys(row.ancestry or []))  # `EUR;EUR` names one superpopulation
         if len(codes) == 1:
             population: str | None = f"{LD_POPULATION_PREFIX}{codes[0]}"
             lead = _lead_rsid(row, backfilled)
@@ -330,7 +357,9 @@ def _ask(
     The release is read first, in band, so the label is the release that answered (`@a-label-read-in-band-
     beats-one-read-off-the-transfer`). The first `LdUnavailable` stops the queue: the client has already
     retried it, so the rest would only wait out the same outage one by one. Everything not asked is
-    `result.unasked` and gets no row.
+    `result.unasked` and gets no row. An `LdError` for one pair (an answer this pass cannot use) costs that
+    pair alone: it gets no row, is named in `result.unusable`, and the queue goes on, so the pairs already
+    paid for are committed.
     """
     try:
         result.dataset = f"{LD_DATASET_PREFIX}{ensembl.release()}"
@@ -345,8 +374,15 @@ def _ask(
         except LdUnavailable as exc:
             result.unasked = [w.key for w in to_ask[index:]]
             return exc
+        except LdError as exc:
+            result.requests += 1
+            result.unusable.append((want.key, str(exc)))
+            continue
         result.requests += 1
-        fresh.append(_answered_row(want, answer, result.dataset, fetched_at))
+        try:
+            fresh.append(_answered_row(want, answer, result.dataset, fetched_at))
+        except LdError as exc:
+            result.unusable.append((want.key, str(exc)))
     return None
 
 
@@ -367,8 +403,11 @@ def _read_studies(spec_dir: Path) -> list[StudyRow]:
     return rows
 
 
-def _backfilled_rsids(spec_dir: Path) -> dict[str, str]:
-    """`variant_key → rsid` from the overlaid `resolution.csv`, for a coordinate-authored lead."""
+def _backfilled_rsids(spec_dir: Path) -> dict[Place, str]:
+    """`(chrom, start, ref) → rsid` from the overlaid `resolution.csv`, for a coordinate-authored lead.
+
+    A place two rows back-fill with different rsIDs is left out: picking one would send Ensembl a guess.
+    """
     path = sidecar_path(spec_dir, "resolution.csv", error=LdError)
     if not path.exists():
         return {}
@@ -376,7 +415,13 @@ def _backfilled_rsids(spec_dir: Path) -> dict[str, str]:
     if errors:
         raise LdError(f"resolution.csv is invalid: {errors[0]}")
     rows = overlaid_input_rows(spec_dir, "resolution.csv", rows, error=LdError)
-    return {r.variant_key: r.rsid for r in rows if r.rsid and RSID_PATTERN.match(r.rsid)}
+    seen: dict[Place, set[str]] = {}
+    for r in rows:
+        if r.rsid and RSID_PATTERN.match(r.rsid) and r.chrom is not None and r.start is not None:
+            seen.setdefault((str(r.chrom), r.start, r.ref), set()).add(r.rsid)
+            # A study row may leave `ref` off; the place without it answers too when unambiguous.
+            seen.setdefault((str(r.chrom), r.start, None), set()).add(r.rsid)
+    return {place: next(iter(ids)) for place, ids in seen.items() if len(ids) == 1}
 
 
 def enrich_ld_pairs(
@@ -400,9 +445,9 @@ def enrich_ld_pairs(
             raise LdError(f"existing {LD_PAIRS_CSV} is invalid: {errors[0]}")
         existing = {merge_key(row): row for row in rows}
 
-    wanted = [
-        w for w in _wanted(_read_studies(spec_dir), _backfilled_rsids(spec_dir)) if w.key not in existing
-    ]
+    named = _wanted(_read_studies(spec_dir), _backfilled_rsids(spec_dir))
+    named_keys = {w.key for w in named}
+    wanted = [w for w in named if w.key not in existing]
     to_ask = [w for w in wanted if w.status is None]
     result = LdPairsResult()
 
@@ -432,12 +477,23 @@ def enrich_ld_pairs(
                 ensembl.close()
 
     result.written = sorted(fresh, key=_sort_key)
-    merged = dict(existing)
+    # A recorded pair no study row names any more (its ancestry or proxy was edited) is an orphan: its
+    # study is gone, so it is dropped and counted rather than left to be counted in the manifest.
+    result.dropped = sorted(
+        (k for k in existing if k not in named_keys), key=lambda k: (k[0], k[1], k[2] or "")
+    )
+    if result.dropped:
+        logger.warning(
+            "Dropped %d ld_pairs.csv row(s) whose pair no studies.csv row names any more: %s",
+            len(result.dropped),
+            result.dropped[:5],
+        )
+    merged = {k: row for k, row in existing.items() if k in named_keys}
     for row in fresh:
         merged[merge_key(row)] = row
     result.rows = sorted(merged.values(), key=_sort_key)
 
-    if write and fresh:
+    if write and (fresh or result.dropped):
         answered = result.requests > 0
         _write(
             result.rows,
@@ -457,6 +513,13 @@ def enrich_ld_pairs(
                 if answered
                 else None
             ),
+        )
+    if result.unusable:
+        raise LdError(
+            f"{len(result.unusable)} pair(s) got an answer this pass cannot use and have no row "
+            f"(first: {result.unusable[0][0]}: {result.unusable[0][1]}); the {len(fresh)} other row(s) of "
+            f"this run {'were committed' if write else 'are in the result'}"
+            + (f", and {len(result.unasked)} pair(s) were not asked: {outage}" if outage is not None else "")
         )
     if outage is not None:
         raise LdUnavailable(
