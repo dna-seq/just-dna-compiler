@@ -41,6 +41,15 @@ purpose; normalization is the compiled parquet's job (RM346, 1.0).
 
 ## Open questions and owed work
 
+- **The final v2 measuring run (2026-11-04), and what follows it, as the maintainer set it:**
+  1. A subagent measures every v2 requirement against the proposed shape. Its output goes to
+     `scratchpad/final/REPORT.md` and `EXAMPLES.md`.
+  2. I compile its findings into an audit report in `docs/probes/`.
+  3. I check that every new column is irreducible, and that none is derivable from the others.
+  4. If the shape changed, I ask the maintainer on each difference.
+  5. If it is stable (sufficient and necessary for v2), it counts as agreed, and I hand it to the lead to
+     plan the branching, the specification, the build order and what runs in parallel, the
+     implementation details and the tests.
 - RM149's gate: **decided 2026-11-03, it stays** (option 1). Written under RM149 in ROADMAP_0_9.md.
 - The test registry `_ENTRY_FILES` → a `ROADMAP*.md` glob: the person asked whether a naming convention can
   replace the hard-coded list. It can (the glob finds the same 8 files). Handed to the lead on 2026-11-03.
