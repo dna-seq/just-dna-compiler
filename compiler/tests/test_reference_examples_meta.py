@@ -256,15 +256,23 @@ def cpic(tmp_path_factory: pytest.TempPathFactory):
     return _compiled(_CPIC, out), out
 
 
+def _cpic_meta(out: Path) -> dict[tuple[str, str], dict]:
+    """`meta.parquet`'s rows by `(members, drug)`: one phenotype pair carries one row per thiopurine."""
+    return {
+        (row["members"], row["drug"]): row
+        for row in pl.read_parquet(out / "meta.parquet").iter_rows(named=True)
+    }
+
+
 def test_cpic_each_phenotype_pair_matches_every_drafted_diplotype_of_both_phenotypes(cpic) -> None:
     _result, out = cpic
     diplotypes = _rows(_CPIC / "diplotypes.csv")
-    meta = _meta_by_members(out)
+    meta = _cpic_meta(out)
     authored = _rows(_CPIC / "meta.csv")
     assert len(meta) == len(authored)
     for row in authored:
         expected = _expected_matches(row["members"], diplotypes)
-        compiled = meta[row["members"]]
+        compiled = meta[(row["members"], row["drug"])]
         assert compiled["matches"] == expected
         assert {m["member"] for m in expected} == {0, 1}, (
             "a pair whose phenotype was not drafted matches nothing"
@@ -272,9 +280,34 @@ def test_cpic_each_phenotype_pair_matches_every_drafted_diplotype_of_both_phenot
         assert compiled["replaces"] is True
         assert compiled["conclusion"] == row["conclusion"]
     # The selector is existential: some phenotype is carried by more than one drafted diplotype.
-    assert any(compiled["match_count"] > len(parse_members(m)) for m, compiled in meta.items())
+    assert any(compiled["match_count"] > len(parse_members(m)) for (m, _d), compiled in meta.items())
     # No one-member row, so nothing reaches meta_resolved.
     assert pl.read_parquet(out / "meta_resolved.parquet").height == 0
+
+
+def test_cpic_every_phenotype_pair_states_each_thiopurine_once(cpic) -> None:
+    """The finding `drug` answered: CPIC gives one pair a recommendation per thiopurine, and the key keeps
+    them apart. Every pair carries the same set of drugs, and the drugs disagree on a pair's text."""
+    result, out = cpic
+    authored = _rows(_CPIC / "meta.csv")
+    meta = _cpic_meta(out)
+    drugs = {r["drug"] for r in authored}
+    assert drugs == {"azathioprine", "mercaptopurine", "thioguanine"}
+    pairs = {r["members"] for r in authored}
+    by_pair: dict[str, dict[str, str]] = {}
+    for r in authored:
+        by_pair.setdefault(r["members"], {})[r["drug"]] = r["conclusion"]
+    assert len(authored) == len(pairs) * len(drugs), "one row per (pair, drug), none missing, none twice"
+    assert all(set(texts) == drugs for texts in by_pair.values())
+    # The compiled rows carry the authored drug and conclusion, row for row.
+    assert {key: row["conclusion"] for key, row in meta.items()} == {
+        (r["members"], r["drug"]): r["conclusion"] for r in authored
+    }
+    # Some pair is answered differently per drug: that is what the old key refused as a duplicate.
+    assert any(len(set(texts.values())) == len(drugs) for texts in by_pair.values())
+    # Two-member rows only, so meta_resolved stays empty whatever the drug scopes.
+    assert pl.read_parquet(out / "meta_resolved.parquet").height == 0
+    assert "meta_selector_matches_nothing" not in _codes(result)
 
 
 def test_cpic_the_licence_row_is_cpics_own_terms() -> None:
