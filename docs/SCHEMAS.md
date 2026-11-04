@@ -280,6 +280,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
   | `VALID_INHERITANCE_MODE` | 9 (closed) |  |
   | `VALID_PHENOTYPE_CATEGORIES` | 6 (closed) |  |
   | `VALID_QUOTE_SOURCE` | 2 (closed) |  |
+  | `VALID_PLACEMENT_VERDICTS` | 3 (closed) | what a second authority answered about a `resolution.csv` row's placement — `same_event`, `undecided`, `unplaced`; no `different_event`, because a contradicted placement is withheld (RM267) |
   | `VALID_RECOMMENDATION_STRENGTH` | 4 (closed) |  |
   | `VALID_RELEASE_CHANGE_KINDS` | 3 (closed) |  |
   | `VALID_RELEASE_OUTPUT_AXES` | 5 (closed) |  |
@@ -289,7 +290,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
   | `VALID_SIGNIFICANCE` | 4 (closed) |  |
   | `VALID_SUPERPOPULATIONS` | 5 (closed) | the 1000 Genomes superpopulation codes: what `StudyRow.ancestry` binds, and — plus `multi` — `pgs.VALID_TRAINING_ANCESTRY`, derived from it so the codes are one list (RM328) |
   | `VALID_SOURCE_LAYERS` | 12 (closed) |  |
-  | `VALID_VERIFICATION_CHECKS` | 26 (closed) |  |
+  | `VALID_VERIFICATION_CHECKS` | 27 (closed) |  |
   | `VALID_VERIFICATION_SKIPS` | 8 (closed) |  |
   | `VALID_VERIFICATION_INDEPENDENCE` | 2 (closed) | `VerificationRecord.independence`, derived from the record's two sources and never typed (RM292) |
   | `VALID_WARNING_CODES` | 81 (closed) | every code a compile may stamp on a finding (members in `RETIRED_WARNING_CODES` are no longer emitted); the catalogue with texts is in [COMPILER.md](COMPILER.md) |
@@ -2411,7 +2412,7 @@ does not carry a coordinate, and it is the wrong one — RM43 (0.6) is the right
   rsids for the exact allele — a dbSNP merge), `rsid_alternates?` (the full candidate list when
   `ambiguous`; `rsid` holds the deterministic pick), `rsid_current?` / `rsid_status?`
   (`VALID_RSID_STATUS = {live, merged, absent, withdrawn}` — what dbSNP says about `rsid` today),
-  `fetched_at?`.
+  `fetched_at?`, `placement_witness?`, `placement_verdict?` (0.8, below).
 - **`source` names the link; `authority` names the licensed source it speaks for (RM33).** `source` is
   `ensembl-rest`/`ensembl-graphql`/`cache`/`clinvar`/`gnomad`/`authored`/`reversed`/`manual` — *which link
   answered*, which matters for diagnosing a compile and has no other home. `authority` is the thing
@@ -2467,6 +2468,19 @@ does not carry a coordinate, and it is the wrong one — RM43 (0.6) is the right
   minter reading its version off `ga4gh.vrs`. No parquet carries it yet: no compiled parquet carries an
   id this ecosystem minted (`frequencies.parquet`'s `vrs_id` is gnomAD's), and carrying both onto the
   artifact is RM270's.
+- **`placement_witness` and `placement_verdict` say who else placed the row, and what they said (0.8,
+  RM267).** Provenance, outside the fact set: which second authority the enricher asked where this rsID
+  sits (`clinvar`, `clinvar_gkm`, or both `+`-joined), independent of the link that gave the row, and its
+  answer (`VALID_PLACEMENT_VERDICTS`: `same_event` — one VRS id, or one left-aligned spelling;
+  `undecided` — another spelling nothing this run held could settle, an offline run; `unplaced` — the
+  witness holds no placement of this allele, so the row has one witness only). Both empty means no
+  independent authority was asked: none was loaded, or the row's own link is ClinVar's. Two columns, not
+  one, because who was asked and what they answered are two axes (P5). There is no `different_event`:
+  a placement two authorities give as two events is **withheld** — that locus gets no row, and an rsID
+  left with none is unresolved — so that answer never reaches a written row. `same_event` means every
+  ALT of the row was placed the same; one ALT no witness holds makes the row `unplaced`. Before 0.8 every coordinate here had one
+  witness and `authority=ensembl` read the same whether a second authority agreed, disagreed or was
+  never asked (S117, S121). Reverse cannot emit them, for `authority`'s reason above.
 - **`RESOLUTION_FACT_FIELDS`** names the fact columns; `integrity.resolution_signature` hashes only
   those (provenance deliberately excluded), so a human-filled and an Ensembl-filled table with identical
   facts hash equal.

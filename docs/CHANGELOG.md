@@ -41,6 +41,33 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM267: an rsID two authorities place as two different events is withheld, and every written placement says who else was asked (0.8, uncut)
+
+**enricher, format** — `enrich` now compares every placement its links give an rsID with the two
+offline witnesses this tier holds, the ClinVar snapshot and ClinVar-GKM (new `clinvar_gkm_cache=` /
+`--clinvar-gkm-cache`, read locally, never downloaded by `enrich`). Two spellings are one event when
+they are identical, when two substitutions trim to one spelling, when they mint one VRS id (exact, no
+tolerance), or when they left-align to one spelling against the reference; otherwise the comparison is
+undecided and counted. A placement two authorities give as two events is **withheld**: that locus gets
+no row (an undisputed locus of the same rsID still does), an rsID left with none stays unresolved (so
+`strict` refuses, naming the disagreement), a pair row keeps its authored coordinate, an
+`overrides.csv` answer on the subject clears the unresolved state, and one warning names both
+placements. Nothing is rewritten (PROPOSAL_0_8_PT2 §4 question 3). S117's
+`rs8176719` (ABO O1) is the motivating case: the Ensembl snapshot's `9:133257520 G>GC` against the
+`9:133257521 T>TC` dbSNP and Ensembl REST give, two haplotypes that mint two ids. Probed 2026-11-04 on real data: neither loaded witness holds `rs8176719` (ClinVar's 2026-06-27 VCF has no record at `9:133257510–529` and no `RS=8176719`; ClinVar-GKM lacks it, RM305), so against today's witnesses S117's own case is counted in the one-witness class and named in `detail`, not withheld. The spelling `9:133257521 T>TC` is dbSNP's and Ensembl REST's; the tests supply it as a ClinVar row to exercise the withhold.
+`rs72613567` and `rs77944059` are respellings that mint one id and are written as before. A different
+allele of the rsID is not a disagreement (`unplaced`), and a ClinVar fill has no independent witness
+here. `resolution.csv` gains two optional provenance columns outside `resolution_signature`,
+`placement_witness` (who was asked) and `placement_verdict` (`VALID_PLACEMENT_VERDICTS`: `same_event`,
+`undecided`, `unplaced`; `same_event` only when every ALT was placed the same), and each witness a
+written row names gets its `SourceRow` at the `resolution` layer, which the compiler's orphan check
+now counts as used. The comparison attests as the new check `placement_agreement` (witness
+`clinvar+clinvar_gkm`, with an `undecided` count and the one-witness count in `detail`);
+`EnrichmentResult.placement` carries it. **A 0.7 compiler refuses a 0.8-enriched `resolution.csv`**
+(`extra="forbid"`): upgrade first. A table written before 0.8 is compared only under `--rederive` or
+after deleting it, and under `--rederive` a disputed subject's recorded placement is not carried
+forward. No parquet and no warning code. INTEGRATION_0_8 § 1.15.
+
 ## 2026-11-04 — RM333, RM239, RM236: the Open Targets lane fills a locus-to-gene table, its colocalisations, per-transcript consequences and a fine-mapping posterior (0.8, uncut)
 
 - **A new snapshot lane, `opentargets`.** `just-dna-enricher opentargets build` mirrors Open Targets Platform

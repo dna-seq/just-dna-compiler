@@ -880,6 +880,11 @@ def compile_module(
         # external source to declare, and an older `resolution.csv` written before the column existed
         # simply says nothing rather than saying the wrong thing.
         used = {r.authority for r in resolution_rows if r.authority}
+        # And the second authority each row names as its placement witness (RM267): the enricher
+        # consulted it and records its terms at the resolution layer, so it is a source this table uses.
+        used |= {
+            w for r in resolution_rows if r.placement_witness for w in r.placement_witness.split("+") if w
+        }
         for model, parsed in fact_rows.items():
             if model in (SourceRow, LiteratureRow):
                 continue

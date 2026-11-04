@@ -43,6 +43,7 @@ comparison uses on every row; the caller supplies it left-normalized, since the 
 import json
 import logging
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -533,6 +534,18 @@ class ClinVarGkmWitness:
     def by_rsid(self, rsid: str) -> list[WitnessPlacement]:
         token = rsid.strip().lower()
         return self._rows(pl.col("rsid") == (token if token.startswith("rs") else f"rs{token}"))
+
+    def by_rsids(self, rsids: Iterable[str]) -> dict[str, list[WitnessPlacement]]:
+        """`by_rsid` over many rsIDs in one filter, keyed by the rsID as asked; an absent one is absent.
+
+        One pass over the slice rather than one per rsID: a module asks about every rsID it places
+        (RM267), and the slice is every ClinVar indel.
+        """
+        asked = {(t if (t := r.strip().lower()).startswith("rs") else f"rs{t}"): r for r in rsids}
+        found: dict[str, list[WitnessPlacement]] = {}
+        for row in self._rows(pl.col("rsid").is_in(list(asked))):
+            found.setdefault(asked[str(row.rsid)], []).append(row)
+        return found
 
     def by_vcf(self, chrom: str, pos: int, ref: str, alt: str) -> list[WitnessPlacement]:
         """Exact match on the left-normalized VCF spelling. The caller normalizes; this never does."""

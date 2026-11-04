@@ -84,9 +84,16 @@ from just_dna_enricher.licensing import (
 )
 from just_dna_enricher.locations import (
     resolve_civic_reference,
+    resolve_clinvar_gkm_reference,
     resolve_clinvar_reference,
     resolve_ensembl_reference,
     resolve_pubmind_reference,
+)
+from just_dna_enricher.placement import (
+    PlacementCheck,
+    answered_placements,
+    compare_placements,
+    load_witnesses,
 )
 from just_dna_enricher.resolver import AlleleMismatch, lookup_loci
 from just_dna_enricher.sequences import (
@@ -112,6 +119,7 @@ def enrich(
     clinvar_cache: Path | None = None,
     pubmind_cache: Path | None = None,
     civic_cache: Path | None = None,
+    clinvar_gkm_cache: Path | None = None,
     use_clinvar: bool = True,
     use_gnomad: bool = True,
     download: bool = True,
@@ -172,6 +180,14 @@ def enrich(
     escalated by `strict` — nothing an author can edit clears a failed request. `release_probes`
     injects the registry the way `resolver`/`gnomad_client` inject theirs.
 
+    **Every placement is compared with a second authority before it is written (RM267).** Whichever
+    link placed an rsID, the ClinVar snapshot and the ClinVar-GKM snapshot (`clinvar_gkm_cache`, local
+    only, never downloaded here) are asked where they place it, and a disagreement withholds the
+    disputed locus — see `placement.compare_placements`. Each written row records the witness
+    asked and its answer (`placement_witness`, `placement_verdict`). Subjects already recorded in
+    `resolution.csv` are not re-asked (merge-not-clobber); `rederive` is how a recorded placement meets
+    the comparison.
+
     `keep_par_twin` keeps both spellings of a pseudoautosomal locus. By default only the X one is
     recorded, because every annotation source uses X and a standard GRCh38 analysis set hard-masks the
     Y PAR — see `select_par_representative` for the probe behind that. Set it for a consumer whose
@@ -223,6 +239,7 @@ def enrich(
             clinvar_cache=clinvar_cache,
             pubmind_cache=pubmind_cache,
             civic_cache=civic_cache,
+            clinvar_gkm_cache=clinvar_gkm_cache,
             use_clinvar=use_clinvar,
             use_gnomad=use_gnomad,
             download=download,
@@ -302,6 +319,7 @@ def _run_enrichment(
     clinvar_cache: Path | None,
     pubmind_cache: Path | None,
     civic_cache: Path | None,
+    clinvar_gkm_cache: Path | None,
     use_clinvar: bool,
     use_gnomad: bool,
     download: bool,
@@ -665,6 +683,55 @@ def _run_enrichment(
     # it (RM274), and minting and the reference check reuse it after the table is assembled.
     sequences = SequenceProxy(offline=offline)
     read_window = _grch38_window(sequences) if genome_build == "GRCh38" else None
+    # One minter for the run too: the placement comparison below and the stamping after the table
+    # both mint, and sharing it shares the proxy's read cache.
+    minter = VrsMinter(offline=offline, sequences=sequences)
+
+    # ── the placement's second witness (RM267) ─────────────────────────────────────────────────
+    # Every link above keeps the first answer and none compares it with another. The ClinVar snapshot
+    # (located above for the link and the `clin_sig` check) and ClinVar-GKM are asked where they place
+    # every rsID this run placed fresh, and a locus two authorities place as two events is withheld; an
+    # rsID left with no locus is routed like an unreachable one. Covered subjects are not re-asked
+    # (merge-not-clobber); `--rederive` is how a recorded placement meets this.
+    fresh_rsids = sorted(
+        {v.rsid for v in subjects if v.rsid and _subject_key(v) not in covered} & set(rsid_to_loci)
+    )
+    if genome_build != "GRCh38":
+        placement = PlacementCheck(not_checked="unsupported")
+    else:
+        witnesses = load_witnesses(clinvar_ref, resolve_clinvar_gkm_reference(clinvar_gkm_cache), fresh_rsids)
+        placement = compare_placements(
+            {rsid: rsid_to_loci[rsid] for rsid in fresh_rsids},
+            {rsid: resolution_authority(source_of_rsid.get(rsid)) for rsid in fresh_rsids},
+            witnesses,
+            mint=lambda chrom, start, ref, alt: minter.mint(chrom, start, ref, alt)[0],
+            read_window=read_window,
+        )
+        if not fresh_rsids:
+            placement.not_checked = "nothing_to_check"
+        elif not witnesses:
+            placement.not_checked = "no_reference"
+        elif placement.subjects == 0:
+            # Witnesses were loaded and held no counterpart for anything placed: a comparison over zero
+            # subjects is a skip with the one-witness count as its sentence, never a `ran` 0 of 0.
+            placement.not_checked = "nothing_to_check"
+    disputed = set(placement.withheld)
+    # A disputed subject whose overlay states a whole placement is not unresolved any more: the compile
+    # applies the author's answer. Read-only (RM136); the finding is still counted in the record.
+    answered = answered_placements(spec_dir)
+    if placement.disagreements:
+        # One line for the run, naming both placements per rsID: the finding is the pair, and which
+        # half is wrong is not knowable here (`@enrichment-is-validation`).
+        logger.warning(
+            "Placement disagreement — %d rsID(s) are placed as different events by two authorities, so "
+            "the disputed placement is not written (RM267): %s. Neither is rewritten; check the "
+            "spelling against the reference and record the one you stand behind in overrides.csv as "
+            "an `insert`.",
+            len(placement.contested),
+            "; ".join(str(d) for d in placement.disagreements),
+        )
+    for line in placement.sentences():
+        logger.info("Placement witness — %s.", line)
 
     # ── assemble the table (a row for every subject; expansion → N rows) ───────────────────────
     # **Was any rsID link consulted at all?** (RM98.) Every one of them is gated: the two caches on
@@ -681,6 +748,8 @@ def _run_enrichment(
     par_twins_dropped: list[tuple[str, str, int]] = []
     # Loci the reference showed cannot host the authored genotype (RM274), named once after the loop.
     reference_rejected: list[str] = []
+    # The unresolved keys that are so because two authorities disagree (RM267), named in the refusal.
+    placement_unresolved: list[str] = []
     for v in subjects:
         key = v.variant_key
         subject = _subject_key(v)
@@ -693,7 +762,16 @@ def _run_enrichment(
             if not any(r.chrom is not None for r in covered[subject]):
                 unresolved.append(key)
             continue
-        if v.rsid is not None and (v.chrom is None or v.rsid in rsid_to_loci):
+        if v.rsid in disputed and v.chrom is None:
+            # Two authorities placed this rsID as two events (RM267). Like an unreachable rsID: no row,
+            # and the key stays unresolved — never `not_found`, which would say the source lacks it. A
+            # pair row falls through to the verbatim branch and keeps its own authored coordinate. An
+            # author who answered it in `overrides.csv` has supplied the placement the compile uses.
+            if key not in answered:
+                unresolved.append(key)
+                placement_unresolved.append(key)
+            continue
+        if v.rsid is not None and v.rsid not in disputed and (v.chrom is None or v.rsid in rsid_to_loci):
             # **A row that authored both halves takes this branch too, once the reference has
             # answered for its rsID (S104).** The pair check above already looked the rsID up — the
             # verify rsIDs ride in the cache batch — and then the verbatim branch at the bottom
@@ -718,7 +796,9 @@ def _run_enrichment(
             # A subject with no constraint (a pharm annotation that named no genotype) keeps every
             # locus: nothing is known about which allele it is about, and dropping loci for lack of
             # evidence would invent a selection the row never made.
-            all_loci = rsid_to_loci.get(v.rsid, [])
+            # A locus holding an allele two authorities place as different events is not written
+            # (RM267); the rest of the rsID's loci are, and `disputed` above caught the all-withheld case.
+            all_loci = [lo for lo in rsid_to_loci.get(v.rsid, []) if placement.keeps(v.rsid, lo)]
             loci = []
             subject = "allele" if v.origin == "haplotypes.csv" else "genotype"
             for lo in all_loci:
@@ -833,6 +913,7 @@ def _run_enrichment(
             if loci:
                 src = source_of_rsid.get(v.rsid, "cache")
                 for i, locus in enumerate(loci):
+                    witness, verdict = placement.row_columns(v.rsid, locus)
                     out.append(
                         ResolutionRow(
                             variant_key=key,
@@ -841,6 +922,8 @@ def _run_enrichment(
                             locus_index=i,
                             source=src,
                             status="resolved",
+                            placement_witness=witness,
+                            placement_verdict=verdict,
                             **locus,
                         )
                     )
@@ -964,6 +1047,9 @@ def _run_enrichment(
         # exists for wearing a new flag. Such a subject keeps exactly the rows it had; only an
         # *answered* one (including answered-and-absent, which does write a `not_found` row) replaces.
         fresh_keys = {merge_key(row) for row in out}
+        # A disputed subject WAS asked, and the answer is "two authorities disagree" (RM267): carrying
+        # its recorded placement forward would keep exactly the row the comparison withheld.
+        fresh_keys |= {_subject_key(v) for v in subjects if v.rsid in disputed}
         # Only subjects the spec still names. A recorded row for a variant the author has since
         # deleted is dropped by an ordinary run — the assembly loop iterates `subjects` and nothing
         # else — so carrying it forward here would make `--rederive` resurrect rows a plain re-run
@@ -1022,7 +1108,7 @@ def _run_enrichment(
     # one proxy, built above the table so the hosting filter shares its cache.
     mint_result: MintResult | None = None
     if mint_vrs:
-        mint_result = mint_resolution_rows(out, minter=VrsMinter(offline=offline, sequences=sequences))
+        mint_result = mint_resolution_rows(out, minter=minter)
         logger.info(
             "VRS: minted %d id(s) (%d stdlib, %d normalized), %d unmintable, %d already present",
             mint_result.minted,
@@ -1447,6 +1533,7 @@ def _run_enrichment(
         ),
         reference_rejected_loci=list(reference_rejected),
         rsid_coordinates=pair_check,
+        placement=placement,
         rederived=rederived,
         dataset_currency=dataset_currency,
         clin_sig_record=clin_sig_record,
@@ -1561,10 +1648,26 @@ def _run_enrichment(
         )
 
     if mode == "strict" and result.unresolved:
+        # Two remedies, so two sentences: a placement two authorities disagree about is answered, and
+        # more cache or egress will not change it (RM267, `@unreachable-not-absent`).
+        contested = sorted(set(placement_unresolved) & set(result.unresolved))
+        unplaced = [k for k in result.unresolved if k not in set(contested)]
         raise EnrichmentError(
             f"strict enrichment: {len(result.unresolved)} variant(s) unresolved after the chain "
-            f"(cache/Ensembl): {result.unresolved}. Provide a complete cache/online access, add the "
-            f"loci by hand to resolution.csv, or enrich with mode='best_effort'."
+            f"(cache/Ensembl): {result.unresolved}."
+            + (
+                f" {len(contested)} of them ({contested}) are placed as different events by two "
+                f"authorities (placement disagreement, RM267): record the placement you stand behind in "
+                f"overrides.csv as an `insert` on resolution.csv."
+                if contested
+                else ""
+            )
+            + (
+                " Provide a complete cache/online access, add the loci by hand to resolution.csv, or "
+                "enrich with mode='best_effort'."
+                if unplaced
+                else " Or enrich with mode='best_effort'."
+            )
         )
 
     if mode == "strict" and dataset_currency is not None and dataset_currency.behind:
@@ -1601,7 +1704,11 @@ def _run_enrichment(
             out,
             resolution_path,
             before_commit=lambda: record_source_terms(
-                {row.authority for row in out if row.authority},
+                # The link's authority, and every placement witness a written row names (RM267):
+                # a pass that consults a source writes its row (`@write-the-sourcerow`), and one that
+                # contributes nothing — a witness no written row names — writes none.
+                {row.authority for row in out if row.authority}
+                | {w for row in out if row.placement_witness for w in row.placement_witness.split("+")},
                 "resolution",
                 spec_dir,
                 error=EnrichmentError,
@@ -1642,6 +1749,7 @@ def _run_enrichment(
                 stale_rsids=stale_rsids,
                 pairs=pair_check,
                 ensembl_ref=reference,
+                placement=placement,
                 currency=dataset_currency,
             ),
             spec_dir,

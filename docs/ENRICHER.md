@@ -20,6 +20,7 @@ the mode** (`best_effort` warns and carries on; `strict` refuses). What exists t
 | **Wrong build** | a ref-mismatched row vs the same coordinate on GRCh37 (0.6) | `grch37.diagnose_wrong_build` (**warns in both modes**) | `authored` | `ensembl-grch37` | `genome_build_agreement` |
 | **VRS cross-check** | a source's own `vrs_id` vs the locally-minted one | `vrs.mint_resolution_rows` | `reporting_source` | `seqrepo` | `vrs_allele_id` |
 | **rsid↔coordinate** | an authored pair vs what the reference says | `compiler/resolution.py::_verify` over the injected table (warning), and `enrich()` against the injected Ensembl snapshot (`resolver.check_rsid_coordinates`, warning in both modes) — one question, two tiers, so one attestation name, and the enricher's half is the one that attests | `authored`; abstentions counted in `undecided` | `ensembl` | `rsid_coordinate_agreement` |
+| **Placement agreement** | where the run's own link placed an rsID vs where ClinVar and ClinVar-GKM place it (0.8, RM267); a disagreement **withholds** the disputed locus | `placement.compare_placements`, called by `enrich()` before the table is assembled (warns in both modes; `strict` refuses through the unresolved gate, since a withheld rsID-only row is unresolved) | `reporting_source`; abstentions counted in `undecided` | `clinvar`, `clinvar_gkm` | `placement_agreement` |
 | **Ambiguous back-fill** | ≥2 rsIDs for one exact allele → recorded, never guessed | `resolver._lookup_rsid_candidates` | — | — | — *(recorded onto the row, not attested)* |
 | **Clinical significance** | authored `clin_sig` vs **every annotation authority** consulted — ClinVar and, since 0.7, PubMind — allele-exactly | `clinical.verify_clin_sig` (**warns in both modes**), persisted as the N-authority concordance record by `clinical.clin_sig_concordance` (0.7, RM130 + RM134 § B) | `authored` | `clinvar` | `clinical_significance` |
 | **Answered-call currency** | an authority's call **now** vs what it said when the author's `overrides.csv` answer was written (0.7, RM151) | `clinical.answered_call_shift` → `concordance.shifted_authority_calls` (**warns in both modes**; the baseline is the previous run's `clin_sig_authority_calls.csv`, so it is read before the commit rewrites it and a move is observable exactly once) | — | — | — *(logged; the record it reads is the attestation)* |
@@ -464,6 +465,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `constraint_build` | **`[dev]`** builder: gnomAD constraint TSV → gene-level parquet + `release.json` | `polars` (lazy), `httpx` |
 | `vrs` | GA4GH VRS allele-id minting onto `resolution.csv` (substitutions stdlib, indels normalized) | `ga4gh.vrs` |
 | `sequences` | reference-sequence access (cached) + the reference-allele check | `ga4gh.vrs` |
+| `placement` | **0.8** (RM267): where the run's own link placed each rsID against where ClinVar and ClinVar-GKM place it — by VRS id, else the left-aligned spelling; a disagreement withholds the rsID | `sequences`, `clinvar`, `clinvar_gkm` |
 | `locations` | cache-location resolution — **one `resolve`/`default_dir`/`env_var` triple per lane in `CACHE_LANES`**, paired by a test rather than counted here — plus `.env` and the pull record. The snapshot layout names and `read_release` are imported from `just_dna_format.snapshot` since 0.8 (RM303) and stay importable from here | `platformdirs`, `python-dotenv` |
 | `download` | HuggingFace **snapshot** download, footer-checked and atomic — **one `ensure_*` per lane whose `publish_repo` is set**, which is the registry's own answer to which lanes may be pulled rather than a second list. A lane with no repo is operator-built; see *The caches* | `huggingface_hub` (lazy) |
 | `cpic_build` | **`[dev]`** builder (0.5.1): the whole CPIC PostgREST database → five parquets + `release.json` | `polars` (lazy), `cpic` |
@@ -1128,6 +1130,60 @@ reference whose every locus is rejected by the allele filter (the mismatch is re
 its coordinate), and a run with no Ensembl snapshot at all. **A table written before this change keeps
 its `authored` rows** — merge-not-clobber covers them — so delete `resolution.csv` or run `--rederive`
 to record the reference's answer.
+
+### A placement is compared with a second authority before it is written (0.8, RM267)
+
+Every link in the chain keeps the first answer and none compares it with another, so until 0.8 every
+coordinate in `resolution.csv` had one witness. S117 is why that matters: the Ensembl snapshot (faithful
+to Ensembl's own VCF dump) places `rs8176719`, ABO O1, at `9:133257520 G>GC`, while ClinVar, dbSNP and
+Ensembl's own REST place it at `9:133257521 T>TC`. GRCh38 reads `GGGG T ACC` at 517–524, so those are two
+haplotypes. The wrong anchor is a real base, so the reference-allele check passes it, and RM31's
+tolerance calls an indel's position difference undecided.
+
+So after the links have run, `placement.compare_placements` asks the two offline witnesses this tier
+holds, the ClinVar snapshot and ClinVar-GKM (`--clinvar-gkm-cache`, or `$JUST_DNA_CLINVAR_GKM_CACHE`;
+read locally, never downloaded by `enrich`), where they place every rsID this run placed. For each allele
+the first authority gave, the witness's counterparts are its alleles for that rsID on the same contig,
+within the window an indel can slide in, with the same kind of event (an insertion or deletion of the
+same length, or a substitution to the same bases). A counterpart is the same event when the spellings
+are identical, when both are substitutions with the same trimmed spelling, when both mint one VRS id
+(exact, no tolerance), or when both left-align to one spelling against the reference. Otherwise it is
+**undecided** and counted, which is what an offline run gets for an indel respelling. ClinVar-GKM's own
+ids are VRS 2.1.1 and ours 2.0, so its VCF spelling is minted here rather than its id compared.
+
+- **A disagreement withholds the locus.** The locus holding the disputed allele is not written; a locus
+  of the same rsID nobody disputes still is. When every locus is withheld, an rsID-only subject stays
+  unresolved (so `strict` refuses, and its sentence names the disagreement rather than asking for a
+  cache) and gets no `not_found` row, since the sources do have it; a row that authored its own
+  coordinate keeps it. The warning names both placements; nothing is rewritten (no corrected spelling in
+  0.8, PROPOSAL_0_8_PT2 §4 question 3). An author who records the placement they stand behind in
+  `overrides.csv` (any operation on that `resolution.csv` subject) is no longer unresolved: the compile
+  applies their answer, and the record still counts the disagreement.
+- **A row reads `same_event` only when every one of its ALTs was placed the same** by a witness; an ALT
+  no witness holds makes it `unplaced`, an unsettled one `undecided`.
+- **A different allele is not a disagreement.** ClinVar holds what somebody submitted, so an allele with
+  no counterpart is `unplaced`, and the rsIDs where nothing had a counterpart are the published
+  one-witness count.
+- **A ClinVar fill has no independent witness here.** ClinVar-GKM is ClinVar's own release, so a row the
+  ClinVar link filled is counted with the one-witness class and its two columns stay empty.
+- **Each written row says who was asked and what they answered**: `placement_witness` and
+  `placement_verdict` ([SCHEMAS.md](SCHEMAS.md)). Both empty means nobody independent was asked. Every
+  witness a written row names gets its `SourceRow` at the `resolution` layer (`@write-the-sourcerow`),
+  and the compiler's orphan check counts those names as used.
+- **It attests as `placement_agreement`**: `subjects` is the rsIDs compared, `findings` the rsIDs
+  with a disputed placement, `undecided` the respellings nothing could settle, and `detail` the one-witness count over
+  every placed rsID.
+- **Recorded rows are not re-asked.** Merge-not-clobber holds, so a `resolution.csv` written before 0.8
+  meets the comparison only under `--rederive` or after the file is deleted. Under `--rederive` a
+  disputed subject counts as answered, so its recorded placement is not carried forward.
+
+Probed 2026-11-04 on real data: neither loaded witness holds `rs8176719` (ClinVar's 2026-06-27 VCF has no record at `9:133257510–529` and no `RS=8176719`; ClinVar-GKM lacks it, RM305), so against today's witnesses S117's own case is counted in the one-witness class and named in `detail`, not withheld. The spelling `9:133257521 T>TC` is dbSNP's and Ensembl REST's; the tests supply it as a ClinVar row to exercise the withhold. Catching it needs a witness that holds it: the live REST rung is the obvious one and is
+not asked (below).
+
+The ClinVar witness is the snapshot the run locates for its link and the `clin_sig` check, so
+`--no-clinvar --no-verify-clinsig` leaves only ClinVar-GKM. The live REST rung is not a witness: the
+0.8 contract compares loaded authorities only (PROPOSAL_0_8_PT2 §5 C4), and asking REST would cost one
+request per indel.
 
 ### Reverse (position→rsid) back-fill is allele-aware
 
@@ -5543,6 +5599,7 @@ the checks `enrich()` puts whose findings then survived nowhere at all:
 |---|---|
 | `reference_allele` | `detail=`, via `summarize_ref_mismatches` — grouped by diagnosis, three keys named per group plus *"and N more"* |
 | `rsid_coordinate_agreement` | `detail=` — up to `DETAIL_LIMIT` disagreements, plus what was not compared and why |
+| `placement_agreement` | `detail=` — up to `DETAIL_LIMIT` disagreements naming both placements, the one-witness count over every placed rsID, and the undecided respellings; and **per row** in `resolution.csv` as `placement_witness` / `placement_verdict` |
 | `rsid_currency` | **per row in `resolution.csv`** — `rsid_status` and `rsid_current` are columns of the written file |
 | `genome_build_agreement` | count only, but its subjects *are* `reference_allele`'s mismatches, so the candidate rows are reachable |
 | `clinical_significance` | `detail=` since S70, grouped on `opposed`. Before that: the logger, and nothing else |

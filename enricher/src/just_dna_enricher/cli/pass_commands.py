@@ -36,6 +36,14 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
         None, "--ensembl-cache", help="Explicit Ensembl cache dir/.duckdb."
     ),
     clinvar_cache: Path | None = typer.Option(None, "--clinvar-cache", help="Explicit ClinVar snapshot dir."),
+    clinvar_gkm_cache: Path | None = typer.Option(
+        None,
+        "--clinvar-gkm-cache",
+        help=(
+            "Built ClinVar-GKM snapshot dir — a second witness for where each placed rsID sits (RM267). "
+            "Omit it and $JUST_DNA_CLINVAR_GKM_CACHE is read; never downloaded by this command."
+        ),
+    ),
     pubmind_cache: Path | None = typer.Option(
         None,
         "--pubmind-cache",
@@ -106,6 +114,7 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
             offline=offline,
             ensembl_cache=ensembl_cache,
             clinvar_cache=clinvar_cache,
+            clinvar_gkm_cache=clinvar_gkm_cache,
             pubmind_cache=pubmind_cache,
             use_clinvar=use_clinvar,
             use_gnomad=use_gnomad,

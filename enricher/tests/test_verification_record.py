@@ -28,6 +28,7 @@ from just_dna_enricher.enrich import _verification_records, enrich
 from just_dna_enricher.identifiers import OntologyClient
 from just_dna_enricher.literature import enrich_literature
 from just_dna_enricher.net import PacingGate
+from just_dna_enricher.placement import PlacementCheck
 from just_dna_enricher.resolver import PairCheck
 from just_dna_enricher.verification import producer_label, ran, record_verification, skipped
 from just_dna_format import verification as verification_module
@@ -315,6 +316,7 @@ def _records_for(ref_check, build, **over):
         "stale_rsids": [],
         "pairs": PairCheck(not_checked="nothing_to_check"),
         "ensembl_ref": None,
+        "placement": PlacementCheck(not_checked="nothing_to_check"),
         "currency": None,
         "refutation_findings": [],
         "refutation_subjects": None,

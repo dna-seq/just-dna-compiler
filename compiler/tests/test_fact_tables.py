@@ -1580,6 +1580,29 @@ def test_a_resolution_link_is_not_a_source_name(tmp_path: Path) -> None:
     assert not any("has no row for" in w for w in warnings)
 
 
+def test_a_placement_witness_is_a_source_the_resolution_table_uses(tmp_path: Path) -> None:
+    """RM267: the enricher asks a second authority where a row sits and writes that authority's terms.
+
+    A `clinvar` row the resolution layer declares for a witness the row names is used, not an orphan;
+    the same declaration with the witness cell blank is the orphan finding it always was.
+    """
+    hdr = _RESOLUTION_HDR.rstrip("\n") + ",placement_witness,placement_verdict\n"
+    declared = (
+        _SRC_HDR
+        + "ensembl,resolution,Apache-2.0,Ensembl,false,true,unstated\n"
+        + "clinvar,resolution,public-domain,NCBI ClinVar,false,true,unstated\n"
+    )
+    for witness, orphaned in (("clinvar,same_event", False), (",", True)):
+        spec = _spec(tmp_path / witness.replace(",", "_"), sources=declared, license="MIT")
+        (spec / "resolution.csv").write_text(
+            hdr + f"{_SICKLE},rs334,11,5227002,T,A,GRCh38,0,cache,ensembl,resolved,{witness}\n"
+        )
+        result = compile_module(spec, spec.parent / "o")
+        assert result.success, result.errors
+        warned = [w for w in result.manifest.compilation.warnings if "no table in this module uses" in w]
+        assert bool(warned) is orphaned and (not warned or "clinvar" in warned[0])
+
+
 def test_a_resolution_authority_with_no_terms_row_still_warns(tmp_path: Path) -> None:
     """The check keeps its teeth: an authority the module never declared is a real finding."""
     rows = f"{_SICKLE},rs334,11,5227002,T,A,GRCh38,0,gnomad,gnomad,resolved\n"

@@ -24,6 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from just_dna_format.base import since, vocabulary
 from just_dna_format.normalize import normalize_utc_timestamp
 from just_dna_format.vocab import (
+    VALID_PLACEMENT_VERDICTS,
     VALID_RESOLUTION_STATUS,
     VALID_RSID_STATUS,
     check_vocab,
@@ -206,6 +207,29 @@ class ResolutionRow(BaseModel):
         ),
         json_schema_extra={**vocabulary("rsid_status", VALID_RSID_STATUS), **since("0.5.0")},
     )
+    # ── the placement's second witness (0.8, RM267; EXCLUDED from resolution_signature) ──
+    # Two columns, not one: which authority was asked and what it answered are two axes (P5), and a
+    # single `clinvar:same_event` cell would be a field piling them up. Both are provenance beside the
+    # placement — who else was asked, and what they said — so neither moves a fact signature.
+    placement_witness: str | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description=(
+            "Which second authority was asked where this row's placement sits, independent of the "
+            "link that gave it: `clinvar`, `clinvar_gkm`, or both `+`-joined in sorted order. Empty "
+            "means no independent authority was asked (none was loaded, or the row's own link is "
+            "ClinVar's). A placement a witness contradicts is never written (RM267)."
+        ),
+    )
+    placement_verdict: str | None = Field(
+        default=None,
+        description=(
+            "What `placement_witness` answered: same_event|undecided|unplaced. `undecided` is a "
+            "respelling nothing this run held could settle; `unplaced` means the witness holds no "
+            "placement of this allele, so the row has one witness only. Empty when nobody was asked."
+        ),
+        json_schema_extra={**vocabulary("placement_verdict", VALID_PLACEMENT_VERDICTS), **since("0.8.0")},
+    )
     fetched_at: str | None = Field(
         json_schema_extra=since("0.5.0"),
         default=None,
@@ -221,6 +245,11 @@ class ResolutionRow(BaseModel):
     @classmethod
     def _validate_status(cls, v: str | None) -> str | None:
         return check_vocab(v, VALID_RESOLUTION_STATUS, "status")
+
+    @field_validator("placement_verdict")
+    @classmethod
+    def _validate_placement_verdict(cls, v: str | None) -> str | None:
+        return check_vocab(v, VALID_PLACEMENT_VERDICTS, "placement_verdict")
 
     @field_validator("rsid_current")
     @classmethod

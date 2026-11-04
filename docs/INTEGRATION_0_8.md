@@ -232,7 +232,7 @@ fields, all `null` on a record written before 0.8:
 | `checked_source` | Where the values the check read came from: `authored` (`vocab.AUTHORED_SOURCE`) for cells no run established as a copy of a named source, or that source when a drafter's digest establishes it; `recorded_source` / `reporting_source` / `civic` for the checks whose subject is a source's own earlier answer. `null` when nothing could settle it (the licence table names the witness and no digest says which cells it supplied, or the table is unreadable). |
 | `witness_source` | The source(s) the values were compared against, `+`-joined in sorted order (`cpic+pharmvar`). Not `source`, which stays a single licence-table join key. |
 | `independence` | `VALID_VERIFICATION_INDEPENDENCE` (closed): `self_consistent` when the checked side is the witness, `independent` when it is not among the witnesses, `null` when either side is unstated or the checked side is one of several witnesses. Derived on the model; a stated value its two sources contradict is refused. |
-| `undecided` | How many rows a tolerance abstained on, outside `subjects`. Only `rsid_coordinate_agreement` has one (indel pairs a re-anchoring may explain, RM31); `null` for every other check. May ride a skip. |
+| `undecided` | How many rows a tolerance abstained on, outside `subjects`. `rsid_coordinate_agreement` has one (indel pairs a re-anchoring may explain, RM31), and so has `placement_agreement` (respellings nothing could settle, RM267, § 1.15); `null` for every other check. May ride a skip. |
 
 **This breaks a 0.7 reader, unconditionally.** `VerificationRecord` forbids unknown keys, so a reader
 pinned to 0.7 refuses every 0.8-written `verification.json`, and every manifest whose `verification`
@@ -259,6 +259,37 @@ so do not drop the record. `null` is unknown, never independent.
 | `caches.CACHE_LANES` | Gains `clinvar_gkm`: ClinVar-GKM's GRCh38 indels, a placement witness (`$JUST_DNA_CLINVAR_GKM_CACHE`, `clinvar-gkm build`, publish repo `just-dna-seq/clinvar_gkm`, not created yet). | A consumer that renders or provisions the registry picks it up by walking it. One that hand-lists lanes adds it. |
 | `currency.PROBE_SOURCES` | Gains `clinvar_gkm`, so `--verify-datasets` can answer for a `sources.csv` row naming it. | Nothing; a row with that source was `unsupported` before. |
 | `licensing.TERMS_BY_SOURCE` | Gains `clinvar_gkm` (CC0-1.0 over ClinGen's transformation). | Nothing, until a check writes that `SourceRow`. |
+
+## 1.15 A placement is compared with a second authority, and two new `resolution.csv` columns (RM267) — an old-reader break
+
+`enrich` now asks the ClinVar snapshot and ClinVar-GKM where they place every rsID it placed, and
+**withholds** a placement two authorities give as two different events: that locus gets no row, an rsID
+left with none is unresolved (`strict` refuses through the existing unresolved gate, naming the
+disagreement), and a warning names both placements. An `overrides.csv` answer on the subject clears the
+unresolved state. Each witness a written row names gets a `resolution`-layer `SourceRow` (`clinvar`,
+`clinvar_gkm`), and the compiler counts it as used. S117's
+`rs8176719` (ABO O1) is the motivating case: the Ensembl snapshot's `9:133257520 G>GC` against the
+`9:133257521 T>TC` dbSNP and Ensembl REST give, two haplotypes. Probed 2026-11-04 on real data: neither loaded witness holds `rs8176719` (ClinVar's 2026-06-27 VCF has no record at `9:133257510–529` and no `RS=8176719`; ClinVar-GKM lacks it, RM305), so against today's witnesses S117's own case is counted in the one-witness class and named in `detail`, not withheld. The spelling `9:133257521 T>TC` is dbSNP's and Ensembl REST's; the tests supply it as a ClinVar row to exercise the withhold. A respelling (`rs72613567`, `rs77944059`) mints one VRS id and is
+written as before.
+
+| Surface | What changed |
+| --- | --- |
+| `resolution.csv` `placement_witness` | New optional provenance column: which second authority was asked (`clinvar`, `clinvar_gkm`, or both `+`-joined). Empty means nobody independent was asked. Outside `resolution_signature`. |
+| `resolution.csv` `placement_verdict` | New optional provenance column, `VALID_PLACEMENT_VERDICTS` (closed): `same_event`, `undecided`, `unplaced`. Outside `resolution_signature`. |
+| `VALID_VERIFICATION_CHECKS` | Gains `placement_agreement` (`checked_source` `reporting_source`, witness `clinvar+clinvar_gkm`, with an `undecided` count; the one-witness count is in `detail`). |
+| `enrich(clinvar_gkm_cache=)`, `enrich --clinvar-gkm-cache` | Where the ClinVar-GKM witness is read from; `$JUST_DNA_CLINVAR_GKM_CACHE` otherwise. Read locally, never downloaded by `enrich`. |
+| `EnrichmentResult.placement`, `placement.PlacementCheck`, `ClinVarGkmWitness.by_rsids` | What the comparison did, and the batch lookup it uses. |
+
+**This breaks a 0.7 reader of a 0.8-enriched `resolution.csv`.** `ResolutionRow` forbids unknown
+columns, so a 0.7 compiler refuses the table once a 0.8 enricher has written it, and a 0.7 reader of a
+0.8 attestation refuses the new check name. Same remedy as § 1.13: upgrade before compiling. No parquet
+carries either column, and no fact signature moves.
+
+**What to do with it.** Nothing reaches a `resolution.csv` written before 0.8 on an ordinary run
+(merge-not-clobber): re-run `enrich --rederive`, or delete the file and re-run, to have its placements
+compared. A subject that comes back unresolved with a *placement disagreement* warning has a source
+contradicting another; check the spelling against the reference and record the one you stand behind in
+`overrides.csv`.
 
 ## 2. What to change
 
