@@ -459,7 +459,7 @@ this item opened, and refusal at 1.0 is a line in ROADMAP § The 1.0 cleanup.
 
 ## RM241 — `weighting` does not survive `reverse`, so a reversed module has no scale to read
 
-**Severity** low · **Status** ✅ **SHIPPED 2026-09-30 on `0.8`, uncut — a minor**, taken into 0.8 on 2026-09-29 ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md), widened there to every authored field `reverse` drops, and decided) · **filed 2026-09-13 from [RM188](ROADMAP_0_8.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)'s
+**Severity** low · **Status** ✅ **SHIPPED 2026-09-30 on `0.8`, uncut — a minor**, taken into 0.8 on 2026-09-29 ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md), widened there to every authored field `reverse` drops, and decided) · **filed 2026-09-13 from [RM188](ROADMAP_0_9.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)'s
 ClawBio half** · **Owner** format · **Motivating case**
 [`probes/CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md) § *The translation, run*, last paragraph
 
@@ -692,6 +692,279 @@ Rebuilt from the local parents: photocopy 663 → **686**, rated_miss 1 → **2*
 The count is a log line, not a `MissBuildResult` field (minor-class). The three texts citing
 Principle 2 (the lane docstring, the `mitomap miss` CLI note, the drafter note) and ENRICHER.md's
 bucket table now say what happens instead.
+
+## RM340 — the VRS-coverage warning counts alleles with no ALT and does not point at the record that says why
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-11-04 on `main`, uncut — a patch** (message text) · **Owner**
+compiler (`_vrs_coverage` warning) ·
+**Motivating case** S127 in CONSUMER_SUGGESTIONS_HISTORY.md (just-module-creator `F118`, 2026-10-25) ·
+*related* RM251, `@unreachable-not-absent`, `@answered-is-not-absent`
+
+**What stands of the report.** After RM251, `source="authored"` rows with empty `ref`/`alts` are two
+populations: rows with no rsID, which no refresh can fill, and rows whose live rsID the injected Ensembl
+snapshot predates, which a newer snapshot would fill. The reporter's correction found the split already
+stated, by name, in `verification.json`'s `rsid_coordinate_agreement` record (*"absent from this
+snapshot is not absent from Ensembl"*). The rows are truthful; what is missing is the join. The compile
+warning (*"VRS allele identity covers 166/183 … 17 allele(s): no ALT recorded"*) gives no pointer to the
+record that explains the gap.
+
+**The patch.** When the spec directory's `verification.json` carries an `rsid_coordinate_agreement`
+record with pairs not compared, the no-ALT line of `vrs_coverage_incomplete` says so and names the
+record. The compiler already reads the block at compile (`_read_verification_block`). Message text only,
+under `@warning-text-is-api`: the existing phrase stays and the pointer is appended. Run
+`schema/tests/test_feature_corpus.py`, since `features/` quotes emission text.
+
+**Not taken.** A new `status` member such as `position_only`, or a second `source` value. The reporter
+argues against the second themselves, and `@answered-is-not-absent` is the house answer to the first:
+`VALID_RESOLUTION_STATUS` is a wire vocabulary every reader of a published `resolution.csv` shares, and
+the row was never the untruth. Only the reason it gives is missing, and the reason already exists in the
+attestation.
+
+**Residuals** none
+
+**What shipped.** `_vrs_coverage_warnings` takes `unplaced_recorded` and appends a pointer to the no-ALT
+reason line alone, after its unchanged phrase. Both call sites (`validate_spec`'s pre-flight and
+`compile_module`) pass `_snapshot_unplaced_rsids_recorded(spec_dir)`, which reads the block through
+`_read_verification_block`, so an attestation these bytes no longer match points at nothing. The record
+is recognised by `compiler.SNAPSHOT_UNPLACED_PHRASE` (*"absent from this snapshot is not absent from
+Ensembl"*), which `just_dna_enricher.enrich` now imports to write that same sentence, so the writer and
+the reader share one constant. The two sides produce the same line, and the existing message dedup
+collapses it to one. No code and no vocabulary member was added.
+
+Tests: `test_fact_tables.py` (the pointer changes exactly one line, the no-ALT one, and that line still
+begins with its old text) and `test_verification_block.py` (`apoe_epsilon` carries two no-ALT alleles:
+an attested record with the phrase adds the pointer on both sides, once in the manifest; a record
+without it, or a stale one, leaves the line bare). `features/compiler/identity_and_vrs.feature` has the
+scenario; COMPILER.md's warning catalogue states the pointer.
+
+## RM339 — an interrupted snapshot pull leaves a cache that reads as complete, so it is never finished
+
+**Severity** high · **Status** ✅ **SHIPPED 2026-11-04 on `main`, uncut — a patch** (enricher only) · **Owner**
+enricher (`download._provision_snapshot`, the parquet resolvers, `caches.prepare_lane`) ·
+**Motivating case** S126 in CONSUMER_SUGGESTIONS_HISTORY.md (just-dna-registry `warm-caches`,
+2026-10-08) · *related* `@a-derived-lane-has-parents-and-an-absent-parent-is-not-an-empty-result`,
+`@a-failed-fetch-is-not-a-no-op`
+
+**Reproduced 2026-11-03.** A cache directory holding one footer-valid `homo_sapiens-chr1.parquet` and
+nothing else: `ensure_snapshot` returns it without touching the network. `if existing and not corrupt:
+return cache_dir` trusts any non-empty set of whole files, and the `.part`-then-rename staging that
+keeps each file whole is exactly what makes an interrupted pull look finished: every file present
+verifies, and the missing ones leave no trace. The lane's `resolve()` inherits the answer, so
+`warm-caches`, its dry run and just-dna-lite's `prepare-caches` agree the lane is present. In the
+reported run that was 3 of 25 chromosomes, and `enrich` would have resolved rsIDs against them silently.
+Every snapshot sharing the helper has it.
+
+**The patch.** Trust a cache only when it carries a record of a finished pull and every file the record
+names is present and whole; without one, fetch what is missing and skip what verifies, which keeps "no
+network on a warm cache". The reporter's candidate writes that record at the end of a successful pull.
+`release.json` is already fetched last, after every parquet, so where a repo publishes one its presence
+marks a finished pull; whether it lists the files, and whether every lane's repo publishes one, is the
+first thing to check when building, before adding a file to the layout (`locations`, and
+`docs/CACHE_SURFACE.md`'s checklist). Caches provisioned before the record existed either refetch once
+or are compared with the remote listing the first time the network is reachable; that choice is the
+build's. Second, smaller: name `HF_HUB_DOWNLOAD_TIMEOUT` in the error a read timeout raises, since the
+10 s default is short for files of 0.5–1 GB.
+
+**Residuals** none
+
+**What shipped.** `release.json` could not be the record: it lists no files, and the Ensembl lane, the
+reported one, publishes none. The record is a new file, `locations.PULL_RECORD_FILENAME`
+(`pull-record.json` beside `data/`), kept out of `SNAPSHOT_ROOT_FILENAMES` so no publish carries it.
+`_provision_snapshot` lists the data and the sidecar directories, writes the record atomically, and only
+then downloads. **Written first rather than last**, because a record written at the end leaves an
+interrupted pull looking exactly like a cache from before the record existed.
+
+- `locations.snapshot_record_missing` answers three ways: `[]` (complete), the named files that are absent
+  or fail the footer check (an unfinished pull), or `None` (no record). Both parquet resolvers return
+  `None` for an unfinished pull, so `cache status`, `prepare`, `warm-caches` and `enrich` stop calling
+  it present; Ensembl's prebuilt `.duckdb` keeps its standing. The footer check moved to
+  `locations.parquet_footer_ok`, kept importable as `download._parquet_footer_ok`.
+- A recorded complete cache is not even listed. A cache with no record (built here, or pulled before
+  RM339) is compared with the listing once, fetches what it lacks and gains a record. When the listing
+  cannot be read it is used as it is, with a warning that its completeness is unknown, and no record is
+  written.
+- `prepare_lane` sends an unrecorded parquet cache in the default directory through `ensure` once, when
+  the terms permit a pull, and reports `pulled` if files arrived. An override pointing elsewhere, a
+  gated lane under an unstated use, and a recorded cache stay `present` as before.
+- A read timeout (`httpx.TimeoutException`, after the transport's retries) raises the lane's own error
+  naming `HF_HUB_DOWNLOAD_TIMEOUT` and its current value, and leaves no `.part` behind.
+
+Tests: `test_download.py` (an interrupted pull, run through a fake that lets one download through and
+kills the next, is not resolvable and the next call fetches only the two missing files; a truncated
+recorded file; a recorded cache asks nothing; an unrecorded one is listed once, completed when partial,
+and served offline; the timeout message) and `test_cache_lanes.py` (the `prepare` route, and the three
+places it stays `present`). The resolver half was shown on `main` first: a cache holding one of a
+snapshot's files resolved as present. ENRICHER.md's `cache pull` paragraph, the `cache pull` docstring
+and AGENT_NOTES `@a-failed-fetch-is-not-a-no-op` say the new rule.
+
+
+## RM343 — duckdb 2.0 spells the hash join `Hash Join`, so a query-shape test goes red on a fresh install
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-11-04 on `main`, uncut — a patch** (a test's assertion; no
+package change) · **Owner** enricher (tests) · **Motivating case** the liaison's run of the enricher suite
+under duckdb 2.0.0, `docs/UPSTREAM_DUCKDB.md` (2026-11-03)
+
+**Measured.** Under duckdb 2.0.0 the enricher suite gives 2280 passed and 1 failed:
+`test_query_shapes.py` asserts `"HASH_JOIN"` in the `EXPLAIN` text, and 2.0 prints `Hash Join`. The plan is the
+same hash join, and the timing test passes. `duckdb>=1.1.0` is uncapped, so a fresh install takes 2.0.
+
+**The patch.** The assertion reads the operator name in either spelling. No cap, since nothing else in the suite
+moved. Capping a runtime dependency to keep one test's string would hold every consumer back for a test.
+
+**Residuals** none
+
+The liaison's ledger (`docs/UPSTREAM_DUCKDB.md`) keeps the rest of 2.0's read.
+
+**What shipped.** `test_lookup_clin_sig_is_a_hash_join_not_an_or_chain` upper-cases the plan text and turns
+spaces into underscores before looking for `HASH_JOIN`. The old assertion was run under
+`uv run --isolated --with duckdb==2.0.0` and failed on a plan whose operator box reads `Hash Join`. The new
+one passes under the locked 1.x and under 2.0.0.
+
+## RM341 — polars 2.x writes its version into every parquet footer, so one `compiler_version` mints a digest per polars release
+
+**Severity** high · **Status** ✖ **CLOSED 2026-11-04 — the cap was reverted before it was pushed; no cap, the
+maintainer's decision** · **Owner** compiler (packaging) · **Motivating case** the liaison's measurement, `docs/UPSTREAM_POLARS.md`
+(2026-11-03) · *related* RM342, RM304
+
+**Measured.** `polars>=1.42.0` has no upper bound. polars 2.0 writes `created_by = 'Polars (python) version
+<v> (build <hash>)'` into the parquet footer (pola-rs/polars#29106, following the parquet spec). The liaison
+compiled three reference examples twice under 1.44.2 and once under 2.1.0. The tables, schema, codec and row
+groups are equal, but every parquet's sha256 and every `artifact.digest` differ, while 1.44.2 reproduces itself
+byte for byte. P4 pins reproducibility to `compiler_version`, so one compiler release installed beside two polars
+releases would mint two digests for one spec, with nothing in the manifest saying why.
+
+**The patch.** Cap `polars<2` in the compiler, which the enricher inherits, the way RM304's `ga4gh.vrs<2.4`
+mitigation was shipped. Add a test that reads the footer of every parquet a real compile writes and fails when
+the installed polars version appears there, so the cap cannot be lifted quietly. It is lifted only by RM342.
+
+**Residuals** RM342 records the toolchain, so a digest that differs between installs can say why.
+
+**Reverted, and the rule that replaced it (the maintainer, 2026-11-04).** No cap on polars or duckdb. polars-bio
+already caps just-dna-lite at `polars<2`, and a second cap here would block every other consumer. The rule:
+**the liaison decides adoption blockers and hands the lead an adoption map. A pin goes in only when a new major
+is proven to break something, and stays until support is integrated.** When the liaison is unavailable to settle
+compatibility and work has to move, the lead may pin as a safety. polars 2.x breaks nothing here: under 2.x the
+tables and `content_signature` are equal, and the digest moving between installs is what P4 already scopes to a
+fixed toolchain. The cap and its footer test were removed in the commit after the one that added them, both
+unpushed. The footer test was dropped as well, because it would go red the day `uv.lock` moves to polars 2.
+That move is the liaison's adoption map, item 4: every digest moves once, and the release records that the
+content is unchanged.
+
+**What was built, then reverted.** `compiler/pyproject.toml` pinned `polars>=1.42.0,<2`, and `uv lock` changed only the specifier.
+`compiler/tests/test_parquet_names_no_toolchain.py` compiles `apoe_epsilon` and reads each parquet's thrift footer
+straight from the bytes (the compiler tier has no pyarrow). It fails when `pl.__version__` appears there. Run
+before the cap under `uv run --isolated --with polars==2.1.0`, it failed on `diplotypes.parquet` and
+`haplotypes.parquet`, naming 2.1.0. Under the locked 1.44.2 it passes. That run checks the liaison's measurement
+on this machine rather than relaying it.
+
+## RM320 — PubMind's terms are answered: the ANNOVAR table is CC BY-NC-ND 4.0, so a module carrying it is non-commercial and the build gates on `--use`
+
+**Severity** medium (it moves a compile outcome) · **Status** ✅ **SHIPPED 2026-10-02 on `main`, uncut — a patch** (a corrected terms constant and the gate it feeds; no schema change) · **Owner** enricher (`licensing.py`, `pubmind_build.py`, `pubmind_draft.py`, `caches.py`, `cli.py`) · **Motivating case** [WGLab/PubMind#5](https://github.com/WGLab/PubMind/issues/5), asked 2026-09-27 and answered 2026-09-28 · *related* RM134, RM289, RM27, S99, `@no-named-licence`, `@acquisition-gate-is-not-a-read-gate`
+
+**Residuals** none
+
+RM134 shipped with `PUBMIND_TERMS` at `None` on every axis because no page stated terms for the
+ANNOVAR-distributed table, and named asking WGLab and CHOP as the only unblock. The postmortem listed
+it as never asked (P16); it was asked on 2026-09-27. A WGLab collaborator replied that the *lightweight*
+PubMind-DB release (aggregated pathogenicity and confidence, via ANNOVAR and Zenodo) is **CC BY-NC-ND
+4.0**. The software and the full PubMind-DB stay under CHOP's `LICENSE.md`, and the Zenodo CC BY 4.0
+label was their mistake, now corrected. The reply covers exactly the file `pubmind build` reads.
+
+1. **`PUBMIND_TERMS`** is `license="CC-BY-NC-ND-4.0"`, `commercial_use=False`, `share_alike=False`,
+   `redistribution=True`, the reading `ARTICLE_TERMS_BY_LICENSE` already gives the licence, and a test
+   holds the two equal. `license_url` is the written answer. **NoDerivatives has no axis**, so it is in
+   `notice`.
+2. **The compile outcome moves.** A `pubmind` licence row now taints, so a module carrying one compiles
+   only under `non_commercial`. Before, it compiled under any declaration and the manifest named
+   `pubmind` in `unknown_terms_sources`. A module drafted before this keeps its all-null row, because
+   `sources.csv` merges never clobber; deleting the row and re-drafting records the terms. That is
+   declared here and in the CHANGELOG rather than repaired, because overwriting a recorded licence row
+   is the thing the never-clobber rule protects a curator's hand-edit from.
+3. **`pubmind build` gains `--use`, and `cache rebuild` gates the lane.** The flag was refused while the
+   gate could only skip; with a no-sale source it answers per declaration, as on `clinpgx build`. The
+   lane's `terms` field now carries `PUBMIND_TERMS`.
+4. **The drafter is still not gated**, on the same rule as before: reading an operator-built snapshot is
+   not a fetch. Its warning now names the licence and the `--use non-commercial` the compile will ask for.
+5. **`pubmind publish` still refuses**, for a new reason: the snapshot decomposes and normalizes the
+   table, which makes it adapted material, and NoDerivatives bars sharing that. The refusal, the lane's
+   `unpublished` reason and `release.json`'s `notice` say so.
+
+## RM316 — the `annotated_alt` element rule counts by ALT position, and VCF 4.5's local-allele fields order their values through `LAA`
+
+**Severity** low (medium for the first module that points at an `A`/`R`/`G` FORMAT field with it) · **Status** ✅ **SHIPPED 2026-09-30 on `main`, uncut — a patch** · **Owner** format (`vocab.ELEMENT_RULE_MEANINGS`) + docs (the consumer contract) · **Motivating case** [VCF_4_5_AUDIT § 5](probes/VCF_4_5_AUDIT.md), 2026-09-30 · *related* RM53, RM54, RM57, RM313
+
+**Residuals** none
+
+**What 4.5 added.** §1.6.2: `LAA` lists, per sample, which ALT alleles are in play and in what order.
+Every `A`/`R`/`G` FORMAT field has a local equivalent (`LAD`, `LPL`, …) read through it, and a file may
+carry only the local one. In the spec's example, ALT `A,C,T,<*>` with `LAA=2,4` gives `LAD=20,30,10` as
+REF, C, `<*>`.
+
+**What we say.** `annotated_alt` is *"at its index in the record's ALT list, which is element index+1
+on a Number=R field"*. On `LAD`, ALT `C` (index 2) is element 1. A module rightly writes
+`source_field=FORMAT/AD`. A consumer whose merged 4.5 file carries only `LAD`, and falls back to it
+under our sentence, reads the wrong allele's depth: well-formed and wrong.
+
+**The patch (text).** In `annotated_alt`'s meaning and in the consumer contract: resolve a local-allele
+field to its global equivalent through `LAA` before applying any element rule, as §1.6.2 recommends.
+The value-ranging rules survive unchanged. A `local_annotated_alt` rule is refused, because it would
+make the module describe how the consumer's file was merged (P2).
+
+**What shipped (text only).** `ELEMENT_RULE_MEANINGS["annotated_alt"]`, which the authoring reference prints, now says a VCF 4.5 local-allele field (`Number` `LA`/`LR`/`LG`) orders its values by the sample's `LAA` and is resolved to its global equivalent through `LAA` before this or any rule applies. SCHEMAS.md's element-rule contract gains the paragraph with §1.6.2's worked example, and records that a `local_annotated_alt` rule is refused (P2). No rule added, no code. RM315 transcribed the `L*` keys and their `Number` codes in the same batch.
+
+## RM315 — the VCF reserved-key tables we transcribe miss keys the spec reserves, among them `RUC`, and name no spec version
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-30 on `main`, uncut — a patch** · **Owner** format (`vocab.VCF_FIELD_NUMBER`, `VCF_COLLIDING_KEYS`, `VCF_NUMBER_MEANINGS`) + docs · **Motivating case** [VCF_4_5_AUDIT §§ 3–4](probes/VCF_4_5_AUDIT.md), 2026-09-30 · *related* RM53, RM54, RM57, RM313
+
+**Residuals** none
+
+**What is missing.** `VCF_FIELD_NUMBER` claims to transcribe the spec's reserved keys, but it lacks
+§3's INFO keys (`RUC`, `RN`, `RUS`, `RUL`, `RB`, `RUB`, `CIRUC`, `CIRB`, `SVLEN`, `CIPOS`, `CIEND`,
+`CILEN`, `CICN`, …), §4's FORMAT `CICN`, `NQ`, `HAP` and `AHAP`, Table 2's `PP`, and every 4.5 key
+(`LEN`, `LAA`, `LA`, the local-allele family, the base-modification aliases). `CICN` is reserved in both
+namespaces with different cardinality, like `CN`, and is absent from `VCF_COLLIDING_KEYS`. And no doc a
+consumer reads says which spec version the tables describe.
+
+**Why it bites.** `binning._VCF_MEASURE_FIELDS` names `RUC` as the field a `repeat_count` is read
+from, and `RUC` is `Number=.`. Probed on `htt_repeat_expansion` with `source_element` emptied:
+`INFO/RUC` gives no warning, while `FORMAT/AD` gives `vcf_pointer_unselected_element`.
+
+**The patch.** Transcribe the missing keys, add `CICN` with its sentence in `VCF_COLLISION_REASONS`
+(asserted total), and fix the comment placing the structural keys in §5.6 (they are §3 and §4). Add
+`VCF_NUMBER_MEANINGS` entries for `LA`/`LR`/`LG`/`M`: it is read through `.get(..., default)`, so a
+missing meaning prints the default silently (`@lookup-with-a-default-hides-a-new-member`). Assert
+equality between the codes the table uses and the codes the meanings cover. State "VCF 4.5; a key added
+after it is unknown and withholds" in SCHEMAS.md and COMPILER.md. Leave the pinned `"is not a whole
+number in VCF 4.4"` phrase alone: it is API and still true. The `M[0-9]+[ACGTUN]` family is a pattern,
+so its named aliases go in, and the ChEBI-numbered form stays unknown. No new code.
+
+**What shipped.** `VCF_FIELD_NUMBER` now holds every key VCF 4.5 reserves: Table 1, Table 2 (with `PP`, `LEN`, `LA`, `LAA`, the local-allele fields and the ten named base-modification aliases in their `M`/`DPM`/`ADM` forms), and the keys §3 and §4 reserve (the structural, copy-number and tandem-repeat keys, `RUC` among them). It was extracted from the 4.5 LaTeX and compared back to it: nothing missing, no `Number` disagreeing. The extractor's header regex also picked up example-only keys (`ALLELEID`, `ASP`, `RSPOS`, `dbSNPBuildID`), which were left out because the spec does not reserve them. `CICN` joins `VCF_COLLIDING_KEYS` with its reason. `VCF_NUMBER_MEANINGS` gains `LA`/`LR`/`LG`/`M`. Three tests: the multi-valued codes the table uses equal the codes with a meaning; every key reserved in both namespaces is a named collision (a subset, because `AF` is a collision by practice); and the audit's probe, `INFO/RUC` with no element rule, now draws `vcf_pointer_unselected_element`. All three fail on the old table. The comments and SCHEMAS.md/COMPILER.md state VCF 4.5; the pinned `is not a whole number in VCF 4.4` phrase is untouched. No new code: an existing warning fires on more pointers, and an existing collision set gains a member.
+
+## RM314 — the reference-block rule we print reads INFO `END`, which VCF 4.5 made a cross-sample maximum, so a multi-sample file credits one sample's block to another's positions
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-30 on `main`, uncut — a patch** · **Owner** format (the `callable_from` description) + docs (SCHEMAS.md, the consumer contract) · **Motivating case** [VCF_4_5_AUDIT § 1](probes/VCF_4_5_AUDIT.md), 2026-09-30 · *related* RM53, RM54, RM57, RM313
+
+**Residuals** none
+
+**What 4.5 changed.** §5.5 moves a gVCF reference block's extent to a per-sample FORMAT `LEN`. §1.6.1
+deprecates INFO `END` and, when it is present, makes it *"the maximum end reference position"* over
+every sample's `LEN`. §5.5 also says a position covered by a sample's own earlier `<*>` block carries
+`GT=.` for that sample.
+
+**What we tell consumers.** `VariantRow.callable_from`'s description and SCHEMAS.md's *Reference
+evidence is a block* paragraph say a block is *"one record with END="*, found by interval containment
+on it. In the record `1 100 . A <*> . . END=199 GT:MIN_DP:LEN 0/0:30:100 0/0:30:10`, sample two called
+100–109 only, and our rule credits it with 150. For a `requires_callable` row at 150 that is a
+confident absence nobody screened for: the direction SCHEMAS.md itself calls dangerous. The `GT=.` rule
+errs the safe way, but our text still sends the consumer to the wrong record.
+
+**The patch (text only).** Read the sample's own FORMAT `LEN` first, and `END` only where `LEN` is
+absent (the spec's own fallback). A `.` GT inside that sample's own earlier block is that block's call,
+not a no-call. Update the `callable_from` description, the SCHEMAS.md paragraph and its quoted 4.4
+record, and the consumer contract. No column, no validator: P3 and P8 are not reached. Severity is
+stated for the file the spec permits; no real multi-sample 4.5 file with per-sample `LEN` was measured.
+
+**What shipped (text only).** `VariantRow.callable_from`'s description and SCHEMAS.md's consumer contract (*Reading the VCF the pointers point at*) now read a block's extent from the sample's own FORMAT `LEN` first and INFO `END` only where `LEN` is absent, say why (4.5 makes `END` a cross-sample maximum) with the audit's two-sample record, and read a `.` GT inside the sample's own earlier block as that block's call. The quoted 4.4 record is gone from the paragraph rather than kept beside a rule it no longer illustrates. No column, no validator, no warning code; nothing pinned the old wording.
 
 ## RM310 — `cache rebuild --only cpic` lets a CPIC outage escape as a traceback, and the lanes after it never build
 
@@ -4496,7 +4769,7 @@ which moves. That is the README shape.
 `overrides.parquet` can find two modules with one signature whose overlay prose differs — the
 consumer's own argument against their fix, and the shape README already has; stated in SCHEMAS. And
 the maintainer's observation on the resulting picture — byte digest moved, every signature intact,
-*what* moved unstated — is [RM181](ROADMAP_0_8.md#rm181--a-byte-digest-that-moves-beside-intact-signatures-says-something-changed-and-not-what-and-provenance-has-no-shift-tracker).
+*what* moved unstated — is [RM181](ROADMAP_0_9.md#rm181--a-byte-digest-that-moves-beside-intact-signatures-says-something-changed-and-not-what-and-provenance-has-no-shift-tracker).
 
 ## RM187 — eleven bulk downloads carried one body in eleven copies, four of them leaking the transport
 
@@ -8058,6 +8331,8 @@ the shared normalizer, § B the N-authority check, § C `draft-panel --source pu
 (doi:10.1038/s41467-026-76834-4, 20 August 2026), and a user direction on 2026-08-28 to design both a
 ClinVar-shaped derived table and a ClinVar concordance check · **Full design**
 [PUBMIND_ASSESSMENT.md](PUBMIND_ASSESSMENT.md)
+
+**Residuals** RM320
 
 PubMind extracts variant–disease–pathogenicity associations from 41.7 M PubMed abstracts and 5.4 M PMC
 full texts with LLaMA-3.3-70B behind a fine-tuned BERT triage stage. It is **a source, not a

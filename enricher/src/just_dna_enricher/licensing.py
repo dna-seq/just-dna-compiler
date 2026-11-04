@@ -378,59 +378,56 @@ GWAS_CATALOG_TERMS = SourceTerms(
 )
 
 
-# PubMind, read on 2026-08-28. **The one entry in this file whose every axis is `None`, and that is
-# the finding rather than a gap.** Two different things are licensed here and only one of them
-# clearly. `LICENSE.md` covers the *software*: academic, non-commercial research use only, commercial
-# use prohibited without a separate agreement from CHOP's Office of Technology Transfer. The paper is
-# CC BY-NC-ND 4.0, which expressly forbids sharing adapted material. And the coordinate table ANNOVAR
-# redistributes — the only per-variant channel there is — **carries no stated terms of its own**: the
-# README offers it as the open substitute for the licensed full database, and neither party publishes
-# a licence for those bytes.
+# PubMind, read on 2026-08-28 and **answered in writing on 2026-09-28** (WGLab/PubMind#5, RM320).
+# Two things are licensed here, and until the answer only one of them clearly. `LICENSE.md` covers the
+# *software* and the **full** PubMind-DB (references, reasoning, evidence): academic, non-commercial,
+# tech-transfer for anything else. The **lightweight** release — the aggregated pathogenicity and
+# confidence table ANNOVAR and Zenodo distribute as `hg38_pubmind_db`, the only per-variant channel
+# and the file `pubmind build` reads — is **CC BY-NC-ND 4.0**, said by a WGLab collaborator on the
+# repository. The CC BY 4.0 label the Zenodo archive carried was theirs to correct, and they did.
 #
-# Under the house rule that is unknown, not permissive (`@no-named-licence`). `license=None` because
-# `licensing.py` defines null as "the terms could not be established", which is weaker and more honest
-# than either permission or refusal, and is the state we are actually in; `license_url` points at
-# CHOP's `LICENSE.md` so a reader can see what *is* established. Unknown terms warn and never gate:
-# `taints_commercial_use` requires `commercial_use is False`, so a module carrying PubMind values
-# compiles, records `pubmind` in `manifest.sources.unknown_terms_sources`, and drives the module-wide
-# verdict to `None` — undetermined, never permitted. What the answer would gate is *publishing* such a
-# module, which RM27 records per source and leaves to the registry, downstream, to gate.
+# The axes follow this file's own reading of the licence (`ARTICLE_TERMS_BY_LICENSE["cc by-nc-nd"]`): sale is
+# barred, sharing is allowed, nothing is share-alike. **NoDerivatives is the clause no axis carries**:
+# adapted material may not be shared, and `SourceRow` has no column that can say so, so it goes in
+# `notice`. It is also why `pubmind publish` still refuses — the snapshot is the table decomposed and
+# normalized, which is adapted material — and the refusal now says that instead of "unknown".
 #
-# The unblock action is to ask WGLab and CHOP's Office of Technology Transfer, in writing, whether the
-# ANNOVAR-shipped subset may be redistributed and on what terms. Nobody else can answer it, and it
-# will not resolve itself by the file continuing to download without a key.
+# Before the answer every axis was `None` (`@no-named-licence`), and a module carrying PubMind values
+# compiled under any declaration with `pubmind` in `manifest.sources.unknown_terms_sources`. With
+# `commercial_use=False` it now taints like ClinPGx: a `commercial` declaration refuses at compile.
 PUBMIND_TERMS = SourceTerms(
     source="pubmind",
-    license=None,
-    license_url="https://github.com/WGLab/PubMind/blob/main/LICENSE.md",
+    license="CC-BY-NC-ND-4.0",
+    license_url="https://github.com/WGLab/PubMind/issues/5",
     attribution=(
         "PubMind, The Children's Hospital of Philadelphia (https://pubmind.wglab.org); "
         "Wang & Wang, Nat Commun 2026, doi:10.1038/s41467-026-76834-4"
     ),
     notice=(
-        "The data terms could not be established: CHOP's LICENSE.md covers the software (academic, "
-        "non-commercial, tech-transfer for anything else), the paper is CC BY-NC-ND 4.0, and the "
-        "ANNOVAR-distributed coordinate table states no terms at all. Every value is an LLM's "
+        "NonCommercial and NoDerivatives: the ANNOVAR/Zenodo PubMind table is CC BY-NC-ND 4.0 "
+        "(stated in writing by WGLab, 2026-09-28), so it may not be sold and adapted material built "
+        "from it may not be shared. The software and the full PubMind-DB are under CHOP's separate "
+        "licence (https://github.com/WGLab/PubMind/blob/main/LICENSE.md). Every value is an LLM's "
         "reading of the published literature, not a curated assertion, and it is not intended for "
         "direct diagnostic use or medical decision-making."
     ),
-    share_alike=None,
-    commercial_use=None,
-    redistribution=None,
+    share_alike=False,
+    commercial_use=False,
+    redistribution=True,
 )
 
 # CIViC is CC0 1.0 for the content — a public-domain dedication, so all three axes are permissive and
 # none of them is inferred. What is distinctive is not that it may be redistributed (ClinVar, Ensembl,
 # gnomAD, ClinGen and GenCC may too) but that it asks **nothing** in return: no share-alike, no bar on
 # sale, and attribution requested rather than required. Among the sources with a snapshot builder it
-# is the opposite pole from PubMind, whose terms are unstated on every axis and whose publish refuses.
+# is the opposite pole from PubMind, which is CC BY-NC-ND and whose publish refuses.
 #
 # **The MIT licence in CIViC's own sentence is not this.** Their FAQ names two licences in one breath
 # — CC0 for the content, MIT for the application source — and reading the MIT half as the data terms
 # would attach a licence to bytes it does not cover. The content is the half a snapshot redistributes.
 # The ClinGen **Allele Registry** is a different surface from the gene-curation list above, and its
-# terms could not be established — so every axis it does not state is `None`, on the PubMind rule that
-# unknown is not permissive (`@no-named-licence`).
+# terms could not be established — so every axis it does not state is `None`, on the rule PubMind was held
+# under until WGLab answered: unknown is not permissive (`@no-named-licence`).
 #
 # **Probed 2026-08-31, and the probe is why this is not simply CC0.** The registry runs on Baylor's
 # Genboree infrastructure; `reg.clinicalgenome.org/site/terms` answers **HTTP 200** with a generic

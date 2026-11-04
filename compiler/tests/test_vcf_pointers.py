@@ -435,3 +435,33 @@ def test_the_count_is_authored_rows_even_when_the_rsids_expand(tmp_path: Path) -
 
 def test_nothing_authored_means_nothing_reported() -> None:
     assert _check_vcf_pointers([], {}) == []
+
+
+# ── RM315: the transcription is the spec's reserved keys, all of them ────────────────────────────
+
+
+def test_every_multi_valued_code_the_table_uses_has_a_meaning_and_no_other() -> None:
+    """`VCF_NUMBER_MEANINGS` is read through `.get(..., default)`, so a code with no meaning would print
+    the default silently (`@lookup-with-a-default-hides-a-new-member`). 4.5 added `LA`, `LR`, `LG`, `M`."""
+    used = {number for number in VCF_FIELD_NUMBER.values() if is_multi_valued_number(number)}
+    assert used == set(VCF_NUMBER_MEANINGS)
+
+
+def test_every_key_reserved_in_both_namespaces_is_a_named_collision() -> None:
+    """Asymmetric on purpose: `AF` is a collision by universal practice (FORMAT/AF is emitted, never
+    reserved), so the set may be wider than the table's overlap, never narrower. `CICN` was the gap."""
+    info = {key.removeprefix("INFO/") for key in VCF_FIELD_NUMBER if key.startswith("INFO/")}
+    fmt = {key.removeprefix("FORMAT/") for key in VCF_FIELD_NUMBER if key.startswith("FORMAT/")}
+    assert info & fmt <= VCF_COLLIDING_KEYS
+
+
+def test_the_repeat_count_field_the_schema_names_is_checked_like_any_other(tmp_path: Path) -> None:
+    """VCF_4_5_AUDIT § 3, reproduced: `INFO/RUC` (Number=.) with no element rule drew no warning, while
+    `FORMAT/AD` did, so the field `binning` names for a repeat count was the one left unchecked."""
+    spec = _copy_spec(_HTT, tmp_path / "htt")
+    _rewrite(spec / "repeat_alleles.csv", source_field="INFO/RUC", source_element=None)
+
+    findings = _pointer_findings(validate_spec(spec).warnings)
+    assert len(findings) == 1, findings
+    assert "repeat_alleles.csv source_field=INFO/RUC (Number=." in findings[0]
+    assert VCF_NUMBER_MEANINGS["."] in findings[0]

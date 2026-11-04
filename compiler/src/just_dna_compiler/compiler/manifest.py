@@ -77,6 +77,7 @@ from just_dna_compiler.compiler.tables import (
     _locate_sidecar,
     authored_input_entries,
 )
+from just_dna_compiler.compiler.vrs_checks import SNAPSHOT_UNPLACED_PHRASE
 from just_dna_compiler.models import ValidationResult
 
 
@@ -1161,4 +1162,24 @@ def _build_manifest(
         authorship=config.authorship,
         logo=logo,
         readme=readme,
+    )
+
+
+def _snapshot_unplaced_rsids_recorded(spec_dir: Path) -> bool:
+    """Whether this spec's attested `verification.json` says the snapshot left authored rsIDs unplaced.
+
+    Read through `_read_verification_block`, so an attestation that no longer matches these bytes, or
+    cannot be read, points at nothing: a stale record is not cited as the reason for today's rows. Its
+    own warnings are not repeated here; `_verification_block` reports them at both call sites already.
+    (RM340; beside `_read_verification_block` rather than in `vrs_checks`, which imports nothing of the
+    package.)
+    """
+    block, _ = _read_verification_block(spec_dir)
+    if block is None:
+        return False
+    return any(
+        record.check == "rsid_coordinate_agreement"
+        and record.detail is not None
+        and SNAPSHOT_UNPLACED_PHRASE in record.detail
+        for record in block.checks
     )

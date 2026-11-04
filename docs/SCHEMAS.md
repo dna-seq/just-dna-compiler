@@ -334,7 +334,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
   the disease id and must not invent phenotype ids from names.
 
 - **Reserved namespace (`vocab.RESERVED_NAMES_0_4`).** Only names expected to become real module
-  columns later (P5) — today `{reference_db, callable_element, quality_element}`, each with a reason
+  columns later (P5) — today `{reference_db, callable_element, quality_element, tradeoff}`, each with a reason
   in `RESERVED_NAME_REASONS`. It is *not* a catalogue of barred names (`extra="forbid"` already
   rejects any unknown column). (`callable_from` was reserved for RM6 and is now **built**, so it left
   the set: a reserved name is refused at author time, which would make the built column unwritable.)
@@ -1004,12 +1004,23 @@ not refuse. **Until 0.8 this paragraph said the opposite** (RM57's reading, that
 reference record means "probably variant"); the 4.4 audit carries the dated correction.
 
 **Reference evidence is a block, so callability is interval containment and the depth field is
-`MIN_DP` (RM57).** A gVCF states reference confidence as one record spanning a range (`1 4370 . G <*>
-. . END=4383 GT:DP:GQ:MIN_DP:PL`, §5.5), not one record per base. A consumer joining `callable_from` on
-position equality will find nothing at most covered positions and read it as a no-call. And `DP` on such
-a record is the block *average*: a DP of 25 over 14 bases is compatible with an uncovered base inside
-them, which is precisely the case `requires_callable` exists to catch. `MIN_DP` is the block floor and
-is what a callability threshold should be stated against.
+`MIN_DP` (RM57).** A gVCF states reference confidence as one `<*>` record spanning a range, not one
+record per base. A consumer joining `callable_from` on position equality will find nothing at most
+covered positions and read it as a no-call. And `DP` on such a record is the block *average*: a DP of 25
+over 14 bases is compatible with an uncovered base inside them, which is precisely the case
+`requires_callable` exists to catch. `MIN_DP` is the block floor and is what a callability threshold
+should be stated against.
+
+**A block's extent is per sample: `FORMAT/LEN` first, `INFO/END` only where `LEN` is absent (RM314).**
+VCF 4.5 moved the extent to FORMAT `LEN` (§5.5, Table 2) and made INFO `END` *"the maximum end reference
+position"* over every sample's `LEN` (§1.6.1), keeping END only as the fallback when LEN is missing. In
+`1 100 . A <*> . . END=199 GT:MIN_DP:LEN 0/0:30:100 0/0:30:10`, sample one called 100–199 and sample two
+called 100–109. Read from `END`, sample two is credited with position 150, and a `requires_callable` row
+there reports a confident absence at a position nobody called, the dangerous direction. A single-sample
+gVCF, and every 4.4 file, has `END` equal to the sample's own extent, so the rule changes nothing there.
+§5.5 also sets `GT` to `.` (and drops every other FORMAT field but `LAA`) at a position a sample's own
+earlier `<*>` block already called. A `.` inside that sample's block is the block's call, so the
+evidence to read is the block's, not a no-call.
 
 **A measurement that spans several bins has no state, and the placeholder is to withhold (RM56).**
 `RUC` travels with `CIRUC` and `CN` with `CICN`, and a missing bound on either means *unbounded*
@@ -1091,7 +1102,7 @@ Three authored columns point into a VCF: `MeasureBinRow.source_field`, `VariantR
 identify a VCF field.
 
 **A VCF field is identified by its namespace.** INFO and FORMAT are two reserved-key tables that
-overlap deliberately, and they collide on `DP`, `AD`, `ADF`, `ADR`, `MQ`, `AF` and — new in 4.4 — `CN`.
+overlap deliberately, and they collide on `DP`, `AD`, `ADF`, `ADR`, `MQ`, `AF`, `CICN` and — new in 4.4 — `CN`.
 `INFO/DP` is the cohort's combined depth and `FORMAT/DP` is this sample's; `INFO/AF` is the cohort
 allele frequency of an ALT and `FORMAT/AF` is this sample's fraction of it; `INFO/CN` is
 allele-specific copy number where `FORMAT/CN` is the sample's total, so the two differ by a factor of
@@ -1126,6 +1137,15 @@ have had nothing to say about the case it was built for. How multiplicity is enc
 business and this tier holds no opinion on it (P2); which of the values the annotation means is the
 module's, and that is all `source_element` states.
 
+**A local-allele field is resolved through `LAA` before any rule is applied (RM316).** VCF 4.5 gives
+every `A`/`R`/`G` FORMAT field a local equivalent (`LAD`, `LPL`, …, `Number` `LA`/`LR`/`LG`) whose values
+follow the sample's `LAA` list rather than the ALT list (§1.6.2). With ALT `A,C,T,<*>` and `LAA=2,4`,
+`LAD=20,30,10` is REF, `C`, `<*>`, so ALT `C` (ALT index 2) is `LAD` element 1. A module keeps pointing
+at the global field (`FORMAT/AD`). A consumer whose merged file carries only `LAD` resolves it to `AD`
+through `LAA`, as the spec itself recommends, and applies the rule to that. Applied to `LAD` directly,
+`annotated_alt` reads another allele's depth, well-formed and wrong. A `local_annotated_alt` rule is
+refused: it would make the module describe how the consumer's file was merged (P2).
+
 The reference-inclusion trap is written into the vocabulary rather than left to a footnote. On a
 `Number=R` field the reference is element zero, so "the larger of the two" has two answers; every
 ranging rule therefore comes in a pair — the bare name counts the reference element, the `_alt` name
@@ -1147,8 +1167,11 @@ one later is additive and minor-legal, and everything that reads the relation
 pointers that *have* a companion for the same reason: telling an author to fill a column the schema
 does not have is a finding no edit could clear.
 
-**What the compiler declines to say.** `vocab.VCF_FIELD_NUMBER` transcribes the spec's own reserved-key
-tables and nothing else. A caller's private key — `REPCN` is ExpansionHunter's, not the spec's — has no
+**What the compiler declines to say.** `vocab.VCF_FIELD_NUMBER` transcribes the spec's own reserved keys
+and nothing else, and the spec is **VCF 4.5**: Table 1, Table 2, and the keys §3 and §4 reserve for
+structural variants, copy number and tandem repeats (`RUC` among them), including 4.5's `LEN`, the
+local-allele family and the named base-modification aliases. A key a later version adds is unknown
+until it is transcribed, and unknown withholds (RM315). A caller's private key — `REPCN` is ExpansionHunter's, not the spec's — has no
 cardinality this tier is entitled to assert, and a bare key whose two namespaces disagree (`CN`) has
 none either. Unknown withholds; asserting one would be a source convention wearing a fact (P2). Two
 consequences worth naming. `FORMAT/AF` is emitted by every caller and reserved by none, so the

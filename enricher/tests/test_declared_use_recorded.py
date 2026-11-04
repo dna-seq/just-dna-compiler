@@ -182,10 +182,12 @@ def test_every_gate_with_a_module_reads_its_recorded_declaration() -> None:
     }, gates
     assert gates["direct"] == {
         "caches._gate",
+        "caches._present_or_completed",
         "caches.prepare_lane",
         "cli.cache_commands.cache_pull_",
         "cli.pgx_commands.clinpgx_build_",
         "cli.pgx_commands.clinpgx_build_labels_",
         "cli.pgx_commands.cpic_build_",
         "cli.pgx_commands.pharmvar_build_",
+        "cli.clinvar_commands.pubmind_build_",
     }, gates

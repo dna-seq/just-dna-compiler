@@ -54,6 +54,7 @@ from just_dna_compiler.compiler.manifest import (
     _check_declared_license_agrees,
     _check_license_gate,
     _concordance_warnings,
+    _snapshot_unplaced_rsids_recorded,
     _verification_block,
     build_disagreement_error,
     module_stats,
@@ -481,7 +482,11 @@ def _validate_spec(
             # Coverage rides along for the same reason: counting absent ids reads injected bytes and
             # nothing else. It reports here too so an author sees the shortfall at pre-flight, where
             # the remedy (re-run the mint pass) is still cheap.
-            all_warnings.extend(_vrs_coverage_warnings(injected_rows))
+            all_warnings.extend(
+                _vrs_coverage_warnings(
+                    injected_rows, unplaced_recorded=_snapshot_unplaced_rsids_recorded(spec_dir)
+                )
+            )
         if model is FrequencyRow and not injected_errors:
             # Validate-by-redundancy over the table's own numbers, here for the same parity reason as
             # `_verify_vrs_ids` above and missed for the same reason `_check_study_effect_alleles` was

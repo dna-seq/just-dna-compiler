@@ -205,6 +205,26 @@ _UNOBSERVABLE_GAP_REASON: str = (
 )
 
 
+#: The no-ALT gap class, as one constant because `_vrs_coverage_warnings` appends a pointer to this line
+#: alone (RM340).
+_NO_ALT_GAP_REASON: str = "no ALT recorded, and a VRS allele id names exactly one allele"
+
+#: The enricher's words, in `verification.json`'s `rsid_coordinate_agreement` detail, for authored rsIDs
+#: the injected Ensembl snapshot carries no record for (RM340, S127). Pinned here and imported by the
+#: writer (`just_dna_enricher.enrich`), so the sentence the compiler looks for and the sentence the
+#: enricher writes cannot drift apart (`@warning-text-is-api`). Those rows keep an empty `ref`/`alts`
+#: under `source="authored"` (RM251), and a newer snapshot may fill them, which is the part of the
+#: no-ALT count no authored edit clears.
+SNAPSHOT_UNPLACED_PHRASE: str = "absent from this snapshot is not absent from Ensembl"
+
+#: Appended to the no-ALT line when the record above names such rsIDs. Message text only: the line's
+#: existing phrase stays first and unchanged.
+_NO_ALT_RECORD_POINTER: str = (
+    " — verification.json's `rsid_coordinate_agreement` record names authored rsIDs the injected Ensembl "
+    "snapshot carries no record for, and a newer snapshot may fill their ALT"
+)
+
+
 def _vrs_gap_reason(row: ResolutionRow, alt: str | None) -> str:
     """Which *class* of gap this is — a bucket, deliberately not `_recompute_vrs_id`'s prose.
 
@@ -219,7 +239,7 @@ def _vrs_gap_reason(row: ResolutionRow, alt: str | None) -> str:
     if row.chrom is None or row.start is None:
         return "no coordinate to mint from (an unresolved row)"
     if not alt:
-        return "no ALT recorded, and a VRS allele id names exactly one allele"
+        return _NO_ALT_GAP_REASON
     # Ahead of both the mint attempt and the `is_substitution` fall-through, in this function and in
     # `_recompute_vrs_id` — the two order their other branches differently, and this one branch must be
     # in the same place in both. A symbolic allele is *also* not a substitution and *also* has no
@@ -252,8 +272,15 @@ def _vrs_gap_reason(row: ResolutionRow, alt: str | None) -> str:
     return "outside the primary assembly, or past the end of the contig — no refget accession"
 
 
-def _vrs_coverage_warnings(resolution_rows: list[ResolutionRow]) -> list[str]:
+def _vrs_coverage_warnings(
+    resolution_rows: list[ResolutionRow], *, unplaced_recorded: bool = False
+) -> list[str]:
     """One line for the shortfall, one per reason — never one per row.
+
+    `unplaced_recorded` (RM340): the spec's `verification.json` records authored rsIDs the injected
+    snapshot does not place, so the no-ALT line points at that record, which already says why those rows
+    are empty and what would fill them. Without the pointer the two halves of one answer sat in two files
+    that never named each other.
 
     A **warning in both modes**, deliberately, and for the same reason `not_covered` sits outside the
     strict gate: the commonest gaps (an indel with no sequence proxy, a build with no refget table)
@@ -279,7 +306,11 @@ def _vrs_coverage_warnings(resolution_rows: list[ResolutionRow]) -> list[str]:
         # The per-reason breakdown is the same finding continued, so it takes the same code: a
         # summary counting the headline and its own detail under two keys would double-count one
         # coverage gap.
-        CodedWarning("vrs_coverage_incomplete", f"  {count} allele(s): {reason}")
+        CodedWarning(
+            "vrs_coverage_incomplete",
+            f"  {count} allele(s): {reason}"
+            + (_NO_ALT_RECORD_POINTER if unplaced_recorded and reason == _NO_ALT_GAP_REASON else ""),
+        )
         for reason, count in sorted(gaps.items(), key=lambda kv: (-kv[1], kv[0]))
     )
     return findings

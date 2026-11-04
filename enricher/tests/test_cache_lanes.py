@@ -34,6 +34,7 @@ from just_dna_enricher.caches import (
 )
 from just_dna_enricher.cli import app
 from just_dna_enricher.clinvar import clinvar_dataset_label
+from just_dna_enricher.licensing import CLINPGX_TERMS
 from typer.testing import CliRunner
 
 _SRC = Path(caches.__file__).parent
@@ -206,6 +207,9 @@ def test_the_licence_gated_lanes_are_the_ones_carrying_terms() -> None:
     to describe. Carrying terms and being *refused* are
     different things, and `_gate` already keeps them apart — a refusal is a `False` outcome, an
     unestablished permission is a `None` one.
+
+    `pubmind` joined on 2026-10-02 (RM320), when WGLab answered that its table is CC BY-NC-ND 4.0.
+    Its lane has no `ensure`, so the field gates `cache rebuild` there rather than `cache pull`.
     """
     gated = {lane.name: lane.terms.source for lane in CACHE_LANES if lane.terms is not None}
     assert gated == {
@@ -214,6 +218,7 @@ def test_the_licence_gated_lanes_are_the_ones_carrying_terms() -> None:
         "cpic": "cpic",
         "drug_labels": "clinpgx",
         "pharmvar": "pharmvar",
+        "pubmind": "pubmind",
     }
 
 
@@ -688,6 +693,61 @@ def test_prepare_leaves_a_present_cache_alone(tmp_path: Path, monkeypatch: pytes
     outcome = caches.prepare_lane(lane, RebuildRequest(out_dir=tmp_path))
     assert outcome.route == "present" and outcome.ready is True
     assert touched == [], "a present cache must cost neither a download nor a build"
+
+
+def _whole(path: Path) -> None:
+    """A file the footer check accepts: `PAR1` at both ends."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"PAR1-body-PAR1")
+
+
+def _clinvar_lane_at(cache: Path, ensure, **overrides):
+    fields = {"resolve": lambda: cache, "ensure": ensure, "default_dir": lambda: cache, **overrides}
+    return dataclasses.replace(LANES_BY_NAME["clinvar"], **fields)
+
+
+def test_prepare_completes_an_unrecorded_pulled_cache_that_lacks_published_files(tmp_path: Path) -> None:
+    """RM339: a cache pulled before the pull record existed, cut short, used to read as present here.
+
+    It is compared with the published listing once, through the lane's own `ensure`, and the route
+    says that something was fetched rather than calling the cache present.
+    """
+    cache = tmp_path / "clinvar"
+    _whole(cache / "data" / "clinvar-chr1.parquet")
+
+    def ensure() -> Path:
+        _whole(cache / "data" / "clinvar-chr2.parquet")
+        return cache
+
+    outcome = caches.prepare_lane(_clinvar_lane_at(cache, ensure), RebuildRequest(out_dir=tmp_path))
+    assert (outcome.ready, outcome.route) == (True, "pulled")
+    assert "no pull record" in outcome.detail
+
+
+def test_prepare_leaves_a_recorded_cache_and_a_foreign_place_and_a_gated_lane_alone(tmp_path: Path) -> None:
+    """The compare reaches only an unrecorded cache in the place `ensure` writes, with the terms met."""
+    touched: list[str] = []
+    cache = tmp_path / "clinvar"
+    _whole(cache / "data" / "clinvar-chr1.parquet")
+
+    def ensure() -> Path:
+        touched.append("pulled")
+        return cache
+
+    # an override pointing elsewhere: `ensure` would write to the default directory, not here
+    lane = _clinvar_lane_at(cache, ensure, default_dir=lambda: tmp_path / "default")
+    assert caches.prepare_lane(lane, RebuildRequest(out_dir=tmp_path)).route == "present"
+    # a gated lane under an unstated use: present as before, never skipped
+    lane = dataclasses.replace(_clinvar_lane_at(cache, ensure), name="clinpgx", terms=CLINPGX_TERMS)
+    assert caches.prepare_lane(lane, RebuildRequest(out_dir=tmp_path)).route == "present"
+    # a cache whose pull record says it is complete
+    (cache / locations.PULL_RECORD_FILENAME).write_text(
+        '{"files": ["data/clinvar-chr1.parquet"]}', encoding="utf-8"
+    )
+    assert caches.prepare_lane(_clinvar_lane_at(cache, ensure), RebuildRequest(out_dir=tmp_path)).route == (
+        "present"
+    )
+    assert touched == []
 
 
 def test_a_built_lane_is_staged_and_moved_rather_than_written_in_place(

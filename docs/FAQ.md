@@ -53,7 +53,9 @@ timestamp is a column in the parquet. → S7, which also rejects the two other p
 **Does a rebuild always mint a new digest?**
 No. An untouched spec recompiled under a fixed compiler reproduces it exactly. What moves it across
 rebuilds is a **toolchain change** — parquet is not byte-deterministic across polars/arrow versions,
-which is why P4 scopes the guarantee to a fixed `compiler_version`.
+which is why P4 scopes the guarantee to a fixed `compiler_version`. polars from 2.0 writes its own version into
+every parquet footer, so two installs of one `compiler_version` with different polars releases mint different
+digests for the same content; RM342 records the toolchain so such a mismatch can be explained.
 → [CONSTITUTION](CONSTITUTION.md) P4, and [MODULE_LIFECYCLE § 6.4](MODULE_LIFECYCLE.md).
 
 **Does re-running the enricher restamp `fetched_at` and churn my digest?**
@@ -417,19 +419,18 @@ pinned release date, Ensembl is built elsewhere, and a derived lane without its 
 Each prints the reason from the registry field, and the exit code counts only real failures
 ([RM176](ROADMAP_HISTORY.md#rm176--eleven-builders-three-stages-each-and-the-roster-that-was-supposed-to-name-them-was-a-list)).
 
-**`check_declared_use(PUBMIND_TERMS, …)` skips under every declared use — is the PubMind drafter unreachable?**
-No. That function gates a **fetch**, and PubMind is never fetched: the operator builds the snapshot
-with `pubmind build`, and `draft_gene_panel_from_pubmind` reads it without consulting the gate,
-warning in the source's own words that every licence cell on the `pubmind` row is null
-(`@acquisition-gate-is-not-a-read-gate`; a test pins that the draft is not skipped). The terms are
-`None` on every axis because they are genuinely unsettleable, not unrecorded — the software licence,
-the paper's CC BY-NC-ND and the coordinate table's silence are three statements and none is about the
-bytes ([PUBMIND_ASSESSMENT](PUBMIND_ASSESSMENT.md)). What the unknown answer governs is publishing a
-module that carries those values, RM27's undesigned axis. A wrapper that runs the gate itself before
-calling the drafter is what makes it unreachable (S99).
+**Is the PubMind drafter gated on my declared use?**
+No. `check_declared_use` gates a **fetch**, and the drafter reads a snapshot the operator built with
+`pubmind build`, so it never consults the gate (`@acquisition-gate-is-not-a-read-gate`). The terms
+decide things elsewhere. WGLab answered in writing on 2026-09-28 that the ANNOVAR table is
+**CC BY-NC-ND 4.0** (RM320). So `pubmind build` takes `--use` and skips under `unstated`, the drafted
+`pubmind` licence row carries `commercial_use=False`, and the compile refuses that module until it
+records a non-commercial declaration. Before the answer every axis was `None` and the gate skipped under
+every declaration, which is what S99 ran into. A module drafted then keeps its all-null row, because a
+`sources.csv` merge never clobbers a recorded row; delete the row and re-draft to record the terms.
 
 **The consumer-suggestions inbox is empty — were my notes lost?**
 No. An answered item moves byte-for-byte to
 [CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md) with a row in its index. An empty
 live file means nothing is owed. And never read the next free `Sn` off a written-down number; run
-`.claude/triage-state.py --next`.
+`python3 .claude/triage-state.py --next`.

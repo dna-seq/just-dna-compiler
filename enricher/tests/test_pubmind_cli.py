@@ -10,6 +10,7 @@ import json
 import re
 from pathlib import Path
 
+import pytest
 from just_dna_enricher.cli import PUBMIND_PUBLISH_REFUSAL, app
 from just_dna_enricher.locations import (
     PUBMIND_SUBDIR,
@@ -38,20 +39,21 @@ def _plain(text: str) -> str:
 
 
 def test_publish_refuses_and_says_why() -> None:
-    """Exit non-zero, and name the unestablished terms plus the PharmVar precedent behind them.
+    """Exit non-zero, and name the terms plus the clause behind the refusal (RM320).
 
-    The three phrases are the reason a reader can act on: what is missing (data terms), what rule
-    applies (an unestablished permission is not a permission), and what lifts it (an answer from
-    CHOP, not a flag).
+    The phrases are the reason a reader can act on: what the table is under (CC BY-NC-ND, answered in
+    writing), why the snapshot is not the table (adapted material), and which clause bars sharing it
+    (NoDerivatives) — on the same precedent that leaves PharmVar's snapshot unpublishable.
     """
     result = _runner.invoke(app, ["pubmind", "publish"])
     assert result.exit_code == 1
     output = result.output + (result.stderr or "")
     assert "REFUSED" in output
-    assert "no data terms of its own" in PUBMIND_PUBLISH_REFUSAL
-    assert "unestablished permission is not a permission" in PUBMIND_PUBLISH_REFUSAL
+    assert "CC BY-NC-ND 4.0" in PUBMIND_PUBLISH_REFUSAL
+    assert "adapted material" in PUBMIND_PUBLISH_REFUSAL
+    assert "NoDerivatives" in PUBMIND_PUBLISH_REFUSAL
     assert "PharmVar" in PUBMIND_PUBLISH_REFUSAL
-    assert "Office of Technology Transfer" in PUBMIND_PUBLISH_REFUSAL
+    assert "https://github.com/WGLab/PubMind/issues/5" in PUBMIND_PUBLISH_REFUSAL
 
 
 def test_publish_takes_no_arguments_that_could_look_like_a_way_round_it() -> None:
@@ -65,7 +67,9 @@ def test_publish_takes_no_arguments_that_could_look_like_a_way_round_it() -> Non
 def test_build_writes_the_snapshot_and_reports_every_drop(tmp_path: Path) -> None:
     """The counts a silent truncation would hide reach the operator's terminal, not only the JSON."""
     out = tmp_path / "snap"
-    result = _runner.invoke(app, ["pubmind", "build", "--table", str(_SLICE), "--out", str(out)])
+    result = _runner.invoke(
+        app, ["pubmind", "build", "--table", str(_SLICE), "--out", str(out), "--use", "non-commercial"]
+    )
     assert result.exit_code == 0, result.output
     assert (out / "data" / "pubmind.parquet").is_file()
     release = json.loads((out / "release.json").read_text())
@@ -78,7 +82,9 @@ def test_build_writes_the_snapshot_and_reports_every_drop(tmp_path: Path) -> Non
 def test_build_names_the_multiplicity_it_refused_to_collapse(tmp_path: Path) -> None:
     """The contested coordinates are a finding, so the build says so rather than only recording it."""
     out = tmp_path / "snap"
-    result = _runner.invoke(app, ["pubmind", "build", "--table", str(_SLICE), "--out", str(out)])
+    result = _runner.invoke(
+        app, ["pubmind", "build", "--table", str(_SLICE), "--out", str(out), "--use", "non-commercial"]
+    )
     assert result.exit_code == 0, result.output
     release = json.loads((out / "release.json").read_text())
     assert f"{release['multi_pvid_keys']} of {release['allele_keys']}" in result.output
@@ -92,22 +98,37 @@ def test_build_refuses_with_neither_a_table_nor_a_download() -> None:
     assert "--table" in (result.output + (result.stderr or ""))
 
 
-def test_build_offers_no_declared_use_flag() -> None:
-    """A flag feeding a gate that can only ever skip is a flag that does nothing.
+def test_build_offers_the_declared_use_flag() -> None:
+    """RM320: the terms are CC BY-NC-ND 4.0, so the gate now answers per declaration and the flag is live.
 
-    PubMind's `commercial_use` is unknown, so `check_declared_use` returns a skip reason for every
-    declaration. Wiring `--use` in the way `pharmvar build` does would make the command permanently
-    dead, so the surface omits it and the refusal lives on `publish`, where the act actually is.
+    Before the answer every declaration skipped and the surface omitted `--use`; this equality is
+    what moved, and it stays an equality so a silently added or dropped flag still fails it.
     """
     result = _runner.invoke(app, ["pubmind", "build", "--help"])
     assert result.exit_code == 0
-    # Read the flags Typer advertises, not the prose: the docstring names `--use` in order to explain
-    # why it is absent, and matching on the raw text would find that sentence.
     flags = {token for token in _plain(result.output).split() if token.startswith("--")}
-    assert "--use" not in flags
-    # An EQUALITY over the advertised surface, not a floor: `<=` passes unchanged on the day a
-    # flag is silently added or one of these three is dropped, which is the only day it matters.
-    assert flags == {"--table", "--download", "--out", "--help"}
+    assert flags == {"--table", "--download", "--out", "--use", "--help"}
+
+
+@pytest.mark.parametrize(
+    ("use", "exit_code", "phrase"),
+    [
+        ("unstated", 1, "SKIPPED"),
+        ("commercial", 1, "REFUSED"),
+        ("non-commercial", 0, "pubmind snapshot:"),
+    ],
+)
+def test_build_gates_on_the_declared_use_before_reading_anything(
+    tmp_path: Path, use: str, exit_code: int, phrase: str
+) -> None:
+    """The same three outcomes as `clinpgx build`; a gated run writes no snapshot at all."""
+    out = tmp_path / "snap"
+    result = _runner.invoke(
+        app, ["pubmind", "build", "--table", str(_SLICE), "--out", str(out), "--use", use]
+    )
+    assert result.exit_code == exit_code, result.output
+    assert phrase in result.output + (result.stderr or "")
+    assert (out / "data" / "pubmind.parquet").is_file() is (exit_code == 0)
 
 
 def test_the_cache_resolver_finds_a_built_snapshot_and_withholds_otherwise(
@@ -122,7 +143,12 @@ def test_the_cache_resolver_finds_a_built_snapshot_and_withholds_otherwise(
     assert resolve_pubmind_reference(load_dotenv_file=False) is None
 
     out = tmp_path / "snap"
-    assert _runner.invoke(app, ["pubmind", "build", "--table", str(_SLICE), "--out", str(out)]).exit_code == 0
+    assert (
+        _runner.invoke(
+            app, ["pubmind", "build", "--table", str(_SLICE), "--out", str(out), "--use", "non-commercial"]
+        ).exit_code
+        == 0
+    )
     monkeypatch.setenv("JUST_DNA_PUBMIND_CACHE", str(out))
     assert resolve_pubmind_reference(load_dotenv_file=False) == out
 

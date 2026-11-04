@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 from just_dna_compiler.compiler import (
+    SNAPSHOT_UNPLACED_PHRASE,
     authored_input_entries,
     compile_module,
     reverse_module,
@@ -353,3 +354,55 @@ def test_reverse_is_quiet_for_a_module_that_was_never_attested(tmp_path: Path, c
     with caplog.at_level("WARNING", logger="just_dna_compiler.compiler"):
         reverse_module(tmp_path / "a1", tmp_path / "rev")
     assert not [r for r in caplog.records if "verification attestation" in r.message]
+
+
+# ── the no-ALT line points at the record that says why (RM340, S127) ────────────────────────────
+
+
+def _unplaced_record(detail: str) -> VerificationRecord:
+    return VerificationRecord(
+        check="rsid_coordinate_agreement", subjects=4, findings=0, source="ensembl", detail=detail
+    )
+
+
+_UNPLACED_DETAIL = (
+    "Further authored pairs were not compared: the injected Ensembl snapshot carries no record for 2 of "
+    f"them (rs1, rs2), and {SNAPSHOT_UNPLACED_PHRASE}."
+)
+
+
+def _no_alt_lines(warnings: list[str]) -> list[str]:
+    return [w for w in warnings if "no ALT recorded" in w]
+
+
+def test_the_no_alt_line_names_the_record_when_it_says_the_snapshot_left_rsids_unplaced(
+    tmp_path: Path,
+) -> None:
+    """The reporter found the explanation in `verification.json` themselves; the warning now says where.
+
+    Both sides reach the same sentence, so validate's line and compile's collapse into one, and the
+    existing phrase still leads it (`@warning-text-is-api`).
+    """
+    spec = _module(tmp_path, "apoe_epsilon")
+    _attest(spec, records=[_unplaced_record(_UNPLACED_DETAIL)])
+    validated = validate_spec(spec)
+    compiled = _compile(spec, tmp_path / "out")
+    for warnings in (validated.warnings, compiled.warnings):
+        [line] = _no_alt_lines(warnings)
+        assert line.startswith("  2 allele(s): no ALT recorded, and a VRS allele id names exactly one allele")
+        assert "verification.json's `rsid_coordinate_agreement` record" in line
+    assert sum("rsid_coordinate_agreement` record" in w for w in compiled.manifest.compilation.warnings) == 1
+
+
+def test_the_no_alt_line_stays_bare_without_such_a_record_or_against_a_stale_one(tmp_path: Path) -> None:
+    """No pointer where the record does not say it, and none to a record these bytes no longer match."""
+    spec = _module(tmp_path, "apoe_epsilon")
+    _attest(spec, records=[_unplaced_record("every authored pair was compared")])
+    [line] = _no_alt_lines(_compile(spec, tmp_path / "a").warnings)
+    assert "verification.json" not in line
+
+    _attest(spec, records=[_unplaced_record(_UNPLACED_DETAIL)])
+    table = spec / "haplotypes.csv"
+    table.write_text(table.read_text(encoding="utf-8") + "\n", encoding="utf-8")  # edited after
+    [line] = _no_alt_lines(_compile(spec, tmp_path / "b").warnings)
+    assert "verification.json" not in line

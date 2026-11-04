@@ -27,7 +27,7 @@ gotcha book: it is loaded into every session and has a size ceiling.
 ## The doc map — what each answers, and what to grep
 
 **`docs/` root holds only what is still live.** Five subfolders hold the rest, and nothing in them is
-edited as routine work:
+edited as routine work (a sixth, `docs/seats/`, is live: the seats' primings and notes, in the table below):
 
 - **`docs/history/`** — the closed record: the retired halves of the three history files, the round-2
   consumer thread, and `ROADMAP_0_7.md`. **Count the halves from `ls`, never from a sentence here** —
@@ -73,10 +73,10 @@ edited as routine work:
 | [CONSTITUTION_AMENDMENTS_HISTORY.md](docs/CONSTITUTION_AMENDMENTS_HISTORY.md) | *why* each amendment was made — the reasoning the charter bans from itself | `grep -n '^## ' docs/CONSTITUTION_AMENDMENTS_HISTORY.md` |
 | [BLIND_REDERIVATION.md](docs/BLIND_REDERIVATION.md) | the **method** behind `docs/audit/` — derive a surface twice, top-down from the release and bottom-up from the code with the reference unread, and reconcile. The contradictions are the deliverable; run it before a cut | `grep -n '^## ' docs/BLIND_REDERIVATION.md` |
 | [AGENT_NOTES.md](docs/AGENT_NOTES.md) | the long-form gotcha book behind this file | `grep -n '^## ' docs/AGENT_NOTES.md`, then the symbol name |
-| [RM_TOC.md](docs/RM_TOC.md) | where any `RMn` lives, status included — the complete list, **paged by number** (`RM_TOC_000_099.md`, …) behind one entry page that holds the reservations. **Claim a new number with `.claude/rm-next.py`** (scan + locked reservation), never by reading the highest off the file — an index is not an allocator, and two sessions once filed the same RM159 | `grep -n 'RM47' docs/RM_TOC*.md` |
+| [RM_TOC.md](docs/RM_TOC.md) | where any `RMn` lives, status included — the complete list, **paged by number** (`RM_TOC_000_099.md`, …) behind one entry page that holds the reservations. **Claim a new number with the seats kit's `item-next.py`** (`sh "$BLUEPRINTS_KIT/bin/py.sh" "$BLUEPRINTS_KIT/classes/triage/item-next.py" --note "…"`: scan + locked reservation, its paths from `.blueprints.toml` `[triage]`), never by reading the highest off the file — an index is not an allocator, and two sessions once filed the same RM159 | `grep -n 'RM47' docs/RM_TOC*.md` |
 | [ROADMAP.md](docs/ROADMAP.md) | open items, the idea-book, and **three** trackers: reserved-namespace, 1.0-cleanup, and the **parking-condition gate audit** (a deferral's gate is dishonest when nothing can satisfy it until the item ships — check a new parked item against it at filing) | `grep -n '^## RM' docs/ROADMAP.md` |
 | [ROADMAP_HISTORY.md](docs/ROADMAP_HISTORY.md) | shipped items with their rationale, **0.7 onward**. The 0.6 line is in [history/](docs/history/ROADMAP_HISTORY_0_6.md) and pre-0.6 in [history/](docs/history/ROADMAP_HISTORY_PRE_0_6.md) — three halves now, so **use RM_TOC rather than guessing one**. The boundary is a **tag** read off `git show v0.6.6:`, never a date: three rounds dated 2026-08-21 shipped in 0.7.0 | `grep -rn '^## RM' docs/ROADMAP_HISTORY.md docs/history/` |
-| [ROADMAP_0_8.md](docs/ROADMAP_0_8.md) / [ROADMAP_1_0.md](docs/ROADMAP_1_0.md) | deferred items, with the reason for the deferral. **The minor file is named for the release that will decide its contents**, so a cut closes one and opens the next — 0_7 closed on 2026-08-31 into [history/](docs/history/ROADMAP_0_7.md) | `grep -n '^## RM' docs/ROADMAP_1_0.md` |
+| [ROADMAP_0_8.md](docs/ROADMAP_0_8.md) / [ROADMAP_0_9.md](docs/ROADMAP_0_9.md) / [ROADMAP_1_0.md](docs/ROADMAP_1_0.md) | 0.8's scope (since 2026-11-03), then deferred items, with the reason for the deferral. **The minor file is named for the release that will decide its contents**, so a cut closes one and opens the next — 0_7 closed on 2026-08-31 into [history/](docs/history/ROADMAP_0_7.md) | `grep -n '^## RM' docs/ROADMAP_1_0.md` |
 | [CHANGELOG.md](docs/CHANGELOG.md) | what shipped, newest first (shared across the ecosystem repos); **the 0.7 line onward**, with the 0.6 entries in [history/](docs/history/CHANGELOG_0_6.md) and pre-0.6 in [history/](docs/history/CHANGELOG_PRE_0_6.md). Both cuts are at a **tag**, never a date — grep across all three halves | `grep -rn '^## 2026-' docs/CHANGELOG.md docs/history/` |
 | [INTEGRATION_0_6.md](docs/history/INTEGRATION_0_6.md) | the 0.5.4→0.6 surface delta and the per-consumer check/change lists. **Archived to `docs/history/` at the 0.7.0 cut** — a superseded upgrade note is a closed record, and the live one is the row above | `grep -n '^## \|^### ' docs/history/INTEGRATION_0_6.md` |
 | [INTEGRATION_0_7.md](docs/INTEGRATION_0_7.md) | the 0.6.6→0.7 surface delta, the same shape one release on — and the one **old-reader break** (`VerificationRecord.producer` vs `extra="forbid"`) | `grep -n '^## \|^### ' docs/INTEGRATION_0_7.md` |
@@ -90,6 +90,7 @@ edited as routine work:
 | [MODULE_LIFECYCLE.md](docs/MODULE_LIFECYCLE.md) | origin → publish → a consumer's join; **what pass 2+ moves** | `grep -n '^## ' docs/MODULE_LIFECYCLE.md` |
 | [FAQ.md](docs/FAQ.md) | settled questions keyed by *question* ("why did my digest move?") | `grep -n '^\*\*' docs/FAQ.md` |
 | [RELEASE_CYCLE.md](docs/RELEASE_CYCLE.md) | how an `RMn` becomes a release: the seats, **version by omission** (non-blocked patch items go into the next patch on `main` unasked; an undecided part gets an interview first; **a commit on `main` is patch scope only** — minor-class work goes on the open minor branch, `0.8` today), the minor cycle from interview to cut, and tic/tac **after 1.0 only**. The §4 item counts are a lamp, never a start pistol | `grep -n '^## ' docs/RELEASE_CYCLE.md` |
+| [seats/README.md](docs/seats/README.md) | the four seats a session takes with `/seats:seat` (lead, pm, triage, liaison): each one's priming, notes, inbox and what it owns. Who sizes a scope (pm) and who executes it (lead) | `grep -n '^| \*\*' docs/seats/README.md` |
 | [CONSUMER_SUGGESTIONS.md](docs/CONSUMER_SUGGESTIONS.md) | the **open** consumer inbox (`Sn`) — empty means nothing owed | `grep -n '^## S' docs/CONSUMER_SUGGESTIONS.md` |
 | [CONSUMER_SUGGESTIONS_HISTORY.md](docs/CONSUMER_SUGGESTIONS_HISTORY.md) | answered `Sn`, verbatim, with the reply; it keeps the **whole** contents list across all three halves. **S62 onward live here**; the 0.6 line's S25–S61 sit in [history/](docs/history/CONSUMER_SUGGESTIONS_HISTORY_0_6.md) and 0.5's S1–S24, S27, S28 in [history/](docs/history/CONSUMER_SUGGESTIONS_HISTORY_PRE_0_6.md) | `grep -rn '^## S[0-9]' docs/CONSUMER_SUGGESTIONS_HISTORY.md docs/history/` |
 | [CONSUMER_TRIAGE_LOOP.md](docs/CONSUMER_TRIAGE_LOOP.md) | the runbook for answering an `Sn`, and the ledger | `grep -n '^## ' docs/CONSUMER_TRIAGE_LOOP.md` |
@@ -426,6 +427,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - Probe a source's real file before modelling it; the docs lie by omission. `@probe-the-real-file`
 - A sidecar writer is atomic or it leaves a valid short file a merge believes. `@atomic-sidecar-write`
 - A failed fetch is not a no-op: it creates the file and truncates one already there — stage through `.part`. `@a-failed-fetch-is-not-a-no-op`
+- Whole files are not a whole snapshot: record the pull's file set from the listing **before** the first download. `@a-failed-fetch-is-not-a-no-op`
 - An `enrich` run is a transaction: stage the *answer* beside the target, commit the table at the gate. `@enrich-is-a-transaction`
 - A refused `strict` run commits nothing — a written promise now, asserted on the bytes. `@enrich-is-a-transaction`
 - A licence row is part of its table's commit (`atomic_writer(before_commit=…)`), never a step after it; pre-read the table before the fetch. `@licence-row-inside-the-commit`
@@ -457,9 +459,9 @@ order rather than jumping to code.
    reply in the live file" never means "no work was done"**: establish what shipped before designing.
    Every `Sn` gets a `**Status —**` reply written back into the document; the runbook is
    [CONSUMER_TRIAGE_LOOP.md](docs/CONSUMER_TRIAGE_LOOP.md) (four routes; **legality sizes the release,
-   severity only orders the queue**; the ledger `.claude/triage-state.py` says which items are
-   unanswered). `.claude/watch-suggestions.sh` notices that a consumer has written.
-   **The two `.py` tools run under `python3`, never `bash`** — bash reads `import x` as ImageMagick's
+   severity only orders the queue**; the ledger, the seats kit's `classes/triage/triage-state.py`, says which items are unanswered,
+   reading its paths from `.blueprints.toml` `[triage]`; `.claude/` holds a byte-identical copy for CI). The triage seat's watchers (`.blueprints.toml`) notice that a consumer has written.
+   **The `.py` tools run under `python3`, never `bash`** — bash reads `import x` as ImageMagick's
    screen-capture tool and litters the repo root (runbook §6).
    **Do not start a second feedback file** — both pre-`Sn` threads were retired for the same reason,
    that an inbox the ledger cannot see is a backlog nobody sees: round 1 on 2026-08-12 (git `53f9260`,
@@ -621,7 +623,7 @@ questions vs answers. A blocker is never a dead end: dissolved, closed additivel
   is inherited rather than remembered. `@a-default-spelled-per-command-is-a-rule-in-prose`
 - **`scripts/` is the operator-facing drivers, `.claude/` is agent tooling** — the split is by
   audience, not by file type. A deployment runs `scripts/rebuild-caches.sh`; nothing but a Claude
-  session runs `.claude/rm-next.py`. [scripts/README.md](scripts/README.md) states the rule.
+  session runs `.claude/hooks/gate_charter.py`. [scripts/README.md](scripts/README.md) states the rule.
 - **`features/` is the scenario corpus (RM149, drafted 2026-09-13 and unreviewed)** — Gherkin derived
   **from** the code, with no step definitions and no runner in any tier. It is at the root rather than
   in `docs/` on purpose, so it does not publish and P3 does not reach it. The registries it walks are

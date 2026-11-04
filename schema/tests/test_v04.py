@@ -260,8 +260,12 @@ def test_reserved_set_is_the_expected_shape() -> None:
     # name is refused at author time, which would make the built column unwritable.
     # `caller`/`caller_version` were DROPPED for the opposite reason — they name a consumer-side
     # measurement (which tool made a call), so there is no future module axis to reserve, and barring
-    # them by name would be arbitrary; `extra="forbid"` rejects them generically.
-    assert frozenset({"reference_db", "callable_element", "quality_element"}) == RESERVED_NAMES_0_4
+    # them by name would be arbitrary; `extra="forbid"` rejects them generically. `tradeoff` (RM327)
+    # is the one reserved name that will never become an authored column: the verdict is computed, so
+    # it is held here until the derived column ships and then moves to `MISPLACED_COLUMN_REASONS`.
+    assert (
+        frozenset({"reference_db", "callable_element", "quality_element", "tradeoff"}) == RESERVED_NAMES_0_4
+    )
     assert set(RESERVED_NAME_REASONS) == RESERVED_NAMES_0_4  # every reserved name has a reason
 
 

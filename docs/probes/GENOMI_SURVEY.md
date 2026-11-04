@@ -412,7 +412,7 @@ them. All fetching lives in the enricher (P2). Adding an optional table is minor
 
 ### Release class — all of it is 0.8, and the reason is structural
 
-**Everything below lands in 0.8, under [RM188](../ROADMAP_0_8.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics), the survey item this document is half of.** That is not a scheduling
+**Everything below lands in 0.8, under [RM188](../ROADMAP_0_9.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics), the survey item this document is half of.** That is not a scheduling
 preference; it follows from what each candidate is. A derived sidecar is four things at once — a row
 model in `just_dna_format`, a new `VALID_SOURCE_LAYERS` member, a parquet the compiler emits, and an
 enricher pass with its cache lane — so it touches the format and compiler tiers, not just the network

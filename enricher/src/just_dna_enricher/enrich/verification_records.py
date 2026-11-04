@@ -5,6 +5,7 @@ it reads (RM260 split this out of the former single-file `enrich.py`).
 from collections.abc import Sequence
 from pathlib import Path
 
+from just_dna_compiler.compiler import SNAPSHOT_UNPLACED_PHRASE
 from just_dna_format.manifest import VerificationRecord
 
 from just_dna_enricher.civic_citations import EvidenceStatusCheck
@@ -355,7 +356,7 @@ def _verification_records(
         note
         for note in (
             f"the injected Ensembl snapshot carries no record for {len(pairs.unknown)} of them "
-            f"({unplaced}), and absent from this snapshot is not absent from Ensembl"
+            f"({unplaced}), and {SNAPSHOT_UNPLACED_PHRASE}"
             if pairs.unknown
             else "",
             f"{len(pairs.undecided)} name an indel ({unsettled}), whose spelling can move the "

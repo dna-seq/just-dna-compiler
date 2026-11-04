@@ -831,7 +831,7 @@ before being claimed as a guard.
 
 ## RM88 — republishing without bumping `version:` overwrites a versioned path with different bytes
 
-✅ **Shipped in `just-dna-enricher` 0.6.1.** [RM84](../ROADMAP_0_8.md#rm84--a-module-has-no-version-identity-on-the-discovery-path-and-the-publisher-is-the-half-we-own)
+✅ **Shipped in `just-dna-enricher` 0.6.1.** [RM84](../ROADMAP_0_9.md#rm84--a-module-has-no-version-identity-on-the-discovery-path-and-the-publisher-is-the-half-we-own)
 built the versioned path `data/<name>/v<version>/` and it did exactly what it said. What it could not
 do was notice that the version had *not* moved: an author who recompiled a changed module and
 republished without editing `version:` overwrote the versioned copy with different bytes, and the path

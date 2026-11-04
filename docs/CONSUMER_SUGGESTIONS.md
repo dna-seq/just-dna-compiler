@@ -8,15 +8,18 @@ which carries an index of every one and where it landed; the runbook for answeri
 **This file is the inbox, so an empty one means nothing is owed** — which is the property the split
 exists for, and the reason answered items do not stay here.
 
-## The next item is S125
+## The next item is S128
 
-**Claim ids from here, never from what this file shows.** S1–S124 are all answered and live in the
+**Claim ids from here, never from what this file shows.** S1–S127 are all answered and live in the
 history file, so an empty inbox says nothing about how many ids are taken — number from the corpus, or
 the next report is a second S1. The number is computed rather than remembered:
 
 ```
-.claude/triage-state.py --next        # scans this file AND the history file
+python3 .claude/triage-state.py --next        # scans this file AND the history file
 ```
+
+It reads this file's path from `.blueprints.toml`'s `[triage]` table. The pinned number above is the
+answer when you cannot run it.
 
 Ids are never reused, including for an item answered as a non-issue: the reply is part of the record and
 a recycled id would collide with it.

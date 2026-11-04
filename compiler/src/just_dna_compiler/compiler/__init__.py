@@ -289,6 +289,9 @@ from just_dna_compiler.compiler.manifest import _literature_signature as _litera
 from just_dna_compiler.compiler.manifest import _module_binding as _module_binding
 from just_dna_compiler.compiler.manifest import _now_iso as _now_iso
 from just_dna_compiler.compiler.manifest import _read_verification_block as _read_verification_block
+from just_dna_compiler.compiler.manifest import (
+    _snapshot_unplaced_rsids_recorded as _snapshot_unplaced_rsids_recorded,
+)
 from just_dna_compiler.compiler.manifest import _source_checks as _source_checks
 from just_dna_compiler.compiler.manifest import _source_signature as _source_signature
 from just_dna_compiler.compiler.manifest import _sources_block as _sources_block
@@ -397,9 +400,12 @@ from just_dna_compiler.compiler.vcf_checks import _check_vcf_pointers as _check_
 from just_dna_compiler.compiler.vcf_checks import _quality_fields as _quality_fields
 from just_dna_compiler.compiler.vrs_checks import _BLAME_ROW as _BLAME_ROW
 from just_dna_compiler.compiler.vrs_checks import _BLAME_TIER as _BLAME_TIER
+from just_dna_compiler.compiler.vrs_checks import _NO_ALT_GAP_REASON as _NO_ALT_GAP_REASON
+from just_dna_compiler.compiler.vrs_checks import _NO_ALT_RECORD_POINTER as _NO_ALT_RECORD_POINTER
 from just_dna_compiler.compiler.vrs_checks import _SYMBOLIC_GAP_REASON as _SYMBOLIC_GAP_REASON
 from just_dna_compiler.compiler.vrs_checks import _UNOBSERVABLE_GAP_REASON as _UNOBSERVABLE_GAP_REASON
 from just_dna_compiler.compiler.vrs_checks import _VRS_CARRIED_EXAMPLES as _VRS_CARRIED_EXAMPLES
+from just_dna_compiler.compiler.vrs_checks import SNAPSHOT_UNPLACED_PHRASE as SNAPSHOT_UNPLACED_PHRASE
 from just_dna_compiler.compiler.vrs_checks import _carried_vrs_warnings as _carried_vrs_warnings
 from just_dna_compiler.compiler.vrs_checks import _recompute_vrs_id as _recompute_vrs_id
 from just_dna_compiler.compiler.vrs_checks import _verify_vrs_ids as _verify_vrs_ids

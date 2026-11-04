@@ -20,6 +20,8 @@ asks for exactly that and because a guard nobody has watched fail is a guess.
 """
 
 import importlib.util
+import json
+import os
 import pathlib
 import re
 import subprocess
@@ -172,6 +174,42 @@ def test_both_tools_derive_the_same_span():
     )
 
 
+def _pinned_kit() -> pathlib.Path | None:
+    """The kit copy this clone pins, or None where there is none to compare with (CI).
+
+    `$BLUEPRINTS_KIT` names the copy the session *started* on, and a `/reload-plugins` does not move it,
+    so comparing against it reports drift after every pin move. The pin is the version in the clone's
+    untracked `.claude/settings.local.json`; its copy sits beside the started one in the plugin cache.
+    """
+    started = os.environ.get("BLUEPRINTS_KIT")
+    settings = ROOT / ".claude" / "settings.local.json"
+    if not started or not settings.is_file():
+        return None
+    marketplaces = json.loads(settings.read_text()).get("extraKnownMarketplaces", {})
+    refs = [m.get("source", {}).get("ref", "") for m in marketplaces.values()]
+    versions = [r.removeprefix("v") for r in refs if r.startswith("v")]
+    if len(versions) != 1:
+        return None
+    copy = pathlib.Path(started).parent / versions[0]
+    return copy if copy.is_dir() else None
+
+
+@pytest.mark.skipif(_pinned_kit() is None, reason="no pinned seats kit on this machine (CI has none)")
+@pytest.mark.parametrize("tool", ["triage-state.py", "triage-archive.py", "triage_conf.py"])
+def test_the_vendored_tools_are_the_kits_byte_for_byte(tool):
+    """`.claude/` carries the kit's ledger and archiver only so CI can lint the real documents.
+
+    The kit's copies are the logic (2026-11-03: they are a strict superset of the clone's and of the
+    gist's). A copy that drifts from the kit is a second implementation deciding the boundaries of a
+    reporter's prose, which is how the ledger and the archiver once disagreed. Re-copy from the kit
+    after the pin moves; never patch the copy.
+    """
+    kit = _pinned_kit() / "classes" / "triage" / tool
+    assert (CLAUDE / tool).read_bytes() == kit.read_bytes(), (
+        f".claude/{tool} differs from {kit}: copy the kit's over it (cp), or file the change on the kit"
+    )
+
+
 def test_the_archiver_refuses_a_document_whose_fences_are_broken(tmp_path):
     """Refuse before writing, because the move's own verification cannot see this."""
     docs = tmp_path / "docs"
@@ -181,14 +219,23 @@ def test_the_archiver_refuses_a_document_whose_fences_are_broken(tmp_path):
     (docs / "CONSUMER_SUGGESTIONS_HISTORY.md").write_text("# History\n")
     claude = tmp_path / ".claude"
     claude.mkdir()
-    for tool in ("triage-state.py", "triage-archive.py"):
+    for tool in ("triage-state.py", "triage-archive.py", "triage_conf.py"):
         (claude / tool).write_bytes((CLAUDE / tool).read_bytes())
 
+    # The kit's archiver takes its documents from the environment; outside a clone it names the
+    # variable it needs rather than guessing a path.
+    env = {
+        **os.environ,
+        "INBOX": str(live),
+        "HISTORY": str(docs / "CONSUMER_SUGGESTIONS_HISTORY.md"),
+        "PREFIX": "S",
+    }
     result = subprocess.run(
         [sys.executable, str(claude / "triage-archive.py"), "S62"],
         capture_output=True,
         text=True,
         cwd=tmp_path,
+        env=env,
     )
     assert result.returncode != 0
     assert "refusing to archive" in result.stderr

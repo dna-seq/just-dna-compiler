@@ -493,7 +493,7 @@ place because the *check* that survives it is again a legibility warning rather 
 
 Three authored columns point into a VCF (`source_field`, `callable_from`, `quality_from`) and all
 three took a bare token. A VCF field is identified by **namespace** — INFO and FORMAT are two
-reserved-key tables that collide on `DP`, `AD`, `ADF`, `ADR`, `MQ`, `AF` and, since 4.4, `CN` — and
+reserved-key tables that collide on `DP`, `AD`, `ADF`, `ADR`, `MQ`, `AF`, `CICN` and, since 4.4, `CN` — and
 described by **cardinality** (`Number`, which decides how many values come back and what each is *of*).
 Where both readings are type-compatible, and for `DP`, `AF` and `CN` they are, nothing detects the
 confusion: the consumer reads a well-formed number of the wrong kind and bins it without error. Both
@@ -513,7 +513,7 @@ is (P5). Both are aggregated by reason, since a panel pointing every bin at one 
 print the same sentence hundreds of times.
 
 Two things it declines to say, both for the reason this section exists. Cardinality is read from a
-transcription of the spec's reserved-key tables and **nothing else** — `REPCN` is ExpansionHunter's
+transcription of the spec's reserved keys (VCF 4.5; a key added later is unknown) and **nothing else** — `REPCN` is ExpansionHunter's
 key, not the spec's, so this tier is not entitled to assert its `Number`, and a bare `CN` disagrees
 across the two namespaces. Unknown withholds. And the cardinality finding is scoped to pointers that
 *have* a companion column: `callable_from`/`quality_from` did not get one in 0.6, and telling an author
@@ -1722,6 +1722,15 @@ VRS allele identity covers {identified}/{alleles} allele(s) in resolution.csv ({
 {missing} carry no ga4gh:VA. id. Anything keying on the VA sees only the covered fraction.
 ```
 
+The no-ALT reason line (`no ALT recorded, and a VRS allele id names exactly one allele`) gains a pointer
+when the spec's attested `verification.json` carries an `rsid_coordinate_agreement` record saying the
+injected Ensembl snapshot has no record for some authored rsIDs (RM340). Those rows keep an empty
+`ref`/`alts` under `source="authored"` (RM251), and a newer snapshot may fill them. The pointer is appended,
+so the phrase above still leads the line: `` — verification.json's `rsid_coordinate_agreement` record names
+authored rsIDs the injected Ensembl snapshot carries no record for, and a newer snapshot may fill their
+ALT``. The compiler recognises the record by `compiler.SNAPSHOT_UNPLACED_PHRASE`, the sentence the enricher
+writes into the record's `detail`, so the two cannot drift apart.
+
 **Its twin, for ids that are present and that this tier cannot recompute, is grouped the same way
 since S67** — one line per reason, descending count then reason, three `variant_key`s named
 and the rest counted:
@@ -2212,7 +2221,7 @@ modules silently vanishing from a catalogue.
 | **RM29a call-confidence cofactor: `quality_from` + `min_quality` (0.5)** | ✅ shared pointer grammar (`source_field`/`callable_from`/`quality_from`, one validator, namespace-qualifiable since 0.6); finite floor; **both-or-neither** model rule | ✅ `weights.parquet` (`Utf8` + `Float64`); absent floor is null, never `0.0` | **materialized** |
 | **RM29b clinical cofactor: `DiplotypeRow.clinical_context` (0.5)** | ✅ whitespace-stripped, open (no vocabulary — guideline bodies scope differently) | ✅ generic table materializer, no compiler change | **in `_TABLE_DUPE_KEYS`** — disagreeing CPIC contexts coexist as distinct rows |
 | PGS `PgsRow` (declared interface; ancestry-validity fields) | ✅ `PGS<digits>`, ancestry/tier vocab, `match_rate_floor∈[0,1]` | ✅ | **materialized** |
-| reserved namespace (`reference_db` / `callable_element` / `quality_element`) | ✅ specific diagnosis via `reject_reserved` on top of `extra=forbid` | — | reserved |
+| reserved namespace (`reference_db` / `callable_element` / `quality_element` / `tradeoff`) | ✅ specific diagnosis via `reject_reserved` on top of `extra=forbid` | — | reserved |
 | authoring reference + palette (`reference.authoring_reference()`/`json_schemas()`) | ✅ generated from live models (drift-proof) | n/a | **shipped** (RM8/RM9) |
 | frozen `variant_key` identity (`base.derive_variant_key`) | ✅ stamped once, never re-keyed by resolution (P7); excluded from `authoring_reference()` | ✅ `weights.parquet` (compiler-managed) | **shipped** |
 | rsid↔coord resolution: one-to-many expansion, deterministic order, inject-only consistency check | ✅ `ORDER BY`; disagreement → warning; non-GRCh38 skipped | ✅ N coord-keyed rows per one-to-many rsid; idempotent | **shipped** (the DuckDB engine now lives in `just-dna-enricher`; GRCh38-only; multi-build RM15) |

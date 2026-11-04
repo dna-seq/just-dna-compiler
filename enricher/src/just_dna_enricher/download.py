@@ -14,12 +14,18 @@ just-dna-lite's pipelines byte-for-byte so no drift is born.
 
 import json
 import logging
+import os
 from fnmatch import fnmatch
 from pathlib import Path
 
+import httpx
+from just_dna_format.layout import atomic_write_text
+
 from just_dna_enricher.clinvar import ClinVarReferenceError
 from just_dna_enricher.locations import (
+    PULL_RECORD_FILENAME,
     RELEASE_FILENAME,
+    SNAPSHOT_DATA_DIRNAME,
     SNAPSHOT_ROOT_FILENAMES,
     SNAPSHOT_SIDECAR_DIRNAMES,
     STRCHIVE_CATALOGUE_FILENAME,
@@ -34,12 +40,13 @@ from just_dna_enricher.locations import (
     default_mitomap_cache_dir,
     default_strchive_cache_dir,
     env_value,
+    parquet_footer_ok,
+    snapshot_record_missing,
 )
 from just_dna_enricher.resolver import EnsemblReferenceError
 
 logger = logging.getLogger(__name__)
 
-_PARQUET_MAGIC = b"PAR1"
 _ENSEMBL_HF_PREFIX = "datasets/just-dna-seq/ensembl_variations/data"
 _CLINVAR_HF_PREFIX = "datasets/just-dna-seq/clinvar/data"
 _CONSTRAINT_HF_PREFIX = "datasets/just-dna-seq/gnomad_constraint/data"
@@ -168,17 +175,39 @@ class SnapshotNotPublished(FileNotFoundError):
     """
 
 
-def _parquet_footer_ok(path: Path) -> bool:
-    """A complete parquet begins and ends with the `PAR1` magic. A truncated/interrupted download —
-    the common cache-corruption mode — is missing its footer, which is what makes DuckDB blow up with
-    "No magic bytes found at end of file". Reads only 4 bytes from each end."""
-    if not path.is_file() or path.stat().st_size < 8:
-        return False
-    with path.open("rb") as fh:
-        if fh.read(4) != _PARQUET_MAGIC:
-            return False
-        fh.seek(-4, 2)
-        return fh.read(4) == _PARQUET_MAGIC
+#: Kept importable here under its old name; the check itself lives in `locations` since a resolver
+#: judges a recorded file by it too (RM339).
+_parquet_footer_ok = parquet_footer_ok
+
+
+def _fetch_parquet(
+    fs, remote_path: str, local_path: Path, *, display: str, label: str, error_cls: type[Exception]
+) -> None:
+    """One parquet, staged through `.part` and renamed only once its footer verifies, so an interrupted
+    download never leaves a truncated file under the real name.
+
+    **A read timeout names its knob** (RM339). `huggingface_hub` reads `HF_HUB_DOWNLOAD_TIMEOUT`, 10 s
+    by default, and these files run to 0.5–1 GB, so a slow link failed on a bare `httpx.ReadTimeout`
+    that said nothing about where the 10 s came from. Translated to the lane's own error type, after
+    the transport's retries, with the files already fetched kept for the re-run.
+    """
+    tmp_path = local_path.with_suffix(".part")
+    logger.info("  Downloading %s ...", display)
+    try:
+        fs.get(remote_path, str(tmp_path))
+    except httpx.TimeoutException as exc:
+        tmp_path.unlink(missing_ok=True)
+        configured = os.environ.get("HF_HUB_DOWNLOAD_TIMEOUT")
+        raise error_cls(
+            f"Downloading {display} for the {label} snapshot timed out "
+            f"(HF_HUB_DOWNLOAD_TIMEOUT is {configured + ' s' if configured else 'unset, so 10 s'}). "
+            f"Raise it, for example `export HF_HUB_DOWNLOAD_TIMEOUT=120`, and re-run: the files "
+            f"already fetched are kept, and the pull record names the rest."
+        ) from exc
+    if not parquet_footer_ok(tmp_path):
+        tmp_path.unlink(missing_ok=True)
+        raise error_cls(f"Downloaded {display} is incomplete (missing parquet footer magic)")
+    tmp_path.replace(local_path)
 
 
 def _provision_snapshot(
@@ -191,11 +220,23 @@ def _provision_snapshot(
 ) -> Path:
     """Provision a parquet cache from HuggingFace Hub, returning the cache directory.
 
-    A non-empty cache with no truncated files is trusted without touching the network. Only an empty
-    or corrupt cache (re-)downloads — a corrupt file left by an interrupted download is removed and
-    refetched rather than skipped forever. The returned directory holds `data/*.parquet`, which the
-    resolver reads directly (no prebuilt `.duckdb` required). Shared by all three snapshots; they
-    differ only in `hf_repo_prefix`, `label`, `filename_glob`, and the error type raised.
+    **A cache is trusted without touching the network only when its pull record says the pull
+    finished** (RM339): every file the record names is present and whole. Before the record, any
+    non-empty set of whole files was trusted, and the `.part` staging that keeps each file whole is
+    exactly what made an interrupted pull look finished: a cache holding 3 of 25 chromosomes verified
+    file by file and was never completed. The record is written after the remote listing and **before**
+    the first download (`locations.PULL_RECORD_FILENAME` says why that order is the fix), so an
+    interrupted pull names what it lacks and the next call fetches only that.
+
+    A cache with no record (built locally, or pulled before the record existed) is compared with the
+    remote listing once: what is missing is fetched, what verifies is skipped, and the record is
+    written. When the listing cannot be read, that cache is used as it is, with a warning that its
+    completeness is unknown, because a warm cache must still serve with no network.
+
+    A corrupt file left by an interrupted download is removed and refetched rather than skipped
+    forever. The returned directory holds `data/*.parquet`, which the resolver reads directly (no
+    prebuilt `.duckdb` required). Shared by every parquet snapshot; they differ only in
+    `hf_repo_prefix`, `label`, `filename_glob`, and the error type raised.
 
     `filename_glob` names the files this snapshot consists of, and it is load-bearing rather than
     tidiness — see the constants above: a published dataset keeps files from every earlier layout, and
@@ -217,18 +258,33 @@ def _provision_snapshot(
             path.name,
             filename_glob,
         )
-    corrupt = [p for p in existing if not _parquet_footer_ok(p)]
-    if existing and not corrupt:
+    corrupt = [p for p in existing if not parquet_footer_ok(p)]
+    missing = snapshot_record_missing(cache_dir)
+    if existing and not corrupt and missing == []:
         return cache_dir
+    # No record, and nothing here contradicts the cache: the one state that may still serve when the
+    # listing cannot be read.
+    unrecorded = missing is None and bool(existing) and not corrupt
 
     for p in corrupt:
         logger.warning("Corrupt/truncated %s parquet %s — removing for re-download", label, p.name)
         p.unlink()
+    if missing:
+        logger.warning(
+            "%s cache at %s is an unfinished pull: %d file(s) its pull record names are absent or "
+            "truncated (%s). Fetching them.",
+            label,
+            cache_dir,
+            len(missing),
+            ", ".join(missing[:5]) + (", …" if len(missing) > 5 else ""),
+        )
 
     logger.info("Provisioning %s parquet cache from HuggingFace Hub ...", label)
     try:
         from huggingface_hub import HfFileSystem, get_token
     except ImportError as exc:  # the one guarded optional import (CLAUDE.md)
+        if unrecorded:
+            return _unverified(cache_dir, label, "huggingface_hub is not installed")
         raise error_cls(
             f"huggingface_hub is required to download the {label} snapshot; install "
             f"just-dna-enricher (which depends on it) or point at a local cache"
@@ -243,6 +299,10 @@ def _provision_snapshot(
     try:
         listing = fs.ls(hf_repo_prefix, detail=False)
     except Exception as exc:
+        if unrecorded:
+            return _unverified(
+                cache_dir, label, f"the published listing could not be read ({type(exc).__name__})"
+            )
         raise SnapshotNotPublished(
             f"nothing is published at {hf_repo_prefix} — the repo or its data/ does not exist. "
             f"Build the snapshot locally (`cache rebuild --only …`), or publish one."
@@ -258,26 +318,14 @@ def _provision_snapshot(
             ", ".join(ignored),
         )
     if not remote_files:
+        if unrecorded:
+            return _unverified(cache_dir, label, f"{hf_repo_prefix} publishes no {filename_glob}")
         raise error_cls(
             f"no {filename_glob} in {hf_repo_prefix} — the published snapshot carries "
             f"{len(remote_parquet)} parquet file(s), none of them this snapshot's "
             f"({', '.join(ignored) or 'none at all'})"
         )
     logger.info("Found %d remote parquet files", len(remote_files))
-    for remote_path in remote_files:
-        filename = remote_path.rsplit("/", 1)[-1]
-        local_path = data_dir / filename
-        if _parquet_footer_ok(local_path):
-            continue
-        # Download to a temp path and rename only after the footer verifies, so an interrupted
-        # download never leaves a truncated file under the real name.
-        tmp_path = local_path.with_suffix(".part")
-        logger.info("  Downloading %s ...", filename)
-        fs.get(remote_path, str(tmp_path))
-        if not _parquet_footer_ok(tmp_path):
-            tmp_path.unlink(missing_ok=True)
-            raise error_cls(f"Downloaded {filename} is incomplete (missing parquet footer magic)")
-        tmp_path.replace(local_path)
 
     repo_root = hf_repo_prefix.rsplit("/", 1)[0]
 
@@ -286,30 +334,53 @@ def _provision_snapshot(
     # no PMIDs, and `draft-panel` cannot produce a compilable module because `studies.csv` is mandatory.
     # They go in their own directory, never into `data/`, which is the whole reason the layout has a
     # sibling: the readers glob `data/*.parquet` and a two-column table there breaks every query.
+    # Listed here, before any download, so the pull record names them with the data (RM339).
+    remote_sidecars: list[tuple[str, str]] = []
     for sidecar in SNAPSHOT_SIDECAR_DIRNAMES:
         try:
-            remote_sidecar = [
-                f for f in fs.ls(f"{repo_root}/{sidecar}", detail=False) if f.endswith(".parquet")
-            ]
+            listed = fs.ls(f"{repo_root}/{sidecar}", detail=False)
         except Exception as exc:
             logger.debug("No %s/ in the %s repo (%s).", sidecar, label, type(exc).__name__)
             continue
+        remote_sidecars.extend((sidecar, f) for f in listed if f.endswith(".parquet"))
+
+    planned = [f"{SNAPSHOT_DATA_DIRNAME}/{f.rsplit('/', 1)[-1]}" for f in remote_files] + [
+        f"{sidecar}/{f.rsplit('/', 1)[-1]}" for sidecar, f in remote_sidecars
+    ]
+    if unrecorded:
+        absent = [name for name in planned if not parquet_footer_ok(cache_dir / name)]
+        if absent:
+            logger.warning(
+                "%s cache at %s carries no pull record and lacks %d of the %d file(s) published (%s). "
+                "Fetching them.",
+                label,
+                cache_dir,
+                len(absent),
+                len(planned),
+                ", ".join(absent[:5]) + (", …" if len(absent) > 5 else ""),
+            )
+    atomic_write_text(
+        cache_dir / PULL_RECORD_FILENAME,
+        json.dumps({"repo": hf_repo_prefix, "files": planned}, indent=2) + "\n",
+    )
+
+    for remote_path in remote_files:
+        filename = remote_path.rsplit("/", 1)[-1]
+        local_path = data_dir / filename
+        if parquet_footer_ok(local_path):
+            continue
+        _fetch_parquet(fs, remote_path, local_path, display=filename, label=label, error_cls=error_cls)
+
+    for sidecar, remote_path in remote_sidecars:
+        filename = remote_path.rsplit("/", 1)[-1]
         target_dir = cache_dir / sidecar
         target_dir.mkdir(parents=True, exist_ok=True)
-        for remote_path in remote_sidecar:
-            filename = remote_path.rsplit("/", 1)[-1]
-            local_path = target_dir / filename
-            if _parquet_footer_ok(local_path):
-                continue
-            tmp_path = local_path.with_suffix(".part")
-            logger.info("  Downloading %s/%s ...", sidecar, filename)
-            fs.get(remote_path, str(tmp_path))
-            if not _parquet_footer_ok(tmp_path):
-                tmp_path.unlink(missing_ok=True)
-                raise error_cls(
-                    f"Downloaded {sidecar}/{filename} is incomplete (missing parquet footer magic)"
-                )
-            tmp_path.replace(local_path)
+        local_path = target_dir / filename
+        if parquet_footer_ok(local_path):
+            continue
+        _fetch_parquet(
+            fs, remote_path, local_path, display=f"{sidecar}/{filename}", label=label, error_cls=error_cls
+        )
 
     # `release.json` too, when the repo has one: the publisher uploads it and this only ever fetched
     # parquet, so a *provisioned* snapshot could not say which release it was while a *built* one could.
@@ -351,6 +422,23 @@ def _provision_snapshot(
                 "No %s in the %s repo (%s); the cache carries data only.", optional, label, type(exc).__name__
             )
     logger.info("Download complete: %s", cache_dir)
+    return cache_dir
+
+
+def _unverified(cache_dir: Path, label: str, why: str) -> Path:
+    """Serve a cache with no pull record whose completeness could not be checked, and say so.
+
+    The unknown arm of the three (RM339): neither trusted as complete, which is the defect, nor refused,
+    which would take a working cache away from a machine with no network. The record is not written,
+    so the next call that can reach the listing checks again.
+    """
+    logger.warning(
+        "%s cache at %s carries no pull record, and %s, so whether it is complete is unknown. "
+        "Using it as it is; a run that can reach HuggingFace checks it against the published listing.",
+        label,
+        cache_dir,
+        why,
+    )
     return cache_dir
 
 
@@ -523,7 +611,7 @@ def ensure_strchive_snapshot(strchive_cache: Path | None = None) -> Path:
     """Provision the STRchive catalogue from HuggingFace Hub (RM176).
 
     **Not `_provision_snapshot`, and the difference is the snapshot rather than the plumbing.** That
-    body is parquet all the way down — it globs `data/*.parquet`, trusts a populated directory, and
+    body is parquet all the way down — it globs `data/*.parquet`, trusts a directory whose pull record says the pull finished, and
     re-fetches anything failing the `PAR1` footer check. This snapshot is one JSON catalogue at the
     repo root: there is no `data/`, no footer to check, and no way to tell a truncated JSON file from
     a short one without parsing it. So the catalogue is fetched to a `.part` path and parsed before it
@@ -551,7 +639,7 @@ def _provision_root_file_snapshot(
     """Fetch a snapshot whose payload is one named file at the repo root, plus `release.json`.
 
     A present, parseable payload is trusted without touching the network — the whole cache, provenance
-    included, exactly as a populated parquet cache is trusted whole. A snapshot that arrived without a
+    included, as a parquet cache whose pull record says the pull finished is trusted whole. A snapshot that arrived without a
     `release.json` therefore stays without one until it is re-provisioned from scratch, which is the
     parquet lanes' behaviour too and is why it is not repaired here: a catalogue with no release label
     is honestly unlabelled, and the check says so rather than claiming a release it cannot name.

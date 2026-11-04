@@ -13,9 +13,17 @@ different schemas.
 from pathlib import Path
 
 import duckdb
+import httpx
 import pytest
 from just_dna_enricher import download as dl
-from just_dna_enricher.locations import CITATIONS_DIRNAME, RELEASE_FILENAME
+from just_dna_enricher.locations import (
+    CITATIONS_DIRNAME,
+    PULL_RECORD_FILENAME,
+    RELEASE_FILENAME,
+    SNAPSHOT_ROOT_FILENAMES,
+    resolve_clinvar_reference,
+    snapshot_record_missing,
+)
 
 
 def _write_parquet(path: Path, column: str) -> None:
@@ -170,12 +178,132 @@ def test_each_snapshot_asks_for_its_own_files(fake_hub, tmp_path: Path) -> None:
 # ── the cache side ─────────────────────────────────────────────────────────────────────────────
 
 
-def test_a_populated_cache_is_trusted_without_touching_the_network(fake_hub, tmp_path: Path) -> None:
+def test_a_recorded_complete_cache_is_trusted_without_touching_the_network(fake_hub, tmp_path: Path) -> None:
+    """A cache whose pull record says the pull finished is not even listed: no network on a warm cache."""
+    fs = fake_hub({"clinvar-chr1.parquet": "clin_sig", "clinvar-chr2.parquet": "clin_sig"})
+    cache = tmp_path / "cv"
+    dl.ensure_clinvar_snapshot(cache)
+    assert snapshot_record_missing(cache) == []
+    fs = fake_hub({"clinvar-chr1.parquet": "clin_sig", "clinvar-chr2.parquet": "clin_sig"})
+    dl.ensure_clinvar_snapshot(cache)
+    assert fs.asked == [] and fs.fetched == []
+
+
+def test_an_unrecorded_complete_cache_is_listed_once_and_fetches_nothing(fake_hub, tmp_path: Path) -> None:
+    """A cache pulled before the record existed: compared with the listing once, then recorded."""
     fs = fake_hub({"clinvar-chr1.parquet": "clin_sig"})
     cache = tmp_path / "cv"
     _write_parquet(cache / "data" / "clinvar-chr1.parquet", "clin_sig")
     dl.ensure_clinvar_snapshot(cache)
     assert fs.fetched == []
+    assert fs.asked, "an unrecorded cache is checked against the published listing"
+    assert snapshot_record_missing(cache) == []
+
+
+# ── an interrupted pull (RM339, S126) ──────────────────────────────────────────────────────────
+
+
+def _interrupting(fs, after: int):
+    """Let `after` parquet downloads through, then fail the next one as a killed process would."""
+    real_get = fs.get
+    count = {"n": 0}
+
+    def get(remote_path: str, local_path: str) -> None:
+        if remote_path.endswith(".parquet"):
+            if count["n"] == after:
+                raise KeyboardInterrupt  # the pull dies mid-run; nothing after this line runs
+            count["n"] += 1
+        real_get(remote_path, local_path)
+
+    fs.get = get
+
+
+_THREE = {f"clinvar-chr{i}.parquet": "clin_sig" for i in (1, 2, 3)}
+
+
+def test_an_interrupted_pull_is_not_a_snapshot_and_the_next_call_finishes_it(
+    fake_hub, tmp_path: Path, caplog
+) -> None:
+    """The reported case: whole files, a third of them, and every resolver called the lane present.
+
+    Before RM339 `resolve_clinvar_reference` answered the cache directory here and `ensure` returned it
+    without fetching, so `enrich` resolved against a third of the genome and said nothing.
+    """
+    cache = tmp_path / "cv"
+    _interrupting(fake_hub(_THREE), after=1)
+    with pytest.raises(KeyboardInterrupt):
+        dl.ensure_clinvar_snapshot(cache)
+    assert sorted(p.name for p in (cache / "data").glob("*.parquet")) == ["clinvar-chr1.parquet"]
+    assert dl._parquet_footer_ok(cache / "data" / "clinvar-chr1.parquet"), "the one file is whole"
+
+    assert snapshot_record_missing(cache) == ["data/clinvar-chr2.parquet", "data/clinvar-chr3.parquet"]
+    assert resolve_clinvar_reference(cache, load_dotenv_file=False) is None
+
+    fs = fake_hub(_THREE)
+    with caplog.at_level("WARNING"):
+        dl.ensure_clinvar_snapshot(cache)
+    assert sorted(fs.fetched) == ["data/clinvar-chr2.parquet", "data/clinvar-chr3.parquet"]
+    assert "unfinished pull" in caplog.text
+    assert resolve_clinvar_reference(cache, load_dotenv_file=False) == cache
+
+
+def test_a_truncated_recorded_file_is_an_unfinished_pull(fake_hub, tmp_path: Path) -> None:
+    """Whole means footer-valid, not merely present: a file cut short after the record names it."""
+    cache = tmp_path / "cv"
+    fake_hub(_THREE)
+    dl.ensure_clinvar_snapshot(cache)
+    (cache / "data" / "clinvar-chr3.parquet").write_bytes(b"PAR1truncated")
+    assert snapshot_record_missing(cache) == ["data/clinvar-chr3.parquet"]
+    assert resolve_clinvar_reference(cache, load_dotenv_file=False) is None
+
+
+def test_an_unrecorded_partial_cache_is_completed_from_the_listing(fake_hub, tmp_path: Path, caplog) -> None:
+    """A cache an interrupted pull left before the record existed: the listing names what it lacks."""
+    cache = tmp_path / "cv"
+    _write_parquet(cache / "data" / "clinvar-chr1.parquet", "clin_sig")
+    fs = fake_hub(_THREE)
+    with caplog.at_level("WARNING"):
+        dl.ensure_clinvar_snapshot(cache)
+    assert sorted(fs.fetched) == ["data/clinvar-chr2.parquet", "data/clinvar-chr3.parquet"]
+    assert "carries no pull record and lacks 2 of the 3" in caplog.text
+    assert snapshot_record_missing(cache) == []
+
+
+def test_an_unrecorded_cache_still_serves_when_the_listing_cannot_be_read(
+    fake_hub, tmp_path: Path, caplog
+) -> None:
+    """No network must not take a working cache away: served, with completeness stated as unknown."""
+    cache = tmp_path / "cv"
+    _write_parquet(cache / "data" / "clinvar-chr1.parquet", "clin_sig")
+    fs = fake_hub({})
+    del fs.tree["data"]  # the listing raises, as it does with no route to the Hub
+    with caplog.at_level("WARNING"):
+        assert dl.ensure_clinvar_snapshot(cache) == cache
+    assert "whether it is complete is unknown" in caplog.text
+    assert snapshot_record_missing(cache) is None, "no record is written for a cache nobody checked"
+    assert resolve_clinvar_reference(cache, load_dotenv_file=False) == cache
+
+
+def test_a_read_timeout_names_the_knob_and_leaves_no_part_file(fake_hub, tmp_path: Path, monkeypatch) -> None:
+    """`huggingface_hub`'s 10 s default is short for a 1 GB file; the error says where it comes from."""
+    monkeypatch.delenv("HF_HUB_DOWNLOAD_TIMEOUT", raising=False)
+    fs = fake_hub(_THREE)
+
+    def get(remote_path: str, local_path: str) -> None:
+        Path(local_path).write_bytes(b"PAR1partial")
+        raise httpx.ReadTimeout("The read operation timed out")
+
+    fs.get = get
+    cache = tmp_path / "cv"
+    with pytest.raises(dl.ClinVarReferenceError, match=r"HF_HUB_DOWNLOAD_TIMEOUT is unset, so 10 s"):
+        dl.ensure_clinvar_snapshot(cache)
+    assert list((cache / "data").glob("*.part")) == []
+    assert snapshot_record_missing(cache) == [f"data/{name}" for name in sorted(_THREE)]
+
+
+def test_the_pull_record_is_never_published(tmp_path: Path) -> None:
+    """It describes one machine's copy: the publish and pull registries must not carry it."""
+    assert PULL_RECORD_FILENAME not in SNAPSHOT_ROOT_FILENAMES
 
 
 def test_a_foreign_file_already_in_the_cache_is_reported_not_deleted(

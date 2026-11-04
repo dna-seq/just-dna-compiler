@@ -24,7 +24,7 @@ once with `grep -n 'RM47' docs/RM_TOC*.md`. **Page labels never spell an unfiled
 "up to 299" that way once made it skip to 301. If you find yourself wanting a second index somewhere
 else, don't: two partial lists of the same 35 items is what caused this one.
 
-**Claim the number with `.claude/rm-next.py`, never by reading the highest one off this file.** An
+**Claim the number with the seats kit's `item-next.py` (`sh "$BLUEPRINTS_KIT/bin/py.sh" "$BLUEPRINTS_KIT/classes/triage/item-next.py" --note "…"`), never by reading the highest one off this file.** An
 index is not an allocator: reading a number claims nothing, so two sessions a minute apart read the
 same answer and both write it — which happened on 2026-09-01, when two sessions sharing one working
 tree filed different work as RM159 (git `741ec59` renumbered one to RM161). The allocator scans every
@@ -83,7 +83,7 @@ line under **RM52**, which is release-blocking for 1.0.
 
 | Tracker | Where | What it holds |
 |--------------|----------------------|----------------------------------------------------------------|
-| Reserved namespace | [ROADMAP § Reserved namespace](ROADMAP.md#reserved-namespace) | Names withheld because a release will plausibly claim them (Principle 5). Three: `reference_db`, plus `callable_element` / `quality_element`, the two element-rule columns RM54 decided against building. |
+| Reserved namespace | [ROADMAP § Reserved namespace](ROADMAP.md#reserved-namespace) | Names withheld because a release will plausibly claim them (Principle 5). Four: `reference_db`; `callable_element` / `quality_element`, the two element-rule columns RM54 decided against building; and `tradeoff`, the verdict RM327 computes rather than lets anyone author. |
 | Freeform idea-book | [ROADMAP § Freeform suggestions](ROADMAP.md#freeform-suggestions--the-05-idea-book) | Unshaped ideas — the 0.5 book, plus **Parked in 0.5** (recorded so they are not re-proposed as new) and a [0.6 book](ROADMAP.md#freeform-suggestions--the-06-idea-book) below it. |
 | Not format scope | [ROADMAP § Annotating core](ROADMAP.md#annotating-core-not-format-scope-the-05-source-assessment) | Half of every source assessed: anything that *calls or interprets* is a consumer's job. |
 | Design threads | [PROPOSAL_0_6_PT2](proposals/PROPOSAL_0_6_PT2.md), [PROPOSAL_0_6](proposals/PROPOSAL_0_6.md), [PROPOSAL_0_5_1](proposals/PROPOSAL_0_5_1.md), [PROPOSAL_0_5](proposals/PROPOSAL_0_5.md), [PROPOSAL_0_4_1](proposals/PROPOSAL_0_4_1.md) | Where an item's shape was argued before it became an `RMn`, one file per release line — **two for 0.6**, because a second round of items landed behind the first and PT2 re-asked which release they belonged to. |

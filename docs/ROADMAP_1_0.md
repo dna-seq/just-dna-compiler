@@ -222,7 +222,7 @@ findable from its gate)*:
   closes outright.** The `_resolve_positional_tables` skip on `genome_build != DEFAULT_GENOME_BUILD`
   *is* the RM15 gate; un-gating the fill makes the injected rows reach the positional parquets, which is
   the missing field Principle 7's own remedy clause points at. Nothing else reaches it.
-- **[RM68](ROADMAP_0_8.md#rm68--a-drafting-provider-on-a-non-grch38-module-refuse-or-strip-to-the-rsid)
+- **[RM68](ROADMAP_0_9.md#rm68--a-drafting-provider-on-a-non-grch38-module-refuse-or-strip-to-the-rsid)
   loses its premise but keeps its own exit.** Once a provider can write the coordinate under the build
   it came from there is nothing left to refuse or strip. It stays filed in 0.7 because its other exit —
   an author with a non-GRCh38 module saying which outcome they wanted — is reachable first and would
@@ -322,7 +322,7 @@ Closing was the live alternative when the misfiling was found, and the case for 
 low, no incident behind it, and a mechanism reproduced once in sixteen modules is normally grounds to
 close rather than to carry. **It stays open because the fix arrives on its own** — RM15 un-gates the
 fill and the signature becomes an invariant with no work filed against this entry, so filing it as a
-"documented divergence" the way [RM67](ROADMAP_0_8.md#rm67--polyploid-and-partially-phased-genotypes)
+"documented divergence" the way [RM67](ROADMAP_0_9.md#rm67--polyploid-and-partially-phased-genotypes)
 is filed would say the wrong thing — RM67 is **not work**, a limit nobody intends to lift, and this one
 is scheduled. (Neither is *closed*: RM_TOC's ✖ section holds two items and neither of these is one.)
 The other half of the argument is the candidate-repair list above, which is the record of five refusals.
@@ -379,12 +379,33 @@ breaking half, and the line is owed by whoever created the obligation.
 | landed | item | what breaks at 1.0 | upgrade route |
 |---|---|---|---|
 | 0.6.0 | **RM51** — `sources.csv` deprecated in favour of `licensing.csv` | the old input filename stops being read | **Author:** `git mv sources.csv licensing.csv`. No content change, and no signature moves — verified across all eleven reference examples when four of them were renamed. **Consumer: no action needed** — `sources.parquet` and `manifest.sources` keep their names through the whole 0.x line and are untouched by this item. |
-| 0.6.0 | **RM4** — the `module_spec.yaml` `panel:` block deprecated | the block stops being read | **Author:** the block's one machine reader moved to the licence row's `dataset` column (what the tautology check reads), so once that column is filled you may delete the block *if you do not need the three fields it also carried*. But `genes`, `significance` and `reference_sha256` have **no replacement anywhere** (S69), so for a **drafted panel** deleting the block loses the gene denominator that distinguishes *not in the panel* from *in the panel, nothing found*, and if the licence row's `dataset` is empty — a module drafted before the drafter filled it, which the never-clobber merge does not backfill — it loses the only record of the drafted-from snapshot too. Deleting a block that carries nothing you need moves neither `artifact.digest` nor `content_signature` (measured on `reference_examples/apoe_epsilon`). **The home for the three fields is an open design question — [RM265](ROADMAP.md#rm265--the-panel-deprecation-has-no-accepted-signal-on-the-replaced-branch-the-warning-fires-whether-or-not-you-need-the-three-fields-it-tells-you-to-keep-the-block-for); this row is not settled until it is.** Meanwhile the consumer-side workaround is to record the three in a provenance log hashed into `manifest.logs`, which survives the removal. **Consumer: no action needed** — `manifest.panel` is passthrough metadata nothing derives from. |
+| 0.6.0 | **RM4** — the `module_spec.yaml` `panel:` block deprecated | the block stops being read | **Author:** the block's one machine reader moved to the licence row's `dataset` column (what the tautology check reads), so once that column is filled you may delete the block *if you do not need the three fields it also carried*. But `genes`, `significance` and `reference_sha256` have **no replacement anywhere** (S69), so for a **drafted panel** deleting the block loses the gene denominator that distinguishes *not in the panel* from *in the panel, nothing found*, and if the licence row's `dataset` is empty — a module drafted before the drafter filled it, which the never-clobber merge does not backfill — it loses the only record of the drafted-from snapshot too. Deleting a block that carries nothing you need moves neither `artifact.digest` nor `content_signature` (measured on `reference_examples/apoe_epsilon`). **The home for the three fields is an open design question — [RM265](ROADMAP_0_9.md#rm265--the-panel-deprecation-has-no-accepted-signal-on-the-replaced-branch-the-warning-fires-whether-or-not-you-need-the-three-fields-it-tells-you-to-keep-the-block-for); this row is not settled until it is.** Meanwhile the consumer-side workaround is to record the three in a provenance log hashed into `manifest.logs`, which survives the removal. **Consumer: no action needed** — `manifest.panel` is passthrough metadata nothing derives from. |
 | 1.0 (planned) | **RM73** (gate half) — a closed authoring attestation becomes a **precondition of compiling** | a module with no closure stops compiling; since 0.6.0 it only warns. **Blocked, not merely planned — see § RM73 below: the gate refuses on step 3 of the round trip** | **Author:** run `just-dna-compiler close spec/` once the module is finished, and re-run it after any edit. It is a deliberate act by design — `validate` stays read-only, so nothing stamps behind your back. **Consumer:** no action; the artifact already carries `manifest.verification.closure` where a module was closed, and reading it is optional. The whole mechanism (`Closure`, `close`, the warning) **shipped additively in 0.6.0**; what waits for the major is only the promotion of the warning to a refusal, which is P8. |
 | 1.0 (planned) | **`fetched_at` → `updated_at`/`recorded_at`** on the seven sidecar models — bundled with the `sources.parquet` rename, which moves the same digests. Unnumbered; see the 1.0 cleanup tracker | the column name changes in six parquets and seven CSVs. **No signature moves** — it is outside all seven fact sets — so `content_signature` and every `*_signature` are untouched; only `artifact.digest` moves, on modules carrying a sidecar | **Author: no action needed.** The loader keeps accepting `fetched_at` as a deprecated input spelling through 1.x, so an existing sidecar loads unchanged; the writer emits the new name from the next pass that touches it. No 0.x deprecation warning is owed, because nobody authors this column and `extra="forbid"` means an author could not act on one. **Consumer:** re-read the column by its new name in `frequencies`/`gene_metrics`/`literature`/`gene_validity`/`clinical_assertions`/`sources.parquet`; nothing derives from it, and it is in no signature |
 | 0.6.0 | **RM55** — `CopyNumberRow.modifier_cn` deprecated in favour of `modifier_copy_number` | the integer column is **removed** (not retyped — the float one has existed since 0.6), and with it the kind-keyed tiling defaults | **Author:** move the dosage to `modifier_copy_number`; a whole number is still a whole number, so no re-authoring of the *value* is needed, and setting both was always an error so there is nothing to reconcile. If your `copy_number`/`repeat_count` bins are a genuine grid, state `measure_tiling: quantised` before 1.0 removes the default that assumed it. **Consumer:** read `modifier_copy_number` (or `effective_modifier_copy_number`, which is what everything in-tier already reads) and take a group's tiling from `measure_tiling` rather than from `measure_kind`. |
 
 ---
+
+## RM346 — the authored tables are denormalized for people, and the parquets copy that shape, so a machine reader gets it too
+
+**Severity** low · **Status** open, 1.0 (the maintainer's ask, 2026-11-04) · **Owner** compiler (the artifact shape) + format (the manifest's table list) · **Motivating case** the 0.8 interview on RM323 · *related* RM323, RM28, RM52
+
+**The decision behind it.** On 2026-11-04 the maintainer kept the authored layer human-centred: the same fact
+columns (tier, causal and effector confidence, age of action) repeat across the single-statement tables
+(`variants.csv`, `diplotypes.csv`, the meta-table) instead of living in one normalized fact table. "If it were
+a db it'd be 10x more tables, because many columns are duplicated across individual-loci-type tables and
+properly normalized db resolves this by pairing adapters. Humans have trouble reading such. Compilation can
+still transform them, add a 1.0 todo item to make a normalized shape of this human-centred facet, so that a
+parquet is more machine/SQL friendly."
+
+**The item.** Compile emits a normalized shape beside, or instead of, today's per-table parquets: one
+statement table carrying the shared columns once, joined to per-kind tables through keys (the "pairing
+adapters"), so a SQL reader can ask about every statement without a union over kinds. The authored CSVs do
+not change. `reverse` must still rebuild them losslessly (P7).
+
+**Why it is filed under 1.0.** Removing or reshaping the parquets a reader already consumes is major-only (P3).
+**Adding** a normalized parquet beside them is additive, and nearly free under P9, so that half could land in
+a minor if a consumer asks first. RM52's upgrade procedure owes a line for whichever half lands at 1.0.
 
 ## RM55 (removal half) — the integer copy-number and repeat-count columns
 

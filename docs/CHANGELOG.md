@@ -41,6 +41,97 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM340: the VRS-coverage warning points at the record that explains its no-ALT rows (patch, on `main`)
+
+**compiler, enricher** — When an attested `verification.json` carries an `rsid_coordinate_agreement` record
+saying the injected Ensembl snapshot has no record for some authored rsIDs, the no-ALT line of
+`vrs_coverage_incomplete` now names that record. Those rows' empty ALT is explained there, and a newer
+snapshot may fill it (S127). The line's existing phrase is unchanged and leads it. The phrase the enricher
+writes is now one constant, `compiler.SNAPSHOT_UNPLACED_PHRASE`, shared by writer and reader. No new
+warning code.
+
+## 2026-11-04 — RM339: an interrupted snapshot pull no longer reads as complete (patch, on `main`)
+
+**enricher** — A snapshot pull now writes `pull-record.json` from the remote listing before its first
+download. A pull that stops part-way therefore names the files it never got: every parquet resolver reports
+the lane absent instead of present, and the next `cache pull`, `cache prepare` or `ensure_*` fetches only
+what is missing. Before, a cache holding 3 of 25 whole chromosome files was trusted, and `enrich` would
+have resolved against it (S126). A cache with no record, built locally or pulled before this release, is
+compared with the published listing once; with no route to the Hub it is used as it is, with a warning. A
+download that times out names `HF_HUB_DOWNLOAD_TIMEOUT`. New in `locations`: `PULL_RECORD_FILENAME`,
+`parquet_footer_ok`, `snapshot_record_missing`.
+
+## 2026-11-04 — a new major of an upstream: the liaison maps it, and a cap needs a proven break (seats, on `main`)
+
+**repo** — The person's rule, written into the liaison's and the lead's primings. The liaison decides what
+blocks adopting a new major of an upstream and hands the lead an adoption map. A dependency is capped only once
+the new major is shown to break something here, and the cap is lifted once support is integrated. polars 2 and
+duckdb 2 broke nothing that RM343 and RM344 do not cover, so neither is capped. The lead caps a dependency
+only as a safety, when the liaison is unavailable and work has to move. No package changes.
+
+## 2026-11-04 — RM343: a query-shape test reads duckdb 2.0's `Hash Join` (patch, on `main`)
+
+**enricher (tests)** — duckdb 2.0 prints the join operator as `Hash Join` where 1.x printed `HASH_JOIN`, so on
+a fresh install, which takes 2.0 under `duckdb>=1.1.0`, one test failed although the plan is the same hash join.
+The assertion now reads the name in either spelling. The rest of the enricher suite passed under 2.0.0 (the
+liaison's run), so duckdb stays uncapped. No package changes.
+
+## 2026-11-03 — the triage seat's kit watchers replace the hook-armed inbox watcher (repo tooling, on `main`)
+
+**repo** — Since the seating, the triage seat's watchers in `.blueprints.toml` wake it on a consumer's note.
+`watch.inbox` is the kit's file watcher on `CONSUMER_SUGGESTIONS.md`, with the same 150 s settle; `watch.inbox-commits`
+catches an item pushed to `origin` instead. The old pair would have rung a second time on every note, so it is
+removed: the `UserPromptSubmit` hook `.claude/hooks/arm_triage_watcher.py`, the wrapper
+`.claude/wake-on-suggestions.sh`, the watcher `.claude/watch-suggestions.sh` and their test
+`schema/tests/test_triage_watcher.py`. `.claude/settings.json` now holds no hook. Triage confirmed its kit watcher
+fired on the real S125–S127 edit before the removal. [CONSUMER_TRIAGE_LOOP.md §1](CONSUMER_TRIAGE_LOOP.md#1-setup)
+describes the seat's watchers, and the gist's `watch-inbox.sh` is no longer adopted here. No package changes.
+
+## 2026-11-03 — triage of S125–S127: four items filed, one doc fix (docs only, on `main`)
+
+**docs** — The triage seat's first pass answered the three consumer items that had sat in the inbox,
+uncommitted, since October. None had been worked on anywhere, and all three reproduced against the
+code. Filed as patches: RM337 (a file under `logs/` that is not `*.log` is dropped from a green compile
+with no warning), RM339 (an interrupted snapshot pull leaves a cache every caller reads as complete),
+and RM340 (the VRS-coverage warning does not point at the `verification.json` record that already
+explains its no-ALT alleles). RM338 records the undecided half of S125, which files under `logs/` ship.
+`TABLES.md`'s `overrides.csv` section now says that a hand-written uncited `literature.csv` row (RM147)
+is an addition the refusal there does not cover. No package changes.
+
+## 2026-11-03 — the repository runs on seats: lead, pm, triage, liaison (docs only, on `main`)
+
+**repo** — Four standing seats from the seats kit replace the two-seat description in
+[RELEASE_CYCLE.md § Seats](RELEASE_CYCLE.md#seats). The pm sizes minor and major scopes, the lead executes them,
+triage keeps the consumer inbox and the patches on `main`, and the liaison reads upstream releases. Their primings
+are in `docs/seats/`, now listed in `mkdocs.yml`'s `not_in_nav`; the seat pull requests had left
+`test_nav_and_not_in_nav_partition_the_docs_directory` red. No package changes.
+
+## 2026-11-03 — RM327, in part: `tradeoff` is a reserved column name (patch, on `main`)
+
+**format** — `tradeoff` joins `vocab.RESERVED_NAMES_0_4`. The maintainer decided that a trade-off (an allele `protective` on one trait and `risk` on another) is **computed** from a per-trait benefit/harm table, never authored. That table is RM327's minor half and is not built yet. Reserving the name keeps a hand-set column out before the computed one lands. longevitymap v2 has trade-off loci to write, and this is the word an author would reach for.
+
+**What changes for you.** A `tradeoff` column on any authored table was already refused by `extra="forbid"`. It is now refused with a specific reason that points to `negatives` for describing a trade-off today, and says that `direction: contested` means something else. Every reserved-name error now lists four names instead of three. No module's acceptance changes, and no digest moves.
+
+## 2026-10-02 — RM320: PubMind's table is CC BY-NC-ND 4.0, so a module carrying it compiles only as non-commercial (patch, on `main`)
+
+**enricher** — WGLab answered in writing ([WGLab/PubMind#5](https://github.com/WGLab/PubMind/issues/5)) that the PubMind table ANNOVAR and Zenodo distribute is CC BY-NC-ND 4.0. `PUBMIND_TERMS` now records `commercial_use=False`, `share_alike=False` and `redistribution=True`, with NoDerivatives in `notice`. Before, every axis was `None`.
+
+**What changes for you.** A module whose `sources.csv` carries a freshly written `pubmind` row now **refuses to compile** under `unstated` or `commercial` and compiles under `non_commercial`. Before, it compiled under any declaration and `manifest.sources` named `pubmind` in `unknown_terms_sources`. `pubmind build` gains `--use` and skips under `unstated`, as `clinpgx build` does, and `cache rebuild` applies the same gate to the lane. Pass `--use non-commercial` (or `JUST_DNA_USE=non-commercial` for `scripts/rebuild-caches.sh`). `draft-panel --source pubmind` is still not gated, and its warning now names the licence. `pubmind publish` still refuses, now because the snapshot is adapted material that NoDerivatives bars sharing.
+
+**A module drafted before this keeps its all-null `pubmind` row**, because a `sources.csv` merge never overwrites a recorded row. It goes on compiling as before. To record the terms, delete the `pubmind` row and re-draft.
+
+## 2026-09-30 — RM316: a local-allele field is resolved through `LAA` before an element rule applies (patch, on `main`)
+
+**format / docs** — `annotated_alt` is defined by ALT index, and VCF 4.5's local-allele fields (`LAD`, `LPL`, …) order their values by the sample's `LAA` instead. A consumer whose merged file carries only `LAD` would read another allele's depth. The rule's printed meaning and SCHEMAS.md now say to resolve the local field to its global equivalent through `LAA` first, as the spec recommends. Text only; no new rule.
+
+## 2026-09-30 — RM315: the VCF cardinality table is all of 4.5's reserved keys, so `INFO/RUC` is checked (patch, on `main`)
+
+**format** — `vocab.VCF_FIELD_NUMBER` held only Tables 1 and 2 of VCF 4.4, which left out the keys §3 and §4 reserve, among them `RUC`, the field `binning` names for a repeat count. A `source_field=INFO/RUC` with no element rule therefore drew no warning. The table now transcribes every key VCF 4.5 reserves, and `CICN` joins the INFO/FORMAT collision set. `VCF_NUMBER_MEANINGS` covers 4.5's `LA`, `LR`, `LG` and `M`. **Existing modules may see `vcf_pointer_unselected_element` or `vcf_pointer_key_collision` on pointers that were silent before**, with the same codes as always. None of the shipped examples does.
+
+## 2026-09-30 — RM314: a reference block's extent is read per sample, from FORMAT `LEN` first (patch, on `main`)
+
+**format / docs** — `VariantRow.callable_from`'s description and SCHEMAS.md's VCF-reading contract told a consumer to find a gVCF reference block by INFO `END`. VCF 4.5 made `END` the maximum over every sample's FORMAT `LEN`, so on a multi-sample file it credits one sample's block to another's positions: a confident absence where nobody called. The rule now reads `LEN` first and `END` only where `LEN` is absent, and a `.` GT inside the sample's own earlier block is that block's call. Text only; single-sample and 4.4 files read exactly as before.
+
 ## 2026-09-30 — RM288: the CPIC and PharmVar builders and the PGx drafter export their error families (0.8, uncut)
 
 **enricher** — `cpic_build.ERRORS`, `pharmvar_build.ERRORS` and `pgx_draft.ERRORS` are callee-owned
@@ -813,7 +904,7 @@ corpus was written — so they were authored that way and nothing could say so.
 
 The corpus is now **13 files and 228 scenarios**, 118 registry-tagged and 110 structural, with 182
 quoted phrases checked against real string literals. **RM149 stays open**: still a draft nobody has
-read, and the second addendum in [ROADMAP_0_8.md](ROADMAP_0_8.md#rm149--expected-behaviour-lives-in-prose-and-the-prose-is-where-two-readers-split)
+read, and the second addendum in [ROADMAP_0_8.md](ROADMAP_0_9.md#rm149--expected-behaviour-lives-in-prose-and-the-prose-is-where-two-readers-split)
 carries the two scoping questions it answered with a measurement — why refusals without a code have no
 registry to walk, and why the phrase check's file scope is right.
 
@@ -2693,7 +2784,7 @@ decided with the maintainer before the cut because the window in which it moves 
   `content_identity_exclusions`, read only by `integrity.content_signature`, so `model_dump()` stays
   complete for every writer. The stamped-column idiom was probed first and emptied `reason` in
   `draft._authored_dump` and the enricher's overlay writers — a drafted row the model then refuses.
-- **Filed, not built**: [RM181](ROADMAP_0_8.md#rm181--a-byte-digest-that-moves-beside-intact-signatures-says-something-changed-and-not-what-and-provenance-has-no-shift-tracker) — a byte digest moving beside intact
+- **Filed, not built**: [RM181](ROADMAP_0_9.md#rm181--a-byte-digest-that-moves-beside-intact-signatures-says-something-changed-and-not-what-and-provenance-has-no-shift-tracker) — a byte digest moving beside intact
   signatures says *something* changed and not what, and provenance has no shift tracker of its own.
   The maintainer's note for the 0.8 digest-coverage review.
 

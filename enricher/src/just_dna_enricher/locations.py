@@ -125,6 +125,18 @@ SNAPSHOT_ROOT_FILENAMES: tuple[str, ...] = (
     RELEASE_FILENAME,
 )
 
+#: The provisioner's record of what a pull of this snapshot consists of (RM339): every file under
+#: `data/` and the sidecar directories the remote listing named, written **before** the first
+#: download rather than after the last. That order is the fix. Each file is staged through `.part` and
+#: renamed only once whole, so an interrupted pull leaves nothing but whole files, and a cache holding
+#: 3 of 25 chromosomes read as complete to every resolver. A record written at the end would leave the
+#: same interrupted pull looking exactly like a cache provisioned before the record existed. Written
+#: first, it names the 22 files that never arrived, and `snapshot_record_missing` reports them.
+#:
+#: **Not in `SNAPSHOT_ROOT_FILENAMES`, on purpose.** That registry is what a publish uploads and a
+#: pull fetches. This file describes one machine's copy, never the published snapshot.
+PULL_RECORD_FILENAME = "pull-record.json"
+
 ACMG_SNAPSHOT_FILENAME = "acmg_sf.csv"
 STRCHIVE_CATALOGUE_FILENAME = "STRchive-loci.json"
 
@@ -162,9 +174,9 @@ CPIC_SUBDIR: str = "cpic"
 PHARMVAR_SUBDIR: str = "pharmvar"
 
 #: PubMind's cache is inject-only for a different reason and the difference is worth reading. PharmVar's
-#: bytes arrive under a key whose terms bar passing it on; PubMind's arrive under **no stated terms at
-#: all** — the ANNOVAR-redistributed table publishes none, and unknown is not permissive. Same
-#: consequence either way (`None` is never `True`): a builder and a `resolve_`, deliberately no
+#: bytes arrive under a key whose terms bar passing it on; PubMind's arrive under **CC BY-NC-ND 4.0**
+#: (answered 2026-09-28, RM320), which allows sharing the table as published but not the snapshot,
+#: since decomposing and normalizing it makes adapted material. Same consequence either way: a builder and a `resolve_`, deliberately no
 #: `download.ensure_pubmind_snapshot` and no HF repo, and a `pubmind publish` that exists in order to
 #: refuse rather than being absent for somebody to helpfully add.
 PUBMIND_SUBDIR: str = "pubmind"
@@ -278,6 +290,52 @@ def read_release(reference: Path) -> dict | None:
     return payload if isinstance(payload, dict) else None
 
 
+_PARQUET_MAGIC = b"PAR1"
+
+
+def parquet_footer_ok(path: Path) -> bool:
+    """A complete parquet begins and ends with the `PAR1` magic. A truncated/interrupted download —
+    the common cache-corruption mode — is missing its footer, which is what makes DuckDB blow up with
+    "No magic bytes found at end of file". Reads only 4 bytes from each end.
+
+    Here rather than in `download` because a resolver judges a recorded file by it too (RM339), and
+    this module never imports the network tier."""
+    if not path.is_file() or path.stat().st_size < 8:
+        return False
+    with path.open("rb") as fh:
+        if fh.read(4) != _PARQUET_MAGIC:
+            return False
+        fh.seek(-4, 2)
+        return fh.read(4) == _PARQUET_MAGIC
+
+
+def snapshot_record_missing(cache_dir: Path) -> list[str] | None:
+    """The files `cache_dir`'s pull record names that are absent or truncated, or `None` with no record.
+
+    Three answers, and a caller branches on all three (RM339). `[]`: the pull that wrote the record
+    finished, so the cache is complete. A non-empty list: a pull was planned and did not finish, so the
+    cache is **not** a snapshot yet, and these are what it lacks. `None`: no record, so nothing here can
+    say. That is a cache built locally, or one pulled before the record existed; the resolvers treat
+    it as they always did, and the provisioner compares it with the remote listing once.
+
+    A record that is present and unreadable is `None` with a warning. The provisioner rewrites it on
+    its next pull, and refusing a whole cache over its bookkeeping would cost a reader its snapshot.
+    """
+    path = Path(cache_dir) / PULL_RECORD_FILENAME
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        files = payload["files"]
+    except (OSError, json.JSONDecodeError, KeyError, TypeError) as exc:
+        logger.warning("Could not read %s (%s); treating the cache as unrecorded.", path, exc)
+        return None
+    if not isinstance(files, list) or not all(isinstance(f, str) for f in files):
+        logger.warning("%s names no file list; treating the cache as unrecorded.", path)
+        return None
+    return [name for name in files if not parquet_footer_ok(Path(cache_dir) / name)]
+
+
 def load_env(override: bool = False) -> str | None:
     """Load the nearest `.env` (walking up from CWD) into `os.environ`, so cache paths can be set there.
     Returns the loaded path, or None.
@@ -381,7 +439,9 @@ def resolve_ensembl_reference(
         has_parquet = (data_dir.is_dir() and any(data_dir.glob("*.parquet"))) or any(
             search_dir.glob("*.parquet")
         )
-        if has_db or has_parquet:
+        # A pull that never finished is not a snapshot (RM339). The prebuilt `.duckdb` is a built
+        # artifact and keeps its standing; only the parquet payload is judged by the pull record.
+        if has_db or (has_parquet and not snapshot_record_missing(search_dir)):
             return search_dir
     return None
 
@@ -432,7 +492,8 @@ def _resolve_parquet_cache(
 ) -> Path | None:
     """The precedence ladder every parquet snapshot shares: explicit → `$env_var` → the default dir.
 
-    Returns the cache **directory** when it holds `data/*.parquet` (or bare `*.parquet`), else `None`.
+    Returns the cache **directory** when it holds `data/*.parquet` (or bare `*.parquet`) and is not an
+    unfinished pull (`snapshot_record_missing`, RM339), else `None`.
     Never downloads — provisioning is `download.ensure_*` or the deployment's job. `accept_bare_file`
     additionally lets a caller point straight at one `.parquet`, which only the constraint snapshot
     (a single file) has ever wanted.
@@ -453,7 +514,8 @@ def _resolve_parquet_cache(
         has_parquet = (data_dir.is_dir() and any(data_dir.glob("*.parquet"))) or any(
             search_dir.glob("*.parquet")
         )
-        if has_parquet:
+        # A pull that never finished is not a snapshot, however whole each of its files is (RM339).
+        if has_parquet and not snapshot_record_missing(search_dir):
             return search_dir
     return None
 

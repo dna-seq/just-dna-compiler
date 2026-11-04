@@ -101,7 +101,8 @@ def test_lookup_clin_sig_is_a_hash_join_not_an_or_chain(tmp_path: Path) -> None:
         ).fetchall()[0][1]
     finally:
         con.close()
-    assert "HASH_JOIN" in plan
+    # duckdb 1.x prints the operator as `HASH_JOIN`, 2.0 as `Hash Join` (RM343): read the name, not the spelling.
+    assert "HASH_JOIN" in plan.upper().replace(" ", "_")
 
 
 def test_clin_sig_lookup_returns_exactly_what_the_or_chain_did(tmp_path: Path) -> None:

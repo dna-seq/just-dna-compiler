@@ -772,10 +772,14 @@ class VariantRow(AuthoredModel):
             "actually callable' lives, so a consumer can tell a confirmed negative from an uncovered "
             "one instead of reading both as reference. A bare key means unqualified — and INFO/DP is "
             "the cohort's combined depth, which says nothing about whether this sample was callable. "
-            "Reference evidence usually arrives as a gVCF *block* (one record with END=), so a "
-            "consumer finds it by interval containment rather than an equality join on position, "
-            "and the block's floor is FORMAT/MIN_DP — a DP of 25 averaged over 14 bases is "
-            "compatible with an uncovered base inside them."
+            "Reference evidence usually arrives as a gVCF *block* (one <*> record spanning a range), "
+            "so a consumer finds it by interval containment rather than an equality join on position. "
+            "The extent is per sample: read that sample's FORMAT/LEN first and INFO/END only where LEN "
+            "is absent — VCF 4.5 makes END the maximum over every sample, so it can credit one "
+            "sample's block to another's positions — and a GT of '.' at a position inside the "
+            "sample's own earlier block is that block's call, not a no-call. The block's floor is "
+            "FORMAT/MIN_DP — a DP of 25 averaged over 14 bases is compatible with an uncovered base "
+            "inside them."
         ),
     )
     # There is no `callable_element` here, and the absence is a decision (RM54, 0.6). The binning

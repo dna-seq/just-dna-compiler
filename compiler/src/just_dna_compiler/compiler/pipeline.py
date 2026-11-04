@@ -85,6 +85,7 @@ from just_dna_compiler.compiler.manifest import (
     _gwas_effects_block,
     _literature_block,
     _module_binding,
+    _snapshot_unplaced_rsids_recorded,
     _source_checks,
     _sources_block,
     _verification_block,
@@ -322,7 +323,13 @@ def compile_module(
         all_warnings.extend(w for w in vrs_warnings if w not in all_warnings)
         if vrs_errors:
             return CompilationResult(success=False, errors=vrs_errors, warnings=all_warnings)
-        all_warnings.extend(w for w in _vrs_coverage_warnings(resolution_rows) if w not in all_warnings)
+        all_warnings.extend(
+            w
+            for w in _vrs_coverage_warnings(
+                resolution_rows, unplaced_recorded=_snapshot_unplaced_rsids_recorded(spec_dir)
+            )
+            if w not in all_warnings
+        )
         vrs_alleles, vrs_identified, _gaps = _vrs_coverage(resolution_rows)
         # The table's identity is stamped **here**, where the table was read, rather than inside the
         # `variants`-gated resolution block below — which is where it used to sit, and which meant a

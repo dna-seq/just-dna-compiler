@@ -6,7 +6,9 @@ from pathlib import Path
 
 import typer
 
+from just_dna_enricher.cli._shared import _use
 from just_dna_enricher.clinvar_build import DEFAULT_CITATIONS_URL, build_citations, download_var_citations
+from just_dna_enricher.licensing import PUBMIND_TERMS, LicenseRefusal, check_declared_use
 from just_dna_enricher.locations import CITATIONS_DIRNAME, RELEASE_FILENAME, repro_out
 from just_dna_enricher.pubmind_build import PubMindBuildError, download_pubmind_table
 from just_dna_enricher.pubmind_build import build_snapshot as build_pubmind_snapshot
@@ -126,13 +128,11 @@ pubmind_app = typer.Typer(
 #: The refusal `pubmind publish` prints. Pinned by a test because a refusal's *reason* is the whole
 #: value of a command that exists in order to say no (`@warning-text-is-api`).
 PUBMIND_PUBLISH_REFUSAL = (
-    "pubmind publish is refused by design. The ANNOVAR-distributed PubMind table states no data "
-    "terms of its own: CHOP's LICENSE.md covers the software (academic, non-commercial), the paper "
-    "is CC BY-NC-ND 4.0, and nobody publishes a licence for those bytes. An unestablished permission "
-    "is not a permission, so a bulk file arriving under terms we cannot establish is not a file we "
-    "may pass on — the same rule that leaves PharmVar's snapshot unpublishable. Build your own with "
-    "`pubmind build` and point at it with $JUST_DNA_PUBMIND_CACHE. Lifting this needs an answer from "
-    "WGLab and CHOP's Office of Technology Transfer, in writing, not a flag."
+    "pubmind publish is refused by design. The ANNOVAR-distributed PubMind table is CC BY-NC-ND 4.0 "
+    "(WGLab, in writing, 2026-09-28: https://github.com/WGLab/PubMind/issues/5). The snapshot "
+    "decomposes and normalizes that table, which makes it adapted material, and NoDerivatives forbids "
+    "sharing adapted material — so it is not a file we may pass on, as PharmVar's snapshot is not. "
+    "Build your own with `pubmind build` and point at it with $JUST_DNA_PUBMIND_CACHE."
 )
 
 
@@ -156,17 +156,29 @@ def pubmind_build_(
         file_okay=False,
         help="Output snapshot directory (writes data/pubmind.parquet + release.json).",
     ),
+    use: str = typer.Option(
+        "unstated", "--use", help="Declared use: unstated | non-commercial | commercial."
+    ),
 ) -> None:
     """Reduce the ANNOVAR-distributed PubMind table to the parquet snapshot the checks read.
 
-    **There is no `--use` flag, and its absence is the design.** PubMind's data terms could not be
-    established, and unknown terms warn rather than gate (`commercial_use=None` never taints a
-    module). A declared-use gate here would refuse every build unconditionally, and a flag feeding a
-    gate that never gates is a flag that does nothing. What the unknown terms do gate is *publishing*
-    a snapshot or a module carrying these bytes — see `pubmind publish`, which refuses.
+    **`--use` is the declared-use gate, as on `clinpgx build` (RM320).** The table is CC BY-NC-ND 4.0,
+    answered in writing by WGLab on 2026-09-28, so it forbids sale: `commercial` refuses, `unstated`
+    skips and asks for a declaration, `non-commercial` proceeds. Until that answer the terms were
+    unknown, the gate answered the same way for every declaration, and the command carried no flag.
+    NoDerivatives is why the snapshot this writes may not be passed on — see `pubmind publish`.
     """
     if table is None and not download:
         typer.secho("Provide --table PATH or --download.", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+    try:
+        # The terms are accepted when the data is TAKEN, so the gate runs before the download.
+        reason = check_declared_use(PUBMIND_TERMS, _use(use))
+    except LicenseRefusal as exc:
+        typer.secho(f"REFUSED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    if reason is not None:
+        typer.secho(f"SKIPPED: {reason}", fg=typer.colors.YELLOW, err=True)
         raise typer.Exit(code=1)
     fetched = None
     # `PubMindBuildError` covers the download too: it translates `httpx` into `PubMindUnavailable`, a

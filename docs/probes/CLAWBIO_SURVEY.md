@@ -1,7 +1,7 @@
 # ClawBio — what it annotates, how, and what it would take for a module to say all of it
 
 **Status** — survey complete, 2026-09-13. This is the **ClawBio half of
-[RM188](../ROADMAP_0_8.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)**;
+[RM188](../ROADMAP_0_9.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)**;
 the genomi half was filed the same day by a parallel session as
 [`GENOMI_SURVEY.md`](GENOMI_SURVEY.md) — read the two together, and § *Read beside this* below says
 where they meet. Written the way RM188's method section asks: their pipelines run end to end on their
@@ -238,7 +238,7 @@ table. Its inputs, read off the report:
 | `gnomAD AF=0.000020` | `frequencies.csv` — `FrequencyRow`, per population, with `faf95` |
 | `ClinVar=Pathogenic, stars=3` | `clinical_assertions.csv` — `ClinicalAssertionRow.review_stars` |
 | `[SF]` — ACMG secondary-findings gene | `VariantRow.acmg_sf`, **validated against the published 81-gene list** since 0.5.1 (`enricher/acmg.py`) |
-| `CADD=35.0≥25.3`, `SpliceAI=N/A` | **[RM23](../ROADMAP_0_8.md#rm23--computational-predictor-scores-as-a-table)** — `predictions.csv`, deferred on grain + acquisition, *not* on licensing |
+| `CADD=35.0≥25.3`, `SpliceAI=N/A` | **[RM23](../ROADMAP_0_9.md#rm23--computational-predictor-scores-as-a-table)** — `predictions.csv`, deferred on grain + acquisition, *not* on licensing |
 | `consequence=frameshift_variant`, `impact=HIGH` | **nowhere** |
 | `Transcript: ENST00000357654.9` | **nowhere on a variant row** (`GeneMetricsRow.transcript` is gene-level) |
 
@@ -491,11 +491,11 @@ Sized in the usual units. **Filed 2026-09-13** — a probe records and the track
 numbers below came from `.claude/rm-next.py`, not from this file: items 1–6 are
 [RM28's second corpus entry](../ROADMAP_0_8.md#rm28--meta-conclusions-the-predicate-half),
 [RM236](../ROADMAP_0_8.md#rm236--consequence-and-impact-are-planned-axes-with-no-slot-and-an-acmg-engine-reads-both-as-primary-inputs),
-[RM237](../ROADMAP_0_8.md#rm237--clingen-dosage-is-gene-keyed-so-a-recurrent-cnv-region-has-nowhere-to-be-written),
-[RM238](../ROADMAP_0_8.md#rm238--a-per-tissue-eqtl-has-no-row-and-expression_effectscsv-is-the-wrong-table-to-widen),
+[RM237](../ROADMAP_0_9.md#rm237--clingen-dosage-is-gene-keyed-so-a-recurrent-cnv-region-has-nowhere-to-be-written),
+[RM238](../ROADMAP_0_9.md#rm238--a-per-tissue-eqtl-has-no-row-and-expression_effectscsv-is-the-wrong-table-to-widen),
 [RM239](../ROADMAP_0_8.md#rm239--a-fine-mapping-posterior-has-no-column-and-gwas_effectscsv-already-has-its-key)
-and [RM240](../ROADMAP_0_8.md#rm240--the-clawbio-nutrition-panel-compiles-and-the-corpus-should-carry-it)
-respectively, plus [RM241](../ROADMAP_HISTORY.md#rm241--weighting-does-not-survive-reverse-so-a-reversed-module-has-no-scale-to-read)
+and [RM240](../ROADMAP_0_9.md#rm240--the-clawbio-nutrition-panel-compiles-and-the-corpus-should-carry-it)
+respectively, plus [RM241](../ROADMAP_HISTORY.md#rm241--weighting-does-not-survive-reverse-so-a-reversed-module-has-no-scale-to-read))
 for the `weighting` observation in § *The translation, run*. **Where an entry and this section
 disagree, the entry wins** — it is the tracked one, and this stays the evidence.
 

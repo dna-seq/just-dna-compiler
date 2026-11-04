@@ -258,7 +258,8 @@ nav:
       - Changelog: CHANGELOG.md
       - Shipped items, with their rationale: ROADMAP_HISTORY.md
       - Open items: ROADMAP.md
-      - Deferred to 0.8: ROADMAP_0_8.md
+      - The 0.8 scope: ROADMAP_0_8.md
+      - Deferred to 0.9: ROADMAP_0_9.md
       - Deferred to 1.0: ROADMAP_1_0.md
       - Index of every item: RM_TOC.md
       - Items 1–99: RM_TOC_000_099.md
@@ -284,6 +285,8 @@ not_in_nav: |
   POSTMORTEM_2026_09_27.md
   PUBMIND_ASSESSMENT.md
   RELEASE_CYCLE.md
+  # The liaison seat's ledgers, one per upstream the packages stand on (docs/seats/LIAISON.md).
+  UPSTREAM_*.md
   audit/
   history/
   # Re-included, gitignore style: this one archived page is in the nav (see the *Upgrading* comment
@@ -291,4 +294,5 @@ not_in_nav: |
   !history/INTEGRATION_0_6.md
   probes/
   proposals/
+  seats/
   vendor/

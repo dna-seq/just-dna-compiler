@@ -1232,7 +1232,7 @@ service* below). Pre-provisioning is therefore a deployment step, not an optimiz
 | **ClinPGx** 🔒 | `clinpgx/` | `$JUST_DNA_CLINPGX_CACHE` | `ensure_clinpgx_snapshot` | `just-dna-seq/clinpgx` | clinical annotations (`clinpgx check`) |
 | **CPIC** 🔒 | `cpic/` | `$JUST_DNA_CPIC_CACHE` | `ensure_cpic_snapshot` | `just-dna-seq/cpic` | alleles / diplotypes / recommendations (`pgx`, `draft`) |
 | **PharmVar** 🔒 | `pharmvar/` | `$JUST_DNA_PHARMVAR_CACHE` | **none, by design** | **never published** | star alleles (`pgx`) |
-| **PubMind** ❓ | `pubmind/` | `$JUST_DNA_PUBMIND_CACHE` | **none, by design** | **never published** | literature-derived verdicts (RM134) |
+| **PubMind** 🔒 | `pubmind/` | `$JUST_DNA_PUBMIND_CACHE` | **none, by design** | **never published** | literature-derived verdicts (RM134) |
 | **CIViC** ✅ | `civic/` | `$JUST_DNA_CIVIC_CACHE` | `ensure_civic_snapshot` | `just-dna-seq/civic` — CC0, repo not created yet | curated cancer interpretations, **`direction` axis only** (RM152); `--submitted` widens the basis from the release's own VCF (RM169) |
 | **MANE** ❓ | `mane/` | `$JUST_DNA_MANE_CACHE` | **none, by design** | **never published** | the transcript numbering frame — summary, changed Select accessions, excluded genes (RM168) |
 | **ClinPGx drug labels** 🔒 | `drug_labels/` | `$JUST_DNA_DRUG_LABELS_CACHE` | `ensure_drug_labels_snapshot` | `just-dna-seq/clinpgx_drug_labels` — repo not created yet | what five regulators say about a gene/drug pair (`clinpgx check-labels`) |
@@ -1256,8 +1256,8 @@ output (RM195) and `redistribution=True` records the reading that publishing it 
 prohibition 1's carve-out, so an operator who cannot download the artifact can still provision the
 lane. Its snapshot is the first that is **incomplete without a root-level file**: `PHRED` is not
 stored, so `avi_knots.parquet` travels beside `data/` and `locations.SNAPSHOT_ROOT_FILENAMES` is what
-makes the publisher carry it. The three 🔒 rows are RM38, new in 0.5.1; the PubMind
-❓ row is RM134 and the MANE one is RM168; the two MITOMAP rows are RM171.
+makes the publisher carry it. The three PGx 🔒 rows are RM38, new in 0.5.1; the PubMind
+🔒 row is RM134, ❓ until WGLab answered on 2026-09-28 (RM320), and the MANE one is RM168; the two MITOMAP rows are RM171.
 
 ### The derived lane, and the `parents` field (RM171)
 
@@ -1295,11 +1295,12 @@ artifact *is*: a pulled copy would carry a currency check its holder cannot run,
 parent. Rebuilding it locally is seconds against caches the machine already has, and it cannot be
 stale by construction.
 
-**The two ❓ rows are unestablished for different reasons, and the third column differs with them.**
-PubMind's bytes carry no stated terms at all; MANE's carry a *policy* — NCBI places no restrictions on
-use or distribution and, in the same paragraph, declines to grant unrestricted permission. Neither is
-permission, so both caches are operator-built, but PharmVar's and PubMind's absent `ensure_*` records a
-refusal, CIViC's records a gap, and MANE's records an **unestablished** question nobody has asked NCBI.
+**MANE's ❓ is an unestablished permission, and the third column says so.** MANE's bytes carry a
+*policy* — NCBI places no restrictions on use or distribution and, in the same paragraph, declines to
+grant unrestricted permission. That is not permission, so the cache is operator-built. PharmVar's and
+PubMind's absent `ensure_*` records a refusal (a personal key; NoDerivatives), CIViC's records a gap,
+and MANE's records an **unestablished** question nobody has asked NCBI. PubMind sat beside MANE as the
+other ❓ until WGLab answered (RM320).
 
 **One base, so a single just-dna-lite deployment's cache serves all of them.** Each subdir sits under
 `$JUST_DNA_PIPELINES_CACHE_DIR`, or platformdirs' user cache for `just-dna-pipelines`
@@ -1359,9 +1360,15 @@ just-dna-enricher cache pull --use non-commercial    # …and the gated ones you
 just-dna-enricher cache pull --only clinvar --only cpic --use non-commercial
 ```
 
-`cache pull` is **re-runnable and cheap**: a complete cache is trusted without touching the network, and
-only an empty or corrupt one refetches. One snapshot failing does not sink the rest — each reports its
-own line, and the command exits 1 if any failed.
+`cache pull` is **re-runnable and cheap**: a cache whose pull record says the pull finished is trusted
+without touching the network, and anything else fetches only what it lacks. The record
+(`pull-record.json` beside `data/`) is written from the remote listing **before** the first download, so
+an interrupted pull names the files it never got, every resolver reports the lane absent rather than
+present, and the next run finishes it (RM339). A cache with no record, built here or pulled before the
+record existed, is compared with the published listing once; with no route to the Hub it is used as it
+is, with a warning that its completeness is unknown. A download that times out names
+`HF_HUB_DOWNLOAD_TIMEOUT` (10 s by default, short for a 1 GB file). One snapshot failing does not sink
+the rest — each reports its own line, and the command exits 1 if any failed.
 
 Four things worth knowing before you run it on a server:
 
@@ -1417,8 +1424,8 @@ just-dna-enricher clinpgx publish data/repro/clinpgx --repo <org>/clinpgx
 # PharmVar — needs YOUR key, and there is no publish command.
 PHARMVAR_API_KEY=… just-dna-enricher pharmvar build --use non-commercial
 
-# PubMind — no key and no `--use` flag; `pubmind publish` exists and refuses (see below).
-just-dna-enricher pubmind build --download                                  # or --table hg38_pubmind_db.txt.gz
+# PubMind — no key; CC BY-NC-ND, so `--use` gates it; `pubmind publish` exists and refuses (see below).
+just-dna-enricher pubmind build --download --use non-commercial                                 # or --table hg38_pubmind_db.txt.gz
 
 # MANE — no key, no `--use`, no publish command. Discovers the newest version from current/ and
 # then pins it to release_<version>/ before fetching anything.
@@ -1447,7 +1454,7 @@ just-dna-enricher cache prepare --only mane --only acmg     # or a subset
 ```
 
 `cache pull` fetches the published snapshots and stops, and five lanes are not published *for
-recorded reasons* — PharmVar's personal key, PubMind's absent terms, NCBI's policy over MANE, ACMG's
+recorded reasons* — PharmVar's personal key, PubMind's NoDerivatives, NCBI's policy over MANE, ACMG's
 supplementary material, and `mitomap_miss`, which is derived from two parents on the pulling machine
 and would only pin somebody else's ClinVar if it travelled. A machine that only pulled is therefore
 five caches short, and the checks that
@@ -1599,26 +1606,27 @@ on — `redistribution=True` describes the CC BY-SA grant over the *content*, no
 governs `share_alike` and `commercial_use`. So the snapshot is operator-built and inject-only, its
 `release.json` says so (`"redistributable": false`), and the build command prints the same warning.
 
-**Why PubMind has no publish command either, and why its reason is a different one (RM134).** PharmVar's
-bytes arrive under terms that bar passing them on; PubMind's arrive under **no stated terms at all**. Two
-things are licensed and only one clearly: CHOP's `LICENSE.md` covers the *software* (academic,
-non-commercial, tech-transfer for anything else), the paper is CC BY-NC-ND 4.0, and the
-ANNOVAR-redistributed coordinate table — the only per-variant channel there is — publishes nothing. Under
-the house rule that is unknown, not permissive, so `PUBMIND_TERMS` records `None` on every axis and the
-snapshot is operator-built and inject-only.
+**Why PubMind has no publish command either, and why its reason is a different one (RM134, RM320).**
+PharmVar's bytes arrive under a key whose terms bar passing them on. PubMind's arrive under **CC BY-NC-ND
+4.0**: WGLab answered in writing on 2026-09-28
+([WGLab/PubMind#5](https://github.com/WGLab/PubMind/issues/5)) that the lightweight release ANNOVAR and
+Zenodo distribute is under that licence. The software and the full PubMind-DB stay under CHOP's
+`LICENSE.md`. The licence allows sharing the table as published, but the snapshot decomposes codon
+enumerations and normalizes significance tokens, which makes it adapted material, and NoDerivatives
+forbids sharing that. `SourceRow` has no axis for NoDerivatives, so it lives in `PUBMIND_TERMS.notice`.
 
 `pubmind publish` therefore **exists in order to refuse**, rather than being absent: a missing command
-reads as an oversight somebody will helpfully add. It exits non-zero and names the reason, the PharmVar
-precedent, and what would lift it — an answer in writing from WGLab and CHOP's Office of Technology
-Transfer, which is the only thing that can.
+reads as an oversight somebody will helpfully add. It exits non-zero and names the licence, the clause,
+and the PharmVar precedent.
 
-**Unknown terms warn; they never gate, and that is why `pubmind build` has no `--use` flag.**
-`taints_commercial_use` requires `commercial_use is False`, so a module carrying PubMind values compiles,
-lands `pubmind` in `manifest.sources.unknown_terms_sources`, and drives the module-wide verdict to `None`
-— undetermined, never permitted. `check_declared_use(PUBMIND_TERMS, …)` returns a skip reason for *every*
-declaration, so wiring the flag in the way `pharmvar build` does would refuse every build; a flag feeding
-a gate that never gates is a flag that does nothing. What the terms would gate is **publishing** a module
-carrying those bytes, which is RM27's undesigned redistribution axis rather than this source's problem.
+**The terms forbid sale, so `pubmind build` gates on `--use` as `clinpgx build` does.** `commercial`
+refuses, `unstated` skips and asks for a declaration, `non-commercial` builds, and `cache rebuild` runs
+the same gate on the lane. Reading the snapshot is not a fetch (`@acquisition-gate-is-not-a-read-gate`),
+so `draft-panel --source pubmind` is not gated. It writes a `pubmind` licence row with
+`commercial_use=False`, and the compile then refuses that module unless it records a non-commercial
+declaration. Until the answer every axis was `None`, the gate skipped under every declaration, and the
+command carried no flag. **A module drafted before RM320 keeps its all-null `pubmind` row**, because
+`sources.csv` merges never clobber a recorded row: delete that row and re-draft to record the terms.
 
 ### Snapshot-first, live second, `--offline` first-only
 
@@ -3668,8 +3676,8 @@ permissive direction, which is the direction that matters — the same shape as 
 as the SpliceAI note inside `GNOMAD_TERMS`. A licence string the classifier has not read is unknown on
 all three axes and logged; unknown is not permission.
 
-**No `--use` flag and no `check_declared_use` call**, for `pubmind_draft`'s reason: every gating axis
-on the floor is `None`, so the gate would refuse every run unconditionally, and reading a public
+**No `--use` flag and no `check_declared_use` call**: every gating axis on the floor is `None`, so the
+gate would skip every run unconditionally, and reading a public
 endpoint to check an identifier is a read rather than an acquisition anyone has gated
 (`@acquisition-gate-is-not-a-read-gate`).
 
@@ -3993,14 +4001,13 @@ Two things the flat "non-commercial" summary does *not* say, both of which matte
 | **CPIC** | `api.cpicpgx.org/v1` (PostgREST) | none | same policy | ❌ |
 | **PharmVar** | `www.pharmvar.org/api-service` | `Api-Key` header, 2 rps | CC BY-SA 4.0 **+ research-use-only** | ❌ |
 | Ensembl / dbSNP | already in the chain | none | unrestricted | ✅ |
-| **PubMind** *(read 2026-08-28, RM134)* | `openbioinformatics.org/annovar/download/hg38_pubmind_db.txt.gz` | none | **none stated for the data** | **❓** |
+| **PubMind** *(read 2026-08-28, answered 2026-09-28, RM134/RM320)* | `openbioinformatics.org/annovar/download/hg38_pubmind_db.txt.gz` | none | CC BY-NC-ND 4.0 | ❌ |
 
-PubMind is the only ❓ and the row is dated separately, because it was read almost four weeks after the
-others and it is a different *kind* of answer. The 🔒 sources publish terms that forbid sale; PubMind
-publishes no data terms at all. `LICENSE.md` covers the software (academic, non-commercial, CHOP
-tech-transfer for anything else), the paper is CC BY-NC-ND 4.0, and the ANNOVAR-redistributed table —
-the only per-variant channel — states nothing. So every axis is `None`: unknown is not permissive, and
-`None` is not `False`. See *The caches* for what that does and does not gate.
+The PubMind row is dated separately because it was read almost four weeks after the others and was ❓
+for a month. No page stated terms for the ANNOVAR-distributed table: `LICENSE.md` covers the software,
+and the article's Zenodo code archive was labelled CC BY 4.0. WGLab answered in writing
+([WGLab/PubMind#5](https://github.com/WGLab/PubMind/issues/5)) that the table is CC BY-NC-ND 4.0, and
+corrected the Zenodo label. See *The caches* for what that gates.
 
 Three things follow, and each shaped the code:
 
@@ -4038,8 +4045,8 @@ absent from it has no recorded terms, which is a different state from having per
 | `clinpgx` | CC BY-SA 4.0 | ❌ | ✅ | ✅ | + a contractual bar on sale, on top of the CC grant |
 | `cpic` | CC BY-SA 4.0 | ❌ | ✅ | ✅ | `cpicpgx.org/license/` 302s to ClinPGx's policy |
 | `pharmvar` | CC BY-SA 4.0 | ❌ | ✅ | ✅ | research-use-only, and the key is **personal and non-transferable** |
+| `pubmind` | CC BY-NC-ND 4.0 | ❌ | — | ✅ | **NoDerivatives**: adapted material may not be shared, which is why the snapshot is never published (RM320) |
 | `alphagenome_atlas` | AlphaGenome Output Terms of Use | ❌ | — | ✅ | a **second name** for one service, because one `(source, layer)` key cannot carry two licence classes |
-| `pubmind` | — | ❓ | ❓ | ❓ | publishes no data terms at all; the software licence and the paper's are not the table's |
 | `mane` | — | ❓ | ❓ | ❓ | NCBI states a *policy* rather than a licence — nothing to refuse and nothing to permit |
 | `pgs_catalog` | — | ❓ | ❓ | ❓ | a **floor**: terms are per score, so `PGS_LICENSE_CLASSES` is consulted per record |
 | `gwas_catalog` | — | ❓ | ❓ | ✅ | redistribution is stated; the other two are not |

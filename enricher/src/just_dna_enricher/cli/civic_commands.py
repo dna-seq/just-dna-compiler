@@ -294,8 +294,8 @@ def civic_publish_(
     **This one does not refuse, and the contrast with `pubmind publish` is the point.** CIViC's content
     is CC0 1.0 — a public-domain dedication with no share-alike, no bar on sale and attribution
     requested rather than required — so there is no permission to establish before passing the bytes
-    on. PubMind's command exists in order to say no because its terms are unstated; PharmVar's cache is
-    unpublishable because its terms forbid it. Nothing here is in either position.
+    on. PubMind's command exists in order to say no because NoDerivatives bars sharing its snapshot;
+    PharmVar's cache is unpublishable because its terms forbid it. Nothing here is in either position.
 
     What the snapshot carries is a *derivation* of CIViC's release, not a copy of it: the germline
     direction rows, placed on GRCh38 through identifiers CIViC itself publishes. `release.json` records

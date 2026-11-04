@@ -1,3 +1,4 @@
+
 # just-dna-format — Roadmap
 
 **Forward-only, and now active-only.** Every item here is open work. What shipped moved to
@@ -213,7 +214,7 @@ kind stays without one. It stayed open rather than closed because a source would
 entry names in advance the finding that would close it instead. It sat in *this* file for ten days
 after the decision that sent it to 0.8, which is the failure mode the split exists to prevent — a
 decided deferral that no release file can see — so on **2026-09-11** it moved to
-[ROADMAP_0_8.md](ROADMAP_0_8.md#rm164--heteroplasmycsv-is-a-shipped-table-kind-with-no-source-behind-it).
+[ROADMAP_0_8.md](ROADMAP_0_9.md#rm164--heteroplasmycsv-is-a-shipped-table-kind-with-no-source-behind-it).
 **A decision to park is not filed until the section has moved.**
 
 **The spin-off RM164 filed shipped on 2026-09-03.** RM171 adopted MITOMAP's curated mtDNA tables as
@@ -347,78 +348,9 @@ you**, so check which `# ` heading you are under before writing the section, not
 The trackers further down are the other live part of this file: the reserved-namespace tracker and the
 1.0-cleanup candidate tracker, which the Constitution deliberately keeps out of itself.
 
-## RM265 — the `panel:` deprecation has no "accepted" signal: on the replaced branch the warning fires whether or not you need the three fields it tells you to keep the block for
-
-**Severity** medium · **Status** open — **a minor, release undecided** · **Owner** compiler / format
-(`panel:`, the licence row) · **Motivating case** [S114](CONSUMER_SUGGESTIONS_HISTORY.md#s114--the-panel_block_deprecated-replaced-branch-warns-whether-or-not-you-need-the-three-fields-it-says-to-keep-the-block-for-so-there-is-no-way-to-signal-accepted)
-
-**What was confirmed.** Reproduced against all three just-dna-lite ClinVar panel modules and against
-the code. `panel_block_deprecated` fires on the `replaced=True` branch (`compiler.py:4231`) for a
-module that has done everything the migration asks — its `clinvar/annotation` licence row carries a
-non-empty `dataset`, so the block's one machine reader (the enricher's clin_sig cross-check) is
-migrated. The message's closing clause, correct since S69, is that `genes`, `significance` and
-`reference_sha256` "have no replacement anywhere — keep the block until 1.0 if you need them recorded."
-But keeping the block *is* the permanent warning: the block emits `panel_block_deprecated` whether or
-not those fields are wanted, and there is no key to say "accepted, I need the three, stop." A consumer
-who needs them warns forever; a consumer who wants a clean compile drops provenance the format itself
-says has no home. The two outcomes are "warn forever" and "lose data".
-
-**The design question this records.** Is `panel:` deprecated *as a whole*, or only its reader? P3
-deprecates in a minor only where the audience can **act** — the replacement exists and the deprecated
-thing is not still the only record — and for these three fields on the replaced branch no replacement
-exists, which is the state P3 forbids. Two candidate fixes, and the naive one is not free:
-
-- **Give the three fields a non-deprecated home** — a small `panel_provenance:` sub-block, or three
-  keys beside `dataset` on the licence row. This is the P3-clean answer: it completes the replacement,
-  so the deprecation becomes actionable. Cost is P9-full if authored (a `panel_provenance:` block the
-  rare author writes) or P9-half if it rides the machine-written licence row; additive either way, so
-  **minor**. It is a schema-shape decision — where the fields live, whether the gene *denominator*
-  (S114's one lossy field: `cardio` requested 327 genes, 297 matched a variant, the 30 that matched
-  none are absent from `variants.csv`) is a list or a count — and belongs in the version interview,
-  not an unattended pass.
-- **Fire `panel_block_deprecated` only on the `replaced=False` branch** (patch). Tempting and **not
-  free**: it silences a *true* statement on exactly the modules that keep the block for the three
-  fields, so they compile clean until 1.0 removes the block under `extra="forbid"` and the data with
-  it. P3 requires a major to ship its upgrade procedure; theirs would read "lose the data." So this
-  mitigates the noise at the cost of hiding the loss — a stopgap, not the resolution.
-
-**Related.** The idea-book's § D19 (this file) raised the same two candidates against the pre-S69
-message; S114 is its sharpened, corpus-backed form. The stale RM4 row in
-[ROADMAP_1_0.md](ROADMAP_1_0.md) § the upgrade tracker still tells the author "delete it, nothing
-replaces it, consumer: no action needed" — corrected there in the same triage pass as a doc fix,
-since that tracker is the procedure P3 turns on.
-
-## RM266 — the phase-confusable diplotype-pair set is computed at compile and dropped: it reaches the artifact only as a capped warning string
-
-**Severity** low · **Status** open — **a minor, release undecided** · **Owner** compiler
-(`_cross_validate_diplotypes`) · **Motivating case** [S116](CONSUMER_SUGGESTIONS_HISTORY.md#s116--rm28-the-hfe-compound-het-vs-cis-case-is-a-meta-conclusion-a-consumer-can-name-but-not-resolve), note 2
-
-**What was confirmed.** Reproduced by compiling `reference_examples/hfe_compound_het`: the
-`diplotype_phase_ambiguous` warning fires and names the exact set S116 says the artifact cannot carry —
-`HFE: 1 group(s) … e.g. C282Y/H63D, C282Y-H63D/wt`. So the compiler **already computes** the
-phase-confusable pair set. `_cross_validate_diplotypes` (`compiler.py:3457`) groups a gene's diplotype
-pairs by their phase-preserving definition signature and separates *indistinguishable at all* (identical
-definitions, `diplotype_definitions_identical`) from *phase would decide* (`diplotype_phase_ambiguous`) —
-which is precisely the distinction a caller reconstructs at query time. It is then flattened into a
-warning string and capped at three examples (`_examples`), so a reader of the artifact who is not
-running a caller cannot recover the set, and beyond three groups cannot see it at all.
-
-**Why this is not RM28.** S116 frames note 2 as wanting an RM28 axis — an author *stating* "this pair
-is distinguishable from that one only by phase." But the author does not need to state it and should
-not: it is **derived** from `haplotypes` + `diplotypes`, and the compiler derives it today. This is
-`@dont-discard-computed`, not a new authored surface — the fix is to stop discarding the structure, not
-to add an axis. The general shape is the idea-book's § D3/§ D4 (warnings are `list[str]` with no code,
-count or payload); RM266 is the specific case where the *payload* — the confusable groups, by name — is
-the thing worth carrying, over and above D3's per-code count.
-
-**The shape, filed not built.** A structured surface for the computed groups — a `manifest.json` field
-keyed by gene, or a small optional parquet — so a downstream reader sees the confusable set without
-re-deriving it. Additive (a new optional derived surface, P9 ≈ free-to-half), so **minor**; the open
-question is manifest field versus parquet, and whether it subsumes or sits beside a general
-`warnings_summary` (§ D3). Corpus, not code, decides urgency: this is `just-dna-lite`'s first caller and
-it already re-derives the set successfully, so nothing is blocked.
-
 ## RM267 — the Ensembl snapshot anchors a class of insertions one base early, and `resolution.csv` serves them as a different event
+
+**0.8, decided 2026-11-03.** Taken into 0.8 by the maintainer, with the rest of the indel-placement fixes (RM304, RM267, RM270, RM292, RM305). The status line below predates that decision.
 
 **Severity** high · **Status** open — **a minor, release undecided** · **Owner** enricher (the resolver
 chain's snapshot link), with the upstream half in `just-dna-pipelines` · **Motivating case**
@@ -497,6 +429,8 @@ covers the procedure side.
 
 ## RM270 — an indel's artifact key is its source's spelling: a left-aligned VCF misses a respelled row, and the spelling-independent id the enricher mints never reaches the artifact
 
+**0.8, decided 2026-11-03.** Taken into 0.8 by the maintainer, with the rest of the indel-placement fixes (RM304, RM267, RM270, RM292, RM305). The status line below predates that decision.
+
 **Severity** high · **Status** open — **a minor, release undecided** · **Owner** enricher (resolution
 fill, `vrs.mint_resolution_rows`) + compiler (the parquet column) · **Motivating case**
 [S120](CONSUMER_SUGGESTIONS_HISTORY.md#s120--the-format-declares-no-coordinate-normalization-convention-so-a-legal-respelling-of-an-indel-is-a-silent-position-join-miss-no-one-is-wrong-is-the-footgun)
@@ -542,95 +476,13 @@ The build is 3 + 4, plus the stamped verdict from 2. The part that ships without
 consumer guide stating that no normalization is guaranteed, landed with the S120 reply.
 
 
-**Addendum 2026-09-29, from [PROPOSAL_0_8_PT1 § RM270](proposals/PROPOSAL_0_8_PT1.md): a round trip
-drops every `vrs_id`.** Compiling `reference_examples/hfe_hemochromatosis`, reversing it and compiling
-again takes `compilation.vrs_alleles_identified` from 10 to 0 of 12. `reverse` rebuilds
-`resolution.csv` from the parquets, and no variant parquet carries the id. By P7's own remedy ("the
-artifact is missing a field, not the spec") that is candidate 4 above, so it is evidence for this
-item rather than a new one. RM241, which made `reverse` write back every spec field the manifest
-carries, names this loss as its residual: the id is in no parquet, so there is nothing for reverse to
-read.
+**Carries RM241's residual.** RM241 (shipped on `0.8`) left a round trip that drops every `vrs_id`, because no
+variant parquet carries one. Candidate 4 below, the per-ALT `vrs_id` on the variant parquets, is what closes it.
 
 **Pinned by RM291 (2026-09-27).** `compiler/tests/test_consumer_join.py` joins every reference example
 against a bcftools-normalized ClinVar slice, and the two SHOX rows Ensembl spells at `X:634690`
 (`AGAG>AG`, `AGAG>AGAGAG`; ClinVar and callers write `X:634689`) are its expected misses, pinned to
 this item. Shipping this empties that set, and the test fails until the pin is removed.
-
-## RM294 — STRchive's evidence grade has no place in the module, so a Refuted locus is doubted only in a draft note
-
-**Severity** low · **Status** open — **a minor, release undecided** · **Owner** format / enricher ·
-**Motivating case** RM276's minor half, split off when the warning shipped on 2026-09-27 · *related*
-RM276, RM170, RM165
-
-RM276 names a drafted locus STRchive grades `Refuted` or `Disputed`, in a note the drafting run prints
-once. Nothing in the module keeps it, so the next reader of `repeat_alleles.csv` sees `DMD`'s bands
-with no trace of the source's doubt. Carrying it is a minor: an authored column costs full price (P9),
-and STRchive's vocabulary is open upstream (`combobox: true`), so a closed `frozenset` would have to be
-priced against a source that adds members. The alternatives to weigh first are a derived sidecar
-(half price) or the manifest's provenance block, and whether RM170's CIViC answer already fixed the
-shape. Decide on the `0.8` branch.
-
-## RM281 — the PGx lane reads one of ClinPGx's archives, and `clinicalVariants.zip` bears on a shipped table kind
-
-**Severity** low · **Status** open — **a minor, release undecided** (a source adoption) · **Owner**
-enricher (`clinpgx_build`, `clinpgx_draft`) · **Motivating case** RM166's *"It wants its own number"*,
-unfiled until the 2026-09-27 postmortem sweep (P9) · *related* RM166, RM173, RM175
-
-RM166 noticed that ClinPGx publishes at least twelve archives while the lane builds from one
-(`summaryAnnotations.zip` today, per RM173). `clinicalVariants.zip` is the one that bears on a shipped
-kind: about 5,190 rows of `pharm_variants.csv` territory. Its `type` is a six-member base vocabulary
-that **comma-combines**, so an adoption has to normalize the *combination*, not the token
-(`@one-normalizer-two-spellings`).
-
-**Confirmed on 2026-09-27.** No module in `enricher/` names `clinicalVariants`. The lane's builder
-reads `summaryAnnotations.zip` and refuses the retired `clinicalAnnotations.zip` (RM173), and the
-`drug_labels` lane is separate.
-
-**Why a minor.** Adopting it is a new drafting route, or new columns in a published snapshot. It is
-also the same terms as the rest of the lane (CC BY-SA, no sale), so it widens nothing on the licence
-axis. That half is RM282.
-
-## RM282 — the PGx lane has one licence class, CC BY-SA with no sale, and nothing looks for a source outside it
-
-**Severity** low · **Status** open — **a minor, release undecided** · parked on a survey chosen for
-terms first, and the class is settled by what it finds · **Owner** enricher (source adoption) · **Motivating case** RM166's *"it
-wants its own entry"* (also PROPOSAL_0_7_PT2 § the decision), unfiled until the 2026-09-27 postmortem
-sweep (P9) · *related* RM166, RM281, `@pgx-research-only`
-
-RM166 closed its FDA half measured: *"the lane does not gain a member outside its licence class by
-this route, and the direct route cannot supply one either"*. It then said that if licence
-diversification for the PGx lane still matters (*"it plausibly does, since it is a single point of
-failure on the axis the format gates on"*), it wants its own entry, with candidates chosen for their
-terms first. No entry was written.
-
-**What is true today.** ClinPGx, CPIC and PharmVar are all CC BY-SA with no sale
-(`@pgx-research-only`), and the compile gate (`@gate-is-data-driven`) refuses a commercial declared use
-on every module drafted from them. A commercial author has no PGx source at all.
-
-**The gate, and why it is satisfiable now.** A survey of PGx sources ranked by terms before content.
-Anyone can do it today and it needs nothing built. If it finds a candidate, adopting it is a normal
-source adoption (a minor). If it finds none, this closes as measured, with the survey as the record.
-
-## RM284 — a skip is a fact about the run, and `verification.json` has no run-level place to keep one
-
-**Severity** low · **Status** open — **a minor, release undecided** · **Owner** format (the
-verification document) + enricher (the writer) · **Motivating case** RM72's *"a run-level fact needs a
-run-level place, which is a separate question and was not opened"* (decided in 0.6 PT2), found unfiled
-by the 2026-09-27 postmortem sweep (P11) · *related* RM72
-
-RM72 decided the merge rule for `verification.json`: newest wins between two records of the same
-disposition, and a skip does not displace an answer while the earlier record still binds the authored
-bytes (`existing_still_binds`). The design half it answered and set aside is this one. A reader may
-legitimately want to know that *today's* enrichment could not reach a source, and under the shipped
-rule that fact is dropped: the older `ran` record is what stays.
-
-**Confirmed on 2026-09-27.** No open item names a run-level skip record, and `verification.json`
-remains a per-check document.
-
-**Why a minor.** A run-level record is a new field or block in a published document, whatever shape it
-takes. The shape question is where it lives: in `verification.json` beside the per-check records, or
-in the run's own output (`EnrichmentResult`), which RM272 is already widening on the `0.8` branch.
-
 ## RM285 — the MITOMAP lane's two open remainders: `VUS*` withheld, and the unrated-miss identity rows
 
 **Severity** low · **Status** open — **a patch** (either answer is drafter behaviour), two decisions first; the anchoring pass shipped as RM293 ·
@@ -656,50 +508,6 @@ RM171 listed what it left, and nothing carried the list. Checked on 2026-09-27 a
 Indel normalization, RM171's fourth remainder, is RM273 (1). The MITOMAP snapshot has been on HuggingFace since
 2026-09-03 (`just-dna-seq/mitomap`), so RM171's publish remainder is already closed.
 
-## RM286 — PharmVar's research-use-only, personal-key restriction lives in `notice` prose, and RM27 closed without the axis RM38 handed it
-
-**Severity** low · **Status** open — **a minor, release undecided** · **Owner** format (`SourceRow`) +
-enricher (the PharmVar terms constant) · **Motivating case** RM38's *"belongs to the RM27 design
-round"*, a pointer to an item that closed without it, found by the 2026-09-27 postmortem sweep (P13)
-· *related* RM38, RM27, `@pgx-research-only`, `@gated-source-caches`
-
-RM38 declined a `SourceRow` column for PharmVar's restriction (research use only, a non-transferable
-personal key). The restriction is narrower than `commercial_use=False`, so today it lives only in
-`notice` as prose. RM38 handed the axis to *"the RM27 design round, which already owns 'the recorded
-axes do not cover every real restriction'"*. RM27 shipped in 0.6 as a record-only redistribution
-verdict with the registry named as enforcer. It designed no further axis, so the handoff landed
-nowhere.
-
-**One premise to correct before designing.** RM38 sized the column as 1.0 because *"a new column on an
-existing parquet moves every compiled module's digest"*. A digest moving is not by itself a reason to
-defer (the house coding standards say so), and a new optional column is minor-legal under P3 and P8.
-So this is a minor if built.
-
-**What to decide.** Whether research-use-only and personal-key are one axis or two, and whether
-either is tri-state like `share_alike`/`commercial_use` (an unestablished permission is never a
-permission). Also whether the compile gate reads it, or it stays recorded-only like `redistribution`.
-A new authored-schema column costs the full P9 price, though `sources.csv` is mostly machine-written.
-
-## RM287 — ClinGen's dosage pass is a live download with no snapshot lane, so an offline deployment never runs it
-
-**Severity** low · **Status** open — **a minor, release undecided** (a new cache lane) · **Owner**
-enricher (`clingen`, `CACHE_LANES`) · **Motivating case** RM39's *"Not done, and it was asked for
-explicitly: a ClinGen snapshot"*, never filed, found by the 2026-09-27 postmortem sweep (P14) ·
-*related* RM39, RM38, `@gated-source-caches`
-
-RM39 gave the ClinGen dosage pass an `offline` flag and a `skipped_offline` state, so an offline run
-says it did not ask. It left the snapshot the reporter asked for explicitly, calling it *"RM38's family
-and a much bigger question"*. Nothing filed it.
-
-**Confirmed on 2026-09-27.** `CACHE_LANES` has fifteen lanes and none is ClinGen. `clingen.py` still
-fetches the gene-curation list live and skips under `--offline`. Every other pass in the family reads
-a snapshot, so an offline deployment gets every answer but this one.
-
-**What building it owes.** A lane, so `docs/CACHE_SURFACE.md`'s checklist applies line by line
-(three stages, each absent one with its reason as a field, `repro_out` default, parents). ClinGen's
-terms have to be recorded as a `SourceRow` before the lane can be published. A new lane is new public
-surface, so this is a minor.
-
 ## RM311 — a `gene_validity.csv` correction the source has since adopted, or superseded, says nothing
 
 **Severity** low · **Status** open — **a patch** if both arms reuse existing codes (a new one would make it a minor), a decision first · **Owner** schema (`gene_validity`, `overrides`) + compiler ·
@@ -718,6 +526,8 @@ withholds, as `classify_currency` already does. **What to decide:** whether the 
 existing superseded finding or a new code, which sizes this item.
 
 ## RM292 — a verification check does not say what it checked against, so a check that witnesses itself reads as verified
+
+**0.8, decided 2026-11-03.** Taken into 0.8 by the maintainer, with the rest of the indel-placement fixes (RM304, RM267, RM270, RM292, RM305). The status line below predates that decision.
 
 **Severity** high · **Status** open — **a minor**, for the `0.8` branch · **Owner** format
 (`VerificationRecord`) + enricher (the check roster) · **Motivating case** the 2026-09-27 postmortem,
@@ -741,158 +551,11 @@ check cannot ship without stating its witness.
 *self-consistent* is a new verdict vocabulary member. Both are additive and minor-legal (P3, P8).
 Price: the record is machine-written, so half cost (P9). Not on `main`.
 
-## RM296 — a PRS has no condition → conclusion table, so `pgs.csv` only restates what the PGS Catalog already publishes
-
-**Severity** medium · **Status** open — **a minor, release undecided** (a new optional binning kind) ·
-**Owner** format (schema) + compiler · **Motivating case** the maintainer, 2026-09-27: *"modules are
-condition → conclusion by design; just listing PGS is a bit tautological, they have own EFOs"* ·
-*related* RM16, RM47, RM289, RM163
-
-**What is missing.** Every other kind a module carries maps a measured condition to an authored
-conclusion: a genotype to a `conclusion`, an activity score to a metabolizer phenotype, a repeat count
-or a copy number or a heteroplasmy fraction to a band. `pgs.csv` maps nothing. Its row is an accession,
-the trait's EFO ids, ancestry and a research tier, all of which the PGS Catalog already publishes per
-score. A module cannot say *"above the 95th percentile of PGS000018 in a matched reference: elevated
-CAD risk relative to that reference"*, which is the sentence a PRS module exists to carry.
-
-**Why the refusal it replaces was a choice, not a constraint.** `pgs.py`'s docstring says a PRS yields a
-Z or percentile within a matched reference distribution, *"which the format does not bin"*. Binning
-one is the `activity_phenotype.csv` shape: the consumer computes the number and the module bins it, so
-the data-agnostic line (no measured value in a module) holds exactly as it does there. Nothing in the
-charter forbids it. A new optional table is minor-legal (P3, P8) and costs the full authored price
-(P9).
-
-**The shape, as a starting point.** A `MeasureBinRow` subclass keyed on `pgs_id` (joining `pgs.csv`,
-which becomes the declaration the bins hang on rather than the whole module). It inherits bounds,
-`measure_tiling`, the `unresolved` no-call sentinel and bin-level `pmid` (RM47).
-
-**What has to be designed, and it is the part that stops this being a tautology too.**
-
-- **The measure's unit and frame are part of the claim.** A percentile and a Z are different axes, and
-  either is meaningful only against a named reference distribution. A bin has to say which
-  (`measure_unit`, and a reference identifier), or a band means nothing.
-- **Ancestry mismatch withholds.** A sample outside the bin's reference or `training_ancestry` gets
-  *unknown*, never the band (the house tri-state). The same applies below `match_rate_floor`, which is
-  what `unresolved` is for.
-- **`research_tier` constrains the conclusion.** A `research_only` score supports only relative
-  statements (*"higher than N% of the reference"*). An absolute-risk band needs `calibrated`. Whether
-  that is a check or a documented rule is open.
-- **Continuous tiling** is the natural default for a percentile or a Z (`@measure-tiling`).
-
-RM16 (authored weights) is a different question and this does not depend on it. When this ships,
-`pgs.py`'s docstring, TABLES.md § `pgs.csv` and ROADMAP_0_8 § RM16's *"a shape the format does not
-bin"* all change with it.
-
-### RM297 — the ClinPGx currency check compares a row against an annotation it never cited
-
-✅ **Shipped 2026-09-28 on `main`, uncut — a patch.** The entry is in
-[ROADMAP_HISTORY.md](ROADMAP_HISTORY.md#rm297--the-clinpgx-currency-check-compares-a-row-against-an-annotation-it-never-cited).
-This heading stays only because S122's reply links here, and replies are the triage seat's to
-retarget; delete it in the same commit that moves that link. It is a `###` on purpose: a `## RMn` here
-is an open item to the §4 counter (`test_triage_tools.py`), and this one is not open.
-
-## RM298 — nothing records per row that a `pharm_variants.csv` row came from ClinPGx
-
-**Severity** medium · **Status** open — **a minor, release undecided** (a new optional authored
-column) · **Owner** format (`PharmVariantRow`) + enricher (`clinpgx_draft`, `clinpgx`) · **Motivating
-case** S122 via RM297, decided with the maintainer 2026-09-27: *"the mitigation is warning, not
-blocking. Solution comes in minor"* · *related* RM297, `@source-vs-authority`, `@write-the-sourcerow`
-
-**What is missing.** Provenance for this table is recorded per `(source, layer)` in `sources.csv`. A
-module that mixes ClinPGx-drafted rows with rows a curator took from an article, CPIC or DPWG cannot
-say which is which. So the ClinPGx currency check cannot tell a withdrawn ClinPGx annotation from a
-row that never cited one, and RM297 has to withhold on both.
-
-**The shape, as a starting point.** An optional per-row column naming the source whose accession
-`annotation_id` is. `draft_pharm_variants` fills it, and a curator may set it or leave it empty. The
-check then refuses under `strict` on an absent id only for rows that name ClinPGx, and withholds on the
-rest. Empty stays the unknown arm, never "not ClinPGx".
-
-**To design before building.**
-
-- **The name and the vocabulary.** The value set is the `sources.csv` `source` column, so an
-  undeclared name is a finding. Audit the name against the reserved namespace (P5).
-- **Back-fill for published modules.** An existing drafted row has none. Whether `draft-clinpgx`
-  fills it on a row it recognises as `already_present` is a merge-not-clobber question
-  (`@draft-appends`: drafting appends and never mutates).
-- **Whether other tables want it too.** The same gap exists wherever one table takes rows from
-  several sources. Build it here first, on the table with the incident.
-
-**Price and legality.** A new optional column is minor-legal (P3, P8) and costs the full authored
-price (P9), because a curator has to learn it. That cost is why it waits for a minor and a case,
-rather than shipping with RM297.
-
-## RM302 — one `conclusion` serves every place a report shows it; a table cell, a details card and an explanatory mode want different wordings
-
-**Severity** medium · **Status** open — **a minor, release undecided**; principle decided, shape kept
-open (see *Decided*) · **Owner** format (the authored models) + compiler (the parquet columns) ·
-**Motivating case** the maintainer, 2026-09-27: a report shows a variant's conclusion in a table, in a details card and in
-an explanatory mode, and one text cannot be right for all three · *related* RM7, RM28, the "not format
-scope" note on lay-language rendering
-
-**The ask.** Today every annotation carries one `conclusion`, the detailed wording. The report needs up
-to three **registers** of the same claim: **detailed** (today's text), **lay** (a simpler explanation for
-someone without the background), and **concise** (scientifically accurate but very brief, for a table
-cell). They are one claim written three ways, never three claims.
-
-**Where `conclusion` lives today**, all authored: `VariantRow` (required), every `MeasureBinRow` kind
-(required), `DiplotypeRow` (required), `PharmVariantRow` (required) and `StudyRow` (optional). It is
-also inside `annotations.parquet`'s key, `(variant_key, conclusion, negatives)` (USE_CASES § the S-key
-rework), which constrains every option below.
-
-**What the charter already settles.**
-
-- **Legal as a minor** (P3/P8): new optional columns or a new optional table. `conclusion` itself stays
-  what it is and stays required; it becomes the *detailed* register by declaration, not by rename (a
-  rename is a removal plus an addition, major-only).
-- **Not in any key.** A register is a rendering of the claim the key already identifies. Keying on it
-  would split one effect into several rows whenever an author adds a lay text, the dedup failure the
-  annotations key exists to prevent.
-- **Not the refused "lay-language rendering".** That note (§ Not format scope) is about *generating*
-  patient prose from a CURIE, a presentation job. This is text a curator writes and signs, which is
-  annotation data like `conclusion` is. The entry adds a line there so the two are not read as one.
-- **Priced at full** (P9): every option is authored text, the most expensive layer. The argument for
-  paying is that a consumer cannot derive a correct lay or concise wording from the detailed one
-  without an LLM in the loop, which the charter keeps out of every tier.
-
-**Decided by the maintainer, 2026-09-27.**
-
-- **Tools never write a register; authors and curators may, if they see fit.** No drafter, enricher
-  pass or compiler step fills, rewrites or derives a lay or concise wording, and none is required: a
-  module with only `conclusion` is complete. This is the line the § Not format scope note on
-  lay-language rendering draws from the other side.
-- **Shape: kept open, with two columns as the default.** Unless something below changes it, the build
-  is option 1: two optional columns on the carrying kinds.
-- **The exception is meta-conclusions.** If [RM28](ROADMAP_0_8.md#rm28--meta-conclusions-the-predicate-half)
-  lands its own table, the registers may belong there instead (a meta-conclusion is the claim a report
-  most needs in lay words), and the two items then decide the shape together.
-
-**Design options, as they stood before the decision.**
-
-1. **Two optional columns on each carrying kind** (`conclusion_lay`, `conclusion_concise`, names to be
-   audited under P5). Simplest to read and to author row by row; costs two columns on five kinds, and
-   every future register is another column on all five.
-2. **One optional side table** (`conclusions.csv`: the row's key, a closed `register` vocabulary, the
-   text). One CSV, one concern: an author who writes no registers never sees it, a new register is a
-   vocabulary member rather than a column, and the key is the carrying row's own. Costs a join for
-   every consumer and a key per carrying kind.
-3. **A register vocabulary with `detailed` implicit** either way, so `conclusion` never has to move.
-
-**Open questions.**
-
-- Which of the five kinds need registers. `StudyRow.conclusion` is a study's finding, not the report's
-  claim, and may not.
-- Does `content_signature` include the registers? They are authored claim text, so the default reading
-  is yes; the counter-argument is that a lay rewording does not change what the module asserts
-  (`@provenance-beside-a-claim-is-outside-content-identity` decides it).
-- Language is a **separate axis** from register (P5: no overloaded fields). A lay text in German is
-  register `lay`, language `de`; a design that folds the two into one vocabulary would have to be
-  unwound when a second language arrives. Reserve the language axis's name now if it is expected.
-- Does the reference consumer (just-dna-lite) need all three, or `concise` first? That orders the build.
-- Should drafting ever fill a register? The house answer so far is that a provider fills facts, never
-  prose; a register is prose.
-
 ## RM304 — a `vrs_id` does not say which VRS minted it, and VRS 2.1 moves some insertion ids
+
+**Decided 2026-11-04 by the maintainer: both, a module-wide pin and a per-row version.** The manifest pins the VRS version the module's ids are meant to be minted under, and each `vrs_id` carries the version that minted it, beside it. A row whose version differs from the pin is the one to invalidate against, with its own reason, never the mismatch error (question 2). A per-row column alone cannot say which version is intended; a pin alone cannot survive a merge-not-clobber table mixing runs.
+
+**0.8, decided 2026-11-03.** Taken into 0.8 by the maintainer, with the rest of the indel-placement fixes (RM304, RM267, RM270, RM292, RM305). The status line below predates that decision.
 
 **Severity** high · **Status** open — **a minor, release undecided**, to land before RM270 · **Owner**
 format (where the version is recorded) + enricher (the minting) · **Motivating case** [GKS_SURVEY.md](probes/GKS_SURVEY.md) §0 findings 2 and 3,
@@ -936,7 +599,17 @@ quietly: once the version is recorded, an upgrade becomes a declared re-id inste
    insertion to pin, behind `JUST_DNA_NETWORK_TESTS=1` since indel minting reads the SeqRepo proxy.
    The test is what turns a future rule change red.
 
+**Addendum, 2026-11-04 (the liaison, `docs/UPSTREAM_GA4GH_VRS.md`).** vrs-python PR #665, still open, adds
+`normalize(rle_subunit_mode=...)` with a default of `LARGEST`, the VRS 2.0 rule. Its text says the `vrs/2.1` branch
+will default to `SMALLEST`. Through 2.4.0-a6, no digest we compute moves (the liaison diffed and measured it). Once
+the keyword is released, the cap can be lifted with the id rule chosen on purpose: our call passes the mode
+explicitly, and question 1's recorded version says which rule minted each id.
+
 ## RM305 — ClinVar-GKM's allele table is an offline, independent witness for where an indel sits, and nothing reads it
+
+**Decided 2026-11-04 by the maintainer: a witness, indels only.** ClinVar-GKM becomes the witness RM292's checks name (no check of its own), and the lane keeps the ~270k `ReferenceLengthExpression` alleles plus other indels, not the full 4.46 M rows.
+
+**0.8, decided 2026-11-03.** Taken into 0.8 by the maintainer, with the rest of the indel-placement fixes (RM304, RM267, RM270, RM292, RM305). The status line below predates that decision.
 
 **Severity** medium · **Status** open — **a minor, release undecided** (a new cache lane and a check)
 · **Owner** enricher (a lane beside the ClinVar VCF lane, and the check) · **Motivating case**
@@ -970,39 +643,6 @@ still comes from there, and this lane is used for placement only.
 the lane carry the full 4.46 M rows, or only the 270,161 `ReferenceLengthExpression` alleles and
 other indels, where placement is actually in doubt?
 
-## RM306 — no exon structure anywhere in the tier, and AlphaGenome's gene attribution wants one
-
-**Severity** medium · **Status** open — **a minor, release undecided** (a second table in the MANE
-lane) · **Owner** enricher (`mane_build`, `gene_spans`) · **Motivating case**
-[GKS_SURVEY.md](probes/GKS_SURVEY.md) §5, 2026-09-28; the maintainer's ask for gene/exon coordinate
-mapping behind the AlphaGenome lane
-
-**What exists.** `gene_spans.py` reads the MANE *summary* for one span per gene, and its docstring
-fixes the rule: a span is a query hint, never an attribution. Nothing in the tier knows an exon.
-`grep -ri exon` over the enricher finds only `civic_identities.py`.
-
-**The measured options, lightest first.**
-
-| Option | Size | Covers | Misses | Licence |
-|---|---|---|---|---|
-| **MANE Ensembl GTF**, a second file in the existing MANE lane | 8.6 MB gz; 19,437 transcripts, 204,815 exons, CDS and UTR rows, `exon_number`, versioned ENSG/ENST, RefSeq xref | exon boundaries and numbers for MANE Select + Plus Clinical | non-coding genes; non-MANE isoforms | NCBI policy, already `MANE_TERMS` |
-| **GENCODE v46 basic GTF** | 29 MB gz | the exact annotation AlphaGenome used, all biotypes | MANE selection, unless joined by ENST | "open access", no named licence (`@no-named-licence`) |
-| cool-seq-tool + UTA + SeqRepo | 309 MB install, a UTA Postgres service, 13.5 GB SeqRepo | any transcript version, c.↔g. with exon offsets | nothing AlphaGenome attribution needs | UTA is CC BY-SA 4.0 |
-
-The third is refused on weight, not on merit. It needs a database service and a 13.5 GB store, which
-conflicts with the tier's `--offline` provisioning and with "builder in polars, runtime in duckdb".
-
-**Release skew to state, not hide.** MANE 1.5 corresponds to Ensembl 116, while AlphaGenome was
-annotated with GENCODE v46 (Ensembl 112). An exon boundary that moved between the two releases
-attributes differently in each. The lane records both release labels, and a lookup answers in MANE's
-frame by default.
-
-**Open questions.** Is MANE alone enough (1–1.5 days), or does non-coding coverage justify a GENCODE
-v46 lane too (about one more day)? And the answering surface: `gene_exons(symbol)` next to
-`gene_span`, or a position → (gene, transcript, exon) lookup. The attribution rule in `gene_spans.py`
-constrains both: an exon lookup answers *where*, and AlphaGenome's own per-record gene remains the
-attribution.
-
 ## RM309 — a `risk`/`protective` state whose own conclusion negates it goes unflagged
 
 **Severity** low · **Status** open — **a patch** (a hint), parked on a precision measurement · **Owner**
@@ -1033,70 +673,94 @@ it is, through the path length. The `cli_text` half, which is the behaviour, hol
 length makes the box wrap inside the phrase by construction. Drop the negative assertion if it cannot
 be made deterministic, since the helper's reason is recorded in the docstring.
 
-## RM314 — the reference-block rule we print reads INFO `END`, which VCF 4.5 made a cross-sample maximum, so a multi-sample file credits one sample's block to another's positions
+## RM321 — `VariantRow.flags` calls its reserved tags "the tags the tooling acts on", and no tier acts on any of them
 
-**Severity** medium · **Status** open — **a patch** · **Owner** format (the `callable_from` description) + docs (SCHEMAS.md, the consumer contract) · **Motivating case** [VCF_4_5_AUDIT § 1](probes/VCF_4_5_AUDIT.md), 2026-09-30 · *related* RM53, RM54, RM57, RM313
+**Severity** low · **Status** open — **a patch** for the description; deciding what a reserved tag
+*should* do is a separate question · **Owner** format (`spec.RESERVED_FLAGS`, the `flags` description) ·
+**Motivating case** the longevitymap v2 requirements (just-dna-lite
+`docs/longevitymap_v2/longevitymap_v2_requirements.md` §4.2, §6.2, §10), read against the schema
+2026-11-03 · *related* RM28, `@field-description-is-a-claim`
 
-**What 4.5 changed.** §5.5 moves a gVCF reference block's extent to a per-sample FORMAT `LEN`. §1.6.1
-deprecates INFO `END` and, when it is present, makes it *"the maximum end reference position"* over
-every sample's `LEN`. §5.5 also says a position covered by a sample's own earlier `<*>` block carries
-`GT=.` for that sample.
+**For longevitymap v2 (2026-11-03):** v2's plan sets `pleiotropic` and `conditional` expecting behaviour. See [the group](ROADMAP_0_8.md#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
 
-**What we tell consumers.** `VariantRow.callable_from`'s description and SCHEMAS.md's *Reference
-evidence is a block* paragraph say a block is *"one record with END="*, found by interval containment
-on it. In the record `1 100 . A <*> . . END=199 GT:MIN_DP:LEN 0/0:30:100 0/0:30:10`, sample two called
-100–109 only, and our rule credits it with 150. For a `requires_callable` row at 150 that is a
-confident absence nobody screened for: the direction SCHEMAS.md itself calls dangerous. The `GT=.` rule
-errs the safe way, but our text still sends the consumer to the wrong record.
+**What was confirmed.** The `flags` description says *"Reserved tags the tooling acts on:
+conditional|phased|pleiotropic"*, and the comment above `RESERVED_FLAGS` says the same. A grep over
+`schema/src`, `compiler/src` and `enricher/src` finds exactly one reader. It is the compiler's INFO
+line, and all it does is leave reserved tags out of the "non-reserved flags in use" list. The
+`phased` boolean in `weights.parquet` comes from a `|` in `genotype`, never from the tag. Nothing
+reads `conditional` or `pleiotropic`.
 
-**The patch (text only).** Read the sample's own FORMAT `LEN` first, and `END` only where `LEN` is
-absent (the spec's own fallback). A `.` GT inside that sample's own earlier block is that block's call,
-not a no-call. Update the `callable_from` description, the SCHEMAS.md paragraph and its quoted 4.4
-record, and the consumer contract. No column, no validator: P3 and P8 are not reached. Severity is
-stated for the file the spec permits; no real multi-sample 4.5 file with per-sample `LEN` was measured.
+**Why it matters now.** The longevitymap v2 plan sets `pleiotropic` on every pleiotropy row and
+uses `conditional` as its interim for KL-VS-in-APOE4 buffering. Both choices assume the tooling does
+something with the tag. It does nothing, so for a reader the tag is a label and the meaning stays in
+the conclusion prose. An author who trusts the description believes some behaviour is attached, and
+none is.
 
-## RM315 — the VCF reserved-key tables we transcribe miss keys the spec reserves, among them `RUC`, and name no spec version
+**The patch.** Make the description and the comment say what is true: the tags are *reserved names*,
+held so a later release can give them behaviour, and today they only stay out of the INFO list.
+Pin that with a test that walks the three tiers' sources for readers of each reserved tag. Then a
+reader added later forces someone to edit the description.
 
-**Severity** medium · **Status** open — **a patch** · **Owner** format (`vocab.VCF_FIELD_NUMBER`, `VCF_COLLIDING_KEYS`, `VCF_NUMBER_MEANINGS`) + docs · **Motivating case** [VCF_4_5_AUDIT §§ 3–4](probes/VCF_4_5_AUDIT.md), 2026-09-30 · *related* RM53, RM54, RM57, RM313
+**Not in scope.** Giving `conditional` a meaning. That is RM28's predicate, and RM28 is parked on
+a corpus. The longevitymap KL-VS×APOE4 case is a candidate corpus entry there, not a reason to build
+it here.
 
-**What is missing.** `VCF_FIELD_NUMBER` claims to transcribe the spec's reserved keys, but it lacks
-§3's INFO keys (`RUC`, `RN`, `RUS`, `RUL`, `RB`, `RUB`, `CIRUC`, `CIRB`, `SVLEN`, `CIPOS`, `CIEND`,
-`CILEN`, `CICN`, …), §4's FORMAT `CICN`, `NQ`, `HAP` and `AHAP`, Table 2's `PP`, and every 4.5 key
-(`LEN`, `LAA`, `LA`, the local-allele family, the base-modification aliases). `CICN` is reserved in both
-namespaces with different cardinality, like `CN`, and is absent from `VCF_COLLIDING_KEYS`. And no doc a
-consumer reads says which spec version the tables describe.
+**Residuals** none yet.
 
-**Why it bites.** `binning._VCF_MEASURE_FIELDS` names `RUC` as the field a `repeat_count` is read
-from, and `RUC` is `Number=.`. Probed on `htt_repeat_expansion` with `source_element` emptied:
-`INFO/RUC` gives no warning, while `FORMAT/AD` gives `vcf_pointer_unselected_element`.
+## RM338 — which files under `logs/` ship: `*.log` only, a text allowlist, content-checked text, or images too
 
-**The patch.** Transcribe the missing keys, add `CICN` with its sentence in `VCF_COLLISION_REASONS`
-(asserted total), and fix the comment placing the structural keys in §5.6 (they are §3 and §4). Add
-`VCF_NUMBER_MEANINGS` entries for `LA`/`LR`/`LG`/`M`: it is read through `.get(..., default)`, so a
-missing meaning prints the default silently (`@lookup-with-a-default-hides-a-new-member`). Assert
-equality between the codes the table uses and the codes the meanings cover. State "VCF 4.5; a key added
-after it is unknown and withholds" in SCHEMAS.md and COMPILER.md. Leave the pinned `"is not a whole
-number in VCF 4.4"` phrase alone: it is API and still true. The `M[0-9]+[ACGTUN]` family is a pattern,
-so its named aliases go in, and the ChEBI-numbered form stays unknown. No new code.
+**Severity** low · **Status** open — **a patch**, decided 2026-11-03, `unattended`; no longer `after RM337`,
+which is a minor since 2026-11-04 (see RM337) · **Owner** compiler (`_collect_logs`); built by the lead · **Motivating case** S125 in
+CONSUMER_SUGGESTIONS_HISTORY.md (just-module-creator `F116`, 2026-10-05) · *related* RM337, RM147
 
-## RM316 — the `annotated_alt` element rule counts by ALT position, and VCF 4.5's local-allele fields order their values through `LAA`
+**The ask.** The reporter wants a JSON Lines session ledger (search receipts, fetch receipts, decisions)
+to travel with a module, and offers, in order: decide on content rather than the name (`.log`, `.txt`
+and `.md` decode as UTF-8, `.json` parses, every non-blank `.jsonl` line parses); failing that, the
+allowlist `.log .txt .md .json .jsonl`; and images as a question rather than a request (`png`/`jpg` can
+be checked by magic bytes as `LOGO_EXTENSIONS` already is; SVG is XML that can carry script).
 
-**Severity** low (medium for the first module that points at an `A`/`R`/`G` FORMAT field with it) · **Status** open — **a patch** · **Owner** format (`vocab.ELEMENT_RULE_MEANINGS`) + docs (the consumer contract) · **Motivating case** [VCF_4_5_AUDIT § 5](probes/VCF_4_5_AUDIT.md), 2026-09-30 · *related* RM53, RM54, RM57, RM313
+**Legality.** No schema moves. `manifest.logs` is a list of `FileEntry`, and `artifact_digest` hashes
+`manifest.artifact.files` only, so no module's byte or content identity changes. P3 and P8 do not reach
+it. What it changes is exposure: a module that already has a stray `notes.md` under `logs/` starts
+shipping it at its next recompile, and a published file is permanent. That is why this waits for a
+decision instead of being built unasked.
 
-**What 4.5 added.** §1.6.2: `LAA` lists, per sample, which ALT alleles are in play and in what order.
-Every `A`/`R`/`G` FORMAT field has a local equivalent (`LAD`, `LPL`, …) read through it, and a file may
-carry only the local one. In the spec's example, ALT `A,C,T,<*>` with `LAA=2,4` gives `LAD=20,30,10` as
-REF, C, `<*>`.
+**Decided (the maintainer, 2026-11-03): content-checked text, plus images.** Of four options put to them, they chose
+"Text checked + images". Under `logs/`, `.log .txt .md .json .jsonl` ship when the content agrees: text decodes
+as UTF-8, `.json` parses, and every non-blank `.jsonl` line parses. `png`/`jpg`/`jpeg` ship when their magic bytes
+match, as `LOGO_EXTENSIONS` is checked, and under a size ceiling. **SVG never ships**, since it can carry script.
+A file that fails its check stays behind with RM337's warning, naming the reason. Each file that ships and is
+not `*.log` is named in the compile output, so an author sees it before publishing. The size ceiling is the
+lead's constant to pick. The rejected options: `*.log` only (the reporter's ledger would never reach a published
+module, because the registry compiles by discovery); an allowlist by extension alone (a binary named `.json`
+ships); and text without images (images were raised as a question, and the maintainer took them in).
+Whether a failed check refuses under `strict` was not put to the maintainer. The default is a warning in both
+modes, since this changes no verdict. RM147's advice against a `logs/` *writer* still stands
+and is not reopened: this carries the consumer's own ledger, it does not give the format a ledger
+schema.
 
-**What we say.** `annotated_alt` is *"at its index in the record's ALT list, which is element index+1
-on a Number=R field"*. On `LAD`, ALT `C` (index 2) is element 1. A module rightly writes
-`source_field=FORMAT/AD`. A consumer whose merged 4.5 file carries only `LAD`, and falls back to it
-under our sentence, reads the wrong allele's depth: well-formed and wrong.
+**Residuals** none yet.
 
-**The patch (text).** In `annotated_alt`'s meaning and in the consumer contract: resolve a local-allele
-field to its global equivalent through `LAA` before applying any element rule, as §1.6.2 recommends.
-The value-ranging rules survive unchanged. A `local_annotated_alt` rule is refused, because it would
-make the module describe how the consumer's file was merged (P2).
+## RM344 — a `.duckdb` Ensembl cache written by duckdb 2.0 crashes a 1.x enricher instead of falling back to the parquet beside it
+
+**Severity** low · **Status** open — **a patch**, `unattended` (about 15 minutes) · **Owner** enricher
+(`resolver.py`) · **Motivating case** the liaison's adoption map for duckdb 2, item 2, `docs/UPSTREAM_DUCKDB.md`
+(2026-11-04) · *related* RM343
+
+**Measured.** duckdb 1.5.5 refuses a database file written by 2.0: `... with version number 999, but we can only
+read versions between 64 and 68`. `resolver.py` opens the deprecated prebuilt `ensembl_variations.duckdb` with
+`duckdb.connect(..., read_only=True)` at both of its sites and has no handler. An empty or stale db already
+falls back to the parquet `data/` beside it, but a db written by a newer duckdb raises from `connect`. A cache
+built on a machine with duckdb 2 therefore stops a 1.x enricher that reads it, although the parquet next to it
+would answer.
+
+**The patch.** In the cache-directory case, a db this duckdb cannot open falls back to the parquet `data/`, the
+same way an empty one does, and says so in a warning that names the file and the storage version. A
+`.duckdb` file passed directly has no parquet to fall back to, so it raises `EnsemblReferenceError` naming the
+version and suggesting the parquet cache. The path is deprecated and retired at 1.0. The test writes a db the
+running duckdb cannot read rather than mocking `connect`.
+
+**Residuals** none yet.
 
 # Not format scope
 
@@ -1551,16 +1215,6 @@ kept as a deprecated shim that emits `DeprecationWarning` and routes to the enri
 import. **Disposition:** Remove the `ensembl_cache`/`resolve_with_ensembl` params outright at 1.0
 (internal call, not the wire/artifact contract, so additive-within-major does not protect it).
 
-### `fact_rows_contradict` — refuse a contradicting pair under a fact table's merge key (RM275)
-
-Since 0.8 two rows of `frequencies`, `gene_metrics`, `literature`, `gene_validity`,
-`clinical_assertions`, `gwas_effects` or `expression_effects` that share a merge key and state
-different values warn in both modes. Refusing them is a tightening, so it waits for the major: at 1.0
-the check becomes an error, and the tables join the refusing side beside `_TABLE_DUPE_KEYS` (the rule
-stays *both stated and different*, never *the key repeats*). **Upgrade line:** a module that warns with
-`fact_rows_contradict` on 0.8 fails to compile on 1.0 until the wrong row is deleted or the table is
-regenerated.
-
 ### Coordinate-first identity (option C)
 
 **Severity** — · **Status** ✅ resolved in 0.5 by VRS — kept for traceability
@@ -1590,7 +1244,7 @@ the demand question, which is answerable now.
 
 **Swept 2026-09-13** across [ROADMAP.md](ROADMAP.md), [ROADMAP_0_8.md](ROADMAP_0_8.md) and
 [ROADMAP_1_0.md](ROADMAP_1_0.md), prompted by the maintainer after
-[RM16](ROADMAP_0_8.md#rm16--authored-prs-weights-a-scoring-file-not-a-manifest) was caught. Every
+[RM16](ROADMAP_0_9.md#rm16--authored-prs-weights-a-scoring-file-not-a-manifest) was caught. Every
 item carrying a parked-on / would-unpark clause was checked. **One circular, one marginal, one
 possibly already satisfied, and the rest sound** — the sweep's value is mostly the eight it cleared.
 
@@ -1637,6 +1291,12 @@ column gets the generic "extra inputs not permitted":
   full cost. They are reserved rather than merely absent because the symmetry makes them guessable — an
   author reasoning "if `source_field` has one, `callable_from` must too" should hear what the name is
   held for, not the generic stray-column message.
+- **`tradeoff`** — added 2026-11-03 for [RM327](ROADMAP_0_8.md#rm327--pleiotropy-has-no-per-trait-row-so-a-trade-off-can-only-be-prose-and-tradeoff-is-computed-rather-than-authored):
+  the verdict that an allele is `protective` on one trait and `risk` on another. The maintainer decided
+  it is **computed** from a per-trait benefit/harm table, never authored, and longevitymap v2 has
+  trade-off loci and an obvious word for them. It is the one name here that will never become an
+  authored column, so when the derived column ships it does not just leave this list: it moves to
+  `vocab.MISPLACED_COLUMN_REASONS`, the map for a column that is real on a generated table.
 
 *(**`callable_from` was reserved here through 0.4 and is now BUILT** as a `VariantRow` column in 0.5
 (RM6). A built name must leave this list: `reject_reserved` refuses a reserved column at author time,
@@ -2179,7 +1839,7 @@ likely to be working on interactively. `_vrs_coverage`'s grouping already exists
   from, and `refresh_sidecar` will not backfill a sidecar that is already present. A conditional
   warning, or carrying `panel` into `manifest.json` the way `weighting` is, would settle it.
   **Update:** S69 shipped the message half (the warning stopped claiming nothing else is lost); the
-  home-for-the-three-fields half is [RM265](#rm265--the-panel-deprecation-has-no-accepted-signal-on-the-replaced-branch-the-warning-fires-whether-or-not-you-need-the-three-fields-it-tells-you-to-keep-the-block-for)
+  home-for-the-three-fields half is [RM265](ROADMAP_0_9.md#rm265--the-panel-deprecation-has-no-accepted-signal-on-the-replaced-branch-the-warning-fires-whether-or-not-you-need-the-three-fields-it-tells-you-to-keep-the-block-for)
   (S114), which showed the replaced-branch warning is unclearable for a module that needs them.
 
 ### Absences that pass in silence (compiler)

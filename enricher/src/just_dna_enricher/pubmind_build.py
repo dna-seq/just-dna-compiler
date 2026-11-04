@@ -30,10 +30,10 @@ unsorted group and is what the deterministic-ordering rule bans outright. `relea
 many keys are contested and how far the multiplicity goes.
 
 **`pubmind publish` refuses, on the PharmVar precedent** (`@gated-source-caches`). The ANNOVAR-shipped
-table publishes no data terms of its own: the software licence covers the software, the paper is
-CC BY-NC-ND, and only CHOP can say what the bytes are under. Unknown is not permissive
-(`@no-named-licence`), and a bulk file arriving under terms we cannot establish is not a file we may
-pass on. The command exists and refuses with the reason, because a missing command reads as an
+table is CC BY-NC-ND 4.0, answered in writing by WGLab on 2026-09-28 (RM320). Until then its terms were
+unknown and the refusal rested on unknown not being permissive (`@no-named-licence`). It now rests on
+NoDerivatives: this snapshot decomposes codon enumerations and normalizes significance tokens, so it is
+adapted material, and adapted material under ND may not be shared. The command exists and refuses with the reason, because a missing command reads as an
 oversight somebody will helpfully add.
 
 Builder-only: `polars` is a guarded `[dev]` import, exactly as in the sibling builders.
@@ -516,9 +516,10 @@ def _write_release_json(
         "unparsable_confidence": result.unparsable_confidence,
         "redistributable": False,
         "notice": (
-            "The ANNOVAR-distributed PubMind table publishes no data terms of its own; the software "
-            "licence covers the software and the paper is CC BY-NC-ND. Unknown is not permissive, so "
-            "this snapshot is operator-built and inject-only: do not publish or pass it on. Every "
+            "The ANNOVAR-distributed PubMind table is CC BY-NC-ND 4.0 (WGLab, in writing, "
+            "2026-09-28). This snapshot decomposes and normalizes it, which makes it adapted material "
+            "NoDerivatives forbids sharing, so it is operator-built and inject-only: do not publish or "
+            "pass it on. Every "
             "verdict here is an LLM's reading of the literature, and a PVID is a record id keyed on "
             "extracted text rather than on a coordinate."
         ),

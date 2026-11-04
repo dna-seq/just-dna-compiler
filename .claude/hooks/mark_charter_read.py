@@ -16,7 +16,7 @@ from charter_gate_lib import is_full_charter_read, load_input, marker_path  # no
 def main() -> int:
     data = load_input()
     if data.get("tool_name") == "Read" and is_full_charter_read(data.get("tool_input", {})):
-        # A marker we cannot write just means the gate stays closed — safe.
+        # a marker we cannot write just means the gate stays closed — safe
         with contextlib.suppress(OSError):
             marker_path(data).touch()
     return 0

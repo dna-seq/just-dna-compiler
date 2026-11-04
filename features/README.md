@@ -1,7 +1,7 @@
 # `features/` — the scenario corpus
 
 One structured statement of an expectation, where today there are three: a docstring, a test name, and
-a paragraph in a tier reference. This is [RM149](../docs/ROADMAP_0_8.md#rm149--expected-behaviour-lives-in-prose-and-the-prose-is-where-two-readers-split),
+a paragraph in a tier reference. This is [RM149](../docs/ROADMAP_0_9.md#rm149--expected-behaviour-lives-in-prose-and-the-prose-is-where-two-readers-split),
 drafted on **2026-09-13** and **not reviewed**. Nothing here is a contract yet.
 
 ## The direction is code → Gherkin, and that decides everything else

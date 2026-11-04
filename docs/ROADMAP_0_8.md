@@ -1,158 +1,531 @@
-# Roadmap — 0.8 and later minors
+# Roadmap — 0.8
 
-**What this file is.** Items that are legal in a minor and were **not** taken into 0.7, each with the
-reason it waits. It is the direct successor of `ROADMAP_0_7.md`, which was split out of
-[ROADMAP.md](ROADMAP.md) on 2026-08-13 so that the active roadmap describes the line being built and a
-deferral is filed against the release that will decide it, rather than accumulating in one document
-nobody can read as a plan.
+**What 0.8 is, decided 2026-11-03 with the maintainer:** the work already built and the fixes already
+chosen, plus longevitymap v2's requirements. "The rest goes to 0.9", so everything else that was waiting
+here moved to [ROADMAP_0_9.md](ROADMAP_0_9.md), each entry with a dated line under its heading. That
+includes RM188's competitor-parity work, which was 0.8's second half from 2026-09-11, the methylation items
+(RM317–RM319), and the Gherkin corpus (RM149), which is frozen. This file is now 0.8's scope and nothing else.
 
-**Why it was renamed rather than kept.** 0.7 was built on 2026-08-28 and the file's name had stopped
-being true: it read as the plan for a release that is finished, so an item in it looked shipped-or-late
-rather than waiting. On 2026-08-31 the round it recorded closed —
-[history/ROADMAP_0_7.md](history/ROADMAP_0_7.md) keeps that record, entries and all, including the
-five taken back into 0.6 and the two that built in 0.7 — and everything still waiting moved here.
-**Nothing about any item below changed in the move**; the file name did. Expect the same succession at
-the next minor: the deferral file is named for the release that will decide its contents, so a cut
-closes one and opens the next.
+Every item is additive under Principles 3/4/8, so each is legal in a minor. Indexed in
+[RM_TOC.md](RM_TOC.md), which is the complete list and the place to look an item up.
 
-**What 0.8 is, decided 2026-09-11 with the maintainer: a stabilization and competitor-parity
-release.** Stabilization is the first half — the items below are mostly a specified thing nobody
-implemented (RM122), a prose behaviour two readers split on (RM149), a digest that says *something*
-changed and not what (RM181) — and parity is the second, with **RM188 as its spine**: running
-Calwbio's and genomi's pipelines on real input and re-folding what their reports do into module
-mechanics is the mechanism that *files* the parity items, so most of them do not exist as numbers yet.
+## The scope
 
-**The theme does not admit an item and does not reorder one.** Membership is still the rule in the
-paragraph below — legal in a minor, waiting on a design question, a corpus or a caller — and legality
-is still decided by Principles 3/4/8 first. A theme says what a release is *about* when it is cut and
-what a reviewer weighs when two legal items compete for the same round; it is not a second gate, and
-nothing below was moved, re-severitied or re-scoped to fit it.
+| Part | Items | Where | State |
+|---|---|---|---|
+| Built on the `0.8` branch, uncut | PT1's RM241, RM258, RM263, RM272, RM275, RM278, RM283, RM288, RM300, RM308, RM313; earlier RM256, RM257, RM259, RM260, RM262 and RM264's docs half | `proposals/PROPOSAL_0_8_PT1.md` and ROADMAP_HISTORY on the `0.8` branch | done (their entries are in ROADMAP_HISTORY since the 2026-11-04 sync) |
+| The indel-placement fixes | [RM304](ROADMAP.md#rm304--a-vrs_id-does-not-say-which-vrs-minted-it-and-vrs-21-moves-some-insertion-ids) first, then [RM267](ROADMAP.md#rm267--the-ensembl-snapshot-anchors-a-class-of-insertions-one-base-early-and-resolutioncsv-serves-them-as-a-different-event), [RM270](ROADMAP.md#rm270--an-indels-artifact-key-is-its-sources-spelling-a-left-aligned-vcf-misses-a-respelled-row-and-the-spelling-independent-id-the-enricher-mints-never-reaches-the-artifact), [RM292](ROADMAP.md#rm292--a-verification-check-does-not-say-what-it-checked-against-so-a-check-that-witnesses-itself-reads-as-verified), [RM305](ROADMAP.md#rm305--clinvar-gkms-allele-table-is-an-offline-independent-witness-for-where-an-indel-sits-and-nothing-reads-it) | [ROADMAP.md](ROADMAP.md) | one design, interviewed before it is built; four are high severity |
+| The lead's ready minors (2026-11-04) | RM337 (a warning naming each `logs/` file left behind), RM342 (the toolchain in the manifest, with the polars 2 lock) | this file | RM337 ready; RM342 after its interview |
+| Chosen earlier | [RM303](#rm303--the-snapshot-layout-is-a-contract-with-six-parties-and-no-model-so-it-belongs-in-just-dna-format) (the snapshot layout as a model), [RM253](#rm253--a-repeat-count-star-allele-ugt1a1-28--ta8-has-no-home-a-diplotype-can-name-and-the-cpic-drafter-translates-none-of-cpics-notation) (a repeat-count star allele) | this file | taken into 0.8 in September |
+| longevitymap v2 | RM28's combination half, RM322–RM336 ([the group](#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03)), and [RM236](#rm236--consequence-and-impact-are-planned-axes-with-no-slot-and-an-acmg-engine-reads-both-as-primary-inputs), [RM239](#rm239--a-fine-mapping-posterior-has-no-column-and-gwas_effectscsv-already-has-its-key) as inputs to RM333's confidence labels | this file and [ROADMAP.md](ROADMAP.md) | design first; RM323 decides before RM324, RM326 and RM329 |
 
-Everything here is **additive under Principles 3/4/8** — a new optional column or table — so none of it
-is waiting on a version. Each waits on a design question, a corpus, or a consumer. An item waiting on a
-**version** belongs in [ROADMAP_1_0.md](ROADMAP_1_0.md) instead, and RM69 moved there on 2026-08-27 for
-exactly that reason: filing by what a fix *costs* rather than by what decides it is how an item becomes
-unreachable from either plan. **RM68 stays**, and the two look alike enough to be worth separating: its
-governing exit is *a real author with a non-GRCh38 module saying which outcome they wanted*, and a
-demand exit keeps an item here where a version exit does not.
-
-**Two of these are not waiting on us at all.** RM84's own half shipped in the 0.6 PT2 batch and only
-the consumer's discovery half is open; RM67 is **not work** — a documented divergence, numbered so it
-stays findable and does not get re-probed. Both are here so that a reader meets the reasoning instead
-of re-deriving it.
-
-Indexed in [RM_TOC.md](RM_TOC.md), which is the complete list and the place to look an item up. The 0.6
-decisions that touched these items are in [PROPOSAL_0_6.md](proposals/PROPOSAL_0_6.md) and
-[PROPOSAL_0_6_PT2.md](proposals/PROPOSAL_0_6_PT2.md); the 0.7 round that emptied the rest is
-[PROPOSAL_0_7.md](proposals/PROPOSAL_0_7.md).
+Patch-class items stay on `main` and are not part of this scope, as [RELEASE_CYCLE.md](RELEASE_CYCLE.md) says.
 
 ---
 
-## RM317 — FMR1 repeat methylation is in every PacBio TRGT VCF as `FORMAT/AM`, and no module can bin it on a two-allele record
+## longevitymap v2 — what its requirements need from the format, taken into 0.8 as a priority (2026-11-03)
 
-**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-09-30**, design first · **Owner** format (a `measure_kind` member, the element-rule vocabulary, the host table) + compiler · **Motivating case** the maintainer, 2026-09-30: a beneficiary will soon hold PacBio samples, so methylation is wanted, "just don't build on thin air"; evidence in [METHYLATION_PACBIO §§ 1.1, 3, 4.1](probes/METHYLATION_PACBIO.md) · *related* RM317–RM319, RM66, RM65, RM164
+**Source.** just-dna-lite's `docs/longevitymap_v2/longevitymap_v2_requirements.md` (draft 1, 2026-11-03),
+the plan for re-curating `longevitymap` as 2.0.0 around evidence tiers and seven per-locus axes. It was
+read against the 0.7.1 schema on 2026-11-03. Most of its §6 fits today. The items below are the places where
+it does not, each with its Principle 9 price. Every one is additive, so each is legal in a minor (P3/P8).
 
-**What is real.** TRGT, PacBio's tandem-repeat genotyper and part of the HiFi WGS pipeline since at
-least v2.1.0, writes `##FORMAT=<ID=AM,Number=.,Type=Float,Description="Mean methylation level per
-allele">`: the mean 5mC level over the CpGs **inside the repeat tract**, one value per called allele.
-Open samples exist: NA09237 (male full mutation) is `GT=1`, `MC=898`, `AM=0.85`, reproduced with TRGT
-5.1.0, and HG002 (normal male) is `AM=0.1`. `source_field: FORMAT/AM` already passes the pointer
-grammar. `fmr1_cgg_repeat` asserts in prose that a full mutation "is methylated and silenced", and this
-is the field that can check it.
+**Status.** The maintainer took the fifteen new items into 0.8 **as a priority** on 2026-11-03. One shape is
+already decided: `tradeoff` is **computed** from per-trait rows and never authored (RM327). Every item
+the plan needs, new or older, carries the tag `*for* longevitymap v2` in its index row, so
+`grep -n 'for\* longevitymap v2' docs/RM_TOC*.md` lists the whole group. Its build plan is the
+proposal for the next round on the `0.8` branch, which the pm seat writes; PT1 is concluded.
 
-**What a module cannot do today.**
+**Order.** RM323 first, because RM324's tier, RM326's outcome strip and RM329's age-of-action class all
+land wherever RM323 puts per-locus facts. RM322 next, since APOE is the lead locus.
 
-- **Select the right allele.** HM06968 (female) is `MC=33,112`, `AM=0.90,0.07`: the expanded allele
-  is the *unmethylated* one. NA06905 goes the other way. The band means "the methylation of the
-  expanded allele", i.e. the `AM` at the index where `MC` is largest. Every element rule picks by the
-  field's own values, so none can say it.
-- **Name the quantity.** No `measure_kind` is a methylation fraction. `allele_fraction` would put two
-  quantities under one name (P5). `repeat_alleles.csv` pins `measure_kind=repeat_count`.
-- **Name the absence.** `AM=.` means either no CpG in the span or no MM/ML tags in the BAM, and the
-  file cannot tell them apart.
+| Item | What it adds | Price (P9) | Note |
+|---|---|---|---|
+| [RM323](#rm323--a-fact-about-a-locus-has-no-authored-home-so-every-per-locus-axis-is-copied-onto-each-genotype-row-and-nothing-checks-the-copies-agree) | where per-locus facts live: typed columns per genotype plus an agreement warning, or a locus table | full ×n, or a new table kind | **decide first** |
+| [RM322](#rm322--diplotypescsv-carries-none-of-the-axes-a-scored-finding-needs-so-apoe-the-modules-headline-result-cannot-state-its-tier-mechanism-or-trade-off) | `DiplotypeRow` gains `negatives`, `category`, `priority`, `flags` (maybe `actionability`), so APOE can carry the axes | full ×4–5 |  |
+| [RM324](#rm324--there-is-no-evidence-tier-column-so-the-axis-that-gates-visibility-is-a-flags-tiera-token) | evidence tier as value + scheme | full ×2 | home from RM323 |
+| [RM325](#rm325--studiescsv-has-no-sample-size-and-v2s-tier-a-rule-is-stated-in-n) | `StudyRow` sample size (and cases) | full ×1–2 |  |
+| [RM326](#rm326--a-study-row-cannot-say-which-outcome-it-measured-so-the-definition-of-pro-longevity-lives-in-a-study_design-prefix) | `StudyRow` phenotype class; evidence role and the outcome strip derived from it | full ×1, derived near-zero | check EFO first |
+| [RM327](#rm327--pleiotropy-has-no-per-trait-row-so-a-trade-off-can-only-be-prose-and-tradeoff-is-computed-rather-than-authored) | per-trait benefit/harm table (mediator folds in); `tradeoff` computed; reserve the name | full (new kind), derived near-zero, reservation a patch | `tradeoff` decided |
+| [RM328](#rm328--no-study-row-can-name-the-ancestry-it-was-measured-in-so-european-only-evidence-is-a-hand-set-flag) | `StudyRow` ancestry on a vocabulary; `eur_only_evidence` derived | full ×1, derived near-zero | RM188 axis 2 |
+| [RM329](#rm329--an-age-stratified-estimate-has-no-age-band-so-age-of-action-is-reconstructed-from-statistical_test-prose) | `StudyRow` age band and whose age | full ×2–3 | interim works (RM140) |
+| [RM330](#rm330--an-effect-measured-in-one-sex-one-smoking-stratum-or-one-genotype-has-no-row) | the stratum an estimate was measured in; sex as the first query-time modifier | full ×2 | RM188 axis 3 |
+| [RM331](#rm331--a-study-measured-on-an-ld-proxy-cannot-say-so-and-filing-it-under-the-lead-checks-the-proxys-allele-against-the-leads) | `StudyRow` proxy variant + r²; the allele check follows the proxy | full ×2–3 |  |
+| [RM332](#rm332--a-beta-has-no-unit-on-authored-rows-while-gwas_effectscsv-has-carried-one-since-06) | `effect_unit` on authored rows, as `gwas_effects.csv` has | full ×1–2 |  |
+| [RM333](#rm333--the-effector-gene-behind-a-gwas-locus-has-no-source-and-no-column) | an Open Targets lane; effector gene, score, release on a derived table | half, plus a lane | licence unprobed |
+| [RM334](#rm334--an-hla-allele-has-no-table-and-tag-snps-cannot-stand-in-for-one) | an HLA allele table keyed `(gene, allele)` | full (new kind) |  |
+| [RM335](#rm335--model-organism-evidence-has-nowhere-to-go-and-a-study-row-naming-the-rsid-claims-the-mouse-study-was-about-the-human-variant) | a model-organism evidence table | full (new kind) |  |
+| [RM336](#rm336--a-doi-written-into-pmid-parses-as-five-or-six-pubmed-ids-and-the-literature-pass-looks-each-one-up) | a DOI-token arm in `validate_pmid_cell` | near-zero (a refusal or a warning code) | reproduced |
 
-**Scale trap.** TRGT 0.5.0 wrote `AM` as an Integer (values up to 185; probably the 0–255 byte,
-unverified). From 0.7.0 it is a Float on `[0, 1]`, and the changelog is silent about the change.
+**Older items the plan also needs, tagged rather than moved** (each keeps its own entry; the 2026-11-03
+scope decision put each in 0.8 or 0.9, as marked):
 
-**To design (the 0.8 interview).** The kind's name, audited under P5, and whether the modification
-(5mC) is its own axis. Whether `repeat_alleles.csv` hosts a second kind or a sibling table does. How a
-cross-field selection is stated without hard-coding TRGT's `MC` into a vocabulary: the probe prices an
-optional pointer column naming the selecting field at full cost. And **the band values**: none is
-cited yet. The probe quotes sample observations, not boundaries, and a row needs a paper behind it
-(`@rm47-bin-cites`).
+- **RM236** (this file, **0.8**) — causal confidence C1 and effector confidence E1 both key on a variant being coding.
+- **RM238** ([ROADMAP_0_9.md](ROADMAP_0_9.md), **0.9** since 2026-11-04: Open Targets' coloc, in RM333's lane, replaces it) — the cis-QTL colocalisation behind effector confidence E1/E2.
+- **RM239** (this file, **0.8**) — the fine-mapping posterior is the input to causal confidence C1–C4.
+- **RM241** (this file, **built on `0.8`**) — v2 declares `weighting:` precisely to say it has no weights, and `reverse` drops the block.
+- **RM263** ([ROADMAP.md](ROADMAP.md), **built on `0.8`**) — v2 cites preprints, whose rows hold a DOI and need a PMID; RM336 is the parsing half.
+- **RM294** ([ROADMAP_0_9.md](ROADMAP_0_9.md), **0.9** since 2026-11-04, after the one-scale tier decision) — a source's evidence grade travelling into a module is the same column family as RM324's tier.
+- **RM302** ([ROADMAP_0_9.md](ROADMAP_0_9.md), **0.9** since 2026-11-04: v2's conclusion is already lay) — v2 writes for three readers (citizen, geneticist, ageing researcher), which is the register question.
+- **RM308** ([ROADMAP.md](ROADMAP.md), **built on `0.8`**) — v2 hand-writes per-genotype conclusions for its scored loci and a 528-rsID legacy layer.
+- **RM321** ([ROADMAP.md](ROADMAP.md), **a patch on `main`**) — v2's plan sets `pleiotropic` and `conditional` expecting behaviour.
+- **RM28** (this file, **0.8**: its combination half, taken in 2026-11-04) — KL-VS buffering in APOE4 carriers joins two loci on two chromosomes, so no haplotype holds it. It is now a defined combination, and its facts sit on RM323's table.
+- **RM188** ([ROADMAP_0_9.md](ROADMAP_0_9.md), **0.9**) — its axes 2, 3 and 5 are now numbered, as RM328, RM330 and RM324, all three in 0.8.
+- **RM248** ([ROADMAP_0_9.md](ROADMAP_0_9.md), **0.9**) — v2's §5 is a report specification: a context card, grouping by mechanism, a research view. The report is the consumer's to build meanwhile.
 
-**Legality and price.** Everything is additive, so it is minor-legal (P3, P6, P8). A kind member is
-cheap but a one-way door (P5). The selector column is full cost.
+The authored `report:` block in [ROADMAP.md's idea-book](ROADMAP.md) is the unnumbered half of RM248 and
+answers v2's §8 consumer requests 1 and 2 (category prose from the module, no "Net weight").
 
-## RM318 — imprinting-region methylation is real in PacBio outputs, but lives in BED and TSV files that no pointer can name
+## RM322 — `diplotypes.csv` carries none of the axes a scored finding needs, so APOE, the module's headline result, cannot state its tier, mechanism or trade-off
 
-**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-09-30**, design first · **Owner** format (a new optional region table kind, a non-VCF pointer) + compiler · **Motivating case** the maintainer, 2026-09-30: a beneficiary will soon hold PacBio samples, so methylation is wanted, "just don't build on thin air"; evidence in [METHYLATION_PACBIO §§ 1.2–1.4, 3, 4.2](probes/METHYLATION_PACBIO.md) · *related* RM317–RM319, RM66, RM65, RM164
+**Cut 2026-11-04 by the maintainer, after the final measuring run** (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §3): `priority` (it restates the tier; v2 says it is "derived from tier") and `actionability` (v2's policy "late-acting ⇒ descriptive" belongs in its README). `DiplotypeRow` gains only **`negatives` and `category`**.
 
-**What is real.** HG002 shows allele-specific methylation at two imprinted regions in public PacBio
-pipeline outputs, and MethBat 1.1.0 run on them reports `PASS`:
-SNURF:TSS-DMR (15q11–13) hap1 80.1 / hap2 14.6, and KCNQ1OT1:TSS-DMR (11p15 IC2) hap1 15.3 / hap2 86.4,
-with pooled values near 49. The consumer holds per-CpG `5mC.bed.gz` (MethBat 1.x) or
-`cpg_pileup.*.bed.gz` (pb-CpG-tools 3.x), plus a `profile.tsv`. None of it is in a VCF, and no PacBio
-tool writes VCF 4.5 `M5mC`.
+**Decided 2026-11-04 by the maintainer: four columns, no `flags`.** `DiplotypeRow` gains `negatives`, `category`, `priority` and `actionability`, each full price, with RM70 as the precedent. `flags` stays off: no tier acts on its tags (RM321), and v2's flag tokens are what RM323–RM330's typed columns replace. Per-locus facts go on RM323's table, with APOE ε2 and ε4 as `haplotype` subjects.
 
-**What a row would need.** Every item comes from the probe's measurements:
+**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format (`DiplotypeRow`) + compiler (the diplotype parquet and `reverse`) · **Motivating case** longevitymap v2 requirements §6.4, decision D2 · *for* longevitymap v2 · *related* RM323, RM28
 
-- a region (chrom, start, end, build), with no `variant_key`;
-- a pointer to a BED or TSV column, which `source_field` (a VCF pointer) cannot be widened to without
-  overloading it (P5);
-- the aggregation from sites to region;
-- a row selector (`Total`, or a statement about both haplotypes);
-- the unit and the modification;
-- a coverage floor, because a missing row is never "unmethylated";
-- bands: pooled around 20% and 80%, plus a haplotype-delta band.
+**What was confirmed.** `DiplotypeRow` has `gene`, `haplotype_a`, `haplotype_b`, `trait_efo_id`,
+`direction`, `clin_sig`, `phenotype`, `conclusion` and the PharmGKB drug block (`drug`, `response`,
+`evidence_level`, `recommendation_strength`, `clinical_context`). It has no `negatives`, `category`,
+`priority`, `flags`, `actionability`, `stat_significance` or `effect_*`. v2 scores APOE once, as an ε
+diplotype (R-APOE-1), so its tier A locus is the one locus that can say none of the things the report
+groups and orders by.
 
-**Traps the data showed.**
+**What already fits.** The key includes `trait_efo_id`, so one row per (diplotype, trait) is legal: an
+Alzheimer's row and a lifespan row per ε pair, which is how the plan's two framings coexist.
 
-- **Haplotype labels are not parental.** The same sample has hap1 methylated at SNURF and hap2 at
-  KCNQ1OT1, so no band can say "the maternal allele".
-- **The scale moved at MethBat 1.0.0** (fractions to percent) under unchanged column names.
-- **pb-CpG-tools `model` and `count` modes disagree** (hap2 4.1% vs 16.1% at one CpG). The mode is a
-  header line, not a column.
-- **The pipeline runs `methbat profile` over CpG islands, never `methbat report`**, so a user holds
-  island numbers, not the imprinted regions.
-- **H19 had no haplotype rows at all.**
+**Shapes, priced.**
 
-**Not decided, and not to be built on thin air.** The 20%/80% cut-offs are MethBat's defaults, not a
-guideline. No clinical source was read. MethBat ships 15 imprinted regions from Mackay et al. 2022
-(Table 2), which is the corpus a design would start from.
+- **Widen `DiplotypeRow`** with the general annotation columns: `negatives`, `category`, `priority`,
+  `flags`, and possibly `actionability`. Full price each, minor-legal; RM70 is the precedent for
+  carrying a `VariantRow` column to a PGx table. `VariantRow` itself calls these axes general ("any
+  variant finding may carry them"), so this is not a foreign domain's columns on a PGx table. Each
+  is three touch points, plus the diplotype parquet and `reverse`.
+- **Author APOE as rs429358/rs7412 genotype rows in `variants.csv`.** Refused: a per-SNP row cannot
+  say ε2/ε4, and the plan's own rule is to score APOE once.
+- **README prose.** Drops the axes out of the data entirely.
 
-**Legality and price.** A new optional table kind is minor-legal (P3). Its price is full, and it is the
-largest addition in the methylation work. The probe prices a separate pointer column over widening
-`source_field`.
+**To design.** Which columns, and whether the home RM323 decides for locus-level facts also reaches a
+gene-pair subject (it does not if that home is keyed on `variant_key`).
 
-## RM319 — PacBio's TRGT carries the repeat count as `FORMAT/MC`, a per-motif String, so `repeat_alleles.csv`'s count half does not reach a PacBio user
+## RM323 — a fact about a locus has no authored home, so every per-locus axis is copied onto each genotype row and nothing checks the copies agree
 
-**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-09-30**, design first · **Owner** format (the consumer contract, possibly the element-rule vocabulary) + the corpus · **Motivating case** the maintainer, 2026-09-30: a beneficiary will soon hold PacBio samples, so methylation is wanted, "just don't build on thin air"; evidence in [METHYLATION_PACBIO § 4.1, last paragraph](probes/METHYLATION_PACBIO.md) · *related* RM317–RM319, RM66, RM65, RM164
+**Cut 2026-11-04 by the maintainer, after the final measuring run** (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §3): causal and effector confidence are **not authored**. The parquet carries their raw inputs: the fine-mapping posterior, the coding consequence, the L2G score and coloc. The C1–C4 / E1–E4 labels are v2's rubric, i.e. policy, so they live in v2's README and are computed by the consumer, as "evidence role" is. The run computed them on 67 of 75 rows. The 8 hand-curated inputs go in `overrides.csv` as corrections to the derived inputs. The meta-table keeps `tier`, `age_of_action` and its confidence, and gains **`flags`**: the maintainer chose it for parity, so every kind of member can carry tags the way `variants.csv` rows do, such as `ap:<strength>` and `hallmark:…`. `also_in:<module>` stays prose.
 
-**What was found.** No PacBio file opened in the probe carries `REPCN`, the ExpansionHunter key that
-`fmr1_cgg_repeat` (and the corpus's other repeat examples) point at. TRGT writes the count as `MC`,
-`Type=String`, per allele, with `_`-joined per-motif counts inside each allele (`18_8,25_8` at HTT
-under TRGT 5.x). A PacBio consumer therefore cannot follow the module's `source_field` at all. An
-author who writes `FORMAT/REPCN|FORMAT/MC` hands the consumer a motif-segmented string that no element
-rule defines a reading of.
+**Final, 2026-11-04, the maintainer: "go with C".** This supersedes both decisions below. The per-locus facts
+(tier, causal and effector confidence, age of action and its confidence) are columns of **the meta-table only**.
+They are never repeated on `variants.csv` or `diplotypes.csv`.
 
-**Why it matters now.** A beneficiary of this work is about to hold PacBio samples, and TRGT is the
-repeat caller in PacBio's pipeline. Every `repeat_alleles.csv` module is invisible to them today.
+- A single locus's facts are a meta-table row with **one member** and no finding.
+- A member is an item of a single-statement table. It may be a locus-level reference (a `variant_key` alone),
+  for a fact that does not depend on the genotype, or a full row's key.
+- APOE ε2 and ε4 are each a one-member row naming their allele.
 
-**To decide.**
+One new table holds facts and combinations. Priced at about 20 (a new table at about 10, plus five fact columns
+and the finding's columns), against about 30 for a separate fact table or for facts repeated on the
+existing tables. The maintainer's standing rule from this decision is in [RM28](#rm28--meta-conclusions-the-predicate-half):
+weight toward fewer entities.
 
-- Whether this is a consumer-contract rule ("sum the motifs", or "the motif the row's `repeat_unit`
-  names") or a vocabulary addition. The second is a minor.
-- How it meets RM66, one repeat locus with several motifs: TRGT's per-motif segments are exactly RM66's
-  shape.
-- Whether the reference examples gain the TRGT alternation.
+**Re-decided 2026-11-04 by the maintainer: no new fact table, and no subject kinds.** This supersedes the
+`(subject_kind, subject)` key below.
 
-Measure against the PureTarget VCFs first. The probe lists them, with FMR1, HTT and more.
+The per-locus facts become **columns on the single-statement tables** that already exist, such as
+`variants.csv` and `diplotypes.csv`, and on the meta-table's rows. The maintainer: "Authoring surface is
+human centered. If it were a db it'd be 10x more tables, because many columns are duplicated across
+individual-loci-type tables and properly normalized db resolves this by pairing adapters. Humans have trouble
+reading such." So the authored layer stays denormalized on purpose. Compilation may normalize it, which is
+[RM346](ROADMAP_1_0.md#rm346--the-authored-tables-are-denormalized-for-people-and-the-parquets-copy-that-shape-so-a-machine-reader-gets-it-too) (1.0).
 
-**Legality.** A contract sentence alone is a patch. A new element rule or pointer shape is a minor. It
-is filed against 0.8 because the RM66 overlap wants one decision.
+**What this means for a value that differs between rows.** A fact sits on a statement (one genotype row,
+one diplotype row), so it is a property of that statement. Two rows of one locus may legitimately differ:
+APOE's ε2/ε4 and ε3/ε4 rows each carry their own age-of-action confidence, which dissolves the ε2 versus
+ε4 break the archive check found. So no agreement warning is built. When a locus's facts are meant to be
+identical on every row, that is the author's to keep, and the 1.0 normalized shape will show any
+disagreement as two values. (Superseded by C the same day: facts are not repeated on rows, and the key rule under RM28 decides
+what counts as a disagreement.)
+
+**Reopened 2026-11-04 by the maintainer**: "why can't each part of the combination live in its respective table, and the combination plus its finding in the meta-table? A new table is the most expensive thing." The decisions below stand until the analysis is answered.
+
+**Decided 2026-11-04 by the maintainer: a per-locus fact table keyed `(subject_kind, subject)`.** It has three
+kinds:
+
+- `variant`: a `variant_key`;
+- `gene`: a symbol, for gene-level facts such as LoF burden;
+- `haplotype`: `(gene, allele name)`, resolved against `haplotypes.csv` or RM334's HLA allele table.
+
+It deliberately has no region or locus kind. A combination of several subjects, each in a stated genotype
+state, is defined by RM28's meta-table. Since 2026-11-04 that is also in 0.8, and each combination becomes a
+fourth subject kind here. Facts about a combination therefore live on this table too, never on a second one.
+
+**What the shape was tested against.** A subagent checked it against v2's full research archive
+(`data/input/4bf03886-….zip`, the seed's 161 loci): **121 fit, 37 strain, 3 break**. All three breaks are
+named alleles, and the `haplotype` kind holds them:
+
+- APOE ε2 and ε4 carry different age-of-action confidence;
+- HLA-B\*57:01 and HLA-DRB1\*15:01 carry facts that belong to the allele, not its tag SNP.
+
+**The strains need no new key, but they do need three authoring rules, stated in the proposal:**
+
+1. Which study's fine-mapping posterior sets a causal-confidence level (the seed uses the maximum).
+2. A fact measured on a proxy is marked as such (RM331's columns).
+3. A European-only tier is scoped by ancestry (RM328's derived flag), never transferred.
+
+**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first, and **decide this before RM324, RM326 and RM329** · **Owner** format + compiler · **Motivating case** longevitymap v2 requirements §4.2 · *for* longevitymap v2 · *related* RM322, RM324
+
+**What was confirmed.** `VariantRow` keys on `(variant_key, genotype)`. v2's tier, causal confidence,
+effector confidence, age of action, outcome profile and animal support describe the **locus**, not a
+genotype, so the plan writes each as a `flags` token on all three genotype rows. Nothing compares the
+copies, so an edit to one row leaves the locus saying two things. `annotations.parquet` is the
+per-variant table, but it is derived (keyed on the variant-effect pair) and an author cannot write it.
+
+**Shapes, priced, neither picked.**
+
+- **Typed optional columns on `VariantRow`**, repeated per genotype, plus a new warning code when the
+  rows of one variant disagree. Full price per column; the code is minor-class (RM308's rule).
+- **A locus table keyed on `variant_key`** that the per-locus columns live on. Full price, a new table
+  kind. It joins the frozen identity, so nothing is restated. It does not reach a diplotype subject
+  (RM322), and APOE is the module's lead locus.
+
+The decision is where the per-locus axes live. RM324's tier, RM326's derived outcome profile and
+RM329's age-of-action class all land wherever this decides.
+
+## RM324 — there is no evidence-tier column, so the axis that gates visibility is a `flags: tier:A` token
+
+**Placement updated 2026-11-04.** The one `tier` column goes on the meta-table only (RM323's final decision, "go with C"). The scale is still declared once per module.
+
+**Decided 2026-11-04 by the maintainer: one `tier` column, with the scale declared once per module.** The tier column goes on RM323's fact table. The module names the scale it grades on once in `module_spec.yaml`, as `weighting:` names its scale. A module therefore holds one scale, and a source's own grade cannot sit beside the module's tier in this column. RM294 (STRchive's grade) moved to 0.9 for that reason.
+
+**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format · **Motivating case** longevitymap v2 requirements §4.1 · *for* longevitymap v2 · *related* RM323, RM188 (axis 5), RM294
+
+**Need.** v2's tier A–D decides what is scored and what a reader sees by default. The plan carries it
+as `flags: tier:A` and derives `priority` from it. That makes `priority` (described only as "priority
+level override") a second spelling of the tier.
+
+**What not to reuse.** `evidence_level` is PharmGKB's closed `1A`–`4` on the PGx tables. Writing a
+module's own A–D scale into it puts two instruments under one name (P5).
+
+**Shape.** A value plus the scheme it is measured on, refused without the scheme: the 0.7
+`StudyRow.confidence` / `confidence_unit` pair is the precedent, and `@weight-has-no-unit` is why.
+Full ×2. Where it lives is RM323's decision. Design it with RM188's axis 5 (a salience separate from
+clinical severity; dna-engine carries a `tier`) and RM294 (whether a source's evidence grade travels
+into a module), since all three are one column family.
+
+## RM325 — `studies.csv` has no sample size, and v2's tier A rule is stated in N
+
+**Decided 2026-11-04 by the maintainer: `sample_size`, a closed `sample_unit` beside it (individuals / lives), and `n_cases`.** A magnitude carries its unit beside it (`@weight-has-no-unit`), so v2's "N ≥ 100k lives" is checkable from the artifact. The names still get the P5 audit in the proposal.
+
+**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format (+ enricher, if a derived N is filled) · **Motivating case** longevitymap v2 requirements §4.1 · *for* longevitymap v2 · *related* RM324, RM326
+
+**What was confirmed.** Tier A requires "N ≥ 100k lives, or ≥ 3k cases above the 90th percentile".
+No table in the format carries a sample size. A grep for `sample_size` or `n_cases` over the schema
+finds nothing, on `StudyRow` or on `GwasEffectRow`. So the rubric cannot be checked from the artifact.
+
+**Shape.** `sample_size` (and `n_cases` for case-control designs) on `StudyRow`. Full ×1–2. **The
+name needs the P5 audit**: parental-lifespan studies count *lives* (two parents per participant),
+which is not the number of people genotyped. A derived N on `gwas_effects.csv` is a separate half-cost
+option. The GWAS Catalog publishes its sample description as text, so probe the real field before
+modelling it (`@probe-the-real-file`).
+
+## RM326 — a study row cannot say which outcome it measured, so the definition of "pro-longevity" lives in a `study_design` prefix
+
+**Measured 2026-11-04, then decided by the maintainer.**
+
+The measurement was run by a subagent against both ported longevitymap `studies.csv` files, v2's
+`evidence/K_definitions_comparison.csv`, and OLS4. The trait term separates **0 of the 12 classes in
+real rows**. Neither ported file fills `trait_efo_id`. The one longevity term in real use, OBA_VT0005372
+(EFO_0004300 "longevity" is obsolete and points to it), covers at least four classes. In principle a
+term separates only PARENTAL_LIFESPAN (EFO_0007796) and HEALTHSPAN (EFO_0009762). Other findings:
+
+- `study_design` is free text and does not separate the classes either.
+- 15 of the K file's 63 PMIDs carry two or three classes.
+- v2 spells three class names two ways (FAMILIAL/FAMILIAL_LONGEVITY, MR/MR_MEDIATOR,
+  BIOMARKER/BIOMARKER_CLOCK).
+- Three real studies fit none of the twelve.
+
+Decided:
+
+- **The column is built:** `phenotype_class` on `StudyRow`, **open, with v2's twelve as the recommended
+  members**. A token outside them draws a warning, which catches spelling drift without refusing a
+  study that fits no class.
+- **One paper, several classes: RM140's rule.** Two rows for one `(variant_key, pmid)` are not duplicate
+  citations when both state `phenotype_class` and the values differ. The key stays as it is, and the
+  duplicate check narrows (`@absent-is-not-different`).
+
+**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format + compiler (derived columns) · **Motivating case** longevitymap v2 requirements §4.5, R-DEF-1 · *for* longevitymap v2 · *related* RM323, RM325
+
+**Need.** v2 sorts every study into one of twelve phenotype classes (`EXTREME_SURVIVAL_CC`,
+`PARENTAL_LIFESPAN`, `OWN_SURVIVAL`, `VIABILITY_AF`, `HEALTHSPAN`, `MULTIVARIATE_AGEING`, `FAMILIAL`,
+`DISEASE_DEPLETION`, `RARE_BURDEN`, `EVOLUTIONARY`, `MR`, `BIOMARKER`), and the class decides what a row
+may do. The plan writes it as a prefix in `study_design`. But `study_design` describes the study
+(case-control, GWAS, meta-analysis) and the class describes the outcome, so a prefix puts two axes in
+one cell (P5).
+
+**Ask first whether it is derivable.** `StudyRow.trait_efo_id` already distinguishes some classes
+(OBA life span against EFO parental longevity). Measure how many of the twelve an ontology term
+separates before adding a column.
+
+**Shape.** One optional column with a vocabulary (closed or recommended-open is a decision). Full ×1.
+Two things become **derived, near-zero**, once it exists:
+
+- *evidence role* (score or annotate). This is the module's own policy over classes, so it belongs in
+  the module's README, never a column.
+- *the outcome strip* per locus (healthspan / lifespan / exceptional survival). Kleene, never
+  two-valued: a locus with no study row of a class is **untested** and withheld, never "no effect".
+
+## RM327 — pleiotropy has no per-trait row, so a trade-off can only be prose, and `tradeoff` is computed rather than authored
+
+**Default under the 2026-11-04 reduction rule (the pm seat's reading; the maintainer may veto):** a per-trait judgement is a row of RM28's meta-table: one member, `trait_efo_id`, and `direction` (`protective`/`risk`). `tradeoff` is computed over those rows, and no new table kind is built for this item.
+
+**Key to re-derive, 2026-11-04.** RM323 no longer has subject kinds, so "align on RM323's subject" now means: a per-trait row is keyed on an item of a single-statement table plus `trait_efo_id`, using the same item references as the meta-table's members. The proposal settles the exact spelling.
+
+**Decided 2026-11-04 by the maintainer: the key aligns on RM323's subject.** It is `(subject_kind, subject, trait_efo_id)`, and `effect_allele` is kept for `variant` subjects only; a haplotype or gene subject is its own allele. RM323, this table and later RM28 then share one identity, so APOE ε4's per-trait rows are `haplotype` rows.
+
+**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**; the `tradeoff` shape is **decided** (computed, by the maintainer, 2026-11-03), the table is design first · **Owner** format + compiler · **Motivating case** longevitymap v2 requirements §4.2 (pleiotropy, mediator), §10 · *for* longevitymap v2 · *related* RM321, USE_CASES § 6a
+
+**What was confirmed.** `VariantRow` keys on `(variant_key, genotype)`, so a genotype row states one
+claim about one trait. Re-keying a shipped authored table is major-only (P3; RM140's text). `DiplotypeRow`
+already keys on `trait_efo_id`, so the two tables disagree on whether pleiotropy is a row. The per-trait
+*facts* already arrive in `gwas_effects.csv` (derived, with `effect_direction` increase/decrease). What
+has no home is the curator's per-trait *judgement*: whether this allele's effect on that trait is a
+benefit or a harm, which `VALID_EFFECT_DIRECTIONS` deliberately does not say.
+
+**`direction: contested` is not the interim.** Its description says the sources disagree about the sign.
+At a trade-off nobody disagrees: two known effects point opposite ways. SH2B3 and CDKN2B-AS1 are
+genome-wide-significant lifespan hits, so their lifespan sign is established, and the trade-off belongs
+in `negatives` until this table exists.
+
+**Shape.**
+
+- **An authored per-trait table** keyed on `(variant_key, effect_allele, trait_efo_id)`, carrying the
+  existing `direction` vocabulary, a role (`outcome` or `mediator`), and a citation. The mediator EFO the
+  plan parks in `flags: mediator:` folds in here, so `trait_efo_id` stays role-free. Full, a new table
+  kind.
+- **`tradeoff`, computed, never authored** (decided). True when an allele has a `protective` and a `risk`
+  row across traits. Kleene: false only when every trait's judgement is present and none of them is
+  opposite, and unknown otherwise, unless both signs are already present. A derived column, near-zero.
+- **Reserve the name `tradeoff`** in `RESERVED_NAMES_0_4` with a reason, so nobody authors it before
+  the computed one lands. **Done 2026-11-03, on `main`** as a patch: every authored model now refuses
+  the column with that reason rather than the generic stray-column message. When the derived column
+  ships, the name moves from the reserved set to `MISPLACED_COLUMN_REASONS`, since it will then be real
+  on a generated table and still never authored.
+
+## RM328 — no study row can name the ancestry it was measured in, so "European-only evidence" is a hand-set flag
+
+**Decided 2026-11-04 by the maintainer: the 1000G superpopulation codes** (AFR, AMR, EAS, EUR, SAS), the binding `PgsRow.training_ancestry` already uses.
+
+**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format + compiler (derived) · **Motivating case** longevitymap v2 requirements §5.4 (R-ANC-1, R-ANC-2) · *for* longevitymap v2 · *related* RM188 (axis 2)
+
+**What was confirmed.** `StudyRow.population` is free text. `GwasEffectRow.ancestry` and
+`PgsRow.training_ancestry` exist but each is scoped to its own table. RM188 sighted this axis three times
+in other projects (dna-engine's `transferability`, kaiseki, OmniGenis). This is the first in-house
+module that needs it.
+
+**Shape.** A multi-valued `ancestry` on `StudyRow` bound to a vocabulary. **Which one is the decision**:
+the 1000G superpopulation codes behind `training_ancestry`, or the gnomAD population list, and
+`vocab.py` forbids merging the two. Full ×1. Then `eur_only_evidence` is **derived** (near-zero): every
+supporting row says EUR. Kleene again: a row with no ancestry makes the answer unknown, never false.
+The ancestry banner (R-ANC-3) is just-dna-lite's half.
+
+## RM329 — an age-stratified estimate has no age band, so age of action is reconstructed from `statistical_test` prose
+
+**Cut 2026-11-04 by the maintainer, after the final measuring run** (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §3): `age_event` (0 v2 rows with an event other than death). The band is `age_min`, `age_max` and whose age (`age_of`); names still get the P5 audit. Rows that differ only by band narrow the duplicate-citation check, RM140's pattern, extended to bands.
+
+**Severity** low · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format · **Motivating case** longevitymap v2 requirements §4.2 (age of action), Timmers 2019 age bands · *for* longevitymap v2 · *related* RM323, RM140
+
+**Interim that works.** One study row per age band, each with a stated and different
+`statistical_test`. RM140's rule silences `duplicate_study_citation` for exactly that case. Otherwise
+it warns, in both modes, and never refuses.
+
+**Shape.** Band bounds plus whose age they are: participant or parent, at which event (death,
+recruitment). Full ×2–3. The names need the P5 audit before they are fixed. The age-of-action *class*
+(LIFELONG, MIDLIFE, LATE…) is a per-locus judgement and lands in RM323's home. Its confidence grade
+(DIRECT, DIRECT_WEAK) is partly derivable from the bands once they are data.
+
+## RM330 — an effect measured in one sex, one smoking stratum or one genotype has no row
+
+**Narrowing extended 2026-11-04** (the final run's gap 12). Two rows that differ only by stratum do not count as a duplicate citation, RM140's pattern.
+
+**Decided 2026-11-04 by the maintainer: the study's stratum and a sex condition.** `StudyRow` gains the stratum an estimate was measured in, a modifier and its level (full ×2). Conclusion rows gain one closed `sex` condition (male/female), which the consumer matches against karyotype. This is RM28's "plain column on demand" rule, with sex as its first class. A modifier that is another locus's genotype stays RM28's (0.9).
+
+**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format · **Motivating case** longevitymap v2 requirements §4.2 (context), §10 (`effect_modifiers`) · *for* longevitymap v2 · *related* RM188 (axis 3), RM28
+
+**Need.** FOXO3 rs2802292 is positive in men only, HLA-DRB1\*15:01 is anti-longevity in men, and some
+estimates exist only in smoking strata. The plan writes these as `flags: sex_specific:m` and in the
+conclusion prose. RM188 sighted this axis three times (open-genome-atlas, a nutrigenomics project,
+genomi's caveat). `CopyNumberRow.modifier_gene` / `modifier_cn` is the only precedent, and it is genetic.
+
+**Two different things, kept apart.**
+
+- **The stratum a study measured in**: a fact about the estimate, so optional `StudyRow` columns (the
+  modifier and its level). Full ×2.
+- **A conclusion that depends on the modifier**: the consumer supplies it at query time (sex from
+  karyotype, smoking from nothing). That is the injected cofactor RM28 dropped in 2026-08 with the rule
+  "each class gets a plain column on demand". This is the demand, and sex is the candidate first class.
+
+A modifier that is **another locus's genotype** (KL-VS in APOE4 carriers) is not this item. It is RM28's (in 0.8 since 2026-11-04)
+corpus entry.
+
+## RM331 — a study measured on an LD proxy cannot say so, and filing it under the lead checks the proxy's allele against the lead's
+
+**Cut 2026-11-04 by the maintainer, after the final measuring run** (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §3): **authors write only `proxy_rsid`.** r² has no meaning without its population, so r² and its population are a pair, and the pair is **computed**: the enricher asks an LD reference for the r² between proxy and lead in the study's own `ancestry` and writes it to a machine-written table (half price). The allele check runs against the proxy's alleles.
+
+**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format + compiler (`_check_study_effect_alleles`) · **Motivating case** longevitymap v2 requirements §6.2 (`rsid`, `ld_proxy_of`), §6.4 (APOE proxies) · *for* longevitymap v2 · *related* RM91
+
+**What was confirmed.** The plan scores lead variants only and records proxies "on study rows". But
+`StudyRow` has no `flags`, so there is nowhere to write that. A study of a proxy then has two homes, and
+both are wrong:
+
+- **Under the lead's rsID**, `_check_study_effect_alleles` checks the proxy's `effect_allele` against
+  the lead's alleles. It refuses if they differ and passes silently, with the wrong meaning, if they
+  happen to match.
+- **Under the proxy's rsID**, it raises `study_variant_orphan`.
+
+The APOE region alone has five proxies (rs2075650, rs4420638, rs769449, rs405509, rs449647), and
+rs2075650 is the one genome-wide hit in the Sebastiani 2012 classifier.
+
+**Shape.** A proxy column pair on `StudyRow` (the measured variant and its r², plus the LD reference
+population), with `effect_allele` checked against the proxy's alleles rather than the lead's. Full ×2–3.
+
+## RM332 — a `beta` has no unit on authored rows, while `gwas_effects.csv` has carried one since 0.6
+
+**Cut 2026-11-04 by the maintainer, after the final measuring run** (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §3): the `VariantRow` half, which reverses the morning's "both tables". `effect_unit` is on `StudyRow` only, and the parquet joins it onto a variant's effect from the matching study row.
+
+**Decided 2026-11-04 by the maintainer: both tables.** `effect_unit` goes on `StudyRow` and on `VariantRow`, free text and verbatim, mirroring `gwas_effects.csv`: wherever an effect size is authored, its unit sits beside it.
+
+**Severity** low · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority** · **Owner** format · **Motivating case** longevitymap v2 requirements §6.2 (`effect_measure`), §9 step 3 (sign conventions) · *for* longevitymap v2 · *related* `@weight-has-no-unit`
+
+**What was confirmed.** `GwasEffectRow.effect_unit` (0.6) records the unit of a `beta` verbatim.
+`VariantRow` and `StudyRow` have only `effect_measure`. v2's betas come in years per allele (sometimes
+doubled from a parental estimate), in Martingale residuals (Pilling) and in healthspan hazards (Zenin),
+so the plan writes the unit into `statistical_test` prose.
+
+**Shape.** `effect_unit` on `StudyRow` (and on `VariantRow`, which is a decision), free text and verbatim,
+mirroring the derived table. Full ×1–2. A sign convention ("positive = shorter life") is not a unit:
+`effect_allele` with `direction` already says it.
+
+## RM333 — the effector gene behind a GWAS locus has no source and no column
+
+**Placement settled 2026-11-04.** The effector-confidence label is never authored (RM323's cut). This lane's derived table is one of its inputs, beside coloc and the coding consequence.
+
+**Licence probed 2026-11-04 (all claims checked at the source); decided by the maintainer: build, under Open
+Targets' own terms plus its notice.**
+
+What the probe found:
+
+- L2G now lives in the Platform: release 26.09, dataset `l2g_prediction`, on EBI's FTP. There is no
+  Hugging Face copy.
+- The release is marked CC0 1.0 (the licence page, and the croissant's only `license` key).
+- The terms of use add "no additional restrictions … other than those provided by the original data
+  owners" and a third-party-rights disclaimer.
+
+The `SourceRow` therefore records `commercial_use=True`, `share_alike=False`, `redistribution=True`, and
+`notice` carries that disclaimer verbatim.
+
+**For a lawyer, named and not settled:**
+
+- "marked with" CC0 against "dedicates", for data Open Targets did not wholly author;
+- whether "all Open Targets users" reaches a module's buyer;
+- whether the CC BY-SA 3.0 of ChEMBL and HPA, as training inputs, reaches the scores;
+- whether a CC0 mark satisfies the CC BY 4.0 attribution owed to eQTL Catalogue and GTEx;
+- FinnGen's terms, unstated at its source;
+- the 26.09 inputs missing from Open Targets' licence table;
+- PanelApp's "commercial use for Open Targets".
+
+**For 0.9:** the host licence defers to the original owners, and an L2G row cannot name its owner
+(`@a-hosts-terms-are-not-its-contents-terms` assumes a record can override). That is a `SourceRow` axis
+gap, filed as [RM345](ROADMAP_0_9.md#rm345--sourcerow-cannot-state-five-licence-shapes-alphagenomes-four-and-a-host-licence-that-defers-to-owners-a-row-cannot-name) with AlphaGenome's four (`probes/ALPHAGENOME_ATLAS.md` §2.6).
+
+**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** enricher (a new lane) + format (a derived table's columns) · **Motivating case** longevitymap v2 requirements §4.2 (causal and effector confidence, R-CAUSAL) · *for* longevitymap v2 · *related* RM239, RM238, RM236
+
+**Need.** v2 names a gene only at effector confidence E1/E2, using Open Targets locus-to-gene (L2G)
+scores and coloc. `VariantRow.gene` is a symbol with no provenance, so nothing tells a nearest gene from
+an effector call. RM239 covers the fine-mapping posterior on `gwas_effects.csv`, RM238 the per-tissue
+eQTL (parked), and RM236 the coding consequence that C1/E1 key on. No item covers L2G, and no lane reads
+Open Targets.
+
+**Shape.** An Open Targets snapshot lane, walked through [CACHE_SURFACE.md](CACHE_SURFACE.md)'s checklist,
+**licence probed first** (not verified here). Effector gene, score, method and release on a derived table
+(half cost). The C1–C4 / E1–E4 labels are the module's rubric over those inputs, so they are computed
+once the inputs exist, never authored.
+
+## RM334 — an HLA allele has no table, and tag SNPs cannot stand in for one
+
+**Cut 2026-11-04 by the maintainer, after the final measuring run** (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §3): **the new HLA table.** `allele_function.csv` (keyed `(gene, allele)`) holds the 8 v2 alleles, and meta-table rows hold their facts and findings. The nomenclature grammar check applies to HLA genes on `allele_function.csv`.
+
+**Decided 2026-11-04 by the maintainer: grammar now, the list in 0.9.** The format checks the nomenclature's grammar (`gene*field:field` at a stated resolution). Checking that an allele exists in IPD-IMGT/HLA's list is an enricher lane whose licence is unprobed, and it waits for 0.9.
+
+**Severity** low · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format · **Motivating case** longevitymap v2 requirements §2 (R-HLA), §10 · *for* longevitymap v2 · *related* RM331
+
+**Need.** HLA-DRB1\*15:01 and B\*57:01 are v2's most consistent non-APOE signals, and the plan defers
+them to tag SNPs flagged with r².
+
+**Why no existing brick fits.** `HaplotypeRow` is a *definition*: the variants that are on one strand.
+An HLA tag SNP is a probabilistic proxy whose r² depends on ancestry, so writing it as a definition would
+be a false claim. `AlleleFunctionRow` has the nearest key, `(gene, allele)`, but its columns are PGx
+activity and function.
+
+**Shape.** A per-allele carrier table keyed on `(gene, allele)` at a stated field resolution (two-field),
+with `direction`, `trait_efo_id`, `conclusion` and a citation. The consumer joins it against an HLA
+typing call, which is a measurement a SNP VCF does not contain. The tag-SNP fallback reuses RM331's proxy
+shape. Full, a new table kind. Validating the nomenclature (IPD-IMGT/HLA) is an open question.
+
+## RM335 — model-organism evidence has nowhere to go, and a study row naming the rsID claims the mouse study was about the human variant
+
+**Severity** low · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format · **Motivating case** longevitymap v2 requirements §4.3 (R-ANIMAL-1…5), §10 · *for* longevitymap v2 · *related* RM327
+
+**What was confirmed.** The plan's interim is a `studies.csv` row with `study_design: model_organism`.
+That row is false either way:
+
+- **With the rsID**, it says a mouse lifespan study was about the human SNP.
+- **Without one**, it attaches to the whole module, because `StudyRow` has no `gene` column (RM47 made the
+  variant optional, not a gene the row could name instead).
+
+**Shape.** A separate table, one concern per table: the human gene with an orthologue id (symbol
+matching found 20 of the 22 genes NCBI orthologues found), species, model type, sex, diet, the lifespan
+effect, and the direction concordance with the human allele (`concordant`, `discordant`,
+`nonmonotone`), with a citation. Annotation only: it never reaches an effect column or a tier
+(R-ANIMAL-1). Full, a new table kind.
+
+## RM336 — a DOI written into `pmid` parses as five or six PubMed ids, and the literature pass looks each one up
+
+**Widened 2026-11-04 by the maintainer, after the second measuring run: "fix the error class on all tables".**
+The pmid/doi pair applies to **every table where a row cites**, not only `studies.csv`:
+
+- a DOI is never written into `pmid`;
+- `pmid` accepts the `NONE` sentinel, which makes `doi` mandatory and validated.
+
+Tables that cite with a `pmid` and no `doi` today gain `doi`:
+
+- `pharm_variants.csv` (RM132's `pmid`);
+- the binning kinds (RM47's `pmid`);
+- the derived `gwas_effects.csv` (half price);
+- the two new citing tables: the meta-table and RM335's model-organism table.
+
+The run measured 6 preprint-only HLA alleles and 17 PMID-less model-organism rows. The roster of citing
+tables is derived (the compiler's `_CITING_TABLE_KINDS`), never hand-kept.
+
+**Preprints, decided 2026-11-04 by the maintainer after the final run (17 v2 studies are DOI-only).** DOIs stay in `doi` and never in `pmid`. `pmid` accepts a typed sentinel (`NONE` or similar; the exact spelling gets its P5 audit). That sentinel makes `doi` the **mandatory substitute**, and the validator then checks the DOI instead. A DOI written into `pmid` is still refused. `pmid` stays required, because the cell is present, so this is minor-legal (P8). RM263's DOI-to-PMID lookup still fills a real PMID wherever PubMed indexes the paper.
+
+**Decided 2026-11-04 by the maintainer: a refusal, like RM50's PMCID arm.** `validate_pmid_cell` refuses a cell whose only token is a DOI, and names it. Principle 3 says a module that validated keeps validating, so before the build, check the published modules (the registry's catalogue and the reference examples) for a DOI in `pmid`. None found: the refusal breaks no published module. Any found: they go back to the maintainer before the arm ships.
+
+**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**; a refusal or a warning is the decision · **Owner** format (`spec.validate_pmid_cell`) · **Motivating case** longevitymap v2 requirements §6.3 ("`pmid`, or `doi` for preprints") · *for* longevitymap v2 · *related* RM50, RM263, [ROADMAP § `StudyRow.pmid` required + PMID-shaped](ROADMAP.md#studyrowpmid-required--pmid-shaped)
+
+**Reproduced 2026-11-03.** `StudyRow(rsid="rs429358", pmid="10.1101/2025.03.01.640000")` validates.
+`extract_pmids` returns `['10', '1101', '2025', '03', '01', '640000']`, and `doi:10.1038/s41586-019-1234-5`
+gives five. `enricher/src/just_dna_enricher/literature.py` iterates `extract_pmids(study.pmid)`, so the
+literature pass checks PubMed records 10, 1101 and so on as the row's citations. A preprint-only row is
+exactly where an author writes this, because `pmid` is required and the paper has only a DOI.
+
+**Same class as RM50.** RM50 gave `validate_pmid_cell` a PMCID arm, refusing a cell whose only id is a
+PubMed Central number and naming it. A DOI is the next registry whose digits read as PMIDs.
+
+**The decision.** A refusal arm like RM50's makes cells that shipped modules may already hold invalid
+(P3/P8), while a new warning code is minor-class (RM308's rule). The real fix for preprints stays the 1.0
+doi-first demotion. RM263 is the route from a DOI to its PMID.
 
 ## RM303 — the snapshot layout is a contract with six parties and no model, so it belongs in `just-dna-format`
+
+**0.8, confirmed 2026-11-03** by the maintainer when scoping 0.8.
 
 **Severity** medium · **Status** open — filed 2026-09-28 at the maintainer's request, **taken into
 0.8** · **Owner** format (the model) + enricher (the writers and readers) · **Motivating case** the
@@ -238,29 +611,31 @@ surfacing as an incident, and it was repaired at the reader rather than at the c
   depends on pydantic and already owns the module's provenance record (`manifest.json`), and
   `release.json` is that record's snapshot twin.
 
-## RM261 — strip comments from the enricher wheel (measured, deferred)
-
-**Severity** low · **Status** open — deferred by the maintainer on 2026-09-25 as risky ("dangerous,
-defer") · **Owner** enricher (packaging) · **Motivating case** the 0.7.2 enricher wheel is 893 KB
-zipped, all of it Python source
-
-**Measured on `just_dna_enricher-0.7.2`.** Of 2.58 MB of `.py`, docstrings are 31%, comments 19%, and
-code plus whitespace 51%. Removing the comments alone takes the zipped `.py` from 847 KB to 664 KB
-(−22%). Docstrings stay in any version of this item: they are the `help()` text and the API pages.
-
-**Why it is not simply done.** `hatch_build.py` would have to leave the original `.py` out of the wheel
-and force-include stripped copies. `artifacts` / `force_include` collide on the same path (see that
-file's own note). The copies must keep line numbers, with a comment-only line becoming an empty line,
-or a traceback from an installed wheel points at the wrong source line. Editable installs must not be
-touched. It reaches the **enricher only**: format and compiler are on `uv_build`, which has no hooks,
-and covering them means changing their build backend.
-
-**Considered and refused in the same round:** taking the 15 `*_build.py` snapshot builders out of the
-wheel (112 KB zipped). `scripts/rebuild-caches.sh` documents `pip install 'just-dna-enricher[dev]'`
-then `cache rebuild` as a supported deployment, and `caches.py` imports every builder at module
-level. The maintainer kept them in.
-
 ## RM253 — a repeat-count star allele (UGT1A1 `*28` = TA(8)) has no home a diplotype can name, and the CPIC drafter translates none of CPIC's notation
+
+**Seam 1 decided 2026-11-04 by the pm seat, on the evidence, as the maintainer asked: spelled, VCF-anchored
+and left-normalized.**
+
+A subagent read the site in about 120 PGP-HMS VCFs plus local runs. The evidence, all measured:
+
+- DeepVariant, DRAGEN, GATK, Clair3, Isaac, Helix, the imputation servers and CGI vcfBeta all write `*28`
+  as the ordinary indel `C>CAT` at the anchor (GRCh38 `2:233760233`, GRCh37 `2:234668879`), left-normalized.
+- No file holds a symbolic allele at the site, and no caller gives a repeat count in place of sequence.
+- freeBayes and `bcftools mpileup` write the whole 16-base run unnormalized. They match only once the
+  consumer normalizes, which the consumer guide already says no format guarantees.
+
+So `*1` is the reference, `*28` is `C>CAT`, `*36` is `CAT>C` and `*37` is `C>CATAT`. Seam 2 follows the
+same rule: CPIC's `DEL<bases>`/`INS<bases>` are spelled the same way, and the bare `DEL` with no length
+stays skipped.
+
+**One trap to carry into the build.** `rs3064744` appears in no VCF's ID column. Arrays (23andMe,
+AncestryDNA) and dbSNP-annotated VCFs carry `rs34983651` for the `+TA` allele, and one imputation server
+stamps `rs606231201`, which dbSNP places as a different allele. So an rsID-keyed row must not rely on
+`rs3064744`.
+
+**Decided 2026-11-04, in part.** DPYD (seam 3): the drafter writes CPIC's full name with the spaces dropped, as the maintainer chose. The comma between variants is replaced, because a comma inside a name would split any multi-valued cell (MULTI_SEP is `,;|`). The maintainer suggested `:`, tentatively ("maybe?"). **The pm seat picked `&` instead**, and the maintainer may still veto it before the drafter ships. `&` was picked because every other candidate already means something in an allele name. `:` is HGVS's reference separator. `+` is an intronic offset (`c.1905+1G>A`, DPYD `*2A`). `_` is an HGVS range. `/` separates the two halves of a diplotype. So HapB3 is `c.1129-5923C>G&c.1236G>A(HapB3)`. Seam 1, how a repeat count is spelled: open, decided after checking precedent in real VCFs (PGP-HMS, and just-vcf's seats).
+
+**0.8, confirmed 2026-11-03** by the maintainer when scoping 0.8.
 
 **Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-09-21** · **Owner** format (schema) +
 enricher (`pgx_draft`) · **Motivating case**
@@ -311,341 +686,16 @@ are no longer reported as CYP2D6's copy-number notation.
 snapshot, already provisioned, and the probe module is a `draft_gene("UGT1A1")` away. This is a design
 decision, not a wait.
 
-## RM248 — a declarative report schema: research, not a design
-
-**Severity** — (unsized, deliberately) · **Status** open — **a minor, taken into 0.8 on 2026-09-21** — a
-research item, asked by the maintainer 2026-09-20. Nothing here is a proposal yet; the exit is a
-measurement and a charter ruling, not a draft schema. The class is the most additive outcome this
-could have, which is a new optional table or spec block; two of its three exits ship nothing at all · **Owner** unassigned — the placement question is half the research · **Pairs with**
-[RM28](ROADMAP_0_8.md#rm28--meta-conclusions-the-predicate-half),
-[RM188](ROADMAP_0_8.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics),
-and RM7 below (which is **not** the same item — see *What this is not*)
-
-**The ask, verbatim in intent:** some kind of report schema — Jinja templates or something — where the
-*contents* are static and declarative and all the fancy CSS lives downstream.
-
-### Why it is filed as research rather than as a design
-
-Because the charter has something to say first, and it does not obviously say yes. The Non-goals are
-explicit: *"No UI and no gene–disease inference. The format catalogs curated annotations that consumers
-**join** against variant data; interpretation and presentation belong to those consumers."* A report
-schema that describes a rendered page is that non-goal by another name.
-
-The maintainer's own framing is also the resolution worth testing: **a report is a declaration of
-CONTENTS, not of appearance.** *What a report says, in what order, keyed to which annotation rows* is
-arguably still annotation; *how it looks* is unambiguously downstream. If that line holds, this is
-legal and the non-goal is untouched. If it does not — if a contents schema cannot be written without
-smuggling in ordering, emphasis or layout — then the honest answer is that this belongs to a consumer
-and the entry closes. **That ruling is the first deliverable.**
-
-**Principle 1 decides the other half before any syntax is chosen.** OakVar's reporter modules are
-Turing-complete, and that is exactly the shape P1 rejects: code in the compile path, no
-byte-reproducibility, a runtime every consumer must embed. Jinja is not obviously safer — it has
-loops, filters and arbitrary attribute access, so "a template language" is a spectrum and the sanctioned
-escapes are named: a **non-Turing-complete boolean predicate** and **declarative pattern grammars**. Any
-candidate has to be placed on that spectrum explicitly rather than adopted because it is familiar.
-
-### What this is not
-
-**Not [RM7](ROADMAP.md#rm7--evaluation-output--report-card-schema).** That entry is a *per-sample* evaluation
-output — a measurement, and therefore a consumer contract by the data-agnostic north star. This one is
-about the structure of a report over **annotation content**, with no sample in it. The two are adjacent
-enough to be confused and are listed together on purpose.
-
-**Not a fourth library**, on today's evidence. The maintainer's read is that it looks like overkill, and
-nothing here contradicts that yet: a declarative contents schema is a schema, which is
-`just-dna-format`'s job, and a renderer is a consumer's. A fourth tier would only be justified if the
-research finds a real body of shared rendering logic that is neither schema nor consumer — and finding
-that out is part of the item.
-
-### The competitor evidence, which is the reason this is worth research at all
-
-This pairs with [RM188](ROADMAP_0_8.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)
-because the surveys already ran and the reports are where every competitor's declarative layer visibly
-ends:
-
-- **ClawBio** — `pharmgx-reporter` is a 2,327-line Python file holding its variant tables inline
-  (`PGX_SNPS`, `GENE_DEFS`, `GUIDELINES`: 32 variants, 13 genes, 59 drugs), and
-  `clinical-variant-reporter` and `cnv-acmg-classifier` are `planned`. Their reports are good and their
-  data is a module in a shape nothing validates. See [`probes/CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md).
-- **genomi** — a runtime rather than a format, with a curated thirteen-record catalogue. See
-  [`probes/GENOMI_SURVEY.md`](probes/GENOMI_SURVEY.md).
-- **OakVar** — reporter modules, Turing-complete. The counter-example, and the one this repo's P1
-  already has an answer to.
-- **SelfDecode and the consumer-genomics vendors** — the reports are the product. Not surveyed here,
-  and a survey of what their reports *contain* (as opposed to how they look) is cheap and is probably
-  the highest-value first measurement this item can take.
-- **`just-dna-lite`** already has a built-in reporting system. It is the reference consumer, so **what
-  it does today is the baseline any schema has to beat** — and if it needs nothing from us, that is an
-  answer rather than a gap.
-
-### Why it pairs with [RM28](ROADMAP_0_8.md#rm28--meta-conclusions-the-predicate-half)
-
-RM28's surviving half is the **predicate** — a claim keyed on more than one subject, which no brick
-holds. Its second corpus entry is exactly a *report* finding: ClawBio's pharmgx-reporter renders one
-AVOID across 59 drugs, warfarin, and reaches it through `"special": "warfarin"` — a hardcoded branch
-calling `get_warfarin_rec(profiles)`. **The report is where the missing predicate surfaces**: a section
-that has to say *"CYP2C9 and VKORC1 together"* is RM28's gap wearing a consumer's clothes, and a report
-schema that cannot express it would be shipping the same hardcoded branch one layer up. So the two
-items constrain each other: **RM28's answer bounds what a report section can be keyed on**, and the
-report is the place where an unexpressible pairing is most visible.
-
-### There is already a presentation surface, and it is small and deliberately bounded
-
-Worth knowing before anything is designed, because it sets the precedent this item either follows or
-breaks. `module_spec.yaml` carries `report_title`; `normalize.py` splits **identity** keys from
-**presentation** keys with a stated reason per key (`PRESENTATION_AUTHORITY_KEYS`, today just
-`short_description`); and `RECOMMENDED_*` vocabularies exist for colours and icons. So the format
-already admits *some* presentation, as named keys with per-key justifications and a storing authority.
-The question this item should answer is whether a report schema is the same thing at a larger scale, or
-a different kind of thing that happens to rhyme.
-
-### What would close this
-
-One of three, and the research is choosing which:
-
-1. **Dissolved** — `just-dna-lite`'s existing reporting needs nothing from the format, and the
-   contents/appearance line cannot be drawn cleanly. The entry closes with the reasoning recorded.
-2. **Closed additively** — a bounded, declarative contents schema (a table kind, or a spec block) that
-   passes P1 and the human-authorable ⇔ machine-precise gate, with a motivating report from a real
-   consumer. Then it is an ordinary minor-legal addition.
-3. **Parked with a sharper reason** — the shape is real but blocked on RM28's predicate, which is the
-   most likely outcome if the warfarin case turns out to be representative rather than singular.
-
-**The cheapest first measurement**, and the one to take before any syntax is discussed: read what
-`just-dna-lite` actually renders today, and list every field it needs that a module does not carry.
-That is a list, it is finite, and it decides between (1) and (2) without a design round.
-
-## RM181 — a byte digest that moves beside intact signatures says something changed and not what, and provenance has no shift tracker
-
-**Severity** low · **Status** open — **filed 2026-09-03 for the 0.8 review of what the hash family
-covers, and a candidate for the 1.0 one if it turns out to want a manifest field per domain** ·
-**Owner** format · **Motivating case** the maintainer's decision on S87 (RM180), in
-CONSUMER_SUGGESTIONS_HISTORY.md
-
-**The observation.** With RM180, an author rewording an overlay `reason` produces: `content_signature`
-unchanged, every fact signature unchanged, `resolution_signature` unchanged, `artifact.digest` moved.
-Read from outside, that says *something changed* and nothing more — the byte digest is a canary, not a
-locator. Before RM180 the same edit moved `content_signature` too, which was wrong for the opposite
-reason: a provenance edit read as a content one. Either way there is no hash whose movement means *the
-provenance moved*, and the maintainer's words for the gap were that metadata has no dedicated shift
-tracker.
-
-**The shape named: digest by domain.** One identity per concern — content (have), facts per sidecar
-(have), bytes (have), and a provenance or metadata one (do not have) — so a consumer holding two
-manifests can say which domain moved by diffing the hash family rather than diffing parquets. That is a
-separation of concerns, not a new axis on an existing hash, and it is why this is not a repair to
-RM180.
-
-**Why it waits.** Three questions before it is an item. What the provenance domain *contains* — the
-overlay's three cells only, or also `sources.csv`'s `fetched_at`, `verification.json`'s `checked_at`,
-the README bytes and `module_spec.yaml`'s display half, each of which is outside some hash today for
-its own reason. Whether it is a manifest field (additive, minor-legal) or a member of the
-`*_signature` family, whose roster rule in SCHEMAS is *one per derived sidecar* — and this is not a
-sidecar. And whether `manifest.inputs` already answers it: the raw-bytes entry for `overrides.csv`
-moves on a reason edit, so per file the answer exists, and what may be missing is the *reading* rather
-than a hash. RM126's release record answers the neighbouring question — what a *release* changed about
-compiled output — not this one, what an *edit* changed about a module.
-
-**What would close it.** A consumer asking *what moved* and getting the wrong answer from the family
-as it stands; or the 0.8 review deciding the family is complete and this becomes a FAQ entry.
-
-## RM188 — the competitor survey — run Calwbio's and genomi's pipelines, read their reports, and re-fold the logic into module mechanics
-
-**Severity** medium · **Status** open — **round 1's two surveys filed 2026-09-13 and their findings
-routed; round 2's roster is below, searched for rather than named** · **Owner** format (the survey),
-then whichever tier the findings land in ·
-**Motivating case** the maintainer's direction, not a consumer report
-
-**Progress.** Both named competitors are now probed, one document each, and neither turned out to be
-a competing *format*: [`probes/GENOMI_SURVEY.md`](probes/GENOMI_SURVEY.md) (genomi is a runtime; its
-thirteen-record curated catalogue is a `variants.csv` in Python, and §8 ranks seven annotation gaps,
-all priced as derived sidecars) and
-[`probes/CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md) (ClawBio is 97 agent skills — 68 of them
-`planned` — whose genotype-interpreting half carries four hand-curated variant tables inlined as
-Python dicts and JSON). The two surveys overlap in almost nothing, which is itself the result: one
-reaches for pathway, target–disease and regulatory content we do not carry, the other for the
-per-variant clinical axes an ACMG engine reads.
-
-**The ClawBio half's findings are filed, 2026-09-13** — a probe records and the tracker allocates, so
-the numbers came from `.claude/rm-next.py` rather than the probe: **RM236** (`consequence`/`impact`,
-and RM23's grain question with them), **RM237** (region-keyed ClinGen dosage), **RM238** (per-tissue
-eQTL, open but parked on a consumer), **RM239** (fine-mapping posterior), **RM240** (land the
-translated nutrition panel in the corpus) and **RM241** (`weighting` does not survive `reverse`). The
-sixth finding was not filed as a new item because it is not one: warfarin's multi-gene call is
-[RM28](#rm28--meta-conclusions-the-predicate-half)'s surviving *pairing across subjects* clause, and
-it went in there as that entry's **second corpus entry**. The genomi half's seven ranked candidates
-are recorded in its own § 8 and are not filed here.
-
-**What it is.** A survey of the consumer-genomics competitors, with two named first — **Calwbio** and
-**genomi** — done the way PUBMIND_ASSESSMENT was done and not the way a feature comparison is: run
-their pipelines end to end on real input, obtain the reports they produce, and read the logic *back*
-out of the reports — which annotations they join, at what grain, which rules turn a genotype into a
-sentence, and where a number comes from. Then re-fold what survives into the module mechanics here:
-a table kind, a bounded rule, a vocabulary member, or a use case in USE_CASES.md that names the gap.
-
-**What it is not.** Not a marketing comparison and not a licence to copy a rule: a competitor's
-inference is evidence about what a report *needs*, and the charter's non-goals still hold — no
-gene–disease inference in the format, annotation tables only. Where a competitor's logic is an
-inference, the outcome here is the *table that would let a consumer make it*, never the inference.
-
-**Method, so it can be repeated.** One document per competitor under `docs/probes/`, the shape of
-PUBMIND_ASSESSMENT: what was run, on what input, what came back, what it competes with, what it
-complements, and the adoption design if any. Real data, the tool turned on its own output
-(`@adversarial-role`, `@probe-uniform-corpus`), and every claim about a competitor pinned to an
-artifact obtained rather than a page read — the ClinPGx rounds showed a documented surface and the
-real one disagreeing.
-
-**Exit.** Each competitor's probe filed, and its findings either dissolved (already enabled), closed
-additively (an RM with a motivating report in hand), or parked with the reason — the
-USE_CASES → PROPOSAL loop, entered at the top.
-
-**Round 2 — the candidate roster, built 2026-09-13.** Round 1's two competitors were named by the
-maintainer; round 2's were **searched for**, and the search is the first half of the result. Method:
-GitHub repository search over eight query shapes (personal genome interpretation, 23andMe raw data,
-annotation modules, MCP + bioinformatics, nutrigenomics, pharmacogenomics, ACMG, PGS), sorted both by
-stars and by recency, plus `awesome-genetics` (last pushed 2024-03) for the pre-agent generation.
-Twenty-two repositories were then **skimmed** — not surveyed — against one question: *does it carry
-hand-curated per-variant or per-gene rows a human wrote and committed, or does it fetch public
-sources at query time?* That is the discriminator round 1 established: both genomi and ClawBio turned
-out to be the second kind, and the curated fraction of each was tiny.
-
-**Re-derive the search with:**
-
-```bash
-gh api -X GET search/repositories -f q='topic:personal-genomics' -f sort=updated -f per_page=15 \
-  --jq '.items[] | "\(.full_name)\t\(.stargazers_count)\t\(.pushed_at[:7])\t\(.description)"'
-```
-
-varying `q` over the shapes above. **Nothing found in the 2026 crop has more than ten stars**, which
-is itself a finding: the local-first personal-genomics field is a long tail of weekend projects, and
-the established tools are older and narrower. Do not read the roster below as a competitive
-landscape — it is a list of places to go looking for annotation *shapes*.
-
-### The four that get a full survey
-
-| # | Target | Pinned | Class | What its survey asks |
-|---|---|---|---|---|
-| 1 | [OakVar](https://github.com/rkimoakbioinformatics/oakvar) | `d4e8090df8`, 48★, licence NOASSERTION | a competing module format **with a store** | **A fresh peer read, not a migration post-mortem** — the maintainer's framing: *an OakVar module is in essence a plugin, arbitrary code, so it is a module plus half an annotator*. Its manifest (`<name>.yml`) declares `type` (annotator / postaggregator / reporter), `level`, `requires` (other modules), `input_columns`, and typed `output_columns` — a **column contract plus a dependency graph**, where ours is a row schema with neither. Ask what the column contract buys, what `requires` expresses that no module here can, and what is left of a module once the arbitrary code is removed. |
-| 2 | SNPedia, via [snappy](https://github.com/zhaofengli/snappy) | `2d5255f`, 52★, BSD-2-Clause; SNPedia content CC BY-NC-SA 3.0 US | the corpus round 1 never had | The largest curated variant-trait corpus in existence: **106,603 SNP entries** frozen into `data/snps.json` from a MediaWiki XML dump, plus `genotypes.json` (per-genotype magnitude / good-bad / summary) and `genosets.json`. Survey **the corpus, not the SPA** — snappy is the extraction route that proves a static dump works, where `OSGenome` (146★) only crawls live. **Its terms are CC BY-NC-SA 3.0 US, established off three primary pages 2026-09-13, which makes it adoptable rather than not** — as an unsellable, share-alike, attributed module of its own. See [USE_CASES § 2e](USE_CASES.md#2e-republishing-a-licence-encumbered-third-party-corpus-as-modules-2026-09-13), now the maintainer's named use case for this format. |
-| 3 | [BioMCP](https://github.com/genomoncology/biomcp) | `bb3a1d4ad7`, 630★, MIT | the agent-era tier done at scale | Thirteen times genomi's stars and the same architectural class. Ask the one question genomi could not answer at its size: **when an agent tool surface is the product, what does it end up needing to say about a variant that a table does not?** If the answer is "nothing", that closes the whole class and round 3 can skip it. |
-| 4 | [Exomiser](https://github.com/exomiser/Exomiser) | `98f4e0b6f2`, 265★, AGPL-3.0 | phenotype-driven prioritization | The only established tool in the roster that **ships its annotation as a versioned data bundle** rather than fetching it — the closest existing thing to a compiled artifact. Ask what its bundle contains, how it is versioned, and how HPO term sets sit in it, given that [HPO ships no route here](ENRICHER.md) for licence reasons. |
-
-### The three small ones worth a read after those
-
-| Target | Pinned | Why |
-|---|---|---|
-| [dosedna](https://github.com/alejandro-publius/dosedna) | `530cfe7`, 2★, MIT | Hand-curated PGx over six genes, and the closest small analogue of our `haplotypes`/`diplotypes`/`pharm_variants` trio — plus a committed, provenance-stamped CPIC snapshot (`allele_definition` 39, `diplotype_phenotype` 666, `recommendations` 1,180). |
-| [dna-engine](https://github.com/ShadowfetchLinux/dna-engine) | `5791bb3`, 0★, Apache-2.0 | **403 curated markers with the richest per-marker schema found anywhere**: `tier`, `effect`, `transferability`, `chips`, per-genotype label/impact/summary/detail/**actions**, and citations as `(pmid, note)` pairs. Also a deliberate non-interpretive posture — it refuses to translate genotype into phenotype, and says why. |
-| [allelix](https://github.com/allelix/allelix) | `4b56bbe`, 30★, AGPL-3.0 | Carries no corpus, and is here anyway: **38 ADRs documenting source-precedence and suppression rules** (PharmGKB non-finding suppression, somatic-on-germline suppression, a GWAS odds-ratio magnitude modifier). Competing-source arbitration is `authority_precedence`'s problem, and this is the only project found that wrote its reasoning down. |
-| [Custom-Personal-Genome-Interpretation](https://github.com/dianguan0105/Custom-Personal-Genome-Interpretation) | `15fe28a`, 0★, MIT | Two authored tables: 98 rsIDs carrying **GRCh37 and GRCh38 coordinates side by side on one row** plus population-split MAF, and **540 PRS weights transcribed out of a paper's supplementary table** — see [RM16](#rm16--authored-prs-weights-a-scoring-file-not-a-manifest). |
-
-### What the skim already found — five axes, each sighted independently more than once
-
-**This is the part that did not need a survey.** Convergence across unrelated projects is the
-`@probe-uniform-corpus` heuristic firing: when three people who have never met each add the same
-field, the field is answering a real question.
-
-1. **Which genotyping arrays can call this variant** — three sightings: dosedna's `array_callable` + free-text `coverage_note` per gene, dna-engine's `chips` per marker, and `MrOrtiz/dna-annotator`'s measured-vs-imputed tiering per source array (it refuses to let an imputed call outvote a measured one). **We have nothing.** `requires_callable` / `callable_from` / `min_quality` ask whether the *consumer's own VCF* saw the position; this asks which *platforms in the world* interrogate it, which is a fact about the variant and therefore annotation. Note the per-gene / per-variant scope split, which is the shape [that already cost 39 variants once](ROADMAP_HISTORY.md).
-
-   **A fourth sighting, and the first with a source and a measurement: S111 (just-module-creator,
-   2026-09-24).** `just-prs` already holds the Illumina GSA v3 backbone that 23andMe v5, AncestryDNA v2,
-   MyHeritage and FTDNA v2 share, as typed positions on both builds (648,379), plus a 1000G LD-proxy
-   table. Measured over 16 real modules' `resolution.csv`: 336 of 965 positions typed (35%). The GWAS
-   modules came out near 22% and the PGx panels at 51%, and lifting to GRCh37 lost one position. The
-   report asks for a *module-level* expected match rate. Recorded here rather than as an `RMn` because
-   it is this axis with a candidate source, and three things a design would have to settle came up in
-   the reply ([CONSUMER_SUGGESTIONS_HISTORY § S111](CONSUMER_SUGGESTIONS_HISTORY.md)):
-   **(a)** the fact is per variant (*which platforms interrogate this position*), and the module figure
-   is a manifest summary derived from it, the way the `literature` block summarizes
-   `literature.csv`. The per-variant form is also what the reporter's other use, picking the typed one
-   of two lead SNPs in LD, actually needs. **(b)** Counts, never a rate, with *typed*, *LD-proxyable*
-   and *not position-matchable* kept apart. The proxy count describes a substitution the consumer's
-   engine may or may not make, so it stays beside *typed* and is never added to it. *Position-only* goes
-   in the field's name or description, since a position match says nothing about allele or strand.
-   **(c)** The source is a snapshot lane, never an import of `just-prs`: the per-chip position sets
-   published on the HF org with a `release.json`, walked through [CACHE_SURFACE.md](CACHE_SURFACE.md)'s
-   checklist, and the GSA manifest's licence probed before it is republished
-   (`@probe-the-real-file`, `@no-named-licence`).
-2. **A per-variant claim's ancestry transferability** — three sightings: dna-engine's `transferability`, `Bluefinee/kaiseki`'s Japanese-cohort reconciliation, `drhudsonandrade/OmniGenis` recording discovery-cohort ancestry per GWAS association. We carry `PgsRow.training_ancestry` and `GwasEffectRow.ancestry`, both scoped to their own table; there is no way to say *this variants.csv row was established in one population*.
-3. **Effect modified by a non-genetic factor** — two sightings, and genomi is the third: `sinhaankur/open-genome-atlas` splits each marker's evidence by `kind` (diet / lifestyle / geo), **each axis independently cited**; `drdaviddelorenzo/nutrigenomics` scopes its `weight` to a `nutrient_domain`; genomi's own caveat *"folate fortification status of the population modifies effect size"* is the same fact in prose. `CopyNumberRow`'s `modifier_gene` / `modifier_cn` is the precedent shape for a *genetic* modifier and there is no environmental one. Note that the second sighting also lands on `@weight-has-no-unit`: their `weight` at least names the domain it is a weight *in*.
-4. **Two sources disagreeing, as a recorded verdict** — three sightings: kaiseki's `DISCORDANCE_RATIO`, which **refuses to publish a consensus frequency** when cohorts disagree; `Gunshipz/genomine`'s cross-tool confidence/disagreement layer; allelix's ADRs. `clin_sig_concordance.csv` does exactly this for clinical significance and **only** for clinical significance — kaiseki does it for allele frequency, where `frequencies.csv` has per-population rows and no verdict.
-5. **A hand-assigned salience separate from clinical severity** — two sightings: `alexlaverty/dna-health-report`'s `magnitude` 0–6 per genotype, and SNPedia's own `m` field carried through snappy. `VariantRow.priority` is the candidate analogue; whether "priority level override" means the same thing is a question for the survey, not an assumption.
-
-**A sixth shape was seen and is already decided against, recorded so it is not re-raised.**
-`dianguan0105/Custom-Personal-Genome-Interpretation` stores GRCh37 and GRCh38 coordinates *on the same
-row*, so no liftover is needed at read time. That is the opposite of the rule here — `genome_build`
-lives in the manifest and in no parquet column (`@build-in-manifest-only`), the build is injected at
-load and never authored on a row (`@build-injected`), and a module is single-build by design with
-`reference_examples/grch37_build` as the worked case. Their design buys convenience and pays for it
-with two coordinates that can disagree and nothing able to notice. **Not a gap.** Worth one paragraph
-in whichever survey reads them, and no more.
-
-**And one that is not an axis but a corpus: [RM28](#rm28--meta-conclusions-the-predicate-half) has a third entry.** snappy's
-`genosets.json` carries SNPedia's boolean-combinator DSL — `and(rs4988235(C;C), rs182549(C;C))`, with
-genoset-of-genoset nesting for haplogroup trees. That is a third independent grammar for the same
-thing after CIViC's molecular profiles (RM174) and ClawBio's guideline logic, and unlike those two it
-is a **general-purpose** one written for consumer genetics rather than falling out of one domain.
-Counting its operators and its nesting depth is worth doing whether or not the rest of snappy is read.
-
-### Checked and skipped — recorded so round 3 does not re-search them
-
-**Same class as genomi (fetch public sources at query time, no curated content):** `lagodinm/dna-health-report`,
-`MrOrtiz/dna-annotator`, `Gunshipz/genomine`, `itsrudaynah/Modrik`, `techninja/asili`,
-`drhudsonandrade/OmniGenis` (58k LOC and its own scripts say *"Nothing here is authored"*),
-`mentatpsi/OSGenome` (146★, crawls SNPedia live and freezes nothing).
-**Pipeline or converter, no interpretation:** `GeiserX/Personal-Genome-Pipeline` (10★),
-`captainzonks/GeneGnome`.
-**Curated but too thin or too stale to teach anything:** `Michael-Sebero/Genetic-Trait-Detector`
-(245 rows, one 432-line file, last pushed 2025-03), `dev-kvt/GenomeUpload` (27 uncited rows inline in
-JS, with an LLM writing the actual report).
-**Curated only as a panel — a list of rsIDs with no fields on them:** `brandonsaldan/codex` (37★, 225
-JSON files of bare rsID membership, all interpretation scraped live from SNPedia, dead since 2023).
-**Documentation, not a tool:** `matbanik/agentic-genomics` (a setup guide wiring up three MCP servers
-that live elsewhere).
-**Not competitors, one line each:** the single-source MCP servers (`berntpopp/clinvar-link`,
-`cyanheads/gnomad-genetics-mcp-server`, and our own `dna-seq/ensembl-mcp`) wrap one API and carry no
-annotation; the general AI-science workbenches (ScienceClaw, aipoch/open-science, wisp-science, all
-600–4,000★) are not genome tools; `WGLab/InterVar` (213★) is ACMG classification, which ClawBio's
-half already covered, and its last commit is 2021.
-**Commercial, no source:** Promethease (now MyHeritage), Genomelink, SelfDecode, Codegen, Nebula.
-**RM188's method does not reach them** — a report can be bought and read, but no pipeline can be run
-and nothing can be pinned, so a survey of one would be a marketing comparison, which § *What it is
-not* forbids. Promethease is reachable **through SNPedia** instead, which is why row 2 is the corpus
-and not the product.
-
-### The agent-skill class is closed, and it cost one read
-
-[`BioTender-max/awesome-bio-agent-skills`](https://github.com/BioTender-max/awesome-bio-agent-skills)
-(178★) is a directory of AI agent skills for biomedical work. Enumerating the entries that interpret a
-**human personal genome** — as opposed to answering "what does the literature say about gene X" — gives
-**21**, and they cluster under four collections: `clawbio/` (six: `pharmgx-reporter`,
-`nutrigx-advisor`, `gwas-prs`, `genome-compare`, `claw-ancestry-pca`, `clinical-variant-reporter`),
-`openclaw/`, `omicsclaw/` and `bioskills/`. The rest are ACMG classification, PRS, and PGx under
-different names.
-
-**Round 1 already surveyed the representative of this class.** ClawBio's six skills are *in* this
-directory, and [`CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md) read them end to end. Nothing in the
-remaining fifteen is a different shape — they are the same fetch-and-render procedure over the same
-public sources, and the directory itself is the evidence for that rather than an argument. **So the
-agent-skill class is closed for round 2**, at the cost of one directory read rather than fifteen
-surveys, and round 3 should not reopen it without a reason that is not "there are more of them now".
-
-Two names in it are domains nothing here touches and neither survey raised: `chip-clonal-hematopoiesis-agent`
-(somatic clonal haematopoiesis) and `prs-net-deep-learning-agent`. Neither is an annotation table, and
-both are recorded only so the next reader knows they were seen.
-
-**Security note, since the search surfaced it.** `Barrelsravennagrass984/Personal-Genome-Pipeline` is a
-near-verbatim clone of `GeiserX/Personal-Genome-Pipeline` whose README is replaced with download bait
-for a `.zip` committed inside the module tree. **Do not fetch or run it.** Recorded here because the
-next person to run this search will find it in the same result set.
-
 ## RM236 — `consequence` and `impact` are planned axes with no slot, and an ACMG engine reads both as primary inputs
 
-**Severity** medium · **Status** open — **filed 2026-09-13 from [RM188](#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)'s ClawBio half** ·
+**0.8, decided 2026-11-03.** Kept in 0.8 as an input to longevitymap v2's causal and effector-gene confidence labels (RM333), while the rest of RM188's parity work moved to 0.9.
+
+**Severity** medium · **Status** open — **filed 2026-09-13 from [RM188](ROADMAP_0_9.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)'s ClawBio half** ·
 **Owner** format (schema + compiler), then enricher · **Motivating case**
 [`probes/CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md) § *the two columns their engine reads that we
 cannot store*
+
+**For longevitymap v2 (2026-11-03):** causal confidence C1 and effector confidence E1 both key on a variant being coding. See [the group](#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
 
 [ROADMAP § Reserved namespace](ROADMAP.md#reserved-namespace) lists `consequence` (the VEP/Sequence
 Ontology term) and `impact` (`HIGH|MODERATE|LOW|MODIFIER`) as *planned future annotation axes*, with
@@ -664,7 +714,7 @@ things, and choosing is the first deliverable — **build the column**, or **add
 a `vocab.RESERVED_NAME_REASONS` entry** so an author hears what the name is held for instead of the
 stray-column message. The second is the honest outcome if the grain question below defers the build.
 
-**The blocker is grain, and it is [RM23](#rm23--computational-predictor-scores-as-a-table)'s blocker
+**The blocker is grain, and it is [RM23](ROADMAP_0_9.md#rm23--computational-predictor-scores-as-a-table)'s blocker
 restated.** A variant has one consequence *per transcript*; `VariantRow` is one row per
 `(variant_key, genotype)`. Three options:
 
@@ -683,73 +733,15 @@ cannot be retyped into a table.
 
 **Related** RM23 (same grain blocker, and the pass that should settle both), RM188.
 
-## RM237 — ClinGen dosage is gene-keyed, so a recurrent-CNV region has nowhere to be written
-
-**Severity** medium · **Status** open — **filed 2026-09-13 from [RM188](#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)'s ClawBio half** ·
-**Owner** enricher (the lane) + format (the model) · **Motivating case**
-[`probes/CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md) § *dosage keyed on a region, not a gene*
-
-`GeneMetricsRow` carries `haploinsufficiency` and `triplosensitivity`, keyed on a **gene symbol**, and
-`enricher/clingen.py` fills them. ClinGen publishes four dosage lists — gene curation, **region
-curation**, recurrent CNVs and ISCA regions — and `enricher/acmg.py`'s own probe note from 2026-08-03
-records seeing all four on the FTP tree while reaching for one. The three unread ones are the half a
-CNV classifier actually needs: ClawBio's `skills/cnv-acmg-classifier/data/curated_dosage_map.csv`
-carries an `element_type` column precisely because two of its four demo rows are regions
-(`22q11.2`, `chr22:18,900,000–21,500,000`, hi=3 ts=3), and its ClinGen/ACMG 2019 Section 1 scores off
-them.
-
-**A region is genuinely the subject, which is why this is not a widening of the existing table.** A
-22q11.2 deletion is not a claim about any one gene in the interval; filing it under a gene symbol
-would be a false attribution of the kind `@gene-map-is-another-sources-attribution` forbids. So the
-shape is a **sibling sidecar** — `region_metrics.csv`, one row per `(chrom, start, end, name)` with
-`haploinsufficiency`, `triplosensitivity` and ClinGen's curation id — rather than an `element_type`
-discriminator on `gene_metrics.csv`. "One CSV = one concern" and `@sidecar-name-and-place` both push
-apart here: a region row carries coordinates and a gene row carries a symbol, and a table holding both
-would have half its key null on every row.
-
-**Two things to settle before writing the pass**, and the second is the one a review will catch:
-
-- **Terms.** ClinGen's dosage lists are believed unrestricted and that is *recalled, not probed*
-  (`@no-named-licence`). Read the file and its SPDX id first.
-- **Which `(source, layer)` row this claims.** `@write-the-sourcerow`'s second-surface clause says a
-  second surface of an already-declared source may not claim the lane's existing row. Whether region
-  curation is a second surface of `clingen` or the same lane is undecided, and it decides the
-  `SourceRow` key.
-
-**Related** RM188, `@write-the-sourcerow`, `@gene-map-is-another-sources-attribution`.
-
-## RM238 — a per-tissue eQTL has no row, and `expression_effects.csv` is the wrong table to widen
-
-**Severity** low · **Status** open — **filed 2026-09-13 from [RM188](#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)'s
-ClawBio half; PARKED on a consumer, deliberately** · **Owner** enricher · **Motivating case**
-[`probes/CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md) § *nine databases, and the two axes that come
-back with no home*
-
-`clawbio.py run gwas --demo` on rs3798220 returns five cis-eQTLs **by named tissue** from GTEx and the
-EBI eQTL Catalogue — `LPA` in Liver at β −0.82, in Adipose at −0.45, `SLC22A3` in Liver at +0.31.
-Nothing here holds that. `expression_effects.csv` exists and is the wrong place: it is
-AlphaGenome-shaped, one row per `(variant, gene)` **aggregating 371 tissue tracks** into
-`tracks_agreeing`/`tracks_total`, and [`expression.py`](../schema/src/just_dna_format/expression.py)
-argues at length that one row per track "is lossless and unreadable". A GTEx row is not a track — it
-is a measured cis-eQTL in one named tissue with its own β and p, ~50 tissues rather than 371, and
-**the tissue is the fact** rather than something to consensus over. Different grain, different source,
-different terms. So: `eqtl_effects.csv`, one row per `(variant, gene, tissue, dataset)`, tissue as an
-ontology term where the source gives one.
-
-**This is filed open and parked, and the parking reason is a rule rather than a shortage of time.**
-[USE_CASES § 7.2](USE_CASES.md#7-regulatory-effect--which-gene-a-non-coding-variant-moves-and-which-way-07)
-closes with *"reopen this with a consumer, never with an argument"*, and a competitor rendering the
-table is an argument. **Reopen it with somebody who needs the answer.** When that happens, the first
-step is the acquisition measurement that correctly parked the frequency snapshot — what the GTEx and
-eQTL Catalogue bulk artifacts weigh, and what their terms say (`@probe-the-real-file`).
-
-**Related** RM188, RM194/RM200 (the AlphaGenome table this must not be folded into), USE_CASES § 7.2.
-
 ## RM239 — a fine-mapping posterior has no column, and `gwas_effects.csv` already has its key
 
-**Severity** low · **Status** open — **filed 2026-09-13 from [RM188](#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)'s ClawBio half** ·
+**0.8, decided 2026-11-03.** Kept in 0.8 as an input to longevitymap v2's causal and effector-gene confidence labels (RM333), while the rest of RM188's parity work moved to 0.9.
+
+**Severity** low · **Status** open — **filed 2026-09-13 from [RM188](ROADMAP_0_9.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)'s ClawBio half** ·
 **Owner** enricher · **Motivating case** [`probes/CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md) §
 *nine databases, and the two axes that come back with no home*
+
+**For longevitymap v2 (2026-11-03):** the fine-mapping posterior is the input to causal confidence C1–C4. See [the group](#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
 
 The same `gwas-lookup` report returns three fine-mapping credible sets for rs3798220 with a posterior
 probability and 95%/99% set membership per `(trait, study)` — PP 0.92 for Lipoprotein(a) in
@@ -770,266 +762,131 @@ harmonised release carries no credible set, which is a nobody-asked third state 
 
 **Related** RM188, RM90 (the table this lands on).
 
-## RM240 — the ClawBio nutrition panel compiles, and the corpus should carry it
-
-**Severity** low · **Status** open — **filed 2026-09-13 from [RM188](#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)'s
-ClawBio half; the translation is run, the landing is not** · **Owner** format (the corpus) ·
-**Motivating case** [`probes/CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md) § *The translation, run*
-
-The survey's headline claim — a competitor's inlined panel is a module written in the wrong language —
-was run rather than asserted. `skills/nutrigx/data/snp_panel.json` at `1fcecb7e` (28 SNPs) translated
-field-for-field into a spec, `validate` green, `compile` producing 84 weight rows over 28 variants, 24
-genes and 12 categories, and `compile → reverse → compile` reproducing `content_signature` exactly.
-**Land it as `reference_examples/nutrigenomics_panel/`**, which is `@probe-becomes-example` and is the
-only form in which the claim stays true as the code moves.
-
-**What it broke on the way, and the README has to say all of it:**
-
-- **`state` is required and `direction` is not.** 84 rows refused for omitting the *superseded*
-  column while carrying the modern one. Already in the [1.0-cleanup tracker](ROADMAP.md#variantrowstate)
-  with the right reason (P8 forbids demoting a required field inside a major, so the demotion and the
-  deprecation land together at 1.0). What the run adds is that this is the **first** error a
-  first-time author meets, before anything about their data.
-- **Their 28 `ref_allele` cells carry no coordinate**, and the schema refuses a bare `ref` — correctly,
-  since an unanchored reference allele cannot be checked against a reference genome. The honest
-  translation drops `ref` and keeps `effect_allele`.
-
-**What the landing still needs**, none of it optional because the corpus walkers assert it: a
-`resolution.csv` so `validate --strict` and `compile --strict` pass
-(`test_reference_example_compiles_under_strict`), a `sources.csv` whose terms are read rather than
-recalled — their `data_license` is blank and the repo is MIT, which is a licence for the *code*
-(`@a-hosts-terms-are-not-its-contents-terms`) — a `verification.json` closure
-(`test_every_reference_example_is_closed_and_its_closure_still_describes_it`), a README, and a section
-in [REFERENCE_EXAMPLES.md](REFERENCE_EXAMPLES.md). Two enricher passes are worth running first because
-they are what makes it the worked answer rather than a copy: `check-identifiers` (their panel names
-`BCMO1`, a retired HGNC symbol) and `literature` over the 28 PMIDs.
-
-**One observation for the README, not a repair.** Their panel weights `rs429358` and `rs7412` as two
-independent additive rows in two different nutrient domains. Those two variants are the APOE ε pair,
-which `reference_examples/apoe_epsilon/` models as a haplotype because the isoform is the joint state.
-That is a claim about their curation, and it belongs in the README as a sentence.
-
-**Related** RM188, RM92 (see RM241 — the `weighting` block this example is forced to write).
-
-## RM164 — `heteroplasmy.csv` is a shipped table kind with no source behind it
-
-**Severity** medium · **Status** open — **PARKED to 0.8, decided 2026-09-01**, moved into this file
-**2026-09-11** · **Owner** enricher · **Motivating case** the 2026-09-01 source-adoption round
-
-**Decided 2026-09-01 with the maintainer: parks, on the measured negative below.** The candidate field
-anyone has named is MITOMAP and the population callsets it re-hosts, and none of them publishes the
-axis the kind binds; that is a fact about what exists, not about how hard anyone looked, which is what
-makes the deferral honest rather than indefinite. It stays **open and visible** rather than closed,
-because a kind with a one-module corpus is exactly what `@probe-uniform-corpus` says to keep in view —
-and if a source that bands heteroplasmy by tissue appears, this entry is where it is checked against.
-**Reopen it with a source, never with an argument.** The spin-off it noticed is now
-[RM171](ROADMAP_HISTORY.md#rm171--mitomaps-curated-mtdna-tables-adopted-as-the-increment-they-carry-over-clinvar).
-
-**Probed and drafted in [PROPOSAL_0_7_PT2](proposals/PROPOSAL_0_7_PT2.md#rm164--heteroplasmycsv-is-a-shipped-table-kind-with-no-source-behind-it) on 2026-09-01 — proposed PARKS to 0.8; the maintainer pass took it as proposed.** **Answered by reading the source, after the maintainer supplied the 2026-08-24 `pg_dump` (61 MB, 95 tables).** MITOMAP is **reachable** — plain `curl` gets the dump at `mitomap.org/downloads/`, HTTP 206 with ranges; the Cloudflare challenge is on the *web* surface only, and two earlier readings of this entry (a "refusal", then "unreachable by the machinery") were both a 403 from a path that was not the data path. **The axis answer is a measured no.** The schema has **exactly one `tissue` column**, on `mitomap.unpublished` — per-patient submissions beside `sample_id` and `ethnicity`, i.e. sample data this format does not carry. `mitomap.mmutation` is **602 rows** whose `homo`/`hetero` are *presence flags* (`+` 286/270, `-` 216/238, `nr` 90/89, plus `.`/`na`/NULL), with no threshold, no band and no tissue — the only levels in the table are two rows where a percentage was typed into a flag column. The only heteroplasmy numbers anywhere are re-hosted blood-cohort data (`mitomap.gnomad` 18,164 rows, `mitomap.helix` 14,104), where `max_observed_heteroplasmy` is a cohort observation, not a clinical threshold. So `HeteroplasmyRow`'s binding columns have **no source-side value in MITOMAP**. Terms are **unread**, not unestablishable — the dump carries no licence text in 6.7 M lines and the page a browser reaches was not opened. Parks, not closed. **Separately noticed and not part of this entry**: `mmutation` is a plausible mtDNA `variants.csv` source, blocked on `status` being 29 free-text strings rather than a vocabulary — its own item when taken.
-
-**The measurement, taken over `_TABLE_KINDS` and the enricher's providers.** Every table kind is in
-`DRAFTABLE` by construction, so *structurally* all nine are draftable. A **provider** exists for four:
-`haplotypes`/`allele_function`/`diplotypes` (`pgx_draft` ← CPIC), `pharm_variants` (`clinpgx_draft` ←
-ClinPGx), and `variants` (`clinvar_draft`, `civic_draft`, `pubmind_draft`). `heteroplasmy.csv`,
-`repeat_alleles.csv`, `copynumbers.csv`, `pgs.csv` and `activity_phenotype.csv` have **none**, and no
-enrichment pass reads them for a cross-check either. `enrich()` does resolve heteroplasmy rows — it is
-the third table that can ask, and the one that keys *with* `alts` — but resolution is not a source.
-
-The corpus behind the kind is one module: `reference_examples/mt_heteroplasmy`, two MT-TL1 variants of
-one gene, hand-authored from the literature. That is the `@probe-uniform-corpus` shape exactly — the
-schema generalized from a single case, and nothing since has taken a second one.
-
-MITOMAP is the canonical mtDNA variant table and the obvious candidate. **Two things must be
-established before that is a plan, and neither is:**
-
-1. **The terms.** MITOMAP is not CC0, and this entry states nothing further about its licence.
-   Whether it is expressible as a `SourceTerms` at all, and whether it lands as a **draft** source or
-   only as a **check**, is decided by reading its published terms. RM153 is the standing reminder that
-   a source's terms page can answer HTTP 200 with something that is not terms, and that the honest
-   record of an unestablished axis is `None` (`@no-named-licence`).
-2. **Whether it carries the axis at all.** `HeteroplasmyRow` binds a *level band* per
-   `(gene, reference_sequence, tissue, variant_key)`. A per-variant pathogenicity table with no tissue
-   and no threshold fills the identity columns and none of the binding ones — it would draft rows that
-   say nothing the kind exists to say. Probe the real file and name the table probed
-   (`@probe-the-real-file`, `@probe-names-the-table`); a negative here is as useful as a positive and
-   closes the item cleanly rather than leaving it open forever.
-
-**Related** RM165 (the same shape on the other uncovered binning kind), RM171 (the spin-off),
-`@probe-uniform-corpus`.
-
-## RM122 — the measure lookup is specified and nothing anywhere implements it
-
-**Severity** medium · **Status** **parked on demand, moved here 2026-08-21** — additive and
-minor-legal whenever it is wanted; what it waits on is a caller, not a decision · **Owner** format ·
-**Motivating case** S58 (just-module-creator, in CONSUMER_SUGGESTIONS_HISTORY.md)
-
-**The specification half shipped; this is the part that was not asked for and might still be right.**
-S58 reported that the four binning kinds annotate nothing downstream and asked for either a normative
-paragraph or an admission that the family is specified ahead of its consumers. Both are now in
-[SCHEMAS.md § The measure lookup a conforming consumer implements](SCHEMAS.md#the-measure-lookup-a-conforming-consumer-implements--the-second-normative-obligation-06-s58),
-and that closes the item they filed. What is filed here is the next question, which they did not ask:
-whether the rule should also exist as a **public function** so that the first two consumers to
-implement it cannot disagree.
-
-**The argument for.** It is the shape S51/RM115 settled one layer down — a rule kept as prose is a rule
-every reader re-derives, and the two derivations differ on exactly the cases that matter. Here those
-cases are enumerable and sharp: the continuous shared endpoint, the float32 comparison, `unresolved`
-versus no-match, and pleiotropy returning several rows rather than one. A consumer will get at least
-one of the four wrong, and the failure is silent — a wrong bin renders as a confident phenotype.
-`alleles.split_genotype` is the precedent: the *reader* half of RM81 shipped as one public leaf every
-tier calls, while the retype waits for a major. It costs the format tier nothing — pure arithmetic over
-loaded rows, pydantic-only, no dependency moves.
-
-**The argument against, and it is why this is open rather than done.** There is no consumer to check the
-shape against, which is the same reason `measure_step` is not a column: a signature fixed against a
-hypothesis fixes the wrong thing, and this one has real shape questions. Does it take rows or a table?
-Does it return one row, or one per `trait_efo_id` (the honest answer, and the inconvenient one)? Does it
-answer `None` for no-match, or a three-state result distinguishing *no match* from *unresolved selected*
-— which is what the house algebra would demand and what a `None` return would collapse. Getting that
-wrong ships a leaf whose first real user has to work around it, and P3 keeps it working forever.
-
-**What would settle it:** one consumer implementing the lookup against the paragraph. Their questions
-are the signature. Until then the paragraph is the contract and this stays filed — the same
-wait-for-the-demand rule that governs `measure_step`, applied to a function instead of a column.
-
-**Decided 2026-08-21: wait for demand, and the wait is the answer rather than a way of postponing
-one.** The four shape questions are the reason — does the lookup take rows or a table, does it return
-one row or one per `trait_efo_id` (the honest answer, and the inconvenient one), does it answer `None`
-for no-match or a three-state result distinguishing *no match* from *unresolved selected*. There is
-nobody to check any of those against, and P3 keeps a wrong leaf working forever. This is the same
-wait-for-the-demand rule that keeps `measure_step` out of the schema, applied to a function.
-
-**It moved out of the active roadmap because "undecided release" was the wrong bucket for it.** Nothing
-about this is undecided; it is parked, which is what this file is for, and it sat under a heading that
-made it read like an unmade call. **The settling event is specific**: one consumer implementing the
-lookup against the paragraph in [SCHEMAS.md](SCHEMAS.md#the-measure-lookup-a-conforming-consumer-implements--the-second-normative-obligation-06-s58).
-Their questions are the signature — file it back in the active roadmap when they arrive, not before.
-
-
-## RM23 — Computational predictor scores as a table
-
-**Severity** medium · **Status** deferred — **considered for 0.6 on 2026-08-13 and held**, on the two
-blockers unchanged · **Owner** format (schema + compiler) + enricher · **Motivating case** pathogenicity
-triage; splice-impact panels
-
-`predictions.csv` — the groundwork every predictor source needs, built **once**: one row per
-`(variant, predictor, score_kind)` with `score`, `dataset`, `source`, and an optional `transcript`.
-**Long-form, not wide, is the load-bearing choice** — SpliceAI is four deltas plus positions, CADD is
-one number, AlphaMissense is one plus a class, so wide columns would make every new predictor a schema
-bump while long form makes it *data*. A predictor score is the same class of object as an allele
-frequency or a LOEUF (a per-variant number from a named dataset, no measurement), so the 0.5 sidecar
-precedent covers it.
-
-**Why it is still deferred, after the 0.6 review.** Neither blocker is code, and neither has moved:
-
-- **Grain.** SpliceAI scores are per-transcript, and there is no settled way to name the four splice
-  deltas without inventing a predictor-specific column set — which is the exact thing long form exists
-  to avoid. Whether a per-transcript score is one row each or a picked representative is undecided.
-- **Acquisition.** Precomputed splice scores need the *masked vs raw* file sizes measured and the Broad
-  lookup API's terms read. This is the same measure-first question that correctly parked the frequency
-  snapshot, and skipping it is how a shape gets fixed against a guess.
-
-Unlike the two derived tables 0.6 does build (RM24, RM25), this one is a **full-cost authored table**
-under the 2026-08-13 charter amendment, so the bar is higher rather than lower.
-
-**Licensing is solved, not blocking — do not re-raise it as the reason.** SpliceAI/Pangolin, dbNSFP,
-AlphaMissense, REVEL, CADD and PrimateAI are all non-commercial or academic-only, and `licensing.csv`
-plus the compile gate already confine that to the modules that use them, while phyloP/phastCons/GERP
-(UCSC, free, queryable per-range rather than a bulk download) keep a module sellable.
-
-**What would unpark it:** the acquisition measurement done, and a decision on per-transcript grain.
-That is a research task, not a schema task, and it commits nothing.
-
----
-
-## RM16 — Authored PRS weights (a scoring file, not a manifest)
-
-**Severity** medium-large (on demand) · **Status** deferred — **considered for 0.6 on 2026-08-13 and
-held; parked on *shape* rather than on demand since 2026-09-13, and its unpark condition needs
-restating** · **Owner** format (schema + compiler) · **Motivating case** authored-weight PRS modules
-
-0.4 shipped `pgs.csv` as a *manifest of PGS Catalog IDs* with the ancestry-validity fields — not
-authored per-variant weights. `just-prs` resolves a `PGSxxxxxx` id to a harmonized scoring file and
-scores each id itself, so inlined weights would be **dead data**; and a PRS is a
-Z/percentile-in-reference, a shape the format does not bin.
-
-What is deferred is a distinct, digest-bearing `effect_allele` + `effect_weight` scoring table, for the
-case where a module must ship weights the PGS Catalog does not host (a score published only in a
-paper's supplementary table).
-
-**Why it is still deferred.** It is **not derivable** — nobody can fetch weights that exist only in an
-appendix — so it is a **full-cost authored table**. And the one thing that would validate its shape, a
-real consumer combining authored weights into a score, does not exist. A score's shape (how weights
-combine, what the reference distribution is, whether a percentile travels with it) is exactly what a
-first real case would dictate, so fixing it now spends a one-way door on a guess.
-
-**What would unpark it:** a real consumer. See [PROPOSAL_0_5.md](proposals/PROPOSAL_0_5.md) D1.
-
-**This entry and [RM28](#rm28--meta-conclusions-the-predicate-half) are one axis at two operators
-(maintainer, 2026-09-13), and they should be decided together rather than merged.** Both ask the same
-question — *how does a conclusion get derived from more than one variant row, and where does the
-combining rule live?* — and the format already answers it once:
-
-| Combiner | Where the rule lives | Status |
-|---|---|---|
-| **Enumerative** — write out each combination | in the table: a `diplotypes.csv` row *is* the combination | **shipped**, `reference_examples/apoe_epsilon` |
-| **Boolean** — a predicate over genotypes | nowhere: the table would hold terms, something else the operator | **RM28**, parked on a corpus |
-| **Weighted sum** — terms plus coefficients | nowhere: the table would hold weights, the consumer the arithmetic | **this entry**, parked on shape |
-
-Three facts follow from the table and none of them from either entry alone. **The enumerative answer
-is why both are parked and neither is urgent** — it covers the small-arity cases, which is most of
-them, so any argument for a new combiner has to beat it rather than merely want one. **Both
-non-shipped rows split the same way against the data-agnostic goal**: the module carries terms, the
-consumer does the combining, so neither is a licence to put an evaluator in the compiler. And **one
-corpus supplies evidence for both** — SNPedia has genosets *and* per-genotype magnitudes, which is why
-one survey touched both entries on one day.
-
-**They stay separate items.** The outputs differ in kind — RM28's is a categorical conclusion, this
-one's is a number that means nothing without a reference distribution — and RM28 was already halved
-once on 2026-08-13 for being too broad, so merging would make the smaller hostage to the larger. What
-they share is a **precondition**, not a design: whoever opens either should read both, and the *where
-does the combining rule live* decision should be taken once rather than twice.
-
-**The hypothesised case now has an instance in the wild (2026-09-13), and it does not unpark this.**
-From [RM188](#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)'s
-round-2 skim: [`dianguan0105/Custom-Personal-Genome-Interpretation`](https://github.com/dianguan0105/Custom-Personal-Genome-Interpretation)
-(`15fe28a`) ships `metaprs_weights.tsv` — **540 variants transcribed by hand out of a European Heart
-Journal 2022 supplementary Table S3**, with `rsid`, `effect_allele`, `other_allele`, `weight`, `maf`
-and `traits`. That is this entry's motivating sentence — *"a score published only in a paper's
-supplementary table"* — with a real file behind it instead of a hypothesis, and the column set they
-arrived at independently is close to the one deferred here.
-
-**The first reading of that was wrong, and the maintainer corrected it the same day.** It was written
-here as *the wrong half of the evidence* — the unpark condition is a real consumer, a competitor
-transcribing a table is a producer, so nothing moves. **That dichotomy does not hold, and the entry's
-own gate is what has to give.**
-
-**An author with a corpus in hand is demand, and for a format it is the demand that matters.** People
-reach for familiar shapes: somebody who already has a scoring table, or a set of genosets, adopts a
-format when the format can hold what they already have, and declines it when it cannot. That makes
-*"can I bring this in"* a consumer question in the sense that decides whether a format gets used at
-all — a narrower reading, where a consumer is a downstream tool that reads authored weights and
-scores them, gates this entry on the one party who cannot appear until after the table exists.
-**Written as it stands, the unpark condition cannot be met by anything except a tool built against a
-table this entry is refusing to build.** That is a gate on its own output, and it should be restated
-when this entry is next opened for a decision — not silently, and not here, since restating a parking
-condition is a change to the item rather than a note on it.
-
-**What survives the correction, and it is the half that was always load-bearing.** The demand
-question is answered — somebody did the typing, and SNPedia's magnitude-and-genoset corpus is the same
-argument at a hundred thousand rows. The **shape** question is not: how the weights combine, what
-reference distribution the score is stated against, and whether a percentile travels with it are still
-unanswered, and a transcribed table shows the columns without showing the semantics. The one-way door
-is the shape, never the demand, so what this instance does is **move the entry from parked-on-demand to
-parked-on-shape** — a smaller and much more answerable place to be parked.
-
----
-
 ## RM28 — Meta-conclusions (the predicate half)
+
+**The name and grammar, accepted 2026-11-04 by the maintainer, as written in `proposals/PROPOSAL_0_8_PT2.md`
+§3 items 1–4.**
+
+- The file is `meta.csv`, and its parquet `meta.parquet`.
+- There is one member grammar, `table[column=value, …]`.
+- Members are joined by `&` in one bracket-aware `members` cell.
+- Precedence follows from the conditions.
+- The key is the sorted members, plus the trait, plus `sex`.
+
+No bare-rsID shorthand yet. Adding one later is additive, if authors ask.
+
+**Settled 2026-11-04 by the maintainer, after the second measuring run** (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §6):
+
+- **The narrower condition outranks, across tables too.** A diplotype row is more specific than an allele row
+  for an allele it contains, just as a genotype row outranks its locus. The ε2/ε4 diplotype row settles the
+  tie between the ε2 and ε4 allele rows.
+- **`role` has one meaningful value:** empty means an effect, and `mediator` marks the path. Chains of two
+  steps (9 v2 loci, LDL → CAD) stay as unordered mediator rows plus prose.
+- **A locus-level member counts as allele-bearing** when every row of that locus states one `effect_allele`.
+  A warning fires when they differ. That gives v2 about 134 per-trait rows instead of about 268.
+- **Two rules set by the pm seat, unless the maintainer objects:**
+  - the member tables are those that carry a finding (variants, diplotypes, pharm_variants), plus
+    `allele_function.csv` as allele items. `haplotypes.csv` defines alleles and is not one.
+  - the LD lookup withholds r² (unknown, counted) for a mixed-ancestry study, and never picks a panel.
+
+**What is still not held, accepted as prose:** two modifiers on one estimate (2 loci), and two
+causal-confidence judgements (README). With these rules the shape is sufficient for v2, and every addition
+has a v2 case.
+
+**The selector, widened 2026-11-04 by the maintainer** ("selector is just the right spice for meta"). It
+supersedes the tag-only form above.
+
+- **One general form, `column=value`**, over a single-statement table's columns. On a list column such as
+  `flags`, `=` means "contains", so the legacy row is `flags=legacy_longevitymap`.
+- **Several conditions in one member are AND-ed**, e.g. `diplotypes[gene=TPMT, phenotype=Poor Metabolizer]`.
+- **Inside a combination, a selector is existential**: "any row of the set". CPIC's 6 gene pairs (18 drugs,
+  2,656 recommendation rows) are written as phenotype pairs, one row each, instead of diplotype × diplotype.
+  Lewis (FUT2 × FUT3 phenotypes) is the same shape. In a facts-only row, a selector's facts apply to each
+  row it matches.
+- **The compiler expands every selector** into the concrete rows it matches, in the parquet, so a consumer
+  never evaluates a rule (P1). The authored row keeps its selector through `reverse` (P7).
+- **A selector that matches nothing is a warning** (almost always a typo), and the manifest records each
+  selector's match count (`@dont-discard-computed`).
+- **Precedence:** a concrete row key, then a locus-level key, then a selector with more conditions, then
+  one with fewer. Two matches that cannot be ordered and disagree withhold the column.
+- **Out of bounds:** negation, OR, numeric ranges, joins across tables, and selectors over `studies.csv`.
+  Rows are already a disjunction, and negation over an open set cannot be checked.
+
+**Measured:** for v2 itself the widening adds nothing beyond the tag. Only 3 genes have more than one lead
+locus (FOXO3, HTT, TERT), and none shares one tier. Its payoff is the PGx gene pairs and Lewis, at no
+column cost: one grammar replaces a list of selector kinds.
+
+**A fifth member form, decided 2026-11-04 by the maintainer: the tag selector.** A member may be
+`flags:<tag>`, which means every single-statement row carrying that tag. v2's 528 legacy variants all carry
+`legacy_longevitymap` (R-LEGACY-1), so one row (`flags:legacy_longevitymap`, tier D) replaces 528 one-line rows.
+
+The decided rules still apply:
+
+- A one-member row naming a specific variant is more specific, and wins. That covers the legacy loci tiered
+  C, or A/B on modern evidence, such as APOE.
+- A row in two tag sets that disagree on a column has that column withheld.
+- An untagged locus is untouched.
+
+**Rejected:** a module-wide default tier. It would silently turn v2's 31 untiered and 4 tier-X seed loci into D,
+a stated value standing in for an unstated one. Raised by a side agent from the final run's audit
+(`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §2, R-LEGACY-1).
+
+**Two columns added 2026-11-04 by the maintainer, after the final measuring run** (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §4, gaps 3 and 4):
+
+- **A citation (`pmid`) on meta-table rows.** A row cites when its claim is finer-grained than `studies.csv`'s key, the RM47 pattern. The study-orphan check accepts meta-table members, so APOE's 14 study links, the 8 HLA alleles and KL-VS × ε4 can cite.
+- **A role on per-trait rows** (`outcome` / `mediator`). 32 v2 loci act through a trait, such as LDL cholesterol, that is the path and not the outcome.
+
+**Where a difference ends and a disagreement begins: the key, weighed 2026-11-04 by the pm seat at the
+maintainer's direction ("it's the good old 'what's a key' in a new skin").** A meta-table row's key is **its
+member set, plus `trait_efo_id` on a per-trait row**. The rule follows from it:
+
+- **The same key twice is a disagreement.** Two rows with one member set (and one trait) are a duplicate key,
+  and they are refused as on every other keyed authored table. This is the only place two values can
+  contradict each other, so no separate agreement warning is needed.
+- **Different keys that nest are a difference.** A locus-level row (`variant_key` alone), a genotype-level row
+  (`variant_key` + genotype) and a combination that contains them are three statements. The most specific
+  matching row wins, column by column; that is the "combination replaces" decision, extended down to a
+  single locus.
+- **Unstated is not different** (`@absent-is-not-different`). A specific row that leaves a fact empty does not
+  contradict the general row's value, and the general value fills it.
+- **The residual is identity, not facts.** One variant reachable under two keys would hide a real
+  disagreement as a difference. The archive found exactly one such case: IL6R's rs8192284, merged into
+  rs2228145, seeded with two tiers. The existing rsID-merge check catches it during enrichment, because NCBI
+  is the merge oracle. It must keep running over meta-table members.
+
+The objection that "tier copies on genotype rows are never compared" no longer applies: under C a fact is
+written once, never copied onto genotype rows.
+
+**Final shape, 2026-11-04 ("go with C").** One new table. A row is a composite statement, meaning one or more
+members, each an item of a single-statement table, mapped to a finding and/or the per-locus facts. A one-member
+row with only facts is how a single locus gets its tier, so RM323 needs no table of its own.
+
+**The rule the maintainer set with it, for every proposal here:** "Always weight your proposals towards
+reduction of entities. If something can be built with 20 score, don't build it with 30 for 'tidiness', it is
+clutter and bloat in guise of strict-typing of non-strict typed data." Under it, RM327's per-trait benefit/harm
+judgements default to rows of this same table (one member, a trait, a direction) rather than a table of their
+own; the proposal confirms that or says why not.
+
+**Shape decided 2026-11-04 by the maintainer: the meta-table is a map from a composite statement to a finding.**
+A composite statement is keyed on **items of the single-statement tables**: a `variants.csv` row's
+`(variant_key, genotype)`, a `diplotypes.csv` row's key, and so on. There is no new subject or state grammar.
+"KL-VS heterozygous AND APOE ε4 carrier" therefore names the KL-VS genotype row and the ε4-carrying
+diplotype rows, one composite per diplotype, since rows are already a disjunction.
+
+The consequence, raised and accepted: a member must exist as a row of its own table, and that row carries
+its own required `conclusion`. The meta-table's rows carry the same per-locus fact columns as the
+single-statement tables (RM323).
+
+**Decided 2026-11-04 by the maintainer: a matching combination replaces the single-locus findings it names.** A genome that is KL-VS heterozygous and an APOE ε4 carrier gets the buffered finding instead of the plain ε4 risk. The accepted cost is that a reader that predates the combination table shows the unbuffered risk alone.
+
+**0.8, decided 2026-11-04 by the maintainer: the combination half is built in 0.8.** A combination is defined here as a set of subjects (a variant, a gene or a named allele) each in a stated genotype state, for example KL-VS heterozygous together with APOE ε4. Each defined combination becomes one more kind of subject on RM323's per-locus fact table, so its tier, confidence and age of action live in the same place as a single locus's. Facts never get a second table. Boolean `OR` and open-world negation stay out, as the corpus below argues: rows are already a disjunction.
+
 
 **Severity** medium (after the corpus) · **Status** parked on a corpus — **and halved on 2026-08-13**:
 the injected-cofactor half closed, the predicate half stays here · **Owner** format (schema + compiler)
 · **Motivating case** combination annotations; disclosure policy
+
+**For longevitymap v2 (2026-11-03):** KL-VS buffering in APOE4 carriers joins two loci on two chromosomes, so no haplotype holds it; added as a corpus entry there. See [the group](#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
 
 **Read this entry knowing how much of the original item has already dissolved.** Probing in 0.5 removed
 most of it, and the 0.6 review removed the rest of the cofactor axis. What is left is genuinely small
@@ -1055,7 +912,7 @@ unpark**: one source, one observed trans instance, one negation. RM174 carries t
 decision stays here.
 
 **Second corpus entry, 2026-09-13 — and it is a routine clinical guideline rather than an oncology
-molecular profile.** From [RM188](#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)'s
+molecular profile.** From [RM188](ROADMAP_0_9.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)'s
 ClawBio half ([`probes/CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md) § *pharmgx-reporter*). Their
 pharmacogenomic report renders exactly one AVOID across 59 drugs, and it is **warfarin**, keyed
 `"genes": ["CYP2C9", "VKORC1"]`. Our own `reference_examples/cyp2c9_warfarin_grch37/` carries the
@@ -1078,7 +935,7 @@ Three things make it sharper than the CIViC entry rather than a repeat of it:
   three, this parks again with a sharper reason; if it is thirty, the economy argument changes.
 
 **Third corpus entry, 2026-09-13 — and this one is a general-purpose grammar rather than a domain's
-by-product.** From the same item's [round-2 roster](#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics):
+by-product.** From the same item's [round-2 roster](ROADMAP_0_9.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics):
 SNPedia publishes **genosets**, boolean expressions over genotypes, and
 [`zhaofengli/snappy`](https://github.com/zhaofengli/snappy) (`2d5255f`) has them extracted from a
 MediaWiki dump into `data/genosets.json` beside 106,603 SNP entries. The grammar is
@@ -1090,14 +947,14 @@ fell out of one domain solving one problem, where **this grammar was written for
 general** and has been in use for over a decade. It is also the first entry where the *condition* side
 and the *conclusion* side are both published, at scale, by one source.
 
-**This entry and [RM16](#rm16--authored-prs-weights-a-scoring-file-not-a-manifest) are one axis at two
+**This entry and [RM16](ROADMAP_0_9.md#rm16--authored-prs-weights-a-scoring-file-not-a-manifest) are one axis at two
 operators** — boolean here, weighted-sum there, with the enumerative combiner already shipped in
 `diplotypes.csv` and covering the small-arity cases both would serve. RM16 carries the table setting
 that out; read it before opening this one, and take the *where does the combining rule live* decision
 once rather than twice. They stay separate items, because a categorical conclusion and a number
 needing a reference distribution are different outputs.
 
-**One argument from it does reach beyond the count, and it is [RM16](#rm16--authored-prs-weights-a-scoring-file-not-a-manifest)'s
+**One argument from it does reach beyond the count, and it is [RM16](ROADMAP_0_9.md#rm16--authored-prs-weights-a-scoring-file-not-a-manifest)'s
 rather than this entry's** (maintainer, 2026-09-13): genosets are a *familiar shape*, in use for over a
 decade, and an author's ability to bring one across is an adoption signal in its own right. It bears
 on this entry only as a reason the count below is worth running rather than as a reason to unpark —
@@ -1248,6 +1105,13 @@ CPIC's six gene pairs, outside pharmacogenomics, and like them it enumerates (a 
 per-gene phenotype vocabularies), so it argues for a two-subject key and not for a predicate.
 Unbuilt, so it is corpus evidence and not a measured case.
 
+**A longevity instance, 2026-11-03: KL-VS buffering in APOE ε4 carriers.** longevitymap v2's plan
+(§4.2, protection type `BUFFERING`) holds that the KL-VS heterozygote matters in ε4 carriers. KL is on
+chromosome 13 and APOE on 19, so no haplotype holds the pair, and both halves are already enumerable on
+their own (KL-VS as two-SNP haplotype rows, APOE as `apoe_epsilon`). Like CPIC's gene pairs and Lewis, it
+argues for a **two-subject key** over two enumerated per-gene states (3 × 6 rows), not for a predicate.
+The plan's interim is `flags: conditional` plus prose, and that tag does nothing ([RM321](ROADMAP.md#rm321--variantrowflags-calls-its-reserved-tags-the-tags-the-tooling-acts-on-and-no-tier-acts-on-any-of-them)). Unbuilt; corpus evidence.
+
 ### What dissolved, so it is not re-proposed
 
 - **No operator is missing.** Rows are a disjunction and columns are a conjunction, so the existing
@@ -1270,7 +1134,7 @@ Unbuilt, so it is corpus evidence and not a measured case.
   case where enumeration succeeds and no predicate is wanted, which is where the entry drew its line.
   The one thing the caller had to re-derive — *which* diplotype pairs are the phase-confusable set — is
   not a predicate the author states but a value the compiler already computes and discards, filed as
-  [RM266](ROADMAP.md#rm266--the-phase-confusable-diplotype-pair-set-is-computed-at-compile-and-dropped-it-reaches-the-artifact-only-as-a-capped-warning-string), not here.
+  [RM266](ROADMAP_0_9.md#rm266--the-phase-confusable-diplotype-pair-set-is-computed-at-compile-and-dropped-it-reaches-the-artifact-only-as-a-capped-warning-string), not here.
 
 ### What remains
 
@@ -1318,518 +1182,67 @@ remaining class gets the same treatment — a plain column, on demand, one at a 
 
 Neither is built until a real module needs it.
 
----
+## RM337 — a file under `logs/` that is not `*.log` is dropped from the compile, and nothing says so
 
-# The VCF 4.4 items deferred out of 0.6
+**0.8, decided 2026-11-04.** The maintainer told the lead to push its ready-to-build minors into 0.8's scope, and the lead listed this one as ready: about an hour on the `0.8` branch. It also carries the half of RM338 that needs the new warning code.
 
-Numbered and triaged on 2026-08-13 from [VCF_4_4_AUDIT.md](probes/VCF_4_4_AUDIT.md); the rest of that cluster
-(RM53, RM54, RM56–RM64, and RM65's comment fix) went into 0.6 — see
-[PROPOSAL_0_6.md](proposals/PROPOSAL_0_6.md). The audit remains the evidence document: spec quotations,
-`file:line` references and probe transcripts live there and are not duplicated.
 
+**Severity** medium · **Status** open — **a minor, release undecided** (corrected 2026-11-04 from "a
+patch") · **Owner** compiler (`_collect_logs`) · **Motivating case** S125 in CONSUMER_SUGGESTIONS_HISTORY.md
+(just-module-creator `F116`, 2026-10-05) · *related* RM338, RM147, RM308
 
-**Register cross-reference (2026-09-27).** [RM302](ROADMAP.md#rm302--one-conclusion-serves-every-place-a-report-shows-it-a-table-cell-a-details-card-and-an-explanatory-mode-want-different-wordings)
-gives `conclusion` optional lay and concise wordings, two columns by default. If this item lands a
-separate meta-conclusion table, the maintainer's steer is that the registers may live there instead,
-so the two are decided together.
-## RM56 (policy half) — the rule for a measurement that spans bins
+**Reproduced 2026-11-03** on a copy of `reference_examples/apoe_epsilon` with six files under `logs/`
+(`authoring.log`, `trace/session-a.jsonl`, `run.json`, `notes.md`, `notes.txt`, `fig.png`):
+`compile_module` succeeds, no warning mentions a log, and both `manifest.logs` and the output's `logs/`
+hold `logs/authoring.log` alone. Discovery globs `*.log` at the top level and `logs/**/*.log` below it,
+and skips everything else under `logs/` without a word. The registry's server-side compile leaves
+discovery to the compiler, so an upload carries the file and the published version does not.
 
-**Severity** high on the flagship example · **Status** 0.6 ships withhold plus an explicitly
-not-implemented warning; **the policy lands here, gated on real caller output** · **Owner** format
-(schema) + compiler
+**The patch.** A coded warning, in both modes, naming each file under `logs/` that discovery left behind
+and saying that only `*.log` ships. It changes no verdict and ships nothing new, so it is legal whatever
+RM338 decides; once RM338 widens the set, the warning names whatever is still left out. An explicit
+`log_files` list is unaffected, since it already ships any path it names. The new code owes a
+`features/` scenario.
 
-A real repeat call is `RUC=38, CIRUC=-5,5` — `[33,43]`, crossing all three Huntington thresholds, so
-`htt_repeat_expansion` says *benign*, *uncertain* and *fully penetrant* at once. 0.6 makes withholding
-the stated behaviour and says loudly that no policy exists yet.
+**Sized wrong at filing; a minor (2026-11-04).** No existing member of `VALID_WARNING_CODES` names this
+finding, and every compile warning must carry one (`compiler/tests/test_warning_codes.py`), so the item
+adds a member. A new member is minor-class: `Compilation.warnings_summary` validates its keys, so a reader
+pinned to an older `just-dna-format` refuses a manifest that carries the new code. RM308 is the shipped
+precedent ("a new warning code, so minor-class"). A `logger` line would be patch-legal and is not taken:
+it is not the warnings channel, so the registry's server-side compile, where S125's file goes missing,
+would still say nothing to the uploader. Borrowing a code that names another finding is refused too
+(`@warning-code-names-the-finding`). Which minor takes it is the pm's to place. RM338's shipping half
+stays a patch; the warning half of its decision is this item.
 
-**The policy is a closed vocabulary** — withhold / take the worst bin / take the point estimate — stated
-by the curator and applied by the consumer. That is annotation rather than measurement, so it stays
-legal. **Its grain is deliberately undefined**: per table matches how the decision is actually made (a
-stance on a whole disorder), per row is more expressive and nobody has demonstrated the need.
+**Residuals** none yet.
 
-**The prerequisite is a real caller VCF**, so the vocabulary is fixed against what callers emit rather
-than against a guess. Same gate as RM65; RM66's evidence arrived separately (see its entry).
+## RM342 — the manifest does not record the toolchain that wrote the bytes, so a digest that moves cannot say why
 
-**Never** widen the measurement into an interval on the row (`measure_min_observed` and friends): that
-puts a *measurement* in the module, which the data-agnostic north star forbids outright.
+**Where the toolchain reason fires, corrected 2026-11-04 (the lead's PT2 §4 question 7, accepted by the pm seat).** `verify_manifest` re-hashes files and never recompiles, so it cannot see a toolchain. The reason `toolchain_differs` therefore fires where a fresh compile is compared with a recorded digest: the publish collision check and the release sweeps. This keeps the maintainer's intent: an explainable difference is never reported as corruption.
 
-## RM65 (implementation half) — repeat and copy-number tables are positional
+**Decided 2026-11-04 by the maintainer.**
 
-**Severity** medium · **Status** 0.6 corrects the false claim in the code; **the coordinates wait here**
-· **Owner** format (schema) + compiler
+- **One toolchain block:** a single optional field in `manifest.compilation` holding a small map (e.g. `{polars: 2.1.0, python: 3.13.1}`). A library added later is a new key, not a new field.
+- **`verify` gives a toolchain difference its own reason.** "Bytes differ, toolchain differs" is distinct from corruption and never the plain mismatch error (`@vrs-three-outcomes`).
+- **Principle 4 is amended.** Reproducibility is pinned via `compiler_version`, the recorded toolchain and the resolved reference. The why goes in `CONSTITUTION_AMENDMENTS_HISTORY.md`, and the lead lands the amendment with the item.
 
-§5.6 says POS and SVLEN specify the interval a copy number is defined over; §5.7 says a `<CNV:TR>`
-record's POS and END *"should match the STR/VNTR reference catalog sizes for catalog-based callers"*. So
-a tandem repeat and a copy-number segment are **loci with coordinates**, emitted at fixed published
-positions, and the compiler's claim that these tables are unjoinable *"which is a property of what they
-describe rather than a gap"* is false for both. 0.6 fixes the comment.
+Ready to build; the polars 2 lock moves into 0.8 with it.
 
-**Adding the coordinates waits on a real repeat-caller or CNV VCF sample, or a consumer field report.**
-Without one it is scaffolding in thin air — and it is not free: it would put two more tables into RM43's
-coordinate-filling path, taking that lane from three tables to five.
+**0.8, decided 2026-11-04**, on the lead's list, "not ready": its open questions (one field or a toolchain block; whether `verify` reports a toolchain mismatch as its own reason; whether Principle 4 needs an amendment) are settled in the 0.8 interview. The polars 2 lock moves into 0.8 with it.
 
-**And it carries an RM87 obligation, noticed while that lane was being built.** The reverse writer's
-positional-table pass hard-codes `locus_index = 0` (`_write_resolution_csv`, the second loop), which is
-honest only while those tables never expand — true today, since RM43's fill is one locus per row.
-Putting coordinates on the repeat and copy-number tables is exactly what could make one of them expand,
-and the `0` would then be a wrong number rather than a trivially correct one. Not a blocker for RM65;
-a line whoever implements it must clear.
 
-## RM66 — one repeat locus, several motifs
+**Severity** medium · **Status** open — **a minor** (a new optional manifest field); the pm places it in 0.9 · **Owner** format + compiler · **Motivating case** RM341 · *related* RM304, RM341
 
-**Severity** medium · **Status** deferred here; filed beside RM65, but **its evidence has since arrived on its own** (below) · **Owner** format (schema)
+**Why it is filed.** polars stays uncapped (RM341, the maintainer, 2026-11-04). From 2.0 the parquet bytes name
+the polars release that wrote them, so two installs of one `compiler_version` mint different digests for equal
+content, and nothing in the manifest says which polars wrote which. The liaison's adoption map, item 3: record
+the polars version beside `compiler_version` in `manifest.compilation`, as an optional field. That is additive
+and minor-legal. The alternative, deciding in P4 that the digest names the toolchain, would be a charter
+amendment.
 
-§5.7: a `<CNV:TR>` allele *"can encode multiple different repeat motifs in a single allele"* (`RN=3`,
-`RUS=CAG,TG,CAGG`). `RepeatAlleleRow` is keyed `(gene, repeat_unit)` and binds one count to one motif.
-For HTT the interruption structure `(CAG)n(CAA)(CAG)` is exactly what a modern caller reports as several
-`RUS` entries, and the pure-CAG tract length differs from the total — a difference with published effect
-on age of onset. The key cannot say which count the thresholds are about, and two motifs for one gene
-read as two unrelated groups rather than components of one allele.
+**Open questions.** Whether the record is one manifest field or a toolchain block (polars, arrow if it ever
+appears, Python); whether `verify` reports a digest mismatch whose recorded toolchain differs from the running
+one as its own reason (`@vrs-three-outcomes` asks for that); and whether P4's sentence on reproducibility needs
+an amendment once the toolchain is recorded.
 
-A keying change on a shipped table, which is the expensive kind. Filed beside RM65 so both would
-arrive with the same evidence — **and they no longer will (2026-09-01,
-[RM165](ROADMAP_HISTORY.md#rm165--repeat_allelescsv-has-no-source-and-rm65rm66-have-been-waiting-on-exactly-the-corpus-one-would-bring)).**
-STRchive publishes `locus_structure` on 23 of 82 loci as typed data with its own three-member
-vocabulary, HTT's being exactly the `(CAG)n(CAA)(CAG)` structure above; that is enough to *decide* this
-item and not enough to make the answer universal. RM65's prerequisite — a real repeat-caller or CNV
-VCF — is still missing, so the two items now wait on different evidence and this one is decidable
-first.
-
-## RM67 — polyploid and partially-phased genotypes
-
-**Status** **not work** — a documented divergence, numbered so it is findable and not re-probed
-
-VCF 4.4 §7.2 added polyploid partial phasing (`GT |0|0/1/2`), first phasing indicator optional. Our
-grammar caps at two alleles and refuses a leading separator (probed: `A/A/G` and `A|G/T` both rejected).
-
-This is a **defensible generalization** — the format annotates human diploid loci, and
-`_check_contig_ploidy` already handles the hemizygous and haploid directions. **No change proposed.** The
-spec's own polyploid example is a tandem duplication with SNVs on it, which a CNV-aware consumer will
-meet, so revisit if one actually does.
-
-**The message changed on 2026-08-14; the decision did not.** Dogfooding a duplicated CYP2D6 — the
-spec's own polyploid example — refused the call with a bare restatement of the grammar, so a deliberate
-limit read as a syntax error, while every other deliberate refusal in this schema names its own limit
-in-line. The arity refusals now carry that sentence: two alleles is a decision, VCF 4.4 §7.2 permits
-more, and nothing is queued against it. Recorded as D3-2 in
-[DOGFOOD_0_6_FINDINGS.md](probes/DOGFOOD_0_6_FINDINGS.md).
-
----
-
-# The 0.6 dogfooding items deferred out of the fix round
-
-The findings from [DOGFOOD_0_6_FINDINGS.md](probes/DOGFOOD_0_6_FINDINGS.md) whose obvious repair is itself a
-design decision — the round filed five, and two have since left: RM69 for
-[ROADMAP_1_0.md](ROADMAP_1_0.md) (see the header), and **RM70 shipped in 0.7**, its entry now in
-[ROADMAP_HISTORY.md](ROADMAP_HISTORY.md). The three below are what remains. No fixed count is stated
-here on purpose: one goes wrong silently the next time an item leaves, and this section has already
-lost two. The ledger classes each **surface** rather than **fix**, which is this repo's standing
-split: a false claim, a misdiagnosis, an unaggregated wall or an unreached guard gets fixed in the round
-that finds it; anything whose repair has to be *chosen* gets filed with the candidates and the reason
-each one fails. The refutations are the point of these entries — an item that only names a gap is one
-somebody re-derives from scratch a release later.
-
-Everything below is legal in a minor. Where a repair would be additive it says so; where the only
-candidate repairs are illegal it says which principle bars them. Legality sizes the release; severity
-only orders the queue.
-
-## RM68 — a drafting provider on a non-GRCh38 module: refuse, or strip to the rsID
-
-**Severity** medium (high before the warning shipped) · **Status** the warning shipped in 0.6
-(`enrich.source_build_mismatch`); **what the providers should do instead is deferred here** · **Owner**
-enricher (the three drafting providers) · **Found by** dogfooding on 2026-08-13,
-`reference_examples/cyp2c9_warfarin_grch37/`
-
-### What was observed
-
-`draft`, `draft-panel` and `draft-clinpgx` all take a `spec_dir`, and until the 0.6 dogfooding round
-none of them read `genome_build`. `enrich.spec_genome_build` — written one release earlier for the bug
-where the guard existed and the value never arrived — had **exactly one caller**. Every source these
-providers read serves GRCh38: CPIC's `allele_definitions`, the ClinVar snapshot, the ClinPGx
-annotations. So drafting CYP2C9 into a `genome_build: GRCh37` module writes `10,94942290` for
-`rs1799853`, whose GRCh37 position is `96702047` — a different base 1.76 Mb away — and nothing anywhere
-said a word.
-
-Nothing downstream catches it. A coordinate is legal on either assembly; it is simply a different place.
-What the online diagnosis reaches is now measured rather than asserted: of the module's two GRCh37 rows
-declared as GRCh38, `grch37.diagnose_wrong_build` caught one and the other minted
-`ga4gh:VA.pgprki8YgzfOSV9Dpe1ccPX4uNdlyAvB` and recorded `resolved`, because GRCh38 happens to carry the
-authored `ref` at that position too. That is the documented ~3-in-4 sensitivity, so *"the compiler
-catches wrong-build coordinates"* is not a reading anyone should take. Two of the three providers write
-coordinates and can do this; `draft-clinpgx` writes none.
-
-It hid because `test_pgx_draft.py`'s fixture declares `GRCh38`, and it is the only drafting test that
-mentions a build at all.
-
-**What shipped in the same session.** `enrich.source_build_mismatch`: each drafting command asks before
-it writes and warns naming both builds, what a drafted coordinate will actually mean, and the two
-remedies. The provider still writes the row, which is the enricher's standing shape for a disagreement
-— report, never repair.
-
-### The question
-
-Report-and-still-write is the right *default*. What is undecided is whether a provider meeting a
-non-GRCh38 module should go further: **refuse**, or **strip to the rsID** — writing the identity the
-source does state without stating an assembly, which `derive_variant_key` prefers anyway.
-
-**Refuse — wrong three ways.** It makes a GRCh37 module undraftable, so the author hand-authors instead,
-and hand-authoring against a printed contract is where this format's most expensive documented failure
-came from (the 0-vs-1-based `start` description shifted four whole modules by one base and passed every
-offline gate, `--strict` included). It refuses a provider that cannot do the harm: `draft-clinpgx` writes
-no coordinate, so a refusal keyed on the module's build stops a command whose entire output is
-build-free. And it is the wrong granularity by the repo's own rule — *scaffolding refuses per file,
-drafting refuses per row* — while a build mismatch is a property of the module, so a build-keyed refusal
-is per **run**, which is the granularity that self-defuses into "this module cannot be drafted at all".
-
-**Strip to the rsID — wrong, and worst on the rows that need it most.** It is tempting because the row's
-identity does not move (`derive_variant_key` returns the rsID first) and an rsID names a variant without
-naming an assembly. But CPIC's `sequence_location` publishes defining variants with a position and *no*
-rsID — 18 in CYP2C9, 14 in TPMT, 4 in NUDT15 — and `HaplotypeRow` requires an rsID **or** chrom+start.
-Stripping the coordinate there is not "write less", it is "drop the row", and it drops exactly the rows
-the 0.5.1 `gene.chr` repair recovered after a year of being skipped. It also produces a row
-indistinguishable from one the source had no coordinate for, so the author cannot tell a stripped row
-from a bare one. Any *partial* strip is barred outright: a drafting provider fills identity whole or not
-at all, and a lone `alts` on a position-only row makes `derive_variant_key` mint a `ga4gh:VA.…` instead
-of `chrom:start:ref`, silently changing which variant the row is.
-
-**Lift the coordinate over — refused, and RM48 already argues it.** RM48 is deliberately one-way and
-reporting-only: a GRCh37 coordinate recovers an rs-number, and the rs-number is *reported*, never
-filled, because filling it would make resolution verify a value against the service that produced it.
-A liftover inside a drafting provider is that move with an extra assembly on it, and `chrom`/`start`
-are both in `hints.REDUNDANCY_BEARING` for the same reason.
-
-**A `--build` flag on the drafting commands — wrong twice.** A flag saying "write GRCh37" asks the
-provider to convert, which is the liftover above. A flag saying "yes, I know" is a warning suppressor,
-and the tier's standing rule is that `--offline` is the switch and a pass adds no second CLI flag.
-
-**What would unblock it.** Either a real author with a non-GRCh38 module saying which of the two
-outcomes they wanted, or **RM15**, which dissolves the premise: once identity is build-agnostic a
-provider can write the coordinate under the build it came from, and there is nothing left to refuse or
-strip. A behaviour fixed before RM15 lands is one RM15 would have to undo, which is the strongest single
-argument for leaving this at a warning.
-
-# Vocabulary residue from the 0.7 consumer round
-
-## RM149 — expected behaviour lives in prose, and the prose is where two readers split
-
-**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-09-21; asked by the maintainer
-2026-08-31** · **Owner** format + compiler (the test corpus) · **Found by** running the consumer loop
-
-**The ask, verbatim in intent:** express our described scenarios as Gherkin, because the freeform prose
-in expected-behaviour descriptions is producing ambiguities faster than it resolves them.
-
-**The evidence for it is this repo's own recent record**, which is what makes this an item rather than a
-preference. Three consumer reports in one week were **two readers splitting on one sentence**, none of
-them a code defect:
-
-- **S80** — `state`'s six members printed as peers; an agent chose a retired one honestly.
-- **S83** — two runs of a byte-identical prompt wrote `risk` and `unknown` for one variant on one body
-  of evidence, both green, both defensible against the field description.
-- **S79** — a warning's text read as *your declaration is unsupported* when it meant *not universal*.
-
-Each was answered by writing a better sentence. That is three fixes to prose in a week, and the pattern
-says the next one is already in flight somewhere.
-
-### What is actually being asked
-
-Not a testing framework — the suite is not the problem, and a `pytest`-to-`behave` migration would be
-motion rather than progress. The gap is that a **scenario** — *given a module with a partial
-`resolution.csv`, when `validate --strict` runs, then it refuses with the compile's own error* — exists
-today as a docstring, a test name, and a paragraph in `COMPILER.md`, and those three can drift from
-each other and from the code. A structured form is one statement, and the natural home is a
-`.feature`-shaped corpus each side is derived from or checked against.
-
-### Open questions this needs decided before it can be built
-
-- **What is the source of truth.** Gherkin generated *from* the tests is documentation that cannot
-  drift; tests generated *from* Gherkin makes the feature files the contract and every existing test a
-  migration. These are opposite projects with the same output, and the ask does not say which.
-- **What is in scope.** Every check the compiler runs is ~140 warning codes plus a mode ladder. The
-  release-gate scenarios, the tri-state outcomes and the parity rules are the parts where ambiguity has
-  actually cost something; the round-trip fixed points are already pinned by assertion and would gain
-  nothing from prose.
-- **Where it lives.** A `features/` tree at the root, per-package, or inside `docs/`. That decides
-  whether it ships to consumers — and if it does, it becomes a published surface under P3, which is a
-  much larger commitment than an internal one.
-- **What it costs the next contributor.** A second dialect to learn beside the docstring convention
-  this repo already leans on heavily, and every new check owing a `.feature` clause. That is the P9
-  question one layer up: this is a *maintenance* surface, not an authored one, and it is not free.
-
-### Why it is filed rather than started
-
-The three reports above were each fixed by naming what the rule is, and the fix was one string. A
-scenario corpus is worth building when the *cost of ambiguity* exceeds the cost of the corpus, and the
-measurement that would show that has not been taken — this entry is where it goes when it is. What is
-not in doubt is the direction: the recurring failure is real and repeatedly measured, and it is filed
-here so the next instance lands against a number rather than as a fourth anecdote.
-
-### Addendum, 2026-09-13 — a first corpus is drafted, and this is the measurement
-
-**Status is still open.** What exists is a draft, unreviewed, at `features/` in the repository root:
-12 `.feature` files, 213 scenarios, guarded by `schema/tests/test_feature_corpus.py`. Nothing
-about it is a contract yet, and the entry stays here rather than moving to ROADMAP_HISTORY until it has
-been read.
-
-**Two of the four blocking questions are answered by the ask itself**, and are recorded in
-`features/README.md` as assumptions rather than decisions:
-
-- **Source of truth: code → Gherkin.** The scenarios describe what the code does. No step definitions,
-  no `behave`, no `pytest-bdd`, no new dependency in any tier; the `pytest` suite stays the executable
-  statement of behaviour and this is the readable one.
-- **Where it lives: the repository root, not `docs/`.** That keeps the P3 publishing question *open*
-  rather than answering it by side effect, which a drafting round has no standing to do.
-
-**Scope is decided by registry rather than by taste**, which is the third question. Three walked sets
-are covered in full: `VALID_WARNING_CODES`, `VALID_VERIFICATION_CHECKS`, `VALID_VERIFICATION_SKIPS`.
-Round-trip fixed points are out, on this entry's own argument. **And the scope estimate in the body
-above is wrong by a factor of two**: it says *~140 warning codes*, and `VALID_WARNING_CODES` has **73**.
-A number in prose beside a registry, in the entry that exists because prose drifts — left in place
-above rather than silently corrected, because it is the fourth instance of the shape this round
-measured and the most on-the-nose.
-
-**The fourth question — what it costs the next contributor — has a partial answer and it is the
-cheaper half of the estimate.** A new warning code without a scenario fails the guard, so the cost is
-one scenario per code, not a second dialect to learn: there are no step definitions to write and no
-runner to learn. What is *not* yet measured is whether a reviewer finds the scenarios easier to check
-than the docstrings they stand beside, and that needs a reader rather than a round.
-
-#### The measurement this entry was waiting for
-
-The case for the corpus was to be made on *the cost of ambiguity exceeding the cost of the corpus*.
-Drafting it produced **four findings in the first pass**, two of them code-or-doc defects that were
-filed and fixed rather than noted:
-
-| # | finding | disposition |
-| --- | --- | --- |
-| 1 | **Two of our own documents disagree about whether `strict` builds.** COMPILER.md's validate-by-redundancy table gives the rsid↔coordinate check the severity *warning* with no qualifier; its own mishap matrix gives the same check *⚠️ warning / ❌ refuses*. The matrix is the half the code agrees with. | marked `# DRIFT:` in `features/compiler/mode_ladder.feature`, unrepaired — the round's findings are its output |
-| 2 | **The mode ladder is two mechanisms and reads as one.** Four codes flip channel on one sentence; three resolution codes pair a warning with a *different, longer* refusal through `ResolutionOutcome.strict_errors`. Calling those ladder members quotes a text that does not exist; calling them warn-only describes a compile that succeeds. | written down in the same feature; no defect, a distinction nothing stated |
-| 3 | **`alphagenome check` with no API key raised instead of recording a skip** — `skipped(CHECK, "unchecked")`, and `"unchecked"` is not a vocabulary member. | **[RM242](ROADMAP_HISTORY.md#rm242--alphagenome-check-without-an-api-key-raised-where-it-was-supposed-to-attest-nobody-asked)**, fixed |
-| 4 | **Four per-command attestation counts summing to 17 of 24**, in ENRICHER.md's paragraph that refuses to state a total. | **[RM243](ROADMAP_HISTORY.md#rm243--the-paragraph-that-refuses-to-state-a-total-stated-four-of-them-summing-to-17-of-24)**, fixed |
-
-**What produced each of them is worth separating from the fact that they were produced.** None came
-from reading prose more carefully. Finding 1 came from writing the severity down as a table and
-noticing two tables; finding 2 from having to name a mechanism in order to tag a scenario; findings 3
-and 4 from AST walks the corpus needed anyway — the emission-site check and the skip-reason enumeration.
-So the argument this addendum supports is narrower and stronger than *Gherkin is good*: **the act of
-deriving a scenario from an emission site is what found things, and the guard is what will keep
-finding them.** A corpus of prose scenarios with no grounding check would have found none of the four.
-
-#### The three assertions that make it worth more than the prose — and what each really covers
-
-Each was proven by reintroducing the defect and watching it go red, which is this workspace's standing
-requirement. Two of the three were **narrower than they read on the first pass**, and both narrowings
-were found by measuring rather than by re-reading, which is worth recording because a guard that
-half-covers its subject while the reference claims it covers all of it is worse than no guard:
-
-- **a `@code:X` scenario's `# source:` sits within three lines of X's own `CodedWarning` call.** Held
-  from the start.
-- **the same alignment for `@check:` and `@skip:`.** *Missing at first*, and it cost precisely what it
-  exists to prevent: RM242 and RM243 — the two fixes this round produced — inserted six and eight
-  comment lines above referenced sites, eleven `# source:` lines silently began pointing six to eight
-  lines early, and the suite stayed green, because those two tags had only *the line is inside the
-  file*. The guard now catches all fourteen when the insert is reproduced. Two of the eight skip reasons
-  (`tautology`, `not_permitted`) are never passed to `skipped()` as a literal at all — they travel as a
-  variable — so the alignment is against any literal naming the reason, which is the better pointer
-  anyway: where a reason is *decided* is what a reader wants.
-- **every phrase a step quotes as a warning's text is a real substring of a real string literal in the
-  module named.** *Keyed on a verb before the quote at first* (`contains`/`says`/`states`), which
-  extracted **46 of the 162** quoted phrases — a `Then` also says `saying the flag "…"`, `ends at "…"`,
-  `continues "…"`, `offers "…"`. Keyed on the step keyword instead, it now checks **160 of 160** on
-  outcome steps, and the widening found three real defects in the corpus. `Given`/`When` stay excluded:
-  those name an input value, which has no reason to appear in the module's own strings.
-
-**The residue, measured rather than estimated.** Of 213 scenarios, **108 carry a registry tag and are
-aligned; 105 are structural** — pointing at a docstring, a branch or a constant, with no call site to
-align against — so they carry only the *line is inside the file* check and will rot on an edit above
-them. Measured 2026-09-13 by walking the corpus, because the first draft of this paragraph said
-"roughly 130" on an estimate, in the document whose whole subject is unmeasured counts beside
-registries. That is a real contributor cost and it belongs in the fourth question's answer above rather
-than in a footnote.
-
-One mechanism had to be added rather than worked around: a message built by one module and coded by
-another (`layout.deprecation_notice` writes the sentence, `_locate_sidecar` names the code) needs a
-`# text:` line, so the code is checked against the emission site and the phrase against the module that
-holds the words. That is the boundary where a code goes missing
-(`@finding-loses-its-code-at-a-boundary`), and it is better as a checked fact than a convention.
-
-#### What a review should push on
-
-- **Is the root the right home, or should this publish?** Publishing makes every clause a P3
-  commitment. The draft assumes not, and the assumption is the thing to overturn first if at all.
-- **Are the scenarios readable by someone who did not write them?** That is the whole premise and it
-  cannot be self-assessed. If the answer is no, the corpus is a second dialect with none of the benefit
-  and this entry should close rather than grow.
-- **Should the DRIFT finding be repaired here or filed?** Finding 1 is one sentence in COMPILER.md.
-  Leaving it marked was deliberate — a round that silently fixes what it finds cannot be audited — but
-  it should not stay marked for long.
-- **The corpus has no scenarios for the compiler's `errors` that carry no warning code**, beyond the
-  handful written as `@refusal`. Whether a refusal without a code deserves the same coverage as a coded
-  warning is an open scoping question the registry cannot answer, because refusals have no registry.
-
-### Second addendum, 2026-09-13 — the second pass, and where coverage was not what the equalities said
-
-**Still open, still a draft.** The corpus is now 13 files and **228 scenarios** — 118 registry-tagged
-and aligned, 110 structural — with **182 quoted phrases** on outcome steps. The question this pass put
-was the one the first pass could not put to itself: *are all the features covered?* The three registry
-equalities said yes and they were answering a narrower question than they read.
-
-**Four findings, and what produced each.** None came from reading the scenarios again; three came from
-walking a set the first pass did not walk, and the fourth from reading the residue the first pass
-measured and left.
-
-| # | finding | disposition |
-| --- | --- | --- |
-| 5 | **A code is not a text.** Nine resolution codes are emitted by the compiler's `resolution.py` *and* by the enricher's `resolver.py`, and **seven of the nine pairs are a different sentence**. `rsid_unresolved` is *"not found in resolution table, position remains unset"* in one tier and *"not in the injected Ensembl snapshot"* in the other. The per-code equality accounted for all nine while the corpus held none of the enricher's words for any of them, and a warning's text is an API. | fixed — the equality now keys on `(code, tier)`, and `features/enricher/resolution_warnings.feature` is the nine in the enricher's own words |
-| 6 | **The house algebra was covered as a mechanism and not as a value.** `tri_state.feature` had Kleene, the withhold, `classify` and `restate`, and not one of the columns that carries a three-valued answer into an artifact: **five of the nine members** of `VALID_FREQUENCY_STATUS`, `VALID_RESOLUTION_STATUS` and `VALID_AUTHORITY_CALL_STATUS` appeared nowhere in the corpus, `not_covered` among them — the member the gnomAD Y-PAR probe was run to justify. | fixed — six scenarios; the walk that found them (three-member `VALID_*` sets) is recorded as the heuristic it is |
-| 7 | **`@ladder` was a judgement written four times over a walkable set.** The mode ladder's first mechanism is `(errors if strict else warnings_out)`, and the codes reachable from a function carrying that shape are exactly the four tagged. | fixed — a fourth registry equality, proven red by untagging `p_value_encodings_disagree` |
-| 8 | **Ten `# source:` lines pointed at a blank line, a bare `"""`, a bare `return [` or the middle of a comment — and two pointed at the wrong subject.** *a total function cannot decide a three-valued answer* named a comment about a length constant in `normalize.py` when the rule is `mitomap.vcep_clin_sig`; *an absent input is the unknown arm* named the concordance block in `vocab.py` when the rule is `needs_recompile`. Both scenarios stated their rule correctly and cited the right tag; only the pointer was wrong. | fixed — all ten re-anchored; **not rot**, since no source file here has changed since the corpus was written, so they were authored that way and nothing could say so |
-
-#### Two questions the first addendum left open, now answered with a measurement
-
-- **Refusals without a code have no registry, and the reason is that they have no shape.**
-  `compiler.py` alone reaches the error channel from **four** distinct mechanisms — an inline
-  `errors.append` of a literal, an `extend` of a helper's returned list, the
-  `(errors if strict else …)` selector, and `ResolutionOutcome.strict_errors` — across roughly forty
-  sites, against 22 scenarios tagged `@refusal`/`@strict_only`. So the answer to *should a refusal
-  without a code get the same coverage as a coded warning* is not *no*; it is that **there is nothing to
-  walk**, and inventing a registry so an equality can be written would be the `@registry-completeness`
-  defect committed on purpose. It stays a scoping question for a reviewer, now with a number beside it.
-- **The phrase check's file scope is correct, and that was measured rather than assumed.** Eight of the
-  182 quoted phrases match no message at the site their scenario names but do match another literal in
-  the same module. All eight were read: every one is a message built into a variable a few lines away
-  (`ambiguous_warnings`, `_verify`, `coordinate_disagreement`, `layout.deprecation_notice`). Tightening
-  the check from the module to the call site would need dataflow and would report eight correct
-  scenarios as defects. Recorded so the next pass does not re-derive it.
-
-#### What this pass did not touch
-
-The `# DRIFT:` in `mode_ladder.feature` still stands — finding 1 of the first pass, one sentence in
-COMPILER.md, and a repair decision rather than a drafting one. And `# anchor: <token>`, a symbol the
-guard could grep for instead of a line number, is the obvious repair for the 110 structural scenarios
-and is deliberately unbuilt: it is a convention change across the whole corpus and belongs to whoever
-reviews it.
-
-**Not to be confused with** `just-module-creator`'s authoring guidance, which is a different
-document for a different reader and stays prose. This is about *our* stated behaviour, not an author's.
-
-# The lifecycle items — what writing down the second pass surfaced
-
-Filed on **2026-08-16** out of [MODULE_LIFECYCLE.md](MODULE_LIFECYCLE.md), which mapped a module from
-origin to publish to a consumer's join and found that **the second pass had never been written down at
-all**. Four items, none of them a defect in a rule: each is a place where two individually-correct rules
-compose into something nobody chose, or where an absence only bites the second time somebody opens a
-module. The document keeps the measurements (§5.1 the canary, §6.2 the six-edit consequence matrix, §6.3
-what deleting a sidecar costs); these entries keep the decisions and the refused repairs, and do not
-restate the numbers.
-
-They were the closing section of that document — an "open questions" list — which is exactly the shape
-this repo has twice found to be a backlog nobody reads. A question filed against a release is findable;
-a question at the bottom of a prose document is not.
-
-Everything here is legal in a minor.
-
-## RM84 — a module has no version identity on the discovery path, and the publisher is the half we own
-
-**Severity** medium-high · **Status** **our half SHIPPED in the 0.6 PT2 batch (lane D, 2026-08-17)** —
-`upload_module` writes `data/<name>/` and `data/<name>/v<version>/`. **The segment spelling is settled
-and both asks are answered** ([S35](CONSUMER_SUGGESTIONS_HISTORY.md), 2026-08-17): `v<version>` verbatim
-stays. Only the consumer's discovery half is open, and it is theirs, which is why this entry stays here.
-*Previously:* our half taken into 0.6 PT2 on
-2026-08-16 ([PROPOSAL_0_6_PT2.md](proposals/PROPOSAL_0_6_PT2.md) § RM84); before that, open — **joint with the
-reference consumer, and their half is already agreed in writing** · **Owner** enricher
-(`upload.upload_module`) + `just-dna-lite` discovery ·
-**Motivating case** a republished module on the HuggingFace path
-
-**Why a partial mitigation does not close it** (S34 §3): the fields a consumer can read today record
-*where* a module came from, never *which build* of it. Two uploads under one path are then
-indistinguishable on the discovery side, which is the half this item exists for.
-
-### What was observed
-
-[MODULE_LIFECYCLE § 6.8](MODULE_LIFECYCLE.md#68-what-a-consumer-sees-when-v2-lands) traces two
-acquisition paths with two entirely different notions of "updated", and neither delivers a notification.
-The registry path at least has a per-version audit. The **discovery path has no version identity at
-all**: no version in the path, no manifest fetch, no digest check. A republished module keeps the same
-URL, so a cached copy shadows it, and the only invalidation is a purge keyed on the *consumer
-application's own package version*. Stated plainly: on that path the identity used to detect "the module
-changed" is a property of the reader, not of the module. A module republished with new science while the
-app stays pinned is invisible; an app patch release with no module change purges everything.
-
-**Half of that is ours.** `just_dna_enricher.upload.upload_module` writes the flat `data/<name>/` layout
-— so this tier publishes the shape that cannot express a version, and no amount of consumer-side work
-invents one.
-
-### Why it is joint rather than ours alone
-
-A pinning surface is a change to our publisher **and** to their discovery in the same breath: a version
-segment nobody reads is dead bytes, and a reader looking for a segment nobody writes finds nothing.
-[S34 § 4](CONSUMER_SUGGESTIONS.md) is the consumer's half, already stated: *"If the publisher grows a
-version segment we will follow it in discovery; the `vN` fallback in our generic fsspec scan is already
-the shape."* That is as close to a pre-agreement as a cross-repo item gets, and it makes this cheaper
-than "wants agreeing" implied when it was first written down.
-
-### What is undecided
-
-*Was:* the layout itself — a `vN` segment, a digest segment, or a pointer file — and what happens to
-every module already published flat, which is all of them. Whatever is chosen has to leave an
-unversioned path working, because that is what is deployed.
-
-**Settled on our side.** The layout is the dual write, decided in PROPOSAL_0_6_PT2 § RM84 and built in
-lane D. Nothing already published moves, because the flat path keeps being written and keeps meaning
-*latest*. The full behaviour, including the null-version fallback and the two-commit caveat, is
-[ENRICHER § the publisher surface](ENRICHER.md#a-module-is-published-twice-and-the-second-path-is-the-one-that-can-name-a-release-rm84).
-
-### The ask was put, and answered the next day — both questions closed
-
-**Asked** in ENRICHER.md (RM27's shape: a finding about a downstream reader is an explicit ask, never an
-implication), delivered there rather than into their tree because `just-dna-lite` carries no consumer
-inbox. **Answered as [S35](CONSUMER_SUGGESTIONS_HISTORY.md) on 2026-08-17**, read off their code file
-and line rather than recalled.
-
-*(1)* **Their scan matches only `v`-plus-integer** — `^v(\d+)$`, compared with `int()`, so `v1.0.0` does
-not match and `v10` would sort under `v9`. **The half that actually decides it is their correction, not
-the regex:** that fallback lives only in `_discover_fsspec_source`, the generic github/http/s3 branch.
-HuggingFace has its own branch with **no version fallback at all** — so on the path this item is *about*,
-no spelling is read today and the segment cannot be chosen to suit one. Their words: S34 § 4's *"the `vN`
-fallback in our generic fsspec scan is already the shape"* was accurate about the shape and quoted about
-a branch that does not serve HF, and they call that their error rather than a misreading here.
-**So `v<version>` verbatim stays** — a bare major segment would still collide two patch releases at one
-path, and would buy nothing since the code that would read it is not on this path.
-
-*(2)* **No, and by construction rather than by luck.** Both discovery branches call `fs.ls` at exactly
-one level and never `fs.find`, a `**` glob or a recursive listing, and their probe asks `fs.exists` on
-named files rather than listing the directory it is probing — so a nested `data/<name>/v<version>/` is
-never enumerated and never probed. Verified in their tree by search: no `fs.find`, `recursive=True`,
-`maxdepth` or `snapshot_download` against a module path anywhere. The one part of this change that could
-have regressed a consumer who never adopts it, and it does not.
-
-**One consequence recorded rather than fixed**, raised by them as a consequence and not an objection:
-the dual write doubles the collection's bytes and nothing prunes `data/<name>/v<version>/`, so the repo
-grows one full artifact set per release forever. It does not affect discovery. Retention is the
-collection owner's decision, not the publisher's; noted in
-[ENRICHER § the publisher surface](ENRICHER.md#a-module-is-published-twice-and-the-second-path-is-the-one-that-can-name-a-release-rm84).
-
-**What is left here is theirs and unscheduled:** teach `_discover_hf_source` a versioned fallback, and
-replace the regex and `int()` with `just_dna_format.identity.Version`, which already gives them parsing
-and ordering. Nothing is broken meanwhile — the flat path resolves and keeps meaning *latest* — so their
-`read_module_provenance` states `version: None` for every HF-discovered module, which their report
-renders as *Not stated*.
-
-**Confirmed by exhaustive search to have had no `Sn` and no `RMn`** before this entry, which is why it
-is filed rather than cross-referenced.
-
-### Two items building this surfaced, filed 2026-08-17 rather than folded in
-
-Both were found by writing the code, not by planning it, and neither is a defect in what shipped —
-recorded here because this entry is where a reader meets the publisher.
-
-- **[RM88](history/ROADMAP_HISTORY_0_6.md#rm88--republishing-without-bumping-version-overwrites-a-versioned-path-with-different-bytes)** — the versioned path cannot notice that the version has *not* moved, so a republish
-  without a `version:` bump overwrites it with different bytes. Refusing needs a remote read *and* an
-  undecided policy (warn / refuse / `--force`), which is why it is an item and not a fix.
-- **[RM89](history/ROADMAP_HISTORY_0_6.md#rm89--the-publisher-cannot-upload-a-table-only-module-at-all)** —
-  `_REQUIRED` still demanded all three SNP-core parquets, so a table-only module could not be published
-  at all: seven of the sixteen reference examples, measured. Its open question — what the discovery path
-  actually needs open — went to the same team as the two asks above rather than as a third message, and
-  **came back with them in S35, so it shipped on 2026-08-17**. Answering it found the larger half:
-  `_ALLOW_PATTERNS` carried no 0.4 family and no derived-fact table either, so eight *more* examples
-  published a manifest attesting parquets that were never uploaded.
+**Residuals** none yet.

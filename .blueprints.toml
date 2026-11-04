@@ -1,0 +1,89 @@
+[repo]
+# The repo's channel takes this name too; the seats talk there, in agent-chat and in announcements (D104).
+id = "just-dna-compiler"
+
+# Questions the sessions here put to the decision model (RM14); carried over from the clone's own copy.
+[decisions]
+send = true
+
+[seat.lead]
+# The person's own coding sessions here (docs/seats/LEAD.md): the plan, the design, the build, the
+# releases. Triage hands it a fix past a patch; the liaison, a change an upstream release asks; the pm, a
+# proposal.
+wake_from = "just-dna-compiler/triage just-dna-compiler/liaison just-dna-compiler/pm */secretary"
+
+# The desk's answers to this seat's questions, each said once (D133); the desk files this repo's
+# questions under repo:just-dna-compiler.
+[seat.lead.watch.desk]
+cmd = "sh kit:bin/py.sh kit:classes/desk/watch-answers.py just-dna-compiler lead"
+
+[seat.lead.zulip]
+pool = "~/.config/agent-seat-blueprints/zulip/pool"
+
+[seat.pm]
+# The steer above the code (docs/seats/PM.md): strategy, licensing, the name, the research list. The lead
+# asks it for a direction call; it proposes to the lead and writes no code.
+wake_from = "just-dna-compiler/lead just-dna-compiler/triage just-dna-compiler/liaison */secretary"
+
+[seat.pm.watch.desk]
+cmd = "sh kit:bin/py.sh kit:classes/desk/watch-answers.py just-dna-compiler pm"
+
+[seat.pm.zulip]
+pool = "~/.config/agent-seat-blueprints/zulip/pool"
+
+# The triage scripts' documents (kit v0.1.118, #242), so every seat runs them bare: the inbox and its history,
+# ids S<n>; the RM index the allocator reserves into, scanning docs/, under its reservations heading.
+[triage]
+inbox = "docs/CONSUMER_SUGGESTIONS.md"
+history = "docs/CONSUMER_SUGGESTIONS_HISTORY.md"
+prefix = "S"
+index = "docs/RM_TOC.md"
+scan_dir = "docs"
+item_prefix = "RM"
+anchor = "## 🔷 Reservations"
+
+[seat.triage]
+# Answers the consumers (docs/seats/TRIAGE.md): their notes in docs/CONSUMER_SUGGESTIONS.md, a reply in
+# the document, a patch on main, an RM item for the rest. The other seats relay a consumer report to it.
+wake_from = "just-dna-compiler/lead just-dna-compiler/liaison just-dna-compiler/pm */secretary"
+
+# One line when docs/CONSUMER_SUGGESTIONS.md differs from HEAD and has settled, said once per state; paused
+# off the remote's default branch. A consumer writes its item there uncommitted, from its own session.
+[seat.triage.watch.inbox]
+cmd = "sh kit:drivers/git/watch-file.sh docs/CONSUMER_SUGGESTIONS.md"
+
+# One line when a commit to the inbox lands on origin's main that this clone's main does not hold: an item
+# pushed from elsewhere, which the file watcher cannot see.
+[seat.triage.watch.inbox-commits]
+cmd = "sh kit:drivers/git/watch-remote.sh --path docs/CONSUMER_SUGGESTIONS.md"
+
+[seat.triage.watch.desk]
+cmd = "sh kit:bin/py.sh kit:classes/desk/watch-answers.py just-dna-compiler triage"
+
+[seat.triage.zulip]
+pool = "~/.config/agent-seat-blueprints/zulip/pool"
+
+[seat.liaison]
+# What the packages stand on and do not own (docs/seats/LIAISON.md): each upstream release read against
+# what the code uses, an upstream's defect drafted for the person. Any seat sends it an upstream symptom.
+wake_from = "just-dna-compiler/lead just-dna-compiler/triage just-dna-compiler/pm */liaison */upstream-liaison */secretary"
+
+[seat.liaison.watch.desk]
+cmd = "sh kit:bin/py.sh kit:classes/desk/watch-answers.py just-dna-compiler liaison"
+
+# The upstreams' clones, one line each in the liaison state file (docs/seats/LIAISON.md). vrs-python's trunk
+# is quiet (17 commits in 30 days), so it is watched as is. polars (126 a week) and duckdb-python (211 in 30
+# days) are watched for tags only (kit v0.1.119, #246): one wake per release, a patch tagged on a version
+# branch included (duckdb-python's v1.5.6 is on v1.5-variegata). polars also tags its Rust crates (rs-*),
+# which the packages do not install, so only its Python releases (py-*) are said.
+[seat.liaison.watch.ga4gh-vrs]
+cmd = "sh kit:classes/liaison/watch-upstream.sh ga4gh-vrs"
+
+[seat.liaison.watch.polars]
+cmd = "sh kit:classes/liaison/watch-upstream.sh polars --tags --tag-pattern '^py-'"
+
+[seat.liaison.watch.duckdb-python]
+cmd = "sh kit:classes/liaison/watch-upstream.sh duckdb-python --tags"
+
+[seat.liaison.zulip]
+pool = "~/.config/agent-seat-blueprints/zulip/pool"
