@@ -221,7 +221,8 @@ attached, and the rejected repair is usually the one that looks obvious from the
 
 - Audit `validate`/`compile` parity by **check**, not by table. `@parity-by-check`
 - `validate_spec` must refuse everything `compile` refuses. `@validate-refuses-all`
-- The compile-only exemption is *resolved rows*, not the word resolution; share the predicate, copy the error. `@validate-refuses-all`
+- Nothing is compile-only but the deprecated `ensembl_cache` reference: the pre-flight runs the compile's resolution step, and `check_paths` rosters the rest. `@validate-refuses-all`
+- Every `compile_module` refusal sits above `output_dir.mkdir()`; an AST walk holds it. `@validate-refuses-all`
 - Know the validation ceiling first; a check needing a reference belongs in the enricher. `@validation-ceiling`
 - Enricher checks report, never repair; severity follows the mode. `@enrichment-is-validation`
 - A judgement another tier **recorded** is a fact `strict` may gate on — one check only, the one where two authored files contradict. `@a-recorded-judgement-is-a-fact`

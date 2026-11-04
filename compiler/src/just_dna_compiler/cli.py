@@ -101,12 +101,26 @@ def validate(
         help="Pre-flight for a strict compile: escalate the mode-laddered findings to errors, as "
         "`compile --strict` does. Use it whenever the compile you intend to run is strict.",
     ),
+    resolve: bool = typer.Option(
+        True,
+        "--resolve/--no-resolve",
+        help="Pre-flight for `compile --no-resolve`: leave the injected resolution.csv unconsulted, as "
+        "that compile does. Pass the same switch the compile will get.",
+    ),
+    ba1_threshold: float = typer.Option(
+        BA1_ALLELE_FREQUENCY_THRESHOLD,
+        "--ba1-threshold",
+        help="As `compile --ba1-threshold`: the allele frequency above which a pathogenic variant draws "
+        "the ACMG BA1 warning. Warning-only.",
+    ),
 ) -> None:
     """Validate a spec directory without producing output. Exit 1 if invalid."""
     result = validate_spec(
         spec_dir,
         authority_keys=_authority_keys(strip_identity, authority_key),
         strict=strict,
+        resolve_with_ensembl=resolve,
+        ba1_threshold=ba1_threshold,
     )
     _echo_messages(result)
     if result.valid:

@@ -11,8 +11,8 @@ Feature: Resolution from the injected table
   Three operations: fill a 1:1 key, expand a one-to-many key, and verify a pair the author wrote both
   halves of. A locus that cannot host the authored genotype is never expanded onto.
 
-  # source: compiler/src/just_dna_compiler/compiler/validate.py
-  # anchor: _validate_spec
+  # source: compiler/src/just_dna_compiler/compiler/resolution_step.py
+  # anchor: resolve_variants
   # text: compiler/src/just_dna_compiler/resolution_findings.py
   @code:resolution_not_injected @actionable @both_modes
   Scenario: nothing injected, so nothing is fetched
@@ -24,8 +24,8 @@ Feature: Resolution from the injected table
     # This is Principle 2 as a behaviour rather than a promise. The enricher emits the same code from
     # its own resolver when it has no cache, so one code covers both tiers' version of "nobody asked".
 
-  # source: compiler/src/just_dna_compiler/compiler/pipeline.py
-  # anchor: compile_module
+  # source: compiler/src/just_dna_compiler/compiler/resolution_step.py
+  # anchor: resolution_disabled
   @code:resolution_disabled @actionable @both_modes
   Scenario: the flag named after Ensembl is the master switch
     Given a complete resolution.csv beside the spec

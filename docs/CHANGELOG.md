@@ -41,6 +41,26 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM367: `validate` and `compile` reach one verdict, and a refused compile writes nothing (0.8, uncut)
+
+- **One resolution step for both commands.** `validate_spec` now runs the compile's own resolution step
+  (`compiler/resolution_step.py`), so `validate --strict` refuses what `compile --strict` refuses on a
+  GRCh37 rsID-only module, under `--no-resolve`, for `locus_cannot_host_genotype`,
+  `rsid_coordinate_disagrees` and a post-resolution duplicate, and the pre-flight emits every warning code
+  the compile does (expansion, labels, ploidy on a resolved MT/Y row, the derived-table orphans, BA1,
+  `source_row_unused`, `log_file_not_shipped`). `validate_spec` takes `ba1_threshold`; the `validate`
+  command takes `--resolve/--no-resolve` and `--ba1-threshold`.
+- **`--no-resolve` reads nothing it says it skipped.** The table is no longer overlaid, VRS-verified (a
+  tampered id refused), counted into `vrs_alleles_identified`, or used for allele membership; the
+  artifact equals the one the spec compiles with the table deleted.
+- **No refusal after the first write.** A malformed `provenance.json`, logo or readme, and every
+  derived-table refusal, now refuse before `output_dir` is created (a non-UTF-8 `provenance.json` raised).
+  `compiler/check_paths.py` rosters the checks one path asks; `test_check_paths.py` holds the roster, the
+  refusal placement and the flag forwarding as equalities over the code, and `test_one_verdict.py` holds
+  verdicts and codes over the reference examples and a bad fixture per instance. No new warning code. Consumer
+  note in [INTEGRATION_0_8.md](INTEGRATION_0_8.md) § 1.23; the instance list is in
+  [ROADMAP_HISTORY.md](ROADMAP_HISTORY.md) under RM367.
+
 ## 2026-11-04 — RM363: a gene, drug, DOI, PMID and contig compare by one rule in every tier (0.8, uncut)
 
 The 0.8 audit's class B2 (`@one-normalizer-two-spellings`). What now works:

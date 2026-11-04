@@ -256,6 +256,104 @@ attribute outside a key function, the six one-source sites excepted by equality;
 
 **Residuals** won't fix — within 0.x, the duplicate-row refusal of a table older than 0.8 still keys on stored cells, because folding gene or drug case there would refuse rows a published module may hold (Principle 3); a table new in 0.8 (`meta.csv`, `model_organisms.csv`) folds, derived from its fields' `first_seen` marks in `tables._key_compared` · won't fix — `trait_efo_id` written `EFO_n` and `EFO:n` stays two values, because unifying an ontology CURIE's two legal forms is a vocabulary decision and not a second normalizer · won't fix — a live query (the CPIC REST client's `eq.{gene}` filters in `cpic.py`, PharmVar's alleles for a gene, HGNC) still sends the authored spelling, because which case each remote accepts is that service's convention and upper-casing would break symbols such as `C4orf33`; the CPIC snapshot client compares `lower(gene)` with `gene_key` in SQL, where the AST guard cannot see it, so `test_gated_snapshots` pins it · won't fix — a `pmid` cell inside a key (`model_organisms.csv`) still compares verbatim, because its normalizer `extract_pmids` lives in `spec`, which imports `spelling`, so registering it would be an import cycle; `duplicate_study_citation` goes through `spec.citation_key`
 
+## RM367 — a check runs on one path and not the other, or after the first write
+
+**0.8, filed 2026-11-04 from the 0.8 audit, round 1 (class F).**
+
+**Severity** medium · **Status** SHIPPED 2026-11-04 on `0.8`, uncut — a minor (the 0.8 audit, round 1) ·
+**Owner** compiler (`pipeline.py`, `validate.py`, `resolution_step.py`, `check_paths.py`, `manifest.py`, `cli.py`)
+· *related* `@validate-refuses-all`, `@parity-by-check`, `@off-switch-needs-a-probe`, RM141, RM207, RM359
+
+**The class.** `validate_spec` is the author's pre-flight for `compile_module`: the two owe one verdict
+and one set of findings. A check that runs on one path and not the other breaks that, in either
+direction; so does a check that runs after a side effect — a compile refusing once it has written part
+of its artifact. And a switch whose callee does not hear it is the same defect one step earlier: the
+check runs where the caller asked for it not to.
+
+**Instances, re-verified on the `0.8` tip, and every one found in the hunt** (lines are `0.8`'s):
+
+1. *A refusal after the first write* — `pipeline.py:1080-1093`: a malformed `provenance.json`, an
+   unsupported logo or readme refused after `output_dir.mkdir()` (`:689`) and the parquets; a
+   `provenance.json` that is not UTF-8 escaped as `UnicodeDecodeError` with the directory half written.
+   The hunt added the fact-table loop's four refusals (`:973` spelling, `:979` load, `:992` overlay,
+   `:1005` check), also below the `mkdir`. → All seven sit above it: the sidecars are loaded, overlaid
+   and checked before `mkdir` and written after; `manifest.ancillary_errors` judges the three files
+   read-only, with the compile's words, and `validate_spec` asks it too (it never read them).
+2. *`--no-resolve` read the table its warning says was not read* — `pipeline.py:363-405` overlaid it,
+   verified its `vrs_id`s (a tampered one refused) and counted them into `vrs_alleles_identified`
+   while `:693` wrote no id; `:446`/`:458` judged allele membership against it; `validate.py:477-497`
+   did the same. → One reader, `resolution_step.read_resolution`, whose **active view** is empty under
+   the switch; every consumer reads the view. The file is parsed only for the count the
+   `resolution_disabled` warning publishes (its text is unchanged and now true), and that warning is
+   the pre-flight's too.
+3. *Two resolution ladders pinned compile-only* — `locus_cannot_host_genotype` and
+   `rsid_coordinate_disagrees` (`test_one_channel_under_strict.py`, `preflight=False`). The exemption
+   they sat under ("they read resolved rows") does not hold for an injected table: applying it is pure
+   computation over bytes the pre-flight holds. → The pre-flight runs the compile's resolution step
+   (`resolve_variants`, `identity_after_resolution`, `ploidy_after_resolution`, `unplaced_refusal`),
+   over the rows the compile keeps; both cases now refuse on both paths, and so does a post-resolution
+   duplicate `(variant_key, genotype)`, which was compile-only too.
+4. *The strict aggregate on two predicates* (found in the hunt) — the compile refused every row still
+   unplaced after resolution; the pre-flight asked `unresolved_subjects`, which is empty for a
+   non-GRCh38 module and was skipped under `--no-resolve`. So `validate --strict` passed a GRCh37
+   rsID-only module, and every reference example under `--no-resolve`, that `compile --strict`
+   refused, and `test_resolution_coverage_parity.py` pinned the second as valid. → One function,
+   `unplaced_refusal`, over the resolved rows, on both paths. RM359's decision that this aggregate is a
+   different finding from the per-subject `rsid_unresolved` warnings stands; it is not reopened here.
+5. *Warning-only checks the compile asked over resolved rows and the pre-flight never did* (found in
+   the hunt): `rsid_expanded_to_multiple_loci`, `rsid_without_resolution_label`,
+   `resolution_skipped_cross_build`, `resolution_not_injected` on a non-GRCh38 module, `contig_ploidy_*`
+   on an rsID-authored MT/Y row, `derived_row_orphan` from the frequency, clinical-assertion and
+   GWAS-effect orphan checks, `clin_sig_contradicts_frequency` (BA1), `source_row_unused`, and
+   `log_file_not_shipped`. Measured on the reference examples: `hboc_palb2`, `mt_common_deletion`,
+   `pathogenic_clinvar` and `shox_par1` compiled with a code their pre-flight never emitted, and every
+   example carrying a `resolution.csv` did under `--no-resolve`. → Each is asked by both commands, from
+   the shared step or from one shared helper (`sources_in_use`, `discover_logs`); `validate_spec` takes
+   `ba1_threshold`, and the compile forwards it with its explicit ancillary files.
+6. *A flag one entry point never forwarded* (found in the hunt) — the `validate` command had no
+   `--no-resolve` and no `--ba1-threshold`, so it could not pre-flight a compile that takes them; and
+   `test_validate_agrees_with_compile.py` compared a resolving `validate` with `compile --no-resolve`,
+   which is how instance 2 stayed green. → Both options on the command; the tests compare one mode.
+
+**The mechanism.** One resolution step both commands call (`compiler/resolution_step.py`); one roster of
+the checks only one path asks, with each one's reason (`compiler/check_paths.py`: `COMPILE_ONLY` holds
+`meta_scale_errors`, which the pre-flight asks inside `build_meta`; `PREFLIGHT_ONLY` holds the checks the
+compile inherits through the pre-flight); and these guards, each an equality:
+
+- `test_check_paths.py` walks `compile_module` and `_validate_spec` and asserts the checks each calls
+  minus the other's **equal** the roster; asserts every `CompilationResult(success=False, …)` lies above
+  `output_dir.mkdir()` and nothing is written before it; asserts the compile forwards exactly the
+  pre-flight options it takes, and the `validate` command exactly `validate_spec`'s parameters.
+- `test_one_verdict.py` runs both commands over every reference example and a bad fixture per instance, in
+  both modes and with the resolution switch both ways, and asserts equal verdicts, equal
+  `warnings_summary` code sets, and no output directory after a refusal; and, over every example
+  carrying a `resolution.csv` plus a tampered-id fixture, that `--no-resolve` compiles the parquets and
+  resolution facts the same spec compiles with the table deleted.
+
+Red on `0.8`: 110 of the 166 `test_one_verdict.py` cases and four of the five `test_check_paths.py`
+walks (the refusal walk named lines 973, 979, 992, 1005, 1083, 1089, 1093). Mutating the compile's reader
+to ignore the switch turns 43 cases red; dropping one moved check from the pre-flight turns the roster
+walk red.
+
+**What is withheld rather than changed.** A malformed `resolution.csv` still refuses under
+`--no-resolve` (its rows are parsed for the count), on both paths; a coordinate impossible in its build
+or a duplicate key in it no longer does, since those judge a table the switch does not read. On the
+deprecated `ensembl_cache` path the pre-flight skips every judgement over resolved rows (coverage, the
+strict aggregate, the four resolved-row cross-checks) rather than ask it over unresolved rows and publish
+a second, differently counted sentence (`@no-rerun-with-counts`). `close_module` runs the same pre-flight,
+so it now refuses a malformed `provenance.json`. Two review findings were declined: that
+`--no-resolve` should go on refusing a tampered `vrs_id` (it judges a table the switch does not read,
+which is the instance being fixed; the refusal returns with the switch off), and that the compile should
+take the pre-flight's resolution result instead of running the step again (a cost, not a defect; the
+compile's own returns stay defensive, and the `ensembl_cache` path needs them). A `sources.csv` row naming the
+resolution layer's authority is not reported unused under `--no-resolve`: a source row is about the
+module's files, so `sources_in_use` reads every row the file holds. The positional joinability
+report still names how many rows the unconsulted table would have placed (`InjectedResolution.named_table`).
+`resolution.unresolved_subjects` stays importable (the `compiler` re-export shell names it) and no
+caller in the repository uses it now.
+
+**Residuals** won't fix — the deprecated `ensembl_cache` path stays the compile's alone, because the pre-flight is not handed that reference; it is removed at 1.0 (Principle 3's two-step retirement), and `_validate_spec(legacy_reference=True)` leaves its coverage judgement to the compile
+
 ## RM270 — an indel's artifact key is its source's spelling: a left-aligned VCF misses a respelled row, and the spelling-independent id the enricher mints never reaches the artifact
 
 **0.8, decided 2026-11-03.** Taken into 0.8 by the maintainer, with the rest of the indel-placement fixes (RM304, RM267, RM270, RM292, RM305). The status line below predates that decision.

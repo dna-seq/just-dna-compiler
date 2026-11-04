@@ -94,7 +94,7 @@ Feature: The spec directory and the cells inside it
     # and coded at the point where it becomes a warning, which is the only place that knows it is one.
 
   # source: compiler/src/just_dna_compiler/compiler/manifest.py
-  # anchor: _collect_logs
+  # anchor: discover_logs
   @code:log_file_not_shipped @actionable @both_modes
   Scenario: a file under logs/ that discovery leaves behind
     Given a spec directory whose logs/ holds "notes.svg", "data.bin", a "ledger.jsonl" with one bad line, and "authoring.log"

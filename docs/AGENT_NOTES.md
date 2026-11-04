@@ -930,6 +930,23 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `compile_module` runs the pre-flight whatever its own mode, so both passes emit the finding, measured
   at 24 warnings for 12 subjects before the message-dedup went in.
 
+  **And then the exemption itself went (RM367, 2026-11-04).** "Resolved rows are compile-only" never held
+  for an injected table: resolving it is computation over bytes the pre-flight has already loaded. Each
+  side kept its own copy — a coverage predicate, `withdrawn`/`ambiguous` helpers, the compile's
+  `resolve_from_table` — and the copies agreed only on GRCh38 with resolution switched on, so
+  `validate --strict` passed an rsID-only GRCh37 module, and every module under `--no-resolve`, that
+  `compile --strict` refused; two resolution ladders were pinned compile-only by a test. The repair was
+  to stop sharing predicates and share the **step**: `compiler/resolution_step.py` (`read_resolution`,
+  `resolve_variants`, `identity_after_resolution`, `ploidy_after_resolution`, `unplaced_refusal`) is
+  called by both commands. What stays compile-only is a *reference the pre-flight is not handed* (the
+  deprecated `ensembl_cache`), and `compiler/check_paths.py` names every other single-path check, held
+  as an equality against an AST walk of both function bodies. The second half of the class was a
+  refusal **after the first write**: seven `return CompilationResult(success=False, …)` sat below
+  `output_dir.mkdir()` (the fact-table loop's four, the ancillary files' three). They moved above it,
+  and an AST walk holds the line. **The trap that hid the off switch:** the parity tests compared a
+  resolving `validate` with a `compile --no-resolve`, so the pair agreed precisely because the switch
+  did not work. Compare the two commands in one mode, always.
+
 - `@ploidy-behind-resolution` — **A warning computed post-resolution is discarded — the second `_cross_validate_variants` call takes
   errors only.** That is right for a warning about authored cells and wrong for any whose input
   resolution fills. It made the non-diploid guardrail invisible to every rsID-authored row, i.e. to
