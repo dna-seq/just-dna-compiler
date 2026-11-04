@@ -71,7 +71,7 @@ from just_dna_enricher.enrich.subjects import (
     select_par_representative,
 )
 from just_dna_enricher.enrich.verification_records import _verification_records
-from just_dna_enricher.ensembl import EnsemblResolver
+from just_dna_enricher.ensembl import EnsemblResolver, RestWitness, RsidResolver
 from just_dna_enricher.gnomad import GnomadClient, GnomadError
 from just_dna_enricher.grch37 import Grch37Client, diagnose_wrong_build, summarize_build_diagnoses
 from just_dna_enricher.identifiers import IdentifierUnavailable, RsidStatus, check_rsids
@@ -92,6 +92,7 @@ from just_dna_enricher.locations import (
 )
 from just_dna_enricher.placement import (
     ENSEMBL_WITNESS,
+    Loci,
     PlacementCheck,
     answered_placements,
     ask_live_witness,
@@ -144,7 +145,7 @@ def enrich(
     rederive: bool = False,
     keep_staging: bool = False,
     progress: Callable[[int, int], None] | None = None,
-    resolver: EnsemblResolver | None = None,
+    resolver: RsidResolver | None = None,
     gnomad_client: Optional["GnomadClient"] = None,
     grch37_client: Grch37Client | None = None,
     release_probes: Mapping[str, ReleaseProbe] | None = None,
@@ -399,7 +400,7 @@ def _run_enrichment(
     rederive: bool,
     keep_staging: bool,
     progress: Callable[[int, int], None] | None,
-    resolver: EnsemblResolver | None,
+    resolver: RsidResolver | None,
     gnomad_client: Optional["GnomadClient"],
     grch37_client: Grch37Client | None,
     release_probes: Mapping[str, ReleaseProbe] | None,
@@ -772,19 +773,37 @@ def _run_enrichment(
         # run writes. Self-consistent with the snapshot by RM292's rule — see `placement`.
         asked_about: dict[str, set[str]] = {}
         rest_not_asked: list[str] = []
+        rest_not_asked_reason: str | None = None
         rest_subjects = (
             live_witness_subjects(fresh_loci, source_of_rsid, witnesses) if live_ensembl_runs else []
         )
         if rest_subjects:
             owned = resolver is None
             client = resolver or EnsemblResolver()
+            rest_answers: Loci = {}
             try:
-                logger.info(
-                    "Placement witness — asking Ensembl REST about %d snapshot indel(s) no loaded witness "
-                    "holds, one request at a time (RM267).",
-                    len(rest_subjects),
-                )
-                rest_answers, rest_not_asked = ask_live_witness(client.resolve_rsid_rest, rest_subjects)
+                # An optional capability of an injected resolver, asked only where it exists: a host's
+                # resolver written before 0.8 has `resolve_rsid` alone, and calling the method blindly
+                # raised `AttributeError` at the first eligible indel.
+                if isinstance(client, RestWitness):
+                    logger.info(
+                        "Placement witness — asking Ensembl REST about %d snapshot indel(s) no loaded "
+                        "witness holds, one request at a time (RM267).",
+                        len(rest_subjects),
+                    )
+                    rest_answers, rest_not_asked = ask_live_witness(client.resolve_rsid_rest, rest_subjects)
+                else:
+                    rest_not_asked = list(rest_subjects)
+                    rest_not_asked_reason = (
+                        f"the injected resolver ({type(client).__name__}) has no `resolve_rsid_rest`, so "
+                        "this run could not ask Ensembl REST"
+                    )
+                    logger.warning(
+                        "Placement witness — Ensembl REST not asked about %d snapshot indel(s): %s; pass an "
+                        "`EnsemblResolver`, or give yours the method, to have them compared (RM267).",
+                        len(rest_subjects),
+                        rest_not_asked_reason,
+                    )
             finally:
                 if owned:
                     client.close()
@@ -800,6 +819,7 @@ def _run_enrichment(
             asked_about=asked_about,
         )
         placement.not_asked = rest_not_asked
+        placement.not_asked_reason = rest_not_asked_reason
         if not fresh_rsids:
             placement.not_checked = "nothing_to_check"
         elif not witnesses:

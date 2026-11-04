@@ -1206,15 +1206,19 @@ case needs a witness that holds it, which is why REST is asked:
 - **Unreachable is not asked.** REST is retried on a transport error, a 5xx and a 429. A request still
   unanswered, or an answer whose anchor base could not be read, leaves REST not asked for that rsID: the
   row does not name `ensembl`, nothing is withheld, and `detail` counts the rsIDs. A 4xx is an answer:
-  REST holds no placement, so the row names `ensembl` with `unplaced`. `--offline` asks nothing. There
+  REST holds no placement, so the row names `ensembl` with `unplaced`. `--offline` asks nothing.
+- **An injected resolver need only have `resolve_rsid`** (`ensembl.RsidResolver`). REST's mapping is an
+  optional capability, `ensembl.RestWitness` (`resolve_rsid_rest`), asked only where the injected
+  resolver has it. One written before 0.8 leaves REST not asked for the run: every eligible rsID is
+  counted as not asked, `detail` says the resolver has no such method, and one warning names the class.
+  Before this, the first eligible indel raised `AttributeError` and the run died. There
   is no pacing gate and no `Retry-After` handling on this rung (the table below): during an outage each
   asked rsID costs three attempts.
 
 
 The ClinVar witness is the snapshot the run locates for its link and the `clin_sig` check, so
-`--no-clinvar --no-verify-clinsig` leaves only ClinVar-GKM. The live REST rung is not a witness: the
-0.8 contract compares loaded authorities only (PROPOSAL_0_8_PT2 §5 C4), and asking REST would cost one
-request per indel.
+`--no-clinvar --no-verify-clinsig` leaves only ClinVar-GKM. The live REST rung is asked only as the
+third witness above, for a snapshot indel neither loaded witness holds, one request per such rsID.
 
 ### A filled coordinate is written left-aligned; an authored one is judged (0.8, RM270)
 

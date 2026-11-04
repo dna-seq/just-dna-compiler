@@ -56,9 +56,19 @@ side `ensembl` once REST answered, so `independence` reads `self_consistent` (RE
 unanswered after its retries is *not asked* for that rsID and counted in `detail`; `--offline` asks
 nothing. The REST leg of `EnsemblResolver.resolve_rsid` now retries a 5xx and a 429, and a 429 left
 after the retries is unreachable rather than "no record". New: `verification.ran(reported_by=)` and
-`skipped(reported_by=)`, `EnsemblResolver.resolve_rsid_rest` (REST's half of `resolve_rsid`; an injected
-resolver must provide it), `PlacementCheck.self_consistent`/`not_asked`/`reported_by`/`placed_by`,
+`skipped(reported_by=)`, `EnsemblResolver.resolve_rsid_rest` (REST's half of `resolve_rsid`),
+`PlacementCheck.self_consistent`/`not_asked`/`reported_by`/`placed_by`,
 `placement.live_witness_subjects` and `ask_live_witness`. No new column, no warning code. INTEGRATION_0_8 § 1.18.
+
+- **An injected resolver without `resolve_rsid_rest` no longer kills the run.** `enrich(resolver=)` asks
+  for `resolve_rsid` only (`ensembl.RsidResolver`); REST's mapping is an optional capability
+  (`ensembl.RestWitness`), asked where the resolver has it. A host resolver written before 0.8 (the
+  shape just-dna-marketplace's own test fake has) raised `AttributeError` at the first eligible indel;
+  now REST is not asked for that run, the rsIDs are counted (`PlacementCheck.not_asked`, with
+  `not_asked_reason` naming the missing method in `detail`), and one warning says why. The class was
+  hunted across `enrich`'s other injected collaborators: `gnomad_client.resolve_rsids`,
+  `grch37_client.reference_bases`/`variants_at` and the `release_probes` callables are each their
+  parameter's original contract, and `non_nucleotide_rsids` was already read by `getattr` (RM272).
 
 ## 2026-11-04 — RM270: an indel's spelling-independent `vrs_id` reaches every variant parquet, and a filled coordinate is written left-aligned (0.8, uncut)
 

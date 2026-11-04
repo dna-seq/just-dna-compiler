@@ -445,8 +445,9 @@ def _verification_records(
                                 "witness asked about it, so none was compared — recorded rows are compared "
                                 "only under --rederive",
                                 "no_reference": "no second authority answered — no ClinVar or ClinVar-GKM "
-                                "snapshot was located, and Ensembl REST was not asked (offline, or no "
-                                "snapshot indel to ask about) or did not answer — so every placement has "
+                                "snapshot was located, and Ensembl REST was not asked (offline, no "
+                                "snapshot indel to ask about, or a resolver without the method) or did not "
+                                "answer — so every placement has "
                                 "the one witness that gave it",
                             }.get(placement.not_checked, placement.not_checked),
                             *placement_notes,

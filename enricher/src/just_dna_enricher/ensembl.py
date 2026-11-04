@@ -17,6 +17,7 @@ network lives here (never in format/compiler). GRCh38 only.
 import logging
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
+from typing import Protocol, runtime_checkable
 
 import httpx
 from just_dna_format.vocab import ALLELE_PATTERN
@@ -64,6 +65,30 @@ class EnsemblSettings:
 
 class EnsemblError(RuntimeError):
     """A live Ensembl query failed on all backends (after retries + fallback)."""
+
+
+class RsidResolver(Protocol):
+    """What `enrich(resolver=)` requires of an injected resolver: `resolve_rsid`, and nothing else.
+
+    `EnsemblResolver` is one; a host may inject its own (a shared, paced one, or a test fake). Every
+    method `enrich` calls beyond this one is an **optional capability**, checked against its own named
+    Protocol before the call (`RestWitness`), so a resolver written against an older enricher keeps
+    working and the capability it lacks is reported as not asked rather than raised as an
+    `AttributeError` mid-run. `close` is called only on a resolver `enrich` built itself.
+    """
+
+    def resolve_rsid(self, rsid: str) -> tuple[list[dict] | None, str | None]: ...
+
+
+@runtime_checkable
+class RestWitness(Protocol):
+    """The optional capability the placement witness asks (RM267): REST's own mapping of an rsID.
+
+    Added in 0.8, after hosts were already injecting resolvers. A resolver without it leaves Ensembl
+    REST not asked for the run, counted, with one warning naming why.
+    """
+
+    def resolve_rsid_rest(self, rsid: str) -> tuple[list[dict] | None, str | None]: ...
 
 
 @dataclass

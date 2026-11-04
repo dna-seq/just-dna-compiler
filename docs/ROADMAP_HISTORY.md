@@ -253,6 +253,15 @@ is *not asked*, counted in `detail`, never agreement; `--offline` asks nothing; 
 journalled. Tests in `enricher/tests/test_placement_witness.py` (recorded REST answers for `rs8176719` and
 `rs77944059`, one live test under `JUST_DNA_NETWORK_TESTS=1`), each arm mutated once.
 
+**2026-11-04: an injected resolver without `resolve_rsid_rest` leaves REST not asked, never a crash.**
+The witness above called the new method on whatever resolver the host injected, so a resolver written
+against 0.7 (just-dna-marketplace's test fake is one) raised `AttributeError` at the first eligible
+indel. `enrich(resolver=)` now requires `ensembl.RsidResolver` (`resolve_rsid`) and asks the optional
+`ensembl.RestWitness` capability only where it exists; otherwise every eligible rsID is not asked,
+counted, with `PlacementCheck.not_asked_reason` in `detail` and one warning. Hunted across `enrich`'s
+other injected collaborators (gnomAD, GRCh37, the release probes): each calls only its parameter's
+original contract. Test red before, the reason's wiring mutated once.
+
 **Severity** high · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** (two optional
 `resolution.csv` columns and a new check; [PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §5 C4) ·
 **Owner** enricher (the resolver chain's snapshot link), with the upstream half in `just-dna-pipelines` · **Motivating case**
