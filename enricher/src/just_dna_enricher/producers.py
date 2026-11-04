@@ -37,6 +37,7 @@ from just_dna_enricher.licensing import (
     GENCC_TERMS,
     GNOMAD_TERMS,
     GWAS_CATALOG_TERMS,
+    OPENTARGETS_TERMS,
     PUBMIND_TERMS,
 )
 
@@ -141,6 +142,20 @@ DERIVED_PRODUCERS: dict[str, tuple[DerivedProducer, ...]] = {
             command="gwas",
             module="gwas",
             sources=(GWAS_CATALOG_TERMS.source,),
+            shares_table_because=(
+                "writes the association rows; `opentargets enrich` fills two columns on them "
+                "(`posterior_probability`, `fine_mapping_method`, RM239) and adds no row"
+            ),
+        ),
+        DerivedProducer(
+            table="gwas_effects.csv",
+            command="opentargets enrich",
+            module="opentargets",
+            sources=(OPENTARGETS_TERMS.source,),
+            shares_table_because=(
+                "fills RM239's fine-mapping posterior on rows the `gwas` pass wrote, keyed on their "
+                "(variant, study), and never adds or removes an association"
+            ),
         ),
     ),
     "literature.csv": (
@@ -184,6 +199,30 @@ DERIVED_PRODUCERS: dict[str, tuple[DerivedProducer, ...]] = {
             command="alphagenome expression",
             module="expression",
             sources=(ALPHAGENOME_ATLAS_TERMS.source,),
+        ),
+    ),
+    "locus_to_gene.csv": (
+        DerivedProducer(
+            table="locus_to_gene.csv",
+            command="opentargets enrich",
+            module="opentargets",
+            sources=(OPENTARGETS_TERMS.source,),
+        ),
+    ),
+    "colocalisations.csv": (
+        DerivedProducer(
+            table="colocalisations.csv",
+            command="opentargets enrich",
+            module="opentargets",
+            sources=(OPENTARGETS_TERMS.source,),
+        ),
+    ),
+    "consequences.csv": (
+        DerivedProducer(
+            table="consequences.csv",
+            command="opentargets enrich",
+            module="opentargets",
+            sources=(OPENTARGETS_TERMS.source,),
         ),
     ),
 }

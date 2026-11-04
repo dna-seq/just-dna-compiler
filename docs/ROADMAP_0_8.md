@@ -17,7 +17,7 @@ Every item is additive under Principles 3/4/8, so each is legal in a minor. Inde
 | The indel-placement fixes | [RM304](ROADMAP_HISTORY.md#rm304--a-vrs_id-does-not-say-which-vrs-minted-it-and-vrs-21-moves-some-insertion-ids) first, then [RM267](ROADMAP.md#rm267--the-ensembl-snapshot-anchors-a-class-of-insertions-one-base-early-and-resolutioncsv-serves-them-as-a-different-event), [RM270](ROADMAP.md#rm270--an-indels-artifact-key-is-its-sources-spelling-a-left-aligned-vcf-misses-a-respelled-row-and-the-spelling-independent-id-the-enricher-mints-never-reaches-the-artifact), [RM292](ROADMAP.md#rm292--a-verification-check-does-not-say-what-it-checked-against-so-a-check-that-witnesses-itself-reads-as-verified), [RM305](ROADMAP.md#rm305--clinvar-gkms-allele-table-is-an-offline-independent-witness-for-where-an-indel-sits-and-nothing-reads-it) | [ROADMAP.md](ROADMAP.md) | one design, interviewed before it is built; four are high severity |
 | The lead's ready minors (2026-11-04) | RM337 (a warning naming each `logs/` file left behind), RM342 (the toolchain in the manifest, with the polars 2 lock) | their entries are in ROADMAP_HISTORY | both built on `0.8` (2026-11-04) |
 | Chosen earlier | [RM303](ROADMAP_HISTORY.md#rm303--the-snapshot-layout-is-a-contract-with-six-parties-and-no-model-so-it-belongs-in-just-dna-format) (the snapshot layout as a model), [RM253](ROADMAP_HISTORY.md#rm253--a-repeat-count-star-allele-ugt1a1-28--ta8-has-no-home-a-diplotype-can-name-and-the-cpic-drafter-translates-none-of-cpics-notation) (a repeat-count star allele) | ROADMAP_HISTORY | both shipped 2026-11-04 on `0.8` |
-| longevitymap v2 | RM28's combination half, RM322–RM336 ([the group](#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03)), and [RM236](#rm236--consequence-and-impact-are-planned-axes-with-no-slot-and-an-acmg-engine-reads-both-as-primary-inputs), [RM239](#rm239--a-fine-mapping-posterior-has-no-column-and-gwas_effectscsv-already-has-its-key) as inputs to RM333's confidence labels | this file and [ROADMAP.md](ROADMAP.md) | design first; RM323 decides before RM324, RM326 and RM329 |
+| longevitymap v2 | RM28's combination half, RM322–RM336 ([the group](#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03)), and [RM236](ROADMAP_HISTORY.md#rm236--consequence-and-impact-are-planned-axes-with-no-slot-and-an-acmg-engine-reads-both-as-primary-inputs), [RM239](ROADMAP_HISTORY.md#rm239--a-fine-mapping-posterior-has-no-column-and-gwas_effectscsv-already-has-its-key) as inputs to RM333's confidence labels | this file and [ROADMAP.md](ROADMAP.md) | design first; RM323 decides before RM324, RM326 and RM329 |
 
 Patch-class items stay on `main` and are not part of this scope, as [RELEASE_CYCLE.md](RELEASE_CYCLE.md) says.
 
@@ -52,7 +52,7 @@ land wherever RM323 puts per-locus facts. RM322 next, since APOE is the lead loc
 | [RM330](#rm330--an-effect-measured-in-one-sex-one-smoking-stratum-or-one-genotype-has-no-row) | the stratum an estimate was measured in; sex as the first query-time modifier | full ×2 | RM188 axis 3 |
 | [RM331](#rm331--a-study-measured-on-an-ld-proxy-cannot-say-so-and-filing-it-under-the-lead-checks-the-proxys-allele-against-the-leads) | `StudyRow` proxy variant + r²; the allele check follows the proxy | full ×2–3 |  |
 | [RM332](#rm332--a-beta-has-no-unit-on-authored-rows-while-gwas_effectscsv-has-carried-one-since-06) | `effect_unit` on authored rows, as `gwas_effects.csv` has | full ×1–2 |  |
-| [RM333](#rm333--the-effector-gene-behind-a-gwas-locus-has-no-source-and-no-column) | an Open Targets lane; effector gene, score, release on a derived table | half, plus a lane | licence unprobed |
+| [RM333](ROADMAP_HISTORY.md#rm333--the-effector-gene-behind-a-gwas-locus-has-no-source-and-no-column) | an Open Targets lane; effector gene, score, release on a derived table | half, plus a lane | ✅ shipped 2026-11-04 on `0.8`, uncut |
 | [RM334](ROADMAP_HISTORY.md#rm334--an-hla-allele-has-no-table-and-tag-snps-cannot-stand-in-for-one) | the IPD-IMGT/HLA name grammar on `allele_function.csv` (the table was cut) | near-zero (a refusal) | ✅ shipped 2026-11-04 |
 | [RM335](#rm335--model-organism-evidence-has-nowhere-to-go-and-a-study-row-naming-the-rsid-claims-the-mouse-study-was-about-the-human-variant) | a model-organism evidence table | full (new kind) |  |
 | [RM336](ROADMAP_HISTORY.md#rm336--a-doi-written-into-pmid-parses-as-five-or-six-pubmed-ids-and-the-literature-pass-looks-each-one-up) | a DOI-token arm in `validate_pmid_cell` | near-zero (a refusal or a warning code) | **shipped 2026-11-04 on `0.8`, uncut** |
@@ -60,9 +60,9 @@ land wherever RM323 puts per-locus facts. RM322 next, since APOE is the lead loc
 **Older items the plan also needs, tagged rather than moved** (each keeps its own entry; the 2026-11-03
 scope decision put each in 0.8 or 0.9, as marked):
 
-- **RM236** (this file, **0.8**) — causal confidence C1 and effector confidence E1 both key on a variant being coding.
+- **RM236** (**shipped 2026-11-04 on `0.8`**, in ROADMAP_HISTORY) — causal confidence C1 and effector confidence E1 both key on a variant being coding.
 - **RM238** ([ROADMAP_0_9.md](ROADMAP_0_9.md), **0.9** since 2026-11-04: Open Targets' coloc, in RM333's lane, replaces it) — the cis-QTL colocalisation behind effector confidence E1/E2.
-- **RM239** (this file, **0.8**) — the fine-mapping posterior is the input to causal confidence C1–C4.
+- **RM239** (**shipped 2026-11-04 on `0.8`**, in ROADMAP_HISTORY) — the fine-mapping posterior is the input to causal confidence C1–C4.
 - **RM241** (this file, **built on `0.8`**) — v2 declares `weighting:` precisely to say it has no weights, and `reverse` drops the block.
 - **RM263** ([ROADMAP.md](ROADMAP.md), **built on `0.8`**) — v2 cites preprints, whose rows hold a DOI and need a PMID; RM336 is the parsing half.
 - **RM294** ([ROADMAP_0_9.md](ROADMAP_0_9.md), **0.9** since 2026-11-04, after the one-scale tier decision) — a source's evidence grade travelling into a module is the same column family as RM324's tier.
@@ -273,51 +273,6 @@ so the plan writes the unit into `statistical_test` prose.
 mirroring the derived table. Full ×1–2. A sign convention ("positive = shorter life") is not a unit:
 `effect_allele` with `direction` already says it.
 
-## RM333 — the effector gene behind a GWAS locus has no source and no column
-
-**Placement settled 2026-11-04.** The effector-confidence label is never authored (RM323's cut). This lane's derived table is one of its inputs, beside coloc and the coding consequence.
-
-**Licence probed 2026-11-04 (all claims checked at the source); decided by the maintainer: build, under Open
-Targets' own terms plus its notice.**
-
-What the probe found:
-
-- L2G now lives in the Platform: release 26.09, dataset `l2g_prediction`, on EBI's FTP. There is no
-  Hugging Face copy.
-- The release is marked CC0 1.0 (the licence page, and the croissant's only `license` key).
-- The terms of use add "no additional restrictions … other than those provided by the original data
-  owners" and a third-party-rights disclaimer.
-
-The `SourceRow` therefore records `commercial_use=True`, `share_alike=False`, `redistribution=True`, and
-`notice` carries that disclaimer verbatim.
-
-**For a lawyer, named and not settled:**
-
-- "marked with" CC0 against "dedicates", for data Open Targets did not wholly author;
-- whether "all Open Targets users" reaches a module's buyer;
-- whether the CC BY-SA 3.0 of ChEMBL and HPA, as training inputs, reaches the scores;
-- whether a CC0 mark satisfies the CC BY 4.0 attribution owed to eQTL Catalogue and GTEx;
-- FinnGen's terms, unstated at its source;
-- the 26.09 inputs missing from Open Targets' licence table;
-- PanelApp's "commercial use for Open Targets".
-
-**For 0.9:** the host licence defers to the original owners, and an L2G row cannot name its owner
-(`@a-hosts-terms-are-not-its-contents-terms` assumes a record can override). That is a `SourceRow` axis
-gap, filed as [RM345](ROADMAP_0_9.md#rm345--sourcerow-cannot-state-five-licence-shapes-alphagenomes-four-and-a-host-licence-that-defers-to-owners-a-row-cannot-name) with AlphaGenome's four (`probes/ALPHAGENOME_ATLAS.md` §2.6).
-
-**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** enricher (a new lane) + format (a derived table's columns) · **Motivating case** longevitymap v2 requirements §4.2 (causal and effector confidence, R-CAUSAL) · *for* longevitymap v2 · *related* RM239, RM238, RM236
-
-**Need.** v2 names a gene only at effector confidence E1/E2, using Open Targets locus-to-gene (L2G)
-scores and coloc. `VariantRow.gene` is a symbol with no provenance, so nothing tells a nearest gene from
-an effector call. RM239 covers the fine-mapping posterior on `gwas_effects.csv`, RM238 the per-tissue
-eQTL (parked), and RM236 the coding consequence that C1/E1 key on. No item covers L2G, and no lane reads
-Open Targets.
-
-**Shape.** An Open Targets snapshot lane, walked through [CACHE_SURFACE.md](CACHE_SURFACE.md)'s checklist,
-**licence probed first** (not verified here). Effector gene, score, method and release on a derived table
-(half cost). The C1–C4 / E1–E4 labels are the module's rubric over those inputs, so they are computed
-once the inputs exist, never authored.
-
 ## RM335 — model-organism evidence has nowhere to go, and a study row naming the rsID claims the mouse study was about the human variant
 
 **Severity** low · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format · **Motivating case** longevitymap v2 requirements §4.3 (R-ANIMAL-1…5), §10 · *for* longevitymap v2 · *related* RM327
@@ -334,92 +289,6 @@ matching found 20 of the 22 genes NCBI orthologues found), species, model type, 
 effect, and the direction concordance with the human allele (`concordant`, `discordant`,
 `nonmonotone`), with a citation. Annotation only: it never reaches an effect column or a tier
 (R-ANIMAL-1). Full, a new table kind.
-
-## RM236 — `consequence` and `impact` are planned axes with no slot, and an ACMG engine reads both as primary inputs
-
-**0.8, decided 2026-11-03.** Kept in 0.8 as an input to longevitymap v2's causal and effector-gene confidence labels (RM333), while the rest of RM188's parity work moved to 0.9.
-
-**Severity** medium · **Status** open — **filed 2026-09-13 from [RM188](ROADMAP_0_9.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)'s ClawBio half** ·
-**Owner** format (schema + compiler), then enricher · **Motivating case**
-[`probes/CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md) § *the two columns their engine reads that we
-cannot store*
-
-**For longevitymap v2 (2026-11-03):** causal confidence C1 and effector confidence E1 both key on a variant being coding. See [the group](#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
-
-[ROADMAP § Reserved namespace](ROADMAP.md#reserved-namespace) lists `consequence` (the VEP/Sequence
-Ontology term) and `impact` (`HIGH|MODERATE|LOW|MODIFIER`) as *planned future annotation axes*, with
-the rule that they "get a slot and a specific diagnosis only when a release actually commits to
-building them". Nobody had committed, because nobody had a case. **The case is now in hand**:
-ClawBio's `skills/clinical-variant-reporter/acmg_engine.py` is a running 653-line ACMG/AMP engine
-whose per-criterion evidence table prints `consequence=frameshift_variant` for PVS1, `impact=HIGH`
-for PM1, and `consequence=frameshift_variant, SpliceAI=N/A` for BP7 — three of its twelve implemented
-criteria read a column this format cannot store, and a fourth reads the transcript the term was
-called against.
-
-**Get the mechanism right before touching anything.** Neither name is in `RESERVED_NAMES_0_4`, so
-`reject_reserved` never claimed them and there is nothing to move out of a "built half": an author
-writing `consequence` today gets the generic `extra="forbid"` message. Committing means one of two
-things, and choosing is the first deliverable — **build the column**, or **add the reserved slot plus
-a `vocab.RESERVED_NAME_REASONS` entry** so an author hears what the name is held for instead of the
-stray-column message. The second is the honest outcome if the grain question below defers the build.
-
-**The blocker is grain, and it is [RM23](ROADMAP_0_9.md#rm23--computational-predictor-scores-as-a-table)'s blocker
-restated.** A variant has one consequence *per transcript*; `VariantRow` is one row per
-`(variant_key, genotype)`. Three options:
-
-1. **MANE Select only** — one value per variant, with `GeneMetricsRow.mane_select` naming the
-   transcript it was called against. Cheap, lossy, and defensible only if the column's description
-   says so in the field itself (`@field-description-is-a-claim`).
-2. **Most severe across transcripts** — a ranking policy. That is an interpretation, so it is out by
-   the same clause that keeps threshold-picking out of RM23.
-3. **A derived `consequences.csv` sidecar** keyed `(variant_key, transcript)` — half cost under
-   Principle 9, no authoring burden, and it is *the same shape RM23 needs*.
-
-**Recommend (3), and settle RM23's grain in the same pass.** They are one question asked twice, and
-answering it once is the whole saving; splitting them is how two sidecars end up with two different
-answers to "which transcript". Do not build (1) as a stepping stone — a column shipped under a major
-cannot be retyped into a table.
-
-**Related** RM23 (same grain blocker, and the pass that should settle both), RM188.
-
-## RM239 — a fine-mapping posterior has no column, and `gwas_effects.csv` already has its key
-
-**Columns settled 2026-11-04 by the pm seat, on the lead's hand-run probe** (`probes/LANES_0_8.md` on `0.8`, 92eff12):
-`gwas_effects.csv` gains **`posterior_probability` and `fine_mapping_method`**, and no credible-set level.
-
-- Open Targets 26.09 publishes only the 95% set: `is95 = is99 = true` on all 40,967,780 GWAS member rows,
-  so a level column would have no case.
-- The posterior comes from three methods (SuSiE, SuSiE-inf, PICS), and the number means nothing without its
-  method, the same rule as a magnitude carrying its unit.
-
-The column count is the same, and every value has a case. It is a derived table, so half price.
-
-**0.8, decided 2026-11-03.** Kept in 0.8 as an input to longevitymap v2's causal and effector-gene confidence labels (RM333), while the rest of RM188's parity work moved to 0.9.
-
-**Severity** low · **Status** open — **filed 2026-09-13 from [RM188](ROADMAP_0_9.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)'s ClawBio half** ·
-**Owner** enricher · **Motivating case** [`probes/CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md) §
-*nine databases, and the two axes that come back with no home*
-
-**For longevitymap v2 (2026-11-03):** the fine-mapping posterior is the input to causal confidence C1–C4. See [the group](#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
-
-The same `gwas-lookup` report returns three fine-mapping credible sets for rs3798220 with a posterior
-probability and 95%/99% set membership per `(trait, study)` — PP 0.92 for Lipoprotein(a) in
-GCST005140, 0.45 for aortic valve stenosis in GCST90038614 with 95% `No` and 99% `Yes`.
-
-A posterior inclusion probability is the **same class of object as an allele frequency or a LOEUF**: a
-number a named dataset publishes, no measurement by us, no inference by us. Its key is
-`(variant, trait, study)`, which is `GwasEffectRow`'s key plus nothing — the row already carries
-`trait_efo_id`, `study_accession` and `p_value_num`. So the cheap shape is **two optional columns on
-the existing table**, `posterior_probability` and `credible_set`, minor-legal under P3/P8, and the
-GWAS Catalog now publishes credible sets for its harmonised studies.
-
-**Smallest item on the survey's list, and it should not be done on its own.** Do it the next time
-`enricher/gwas.py` is open for another reason. Two things a design owes: whether `credible_set` is a
-membership flag or the set's size/level (`95`/`99` are two answers to one question, and putting both
-in one column is the `@field-description-is-a-claim` failure), and a withhold for a study whose
-harmonised release carries no credible set, which is a nobody-asked third state and not a zero.
-
-**Related** RM188, RM90 (the table this lands on).
 
 ## RM28 — Meta-conclusions (the predicate half)
 

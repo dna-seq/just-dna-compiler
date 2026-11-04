@@ -1247,6 +1247,11 @@ release actually commits to building them):
   Distinct from `direction` (phenotypic) and `clin_sig` (clinical). **Never repurpose the bare word
   `effect`** for it.
 - **`impact`** — VEP impact `{HIGH, MODERATE, LOW, MODIFIER}`, derived from `consequence`.
+*(**Built in 0.8 as a table, not a column** (RM236): `consequences.csv` → `ConsequenceRow`, one row per
+`(variant_key, transcript)`, carrying `impact` (closed, the four classes) and the consequence as Sequence
+Ontology accessions in `consequence_so_ids`, the frequency precedence again: a consequence is per
+transcript, and a column on the variant row would have to pick one. The bare name `consequence` stays
+held for a term label (`missense_variant`), which a mapping from the accessions would fill.)*
 *(**`allele_frequency`** + **`af_population`** were listed here and are now **built in 0.5 as a
 table, not a column** — `frequencies.csv` → `FrequencyRow`, one row per (allele, ancestry group).
 A column pair could carry one number for one population; frequency is inherently per-group, and

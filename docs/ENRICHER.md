@@ -390,6 +390,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `assertions` | RM25: `resolution.csv` + the ClinVar snapshot → `clinical_assertions.csv` (the call **and** the review tier) | `duckdb` via `clinvar`, format |
 | `gwas` | RM90: the GWAS Catalog REST API → `gwas_effects.csv` (published effect sizes **with their units**). Fills no `weight` | `httpx`, format |
 | `expression` | RM194/RM200: the Atlas `ListDenseVariantScores` RNA_SEQ interval → `expression_effects.csv` (per-gene direction, **with the distance beside it**). Non-commercial, so an undeclared run writes nothing | `atlas_client`, `gene_spans`, format |
+| `opentargets` | **0.8** (RM333/RM239/RM236): the Open Targets snapshot → `locus_to_gene.csv`, `colocalisations.csv`, `consequences.csv`, and the fine-mapping posterior on `gwas_effects.csv`. Reads only the snapshot; coordinates from `resolution.csv` | `duckdb`, `opentargets` lane, format |
 | `gene_spans` | RM194: gene symbol → GRCh38 span, out of the operator-built MANE snapshot. A module with a plain name rather than a private helper, so the second caller can find it. RM259 added the reverse, `genes_covering`: a GRCh38 position → every gene whose span plus the 512 kb attribution horizon covers it, a **query hint** for a row with no authored `gene`, never an attribution (50 candidates at HFE H63D, 34 at APOE) | `polars`, `mane` lane |
 | `atlas_client` | RM192: the AlphaGenome Atlas gRPC client — `ListDenseVariantScores` and the interval RPCs, on `[atlas]` (grpcio + protobuf, 19 MB measured) rather than the 550 MB upstream wheel | `grpcio`, `protobuf` (extra) |
 | `atlas_protos` | RM192/RM196: fetch the Apache-2.0 `.proto` sources at a pinned commit and generate the bindings. The repository carries the **pin** — a commit id and a sha256 per file — and neither the sources nor the generated code | `grpc_tools` (extra) |
@@ -437,6 +438,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `pharmvar_build` | **`[dev]`** builder (0.5.1): `/genes` → alleles + defining variants. Operator-built, never published | `polars` (lazy), `pharmvar` |
 | `pubmind_build` | **`[dev]`** builder (0.7, RM134): the ANNOVAR-distributed PubMind table → one parquet + `release.json`. Operator-built, and `pubmind publish` **refuses** | `polars` (lazy), `httpx`, `clin_sig` |
 | `mane_build` | **`[dev]`** builder (0.7, RM168): one pinned MANE release → three parquets + `release.json`. Operator-built; there is no `mane publish` because NCBI states a policy rather than a licence | `polars` (lazy), `httpx` |
+| `opentargets_build` | **`[dev]`** builder (0.8, RM333): one pinned Platform release (26.09) mirrored from EBI's FTP over https → the flattened lane snapshot + `release.json`; `subset_snapshot` cuts a regional or test slice | `polars` (lazy), `httpx` |
 | `strchive` | RM165: the STRchive repeat-locus catalogue — the `repeat_alleles.csv` band cross-check (offline, reports only) | format `binning`, compiler `load_csv_rows` |
 | `strchive_build` | RM165 builder: download `STRchive-loci.json` + `release.json`. Core `httpx` only, no parquet and no `[dev]` extra | `httpx` |
 | `strchive_draft` | RM165: STRchive → `repeat_alleles.csv` **partial** rows — identity only, bands left to a human | `strchive`, compiler `draft` |
@@ -1251,6 +1253,7 @@ service* below). Pre-provisioning is therefore a deployment step, not an optimiz
 | **MITOMAP** ✅ | `mitomap/` | `$JUST_DNA_MITOMAP_CACHE` | `ensure_mitomap_snapshot` | `just-dna-seq/mitomap` — CC BY 3.0, repo not created yet | curated mtDNA variants, both `mmutation` and `rtmutation` (RM171) |
 | **MITOMAP miss** ⛓ | `mitomap_miss/` | `$JUST_DNA_MITOMAP_MISS_CACHE` | **none — derived** | **not published, deliberately** | what MITOMAP publishes and the ClinVar cache does not (`draft-panel --source mitomap-miss`) |
 | **AlphaGenome AVI** 🔑 | `alphagenome_avi/` | `$JUST_DNA_ALPHAGENOME_AVI_CACHE` | `ensure_alphagenome_avi_snapshot` | `just-dna-seq/alphagenome_avi` — Permissive Use (RM195), repo not created yet | variant-impact scores for 8.8 B SNVs, `Int32`×10⁵ plus a 466 KB knot table (`alphagenome build --input`, RM191/RM198) |
+| **Open Targets** ✅ | `opentargets/` | `$JUST_DNA_OPENTARGETS_CACHE` | **none yet** | **not published** — CC0-marked, no repo | Platform 26.09 trimmed: GWAS credible sets and members, L2G, GWAS × molecular-QTL coloc, per-transcript consequences (`opentargets enrich`, RM333) |
 
 🔒 = licence-gated (`commercial_use=False`). ❓ = terms **unestablished** (`commercial_use=None`), which
 is a different state and not a weaker one: unknown is not permissive. ⛓ = **derived**: this lane has
@@ -3208,6 +3211,53 @@ class, so the mtDNA lane has no MANE frame by construction. And the summary is a
 `identifiers.py`'s HGNC registry and to the Ensembl lane — worth reading before somebody builds a second
 gene cross-map beside it.
 
+## Open Targets (`opentargets_build.py` + `opentargets.py`) — RM333, RM239, RM236
+
+One lane, one licence, four inputs (PROPOSAL_0_8_PT2 §4 question 2): the Platform release's
+`l2g_prediction`, `credible_set`, `colocalisation` and `variant` datasets, plus `study` to name a coloc
+row's gene and tissue. The probe behind every choice here is [probes/LANES_0_8.md](probes/LANES_0_8.md)
+§ 1, and the hand-run build is its § 5.
+
+**Build.** `just-dna-enricher opentargets build` mirrors release 26.09 from
+`https://ftp.ebi.ac.uk/pub/databases/opentargets/platform/26.09/output/<dataset>/` (eight parallel
+streams through `net.stream_to_file`, so retried on transport errors and translated to
+`OpenTargetsUnavailable`; a part already on disk with a parquet footer is not fetched again) and
+flattens it into `data/`: `variants.parquet` (the allele table, alleles from columns, never from the
+`variantId`), `consequences-*.parquet` (`transcriptConsequences` exploded), `credible_sets.parquet` and
+`credible_set_members-*.parquet` (GWAS sets only, `locus` exploded), `l2g.parquet`, and
+`colocalisations-*.parquet` (GWAS left × molecular-QTL right, with the right study's `geneId` and
+`biosampleId` joined on). `--source <dir>` builds from parts already on disk; `--parts N` reads the first
+N parts of each dataset, and `release.json` then records `parts_read` beside `parts_total`. The tables are
+written to `data.building/` and swapped in only when the build finishes, so a failed build leaves the
+previous snapshot whole; a mirror the command downloaded (`<out>/source/<release>/`, ~22 GB) is deleted
+once the snapshot is written, and `--source` parts are left alone. The full build took 15 minutes here
+and the snapshot is 5.2 GB, 4.6 GB of it coloc.
+No row is dropped for its value: no L2G, posterior or h4 threshold is applied anywhere.
+
+**Fill.** `just-dna-enricher opentargets enrich <spec>` reads the module's `resolution.csv` (overlaid,
+GRCh38 only: the release is GRCh38 and its ids carry no assembly) and joins each resolved allele to the
+release's allele table on `(chrom, position, ref, alt)`. Then:
+
+| table | what a row is | the rule that keeps it honest |
+|---|---|---|
+| `locus_to_gene.csv` | one (study locus, gene) pair of a credible set the module's variant **leads**, with its L2G score | several study loci per variant are all kept (`@multiplicity-is-a-finding`); a member that is not the lead gets no row, and the posterior covers it |
+| `colocalisations.csv` | one (left, right) study-locus pair for those same sets | at the source's grain, because one gene colocalises in several tissues and QTL kinds: `h4` and `clpp` both kept, never one picked |
+| `consequences.csv` | one (variant, transcript) pair | the transcript set is Open Targets' (one canonical transcript per nearby gene); a variant resolving to two of the release's alleles is withheld, since its rows would share a key |
+| `gwas_effects.csv` | RM239's `posterior_probability` + `fine_mapping_method` on the rows the `gwas` pass wrote | filled only when exactly one value answers for `(variant, study_accession)`; empty, and counted, for a study with no credible set, a variant not in the 95% set, and a variant in several of the study's sets with different values |
+
+Each table's licence row (`opentargets`, its layer) lands inside that table's own commit, and only when
+the run contributed a row to it. A variant this run looked up has its rows replaced; one it could not
+look up (unresolved, off-build) keeps what it had (`@rederive-never-shortens`). With no snapshot the
+pass writes nothing and says nobody asked. It never fetches, so it has no `--offline`; `--strict`
+refuses a snapshot built from part of the release, and one that does not record its part totals (unknown
+completeness is not completeness). Two module keys on one release allele cannot both own its study loci:
+those rows are withheld and the keys named (`lead_key_ambiguous`).
+
+**What the lane does not do.** It computes no causal or effector confidence label (RM323's cut): the
+three tables and the posterior are the inputs, a module states its rubric, and a hand-curated input is a
+correction in `overrides.csv`. It carries no symbol for an L2G gene (the source's table has none), and
+no credible-set level beside the posterior (the release publishes the 95% set only).
+
 ## Gene–disease validity (`gene_validity.py`, online only) — RM24
 
 `enrich_gene_validity(spec_dir, *, source, mode, offline, write, export_text, url)` takes the `gene`
@@ -4097,6 +4147,7 @@ absent from it has no recorded terms, which is a different state from having per
 | `mane` | — | ❓ | ❓ | ❓ | NCBI states a *policy* rather than a licence — nothing to refuse and nothing to permit |
 | `pgs_catalog` | — | ❓ | ❓ | ❓ | a **floor**: terms are per score, so `PGS_LICENSE_CLASSES` is consulted per record |
 | `gwas_catalog` | — | ❓ | ❓ | ✅ | redistribution is stated; the other two are not |
+| `opentargets` | CC0-1.0 | ✅ | — | ✅ | the release is **marked** CC0 and the terms of use defer to the original data owners; `notice` carries that clause and the third-party-rights one verbatim (RM333, the owner axis is RM345) |
 | `clingen_allele_registry` | — | ❓ | ❓ | ❓ | |
 
 **`❓` is `None` and never `False`.** A source whose terms could not be established has not been shown
@@ -4968,6 +5019,7 @@ and `EnsemblResolver` are the latter, and are exempt from the contract suite for
 | `gwas` | `GwasError` | `GwasNotFound` |
 | `identifiers` | `IdentifierCheckError` | `IdentifierUnavailable` |
 | `literature` | `LiteratureEnrichmentError` | `LiteratureUnavailable`, `FulltextUnavailable` (RM258: the fulltext clients' unanswered request) |
+| `opentargets` | `OpenTargetsError` | — (it never fetches) |
 | `litvar` | `LitvarError` | `LitvarUnavailable` |
 | `mitomap` | `MitomapError` | `MitomapUnavailable` |
 | `pgx` | `PgxEnrichmentError` | — |
@@ -5008,6 +5060,7 @@ caller and `except` order never matters. RM310 was the list shape failing: `cach
 | `constraint_build` | `ConstraintBuildError` | `ConstraintUnavailable` |
 | `cpic_build` | `CpicBuildError` | — |
 | `mane_build` | `ManeBuildError` | `ManeUnavailable` |
+| `opentargets_build` | `OpenTargetsBuildError` | `OpenTargetsUnavailable` |
 | `pubmind_build` | `PubMindBuildError` | `PubMindUnavailable` |
 | `upload` | `OrphanedSidecarError` | — |
 | `upload` | `PublishCollisionError` | `ToolchainDiffersError` (RM342: the two recorded toolchains differ) |
@@ -5167,6 +5220,7 @@ directly to compose passes, inject clients, or run in-process.
 | `pharmvar build` | `pharmvar_build.build_snapshot` (no publish — see *The caches*) |
 | `pubmind build` / `publish` | `pubmind_build.download_pubmind_table` + `build_snapshot` / **refuses**, `cli.PUBMIND_PUBLISH_REFUSAL` |
 | `mane build` | `mane_build.discover_current_release` + `download_mane_file` + `build_snapshot` (no publish — see *The caches*) |
+| `opentargets build` / `enrich` | `opentargets_build.download_release` + `build_snapshot` (no publish yet — see *The caches*) / `opentargets.enrich_opentargets` |
 | `acmg build` | `acmg_build.build_acmg_snapshot` → `acmg.load_acmg_snapshot` |
 | `draft` | `pgx_draft.draft_gene` |
 | `draft-clinpgx` | `clinpgx_draft.draft_pharm_variants` |

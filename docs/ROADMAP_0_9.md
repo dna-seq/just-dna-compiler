@@ -709,6 +709,11 @@ bump while long form makes it *data*. A predictor score is the same class of obj
 frequency or a LOEUF (a per-variant number from a named dataset, no measurement), so the 0.5 sidecar
 precedent covers it.
 
+**Grain settled by RM236 (0.8, shipped 2026-11-04 on `0.8`).** `consequences.csv` is keyed
+`(variant_key, transcript)` with Open Targets' transcript set (one canonical transcript per nearby gene);
+`predictions.csv`'s optional `transcript` takes the same grain when this is built, so the two never give
+two answers to "which transcript" (RM236's recommendation, one question asked once).
+
 **Why it is still deferred, after the 0.6 review.** Neither blocker is code, and neither has moved:
 
 - **Grain.** SpliceAI scores are per-transcript, and there is no settled way to name the four splice

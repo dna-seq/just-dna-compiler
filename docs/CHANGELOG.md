@@ -41,6 +41,27 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM333, RM239, RM236: the Open Targets lane fills a locus-to-gene table, its colocalisations, per-transcript consequences and a fine-mapping posterior (0.8, uncut)
+
+- **A new snapshot lane, `opentargets`.** `just-dna-enricher opentargets build` mirrors Open Targets Platform
+  release 26.09 from EBI's FTP over https (retried, translated to `OpenTargetsUnavailable`) and flattens five
+  datasets into the lane snapshot; `--source` builds from parts already on disk, `--parts N` a test-sized one,
+  and `release.json` records parts read against parts total. `cache status` shows it with its release label.
+  The hand-run build is `probes/LANES_0_8.md` § 5.
+- **`opentargets enrich <spec>`** reads the snapshot only (it never fetches) and the module's `resolution.csv`,
+  and writes three new derived tables, each with its `(opentargets, <layer>)` licence row inside its own commit:
+  `locus_to_gene.csv` (one row per study locus and gene a module variant leads, the L2G score),
+  `colocalisations.csv` (that study locus against a molecular-QTL study locus: `h4`, `clpp`, the right side's
+  gene and tissue) and `consequences.csv` (one row per variant and transcript: SO accessions and `impact`).
+  Several study loci per variant are kept, never collapsed.
+- **`gwas_effects.csv` gains `posterior_probability` and `fine_mapping_method` (RM239)**, filled by the same
+  pass when exactly one fine-mapping value answers for a row's variant and study, and left empty and counted
+  when the study has no credible set, the variant is not in it, or several sets disagree. No credible-set
+  level: the release publishes the 95% set only.
+- Each table compiles to its own parquet with a manifest block (`locus_to_gene`, `colocalisations`,
+  `consequences`), is overlay-correctable through `overrides.csv`, and survives `reverse`. No causal or
+  effector confidence label is computed (RM323's cut). No new warning code. INTEGRATION_0_8 § 1.2.2.
+
 ## 2026-11-04 — RM348: `logs/` discovery stops trusting the filesystem (0.8, uncut)
 
 **compiler** — Every path log discovery considers, the top-level `*.log` included, must resolve to

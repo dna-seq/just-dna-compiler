@@ -25,6 +25,7 @@ from just_dna_enricher import (
     mitomap,
     mitomap_build,
     mitomap_miss_build,
+    opentargets_build,
     pharmvar,
     pharmvar_build,
     pubmind_build,
@@ -51,6 +52,7 @@ _FAILURES: dict[str, list[tuple[object, str, Exception]]] = {
     "mitomap_miss": [(mitomap_miss_build, "build_miss_snapshot", mitomap.MitomapError("x"))],
     "mane": [(mane_build, "download_mane_file", mane_build.ManeBuildError("x"))],
     "acmg": [(acmg_build, "build_acmg_snapshot", acmg_build.AcmgSfError("x"))],
+    "opentargets": [(opentargets_build, "download_release", opentargets_build.OpenTargetsUnavailable("x"))],
 }
 
 _ADAPTED = {lane.name: lane for lane in CACHE_LANES if lane.rebuild is not None}

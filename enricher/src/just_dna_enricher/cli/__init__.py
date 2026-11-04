@@ -171,6 +171,9 @@ from just_dna_enricher.cli.mitomap_commands import mitomap_app as mitomap_app
 from just_dna_enricher.cli.mitomap_commands import mitomap_build_ as mitomap_build_
 from just_dna_enricher.cli.mitomap_commands import mitomap_miss_ as mitomap_miss_
 from just_dna_enricher.cli.mitomap_commands import mitomap_publish_ as mitomap_publish_
+from just_dna_enricher.cli.opentargets_commands import opentargets_app as opentargets_app
+from just_dna_enricher.cli.opentargets_commands import opentargets_build_ as opentargets_build_
+from just_dna_enricher.cli.opentargets_commands import opentargets_enrich_ as opentargets_enrich_
 from just_dna_enricher.cli.panel_commands import MITOMAP_MISS_SOURCE as MITOMAP_MISS_SOURCE
 from just_dna_enricher.cli.pass_commands import CLINGEN_VALIDITY_SOURCE as CLINGEN_VALIDITY_SOURCE
 from just_dna_enricher.cli.pgx_commands import build_clinpgx_snapshot as build_clinpgx_snapshot
@@ -292,3 +295,4 @@ app.add_typer(strchive_app, name="strchive")
 app.add_typer(mitomap_app, name="mitomap")
 app.add_typer(atlas_app, name="atlas")
 app.add_typer(alphagenome_app, name="alphagenome")
+app.add_typer(opentargets_app, name="opentargets")

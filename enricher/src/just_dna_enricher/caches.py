@@ -60,6 +60,7 @@ from just_dna_enricher import (
     mitomap,
     mitomap_build,
     mitomap_miss_build,
+    opentargets_build,
     pharmvar,
     pharmvar_build,
     pubmind_build,
@@ -114,6 +115,8 @@ from just_dna_enricher.locations import (
     MITOMAP_MISS_CACHE_VAR,
     MITOMAP_MISS_SUBDIR,
     MITOMAP_SUBDIR,
+    OPENTARGETS_CACHE_VAR,
+    OPENTARGETS_SUBDIR,
     PHARMVAR_CACHE_VAR,
     PHARMVAR_SUBDIR,
     PUBMIND_CACHE_VAR,
@@ -133,6 +136,7 @@ from just_dna_enricher.locations import (
     default_mane_cache_dir,
     default_mitomap_cache_dir,
     default_mitomap_miss_cache_dir,
+    default_opentargets_cache_dir,
     default_pharmvar_cache_dir,
     default_pubmind_cache_dir,
     default_strchive_cache_dir,
@@ -150,6 +154,7 @@ from just_dna_enricher.locations import (
     resolve_mane_reference,
     resolve_mitomap_miss_reference,
     resolve_mitomap_reference,
+    resolve_opentargets_reference,
     resolve_pharmvar_reference,
     resolve_pubmind_reference,
     resolve_strchive_reference,
@@ -587,6 +592,35 @@ def _rebuild_pubmind(request: RebuildRequest) -> RebuildOutcome:
         True,
         f"{result.record_count} of {result.input_rows} rows kept, dataset {result.dataset}",
         result.parquet_file.parent.parent,
+    )
+
+
+def _rebuild_opentargets(request: RebuildRequest) -> RebuildOutcome:
+    """Mirror the pinned release (or read `--source`, a directory of `<dataset>/part-*.parquet`) and flatten it.
+
+    The pin is the Platform release directory; with none the lane's own pinned release is built, never
+    `latest/`, so two unattended rebuilds name the same bytes.
+    """
+    request.out_dir.mkdir(parents=True, exist_ok=True)
+    release = request.pin or opentargets_build.OPENTARGETS_RELEASE
+    try:
+        mirror = request.source
+        if mirror is None:
+            # Per release, so a new pin never reads the old one's parts; dropped after a good build,
+            # because the ~22 GB mirror would otherwise sit inside a lane of a few GB.
+            mirror = request.out_dir / "source" / release
+            opentargets_build.download_release(mirror, release=release)
+        result = opentargets_build.build_snapshot(mirror, request.out_dir, release=release)
+        if request.source is None:
+            shutil.rmtree(request.out_dir / "source")
+    except (opentargets_build.OpenTargetsBuildError, FileNotFoundError, ImportError, OSError) as exc:
+        return RebuildOutcome("opentargets", False, str(exc))
+    return RebuildOutcome(
+        "opentargets",
+        True,
+        f"dataset {opentargets_build.release_label(release)}, "
+        + ", ".join(f"{n} {c}" for n, c in result.row_counts.items()),
+        result.out_dir,
     )
 
 
@@ -1073,6 +1107,26 @@ CACHE_LANES: list[CacheLane] = [
         unpublished=(
             "unestablished: the SF v3.3 list is ACMG/Elsevier supplementary material and nothing "
             "grants redistribution of it. Build your own with `acmg build <workbook.xlsx>`"
+        ),
+    ),
+    CacheLane(
+        name="opentargets",
+        approx_mb=5500,
+        build_command="opentargets build",
+        subdir=OPENTARGETS_SUBDIR,
+        env_var=OPENTARGETS_CACHE_VAR,
+        serves="Open Targets Platform: L2G, coloc, consequences, fine-mapping posteriors (opentargets enrich)",
+        resolve=resolve_opentargets_reference,
+        default_dir=default_opentargets_cache_dir,
+        rebuild=_rebuild_opentargets,
+        ensure=None,
+        publish_repo=None,
+        # None, as for CIViC's CC0 lane: a CC0 mark gates no declared use, so there is nothing for
+        # `cache rebuild` to check. The terms a module records are written by the pass, per table.
+        terms=None,
+        unpublished=(
+            "not yet published: the release is marked CC0, so nothing bars a snapshot, but no "
+            "repository holds one. Build your own with `opentargets build` (about 22 GB downloaded)"
         ),
     ),
     CacheLane(
