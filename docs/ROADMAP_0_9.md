@@ -1988,3 +1988,34 @@ one as its own reason (`@vrs-three-outcomes` asks for that); and whether P4's se
 an amendment once the toolchain is recorded.
 
 **Residuals** none yet.
+
+## RM345 — `SourceRow` cannot state five licence shapes: AlphaGenome's four, and a host licence that defers to owners a row cannot name
+
+**Severity** medium · **Status** open — **a minor** (new optional `sources.csv` columns or a sibling table;
+authored layer, full cost under P9), design first, placed in 0.9 by the pm · **Owner** format + enricher ·
+**Motivating case** RM333's Open Targets L2G read (`ROADMAP_0_8.md`) and `probes/ALPHAGENOME_ATLAS.md` §2.6 ·
+*related* RM333, RM27, RM191, `@a-hosts-terms-are-not-its-contents-terms`, `@licensing-as-data`
+
+**The gap.** `SourceRow` carries `share_alike`, `commercial_use`, `redistribution` (recorded, gated nowhere) and
+`declared_use`. Five real licence shapes have no field:
+
+1. **Holder eligibility** (AlphaGenome §2.1): "a commercial entity may not hold this at all" is not
+   `commercial_use=False`, which only says the data may not be sold.
+2. **A field-of-use bar** (AlphaGenome §2.4/4): no training of models on it, which binds a non-commercial lab too.
+3. **Revocability with a delete obligation** (AlphaGenome §2.3): every source so far, at worst, stops being
+   fetched. This one can compel deletion of derivatives already distributed, against P4's frozen digests.
+4. **Notice of modification must travel** (AlphaGenome §2.4/5): `notice` carries the terms notice, but a
+   threshold slice is itself a modification the terms ask to be declared.
+5. **A host licence that defers to the original owners** (Open Targets, from RM333): data marked CC0, with "no
+   restrictions other than those provided by the original data owners". `@a-hosts-terms-are-not-its-contents-terms`
+   writes the host's terms as the floor and lets each record override them. An L2G row cannot name its owner,
+   though: it reaches its study only through `studyLocusId`. So the override has nothing to key on, and the
+   floor states less than the terms impose.
+
+**Not decided here.** Whether each shape is a column, a vocabulary member on an existing axis, or a sibling
+table. Which of them a compile gate reads, given that `redistribution` is still ungated (RM27). And how shape 5
+says "deferred to owners not named per row" without claiming a value: a three-valued reading, where unknown is
+withheld rather than written as permissive. AlphaGenome §2.6's (e) and (f) are existing gotchas, not gaps, and
+are not reopened here.
+
+**Residuals** none yet.
