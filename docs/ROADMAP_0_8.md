@@ -520,19 +520,3 @@ remaining class gets the same treatment — a plain column, on demand, one at a 
   life; it stays that way, here.
 
 Neither is built until a real module needs it.
-
-## RM352 — release records have no change kind for a toolchain-only byte move, so the 0.8 cut cannot declare polars 2
-
-**0.8, filed 2026-11-04 by the lead** as a second-pass item: RM342's residual, and a cut gate.
-
-**Severity** high · **Status** open — **a minor**, joins 0.8, **blocks the cut** · **Owner** format (`release_records.VALID_RELEASE_CHANGE_KINDS`) + `sweep.py` · **Motivating case** the RM342 builder's report · *related* RM342, RM341
-
-`VALID_RELEASE_CHANGE_KINDS` is `{correction, addition}`, and the sweep's gate (`UNDECLARED_KIND_PHRASE`) needs one of
-them for every moved axis. polars 1 → 2 moves `parquet_bytes` on every module with no value wrong and nothing added,
-so the 0.8.0 record cannot be written. A third member, `toolchain` (bytes moved, content unchanged, the toolchain
-record says why), is additive and minor-legal. The 0.8.0 record then declares the polars move with it. The
-Constitution's Goals sentence on reproducibility ("anyone holding the inputs and the pinned compiler version") gains
-"and the recorded toolchain", matching RM342's Principle 4 amendment, with a line in the amendments history.
-
-**Residuals** none yet.
-
