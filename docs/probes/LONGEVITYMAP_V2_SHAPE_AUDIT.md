@@ -194,6 +194,17 @@ meta-table's citation, role and `flags`, the `pmid = NONE` sentinel and the wide
 - v2 writes the legacy set twice, as `flags` and as `category=legacy_candidate`. That is for v2's README.
 - rs2075650 gets tier D from the tag while its seed says C, which is correct if "not scored" is the intent.
 
+**Decided after the second run (2026-11-04).**
+
+- The pmid/doi pair applies to every citing table.
+- A diplotype outranks the alleles it contains.
+- `role` is empty or `mediator`.
+- A uniform `effect_allele` makes a locus allele-bearing, with a warning when the rows differ.
+- The member tables, and r² withheld on mixed ancestry, as the pm seat set them.
+
+**The shape is agreed:** sufficient for v2, apart from the two accepted prose cases, and every addition has a v2
+case.
+
 The run's rewritten examples, in the final shape only, are in this report's appendix below the first run's;
 two of the first run's cases were dropped as trivial.
 

@@ -488,6 +488,22 @@ effect, and the direction concordance with the human allele (`concordant`, `disc
 
 ## RM336 — a DOI written into `pmid` parses as five or six PubMed ids, and the literature pass looks each one up
 
+**Widened 2026-11-04 by the maintainer, after the second measuring run: "fix the error class on all tables".**
+The pmid/doi pair applies to **every table where a row cites**, not only `studies.csv`:
+
+- a DOI is never written into `pmid`;
+- `pmid` accepts the `NONE` sentinel, which makes `doi` mandatory and validated.
+
+Tables that cite with a `pmid` and no `doi` today gain `doi`:
+
+- `pharm_variants.csv` (RM132's `pmid`);
+- the binning kinds (RM47's `pmid`);
+- the derived `gwas_effects.csv` (half price);
+- the two new citing tables: the meta-table and RM335's model-organism table.
+
+The run measured 6 preprint-only HLA alleles and 17 PMID-less model-organism rows. The roster of citing
+tables is derived (the compiler's `_CITING_TABLE_KINDS`), never hand-kept.
+
 **Preprints, decided 2026-11-04 by the maintainer after the final run (17 v2 studies are DOI-only).** DOIs stay in `doi` and never in `pmid`. `pmid` accepts a typed sentinel (`NONE` or similar; the exact spelling gets its P5 audit). That sentinel makes `doi` the **mandatory substitute**, and the validator then checks the DOI instead. A DOI written into `pmid` is still refused. `pmid` stays required, because the cell is present, so this is minor-legal (P8). RM263's DOI-to-PMID lookup still fills a real PMID wherever PubMed indexes the paper.
 
 **Decided 2026-11-04 by the maintainer: a refusal, like RM50's PMCID arm.** `validate_pmid_cell` refuses a cell whose only token is a DOI, and names it. Principle 3 says a module that validated keeps validating, so before the build, check the published modules (the registry's catalogue and the reference examples) for a DOI in `pmid`. None found: the refusal breaks no published module. Any found: they go back to the maintainer before the arm ships.
@@ -813,6 +829,24 @@ the column; hashing it would make a reworded note move the digest, which is the 
 [FAQ](FAQ.md) already answers twice.
 
 ## RM28 — Meta-conclusions (the predicate half)
+
+**Settled 2026-11-04 by the maintainer, after the second measuring run** (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §6):
+
+- **The narrower condition outranks, across tables too.** A diplotype row is more specific than an allele row
+  for an allele it contains, just as a genotype row outranks its locus. The ε2/ε4 diplotype row settles the
+  tie between the ε2 and ε4 allele rows.
+- **`role` has one meaningful value:** empty means an effect, and `mediator` marks the path. Chains of two
+  steps (9 v2 loci, LDL → CAD) stay as unordered mediator rows plus prose.
+- **A locus-level member counts as allele-bearing** when every row of that locus states one `effect_allele`.
+  A warning fires when they differ. That gives v2 about 134 per-trait rows instead of about 268.
+- **Two rules set by the pm seat, unless the maintainer objects:**
+  - the member tables are those that carry a finding (variants, diplotypes, pharm_variants), plus
+    `allele_function.csv` as allele items. `haplotypes.csv` defines alleles and is not one.
+  - the LD lookup withholds r² (unknown, counted) for a mixed-ancestry study, and never picks a panel.
+
+**What is still not held, accepted as prose:** two modifiers on one estimate (2 loci), and two
+causal-confidence judgements (README). With these rules the shape is sufficient for v2, and every addition
+has a v2 case.
 
 **The selector, widened 2026-11-04 by the maintainer** ("selector is just the right spice for meta"). It
 supersedes the tag-only form above.
