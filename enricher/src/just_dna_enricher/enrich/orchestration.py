@@ -72,6 +72,7 @@ from just_dna_enricher.enrich.subjects import (
 )
 from just_dna_enricher.enrich.verification_records import _verification_records
 from just_dna_enricher.ensembl import EnsemblResolver, RestWitness, RsidResolver
+from just_dna_enricher.events import authored_event
 from just_dna_enricher.gnomad import GnomadClient, GnomadError
 from just_dna_enricher.grch37 import Grch37Client, diagnose_wrong_build, summarize_build_diagnoses
 from just_dna_enricher.identifiers import IdentifierUnavailable, RsidStatus, check_rsids
@@ -767,6 +768,10 @@ def _run_enrichment(
     # both mint, and sharing it shares the proxy's read cache.
     minter = VrsMinter(offline=offline, sequences=sequences)
 
+    def mint(chrom: str, start: int, ref: str, alt: str) -> str | None:
+        """One allele's VRS id, or `None`: what the shared spelling judge (`events`) mints with."""
+        return minter.mint(chrom, start, ref, alt)[0]
+
     # ── the placement's second witness (RM267) ─────────────────────────────────────────────────
     # Every link above keeps the first answer and none compares it with another. The ClinVar snapshot
     # (located above for the link and the `clin_sig` check) and ClinVar-GKM are asked where they place
@@ -828,7 +833,7 @@ def _run_enrichment(
             fresh_loci,
             {rsid: resolution_authority(source_of_rsid.get(rsid)) for rsid in fresh_rsids},
             witnesses,
-            mint=lambda chrom, start, ref, alt: minter.mint(chrom, start, ref, alt)[0],
+            mint=mint,
             read_window=read_window,
             asked_about=asked_about,
         )
@@ -1084,6 +1089,12 @@ def _run_enrichment(
                     )
                 for i, (locus, source_locus, aligned) in enumerate(written):
                     witness, verdict = placement.row_columns(v.rsid, source_locus)
+                    # RM375: whether the coordinate the module authored (whole, or CPIC's half) spells
+                    # this locus's event, judged against the reference, and the coordinate judged, so
+                    # the compile reads a respelling as agreement instead of a contradiction.
+                    judged = authored_event(
+                        (v.chrom, v.start, v.ref, v.alts), locus, mint=mint, read_window=read_window
+                    )
                     out.append(
                         ResolutionRow(
                             variant_key=key,
@@ -1095,6 +1106,8 @@ def _run_enrichment(
                             placement_witness=witness,
                             placement_verdict=verdict,
                             left_aligned=aligned,
+                            authored_event=judged[0] if judged else None,
+                            judged_coordinate=judged[1] if judged else None,
                             **locus,
                         )
                     )
@@ -1601,6 +1614,8 @@ def _run_enrichment(
         # any check reads a row; this is the enricher doing the same for the one finding an overlay
         # row can actually answer, so a correction stops coming back on every run.
         answered=overlay_answers(spec_dir, "resolution.csv"),
+        mint=mint,
+        read_window=read_window,
     )
     if pair_check.disagreements:
         # One line for the run, naming them, on the `unreachable_rsids` model: a line per row would be
@@ -1659,9 +1674,14 @@ def _run_enrichment(
     # different statement and the only one of the two that is a clean bill.
     rederived: list[SubjectDrift] | None = None
     if rederive:
-        rederived, compared = _rederived_drift(existing, out, skip=carried_keys)
-        moved = [d for d in rederived if not d.respelled]
-        respelled = [d for d in rederived if d.respelled]
+        rederived, compared = _rederived_drift(
+            existing, out, skip=carried_keys, mint=mint, read_window=read_window
+        )
+        moved = [d for d in rederived if d.respelled is False]
+        respelled = [d for d in rederived if d.respelled is True]
+        # RM375: no id and no reference read to tell a respelling from a move. Said apart, in neither
+        # register: calling it a move blames a source that may not have moved.
+        unsettled = [d for d in rederived if d.respelled is None]
         if moved:
             # The denominator travels with the finding: "3 subjects moved" is unreadable without the
             # number re-asked. Nothing is printed when nothing moved — a comparison whose empty result
@@ -1679,11 +1699,21 @@ def _run_enrichment(
             # Apart from the drift above: the source did not move, this release's spelling did (RM270),
             # and a canary that blamed the source for it would cry wolf on every pre-0.8 indel.
             logger.info(
-                "Re-derivation: %d of %d re-asked subject(s) are the same alleles respelled left-aligned "
-                "(RM270), every vrs_id unchanged — %s.",
+                "Re-derivation: %d of %d re-asked subject(s) are the same events respelled (RM270's "
+                "left-aligned fill, or another release's anchor) — %s.",
                 len(respelled),
                 compared,
                 "; ".join(str(d) for d in respelled),
+            )
+        if unsettled:
+            logger.warning(
+                "Re-derivation: %d of %d re-asked subject(s) changed and this run could not tell a "
+                "respelling from a move — %s. Undecided means an allele with no VRS id and no reference "
+                "read, or an indel ALT one table keeps and the other does not, which the hosting filter "
+                "keeps offline and settles online; re-derive online to settle the first.",
+                len(unsettled),
+                compared,
+                "; ".join(str(d) for d in unsettled),
             )
 
     # Fifth validation pass, and the only one whose subject is a claim the module makes about its own

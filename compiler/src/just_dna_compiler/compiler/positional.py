@@ -128,6 +128,22 @@ def _apply_positional_resolution(
                     f"{_examples(report.contradicted)}",
                 )
             )
+        if report.undecided:
+            # The same code and the same consequence, without the accusation (RM375,
+            # `@the-signal-may-already-be-firing-with-the-wrong-words`): the enricher could not settle it,
+            # so a respelling is as likely as a contradiction and this tier cannot tell. Both of the
+            # enricher's undecided arms are named, since the cell does not say which one it was.
+            warnings.append(
+                CodedWarning(
+                    "positional_identity_contradicted",
+                    f"{csv_name}: {len(report.undecided)} row(s) authored a coordinate the resolution table "
+                    f"spells another way, and the enricher recorded whether the two are one event as "
+                    f"undecided; they are left exactly as authored — {_examples(report.undecided)}. "
+                    f"Undecided means the run read no reference sequence (re-derive online: `just-dna-"
+                    f"enricher enrich --rederive`), or the authored start lies inside the event but at no "
+                    f"VCF anchor of it (an HGVS-style position: author the VCF POS).",
+                )
+            )
     return warnings, True
 
 

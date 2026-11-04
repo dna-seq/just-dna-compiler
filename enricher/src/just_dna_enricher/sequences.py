@@ -313,21 +313,22 @@ def normalize_locus(
     return NormalizedLocus(loci, True, tuple(piece_of))
 
 
-def _indel_payloads(
+def indel_spellings(
     chrom: str,
     pos: int,
     ref: str,
     alt: str,
     read_window: Callable[[str, int, int], str | None],
-) -> frozenset[str] | None:
-    """Every payload one pure indel can be spelled with inside its repeat, or `None` (RM274).
+) -> list[tuple[str, int, str, str]] | None:
+    """Every anchored VCF spelling of one pure indel inside its repeat, leftmost first, or `None`.
 
     Left-align, then slide the event right one base at a time while the reference allows it: a
     deletion of `P` over `[pos+1, pos+n]` also reads as a deletion one base right when the base after
     it equals `P[0]`, and its payload rotates to `P[1:] + base`; an insertion slides the same way
-    against the bases after its anchor. `AGAG>AG` in an `AGAGAG` run is therefore `{AG, GA}`. `None`
-    for anything that is not a single-anchored insertion or deletion, for an unreadable reference,
-    and for a repeat longer than the window, which is withheld rather than truncated.
+    against the bases after its anchor. Each slide's new anchor base is that next base, so the spelling
+    one step right is `base + payload` against `base`. `None` for anything that is not a single-anchored
+    insertion or deletion, for an unreadable reference, and for a repeat longer than the window, which
+    is withheld rather than truncated (RM274, RM375: the payloads and the anchors are one walk).
     """
     left = _left_align(chrom, pos, ref, alt, read_window)
     if left is None:
@@ -341,13 +342,31 @@ def _indel_payloads(
     window = read_window(chrom, first, first + _LEFT_ALIGN_WINDOW - 1)
     if window is None:
         return None
-    seen = [payload]
+    seen = [(chrom, pos, ref, alt)]
     for base in window.upper():
         if base != payload[0]:
-            return frozenset(seen)
+            return seen
         payload = payload[1:] + base
-        seen.append(payload)
+        pos += 1
+        seen.append((chrom, pos, base + payload, base) if deletion else (chrom, pos, base, base + payload))
     return None
+
+
+def _indel_payloads(
+    chrom: str,
+    pos: int,
+    ref: str,
+    alt: str,
+    read_window: Callable[[str, int, int], str | None],
+) -> frozenset[str] | None:
+    """Every payload one pure indel can be spelled with inside its repeat, or `None` (RM274).
+
+    `AGAG>AG` in an `AGAGAG` run is `{AG, GA}`: the payload of each spelling `indel_spellings` walks.
+    """
+    spellings = indel_spellings(chrom, pos, ref, alt, read_window)
+    if spellings is None:
+        return None
+    return frozenset((r if len(r) > len(a) else a)[1:] for _c, _p, r, a in spellings)
 
 
 @dataclass

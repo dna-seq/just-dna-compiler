@@ -796,6 +796,22 @@ VALID_RESOLUTION_STATUS: frozenset[str] = frozenset({"resolved", "not_found", "a
 # * `unplaced`    — the witness was asked and holds no placement of this allele: one witness only.
 VALID_PLACEMENT_VERDICTS: frozenset[str] = frozenset({"same_event", "undecided", "unplaced"})
 
+# ── Authored-event verdict (0.8, RM375) ──────────────────────────────────────────────────────────
+# Whether the coordinate a module authored for a subject spells the same event as the locus a link
+# resolved it to, judged by the enricher against the reference genome and written on the locus's row.
+# A separate axis from `placement_verdict` (who else places the rsID): this one compares the module's
+# own cells with the answer. Written only where the two spellings differ; an empty cell is either
+# "identical, nothing to judge" or "never judged" (a table written before 0.8), which the compiler
+# tells apart by comparing the cells.
+#
+# * `same_event`      — the authored coordinate is another spelling of the locus's event (an indel
+#                       anchored elsewhere inside its repeat, a padded substitution).
+# * `different_event` — the reference was read, or the event is a substitution, and the authored
+#                       coordinate lies outside every spelling of the event.
+# * `undecided`       — nothing this run held could settle it: no reference read (an offline run), a
+#                       symbolic allele, a repeat longer than the read window. Never agreement.
+VALID_AUTHORED_EVENT_VERDICTS: frozenset[str] = frozenset({"same_event", "different_event", "undecided"})
+
 # ── Frequency status (0.5.1) ────────────────────────────────────────────────────────────────────
 # Closed vocabulary (Principle 6) for a `FrequencyRow`'s outcome. It borrows two members from the
 # resolution table above and adds a third, because an allele-frequency source has one more way to

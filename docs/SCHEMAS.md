@@ -287,6 +287,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
   | `VALID_PHENOTYPE_CATEGORIES` | 6 (closed) |  |
   | `VALID_QUOTE_SOURCE` | 2 (closed) |  |
   | `VALID_PLACEMENT_VERDICTS` | 3 (closed) | what a second authority answered about a `resolution.csv` row's placement — `same_event`, `undecided`, `unplaced`; no `different_event`, because a contradicted placement is withheld (RM267) |
+  | `VALID_AUTHORED_EVENT_VERDICTS` | 3 (closed) | whether a module's authored coordinate spells the same event as the `resolution.csv` locus written for it, judged by the enricher against the reference — `same_event`, `different_event`, `undecided` (RM375) |
   | `VALID_RECOMMENDATION_STRENGTH` | 4 (closed) |  |
   | `VALID_RELEASE_CHANGE_KINDS` | 3 (closed) |  |
   | `VALID_RELEASE_OUTPUT_AXES` | 5 (closed) |  |
@@ -2442,7 +2443,7 @@ row's own cells alone.
   rsids for the exact allele — a dbSNP merge), `rsid_alternates?` (the full candidate list when
   `ambiguous`; `rsid` holds the deterministic pick), `rsid_current?` / `rsid_status?`
   (`VALID_RSID_STATUS = {live, merged, absent, withdrawn}` — what dbSNP says about `rsid` today),
-  `fetched_at?`, `placement_witness?`, `placement_verdict?` (0.8, below).
+  `fetched_at?`, `placement_witness?`, `placement_verdict?`, `left_aligned?`, `authored_event?`, `judged_coordinate?` (0.8, below).
 - **`source` names the link; `authority` names the licensed source it speaks for (RM33).** `source` is
   `ensembl-rest`/`ensembl-graphql`/`cache`/`clinvar`/`gnomad`/`authored`/`reversed`/`manual` — *which link
   answered* (`ensembl-graphql` is no longer written since its leg was retired in 0.8, and still reads), which matters for diagnosing a compile and has no other home. `authority` is the thing
@@ -2525,6 +2526,17 @@ row's own cells alone.
   judged. A stamped verdict rather than an authored `coordinate_normalization` key: an author's claim of
   a convention is one no offline tier can check. A `false` row's indel joins a caller's spelling only
   through `vrs_id`. Reverse cannot emit it, for `authority`'s reason above.
+- **`authored_event` is the enricher's verdict on the authored spelling (0.8, RM375).** Outside the fact
+  set, `VALID_AUTHORED_EVENT_VERDICTS`: `same_event` — the coordinate the module authored for this subject
+  is another spelling of this row's event (an indel anchored elsewhere in its repeat, NUDT15's
+  `13:48041104 G>GG` against `13:48041103 T>TG`); `different_event` — it is not; `undecided` — nothing the
+  run held could tell (no reference read, a padded `ref`, a position inside the event that is no
+  anchor). Written only where the authored `chrom`, `start` or `ref` differs from the row's; empty where
+  they agree, and on a row written before 0.8. **`judged_coordinate`** beside it (a pair: both or
+  neither) is the coordinate judged, `authored_coordinate_key` (`chrom:start[:ref]`, the contig empty for
+  a half coordinate): the compiler reads `same_event` as agreement, and judges nothing itself (P2), only
+  for a row still authoring that coordinate. Unlike the two verdicts above, **reverse carries it**: the parquets'
+  `resolution_loci` struct has both fields, so the second lap reads the verdict the first did.
 - **`RESOLUTION_FACT_FIELDS`** names the fact columns; `integrity.resolution_signature` hashes only
   those (provenance deliberately excluded), so a human-filled and an Ensembl-filled table with identical
   facts hash equal.

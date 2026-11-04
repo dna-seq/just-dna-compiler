@@ -395,6 +395,10 @@ RESOLUTION_LOCUS_DTYPE = pl.Struct(
         # `reverse` re-emits the ids with the row.
         "vrs_id": pl.Utf8,
         "vrs_spec": pl.Utf8,
+        # RM375: the enricher's verdict on the authored spelling and the coordinate it judged, which the
+        # compile read as agreement or not, so the second lap reads the same verdict the first did.
+        "authored_event": pl.Utf8,
+        "judged_coordinate": pl.Utf8,
     }
 )
 
@@ -437,6 +441,8 @@ def resolution_loci(
             "locus_index": r.locus_index,
             "vrs_id": r.vrs_id,
             "vrs_spec": r.vrs_spec,
+            "authored_event": r.authored_event,
+            "judged_coordinate": r.judged_coordinate,
         }
         for r in loci
     ]
@@ -471,6 +477,8 @@ def withhold_reproduced_loci(
         for key, cell in zip(keys, cells, strict=True)
         if key is not None
         and cell
+        # A row's cells carry no verdict, so loci holding one (RM375) are never rebuilt from the cells.
+        and not any(locus.get("authored_event") for locus in cell)
         and by_key[key]
         == {
             _locus_fact(

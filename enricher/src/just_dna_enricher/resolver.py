@@ -35,6 +35,7 @@ from just_dna_format.spec import VariantRow
 from just_dna_format.vrs import normalize_chrom
 
 from just_dna_enricher.ensembl import _placeable_alleles
+from just_dna_enricher.events import Mint, ReadWindow, alleles_of, kleene_any, names_event, no_mint
 from just_dna_enricher.locations import DUCKDB_NAME, resolve_ensembl_reference
 
 logger = logging.getLogger(__name__)
@@ -584,16 +585,14 @@ def _place(chrom: str | None, start: int | None) -> str:
     return f"{normalize_chrom(chrom)}:{start}"
 
 
-def _is_substitution(ref: str | None) -> bool:
-    """Whether a `ref` names a single base, i.e. a locus with no flank an indel could be re-anchored on."""
-    return ref is not None and len(ref) == 1
-
-
 def coordinate_verdict(
     chrom: str | None,
     start: int | None,
     ref: str | None,
     loci: Sequence[dict],
+    *,
+    mint: Mint = no_mint,
+    read_window: ReadWindow | None = None,
 ) -> bool | None:
     """Does the reference place this rsID where the row says? **Three-valued**, `hosting_verdict`'s shape.
 
@@ -601,15 +600,21 @@ def coordinate_verdict(
     against the injected snapshot and the deprecated DuckDB path's `_check_rsid_coord_consistency`
     below — so the two cannot drift into two readings of one question.
 
-    * `True` — one of the rsID's loci sits at the authored coordinate.
-    * `False` — none does, **and** every locus the reference gives is a substitution (and the row's own
-      `ref`, where it states one, is too). A substitution has no shared flank, so its position is
-      unambiguous and a mismatch can only be a different place. Same reasoning that keeps
-      `hosting_verdict`'s confident negative sharp.
-    * `None` — none does, but an indel is involved. One deletion has several valid spellings and
-      re-anchoring moves the coordinate — ClinVar's `X:634689 CAG>C` and Ensembl's `X:634690 AGAG>AG`
-      are the same 2 bp deletion (RM31) — so a differing position is not by itself a contradiction, and
-      reporting one would be the false accusation that item exists to end.
+    * `True` — one of the rsID's loci sits at the authored coordinate, or the coordinate is another
+      spelling of one of its events (`events.names_event`, RM375: an indel anchored elsewhere inside
+      its repeat, settled against the reference).
+    * `False` — every allele the loci name is a different event: a substitution elsewhere (it cannot
+      slide, so no read is needed), or an indel whose every spelling the reference showed, all away
+      from the authored position.
+    * `None` — nothing here can tell: an indel with no reference read, a position inside an event's
+      footprint that is no anchor, a padded `ref`. ClinVar's `X:634689 CAG>C` and Ensembl's
+      `X:634690 AGAG>AG` are the same 2 bp deletion (RM31), and reporting one as a contradiction
+      would be the false accusation that item exists to end.
+
+    **One judge, not a rule of its own (RM375).** This used to answer `False` whenever every locus
+    had a one-base `ref`, read as "a substitution" — which an insertion's anchor (`T>TG`) satisfies,
+    so NUDT15's `rs761191455`, authored at the old snapshot's `48041104` and placed at `48041103` by the
+    new one, was called a disagreement. The kind of an event is `events`' to say.
 
     Compared at **`chrom:start`**, not `chrom:start:ref`. Two reasons, and the first is what a
     CPIC-drafted module runs into: `ref` is optional on `HaplotypeRow`/`PharmVariantRow`, and
@@ -627,9 +632,12 @@ def coordinate_verdict(
         return None
     if _place(chrom, start) in {_place(lo.get("chrom"), lo.get("start")) for lo in loci}:
         return True
-    if all(_is_substitution(lo.get("ref")) for lo in loci) and (ref is None or _is_substitution(ref)):
-        return False
-    return None
+    events = alleles_of(loci)
+    if start is None or not events:
+        return None
+    return kleene_any(
+        names_event(chrom, start, ref, None, e, mint=mint, read_window=read_window) for e in events
+    )
 
 
 def coordinate_disagreement(
@@ -662,6 +670,9 @@ def check_rsid_coordinates(
     pairs: Sequence[tuple[str, str | None, int | None, str | None]],
     rsid_loci: Mapping[str, Sequence[dict]],
     answered: AbstractSet[tuple[str, str]] = frozenset(),
+    *,
+    mint: Mint = no_mint,
+    read_window: ReadWindow | None = None,
 ) -> PairCheck:
     """Compare each authored `(rsid, chrom, start, ref)` pair against the loci that rsid resolves to.
 
@@ -707,7 +718,7 @@ def check_rsid_coordinates(
         if not loci:
             unknown.append(rsid)
             continue
-        verdict = coordinate_verdict(chrom, start, ref, loci)
+        verdict = coordinate_verdict(chrom, start, ref, loci, mint=mint, read_window=read_window)
         if verdict is None:
             # An indel spelling this tier cannot re-anchor. Outside `subjects` rather than inside it
             # with a clean bill — the rule `RefCheck` applies to a read that came back empty.

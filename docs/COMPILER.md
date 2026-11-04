@@ -1250,6 +1250,15 @@ Four rules, and the last two are what separate it from the naive repair:
   deliberately outside the comparison: a locus lists every ALT recorded there while a row names the
   one it is about, so `A,G` against `G` is agreement, and whether the allele can sit there is
   `hosting_verdict`'s three-valued question, already asked one step earlier.
+- **`start` and `ref` are a spelling, and the enricher's record decides them (RM375, 0.8).** An indel
+  anchored elsewhere in its repeat differs in both and is one event, which only a reference read can
+  tell; the compiler has none, so it reads `resolution.csv` `authored_event` (`recorded_verdicts`, one
+  predicate shared with `_verify`), and only where its `judged_coordinate` is the row's own coordinate
+  (a verdict about another coordinate, stale or another table's, reads as never judged). `same_event`: agreement, no warning, and the fill takes only the
+  cells no spelling changes (`rsid`, `chrom` — a CPIC half-coordinate is completed), never a `ref` or
+  `alts` that would be worn at the author's anchor. `undecided`: left as authored, under the same code,
+  in words that accuse neither side (a wrong `rsid` or contig is still accused). `different_event` or an
+  empty cell: today's contradiction.
 - **Rows are mutated in place and their identity is frozen first.** Each positional model stamps
   `variant_key` and `authored_ident` at load, from the authored columns only, so filling cannot re-key
   a row.
@@ -1322,7 +1331,9 @@ Pure, and mirrors the DuckDB resolver's semantics from the injected table:
   expanded onto (`hosting_verdict`): one authored genotype is copied to every locus, so a locus that
   lacks those alleles would be emitted as a row asserting an allele it does not have.
 - **verify** — a row carrying both rsid and coordinate is checked against the table; a disagreement
-  warns in `best_effort` and refuses in `strict`.
+  warns in `best_effort` and refuses in `strict`. A locus whose recorded `authored_event` is
+  `same_event` is agreement (RM375: the enricher read the reference, the compiler cannot); `undecided`
+  keeps the ladder in words that accuse neither side.
 
 GRCh38-bound (a non-GRCh38 module is skipped with a warning; `not_found`/wrong-build rows are ignored).
 

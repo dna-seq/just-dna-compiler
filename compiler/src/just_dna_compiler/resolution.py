@@ -29,7 +29,7 @@ from just_dna_format.alleles import (
 )
 from just_dna_format.base import derive_variant_key
 from just_dna_format.findings import CodedWarning
-from just_dna_format.resolution import ResolutionRow
+from just_dna_format.resolution import ResolutionRow, authored_coordinate_key
 from just_dna_format.spec import VariantRow
 from just_dna_format.vrs import par_partner
 
@@ -361,6 +361,36 @@ def resolve_from_table(
     )
 
 
+#: `ResolutionRow.authored_event`'s two members the compiler acts on (`vocab.VALID_AUTHORED_EVENT_VERDICTS`).
+#: The third, `different_event`, reads exactly like an empty cell: the accusation stands.
+SAME_EVENT = "same_event"
+UNDECIDED_EVENT = "undecided"
+
+
+def recorded_verdicts(
+    chrom: str | None, start: int | None, ref: str | None, loci: Sequence[ResolutionRow]
+) -> set[str]:
+    """The `authored_event` verdicts these loci record about THIS authored coordinate (RM375).
+
+    **The compiler trusts the record and never judges it** (`@a-recorded-judgement-is-a-fact`). Two
+    spellings of one indel (NUDT15's `13:48041104 G>GG` and `13:48041103 T>TG`) differ in `start` and
+    `ref`, and only a reference read can tell them from two events; P2 keeps that read out of this
+    tier, so the enricher's verdict on the locus's row is the whole answer. One predicate for both
+    comparers — `_verify` on the SNP core and `_authored_conflict` on the positional tables — so the
+    two cannot read the cell two ways.
+
+    **Only a verdict about the coordinate the row holds now.** The key is the subject's, so a verdict
+    survives an edit of the coordinate (merge-not-clobber does not re-ask a covered subject) and is
+    shared with every other table's row under the same rsID. A verdict whose `judged_coordinate` is not
+    this row's (`authored_coordinate_key`, a string compare and no judgement) is no verdict here: the row
+    reads as never judged, and today's contradiction stands.
+    """
+    judged = authored_coordinate_key(chrom, start, ref)
+    return {
+        locus.authored_event for locus in loci if locus.authored_event and locus.judged_coordinate == judged
+    }
+
+
 @dataclass
 class PositionalFill:
     """What the positional fill did, per table. Counts, never a line per row.
@@ -375,6 +405,9 @@ class PositionalFill:
     unplaced_ambiguous: int = 0
     unplaced_absent: int = 0
     contradicted: list[str] = field(default_factory=list)
+    #: Rows whose authored coordinate differs from the table's and whose verdict the enricher recorded
+    #: as `undecided` (RM375): left alone like a contradiction, and said without accusing.
+    undecided: list[str] = field(default_factory=list)
 
 
 def resolve_positional_rows(
@@ -442,8 +475,14 @@ def resolve_positional_rows(
         locus = candidates[0]
         conflict = _authored_conflict(row, locus)
         if conflict is not None:
-            report.contradicted.append(conflict)
+            sentence, undecided = conflict
+            (report.undecided if undecided else report.contradicted).append(sentence)
             continue
+        if _respelled(row, locus):
+            # Another spelling of the same event (RM375): its anchor, `ref` and `alts` belong to the
+            # locus's spelling, so worn at the author's `start` they would spell an allele no source
+            # stated. Only what no spelling changes is filled.
+            fillable = [name for name in fillable if name in _SPELLING_FREE]
         if not fillable:
             continue
         for name in fillable:
@@ -465,8 +504,27 @@ def _stated_allele(row: object) -> str | None:
     return getattr(row, "genotype", None) or getattr(row, "allele", None)
 
 
-def _authored_conflict(row: object, locus: ResolutionRow) -> str | None:
-    """A sentence naming the authored identity cell the locus disagrees with, or `None`.
+#: The identity cells two spellings of one event always share: a respelled fill takes these and no other.
+_SPELLING_FREE: frozenset[str] = frozenset({"rsid", "chrom"})
+
+
+def _verdicts_of(row: object, locus: ResolutionRow) -> set[str]:
+    """`recorded_verdicts` for one positional row against one locus."""
+    return recorded_verdicts(
+        getattr(row, "chrom", None), getattr(row, "start", None), getattr(row, "ref", None), [locus]
+    )
+
+
+def _respelled(row: object, locus: ResolutionRow) -> bool:
+    """Whether the row authored another spelling of the locus's event, by the enricher's record (RM375)."""
+    if SAME_EVENT not in _verdicts_of(row, locus):
+        return False
+    start, ref = getattr(row, "start", None), getattr(row, "ref", None)
+    return (start is not None and start != locus.start) or (ref is not None and str(ref) != str(locus.ref))
+
+
+def _authored_conflict(row: object, locus: ResolutionRow) -> tuple[str, bool] | None:
+    """`(sentence, undecided)` naming the authored identity cell the locus disagrees with, or `None`.
 
     Only cells the author actually wrote are compared — a filled cell is by construction the locus's
     own value. A half-coordinate (`start` with no `chrom`, the shape CPIC drafting produces) is the
@@ -478,15 +536,31 @@ def _authored_conflict(row: object, locus: ResolutionRow) -> str | None:
     so string equality would manufacture a finding about correct data. Whether the row's allele can
     sit at the locus is a different question with its own three-valued predicate, and
     `_hostable_loci`/`hosting_verdict` has already asked it by the time this runs.
+
+    **`start` and `ref` are spelling, and the enricher's record decides them (RM375).** A recorded
+    `same_event` drops them from the comparison; a recorded `undecided` keeps the row alone but the
+    sentence names the two spellings without calling either wrong. A `different_event` or an empty cell
+    (never judged) is today's sentence.
     """
-    for name in ("rsid", "chrom", "start", "ref"):
+    verdicts = _verdicts_of(row, locus)
+    for name in ("rsid", "chrom") if SAME_EVENT in verdicts else ("rsid", "chrom", "start", "ref"):
         authored = getattr(row, name, None)
         against = getattr(locus, name, None)
         if authored is not None and against is not None and str(authored) != str(against):
+            # Undecided is a verdict about the spelling only: a wrong rsID or contig is still accused.
+            if UNDECIDED_EVENT in verdicts and name in ("start", "ref"):
+                return (
+                    f"{getattr(row, 'variant_key', None)}: authored {name}={authored!r} and the resolution "
+                    f"table's {name}={against!r} may be two spellings of one event, which the enricher "
+                    f"recorded as undecided (`authored_event=undecided`), so the rest of that row's "
+                    f"coordinate is left unfilled rather than completed from that locus",
+                    True,
+                )
             return (
                 f"{getattr(row, 'variant_key', None)}: authored {name}={authored!r} contradicts the "
                 f"resolution table's {name}={against!r}, so the rest of that row's coordinate is left "
-                f"unfilled rather than completed from a locus the row disagrees with"
+                f"unfilled rather than completed from a locus the row disagrees with",
+                False,
             )
     return None
 
@@ -1142,21 +1216,37 @@ def _verify(v: VariantRow, loci: list[ResolutionRow], ladders: list[LadderFindin
     coordkey = derive_variant_key(None, v.chrom, v.start, v.ref)
     keys = {derive_variant_key(None, lo.chrom, lo.start, lo.ref) for lo in loci}
     if keys and coordkey not in keys:
-        message = coordinate_disagrees(
-            subject=v.rsid or coordkey,
-            authored=coordkey,
-            reported=f"the resolution table maps it to {sorted(keys)}",
-        )
-        ladders.append(
-            LadderFinding(
-                CodedWarning("rsid_coordinate_disagrees", message),
-                refusal=(
-                    message + " The authored value is kept, so the table's position does not survive a "
-                    "reverse — the compile is not reproducible from it. Fix one of the two, or compile "
-                    "without strict."
-                ),
+        verdicts = recorded_verdicts(v.chrom, v.start, v.ref, loci)
+        if SAME_EVENT in verdicts:
+            # The enricher read the reference and recorded the authored pair as another spelling of the
+            # locus's event (RM375): agreement, and the table's spelling rides `resolution_loci` back.
+            return
+        if UNDECIDED_EVENT in verdicts:
+            message = (
+                f"{v.rsid or coordkey} authored as {coordkey}, while the resolution table spells it "
+                f"{sorted(keys)}: whether the two are one event in two spellings is undecided (the "
+                f"enricher recorded `authored_event=undecided`)."
             )
-        )
+            # Why strict declines here is an unsettled spelling, not an irreproducible artifact, and
+            # neither side is the one to fix until it is settled (RM375).
+            refusal = (
+                message + " strict builds only on an authored pair the table agrees with, and this one is "
+                "unsettled: re-derive online (`just-dna-enricher enrich --rederive`) so the enricher reads "
+                "the reference, or author the VCF POS if the start is another convention's position; or "
+                "compile without strict."
+            )
+        else:
+            message = coordinate_disagrees(
+                subject=v.rsid or coordkey,
+                authored=coordkey,
+                reported=f"the resolution table maps it to {sorted(keys)}",
+            )
+            refusal = (
+                message + " The authored value is kept, so the table's position does not survive a "
+                "reverse — the compile is not reproducible from it. Fix one of the two, or compile "
+                "without strict."
+            )
+        ladders.append(LadderFinding(CodedWarning("rsid_coordinate_disagrees", message), refusal=refusal))
 
 
 #: The phrase `rsid_placements_disagree`'s sentence carries, pinned for a consumer that greps the manifest

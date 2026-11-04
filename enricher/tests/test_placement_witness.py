@@ -33,8 +33,9 @@ from just_dna_enricher.enrich import EnrichmentError, enrich
 from just_dna_enricher.enrich.orchestration import _filled_pieces
 from just_dna_enricher.enrich.resolution_csv import _write_resolution_csv
 from just_dna_enricher.ensembl import EnsemblResolver
+from just_dna_enricher.events import Allele, same_event
 from just_dna_enricher.licensing import sources_path
-from just_dna_enricher.placement import Allele, compare_placements, same_event
+from just_dna_enricher.placement import compare_placements
 from just_dna_enricher.sequences import SequenceProxy, normalize_locus, spelling_verdict
 from just_dna_enricher.verification import ran
 from just_dna_enricher.vrs import VrsMinter

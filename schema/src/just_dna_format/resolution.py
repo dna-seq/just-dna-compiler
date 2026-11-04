@@ -21,17 +21,18 @@ from typing import ClassVar
 
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
-from just_dna_format.base import Companion, PairedFields, both_or_neither, since, vocabulary
+from just_dna_format.base import Companion, PairedFields, both_or_neither, coordinate_key, since, vocabulary
 from just_dna_format.normalize import normalize_utc_timestamp
 from just_dna_format.spelling import ChromCell
 from just_dna_format.vocab import (
+    VALID_AUTHORED_EVENT_VERDICTS,
     VALID_PLACEMENT_VERDICTS,
     VALID_RESOLUTION_STATUS,
     VALID_RSID_STATUS,
     check_vocab,
     validate_rsid,
 )
-from just_dna_format.vrs import split_vrs_ids, validate_caid, validate_vrs_id_list
+from just_dna_format.vrs import normalize_chrom, split_vrs_ids, validate_caid, validate_vrs_id_list
 
 # The fact columns that feed `integrity.resolution_signature` — the reproducibility-relevant facts,
 # deliberately EXCLUDING the provenance columns (`source`/`status`/`fetched_at`) so a human-filled and
@@ -45,9 +46,9 @@ from just_dna_format.vrs import split_vrs_ids, validate_caid, validate_vrs_id_li
 # they describe dbSNP's time-varying state about the rsID, not the placement, and stay out of the
 # artifact on purpose. `vrs_id`, `vrs_spec` and `caid` are out as cross-references to the allele the
 # coordinate already names; leaving them out meant adding them in 0.5 moved no signature.
-# `placement_witness`/`placement_verdict` (RM267) and `left_aligned` (RM270) are out as the enricher's
-# verdicts about a placement or a spelling — a check's answer recorded on the row, not the fact it was
-# checking.
+# `placement_witness`/`placement_verdict` (RM267), `left_aligned` (RM270) and `authored_event` (RM375)
+# are out as the enricher's verdicts about a placement or a spelling — a check's answer recorded on the
+# row, not the fact it was checking.
 RESOLUTION_FACT_FIELDS: tuple[str, ...] = (
     "variant_key",
     "rsid",
@@ -58,6 +59,16 @@ RESOLUTION_FACT_FIELDS: tuple[str, ...] = (
     "genome_build",
     "locus_index",
 )
+
+
+def authored_coordinate_key(chrom: str | None, start: int | None, ref: str | None) -> str:
+    """The authored coordinate an `authored_event` verdict judged, as one comparable string (RM375).
+
+    Written by the enricher beside the verdict and recomputed by the compiler from the row it would
+    apply the verdict to, so the two sides cannot spell it two ways: the contig folded
+    (`normalize_chrom`), `ref` uppercased, an absent cell an empty segment (`coordinate_key`).
+    """
+    return coordinate_key(normalize_chrom(chrom), start, ref.upper() if ref else None)
 
 
 class ResolutionRow(PairedFields):
@@ -87,6 +98,11 @@ class ResolutionRow(PairedFields):
         "placement_verdict",
         "a placement witness and its verdict are written together: who was asked, and what they "
         "answered (RM267)",
+    ) + both_or_neither(
+        "authored_event",
+        "judged_coordinate",
+        "a verdict on an authored spelling names the spelling it judged, or nothing can tell it from a "
+        "stale one (RM375)",
     )
 
     model_config = ConfigDict(extra="forbid")
@@ -272,6 +288,32 @@ class ResolutionRow(PairedFields):
             "VCF joins a `false` row's indel only through `vrs_id`."
         ),
     )
+    # ── the authored spelling's verdict (0.8, RM375; EXCLUDED from resolution_signature) ──
+    # The enricher reads the reference; the compiler cannot (P2), so it trusts this record rather than
+    # judging two spellings itself (`@a-recorded-judgement-is-a-fact`).
+    authored_event: str | None = Field(
+        default=None,
+        description=(
+            "Whether the coordinate the module authored for this subject spells the same event as this "
+            "row's locus, judged by the enricher against the reference: same_event|different_event|"
+            "undecided. Written only where the two spellings differ (an indel anchored elsewhere in its "
+            "repeat, a coordinate from another release's spelling). The compiler reads `same_event` as "
+            "agreement and fills only the cells no spelling changes; `undecided` is no verdict, never "
+            "agreement. Empty when the spellings are identical, the subject authored no coordinate, or "
+            "the row predates 0.8 (RM375)."
+        ),
+        json_schema_extra={**vocabulary("authored_event", VALID_AUTHORED_EVENT_VERDICTS), **since("0.8.0")},
+    )
+    judged_coordinate: str | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description=(
+            "The authored coordinate `authored_event` judged, as `authored_coordinate_key` spells it "
+            "(`chrom:start[:ref]`, the contig empty for a half coordinate). The compiler trusts the "
+            "verdict only for a row whose authored coordinate is still this one: an edit made after the "
+            "enricher judged, or another table's row under the same key, reads as never judged (RM375)."
+        ),
+    )
     fetched_at: str | None = Field(
         json_schema_extra=since("0.5.0"),
         default=None,
@@ -292,6 +334,11 @@ class ResolutionRow(PairedFields):
     @classmethod
     def _validate_placement_verdict(cls, v: str | None) -> str | None:
         return check_vocab(v, VALID_PLACEMENT_VERDICTS, "placement_verdict")
+
+    @field_validator("authored_event")
+    @classmethod
+    def _validate_authored_event(cls, v: str | None) -> str | None:
+        return check_vocab(v, VALID_AUTHORED_EVENT_VERDICTS, "authored_event")
 
     @field_validator("rsid_current")
     @classmethod

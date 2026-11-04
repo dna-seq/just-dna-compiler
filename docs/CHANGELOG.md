@@ -41,6 +41,25 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM375: two spellings of one indel are one event, judged by the enricher and trusted by the compiler (0.8, uncut)
+
+- **`enrich` records whether an authored coordinate spells the resolved event**: `resolution.csv` gains
+  `authored_event` (`same_event` / `different_event` / `undecided`), written against the reference where
+  the authored `chrom`/`start`/`ref` differs from the locus, and `judged_coordinate`, the coordinate it
+  judged, so a verdict never outlives an edit or speaks for another table's row. NUDT15's `rs761191455`, authored at the old
+  snapshot's `13:48041104` and placed by the new one at `13:48041103 T>TG`, reads `same_event` online and
+  `undecided` offline.
+- **The compiler reads the record and judges nothing itself.** A recorded `same_event` draws no
+  `positional_identity_contradicted` and no `rsid_coordinate_disagrees`, and fills only `rsid`/`chrom`;
+  `undecided` keeps the finding without accusing either side. The verdict rides `resolution_loci` through
+  `reverse`.
+- **`rsid_coordinate_agreement` no longer reads an insertion's one-base `ref` as a substitution**, so a
+  respelled indel is agreement online and undecided offline, never a finding.
+- **`--rederive` says respelled, moved, or undecided**: `SubjectDrift.respelled` is three-valued, and a
+  change this run cannot settle (no `vrs_id`, no reference read) is warned apart from the drift.
+- **One judge** for every comparison of two spellings, `just_dna_enricher.events`, with a registry test
+  and an AST walk over its callers.
+
 ## 2026-11-04 — RM374: one rsID placed two ways in one resolution.csv is reported, and refused under strict (0.8, uncut)
 
 - **`rsid_placements_disagree`, a new warning code.** `read_resolution` asks, for both `validate` and

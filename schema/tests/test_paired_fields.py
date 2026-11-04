@@ -140,6 +140,8 @@ _SAMPLE: dict[str, object] = {
     "method": "COLOC_PIP_ECAVIAR",
     "placement_witness": "clinvar",
     "placement_verdict": "same_event",
+    "authored_event": "same_event",
+    "judged_coordinate": "13:48041104",
 }
 
 _PAIRED_MODELS: dict[str, type[BaseModel]] = {

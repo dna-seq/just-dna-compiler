@@ -147,6 +147,83 @@ scenario. Mutated twice: dropping the subset test sent four negatives red; routi
 the two strict refusals red. The release-named tests skip until RM373's column exists; run against a
 simulated column they pass.
 
+## RM375 — two spellings of one indel were judged two events wherever a comparison held no reference
+
+**SHIPPED 2026-11-04 on `0.8`, uncut — a minor (the 0.8 Ensembl migration probe).** Owner enricher +
+compiler + format, severity medium.
+
+**Residuals** won't fix — an offline run never settles a respelled indel, because the reference is read
+through the seqrepo service and no local reference is wired into `SequenceProxy`; offline the verdict is
+`undecided`, never agreement · won't fix — an indel ALT one table keeps and the other does not reads
+undecided on `--rederive` rather than moved, because an offline table keeps ALTs an online hosting filter
+drops (`rs746071566`); that costs sharpness, never truth
+
+**The class.** An indel can be anchored anywhere inside its repeat, and two releases of one source, two
+sources, or an author and a source pick different anchors: NUDT15's `rs761191455` is `13:48041104 G>GG`
+in the old Ensembl snapshot (and in `reference_examples/cpic_gene_pairs/haplotypes.csv`) and
+`13:48041103 T>TG` in `ensembl_variations_split`. Every place that compared two spellings of a position
+for event identity answered on its own terms, and where it held no reference it answered "different"
+rather than "unknown": the house algebra's `None` read as `False`.
+
+**The instances (re-verified on the base, `65410522` + `0.8`).**
+
+1. `compiler/src/just_dna_compiler/resolution.py:468` `_authored_conflict` (now `:509`): compared `start`
+   and `ref` by string, so the cpic row drew `positional_identity_contradicted` and its fill was
+   withheld. Reproduced: re-enriched against the new snapshot, cpic compiled with the warning, and lap-1
+   `resolution_signature` moved on the bare RM372 tree (RM364's `resolution_loci`, merged in, holds the
+   signature; the false warning stayed). → reads the recorded verdict; `same_event` is agreement and
+   fills only `rsid`/`chrom`; `undecided` is left alone in non-accusing words.
+2. `compiler/src/just_dna_compiler/resolution.py:1128` `_verify` (now `:1187`): the SNP core's pair, by
+   `chrom:start:ref` key, refused under `strict`. → the same predicate, `recorded_verdicts`.
+3. `enricher/src/just_dna_enricher/resolver.py:587–630` `_is_substitution` / `coordinate_verdict`: a locus
+   whose `ref` is one base read as a substitution, which an insertion's anchor is, so the cpic pair was a
+   confident disagreement in `rsid_coordinate_agreement` (the probe's "0→1 finding"). → `_is_substitution`
+   removed; the verdict asks `events.names_event` against the reference.
+4. `enricher/src/just_dna_enricher/enrich/outcome.py:70` `_same_events`: `False` whenever an allele had no
+   `vrs_id`, so `--rederive` reported every offline respelling as the source moving (the probe's
+   rs761191455 and rs1457579126, and RM376's rs746071566). → three-valued; `SubjectDrift.respelled` is
+   `bool | None` and the undecided ones are warned apart.
+5. `enricher/src/just_dna_enricher/placement.py` `same_event` (RM267, ClinVar-GKM through it): already
+   three-valued, and the model the rest now share. → moved to `events.py`, unchanged.
+
+Checked and not in the class: the allele-membership union and `hosting_verdict` (allele sets, not
+positions; `parsimony_reduce` already reconciles `G/GG` with `T>TG`), RM270's `spelling_verdict` (a spelling
+against a convention, not two spellings against each other), and the exact-spelling archive joins
+(ClinVar `clin_sig`, PubMind, frequencies), which are join recall rather than an event-identity
+judgement. `module_subjects`' resolved placements are RM362's (merged, not redone).
+
+**The mechanism.** One judge, `enricher/src/just_dna_enricher/events.py`: `same_event` for two whole
+alleles, `names_event` for an authored coordinate that may be partial (its anchors are walked by
+`sequences.indel_spellings`, one implementation shared with RM274's `_indel_payloads`), `authored_event`
+for a written row, `same_allele_sets` for a drift. **The enricher judges, compile trusts**: the verdict is
+recorded per row as `resolution.csv` `authored_event` (`same_event` / `different_event` / `undecided`,
+outside `resolution_signature`), written where the authored `chrom`/`start`/`ref` differs from the
+locus, **bound** by `judged_coordinate` (the coordinate it judged, `authored_coordinate_key`): the key
+is the subject's, so a verdict outlives a later edit of the coordinate and is shared with every other
+table's row under the rsID, and the compiler applies it only to a row still authoring that coordinate
+(found by the review). Both ride `resolution_loci` through `reverse`, so lap two reads what lap one did.
+A per-row column rather than `verification.json` (rewritten per run over the subjects asked; the probe's
+Q2 shows that record read as a module fact) or `placement_verdict` (who else places the rsID: another
+axis, P5). A derived-sidecar column, half cost (P9); additive (P3).
+
+**The guards.** `enricher/tests/test_authored_event.py` registers every judge of two spellings
+(`authored_event`, `coordinate_verdict`, `_same_events`, `compare_placements`), runs each over one corpus
+(the cpic row, its half coordinate, offline, outside the footprint, another contig, a padded `ref`), and an
+AST walk asserts the registry equals every enricher function calling the judge. Mutating the judge to
+answer `False` with no reference turned 6 red; mutating the compiler's predicate to answer nothing
+turned 8 red.
+`compiler/tests/test_authored_event.py` runs both compiler comparers over every positional kind and
+`variants.csv` × the four cell states, and three rows joined `test_resolution_matrix`.
+
+**Not done here.** `reference_examples/cpic_gene_pairs/resolution.csv` is not regenerated (the
+maintainer's decision 3: a later unit regenerates every example against the new snapshot); online, its
+re-derived row will read `authored_event=same_event`.
+The same online re-derive judges the example's second respelled row, NUDT15 `*1` `rs1457579126`, authored
+at `13:48040982`: the event is a one-base deletion in `G AAAAA T` (977–983), whose VCF anchors are
+977–981, so 982 is the HGVS deleted-base position, inside the event and no VCF anchor. It reads
+`undecided` and compiles under the code without an accusation; the authored `start` is the row's to
+correct, by a later unit.
+
 ## RM372 — the Ensembl snapshot moved to a new Hugging Face repo, and a warm cache never migrates
 
 **SHIPPED 2026-11-04 on `0.8`, uncut — a minor.** Owner enricher + format, severity medium.
