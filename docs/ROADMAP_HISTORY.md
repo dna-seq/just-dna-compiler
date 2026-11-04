@@ -35,6 +35,94 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM365 — registry guards that are floors or subsets, and registries that omit what they describe
+
+**SHIPPED 2026-11-04 on `0.8`, uncut — a minor (the 0.8 audit, round 1).** Owner format + compiler +
+enricher, severity low-medium.
+
+**Residuals** none
+
+**A question surfaced, not filed by this build** (a builder claims no number): whether
+`literature.csv`'s `doi_exists` / `doi_checked` belong inside `literature_signature`. Answering yes is
+a corrected derivation that moves every literature signature on disk, so a release has to declare it;
+until then the reason they are out is stated as unrecorded, beside the tuple in `literature.py`.
+
+**The class.** A registry, or the test guarding it, claims to be complete — *"every check this pass
+writes"*, *"everything but the provenance columns"*, *"the diagram is the tuple"* — while the
+assertion behind the claim is a floor (`>= 31`), a subset (`<=`), a count in prose, or a hand-kept
+roster nothing walks. Such a guard passes on exactly the tree that has drifted, so the registry falls
+behind the thing it describes and nobody is told (`@registry-completeness`). The rule applied: where
+the claim is *"these are the Xs"*, the assertion is an equality over a walked set, with a named
+exemption carrying its reason; where it is only *"every X is a Y"* (a value inside a vocabulary, a
+scope narrowing a map), a subset is the honest shape and stays.
+
+**Instances, re-verified on `0.8` at `0a5293b`** (file:line as found):
+
+1. `enricher/src/just_dna_enricher/producers.py:83-90` — `DERIVED_PRODUCERS["resolution.csv"]` claimed
+   six checks while `enrich/verification_records.py` writes nine (`published_refutation`,
+   `evidence_status_currency`, `placement_agreement` missing); `:169`, the literature producer,
+   omitted `provenance_quote`. The guard, `enricher/tests/test_producers.py:111`, was
+   `claimed <= VALID_VERIFICATION_CHECKS`. → each command's claimed checks **equal** the names its
+   modules pass to `ran`/`skipped`, read by one AST walker (`checks_written_in`, in
+   `enricher/tests/conftest.py`) that the vocabulary-wide emitter guard in
+   `test_verification_record.py` now calls too; an unreadable check name is refused, and a producer
+   module that resolves to nothing fails.
+2. `schema/tests/test_first_seen.py:83-85` — `len(_ALL_MODELS) >= 31` and `>= 414` fields, while the
+   registry held 38 models and 538 fields. → every pydantic model the package defines is in the
+   registry, reachable from a document the tooling writes (`ModuleManifest`, `VerificationDoc`,
+   `ProvenanceDoc`, `SnapshotRelease`, `ReleaseRecord`), or one of two named abstract bases; exactly once.
+3. `schema/tests/test_first_seen.py:32` — `_RELEASES`, a hand list, lacked `0.7.1`–`0.7.3`. → equal to
+   the release tags plus the uncut version (the format package's own metadata version).
+4. First-release values: nothing checked a `since()` *value*, so `ResolutionRow.vrs_spec`'s `0.5.0` was
+   disputable. **Measured: it is right** — `vrs_spec` is in `resolution.py` at `v0.5.0`; the "0.8" in the
+   dispute is the parquet that began carrying it (RM270). → every field's declaration must equal the
+   first tag whose model carries it (the uncut release where no tag does), parsed from each tag's own
+   sources with inherited fields resolved; the same walk refuses a published field the model lost
+   (Principle 3). All 538 hold. It skips, saying why, in a checkout with no tags.
+5. `docs/COMPILER.md` — the `ARTIFACT_PARQUETS` diagram drew 26 of 30 names (no `locus_to_gene`,
+   `colocalisations`, `consequences`, `ld_pairs`) with `expression_effects` out of order, under a pinned
+   "Thirty names" (the audit's "Twenty-nine" had already been corrected; its six missing names were
+   four — `meta`, `meta_resolved`, `model_organisms` were drawn); the bullet below half-enumerated it
+   again, and the `_INPUT_FILES` bullet lacked `meta.csv` and `model_organisms.csv`. → the diagram is
+   compared to the tuple **in order** and the input list as a set (`compiler/tests/test_counted_prose.py`);
+   the half-inventory points at the tuple instead.
+6. Every `*_FACT_FIELDS` tuple (17, in 16 modules) — each introduced as *"everything but the provenance
+   columns"*, and only `CLINICAL_ASSERTION_FACT_FIELDS` had an equality. Fifteen columns sat outside
+   their signatures with no word about them (`resolution.csv`'s `authority`, `caid`, `vrs_id`,
+   `vrs_spec`, `rsid_alternates`, `rsid_current`, `rsid_status`, `placement_witness`,
+   `placement_verdict`, `left_aligned`; `literature.csv`'s `doi_exists`, `doi_checked`, `quote_source`;
+   `consequences.csv`'s `rsid`; `VerificationRecord.producer`), and seven provenance columns were never
+   named. → `schema/tests/test_fact_fields_partition.py`: each column is in the tuple or named in the
+   comment above it, which is where each module already argued its exclusions, so the exemption list is
+   that prose rather than a second copy; the tuples walked equal those `integrity`/`verification` hash.
+   Each column now carries the reason SCHEMAS.md or its tests give; `doi_exists`/`doi_checked` say none
+   was recorded. **No tuple changed and no signature moves.**
+7. `enricher/tests/test_sidecar_resolution_is_uniform.py:35-47` — `SIDECAR_OWNERS`, the roster the
+   no-hand-joined-path AST guard checks, was hand-kept and seven derived tables behind while its comment
+   said it came from the layout module; its own guard was a `>=`. → derived from `DERIVED_PRODUCERS` and
+   `WRITTEN_BY_EVERY_PASS`, held equal to the derived tables plus the licence spellings. The widened
+   walk found no hand-joined path.
+8. `compiler/tests/test_validate_agrees_with_compile.py:252` — `registry <= covered` → `==`.
+9. `schema/tests/test_closedness_is_measured_not_declared.py:40-75` — the closedness walk read
+   `json_schema_extra` and never measured a `SHARED_VOCABULARIES` field (25 published vocabulary fields,
+   `clin_sig`/`direction`/`source_element`/… on the binning, PGx and core models); its guard was
+   `>= 10`. → it reads `field_vocabularies`, and every published vocabulary field must be among the
+   measured. All agree with their validators.
+
+**Looked at and left, with the reason.** `enricher/tests/test_release_json_through_the_model.py:94`
+(`len(_BUILDERS) >= 2`) and `test_licence_row_inside_the_commit.py:286` are vacuity guards on a glob or
+a walk, not completeness claims — the equality each file states is elsewhere in it, and no registry
+names the builder modules to derive one from. The ~90 other `<=` in the suites are *"every value is a
+member"* claims, where a subset is the entailed direction. `compiler/tests/test_artifact_parquet_bindings.py`
+compares two views derived from the same registries (the audit's point): a compile of an all-surfaces
+fixture compared against the bindings would close it, and is not built here.
+
+**Mechanism.** Equalities over walked sets, each broken once on purpose and watched going red: the
+producer equality and the diagram/input guards red on `0.8` as found; the release list (drop `0.7.1`),
+the model registry (drop `LdPairRow`), the tag measurement (`vrs_spec` → `0.8.0`), a fact-field
+exclusion (unname `answered_rsid`) and the closedness walk (restore the narrow read) each red under
+mutation.
+
 ## RM270 — an indel's artifact key is its source's spelling: a left-aligned VCF misses a respelled row, and the spelling-independent id the enricher mints never reaches the artifact
 
 **0.8, decided 2026-11-03.** Taken into 0.8 by the maintainer, with the rest of the indel-placement fixes (RM304, RM267, RM270, RM292, RM305). The status line below predates that decision.

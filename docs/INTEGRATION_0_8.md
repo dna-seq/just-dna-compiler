@@ -387,6 +387,14 @@ leftmost spelling, and its `vrs_id` is what joins it.
 **This breaks a 0.7 reader of a 0.8-enriched `resolution.csv`**, for § 1.18's reason: `ResolutionRow`
 forbids unknown columns. Same remedy.
 
+## 1.20 `DERIVED_PRODUCERS` names every check its passes write (RM365, no break)
+
+`just_dna_enricher.producers.DERIVED_PRODUCERS[...].checks` now lists every check a pass writes into
+`verification.json`: the `enrich` producer of `resolution.csv` gains `placement_agreement`,
+`published_refutation` and `evidence_status_currency`, and the `literature` producer gains
+`provenance_quote`. A tool or page reading the field named four fewer attestations than the passes
+write; nothing else changed, and no artifact, signature or record moves.
+
 ## 2. What to change
 
 1. If you parse `manifest.json` with `just-dna-format`, move your pin to 0.8 when you start reading
