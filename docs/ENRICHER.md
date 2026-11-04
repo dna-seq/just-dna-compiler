@@ -205,7 +205,10 @@ stale, one function does not. Four things to hold onto when wiring a new pass in
   in none of the denominators below (`LiteratureResult.quotes_without_pmid` counts it). When it is the
   only kind there is, `provenance_quote` is skipped as `unsupported` and the detail says how many;
   otherwise the same clause is appended to the record's detail. The DOI itself is not existence-checked
-  either: `literature.csv` is keyed on PubMed ids.
+  either: `literature.csv` is keyed on PubMed ids. So `citation_existence` counts the DOI-only citations
+  on every citing table (`citations_without_pmid`) the same way, an `unsupported` skip when they are
+  all there is (never `ran(0, 0)`), and a module citing only by DOI is no longer refused as citing
+  nothing.
 - **`literature` puts three questions with three different denominators, and one record cannot carry
   them.** Every citation gets an existence verdict; only some carry an authored DOI or PMC id to
   compare; fewer still carry a quote whose article could be read. So `provenance_quote` counts the

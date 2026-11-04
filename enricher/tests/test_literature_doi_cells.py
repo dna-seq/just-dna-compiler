@@ -6,6 +6,8 @@ PubMed ids, and `_citations` — the map the pass iterates to ask PubMed — put
 what reaches the pass is a cell carrying a PMID beside a DOI, or the `NONE` sentinel with its `doi`.
 """
 
+import csv
+import io
 from pathlib import Path
 
 from just_dna_enricher.literature import _citations, enrich_literature
@@ -78,3 +80,60 @@ def test_a_preprint_quote_beside_a_pmid_quote_is_named_outside_the_denominator(t
     assert record.detail is not None
     assert record.detail.startswith("1 authored quote(s);")
     assert "whose pmid is NONE" in record.detail
+
+
+_SLCO1B1 = Path(__file__).resolve().parents[2] / "reference_examples" / "pgx_slco1b1_simvastatin"
+
+
+class _NeverAsked:
+    """A client the pass must not touch: every citation here is DOI-only, so there is nothing to ask."""
+
+    def __getattr__(self, name: str):
+        raise AssertionError(f"the pass asked a registry ({name}) about a module citing by DOI alone")
+
+
+def _pharm_spec_citing_by_doi(d: Path) -> Path:
+    """The SLCO1B1 example with no studies.csv and its Toxicity rows citing a preprint by DOI."""
+    d.mkdir(parents=True)
+    for source in _SLCO1B1.iterdir():
+        if source.suffix in {".csv", ".yaml"} and source.name != "pharm_variants.csv":
+            (d / source.name).write_bytes(source.read_bytes())
+    rows = list(csv.DictReader(io.StringIO((_SLCO1B1 / "pharm_variants.csv").read_text(encoding="utf-8"))))
+    toxicity = [r["phenotype_category"] == "Toxicity" for r in rows]
+    assert any(toxicity), "the example must carry a Toxicity row"
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=[*rows[0], "pmid", "doi"], lineterminator="\n")
+    writer.writeheader()
+    for row, cites in zip(rows, toxicity, strict=True):
+        writer.writerow({**row, "pmid": PMID_NONE if cites else "", "doi": _DOI if cites else ""})
+    (d / "pharm_variants.csv").write_text(buffer.getvalue(), encoding="utf-8")
+    return d
+
+
+def _existence_record(spec: Path):
+    return {r.check: r for r in read_verification(spec / VERIFICATION_JSON).records}["citation_existence"]
+
+
+def test_a_module_citing_only_by_doi_is_not_a_module_citing_nothing(tmp_path: Path) -> None:
+    """The pass used to refuse with "no citations in …", false for a module whose every citation is a
+    `NONE`+`doi` pharm row, and past that would record `ran(0, 0)`, the clean-looking pass the
+    identifier check already refuses to emit. The question was never put, so: `unsupported`, counted."""
+    spec = _pharm_spec_citing_by_doi(tmp_path / "s")
+    expected = sum(
+        1 for r in csv.DictReader(io.StringIO((spec / "pharm_variants.csv").read_text())) if r["doi"]
+    )
+    never = _NeverAsked()
+    result = enrich_literature(spec, eutils=never, europepmc=never, crossref=never)
+    assert result.cited == []
+    assert result.citations_without_pmid == expected
+    record = _existence_record(spec)
+    assert record.skipped == "unsupported"
+    assert f"{expected} citation(s) have pmid NONE" in (record.detail or "")
+
+
+def test_offline_it_says_the_same_count(tmp_path: Path) -> None:
+    spec = _pharm_spec_citing_by_doi(tmp_path / "s")
+    enrich_literature(spec, offline=True)
+    record = _existence_record(spec)
+    assert record.skipped == "offline"
+    assert "have pmid NONE and cite by DOI alone" in (record.detail or "")

@@ -102,7 +102,10 @@ the refusal breaks no published module, and the decision's gate was met.
 - **Found in review, and the same item:** a quote on a `NONE` row sat in none of the literature pass's
   counts, so `verification.json` said "no provenance quote or regex on any citation" about a module
   carrying one. `LiteratureResult.quotes_without_pmid` counts them; alone they make the record an
-  `unsupported` skip, beside others they are a clause in its detail.
+  `unsupported` skip, beside others they are a clause in its detail. The same held for existence: a
+  module citing only by DOI was refused as "no citations", and past that would have recorded
+  `citation_existence` as `ran(0, 0)`; `citations_without_pmid` counts DOI-only citations on every
+  citing table, and the record is `unsupported` when they are all there is.
 
 **P5 audit.** `doi` is `StudyRow.doi`'s name for the same fact on a finer-grained row; it collides with
 nothing on those models and is not in `RESERVED_NAMES_0_4`; `LiteratureRow.doi` is the registry's answer

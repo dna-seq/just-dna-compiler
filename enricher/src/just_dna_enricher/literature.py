@@ -224,6 +224,7 @@ class LiteratureResult:
     quotes_unchecked: int = 0  # unretrievable + never examined
     quotes_unexamined: int = 0  # authored after the sidecar pinned the row
     quotes_without_pmid: int = 0  # quotes on `pmid=NONE` study rows, which no PMID reaches (RM336)
+    citations_without_pmid: int = 0  # `pmid=NONE` rows on any citing table: cited by DOI alone (RM336)
     fulltext_checked: list[str] = field(default_factory=list)  # PMIDs whose fulltext was read
     abstract_checked: list[str] = field(default_factory=list)  # PMIDs matched against the abstract only
     doi_missing: list[str] = field(default_factory=list)  # DOIs Crossref has no record of
@@ -267,6 +268,8 @@ class LiteratureResult:
         once, so a citation-granular sentence has to put it in one bucket and be wrong about the
         other.
         """
+        if self.quotes_authored == 0 and self.quotes_without_pmid:
+            return _without_pmid_clause(self)
         if self.quotes_authored == 0:
             return (
                 f"no provenance quotes authored across {len(self.cited)} citation(s) — nothing to "
@@ -1101,7 +1104,14 @@ def enrich_literature(
     except ValueError as exc:
         raise LiteratureEnrichmentError(f"a citing table is invalid: {exc}") from exc
     table_pmids = table_citations(citing_rows)
-    if not studies and not table_pmids:
+    # A `pmid=NONE` row cites by DOI alone (RM336): a citation, so the module is not citation-free, and
+    # one no PubMed lookup below can reach, so it is counted apart and said in the records.
+    cited_by_doi_only = sum(
+        1
+        for row in [*studies, *(r for rows in citing_rows.values() for r in rows)]
+        if row.pmid and not extract_pmids(row.pmid)
+    )
+    if not studies and not table_pmids and not cited_by_doi_only:
         raise LiteratureEnrichmentError(
             f"no citations in {spec_dir} — the literature pass checks the citations a module makes, "
             f"and this one has neither studies.csv rows nor a `pmid` on any binning or "
@@ -1145,6 +1155,7 @@ def enrich_literature(
                 cited=sorted(citations, key=int),
                 quotes_authored=authored_total,
                 quotes_without_pmid=without_pmid,
+                citations_without_pmid=cited_by_doi_only,
                 fulltext_requested=check_fulltext,
             ),
             spec_dir,
@@ -1400,6 +1411,7 @@ def enrich_literature(
     if write:
         _write_literature_csv(result.rows, output_path)
     result.quotes_without_pmid = without_pmid
+    result.citations_without_pmid = cited_by_doi_only
     return _attest(result, spec_dir, write=write, check_fulltext=check_fulltext, check_doi=check_doi)
 
 
@@ -1667,12 +1679,21 @@ def _verification_records(
                     # now, which is the same "nothing to protect" state and a different sentence.
                     "PubMed and Crossref have no offline snapshot, and no citation this module "
                     "makes carries a pinned answer in literature.csv"
+                    + (f"; {_doi_only_clause(result)}" if result.citations_without_pmid else "")
                 ),
                 source="pubmed",
             )
         )
+    elif not result.cited and result.citations_without_pmid:
+        # Not `ran(0, 0)`, for the reason the identifier branch below gives: every citation this
+        # module makes is DOI-only, and this pass asks PubMed by PMID, so it put no question at all.
+        records.append(
+            skipped("citation_existence", "unsupported", detail=_doi_only_clause(result), source="pubmed")
+        )
     else:
         parts = []
+        if result.citations_without_pmid:
+            parts.append(_doi_only_clause(result))
         if result.missing:
             parts.append(f"{len(result.missing)} cited PMID(s) have no PubMed record")
         if result.doi_missing:
@@ -1876,6 +1897,14 @@ def _verification_records(
             )
         )
     return records
+
+
+def _doi_only_clause(result: LiteratureResult) -> str:
+    """The citations no PMID reaches, said once: `pmid=NONE` rows citing by DOI alone (RM336)."""
+    return (
+        f"{result.citations_without_pmid} citation(s) have pmid NONE and cite by DOI alone; this pass "
+        f"asks PubMed by PMID, so none of them was checked"
+    )
 
 
 def _without_pmid_clause(result: LiteratureResult) -> str:
