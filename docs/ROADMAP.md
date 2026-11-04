@@ -811,7 +811,7 @@ rework), which constrains every option below.
   lay-language rendering draws from the other side.
 - **Shape: kept open, with two columns as the default.** Unless something below changes it, the build
   is option 1: two optional columns on the carrying kinds.
-- **The exception is meta-conclusions.** If [RM28](ROADMAP_0_9.md#rm28--meta-conclusions-the-predicate-half)
+- **The exception is meta-conclusions.** If [RM28](ROADMAP_0_8.md#rm28--meta-conclusions-the-predicate-half)
   lands its own table, the registers may belong there instead (a meta-conclusion is the claim a report
   most needs in lay words), and the two items then decide the shape together.
 

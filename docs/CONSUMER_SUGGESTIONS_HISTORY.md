@@ -5371,7 +5371,7 @@ put that distinction in the artifact. Filed as an observation, not a blocker —
 
 ## S116 — RM28: the HFE compound-het-vs-cis case is a meta-conclusion a consumer can name but not resolve
 
-**Status — note 1 recorded on [RM28](ROADMAP_0_9.md#rm28--meta-conclusions-the-predicate-half) (it confirms the boundary); note 2 filed as [RM266](ROADMAP_0_9.md#rm266--the-phase-confusable-diplotype-pair-set-is-computed-at-compile-and-dropped-it-reaches-the-artifact-only-as-a-capped-warning-string), open, a minor.** Two distinct findings, and they route apart.
+**Status — note 1 recorded on [RM28](ROADMAP_0_8.md#rm28--meta-conclusions-the-predicate-half) (it confirms the boundary); note 2 filed as [RM266](ROADMAP_0_9.md#rm266--the-phase-confusable-diplotype-pair-set-is-computed-at-compile-and-dropped-it-reaches-the-artifact-only-as-a-capped-warning-string), open, a minor.** Two distinct findings, and they route apart.
 
 Note 1 — keep the enumerative property — is exactly RM28's boundary, and your building it confirms it from the caller side. Because the module defines the *cis* allele (`C282Y-H63D`) as its own haplotype with its own diplotype row, the enumeration let your caller **name** the ambiguity rather than guess or report `no_match`. RM28 is parked precisely because enumeration reaches the small-arity cases without a predicate, and `hfe_compound_het` was already its "cis/trans closed as a check, not a table" entry; S116 is now recorded there as the shipped-caller confirmation that the boundary holds. Nothing to add to the format for note 1.
 
@@ -5538,7 +5538,7 @@ consumer cannot tell whether "`*1` = reference at every site" is the rule or a C
 
 **Status — note 1 accepted and filed for 1.0 as
 [RM269](ROADMAP_1_0.md#rm269--diplotyperowhaplotype_b-is-required-so-a-hemizygous-star-allele-call-has-no-row);
-note 2 recorded in [RM28's corpus](ROADMAP_0_9.md#rm28--meta-conclusions-the-predicate-half).** Nothing
+note 2 recorded in [RM28's corpus](ROADMAP_0_8.md#rm28--meta-conclusions-the-predicate-half).** Nothing
 shipped.
 
 **Note 1.** Confirmed: `haplotype_b` has been required since 0.4.0. Making it nullable is the right
