@@ -43,6 +43,7 @@ from just_dna_format.manifest import (
     Weighting,
 )
 from just_dna_format.meta import MetaRow
+from just_dna_format.model_organisms import ModelOrganismRow
 from just_dna_format.normalize import IDENTITY_AUTHORITY_KEYS, IDENTITY_AUTHORITY_REASONS
 from just_dna_format.overrides import OverrideRow
 from just_dna_format.pgs import (
@@ -179,6 +180,11 @@ _OVERLAY_MODELS: dict[str, type[BaseModel]] = {"OverrideRow": OverrideRow}
 # Its own group, for the reason the overlay has one, so a reader meets it beside the tables it names.
 _META_MODELS: dict[str, type[BaseModel]] = {"MetaRow": MetaRow}
 
+# `model_organisms.csv` (0.8, RM335) is authored and keyed, on the gene itself, and annotation only: it
+# asserts nothing a genome is matched against, so it is not a lead table and a module carrying only this
+# file is not a module. Its own group, for the reason the overlay and the meta-table have theirs.
+_MODEL_ORGANISM_MODELS: dict[str, type[BaseModel]] = {"ModelOrganismRow": ModelOrganismRow}
+
 _ALL_MODELS: dict[str, type[BaseModel]] = {
     **_MODULE_MODELS,
     **_VARIANT_MODELS,
@@ -188,6 +194,7 @@ _ALL_MODELS: dict[str, type[BaseModel]] = {
     **_FACT_MODELS,
     **_OVERLAY_MODELS,
     **_META_MODELS,
+    **_MODEL_ORGANISM_MODELS,
 }
 
 
