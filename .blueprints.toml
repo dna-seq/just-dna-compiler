@@ -10,7 +10,7 @@ send = true
 # The person's own coding sessions here (docs/seats/LEAD.md): the plan, the design, the build, the
 # releases. Triage hands it a fix past a patch; the liaison, a change an upstream release asks; the pm, a
 # proposal.
-wake_from = "just-dna-compiler/triage just-dna-compiler/liaison just-dna-compiler/pm */secretary"
+wake_from = "just-dna-compiler/triage just-dna-compiler/liaison just-dna-compiler/pm just-dna-registry/liaison */secretary"
 
 # The desk's answers to this seat's questions, each said once (D133); the desk files this repo's
 # questions under repo:just-dna-compiler.
@@ -45,7 +45,7 @@ anchor = "## 🔷 Reservations"
 [seat.triage]
 # Answers the consumers (docs/seats/TRIAGE.md): their notes in docs/CONSUMER_SUGGESTIONS.md, a reply in
 # the document, a patch on main, an RM item for the rest. The other seats relay a consumer report to it.
-wake_from = "just-dna-compiler/lead just-dna-compiler/liaison just-dna-compiler/pm */secretary"
+wake_from = "just-dna-compiler/lead just-dna-compiler/liaison just-dna-compiler/pm just-dna-registry/liaison */secretary"
 
 # One line when docs/CONSUMER_SUGGESTIONS.md differs from HEAD and has settled, said once per state; paused
 # off the remote's default branch. A consumer writes its item there uncommitted, from its own session.

@@ -355,7 +355,7 @@ def stream_to_file(
 
     @retry(
         stop=attempt_floor(3),
-        wait=wait_exponential_jitter(initial=2.0, max=30.0),
+        wait=wait_exponential_jitter(multiplier=2.0, max=30.0),
         retry=retry_if_exception_type(httpx.TransportError),
         reraise=True,
     )

@@ -398,7 +398,7 @@ class EuropePmcClient:
 
     @retry(
         stop=attempt_floor(3),
-        wait=wait_exponential_jitter(initial=1.0, max=10.0),
+        wait=wait_exponential_jitter(multiplier=1.0, max=10.0),
         retry=retry_if_exception_type((httpx.TransportError, httpx.TimeoutException)),
         reraise=True,
     )
@@ -766,7 +766,7 @@ class CrossrefClient:
 
     @retry(
         stop=attempt_floor(3),
-        wait=wait_exponential_jitter(initial=1.0, max=10.0),
+        wait=wait_exponential_jitter(multiplier=1.0, max=10.0),
         retry=retry_if_exception_type((httpx.TransportError, httpx.TimeoutException)),
         reraise=True,
     )
@@ -924,7 +924,7 @@ class PmcIdConverterClient:
 
     @retry(
         stop=attempt_floor(3),
-        wait=wait_exponential_jitter(initial=1.0, max=10.0),
+        wait=wait_exponential_jitter(multiplier=1.0, max=10.0),
         retry=retry_if_exception_type((httpx.TransportError, httpx.TimeoutException)),
         reraise=True,
     )
@@ -1021,7 +1021,7 @@ class PmcBiocClient:
 
     @retry(
         stop=attempt_floor(3),
-        wait=wait_exponential_jitter(initial=1.0, max=10.0),
+        wait=wait_exponential_jitter(multiplier=1.0, max=10.0),
         retry=retry_if_exception_type((httpx.TransportError, httpx.TimeoutException)),
         reraise=True,
     )

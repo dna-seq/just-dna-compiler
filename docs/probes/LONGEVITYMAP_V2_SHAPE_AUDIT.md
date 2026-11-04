@@ -208,6 +208,20 @@ case.
 The run's rewritten examples, in the final shape only, are in this report's appendix below the first run's;
 two of the first run's cases were dropped as trivial.
 
+## 7. Errata, and what the reference examples found (2026-11-04, the lead's report)
+
+Writing 0.8's reference examples from this report's rows found three errors in the illustrative rows. None of
+them changes a shape decision.
+
+- **The PPARG model-organism row**: "benefit lost on high-fat diet" is a metabolic outcome, not a lifespan one.
+- **The age bands** in the examples were v2's own pooling, not bands the studies report.
+- **The healthspan sample size** is 300,477, not the 300,447 the rows give.
+
+The lead also overstated a count in PT2 §3 item 23: "17 of 77 uncited" model-organism rows. The one GenAge entry
+checked (Ghrhr) has a PMID, 11371619, so the real number is lower and was not re-measured.
+
+The examples also found four facts with no cell, which this report's runs missed. They are RM360, for 0.9.
+
 ## Appendix: the candidate examples, as the run wrote them
 
 Working names throughout (the meta-table as `meta.csv`, members joined by ` & `). Every name still owes its

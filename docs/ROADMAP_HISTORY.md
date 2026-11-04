@@ -3163,6 +3163,53 @@ neither of this entry's guards caught, so the CLI died again beside anything pin
 
 **Residuals** RM254
 
+## RM371 — the enricher spells tenacity's backoff `initial`, which tenacity 9.2.1 deprecates, so every import warns and a release that drops it would stop the enricher importing
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `main`, uncut — a patch** (enricher: a
+keyword rename and a dependency floor) · **Owner** enricher (every retried client) · **Motivating case**
+S128 in CONSUMER_SUGGESTIONS_HISTORY.md (prepare-annotations, 2026-11-04) · *related* RM247, RM254
+
+**What was observed.** tenacity 9.2.1 (2026-10-07) renamed `wait_exponential_jitter(initial=…)` to
+`multiplier=` and warns on the old name. Every retried enricher client builds its wait in a
+module-level `@retry`, so the warning fires at import, once per site: 18 sites in 15 modules on
+`main`. The floor was `tenacity>=9.0.0` with no cap. So the tenacity release that removes `initial`
+would make every one of those decorators raise `TypeError` at import and kill every enricher command,
+the same shape as RM247 and RM254. The workspace lock held 9.1.4, which is why nothing here warned.
+9.1.4's constructor is `(initial, max, exp_base, jitter)` only, and PyPI has no 9.2.0. So the rename
+needs the floor raised to 9.2.1.
+
+**Sizing.** A patch. It touches no model, column, parquet or manifest field, so Principles 3 and 8 do
+not reach it, and RM254 raised a dependency floor in a patch before. The cost of a floor is that an
+install which also caps tenacity below 9.2.1 fails to resolve. Install time is the honest place for that
+to fail. It was measured before choosing: just-dna-lite (`>=9.1.4`), just-module-creator (`>=9`) and the
+marketplace all accept 9.2.1, and dagster does not depend on tenacity. prepare-annotations already floors
+9.2.1.
+
+**Not taken.** Silencing the warning, which would hide exactly the removal this guards against. A
+`<9.3` cap, which would trade a future import failure for a future resolve conflict with every consumer
+that moves on, and would still leave the warning.
+
+**The `0.8` branch** carried 21 such calls, 3 more than `main` (`clinvar_gkm.py`, `ld_pairs.py` and
+`literature.py`'s PMC client). The guard went red there when `main` merged in, as intended, and the merge
+converted the three to `multiplier=` (2026-11-04).
+
+**Residuals** none
+
+**What shipped.** All 18 calls pass `multiplier=`, including `cpic.py` and `pharmvar.py`, whose
+`initial=1` never warned but would break the same way. In 9.2.1 `initial` is only copied into
+`multiplier`, and the wait is `multiplier * exp_base**(n-1) + jitter` in both versions, so backoff
+timing is unchanged. `enricher/pyproject.toml` floors `tenacity>=9.2.1`, and `uv.lock` moves 9.1.4 →
+9.2.1 and nothing else. With the suite's `error::DeprecationWarning` filter, the locked version makes
+import itself a gate. `python -W error::DeprecationWarning` imports all 87 enricher modules cleanly.
+
+Tests: `enricher/tests/test_retry_wait_keywords.py` walks the package source, so a new client is covered
+the day it is written, whatever tenacity is installed. It refuses a `wait_exponential_jitter` call that
+passes `initial=` or any positional argument (9.2.1 still binds the first one to `initial`), or that
+states no `multiplier=`. It also asserts the call set is non-empty and that the pyproject floor is at
+least 9.2.1. Both failures were reproduced before the guard was kept. Reverting one site to `initial=`
+fails at import under the locked tenacity. Making `cpic.py`'s call positional, which no import
+warning sees, fails the walk alone.
+
 ## RM293 — MITOMAP's `:` deletions are mintable now that rCRS is vendored, and three texts still say Principle 2 forbids it
 
 **Severity** low · **Status** ✅ **SHIPPED 2026-09-27 on `main`, cut 2026-09-27 as `v0.7.3` — a patch** · **Owner** enricher (`mitomap_build`,

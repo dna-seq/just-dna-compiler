@@ -39,6 +39,13 @@ three scripts are the kit's, two of them copied into `.claude/` for CI.
 **First pass**: S125–S127 answered and archived (`5e2cc18`), after committing the items alone
 (`1ee5925`). Filed RM337–RM340.
 
+## Routes with other repos' triage seats
+
+- **just-dna-registry/triage** (agreed 2026-11-04): a registry consumer item whose fix belongs to format,
+  compiler or enricher arrives in `docs/CONSUMER_SUGGESTIONS.md`, restated, with an `Sn` from this ledger
+  and a message naming it. An item this seat moves back to the registry gets a message to that seat
+  naming it, so neither inbox holds the other's.
+
 ## Items this seat owns
 
 | Item | State |
@@ -46,6 +53,6 @@ three scripts are the kit's, two of them copied into `.claude/` for CI.
 | RM339 (S126, snapshot cache trusted when partial) | `done`: `74e0e87`, unpushed when built (the pm pushed it in `e2fed68`). A pull writes `pull-record.json` before its first download |
 | RM337 (S125, silent drop under `logs/`) | handed on: it needs a new warning code, so it is a minor (`172a215`, sized wrong at filing). The pm placed it, now in `ROADMAP_0_8.md` (`f3377a6`) |
 | RM340 (S127, VRS warning names `verification.json`) | `done`: `280813b`, on `origin/main` (the pm's fast-forward pushes carried it) |
+| RM371 (S128, tenacity `initial=` deprecated at every enricher import) | `done`: `742b1ff`, unpushed. 18 sites renamed `multiplier=`, floor `tenacity>=9.2.1`, AST guard; `0.8` has 21 sites, so the guard goes red at the merge until the lead renames the 3 extra |
 | RM338 (S125, which files under `logs/` ship) | the lead's: taken into its plan and put to the maintainer, 2026-11-03 |
-| SSH agent emptied (2026-11-04): every fetch/push to origin refused, watchers blind | `blocked: desk #190` (a step: the person runs `ssh-add`); withdraw it `moot:` once `git fetch origin` works |
 | push of `main` | the maintainer's: auto mode denies a seat's granted push (kit #238), so the maintainer pushes until it lands; the lead asked triage not to push its commits |

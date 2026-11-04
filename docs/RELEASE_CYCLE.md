@@ -107,10 +107,32 @@ reported, never asked about, and they never freeze scope.
 5. **Review wave and dogfooding wave.** What they find becomes new items, interviewed on their
    decisions and implemented. Repeat until a review comes back clean. The triage seat monitors the
    branch meanwhile and processes whatever arrived during the build.
+   - **A review reports error classes, never single instances** (the maintainer, 2026-11-04: "so that the
+     same error in a second module is not found as a separate item"). Each finding names the rule broken,
+     lists every instance across packages, tables, lanes and clients, and names the mechanism that catches
+     the whole class (a registry-walking equality test, one shared helper, an AST guard). One item per
+     class, fixed as a class.
+   - **A builder's finding outside its unit is filed as a class the same way**, and checked against the
+     review's classes before filing, so one defect is never two items.
+   - **Changed charter wording is shown to the maintainer, old to new, before the cut.** Deciding that an
+     amendment happens is not approving its sentences; the acceptance is recorded in
+     CONSTITUTION_AMENDMENTS_HISTORY.md.
 6. **Downstream pre-integration**: the consumer repos try the unreleased version (a second level of
    dogfooding). Their suggestions become items and the cycle returns to step 5, now also needing the
-   pre-integrations to confirm.
-7. At **zero active items**, the release is tagged and cut.
+   pre-integrations to confirm. Skipping it is the maintainer's call only, and the skip is recorded in the
+   release's CHANGELOG cut entry and its INTEGRATION file.
+7. **Release-gate sweep**: the release's INTEGRATION file covers every new warning code, manifest field,
+   parquet and verify reason; every new code has a `features/` scenario; every closed item states its
+   `**Residuals**`; the docs site builds under `--strict`.
+8. **Docs pass** (added 2026-11-04): every command in the user guides (GETTING_STARTED, COMPILING,
+   CONSUMING, ENRICHING, index) is re-run against the release branch, and the release's new surfaces are
+   added to them with commands that were run. The doc map in `CLAUDE.md` and the docs-site navigation are
+   checked against the files. Builders update the reference docs for their own change; nobody else
+   re-reads the user guides, so this step does.
+9. **The cut**, at **zero active items**: versions and floors, the lock, the CHANGELOG cut heading, the
+   release record (measured by sweeps; a toolchain move is declared only from a sweep that holds the
+   compiler fixed), the INTEGRATION file finished, the branch merged into `main`, the dists built and
+   checked. Publishing stays the maintainer's; the tag follows the publish.
 
 **The failure this sequence guards against** is an urgently needed feature pushed into a release that
 has not been cut yet. It resets the cycle, and in earlier lines it produced the `PROPOSAL_*_PT2`/`PT3`

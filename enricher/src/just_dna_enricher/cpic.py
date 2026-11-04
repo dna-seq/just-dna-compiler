@@ -295,7 +295,7 @@ class CpicClient:
         # A 5xx or a 429 only (RM354): a permanent 4xx answers the same on every attempt.
         retry=retry_if_transient(),
         stop=attempt_floor(3),
-        wait=wait_exponential_jitter(initial=1, max=10),
+        wait=wait_exponential_jitter(multiplier=1, max=10),
         reraise=True,
     )
     def _request(

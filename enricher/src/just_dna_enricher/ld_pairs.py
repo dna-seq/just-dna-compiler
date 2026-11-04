@@ -145,7 +145,7 @@ class LdClient:
 
     @retry(
         stop=attempt_floor(4),
-        wait=wait_exponential_jitter(initial=2.0, max=20.0),
+        wait=wait_exponential_jitter(multiplier=2.0, max=20.0),
         # A 5xx or a 429 only (RM354): a permanent 4xx answers the same on every attempt.
         retry=retry_if_transient(),
         reraise=True,
