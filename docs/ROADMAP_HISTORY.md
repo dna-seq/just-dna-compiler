@@ -42,16 +42,14 @@ the `0.8` branch lane by lane. Newest first.
 
 **The class.** `@write-the-sourcerow` says a pass that contributes nothing writes no licence row, because a row in
 `sources.csv` is the claim *this module uses this source*. A data table beside the spec makes the same claim one
-file over, and nine sidecar writers made it about nothing: whenever a run had no subject to ask about (no clin_sig
-cell, no gene, no on-build allele, no PMID, no source reachable), the writer still renamed a header-only table into
-the module. The 0.8 reference examples carried the most visible pair.
+file over, and seven sidecar writers made it about nothing: whenever a run had no subject to ask about (no clin_sig
+cell, no gene, no on-build allele, no PMID), the writer still renamed a header-only table into the module. The 0.8 reference examples carried the most visible pair.
 
 **Instances, re-verified on the `0.8` tip** (each a parametrized case in the new test, red on `0.8`):
 
 | Table | Pass, and the run that answered nothing | Before → after |
 | --- | --- | --- |
 | `clin_sig_concordance.csv`, `clin_sig_authority_calls.csv` | `enrich` (`concordance.py` `_write_table`), a ClinVar snapshot to consult and no `clin_sig` cell | header-only pair → no file |
-| `resolution.csv` | `enrich` (`enrich/resolution_csv.py` `_write_resolution_csv`), an rsID-only module `--offline` with no cache: nobody could be asked | header-only → no file |
 | `frequencies.csv` | `frequencies` (`frequencies.py` `_write_frequencies_csv`), every resolved row off-build | header-only → no file |
 | `gene_metrics.csv` | `gene-metrics` and `dosage` (`gene_metrics.py` `_write_gene_metrics_csv`, which `clingen.py` shares), a module with no gene | header-only → no file |
 | `gene_validity.csv` | `gene-validity` (`gene_validity.py` `_write_gene_validity_csv`), no gene | header-only → no file |
@@ -79,17 +77,26 @@ say, *asked and found nothing contested*, is the `clinical_significance` record'
 `verification.json`; the compiler already read an empty record and an absent one alike (no manifest block),
 and `answered_call_shift` withholds an answered call as `no_prior_record` for both.
 
+**Two empty tables are still written, each for a stated reason.** `resolution.csv` is written header-only
+when `enrich` placed nothing (an rsID-only module `--offline` with no cache): every pass after it
+(`frequencies`, `assertions`, `opentargets enrich`, `vrs`) refuses without the file and tells the author to run
+`enrich` first, so its presence is the record that `enrich` ran. It names no source and lands no licence row,
+and the test asserts it *is* written. And an empty concordance record is written where the module's
+`overrides.csv` answers it: that is RM117's vindication signal, `overlay_answer_vindicated`, which a missing
+table would turn into `overlay_targets_missing_table` advising the author to run the pass that just ran (reached
+when an author deleted the sidecar to regenerate it).
+
 **Guards.** `enricher/tests/test_a_pass_that_answered_nothing_writes_nothing.py`: (1) one nothing-to-answer
 runner per `(table, command)` in `producers.DERIVED_PRODUCERS`, the runner set asserted **equal** to the
 registry, each asserting the table is absent and, where no other table answered, no licence row; (2) an AST
-walk asserting every enricher function that writes a CSV through `atomic_writer` calls the predicate, with
-the two non-module writers (`transaction._flush`'s journal, `acmg_build`'s lane) named with reasons and
+walk asserting every enricher function that writes a CSV through `atomic_writer` returns on the predicate
+before it opens the writer (an `if …nothing_to_write(…): return`, not merely a call), with the exempt
+writers (`transaction._flush`'s journal, `acmg_build`'s lane, `_write_resolution_csv`) named with reasons and
 asserted equal. Mutating the predicate to `False` turned eleven cases red; deleting the call from
-`ld_pairs._write` turned the AST walk red. Two existing tests pinned the old behaviour and now pin the
+`ld_pairs._write` turned the AST walk red. One existing test pinned the old behaviour and now pins the
 new one: `test_clingen.py`'s S77 test asserted *"the empty table is still written: an author must be
 able to see the pass ran"* (the author sees it in `ClinGenResult.missing`, which the same test already
-asserts), and `test_build_awareness.py` asserted a header-only `resolution.csv` for a GRCh37 module
-nothing could resolve.
+asserts).
 
 **Residuals** none
 

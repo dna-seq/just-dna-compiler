@@ -5,8 +5,9 @@
 made by the data tables: `enrich` wrote a header-only `clin_sig_concordance.csv` and
 `clin_sig_authority_calls.csv` into every module with no `clin_sig` cell, and the 0.8 reference
 examples carried them (`longevity_studies`, `model_organisms`, `cpic_gene_pairs`). The class was wider
-than that pair: nine sidecars across seven passes wrote a table with a header and nothing under it
-whenever the run had no subject to ask about.
+than that pair: seven sidecars across seven passes wrote a table with a header and nothing under it
+whenever the run had no subject to ask about. `resolution.csv` is the one table still written empty,
+on purpose and with its reason in `_WRITTEN_EMPTY_ON_PURPOSE`.
 
 **The rule is one predicate, `layout.nothing_to_write`, called by every sidecar writer:** zero rows
 and no file there already means nothing is written — and so the licence row, which only ever lands
@@ -31,6 +32,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from just_dna_compiler.compiler import validate_spec
 from just_dna_enricher import licensing
 from just_dna_enricher.assertions import enrich_clinical_assertions
 from just_dna_enricher.clingen import enrich_dosage_sensitivity
@@ -266,9 +268,20 @@ _NOTHING_TO_ANSWER: dict[tuple[str, str], Callable[[Path, Path], Path]] = {
 _ANOTHER_TABLE_ANSWERED = {_enrich_no_clin_sig}
 
 
+#: Tables written even when the pass answered nothing, each with the reason; the parametrized test
+#: asserts each IS written (header-only), so an exemption cannot outlive its behaviour.
+_WRITTEN_EMPTY_ON_PURPOSE: dict[str, str] = {
+    "resolution.csv": (
+        "every pass downstream of `enrich` reads it and refuses without it; empty, it names no source "
+        "and carries no licence row, and records that `enrich` ran and placed nothing"
+    ),
+}
+
+
 def test_every_producer_has_a_nothing_to_answer_runner() -> None:
     registered = {(p.table, p.command) for group in DERIVED_PRODUCERS.values() for p in group}
     assert set(_NOTHING_TO_ANSWER) == registered
+    assert set(_WRITTEN_EMPTY_ON_PURPOSE) <= {table for table, _ in registered}
 
 
 @pytest.mark.usefixtures("no_ambient_caches")
@@ -279,6 +292,10 @@ def test_a_pass_with_nothing_to_answer_writes_no_table(
     runner = _NOTHING_TO_ANSWER[(table, command)]
     spec = runner(tmp_path, clinvar_snapshot)
     written = resolve_sidecar(spec, table)
+    if table in _WRITTEN_EMPTY_ON_PURPOSE:
+        assert written is not None and written.read_text(encoding="utf-8").count("\n") == 1
+        assert resolve_sidecar(spec, SOURCES_CSV) is None, "an empty table names no source"
+        return
     assert written is None, (
         f"`{command}` answered nothing and still wrote {written.name}:\n{written.read_text()}"
         if written
@@ -313,6 +330,32 @@ def test_a_record_that_stopped_being_contested_is_still_cleared(
     assert stale.read_text(encoding="utf-8").count("\n") == 1  # the header, and the stale row gone
 
 
+@pytest.mark.usefixtures("no_ambient_caches")
+def test_a_record_the_overlay_answers_is_written_empty_so_the_answer_reads_as_vindicated(
+    tmp_path: Path, clinvar_snapshot: Path
+) -> None:
+    """The one empty concordance record still written: an overlay answering it makes it say something.
+
+    The author answered a contested subject in `overrides.csv`, then deleted the sidecar to regenerate
+    it (`@sidecar-authoritative`), and the authorities now agree. With no file the compile reads
+    `overlay_targets_missing_table` — *run the pass that writes the table*, the pass that just ran —
+    where the record exists to say `overlay_answer_vindicated` (RM117).
+    """
+    spec = _enrich_no_clin_sig(tmp_path, clinvar_snapshot)
+    (spec / "overrides.csv").write_text(
+        "table,subject,member,field,operation,value,reason,decided_by,decided_at\n"
+        f"clin_sig_concordance.csv,{derive_vrs_allele_id('11', 5227002, 'T', 'A')},A/T,authored_clin_sig,"
+        "update,pathogenic,two panels call this pathogenic,curator,2026-08-31\n",
+        encoding="utf-8",
+    )
+    enrich(spec, offline=True, clinvar_cache=clinvar_snapshot, use_gnomad=False, verify_rsids=False)
+    record = resolve_sidecar(spec, "clin_sig_concordance.csv")
+    assert record is not None and record.read_text(encoding="utf-8").count("\n") == 1
+    warnings = validate_spec(spec).warnings
+    assert any("no longer contested" in w for w in warnings), warnings  # overlay_answer_vindicated
+    assert not any("which this module does not carry" in w for w in warnings)  # …_targets_missing_table
+
+
 def test_a_licence_merge_that_adds_nothing_creates_no_licence_table(tmp_path: Path) -> None:
     spec = _module(tmp_path)
     assert merge_sources_file([], spec, error=AssertionError) == []
@@ -345,6 +388,7 @@ _NOT_A_MODULE_SIDECAR: dict[tuple[str, str], str] = {
     ("acmg_build.py", "build_acmg_snapshot"): (
         "a cache lane's snapshot under the operator's cache base, not a file beside a spec"
     ),
+    ("resolution_csv.py", "_write_resolution_csv"): _WRITTEN_EMPTY_ON_PURPOSE["resolution.csv"],
 }
 
 
@@ -356,17 +400,35 @@ def _called_name(call: ast.Call) -> str | None:
     return None
 
 
-def _csv_writers() -> dict[tuple[str, str], set[str]]:
-    """`(file, function) -> the names it calls`, for every function opening `atomic_writer` with a CSV header."""
-    found: dict[tuple[str, str], set[str]] = {}
+def _csv_writers() -> dict[tuple[str, str], ast.FunctionDef]:
+    """Every function opening `atomic_writer` and writing a CSV header, keyed `(file, function)`."""
+    found: dict[tuple[str, str], ast.FunctionDef] = {}
     for path in sorted(p for p in _SRC.rglob("*.py") if "generated" not in p.relative_to(_SRC).parts):
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if not isinstance(node, ast.FunctionDef):
+            if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
                 continue
             called = {_called_name(c) for c in ast.walk(node) if isinstance(c, ast.Call)}
             if "atomic_writer" in called and "writeheader" in called:
-                found[(path.name, node.name)] = called
+                found[(path.name, node.name)] = node
     return found
+
+
+def _gated(func: ast.FunctionDef) -> bool:
+    """An `if …nothing_to_write(…)…: return` before the first `atomic_writer` — the shape, not a mention.
+
+    A call that is made and discarded, or made after the table is already written, passes a "calls the
+    predicate" check and gates nothing; this asks for the guard where it does its work.
+    """
+    opens = [
+        n.lineno for n in ast.walk(func) if isinstance(n, ast.Call) and _called_name(n) == "atomic_writer"
+    ]
+    return any(
+        isinstance(n, ast.If)
+        and n.lineno < min(opens)
+        and any(isinstance(c, ast.Call) and _called_name(c) == _PREDICATE for c in ast.walk(n.test))
+        and isinstance(n.body[0], ast.Return)
+        for n in ast.walk(func)
+    )
 
 
 def test_every_sidecar_writer_calls_the_predicate() -> None:
@@ -376,8 +438,8 @@ def test_every_sidecar_writer_calls_the_predicate() -> None:
     assert exempt == set(_NOT_A_MODULE_SIDECAR), (
         f"exemptions naming no CSV writer any more: {sorted(set(_NOT_A_MODULE_SIDECAR) - exempt)}"
     )
-    missing = sorted(key for key, called in writers.items() if key not in exempt and _PREDICATE not in called)
+    missing = sorted(key for key, func in writers.items() if key not in exempt and not _gated(func))
     assert not missing, (
-        f"these write a sidecar without asking `layout.{_PREDICATE}` first, so a run that answered "
+        f"these write a sidecar without returning on `layout.{_PREDICATE}` before `atomic_writer`, so a run that answered "
         f"nothing leaves a header-only table behind (RM370): {missing}"
     )

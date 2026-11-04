@@ -20,8 +20,8 @@ just-dna-compiler close reference_examples/longevity_studies
 just-dna-compiler compile reference_examples/longevity_studies out/ --strict
 ```
 
-`resolution.csv`, `licensing.csv` (Ensembl's terms) and the two `clin_sig_*` sidecars are the
-enricher's output, written against the provisioned Ensembl snapshot. Nothing in them was typed by hand.
+`resolution.csv` and `licensing.csv` (Ensembl's terms) are the enricher's output (no `clin_sig_*`
+concordance pair: the module authors no `clin_sig`, so there was nothing to record, RM370), written against the provisioned Ensembl snapshot. Nothing in them was typed by hand.
 
 ## What each row exercises
 

@@ -43,6 +43,8 @@ from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.concordance import ClinSigAuthorityCallRow, ClinSigConcordanceRow
 from just_dna_format.layout import atomic_writer, nothing_to_write, resolve_sidecar, sidecar_write_path
 
+from just_dna_enricher.licensing import overlay_answered_subjects
+
 logger = logging.getLogger(__name__)
 
 #: The CSV names, public because four parties agree on them — the enricher writes, the compiler
@@ -308,29 +310,33 @@ def _cell(value: object) -> str:
     return str(value)
 
 
-def _write_table(rows: Sequence[object], fieldnames: list[str], path: Path) -> None:
-    """Write one table atomically, with a fixed column order and canonical cells.
+def _write_table(rows: Sequence[object], fieldnames: list[str], path: Path, *, answered: bool) -> bool:
+    """Write one table atomically, with a fixed column order and canonical cells; `True` if written.
 
     Atomic because every sidecar here is read back by the next run: a process killed mid-write leaves
     a file that is syntactically valid and simply short, which is the one failure mode a table cannot
     report about itself.
+
+    `answered` is whether the module's overlay answers this record, which makes an empty one say
+    something (see `write_concordance_tables`).
     """
-    if nothing_to_write(path, rows):
-        return  # RM370: a pass that answered nothing leaves no table
+    if not answered and nothing_to_write(path, rows):
+        return False  # RM370: a pass that answered nothing leaves no table
     with atomic_writer(path, newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         for row in rows:
             dumped = row.model_dump()  # type: ignore[attr-defined]
             writer.writerow({name: _cell(dumped.get(name)) for name in fieldnames})
+    return True
 
 
 def write_concordance_tables(
     spec_dir: Path,
     parents: Sequence[ClinSigConcordanceRow],
     calls: Sequence[ClinSigAuthorityCallRow],
-) -> tuple[Path, Path]:
-    """Replace both tables beside the spec, and return where they were written.
+) -> tuple[Path, ...]:
+    """Replace both tables beside the spec, and return the paths actually written.
 
     **These are pure build products, and they are rewritten whole rather than merged.** Every other
     derived sidecar gap-fills because a recorded row might carry a curator's judgement; this one
@@ -347,21 +353,35 @@ def write_concordance_tables(
     is where *asked and found nothing contested* is recorded; a run that could not put the question
     returns no record at all and leaves the previous one exactly as it was.
 
+    **One exception, and it is the vindication signal (RM117).** A module whose `overrides.csv`
+    answers this record refers to it, so an empty record there is not about nothing: it is what turns
+    the answer into `overlay_answer_vindicated` (*the authorities now agree*) at compile time, where a
+    missing table would read `overlay_targets_missing_table` and tell the author to run the pass that
+    just ran. That arises when an author deleted the sidecar to regenerate it (`@sidecar-authoritative`).
+
     Resolved through `layout` so a module carrying its sidecars under `derived/` gets them written
     where it keeps the rest, rather than growing a second copy at the root.
     """
     parent_path = sidecar_write_path(spec_dir, CONCORDANCE_CSV)
     calls_path = sidecar_write_path(spec_dir, AUTHORITY_CALLS_CSV)
-    _write_table(parents, _CONCORDANCE_FIELDNAMES, parent_path)
-    _write_table(calls, _AUTHORITY_CALL_FIELDNAMES, calls_path)
-    logger.info(
-        "Wrote the clinical-significance concordance record: %d contested subject(s), %d authority "
-        "call(s). Answer one with an overrides.csv row against %s.",
-        len(parents),
-        len(calls),
-        CONCORDANCE_CSV,
+    answered = bool(overlay_answered_subjects(spec_dir, CONCORDANCE_CSV))
+    written = tuple(
+        path
+        for rows, fieldnames, path in (
+            (parents, _CONCORDANCE_FIELDNAMES, parent_path),
+            (calls, _AUTHORITY_CALL_FIELDNAMES, calls_path),
+        )
+        if _write_table(rows, fieldnames, path, answered=answered)
     )
-    return parent_path, calls_path
+    if written:
+        logger.info(
+            "Wrote the clinical-significance concordance record: %d contested subject(s), %d authority "
+            "call(s). Answer one with an overrides.csv row against %s.",
+            len(parents),
+            len(calls),
+            CONCORDANCE_CSV,
+        )
+    return written
 
 
 def read_recorded_calls(spec_dir: Path) -> list[ClinSigAuthorityCallRow] | None:

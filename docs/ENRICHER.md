@@ -3027,6 +3027,8 @@ carries no concordance file. A record already on disk is still rewritten to empt
 how a subject the authorities stopped contesting leaves it. *Asked and found nothing contested* is
 recorded where it always was counted, the `clinical_significance` record's denominator in
 `verification.json`; the compiler reads an empty record and an absent one alike (no manifest block).
+The one empty record still written is one the module's `overrides.csv` answers: its emptiness is what
+compiles to `overlay_answer_vindicated`, where a missing table would read `overlay_targets_missing_table`.
 
 **The three-way check subsumes the two-way rather than running beside it.** With no PubMind snapshot
 that authority's call reads `unchecked` on every subject, and the degenerate case is exactly the
