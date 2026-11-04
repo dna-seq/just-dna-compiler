@@ -41,6 +41,29 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM327: `meta_resolved.parquet` says which rows carry a trade-off, computed from the per-trait meta rows (0.8, uncut)
+
+**compiler** — `meta_resolved.parquet` gains `tradeoff`, a nullable boolean between the fact columns and
+`withheld`. It is computed per allele-bearing member: `true` when one member has a `protective` per-trait
+row on one trait and a `risk` per-trait row on another (each a one-member `meta.csv` row with
+`trait_efo_id` and `direction`), and it lands on every row that member reaches, a diplotype reached
+through an `allele_function` allele included. Two members are never pooled, so two alleles meeting at a
+heterozygous diplotype are not a trade-off. A `mediator` row counts; `neutral`, `unknown`, `contested`
+and a direction the compile withheld do not. On one trait at one row the fact columns' precedence runs
+first, so a narrower judgement on that trait (a sex-scoped row, a diplotype over the allele it contains, a
+genotype over its locus) drops the broader one there. **It is `true` or null, never `false`**: RM327's false arm needs every trait's judgement stated,
+and a module states no closed list of traits.
+
+**format** — `tradeoff` leaves `vocab.RESERVED_NAMES_0_4` (three names now) and joins
+`vocab.MISPLACED_COLUMN_REASONS`, since it is real on a generated table and still never authored. A
+`tradeoff` column on any authored table is refused, as before, with a reason that now says the compiler
+computes it. `authoring_reference()` gains `misplaced_columns`, that map, beside `reserved_names`.
+
+**What changes for you.** A module with per-trait meta rows recompiles with one more column on
+`meta_resolved.parquet`, so its `artifact.digest` moves and its `content_signature` does not. A module
+without `meta.csv` is untouched. A tool listing unwritable names from `RESERVED_NAMES_0_4` alone no longer
+sees `tradeoff`; read `MISPLACED_COLUMN_REASONS` too.
+
 ## 2026-11-04 — RM348: `logs/` discovery stops trusting the filesystem (0.8, uncut)
 
 **compiler** — Every path log discovery considers, the top-level `*.log` included, must resolve to

@@ -46,7 +46,7 @@ land wherever RM323 puts per-locus facts. RM322 next, since APOE is the lead loc
 | [RM324](ROADMAP_HISTORY.md#rm324--there-is-no-evidence-tier-column-so-the-axis-that-gates-visibility-is-a-flags-tiera-token) | evidence tier as value + scheme | full ×2 | home from RM323 |
 | [RM325](#rm325--studiescsv-has-no-sample-size-and-v2s-tier-a-rule-is-stated-in-n) | `StudyRow` sample size (and cases) | full ×1–2 |  |
 | [RM326](#rm326--a-study-row-cannot-say-which-outcome-it-measured-so-the-definition-of-pro-longevity-lives-in-a-study_design-prefix) | `StudyRow` phenotype class; evidence role and the outcome strip derived from it | full ×1, derived near-zero | check EFO first |
-| [RM327](#rm327--pleiotropy-has-no-per-trait-row-so-a-trade-off-can-only-be-prose-and-tradeoff-is-computed-rather-than-authored) | per-trait benefit/harm table (mediator folds in); `tradeoff` computed; reserve the name | full (new kind), derived near-zero, reservation a patch | `tradeoff` decided |
+| [RM327](ROADMAP_HISTORY.md#rm327--pleiotropy-has-no-per-trait-row-so-a-trade-off-can-only-be-prose-and-tradeoff-is-computed-rather-than-authored) | per-trait benefit/harm table (mediator folds in); `tradeoff` computed; reserve the name | full (new kind), derived near-zero, reservation a patch | ✅ shipped 2026-11-04 on `0.8`, uncut |
 | [RM328](#rm328--no-study-row-can-name-the-ancestry-it-was-measured-in-so-european-only-evidence-is-a-hand-set-flag) | `StudyRow` ancestry on a vocabulary; `eur_only_evidence` derived | full ×1, derived near-zero | RM188 axis 2 |
 | [RM329](#rm329--an-age-stratified-estimate-has-no-age-band-so-age-of-action-is-reconstructed-from-statistical_test-prose) | `StudyRow` age band and whose age | full ×2–3 | interim works (RM140) |
 | [RM330](#rm330--an-effect-measured-in-one-sex-one-smoking-stratum-or-one-genotype-has-no-row) | the stratum an estimate was measured in; sex as the first query-time modifier | full ×2 | RM188 axis 3 |
@@ -137,45 +137,6 @@ Two things become **derived, near-zero**, once it exists:
   the module's README, never a column.
 - *the outcome strip* per locus (healthspan / lifespan / exceptional survival). Kleene, never
   two-valued: a locus with no study row of a class is **untested** and withheld, never "no effect".
-
-## RM327 — pleiotropy has no per-trait row, so a trade-off can only be prose, and `tradeoff` is computed rather than authored
-
-**Built on 0.8, 2026-11-04: the meta rows.** A per-trait judgement is a one-member `meta.csv` row with `trait_efo_id`, `direction` and an allele-bearing member (a bare locus bears one when its rows share an `effect_allele`, else `meta_member_allele_ambiguous` and the direction is withheld), `trait_role` (`mediator`) beside it. Still open: `tradeoff` and the resolved facts' Kleene table (B2), computed at `meta_resolved.parquet`'s grain; the name stays reserved until then.
-
-**Default under the 2026-11-04 reduction rule (the pm seat's reading; the maintainer may veto):** a per-trait judgement is a row of RM28's meta-table: one member, `trait_efo_id`, and `direction` (`protective`/`risk`). `tradeoff` is computed over those rows, and no new table kind is built for this item.
-
-**Key to re-derive, 2026-11-04.** RM323 no longer has subject kinds, so "align on RM323's subject" now means: a per-trait row is keyed on an item of a single-statement table plus `trait_efo_id`, using the same item references as the meta-table's members. The proposal settles the exact spelling.
-
-**Decided 2026-11-04 by the maintainer: the key aligns on RM323's subject.** It is `(subject_kind, subject, trait_efo_id)`, and `effect_allele` is kept for `variant` subjects only; a haplotype or gene subject is its own allele. RM323, this table and later RM28 then share one identity, so APOE ε4's per-trait rows are `haplotype` rows.
-
-**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**; the `tradeoff` shape is **decided** (computed, by the maintainer, 2026-11-03), the table is design first · **Owner** format + compiler · **Motivating case** longevitymap v2 requirements §4.2 (pleiotropy, mediator), §10 · *for* longevitymap v2 · *related* RM321, USE_CASES § 6a
-
-**What was confirmed.** `VariantRow` keys on `(variant_key, genotype)`, so a genotype row states one
-claim about one trait. Re-keying a shipped authored table is major-only (P3; RM140's text). `DiplotypeRow`
-already keys on `trait_efo_id`, so the two tables disagree on whether pleiotropy is a row. The per-trait
-*facts* already arrive in `gwas_effects.csv` (derived, with `effect_direction` increase/decrease). What
-has no home is the curator's per-trait *judgement*: whether this allele's effect on that trait is a
-benefit or a harm, which `VALID_EFFECT_DIRECTIONS` deliberately does not say.
-
-**`direction: contested` is not the interim.** Its description says the sources disagree about the sign.
-At a trade-off nobody disagrees: two known effects point opposite ways. SH2B3 and CDKN2B-AS1 are
-genome-wide-significant lifespan hits, so their lifespan sign is established, and the trade-off belongs
-in `negatives` until this table exists.
-
-**Shape.**
-
-- **An authored per-trait table** keyed on `(variant_key, effect_allele, trait_efo_id)`, carrying the
-  existing `direction` vocabulary, a role (`outcome` or `mediator`), and a citation. The mediator EFO the
-  plan parks in `flags: mediator:` folds in here, so `trait_efo_id` stays role-free. Full, a new table
-  kind.
-- **`tradeoff`, computed, never authored** (decided). True when an allele has a `protective` and a `risk`
-  row across traits. Kleene: false only when every trait's judgement is present and none of them is
-  opposite, and unknown otherwise, unless both signs are already present. A derived column, near-zero.
-- **Reserve the name `tradeoff`** in `RESERVED_NAMES_0_4` with a reason, so nobody authors it before
-  the computed one lands. **Done 2026-11-03, on `main`** as a patch: every authored model now refuses
-  the column with that reason rather than the generic stray-column message. When the derived column
-  ships, the name moves from the reserved set to `MISPLACED_COLUMN_REASONS`, since it will then be real
-  on a generated table and still never authored.
 
 ## RM328 — no study row can name the ancestry it was measured in, so "European-only evidence" is a hand-set flag
 

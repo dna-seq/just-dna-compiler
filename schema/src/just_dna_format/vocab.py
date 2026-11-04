@@ -412,15 +412,11 @@ RESERVED_NAMES_0_4: frozenset[str] = frozenset(
         # name is held for, not the generic stray-column message.
         "callable_element",
         "quality_element",
-        # The trade-off verdict RM327 decided to COMPUTE (2026-11-03): true when an allele carries a
-        # `protective` and a `risk` judgement across traits, read off a per-trait benefit/harm table
-        # that does not exist yet. Unlike the names above it will never be an authored column, so when
-        # the derived column ships the name does not simply leave this set: it moves to
-        # `MISPLACED_COLUMN_REASONS`, which names a column real on a generated table. Reserved now
-        # because longevitymap v2 has trade-off loci to write and an obvious word for them.
-        "tradeoff",
     }
 )
+# NOTE: `tradeoff` was reserved here from 2026-11-03 (RM327) until 0.8 computed it on
+# `meta_resolved.parquet`. It never becomes an authored column, so it did not simply leave this set: it
+# moved to `MISPLACED_COLUMN_REASONS`, the map for a column real on a generated table.
 # NOTE: `requires_callable`, `acmg_sf`, `actionability` were reserved here and are now BUILT as
 # optional `VariantRow` columns — and `callable_from` joined them in 0.5 (RM6's second half: a
 # declarative pointer at the VCF field a consumer establishes callability from). A built column must
@@ -450,13 +446,6 @@ RESERVED_NAME_REASONS: dict[str, str] = {
     "quality_element": (
         "would say which element of a multi-valued `quality_from` the `min_quality` floor is stated "
         "against — reserved on the same grounds as `callable_element`"
-    ),
-    "tradeoff": (
-        "is a verdict a release will compute from per-trait benefit/harm rows (an allele with a "
-        "`protective` judgement on one trait and a `risk` judgement on another), never an authored "
-        "cell — a hand-set one could disagree with the rows it summarises. Until that table exists, "
-        "describe a trade-off in `negatives`; `direction: contested` means the sources disagree about "
-        "the sign, which a trade-off is not"
     ),
 }
 
@@ -1132,8 +1121,9 @@ def _placeholder_paths(data: object, *, prefix: str) -> list[str]:
     return found
 
 
-#: Columns that are real *somewhere* in the authored DSL, and so are a plausible confusion rather than
-#: a typo, keyed to what to do instead. A name in here earns a specific diagnosis on a model that does
+#: Columns that are real *somewhere* — on a generated table of the DSL, or (`tradeoff`) only on a
+#: parquet the compiler writes — and so are a plausible confusion rather than a typo, keyed to what to
+#: do instead. A name in here earns a specific diagnosis on a model that does
 #: not declare it, exactly as a reserved name does — `extra="forbid"`'s generic "extra inputs are not
 #: permitted" is a dead end for a column an author reached for *because* they had seen it elsewhere
 #: (S17: a plausible name, rejected, with the reason discoverable only by reading the models).
@@ -1149,6 +1139,16 @@ MISPLACED_COLUMN_REASONS: dict[str, str] = {
         "such column by design: a curated annotation's provenance is the module's, not a per-row link. "
         "To declare a source you read by hand, add a ROW to sources.csv (whose own `source` column is "
         "the subject of the row, and is what the licence gate and manifest.sources join on)"
+    ),
+    # RM327 (0.8): reserved from 2026-11-03 until the compile computed it, then moved here, because it
+    # is real on a generated table and still never authored.
+    "tradeoff": (
+        "is a verdict the compiler computes, a column of meta_resolved.parquet: true when one "
+        "allele-bearing meta.csv member has a `protective` per-trait row and a `risk` per-trait row "
+        "(each a one-member meta.csv row with `trait_efo_id` and `direction`). A hand-set cell could "
+        "disagree with the rows it summarises, so no table authors it. Write each trait's judgement as "
+        "its own meta.csv row instead; `direction: contested` means the sources disagree about the "
+        "sign, which a trade-off is not"
     ),
 }
 

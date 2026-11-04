@@ -336,8 +336,10 @@ reason its `source` column is inside its fact set while everywhere else `source`
   the disease id and must not invent phenotype ids from names.
 
 - **Reserved namespace (`vocab.RESERVED_NAMES_0_4`).** Only names expected to become real module
-  columns later (P5) — today `{reference_db, callable_element, quality_element, tradeoff}`, each with a reason
-  in `RESERVED_NAME_REASONS`. It is *not* a catalogue of barred names (`extra="forbid"` already
+  columns later (P5) — today `{reference_db, callable_element, quality_element}`, each with a reason
+  in `RESERVED_NAME_REASONS`. (`tradeoff` was reserved from 2026-11-03 until 0.8 computed it on
+  `meta_resolved.parquet`; it moved to `MISPLACED_COLUMN_REASONS`, the map for a column real on a
+  generated table and never authored.) It is *not* a catalogue of barred names (`extra="forbid"` already
   rejects any unknown column). (`callable_from` was reserved for RM6 and is now **built**, so it left
   the set: a reserved name is refused at author time, which would make the built column unwritable.)
 
@@ -2710,7 +2712,9 @@ and deleting the block moves neither `artifact.digest` nor `content_signature`.
   `module:` keys a publishing registry fills, mapped to why each is not authored
   (`normalize.IDENTITY_AUTHORITY_KEYS` / `IDENTITY_AUTHORITY_REASONS`). `module.version` is
   deliberately in the first group, not the third — it is a genuine advisory authored field, coerced to
-  SemVer (RM17) rather than stripped.
+  SemVer (RM17) rather than stripped. Beside `reserved_names`, **`misplaced_columns`** (0.8, RM327) maps
+  each name real on a generated table, or only on a compiled parquet, to the reason an authored table
+  refuses it (`vocab.MISPLACED_COLUMN_REASONS`): `source`, and `tradeoff` since it left the reserved set.
 
   **The registry-owned half is two families, not one, and 0.7 adds the second** (RM133).
   `IDENTITY_AUTHORITY_KEYS` (`namespace`, `owner`, `canonical_id`) says *which module this is*;

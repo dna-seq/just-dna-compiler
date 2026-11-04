@@ -8,6 +8,7 @@ from just_dna_format.frequency import FrequencyRow
 from just_dna_format.manifest import COLOR_PATTERN, RECOMMENDED_COLORS, RECOMMENDED_ICONS
 from just_dna_format.reference import authoring_reference, json_schemas
 from just_dna_format.spec import VariantRow
+from just_dna_format.vocab import MISPLACED_COLUMN_REASONS
 
 
 def test_authoring_reference_is_json_serializable_with_expected_shape() -> None:
@@ -36,6 +37,9 @@ def test_authoring_reference_is_generated_not_hardcoded() -> None:
     # the vocab is the live frozenset, not a copy that could drift
     assert ref["vocabularies"]["measure_kind"] == sorted(VALID_MEASURE_KINDS)
     assert "reference_db" in ref["reserved_names"]
+    # RM327: `tradeoff` left the reserved set for the misplaced map; an authoring tool sees it there.
+    assert ref["misplaced_columns"] == dict(sorted(MISPLACED_COLUMN_REASONS.items()))
+    assert "tradeoff" in ref["misplaced_columns"] and "tradeoff" not in ref["reserved_names"]
     # `actionability` is reported under `vocabularies`, not `open_recommended`: `VariantRow` rejects
     # a non-member, so it is closed however `ACTIONABILITY_SEED` is named. This assertion used to
     # pin the opposite and was pinning the drift.

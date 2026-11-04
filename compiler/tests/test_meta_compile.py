@@ -1,4 +1,4 @@
-"""`meta.csv` through the real compile and reverse paths (0.8: RM28, RM323, RM324, RM327's rows, RM330's `sex`).
+"""`meta.csv` through the real compile and reverse paths (0.8: RM28, RM323, RM324, RM327, RM330's `sex`).
 
 The compiler expands every member into the rows it matches, so a consumer evaluates no rule (P1), and
 writes two parquets: `meta.parquet`, one row per authored row with its selector verbatim and what it
@@ -418,3 +418,252 @@ def test_two_traits_tiers_are_two_statements_not_a_conflict(tmp_path: Path) -> N
     _compile(_module(tmp_path / "spec2", meta + _LPA_LOCUS), tmp_path / "out2")
     row = _resolved_row(tmp_path / "out2", "variants", ["rs10455872", "A/G"])
     assert (row["tier"], row["withheld"]) == ("A", [])
+
+
+# ── tradeoff (RM327): computed per allele-bearing member, on meta_resolved.parquet ───────────────
+#
+# A per-trait judgement is a one-member row with `trait_efo_id` and `direction`. `tradeoff` is computed
+# **per allele-bearing member** (PROPOSAL_0_8_PT2 §3 item 9: "true when an allele-bearing member has both
+# a `protective` and a `risk` per-trait row") and lands on every row that member reaches. Kleene, with
+# the false arm unreachable: a module states no closed list of the traits an allele touches, so "every
+# trait's judgement is present and none opposes another" is never knowable, and the column is `true` or
+# null, never `false`.
+
+# Real ontology terms for the audit's example 4 (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` § 4): SH2B3
+# rs3184504's C allele, protective on hypothyroidism and coronary artery disease, risk on sepsis and
+# cancer.
+_HYPOTHYROIDISM = "EFO_0004705"
+_CAD = "EFO_0001645"
+_SEPSIS = "HP:0100806"
+_CANCER = "MONDO:0004992"
+_AD = "MONDO:0004975"
+
+_SH2B3_CC = "variants[variant_key=rs3184504, genotype=C/C]"
+_LPA_AG = "variants[variant_key=rs10455872, genotype=A/G]"
+
+
+def _row(
+    members: str,
+    trait: str | None,
+    direction: str | None,
+    *,
+    role: str = "",
+    sex: str = "",
+    conclusion: str = "",
+) -> str:
+    """One meta.csv line in `_META_HEADER`'s order: members, trait_efo_id, trait_role, direction, … sex."""
+    cells = [members, trait or "", role, direction or "", conclusion, "", "", "", "", "", "", "", sex]
+    buffer = io.StringIO()
+    csv.writer(buffer, lineterminator="\n").writerow(cells)
+    return buffer.getvalue()
+
+
+def _tradeoffs(out: Path) -> list[bool | None]:
+    return _resolved(out)["tradeoff"].to_list()
+
+
+def test_example_4_sh2b3_c_c_is_a_tradeoff(tmp_path: Path) -> None:
+    """The audit's example 4: two protective traits, two risk traits, one member — `tradeoff` true."""
+    meta = (
+        _META_HEADER
+        + _row(_SH2B3_CC, _HYPOTHYROIDISM, "protective")
+        + _row(_SH2B3_CC, _CAD, "protective")
+        + _row(_SH2B3_CC, _SEPSIS, "risk")
+        + _row(_SH2B3_CC, _CANCER, "risk")
+    )
+    _compile(_module(tmp_path / "spec", meta), tmp_path / "out")
+    row = _resolved_row(tmp_path / "out", "variants", ["rs3184504", "C/C"])
+    assert row["tradeoff"] is True
+    # A member with per-trait rows only still has its row at the grain, every fact empty and unwithheld.
+    assert row["meta_rows"] == [0, 1, 2, 3]
+    assert (row["tier"], row["age_of_action"], row["flags"], row["withheld"]) == (None, None, None, [])
+    # The C/T row is a different member; nothing reached it.
+    assert not _resolved(tmp_path / "out").filter(pl.col("key") == ["rs3184504", "C/T"]).height
+
+
+def test_a_member_with_only_protective_rows_is_null_never_false(tmp_path: Path) -> None:
+    meta = _META_HEADER + _row(_SH2B3_CC, _HYPOTHYROIDISM, "protective") + _row(_SH2B3_CC, _CAD, "protective")
+    _compile(_module(tmp_path / "spec", meta), tmp_path / "out")
+    assert _resolved_row(tmp_path / "out", "variants", ["rs3184504", "C/C"])["tradeoff"] is None
+
+
+# (trait, direction, trait_role) per row of ONE member → the member's `tradeoff`.
+_TRUTH_TABLE: list[tuple[str, list[tuple[str | None, str | None, str]], bool | None]] = [
+    ("protective and risk on two traits", [(_CAD, "protective", ""), (_SEPSIS, "risk", "")], True),
+    ("one protective trait", [(_CAD, "protective", "")], None),
+    ("two risk traits", [(_CAD, "risk", ""), (_SEPSIS, "risk", "")], None),
+    ("no direction stated", [(_CAD, None, "")], None),
+    ("protective beside neutral", [(_CAD, "protective", ""), (_SEPSIS, "neutral", "")], None),
+    ("protective beside contested", [(_CAD, "protective", ""), (_SEPSIS, "contested", "")], None),
+    ("protective beside unknown", [(_CAD, "protective", ""), (_SEPSIS, "unknown", "")], None),
+    ("a mediator counts", [(_CAD, "protective", ""), ("EFO_0006925", "risk", "mediator")], True),
+    ("both mediators count", [(_CAD, "protective", "mediator"), (_SEPSIS, "risk", "mediator")], True),
+    ("a direction with no trait is no per-trait row", [(None, "risk", ""), (_CAD, "protective", "")], None),
+    (
+        "three traits, one opposing",
+        [(_CAD, "protective", ""), (_SEPSIS, "protective", ""), (_CANCER, "risk", "")],
+        True,
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "rows, expected",
+    [(rows, expected) for _name, rows, expected in _TRUTH_TABLE],
+    ids=[n for n, *_ in _TRUTH_TABLE],
+)
+def test_the_kleene_truth_table(tmp_path: Path, rows, expected) -> None:
+    # A row naming no direction still needs a statement to be a row, so it carries a conclusion.
+    meta = _META_HEADER + "".join(
+        _row(_LPA_AG, trait, direction, role=role, conclusion="" if direction else "Stated.")
+        for trait, direction, role in rows
+    )
+    _compile(_module(tmp_path / "spec", meta), tmp_path / "out")
+    assert _resolved_row(tmp_path / "out", "variants", ["rs10455872", "A/G"])["tradeoff"] is expected
+
+
+def test_a_uniform_locus_reaches_every_genotype_row_and_an_ambiguous_one_withholds(tmp_path: Path) -> None:
+    """A bare locus bears its shared `effect_allele`; the verdict lands on every row it reaches.
+
+    rs10455872's rows share `effect_allele` G, so its judgements are about G and reach A/A as well (the
+    verdict is the member's, about the allele it names). rs3184504's rows disagree on `effect_allele`, so
+    each direction there is withheld and cannot make a trade-off.
+    """
+    meta = (
+        _META_HEADER
+        + _row("variants[variant_key=rs10455872]", _CAD, "risk")
+        + _row("variants[variant_key=rs10455872]", _AD, "protective")
+        + _row("variants[variant_key=rs3184504]", _CAD, "risk")
+        + _row("variants[variant_key=rs3184504]", _AD, "protective")
+    )
+    result = _compile(_module(tmp_path / "spec", meta), tmp_path / "out")
+    assert dict(result.manifest.compilation.warnings_summary).get("meta_member_allele_ambiguous") == 2
+    df = _resolved(tmp_path / "out")
+    by_locus: dict[str, set[bool | None]] = {}
+    for record in df.iter_rows(named=True):
+        by_locus.setdefault(record["key"][0], set()).add(record["tradeoff"])
+    lpa = [
+        r for r in csv.DictReader((tmp_path / "spec" / "variants.csv").open()) if r["rsid"] == "rs10455872"
+    ]
+    assert df.filter(pl.col("key").list.first() == "rs10455872").height == len(lpa)
+    assert by_locus == {"rs10455872": {True}, "rs3184504": {None}}
+
+
+def test_the_verdict_is_per_member_never_pooled_across_two_alleles(tmp_path: Path) -> None:
+    """ε2 protective on one trait and ε4 risk on another is two alleles, not one allele's trade-off.
+
+    Both reach the ε2/ε4 diplotype (an allele reaches every diplotype carrying it). Pooled, that row would
+    read as a trade-off; per member it does not. Once ε4 itself carries both signs, every diplotype
+    carrying ε4 does.
+    """
+    e2 = "allele_function[gene=APOE, allele=ε2]"
+    e4 = "allele_function[gene=APOE, allele=ε4]"
+    meta = _META_HEADER + _row(e2, _AD, "protective") + _row(e4, _CAD, "risk")
+    _compile(_module(tmp_path / "spec", meta), tmp_path / "out")
+    assert set(_tradeoffs(tmp_path / "out")) == {None}
+
+    meta += _row(e4, _HYPOTHYROIDISM, "protective")
+    _compile(_module(tmp_path / "spec2", meta), tmp_path / "out2")
+    df = _resolved(tmp_path / "out2")
+    carrying = {
+        tuple(r["key"][:3]): r["tradeoff"]
+        for r in df.iter_rows(named=True)
+        if r["table"] == "diplotypes" and r["key"][0] == "APOE"
+    }
+    assert carrying == {(gene, a, b): (True if "ε4" in (a, b) else None) for gene, a, b in carrying}
+    assert any(carrying.values()) and ("APOE", "ε2", "ε4") in carrying
+    assert _resolved_row(tmp_path / "out2", "allele_function", ["APOE", "ε4"])["tradeoff"] is True
+    assert _resolved_row(tmp_path / "out2", "allele_function", ["APOE", "ε2"])["tradeoff"] is None
+
+
+def test_a_narrower_judgement_on_one_trait_drops_the_broader_one_at_that_row(tmp_path: Path) -> None:
+    """The fact columns' precedence, applied per trait before the signs are read.
+
+    ε4 is protective on one trait and risk on another, so every diplotype carrying it inherits a
+    trade-off — until a diplotype row states its own judgement on the risk trait: a `diplotypes` member
+    outranks the allele it contains, so at that diplotype ε4's risk is dropped. Likewise a genotype row's
+    judgement outranks its locus's on the same trait.
+    """
+    e4 = "allele_function[gene=APOE, allele=ε4]"
+    e3e4 = "diplotypes[gene=APOE, haplotype_a=ε3, haplotype_b=ε4]"
+    meta = _META_HEADER + _row(e4, _HYPOTHYROIDISM, "protective") + _row(e4, _CAD, "risk")
+    _compile(_module(tmp_path / "spec", meta), tmp_path / "out")
+    key = ["APOE", "ε3", "ε4", _AD, None, None]
+    assert _resolved_row(tmp_path / "out", "diplotypes", key)["tradeoff"] is True
+
+    _compile(_module(tmp_path / "spec2", meta + _row(e3e4, _CAD, "neutral")), tmp_path / "out2")
+    assert _resolved_row(tmp_path / "out2", "diplotypes", key)["tradeoff"] is None
+    # ε4/ε4 has no row of its own on CAD, so it keeps the allele's trade-off.
+    assert _resolved_row(tmp_path / "out2", "diplotypes", ["APOE", "ε4", "ε4", _AD, None, None])["tradeoff"]
+
+    locus = "variants[variant_key=rs10455872]"
+    meta = _META_HEADER + _row(locus, _CAD, "risk") + _row(locus, _AD, "protective")
+    meta += _row(_LPA_AG, _CAD, "protective")
+    _compile(_module(tmp_path / "spec3", meta), tmp_path / "out3")
+    assert _resolved_row(tmp_path / "out3", "variants", ["rs10455872", "A/G"])["tradeoff"] is None
+    assert _resolved_row(tmp_path / "out3", "variants", ["rs10455872", "G/G"])["tradeoff"] is True
+
+
+def test_a_sex_scoped_row_replaces_the_unscoped_judgement_for_that_sex(tmp_path: Path) -> None:
+    """The key's sex precedence applies per member and trait: a `male` row on a trait outranks the
+    unscoped row on that trait, for males only."""
+    meta = (
+        _META_HEADER
+        + _row(_LPA_AG, _CAD, "protective")
+        + _row(_LPA_AG, _SEPSIS, "risk")
+        + _row(_LPA_AG, _SEPSIS, "protective", sex="male")
+        + _row(_LPA_AG, _CANCER, "risk", sex="female")
+    )
+    _compile(_module(tmp_path / "spec", meta), tmp_path / "out")
+    key = ["rs10455872", "A/G"]
+    assert _resolved_row(tmp_path / "out", "variants", key)["tradeoff"] is True
+    assert _resolved_row(tmp_path / "out", "variants", key, "male")["tradeoff"] is None
+    assert _resolved_row(tmp_path / "out", "variants", key, "female")["tradeoff"] is True
+
+
+def test_tradeoff_is_a_nullable_boolean_and_never_false(tmp_path: Path) -> None:
+    meta = (
+        _META_HEADER
+        + _row(_SH2B3_CC, _CAD, "protective")
+        + _row(_SH2B3_CC, _SEPSIS, "risk")
+        + _row(_LPA_AG, _CAD, "protective")
+        + "variants[flags=legacy_longevitymap],,,,,,D,,,,,,\n"
+    )
+    _compile(_module(tmp_path / "spec", meta), tmp_path / "out")
+    df = _resolved(tmp_path / "out")
+    assert df.schema["tradeoff"] == pl.Boolean
+    assert False not in df["tradeoff"].to_list()
+    assert set(df["tradeoff"].to_list()) == {True, None}
+
+
+def test_the_round_trip_and_two_compiles_reproduce_tradeoff_byte_for_byte(tmp_path: Path) -> None:
+    meta = (
+        _META_HEADER
+        + _row(_SH2B3_CC, _HYPOTHYROIDISM, "protective")
+        + _row(_SH2B3_CC, _SEPSIS, "risk", role="mediator")
+        + _row(_LPA_AG, _CAD, "protective", sex="female")
+    )
+    spec = _module(tmp_path / "spec", meta)
+    first = _compile(spec, tmp_path / "out1")
+    again = _compile(spec, tmp_path / "out1b")
+    assert first.manifest.artifact.digest == again.manifest.artifact.digest
+    assert (tmp_path / "out1" / "meta_resolved.parquet").read_bytes() == (
+        tmp_path / "out1b" / "meta_resolved.parquet"
+    ).read_bytes()
+
+    reverse_module(tmp_path / "out1", tmp_path / "reversed")
+    assert "tradeoff" not in (tmp_path / "reversed" / "meta.csv").read_text(encoding="utf-8").splitlines()[0]
+    second = _compile(tmp_path / "reversed", tmp_path / "out2")
+    assert second.manifest.artifact.digest == first.manifest.artifact.digest
+    assert second.manifest.content_signature == first.manifest.content_signature
+    assert _tradeoffs(tmp_path / "out2") == _tradeoffs(tmp_path / "out1")
+    assert True in _tradeoffs(tmp_path / "out1")
+
+
+def test_tradeoff_is_not_authorable_on_meta_csv(tmp_path: Path) -> None:
+    """The derived column has no authored twin: a `tradeoff` column in meta.csv is refused by name."""
+    header = _META_HEADER.rstrip("\n") + ",tradeoff\n"
+    meta = header + _row(_SH2B3_CC, _CAD, "protective").rstrip("\n") + ",true\n"
+    result = compile_module(_module(tmp_path / "spec", meta), tmp_path / "out")
+    assert not result.success
+    assert any("'tradeoff' is a verdict the compiler computes" in e for e in result.errors), result.errors

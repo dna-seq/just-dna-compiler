@@ -1222,12 +1222,11 @@ column gets the generic "extra inputs not permitted":
   full cost. They are reserved rather than merely absent because the symmetry makes them guessable — an
   author reasoning "if `source_field` has one, `callable_from` must too" should hear what the name is
   held for, not the generic stray-column message.
-- **`tradeoff`** — added 2026-11-03 for [RM327](ROADMAP_0_8.md#rm327--pleiotropy-has-no-per-trait-row-so-a-trade-off-can-only-be-prose-and-tradeoff-is-computed-rather-than-authored):
-  the verdict that an allele is `protective` on one trait and `risk` on another. The maintainer decided
-  it is **computed** from a per-trait benefit/harm table, never authored, and longevitymap v2 has
-  trade-off loci and an obvious word for them. It is the one name here that will never become an
-  authored column, so when the derived column ships it does not just leave this list: it moves to
-  `vocab.MISPLACED_COLUMN_REASONS`, the map for a column that is real on a generated table.
+*(**`tradeoff` was reserved here from 2026-11-03 and MOVED on 2026-11-04 on `0.8`**
+([RM327](ROADMAP_HISTORY.md#rm327--pleiotropy-has-no-per-trait-row-so-a-trade-off-can-only-be-prose-and-tradeoff-is-computed-rather-than-authored)): the verdict that an allele is `protective` on one trait and
+`risk` on another, which the maintainer decided is **computed**, never authored. Since the compile writes
+it on `meta_resolved.parquet` it sits in `vocab.MISPLACED_COLUMN_REASONS`, the map for a column real on a
+generated table, and an authored `tradeoff` is still refused, with that reason.)*
 
 *(**`callable_from` was reserved here through 0.4 and is now BUILT** as a `VariantRow` column in 0.5
 (RM6). A built name must leave this list: `reject_reserved` refuses a reserved column at author time,
