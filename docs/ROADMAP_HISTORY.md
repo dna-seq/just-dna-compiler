@@ -1442,7 +1442,7 @@ the `0.8` branch in the proposal's order. Newest first.
 ## RM28 — the combination half: the meta-table
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut** — the combination half, taken into
-0.8 on 2026-11-04 ([PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §3 items 1–8, §5 B1 steps 1–3 and 5) ·
+0.8 on 2026-11-04 ([PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §3 items 1–8, §5 B1 steps 1–5; step 4, the study-orphan widening, in wave 3) ·
 **Owner** format (`just_dna_format.meta`) + compiler (`compiler/meta.py`) + enricher (the rsID currency pass) ·
 **Motivating case** KL-VS buffering in APOE ε4 carriers (longevitymap v2), CPIC's six gene pairs, Lewis ·
 *related* RM323, RM324, RM327, RM330
@@ -1463,10 +1463,16 @@ member's match count (`meta_selectors`), and a member matching nothing warns
 (`meta_selector_matches_nothing`). The enricher's rsID currency pass asks dbSNP about every rsID a member
 names, so one variant under two keys (IL6R's rs8192284) is caught where NCBI is the oracle.
 
-**What stays open, and where.** The study-orphan widening (a study naming a meta member's `variant_key` is not
-an orphan, B1 step 4) is built in wave 3, after the `StudyRow` batch, and stays in RM28's open section in
-ROADMAP_0_8.md with the predicate half's remainder: open-world negation, OR and *trans* phase, all out of
-bounds by the maintainer's decision. RM327 computes `tradeoff` over the per-trait rows this table now holds.
+**The study-orphan widening (B1 step 4), shipped 2026-11-04 in wave 3, after the `StudyRow` batch.** A
+study's variant is carried, so not `study_variant_orphan`, when it is a `variants.csv` row's, a defining
+variant in `haplotypes.csv`, or the variant of a `variants.csv` / `pharm_variants.csv` row a meta member
+reached (`compiler/meta.py` `member_variant_rows`, read off `build_meta`'s matches, so a selector covers
+exactly what it matched). APOE scored only as diplotypes, longevitymap v2's R-APOE-1, draws no orphan for
+its 14 study links on rs429358/rs7412 (`compiler/tests/test_study_orphan_widening.py`). The check still
+runs only beside a `variants.csv`, as before; the message keeps its pinned prefix.
+
+**What stays open, and where.** RM28's open section in ROADMAP_0_8.md keeps only the predicate half's
+remainder: open-world negation, OR and *trans* phase, all out of bounds by the maintainer's decision. RM327 computes `tradeoff` over the per-trait rows this table now holds.
 RM330's study stratum is the `StudyRow` half; its `sex` condition shipped here.
 
 ## RM323 — a fact about a locus has no authored home, so every per-locus axis is copied onto each genotype row and nothing checks the copies agree

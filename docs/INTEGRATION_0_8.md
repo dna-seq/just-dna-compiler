@@ -260,6 +260,12 @@ so do not drop the record. `null` is unknown, never independent.
 | `currency.PROBE_SOURCES` | Gains `clinvar_gkm`, so `--verify-datasets` can answer for a `sources.csv` row naming it. | Nothing; a row with that source was `unsupported` before. |
 | `licensing.TERMS_BY_SOURCE` | Gains `clinvar_gkm` (CC0-1.0 over ClinGen's transformation). | Nothing, until a check writes that `SourceRow`. |
 
+## 1.15 Which study rows `study_variant_orphan` reports (RM28, no new code)
+
+| Surface | What changed | What to do |
+| --- | --- | --- |
+| `study_variant_orphan` (validate and compile) | A study's variant is no longer an orphan when it is a defining variant in `haplotypes.csv`, or the variant of a `variants.csv` / `pharm_variants.csv` row a `meta.csv` member reached; before, only a `variants.csv` row counted. The warning fires less often, never more. Its text keeps `Studies reference variants not in variants.csv: [keys]` and appends ` — nor among haplotypes.csv's defining variants or the rows a meta.csv member reaches.` | Nothing, unless you match the whole sentence rather than its prefix. |
+
 ## 2. What to change
 
 1. If you parse `manifest.json` with `just-dna-format`, move your pin to 0.8 when you start reading

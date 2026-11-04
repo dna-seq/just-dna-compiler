@@ -59,7 +59,7 @@ from just_dna_compiler.compiler.manifest import (
     build_disagreement_error,
     module_stats,
 )
-from just_dna_compiler.compiler.meta import build_meta, load_meta, member_tables
+from just_dna_compiler.compiler.meta import build_meta, load_meta, member_tables, member_variant_rows
 from just_dna_compiler.compiler.model_organisms import load_model_organisms
 from just_dna_compiler.compiler.positional import (
     _GENE_BEARING_TABLE_KINDS,
@@ -687,14 +687,16 @@ def _validate_spec(
     meta_rows, meta_errors, meta_warnings = load_meta(spec_dir)
     all_errors.extend(meta_errors)
     all_warnings.extend(meta_warnings)
+    # The variants a meta member reaches, for the study-orphan check below (RM28's widening).
+    meta_carried: list[Any] = []
     if meta_rows:
-        meta_build = build_meta(
-            meta_rows,
-            member_tables(_apply_symbolic_drops(variants, would_drop.get("variants.csv", set())), survivors),
-            config.tier_scale if config else None,
+        meta_tables = member_tables(
+            _apply_symbolic_drops(variants, would_drop.get("variants.csv", set())), survivors
         )
+        meta_build = build_meta(meta_rows, meta_tables, config.tier_scale if config else None)
         all_errors.extend(meta_build.errors)
         all_warnings.extend(meta_build.warnings)
+        meta_carried = member_variant_rows(meta_build, meta_tables)
     # The model-organism table (0.8, RM335): parse, the present-but-empty refusal and the duplicate key,
     # nothing else. It names no row of another table and no rule reads it, so it needs no other check.
     # It does not take part in the composition check above (`tables.MODEL_ORGANISMS_CSV` says why).
@@ -950,7 +952,14 @@ def _validate_spec(
         # the point of `validate` is to report every problem it can, not to stop at the first.
         all_warnings.extend(_check_contig_ploidy(variants, config.genome_build if config else "GRCh38"))
         if studies:
-            _, study_warnings = _cross_validate_studies(studies, variants)
+            # A study's variant is carried when it is a `variants.csv` row's, a defining variant in
+            # `haplotypes.csv`, or one a meta member reached (RM28's widening). The haplotypes are the
+            # authored rows, the view `variants` is read in (the positional fill is in place, so they
+            # carry it). No authored haplotype row reaches the symbolic-allele drop today (a symbolic
+            # `ref` is refused and `alts` is not authored there), so this equals `survivors`; reading
+            # the authored view keeps the arms alike should that change.
+            carried = [*(loaded_kinds.get("haplotypes.csv") or []), *meta_carried]
+            _, study_warnings = _cross_validate_studies(studies, variants, carried)
             all_warnings.extend(study_warnings)
         # `flags` is an open vocabulary — surface non-reserved tags as INFO (not a warning; nothing
         # is wrong). ROADMAP 0.3 item 4.
