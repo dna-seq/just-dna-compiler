@@ -3,7 +3,7 @@
 Two publish shapes share one create-or-update pathway (``ensure_repo``):
 
 * **module** — a compiled module's artifacts (**every parquet the artifact carries** + manifest.json,
-  and a logo and readme if present) to ``datasets/<repo>/data/<name>/``, matching the layout
+  a logo and readme if present, and every log ``manifest.logs`` names, RM347) to ``datasets/<repo>/data/<name>/``, matching the layout
   just-dna-lite's discovery scans, **and** to ``data/<name>/v<version>/`` when the manifest states a
   version, so the discovery path can address a particular release rather than only "whatever is there
   now" (``upload_module``; RM84).
@@ -24,8 +24,9 @@ import json
 import logging
 from collections.abc import Iterable
 from dataclasses import dataclass
-from fnmatch import fnmatch
-from pathlib import Path
+from fnmatch import fnmatch, fnmatchcase
+from glob import escape as glob_escape
+from pathlib import Path, PurePosixPath
 
 from just_dna_compiler.compiler import ARTIFACT_PARQUETS, LEAD_PARQUETS
 from just_dna_format.identity import is_valid_version
@@ -295,7 +296,12 @@ class UploadPlan(BaseModel):
         default=None,
         description="Why no versioned path is planned; null when the version was read",
     )
-    files: list[str] = Field(description="Basenames that will be uploaded")
+    files: list[str] = Field(
+        description=(
+            "Paths, relative to the module directory, that will be uploaded: the artifact files by "
+            "basename, then each log manifest.logs names (e.g. logs/authoring.log)"
+        )
+    )
 
 
 def _module_version(module_dir: Path) -> tuple[str | None, str | None]:
@@ -334,13 +340,11 @@ def _module_version(module_dir: Path) -> tuple[str | None, str | None]:
     return version, None
 
 
-def _artifact_digest(module_dir: Path) -> str | None:
-    """``manifest.artifact.digest`` for a compiled module, or ``None`` when the manifest cannot say.
+def _manifest_document(module_dir: Path) -> dict | None:
+    """The compiled ``manifest.json`` as a plain JSON object, or ``None`` when there is none to read.
 
-    Tri-state, and read field by field out of the JSON, for the same two reasons as its neighbours:
-    an unreadable manifest is *unknown* rather than *no digest*, and validating the whole
-    ``ModuleManifest`` to reach one string would let an unrelated model defect withhold a value that
-    is right there and legible.
+    The one reader the field-by-field helpers below share. ``None`` covers absent, unreadable,
+    unparseable and not-an-object alike, because each caller answers all four the same way: unknown.
     """
     path = module_dir / _MANIFEST_FILENAME
     if not path.is_file():
@@ -349,9 +353,31 @@ def _artifact_digest(module_dir: Path) -> str | None:
         document = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return None
-    artifact = document.get("artifact") if isinstance(document, dict) else None
+    return document if isinstance(document, dict) else None
+
+
+def _artifact_digest(module_dir: Path) -> str | None:
+    """``manifest.artifact.digest`` for a compiled module, or ``None`` when the manifest cannot say.
+
+    Tri-state, and read field by field out of the JSON, for the same two reasons as its neighbours:
+    an unreadable manifest is *unknown* rather than *no digest*, and validating the whole
+    ``ModuleManifest`` to reach one string would let an unrelated model defect withhold a value that
+    is right there and legible.
+    """
+    document = _manifest_document(module_dir) or {}
+    artifact = document.get("artifact")
     digest = artifact.get("digest") if isinstance(artifact, dict) else None
     return digest if isinstance(digest, str) and digest else None
+
+
+def _named_entries(entries: object) -> list[str] | None:
+    """The string ``name`` of each ``FileEntry``-shaped dict in a manifest list, or ``None`` when the
+    field is not a list at all."""
+    if not isinstance(entries, list):
+        return None
+    return [
+        entry["name"] for entry in entries if isinstance(entry, dict) and isinstance(entry.get("name"), str)
+    ]
 
 
 def _attested_parquets(module_dir: Path) -> list[str] | None:
@@ -362,20 +388,94 @@ def _attested_parquets(module_dir: Path) -> list[str] | None:
     field by field out of the JSON rather than through ``read_manifest`` — an unrelated model defect
     must not be able to turn a legible file list into a failed publish.
     """
-    path = module_dir / _MANIFEST_FILENAME
-    if not path.is_file():
-        return None
+    document = _manifest_document(module_dir) or {}
+    artifact = document.get("artifact")
+    return _named_entries(artifact.get("files") if isinstance(artifact, dict) else None)
+
+
+def _hub_ignore_patterns() -> list[str]:
+    """``upload_folder``'s own default ignore list, read from the hub rather than restated.
+
+    A guarded lazy import, like ``_hf_api``'s: importing ``huggingface_hub.hf_api`` costs every CLI
+    start about 0.3 s, and only a publish needs it. Without the wheel nothing can be uploaded either,
+    so an empty list refuses nothing that would have been sent.
+    """
     try:
-        document = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return None
-    artifact = document.get("artifact") if isinstance(document, dict) else None
-    entries = artifact.get("files") if isinstance(artifact, dict) else None
-    if not isinstance(entries, list):
-        return None
-    return [
-        entry["name"] for entry in entries if isinstance(entry, dict) and isinstance(entry.get("name"), str)
-    ]
+        from huggingface_hub.hf_api import DEFAULT_IGNORE_PATTERNS
+    except ImportError:
+        return []
+    return list(DEFAULT_IGNORE_PATTERNS)
+
+
+def _log_refusal_reason(module_dir: Path, name: str) -> str | None:
+    """Why a ``manifest.logs`` name is not uploaded although the manifest names it, else ``None``.
+
+    The field is documented as a path *relative to the module dir*, and the compiler only ever writes
+    one; a hand-edited manifest can still say ``../x``, ``/etc/x``, or name a symlink whose target is
+    elsewhere. The lexical half is read on the name as the manifest spells it (POSIX, the spelling
+    ``_collect_logs`` writes); the resolved half is what catches the symlink, which no spelling shows.
+
+    **A hidden path is refused on the compiler's own terms, not a second rule.** RM338's discovery skips
+    a hidden path for every kind except ``*.log``, which ships hidden or not as it always has; so a
+    hidden ``.log`` the manifest names is uploaded, and any other hidden name (``.env``, an editor's or
+    an agent's settings) is one discovery never writes and a hand edit put there. **Whatever
+    ``upload_folder``'s default ignore list drops is refused regardless** (``.git``,
+    ``.cache/huggingface``): the hub would not send it, so planning it would make the dry run promise a
+    file that never arrives.
+    """
+    spelled = PurePosixPath(name)
+    if spelled.is_absolute():
+        return "it is an absolute path"
+    if ".." in spelled.parts:
+        return "it climbs out with '..'"
+    if any(fnmatchcase(name, pattern) for pattern in _hub_ignore_patterns()):
+        return "upload_folder's default ignore list drops it, so it would never be sent"
+    if spelled.suffix != ".log" and any(part.startswith(".") for part in spelled.parts):
+        return "it is on a hidden path, which the compiler ships only for a *.log"
+    root = module_dir.resolve()
+    try:
+        resolved = (module_dir / name).resolve()
+    except (OSError, ValueError) as exc:  # a NUL byte, a symlink loop: never a reason to fail the plan
+        return f"it cannot be resolved ({exc})"
+    if not resolved.is_relative_to(root):
+        return f"it resolves outside {root} (a symlink)"
+    return None
+
+
+def _manifest_logs(module_dir: Path) -> list[str]:
+    """The ``manifest.logs`` paths this upload carries: named by the manifest, inside the module, on disk.
+
+    **Derived from the manifest, never restated as a glob (RM347, `@publisher-allowlist-derived`).** The
+    compiler decides which files under `logs/` ship (RM338's content checks) and names each one in
+    ``manifest.logs``; a pattern here would be a second statement of that decision, and the first time
+    the two disagreed a published manifest would name a log the repo does not hold — the same gap the
+    parquets, the logo and the readme each had before they were derived.
+
+    **A file present on disk that the manifest does not name is not uploaded.** Nothing the published
+    manifest says covers it, so it would arrive unattested, and a published file is permanent.
+
+    A name that leaves the module directory, sits on a hidden path the compiler would not have shipped,
+    or is one the hub's own ignore list drops is skipped with a warning that says why
+    (`_log_refusal_reason`); a named log absent
+    from disk is skipped too, quietly, since logs are optional (`verify --check-logs` skips it the same
+    way). An absent or unreadable manifest, or one with no readable ``logs`` list, plans no logs and
+    never raises — the publisher has always accepted such a directory.
+    """
+    document = _manifest_document(module_dir) or {}
+    planned: list[str] = []
+    for name in _named_entries(document.get("logs")) or []:
+        reason = _log_refusal_reason(module_dir, name)
+        if reason is not None:
+            logger.warning(
+                "%s names log %r, which is not uploaded: %s.",
+                _MANIFEST_FILENAME,
+                name,
+                reason,
+            )
+            continue
+        if (module_dir / name).is_file() and name not in planned:
+            planned.append(name)
+    return planned
 
 
 def plan_upload(
@@ -439,13 +539,14 @@ def plan_upload(
         )
     flat = f"data/{name}"
     version, reason = _module_version(module_dir)
+    logs = [f for f in _manifest_logs(module_dir) if f not in present]
     return UploadPlan(
         module=name,
         repo_id=resolved_repo,
         path_in_repo=flat,
         versioned_path_in_repo=None if version is None else f"{flat}/v{version}",
         version_unknown_reason=reason,
-        files=present,
+        files=[*present, *logs],
     )
 
 
@@ -556,12 +657,16 @@ def upload_module(
             f"compiler moves the digest too — if that is what happened, this refusal is still "
             f"protecting the bytes the published version was cut from."
         )
+    # The plan IS the allowlist, so the dry run is a promise (the snapshot publisher's rule, RM347 for
+    # modules). Each path is glob-escaped: `upload_folder` matches patterns with `fnmatch`, and a log
+    # named `fig[1].png` would otherwise be a character class that matches some other file, or none.
+    allow_patterns = [glob_escape(f) for f in plan.files]
     api.upload_folder(
         folder_path=str(module_dir),
         path_in_repo=plan.path_in_repo,
         repo_id=plan.repo_id,
         repo_type="dataset",
-        allow_patterns=_ALLOW_PATTERNS,
+        allow_patterns=allow_patterns,
         commit_message=commit_message or f"Add {name} module",
     )
     if plan.versioned_path_in_repo is not None:
@@ -571,7 +676,7 @@ def upload_module(
             path_in_repo=plan.versioned_path_in_repo,
             repo_id=plan.repo_id,
             repo_type="dataset",
-            allow_patterns=_ALLOW_PATTERNS,
+            allow_patterns=allow_patterns,
             commit_message=commit_message or f"Add {name} module {segment}",
         )
     return plan

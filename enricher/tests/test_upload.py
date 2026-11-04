@@ -9,6 +9,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
+from huggingface_hub.hf_api import DEFAULT_IGNORE_PATTERNS
+from huggingface_hub.utils import filter_repo_objects
 from just_dna_compiler.compiler import ARTIFACT_PARQUETS, compile_module
 from just_dna_enricher.cli import app
 from just_dna_enricher.locations import RELEASE_FILENAME
@@ -827,3 +829,129 @@ def test_a_retirement_still_rides_the_payload_commit_at_any_size(tmp_path: Path)
     payload, description = (c.kwargs for c in api.upload_folder.call_args_list)
     assert payload["delete_patterns"] == ["data/old-*.parquet"]
     assert "delete_patterns" not in description, "the description commit deletes nothing"
+
+
+# ── the logs `manifest.logs` names travel with the module (RM347) ────────────────────────────────
+
+_LOGS_EXAMPLE = "apoe_epsilon"
+_PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
+
+
+def _compile_with_logs(tmp_path: Path) -> tuple[Path, list[str]]:
+    """Compile a copy of a real example carrying a `.log`, a nested `.jsonl` and a `.png` under
+    `logs/`, and return the artifact directory with the log names its manifest states.
+
+    Real compile, so `manifest.logs` is what the compiler's own discovery wrote (RM338) rather than a
+    list this test spelled."""
+    spec = tmp_path / "spec"
+    shutil.copytree(_EXAMPLES / _LOGS_EXAMPLE, spec)
+    (spec / "logs" / "trace").mkdir(parents=True)
+    (spec / "logs" / "authoring.log").write_text("drafted from CPIC\n", encoding="utf-8")
+    (spec / "logs" / "trace" / "a.jsonl").write_text('{"step": 1}\n{"step": 2}\n', encoding="utf-8")
+    (spec / "logs" / "fig.png").write_bytes(_PNG_BYTES)
+    # A glob metacharacter in a name the compiler ships: `upload_folder` matches with fnmatch.
+    (spec / "logs" / "fig[1].png").write_bytes(_PNG_BYTES)
+    # A hidden `*.log` ships from discovery as it always has (RM338 left it alone), so the publisher's
+    # hidden-path refusal must not reach it.
+    (spec / "logs" / ".session.log").write_text("hidden but a log\n", encoding="utf-8")
+    out = tmp_path / "out"
+    compile_module(spec, out)
+    document = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+    named = [entry["name"] for entry in document["logs"]]
+    expected = {
+        "logs/authoring.log",
+        "logs/trace/a.jsonl",
+        "logs/fig.png",
+        "logs/fig[1].png",
+        "logs/.session.log",
+    }
+    assert expected <= set(named), "the fixture must compile to a manifest naming every log it wrote"
+    return out, named
+
+
+def _files_under(module_dir: Path) -> list[str]:
+    return sorted(p.relative_to(module_dir).as_posix() for p in module_dir.rglob("*") if p.is_file())
+
+
+def test_every_log_the_manifest_names_is_planned(tmp_path: Path) -> None:
+    """A manifest naming a log the published repo lacks is a field that does not travel — the gap
+    `@publisher-allowlist-derived` closed for the parquets, the logo and the readme, left open here."""
+    out, named = _compile_with_logs(tmp_path)
+    files = plan_upload(out, _LOGS_EXAMPLE).files
+    assert set(named) <= set(files)
+
+
+def test_a_log_on_disk_the_manifest_does_not_name_stays_behind(tmp_path: Path) -> None:
+    """The default RM347 left open: an unnamed file under `logs/` is not uploaded, because nothing the
+    published manifest says covers it — and a published file is permanent."""
+    out, named = _compile_with_logs(tmp_path)
+    (out / "logs" / "scratch.log").write_text("not attested\n", encoding="utf-8")
+    assert "logs/scratch.log" not in named
+    assert "logs/scratch.log" not in plan_upload(out, _LOGS_EXAMPLE).files
+
+
+def test_the_module_upload_sends_exactly_what_the_plan_promises(tmp_path: Path) -> None:
+    """The dry run is a promise: what `upload_folder`'s allowlist matches among the files actually on
+    disk is the plan, nothing more — so the unnamed log is not sent and every named one is. Matched
+    through huggingface_hub's own filter, the one `upload_folder` applies. `logs/fig1.png` is the
+    decoy an unescaped `logs/fig[1].png` pattern would match in its place."""
+    out, named = _compile_with_logs(tmp_path)
+    (out / "logs" / "scratch.log").write_text("not attested\n", encoding="utf-8")
+    (out / "logs" / "fig1.png").write_bytes(_PNG_BYTES)
+    promised = plan_upload(out, _LOGS_EXAMPLE).files
+    api = MagicMock()
+    with (
+        patch("huggingface_hub.HfApi", return_value=api),
+        patch("huggingface_hub.get_token", return_value="hf_test_token"),
+    ):
+        upload_module(out, _LOGS_EXAMPLE, force=True)
+    on_disk = _files_under(out)
+    assert api.upload_folder.call_args_list, "the upload must have been attempted"
+    for call in api.upload_folder.call_args_list:
+        sent = set(
+            filter_repo_objects(
+                on_disk, allow_patterns=call.kwargs["allow_patterns"], ignore_patterns=DEFAULT_IGNORE_PATTERNS
+            )
+        )
+        assert sent == set(promised)
+        assert set(named) <= sent
+
+
+def test_a_log_path_that_leaves_the_module_directory_is_never_planned(tmp_path: Path, caplog) -> None:
+    """`manifest.logs` names paths relative to the module, and a hand-edited manifest can name one that
+    is not: `..`, an absolute path, a symlink whose target is outside, or a hidden path inside it. None
+    is uploaded, and the
+    publish still goes ahead — a refused log is a logged reason, never a failed plan."""
+    out, named = _compile_with_logs(tmp_path)
+    outside = tmp_path / "outside.log"
+    outside.write_text("secret\n", encoding="utf-8")
+    (out / "logs" / "link.log").symlink_to(outside)
+    # Inside the directory and on disk, but tool state: `.env`, and a `.git` path the hub's own
+    # default ignore list would drop, so planning it would be a promise the upload breaks.
+    (out / ".env").write_text("HF_TOKEN=hf_secret\n", encoding="utf-8")
+    (out / "logs" / ".git").mkdir()
+    (out / "logs" / ".git" / "run.log").write_text("tool state\n", encoding="utf-8")
+    escaping = [
+        "../outside.log",
+        "logs/../../outside.log",
+        str(outside),
+        "logs/link.log",
+        ".env",
+        "logs/.git/run.log",
+    ]
+    # Not an escape but unresolvable: `Path.resolve` raises on a NUL, and the plan must not.
+    unresolvable = "logs/nul\x00.log"
+    manifest_path = out / "manifest.json"
+    document = json.loads(manifest_path.read_text(encoding="utf-8"))
+    document["logs"] += [
+        {"name": name, "sha256": "sha256:" + "0" * 64, "size": 7} for name in [*escaping, unresolvable]
+    ]
+    manifest_path.write_text(json.dumps(document), encoding="utf-8")
+
+    with caplog.at_level("WARNING", logger="just_dna_enricher.upload"):
+        files = plan_upload(out, _LOGS_EXAMPLE).files
+    assert not {*escaping, unresolvable} & set(files)
+    assert set(named) <= set(files), "a refused log must not take the legitimate ones with it"
+    for name in escaping:
+        assert any(name in record.getMessage() for record in caplog.records), name
+    assert any("cannot be resolved" in record.getMessage() for record in caplog.records)

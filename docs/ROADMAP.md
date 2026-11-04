@@ -973,25 +973,6 @@ running duckdb cannot read rather than mocking `connect`.
 
 **Residuals** none yet.
 
-## RM347 — the HuggingFace module publisher uploads no logs, although `manifest.logs` lists them
-
-**Severity** low · **Status** open — **a patch**, filed 2026-11-04 by the lead · **Owner** enricher
-(`upload._ALLOW_PATTERNS`) · **Motivating case** found while building RM338 · *related* RM338, RM337, S125
-
-**Reproduced by reading the code (2026-11-04).** `upload._ALLOW_PATTERNS` is the artifact parquets,
-`manifest.json`, the logo and the README candidates. No `logs/` path is in it, not even `*.log`, so a module
-published through the enricher's HuggingFace publisher carries a manifest whose `logs` names files the repository
-does not hold. `verify --check-logs` skips an absent log by design, so nothing reports the gap. RM338 widened what
-`logs/` ships at compile, which makes the difference larger: an author who sees `log ships: …` at compile then
-publishes a module without it.
-
-**The patch.** The allowlist takes every path `manifest.logs` names, derived from the manifest the directory
-carries rather than restated as a pattern (`@publisher-allowlist-derived`). A test publishes (plans the upload of)
-a module with `.log`, `.jsonl` and `.png` logs and asserts each is in the plan. Not decided here: whether a log
-the manifest does not name, present on disk, is uploaded; the default is no.
-
-**Residuals** none yet.
-
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
