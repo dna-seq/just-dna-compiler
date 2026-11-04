@@ -51,6 +51,10 @@ _NO_TABLE_OF_ITS_OWN = {
 _IS_THE_CALLBACK = {
     ("drafting.py", "commit"): "the closure `licence_commit` returns, for every drafter",
     ("civic_citations.py", "_commit_licence"): "this pass's own `before_commit` closure",
+    (
+        "opentargets.py",
+        "_licence",
+    ): "builds the `before_commit` closure each Open Targets table's `_write` takes",
 }
 
 #: Where a drafted row reaches disk. Both take `before_commit` since RM232.

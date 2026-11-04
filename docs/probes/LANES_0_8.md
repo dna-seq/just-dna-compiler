@@ -563,3 +563,74 @@ built snapshot]. `cache status` shows the lane present at 17.2 MB, and the publi
 - One slip worth recording: an `httpx` GET with `Range: bytes=-8` against `allele.parquet` came back
   **200 with the whole 1.12 GB body** once (held in memory, not saved), while `curl -r` and a suffix range
   from curl both got 206. A builder that range-reads R2 checks for 206, never assumes it.
+
+---
+
+## 5. Built 2026-11-04: the `opentargets` lane
+
+**Basis:** the lane builder on `build/RM333`, run on this machine on 2026-11-04 between 05:34 and 06:47 UTC.
+Every number below is [M], read off the built files or the commands' output.
+
+### 5.1 What was downloaded, and how
+
+The full release this lane reads is about 22 GB, past the ~6 GB the build brief allows for a hand-run, but
+all of it was mirrored, because a partial coloc set would turn "no colocalisation for this pair" into a false
+fact. The mirror ran as eight parallel `curl` streams (a scratch script, `curl --retry 5`), at 3 to 7 MB/s in
+aggregate: `l2g_prediction` 200 parts, `credible_set` 200, `variant` 25, `study` 1, `colocalisation` 200, plus
+`croissant.json` (version `26.09`, `datePublished` 2026-09-18, licence CC0 1.0). The builder's own download
+path was run separately, `just-dna-enricher opentargets build --parts 1 --out data/rm333/net_build`: it listed
+all five datasets over https, fetched one part of each (and `study` whole) in 2 min 54 s, built, recorded
+`parts_read` 1 of 25 / 1 of 200 / 1 of 200 / 1 of 200, printed the partial warning, and deleted its mirror.
+
+### 5.2 The build
+
+`just-dna-enricher opentargets build --source <mirror> --out /data/just-dna-cache/opentargets` took 14 min 52 s
+and wrote 5.2 GB (5,419.5 MB as `cache status` measures it; `approx_mb` is 5500):
+
+| table | rows | MB |
+|---|---|---|
+| `variants.parquet` | 7,886,762 | 62 |
+| `consequences-*.parquet` (25) | 280,906,222 | 115 |
+| `credible_sets.parquet` (GWAS only) | 1,519,507 | 40 |
+| `credible_set_members-*.parquet` (200) | 40,967,780 | 474 |
+| `l2g.parquet` | 3,293,342 | 48 |
+| `colocalisations-*.parquet` (200, molecular-QTL right side only) | 79,887,470 | 4,607 |
+
+Every L2G row of the release survived the GWAS-locus filter (3,293,342 in, 3,293,342 out). The coloc filter kept
+79,887,470 of 283,303,467 rows (28.2%, the §1.9 estimate), by right-hand type `eqtl` 36,928,981, `sqtl`
+19,144,070, `tuqtl` 11,382,592, `pqtl` 7,393,415, `sceqtl` 5,038,412; every kept row named its right-hand gene.
+Fine-mapping methods over the GWAS sets: `PICS` 759,320, `SuSiE-inf` 739,423, `SuSie` 20,764. Impact over the
+transcript rows: MODIFIER 278,807,665, MODERATE 1,134,511, LOW 667,184, HIGH 296,862. `cache status` printed
+`opentargets   present  /data/just-dna-cache/opentargets  opentargets_26.09  5419.5 MB`.
+
+### 5.3 The three grain questions, answered from the built tables
+
+1. **Coloc is a sibling table.** Over the whole snapshot, 10,326,986 `(study locus, right gene)` pairs, of
+   which 2,308,572 have more than one right-hand credible set, up to 1,738 for one pair (tissues and QTL kinds).
+   `h4`/`clpp` on the L2G row would have had to pick one.
+2. **The lead-only predicate is narrow.** Over the whole release (raw `credible_set`): rs429358 is in 1,826 GWAS
+   sets and leads 1,682; rs7412 2,627 and 2,019; rs2075650 175 and 41; rs72613567 123 and 54; rs646776 2,061 and
+   205; rs10455872 1,335 and 960; rs3798220 226 and 180; **rs1800562 82 and 0**. A module variant that is a
+   member but not the lead gets a posterior on `gwas_effects.csv` and no `locus_to_gene.csv` row.
+3. **A (variant, study) pair can carry two posteriors.** 1,096,671 of the release's 39,795,615 GWAS (variant,
+   study) pairs have more than one distinct (posterior, method); the pass withholds them.
+
+### 5.4 The pass over a real module
+
+`opentargets enrich` over a copy of `reference_examples/hfe_hemochromatosis`, against the full snapshot, in
+1.3 s: 12 alleles asked, all 12 in the release; 1,140 consequence rows; no `locus_to_gene` or coloc row (no
+HFE allele leads a GWAS set); posterior filled on **0** of 195 association rows: 168 name a study with
+credible sets that do not contain rs1800562, 18 a study with none, 9 no study. rs1800562's 82 memberships are
+in 82 studies, none of which the module's Catalog rows name. With rs2075650 added (its resolution row and the
+103 associations the Catalog's v2 API lists for it), the same pass writes 88 L2G rows over its 41 led sets,
+185 coloc rows and 1,200 consequence rows, and fills the posterior on 36 rows. That module, against a slice
+cut by `subset_snapshot` for its alleles and studies (696 KB, committed as `assets/opentargets_slice/`), gives
+the same tables and counts as against the whole snapshot (`test_the_slice_answers_as_the_whole_release_does`).
+
+### 5.5 What this found outside the lane
+
+The GWAS Catalog's legacy REST API, which the `gwas` pass reads
+(`https://www.ebi.ac.uk/gwas/rest/api/singleNucleotidePolymorphisms/<rsid>/associations`), answers **HTTP 410**
+with "This legacy GWAS Catalog REST API is no longer available", pointing at its v2 migration guide. The v2
+endpoint (`/gwas/rest/api/v2/associations?rs_id=`) answers 200. So `gwas_effects.csv` cannot be filled for a
+new module until the pass moves to v2; RM239's posterior is filled on rows that already exist.

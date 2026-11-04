@@ -29,12 +29,14 @@ from just_dna_format.concordance import (
     CLIN_SIG_AUTHORITY_CALL_FACT_FIELDS,
     CLIN_SIG_CONCORDANCE_FACT_FIELDS,
 )
+from just_dna_format.consequences import CONSEQUENCE_FACT_FIELDS
 from just_dna_format.expression import EXPRESSION_FACT_FIELDS
 from just_dna_format.frequency import FREQUENCY_FACT_FIELDS
 from just_dna_format.gene_metrics import GENE_METRICS_FACT_FIELDS
 from just_dna_format.gene_validity import GENE_VALIDITY_FACT_FIELDS
 from just_dna_format.gwas import GWAS_FACT_FIELDS
 from just_dna_format.literature import LITERATURE_FACT_FIELDS
+from just_dna_format.locus_genes import COLOCALISATION_FACT_FIELDS, LOCUS_TO_GENE_FACT_FIELDS
 from just_dna_format.manifest import (
     MARKETPLACE_COMPILED_BY,
     Artifact,
@@ -410,6 +412,34 @@ def expression_effect_signature(rows: Sequence[BaseModel]) -> str:
     pass-filled one carrying the same claims hash equal.
     """
     return fact_signature(rows, EXPRESSION_FACT_FIELDS)
+
+
+def locus_to_gene_signature(rows: Sequence[BaseModel]) -> str:
+    """Fact-hash of `locus_to_gene.csv` (`locus_genes.LOCUS_TO_GENE_FACT_FIELDS`), 0.8 / RM333.
+
+    `dataset` is **inside**: L2G is a model retrained every release, so the same pair scored by two
+    releases is two facts. `source` and `fetched_at` are outside, as everywhere else.
+    """
+    return fact_signature(rows, LOCUS_TO_GENE_FACT_FIELDS)
+
+
+def colocalisation_signature(rows: Sequence[BaseModel]) -> str:
+    """Fact-hash of `colocalisations.csv` (`locus_genes.COLOCALISATION_FACT_FIELDS`), 0.8 / RM333.
+
+    The right-hand gene and tissue are **inside** although the pass looks them up from the right-hand
+    study: they are what the pair is about, and a colocalisation in another tissue is another claim.
+    """
+    return fact_signature(rows, COLOCALISATION_FACT_FIELDS)
+
+
+def consequence_signature(rows: Sequence[BaseModel]) -> str:
+    """Fact-hash of `consequences.csv` (`consequences.CONSEQUENCE_FACT_FIELDS`), 0.8 / RM236.
+
+    `gene` (the symbol) and `rsid` are **outside**: both are labels for things the row identifies by
+    accession (`gene_id`) and by key (`variant_key`), and a rename that changes no consequence must not
+    move the hash.
+    """
+    return fact_signature(rows, CONSEQUENCE_FACT_FIELDS)
 
 
 def clin_sig_concordance_signature(rows: Sequence[BaseModel]) -> str:

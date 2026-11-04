@@ -405,6 +405,38 @@ GWAS_CATALOG_TERMS = SourceTerms(
 )
 
 
+# Open Targets Platform (RM333), decided by the maintainer 2026-11-04: build under Open Targets' own
+# terms plus its notice. The release is **marked** CC0 1.0 (the licence page and the croissant's only
+# `license` key, both read 2026-11-04), so the three permission axes are each a documented `True`. The
+# `notice` carries Data Services items 2 and 4 of the Platform's terms of use verbatim, because the
+# mark is the host's and the terms defer to the original data owners: a row cannot yet name its owner,
+# which is RM345's `SourceRow` axis gap for 0.9 (`@a-hosts-terms-are-not-its-contents-terms`). The
+# questions RM333 leaves for a lawyer are listed in its ROADMAP_HISTORY entry, not settled here.
+OPENTARGETS_TERMS = SourceTerms(
+    source="opentargets",
+    license="CC0-1.0",
+    license_url="https://platform-docs.opentargets.org/licence",
+    attribution=(
+        "Open Targets Platform (https://platform.opentargets.org); Buniello et al., Nucleic Acids Res "
+        "2025, PMID 39657122"
+    ),
+    notice=(
+        "Open Targets Platform terms of use (updated June 2021, "
+        "https://platform-docs.opentargets.org/licence/terms-of-use), Data Services: "
+        '"2. Open Targets itself places no additional restrictions on the use or redistribution of the '
+        'data available via its online services other than those provided by the original data owners." '
+        '"4. The original data may be subject to rights claimed by third parties, including but not '
+        "limited to, patent, copyright, other intellectual property rights, biodiversity-related access "
+        "and benefit-sharing rights. It is the responsibility of users of the Open Targets Platform to "
+        "ensure that their exploitation of the data does not infringe any of the rights of such third "
+        'parties."'
+    ),
+    share_alike=False,
+    commercial_use=True,
+    redistribution=True,
+)
+
+
 # PubMind, read on 2026-08-28 and **answered in writing on 2026-09-28** (WGLab/PubMind#5, RM320).
 # Two things are licensed here, and until the answer only one of them clearly. `LICENSE.md` covers the
 # *software* and the **full** PubMind-DB (references, reasoning, evidence): academic, non-commercial,
@@ -921,6 +953,7 @@ TERMS_BY_SOURCE: dict[str, SourceTerms] = {
         MITOMAP_TERMS,
         ALPHAGENOME_AVI_TERMS,
         ALPHAGENOME_ATLAS_TERMS,
+        OPENTARGETS_TERMS,
     )
 }
 

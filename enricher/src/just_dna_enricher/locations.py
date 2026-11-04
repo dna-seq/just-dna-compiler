@@ -168,6 +168,14 @@ DRUG_LABELS_SUBDIR: str = "drug_labels"
 #: with `mane build --download`.
 MANE_SUBDIR: str = "mane"
 
+#: Open Targets' cache (0.8, RM333) is a **trimmed** cut of one Platform release (26.09): the GWAS
+#: credible sets and their members, the locus-to-gene scores, the GWAS-left × molecular-QTL-right
+#: colocalisations, and every variant's per-transcript consequences, flattened to parquet so the
+#: runtime pass reads it with duckdb. The release is marked CC0, so publishing it is not barred; what
+#: is missing is a repository, which is why there is no `download.ensure_opentargets_snapshot` yet.
+#: Build one with `opentargets build`.
+OPENTARGETS_SUBDIR: str = "opentargets"
+
 #: MITOMAP's cache is a **parquet** snapshot cut from the source's own `pg_dump` (RM171): the two
 #: curated variant tables, their citation links and the reference records, out of a 6.76 M-line file
 #: whose other hundred tables this tier has no use for. CC BY 3.0 with commercial use stated free, so
@@ -224,6 +232,7 @@ MITOMAP_CACHE_VAR: str = "JUST_DNA_MITOMAP_CACHE"
 MITOMAP_MISS_CACHE_VAR: str = "JUST_DNA_MITOMAP_MISS_CACHE"
 ALPHAGENOME_AVI_CACHE_VAR: str = "JUST_DNA_ALPHAGENOME_AVI_CACHE"
 CLINVAR_GKM_CACHE_VAR: str = "JUST_DNA_CLINVAR_GKM_CACHE"
+OPENTARGETS_CACHE_VAR: str = "JUST_DNA_OPENTARGETS_CACHE"
 
 
 _PARQUET_MAGIC = b"PAR1"
@@ -603,6 +612,28 @@ def resolve_pubmind_reference(
 def default_mane_cache_dir(*, load_dotenv_file: bool = True) -> Path:
     """The `<base>/mane` directory — operator-built only (see `MANE_SUBDIR`)."""
     return _cache_dir(MANE_SUBDIR, load_dotenv_file=load_dotenv_file)
+
+
+def default_opentargets_cache_dir(*, load_dotenv_file: bool = True) -> Path:
+    """The `<base>/opentargets` directory — see `OPENTARGETS_SUBDIR`."""
+    return _cache_dir(OPENTARGETS_SUBDIR, load_dotenv_file=load_dotenv_file)
+
+
+def resolve_opentargets_reference(
+    opentargets_cache: Path | None = None, *, load_dotenv_file: bool = True
+) -> Path | None:
+    """Locate a built Open Targets snapshot (`$JUST_DNA_OPENTARGETS_CACHE`), without downloading.
+
+    `None` is nobody-asked, never "Open Targets holds nothing for this variant": the pass that reads it
+    says it skipped rather than writing an empty table (`@unreachable-not-absent`). A bare `.parquet`
+    is not accepted: the snapshot is several tables read by name.
+    """
+    return _resolve_parquet_cache(
+        opentargets_cache,
+        OPENTARGETS_CACHE_VAR,
+        default_opentargets_cache_dir(load_dotenv_file=load_dotenv_file),
+        load_dotenv_file=load_dotenv_file,
+    )
 
 
 def resolve_mane_reference(mane_cache: Path | None = None, *, load_dotenv_file: bool = True) -> Path | None:

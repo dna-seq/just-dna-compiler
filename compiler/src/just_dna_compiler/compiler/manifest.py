@@ -8,6 +8,7 @@ import logging
 import os
 import platform
 import shutil
+from collections.abc import Callable
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
@@ -26,8 +27,11 @@ from just_dna_format.integrity import (
     build_artifact,
     clin_sig_authority_call_signature,
     clin_sig_concordance_signature,
+    colocalisation_signature,
+    consequence_signature,
     file_entries,
     file_entry,
+    locus_to_gene_signature,
     sha256_file,
 )
 from just_dna_format.integrity import clinical_assertion_signature as _clinical_assertion_signature
@@ -58,6 +62,7 @@ from just_dna_format.manifest import (
     Literature,
     MetaSelectorCount,
     ModuleManifest,
+    OpenTargetsTable,
     Provenance,
     ProvenanceDoc,
     Sources,
@@ -604,6 +609,32 @@ def _clinical_assertions_block(rows: list[ClinicalAssertionRow]) -> ClinicalAsse
     )
 
 
+def _open_targets_block(rows: list, signature: Callable[[list], str]) -> OpenTargetsTable | None:
+    """The manifest summary of one Open Targets lane table (RM333/RM236), or `None` when the module
+    carries no such sidecar. One shape for the three tables; `signature` is the table's own fact hash."""
+    if not rows:
+        return None
+    return OpenTargetsTable(
+        signature=signature(rows),
+        sources=sorted({r.source for r in rows if r.source}),
+        datasets=sorted({r.dataset for r in rows if r.dataset}),
+        row_count=len(rows),
+        variant_count=len({r.variant_key for r in rows}),
+    )
+
+
+def _locus_to_gene_block(rows: list) -> OpenTargetsTable | None:
+    return _open_targets_block(rows, locus_to_gene_signature)
+
+
+def _colocalisations_block(rows: list) -> OpenTargetsTable | None:
+    return _open_targets_block(rows, colocalisation_signature)
+
+
+def _consequences_block(rows: list) -> OpenTargetsTable | None:
+    return _open_targets_block(rows, consequence_signature)
+
+
 def _gwas_effects_block(rows: list[GwasEffectRow]) -> GwasEffects | None:
     """The manifest's `gwas_effects` summary, or `None` when the module carries no such sidecar.
 
@@ -630,6 +661,7 @@ def _gwas_effects_block(rows: list[GwasEffectRow]) -> GwasEffects | None:
         units=sorted({r.effect_unit for r in rows if r.effect_unit}),
         traits=sorted({r.trait_efo_id for r in rows if r.trait_efo_id}),
         not_found_count=sum(1 for r in rows if r.status == "not_found"),
+        with_posterior=sum(1 for r in rows if r.posterior_probability is not None),
     )
 
 
@@ -1249,6 +1281,9 @@ def _build_manifest(
     clinical_assertions: ClinicalAssertions | None = None,
     gwas_effects: GwasEffects | None = None,
     expression_effects: ExpressionEffects | None = None,
+    locus_to_gene: OpenTargetsTable | None = None,
+    colocalisations: OpenTargetsTable | None = None,
+    consequences: OpenTargetsTable | None = None,
     clin_sig_concordance: ClinSigConcordance | None = None,
     literature: Literature | None = None,
     sources: Sources | None = None,
@@ -1331,6 +1366,9 @@ def _build_manifest(
         clinical_assertions=clinical_assertions,
         gwas_effects=gwas_effects,
         expression_effects=expression_effects,
+        locus_to_gene=locus_to_gene,
+        colocalisations=colocalisations,
+        consequences=consequences,
         clin_sig_concordance=clin_sig_concordance,
         literature=literature,
         sources=sources,

@@ -15,6 +15,7 @@ from just_dna_format.assertions import ClinicalAssertionRow
 from just_dna_format.base import IDENTITY_FIELDS, authored_field_names, derive_variant_key
 from just_dna_format.binning import ActivityPhenotypeRow, CopyNumberRow, HeteroplasmyRow, RepeatAlleleRow
 from just_dna_format.concordance import ClinSigAuthorityCallRow, ClinSigConcordanceRow
+from just_dna_format.consequences import ConsequenceRow
 from just_dna_format.expression import ExpressionEffectRow
 from just_dna_format.findings import CodedWarning
 from just_dna_format.frequency import FrequencyRow
@@ -24,6 +25,7 @@ from just_dna_format.gwas import GwasEffectRow
 from just_dna_format.integrity import newline_normalized_file_entries
 from just_dna_format.layout import VERIFICATION_JSON, SidecarCollision, deprecation_notice, resolve_sidecar
 from just_dna_format.literature import LiteratureRow
+from just_dna_format.locus_genes import ColocalisationRow, LocusToGeneRow
 from just_dna_format.manifest import FileEntry
 from just_dna_format.meta import MetaRow
 from just_dna_format.model_organisms import ModelOrganismRow
@@ -291,6 +293,11 @@ ARTIFACT_PARQUETS: tuple[str, ...] = (
     # RM194/RM200 (0.7), on the same terms as the eight above and in the same place for the same
     # reason — beside its siblings, so `manifest.artifact.files` reads in family order.
     "expression_effects.parquet",
+    # The Open Targets lane's three (0.8, RM333/RM236), beside their siblings for the reason above. A
+    # module carrying none of them carries no such file and keeps its digest.
+    "locus_to_gene.parquet",
+    "colocalisations.parquet",
+    "consequences.parquet",
     "sources.parquet",
     # RM124 (0.7), last — and **not for the digest reason the entries above give**, which does not
     # reach it. `integrity.artifact_digest` sorts the listing by name before hashing, so a member's
@@ -343,6 +350,9 @@ _FACT_TABLES: tuple[tuple[str, str, type[BaseModel]], ...] = (
     ("clin_sig_concordance.csv", "clin_sig_concordance.parquet", ClinSigConcordanceRow),
     ("clin_sig_authority_calls.csv", "clin_sig_authority_calls.parquet", ClinSigAuthorityCallRow),
     ("expression_effects.csv", "expression_effects.parquet", ExpressionEffectRow),
+    ("locus_to_gene.csv", "locus_to_gene.parquet", LocusToGeneRow),
+    ("colocalisations.csv", "colocalisations.parquet", ColocalisationRow),
+    ("consequences.csv", "consequences.parquet", ConsequenceRow),
     ("sources.csv", "sources.parquet", SourceRow),
 )
 

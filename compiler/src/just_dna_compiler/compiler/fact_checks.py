@@ -7,6 +7,7 @@ from typing import Any
 
 from just_dna_format.assertions import CLINICAL_ASSERTION_FACT_FIELDS, ClinicalAssertionRow
 from just_dna_format.base import derive_variant_key, merge_key
+from just_dna_format.consequences import CONSEQUENCE_FACT_FIELDS, ConsequenceRow
 from just_dna_format.expression import EXPRESSION_FACT_FIELDS, ExpressionEffectRow
 from just_dna_format.findings import CodedWarning
 from just_dna_format.frequency import FREQUENCY_FACT_FIELDS, FrequencyRow
@@ -19,6 +20,12 @@ from just_dna_format.gene_validity import (
 )
 from just_dna_format.gwas import GWAS_FACT_FIELDS, GwasEffectRow
 from just_dna_format.literature import LITERATURE_FACT_FIELDS, LiteratureRow
+from just_dna_format.locus_genes import (
+    COLOCALISATION_FACT_FIELDS,
+    LOCUS_TO_GENE_FACT_FIELDS,
+    ColocalisationRow,
+    LocusToGeneRow,
+)
 from just_dna_format.overrides import (
     VINDICATING_OVERLAY_TABLES,
     classify_update_targets,
@@ -50,6 +57,9 @@ FACT_CONTRADICTION_FIELDS: dict[type, tuple[str, ...]] = {
     ClinicalAssertionRow: CLINICAL_ASSERTION_FACT_FIELDS,
     GwasEffectRow: GWAS_FACT_FIELDS,
     ExpressionEffectRow: EXPRESSION_FACT_FIELDS,
+    LocusToGeneRow: LOCUS_TO_GENE_FACT_FIELDS,
+    ColocalisationRow: COLOCALISATION_FACT_FIELDS,
+    ConsequenceRow: CONSEQUENCE_FACT_FIELDS,
 }
 
 

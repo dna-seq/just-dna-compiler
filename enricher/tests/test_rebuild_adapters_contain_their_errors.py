@@ -27,6 +27,7 @@ from just_dna_enricher import (
     mitomap,
     mitomap_build,
     mitomap_miss_build,
+    opentargets_build,
     pharmvar,
     pharmvar_build,
     pubmind_build,
@@ -57,6 +58,7 @@ _FAILURES: dict[str, list[tuple[object, str, Exception]]] = {
         (clinvar_gkm_build, "download_and_build", clinvar_gkm.ClinVarGkmUnavailable("R2 answered 503")),
         (clinvar_gkm_build, "download_and_build", clinvar_gkm.ClinVarGkmMismatch("x")),
     ],
+    "opentargets": [(opentargets_build, "download_release", opentargets_build.OpenTargetsUnavailable("x"))],
 }
 
 _ADAPTED = {lane.name: lane for lane in CACHE_LANES if lane.rebuild is not None}

@@ -7,6 +7,7 @@ from typing import Any
 
 from just_dna_format.assertions import ClinicalAssertionRow
 from just_dna_format.concordance import ClinSigAuthorityCallRow, ClinSigConcordanceRow
+from just_dna_format.consequences import ConsequenceRow
 from just_dna_format.expression import ExpressionEffectRow
 from just_dna_format.findings import CodedWarning
 from just_dna_format.frequency import FrequencyRow
@@ -16,6 +17,7 @@ from just_dna_format.gwas import GwasEffectRow
 from just_dna_format.integrity import resolution_signature as _resolution_signature
 from just_dna_format.layout import SOURCES_CSV, VERIFICATION_JSON, SidecarCollision, sidecar_write_path
 from just_dna_format.literature import LiteratureRow
+from just_dna_format.locus_genes import ColocalisationRow, LocusToGeneRow
 from just_dna_format.manifest import VerificationDoc, write_manifest
 from just_dna_format.model_organisms import ModelOrganismRow
 from just_dna_format.normalize import now_utc_iso
@@ -79,13 +81,16 @@ from just_dna_compiler.compiler.manifest import (
     _collect_logs,
     _collect_provenance,
     _collect_readme,
+    _colocalisations_block,
     _concordance_warnings,
+    _consequences_block,
     _expression_effects_block,
     _frequency_block,
     _gene_metrics_block,
     _gene_validity_block,
     _gwas_effects_block,
     _literature_block,
+    _locus_to_gene_block,
     _module_binding,
     _snapshot_unplaced_rsids_recorded,
     _source_checks,
@@ -831,6 +836,10 @@ def compile_module(
         """
         return [], []
 
+    def _no_checks(rows: list) -> tuple[list[str], list[str]]:
+        """A table with no check, not a check that always passes (`@tautology-zero`)."""
+        return [], []
+
     def _concordance_checks(rows: list) -> tuple[list[str], list[str]]:
         # De-duplicated on the message, the `_literature_checks` idiom: `compile_module` runs
         # `validate_spec`, which emits the identical sentences over the identical post-overlay rows,
@@ -899,6 +908,12 @@ def compile_module(
             _expression_effect_checks,
             lambda rows: _build_table(rows, ExpressionEffectRow, module_name),
         ),
+        # The Open Targets lane's three (RM333/RM236): no check, for `_expression_effect_checks`'
+        # reason turned around. Every row is the pass's answer about a variant the module asked for,
+        # so an orphan warning could fire only on a hand edit, and the overlay is where those go.
+        LocusToGeneRow: (_no_checks, lambda rows: _build_table(rows, LocusToGeneRow, module_name)),
+        ColocalisationRow: (_no_checks, lambda rows: _build_table(rows, ColocalisationRow, module_name)),
+        ConsequenceRow: (_no_checks, lambda rows: _build_table(rows, ConsequenceRow, module_name)),
         ClinSigConcordanceRow: (
             _concordance_checks,
             lambda rows: _build_table(rows, ClinSigConcordanceRow, module_name),
@@ -1010,6 +1025,9 @@ def compile_module(
     clinical_assertion_rows: list[ClinicalAssertionRow] = fact_rows.get(ClinicalAssertionRow, [])
     gwas_effect_rows: list[GwasEffectRow] = fact_rows.get(GwasEffectRow, [])
     expression_effect_rows: list[ExpressionEffectRow] = fact_rows.get(ExpressionEffectRow, [])
+    locus_to_gene_rows: list[LocusToGeneRow] = fact_rows.get(LocusToGeneRow, [])
+    colocalisation_rows: list[ColocalisationRow] = fact_rows.get(ColocalisationRow, [])
+    consequence_rows: list[ConsequenceRow] = fact_rows.get(ConsequenceRow, [])
     concordance_rows: list[ClinSigConcordanceRow] = fact_rows.get(ClinSigConcordanceRow, [])
     authority_call_rows: list[ClinSigAuthorityCallRow] = fact_rows.get(ClinSigAuthorityCallRow, [])
     source_rows: list[SourceRow] = fact_rows.get(SourceRow, [])
@@ -1076,6 +1094,9 @@ def compile_module(
         clinical_assertions=_clinical_assertions_block(clinical_assertion_rows),
         gwas_effects=_gwas_effects_block(gwas_effect_rows),
         expression_effects=_expression_effects_block(expression_effect_rows),
+        locus_to_gene=_locus_to_gene_block(locus_to_gene_rows),
+        colocalisations=_colocalisations_block(colocalisation_rows),
+        consequences=_consequences_block(consequence_rows),
         clin_sig_concordance=_clin_sig_concordance_block(concordance_rows, authority_call_rows),
         literature=_literature_block(literature_rows),
         sources=_sources_block(source_rows),

@@ -154,6 +154,34 @@ _INJECTED_ROW_CASES: tuple[tuple[str, str, str], ...] = (
         ),
         "status",
     ),
+    # The Open Targets lane's three (RM333/RM236): a score outside its bounds, a posterior outside
+    # [0, 1], and an impact class VEP does not define.
+    (
+        "locus_to_gene.csv",
+        (
+            "study_locus_id,gene_id,variant_key,study_accession,l2g_score,dataset,source\n"
+            "1011cca96efba523e1b64960a9faaab8,ENSG00000010704,rs1800562,GCST000001,1.5,"
+            "opentargets_26.09,opentargets\n"
+        ),
+        "l2g_score",
+    ),
+    (
+        "colocalisations.csv",
+        (
+            "study_locus_id,right_study_locus_id,variant_key,h4,clpp,dataset,source\n"
+            "1011cca96efba523e1b64960a9faaab8,00aba7c3fe6d9512d7618e292d8049a8,rs1800562,2,0.1,"
+            "opentargets_26.09,opentargets\n"
+        ),
+        "h4",
+    ),
+    (
+        "consequences.csv",
+        (
+            "variant_key,transcript,impact,dataset,source\n"
+            "rs1800562,ENST00000357618,SEVERE,opentargets_26.09,opentargets\n"
+        ),
+        "impact",
+    ),
     (
         "sources.csv",
         # This case used to be spelled `non-commercial`, on the reasoning that the hyphen is wrong

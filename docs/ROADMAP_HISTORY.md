@@ -35,6 +35,149 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM333 — the effector gene behind a GWAS locus has no source and no column
+
+**Placement settled 2026-11-04.** The effector-confidence label is never authored (RM323's cut). This lane's derived table is one of its inputs, beside coloc and the coding consequence.
+
+**Licence probed 2026-11-04 (all claims checked at the source); decided by the maintainer: build, under Open
+Targets' own terms plus its notice.**
+
+What the probe found:
+
+- L2G now lives in the Platform: release 26.09, dataset `l2g_prediction`, on EBI's FTP. There is no
+  Hugging Face copy.
+- The release is marked CC0 1.0 (the licence page, and the croissant's only `license` key).
+- The terms of use add "no additional restrictions … other than those provided by the original data
+  owners" and a third-party-rights disclaimer.
+
+The `SourceRow` therefore records `commercial_use=True`, `share_alike=False`, `redistribution=True`, and
+`notice` carries that disclaimer verbatim.
+
+**For a lawyer, named and not settled:**
+
+- "marked with" CC0 against "dedicates", for data Open Targets did not wholly author;
+- whether "all Open Targets users" reaches a module's buyer;
+- whether the CC BY-SA 3.0 of ChEMBL and HPA, as training inputs, reaches the scores;
+- whether a CC0 mark satisfies the CC BY 4.0 attribution owed to eQTL Catalogue and GTEx;
+- FinnGen's terms, unstated at its source;
+- the 26.09 inputs missing from Open Targets' licence table;
+- PanelApp's "commercial use for Open Targets".
+
+**For 0.9:** the host licence defers to the original owners, and an L2G row cannot name its owner
+(`@a-hosts-terms-are-not-its-contents-terms` assumes a record can override). That is a `SourceRow` axis
+gap, filed as [RM345](ROADMAP_0_9.md#rm345--sourcerow-cannot-state-five-licence-shapes-alphagenomes-four-and-a-host-licence-that-defers-to-owners-a-row-cannot-name) with AlphaGenome's four (`probes/ALPHAGENOME_ATLAS.md` §2.6).
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** (PROPOSAL_0_8_PT2 §5 D2) · **Owner** enricher (a new lane) + format (a derived table's columns) · **Motivating case** longevitymap v2 requirements §4.2 (causal and effector confidence, R-CAUSAL) · *for* longevitymap v2 · *related* RM239, RM238, RM236
+
+**Need.** v2 names a gene only at effector confidence E1/E2, using Open Targets locus-to-gene (L2G)
+scores and coloc. `VariantRow.gene` is a symbol with no provenance, so nothing tells a nearest gene from
+an effector call. RM239 covers the fine-mapping posterior on `gwas_effects.csv`, RM238 the per-tissue
+eQTL (parked), and RM236 the coding consequence that C1/E1 key on. No item covers L2G, and no lane reads
+Open Targets.
+
+**Shape.** An Open Targets snapshot lane, walked through [CACHE_SURFACE.md](CACHE_SURFACE.md)'s checklist,
+**licence probed first** (not verified here). Effector gene, score, method and release on a derived table
+(half cost). The C1–C4 / E1–E4 labels are the module's rubric over those inputs, so they are computed
+once the inputs exist, never authored.
+
+**Built 2026-11-04 on `0.8` (build/RM333).** The lane `opentargets` (`opentargets build`, `opentargets_build.py`) mirrors release 26.09 from EBI's FTP over https and flattens it; `opentargets enrich` (`opentargets.py`) fills `locus_to_gene.csv` at Open Targets' own grain, one row per (study locus, gene) a module variant **leads**, and `colocalisations.csv` at the source's (left, right) study-locus grain, the sibling the probe chose: one (study locus, gene) pair colocalises with up to 1,738 right-hand loci (2,308,572 of 10,326,986 pairs have more than one), so `h4`/`clpp` on the L2G row would have picked a tissue. Several study loci per variant are kept. The `SourceRow` is `OPENTARGETS_TERMS` (CC0-1.0, `commercial_use=True`, `share_alike=False`, `redistribution=True`, `notice` = Data Services items 2 and 4 of the terms of use, verbatim). No C or E label is computed. The hand-run build and its counts are [probes/LANES_0_8.md § 5](probes/LANES_0_8.md#5-built-2026-11-04-the-opentargets-lane). **The lead-only predicate is the contract's and it is narrow:** measured over the whole release, rs1800562 sits in 82 GWAS credible sets and leads none, rs646776 leads 205 of 2,061; a members-wide L2G table would need `variant_key` in its key, a decision left to the pm.
+
+**Residuals** RM238 · RM345
+
+## RM239 — a fine-mapping posterior has no column, and `gwas_effects.csv` already has its key
+
+**Columns settled 2026-11-04 by the pm seat, on the lead's hand-run probe** (`probes/LANES_0_8.md` on `0.8`, 92eff12):
+`gwas_effects.csv` gains **`posterior_probability` and `fine_mapping_method`**, and no credible-set level.
+
+- Open Targets 26.09 publishes only the 95% set: `is95 = is99 = true` on all 40,967,780 GWAS member rows,
+  so a level column would have no case.
+- The posterior comes from three methods (SuSiE, SuSiE-inf, PICS), and the number means nothing without its
+  method, the same rule as a magnitude carrying its unit.
+
+The column count is the same, and every value has a case. It is a derived table, so half price.
+
+**0.8, decided 2026-11-03.** Kept in 0.8 as an input to longevitymap v2's causal and effector-gene confidence labels (RM333), while the rest of RM188's parity work moved to 0.9.
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** (PROPOSAL_0_8_PT2 §5 D2) ·
+**Owner** enricher · **Motivating case** [`probes/CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md) §
+*nine databases, and the two axes that come back with no home*
+
+**For longevitymap v2 (2026-11-03):** the fine-mapping posterior is the input to causal confidence C1–C4. See [the group](ROADMAP_0_8.md#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
+
+The same `gwas-lookup` report returns three fine-mapping credible sets for rs3798220 with a posterior
+probability and 95%/99% set membership per `(trait, study)` — PP 0.92 for Lipoprotein(a) in
+GCST005140, 0.45 for aortic valve stenosis in GCST90038614 with 95% `No` and 99% `Yes`.
+
+A posterior inclusion probability is the **same class of object as an allele frequency or a LOEUF**: a
+number a named dataset publishes, no measurement by us, no inference by us. Its key is
+`(variant, trait, study)`, which is `GwasEffectRow`'s key plus nothing — the row already carries
+`trait_efo_id`, `study_accession` and `p_value_num`. So the cheap shape is **two optional columns on
+the existing table**, `posterior_probability` and `credible_set`, minor-legal under P3/P8, and the
+GWAS Catalog now publishes credible sets for its harmonised studies.
+
+**Smallest item on the survey's list, and it should not be done on its own.** Do it the next time
+`enricher/gwas.py` is open for another reason. Two things a design owes: whether `credible_set` is a
+membership flag or the set's size/level (`95`/`99` are two answers to one question, and putting both
+in one column is the `@field-description-is-a-claim` failure), and a withhold for a study whose
+harmonised release carries no credible set, which is a nobody-asked third state and not a zero.
+
+**Related** RM188, RM90 (the table this lands on).
+
+**Built 2026-11-04 on `0.8` (build/RM333).** `GwasEffectRow.posterior_probability` and `fine_mapping_method`, filled by `opentargets enrich` on the rows the `gwas` pass wrote when exactly one value answers for `(variant_key, study_accession)`; left empty and counted when the study has no GWAS credible set in the release, when the variant is not in its 95% set, and when the variant sits in several of the study's sets with different values (2.8% of the release's (variant, study) pairs, 1,096,671 of 39,795,615). Manifest `gwas_effects.with_posterior` counts the filled rows.
+
+**Residuals** none
+
+## RM236 — `consequence` and `impact` are planned axes with no slot, and an ACMG engine reads both as primary inputs
+
+**0.8, decided 2026-11-03.** Kept in 0.8 as an input to longevitymap v2's causal and effector-gene confidence labels (RM333), while the rest of RM188's parity work moved to 0.9.
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** (PROPOSAL_0_8_PT2 §5 D2) ·
+**Owner** format (schema + compiler), then enricher · **Motivating case**
+[`probes/CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md) § *the two columns their engine reads that we
+cannot store*
+
+**For longevitymap v2 (2026-11-03):** causal confidence C1 and effector confidence E1 both key on a variant being coding. See [the group](ROADMAP_0_8.md#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
+
+[ROADMAP § Reserved namespace](ROADMAP.md#reserved-namespace) lists `consequence` (the VEP/Sequence
+Ontology term) and `impact` (`HIGH|MODERATE|LOW|MODIFIER`) as *planned future annotation axes*, with
+the rule that they "get a slot and a specific diagnosis only when a release actually commits to
+building them". Nobody had committed, because nobody had a case. **The case is now in hand**:
+ClawBio's `skills/clinical-variant-reporter/acmg_engine.py` is a running 653-line ACMG/AMP engine
+whose per-criterion evidence table prints `consequence=frameshift_variant` for PVS1, `impact=HIGH`
+for PM1, and `consequence=frameshift_variant, SpliceAI=N/A` for BP7 — three of its twelve implemented
+criteria read a column this format cannot store, and a fourth reads the transcript the term was
+called against.
+
+**Get the mechanism right before touching anything.** Neither name is in `RESERVED_NAMES_0_4`, so
+`reject_reserved` never claimed them and there is nothing to move out of a "built half": an author
+writing `consequence` today gets the generic `extra="forbid"` message. Committing means one of two
+things, and choosing is the first deliverable — **build the column**, or **add the reserved slot plus
+a `vocab.RESERVED_NAME_REASONS` entry** so an author hears what the name is held for instead of the
+stray-column message. The second is the honest outcome if the grain question below defers the build.
+
+**The blocker is grain, and it is [RM23](ROADMAP_0_9.md#rm23--computational-predictor-scores-as-a-table)'s blocker
+restated.** A variant has one consequence *per transcript*; `VariantRow` is one row per
+`(variant_key, genotype)`. Three options:
+
+1. **MANE Select only** — one value per variant, with `GeneMetricsRow.mane_select` naming the
+   transcript it was called against. Cheap, lossy, and defensible only if the column's description
+   says so in the field itself (`@field-description-is-a-claim`).
+2. **Most severe across transcripts** — a ranking policy. That is an interpretation, so it is out by
+   the same clause that keeps threshold-picking out of RM23.
+3. **A derived `consequences.csv` sidecar** keyed `(variant_key, transcript)` — half cost under
+   Principle 9, no authoring burden, and it is *the same shape RM23 needs*.
+
+**Recommend (3), and settle RM23's grain in the same pass.** They are one question asked twice, and
+answering it once is the whole saving; splitting them is how two sidecars end up with two different
+answers to "which transcript". Do not build (1) as a stepping stone — a column shipped under a major
+cannot be retyped into a table.
+
+**Related** RM23 (same grain blocker, and the pass that should settle both), RM188.
+
+**Built 2026-11-04 on `0.8` (build/RM333), option (3).** `consequences.csv` → `ConsequenceRow`, keyed `(variant_key, transcript)`, filled by `opentargets enrich` from Open Targets' VEP annotation: `consequence_so_ids` (Sequence Ontology accessions, verbatim; the name `consequence` stays reserved for a term label), `impact` (closed, `VALID_IMPACTS`), `gene_id`, `gene`, `mane_select`, `canonical`. The transcript set is the source's, one canonical transcript per nearby gene, and the field description says so. RM23 inherits the grain and its entry says so.
+
+**Residuals** RM23
+
 ## RM305 — ClinVar-GKM's allele table is an offline, independent witness for where an indel sits, and nothing reads it
 
 **Decided 2026-11-04 by the maintainer: a witness, indels only.** ClinVar-GKM becomes the witness RM292's checks name (no check of its own), and the lane keeps the ~270k `ReferenceLengthExpression` alleles plus other indels, not the full 4.46 M rows.

@@ -38,6 +38,10 @@ def test_layer_and_declared_use_are_closed_vocabularies() -> None:
         # `alphagenome expression`. Fact class, so it does not taint a module; the *licence* class is
         # a separate axis and this source is non-commercial, which `sources.csv` carries on its own.
         "expression_effect",
+        # 0.8 (RM333/RM236) — the Open Targets lane's three tables, written by `opentargets enrich`.
+        "locus_to_gene",
+        "colocalisation",
+        "consequence",
         "annotation",
     } == VALID_SOURCE_LAYERS
     assert {"unstated", "non_commercial", "commercial"} == VALID_DECLARED_USE

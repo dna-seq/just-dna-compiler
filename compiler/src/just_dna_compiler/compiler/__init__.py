@@ -277,8 +277,10 @@ from just_dna_compiler.compiler.manifest import _collect_logo as _collect_logo
 from just_dna_compiler.compiler.manifest import _collect_logs as _collect_logs
 from just_dna_compiler.compiler.manifest import _collect_provenance as _collect_provenance
 from just_dna_compiler.compiler.manifest import _collect_readme as _collect_readme
+from just_dna_compiler.compiler.manifest import _colocalisations_block as _colocalisations_block
 from just_dna_compiler.compiler.manifest import _compiler_version as _compiler_version
 from just_dna_compiler.compiler.manifest import _concordance_warnings as _concordance_warnings
+from just_dna_compiler.compiler.manifest import _consequences_block as _consequences_block
 from just_dna_compiler.compiler.manifest import _expression_effect_signature as _expression_effect_signature
 from just_dna_compiler.compiler.manifest import _expression_effects_block as _expression_effects_block
 from just_dna_compiler.compiler.manifest import _findings_warning as _findings_warning
@@ -292,6 +294,7 @@ from just_dna_compiler.compiler.manifest import _gwas_effect_signature as _gwas_
 from just_dna_compiler.compiler.manifest import _gwas_effects_block as _gwas_effects_block
 from just_dna_compiler.compiler.manifest import _literature_block as _literature_block
 from just_dna_compiler.compiler.manifest import _literature_signature as _literature_signature
+from just_dna_compiler.compiler.manifest import _locus_to_gene_block as _locus_to_gene_block
 from just_dna_compiler.compiler.manifest import _log_left_behind_reason as _log_left_behind_reason
 from just_dna_compiler.compiler.manifest import _module_binding as _module_binding
 from just_dna_compiler.compiler.manifest import _now_iso as _now_iso
