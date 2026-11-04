@@ -32,6 +32,7 @@ from just_dna_enricher.licensing import (
     ALPHAGENOME_ATLAS_TERMS,
     CIVIC_TERMS,
     CLINGEN_TERMS,
+    CLINVAR_GKM_TERMS,
     CLINVAR_TERMS,
     ENSEMBL_TERMS,
     GENCC_TERMS,
@@ -65,6 +66,13 @@ class DerivedProducer:
     #: Why this pass writes a table another pass also writes, stated iff it shares one. Two writers of
     #: one table is the shape that needs a reason on the page rather than a reader inferring one.
     shares_table_because: str = ""
+    #: `(source, lane)`: the cache lane this pass reads whose release reaches its licence row (RM373).
+    #: `source` is the `SourceTerms.source` the table's rows name and `lane` the `CACHE_LANES` member
+    #: that answered them; the pass writes the lane's own `release_label` into that source's
+    #: `SourceRow.dataset` through `licensing.record_table_sources`, withheld when the committed rows
+    #: state two releases. `test_producers.py` walks each module's lane reads against this field,
+    #: so a pass that starts reading a lane names it here or in `LANES_READ_WITHOUT_A_LICENCE_ROW`.
+    release_lanes: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self) -> None:
         if not self.sources:
@@ -89,6 +97,13 @@ DERIVED_PRODUCERS: dict[str, tuple[DerivedProducer, ...]] = {
             # table comes from it: `published_refutation` (an authored `direction` against CIViC's
             # refutations) and `evidence_status_currency` (a recorded CIViC curation status against
             # what CIViC says now).
+            release_lanes=(
+                (ENSEMBL_TERMS.source, "ensembl"),
+                (CLINVAR_TERMS.source, "clinvar"),
+                # The placement witness (RM267): no row is *answered* by it, but every row it was
+                # asked about names it, so its licence row carries its release like a link's.
+                (CLINVAR_GKM_TERMS.source, "clinvar_gkm"),
+            ),
             checks=(
                 "reference_allele",
                 "rsid_currency",
@@ -116,6 +131,7 @@ DERIVED_PRODUCERS: dict[str, tuple[DerivedProducer, ...]] = {
             command="gene-metrics",
             module="gene_metrics",
             sources=(GNOMAD_TERMS.source,),
+            release_lanes=((GNOMAD_TERMS.source, "constraint"),),
             shares_table_because=(
                 "constraint and dosage sensitivity are two different measurements of one gene from two "
                 "authorities, and they share a table because a consumer asks one question of it"
@@ -146,6 +162,7 @@ DERIVED_PRODUCERS: dict[str, tuple[DerivedProducer, ...]] = {
             command="assertions",
             module="assertions",
             sources=(CLINVAR_TERMS.source,),
+            release_lanes=((CLINVAR_TERMS.source, "clinvar"),),
         ),
     ),
     "gwas_effects.csv": (
@@ -164,6 +181,7 @@ DERIVED_PRODUCERS: dict[str, tuple[DerivedProducer, ...]] = {
             command="opentargets enrich",
             module="opentargets",
             sources=(OPENTARGETS_TERMS.source,),
+            release_lanes=((OPENTARGETS_TERMS.source, "opentargets"),),
             shares_table_because=(
                 "fills RM239's fine-mapping posterior on rows the `gwas` pass wrote, keyed on their "
                 "(variant, study), and never adds or removes an association"
@@ -219,6 +237,7 @@ DERIVED_PRODUCERS: dict[str, tuple[DerivedProducer, ...]] = {
             command="opentargets enrich",
             module="opentargets",
             sources=(OPENTARGETS_TERMS.source,),
+            release_lanes=((OPENTARGETS_TERMS.source, "opentargets"),),
         ),
     ),
     "colocalisations.csv": (
@@ -227,6 +246,7 @@ DERIVED_PRODUCERS: dict[str, tuple[DerivedProducer, ...]] = {
             command="opentargets enrich",
             module="opentargets",
             sources=(OPENTARGETS_TERMS.source,),
+            release_lanes=((OPENTARGETS_TERMS.source, "opentargets"),),
         ),
     ),
     "consequences.csv": (
@@ -235,6 +255,7 @@ DERIVED_PRODUCERS: dict[str, tuple[DerivedProducer, ...]] = {
             command="opentargets enrich",
             module="opentargets",
             sources=(OPENTARGETS_TERMS.source,),
+            release_lanes=((OPENTARGETS_TERMS.source, "opentargets"),),
         ),
     ),
     # RM331 (0.8): r² between a study's proxy and its lead, in the study's one superpopulation.
@@ -262,6 +283,20 @@ SOURCES_WITHOUT_TERMS: dict[str, str] = {
     "europepmc": (
         "the same rule one index over: Europe PMC's own terms are not the terms of the articles it "
         "surfaces, and the per-article record is what `literature.csv` carries"
+    ),
+}
+
+#: `(producer module, lane)` pairs where a pass reads a cache lane and writes no licence row for it, each
+#: with the reason (RM373). The complement of `DerivedProducer.release_lanes` in the walk over each
+#: module's lane reads, so a lane a pass starts reading is named in one place or the other.
+LANES_READ_WITHOUT_A_LICENCE_ROW: dict[tuple[str, str], str] = {
+    ("enrich", "civic"): (
+        "read for two checks (`published_refutation`, `evidence_status_currency`) that compare authored "
+        "cells with CIViC and write no row of any table, so no licence row is owed for a derived fact"
+    ),
+    ("enrich", "pubmind"): (
+        "the clinical-significance concordance's second authority (RM134 § B); the concordance tables "
+        "name it per row, and `enrich` records no licence row for it at any layer"
     ),
 }
 

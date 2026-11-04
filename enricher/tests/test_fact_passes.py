@@ -13,13 +13,16 @@ from pathlib import Path
 import httpx
 import polars as pl
 import pytest
+from just_dna_compiler.compiler import load_csv_rows
 from just_dna_enricher import gene_metrics
+from just_dna_enricher.caches import LANES_BY_NAME
 from just_dna_enricher.constraint_build import build_snapshot
 from just_dna_enricher.frequencies import enrich_frequencies, format_faf95
 from just_dna_enricher.gene_metrics import enrich_gene_metrics
 from just_dna_enricher.gnomad import (
     API_CONSTRAINT_DATASET_LABEL,
     CONSTRAINT_DATASET_LABEL,
+    FREQUENCY_DATASET_LABEL,
     GnomadClient,
     GnomadSettings,
 )
@@ -27,9 +30,13 @@ from just_dna_enricher.net import PacingGate
 from just_dna_enricher.vrs import VrsMinter, mint_resolution_rows
 from just_dna_format.frequency import FrequencyRow
 from just_dna_format.gene_metrics import GeneMetricsRow
+from just_dna_format.layout import SOURCES_CSV, preferred_spelling
 from just_dna_format.resolution import ResolutionRow
+from just_dna_format.sources import SourceRow
 from just_dna_format.vrs import derive_vrs_allele_id, split_vrs_ids
 from pydantic import ValidationError
+
+_LICENCE_CSV = preferred_spelling(SOURCES_CSV)
 
 _ASSETS = Path(__file__).resolve().parents[2] / "assets"
 _VARIANTS = (
@@ -758,3 +765,45 @@ def test_polars_can_read_what_the_frequency_pass_writes(tmp_path: Path) -> None:
     with (spec / "frequencies.csv").open(newline="") as handle:
         rows = [FrequencyRow(**{k: (v or None) for k, v in r.items()}) for r in csv.DictReader(handle)]
     assert len(rows) == frame.height
+
+
+# ── RM373: each pass's licence row names the release its table's rows state ────────────────────
+
+
+def _licence_dataset(spec: Path, layer: str) -> str | None:
+    rows, errors, _ = load_csv_rows(spec / _LICENCE_CSV, SourceRow, _LICENCE_CSV)
+    assert errors == []
+    (row,) = [r for r in rows if (r.source, r.layer) == ("gnomad", layer)]
+    return row.dataset
+
+
+def test_rm373_the_frequency_licence_row_names_the_release_its_rows_state(tmp_path: Path) -> None:
+    spec = _spec(tmp_path)
+    result = enrich_frequencies(spec, client=_mock_client(_frequency_handler))
+    assert {r.dataset for r in result.rows} == {FREQUENCY_DATASET_LABEL}
+    assert _licence_dataset(spec, "frequency") == FREQUENCY_DATASET_LABEL
+
+
+def test_rm373_the_constraint_licence_row_is_the_lanes_label_until_a_second_release_joins(
+    tmp_path: Path, constraint_cache: Path
+) -> None:
+    """The snapshot and the API are two releases (`@constraint-two-releases`): a table holding both has no label."""
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    (spec / "variants.csv").write_text("rsid,genotype,state,conclusion,gene\nrs1,A/G,risk,x,BRCA1\n")
+    enrich_gene_metrics(spec, offline=True, constraint_cache=constraint_cache)
+    lane_label = LANES_BY_NAME["constraint"].release_label(constraint_cache)
+    assert lane_label is not None
+    assert _licence_dataset(spec, "gene_metrics") == lane_label
+
+    gene_payload = json.loads((_ASSETS / "gnomad_gene_constraint_payload.json").read_text())
+    (spec / "variants.csv").write_text(
+        "rsid,genotype,state,conclusion,gene\nrs1,A/G,risk,x,BRCA1\nrs2,A/G,risk,x,MYH7\n"
+    )
+    enrich_gene_metrics(
+        spec,
+        constraint_cache=tmp_path / "absent",
+        download=False,
+        client=_mock_client(lambda _r: httpx.Response(200, json=gene_payload)),
+    )
+    assert _licence_dataset(spec, "gene_metrics") is None

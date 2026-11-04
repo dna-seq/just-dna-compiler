@@ -48,9 +48,10 @@ from just_dna_enricher.enrich.subjects import study_proxy_rsids
 from just_dna_enricher.licensing import (
     CLINVAR_TERMS,
     overlaid_input_rows,
-    record_source_terms,
+    record_table_sources,
     require_sources_file,
     sidecar_path,
+    table_datasets,
 )
 from just_dna_enricher.locations import read_release, resolve_clinvar_reference
 
@@ -69,6 +70,8 @@ ASSERTION_GENOME_BUILD = "GRCh38"
 
 #: Label prefix for the `dataset` column, completed with the snapshot's own release date.
 _DATASET_PREFIX = "clinvar"
+#: What a row's `dataset` says when the snapshot states no release (`snapshot_dataset`).
+_UNKNOWN_DATASET = f"{_DATASET_PREFIX}_unknown"
 
 #: The column order, derived from the model rather than hand-kept (`SOURCES_FIELDNAMES`'s rule).
 #: `ClinicalAssertionRow` has no compiler-stamped fields, so every declared field is a real column.
@@ -152,7 +155,16 @@ def snapshot_dataset(reference: Path | None) -> str:
     """
     release = read_release(reference) if reference is not None else None
     stated = str((release.clinvar_file_date if release is not None else None) or "").strip()
-    return f"{_DATASET_PREFIX}_{stated or 'unknown'}"
+    return f"{_DATASET_PREFIX}_{stated}" if stated else _UNKNOWN_DATASET
+
+
+def _row_release(row: ClinicalAssertionRow) -> str | None:
+    """The release a row states for its licence row's label: `None` for `snapshot_dataset`'s unknown spelling.
+
+    `clinvar_unknown` is how a row says the snapshot stated no release, so it is not a release a
+    licence row may name, and a table holding one has no label (RM373).
+    """
+    return None if row.dataset == _UNKNOWN_DATASET else row.dataset
 
 
 def enrich_clinical_assertions(
@@ -403,8 +415,10 @@ def enrich_clinical_assertions(
         _write_assertions_csv(
             out,
             assertions_path,
-            before_commit=lambda: record_source_terms(
-                {row.source for row in out if row.source},
+            # Each source's licence row labelled by the release every committed row it answered
+            # states, or withheld when they differ (RM373, `licensing.record_table_sources`).
+            before_commit=lambda: record_table_sources(
+                table_datasets(out, release=_row_release),
                 "clinical_assertion",
                 spec_dir,
                 error=ClinicalAssertionError,

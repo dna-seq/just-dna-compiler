@@ -59,9 +59,10 @@ from just_dna_enricher.gene_metrics import GeneMetricsEnrichmentError, module_ge
 from just_dna_enricher.licensing import (
     CLINGEN_TERMS,
     GENCC_TERMS,
-    record_source_terms,
+    record_table_sources,
     require_sources_file,
     sidecar_path,
+    table_datasets,
 )
 from just_dna_enricher.net import release_dataset
 
@@ -573,8 +574,10 @@ def enrich_gene_validity(
         _write_gene_validity_csv(
             out,
             output_path,
-            before_commit=lambda: record_source_terms(
-                {row.source for row in out if row.source},
+            # Each source's licence row labelled by the release every committed row it answered
+            # states, or withheld when they differ (RM373, `licensing.record_table_sources`).
+            before_commit=lambda: record_table_sources(
+                table_datasets(out, release=lambda row: row.dataset),
                 "gene_validity",
                 spec_dir,
                 error=GeneValidityError,

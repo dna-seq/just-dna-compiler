@@ -7,6 +7,8 @@ No network and no 190 MB reference: the path-2 (DuckDB) side uses a tiny synthet
 side consumes a `resolution.csv` — hand-authored or reverse-emitted.
 """
 
+import csv
+import shutil
 from pathlib import Path
 
 import polars as pl
@@ -390,3 +392,46 @@ def test_no_table_no_lecture(tmp_path: Path) -> None:
     result = compile_module(spec, tmp_path / "out", resolve_with_ensembl=False)
     assert result.success
     assert not [w for w in result.warnings if "master switch" in w]
+
+
+# ── RM373: `source_release` is provenance — it moves no identity and does not survive reverse ──
+
+
+def test_source_release_moves_no_identity_and_reverse_writes_none(tmp_path: Path) -> None:
+    """The release that answered a row is said beside the fact (`authority`'s treatment, RM33).
+
+    A table carrying it compiles to the artifact the same table without it does, because no parquet
+    carries a resolution row's provenance; `reverse` therefore has none to write, and a reversed table
+    names no link, so it names no release. The round trip still reproduces both identities.
+    """
+    example = Path(__file__).resolve().parents[2] / "reference_examples" / "hfe_hemochromatosis"
+    plain, stamped = tmp_path / "plain", tmp_path / "stamped"
+    shutil.copytree(example, plain)
+    shutil.copytree(example, stamped)
+    with (plain / "resolution.csv").open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    assert rows, "the example must carry a resolution table for this to test anything"
+    with (stamped / "resolution.csv").open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=[*rows[0], "source_release"])
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({**row, "source_release": f"{row['source']}_release_a"})
+
+    first = compile_module(plain, tmp_path / "o_plain")
+    lap1 = compile_module(stamped, tmp_path / "o1")
+    assert first.success and lap1.success, (first.errors, lap1.errors)
+    assert lap1.manifest.artifact.digest == first.manifest.artifact.digest
+    assert lap1.manifest.content_signature == first.manifest.content_signature
+    assert lap1.manifest.compilation.resolution_signature == first.manifest.compilation.resolution_signature
+
+    reverse_module(tmp_path / "o1", tmp_path / "reversed")
+    with (tmp_path / "reversed" / "resolution.csv").open(newline="", encoding="utf-8") as handle:
+        reversed_rows = [
+            ResolutionRow(**{k: v or None for k, v in r.items()}) for r in csv.DictReader(handle)
+        ]
+    assert reversed_rows and {r.source_release for r in reversed_rows} == {None}
+    lap2 = compile_module(tmp_path / "reversed", tmp_path / "o2")
+    assert lap2.success, lap2.errors
+    assert lap2.manifest.artifact.digest == lap1.manifest.artifact.digest
+    assert lap2.manifest.content_signature == lap1.manifest.content_signature
+    assert lap2.manifest.compilation.resolution_signature == lap1.manifest.compilation.resolution_signature

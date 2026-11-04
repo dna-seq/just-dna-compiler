@@ -44,7 +44,12 @@ from just_dna_enricher.gnomad import (
     normalize_constraint_flags,
 )
 from just_dna_enricher.identifiers import _id_bearing_tables, authored_rows
-from just_dna_enricher.licensing import record_source_terms, require_sources_file, sidecar_path
+from just_dna_enricher.licensing import (
+    record_table_sources,
+    require_sources_file,
+    sidecar_path,
+    table_datasets,
+)
 from just_dna_enricher.locations import resolve_constraint_reference
 
 logger = logging.getLogger(__name__)
@@ -455,8 +460,10 @@ def enrich_gene_metrics(
         _write_gene_metrics_csv(
             out,
             output_path,
-            before_commit=lambda: record_source_terms(
-                {row.source for row in out if row.source},
+            # Each source's licence row labelled by the release every committed row it answered
+            # states, or withheld when they differ (RM373, `licensing.record_table_sources`).
+            before_commit=lambda: record_table_sources(
+                table_datasets(out, release=lambda row: row.dataset),
                 "gene_metrics",
                 spec_dir,
                 error=GeneMetricsEnrichmentError,

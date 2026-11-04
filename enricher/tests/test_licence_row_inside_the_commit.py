@@ -29,13 +29,14 @@ from just_dna_enricher import licensing
 from just_dna_format.layout import atomic_writer
 
 _SRC = Path(licensing.__file__).parent
-_RECORDERS = {"merge_sources_file", "record_source_terms"}
+_RECORDERS = {"merge_sources_file", "record_source_terms", "record_table_sources"}
 _PREFLIGHT = "require_sources_file"
 
 #: Callers that record a licence row and write **no data table of their own** in that function, so
 #: there is nothing for the row to be committed with. Each names why. Equality below, not a subset.
 _NO_TABLE_OF_ITS_OWN = {
     ("licensing.py", "record_source_terms"): "the recorder itself",
+    ("licensing.py", "record_table_sources"): "the recorder every derived pass calls (RM373)",
     ("identifiers.py", "_check_pgs"): "records the PGS Catalog's terms for a CHECK; it writes no table",
     ("clinpgx.py", "enrich_clinpgx"): (
         "records the snapshot's terms for annotation rows that land through the compiler's draft "
@@ -53,8 +54,8 @@ _IS_THE_CALLBACK = {
     ("civic_citations.py", "_commit_licence"): "this pass's own `before_commit` closure",
     (
         "opentargets.py",
-        "_licence",
-    ): "builds the `before_commit` closure each Open Targets table's `_write` takes",
+        "_commit_licence",
+    ): "the `before_commit` closure `_licence` builds for each Open Targets table's `_write`",
 }
 
 #: Where a drafted row reaches disk. Both take `before_commit` since RM232.

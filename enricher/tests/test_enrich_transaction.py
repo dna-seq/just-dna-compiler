@@ -762,6 +762,7 @@ def test_the_written_columns_are_derived_from_the_model(tmp_path: Path) -> None:
         placement_verdict="same_event",
         left_aligned=True,
         fetched_at="2026-09-09T00:00:00Z",
+        source_release="ensembl-variation-2026_07_13-vep116.0",
     )
     # Every field set, so a column the renderer skipped would show as a blank cell on reload.
     assert all(getattr(full, name) is not None for name in ResolutionRow.model_fields)

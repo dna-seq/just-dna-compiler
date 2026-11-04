@@ -56,9 +56,10 @@ from just_dna_enricher.licensing import (
     ALPHAGENOME_ATLAS_TERMS,
     check_declared_use,
     effective_declared_use,
-    merge_sources_file,
+    record_table_sources,
     require_sources_file,
     sidecar_path,
+    table_datasets,
 )
 from just_dna_enricher.locations import env_value, missing_credential_reason
 
@@ -539,10 +540,13 @@ def enrich_expression(
         _write_csv(
             out,
             output_path,
-            before_commit=lambda: merge_sources_file(
-                [ALPHAGENOME_ATLAS_TERMS.row(SOURCE_LAYER, declared_use=declared_use, dataset=release)],
+            # Labelled by the release every committed row states, not by this run's alone (RM373).
+            before_commit=lambda: record_table_sources(
+                table_datasets(out, release=lambda row: row.dataset),
+                SOURCE_LAYER,
                 spec_dir,
                 error=ExpressionError,
+                declared_use=declared_use,
             ),
         )
     result.rows = out

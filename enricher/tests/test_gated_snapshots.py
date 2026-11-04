@@ -608,6 +608,9 @@ def test_every_live_client_reads_the_floor_rather_than_a_frozen_constant(
         "currency.ClinVarReleaseClient._header_bytes",
         "ensembl.EnsemblResolver._graphql_rsid",
         "ensembl.EnsemblResolver._rest_rsid",
+        # RM373. The data release REST answered from (`/info/data`), asked once per run; the outer
+        # (`data_release`) translates every failure into an unknown release, never an error.
+        "ensembl.EnsemblResolver._rest_info_data",
         "eutils.EutilsClient._request",
         "gnomad.GnomadClient._request",
         "grch37.Grch37Client._get",

@@ -71,9 +71,10 @@ from just_dna_enricher.enrich import (
 )
 from just_dna_enricher.licensing import (
     GWAS_CATALOG_TERMS,
-    merge_sources_file,
+    record_table_sources,
     require_sources_file,
     sidecar_path,
+    table_datasets,
 )
 from just_dna_enricher.net import (
     EndpointRetired,
@@ -775,10 +776,13 @@ def enrich_gwas(
             _write_gwas_csv(
                 out,
                 output_path,
-                before_commit=lambda: merge_sources_file(
-                    [GWAS_CATALOG_TERMS.row("gwas_effect", declared_use=declared_use, dataset=release)],
+                # Labelled by the release every committed row states, not by this run's alone (RM373).
+                before_commit=lambda: record_table_sources(
+                    table_datasets(out, release=lambda row: row.dataset),
+                    "gwas_effect",
                     spec_dir,
                     error=GwasError,
+                    declared_use=declared_use,
                 ),
             )
     finally:

@@ -48,6 +48,10 @@ from just_dna_format.vrs import split_vrs_ids, validate_caid, validate_vrs_id_li
 # `placement_witness`/`placement_verdict` (RM267) and `left_aligned` (RM270) are out as the enricher's
 # verdicts about a placement or a spelling — a check's answer recorded on the row, not the fact it was
 # checking.
+# `source_release` (RM373) is out as provenance beside the claim
+# (`@provenance-beside-a-claim-is-outside-content-identity`): it says which release of the link's source
+# answered, so two releases agreeing on a placement hash equal, and a release that moves a fact moves
+# the fact columns, which is where the signature already sees it.
 RESOLUTION_FACT_FIELDS: tuple[str, ...] = (
     "variant_key",
     "rsid",
@@ -273,6 +277,24 @@ class ResolutionRow(PairedFields):
         json_schema_extra=since("0.5.0"),
         default=None,
         description="ISO-8601 UTC timestamp, second resolution (e.g. '2026-08-03T02:03:23Z'). Canonicalized on load; records when this row was last written by a pass, not when the source published anything",
+    )
+    # ── which release answered (0.8, RM373; EXCLUDED from resolution_signature) ──
+    # `source` names the link and `authority` the licensed source behind it; neither names the release,
+    # so an old-release answer and a new-release one read alike to every tier (the 0.8 Ensembl
+    # migration probe). Per row, because merge-not-clobber makes a table answered by two releases the
+    # normal case, and one cell for the table would be false for every module with old rows.
+    source_release: str | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description=(
+            "The release of the snapshot or service that answered this row, as it states its release: "
+            "an Ensembl snapshot's `manifest.json` `release_id` (`ensembl-variation-2026_07_13-vep116.0`) "
+            "or `release.json` `dataset`, a ClinVar snapshot's `clinvar_<date>`, live Ensembl REST's "
+            "data release (`ensembl_116`, from `/info/data`), gnomAD's dataset id. Written only by the "
+            "run that answered the row, and never back-filled onto a row it did not answer. Empty means "
+            "not recorded (a source that states no release, a row written before 0.8, an authored or "
+            "reversed row), never the current release."
+        ),
     )
 
     @field_validator("rsid")

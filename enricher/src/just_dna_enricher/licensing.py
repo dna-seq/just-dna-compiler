@@ -27,9 +27,10 @@ import csv
 import hashlib
 import logging
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
 from just_dna_compiler.compiler import load_csv_rows, load_overlay
 from just_dna_format.layout import (
@@ -43,6 +44,11 @@ from just_dna_format.normalize import now_utc_iso
 from just_dna_format.overrides import VALID_OVERRIDE_TABLES, apply_overrides
 from just_dna_format.sources import SourceRow
 from just_dna_format.vocab import VALID_DECLARED_USE, check_vocab
+
+
+class _HasSource(Protocol):
+    source: str | None
+
 
 logger = logging.getLogger(__name__)
 
@@ -1029,6 +1035,81 @@ def record_source_terms(
         spec_dir,
         error=error,
     )
+
+
+def table_release(labels: Iterable[str | None]) -> str | None:
+    """The one release every row of a table states, or `None` when that is not one release (RM373).
+
+    `None` for rows naming two releases, for any row naming none, and for no rows at all: one cell
+    cannot name two releases, and a row whose release was never recorded may be any release, so the
+    table's label is unknown and unknown is withheld (`withdraw_stale_dataset`'s rule, one table over).
+    """
+    stated = {(label or "").strip() for label in labels}
+    if len(stated) != 1:
+        return None
+    (only,) = stated
+    return only or None
+
+
+def table_datasets[R: _HasSource](
+    rows: Iterable[R], *, release: Callable[[R], str | None]
+) -> dict[str, list[str | None]]:
+    """`source -> the release each row naming it states`, for a derived table whose rows carry `source`.
+
+    What `record_table_sources` reads, from a fact table that records each row's release in a column of
+    its own (`dataset` on `frequencies.csv`, `gene_metrics.csv`, `gene_validity.csv` and
+    `clinical_assertions.csv`). A row with no `source` names no licensed source and contributes nothing.
+    """
+    releases: dict[str, list[str | None]] = {}
+    for row in rows:
+        if row.source:
+            releases.setdefault(row.source, []).append(release(row))
+    return releases
+
+
+def record_table_sources(
+    releases: Mapping[str, Iterable[str | None]],
+    layer: str,
+    spec_dir: Path,
+    *,
+    error: type[Exception],
+    declared_use: str = "unstated",
+) -> list[SourceRow]:
+    """Record the terms of every source a derived table's rows came from, `dataset` labelled by the table.
+
+    **The one route a derived pass writes its licence rows through (RM373).** `releases` maps each
+    source to the release every committed row it answered states (`None` for a row that states none),
+    so the label describes the table being committed, never only this run's answers: under
+    merge-not-clobber a table answered by two releases is the normal case, and labelling it with the
+    run's snapshot would be the false label the 0.8 Ensembl migration probe measured.
+
+    `dataset` is then **stamped** on the `(source, layer)` row, re-labelled or withheld, rather than
+    left to `merge_sources_file`, which never clobbers and so never fills a row an earlier run wrote
+    blank. That is `stamp_draft_digest`'s precedent and not `withdraw_stale_dataset`'s: a drafted table
+    holds rows from releases nobody recorded, so its label can only be kept or withdrawn, while a derived
+    table's rows each name their release, so recomputing the label from them is always the honest answer.
+    The row is the pass's own (a derived layer is machine-written), so no curator's cell is overwritten.
+    """
+    labels = {source: table_release(rows) for source, rows in releases.items()}
+    recorded = record_source_terms(
+        labels,
+        layer,
+        spec_dir,
+        error=error,
+        declared_use=declared_use,
+        datasets={source: label for source, label in labels.items() if label},
+    )
+    stale = [
+        r
+        for r in recorded
+        if r.layer == layer and r.source in labels and (r.dataset or None) != labels[r.source]
+    ]
+    if not stale:
+        return recorded
+    for row in stale:
+        row.dataset = labels[row.source]
+    write_sources_csv(recorded, sources_path(spec_dir, error=error))
+    return recorded
 
 
 def check_declared_use(terms: SourceTerms, declared_use: str) -> str | None:

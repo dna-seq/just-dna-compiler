@@ -2518,6 +2518,23 @@ does not carry a coordinate, and it is the wrong one — RM43 (0.6) is the right
   judged. A stamped verdict rather than an authored `coordinate_normalization` key: an author's claim of
   a convention is one no offline tier can check. A `false` row's indel joins a caller's spelling only
   through `vrs_id`. Reverse cannot emit it, for `authority`'s reason above.
+- **`source_release` names the release that answered the row (0.8, RM373).** Provenance beside the
+  claim, so outside the fact set (`@provenance-beside-a-claim-is-outside-content-identity`): two releases
+  agreeing on a placement hash equal, and a release that moves a fact moves a fact column, which the
+  signature already sees. `source` names the link and `authority` the licensed source, and neither named
+  the release, so an old-release answer and a new-release one read alike to every tier (the 0.8 Ensembl
+  migration probe). The value is the release as the answering source states it: an Ensembl snapshot's
+  `manifest.json` `release_id` (`ensembl-variation-2026_07_13-vep116.0`) or `release.json` `dataset`, a
+  ClinVar snapshot's `clinvar_<date>`, live REST's data release from `/info/data` (`ensembl_116`, never
+  `/info/rest`, which is the REST software's version), gnomAD's dataset id. Written only by the run
+  that answered the row: a row a later run carries forward keeps it, a row written before 0.8 keeps
+  none, and nothing back-fills one (`@sidecar-authoritative`); `enrich --rederive` re-answers every row
+  and stamps each. **Empty is "not recorded", never "current"**: the old Ensembl repo states no release,
+  GraphQL states none, an authored, `manual` or `reversed` row has no source that answered, and an
+  answer seeded from an interrupted run's journal never had its release written down. Per row rather
+  than per table because merge-not-clobber makes a table two releases answered the normal case. Reverse
+  cannot emit it, for `authority`'s reason above. The licence rows `enrich` writes take their `dataset`
+  from it (ENRICHER.md § *Which release answered*).
 - **`RESOLUTION_FACT_FIELDS`** names the fact columns; `integrity.resolution_signature` hashes only
   those (provenance deliberately excluded), so a human-filled and an Ensembl-filled table with identical
   facts hash equal.

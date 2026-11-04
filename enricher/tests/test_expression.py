@@ -514,7 +514,8 @@ def test_a_licence_merge_that_fails_mid_commit_leaves_no_data_table(tmp_path: Pa
     def refuse(*args, **kwargs):
         raise ExpressionError("existing licensing.csv is invalid: (simulated, mid-commit)")
 
-    monkeypatch.setattr(expression_module, "merge_sources_file", refuse)
+    # The licence write goes through `record_table_sources` since RM373; it is what the commit calls.
+    monkeypatch.setattr(expression_module, "record_table_sources", refuse)
     with pytest.raises(ExpressionError, match="mid-commit"):
         _run(spec, _Stub((_score(26090000),)))
     assert not (spec / SIDECAR_NAME).exists()

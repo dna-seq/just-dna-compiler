@@ -44,7 +44,12 @@ from just_dna_format.spelling import gene_key
 from just_dna_format.vocab import DOSAGE_SENSITIVITY_BY_CODE
 
 from just_dna_enricher.gene_metrics import _write_gene_metrics_csv, module_genes
-from just_dna_enricher.licensing import CLINGEN_TERMS, merge_sources_file, require_sources_file, sidecar_path
+from just_dna_enricher.licensing import (
+    CLINGEN_TERMS,
+    record_table_sources,
+    require_sources_file,
+    sidecar_path,
+)
 from just_dna_enricher.net import release_dataset
 
 logger = logging.getLogger(__name__)
@@ -302,7 +307,19 @@ def enrich_dosage_sensitivity(
             out,
             output_path,
             before_commit=(
-                (lambda: merge_sources_file([source_row], spec_dir, error=ClinGenError)) if covered else None
+                # Labelled by the release every committed ClinGen row states (RM373); the table's gnomAD
+                # rows are another pass's and name another source.
+                (
+                    lambda: record_table_sources(
+                        {CLINGEN_SOURCE: [row.dataset for row in out if row.source == CLINGEN_SOURCE]},
+                        source_row.layer,
+                        spec_dir,
+                        error=ClinGenError,
+                        declared_use=declared_use,
+                    )
+                )
+                if covered
+                else None
             ),
         )
     return ClinGenResult(

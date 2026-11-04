@@ -1234,6 +1234,47 @@ misses the row, though nobody is wrong (S120).
 The pass is not a `verification.json` check: it compares the module's spelling with a convention, not a
 claim with a witness, and the reference-allele check already attests the bases it reads.
 
+### Which release answered — per row, and what the table may say (0.8, RM373)
+
+`source` names the link and `authority` the licensed source; until 0.8 nothing named the **release**, so
+a row the old Ensembl repo answered and one the split repo answered read alike to every tier, and RM372's
+`rsid_coordinate_agreement.release` stated the run's snapshot over a table every row of which an older
+release had answered. Three pieces now, one rule each (`enrich/releases.py`):
+
+- **Every row this run answers carries `source_release`** ([SCHEMAS.md](SCHEMAS.md)): the release of
+  the link that answered it, read the way the lane states it (`CacheLane.release_label`): the Ensembl
+  snapshot's `manifest.json` `release_id` or `release.json` `dataset`, the ClinVar snapshot's
+  `dataset`, live REST's data release from `/info/data` (`ensembl_116`, asked once per run and only when
+  REST answered), gnomAD's dataset id. GraphQL states none, and an answer seeded from an interrupted
+  run's journal records none, because that run never wrote its release down. A row this run did not
+  answer keeps what it had, and a row written before 0.8 keeps none: merge-not-clobber never back-fills
+  (`@sidecar-authoritative`). `--rederive` re-answers every row and stamps each; a subject it cannot ask
+  about keeps its rows, release included (`@rederive-never-shortens`).
+- **The licence rows are labelled by the committed table, not the run.** `record_table_sources` writes
+  each source's `dataset` as the one release every committed row it answered states, and **withholds**
+  it (blank) when the rows state two, or any row states none. It stamps the cell rather than leaving it
+  to `merge_sources_file`, which never clobbers and so never filled a row an earlier run wrote blank. A
+  placement witness has no column of its own: a row this run wrote speaks for the witness's release
+  this run, and a carried row speaks through the label recorded before this run, which was computed over
+  every row the table then held — so a run with nothing to do does not withdraw a label still true.
+- **The run's own record withholds its label over a mixed table.** `rsid_coordinate_agreement.release`
+  is the snapshot's label only when every Ensembl-answered row the table holds carries it; otherwise it
+  is null and `detail` counts why: `release withheld: N of M Ensembl-answered row(s) in resolution.csv
+  were not answered by this run's snapshot (…): K answered by another release, J recording none`.
+
+The same helper writes every derived pass's licence rows (`frequencies`, `gene-metrics`, `dosage`,
+`gene-validity`, `assertions`, `gwas`, `ld-pairs`, `alphagenome expression`, `opentargets enrich`), from
+each table's own per-row `dataset`, or, for Open Targets' tables, which carry none, from this run's
+release on the rows it answered and the recorded label on the rows it kept. `DerivedProducer.release_lanes`
+names the lane each pass reads whose release reaches its licence row; `test_producers.py` asserts the
+lanes each module's code reads equal that field plus `LANES_READ_WITHOUT_A_LICENCE_ROW`, and that no
+derived pass writes a licence row any other way.
+
+**What it costs.** A filled `clinvar`/`clinvar_gkm` licence row is a release `--verify-datasets` can
+compare, and both have a currency probe, so a strict online `enrich` now refuses when ClinVar has
+published past the snapshot that answered the module's rows; `--rederive` against a current snapshot, or
+`--no-verify-datasets`, is the remedy. `ensembl` has no probe and reads `unchecked`.
+
 ### Reverse (position→rsid) back-fill is allele-aware
 
 A coordinate-only variant (rsid `None`, coordinate authored) can have an rsid back-filled from the
@@ -4697,7 +4738,9 @@ rightly refused, and `draft --gene CYP2C9` now writes 17 coordinate-only haploty
 ### Every pass records what it consulted — and a link is not a source (RM33)
 
 `licensing.record_source_terms(names, layer, path)` is the one place that turns "this pass consulted
-these sources" into `sources.csv` rows. Three passes were missing it entirely, which is why
+these sources" into `sources.csv` rows; since 0.8 a derived pass reaches it through
+`record_table_sources`, which labels each row's `dataset` by the committed table (§ *Which release
+answered*, RM373). Three passes were missing it entirely, which is why
 `VALID_SOURCE_LAYERS` had members nothing ever wrote:
 
 | Pass | Layer | Sources recorded |

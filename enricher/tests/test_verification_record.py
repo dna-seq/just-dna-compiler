@@ -315,7 +315,7 @@ def _records_for(ref_check, build, **over):
         "rsid_subjects": 0,
         "stale_rsids": [],
         "pairs": PairCheck(not_checked="nothing_to_check"),
-        "ensembl_ref": None,
+        "pair_release": (None, None),
         "placement": PlacementCheck(not_checked="nothing_to_check"),
         "currency": None,
         "refutation_findings": [],

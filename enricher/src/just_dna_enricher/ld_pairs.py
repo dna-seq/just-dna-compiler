@@ -54,13 +54,14 @@ from just_dna_format.spec import StudyRow
 from just_dna_format.vocab import RSID_PATTERN
 from tenacity import retry, wait_exponential_jitter
 
-from just_dna_enricher.ensembl import DEFAULT_REST_ENDPOINT
+from just_dna_enricher.ensembl import DEFAULT_REST_ENDPOINT, ENSEMBL_RELEASE_PREFIX, ensembl_data_release
 from just_dna_enricher.licensing import (
     ENSEMBL_TERMS,
     overlaid_input_rows,
-    record_source_terms,
+    record_table_sources,
     require_sources_file,
     sidecar_path,
+    table_datasets,
 )
 from just_dna_enricher.net import (
     EndpointRetired,
@@ -77,8 +78,9 @@ LD_PAIRS_CSV = "ld_pairs.csv"
 LD_LAYER = "ld_pair"
 #: The reference panel, as Ensembl names it. The superpopulation code is the study's `ancestry` member.
 LD_POPULATION_PREFIX = "1000GENOMES:phase_3:"
-#: The release label's prefix; the number is read from `/info/data` on the run that asks.
-LD_DATASET_PREFIX = "ensembl_"
+#: The release label's prefix; the number is read from `/info/data` on the run that asks. The spelling
+#: `resolution.csv`'s `source_release` gives a live answer too (RM373), so it is shared, not restated.
+LD_DATASET_PREFIX = ENSEMBL_RELEASE_PREFIX
 #: Ensembl asks for at most 15 requests per second; one in ten keeps a margin for a shared IP.
 LD_MIN_INTERVAL = 0.1
 #: The probe saw a 37-second answer; a timeout shorter than that turns a slow answer into an outage.
@@ -202,10 +204,10 @@ class LdClient:
     def release(self) -> int:
         """The Ensembl release answering, from `/info/data` (`{"releases": [116]}`)."""
         payload = _json(self._request("info/data"), "info/data")
-        releases = payload.get("releases") if isinstance(payload, dict) else None
-        if not isinstance(releases, list) or len(releases) != 1 or not isinstance(releases[0], int):
+        release = ensembl_data_release(payload)
+        if release is None:
             raise LdError(f"Ensembl's /info/data states no single release: {payload!r}")
-        return releases[0]
+        return release
 
 
 def _json(response: httpx.Response, what: str) -> object:
@@ -513,13 +515,13 @@ def enrich_ld_pairs(
             before_commit=(
                 # Inside the table's commit (`@licence-row-inside-the-commit`), and only when Ensembl answered
                 # this run: a run that wrote withholds alone consulted no source (`@write-the-sourcerow`).
+                # Labelled by the release every committed pair states, not by this run's alone (RM373).
                 (
-                    lambda: record_source_terms(
-                        {ENSEMBL_TERMS.source},
+                    lambda: record_table_sources(
+                        table_datasets(result.rows, release=lambda row: row.dataset),
                         LD_LAYER,
                         spec_dir,
                         error=LdError,
-                        datasets={ENSEMBL_TERMS.source: result.dataset or ""},
                     )
                 )
                 if answered

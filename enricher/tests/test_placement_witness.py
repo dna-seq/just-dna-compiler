@@ -25,6 +25,7 @@ import polars as pl
 import pytest
 from ga4gh.vrs.dataproxy import _DataProxy
 from just_dna_compiler.compiler import compile_module, load_csv_rows
+from just_dna_enricher.caches import LANES_BY_NAME
 from just_dna_enricher.clinvar_gkm import ALLELE_FILE, VARIATION_FILE, WITNESS_PARQUET, parse_manifest
 from just_dna_enricher.clinvar_gkm_build import build_snapshot
 from just_dna_enricher.enrich import EnrichmentError, enrich
@@ -37,6 +38,8 @@ from just_dna_enricher.vrs import VrsMinter
 from just_dna_format.integrity import resolution_signature
 from just_dna_format.layout import VERIFICATION_JSON
 from just_dna_format.resolution import ResolutionRow
+from just_dna_format.snapshot import SnapshotRelease, write_release
+from just_dna_format.sources import SourceRow
 from just_dna_format.vrs import refget_accession
 
 SLICE = Path(__file__).resolve().parents[2] / "assets" / "clinvar_gkm_slice"
@@ -753,3 +756,37 @@ def test_rm270_a_respelling_on_rederive_is_not_reported_as_the_source_moving(
         ("rs72613567", True),
         ("rs4988235", False),
     }
+
+
+# ── RM373: a witness's licence row names the witness's release, and a plain re-run keeps it ────
+
+
+def test_rm373_the_witness_licence_rows_carry_each_lanes_release_and_a_rerun_keeps_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_ambient_caches: Path
+) -> None:
+    """A witness has no column of its own, so a carried row speaks through the label recorded before.
+
+    Without that, a second run with nothing to do would carry every row, know no witness release for
+    any of them, and withdraw a label that is still true: the licence row would flip on a no-op run.
+    """
+    clinvar = _clinvar_snapshot(tmp_path)
+    write_release(clinvar, SnapshotRelease(dataset="clinvar_20260627"))
+    gkm = _gkm_snapshot(tmp_path)
+    spec = _spec(tmp_path)
+
+    def datasets() -> dict[str, str | None]:
+        rows, errors, _ = load_csv_rows(sources_path(spec, error=EnrichmentError), SourceRow, "sources")
+        assert errors == []
+        return {r.source: r.dataset for r in rows if r.layer == "resolution"}
+
+    _enrich(spec, tmp_path, monkeypatch, clinvar_cache=clinvar, clinvar_gkm_cache=gkm)
+    expected = {
+        "clinvar": LANES_BY_NAME["clinvar"].release_label(clinvar),
+        "clinvar_gkm": LANES_BY_NAME["clinvar_gkm"].release_label(gkm),
+        # The fixture's Ensembl snapshot is the old repo's shape: it states no release.
+        "ensembl": None,
+    }
+    assert expected["clinvar"] == "clinvar_20260627" and expected["clinvar_gkm"]
+    assert datasets() == expected
+    _enrich(spec, tmp_path, monkeypatch, clinvar_cache=clinvar, clinvar_gkm_cache=gkm)
+    assert datasets() == expected

@@ -41,6 +41,21 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM373: every resolution row names the release that answered it, and no label speaks for a table two releases answered (0.8, uncut)
+
+- **`resolution.csv` gains `source_release`**: the release of the link that answered the row, as the lane
+  states it (`ensembl-variation-2026_07_13-vep116.0` from the split repo's manifest, `clinvar_<date>`, live
+  REST's `ensembl_116` from `/info/data`, gnomAD's dataset id). Written only by the run that answered the row,
+  never back-filled; `--rederive` stamps every row. Outside `resolution_signature`; `reverse` writes none.
+- **Every derived pass labels its licence row by the committed table** (`licensing.record_table_sources`):
+  the one release its rows state, withdrawn when they state two or any states none. `enrich` and four fact
+  passes left `dataset` blank; five more kept their first run's label forever.
+- **`rsid_coordinate_agreement.release` is withheld over a mixed table**, with the count of rows another
+  release, or no recorded release, answered. The probe's case (an all-old table re-enriched against the new
+  snapshot without deleting it) now reads null and says why.
+- **A ClinVar licence row now names a release `--verify-datasets` compares**, so a strict online `enrich`
+  refuses once ClinVar has published past it; re-derive, or `--no-verify-datasets`.
+
 ## 2026-11-04 — RM372: the enricher reads the Ensembl snapshot from its new repo, and never serves two releases as one (0.8, uncut)
 
 - **`ensure_snapshot` pulls `just-dna-seq/ensembl_variations_split`** (dbSNP 157, VEP 116, one row per ALT,
