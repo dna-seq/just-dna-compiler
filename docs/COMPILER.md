@@ -1093,7 +1093,10 @@ else "best_effort"`:
 
 **Digest parity** between paths 1 and 2 is the load-bearing guarantee: given the same facts, both emit
 byte-identical `weights.parquet` (hence `artifact.digest`). The one order-sensitive spot — a one-to-many
-expansion — is pinned by sorting on `(locus_index, chrom, start, ref)`.
+expansion — is pinned by sorting on `(locus_index, chrom, start, ref)`. **Since 0.8 it holds when the
+table records no `vrs_id`**: path 1 carries the ids `resolution.csv` records onto the parquets (RM270),
+and path 2 has no table to read them from, so with ids recorded the two `weights.parquet` differ in
+`vrs_id`/`vrs_spec` and nowhere else (`test_offline_enrich_then_compile_matches_duckdb_digest`).
 
 ## Resolution
 
