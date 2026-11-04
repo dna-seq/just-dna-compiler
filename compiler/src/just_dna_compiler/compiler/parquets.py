@@ -282,6 +282,10 @@ def _build_studies(studies: list[StudyRow], module_name: str) -> pl.DataFrame:
                 "phenotype_class": s.phenotype_class,
                 # RM328: the superpopulation code(s) the estimate was measured in, in authored order.
                 "ancestry": s.ancestry,
+                # RM329: the age band the estimate covers, and whose age it is.
+                "age_min": s.age_min,
+                "age_max": s.age_max,
+                "age_of": s.age_of,
             }
         )
     schema = {
@@ -316,5 +320,8 @@ def _build_studies(studies: list[StudyRow], module_name: str) -> pl.DataFrame:
         "n_cases": pl.Int64,
         "phenotype_class": pl.Utf8,
         "ancestry": pl.List(pl.Utf8),
+        "age_min": pl.Float64,
+        "age_max": pl.Float64,
+        "age_of": pl.Utf8,
     }
     return pl.DataFrame(records, schema=schema)

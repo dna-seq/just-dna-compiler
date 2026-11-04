@@ -695,6 +695,11 @@ VALID_SAMPLE_UNITS: frozenset[str] = frozenset({"individuals", "lives"})
 # free-text `population` beside the code.
 VALID_SUPERPOPULATIONS: frozenset[str] = frozenset({"AFR", "AMR", "EAS", "EUR", "SAS"})
 
+# Whose age a study row's band (`age_min`/`age_max`) is (RM329): the participant's own, or a parent's,
+# which is how a parental-lifespan study bands its estimates (Timmers 2019's 40–60, 60–80, 80+). Closed.
+# The event the age is taken at was cut on 2026-11-04 (no v2 row bands on anything but death).
+VALID_AGE_OF: frozenset[str] = frozenset({"participant", "parent"})
+
 RECOMMENDED_PHENOTYPE_CLASSES: frozenset[str] = frozenset(
     {
         "EXTREME_SURVIVAL_CC",

@@ -184,6 +184,8 @@ The ancestry banner (R-ANC-3) is just-dna-lite's half.
 
 ## RM329 — an age-stratified estimate has no age band, so age of action is reconstructed from `statistical_test` prose
 
+**Built on 0.8, 2026-11-04: the band.** `StudyRow.age_min`, `age_max` and `age_of` (`VALID_AGE_OF`) reach `studies.parquet` and `reverse`. Still open: the duplicate-citation narrowing by band, later in the same `StudyRow` batch.
+
 **Cut 2026-11-04 by the maintainer, after the final measuring run** (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §3): `age_event` (0 v2 rows with an event other than death). The band is `age_min`, `age_max` and whose age (`age_of`); names still get the P5 audit. Rows that differ only by band narrow the duplicate-citation check, RM140's pattern, extended to bands.
 
 **Severity** low · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format · **Motivating case** longevitymap v2 requirements §4.2 (age of action), Timmers 2019 age bands · *for* longevitymap v2 · *related* RM323, RM140

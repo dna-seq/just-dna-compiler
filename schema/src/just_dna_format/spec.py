@@ -19,6 +19,7 @@ from pydantic import (
     ConfigDict,
     Field,
     PrivateAttr,
+    ValidationInfo,
     field_validator,
     model_validator,
 )
@@ -54,6 +55,7 @@ from just_dna_format.vocab import (
     ALLELE_PATTERN,  # noqa: F401 — re-exported for backward compat (genotype grammar moved to base)
     RECOMMENDED_EFFECT_MEASURES,
     RECOMMENDED_PHENOTYPE_CLASSES,
+    VALID_AGE_OF,
     VALID_CLIN_SIG,  # noqa: F401 — re-exported for backward compat (see note below)
     VALID_DIRECTIONS,  # noqa: F401 — re-exported for backward compat
     VALID_SAMPLE_UNITS,
@@ -1474,6 +1476,28 @@ class StudyRow(CitationPair, AuthoredModel):
             "free text for the cohort. Absent means unstated, never 'any'."
         ),
     )
+    # RM329: the age band an age-stratified estimate covers, and whose age the band is. Either bound may
+    # be empty (an open band: Timmers 2019's top band is 80+), and no refusal ties the three together.
+    age_min: float | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        ge=0,
+        description="Lower bound of the age band this estimate covers, in years. Empty: open below.",
+    )
+    age_max: float | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        ge=0,
+        description="Upper bound of the age band this estimate covers, in years. Empty: open above.",
+    )
+    age_of: str | None = Field(
+        default=None,
+        json_schema_extra={**vocabulary("age_of", VALID_AGE_OF), **since("0.8.0")},
+        description=(
+            "Whose age the band is: `participant`, or `parent` for a parental-lifespan study banded "
+            "by the parent's age at death."
+        ),
+    )
 
     @property
     def variant_key(self) -> str | None:
@@ -1554,6 +1578,17 @@ class StudyRow(CitationPair, AuthoredModel):
     @classmethod
     def _validate_sample_unit(cls, v: str | None) -> str | None:
         return check_vocab(v, VALID_SAMPLE_UNITS, "sample_unit")
+
+    @field_validator("age_min", "age_max")
+    @classmethod
+    def _validate_age(cls, v: float | None, info: ValidationInfo) -> float | None:
+        validate_finite(v, info.field_name or "age")
+        return v
+
+    @field_validator("age_of")
+    @classmethod
+    def _validate_age_of(cls, v: str | None) -> str | None:
+        return check_vocab(v, VALID_AGE_OF, "age_of")
 
     @field_validator("ancestry", mode="before")
     @classmethod

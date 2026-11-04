@@ -244,6 +244,10 @@ superpopulation codes and nothing else, listing each one a trans-ethnic study po
 name (an Ashkenazi study is `EUR` there) goes in `population`. An unstated `ancestry` is unknown, which
 is why a locus whose evidence is partly unstated is never reported as European-only.
 
+**An age-stratified estimate is one row per band.** `age_min`/`age_max` bound the band in years, an
+empty bound leaves it open (Timmers 2019's top parental band is 80 and over), and `age_of` says whose
+age it is: a parental-lifespan study bands by the parent's age at death, not the participant's.
+
 **The symptom of confusing it with `literature.csv` is a dropped row.** `literature.csv` is
 machine-produced and keeps every article it found; the compiler **discards an uncited literature row**
 when nothing references it. `studies.csv` is the authored side and is never dropped. If a citation

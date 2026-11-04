@@ -115,12 +115,25 @@ def _fill_ancestry(i: int, row: dict[str, str]) -> None:
     row["ancestry"] = ("EUR", "EAS|EUR", "AFR", "", "EUR|AMR|SAS")[i % 5]
 
 
+def _fill_age_band(i: int, row: dict[str, str]) -> None:
+    """Timmers 2019's three parental bands (the last open above), a participant ceiling, and nothing."""
+    band = (
+        ("40", "60", "parent"),
+        ("60", "80", "parent"),
+        ("80", "", "parent"),
+        ("", "", ""),
+        ("", "62.5", "participant"),
+    )
+    row["age_min"], row["age_max"], row["age_of"] = band[i % len(band)]
+
+
 #: Each column group this batch adds, with a fill that gives it distinct stated values and empty
 #: cells, and how a parquet cell reads back as the CSV cell it came from.
 _GROUPS: dict[str, tuple[tuple[str, ...], Fill]] = {
     "RM325": (("sample_size", "sample_unit", "n_cases"), _fill_sample_size),
     "RM326": (("phenotype_class",), _fill_phenotype_class),
     "RM328": (("ancestry",), _fill_ancestry),
+    "RM329": (("age_min", "age_max", "age_of"), _fill_age_band),
 }
 
 
@@ -205,7 +218,7 @@ def test_the_columns_are_authored_content_and_an_unwritten_one_hashes_as_before(
 
 
 #: Columns whose parquet type is a number, so the comparison above reads them as one.
-_NUMERIC: frozenset[str] = frozenset({"sample_size", "n_cases"})
+_NUMERIC: frozenset[str] = frozenset({"sample_size", "n_cases", "age_min", "age_max"})
 
 
 # ── RM325: sample size, its unit, and the case count ──────────────────────────────────────────────
@@ -321,3 +334,26 @@ def test_ancestry_is_a_list_column_in_studies_parquet(tmp_path: Path) -> None:
     result = compile_module(_spec(tmp_path, "filled", columns, fill), tmp_path / "out")
     assert result.success, result.errors
     assert pl.read_parquet_schema(tmp_path / "out" / "studies.parquet")["ancestry"] == pl.List(pl.Utf8)
+
+
+# ── RM329: the age band an estimate covers, and whose age it is ─────────────────────────────────
+
+
+def test_age_of_is_closed_over_participant_and_parent() -> None:
+    marker = field_vocabularies(StudyRow)["age_of"]
+    assert marker["closed"] is True and set(marker["options"]) == {"participant", "parent"}
+    with pytest.raises(ValidationError, match="age_of"):
+        _study(age_of="child")
+
+
+def test_no_refusal_ties_the_band_together() -> None:
+    """Either bound may be empty (an open band), and `age_of` stands with or without bounds."""
+    assert _study(age_min=80, age_of="parent").age_max is None
+    assert _study(age_max=62.5).age_of is None
+    assert _study(age_of="participant").age_min is None
+
+
+def test_an_age_is_a_finite_non_negative_number_of_years() -> None:
+    for cells in ({"age_min": -1}, {"age_max": float("inf")}, {"age_min": float("nan")}):
+        with pytest.raises(ValidationError):
+            _study(**cells)

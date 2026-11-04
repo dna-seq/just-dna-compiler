@@ -254,6 +254,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
   | `RECOMMENDED_AUTHOR_KINDS` | 7 (open) |  |
   | `RECOMMENDED_PHENOTYPE_CLASSES` | 12 (open) | which outcome a `StudyRow` measured — longevitymap v2's twelve classes; a token outside them warns (`phenotype_class_unrecognized`) and is kept (RM326) |
   | `RECOMMENDED_EFFECT_MEASURES` | 7 (open) | the units a `StudyRow` effect size is usually in — **open**, since a real study may report another |
+  | `VALID_AGE_OF` | 2 (closed) | whose age a `StudyRow` age band is — the participant's, or a parent's (RM329) |
   | `VALID_ACTIONABILITY` | 7 (closed) | what a consumer's return-of-results policy may act on. Shipped as `ACTIONABILITY_SEED`, which survives as a working alias — the `_SEED` name and a comment beside it both read as open while the validator refuses a non-member (RM225) |
   | `VALID_AUTHORED_POSITION` | 5 (closed) | what an `overrides.csv` row claims about the author's own standing on the value |
   | `VALID_AUTHORITY_CALL_STATUS` | 3 (closed) | whether an authority was asked, answered, or not consulted |
@@ -566,6 +567,9 @@ row whose `n_cases` exceeds its `sample_size` is refused. **`phenotype_class?`**
 multi-valued and closed over `VALID_SUPERPOPULATIONS` (`AFR`, `AMR`, `EAS`, `EUR`, `SAS`); a
 trans-ethnic study lists its codes, never `multi`, and `population` stays free text beside it.
 `PgsRow.training_ancestry`'s set is now derived from the same constant plus `multi`.
+**`age_min?`/`age_max?`/`age_of?`** (RM329) — the age band an age-stratified estimate covers, in years
+(finite, ≥ 0; either bound may be empty for an open band), and whose age it is (`VALID_AGE_OF`:
+`participant`, `parent`). No refusal ties the three together.
 
 **The pmid/doi pair (0.8, RM336) — one rule on every table that cites.** `pmid` never holds a DOI: a
 cell whose only identifier is a DOI is refused, naming the DOI, the way RM50 refuses a PMC id, because

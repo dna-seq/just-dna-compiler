@@ -41,6 +41,13 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM329: a study row states the age band its estimate covers, and whose age it is (0.8, uncut)
+
+**format, compiler** — `studies.csv` gains `age_min` and `age_max` (years, finite and non-negative;
+either may be empty for an open band) and `age_of` (closed: `participant`, `parent`). No refusal ties
+the three together. They reach `studies.parquet` and `reverse` writes them back. `age_event` was cut by
+the maintainer before the build.
+
 ## 2026-11-04 — RM328: a study row names the ancestry it was measured in (0.8, uncut)
 
 **format, compiler** — `studies.csv` gains `ancestry`, optional, multi-valued and closed over the 1000

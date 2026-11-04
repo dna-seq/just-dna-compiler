@@ -1026,6 +1026,9 @@ def _write_studies_csv(studies_df: pl.DataFrame, output_path: Path) -> None:
         "n_cases",
         "phenotype_class",
         "ancestry",
+        "age_min",
+        "age_max",
+        "age_of",
     ]
     with open(output_path, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -1064,5 +1067,8 @@ def _write_studies_csv(studies_df: pl.DataFrame, output_path: Path) -> None:
                     "n_cases": _scalar_cell(row.get("n_cases")),
                     "phenotype_class": _scalar_cell(row.get("phenotype_class")),
                     "ancestry": _list_cell(row.get("ancestry")),
+                    "age_min": _scalar_cell(row.get("age_min")),
+                    "age_max": _scalar_cell(row.get("age_max")),
+                    "age_of": _scalar_cell(row.get("age_of")),
                 }
             )
