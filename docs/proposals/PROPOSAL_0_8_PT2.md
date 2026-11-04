@@ -113,9 +113,14 @@ alternative is beside it. Names still get the P5 audit in §5, and the audit can
    six of v2's eight HLA alleles come from one.
 6. **A per-trait row needs an allele-bearing member** (the audit's gap 2): every member of a row with
    `direction` must fix an allele, meaning a `variants` member with a `genotype` condition, a `haplotypes`
-   or `diplotypes` member naming a haplotype, or an `allele_function` member. A member without one (a bare
-   `variant_key`, a tag selector) on such a row is refused, naming it. The four loci v2 marks "allele not
-   determined" honestly get no per-trait row.
+   or `diplotypes` member naming a haplotype, or an `allele_function` member. **A bare `variant_key`
+   member also fixes an allele when every `variants.csv` row of that locus states the same
+   `effect_allele`**, and `direction` is then about that allele. This is the audit's second run (§6): v2
+   is uniform on 228 of 228 loci, and the rule halves the per-trait rows (about 134 against 268 with
+   genotype keys), the reduction rule's direction. Any other member on such a row (a locus whose rows
+   disagree on `effect_allele` or state none, a tag selector) is refused, naming it. The four loci v2 marks
+   "allele not determined" honestly get no per-trait row. The member tables are `variants`, `haplotypes`,
+   `diplotypes` and `allele_function`; `studies` is excluded by the maintainer's bound.
 7. **`tier` is open text, and `module_spec.yaml` gains `tier_scale`** (one free-text name, the `weighting:`
    pattern), copied into the manifest and listed in `REVERSE_RECONSTRUCTED` so `reverse` writes it back
    (else the recompile refuses every `tier` cell, a P7 break). A `tier` cell in a module with no
@@ -376,7 +381,9 @@ The eight hand-curated causal/effector inputs go in `overrides.csv` as correctio
 C or E label.
 
 **D3. RM331's computed LD pair.** After A5. For each study row with `proxy_rsid`, the enricher asks the LD
-reference (§4 question 4) for r² between proxy and lead in each of the study's `ancestry` codes, and writes a
+reference (§4 question 4) for r² between proxy and lead in each of the study's `ancestry` codes (a
+mixed-ancestry study gets one row per code, never a blended panel; the audit's second run counts 3 such
+links), and writes a
 machine-written `ld_pairs.csv` keyed `(proxy_rsid, variant_key, ancestry)` with r², the reference and its
 release. A study with no ancestry gets no row and is counted (unknown is not zero). First step: one hand-run
 call, recorded.
