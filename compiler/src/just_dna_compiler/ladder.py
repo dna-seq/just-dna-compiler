@@ -14,8 +14,14 @@ which is why the ladder read as one thing and behaved as three:
   refusal's words quotes a sentence `best_effort` never emits.
 
 All of them build a `LadderFinding` now, and the question *which checks escalate under `strict`* is
-answered by walking one constructor: **seven codes**, asserted as an equality against the corpus's
-`@ladder` tag in `schema/tests/test_feature_corpus.py` rather than counted in a sentence here.
+answered by walking one constructor, asserted as an equality against the corpus's `@ladder` tag in
+`schema/tests/test_feature_corpus.py` rather than counted in a sentence here.
+
+**One finding, one channel (RM359).** Under `strict` a ladder finding is its refusal and nothing
+else; it is never also published as its warning. `route` is total over that rule, so the defect it
+guards against lives at the callers: a pre-flight run in the other mode, or a result object that
+carries both halves of a pair, seeds the warning channel with a finding the same run then refuses on.
+`compiler/tests/test_one_channel_under_strict.py` asserts it over every walked code on a real compile.
 
 The third is the general case and the first two are its degenerate form, which is the whole content of
 this module: **a ladder finding carries what `best_effort` says and, optionally, a different thing

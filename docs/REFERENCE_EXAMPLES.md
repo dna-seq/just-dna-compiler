@@ -30,7 +30,7 @@ are resolved into a settled shape, becomes *how to do it now, with these bricks*
 
 **The 0.4 relational/quantitative tables in §2, §4–§8 are schema-validated** by
 `just_dna_format.{binning,pgx,pgs}` (see `schema/tests/test_v04.py`) **and materialized to parquet by
-the compiler** (all nine table kinds, with lossless idempotent round-trip — shipped in 0.4, see
+the compiler** (every table kind, with lossless idempotent round-trip — shipped in 0.4, see
 [CHANGELOG.md](CHANGELOG.md)). Every CSV row below round-trips through its Pydantic model.
 
 **Conventions the sample settled:**

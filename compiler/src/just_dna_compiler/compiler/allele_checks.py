@@ -655,8 +655,8 @@ def _symbolic_allele_messages(findings: list[_SymbolicFinding]) -> list[str]:
     in the CPIC provider.
 
     The wording is identical in `validate_spec` and `compile_module` on purpose. `compile_module` runs
-    `validate_spec` first, in `best_effort` whatever its own mode, so a check living in both places
-    emits its sentence twice and the compile side de-duplicates **on the message**.
+    `validate_spec` first, in its own mode since RM359, so under `best_effort` a check living in both
+    places emits its sentence twice and the compile side de-duplicates **on the message**.
     """
     messages: list[str] = []
     grouped: dict[tuple[str, str], list[_SymbolicFinding]] = {}

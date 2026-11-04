@@ -816,9 +816,10 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   **authored** rows. It is a mode ladder, so `validate --strict` blessed modules `compile --strict`
   refused. The rule is unchanged and now applies to three checks: pure computation over injected or
   authored bytes with no `output_dir` belongs in `validate_spec` too. Two mechanics to copy when moving
-  one: `compile_module` runs `validate_spec` in **best_effort** whatever its own mode, so the compile
-  side must still re-run the check to reach the real severity, and its warnings need de-duplicating on
-  the message (`_check_contig_ploidy` is the existing model).
+  one: `compile_module` runs `validate_spec` first (in **best_effort** whatever its own mode until
+  RM359; in the compile's own mode since, see `@one-finding-one-channel`), so a check on both sides
+  emits its warning twice under `best_effort` and needs de-duplicating on the message
+  (`_check_contig_ploidy` is the existing model).
 
 - `@which-loop-calls-the-checker` — **"Keyed kind ⇒ dupe-checked" was never the dividing line — which
   LOOP calls the checker was.** `_validate_table_kind` holds the duplicate-row rule and `validate_spec`
@@ -959,6 +960,26 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `manifest.compilation.warnings` — measured at 15 warnings, 14 distinct. When a check moves to
   `validate_spec` for parity, look at what still calls it on the compile side in the same commit, and
   assert `len(warnings) == len(set(warnings))` rather than grepping for the one phrase.
+
+- `@one-finding-one-channel` — **Under `strict` an escalated finding is an error and never also a warning
+  (RM359, 0.8).** `compile_module` ran its pre-flight in `best_effort` whatever its own mode, so the
+  pre-flight seeded `warnings` with every mode-ladder sentence, and the strict re-run then refused with
+  the same finding: `study_effect_allele_not_at_locus` arrived on both channels, and so did every other
+  ladder code, measured over all of them. The resolution ladders reached the same place by a second
+  route: `ResolutionOutcome.warnings` carried each ladder's warning in both modes, and its docstring
+  called the refusal "published beside it", while `mode_ladder.feature` said "refuses instead" — two of
+  our own texts disagreeing, and the code followed the wrong one. The repair is the pre-flight in the
+  compile's mode (a strict compile now refuses with `validate --strict`'s accumulated errors for every
+  check the pre-flight asks; the two resolution ladders reading resolved rows stay compile-only, and
+  `legacy_reference` keeps the pre-flight from judging coverage the deprecated `ensembl_cache` will
+  supply, which the first cut of this repair refused on) plus `ResolutionOutcome.channels(strict=)`, which goes through `route`. **The rejected repair** was
+  stripping escalated sentences out of `warnings` at each refusal: it leaves a later ladder, one the
+  compile returned before re-running, in `warnings` under `strict`, which is one channel and the
+  wrong one. Not in this rule, deliberately: the strict-only *aggregates* (`strict compile: N
+  variant(s) …`, `build_disagreement_error`) are different findings from the per-subject warnings that
+  fire in both modes, so they are added rather than promoted. The enricher escalates by raising, so no
+  result object carries both halves there. Asserted over the walked ladder roster by
+  `compiler/tests/test_one_channel_under_strict.py`.
 
 - `@clinsig-never-escalates` — **The ClinVar `clin_sig` cross-check is the one check where `strict` does NOT escalate** — it warns in
   both modes, deliberately, because failing would make the format arbitrate a clinical dispute. The

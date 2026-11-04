@@ -19,7 +19,7 @@
 # separate thing `strict` says instead — so the third kind is the general case and the first two are it
 # with `refusal=None`. `route` is the one place the mode picks a channel and a sentence, and
 # `schema/tests/test_feature_corpus.py` walks the construction sites, so `@ladder` is an equality over
-# **seven** codes rather than a judgement written four times.
+# the walked codes rather than a judgement written four times.
 #
 # What is deliberately still two things is what the compile DOES with a refusal: resolution returns a
 # failed result immediately under a `strict resolution:` prefix, because a module whose identities
@@ -61,6 +61,19 @@ Feature: The mode ladder and validate/compile parity
     # `reverse_module` writes `ref`/`alts`, and a one-to-many rsid reverses into N rows each carrying
     # its own locus's alleles beside the ONE authored genotype, so exactly one can match. Escalating
     # unconditionally would break Principle 7's fixed point with a lint.
+
+  # source: compiler/src/just_dna_compiler/compiler/pipeline.py
+  # anchor: compile_module
+  @parity
+  Scenario: an escalated finding is on one channel, never two
+    Given a module whose only finding is any mode-ladder finding
+    When it is compiled in strict mode
+    Then the finding is in the errors and the compile refuses
+    And neither its refusal nor its best_effort sentence is among the warnings
+    # RM359. The compile used to run its pre-flight in best_effort whatever its own mode, so the
+    # pre-flight seeded the warnings with every ladder sentence and the strict re-run then refused with
+    # the same finding: a consumer counting findings counted one twice. The pre-flight now runs in the
+    # compile's mode, and a resolution ladder publishes its refusal instead of its warning.
 
   # source: compiler/src/just_dna_compiler/compiler/pipeline.py
   # anchor: compile_module

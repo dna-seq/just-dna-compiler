@@ -111,7 +111,7 @@ looks the name up, not the package.
 
 - **`load_citing_rows(spec_dir) -> dict[str, list]`** and **`table_citations(rows_by_csv) ->
   list[str]`** — every table kind beside a spec whose rows **cite** (a model declaring a `pmid`:
-  the four binning kinds since RM47, `pharm_variants.csv` since RM132), and the digit-only PMIDs they
+  the binning kinds since RM47, `pharm_variants.csv` since RM132), and the digit-only PMIDs they
   name, de-duplicated in first-occurrence order. Public for the RM40/RM41 reason: the enricher's
   literature pass has to check these pointers alongside `studies.csv`, and its alternatives were a
   private import or a second roster that goes stale the next time a model declares the column. The set
@@ -183,6 +183,13 @@ detectable without any reference. This is where most real authoring bugs are cau
 | `sources.csv` orphans / undeclared sources | every source a fact table cites has terms recorded, and vice versa | warning |
 | star allele used but not defined | `allele_function`/`diplotypes` name it; `haplotypes` defines it — matched on `(gene, allele)`, a `haplotypes` row with no `gene` defining its name for every gene, genes compared case-blind, and an HLA gene that `haplotypes` defines nothing for exempt, since its alleles are typed (RM351) | warning |
 | **phase-ambiguous diplotypes** (0.5) | two *different* haplotype pairs of one gene whose unphased genotype is identical while their conclusions differ; each haplotype's defining variants are that gene's own (RM351) | warning |
+
+**"warning / error in `strict`" names one channel per mode, never both (RM359).** Under `strict` such a
+finding is in `errors` and is not also in `warnings`: `compile_module` runs its pre-flight in its own
+mode, and a resolution finding whose refusal is a longer sentence publishes the refusal *instead of*
+the warning. Before RM359 a `strict` compile carried both, so a consumer counting findings counted one
+twice. `compiler/tests/test_one_channel_under_strict.py` asserts the rule over every mode-ladder code
+on a real compile.
 
 Four of these deserve their reasoning rather than just their row.
 
@@ -372,7 +379,7 @@ variant — `rsid`, or a bare `chrom` — and a `repeat_alleles.csv` row is keye
 nothing could point at it.
 
 **0.6 closed it with a second citation site: `MeasureBinRow.pmid`**, one optional column on the binning
-base reaching all four kinds, plus a relaxation of `StudyRow`'s subject requirement so the paper behind
+base reaching every binning kind, plus a relaxation of `StudyRow`'s subject requirement so the paper behind
 a threshold can be described without inventing a variant for it. The rule for reading the pair is *the
 bin row cites, the citation table describes* — the pointer sits on the row that states the number, and
 everything about the paper stays in `studies.csv`. `heteroplasmy.csv` had a second route from the
@@ -661,7 +668,7 @@ honestly unverified to apparently verified. Every looked-up fact is therefore re
 
 **A column name is not a scope, and the reason given now says which table it applies to (RM123).**
 `REDUNDANCY_BEARING` maps a bare column to the checker that reads it, and `clin_sig` is a column on
-`variants.csv`, on all four binning kinds and on `diplotypes.csv` while `verify_clin_sig` takes
+`variants.csv`, on every binning kind and on `diplotypes.csv` while `verify_clin_sig` takes
 `list[VariantRow]`. So the vacuous-check sentence printed on six (column, table) pairs whose checker
 cannot see the table — right advice, false reason, and a green run on one of those cells looked like
 agreement with an authority that never saw it. `REDUNDANCY_BEARING_TABLES` narrows the *explanation*
@@ -711,7 +718,7 @@ A registry's `published.json` is not within an edit of either and stays tolerate
 property the widening had to preserve.
 
 **Where the machine-written sidecars may live, and what they may be called (RM49/RM51, 0.6).**
-`resolution.csv`, the six fact tables and `verification.json` are resolved through
+`resolution.csv`, the fact tables and `verification.json` are resolved through
 `just_dna_format.layout`, which accepts each of them at the spec root **or** under a `derived/`
 subdirectory, and accepts the licence table under either `sources.csv` (deprecated, warn-only, removed
 at 1.0) or `licensing.csv`. Four rules:
@@ -1363,7 +1370,7 @@ the `genome_build` it declares — one authored file contradicting another, whic
 consistency. Every other recorded finding is the module disagreeing with an **outside archive**, where
 the archive is the stale side often enough that failing a build would have the format arbitrate someone
 else's dispute; that is the same reasoning that keeps the ClinVar cross-check a warning under `strict`,
-and it now has a parametrized test over four checks. `reference_allele` is the one worth naming: it
+and it now has a parametrized test over those checks. `reference_allele` is the one worth naming: it
 produces this diagnosis's own input and still does not refuse alone, because a ref mismatch has three
 causes and only one of them is an assembly.
 
@@ -1409,8 +1416,8 @@ Three behaviours to know:
 `--no-resolve` silences the check the way it silences the fill: resolution is off by request, and
 `resolution_disabled` already says so once with its row count.
 
-**One finding, though two passes produce it.** `compile_module` runs the pre-flight in `best_effort`
-whatever its own mode, so both reach this finding for the same subject; the compile de-duplicates on
+**One finding, though two passes produce it.** `compile_module` runs the pre-flight, which emits the
+per-subject warning in both modes, so both reach this finding for the same subject; the compile de-duplicates on
 the message (the `_check_contig_ploidy` idiom). That is safe here for the reason the rule requires —
 neither message embeds a count resolution could change, so two passes over one subject produce the
 identical sentence rather than two differing by a number.
@@ -1693,7 +1700,7 @@ plus each authored table that is not a kind (`overrides.csv` since 0.7, RM124; `
 ```
 weights  annotations  studies                                    ← the SNP core
 activity_phenotype  copynumbers  repeat_alleles  heteroplasmy
-haplotypes  allele_function  diplotypes  pgs  pharm_variants      ← the nine table kinds
+haplotypes  allele_function  diplotypes  pgs  pharm_variants      ← the table kinds
 frequencies  gene_metrics  literature  gene_validity
 clinical_assertions  gwas_effects  expression_effects
 clin_sig_concordance  clin_sig_authority_calls                     ← the derived-fact sidecars (the last two: RM130, 0.7)
@@ -1711,8 +1718,8 @@ late it sits in the tuple. What the position does govern is the order a consumer
 listing, not the hash; what keeps an already-published digest still is that the module has no such
 file at all.
 
-Twenty-nine names. `LEAD_PARQUETS` is the ten carrying a module's own annotation rows — `weights` plus the
-nine table kinds — which is the publisher's *is this a module* rule and what discovery probes.
+Twenty-nine names. `LEAD_PARQUETS` is the ones carrying a module's own annotation rows — `weights` plus one
+per table kind — which is the publisher's *is this a module* rule and what discovery probes.
 
 **The per-parquet column lists are deliberately not reproduced here.** They are derivable from the
 models, and a hand-kept column list is precisely how `SOURCES_FIELDNAMES` lost a column
@@ -1721,7 +1728,7 @@ including which columns the compiler stamps rather than reads, is in
 [audit/COMPILER_FROM_CODE.md](audit/COMPILER_FROM_CODE.md) § 5 — dated evidence, not a maintained list.
 
 - **`ARTIFACT_PARQUETS`** (feed `artifact.digest`; `_OUTPUT_FILES` until 0.6): `weights`/`annotations`/
-  `studies.parquet` + the 9 table-kind parquets + `frequencies.parquet` / `gene_metrics.parquet` /
+  `studies.parquet` + one parquet per table kind + `frequencies.parquet` / `gene_metrics.parquet` /
   `literature.parquet` / `gene_validity.parquet` / `clinical_assertions.parquet` /
   `gwas_effects.parquet` / `expression_effects.parquet` / `clin_sig_concordance.parquet` / `clin_sig_authority_calls.parquet` /
   `sources.parquet` / `overrides.parquet` when present — the diagram above is the tuple, and this
@@ -1892,11 +1899,11 @@ subject may be mistyped* line, put to an author whose judgement had just been co
 nothing about who was right about the biology: the authorities agreed, and the overlay row is now
 unnecessary.
 
-**Which tables can say it is a field on each table, decided once for all nine (RM290).**
+**Which tables can say it is a field on each table, decided once for every overridable table (RM290).**
 `OverlayTarget.vindication` is `sole`, `withheld` or `none`, with its reason beside it, and
 `overrides.VINDICATING_OVERLAY_TABLES` is read off it. Only the concordance record is `sole`.
 `resolution.csv` is `withheld`, because a re-derivation renumbers `locus_index` and the author's locus
-can return under another index. The seven merged tables are `none`: their keys are stable, so a source
+can return under another index. The merged tables are `none`: their keys are stable, so a source
 adopting the author's value leaves the row in place and the update keeps matching. Absence there is
 never agreement. Every other table keeps the generic finding it had.
 
@@ -2715,5 +2722,5 @@ a patch: the objection is that filling a blank asserts what no curator wrote, no
   format packages do not depend on Eliot.
 
 Tests: `compiler/tests/test_v03*.py` (validator, genotype widening, warnings/INFO, materialization,
-round-trip/idempotency); `test_v04_compile.py` (the nine table kinds); `test_resolution_table.py` (the
+round-trip/idempotency); `test_v04_compile.py` (the table kinds); `test_resolution_table.py` (the
 0.5 resolution-table path, digest parity, offline round-trip, strict/best-effort, the deprecation).

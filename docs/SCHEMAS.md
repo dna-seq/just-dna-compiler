@@ -49,8 +49,8 @@ maintained one, and where the two disagree this one is what a consumer may rely 
 | `locus_genes` | `LocusToGeneRow`, `ColocalisationRow` (the 0.8 Open Targets study-locus tables, RM333) | `base`, `normalize`, `vocab` |
 | `consequences` | `ConsequenceRow` (the 0.8 per-transcript consequence table, RM236) | `base`, `normalize`, `vocab` |
 | `spec` | Authored DSL — `ModuleSpecConfig`, `VariantRow`, `StudyRow` | `base`, `derive`, `identity`, `manifest`, `vocab` |
-| `binning` | Measure→phenotype binning rows (4 table kinds) | `base`, `spec`, `vocab` |
-| `pgx` | PGx star-allele rows (4 table kinds) | `base`, `spec`, `vocab` |
+| `binning` | Measure→phenotype binning rows (the binning table kinds) | `base`, `spec`, `vocab` |
+| `pgx` | PGx star-allele rows (the PGx table kinds) | `base`, `spec`, `vocab` |
 | `pgs` | `PgsRow` (PGS-Catalog-ID manifest) | `base`, `vocab` |
 | `overrides` | `OverrideRow` + `OVERRIDABLE_TABLES` + `apply_overrides` — the 0.7 authored overlay over the covered derived tables (RM124) | `base`, `normalize`, `vocab`, and the covered derived row models |
 | `meta` | `MetaRow` + the member grammar (`parse_members`, `normalize_members`, `member_rank`) — the 0.8 meta-table (RM28/RM323/RM324) | `base`, `pgx`, `spec`, `vocab` |
@@ -85,7 +85,7 @@ second citation site and one rule for reading it: the bin row cites, the citatio
 compiler and the enricher cannot come to read different halves of it.
 
 - **`MeasureBinRow.pmid` is a pointer on the row that states the threshold** — one optional column on
-  the binning base, so it reaches all four kinds. Free-form like `StudyRow.pmid` and validated by the
+  the binning base, so it reaches every binning kind. Free-form like `StudyRow.pmid` and validated by the
   same grammar.
 - **The citation table's subject requirement is relaxed**: a `studies.csv` row may now exist without
   naming a variant, so the paper behind a threshold can be described honestly instead of an author
@@ -236,8 +236,9 @@ reason its `source` column is inside its fact set while everywhere else `source`
   because the vocabularies live in the leaves that own them (`vocab`, `spec`, `binning`, `pgx`,
   `pgs`, `manifest`) and a central registry would either need `vocab` to import `pgx` — the cycle
   `base`'s dependency note exists to avoid — or be a second hand-kept list, which is the thing being
-  fixed. `authoring_reference()["vocabularies"]` is generated from these markers — 21 entries today,
-  against the hand-kept dict it replaced, which had already drifted twice.
+  fixed. `authoring_reference()["vocabularies"]` is generated from these markers, so its size is whatever
+  the models declare and no number here states it. It replaced a hand-kept dict that had already
+  drifted twice.
   `closed=False` marks a *recommended* set, and that flag is load-bearing: `actionability` was
   published as an open seed while `VariantRow` rejected non-members, so a tool offering a novel value
   got a rejection it had been told to expect. Keyed by **vocabulary name**, not field name, which is
@@ -714,7 +715,7 @@ them indiscriminately. That is why RM47 put `pmid` on the **bin row** rather tha
 | table | its claims are per | cites through |
 |---|---|---|
 | `variants.csv` | `(variant_key, genotype)` | `studies.csv` — full provenance: `pmid`, `provenance_quote`, `curator`, population, effect size |
-| the four binning kinds | the bin's own key + `[measure_min, measure_max]` | `MeasureBinRow.pmid` on the row (RM47), with `literature.csv` describing the article |
+| the binning kinds | the bin's own key + `[measure_min, measure_max]` | `MeasureBinRow.pmid` on the row (RM47), with `literature.csv` describing the article |
 | `pharm_variants.csv` | `(variant_key, drug, genotype, phenotype_category, annotation_id)` | `PharmVariantRow.pmid` on the row (RM132, 0.7), with `literature.csv` describing the article |
 
 `evidence_level` is **not** the provenance handle and never was: it points at somebody else's
@@ -745,7 +746,7 @@ compile rule is per-group but one-sided, the hint is table-level. Write a sentin
 
 **`measure_tiling` — how the axis is divided, which is not what is measured (RM55, 0.6).** A closed
 two-member vocabulary (`VALID_MEASURE_TILINGS` = `{quantised, continuous}`), optional, on the binning
-base so it reaches all four kinds. `quantised` means the axis is a grid: two bins may not share an
+base so it reaches every binning kind. `quantised` means the axis is a grid: two bins may not share an
 endpoint, and a hole narrower than one step is not a hole. `continuous` means it is dense: adjacent
 bins share an endpoint and the higher one owns it, and any positive hole is reported. It is a separate
 column rather than a sixth `measure_kind` because kind answers *what is measured* and tiling answers
@@ -1438,7 +1439,7 @@ Position-level **matching** helpers (studies, the reverse pos→rsid lookup, hap
 
 ## The derived-fact tables (0.5–0.7, **provisional**)
 
-Eight siblings of `resolution.csv` at eight different grains — `frequency.FrequencyRow` →
+Siblings of `resolution.csv`, each at its own grain (the complete roster is the derived-fact sidecar list above; these are the ones this paragraph describes) — `frequency.FrequencyRow` →
 `frequencies.csv` per **allele**, `gene_metrics.GeneMetricsRow` → `gene_metrics.csv` per **gene**,
 `literature.LiteratureRow` → `literature.csv` per **citation**, `gene_validity.GeneValidityRow` →
 `gene_validity.csv` per **(gene, disease, inheritance mode, submitter)** (0.6, RM24),
@@ -1469,7 +1470,7 @@ archive published, and an author does not get to rewrite that. Its parent **is**
 an overlay row against a contested subject is precisely how an author answers the question the record
 asks.
 
-**Why eight tables is not sprawl, stated once because the instinct recurs.** The 0.6 charter amendment
+**Why this many tables is not sprawl, stated once because the instinct recurs.** The 0.6 charter amendment
 prices a schema addition by the layer it lands in: a parquet column is approximately free, a *derived*
 CSV is half, and an **authored** schema is full cost. The "one CSV, one concern, do not burden the
 rare author" gate is a rule about the authored layer — nobody hand-writes `gene_validity.csv`, so its
@@ -1510,7 +1511,7 @@ different things — the compile licence gate reads `sources.csv` and no other f
 own fact set with its own exclusions, which one merged table could not do.
 
 The naming is the weakest part of this: `sources.csv` is a licensing and attribution ledger whose name
-collides with the `source` *column* that means "which link answered" in four other tables. The better
+collides with the `source` *column* that means "which link answered" in other tables. The better
 name is `licensing.csv`, and the rename splits.
 
 **The input half landed in 0.6** (RM51): `licensing.csv` is a second accepted spelling, `sources.csv`

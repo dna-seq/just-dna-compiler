@@ -130,3 +130,37 @@ def test_compiler_doc_counts_match_the_registries(pattern: str, expected, what: 
     """`COMPILER.md` spells out two registry sizes. Both are walked here rather than trusted."""
     doc = (_DOCS / "COMPILER.md").read_text(encoding="utf-8")
     assert _spelled(doc, pattern) == expected(), f"{what} moved and COMPILER.md did not"
+
+
+#: A total of a walked set, in words or digits, directly before the noun a roster counts.
+_A_TOTAL = re.compile(
+    r"\b(\d+|"
+    + "|".join(sorted(_WORDS, key=len, reverse=True))
+    + r")\s+(entries|table kinds|binning kinds|vocabularies|parquets|codes)\b",
+    re.IGNORECASE,
+)
+
+
+@pytest.mark.parametrize(
+    ("doc", "anchor"),
+    [
+        # RM359: "21 entries today" stood here while the generated list had grown past forty.
+        ("SCHEMAS.md", '`authoring_reference()["vocabularies"]` is generated from these markers'),
+        ("COMPILER.md", "`LEAD_PARQUETS` is the ones carrying"),
+    ],
+)
+def test_a_generated_roster_is_described_by_its_rule_never_its_total(doc: str, anchor: str) -> None:
+    """Where a doc describes a list the code generates, the paragraph states the rule and no total.
+
+    These two had a number nothing re-derived, and both went stale (RM359). Dropping the number is the
+    repair `@registry-completeness` prefers to pinning it; this keeps it dropped.
+    """
+    text = (_DOCS / doc).read_text(encoding="utf-8")
+    assert text.count(anchor) == 1, f"{anchor!r} moved in {doc}; re-point this test at the sentence"
+    before, after = text.split(anchor)
+    # The whole paragraph the anchor sits in, not only its tail: a total in the sentence before is the
+    # same claim.
+    paragraph = before.rsplit("\n\n", 1)[-1] + anchor + after.split("\n\n")[0]
+    assert not _A_TOTAL.search(paragraph), (
+        f"{doc} states a total beside a generated roster: {paragraph[:200]!r}"
+    )

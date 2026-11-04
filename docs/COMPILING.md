@@ -19,7 +19,7 @@ my_module/
 
     Both are accepted and read identically, but `sources.csv` is deprecated and is **removed at 1.0**,
     so write `licensing.csv` in anything new. A module carrying *both* is refused. The old name
-    collided with the `source` *column* that means "which link answered" in four other tables, which is
+    collided with the `source` *column* that means "which link answered" in other tables, which is
     what the rename fixes.
 
     The compiled side keeps the old name for the whole 0.x line: `licensing.csv` becomes
