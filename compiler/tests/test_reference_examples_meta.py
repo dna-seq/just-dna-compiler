@@ -12,13 +12,12 @@ the author chose (a tier letter, a confidence word) are read off `meta.csv` rath
 
 import csv
 import io
-import shutil
 from pathlib import Path
 
 import polars as pl
 import pytest
-from just_dna_compiler.compiler import compile_module, validate_spec
-from just_dna_format.meta import MetaRow, parse_members
+from just_dna_compiler.compiler import compile_module
+from just_dna_format.meta import parse_members
 
 _EXAMPLES = Path(__file__).resolve().parents[2] / "reference_examples"
 _APOE = _EXAMPLES / "apoe_klvs_meta"
@@ -44,13 +43,14 @@ _RESOLVED_CACHE: dict[Path, dict[tuple, list[dict]]] = {}
 
 
 def _resolved(out: Path, table: str, key: list[str | None]) -> dict:
-    """The unscoped `meta_resolved.parquet` row for one target; the parquet is read once per artifact."""
+    """The unscoped `meta_resolved.parquet` row for one target (no sex, no drug); the parquet is read
+    once per artifact."""
     if out not in _RESOLVED_CACHE:
         index: dict[tuple, list[dict]] = {}
         for r in pl.read_parquet(out / "meta_resolved.parquet").iter_rows(named=True):
-            index.setdefault((r["table"], tuple(r["key"]), r["sex"]), []).append(r)
+            index.setdefault((r["table"], tuple(r["key"]), r["sex"], r["drug"]), []).append(r)
         _RESOLVED_CACHE[out] = index
-    rows = _RESOLVED_CACHE[out].get((table, tuple(key), None), [])
+    rows = _RESOLVED_CACHE[out].get((table, tuple(key), None, None), [])
     assert len(rows) == 1, (table, key)
     return rows[0]
 
@@ -284,26 +284,3 @@ def test_cpic_the_licence_row_is_cpics_own_terms() -> None:
         "false",
         "non_commercial",
     )
-
-
-def test_cpic_a_second_drugs_pair_row_is_a_duplicate_key(tmp_path: Path) -> None:
-    """The finding this example records: `meta.csv`'s key has no drug, so two thiopurines collide.
-
-    CPIC states a different recommendation for one phenotype pair per drug; the second is refused as a
-    duplicate of the first. The key and the absence of a drug column are asserted first, so the day the
-    meta-table gains a way to scope a row to a drug this test turns red and the README's finding is to be
-    rewritten.
-    """
-    assert MetaRow._KEY_FIELDS == ("members_key", "trait_efo_id", "sex")
-    assert not [name for name in MetaRow.model_fields if "drug" in name]
-    spec = tmp_path / "spec"
-    shutil.copytree(_CPIC, spec)
-    first = _rows(spec / "meta.csv")[0]
-    buffer = io.StringIO()
-    writer = csv.DictWriter(buffer, fieldnames=list(first), lineterminator="\n")
-    writer.writerow({**first, "conclusion": "a second drug's recommendation for the same phenotype pair"})
-    with (spec / "meta.csv").open("a", encoding="utf-8") as handle:
-        handle.write(buffer.getvalue())
-    result = validate_spec(spec)
-    assert not result.valid
-    assert any("meta.csv: duplicate row for key" in e for e in result.errors), result.errors

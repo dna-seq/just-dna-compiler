@@ -103,12 +103,16 @@ def _resolved(out: Path) -> pl.DataFrame:
     return pl.read_parquet(out / "meta_resolved.parquet")
 
 
-def _resolved_row(out: Path, table: str, key: list[str | None], sex: str | None = None) -> dict:
+def _resolved_row(
+    out: Path, table: str, key: list[str | None], sex: str | None = None, drug: str | None = None
+) -> dict:
     df = _resolved(out)
     rows = [
-        r for r in df.iter_rows(named=True) if r["table"] == table and r["key"] == key and r["sex"] == sex
+        r
+        for r in df.iter_rows(named=True)
+        if r["table"] == table and r["key"] == key and r["sex"] == sex and r.get("drug") == drug
     ]
-    assert len(rows) == 1, (table, key, sex, df)
+    assert len(rows) == 1, (table, key, sex, drug, df)
     return rows[0]
 
 
@@ -134,6 +138,142 @@ def test_a_and_b_against_b_and_a_is_a_duplicate_key(tmp_path: Path) -> None:
 def test_the_same_members_for_two_sexes_are_two_rows_not_a_duplicate(tmp_path: Path) -> None:
     meta = _META_HEADER + _E4 + _E4.replace(",,\n", ",,male\n").replace(",A,LATE", ",B,LATE")
     assert validate_spec(_module(tmp_path / "spec", meta)).valid
+
+
+# ── drug: a key column scoping the whole row, as `sex` does ──────────────────────────────────────
+#
+# CPIC states one recommendation per thiopurine for one TPMT × NUDT15 phenotype pair, so the pair's
+# azathioprine row and its mercaptopurine row are two statements. The header gains `drug` after `sex`.
+
+_DRUG_HEADER = _META_HEADER.rstrip("\n") + ",drug\n"
+_TPMT_POOR = "diplotypes[gene=TPMT, phenotype=Poor Metabolizer]"
+_PAIR = (
+    "diplotypes[gene=TPMT, phenotype=Poor Metabolizer] & diplotypes[gene=NUDT15, phenotype=Poor Metabolizer]"
+)
+
+
+def _drug_row(members: str, *, conclusion: str = "", tier: str = "", sex: str = "", drug: str = "") -> str:
+    """One meta.csv line in `_DRUG_HEADER`'s order."""
+    cells = [members, "", "", "", conclusion, "", tier, "", "", "", "", "", sex, drug]
+    buffer = io.StringIO()
+    csv.writer(buffer, lineterminator="\n").writerow(cells)
+    return buffer.getvalue()
+
+
+def test_the_same_members_for_two_drugs_are_two_rows_not_a_duplicate(tmp_path: Path) -> None:
+    meta = (
+        _DRUG_HEADER
+        + _drug_row(_PAIR, conclusion="Azathioprine: consider an alternative.", drug="azathioprine")
+        + _drug_row(_PAIR, conclusion="Mercaptopurine: reduce the dose.", drug="mercaptopurine")
+    )
+    spec = _module(tmp_path / "spec", meta)
+    result = validate_spec(spec)
+    assert result.valid, result.errors
+    _compile(spec, tmp_path / "out")
+    rows = pl.read_parquet(tmp_path / "out" / "meta.parquet").iter_rows(named=True)
+    authored = _csv_rows(spec / "meta.csv")
+    compiled = [(r["drug"], r["conclusion"], r["matches"]) for r in rows]
+    assert [(d, c) for d, c, _m in compiled] == [(r["drug"], r["conclusion"]) for r in authored]
+    # One member set, so both rows match the same diplotype rows.
+    assert compiled[0][2] == compiled[1][2] != []
+
+
+def test_the_same_members_for_one_drug_twice_is_a_duplicate_key(tmp_path: Path) -> None:
+    meta = (
+        _DRUG_HEADER
+        + _drug_row(_PAIR, conclusion="First.", drug="azathioprine")
+        + _drug_row(_PAIR, conclusion="Second.", drug="azathioprine")
+    )
+    result = validate_spec(_module(tmp_path / "spec", meta))
+    assert not result.valid
+    assert any("meta.csv: duplicate row for key" in e for e in result.errors), result.errors
+
+
+def test_a_drug_scoped_row_outranks_the_same_key_for_that_drug_only(tmp_path: Path) -> None:
+    meta = (
+        _DRUG_HEADER
+        + _drug_row(_TPMT_POOR, tier="A")
+        + _drug_row(_TPMT_POOR, tier="B", drug="azathioprine")
+        + _drug_row("variants[variant_key=rs10455872]", tier="C", drug="mercaptopurine")
+    )
+    spec = _module(tmp_path / "spec", meta)
+    _compile(spec, tmp_path / "out")
+    poor = [
+        [d["gene"], d["haplotype_a"], d["haplotype_b"], None, None, None]
+        for d in _csv_rows(spec / "diplotypes.csv")
+        if (d["gene"], d["phenotype"]) == ("TPMT", "Poor Metabolizer")
+    ]
+    assert poor, "the fixture must carry a TPMT poor metabolizer"
+    for key in poor:
+        unscoped = _resolved_row(tmp_path / "out", "diplotypes", key)
+        scoped = _resolved_row(tmp_path / "out", "diplotypes", key, drug="azathioprine")
+        assert (unscoped["tier"], unscoped["withheld"], unscoped["meta_rows"]) == ("A", [], [0])
+        # `meta_rows` lists every row applying in the scope, the outranked one included.
+        assert (scoped["tier"], scoped["withheld"], scoped["meta_rows"]) == ("B", [], [0, 1])
+    # A drug scope exists only where a row reaching that target names the drug.
+    drugs = {(r["table"], r["drug"]) for r in _resolved(tmp_path / "out").iter_rows(named=True)}
+    assert ("diplotypes", "mercaptopurine") not in drugs
+    assert ("variants", "mercaptopurine") in drugs
+    assert ("variants", "azathioprine") not in drugs
+
+
+def test_a_row_scoped_on_both_axes_outranks_the_unscoped_row(tmp_path: Path) -> None:
+    """Narrower on sex AND drug is still the same key narrowed, never a row incomparable with it."""
+    meta = (
+        _DRUG_HEADER
+        + _drug_row(_TPMT_POOR, tier="A")
+        + _drug_row(_TPMT_POOR, tier="C", sex="male", drug="azathioprine")
+    )
+    _compile(_module(tmp_path / "spec", meta), tmp_path / "out")
+    key = ["TPMT", "*3A", "*3A", None, None, None]
+    both = _resolved_row(tmp_path / "out", "diplotypes", key, "male", "azathioprine")
+    assert (both["tier"], both["withheld"]) == ("C", [])
+    # Every (sex, drug) scope a consumer can look up exists, and the ones the scoped row does not reach
+    # keep the unscoped tier.
+    for sex, drug in ((None, None), ("male", None), (None, "azathioprine")):
+        assert _resolved_row(tmp_path / "out", "diplotypes", key, sex, drug)["tier"] == "A"
+
+
+def test_a_sex_row_and_a_drug_row_are_incomparable_where_both_apply(tmp_path: Path) -> None:
+    meta = (
+        _DRUG_HEADER
+        + _drug_row(_TPMT_POOR, tier="B", sex="male")
+        + _drug_row(_TPMT_POOR, tier="C", drug="azathioprine")
+    )
+    _compile(_module(tmp_path / "spec", meta), tmp_path / "out")
+    key = ["TPMT", "*3A", "*3A", None, None, None]
+    both = _resolved_row(tmp_path / "out", "diplotypes", key, "male", "azathioprine")
+    assert (both["tier"], both["withheld"]) == (None, ["tier"])
+    assert _resolved_row(tmp_path / "out", "diplotypes", key, "male")["tier"] == "B"
+    assert _resolved_row(tmp_path / "out", "diplotypes", key, drug="azathioprine")["tier"] == "C"
+
+
+def test_drug_rows_round_trip_to_a_fixed_point(tmp_path: Path) -> None:
+    meta = (
+        _DRUG_HEADER
+        + _drug_row(_PAIR, conclusion="Azathioprine: consider an alternative.", drug="azathioprine")
+        + _drug_row(_PAIR, conclusion="Mercaptopurine: reduce the dose.", drug="mercaptopurine")
+        + _drug_row(_TPMT_POOR, tier="A")
+        + _drug_row(_TPMT_POOR, tier="B", sex="female", drug="thioguanine")
+    )
+    spec = _module(tmp_path / "spec", meta)
+    first = _compile(spec, tmp_path / "out1")
+    reverse_module(tmp_path / "out1", tmp_path / "reversed")
+    assert _csv_rows(tmp_path / "reversed" / "meta.csv") == _csv_rows(spec / "meta.csv")
+    second = _compile(tmp_path / "reversed", tmp_path / "out2")
+    assert second.manifest.artifact.digest == first.manifest.artifact.digest
+    assert second.manifest.content_signature == first.manifest.content_signature
+    assert (tmp_path / "out1" / "meta_resolved.parquet").read_bytes() == (
+        tmp_path / "out2" / "meta_resolved.parquet"
+    ).read_bytes()
+
+
+def test_the_drug_moves_content_signature(tmp_path: Path) -> None:
+    one = _DRUG_HEADER + _drug_row(_PAIR, conclusion="Reduce.", drug="azathioprine")
+    other = _DRUG_HEADER + _drug_row(_PAIR, conclusion="Reduce.", drug="mercaptopurine")
+    assert content_signature(_module(tmp_path / "a", one)) != content_signature(
+        _module(tmp_path / "b", other)
+    )
 
 
 # ── precedence ───────────────────────────────────────────────────────────────────────────────────
@@ -368,7 +508,12 @@ def test_compile_reverse_compile_is_a_fixed_point(tmp_path: Path) -> None:
     spec = _module(tmp_path / "spec")
     first = _compile(spec, tmp_path / "out1")
     reverse_module(tmp_path / "out1", tmp_path / "reversed")
-    assert _csv_rows(tmp_path / "reversed" / "meta.csv") == _csv_rows(spec / "meta.csv")
+    reversed_rows = _csv_rows(tmp_path / "reversed" / "meta.csv")
+    # Reverse writes every authored column; the fixture omits `drug`, an optional column read as empty.
+    assert set(reversed_rows[0]) - set(_csv_rows(spec / "meta.csv")[0]) == {"drug"}
+    assert reversed_rows == [
+        {**dict.fromkeys(reversed_rows[0], ""), **r} for r in _csv_rows(spec / "meta.csv")
+    ]
     second = _compile(tmp_path / "reversed", tmp_path / "out2")
     assert second.manifest.artifact.digest == first.manifest.artifact.digest
     assert second.manifest.content_signature == first.manifest.content_signature
@@ -391,13 +536,30 @@ def test_two_compiles_are_byte_identical(tmp_path: Path) -> None:
         assert (tmp_path / "out1" / name).read_bytes() == (tmp_path / "out2" / name).read_bytes()
 
 
-def test_meta_resolved_is_ordered_by_table_then_authored_row_then_sex(tmp_path: Path) -> None:
+def test_meta_resolved_is_ordered_by_table_then_authored_row_then_sex_then_drug(tmp_path: Path) -> None:
     meta = _META + _E4.replace(",,\n", ",,male\n").replace(",A,LATE", ",B,LATE")
     _compile(_module(tmp_path / "spec", meta), tmp_path / "out")
     df = _resolved(tmp_path / "out")
     tables = ["variants", "diplotypes", "pharm_variants", "allele_function"]
     order = [(tables.index(r["table"]), r["sex"] or "") for r in df.iter_rows(named=True)]
     assert [t for t, _s in order] == sorted(t for t, _s in order)
+    # Within one target: the sex scope (none, female, male), then the drug (none first, then by name),
+    # written here in the reverse of that order so authored order cannot pass for the sort.
+    meta = (
+        _DRUG_HEADER
+        + _drug_row(_TPMT_POOR, tier="E", sex="male", drug="thioguanine")
+        + _drug_row(_TPMT_POOR, tier="D", sex="male")
+        + _drug_row(_TPMT_POOR, tier="C", drug="mercaptopurine")
+        + _drug_row(_TPMT_POOR, tier="B", drug="azathioprine")
+        + _drug_row(_TPMT_POOR, tier="A")
+    )
+    _compile(_module(tmp_path / "spec2", meta), tmp_path / "out2")
+    key = ["TPMT", "*3A", "*3A", None, None, None]
+    scopes = [
+        (r["sex"], r["drug"]) for r in _resolved(tmp_path / "out2").iter_rows(named=True) if r["key"] == key
+    ]
+    drugs = [None, "azathioprine", "mercaptopurine", "thioguanine"]
+    assert scopes == [(sex, drug) for sex in (None, "male") for drug in drugs]
     variants = [tuple(r["key"]) for r in df.iter_rows(named=True) if r["table"] == "variants"]
     authored = [(r["rsid"], r["genotype"]) for r in _csv_rows(tmp_path / "spec" / "variants.csv")]
     assert variants == [k for k in authored if k in set(variants)]

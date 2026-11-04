@@ -65,7 +65,7 @@ and drops them too.
 
 ## 1.2.1 A new authored table and its two parquets (no break)
 
-A module may carry `meta.csv` (RM28, RM323, RM324; RM327's per-trait rows; RM330's `sex`). It compiles to
+A module may carry `meta.csv` (RM28, RM323, RM324; RM327's per-trait rows; RM330's `sex`; `drug`). It compiles to
 two new parquets, listed after `overrides.parquet` in `ARTIFACT_PARQUETS`: neither is in `LEAD_PARQUETS`,
 and a module carrying no `meta.csv` carries neither file and keeps its digest. A 0.7 reader of the
 artifact ignores both, and therefore shows a member row's own finding where a matching combination
@@ -74,7 +74,14 @@ replaces it (the accepted cost, RM28).
 | Parquet | One row per | Columns a consumer reads |
 | --- | --- | --- |
 | `meta.parquet` | authored `meta.csv` row, in authored order | every authored cell; `members_key`; `match_count`; `matches` (list of `{member, table, key}`, `key` in that table's `_KEY_FIELDS` order); `replaces` (a matching combination replaces the findings of exactly the rows in `matches`); `withheld` |
-| `meta_resolved.parquet` | (single-statement row a one-member meta row reaches, `sex` scope) | `table`, `key`, `sex`, `tier`, `age_of_action`, `age_of_action_confidence`, `flags` after precedence; `tradeoff` (RM327: true when one member reaching the row has a `protective` and a `risk` per-trait row, otherwise null, **never false**); `withheld`; `meta_rows` |
+| `meta_resolved.parquet` | (single-statement row a one-member meta row reaches, `sex` scope, `drug` scope) | `table`, `key`, `sex`, `drug`, `tier`, `age_of_action`, `age_of_action_confidence`, `flags` after precedence; `tradeoff` (RM327: true when one member reaching the row has a `protective` and a `risk` per-trait row, otherwise null, **never false**); `withheld`; `meta_rows` |
+
+The table's key is `(members_key, trait_efo_id, sex, drug)`: `sex` and `drug` each scope a whole row, so one
+member set may state one finding per sex and per drug (CPIC's TPMT × NUDT15 pair, once per thiopurine). A
+consumer looks up `meta_resolved.parquet` by its own `(sex, drug)`, each `null` where it does not condition
+on that axis: the compile writes every combination of the values the rows reaching a target state, so a
+`male` row and an `azathioprine` row also yield a `(male, azathioprine)` row, where a disagreeing column
+between the two is withheld.
 
 A `variants` match is keyed by the authored `(variant_key, genotype)`; for an rsID that resolution expands
 onto several loci, `weights.parquet` keys those rows by coordinate, and they are reached through `rsid`.

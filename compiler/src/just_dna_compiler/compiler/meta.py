@@ -14,7 +14,7 @@ several loci is the one residual: its weights rows are coordinate-keyed, and a c
 from the meta key through their `rsid` column (COMPILER.md § The meta-table).
 
 **What `meta_resolved.parquet` holds.** One row per single-statement row a **one-member** meta row
-reaches, per `sex` scope, with each fact column (`tier`, `age_of_action`, `age_of_action_confidence`,
+reaches, per `(sex, drug)` scope, with each fact column (`tier`, `age_of_action`, `age_of_action_confidence`,
 `flags`) after precedence and a `withheld` list naming the columns two incomparable, disagreeing rows
 left unresolved. A row of two or more members states facts about the **combination**, so its facts stay
 on its own `meta.parquet` row and never reach a member row by itself.
@@ -25,14 +25,15 @@ one-member row with `trait_efo_id` and a direction not withheld; a `mediator` ro
 direction is still a benefit/harm judgement), and that verdict lands on every row the member reaches,
 including the diplotypes an `allele_function` member reaches through the allele they carry. On one
 trait at one row, the fact columns' precedence applies first, so a narrower judgement the author made
-about that row (a diplotype member over the allele it contains, a genotype over its locus, a sex-scoped
-row over the unscoped one) drops the broader judgement on that trait. A row two members reach is `True`
-when either member is. **Never `False`**: RM327's false arm needs every trait's
+about that row (a diplotype member over the allele it contains, a genotype over its locus, a sex- or
+drug-scoped row over the unscoped one) drops the broader judgement on that trait. A row two members
+reach is `True` when either member is. **Never `False`**: RM327's false arm needs every trait's
 judgement stated, and a module states no closed list of the traits an allele touches, so absence of an
 opposing row is unknown, not a negative. Two alleles meeting at a heterozygous diplotype are two
 members, so ε2 protective on one trait and ε4 risk on another is not a trade-off of either.
 """
 
+import itertools
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, NamedTuple
@@ -58,8 +59,37 @@ from just_dna_compiler.compiler.tables import META_CSV, _polars_type
 #: The order tables are expanded and `meta_resolved.parquet` is sorted in: `META_MEMBER_TABLES`' own.
 _TABLE_ORDER: tuple[str, ...] = tuple(META_MEMBER_TABLES)
 
-#: `None` (no sex scope) sorts first, then the scopes in name order.
-_SEX_ORDER: dict[str | None, int] = {None: 0, "female": 1, "male": 2}
+#: The key columns after the member set and the trait that scope a **whole row**: each is a condition a
+#: consumer matches (`sex` against karyotype, `drug` against what is prescribed), and each is an axis of
+#: `meta_resolved.parquet`'s grain, in this order. A row stating none applies in every scope.
+_SCOPE_FIELDS: tuple[str, ...] = ("sex", "drug")
+
+#: One scope: a value per `_SCOPE_FIELDS` axis, `None` where the scope does not condition on it.
+Scope = tuple[str | None, ...]
+
+
+def _scope(row: MetaRow) -> Scope:
+    return tuple(getattr(row, name) for name in _SCOPE_FIELDS)
+
+
+def _scope_value_order(value: str | None) -> tuple[bool, str]:
+    """Per axis, `None` (no scope) first, then the values by name — so `(none, female, male)` for sex."""
+    return (value is not None, value or "")
+
+
+def _refines(a: Scope, b: Scope) -> bool:
+    """Is scope `a` strictly narrower than `b`? Every axis `b` states, `a` states the same; `a` states more.
+
+    `(male, None)` and `(None, azathioprine)` refine neither each other, so two rows scoped on different
+    axes are incomparable where both apply; `(male, azathioprine)` refines both.
+    """
+    return a != b and all(bv is None or av == bv for av, bv in zip(a, b, strict=True))
+
+
+def _within(row_scope: Scope, scope: Scope) -> bool:
+    """Does a row scoped `row_scope` apply in `scope`? On each axis it states nothing or the same value."""
+    return all(rv is None or rv == sv for rv, sv in zip(row_scope, scope, strict=True))
+
 
 _MATCH_STRUCT = pl.Struct({"member": pl.Int64, "table": pl.Utf8, "key": pl.List(pl.Utf8)})
 
@@ -187,16 +217,16 @@ class _Candidate(NamedTuple):
 def _outranks(a: _Candidate, b: _Candidate, rows: list[MetaRow]) -> bool:
     """Does `a` win over `b` for one target? A strict partial order; incomparable is `False` both ways.
 
-    A sex-scoped row outranks the same key without a sex (for that sex — only rows of the sex being
-    resolved are candidates). A `diplotypes` member outranks an `allele_function` member reaching the
-    same diplotype through one of its alleles: the narrower condition wins across tables (the
+    A row whose scope (`sex`, `drug`) refines another's on the same member set and trait outranks it: a
+    sex-scoped row outranks the same key without a sex, a drug-scoped row the same key without a drug,
+    and a row scoped on both outranks either (only rows applying in the scope being resolved are
+    candidates, so two different stated values never meet). A `diplotypes` member outranks an
+    `allele_function` member reaching the same diplotype through one of its alleles: the narrower condition wins across tables (the
     maintainer, 2026-11-04). Otherwise the rank decides, between candidates reaching the same way.
     """
     ra, rb = rows[a.meta], rows[b.meta]
-    if (
-        ra.sex is not None
-        and rb.sex is None
-        and (ra.members_key, ra.trait_efo_id) == (rb.members_key, rb.trait_efo_id)
+    if (ra.members_key, ra.trait_efo_id) == (rb.members_key, rb.trait_efo_id) and _refines(
+        _scope(ra), _scope(rb)
     ):
         return True
     if a.via == "direct" and b.via == "contained":
@@ -214,17 +244,18 @@ _TRADEOFF_SIGNS: frozenset[str] = frozenset({"protective", "risk"})
 
 
 def _tradeoff(applicable: list[_Candidate], rows: list[MetaRow], withheld: list[list[str]]) -> bool | None:
-    """RM327's verdict for one `(target, sex)`: `True` when a member reaching it has both signs, else `None`.
+    """RM327's verdict for one `(target, scope)`: `True` when a member reaching it has both signs, else
+    `None`.
 
-    `applicable` is already the sex scope's candidates. A per-trait judgement is a candidate with a
-    `trait_efo_id` and a `direction`; every member carrying one is allele-bearing, because `MetaRow`
+    `applicable` is already the `(sex, drug)` scope's candidates. A per-trait judgement is a candidate
+    with a `trait_efo_id` and a `direction`; every member carrying one is allele-bearing, because `MetaRow`
     refuses a direction on any other member and a bare locus whose rows share no `effect_allele` has its
     direction withheld here.
 
     1. **Precedence per trait, as the fact columns take it** (`_outranks`): among the judgements on one
        trait at this target, one that a more specific judgement on the same trait outranks is dropped —
-       a sex-scoped row over the same key unscoped, a `diplotypes` member over an allele it contains, a
-       concrete row key over a locus. So an author's narrower statement about this row wins.
+       a sex- or drug-scoped row over the same key unscoped, a `diplotypes` member over an allele it
+       contains, a concrete row key over a locus. So an author's narrower statement about this row wins.
     2. **Signs per member** (`members_key`), never pooled across members: two alleles meeting at a
        heterozygous diplotype are two members, and neither has a trade-off because of the other.
     3. A direction the compile withheld still takes part in precedence (it is a statement about the
@@ -255,7 +286,14 @@ def _resolve(
     tables: dict[str, list[Any]],
     withheld_by_row: list[list[str]],
 ) -> list[dict[str, Any]]:
-    """`meta_resolved.parquet`'s rows: each target a one-member row reaches, per sex scope, after precedence."""
+    """`meta_resolved.parquet`'s rows: each target a one-member row reaches, per scope, after precedence.
+
+    The scopes of one target are every combination of the values its candidates state on each axis,
+    each axis with `None` beside them: `({None} ∪ sexes) × ({None} ∪ drugs)`. The product, not only the
+    scopes some row states, so a consumer who is male and prescribed azathioprine finds one row for
+    that pair even when only a `male` row and an `azathioprine` row exist; a scope no candidate applies
+    in is skipped.
+    """
     reach: dict[tuple[int, int], dict[int, _Candidate]] = {}
 
     def _keep(target: tuple[int, int], candidate: _Candidate) -> None:
@@ -289,14 +327,20 @@ def _resolve(
         candidates = [reach[(table, position)][meta] for meta in sorted(reach[(table, position)])]
         name = _TABLE_ORDER[table]
         key = list(_key(tables[name][position]))
-        scopes = sorted({rows[c.meta].sex for c in candidates}, key=lambda sex: _SEX_ORDER[sex])
-        if None not in scopes:
-            scopes = [None, *scopes]
-        for sex in scopes:
-            applicable = [c for c in candidates if rows[c.meta].sex in (None, sex)]
+        axes = [
+            sorted({_scope(rows[c.meta])[axis] for c in candidates} | {None}, key=_scope_value_order)
+            for axis in range(len(_SCOPE_FIELDS))
+        ]
+        # The product of axes each sorted with `None` first is itself in that order, sex-major.
+        for scope in itertools.product(*axes):
+            applicable = [c for c in candidates if _within(_scope(rows[c.meta]), scope)]
             if not applicable:
                 continue
-            record: dict[str, Any] = {"table": name, "key": key, "sex": sex}
+            record: dict[str, Any] = {
+                "table": name,
+                "key": key,
+                **dict(zip(_SCOPE_FIELDS, scope, strict=True)),
+            }
             withheld: list[str] = []
             for column in META_FACT_COLUMNS:
                 # Per-locus facts come from rows naming no trait. A per-trait row (`trait_efo_id`) is a
@@ -457,17 +501,19 @@ def meta_frame(build: MetaBuild, module_name: str) -> pl.DataFrame:
 
 
 def meta_resolved_frame(build: MetaBuild, module_name: str) -> pl.DataFrame:
-    """`meta_resolved.parquet`: one row per (single-statement row, sex scope) a one-member row reaches.
+    """`meta_resolved.parquet`: one row per (single-statement row, sex, drug) a one-member row reaches.
 
     Sorted by member table (`META_MEMBER_TABLES` order), then the row's authored position in its table,
-    then the scope (none, female, male). `tradeoff` is RM327's verdict (`True` or null, never `False`).
-    `meta_rows` are the 0-based `meta.parquet` rows that reached it.
+    then the sex scope (none, female, male), then the drug (none, then by name). `tradeoff` is RM327's
+    verdict (`True` or null, never `False`). `meta_rows` are the 0-based `meta.parquet` rows that apply
+    in the scope.
     """
     schema: dict[str, Any] = {
         "module": pl.Utf8,
         "table": pl.Utf8,
         "key": pl.List(pl.Utf8),
         "sex": pl.Utf8,
+        "drug": pl.Utf8,
         **{name: _polars_type(MetaRow.model_fields[name].annotation) for name in META_FACT_COLUMNS},
         "tradeoff": pl.Boolean,
         "withheld": pl.List(pl.Utf8),

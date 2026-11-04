@@ -1835,6 +1835,15 @@ arm stays covered.
 remainder: open-world negation, OR and *trans* phase, all out of bounds by the maintainer's decision. RM327 computes `tradeoff` over the per-trait rows this table now holds.
 RM330's study stratum is the `StudyRow` half; its `sex` condition shipped here.
 
+**2026-11-04, the lead, under the default offered to the maintainer (recommended, no objection): `drug`
+joins the key.** `reference_examples/cpic_gene_pairs` found that CPIC answers one TPMT × NUDT15 phenotype
+pair once per thiopurine, and the key `(members_key, trait_efo_id, sex)` refused the second drug's row as a
+duplicate, so the example carried azathioprine only. `MetaRow.drug` (optional, free text as
+`DiplotypeRow.drug`, the drug the statement is about) is now the key's fourth column and a second scope
+axis beside `sex`: a drug-scoped row outranks the same key without one, for that drug, and
+`meta_resolved.parquet`'s grain is (row reached, sex, drug), every combination of the stated values. The
+example now carries all three thiopurines.
+
 ## RM323 — a fact about a locus has no authored home, so every per-locus axis is copied onto each genotype row and nothing checks the copies agree
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut** — **a minor, taken into 0.8 on 2026-11-03 as a priority**, built as the meta-table ([PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §3 items 1–8, §5 B1) · **Owner** format (`just_dna_format.meta`) + compiler (`compiler/meta.py`) · **Motivating case** longevitymap v2 requirements §4.2 · *for* longevitymap v2 · *related* RM28, RM322, RM324

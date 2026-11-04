@@ -2177,7 +2177,7 @@ in a release where the overlay has no users yet.
 
 One authored table holds the combinations RM28 left open, the per-locus facts RM323 had no home for,
 RM324's `tier`, RM327's per-trait judgements and RM330's `sex` condition (the maintainer's "go with C",
-2026-11-04). `MetaRow` (`just_dna_format.meta`) is an `AuthoredModel`; what the compiler does with it is
+2026-11-04), and the `drug` a row is about (the lead, 2026-11-04). `MetaRow` (`just_dna_format.meta`) is an `AuthoredModel`; what the compiler does with it is
 [COMPILER.md § The meta-table](COMPILER.md#the-meta-table-08--expansion-precedence-and-the-two-parquets).
 
 ### The member grammar
@@ -2207,10 +2207,14 @@ one-condition selector (the legacy tag) it is incomparable and a disagreeing fac
 
 ### The key, and what a row must say
 
-The key is `(members_key, trait_efo_id, sex)`. `members_key` is stamped from `members`: members sorted,
-conditions sorted within each, so `A & B` and `B & A` are one key and are refused as a duplicate. The
-cell itself stays verbatim. `sex` is in the key because it scopes the whole row: a `male` and a `female`
-row for one member set are two statements.
+The key is `(members_key, trait_efo_id, sex, drug)`. `members_key` is stamped from `members`: members
+sorted, conditions sorted within each, so `A & B` and `B & A` are one key and are refused as a duplicate.
+The cell itself stays verbatim. `sex` and `drug` are in the key because each scopes the whole row: a
+`male` and a `female` row for one member set are two statements, and so are an `azathioprine` and a
+`mercaptopurine` row for one TPMT × NUDT15 phenotype pair, which CPIC answers once per thiopurine.
+`drug` is free text, as `DiplotypeRow.drug` and `PharmVariantRow.drug` are, and means what it means
+there: the drug the statement is about. It is not a member condition: `diplotypes[drug=…]` selects the
+diplotype rows that carry that drug, while the row's `drug` scopes what the row itself says.
 
 A row must state at least one of `conclusion`, `direction`, `negatives`, `tier`, `age_of_action`,
 `age_of_action_confidence` or `flags` (`REQUIRED_ANY_OF`). `trait_role` (closed: `mediator`; empty means
@@ -2228,7 +2232,8 @@ the citing tables' rules: `MetaRow` inherits `spec.CitationPair`, so `pmid=NONE`
 
 `member_rank(member, target)` is `(3, 0)` for a concrete row key, `(2, 0)` for a locus, `(1, n)` for a
 selector of `n` conditions, compared as tuples; equal ranks are incomparable. Across tables, a diplotype
-outranks the alleles it contains, and a sex-scoped row outranks the same key without one, for that sex.
+outranks the alleles it contains, and a row scoped by `sex` or `drug` outranks the same key without that
+scope, for that sex or drug (one scoped on both outranks either).
 Two incomparable rows that state different values withhold the column. The compiler applies it.
 
 ## The model-organism table (0.8, RM335) — `model_organisms.csv`
