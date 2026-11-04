@@ -954,8 +954,11 @@ def _validate_spec(
         if studies:
             # A study's variant is carried when it is a `variants.csv` row's, a defining variant in
             # `haplotypes.csv`, or one a meta member reached (RM28's widening). The haplotypes are the
-            # `survivors` view the meta expansion read too, so both arms see one set of rows.
-            carried = [*(survivors.get("haplotypes.csv") or []), *meta_carried]
+            # authored rows, the view `variants` is read in (the positional fill is in place, so they
+            # carry it). No authored haplotype row reaches the symbolic-allele drop today (a symbolic
+            # `ref` is refused and `alts` is not authored there), so this equals `survivors`; reading
+            # the authored view keeps the arms alike should that change.
+            carried = [*(loaded_kinds.get("haplotypes.csv") or []), *meta_carried]
             _, study_warnings = _cross_validate_studies(studies, variants, carried)
             all_warnings.extend(study_warnings)
         # `flags` is an open vocabulary — surface non-reserved tags as INFO (not a warning; nothing
