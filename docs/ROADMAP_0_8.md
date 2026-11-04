@@ -1201,6 +1201,14 @@ stays a patch; the warning half of its decision is this item.
 
 ## RM342 — the manifest does not record the toolchain that wrote the bytes, so a digest that moves cannot say why
 
+**Decided 2026-11-04 by the maintainer.**
+
+- **One toolchain block:** a single optional field in `manifest.compilation` holding a small map (e.g. `{polars: 2.1.0, python: 3.13.1}`). A library added later is a new key, not a new field.
+- **`verify` gives a toolchain difference its own reason.** "Bytes differ, toolchain differs" is distinct from corruption and never the plain mismatch error (`@vrs-three-outcomes`).
+- **Principle 4 is amended.** Reproducibility is pinned via `compiler_version`, the recorded toolchain and the resolved reference. The why goes in `CONSTITUTION_AMENDMENTS_HISTORY.md`, and the lead lands the amendment with the item.
+
+Ready to build; the polars 2 lock moves into 0.8 with it.
+
 **0.8, decided 2026-11-04**, on the lead's list, "not ready": its open questions (one field or a toolchain block; whether `verify` reports a toolchain mismatch as its own reason; whether Principle 4 needs an amendment) are settled in the 0.8 interview. The polars 2 lock moves into 0.8 with it.
 
 
