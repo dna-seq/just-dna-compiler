@@ -64,9 +64,6 @@ VALID_SEXES: frozenset[str] = frozenset({"male", "female"})
 META_FINDING_COLUMNS: tuple[str, ...] = ("direction", "conclusion", "negatives")
 META_FACT_COLUMNS: tuple[str, ...] = ("tier", "age_of_action", "age_of_action_confidence", "flags")
 
-#: Characters a value may not contain, because the grammar uses them. Refused naming the character.
-_FORBIDDEN_IN_VALUE: tuple[str, ...] = ("[", "]", ",", "=")
-
 _MEMBER_PATTERN: re.Pattern[str] = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\s*\[(.*)\]$", re.DOTALL)
 
 #: The words for the two operators the maintainer put out of bounds, recognised at bracket depth 0 so an
@@ -330,15 +327,7 @@ class MetaRow(AuthoredModel):
     #: `VariantRow` rsid-or-coordinate precedent); `conclusion` first, the one a stub offers.
     REQUIRED_ANY_OF: ClassVar[tuple[frozenset[str], ...]] = tuple(
         frozenset({name})
-        for name in (
-            "conclusion",
-            "direction",
-            "negatives",
-            "tier",
-            "age_of_action",
-            "age_of_action_confidence",
-            "flags",
-        )
+        for name in sorted((*META_FINDING_COLUMNS, *META_FACT_COLUMNS), key=lambda n: n != "conclusion")
     )
 
     members: str = Field(

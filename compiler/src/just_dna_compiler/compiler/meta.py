@@ -28,6 +28,7 @@ import polars as pl
 from just_dna_format.findings import CodedWarning
 from just_dna_format.manifest import MetaSelectorCount
 from just_dna_format.meta import (
+    LOCUS_TABLES,
     META_FACT_COLUMNS,
     META_FINDING_COLUMNS,
     META_MEMBER_TABLES,
@@ -116,6 +117,23 @@ def member_tables(variants: list[Any], kind_rows: Mapping[str, list[Any]]) -> di
     }
 
 
+def _as_stored(member: MetaMember) -> MetaMember:
+    """The member's conditions as the model would store them, so matching compares like with like.
+
+    A diplotype pair is canonicalized `haplotype_a <= haplotype_b` on load (`DiplotypeRow`), so a member
+    naming both halves in the other order is swapped here rather than matching nothing. The authored
+    cell is untouched; only the comparison sees the swap (`@overlay-not-inside`'s third line).
+    """
+    if member.table != "diplotypes":
+        return member
+    conditions = dict(member.conditions)
+    a, b = conditions.get("haplotype_a"), conditions.get("haplotype_b")
+    if a is None or b is None or a <= b:
+        return member
+    swapped = {**conditions, "haplotype_a": b, "haplotype_b": a}
+    return MetaMember(member.table, tuple((column, swapped[column]) for column, _value in member.conditions))
+
+
 def _condition_holds(row: Any, column: str, value: str) -> bool:
     """`column=value` against what the model **stores**: on a list column `=` means contains."""
     stored = getattr(row, column, None)
@@ -128,6 +146,14 @@ def _condition_holds(row: Any, column: str, value: str) -> bool:
     if isinstance(stored, float) and stored.is_integer():
         return value in (str(int(stored)), str(stored))
     return str(stored) == value
+
+
+def _variant_key_index(rows: list[Any]) -> dict[str | None, list[int]]:
+    """Row positions by `variant_key`, in authored order — a locus member's matches without a scan."""
+    index: dict[str | None, list[int]] = {}
+    for position, row in enumerate(rows):
+        index.setdefault(row.variant_key, []).append(position)
+    return index
 
 
 def _key_cells(row: Any) -> dict[str, Any]:
@@ -151,8 +177,9 @@ def _allele_ambiguous(index: int, text: str, stated: list[str]) -> str:
     return (
         f"{META_CSV} line {_line(index)}: member {text!r} is a bare locus on a row stating a direction, "
         f"and that locus's variants.csv rows do not share one effect_allele (they state {seen}), so the "
-        f"row does not say which allele its direction is about. The direction is withheld from the "
-        f"artifact; name the genotype in the member, or state one effect_allele on every row of the locus."
+        f"row does not say which allele its direction is about. The direction is withheld: "
+        f"meta.parquet lists it in that row's `withheld` (the authored cell is kept for reverse). Name "
+        f"the genotype in the member, or state one effect_allele on every row of the locus."
     )
 
 
@@ -238,7 +265,14 @@ def _resolve(
             record: dict[str, Any] = {"table": name, "key": key, "sex": sex}
             withheld: list[str] = []
             for column in META_FACT_COLUMNS:
-                stating = [c for c in applicable if getattr(rows[c.meta], column)]
+                # Per-locus facts come from rows naming no trait. A per-trait row (`trait_efo_id`) is a
+                # separate statement by the key, so its facts are about that trait and stay on its own
+                # meta.parquet row; pooling them here would report two traits' tiers as a conflict.
+                stating = [
+                    c
+                    for c in applicable
+                    if rows[c.meta].trait_efo_id is None and getattr(rows[c.meta], column)
+                ]
                 top = [c for c in stating if not any(_outranks(o, c, rows) for o in stating)]
                 values = {_comparable(getattr(rows[c.meta], column)) for c in top}
                 if len(values) == 1:
@@ -278,6 +312,7 @@ def build_meta(rows: list[MetaRow], tables: dict[str, list[Any]], tier_scale: st
     errors: list[str] = meta_scale_errors(rows, tier_scale)
     warnings: list[str] = []
 
+    by_key: dict[str, dict[str | None, list[int]]] = {}
     all_members: list[list[MetaMember]] = []
     all_texts: list[list[str]] = []
     all_matches: list[list[MetaMatch]] = []
@@ -287,12 +322,19 @@ def build_meta(rows: list[MetaRow], tables: dict[str, list[Any]], tier_scale: st
         texts = split_members(row.members)
         row_matches: list[MetaMatch] = []
         withheld: list[str] = []
-        for position, (member, text) in enumerate(zip(row_members, texts, strict=True)):
+        for position, (authored, text) in enumerate(zip(row_members, texts, strict=True)):
+            member = _as_stored(authored)
             table_rows = tables.get(member.table) or []
+            locus = dict(member.conditions).get("variant_key")
+            positions = (
+                by_key.setdefault(member.table, _variant_key_index(table_rows)).get(locus, [])
+                if locus is not None and member.table in LOCUS_TABLES
+                else range(len(table_rows))
+            )
             hits = [
-                MetaMatch(position, member.table, k, _key(candidate))
-                for k, candidate in enumerate(table_rows)
-                if all(_condition_holds(candidate, column, value) for column, value in member.conditions)
+                MetaMatch(position, member.table, k, _key(table_rows[k]))
+                for k in positions
+                if all(_condition_holds(table_rows[k], column, value) for column, value in member.conditions)
             ]
             if not hits:
                 warnings.append(

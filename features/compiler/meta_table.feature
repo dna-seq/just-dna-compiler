@@ -32,7 +32,7 @@ Feature: The meta-table's members and what they match
     And variants.csv rows of that locus stating two different effect_allele values
     When the module is compiled
     Then a warning fires whose text contains "do not share one effect_allele"
-    And it states that "The direction is withheld from the"
+    And it states that "The direction is withheld: "
     And meta.parquet keeps the authored direction and lists "direction" in that row's withheld
     # Three-valued: a locus whose rows share one effect_allele bears that allele (no finding); one
     # whose rows disagree or state none is unknown, so the direction is withheld, never guessed; a

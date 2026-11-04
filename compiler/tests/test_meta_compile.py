@@ -390,3 +390,31 @@ def test_a_member_over_a_resolution_filled_column_matches_on_both_sides(tmp_path
     result = _compile(spec, tmp_path / "out")
     assert "meta_selector_matches_nothing" not in _codes(result)
     assert [s.matches for s in result.manifest.meta_selectors] == [1]
+
+
+def test_a_diplotype_member_written_in_the_other_order_matches_the_stored_pair(tmp_path: Path) -> None:
+    """The model stores `haplotype_a <= haplotype_b`; a member naming both halves is compared that way."""
+    meta = _META_HEADER + '"diplotypes[gene=APOE, haplotype_a=ε4, haplotype_b=ε2]",,,,,,,,INFERRED,,,,\n'
+    result = _compile(_module(tmp_path / "spec", meta), tmp_path / "out")
+    assert "meta_selector_matches_nothing" not in _codes(result)
+    row = _resolved_row(tmp_path / "out", "diplotypes", ["APOE", "ε2", "ε4", "MONDO:0004975", None, None])
+    assert row["age_of_action_confidence"] == "INFERRED"
+    # The authored cell is kept verbatim for reverse.
+    assert pl.read_parquet(tmp_path / "out" / "meta.parquet")["members"].to_list() == [
+        "diplotypes[gene=APOE, haplotype_a=ε4, haplotype_b=ε2]"
+    ]
+
+
+def test_two_traits_tiers_are_two_statements_not_a_conflict(tmp_path: Path) -> None:
+    """A per-trait row's facts are about its trait; only trait-less rows set a row's per-locus facts."""
+    meta = (
+        _META_HEADER
+        + "variants[variant_key=rs10455872],EFO_0001645,,,,,A,,,,,,\n"
+        + "variants[variant_key=rs10455872],EFO_0004611,,,,,B,,,,,,\n"
+    )
+    _compile(_module(tmp_path / "spec", meta), tmp_path / "out")
+    row = _resolved_row(tmp_path / "out", "variants", ["rs10455872", "A/G"])
+    assert (row["tier"], row["withheld"], row["meta_rows"]) == (None, [], [0, 1])
+    _compile(_module(tmp_path / "spec2", meta + _LPA_LOCUS), tmp_path / "out2")
+    row = _resolved_row(tmp_path / "out2", "variants", ["rs10455872", "A/G"])
+    assert (row["tier"], row["withheld"]) == ("A", [])

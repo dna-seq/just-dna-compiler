@@ -11,7 +11,7 @@ nothing in a module that carries the surviving id, and the merge is the diagnosi
 from pathlib import Path
 
 import pytest
-from just_dna_enricher.enrich import enrich
+from just_dna_enricher.enrich import EnrichmentError, enrich
 from just_dna_enricher.enrich.subjects import meta_member_rsids
 from just_dna_enricher.identifiers import RsidStatus
 
@@ -82,3 +82,26 @@ def test_the_currency_pass_asks_dbsnp_about_meta_members(
     assert [(s.rsid, s.current) for s in result.stale_rsids] == [("rs8192284", "rs2228145")]
     # The member's id is asked, never written: resolution.csv carries the module's rows only.
     assert {row.rsid for row in result.rows} == {"rs2228145"}
+
+
+def test_an_invalid_meta_csv_refuses_before_the_run_does_any_work(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Read at the start of the run, never inside the late rsID pass (`@incidental-call-isolated`)."""
+    spec = _spec(tmp_path / "spec")
+    (spec / "meta.csv").write_text("members,tier\nvariants[colour=blue],A\n", encoding="utf-8")
+
+    def never(*_args: object, **_kwargs: object) -> list:
+        raise AssertionError("the rsID pass ran on a module whose meta.csv is invalid")
+
+    monkeypatch.setattr("just_dna_enricher.enrich.orchestration.check_rsids", never)
+    with pytest.raises(EnrichmentError, match="meta.csv is invalid"):
+        enrich(
+            spec,
+            ensembl_cache=tmp_path / "no-cache",
+            clinvar_cache=tmp_path / "no-cv",
+            verify_rsids=True,
+            use_gnomad=False,
+            download=False,
+        )
+    assert not (spec / "resolution.csv").exists()

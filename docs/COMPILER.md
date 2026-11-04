@@ -1364,8 +1364,11 @@ key `(variant_key, genotype)`, which is `weights.parquet`'s key for every row re
 expand. An rsID that resolves onto several loci is written to `weights.parquet` coordinate-keyed
 (`locus_count > 1`), so a consumer reaches those rows from a meta key through their `rsid` column.
 
-**Precedence, per row reached and per column.** Only **one-member** rows contribute: a combination's
-facts are about the combination, so they stay on its `meta.parquet` row. Among the rows that **state**
+**Precedence, per row reached and per column.** Only **one-member** rows naming **no trait** contribute
+facts: a combination's facts are about the combination and a per-trait row's are about its trait (a
+separate statement by the key), so both stay on their own `meta.parquet` row. A per-trait row still
+reaches the row (it is listed in `meta_rows`). A member naming both halves of a diplotype pair is matched
+as the model stores the pair (`haplotype_a <= haplotype_b`); the authored cell is kept. Among the rows that **state**
 a column (unstated is not different), the maximal ones under this order win:
 
 1. a sex-scoped row outranks the row with the same key and no `sex`, for that sex;

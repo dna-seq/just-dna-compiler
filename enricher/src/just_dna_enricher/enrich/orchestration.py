@@ -328,6 +328,10 @@ def _run_enrichment(
     """
     if genome_build is None:
         genome_build = spec_genome_build(spec_dir)
+    # The meta-table's member rsIDs (0.8), read here at the start of the run and never inside the late
+    # rsID pass: an invalid meta.csv must refuse before any network pass has done work it would discard
+    # (`@incidental-call-isolated`).
+    member_rsids = meta_member_rsids(spec_dir)
     variants: list[VariantRow] = []
     variants_path = spec_dir / "variants.csv"
     if variants_path.exists():
@@ -1243,7 +1247,7 @@ def _run_enrichment(
         # two keys is a meta-table disagreement hidden as a difference, and NCBI is the merge oracle.
         # The members' ids are asked and reported, never resolved — a verdict is stamped only on a row
         # `resolution.csv` already carries.
-        asked = sorted({r.rsid for r in out if r.rsid} | set(meta_member_rsids(spec_dir)))
+        asked = sorted({r.rsid for r in out if r.rsid} | set(member_rsids))
         rsid_subjects = len(asked)
         try:
             statuses = check_rsids(asked)
@@ -1548,7 +1552,8 @@ def _run_enrichment(
         raise EnrichmentError(
             f"strict enrichment: {len(result.stale_rsids)} authored rsID(s) are no longer current in "
             f"dbSNP: {[str(s) for s in result.stale_rsids]}. An all-or-nothing artifact should not be "
-            f"built on an identifier its own source has retired — fix the identifier in variants.csv, "
+            f"built on an identifier its own source has retired — fix the identifier in variants.csv (or, "
+            f"for an id only a meta.csv member names, in that member), "
             f"or author the coordinate instead (a VRS allele id cannot drift). Use "
             f"mode='best_effort' to record these as warnings."
         )
