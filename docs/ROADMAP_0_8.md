@@ -814,6 +814,29 @@ the column; hashing it would make a reworded note move the digest, which is the 
 
 ## RM28 — Meta-conclusions (the predicate half)
 
+**The selector, widened 2026-11-04 by the maintainer** ("selector is just the right spice for meta"). It
+supersedes the tag-only form above.
+
+- **One general form, `column=value`**, over a single-statement table's columns. On a list column such as
+  `flags`, `=` means "contains", so the legacy row is `flags=legacy_longevitymap`.
+- **Several conditions in one member are AND-ed**, e.g. `diplotypes[gene=TPMT, phenotype=Poor Metabolizer]`.
+- **Inside a combination, a selector is existential**: "any row of the set". CPIC's 6 gene pairs (18 drugs,
+  2,656 recommendation rows) are written as phenotype pairs, one row each, instead of diplotype × diplotype.
+  Lewis (FUT2 × FUT3 phenotypes) is the same shape. In a facts-only row, a selector's facts apply to each
+  row it matches.
+- **The compiler expands every selector** into the concrete rows it matches, in the parquet, so a consumer
+  never evaluates a rule (P1). The authored row keeps its selector through `reverse` (P7).
+- **A selector that matches nothing is a warning** (almost always a typo), and the manifest records each
+  selector's match count (`@dont-discard-computed`).
+- **Precedence:** a concrete row key, then a locus-level key, then a selector with more conditions, then
+  one with fewer. Two matches that cannot be ordered and disagree withhold the column.
+- **Out of bounds:** negation, OR, numeric ranges, joins across tables, and selectors over `studies.csv`.
+  Rows are already a disjunction, and negation over an open set cannot be checked.
+
+**Measured:** for v2 itself the widening adds nothing beyond the tag. Only 3 genes have more than one lead
+locus (FOXO3, HTT, TERT), and none shares one tier. Its payoff is the PGx gene pairs and Lewis, at no
+column cost: one grammar replaces a list of selector kinds.
+
 **A fifth member form, decided 2026-11-04 by the maintainer: the tag selector.** A member may be
 `flags:<tag>`, which means every single-statement row carrying that tag. v2's 528 legacy variants all carry
 `legacy_longevitymap` (R-LEGACY-1), so one row (`flags:legacy_longevitymap`, tier D) replaces 528 one-line rows.
