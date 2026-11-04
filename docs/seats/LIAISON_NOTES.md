@@ -46,7 +46,7 @@ PR is biodatageeks/polars-bio#478 (open, green). Watch for 0.37.0.
 …637618265). The bump (`uv lock --upgrade`, the suite, its new warnings, the fixes) becomes this seat's unattended
 routine; the role text is in the kit since v0.1.127, which this clone pins. Step (2), the priming change, is written in
 the working tree of `LIAISON.md` (grant + "## The dependency bump") but **uncommitted**: auto mode refused the commit
-as self-modification (kit issue #267). Put on the desk for the person to commit or allow (desk #195). Default on
+as self-modification (kit issue #267). Put on the desk for the person to commit or allow (desk #195). Kit v0.1.128 widens auto-mode rule 5 to cover it (#267 fixed); this clone moved to v0.1.128 on 2026-11-05, but the person's installed rule 5 is still the 2026-11-03 one (`automode.py --check`), so #195 now recommends pasting it; once pasted, commit the priming here. Default on
 silence: stays uncommitted, no bump runs. After it lands: (1) add `[seat.liaison.watch.nightly]`, `cmd = "sh
 kit:bin/py.sh kit:classes/base/nightly.py deps"`, to `.blueprints.toml` (may be refused the same way). Do not run a
 bump before the grant is committed.
