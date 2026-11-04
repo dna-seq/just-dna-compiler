@@ -41,6 +41,21 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM351: the PGx cross-table checks know an allele by its gene, and an HLA allele is no longer "undefined" (0.8, uncut)
+
+**format, compiler** — The two cross-table PGx checks key a named allele on `(gene, allele)`, not on
+the bare name. `star_allele_undefined` used to let one gene's definition answer for another's: a module
+defining CYP2C19 `*2` and using CYP2C9 `*2` with no definition got no warning, and now gets one. The
+message keeps its wording and appends the gap per gene (*"By gene: CYP2C9 \*2."*). An allele of an HLA
+gene (`pgx.is_hla_gene`, the `HLA-` prefix RM334's grammar reads) is typed by name and defined by no
+variant, so it is no longer reported as one that "can never match"; when the warning fires for another
+gene it names the HLA genes it did not check, and when the only undefined alleles are HLA alleles,
+nothing fires. In `diplotype_definitions_identical` and `diplotype_phase_ambiguous`, one gene's `*2` no
+longer merges its defining variants into another gene's `*2`, which had silenced a real finding. A
+`haplotypes.csv` row with no `gene` still defines its name for every gene, as before, so a module
+that leaves `gene` out of `haplotypes.csv` warns exactly as it did. The six PGx reference examples warn as before.
+No column, code or identity changes.
+
 ## 2026-11-04 — RM348: `logs/` discovery stops trusting the filesystem (0.8, uncut)
 
 **compiler** — Every path log discovery considers, the top-level `*.log` included, must resolve to

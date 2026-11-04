@@ -78,12 +78,19 @@ HLA_GENE_PREFIX: str = "HLA-"
 HLA_ALLELE_PATTERN: re.Pattern[str] = re.compile(r"\*[0-9]{2,}(?::[0-9]{2,}){1,3}[NLSCAQ]?")
 
 
+def is_hla_gene(gene: str) -> bool:
+    """Whether `gene` is an HLA gene, whose alleles are typed by IPD-IMGT/HLA name rather than defined
+    by variants. The one statement of the prefix: the grammar below reads it, and so does the
+    compiler's used-but-not-defined check, which exempts such a gene (RM351)."""
+    return gene.startswith(HLA_GENE_PREFIX)
+
+
 def hla_allele_refusal(gene: str, allele: str) -> str | None:
     """Why `allele` is refused for `gene` under IPD-IMGT/HLA's grammar (RM334), or `None` if it is not.
 
     The one statement of the rule: the model's validator raises it, and a drafter skips on it, so the
     two cannot disagree (`@drafting-scaffold`). Every gene outside `HLA-` answers `None`."""
-    if not gene.startswith(HLA_GENE_PREFIX) or HLA_ALLELE_PATTERN.fullmatch(allele):
+    if not is_hla_gene(gene) or HLA_ALLELE_PATTERN.fullmatch(allele):
         return None
     return (
         f"{gene} is an HLA gene, so its allele must follow IPD-IMGT/HLA nomenclature: `*`, "

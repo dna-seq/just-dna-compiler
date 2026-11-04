@@ -181,8 +181,8 @@ detectable without any reference. This is where most real authoring bugs are cau
 | study / frequency / gene-metrics orphans | the sidecar describes something the module lacks | warning |
 | literature orphans | a citation no study and no citing table row makes — reported, and **left out of the artifact** (the row stays in `literature.csv`) | warning |
 | `sources.csv` orphans / undeclared sources | every source a fact table cites has terms recorded, and vice versa | warning |
-| star allele used but not defined | `allele_function`/`diplotypes` name it; `haplotypes` defines it | warning |
-| **phase-ambiguous diplotypes** (0.5) | two *different* haplotype pairs whose unphased genotype is identical while their conclusions differ | warning |
+| star allele used but not defined | `allele_function`/`diplotypes` name it; `haplotypes` defines it — matched on `(gene, allele)`, a `haplotypes` row with no `gene` defining its name for every gene, and an HLA gene's typed alleles exempt (RM351) | warning |
+| **phase-ambiguous diplotypes** (0.5) | two *different* haplotype pairs of one gene whose unphased genotype is identical while their conclusions differ; each haplotype's defining variants are that gene's own (RM351) | warning |
 
 Four of these deserve their reasoning rather than just their row.
 
