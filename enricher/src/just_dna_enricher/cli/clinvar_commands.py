@@ -87,30 +87,27 @@ def clinvar_publish_(
 ) -> None:
     """Create-or-update the dataset repo and upload the built ClinVar snapshot (publisher/dev)."""
     from just_dna_enricher.upload import (
-        OrphanedSidecarError,
-        check_publish_orphans_no_sidecar,
-        plan_reference_snapshot,
+        PublishRefused,
         publish_reference_snapshot,
+        rehearse_reference_snapshot,
     )
 
-    if dry_run:
-        plan = plan_reference_snapshot(snapshot_dir, repo_id)
-        # A rehearsal that skips the check the real thing refuses on is a different operation. This
-        # is the one command that can reach the published ClinVar repo from a snapshot built without
-        # its citations half, so the dry run reads the repo rather than promising a refused publish.
-        try:
-            check_publish_orphans_no_sidecar(plan)
-        except OrphanedSidecarError as exc:
-            typer.secho(f"WOULD BE REFUSED: {exc}", fg=typer.colors.RED, err=True)
-            raise typer.Exit(code=1) from exc
-        typer.echo(f"Would upload to {plan.repo_id}:")
-        for f in plan.files:
-            typer.echo(f"  • {f}")
-        return
+    # A rehearsal that skips the check the real thing refuses on is a different operation. This is the
+    # one command that can reach the published ClinVar repo from a snapshot built without its citations
+    # half, so the dry run reads the repo rather than promising a refused publish (RM368: every
+    # snapshot dry run rehearses now, inside the real run's `try`).
     try:
+        if dry_run:
+            plan = rehearse_reference_snapshot(snapshot_dir, repo_id)
+            typer.echo(f"Would upload to {plan.repo_id}:")
+            for f in plan.files:
+                typer.echo(f"  • {f}")
+            return
         plan = publish_reference_snapshot(snapshot_dir, repo_id, commit_message=commit_message)
-    except (FileNotFoundError, PermissionError, ImportError, OrphanedSidecarError) as exc:
-        typer.secho(f"PUBLISH FAILED: {exc}", fg=typer.colors.RED, err=True)
+    except (PublishRefused, PermissionError, ImportError) as exc:
+        typer.secho(
+            f"{'WOULD BE REFUSED' if dry_run else 'PUBLISH FAILED'}: {exc}", fg=typer.colors.RED, err=True
+        )
         raise typer.Exit(code=1) from exc
     typer.secho(
         f"published: {snapshot_dir} → {plan.repo_id} ({len(plan.files)} files)",

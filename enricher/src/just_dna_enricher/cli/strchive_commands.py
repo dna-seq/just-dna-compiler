@@ -96,7 +96,11 @@ def strchive_publish_(
     run the comparison and cannot say which release they compared against — build with `--release`
     first, and this refuses nothing but says so.
     """
-    from just_dna_enricher.upload import plan_reference_snapshot, publish_reference_snapshot
+    from just_dna_enricher.upload import (
+        PublishRefused,
+        publish_reference_snapshot,
+        rehearse_reference_snapshot,
+    )
 
     if release_label(snapshot_dir) is None:
         typer.secho(
@@ -107,7 +111,7 @@ def strchive_publish_(
         )
     try:
         if dry_run:
-            plan = plan_reference_snapshot(snapshot_dir, repo, payload=STRCHIVE_CATALOGUE_FILENAME)
+            plan = rehearse_reference_snapshot(snapshot_dir, repo, payload=STRCHIVE_CATALOGUE_FILENAME)
             typer.echo(f"would upload {len(plan.files)} file(s) to {plan.repo_id}: {plan.files}")
             return
         plan = publish_reference_snapshot(
@@ -116,7 +120,7 @@ def strchive_publish_(
             commit_message=commit_message,
             payload=STRCHIVE_CATALOGUE_FILENAME,
         )
-    except (FileNotFoundError, PermissionError, ImportError) as exc:
+    except (PublishRefused, PermissionError, ImportError) as exc:
         typer.secho(f"PUBLISH FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
     typer.secho(

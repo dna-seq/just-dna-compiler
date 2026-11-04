@@ -287,7 +287,7 @@ def civic_publish_(
     dry_run: bool = typer.Option(
         False,
         "--dry-run",
-        help="Show what would be uploaded without contacting HuggingFace.",
+        help="Show what would be uploaded, after the checks the publish runs. Reads the repo's file list; uploads nothing.",
     ),
 ) -> None:
     """Upload a built CIViC snapshot to a HuggingFace dataset repo (publisher/dev).
@@ -310,20 +310,21 @@ def civic_publish_(
     """
     from just_dna_enricher.upload import (
         DEFAULT_CIVIC_REPO_ID,
-        plan_reference_snapshot,
+        PublishRefused,
         publish_reference_snapshot,
+        rehearse_reference_snapshot,
     )
 
     repo_id = repo_id or DEFAULT_CIVIC_REPO_ID
-    if dry_run:
-        plan = plan_reference_snapshot(snapshot_dir, repo_id)
-        typer.echo(f"Would upload to {plan.repo_id}:")
-        for f in plan.files:
-            typer.echo(f"  • {f}")
-        return
     try:
+        if dry_run:
+            plan = rehearse_reference_snapshot(snapshot_dir, repo_id)
+            typer.echo(f"Would upload to {plan.repo_id}:")
+            for f in plan.files:
+                typer.echo(f"  • {f}")
+            return
         plan = publish_reference_snapshot(snapshot_dir, repo_id, commit_message=commit_message)
-    except (FileNotFoundError, PermissionError, ImportError) as exc:
+    except (PublishRefused, PermissionError, ImportError) as exc:
         typer.secho(f"PUBLISH FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
     typer.secho(f"Published {len(plan.files)} file(s) to {plan.repo_id}", fg=typer.colors.GREEN)

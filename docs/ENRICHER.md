@@ -2577,9 +2577,11 @@ The author/publisher half of the enricher's HF use (snapshot *download* is a run
 
 ```python
 ensure_repo(repo_id, token=None)                                       # create-or-update (create_repo exist_ok=True)
-plan_upload(module_dir, name, repo_id=None) -> UploadPlan              # dry-run; validates artifacts present
+plan_upload(module_dir, name, repo_id=None) -> UploadPlan              # the plan alone, offline; every local refusal
+rehearse_upload(module_dir, name, repo_id=None, token=None, force=False) -> UploadPlan   # the dry run: plan + the versioned-path read
 upload_module(module_dir, name, repo_id=None, token=None, commit_message=None, force=False) -> UploadPlan
-plan_reference_snapshot(snapshot_dir, repo_id=None, *, payload=None) -> SnapshotPlan     # dry-run for a reference snapshot
+plan_reference_snapshot(snapshot_dir, repo_id=None, *, payload=None) -> SnapshotPlan     # the snapshot plan alone, offline
+rehearse_reference_snapshot(snapshot_dir, repo_id=None, *, payload=None, token=None) -> SnapshotPlan   # the dry run: plan + orphan check
 publish_reference_snapshot(snapshot_dir, repo_id=None, token=None, commit_message=None, *, payload=None) -> SnapshotPlan
 ```
 
@@ -2606,7 +2608,8 @@ the repo pre-existed).
 > single-file `clinvar.parquet` causes. Absence is normal (only ClinVar has one, only after
 > `clinvar citations`), so neither end treats it as an error.
 Each needs a write token (`hf auth login` or `HF_TOKEN`) — a missing one raises `PermissionError`;
-`huggingface_hub` is a guarded lazy import.
+`huggingface_hub` is a guarded lazy import. Every refusal is a `PublishRefused` (RM368, below); the
+token and the import are the two failures outside that family.
 
 ### What publishes, and what refuses (RM89)
 
@@ -2626,8 +2629,8 @@ because the table carrying them was dropped at upload.
   hand-kept version of this list is the same defect as a hand-kept `fieldnames` — `@fieldnames-from-model`
   one tier further out, and the consumer named the property they most wanted preserved as *"adding a
   family becomes one edit that discovery and the publisher learn together"*.
-- **Three positive rules replace the required triple**, ordered most specific first so a refusal names
-  the actual fault:
+- **Positive rules replace the required triple**, ordered most specific first so a refusal names the
+  actual fault:
 
   | rule | refuses | why it is not the old rule |
   | --- | --- | --- |
@@ -2655,22 +2658,23 @@ because the table carrying them was dropped at upload.
   - a named path that is absolute, climbs out with `..`, or resolves outside the module directory (a
     symlink) is skipped with a warning naming the reason, and the rest of the publish goes ahead. So is
     a hidden path the compiler would not have shipped: RM338's discovery skips a hidden path for every
-    kind except `*.log`, so a hidden `.log` uploads and a hidden `.env` does not. Anything
-    `upload_folder`'s own default ignore list drops (`.git`, `.cache/huggingface`, read from
-    `huggingface_hub`) is skipped even when it is a `.log`, since the hub would never send it and the
-    dry run would promise a file that does not arrive;
+    kind except `*.log`, so a hidden `.log` uploads and a hidden `.env` does not. Anything the hub's
+    own default ignore list names (`.git`, `.cache/huggingface`, read from `huggingface_hub`) is
+    skipped even when it is a `.log`: tool state, never a module file. Since RM368 the send is a
+    `create_commit`, which applies no ignore list, so this rule is what keeps such a path out;
   - a named log absent from disk is skipped quietly (logs are optional), and an absent or unreadable
     manifest plans no logs, exactly as before.
 
-  `upload_module` passes the plan itself to `upload_folder` as its allowlist, each path glob-escaped
-  (the hub matches with `fnmatch`, so `logs/fig[1].png` unescaped would select `logs/fig1.png`), so the
-  dry run lists exactly what is sent — the rule `publish_reference_snapshot` already followed.
+  The dry run lists exactly what is sent — the rule `publish_reference_snapshot` already followed.
+  Until RM368 `upload_module` passed the plan to `upload_folder` as a glob-escaped allowlist (the hub
+  matches with `fnmatch`, so `logs/fig[1].png` unescaped would select `logs/fig1.png`); it now commits
+  the planned files' bytes themselves, so no pattern is involved.
 - **Every declared file travels, and nothing else does (RM353).** `provenance.json` is named and
   hashed in `manifest.provenance` and was in no list, so it was never uploaded. The plan is now
   `manifest.json` plus every file the manifest declares in the module directory, read by one helper
   (`_declared_files`) from five fields: `artifact.files`, `logo`, `readme`, `provenance` (a summary
   carrying `file` and `sha256`, not a `FileEntry`) and `logs`. `inputs` and `derived` describe files
-  beside the spec and are not sent. Three consequences:
+  beside the spec and are not sent (`SPEC_SIDE_FILE_FIELDS`, with the reason). The consequences:
   - a file on disk the manifest does not declare is **not sent** — a parquet an earlier compile left in
     the directory, or a logo the manifest does not name. On the flat path a stale parquet reads to
     discovery as part of the module, so this is narrower than the old allowlist on purpose;
@@ -2699,8 +2703,47 @@ because the table carrying them was dropped at upload.
   file (a `logo` with an empty name) is outside the digest and is dropped, as before. `upload --dry-run`
   sits inside the same `try` as the real run: a refusal the plan raises prints the same
   `UPLOAD FAILED: …` line and exits 1 from either, where the dry run used to end in a traceback. The
-  dry run still contacts nothing, so the versioned-path guard (a remote read) is the one refusal only
-  the real run can give.
+  dry run then still contacted nothing, so the versioned-path guard was a refusal only the real run
+  could give; RM368 closed that (next bullet).
+- **What the publisher plans, checks and sends is one reading of the disk (RM368).** They used to be
+  three: the plan hashed the declared files, the guard compared the manifest in memory, and
+  `upload_folder` read the directory again, so a recompile landing between the guard and the send
+  shipped bytes nothing had checked. The class and its mechanism:
+  - **The plan is paths and hashes.** `UploadPlan.sha256` holds every planned file's sha256 as the plan
+    read it, `manifest.json` from the very bytes it was parsed from. After the guard, each file is read
+    once more, checked against its entry, and those bytes are what `create_commit` carries — never a
+    path the hub reads later. A file that changed, went missing or became unreadable in between is a
+    `PlanChangedError`, naming each, before either commit. The cost is memory: the module's files are
+    held for the two commits, which a module's size (megabytes) affords and a 32 GB snapshot would not,
+    so the snapshot publisher keeps its allowlist send.
+  - **A malformed declared field refuses; an absent one withholds**
+    (`@an-absent-input-is-the-unknown-arm-and-a-malformed-one-is-the-refusal`). `artifact.files`
+    present but not a list used to fall back to the allowlist and drop the attestation check; a
+    `sha256` present but not a string used to read as unknown and drop the hash check, and a `name` (or
+    `provenance.file`) present but not a string used to read as no file and drop the file. The fields
+    walked are `upload.DECLARED_FILE_FIELDS`, and a test asserts they and `SPEC_SIDE_FILE_FIELDS` are
+    exactly the `ModuleManifest` fields that reach a `FileEntry` or a `Provenance`, so a new
+    file-naming field goes red until the publisher decides whether it travels. A missing or `null`
+    `artifact.files` is still the unknown arm and falls back as before.
+  - **A blank name is no name.** `_named_entry` keeps an object whose `name` is a string that is not
+    blank; a whitespace-only name used to name a file. The attested refusal is wider than an empty
+    `name`: it covers every `artifact.files` entry that is not an object with a non-blank string
+    `name` (a missing name, a number, a bare string), quoting each.
+  - **The manifest itself is compared at the versioned path** (below): every key except the ones the
+    digest and declared-file arms compare (`digest`, `files`, `name`, `file`, `sha256`, `size`).
+  - **The dry run rehearses.** `upload --dry-run` calls `rehearse_upload`: the plan plus the
+    versioned-path read, with a read-only client (a token when there is one, anonymous otherwise),
+    creating no repo and committing nothing; it refuses as `ALREADY PUBLISHED` or `TOOLCHAIN DIFFERS`
+    exactly as the real run would, and an unreachable hub is the same fail-open warning. Every
+    snapshot `publish --dry-run` likewise calls `rehearse_reference_snapshot` (plan plus the orphan
+    check); two commands ran that check in their dry run and the rest did not.
+  - **One error family.** Every refusal is a `PublishRefused`: `ModuleNotPublishable` and
+    `SnapshotNotPublishable` for the plans' refusals, `PlanChangedError`, and the existing
+    `PublishCollisionError` / `ToolchainDiffersError` / `OrphanedSidecarError` re-based under it. The
+    plans' refusals were bare `FileNotFoundError`s, which a caller could not tell from a missing
+    directory; within 0.8 the two plan types keep `FileNotFoundError` as a second base, so an existing
+    handler keeps catching them. Every CLI `try` around a publish catches the family (an AST walk
+    asserts it), and `cpic publish` / `clinpgx publish`, which caught nothing, now print one line.
 
 ### A module is published twice, and the second path is the one that can name a release (RM84)
 
@@ -2734,25 +2777,33 @@ of the reader. The half this tier owns is the layout, and it is written twice no
   directory without one has always been publishable; RM84 is not a licence to tighten what the publisher
   accepts. An unreadable manifest is a withheld version, not a failed upload.
 - **Two commits, not one — and the docs say so rather than implying an atomicity the code lacks.**
-  `upload_folder` commits per call, so a reader can briefly see the flat path refreshed while the
+  Each path is its own `create_commit`, so a reader can briefly see the flat path refreshed while the
   versioned copy is not there yet. The flat path goes first, because it is the one anything reads today.
   If the second call fails, the first has already landed: latest is the new release and the versioned
-  copy is absent until a re-run, which is idempotent. Making it atomic means `create_commit` over an
-  explicit operation list, a different shape from the allow-pattern plumbing every publish here uses; it
-  was not worth holding the fix for, and if the window ever matters that is the change to make.
+  copy is absent until a re-run, which is idempotent. Since RM368 the send is already `create_commit`
+  over an explicit operation list, so one commit carrying both paths is a small change; it was not
+  taken there, because two commits is the documented behaviour and nothing has needed the window
+  closed.
 - **A versioned path is only as stable as the author's `version:` is.** Nothing reads the remote before
   writing, so re-publishing without bumping the version overwrote `data/<name>/v<version>/` with
   different bytes — the same overwrite the flat path has always done, but under a name that invites
   caching. **Closed in 0.6.1 (RM88): the versioned path refuses unless `--force`.** Before either
   write, the published `manifest.json` at that path is read and its `artifact.digest` compared with
-  this module's — and, **since RM353, the sha256 of every file each manifest declares**. The digest
-  excludes logs, provenance, logo and readme by design, so comparing it alone let a second publish of
-  one version replace its logs without `--force`. A different digest, a declared file whose hash
-  differs, or one declared on one side only raises `PublishCollisionError`, whose message names the
-  arm (*a different artifact*, or *the same compiled data but different declared files* with the
-  names); a declaration with no legible hash is not compared. The CLI reports it as
-  `ALREADY PUBLISHED` rather than `UPLOAD FAILED`, because the module is fine and the remote is what
-  disagrees. Four things about the gate that are decisions rather than details:
+  this module's — and, **since RM353, the sha256 of every file each manifest declares**, and **since
+  RM368, every other field of the manifest**. The digest excludes logs, provenance, logo and readme by
+  design, so comparing it alone let a second publish of one version replace its logs without
+  `--force`; and the published manifest is replaced by the upload too, so the same data under a new
+  title replaced it with no arm noticing. A different digest, a declared file whose hash differs, one
+  declared on one side only, or any other field that differs raises `PublishCollisionError`, whose
+  message names the arm (*a different artifact*; *the same compiled data but different declared
+  files* with the names; *a different `manifest.json`, at* the dotted paths). A remote manifest whose
+  bytes hash to this one's is the same release with no field compared; a declaration with no legible
+  hash is not compared. The stamps of the act of compiling (`upload.COMPILATION_STAMPS`:
+  `compiled_at`, `compiled_by`) are left out, so a recompile of an unchanged spec republishes as a
+  no-op; every other `Compilation` field (`COMPILATION_COMPARED`, `toolchain` among them) is compared,
+  and a test holds the two sets equal to the model's fields so a new one must be classified. The CLI reports it as `ALREADY PUBLISHED` rather
+  than `UPLOAD FAILED`, because the module is fine and the remote is what disagrees. What about the gate
+  is a decision rather than a detail:
   - **Identical bytes are not a collision.** The comparator is the digest and the declared hashes,
     not presence — a presence check would refuse exactly the re-run this section documents as the
     recovery when the second commit fails.
@@ -2760,7 +2811,8 @@ of the reader. The half this tier owns is the layout, and it is written twice no
     whole point of the versioned copy is that it is the one that does not move.
   - **It fails open.** An unreadable published manifest is an *unknown*, and nothing established a
     collision, so the publish proceeds with a warning. Failing closed would make a network flake
-    demand `--force` and train an author to pass it by default.
+    demand `--force` and train an author to pass it by default. The dry run's read fails open the same
+    way (RM368).
   - **A recompile under a newer compiler trips it**, correctly: P4 pins byte-reproducibility to
     `compiler_version`, the recorded toolchain and the resolved reference, so the path really would
     come to hold different bytes than the ones it was published with. The refusal says so, because
@@ -5498,8 +5550,7 @@ caller and `except` order never matters. RM310 was the list shape failing: `cach
 | `mane_build` | `ManeBuildError` | `ManeUnavailable` |
 | `opentargets_build` | `OpenTargetsBuildError` | `OpenTargetsUnavailable` |
 | `pubmind_build` | `PubMindBuildError` | `PubMindUnavailable` |
-| `upload` | `OrphanedSidecarError` | — |
-| `upload` | `PublishCollisionError` | `ToolchainDiffersError` (RM342: the two recorded toolchains differ) |
+| `upload` | `PublishRefused` (RM368: every refusal a publish raises) | `ModuleNotPublishable`, `SnapshotNotPublishable` (both still a `FileNotFoundError` within 0.8), `PlanChangedError`, `OrphanedSidecarError`, `PublishCollisionError` → `ToolchainDiffersError` (RM342: the two recorded toolchains differ) |
 
 **Snapshot readers — an absent or unreadable cache, deliberately a `FileNotFoundError`**
 
@@ -5603,11 +5654,11 @@ just-dna-enricher hint citation --pmcid PMC3110566           # the PubMed id for
 just-dna-enricher hint trait EFO_0004340                     # current | obsolete | absent
 just-dna-enricher hint gene MTHFR                            # approved | retired | unknown
 just-dna-enricher enrich-and-compile spec/ out/    # enrich, then compile from resolution.csv (offline)
-just-dna-enricher upload out/coronary --dry-run    # plan a module HF upload ([dev]); names both paths
+just-dna-enricher upload out/coronary --dry-run    # rehearse a module HF upload ([dev]); names both paths, reads the published version
 just-dna-enricher upload out/coronary              # push to data/coronary/ and data/coronary/v<version>/
 just-dna-enricher clinvar build --vcf clinvar.vcf.gz            # VCF → snapshot parquet ([dev]), data/repro/clinvar
 just-dna-enricher clinvar build --download                      # fetch the NCBI VCF first, then build
-just-dna-enricher clinvar publish data/repro/clinvar --dry-run  # plan the reference-snapshot upload
+just-dna-enricher clinvar publish data/repro/clinvar --dry-run  # rehearse the reference-snapshot upload
 just-dna-enricher clinvar publish data/repro/clinvar            # create-or-update datasets/just-dna-seq/clinvar
 ```
 
