@@ -445,9 +445,10 @@ def _verification_records(
         )
 
     # Placement agreement (RM267): where the run's own links placed each rsID, against the second
-    # authorities it had loaded. `witness_source` narrows the roster's two to the ones that were
-    # loaded; the one-witness count rides in `detail` with its own denominator, because it is the
-    # class a bare `findings: 0` would otherwise read as agreement (`@tautology-zero`).
+    # authorities it had loaded or (online) asked. `witness_source` narrows the roster's three to the
+    # ones that answered, and `reported_by` names the checked side once REST, Ensembl's own, is among
+    # them; the one-witness count rides in `detail` with its own denominator, because it is the class a
+    # bare `findings: 0` would otherwise read as agreement (`@tautology-zero`).
     placement_notes = placement.sentences()
     if placement.not_checked is not None:
         records.append(
@@ -461,15 +462,18 @@ def _verification_records(
                                 "unsupported": "placement is GRCh38-bound, so nothing on another assembly "
                                 "was compared (RM15)",
                                 "nothing_to_check": "no placement this run made was also placed by a "
-                                "loaded witness, so none was compared — recorded rows are compared only "
-                                "under --rederive",
-                                "no_reference": "no second authority (a ClinVar or ClinVar-GKM snapshot) "
-                                "was located, so every placement has the one witness that gave it",
+                                "witness asked about it, so none was compared — recorded rows are compared "
+                                "only under --rederive",
+                                "no_reference": "no second authority answered — no ClinVar or ClinVar-GKM "
+                                "snapshot was located, and Ensembl REST was not asked (offline, or no "
+                                "snapshot indel to ask about) or did not answer — so every placement has "
+                                "the one witness that gave it",
                             }.get(placement.not_checked, placement.not_checked),
                             *placement_notes,
                         ]
                     )
                 ),
+                reported_by=placement.placed_by,
             )
         )
     else:
@@ -487,6 +491,7 @@ def _verification_records(
                 witness_source="+".join(placement.witnesses),
                 detail="; ".join(notes + placement_notes) or None,
                 undecided=len(placement.undecided),
+                reported_by=placement.reported_by,
             )
         )
 

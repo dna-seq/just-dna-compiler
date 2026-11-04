@@ -41,6 +41,25 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM267: Ensembl REST is the placement's third witness online, so S117's `rs8176719` is withheld against the real witnesses (0.8, uncut)
+
+**enricher, format (a description)** — For an rsID the Ensembl snapshot placed, with an allele that is
+not a substitution, and that neither the ClinVar snapshot nor ClinVar-GKM holds, an online `enrich` now
+asks Ensembl REST where it sits (through the run's resolver and RM268's anchored path) and compares the
+answer by RM267's ladder. REST places `rs8176719` (ABO O1) at `9:133257521 T>TC`, the snapshot at
+`9:133257520 G>GC`, so the rsID is withheld with both placements named; before, neither loaded witness
+held it and it was counted as one witness. The witness is named `ensembl` on the row
+(`placement_witness`), the licensed source `sources.csv` already carries. REST is Ensembl, so the
+comparison is **self-consistent, not independent**: the `placement_agreement` record names its checked
+side `ensembl` once REST answered, so `independence` reads `self_consistent` (REST alone) or is withheld
+(REST beside ClinVar), and an rsID only REST agreed with stays in the one-witness count. A REST request
+unanswered after its retries is *not asked* for that rsID and counted in `detail`; `--offline` asks
+nothing. The REST leg of `EnsemblResolver.resolve_rsid` now retries a 5xx and a 429, and a 429 left
+after the retries is unreachable rather than "no record". New: `verification.ran(reported_by=)` and
+`skipped(reported_by=)`, `EnsemblResolver.resolve_rsid_rest` (REST's half of `resolve_rsid`; an injected
+resolver must provide it), `PlacementCheck.self_consistent`/`not_asked`/`reported_by`/`placed_by`,
+`placement.live_witness_subjects` and `ask_live_witness`. No new column, no warning code. INTEGRATION_0_8 § 1.18.
+
 ## 2026-11-04 — RM361: a failed, retired, unread or undecided answer is never recorded as a definite one (0.8, uncut)
 
 - **A 410 is `retired`, never `unreachable`.** Every `*Retired` error carries `net.EndpointRetired`, and every

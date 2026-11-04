@@ -9,8 +9,9 @@ Two backends, tried in order with a fallback the user asked for:
        a bare rsID falls through to REST). V1 also serves as the explicit **fallback on 500/503** from
        V2.
 
-`tenacity` retries each backend on transient transport/timeout errors; a 5xx is not retried but
-triggers the V2→V1 fallback. All network lives here (never in format/compiler). GRCh38 only.
+`tenacity` retries each backend on transient transport/timeout errors; a V2 5xx is not retried but
+triggers the V2→V1 fallback, and V1 retries a 5xx or a 429 as well before it reads as unreachable. All
+network lives here (never in format/compiler). GRCh38 only.
 """
 
 import logging
@@ -135,7 +136,16 @@ class EnsemblResolver(Withholding):
                 logger.warning("V2 GraphQL for %s failed (%s); trying REST", rsid, exc)
         except (EnsemblError, httpx.TransportError, httpx.TimeoutException) as exc:
             logger.warning("V2 GraphQL for %s errored (%s); trying REST", rsid, exc)
+        return self.resolve_rsid_rest(rsid)
 
+    def resolve_rsid_rest(self, rsid: str) -> tuple[list[dict] | None, str | None]:
+        """`resolve_rsid`'s V1 half on its own: REST's `/variation` mapping, with the same four outcomes.
+
+        The placement witness (RM267) asks this, not `resolve_rsid`: its question is where REST's own
+        mapping puts the rsID, through RM268's anchor, and a GraphQL answer — another surface, whose
+        indel convention is unprobed — would answer a different one. It also spares a request per rsID
+        to the beta endpoint, which answers a redirect today.
+        """
         try:
             loci, withheld, unplaceable = self._rest_rsid(rsid)
         except httpx.HTTPStatusError as exc:
@@ -196,6 +206,9 @@ class EnsemblResolver(Withholding):
         return _loci_from_graphql(variant)
 
     # ── V1: legacy REST ───────────────────────────────────────────────────────────────────────
+    # A 5xx and a 429 are retried too (RM354's predicate): REST is the rung a run leans on, and the
+    # placement witness (RM267) reads a request that never got an answer as "not asked" only after a
+    # second try could not change it.
     @retry(
         stop=attempt_floor(3),
         wait=wait_exponential_jitter(multiplier=0.5, max=8.0),

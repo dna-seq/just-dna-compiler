@@ -50,7 +50,7 @@ grep -n  '"[a-z_]*",  *#' schema/src/just_dna_format/vocab.py   # the members, e
 """
 
 import logging
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Collection, Iterable, Sequence
 from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -181,10 +181,12 @@ CHECK_WITNESSES: dict[str, CheckWitness] = {
     ),
     "placement_agreement": CheckWitness(
         REPORTING_SOURCE,
-        ("clinvar", "clinvar_gkm"),
+        ("clinvar", "clinvar_gkm", "ensembl"),
         "the placement the run's own link gave an rsID (the Ensembl snapshot, live Ensembl or gnomAD — "
-        "per row) against where ClinVar and ClinVar-GKM place it; a ClinVar fill has no independent "
-        "witness here and is counted with the one-witness class (RM267)",
+        "per row) against where ClinVar and ClinVar-GKM place it, and, online, where Ensembl REST places "
+        "a snapshot indel neither holds; a ClinVar fill has no independent witness here and is counted "
+        "with the one-witness class, and REST against the snapshot is Ensembl against itself, so a "
+        "record it took part in names `ensembl` as its checked side (RM267)",
         tolerance=(
             "an indel the witness spells differently, with no reference sequence this run to settle "
             "whether the two spellings are one event — counted, never read as agreement"
@@ -303,6 +305,7 @@ def _witnessed(
     undecided: int | None,
     *,
     ran_: bool,
+    reported_by: Collection[str] | None = None,
 ) -> dict:
     """The RM292 fields for a record, from the roster — and the three refusals that keep them honest.
 
@@ -334,7 +337,32 @@ def _witnessed(
         raise ValueError(
             f"{check!r} abstains on a class ({entry.tolerance}); a run must publish the undecided count"
         )
-    return {"checked_source": entry.checked, "witness_source": witness, "undecided": undecided}
+    return {
+        "checked_source": _reporting_side(entry, witness, reported_by),
+        "witness_source": witness,
+        "undecided": undecided,
+    }
+
+
+def _reporting_side(entry: CheckWitness, witness: str, reported_by: Collection[str] | None) -> str | None:
+    """The checked side of a `reporting_source` check, named once a reporter is also a witness (RM267).
+
+    `reporting_source` says the values came from whichever source reported each row, which reads
+    `independent` against any witness. That stops being true the day a reporter is itself among the
+    witnesses — Ensembl REST asked about an Ensembl snapshot placement. Then the one reporter is named,
+    so the model derives `self_consistent` (it was the only witness) or withholds (one of several);
+    several reporters, one of them a witness, withhold outright. A reporter no witness shares keeps
+    `reporting_source`, and the record reads as it did.
+    """
+    if not reported_by:
+        return entry.checked
+    if entry.checked != REPORTING_SOURCE:
+        raise ValueError(
+            f"only a {REPORTING_SOURCE!r} check names its reporters; this one reads {entry.checked!r}"
+        )
+    if not set(reported_by) & set(witness.split("+")):
+        return entry.checked
+    return next(iter(reported_by)) if len(set(reported_by)) == 1 else None
 
 
 def examples(names: Sequence[str], limit: int = DETAIL_LIMIT) -> str:
@@ -475,6 +503,7 @@ def ran(
     detail: str | None = None,
     witness_source: str | None = None,
     undecided: int | None = None,
+    reported_by: Collection[str] | None = None,
     now: str | None = None,
 ) -> VerificationRecord:
     """A record for a check that RAN, with the denominator it ran over.
@@ -485,7 +514,8 @@ def ran(
 
     Both sides of the witness come from `CHECK_WITNESSES` (RM292); `witness_source` narrows a
     multi-authority check to the ones that answered, and `undecided` is the tolerance count a tolerant
-    check must publish.
+    check must publish. `reported_by` names the sources a `reporting_source` check's values came from,
+    which decides its checked side once one of them is also a witness (`_reporting_side`).
     """
     return VerificationRecord(
         check=check,
@@ -496,7 +526,7 @@ def ran(
         detail=detail,
         checked_at=now or now_utc_iso(),
         producer=producer_label(),
-        **_witnessed(check, source, witness_source, undecided, ran_=True),
+        **_witnessed(check, source, witness_source, undecided, ran_=True, reported_by=reported_by),
     )
 
 
@@ -507,6 +537,7 @@ def skipped(
     detail: str | None = None,
     source: str | None = None,
     undecided: int | None = None,
+    reported_by: Collection[str] | None = None,
     now: str | None = None,
 ) -> VerificationRecord:
     """A record for a check that did NOT run, carrying the machine key and the sentence.
@@ -517,6 +548,8 @@ def skipped(
     The witness is stated on a skip too (RM292): it describes the question, which did not change
     because this run could not put it. `undecided` may ride a skip — a check that reached a verdict on
     nothing can still have abstained on something, and that count is the honest part of the record.
+    `reported_by` is `ran`'s: on a skip it names the sources whose values the question was about, so a
+    question that includes a reporter's own authority among its witnesses does not read `independent`.
     """
     return VerificationRecord(
         check=check,
@@ -525,7 +558,7 @@ def skipped(
         source=source,
         checked_at=now or now_utc_iso(),
         producer=producer_label(),
-        **_witnessed(check, source, None, undecided, ran_=False),
+        **_witnessed(check, source, None, undecided, ran_=False, reported_by=reported_by),
     )
 
 
