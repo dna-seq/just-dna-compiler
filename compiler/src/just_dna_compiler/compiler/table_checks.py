@@ -295,30 +295,57 @@ def _cross_validate_studies(
     # different preprints on one variant would share a key; the cell key carries the DOI there
     # (normalized: a bare token and a doi.org URL, in any case, are one DOI), and the message names it,
     # so the same preprint written twice still warns.
-    stated: dict[tuple[str | None, str], set[str]] = {}
-    unstated: dict[tuple[str | None, str], int] = {}
+    #
+    # **Since 0.8 the same rule reads more columns** (PT2 §3 item 16): `phenotype_class` (one paper,
+    # several outcomes), the age band (`age_min`, `age_max`, `age_of`, cell by cell) and the stratum
+    # pair. Two rows are distinct when ANY of them is both stated and different, and a row warns when it
+    # is not distinct from some earlier row under its key. `proxy_rsid` is deliberately not one: two
+    # proxies of one lead in one paper are the same association measured twice.
+    earlier: dict[tuple[str | None, str], list[StudyRow]] = {}
     for row in studies:
         cites = f"{PMID_NONE} doi {doi_key(row.doi)}" if row.pmid == PMID_NONE and row.doi else row.pmid
         key = (row.variant_key, cites)
-        test = row.statistical_test.strip() if row.statistical_test else None
-        if key not in stated:
-            stated[key] = set()
-            unstated[key] = 0
-        else:
-            names_a_new_analysis = test is not None and test not in stated[key] and unstated[key] == 0
-            if not names_a_new_analysis:
-                warnings.append(
-                    CodedWarning(
-                        "duplicate_study_citation",
-                        f"Duplicate (variant, pmid): ({row.variant_key}, {cited_as(row.pmid, row.doi)})",
-                    )
+        siblings = earlier.setdefault(key, [])
+        if any(not _distinct_study_rows(row, sibling) for sibling in siblings):
+            warnings.append(
+                CodedWarning(
+                    "duplicate_study_citation",
+                    f"Duplicate (variant, pmid): ({row.variant_key}, {cited_as(row.pmid, row.doi)})",
                 )
-        if test is None:
-            unstated[key] += 1
-        else:
-            stated[key].add(test)
+            )
+        siblings.append(row)
     warnings.extend(_check_phenotype_classes(studies))
     return [], warnings
+
+
+def _narrowing_cells(row: StudyRow) -> tuple[object, ...]:
+    """The cells that can tell two rows under one `(variant_key, pmid)` apart, `None` where unstated.
+
+    `statistical_test` (RM140) is stripped, as it always was. The band is three cells, each read on its
+    own, because each is independently optional: `80–` against `80–90` share the one bound both state,
+    and an empty bound is unknown rather than "open and therefore different". The stratum is one pair —
+    its two halves are written both or neither, so the pair is stated exactly when either half is.
+    """
+    return (
+        row.statistical_test.strip() if row.statistical_test else None,
+        row.phenotype_class,
+        row.age_min,
+        row.age_max,
+        row.age_of,
+        (row.stratum, row.stratum_level) if row.stratum is not None else None,
+    )
+
+
+def _distinct_study_rows(a: StudyRow, b: StudyRow) -> bool:
+    """Whether two rows under one key are two claims: some narrowing cell is BOTH stated and different.
+
+    Kleene, never `a != b` (`@absent-is-not-different`): an unstated cell is unknown, and unknown cannot
+    establish that two rows describe separate work.
+    """
+    return any(
+        x is not None and y is not None and x != y
+        for x, y in zip(_narrowing_cells(a), _narrowing_cells(b), strict=True)
+    )
 
 
 def _check_phenotype_classes(studies: list[StudyRow]) -> list[str]:

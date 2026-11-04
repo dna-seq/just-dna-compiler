@@ -453,6 +453,16 @@ code and the byte-identical message — every module published before 0.7 behave
 repeating an analysis already stated for its key still warns however many distinct siblings sit beside
 it.
 
+**Since 0.8 the same rule reads more columns** (PT2 §3 item 16): `phenotype_class` (one paper measuring
+several outcomes, RM326), the age band (`age_min`, `age_max`, `age_of`, read cell by cell, RM329) and
+the stratum pair (`stratum`/`stratum_level`, RM330). Two rows under one `(variant_key, pmid)` are two
+claims when **any** of these, or `statistical_test`, is both stated and different; a row warns when it
+is not distinct from some earlier row under its key. The band is read per cell because each bound is
+optional on its own: `80–` against `80–90` share the one bound both state, and an empty bound is
+unknown. `proxy_rsid` is deliberately not read: two proxies of one lead in one paper are the same
+association measured twice. Every case that still warns keeps the byte-identical message, and a module
+writing none of the new columns warns exactly as in 0.7.
+
 **`StudyRow._KEY_FIELDS` is not widened**, and the divergence is contained in this check. That tuple
 drives `hints.key_fields` and the `key.columns` an authoring surface publishes; re-keying a shipped
 authored table changes what an identity key means, which is major-only under Principle 3. The check

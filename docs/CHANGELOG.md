@@ -41,6 +41,15 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM326, RM329, RM330: one paper's several outcomes, bands and strata are not duplicate citations (0.8, uncut)
+
+**compiler** — `duplicate_study_citation` reads the 0.8 study columns by RM140's rule: two rows for one
+`(variant_key, pmid)` are two claims when `phenotype_class`, an age-band cell (`age_min`, `age_max`,
+`age_of`, each on its own) or the stratum pair is stated on both and differs, as `statistical_test`
+already did. An unstated cell is unknown and the pair still warns; `proxy_rsid` is not read. Every case
+that still warns keeps the byte-identical message, and a module writing none of the new columns warns
+exactly as before. Closes RM329 and RM330 (both halves of RM330 are now on 0.8).
+
 ## 2026-11-04 — RM332: an effect states its unit on the study row, and `weights.parquet` carries it when the studies agree (0.8, uncut)
 
 **format, compiler** — `studies.csv` gains `effect_unit`, free text and verbatim, the column

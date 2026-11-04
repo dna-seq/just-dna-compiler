@@ -200,6 +200,29 @@ Feature: Derived sidecars, their arithmetic, and their orphans
       | absent           | absent           | reported   |
 
   # source: compiler/src/just_dna_compiler/compiler/table_checks.py
+  # anchor: _distinct_study_rows
+  @tri_state
+  Scenario Outline: the 0.8 columns split the dedup key the same way, and a proxy does not
+    Given two studies.csv rows sharing a variant and a pmid
+    And <column> stated as <first> on one and <second> on the other
+    When the module is compiled
+    Then the duplicate finding is <outcome>
+    # PT2 §3 item 16: phenotype_class (RM326), the age band read cell by cell (RM329) and the stratum
+    # pair (RM330) narrow the check by RM140's rule — both stated and different. An empty band bound is
+    # unknown, not "open and therefore different". proxy_rsid (RM331) is not read: two proxies of one
+    # lead in one paper are one association measured twice.
+    Examples:
+      | column          | first               | second            | outcome    |
+      | phenotype_class | PARENTAL_LIFESPAN   | HEALTHSPAN        | suppressed |
+      | phenotype_class | PARENTAL_LIFESPAN   | absent            | reported   |
+      | age_min         | 40                  | 60                | suppressed |
+      | age_max         | 80                  | absent            | reported   |
+      | age_of          | participant         | parent            | suppressed |
+      | stratum         | parent_sex/father   | parent_sex/mother | suppressed |
+      | stratum         | parent_sex/father   | absent            | reported   |
+      | proxy_rsid      | rs4970836           | rs602633          | reported   |
+
+  # source: compiler/src/just_dna_compiler/compiler/table_checks.py
   # anchor: _check_phenotype_classes
   @code:phenotype_class_unrecognized @actionable @both_modes
   Scenario: a study's outcome class outside the recommended twelve

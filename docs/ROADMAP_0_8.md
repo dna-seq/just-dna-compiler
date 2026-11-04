@@ -48,8 +48,8 @@ land wherever RM323 puts per-locus facts. RM322 next, since APOE is the lead loc
 | [RM326](#rm326--a-study-row-cannot-say-which-outcome-it-measured-so-the-definition-of-pro-longevity-lives-in-a-study_design-prefix) | `StudyRow` phenotype class; evidence role and the outcome strip derived from it | full ×1, derived near-zero | check EFO first |
 | [RM327](#rm327--pleiotropy-has-no-per-trait-row-so-a-trade-off-can-only-be-prose-and-tradeoff-is-computed-rather-than-authored) | per-trait benefit/harm table (mediator folds in); `tradeoff` computed; reserve the name | full (new kind), derived near-zero, reservation a patch | `tradeoff` decided |
 | [RM328](#rm328--no-study-row-can-name-the-ancestry-it-was-measured-in-so-european-only-evidence-is-a-hand-set-flag) | `StudyRow` ancestry on a vocabulary; `eur_only_evidence` derived | full ×1, derived near-zero | RM188 axis 2 |
-| [RM329](#rm329--an-age-stratified-estimate-has-no-age-band-so-age-of-action-is-reconstructed-from-statistical_test-prose) | `StudyRow` age band and whose age | full ×2–3 | interim works (RM140) |
-| [RM330](#rm330--an-effect-measured-in-one-sex-one-smoking-stratum-or-one-genotype-has-no-row) | the stratum an estimate was measured in; sex as the first query-time modifier | full ×2 | RM188 axis 3 |
+| [RM329](ROADMAP_HISTORY.md#rm329--an-age-stratified-estimate-has-no-age-band-so-age-of-action-is-reconstructed-from-statistical_test-prose) | `StudyRow` age band and whose age | full ×3 | ✅ shipped 2026-11-04 |
+| [RM330](ROADMAP_HISTORY.md#rm330--an-effect-measured-in-one-sex-one-smoking-stratum-or-one-genotype-has-no-row) | the stratum an estimate was measured in; sex as the first query-time modifier | full ×2 | ✅ shipped 2026-11-04 |
 | [RM331](#rm331--a-study-measured-on-an-ld-proxy-cannot-say-so-and-filing-it-under-the-lead-checks-the-proxys-allele-against-the-leads) | `StudyRow` proxy variant + r²; the allele check follows the proxy | full ×2–3 |  |
 | [RM332](ROADMAP_HISTORY.md#rm332--a-beta-has-no-unit-on-authored-rows-while-gwas_effectscsv-has-carried-one-since-06) | `effect_unit` on `StudyRow`, joined onto `weights.parquet` when the studies agree | full ×1, derived near-zero | ✅ shipped 2026-11-04 |
 | [RM333](#rm333--the-effector-gene-behind-a-gwas-locus-has-no-source-and-no-column) | an Open Targets lane; effector gene, score, release on a derived table | half, plus a lane | licence unprobed |
@@ -77,6 +77,8 @@ The authored `report:` block in [ROADMAP.md's idea-book](ROADMAP.md) is the unnu
 answers v2's §8 consumer requests 1 and 2 (category prose from the module, no "Net weight").
 
 ## RM326 — a study row cannot say which outcome it measured, so the definition of "pro-longevity" lives in a `study_design` prefix
+
+**Built on 0.8, 2026-11-04: the narrowing by class.** `duplicate_study_citation` treats two rows for one `(variant_key, pmid)` as two claims when both state `phenotype_class` and the values differ. Still open: the outcome strip.
 
 **Built on 0.8, 2026-11-04: the column and its warning.** `StudyRow.phenotype_class`, open over `RECOMMENDED_PHENOTYPE_CLASSES` (v2's twelve), reaches `studies.parquet` and `reverse`; a token outside the twelve draws `phenotype_class_unrecognized`, once per module. Still open: the duplicate-citation narrowing by class and the outcome strip on `weights.parquet`, both later in the same `StudyRow` batch.
 
@@ -181,51 +183,6 @@ the 1000G superpopulation codes behind `training_ancestry`, or the gnomAD popula
 `vocab.py` forbids merging the two. Full ×1. Then `eur_only_evidence` is **derived** (near-zero): every
 supporting row says EUR. Kleene again: a row with no ancestry makes the answer unknown, never false.
 The ancestry banner (R-ANC-3) is just-dna-lite's half.
-
-## RM329 — an age-stratified estimate has no age band, so age of action is reconstructed from `statistical_test` prose
-
-**Built on 0.8, 2026-11-04: the band.** `StudyRow.age_min`, `age_max` and `age_of` (`VALID_AGE_OF`) reach `studies.parquet` and `reverse`. Still open: the duplicate-citation narrowing by band, later in the same `StudyRow` batch.
-
-**Cut 2026-11-04 by the maintainer, after the final measuring run** (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §3): `age_event` (0 v2 rows with an event other than death). The band is `age_min`, `age_max` and whose age (`age_of`); names still get the P5 audit. Rows that differ only by band narrow the duplicate-citation check, RM140's pattern, extended to bands.
-
-**Severity** low · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format · **Motivating case** longevitymap v2 requirements §4.2 (age of action), Timmers 2019 age bands · *for* longevitymap v2 · *related* RM323, RM140
-
-**Interim that works.** One study row per age band, each with a stated and different
-`statistical_test`. RM140's rule silences `duplicate_study_citation` for exactly that case. Otherwise
-it warns, in both modes, and never refuses.
-
-**Shape.** Band bounds plus whose age they are: participant or parent, at which event (death,
-recruitment). Full ×2–3. The names need the P5 audit before they are fixed. The age-of-action *class*
-(LIFELONG, MIDLIFE, LATE…) is a per-locus judgement and lands in RM323's home. Its confidence grade
-(DIRECT, DIRECT_WEAK) is partly derivable from the bands once they are data.
-
-## RM330 — an effect measured in one sex, one smoking stratum or one genotype has no row
-
-**Built on 0.8, 2026-11-04: the study stratum.** `StudyRow.stratum` and `stratum_level`, free text and both or neither, reach `studies.parquet` and `reverse`. Still open: the duplicate-citation narrowing by stratum, later in the same `StudyRow` batch.
-
-**Built on 0.8, 2026-11-04: `sex`.** `meta.csv` gains the closed `sex` condition (`male`, `female`), part of the row key; a sex-scoped row outranks the same key without one, for that sex, and `meta_resolved.parquet` carries one row per scope. Still open: the study's stratum, `StudyRow`'s half (the `StudyRow` batch).
-
-**Narrowing extended 2026-11-04** (the final run's gap 12). Two rows that differ only by stratum do not count as a duplicate citation, RM140's pattern.
-
-**Decided 2026-11-04 by the maintainer: the study's stratum and a sex condition.** `StudyRow` gains the stratum an estimate was measured in, a modifier and its level (full ×2). Conclusion rows gain one closed `sex` condition (male/female), which the consumer matches against karyotype. This is RM28's "plain column on demand" rule, with sex as its first class. A modifier that is another locus's genotype stays RM28's (0.9).
-
-**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format · **Motivating case** longevitymap v2 requirements §4.2 (context), §10 (`effect_modifiers`) · *for* longevitymap v2 · *related* RM188 (axis 3), RM28
-
-**Need.** FOXO3 rs2802292 is positive in men only, HLA-DRB1\*15:01 is anti-longevity in men, and some
-estimates exist only in smoking strata. The plan writes these as `flags: sex_specific:m` and in the
-conclusion prose. RM188 sighted this axis three times (open-genome-atlas, a nutrigenomics project,
-genomi's caveat). `CopyNumberRow.modifier_gene` / `modifier_cn` is the only precedent, and it is genetic.
-
-**Two different things, kept apart.**
-
-- **The stratum a study measured in**: a fact about the estimate, so optional `StudyRow` columns (the
-  modifier and its level). Full ×2.
-- **A conclusion that depends on the modifier**: the consumer supplies it at query time (sex from
-  karyotype, smoking from nothing). That is the injected cofactor RM28 dropped in 2026-08 with the rule
-  "each class gets a plain column on demand". This is the demand, and sex is the candidate first class.
-
-A modifier that is **another locus's genotype** (KL-VS in APOE4 carriers) is not this item. It is RM28's (in 0.8 since 2026-11-04)
-corpus entry.
 
 ## RM331 — a study measured on an LD proxy cannot say so, and filing it under the lead checks the proxy's allele against the lead's
 

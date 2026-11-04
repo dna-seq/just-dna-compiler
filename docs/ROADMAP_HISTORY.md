@@ -35,6 +35,80 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM330 — an effect measured in one sex, one smoking stratum or one genotype has no row
+
+**Built on 0.8, 2026-11-04: the narrowing by stratum.** `duplicate_study_citation` treats two rows for one `(variant_key, pmid)` as two claims when both state the stratum pair and it differs.
+
+**Built on 0.8, 2026-11-04: the study stratum.** `StudyRow.stratum` and `stratum_level`, free text and both or neither, reach `studies.parquet` and `reverse`. Still open: the duplicate-citation narrowing by stratum, later in the same `StudyRow` batch.
+
+**Built on 0.8, 2026-11-04: `sex`.** `meta.csv` gains the closed `sex` condition (`male`, `female`), part of the row key; a sex-scoped row outranks the same key without one, for that sex, and `meta_resolved.parquet` carries one row per scope. Still open: the study's stratum, `StudyRow`'s half (the `StudyRow` batch).
+
+**Narrowing extended 2026-11-04** (the final run's gap 12). Two rows that differ only by stratum do not count as a duplicate citation, RM140's pattern.
+
+**Decided 2026-11-04 by the maintainer: the study's stratum and a sex condition.** `StudyRow` gains the stratum an estimate was measured in, a modifier and its level (full ×2). Conclusion rows gain one closed `sex` condition (male/female), which the consumer matches against karyotype. This is RM28's "plain column on demand" rule, with sex as its first class. A modifier that is another locus's genotype stays RM28's (0.9).
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** ([PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §5 A5), taken into 0.8 on 2026-11-03 as a priority · **Owner** format · **Motivating case** longevitymap v2 requirements §4.2 (context), §10 (`effect_modifiers`) · *for* longevitymap v2 · *related* RM188 (axis 3), RM28
+
+**What shipped.** Both halves are on 0.8. The conclusion half shipped with the meta-table:
+`meta.csv`'s closed `sex` condition (`male`, `female`), part of its row key. The study half is
+`StudyRow.stratum` and `stratum_level`, free text with first release 0.8.0, written both or neither (one
+without the other is refused), through `studies.parquet` and `reverse`; and `duplicate_study_citation`
+treats two rows for one `(variant_key, pmid)` as two claims when both state the stratum pair and it
+differs. One pair holds one modifier, so a second ("hypertensive men") stays in `statistical_test`; a
+modifier that is another locus's genotype is RM28's. Tests: `compiler/tests/test_studyrow_0_8.py` (the
+round trip with Pilling's parent-sex strata and CHAMP's sex stratum, the both-or-neither refusal, and
+the narrowing).
+
+**Residuals** none
+
+**Need.** FOXO3 rs2802292 is positive in men only, HLA-DRB1\*15:01 is anti-longevity in men, and some
+estimates exist only in smoking strata. The plan writes these as `flags: sex_specific:m` and in the
+conclusion prose. RM188 sighted this axis three times (open-genome-atlas, a nutrigenomics project,
+genomi's caveat). `CopyNumberRow.modifier_gene` / `modifier_cn` is the only precedent, and it is genetic.
+
+**Two different things, kept apart.**
+
+- **The stratum a study measured in**: a fact about the estimate, so optional `StudyRow` columns (the
+  modifier and its level). Full ×2.
+- **A conclusion that depends on the modifier**: the consumer supplies it at query time (sex from
+  karyotype, smoking from nothing). That is the injected cofactor RM28 dropped in 2026-08 with the rule
+  "each class gets a plain column on demand". This is the demand, and sex is the candidate first class.
+
+A modifier that is **another locus's genotype** (KL-VS in APOE4 carriers) is not this item. It is RM28's (in 0.8 since 2026-11-04)
+corpus entry.
+
+## RM329 — an age-stratified estimate has no age band, so age of action is reconstructed from `statistical_test` prose
+
+**Built on 0.8, 2026-11-04: the narrowing by band.** `duplicate_study_citation` treats two rows for one `(variant_key, pmid)` as two claims when `age_min`, `age_max` or `age_of` is stated on both and differs, cell by cell; an unstated cell is unknown and still warns.
+
+**Built on 0.8, 2026-11-04: the band.** `StudyRow.age_min`, `age_max` and `age_of` (`VALID_AGE_OF`) reach `studies.parquet` and `reverse`. Still open: the duplicate-citation narrowing by band, later in the same `StudyRow` batch.
+
+**Cut 2026-11-04 by the maintainer, after the final measuring run** (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §3): `age_event` (0 v2 rows with an event other than death). The band is `age_min`, `age_max` and whose age (`age_of`); names still get the P5 audit. Rows that differ only by band narrow the duplicate-citation check, RM140's pattern, extended to bands.
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** ([PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §5 A5), taken into 0.8 on 2026-11-03 as a priority · **Owner** format · **Motivating case** longevitymap v2 requirements §4.2 (age of action), Timmers 2019 age bands · *for* longevitymap v2 · *related* RM323, RM140
+
+**What shipped.** `StudyRow` gains `age_min` and `age_max` (years, finite and ≥ 0; either
+may be empty for an open band) and `age_of` (closed, `VALID_AGE_OF`: `participant`, `parent`), optional
+with first release 0.8.0 and declared after every 0.7 column; no refusal ties the three together, and
+`age_event` was cut before the build. They reach `studies.parquet` and `reverse` writes them back.
+`duplicate_study_citation` reads the band by RM140's rule, cell by cell: two rows for one
+`(variant_key, pmid)` are two claims when a band cell is stated on both and differs, and an unstated
+cell is unknown and still warns. The age-of-action class and its confidence stay on `meta.csv`
+(RM323's home). Tests: `compiler/tests/test_studyrow_0_8.py` (the round trip with Timmers 2019's three
+parental bands, the closed `age_of`, finite ages, and the narrowing per cell, including `80–` against
+`80–90` still warning).
+
+**Residuals** none
+
+**Interim that works.** One study row per age band, each with a stated and different
+`statistical_test`. RM140's rule silences `duplicate_study_citation` for exactly that case. Otherwise
+it warns, in both modes, and never refuses.
+
+**Shape.** Band bounds plus whose age they are: participant or parent, at which event (death,
+recruitment). Full ×2–3. The names need the P5 audit before they are fixed. The age-of-action *class*
+(LIFELONG, MIDLIFE, LATE…) is a per-locus judgement and lands in RM323's home. Its confidence grade
+(DIRECT, DIRECT_WEAK) is partly derivable from the bands once they are data.
+
 ## RM332 — a `beta` has no unit on authored rows, while `gwas_effects.csv` has carried one since 0.6
 
 **Cut 2026-11-04 by the maintainer, after the final measuring run** (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §3): the `VariantRow` half, which reverses the morning's "both tables". `effect_unit` is on `StudyRow` only, and the parquet joins it onto a variant's effect from the matching study row.

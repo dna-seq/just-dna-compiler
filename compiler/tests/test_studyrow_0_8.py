@@ -25,11 +25,17 @@ from pathlib import Path
 
 import polars as pl
 import pytest
-from just_dna_compiler.compiler import compile_module, content_signature, reverse_module, validate_spec
+from just_dna_compiler.compiler import (
+    _cross_validate_studies,
+    compile_module,
+    content_signature,
+    reverse_module,
+    validate_spec,
+)
 from just_dna_format.base import field_first_seen, field_vocabularies
 from just_dna_format.gwas import GwasEffectRow
 from just_dna_format.pgs import VALID_TRAINING_ANCESTRY, PgsRow
-from just_dna_format.spec import StudyRow
+from just_dna_format.spec import StudyRow, VariantRow
 from just_dna_format.vocab import VALID_SUPERPOPULATIONS
 from pydantic import ValidationError
 
@@ -536,3 +542,99 @@ def test_the_joined_unit_never_reaches_variants_csv(tmp_path: Path) -> None:
     assert "effect_unit" not in header
     weights = pl.read_parquet_schema(tmp_path / "a1" / "weights.parquet")
     assert list(weights)[list(weights).index("min_quality") + 1] == "effect_unit"
+
+
+# ── the duplicate-citation narrowing (RM140's pattern, PT2 §3 item 16) ──────────────────────────
+
+_DUP = "Duplicate (variant, pmid)"
+
+#: Per narrowing column, two values a pair of rows can state. The band is three columns read cell by
+#: cell, each unstated cell unknown (`@absent-is-not-different`); the stratum is one pair.
+_NARROWING: dict[str, tuple[dict[str, object], dict[str, object]]] = {
+    "phenotype_class": ({"phenotype_class": "PARENTAL_LIFESPAN"}, {"phenotype_class": "HEALTHSPAN"}),
+    "age_min": ({"age_min": 40, "age_of": "parent"}, {"age_min": 60, "age_of": "parent"}),
+    "age_max": ({"age_max": 60}, {"age_max": 80}),
+    "age_of": ({"age_min": 90, "age_of": "participant"}, {"age_min": 90, "age_of": "parent"}),
+    "stratum": (
+        {"stratum": "parent_sex", "stratum_level": "father"},
+        {"stratum": "parent_sex", "stratum_level": "mother"},
+    ),
+}
+
+
+def _dupes(*rows: dict[str, object]) -> list[str]:
+    studies = [StudyRow(rsid="rs10455872", pmid="32678081", **cells) for cells in rows]
+    variants = [
+        VariantRow(rsid="rs10455872", genotype="A/G", state="protective", conclusion="c"),
+    ]
+    _, warnings = _cross_validate_studies(studies, variants)
+    return [w for w in warnings if _DUP in w]
+
+
+@pytest.mark.parametrize("column", sorted(_NARROWING))
+def test_two_rows_stating_different_values_are_not_a_duplicate(column: str) -> None:
+    first, second = _NARROWING[column]
+    assert _dupes(first, second) == []
+    # The same pair with the column equal is still one claim written twice.
+    assert len(_dupes(first, first)) == 1
+
+
+@pytest.mark.parametrize("column", sorted(_NARROWING))
+def test_an_unstated_column_is_not_different_and_still_warns(column: str) -> None:
+    first, _ = _NARROWING[column]
+    expected = [f"{_DUP}: (rs10455872, 32678081)"]
+    assert _dupes(first, {}) == expected
+    assert _dupes({}, first) == expected
+
+
+def test_one_open_band_against_a_closed_one_with_the_same_lower_bound_still_warns() -> None:
+    """Cell by cell: `80–` and `80–90` share the one bound both state, and an empty one is unknown."""
+    assert (
+        len(_dupes({"age_min": 80, "age_of": "parent"}, {"age_min": 80, "age_max": 90, "age_of": "parent"}))
+        == 1
+    )
+
+
+def test_a_proxy_does_not_narrow() -> None:
+    """Two rows naming two proxies of one lead are not two analyses; `proxy_rsid` is not a narrowing."""
+    assert len(_dupes({"proxy_rsid": "rs4970836"}, {"proxy_rsid": "rs602633"})) == 1
+
+
+def test_a_row_warns_when_it_repeats_any_earlier_sibling() -> None:
+    """Distinct from the first row is not enough: the third repeats the second."""
+    rows = ({"phenotype_class": "HEALTHSPAN"}, {"phenotype_class": "MR"}, {"phenotype_class": "MR"})
+    assert len(_dupes(*rows)) == 1
+
+
+def test_the_v2_cases_compile_without_a_duplicate_warning(tmp_path: Path) -> None:
+    """Appendix 2 examples 5 and 8 through the real compile: one paper, several classes; three bands."""
+    spec = tmp_path / "v2"
+    spec.mkdir()
+    (spec / "module_spec.yaml").write_text(
+        "schema_version: '1.0'\nmodule:\n  name: v2\n  title: v2\n  description: d\n  report_title: v2\n"
+    )
+    (spec / "variants.csv").write_text("rsid,genotype,state,conclusion\nrs10455872,A/G,protective,c\n")
+    (spec / "studies.csv").write_text(
+        "rsid,pmid,phenotype_class,age_min,age_max,age_of\n"
+        "rs10455872,32678081,EXTREME_SURVIVAL_CC,,,\n"
+        "rs10455872,32678081,PARENTAL_LIFESPAN,,,\n"
+        "rs10455872,32678081,HEALTHSPAN,,,\n"
+        "rs10455872,30642433,PARENTAL_LIFESPAN,40,60,parent\n"
+        "rs10455872,30642433,PARENTAL_LIFESPAN,60,80,parent\n"
+        "rs10455872,30642433,PARENTAL_LIFESPAN,80,,parent\n"
+    )
+    result = compile_module(spec, tmp_path / "out")
+    assert result.success, result.errors
+    assert [w for w in result.warnings if _DUP in w] == []
+    assert "duplicate_study_citation" not in result.manifest.compilation.warnings_summary
+
+
+def test_a_module_with_none_of_the_new_columns_warns_exactly_as_before(tmp_path: Path) -> None:
+    """Every published module: each repeated row warns, with the byte-identical 0.7 message."""
+    spec = _spec(tmp_path, "doubled", (), None)
+    header, rows = _read_rows(spec / "studies.csv")
+    _write_rows(spec / "studies.csv", header, rows + rows)
+    validation = validate_spec(spec)
+    found = [w for w in validation.warnings if _DUP in w]
+    loaded = [StudyRow(**{k: v for k, v in row.items() if v}) for row in rows]
+    assert found == [f"{_DUP}: ({s.variant_key}, {s.pmid})" for s in loaded]
