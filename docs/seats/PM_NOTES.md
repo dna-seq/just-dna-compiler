@@ -41,19 +41,17 @@ purpose; normalization is the compiled parquet's job (RM346, 1.0).
 
 ## Open questions and owed work
 
-- **The final v2 measuring run (2026-11-04), and what follows it, as the maintainer set it:**
-  1. A subagent measures every v2 requirement against the proposed shape. Its output goes to
-     `scratchpad/final/REPORT.md` and `EXAMPLES.md`.
-  2. I compile its findings into an audit report in `docs/probes/`.
-  3. I check that every new column is irreducible, and that none is derivable from the others.
-  4. If the shape changed, I ask the maintainer on each difference.
-  5. If it is stable (sufficient and necessary for v2), it counts as agreed, and I hand it to the lead to
-     plan the branching, the specification, the build order and what runs in parallel, the
-     implementation details and the tests.
+- **0.8's scope, agreed 2026-11-04.**
+  - The final run's audit is in `docs/probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md`. The diffs were put to the
+    maintainer and decided; the hand-written cost went from about 85 to about 55.
+  - Every decision is a dated line in its `ROADMAP_0_8.md` entry, and the latest line wins.
+  - The handout went to the lead on 2026-11-04 (in the clone, the live session and the messenger). The lead
+    plans the branching, the specification, the order, the parallel work, the implementation and the tests.
+  - The pm reads the lead's plan for scope drift only.
+
 - RM149's gate: **decided 2026-11-03, it stays** (option 1). Written under RM149 in ROADMAP_0_9.md.
 - The test registry `_ENTRY_FILES` → a `ROADMAP*.md` glob: the person asked whether a naming convention can
   replace the hard-coded list. It can (the glob finds the same 8 files). Handed to the lead on 2026-11-03.
-- The interviews for the 0.8 rounds, RM323 first, then the indel cluster; the proposals follow them.
 - `docs/STRATEGY.md`: not started; the first question is who the three packages serve.
 - `docs/DREAMS.md` (the 2026-10-19 four-model dream) is this seat's file and is untracked. Adding it to
   `mkdocs.yml` (`not_in_nav`) is the lead's edit; until then the docs-nav test fails on it. Its ideas
