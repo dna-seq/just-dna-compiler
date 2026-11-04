@@ -1471,6 +1471,16 @@ exactly what it matched). APOE scored only as diplotypes, longevitymap v2's R-AP
 its 14 study links on rs429358/rs7412 (`compiler/tests/test_study_orphan_widening.py`). The check still
 runs only beside a `variants.csv`, as before; the message keeps its pinned prefix.
 
+**2026-11-04, the lead's decision (reversible until the cut; keeping the gate was the rejected
+alternative).** `pharm_variants.csv` is a fourth arm: a study on a `pharm_variants.csv` row's variant is
+not an orphan whether or not a meta member reaches it. The `if variants:` gate is gone, so a
+diplotype-only or PGx-only module is checked too, and `duplicate_study_citation`, computed in the same
+pass, runs there with it (`@roster-is-as-wide-as-the-tables-it-reads`). Measured on the 16
+`reference_examples/` before and after: none gains or loses a warning (`fmr1_cgg_repeat`, the one with
+`studies.csv` and no `variants.csv`, names no variant on any study row). The meta arm now reaches only
+rows the two table arms already carry; it is kept, not removed, so a future member table that is not an
+arm stays covered.
+
 **What stays open, and where.** RM28's open section in ROADMAP_0_8.md keeps only the predicate half's
 remainder: open-world negation, OR and *trans* phase, all out of bounds by the maintainer's decision. RM327 computes `tradeoff` over the per-trait rows this table now holds.
 RM330's study stratum is the `StudyRow` half; its `sex` condition shipped here.

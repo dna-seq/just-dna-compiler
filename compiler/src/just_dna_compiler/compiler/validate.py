@@ -909,6 +909,22 @@ def _validate_spec(
     # RM326's class check, outside `if variants:` for the same reason: a citation-only `studies.csv`
     # (RM47) beside a table kind and no `variants.csv` is legal, and its classes need the same check.
     all_warnings.extend(_check_phenotype_classes(studies))
+    # The study-orphan check, outside `if variants:` too (the lead, 2026-11-04): a diplotype-only or
+    # PGx-only module cites variants as much as a SNP module does, and the gate skipped it outright
+    # (`@roster-is-as-wide-as-the-tables-it-reads`). A study's variant is carried when it is a
+    # `variants.csv` row's, a defining variant in `haplotypes.csv`, a `pharm_variants.csv` row's, or one
+    # a meta member reached (RM28's widening). Every arm is the authored rows, the view `variants` is
+    # read in (the positional fill is in place, so they carry it). No authored haplotype row reaches the
+    # symbolic-allele drop today; a `pharm_variants.csv` row can, and stays carried here exactly as a
+    # dropped `variants.csv` row does, so the arms read one view.
+    if studies:
+        carried = [
+            *(loaded_kinds.get("haplotypes.csv") or []),
+            *(loaded_kinds.get("pharm_variants.csv") or []),
+            *meta_carried,
+        ]
+        _, study_warnings = _cross_validate_studies(studies, variants, carried)
+        all_warnings.extend(study_warnings)
 
     if variants:
         cross_errors, cross_warnings = _cross_validate_variants(variants)
@@ -951,16 +967,6 @@ def _validate_spec(
         # `config` is None when the spec itself failed to load; default rather than crash, since
         # the point of `validate` is to report every problem it can, not to stop at the first.
         all_warnings.extend(_check_contig_ploidy(variants, config.genome_build if config else "GRCh38"))
-        if studies:
-            # A study's variant is carried when it is a `variants.csv` row's, a defining variant in
-            # `haplotypes.csv`, or one a meta member reached (RM28's widening). The haplotypes are the
-            # authored rows, the view `variants` is read in (the positional fill is in place, so they
-            # carry it). No authored haplotype row reaches the symbolic-allele drop today (a symbolic
-            # `ref` is refused and `alts` is not authored there), so this equals `survivors`; reading
-            # the authored view keeps the arms alike should that change.
-            carried = [*(loaded_kinds.get("haplotypes.csv") or []), *meta_carried]
-            _, study_warnings = _cross_validate_studies(studies, variants, carried)
-            all_warnings.extend(study_warnings)
         # `flags` is an open vocabulary — surface non-reserved tags as INFO (not a warning; nothing
         # is wrong). ROADMAP 0.3 item 4.
         unknown_flags = sorted(

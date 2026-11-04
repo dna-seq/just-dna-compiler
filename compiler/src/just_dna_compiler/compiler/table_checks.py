@@ -329,12 +329,16 @@ def _cross_validate_studies(
 
     **Since 0.8 a variant is carried by more than `variants.csv`** (RM28, the study-orphan widening).
     `carried` is every other row naming a variant the module carries: a defining variant in
-    `haplotypes.csv`, and each `variants.csv` / `pharm_variants.csv` row a `meta.csv` member reached
-    (`meta.member_variant_rows`, read off `build_meta`'s expansion, never a second matcher). A module
+    `haplotypes.csv`, every `pharm_variants.csv` row (an arm of its own since the lead's 2026-11-04
+    decision, whether or not a member reaches it), and each `variants.csv` / `pharm_variants.csv` row a
+    `meta.csv` member reached (`meta.member_variant_rows`, read off `build_meta`'s expansion, never a
+    second matcher). The meta arm reaches only `LOCUS_TABLES`, both arms of their own, so today it adds
+    nothing; it stays so a locus table that is not an arm is still covered through its members. A module
     that scores APOE as diplotypes cites rs429358 and rs7412, the SNPs that define the ε alleles; they
     are `haplotypes.csv` rows and no `variants.csv` row, and every such link used to draw this warning.
-    The match is the same "any shared identifier" rule over the wider set. The message keeps its
-    pinned prefix (`@warning-text-is-api`) and names the wider search after the keys."""
+    The match is the same "any shared identifier" rule over the wider set, and `variants` may be empty:
+    a module with no `variants.csv` is checked against the other arms. The message keeps its pinned
+    prefix (`@warning-text-is-api`) and names the wider search after the keys."""
     warnings: list[str] = []
     subjects: list[Any] = [*variants, *carried]
     variant_rsids = {v.rsid for v in subjects if v.rsid is not None}
@@ -354,7 +358,8 @@ def _cross_validate_studies(
             CodedWarning(
                 "study_variant_orphan",
                 f"Studies reference variants not in variants.csv: {sorted(set(orphans))} — nor among "
-                f"haplotypes.csv's defining variants or the rows a meta.csv member reaches.",
+                f"haplotypes.csv's defining variants, pharm_variants.csv's rows or the rows a meta.csv "
+                f"member reaches.",
             )
         )
     # `(variant_key, pmid)` is the dedup key, and since RM140 a *stated* `statistical_test` splits it

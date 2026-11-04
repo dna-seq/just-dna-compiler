@@ -1,10 +1,14 @@
 """The study-orphan widening (RM28, PROPOSAL_0_8_PT2 §5 B1 step 4).
 
 A `studies.csv` row names a variant the module carries when that variant is a `variants.csv` row's, a
-defining variant in `haplotypes.csv`, or one a `meta.csv` member reaches (the rows `build_meta`
-expanded it to, never a second matcher). Before the widening only `variants.csv` counted, so a module
-that scores APOE as diplotypes — longevitymap v2's R-APOE-1 — drew `study_variant_orphan` for every
-study on rs429358 and rs7412, the SNPs that define the ε alleles.
+defining variant in `haplotypes.csv`, a `pharm_variants.csv` row's, or one a `meta.csv` member reaches
+(the rows `build_meta` expanded it to, never a second matcher). Before the widening only `variants.csv`
+counted, so a module that scores APOE as diplotypes — longevitymap v2's R-APOE-1 — drew
+`study_variant_orphan` for every study on rs429358 and rs7412, the SNPs that define the ε alleles.
+
+The lead's 2026-11-04 decision took the widening two steps further: `pharm_variants.csv` is an arm of its
+own, whether or not a member reaches a row, and the check no longer waits for a `variants.csv`, so a
+diplotype-only or PGx-only module is checked too (`@roster-is-as-wide-as-the-tables-it-reads`).
 
 Every expected key set is computed from the CSV rows the test writes.
 """
@@ -118,12 +122,32 @@ def test_a_study_on_a_variant_no_table_carries_still_warns(tmp_path: Path) -> No
     assert _orphans(result.warnings) == orphans
 
 
-# ── the meta arm ─────────────────────────────────────────────────────────────────────────────────
+def test_a_diplotype_only_module_is_checked(tmp_path: Path) -> None:
+    """A module with no `variants.csv` used to skip the check outright, so a study on a variant in no
+    table passed in silence. `apoe_epsilon` as shipped (haplotypes + diplotypes, no variants.csv): the
+    studies on the ε-defining SNPs are carried, the stray is the one orphan, and compile agrees."""
+    stray = "rs1801133"
+    studies = "rsid,pmid\n" + "".join(f"{rsid},30642433\n" for rsid in ("rs429358", "rs7412", stray))
+    spec = _apoe_module(tmp_path / "apoe", studies=studies)
+    (spec / "variants.csv").unlink()
+    defining = _authored_rsids((spec / "haplotypes.csv").read_text(encoding="utf-8"))
+    assert _authored_rsids(studies) - defining == {stray}
+
+    orphans = _orphans(validate_spec(spec).warnings)
+    assert len(orphans) == 1, orphans
+    assert stray in orphans[0]
+    assert not any(key in orphans[0] for key in defining)
+    result = compile_module(spec, tmp_path / "out")
+    assert result.success, result.errors
+    assert _orphans(result.warnings) == orphans
+
+
+# ── the pharm_variants arm and the meta arm ──────────────────────────────────────────────────────
 #
-# A `variants.csv` row a meta member matches is already covered by the first arm, and a diplotype or
-# `allele_function` member reaches its variants through `haplotypes.csv`, the second. What only the
-# meta arm covers is a `pharm_variants.csv` row a member reaches: that table is a member table and
-# carries a `variant_key`, but is not itself an arm.
+# A `pharm_variants.csv` row's variant is carried whether or not a meta member reaches it (the lead,
+# 2026-11-04). A meta member reaches rows of `variants.csv` and `pharm_variants.csv` only
+# (`LOCUS_TABLES`), both arms of their own now, so the meta arm adds nothing today; the tests below pin
+# that a member's reach changes no orphan, in either direction.
 
 _PGX_YAML = (
     "schema_version: '1.0'\n"
@@ -143,48 +167,59 @@ _PHARM = (
 _PGX_STUDIES = "rsid,pmid\nrs3184504,30642433\nrs9923231,31413261\nrs1057910,32282020\n"
 
 
-def _pgx_module(directory: Path, meta: str | None) -> Path:
+def _pgx_module(directory: Path, meta: str | None, studies: str = _PGX_STUDIES) -> Path:
     directory.mkdir(parents=True)
     (directory / "module_spec.yaml").write_text(_PGX_YAML, encoding="utf-8")
     (directory / "variants.csv").write_text(_VARIANTS, encoding="utf-8")
     (directory / "pharm_variants.csv").write_text(_PHARM, encoding="utf-8")
-    (directory / "studies.csv").write_text(_PGX_STUDIES, encoding="utf-8")
+    (directory / "studies.csv").write_text(studies, encoding="utf-8")
     if meta is not None:
         (directory / "meta.csv").write_text(meta, encoding="utf-8")
     return directory
 
 
-def test_a_pharm_variant_with_no_meta_member_is_still_an_orphan(tmp_path: Path) -> None:
-    """The contract's arms are `variants.csv`, `haplotypes.csv` and the meta-table: a
-    `pharm_variants.csv` row no member reaches is outside all three, as before."""
-    orphans = _orphans(validate_spec(_pgx_module(tmp_path / "m", meta=None)).warnings)
-    expected = _authored_rsids(_PGX_STUDIES) - _authored_rsids(_VARIANTS)
-    assert expected == {"rs9923231", "rs1057910"}
-    assert len(orphans) == 1
-    assert all(key in orphans[0] for key in expected)
-
-
-def test_a_selector_member_covers_the_variants_of_the_rows_it_matched(tmp_path: Path) -> None:
-    """`pharm_variants[gene=VKORC1]` is a selector, expanded by `build_meta`: the variants of the rows
-    it matched stop being orphans, and a pharm variant it did not match stays one."""
-    meta = "members,conclusion\npharm_variants[gene=VKORC1],VKORC1 lowers the warfarin dose.\n"
-    spec = _pgx_module(tmp_path / "m", meta=meta)
-    matched = {row["rsid"] for row in _rows(_PHARM) if row["gene"] == "VKORC1"}
-    unmatched = {row["rsid"] for row in _rows(_PHARM)} - matched
-    assert matched == {"rs9923231"} and unmatched == {"rs1057910"}
-
-    orphans = _orphans(validate_spec(spec).warnings)
-    assert len(orphans) == 1, orphans
-    assert all(key in orphans[0] for key in unmatched)
-    assert not any(key in orphans[0] for key in matched)
+def test_a_pharm_variant_with_no_meta_member_is_not_an_orphan(tmp_path: Path) -> None:
+    """A study on a `pharm_variants.csv` row's variant is carried with no `meta.csv` at all."""
+    spec = _pgx_module(tmp_path / "m", meta=None)
+    carried_by_pharm = _authored_rsids(_PGX_STUDIES) - _authored_rsids(_VARIANTS)
+    assert carried_by_pharm == {"rs9923231", "rs1057910"} <= _authored_rsids(_PHARM)
+    assert _orphans(validate_spec(spec).warnings) == []
     result = compile_module(spec, tmp_path / "out")
     assert result.success, result.errors
-    assert _orphans(result.warnings) == orphans
+    assert _CODE not in dict(result.manifest.compilation.warnings_summary)
+
+
+def test_a_pgx_only_module_is_checked(tmp_path: Path) -> None:
+    """No `variants.csv`: the pharm variants are carried, a study on a variant in no table is the one
+    orphan. Before the gate came off this module drew no orphan check at all."""
+    stray = "rs1801133"
+    spec = _pgx_module(tmp_path / "m", meta=None, studies=_PGX_STUDIES + f"{stray},32282020\n")
+    (spec / "variants.csv").unlink()
+    expected = _authored_rsids(_PGX_STUDIES) - _authored_rsids(_PHARM)
+    assert expected == {"rs3184504"}  # the variants.csv locus, gone with its table
+    orphans = _orphans(validate_spec(spec).warnings)
+    assert len(orphans) == 1, orphans
+    assert all(key in orphans[0] for key in expected | {stray})
+    assert not any(key in orphans[0] for key in _authored_rsids(_PHARM))
+
+
+_STRAY_STUDY = "rs1801133,30642433\n"
+
+
+def test_a_selector_member_changes_no_orphan(tmp_path: Path) -> None:
+    """`pharm_variants[gene=VKORC1]` reaches only rows the pharm arm already carries: the orphans with
+    the member are exactly the orphans without it, and the stray study is still one."""
+    meta = "members,conclusion\npharm_variants[gene=VKORC1],VKORC1 lowers the warfarin dose.\n"
+    studies = _PGX_STUDIES + _STRAY_STUDY
+    with_member = _orphans(validate_spec(_pgx_module(tmp_path / "m", meta=meta, studies=studies)).warnings)
+    without = _orphans(validate_spec(_pgx_module(tmp_path / "base", meta=None, studies=studies)).warnings)
+    assert len(without) == 1 and "rs1801133" in without[0]
+    assert with_member == without
 
 
 def test_a_locus_member_covers_its_pharm_variant(tmp_path: Path) -> None:
-    """`pharm_variants[variant_key=…]` is the locus form, looked up by key rather than scanned; it
-    covers that locus the same way."""
+    """`pharm_variants[variant_key=…]` is the locus form, looked up by key rather than scanned; the
+    loci it names are carried, as they are with no member."""
     meta = (
         "members,conclusion\n"
         "pharm_variants[variant_key=rs9923231],VKORC1.\n"
@@ -196,8 +231,9 @@ def test_a_locus_member_covers_its_pharm_variant(tmp_path: Path) -> None:
 def test_a_member_matching_nothing_covers_nothing(tmp_path: Path) -> None:
     """A selector that matches no row reaches no variant: the orphans are exactly the no-meta ones."""
     meta = "members,conclusion\npharm_variants[gene=CYP4F2],No such rows here.\n"
-    spec = _pgx_module(tmp_path / "m", meta=meta)
-    warnings = validate_spec(spec).warnings
+    studies = _PGX_STUDIES + _STRAY_STUDY
+    warnings = validate_spec(_pgx_module(tmp_path / "m", meta=meta, studies=studies)).warnings
     assert any("matches no row of pharm_variants.csv" in w for w in warnings)
-    baseline = _orphans(validate_spec(_pgx_module(tmp_path / "base", meta=None)).warnings)
+    baseline = _orphans(validate_spec(_pgx_module(tmp_path / "base", meta=None, studies=studies)).warnings)
+    assert len(baseline) == 1
     assert _orphans(warnings) == baseline
