@@ -43,11 +43,7 @@ from just_dna_enricher.gnomad import (
     normalize_constraint_flags,
 )
 from just_dna_enricher.identifiers import authored_identifiers
-from just_dna_enricher.licensing import (
-    record_source_terms,
-    require_sources_file,
-    sidecar_path,
-)
+from just_dna_enricher.licensing import record_source_terms, require_sources_file, sidecar_path
 from just_dna_enricher.locations import resolve_constraint_reference
 
 logger = logging.getLogger(__name__)
