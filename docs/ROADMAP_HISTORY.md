@@ -60,10 +60,12 @@ pattern changed.
 
 Measured on the provisioned snapshot (`cpic_snapshot_b0ffd4c6f010`): it holds 46 distinct notation
 spellings, 27 of them on star-named alleles, the only ones the old drafter could reach (the filing said
-25). After: 35 are spelled at least once; the reachable spellings still skipped are the bare `DEL` and
-`GAGTCG(3) OR GAGTCG(4)`; 10 more `DEL<bases>` spellings sit on G6PD and CFTR alleles whose *names* the
-drafter does not write. The test is `enricher/tests/test_cpic_notation.py`, against the snapshot and a
-recorded slice of the reference (`assets/grch38_cpic_notation_windows.json`).
+25); `test_the_closure_counts_of_notation_spellings_on_the_snapshot_it_names` re-derives both. After,
+the reachable spellings still skipped are the bare `DEL` and `GAGTCG(3) OR GAGTCG(4)`; the rest of the
+skipped `DEL<bases>` spellings sit on G6PD and CFTR alleles whose *names* the drafter does not write.
+(Measured once over every gene with the live reference on 2026-11-04, not re-derived by a test: 35 of
+the 46 spelled at least once.) The tests are `enricher/tests/test_cpic_notation.py`, against the
+snapshot and a recorded slice of the reference (`assets/grch38_cpic_notation_windows.json`).
 
 **Residuals** none
 

@@ -30,7 +30,7 @@ from just_dna_enricher.cpic_notation import (
 from just_dna_enricher.locations import resolve_cpic_reference
 from just_dna_enricher.pgx_draft import _draft_name, _reference_reader, draft_gene
 from just_dna_enricher.sequences import SequenceProxy
-from just_dna_format.pgx import AlleleFunctionRow, DiplotypeRow, HaplotypeRow
+from just_dna_format.pgx import STAR_ALLELE_PATTERN, AlleleFunctionRow, DiplotypeRow, HaplotypeRow
 from just_dna_format.vrs import refget_accession
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -293,6 +293,27 @@ def test_every_bare_del_is_the_reference_row_at_an_insertion_site() -> None:
             assert any((x or "").startswith("INS") for x in here), (gene, v.allele, here)
             assert v.allele in ("*1", "Reference"), (gene, v.allele)
     assert bare, "the snapshot holds no bare DEL any more; the ENRICHER.md sentence is stale"
+
+
+@_needs_snapshot
+def test_the_closure_counts_of_notation_spellings_on_the_snapshot_it_names() -> None:
+    """ROADMAP_HISTORY § RM253 states two counts for `cpic_snapshot_b0ffd4c6f010`; re-derived here.
+
+    The distinct notation spellings, and those on star-named alleles (the only ones the drafter could
+    reach before RM253). Asserted only against the snapshot the record names, since a newer release may
+    hold more.
+    """
+    client = CpicSnapshotClient(_SNAPSHOT)
+    if client.dataset != "cpic_snapshot_b0ffd4c6f010":
+        pytest.skip(f"the record's counts are for cpic_snapshot_b0ffd4c6f010, not {client.dataset}")
+    rows = client._rows("allele_definitions.parquet", "TRUE", [], "allele, variant_allele")
+    notation = {
+        (r["allele"], (r["variant_allele"] or "").strip().upper())
+        for r in rows
+        if unusable_allele_reason((r["variant_allele"] or "").strip().upper()) == "notation"
+    }
+    assert len({value for _, value in notation}) == 46
+    assert len({value for allele, value in notation if STAR_ALLELE_PATTERN.match(allele or "")}) == 27
 
 
 @_needs_snapshot
