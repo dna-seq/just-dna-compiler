@@ -973,6 +973,39 @@ running duckdb cannot read rather than mocking `connect`.
 
 **Residuals** none yet.
 
+## RM378 — errors carry no code, so a consumer grading a spec tells one refusal from another by its wording
+
+**Severity** low · **Status** open — **a minor, release undecided** (proposed for 0.8; the pm places it) ·
+**Owner** compiler (the result types, every `errors` append site) + format (the vocabulary) · **Motivating
+case** S129 in CONSUMER_SUGGESTIONS_HISTORY.md (just-dna-registry's liaison seat, 2026-11-04) · *related*
+RM377, RM131, RM218, RM359
+
+**The gap.** RM131 gave the warnings channel a code per finding and `warnings_summary`; `errors` stayed
+`list[str]` on `ValidationResult`, `CompilationResult` and `ClosureResult`. A consumer that grades a spec
+must read an error's words to know which refusal it is. RM377 published the two phrases the reporter needs
+today; this item is the general answer, the reporter's candidate (a).
+
+**What it would be.** A code from a closed vocabulary on each error and an `errors_summary` beside
+`warnings_summary`, by RM131's shape: derived in the same `mode="before"` validator, summing to
+`len(errors)` or empty, never partial. A mode-laddered finding raised to an error under `strict` already
+has a warning code, which is dropped on the error path today, so part of this is keeping a code that exists.
+
+**Open questions, for the interview.**
+
+1. **Pydantic's own errors.** A rejected row's message comes from pydantic and has no closed vocabulary.
+   RM131 refuses both a partial summary and a catch-all key. So either every such error gets one code that
+   names the finding (*a row the model rejected*), or the summary is defined over the coded errors only and
+   says so. The first keeps RM131's rule; the second breaks it.
+2. **The vocabulary's cost.** Codes are permanent within the major (P3, P5, P6), so the first set shipped is
+   the one consumers key on. RM131 measured that the audit of emission sites is the cost; the container is
+   near free (P9: a result-model field, nothing authored).
+3. **The reporter's candidate (b)**, a field naming the strict-only module-level refusals, is narrower and
+   cheaper. It is not taken here: it builds one consumer's split (module-level against per-row) into the
+   model, a classification axis under P5, which the reporter named as the reason it might be wrong. With
+   codes, each consumer draws its own line.
+
+**Residuals** none yet.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
