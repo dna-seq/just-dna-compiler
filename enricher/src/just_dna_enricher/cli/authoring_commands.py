@@ -34,7 +34,9 @@ def draft_(
         [],
         "--allele",
         help=(
-            "Draft only these star alleles, in all three tables (repeatable; `*1` is always kept). "
+            "Draft only these alleles, in all three tables (repeatable; `*1` is always kept, and so is "
+            "CPIC's `Reference`). A star allele, or an HGVS-named one as CPIC spells it or as it is "
+            "written (`c.1003G>T(*11)`). "
             "A caller emits a bounded allele set, and n alleles is n(n+1)/2 pairs — CYP2D6 is 16,290 "
             "diplotypes unfiltered. Requires a single --gene, since a star name is gene-scoped."
         ),

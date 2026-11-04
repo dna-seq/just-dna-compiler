@@ -4577,22 +4577,55 @@ separate step.
 - **2 rps**, enforced by the shared `net.PacingGate` on an injectable clock. The unfiltered `/alleles`
   collection is ~25 MB and silently ignores a `geneSymbol` parameter it does not define; use
   `/genes/{symbol}`.
-- **CPIC `variantallele` carries two shapes the allele grammar cannot hold, and they are different
+- **CPIC `variantallele` carries two shapes that are not plain bases, and they are different
   findings.** IUPAC ambiguity codes (`R` at CYP2C19 `*2`, `Y` at `*4`) are an *uncertainty CPIC
   recorded* — expanding `R` would invent two defining variants where CPIC recorded one — and will never
-  be expressible. Deletion/insertion and repeat notations (`DELTCT`, `AAAGGGGCG(2)`, `GGA(1)`, 23 of them
-  in CYP2D6) are a **grammar gap** a release could widen to cover — and note that RM5 was *not* it:
-  0.6 widened the grammar to hold VCF's five **symbolic** structural alleles (`<DEL:1500>`), which is a
-  different spelling from CPIC's `DELTCT`. Both are skipped, never coerced;
-  `cpic.unusable_allele_reason` names which, and they are reported as two aggregated lines with counts.
-  Calling the second kind an ambiguity code — which the message did until a real CYP2D6 draft — is a false
-  claim that points an author at the wrong fix.
+  be expressible; they are skipped and reported by the client. Deletion/insertion and repeat notations
+  (`DELTCT`, `INSCGGG`, `AAAGGGGCG(2)`, UGT1A1's `TA(8)`) are **spelled by the drafter since 0.8
+  (RM253)**, as the VCF-anchored, left-normalized indel every measured caller writes: UGT1A1 `*28` is
+  `2:233760233 C>CAT`, `*36` is `CAT>C`, `*37` is `C>CATAT`, and the reference count (`*1`'s `TA(7)`) is
+  written `C>C` at the same anchor, the reference state, as `*1`'s SNP rows already are.
+  `cpic_notation.spell` reads the anchor base and the run from the GRCh38 reference through the same
+  `SequenceProxy` and `_left_align` the CIViC drafter uses (RM273). Where CPIC's position sits was
+  measured on the snapshot, not assumed: a `DEL<bases>` position is the **first deleted base** (every
+  one matches the reference there), an `INS<bases>` position is the **base the insertion follows**
+  (NUDT15 `*14` is Ensembl's `48037826 G>GCGGG`), and a repeat's position is the first base of the run,
+  whose reference count is **read**, never assumed. Three traps:
+  - **A `DEL` beside an `INS` at one locus is a delins.** RYR1 writes `c.13994_13995delTCinsCT` as
+    `DELTC` on `Reference` and `INSCT` on the variant; read one row at a time, `Reference` would carry
+    a deletion. Read by locus (`cpic_notation.delins_partner`), the pair is `TC>CT` and the `DEL` half
+    is the reference state.
+  - **A repeat row carries no rsID.** CPIC names UGT1A1's run `rs3064744`, which no caller writes in
+    its ID column (arrays and dbSNP-annotated VCFs carry `rs34983651` for `+TA`; one imputation server
+    stamps `rs606231201`, a different allele in dbSNP). The row is keyed by `chrom:start:ref`. A
+    `DEL`/`INS` row keeps CPIC's rsID beside the coordinate: it names one event, and
+    `coordinate_verdict` leaves an indel's re-anchoring undecided rather than calling it a disagreement.
+  - **What stays skipped is named by reason** (`cpic_notation.NOT_SPELLED_EXPLANATION`): a bare `DEL`
+    (no bases; kept skipped by the RM253 decision — on the snapshot it is always the reference allele's
+    row at an insertion site), alternatives (`GAGTCG(3) OR GAGTCG(4)`, MT-RNR1's `;` list — an
+    uncertainty, like an IUPAC code), a reference that does not bear the notation out, and a reference
+    that could not be read. **`--offline` reads nothing**, so every notation row is withheld with that
+    last reason, and `*28` is undefined again until a run with sequence access.
+
+  RM5 was *not* this gap: 0.6 widened the grammar to hold VCF's five **symbolic** alleles
+  (`<DEL:1500>`), a deliberately unspelled length, while CPIC's notation names the bases.
+- **HGVS-named alleles are written with spaces dropped and `&` for the comma (RM253).** DPYD's
+  `c.1129-5923C>G, c.1236G>A (HapB3)` is `c.1129-5923C>G&c.1236G>A(HapB3)` and `c.1003G>T (*11)` is
+  `c.1003G>T(*11)`; `HAPLOTYPE_NAME_PATTERN` (`^\S+$`) accepts both on all three PGx models with no
+  widening. The comma goes because `MULTI_SEP` would split it, and `&` because every other candidate
+  already means something in an allele name (`:` HGVS's reference separator, `+` an intronic offset,
+  `_` a range, `/` a diplotype). `pgx_draft._draft_name` writes a name only when **every** part is HGVS
+  (`c.`/`g.`/`m.`/`n.`), plus CPIC's `Reference`: G6PD's `Mediterranean, Dallas, Panama, …` separates
+  *aliases* with its comma, and an `&` there would claim a compound, so G6PD, CFTR's legacy names,
+  `rs… reference (G)` and HLA's `*57:01` stay skipped. DPYD, RYR1, CACNA1S and MT-RNR1 draft. MT-RNR1's
+  "diplotypes" are single haploid calls, reported in their own bucket rather than as unwritable names.
 - **A large star-allele gene needs `--allele` (RM34).** `draft --gene CYP2D6` unfiltered is 16,290
   diplotype rows, 73% `Indeterminate`: faithful, and unreadable. `--allele` takes the set the consumer's
   caller can actually emit (*n* alleles is *n(n+1)/2* pairs, so six make 21 diplotypes) and applies it to
   **all three** tables at once, because a module that names an allele it never defines is what
   `_cross_validate_haplotype_definitions` exists to warn about. `*1` is always kept — it is defined by
-  carrying no variants, so it costs nothing, and without it `*1/*2` could not be drafted. An unknown
+  carrying no variants, so it costs nothing, and without it `*1/*2` could not be drafted; so is CPIC's
+  `Reference` where it publishes one, and a name is matched as CPIC spells it or as it is written. An unknown
   allele refuses with the list CPIC publishes; the flag needs a single `--gene`, since `*2` in CYP2C9 and
   `*2` in CYP2C19 are different alleles.
 - **CPIC activity scores are inequality strings** (`"≥3.0"`, `"n/a"`), not numbers, so they do not drop

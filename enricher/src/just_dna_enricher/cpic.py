@@ -19,9 +19,8 @@ coerced:**
   recorded one uncertainty.
 * The same column also carries **deletion/insertion and repeat notations** — `DELTCT`,
   `AAAGGGGCG(2)`, `GGA(1)` in CYP2D6 — which are *not* ambiguity codes, and were reported as if they
-  were until a real CYP2D6 draft showed them. They are a grammar gap (RM5) rather than an uncertainty
-  CPIC recorded, so `unusable_allele_reason` names which of the two a value is and the two are
-  reported separately.
+  were until a real CYP2D6 draft showed them. `unusable_allele_reason` names which of the two a value
+  is; an ambiguity is reported here, and a notation is the drafter's to spell (RM253, `cpic_notation`).
 * `gene_result.activityscore` is an inequality *string* (`"≥3.0"`, `"n/a"`), not a number, so it does
   not drop into `MeasureBinRow`'s numeric `measure_min`/`measure_max`. The raw string is carried and
   the parsing left to a human, because guessing a bound from `≥3.0` means inventing the upper one.
@@ -118,13 +117,6 @@ _UNUSABLE_EXPLANATION: dict[str, str] = {
         "allele is a rule, and a rule about an allele nobody saw states nothing. Dead against the "
         "live source (CPIC publishes no `*`), and kept because the classifier is shared"
     ),
-    "notation": (
-        "a deletion/insertion or repeat notation (`DELTCT`, `INSCGGG`, `TA(8)`) rather than a "
-        "nucleotide string — a drafter gap rather than an ambiguity. The format holds the symbolic "
-        "spellings `<DEL:n>`, `<INS:n>` and `<CNV:TR:n>` since RM5, and this drafter does not yet "
-        "translate CPIC's notation into them; a repeat *count* has no home a diplotype can name "
-        "either, so a bare `DEL` and every `UNIT(n)` stay skipped — RM253 tracks both"
-    ),
     # The third reason `non_nucleotide_reason` answers since RM58. CPIC has never been observed to write
     # it, but this map is indexed directly by `_unusable_warnings`, so an unlisted member is a KeyError
     # in a warning path rather than a missing sentence — the reason it is filled in here on the same
@@ -136,10 +128,20 @@ _UNUSABLE_EXPLANATION: dict[str, str] = {
 }
 
 
+#: The reasons this client classifies and does **not** report, because the drafter spells them (RM253).
+#: `"notation"` (`DELTCT`, `INSCGGG`, `TA(8)`) used to be reported here as skipped; the drafter now
+#: translates it into a VCF-anchored indel, and reports by reason only what it still cannot spell
+#: (`cpic_notation.NOT_SPELLED_EXPLANATION`). A "skipped" line from here would be false for every row
+#: the drafter goes on to write.
+_SPELLED_BY_THE_DRAFTER: frozenset[str] = frozenset({"notation"})
+
+
 def _unusable_warnings(gene: str, by_reason: dict[str, list[str]]) -> list[str]:
     """One aggregated line per reason, with the count and a few real examples."""
     lines: list[str] = []
     for reason, entries in sorted(by_reason.items()):
+        if reason in _SPELLED_BY_THE_DRAFTER:
+            continue
         shown = ", ".join(entries[:3])
         rest = f" (+{len(entries) - 3} more)" if len(entries) > 3 else ""
         lines.append(

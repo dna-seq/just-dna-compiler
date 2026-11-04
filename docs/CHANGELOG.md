@@ -41,6 +41,23 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM253: the CPIC drafter defines UGT1A1 `*28`, spells CPIC's DEL/INS/repeat notation, and drafts HGVS-named genes (0.8, uncut)
+
+**enricher** — `draft --gene UGT1A1` now defines `*28`, `*36` and `*37` (and `*80+*28`, `*80+*37`), so
+`validate` no longer warns that they are used but not defined. CPIC's `DEL<bases>`, `INS<bases>` and
+repeat-count `UNIT(n)` values are spelled as the VCF-anchored, left-normalized indel a caller writes,
+reading the anchor and the run from the GRCh38 reference (`*28` is `2:233760233 C>CAT`, `*36` `CAT>C`,
+`*37` `C>CATAT`; the reference count is written `C>C` there). A repeat row is keyed by its coordinate
+and carries no rsID, since `rs3064744` is in no caller's ID column. RYR1's `DEL` + `INS` pair at one
+locus is read as the delins it is. HGVS-named alleles are written with spaces dropped and `&` for the
+comma (`c.1129-5923C>G&c.1236G>A(HapB3)`), so DPYD, RYR1, CACNA1S and MT-RNR1 draft; `--allele`
+accepts either spelling and keeps `Reference` as it keeps `*1`. What still cannot be spelled is
+reported by reason: a bare `DEL`, alternatives (`GAGTCG(3) OR GAGTCG(4)`), and a reference that
+disagrees or could not be read (every notation row under `--offline`). `draft_gene` gains a
+`sequences` argument; the CPIC client no longer reports notation rows as skipped. See
+[ENRICHER.md § PharmVar and CPIC gotchas](ENRICHER.md#pharmvar-and-cpic-gotchas) and
+[ROADMAP_HISTORY § RM253](ROADMAP_HISTORY.md#rm253--a-repeat-count-star-allele-ugt1a1-28--ta8-has-no-home-a-diplotype-can-name-and-the-cpic-drafter-translates-none-of-cpics-notation).
+
 ## 2026-11-04 — RM340: the VRS-coverage warning points at the record that explains its no-ALT rows (patch, on `main`)
 
 **compiler, enricher** — When an attested `verification.json` carries an `rsid_coordinate_agreement` record
