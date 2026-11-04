@@ -52,6 +52,16 @@ question at all: those keys are nobody-asked (`allele_unstated_unasked`), and `s
 **Answered replaces, could-not-ask keeps** (`@rederive-never-shortens`): a variant this run looked up
 has its rows replaced by the snapshot's answer, and a variant it could not look up (off-build,
 unresolved) keeps whatever rows it had.
+
+**An answer is only as complete as the parts it was read from** (RM361). `READS` names the source
+datasets each table and the posterior are read from, and `read_is_complete` asks the snapshot's
+`release.json` whether every one of them was read whole: `True` only when `parts_read` equals
+`parts_total` for each, `False` when one was partial, and `None` when the record cannot say (no
+`parts_total`, a dataset missing from it, a count that is not a number). Anything but `True` means an
+absent row may be a part nobody opened, so no key is answered for that table: rows the snapshot did
+yield are merged in, and every existing row is kept. A key that did not join the allele table is then
+`not_read` rather than `not_in_release`, and the posterior on `gwas_effects.csv` is left as it was.
+`strict` refuses such a snapshot before anything is read.
 """
 
 import csv
@@ -87,6 +97,7 @@ from just_dna_enricher.opentargets_build import (
     CREDIBLE_SETS_FILE,
     L2G_FILE,
     MEMBERS_GLOB,
+    OPENTARGETS_DATASETS,
     VARIANTS_FILE,
 )
 from just_dna_enricher.resolver import probe_table
@@ -104,6 +115,16 @@ OWNED_TABLES: tuple[tuple[str, type[BaseModel], str], ...] = (
 )
 #: The licence layer of the fourth write, the posterior on another pass's table.
 GWAS_LAYER: str = "gwas_effect"
+
+#: The source datasets (`OPENTARGETS_DATASETS`) each answer is read from (RM361). An answer counts only
+#: when every one of them was read whole; the allele table (`variant`) is in each, because a key that did
+#: not join it may sit in a part nobody opened. Asserted against `OWNED_TABLES` and the dataset list.
+READS: dict[str, frozenset[str]] = {
+    "consequences.csv": frozenset({"variant"}),
+    "locus_to_gene.csv": frozenset({"variant", "credible_set", "l2g_prediction"}),
+    "colocalisations.csv": frozenset({"variant", "credible_set", "colocalisation", "study"}),
+    "gwas_effects.csv": frozenset({"variant", "credible_set"}),
+}
 
 
 class OpenTargetsError(RuntimeError):
@@ -127,6 +148,9 @@ class PosteriorCounts:
     not_in_credible_set: int = 0
     #: The variant sits in several of the study's sets with different values: withheld, never picked.
     contested: int = 0
+    #: The snapshot was not read whole for the datasets the posterior comes from (RM361), so an absent
+    #: or a single value may be a part nobody opened. The row keeps its value.
+    not_read: int = 0
     #: The module row states no ALT and the release supplied none (several candidate alleles, no rsID,
     #: or a snapshot without rsIDs). The row keeps its value.
     allele_withheld: int = 0
@@ -147,6 +171,8 @@ class OpenTargetsResult:
     asked: list[str] = field(default_factory=list)
     #: Asked, and absent from the release's variant table.
     not_in_release: list[str] = field(default_factory=list)
+    #: Asked, and absent from a variant table not read whole (`read_is_complete`): maybe in an unread part.
+    not_read: list[str] = field(default_factory=list)
     #: Resolved on another build, so not asked.
     off_build: list[str] = field(default_factory=list)
     #: Resolved to several of the release's alleles, so its per-transcript rows would collide: withheld.
@@ -195,13 +221,40 @@ def _connect(snapshot: Path) -> duckdb.DuckDBPyConnection:
     return con
 
 
+def _part_counts(release: dict, dataset: str) -> tuple[int, int] | None:
+    """`(parts read, parts total)` for one dataset, or `None` when the record does not state both."""
+    read = (release.get("parts_read") or {}).get(dataset)
+    total = (release.get("parts_total") or {}).get(dataset)
+    if (
+        not isinstance(read, int)
+        or not isinstance(total, int)
+        or isinstance(read, bool)
+        or isinstance(total, bool)
+    ):
+        return None
+    return read, total
+
+
+def dataset_complete(release: dict, dataset: str) -> bool | None:
+    """Whether the snapshot read every part of `dataset`: `None` when its record cannot say (RM361)."""
+    counts = _part_counts(release, dataset)
+    return None if counts is None else counts[0] >= counts[1]
+
+
+def read_is_complete(release: dict, datasets: frozenset[str]) -> bool | None:
+    """Kleene AND of `dataset_complete` over `datasets`: one partial dataset is `False` whatever the rest
+    say, and otherwise one the record cannot speak for is `None` (RM361)."""
+    answers = [dataset_complete(release, dataset) for dataset in sorted(datasets)]
+    if False in answers:
+        return False
+    return None if None in answers else True
+
+
 def _partial_datasets(release: dict) -> dict[str, tuple[int, int]]:
-    read = release.get("parts_read") or {}
-    total = release.get("parts_total") or {}
     return {
-        dataset: (int(read[dataset]), int(total[dataset]))
-        for dataset in sorted(read)
-        if dataset in total and int(read[dataset]) < int(total[dataset])
+        dataset: counts
+        for dataset in OPENTARGETS_DATASETS
+        if dataset_complete(release, dataset) is False and (counts := _part_counts(release, dataset))
     }
 
 
@@ -374,17 +427,19 @@ def enrich_opentargets(
             f"the Open Targets snapshot at {resolved} has no release label in release.json"
         )
     partial = _partial_datasets(release)
-    if not release.get("parts_total"):
+    unstated = [name for name in OPENTARGETS_DATASETS if dataset_complete(release, name) is None]
+    if unstated:
         if mode == "strict":
             raise OpenTargetsError(
                 f"strict Open Targets enrichment: the snapshot at {resolved} does not record how many "
-                f"parts each dataset has, so whether it holds the whole release is unknown. Build it "
-                f"with `opentargets build` (which records the totals), or use mode='best_effort'."
+                f"parts {', '.join(unstated)} has, so whether it holds the whole release is unknown. "
+                f"Build it with `opentargets build` (which records the totals), or use mode='best_effort'."
             )
         logger.warning(
-            "Open Targets snapshot %s does not record how many parts each dataset has, so whether it "
-            "is partial is unknown: an absent row below may mean a part was not read.",
+            "Open Targets snapshot %s does not record how many parts %s has, so whether it is partial is "
+            "unknown: an absent row below may mean a part was not read, and no existing row is replaced.",
             dataset,
+            ", ".join(unstated),
         )
     if partial:
         described = ", ".join(f"{name} {got} of {total} parts" for name, (got, total) in partial.items())
@@ -396,10 +451,11 @@ def enrich_opentargets(
             )
         logger.warning(
             "Open Targets snapshot %s is partial (%s): an absent row below may mean the part holding it "
-            "was not read.",
+            "was not read, and no existing row is replaced.",
             dataset,
             described,
         )
+    complete = {answer: read_is_complete(release, datasets) is True for answer, datasets in READS.items()}
 
     if write:
         require_sources_file(spec_dir, error=OpenTargetsError)
@@ -483,7 +539,11 @@ def enrich_opentargets(
         asked = sorted({key for key, *_ in alleles} | (set(absent) - held))
         rsid_by_key = {key: rsid for key, rsid, *_ in alleles if rsid}
         result.asked = asked
-        result.not_in_release = sorted(set(asked) - set(ids_by_key))
+        unmatched = sorted(set(asked) - set(ids_by_key))
+        if dataset_complete(release, "variant") is True:
+            result.not_in_release = unmatched
+        else:
+            result.not_read = unmatched
         keys_by_id: dict[str, list[str]] = {}
         for key, ids in ids_by_key.items():
             for variant_id in ids:
@@ -652,6 +712,12 @@ def enrich_opentargets(
             counts.not_looked_up += 1
             updated.append(row)
             continue
+        if not complete["gwas_effects.csv"]:
+            # Neither an absent value nor a single one is an answer from a snapshot not read whole: a
+            # set in an unread part may hold the row's value, or contest the one read (RM361).
+            counts.not_read += 1
+            updated.append(row)
+            continue
         values: set[tuple[float, str | None]] = set()
         if row.variant_key in result.not_in_release:
             counts.variant_not_in_release += 1
@@ -683,7 +749,8 @@ def enrich_opentargets(
         logger.info(
             "Open Targets posterior on gwas_effects.csv: %d filled; left empty: %d study without a "
             "credible set, %d variant not in the study's set, %d contested (several sets, different "
-            "values), %d variant not in the release; untouched: %d naming no study, %d not looked up.",
+            "values), %d variant not in the release; untouched: %d naming no study, %d not looked up, "
+            "%d against a snapshot not read whole.",
             counts.filled,
             counts.study_without_credible_set,
             counts.not_in_credible_set,
@@ -691,6 +758,7 @@ def enrich_opentargets(
             counts.variant_not_in_release,
             counts.no_study,
             counts.not_looked_up,
+            counts.not_read,
         )
     if result.shared_allele_keys:
         logger.warning(
@@ -745,12 +813,14 @@ def enrich_opentargets(
     if write:
         # Answered-and-withheld keeps what it had (`@rederive-never-shortens`): a key whose rows this run
         # withheld is not answered for that table, so its existing rows are not replaced with nothing.
+        # Nor is any key answered from datasets the snapshot did not read whole (RM361, `READS`).
         asked = set(result.asked)
         answered = {
             "locus_to_gene.csv": asked - set(result.shared_allele_keys),
             "colocalisations.csv": asked - set(result.shared_allele_keys),
             "consequences.csv": asked - set(result.allele_ambiguous),
         }
+        answered = {name: keys if complete[name] else set() for name, keys in answered.items()}
         fresh = {
             "locus_to_gene.csv": (
                 result.locus_to_gene,
@@ -798,6 +868,7 @@ def summarise(result: OpenTargetsResult) -> dict:
         "skipped": result.skipped,
         "asked": len(result.asked),
         "not_in_release": len(result.not_in_release),
+        "not_read": len(result.not_read),
         "off_build": len(result.off_build),
         "allele_ambiguous": len(result.allele_ambiguous),
         "shared_allele_keys": len(result.shared_allele_keys),

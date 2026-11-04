@@ -142,7 +142,8 @@ def opentargets_enrich_(
         )
     typer.echo(
         f"dataset: {summary['dataset']}  asked: {summary['asked']}  not in release: "
-        f"{summary['not_in_release']}  off build: {summary['off_build']}  allele-ambiguous: "
+        f"{summary['not_in_release']}  not read (snapshot not whole): {summary['not_read']}  off build: "
+        f"{summary['off_build']}  allele-ambiguous: "
         f"{summary['allele_ambiguous']}"
     )
     typer.echo(

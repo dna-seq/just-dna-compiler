@@ -1134,3 +1134,102 @@ def test_an_author_corrects_the_supplied_allele_and_fills_a_withheld_site_throug
     m2 = json.loads((tmp_path / "out2" / "manifest.json").read_text())
     assert m1["artifact"]["digest"] == m2["artifact"]["digest"]
     assert m1["content_signature"] == m2["content_signature"]
+
+
+# ── a snapshot not read whole answers nothing it did not read (RM361) ───────────────────────────────
+
+#: The rows each source dataset feeds in the snapshot, as `(parquet glob, key column)`: what an unread
+#: part of that dataset would leave out. `study` feeds only cells of a coloc row, never a whole row.
+_FEEDS: dict[str, list[tuple[str, str]]] = {
+    "variant": [("variants.parquet", "variant_id"), ("consequences-*.parquet", "variant_id")],
+    "credible_set": [("credible_set_members-*.parquet", "variant_id")],
+    "l2g_prediction": [("l2g.parquet", "study_locus_id")],
+    "colocalisation": [("colocalisations-*.parquet", "study_locus_id")],
+    "study": [],
+}
+
+
+def _facts_of(spec: Path, name: str) -> list[dict]:
+    path = spec / name
+    if not path.exists():
+        return []
+    return [
+        {k: v for k, v in row.items() if k != "fetched_at"} for row in csv.DictReader(path.open(newline=""))
+    ]
+
+
+def _unread(tmp_path: Path, dataset: str, parts_total: dict | None) -> Path:
+    """The slice as a snapshot whose `dataset` lost a part: rs1800562's rows it fed are gone, and
+    `release.json` says so (`parts_total`), or says nothing at all (`None`)."""
+    snapshot = tmp_path / f"unread-{dataset}"
+    shutil.copytree(SLICE, snapshot)
+    ids = {i for (i,) in _query("SELECT variant_id FROM variants WHERE list_contains(rs_ids, 'rs1800562')")}
+    loci = {
+        locus
+        for (locus,) in _query(
+            "SELECT study_locus_id FROM members WHERE variant_id IN ('" + "','".join(ids) + "')"
+        )
+    }
+    for glob, column in _FEEDS[dataset]:
+        for path in (snapshot / "data").glob(glob):
+            frame = pl.read_parquet(path)
+            frame.filter(
+                ~pl.col(column).is_in(sorted(ids if column == "variant_id" else loci))
+            ).write_parquet(path)
+    record = read_release(snapshot)
+    assert record is not None
+    fields = record.model_dump(exclude_none=True)
+    fields.pop("parts_total", None)
+    if parts_total is not None:
+        fields["parts_total"] = parts_total
+    write_release(snapshot, SnapshotRelease(**fields))
+    return snapshot
+
+
+def test_reads_names_every_owned_table_and_every_dataset() -> None:
+    from just_dna_enricher.opentargets import OWNED_TABLES, READS
+
+    assert set(READS) == {name for name, _model, _layer in OWNED_TABLES} | {"gwas_effects.csv"}
+    assert set().union(*READS.values()) == set(OPENTARGETS_DATASETS) == set(_FEEDS)
+
+
+@pytest.mark.parametrize("record", ["partial", "unstated"])
+@pytest.mark.parametrize("dataset", OPENTARGETS_DATASETS)
+def test_a_row_in_an_unread_part_survives_a_best_effort_run(
+    module: Path, tmp_path: Path, dataset: str, record: str
+) -> None:
+    """Before RM361 the keys an unread part held were answered as absent: their L2G, coloc and
+    consequence rows were dropped and a filled posterior was nulled. Every row an earlier run wrote
+    from the whole release survives a run against a snapshot missing one of its datasets' parts."""
+    enrich_opentargets(module, snapshot=SLICE)
+    names = ("locus_to_gene.csv", "colocalisations.csv", "consequences.csv", "gwas_effects.csv")
+    before = {name: _facts_of(module, name) for name in names}
+    assert all(before[name] for name in names)
+    read = read_release(SLICE).model_dump()["parts_read"]
+    totals = {**read, dataset: read[dataset] + 1} if record == "partial" else None
+    result = enrich_opentargets(module, snapshot=_unread(tmp_path, dataset, totals))
+    for name in names[:3]:
+        after = _facts_of(module, name)
+        assert all(row in after for row in before[name]), f"{name} lost a row from an unread {dataset} part"
+    posterior = {
+        (r["variant_key"], r["study_accession"], r["posterior_probability"])
+        for r in before["gwas_effects.csv"]
+    }
+    assert posterior == {
+        (r["variant_key"], r["study_accession"], r["posterior_probability"])
+        for r in _facts_of(module, "gwas_effects.csv")
+    }
+    if dataset == "variant":
+        assert "rs1800562" in result.not_read and "rs1800562" not in result.not_in_release
+
+
+def test_a_snapshot_read_whole_still_answers_absent(module: Path) -> None:
+    """The guard withholds only where the record cannot vouch for the read: over the whole slice a key
+    the release lacks is still `not_in_release`, and nothing is `not_read`."""
+    result = enrich_opentargets(module, snapshot=SLICE)
+    assert result.not_read == [] and result.posterior.not_read == 0
+
+
+def test_strict_refuses_a_snapshot_that_cannot_say_whether_it_is_whole(module: Path, tmp_path: Path) -> None:
+    with pytest.raises(OpenTargetsError, match="does not record how many"):
+        enrich_opentargets(module, snapshot=_unread(tmp_path, "study", None), mode="strict")
