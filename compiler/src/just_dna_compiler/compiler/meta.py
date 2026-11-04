@@ -53,6 +53,7 @@ from just_dna_format.meta import (
     parse_members,
     split_members,
 )
+from just_dna_format.spelling import comparison_key, drug_key, gene_key
 
 from just_dna_compiler.compiler.tables import META_CSV, _polars_type
 
@@ -69,7 +70,21 @@ Scope = tuple[str | None, ...]
 
 
 def _scope(row: MetaRow) -> Scope:
-    return tuple(getattr(row, name) for name in _SCOPE_FIELDS)
+    """The row's scope as rows are compared: each axis through its comparison key (RM363), so
+    `Azathioprine` and `azathioprine` are one drug scope. `_spellings` names it back for the parquet."""
+    return tuple(comparison_key(name, getattr(row, name)) for name in _SCOPE_FIELDS)
+
+
+def _spellings(rows: list[MetaRow]) -> dict[tuple[int, Any], str]:
+    """`(axis, scope value) -> the first authored spelling`, in `meta.csv` row order: how
+    `meta_resolved.parquet` names a scope two rows wrote two ways. Deterministic, and authored."""
+    spelled: dict[tuple[int, Any], str] = {}
+    for row in rows:
+        for axis, name in enumerate(_SCOPE_FIELDS):
+            value = getattr(row, name)
+            if value is not None:
+                spelled.setdefault((axis, comparison_key(name, value)), value)
+    return spelled
 
 
 def _scope_value_order(value: str | None) -> tuple[bool, str]:
@@ -168,7 +183,9 @@ def _condition_holds(row: Any, column: str, value: str) -> bool:
         return value == ("true" if stored else "false")
     if isinstance(stored, float) and stored.is_integer():
         return value in (str(int(stored)), str(stored))
-    return str(stored) == value
+    # Through the column's comparison (RM363): `gene=apoe` selects the rows that store `APOE`, as every
+    # other gene comparison in the module does. A column of no compared kind is verbatim.
+    return comparison_key(column, str(stored)) == comparison_key(column, value)
 
 
 def _variant_key_index(rows: list[Any]) -> dict[str | None, list[int]]:
@@ -193,6 +210,48 @@ def _matches_nothing(index: int, text: str, table: str) -> str:
         f"matches nothing is almost always a typo — compare each value against what the table stores (a "
         f"diplotype pair is stored with haplotype_a <= haplotype_b, a genotype with its alleles sorted)."
     )
+
+
+def _drug_disagrees(index: int, text: str, tables: str, drug: str, stated: list[str]) -> str:
+    return (
+        f"{META_CSV} line {_line(index)}: the row is about drug {drug!r} and member {text!r} reaches "
+        f"{tables} rows about {stated}. A drug-scoped row's facts apply where {drug!r} is prescribed, so "
+        f"stating them over a finding about another drug pairs two claims that are not about the same "
+        f"thing. Name the drug in a member whose table carries one (`diplotypes[…, drug={drug}]`), or "
+        f"correct the row's `drug`."
+    )
+
+
+def _member_drug_disagrees(row: MetaRow, reached: list[Any]) -> list[str]:
+    """The drugs the rows a member reaches state that the meta row's `drug` is not (RM363), in row order.
+
+    `reached` is what the row's facts land on: the member's matches, and for a one-member `allele_function`
+    row the diplotypes containing the allele (`_contained`). By `drug_key`, so a spelling is never a
+    disagreement. A reached row stating no drug, or a meta row stating none, is unknown and adds nothing
+    (`@absent-is-not-different`)."""
+    if row.drug is None:
+        return []
+    stated = [getattr(target, "drug", None) for target in reached]
+    other = [drug for drug in stated if drug is not None and drug_key(drug) != drug_key(row.drug)]
+    return list(dict.fromkeys(other))
+
+
+def _diplotypes_by_gene(diplotypes: list[Any]) -> dict[str, list[int]]:
+    """Diplotype positions by `gene_key`, in authored order — `_contained`'s index, built once."""
+    index: dict[str, list[int]] = {}
+    for position, diplotype in enumerate(diplotypes):
+        index.setdefault(gene_key(diplotype.gene), []).append(position)
+    return index
+
+
+def _contained(allele_row: Any, diplotypes: list[Any], by_gene: dict[str, list[int]]) -> list[int]:
+    """The diplotypes a named allele reaches: its gene's (by `gene_key`, RM363) that carry it on either
+    homolog, in authored order. The one rule `_resolve` and the drug check both read."""
+    return [
+        position
+        for position in by_gene.get(gene_key(allele_row.gene), [])
+        if allele_row.allele in (diplotypes[position].haplotype_a, diplotypes[position].haplotype_b)
+    ]
 
 
 def _allele_ambiguous(index: int, text: str, stated: list[str]) -> str:
@@ -303,6 +362,7 @@ def _resolve(
             held[candidate.meta] = candidate
 
     diplotypes = tables.get("diplotypes") or []
+    by_gene = _diplotypes_by_gene(diplotypes)
     for index, row_members in enumerate(members):
         if len(row_members) != 1:
             continue
@@ -316,13 +376,10 @@ def _resolve(
                 continue
             # A named allele reaches every diplotype of its gene that contains it, so the ε2 and ε4
             # rows meet at ε2/ε4. Ranked below any diplotypes member there (`_outranks`).
-            for position, diplotype in enumerate(diplotypes):
-                if diplotype.gene == target.gene and target.allele in (
-                    diplotype.haplotype_a,
-                    diplotype.haplotype_b,
-                ):
-                    _keep((_TABLE_ORDER.index("diplotypes"), position), _Candidate(index, "contained", rank))
+            for position in _contained(target, diplotypes, by_gene):
+                _keep((_TABLE_ORDER.index("diplotypes"), position), _Candidate(index, "contained", rank))
 
+    spelled = _spellings(rows)
     resolved: list[dict[str, Any]] = []
     for table, position in sorted(reach):
         candidates = [reach[(table, position)][meta] for meta in sorted(reach[(table, position)])]
@@ -340,7 +397,10 @@ def _resolve(
             record: dict[str, Any] = {
                 "table": name,
                 "key": key,
-                **dict(zip(_SCOPE_FIELDS, scope, strict=True)),
+                **{
+                    axis_name: spelled.get((axis, value), value)
+                    for axis, (axis_name, value) in enumerate(zip(_SCOPE_FIELDS, scope, strict=True))
+                },
             }
             withheld: list[str] = []
             for column in META_FACT_COLUMNS:
@@ -393,6 +453,7 @@ def build_meta(rows: list[MetaRow], tables: dict[str, list[Any]], tier_scale: st
     warnings: list[str] = []
 
     by_key: dict[str, dict[str | None, list[int]]] = {}
+    by_gene_of: dict[str, dict[str, list[int]]] = {}
     all_members: list[list[MetaMember]] = []
     all_texts: list[list[str]] = []
     all_matches: list[list[MetaMatch]] = []
@@ -421,6 +482,24 @@ def build_meta(rows: list[MetaRow], tables: dict[str, list[Any]], tier_scale: st
                     CodedWarning("meta_selector_matches_nothing", _matches_nothing(index, text, member.table))
                 )
             row_matches.extend(hits)
+            reached = [table_rows[hit.index] for hit in hits]
+            reached_tables = [member.table]
+            if member.table == "allele_function" and len(row_members) == 1:
+                diplotypes = tables.get("diplotypes") or []
+                by_gene = by_gene_of.setdefault("diplotypes", _diplotypes_by_gene(diplotypes))
+                contained = [
+                    diplotypes[k] for target in reached for k in _contained(target, diplotypes, by_gene)
+                ]
+                reached += contained
+                reached_tables += ["diplotypes"] if contained else []
+            differing = _member_drug_disagrees(row, reached)
+            if differing:
+                warnings.append(
+                    CodedWarning(
+                        "meta_member_drug_disagrees",
+                        _drug_disagrees(index, text, " and ".join(reached_tables), row.drug or "", differing),
+                    )
+                )
             if row.direction is not None and allele_bearing(member) is None:
                 stated = [table_rows[hit.index].effect_allele for hit in hits]
                 alleles = {allele.upper() for allele in stated if allele is not None}

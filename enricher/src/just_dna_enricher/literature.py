@@ -67,7 +67,8 @@ from just_dna_format.layout import atomic_writer
 from just_dna_format.literature import LiteratureRow, settled_quotes
 from just_dna_format.manifest import VerificationRecord
 from just_dna_format.normalize import now_utc_iso
-from just_dna_format.spec import DOI_PATTERN, StudyRow, doi_key, extract_pmcids, extract_pmids
+from just_dna_format.spec import StudyRow, extract_pmcids, extract_pmids
+from just_dna_format.spelling import doi_key, doi_token
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -200,7 +201,7 @@ class PmcidConflict:
 class DoiCitation:
     """What one run learned about a work cited by DOI alone, through `pmid=NONE` (RM349).
 
-    One per distinct DOI (`spec.doi_key`), however many rows cite it and in whatever spelling.
+    One per distinct DOI (`spelling.doi_key`), however many rows cite it and in whatever spelling.
     **Not written to `literature.csv`**, whose rows are keyed on a PubMed id and feed a published
     parquet the compiler reads by PMID; so it is not pinned either, and every online run asks again.
     What it records goes into `verification.json`, which is the durable half.
@@ -1612,8 +1613,10 @@ def enrich_literature(
     _tally_existence(result, citations)
     # A DOI no registration agency knows is a cited DOI that does not resolve, whichever kind of row
     # cites it (RM349), so the `strict` gate and the report below name it with the others.
+    # Both sides by `doi_key` (RM363): the PubMed path records the registry's DOI as the registry spells it.
+    missing = {doi_key(doi) for doi in result.doi_missing}
     result.doi_missing += [
-        c.doi for c in result.doi_citations if c.exists is False and c.doi not in result.doi_missing
+        c.doi for c in result.doi_citations if c.exists is False and doi_key(c.doi) not in missing
     ]
     _tally_quotes(result, citations)
     _compare_identifiers(result, citations)
@@ -1653,7 +1656,7 @@ def _doi_only_citations(studies: list[StudyRow], citing_rows: dict[str, list]) -
     """`doi_key -> [study rows citing it]` for the rows citing by DOI alone (`pmid=NONE`, RM336, RM349).
 
     `_citations`' shape, keyed on the DOI because that is the only identifier such a row carries: two
-    spellings of one DOI (bare, or a doi.org URL in another case) are one citation (`spec.doi_key`,
+    spellings of one DOI (bare, or a doi.org URL in another case) are one citation (`spelling.doi_key`,
     RM336's duplicate key). A citing-table row maps to an empty list, as there: it is a citation to
     check for existence, with no quote. The predicate is the one `cited_by_doi_only` counts with.
     """
@@ -1761,7 +1764,7 @@ def _doi_to_check(studies: list[StudyRow], registry_doi: str | None) -> str | No
     dataset) has only the authored one, which is the case the Crossref client is here for.
     """
     authored = next((s.doi for s in studies if s.doi), None)
-    return _doi_token(authored) if authored else (registry_doi or None)
+    return doi_token(authored) if authored else (registry_doi or None)
 
 
 def _tally_existence(result: LiteratureResult, citations: dict[str, list[StudyRow]]) -> None:
@@ -2481,12 +2484,12 @@ def _doi_conflicts(pmid: str, studies: list[StudyRow], registry_doi: str | None)
     """
     if not registry_doi:
         return []
-    expected = _doi_token(registry_doi)
+    expected = doi_token(registry_doi)
     if expected is None:
         return []
     conflicts: list[DoiConflict] = []
     for authored in dedupe(s.doi for s in studies if s.doi):
-        token = _doi_token(authored)
+        token = doi_token(authored)
         if token is not None and token != expected:
             conflicts.append(DoiConflict(pmid=pmid, authored=authored, registry=registry_doi))
     return conflicts
@@ -2514,12 +2517,6 @@ def _pmcid_conflicts(pmid: str, studies: list[StudyRow], registry_pmcid: str | N
         if authored != expected:
             conflicts.append(PmcidConflict(pmid=pmid, authored=authored, registry=expected))
     return conflicts
-
-
-def _doi_token(raw: str) -> str | None:
-    """The bare `10.x/y` token inside a free-form DOI cell, lowercased (DOIs are case-insensitive)."""
-    match = DOI_PATTERN.search(raw)
-    return match.group(0).rstrip(".,;").casefold() if match else None
 
 
 def _normalized_title(text: str) -> str:

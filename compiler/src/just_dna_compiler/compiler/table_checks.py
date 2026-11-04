@@ -13,7 +13,8 @@ from just_dna_format.binning import MeasureBinRow, format_group_key, validate_bi
 from just_dna_format.findings import CodedWarning, restate
 from just_dna_format.layout import DERIVED_SUBDIR, VERIFICATION_JSON, sidecar_spellings
 from just_dna_format.pgx import is_hla_gene
-from just_dna_format.spec import PMID_NONE, StudyRow, VariantRow, cited_as, doi_key
+from just_dna_format.spec import StudyRow, VariantRow, citation_key, cited_as
+from just_dna_format.spelling import gene_key
 from just_dna_format.vocab import RECOMMENDED_PHENOTYPE_CLASSES
 from pydantic import BaseModel
 
@@ -24,7 +25,6 @@ from just_dna_compiler.compiler.tables import (
     _TABLE_DUPE_KEYS,
     _TABLE_KIND_CSVS,
     AUTHORED_NON_KIND_TABLES,
-    _gene_key,
     same_row,
     study_coordinate_key,
 )
@@ -55,7 +55,7 @@ def _cross_validate_haplotype_definitions(
     two of them declared `no_function`, and nothing defined any of them.
 
     **An allele is `(gene, name)`, never the bare name (RM351).** Keyed on the name, CYP2C19's `*2`
-    defined CYP2C9's. Genes compare through `_gene_key`, so a symbol spelled in another case in one
+    defined CYP2C9's. Genes compare through `spelling.gene_key`, so a symbol spelled in another case in one
     table is not a second gene. A `haplotypes.csv` row naming no gene is the unknown arm: it defines its
     name for every gene, since nothing says which gene it is not, so a gene-less module is reported
     for the same alleles as before. **A typed gene is exempt**: an HLA gene (`is_hla_gene`) that
@@ -66,7 +66,7 @@ def _cross_validate_haplotype_definitions(
     """
     if not haplotypes:
         return []
-    defined = {(_gene_key(row.gene), row.haplotype_name) for row in haplotypes if row.gene is not None}
+    defined = {(gene_key(row.gene), row.haplotype_name) for row in haplotypes if row.gene is not None}
     defined_genes = {gene for gene, _ in defined}
     defined_for_any_gene = {row.haplotype_name for row in haplotypes if row.gene is None}
     # The first spelling of each gene, in row order, is the one the message prints.
@@ -76,7 +76,7 @@ def _cross_validate_haplotype_definitions(
         *((row.gene, (row.allele,)) for row in allele_functions),
         *((row.gene, (row.haplotype_a, row.haplotype_b)) for row in diplotypes),
     ):
-        key = _gene_key(gene)
+        key = gene_key(gene)
         spelled.setdefault(key, gene)
         used.update((key, allele) for allele in alleles)
     missing = sorted(
@@ -205,7 +205,7 @@ def _cross_validate_phase_ambiguity(haplotypes: list[Any], diplotypes: list[Any]
             seen_variants.add(variant)
             variants.append(variant)
         allele = _IMPLIED_REFERENCE if row.ref is not None and row.allele == row.ref else row.allele
-        gene = None if row.gene is None else _gene_key(row.gene)
+        gene = None if row.gene is None else gene_key(row.gene)
         by_haplotype.setdefault((gene, row.haplotype_name), {})[variant] = allele
 
     # A diplotype naming a haplotype `haplotypes.csv` never defines has no signature to compute —
@@ -215,16 +215,20 @@ def _cross_validate_phase_ambiguity(haplotypes: list[Any], diplotypes: list[Any]
     # over a few hundred names.
     definitions: dict[tuple[str, str], dict[tuple, str] | None] = {}
     by_signature: dict[tuple, list[Any]] = {}
+    # Grouped by the gene's key, so two spellings of one gene are one gene (RM363), and named in its
+    # first spelling, row order, so the message reads as the module writes it.
+    spelled: dict[str, str] = {}
     for row in diplotypes:
         pair = (row.haplotype_a, row.haplotype_b)
-        gene = _gene_key(row.gene)
+        gene = gene_key(row.gene)
+        spelled.setdefault(gene, row.gene)
         for name in pair:
             if (gene, name) not in definitions:
                 definitions[(gene, name)] = _defined_for(by_haplotype, gene, name)
         resolved = {name: definitions[(gene, name)] for name in pair}
         if any(definition is None for definition in resolved.values()):
             continue
-        by_signature.setdefault((row.gene, _unphased_signature(pair, resolved, variants)), []).append(row)
+        by_signature.setdefault((gene, _unphased_signature(pair, resolved, variants)), []).append(row)
 
     warnings: list[str] = []
     undistinguished: dict[str, list[str]] = {}
@@ -254,15 +258,17 @@ def _cross_validate_phase_ambiguity(haplotypes: list[Any], diplotypes: list[Any]
         # haplotype definitions → nothing distinguishes them; different → phase does.
         by_definition: dict[tuple, list[tuple[str, str]]] = {}
         for pair in pairs:
-            key = tuple(sorted(tuple(sorted(definitions[(_gene_key(gene), name)].items())) for name in pair))
+            key = tuple(sorted(tuple(sorted(definitions[(gene, name)].items())) for name in pair))
             by_definition.setdefault(key, []).append(pair)
 
         for identical in by_definition.values():
             if len(identical) > 1:
-                undistinguished.setdefault(gene, []).append(", ".join(f"{a}/{b}" for a, b in identical))
+                undistinguished.setdefault(spelled[gene], []).append(
+                    ", ".join(f"{a}/{b}" for a, b in identical)
+                )
         distinct = [same[0] for same in by_definition.values()]
         if len(distinct) > 1:
-            unphased.setdefault(gene, []).append(", ".join(f"{a}/{b}" for a, b in sorted(distinct)))
+            unphased.setdefault(spelled[gene], []).append(", ".join(f"{a}/{b}" for a, b in sorted(distinct)))
 
     # One warning per gene per class, with examples and a count — the aggregation rule CPIC taught and
     # this check had to relearn: the real CYP2D6 draft produces 378 identically-defined groups and 20
@@ -382,17 +388,18 @@ def _cross_validate_studies(
     # **A `NONE` row's citation is its DOI** (RM336). Every DOI-only study reads `(v, NONE)`, so two
     # different preprints on one variant would share a key; the cell key carries the DOI there
     # (normalized: a bare token and a doi.org URL, in any case, are one DOI), and the message names it,
-    # so the same preprint written twice still warns.
+    # so the same preprint written twice still warns. Both halves go through `spec.citation_key` (RM363):
+    # a PMID written `[PMID: N]` beside a bare `N`, or a DOI with a trailing `.` beside the clean token,
+    # is one citation, as it already was to the literature pass.
     #
     # **Since 0.8 the same rule reads more columns** (PT2 §3 item 16): `phenotype_class` (one paper,
     # several outcomes), the age band (`age_min`, `age_max`, `age_of`, cell by cell) and the stratum
     # pair. Two rows are distinct when ANY of them is both stated and different, and a row warns when it
     # is not distinct from some earlier row under its key. `proxy_rsid` is deliberately not one: two
     # proxies of one lead in one paper are the same association measured twice.
-    earlier: dict[tuple[str | None, str], list[StudyRow]] = {}
+    earlier: dict[tuple[str | None, tuple[str, ...] | None], list[StudyRow]] = {}
     for row in studies:
-        cites = f"{PMID_NONE} doi {doi_key(row.doi)}" if row.pmid == PMID_NONE and row.doi else row.pmid
-        key = (row.variant_key, cites)
+        key = (row.variant_key, citation_key(row.pmid, row.doi))
         siblings = earlier.setdefault(key, [])
         if any(not _distinct_study_rows(row, sibling) for sibling in siblings):
             warnings.append(

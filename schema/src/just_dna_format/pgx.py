@@ -31,6 +31,7 @@ from just_dna_format.base import (
     vocabulary,
 )
 from just_dna_format.spec import CitationPair, validate_pmid_cell
+from just_dna_format.spelling import ChromCell
 from just_dna_format.vocab import (
     VALID_PHENOTYPE_CATEGORIES,
     VALID_RECOMMENDATION_STRENGTH,
@@ -156,7 +157,7 @@ class HaplotypeRow(AuthoredModel):
     # same closedness drift `actionability` already had, pointing the other way. (That the PGx tables
     # do not validate `chrom` while the SNP core does is a real inconsistency, but closing it is a
     # validation *tightening* — Principle 3 — not a marker change.)
-    chrom: str | None = Field(
+    chrom: ChromCell = Field(
         json_schema_extra=since("0.4.0"), default=None, description="Chromosome (position-only variants)"
     )
     start: int | None = Field(
@@ -555,7 +556,7 @@ class PharmVariantRow(CitationPair, AuthoredModel):
     # same closedness drift `actionability` already had, pointing the other way. (That the PGx tables
     # do not validate `chrom` while the SNP core does is a real inconsistency, but closing it is a
     # validation *tightening* — Principle 3 — not a marker change.)
-    chrom: str | None = Field(
+    chrom: ChromCell = Field(
         json_schema_extra=since("0.4.0"), default=None, description="Chromosome (position-only variants)"
     )
     start: int | None = Field(

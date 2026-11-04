@@ -35,6 +35,7 @@ from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.pgx import PharmVariantRow
 from just_dna_format.snapshot import SnapshotRelease, read_release
 from just_dna_format.sources import SourceRow
+from just_dna_format.spelling import drug_key
 from just_dna_format.vocab import MULTI_SEP, validate_phenotype_categories
 
 from just_dna_enricher.download import ensure_clinpgx_snapshot
@@ -353,7 +354,7 @@ def enrich_clinpgx(
         by_annotation.setdefault((row["annotation_id"], genotype), level)
         known_annotations.add(str(row["annotation_id"]))
         for drug in MULTI_SEP.split(row["drugs"] or ""):
-            drug = drug.strip().lower()
+            drug = drug_key(drug)
             if not drug:
                 continue
             by_category.setdefault((rsid, drug, genotype, category), level)
@@ -367,7 +368,7 @@ def enrich_clinpgx(
         # *after* this increment on purpose — that row was looked up and the answer was "cannot tell",
         # which is a comparison that ran and settled nothing, not one that never happened.
         result.compared += 1
-        drug, genotype = row.drug.strip().lower(), _normalize_genotype(row.genotype)
+        drug, genotype = drug_key(row.drug), _normalize_genotype(row.genotype)
         category = _normalize_category(row.phenotype_category)
         reported: str | None = None
         if row.annotation_id and row.annotation_id not in known_annotations:

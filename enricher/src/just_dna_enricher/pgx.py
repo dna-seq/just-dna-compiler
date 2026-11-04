@@ -47,6 +47,7 @@ from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.manifest import VerificationRecord
 from just_dna_format.pgx import AlleleFunctionRow, HaplotypeRow
 from just_dna_format.sources import SourceRow
+from just_dna_format.spelling import gene_key
 
 from just_dna_enricher.cpic import CpicClient, CpicError, CpicSnapshotClient
 from just_dna_enricher.drafting import DRAFT_PROJECTIONS, drafted_unchanged
@@ -223,13 +224,16 @@ def _compare(
     """
     conflicts: list[FunctionConflict] = []
     compared: set[tuple[str, str]] = set()
+    # The source's gene against the authored one by `gene_key` (RM363): PharmVar writes `CYP2C19`, and an
+    # authored `Cyp2c19` is the same gene, not an allele no authority lists.
+    by_key = {(gene_key(gene), allele): function for (gene, allele), function in reported.items()}
     for row in authored:
         if row.function_status is None:
             continue
-        theirs = reported.get((row.gene, row.allele))
+        theirs = by_key.get((gene_key(row.gene), row.allele))
         if theirs is None:
             continue
-        compared.add((row.gene, row.allele))
+        compared.add((gene_key(row.gene), row.allele))
         if theirs != row.function_status:
             conflicts.append(FunctionConflict(row.gene, row.allele, row.function_status, theirs, source))
     return conflicts, compared
@@ -291,7 +295,7 @@ def enrich_pgx(
     # Alleles carrying an authored `function_status`, which are the only claims this check has to
     # put. A module that lists its alleles and states no function for any of them has nothing for an
     # authority to disagree with, and saying so is not the same as saying they all agreed.
-    claims = {(row.gene, row.allele) for row in authored if row.function_status is not None}
+    claims = {(gene_key(row.gene), row.allele) for row in authored if row.function_status is not None}
     compared: set[tuple[str, str]] = set()
     # `source -> what became of its leg`, one of the `VALID_VERIFICATION_SKIPS` members or
     # `_ANSWERED`. Recorded per leg because two authorities answer this one check and the record
@@ -593,7 +597,7 @@ def _function_check_record(
         "allele_function",
         # One allele, not one conflict per authority — see the docstring.
         subjects=result.compared,
-        findings=len({(c.gene, c.allele) for c in result.conflicts}),
+        findings=len({(gene_key(c.gene), c.allele) for c in result.conflicts}),
         source=answered[0] if len(answered) == 1 else None,
         release=releases.get(answered[0]) if len(answered) == 1 else None,
         detail=detail,

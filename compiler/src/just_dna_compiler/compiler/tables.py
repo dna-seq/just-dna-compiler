@@ -4,6 +4,7 @@ into CSV cells.
 """
 
 import csv
+import functools
 import types
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -13,7 +14,13 @@ from typing import Any, Union, get_args, get_origin
 import polars as pl
 from just_dna_format.alleles import split_genotype
 from just_dna_format.assertions import ClinicalAssertionRow
-from just_dna_format.base import IDENTITY_FIELDS, AuthoredModel, authored_field_names, derive_variant_key
+from just_dna_format.base import (
+    IDENTITY_FIELDS,
+    AuthoredModel,
+    authored_field_names,
+    derive_variant_key,
+    field_first_seen,
+)
 from just_dna_format.binning import ActivityPhenotypeRow, CopyNumberRow, HeteroplasmyRow, RepeatAlleleRow
 from just_dna_format.concordance import ClinSigAuthorityCallRow, ClinSigConcordanceRow
 from just_dna_format.consequences import ConsequenceRow
@@ -35,6 +42,7 @@ from just_dna_format.overrides import OverrideRow, overlay_coherence_errors
 from just_dna_format.pgs import PgsRow
 from just_dna_format.pgx import AlleleFunctionRow, DiplotypeRow, HaplotypeRow, PharmVariantRow
 from just_dna_format.sources import SourceRow
+from just_dna_format.spelling import comparison_key
 from pydantic import BaseModel
 
 # Genotype allele separators: `/` (unphased), `|` (phased). See ROADMAP 0.3 item 5b. The split
@@ -236,16 +244,30 @@ def study_coordinate_key(chrom: str | None, start: int | None, ref: str | None) 
     return derive_variant_key(None, chrom, start, ref) if chrom is not None else None
 
 
+#: The first release whose models compare their key through `spelling.comparison_key` (RM363).
+_KEY_COMPARED_SINCE: tuple[int, ...] = (0, 8, 0)
+
+
+@functools.cache
+def _key_compared(model: type[BaseModel]) -> bool:
+    """Does `model`'s key compare each column through `comparison_key`? Exactly when no published module
+    can hold its rows: every field first appeared in 0.8 or later (`field_first_seen`).
+
+    Folding the key of a table a published module carries would refuse two rows it holds today that
+    differ only in a gene's or drug's case (Principle 3), so those keys stay on the stored cell until a
+    major. A table new in 0.8 (`meta.csv`, `model_organisms.csv`) has no such module, so its refusal and
+    its resolver agree: `Azathioprine` and `azathioprine` are one `meta.csv` scope and one key. Derived
+    from the fields' own release marks, so the next new table is covered without a list."""
+    seen = field_first_seen(model).values()
+    return bool(seen) and min(tuple(int(part) for part in v.split(".")) for v in seen) >= _KEY_COMPARED_SINCE
+
+
 def _key_of(row: Any) -> tuple:
-    """A keyed row's identity tuple, read off the model's declared `_KEY_FIELDS`."""
+    """A keyed row's identity tuple, read off the model's declared `_KEY_FIELDS` (compared through
+    `comparison_key` on a model `_key_compared` admits)."""
+    if _key_compared(type(row)):
+        return tuple(comparison_key(name, getattr(row, name)) for name in row._KEY_FIELDS)
     return tuple(getattr(row, name) for name in row._KEY_FIELDS)
-
-
-def _gene_key(gene: str) -> str:
-    """A gene symbol as the PGx checks compare it (RM351, RM356). Case and surrounding space do not
-    make two genes: the bare-name key ignored the gene entirely, so a symbol spelled `Cyp2c19` in one
-    place and `CYP2C19` in another must not turn every allele of it into a new finding or a new row."""
-    return gene.strip().casefold()
 
 
 def _distinct_when_stated(row: Any, other: Any) -> bool:
@@ -253,12 +275,15 @@ def _distinct_when_stated(row: Any, other: Any) -> bool:
     stated values differ. An unstated cell is unknown and never "different" (`@absent-is-not-different`),
     so a model declaring no such column answers `False` for every pair.
 
-    The comparison is a gene symbol's (`_gene_key`, case- and space-insensitive), because the one
-    declared column is a gene. A test pins every declared column as a gene-named `str | None` field, so a
-    column that would need another comparison fails CI rather than being case-folded here."""
+    The comparison is the column's own (`spelling.comparison_key`, RM363): a gene symbol's is case- and
+    space-insensitive, and a column of no compared kind compares verbatim."""
     for name in getattr(row, "_KEY_DISTINCT_WHEN_STATED", ()):
         mine, theirs = getattr(row, name, None), getattr(other, name, None)
-        if mine is not None and theirs is not None and _gene_key(mine) != _gene_key(theirs):
+        if (
+            mine is not None
+            and theirs is not None
+            and comparison_key(name, mine) != comparison_key(name, theirs)
+        ):
             return True
     return False
 

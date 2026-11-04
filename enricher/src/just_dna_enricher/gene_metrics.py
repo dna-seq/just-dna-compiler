@@ -33,6 +33,7 @@ from just_dna_format.base import merge_key
 from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.layout import atomic_writer
 from just_dna_format.normalize import now_utc_iso
+from just_dna_format.spelling import gene_key
 
 from just_dna_enricher.download import ensure_constraint_snapshot
 from just_dna_enricher.gnomad import (
@@ -281,8 +282,9 @@ def enrich_gene_metrics(
     # ClinGen dosage row for the same gene carries a different `dataset`, so it is a different key and
     # not this pass's work. Keying on the gene alone is the older bug in the other direction.
     pass_datasets = {dataset, API_CONSTRAINT_DATASET_LABEL}
-    done = {row.gene for row in existing.values() if row.dataset in pass_datasets}
-    wanted = [g for g in genes if g not in done]
+    # By `gene_key` (RM363): a row written for `APOE` covers an authored `Apoe`.
+    done = {gene_key(row.gene) for row in existing.values() if row.dataset in pass_datasets}
+    wanted = [g for g in genes if gene_key(g) not in done]
     fetched_at = now_utc_iso()
     out: list[GeneMetricsRow] = list(existing.values())
     covered: list[str] = []

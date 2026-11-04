@@ -42,6 +42,7 @@ from just_dna_compiler.draft import (
     append_rows,
 )
 from just_dna_format.spec import StudyRow, VariantRow
+from just_dna_format.spelling import gene_key
 from pydantic import ValidationError
 
 from just_dna_enricher.clin_sig import STATE_BY_CLIN_SIG
@@ -256,11 +257,11 @@ def draft_panel_from_mitomap_miss(
     result.dataset = miss_dataset_label(release)
     result.stale = stale_parents(reference)
 
-    wanted = {gene.strip().upper() for gene in genes if gene.strip()}
+    wanted = {gene_key(gene) for gene in genes if gene.strip()}
     admitted: list[dict] = []
     for row in rows:
         gene = (row.get("gene") or "").strip()
-        if wanted and gene.upper() not in wanted:
+        if wanted and gene_key(gene) not in wanted:
             # Counted outside `candidates`, like every other provider's gene filter: a gene the
             # caller did not ask for is not something this provider withheld.
             result.withheld["gene_not_requested"] += 1

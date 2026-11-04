@@ -150,6 +150,7 @@ from pydantic import Field, field_validator, model_validator
 from just_dna_format.base import AuthoredModel, Companion, since, stamped_identity_field, vocabulary
 from just_dna_format.findings import CodedWarning
 from just_dna_format.spec import CitationPair, validate_pmid_cell
+from just_dna_format.spelling import ChromCell
 from just_dna_format.vocab import check_vocab, validate_finite
 
 # Open, additive vocabulary of measured quantities (the `frozenset[str]` idiom, Principle 6). New
@@ -674,7 +675,7 @@ class HeteroplasmyRow(MeasureBinRow):
         default=None,
         description="dbSNP id of the variant these bins are about, when it has one",
     )
-    chrom: str | None = Field(
+    chrom: ChromCell = Field(
         json_schema_extra=since("0.5.0"), default=None, description="Contig (MT), for a position-only variant"
     )
     start: int | None = Field(
