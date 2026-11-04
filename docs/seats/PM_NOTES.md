@@ -32,6 +32,13 @@ back into 0.8 as inputs to RM333's confidence labels.
 - **Merge warning sent to the lead**: the next `main` → `0.8` sync meets `ROADMAP_0_8.md` rewritten on both
   sides.
 
+## Standing rule for every proposal (the maintainer, 2026-11-04)
+
+"Always weight your proposals towards reduction of entities. If something can be built with 20 score, don't
+build it with 30 for 'tidiness', it is clutter and bloat in guise of strict-typing of non-strict typed data."
+A new table kind counts as about 10 authored columns. The authored surface is human-centred and denormalized on
+purpose; normalization is the compiled parquet's job (RM346, 1.0).
+
 ## Open questions and owed work
 
 - RM149's gate: **decided 2026-11-03, it stays** (option 1). Written under RM149 in ROADMAP_0_9.md.
