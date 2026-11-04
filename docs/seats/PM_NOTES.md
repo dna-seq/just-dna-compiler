@@ -57,6 +57,16 @@ purpose; normalization is the compiled parquet's job (RM346, 1.0).
   columns): no drift. RM253's repeat rows carry no rsID and key on the coordinate, which fits "must not rely
   on rs3064744". RM342 keeps the `polars>=1.42.0` floor and locks 2.1.0, because polars-bio still caps <2.
   The next read starts after c3ac4d8.
+- **Drift read of `0.8`, 2026-11-04 evening, c3ac4d8..503730c6**: no drift. The whole v2 group (RM322–RM336),
+  RM236, RM239, RM253, RM303 and RM372 shipped as scoped; RM361–RM370 are the pre-cut audit's round-1 classes,
+  which the person ordered. The next read starts after 503730c6. Put to the lead in `#just-dna-compiler>scope`
+  (unattended, so no desk item):
+  - the scope table has no row for RM361–RM370 or the RM267 REST witness; I write it on main unless the lead
+    writes it on 0.8;
+  - RM_TOC.md on 0.8 still carries RM361–RM370's reservation lines (the lead's records pass);
+  - RM373–RM376 (the migration probe's classes) are unsized. My default: into 0.8 if 0.8 gives a false answer
+    without it (RM374, RM376 look so), else 0.9 (RM373, RM375) unless the lead measured it under an hour.
+    `unattended`, waiting on the lead's read.
 - **RM253's precedent, from just-vcf's lead (2026-11-04)**: the short-read callers they read (GATK,
   DeepVariant, DRAGEN, freeBayes, CGI) all write a repeat-length change as a left-aligned sequence indel,
   so 0.8's spelling matches. The repeat-count forms (ExpansionHunter `<STRn>` + REPCN, TRGT AL/MC,
