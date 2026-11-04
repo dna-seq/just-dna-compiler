@@ -92,6 +92,14 @@ _SHIPPED: dict[str, bytes] = {
     "logs/photo.jpg": _JPEG,
     "logs/scan.jpeg": _JPEG,
     "logs/UPPER.JSON": b"[1, 2, 3]",
+    # JSON allows a raw U+2028 inside a string; a record is one `\n`-terminated line, not one
+    # `str.splitlines()` piece, or this valid ledger stays behind.
+    "logs/trace/u2028.jsonl": '{"quote": "a b"}\n{"n": 2}\n'.encode(),
+    # A UTF-8 byte-order mark is UTF-8 (a Windows editor writes one); it is not part of the JSON.
+    "logs/bom.json": b'\xef\xbb\xbf{"a": 1}',
+    "logs/bom.jsonl": b'\xef\xbb\xbf{"a": 1}\n{"b": 2}\n',
+    # A hidden `.log` ships as it did before RM338: the hidden-path rule is for the new kinds only.
+    "logs/.history/old.log": b"older run\n",
 }
 
 # Every file that stays behind: each fails exactly one check, or carries an extension never shipped.
@@ -104,8 +112,16 @@ _LEFT_BEHIND: dict[str, bytes] = {
     "logs/latin1.txt": "café\n".encode("latin-1"),
     "logs/latin1.md": "café\n".encode("latin-1"),
     "logs/latin1.json": '{"a": "café"}'.encode("latin-1"),
+    # Nested past the interpreter's recursion limit: `json.loads` raises RecursionError, not
+    # ValueError, so a check that caught only the latter crashed the compile on this file.
+    "logs/deep.json": b"[" * 200_000 + b"]" * 200_000,
     "logs/data.bin": b"\x00\x01\x02",
     "logs/archive.zip": b"PK\x03\x04",
+    # Hidden paths are tool state (an editor's, a notebook's, an agent's settings), not a ledger the
+    # author meant to publish, and a published file is permanent: they stay behind, valid or not.
+    "logs/.hidden.json": b"{}",
+    "logs/.ipynb_checkpoints/notes-checkpoint.md": b"# checkpoint\n",
+    "logs/.claude/settings.local.json": b'{"permissions": {}}',
 }
 
 
@@ -128,6 +144,11 @@ def _rm338_spec(tmp_path: Path) -> tuple[Path, set[str], set[str]]:
     _write_files(spec, _LEFT_BEHIND)
     shipped = set(_SHIPPED) | {_png_of_size(spec, "logs/edge.png", LOG_IMAGE_MAX_BYTES)}
     left_behind = set(_LEFT_BEHIND) | {_png_of_size(spec, "logs/big.png", LOG_IMAGE_MAX_BYTES + 1)}
+    # A symlink is not followed out of the module: valid JSON it points at stays behind.
+    outside = tmp_path / "outside.json"
+    outside.write_text('{"token": "not for publishing"}')
+    (spec / "logs" / "linked.json").symlink_to(outside)
+    left_behind.add("logs/linked.json")
     return spec, shipped, left_behind
 
 

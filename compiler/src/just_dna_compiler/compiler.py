@@ -740,16 +740,21 @@ def _log_content_agrees(path: Path, ext: str) -> bool:
     if ext not in LOG_TEXT_EXTENSIONS:
         return False
     try:
-        text = path.read_bytes().decode("utf-8")
+        # `utf-8-sig`: a byte-order mark is UTF-8 a Windows editor writes, and no part of the JSON.
+        text = path.read_bytes().decode("utf-8-sig")
     except UnicodeDecodeError:
         return False
     if ext not in {"json", "jsonl"}:
         return True
-    documents = [text] if ext == "json" else [line for line in text.splitlines() if line.strip()]
+    # A JSON Lines record ends at `\n` only: `str.splitlines()` also breaks at U+2028 and the other
+    # separators JSON allows raw inside a string, which would refuse a valid ledger.
+    documents = [text] if ext == "json" else [line for line in text.split("\n") if line.strip()]
     try:
         for document in documents:
             json.loads(document)
-    except ValueError:
+    # RecursionError is what `json.loads` raises on nesting past the interpreter's limit: a file
+    # this compile cannot parse stays behind rather than failing the compile.
+    except (ValueError, RecursionError):
         return False
     return True
 
@@ -760,9 +765,9 @@ def _collect_logs(spec_dir: Path, output_dir: Path, explicit: list[Path] | None)
     Auto-discovers a top-level aggregate log (`*.log` in `spec_dir`) plus files under a
     `spec_dir/logs/` folder, preserving each file's path relative to the module. Under `logs/`, a
     `*.log` ships as it always has, unchecked; a `.txt`/`.md`/`.json`/`.jsonl`/`.png`/`.jpg`/`.jpeg`
-    ships when `_log_content_agrees` (RM338), and is named by an info line so an author sees it
-    before publishing; anything else stays behind. An explicit `log_files` list overrides discovery
-    and ships what it names. Files are copied into `output_dir` (so they ship with the module) and
+    ships when `_log_content_agrees` (RM338) and is neither on a hidden path nor a symlink, and is
+    named by an info line so an author sees it before publishing; anything else stays behind. An
+    explicit `log_files` list overrides discovery and ships what it names. Files are copied into `output_dir` (so they ship with the module) and
     returned as hashed `FileEntry` rows. No logs → empty list (a valid module).
     """
     pairs: list[tuple[str, Path]] = []  # (relative name in module dir, source file)
@@ -787,7 +792,14 @@ def _collect_logs(spec_dir: Path, output_dir: Path, explicit: list[Path] | None)
                 # behind is RM337's, a minor.
                 if path.suffix == ".log":
                     pairs.append((rel, path))
-                elif _log_content_agrees(path, path.suffix.lower().lstrip(".")):
+                    continue
+                # The new kinds skip a hidden path (tool state: an editor's, a notebook's, an
+                # agent's settings) and a symlink (it can reach outside the module): a published
+                # file is permanent, and neither is a ledger the author put there to publish.
+                hidden = any(part.startswith(".") for part in path.relative_to(logs_dir).parts)
+                if hidden or path.is_symlink():
+                    continue
+                if _log_content_agrees(path, path.suffix.lower().lstrip(".")):
                     logger.info("%s ships with the module (its content matches its name)", rel)
                     pairs.append((rel, path))
 

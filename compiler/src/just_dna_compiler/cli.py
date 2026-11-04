@@ -176,6 +176,11 @@ def compile(
             )
             if comp.resolution_signature is not None:
                 typer.echo(f"resolution_signature: {comp.resolution_signature}")
+            # RM338: discovery ships checked text and images under `logs/`, so each one that is
+            # not `*.log` is named here, where an author sees it before publishing a permanent file.
+            for entry in manifest.logs:
+                if not entry.name.endswith(".log"):
+                    typer.echo(f"log ships: {entry.name}")
     else:
         typer.secho(f"COMPILE FAILED: {spec_dir}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1)

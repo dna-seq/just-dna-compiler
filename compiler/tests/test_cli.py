@@ -55,6 +55,20 @@ def test_compile_prints_digest(tmp_path: Path) -> None:
     assert (tmp_path / "out" / "manifest.json").is_file()
 
 
+def test_compile_names_each_log_that_is_not_dot_log(tmp_path: Path) -> None:
+    # RM338: a file under `logs/` that ships and is not `*.log` is named in the compile output, so an
+    # author sees it before publishing. The logger line alone is invisible to an unconfigured CLI.
+    spec = _spec(tmp_path / "spec", _POSITIONED)
+    (spec / "logs").mkdir()
+    (spec / "logs" / "authoring.log").write_text("drafted\n", encoding="utf-8")
+    (spec / "logs" / "notes.md").write_text("# notes\n", encoding="utf-8")
+    (spec / "logs" / "bad.json").write_text("{", encoding="utf-8")
+    result = runner.invoke(app, ["compile", str(spec), str(tmp_path / "out"), "--no-resolve"])
+    assert result.exit_code == 0, result.output
+    named = [line for line in result.stdout.splitlines() if line.startswith("log ships: ")]
+    assert named == ["log ships: logs/notes.md"]
+
+
 def test_compile_strict_fails_on_unresolved(tmp_path: Path) -> None:
     spec = _spec(tmp_path / "spec", _RSID_ONLY)
     result = runner.invoke(app, ["compile", str(spec), str(tmp_path / "out"), "--no-resolve", "--strict"])

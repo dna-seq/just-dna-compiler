@@ -244,12 +244,17 @@ its minor. Until then a file that fails its check stays behind exactly as before
 
 **What shipped.** `_collect_logs` walks everything under `logs/` and asks `_log_content_agrees` of each file
 whose lowercase extension is in `LOG_TEXT_EXTENSIONS` (`log txt md json jsonl`) or `LOG_IMAGE_MAGIC` (`png
-jpg jpeg`). Text must decode as UTF-8; `.json` must parse as one document and every non-blank `.jsonl` line
-on its own. An image must be at most `LOG_IMAGE_MAX_BYTES` (5 MiB, read from `stat` before any byte) and
-begin with its format's magic: `\x89PNG\r\n\x1a\n` for png, `\xff\xd8\xff` for jpg and jpeg, so a JPEG named
-`.png` stays behind. Each file that ships this way is named by an info line on `just_dna_compiler.compiler`
-(*"logs/notes.md ships with the module (its content matches its name)"*). Three choices the decision did not
-settle:
+jpg jpeg`). Text must decode as UTF-8, a byte-order mark allowed (a Windows editor writes one, and
+`json.loads` refuses it); `.json` must parse as one document, and every non-blank `.jsonl` line on its own,
+a line being what ends at `\n` (`str.splitlines()` also breaks at U+2028, which JSON allows raw inside a
+string). A `.json` nested past the recursion limit raises `RecursionError` rather than `ValueError`; it is
+caught too, so the file stays behind instead of failing the compile. An image must be at most
+`LOG_IMAGE_MAX_BYTES` (5 MiB, read from `stat` before any byte) and begin with its format's magic:
+`\x89PNG\r\n\x1a\n` for png, `\xff\xd8\xff` for jpg and jpeg, so a JPEG named `.png` stays behind. Each file
+that ships this way is named by an info line on `just_dna_compiler.compiler` (*"logs/notes.md ships with the
+module (its content matches its name)"*) and, because the CLI configures no logging and an info line is
+therefore invisible there, by a `log ships: logs/notes.md` line in `just-dna-compiler compile`. Five choices
+the decision did not settle:
 
 - **`*.log` is not checked.** A `.log` under `logs/` ships whatever its bytes, as before. Checking it would
   silently drop a `.log` with one latin-1 byte that shipped at the previous compile, and RM337's warning,
@@ -258,22 +263,32 @@ settle:
 - **The ceiling is 5 MiB.** That is the line this repository already draws for anything that travels (a
   larger asset goes through Git LFS), and it sits far above a figure or a screenshot. An image above it is
   not a log.
+- **Hidden paths and symlinks do not take the new route.** A path with any part starting with `.` under
+  `logs/` is tool state (an editor's checkpoint, an agent's `settings.local.json`), and a symlink can reach
+  outside the module; either would ship a valid file nobody put there to publish, and a published file is
+  permanent. Both stay behind as they did before. A hidden or linked `*.log` still ships, as it always did.
 - **The top level is unchanged.** Beside the spec only `*.log` is discovered; the decision is about
   `logs/`. An explicit `log_files` list still ships whatever it names, checks or not.
+- **Text has no size ceiling**, as `*.log` never had one; the decision asked for one on images only.
 
 `LOGO_EXTENSIONS` turned out to be checked by extension only, not by magic bytes, so there was nothing to
 reuse: the magic table is new, and the logo is left as it was.
 
-Tests: `compiler/tests/test_logs.py`. One module carries ten files that ship (two `.log`, one with a
-latin-1 byte; a `.jsonl` with a blank line; `.json`; `.md`; `.txt`; png, jpg and jpeg with real magic; an
-upper-case `.JSON`) and a png exactly at the ceiling, beside eleven that stay behind (malformed `.json`,
-a `.jsonl` with one bad line, a GIF named `.png`, a PNG named `.jpg`, an SVG, latin-1 `.txt`/`.md`/`.json`,
-a `.bin`, a `.zip`, and a real png one byte over the ceiling). It asserts the exact set in `manifest.logs`
-and in the output's `logs/`, the info line for each newly shipped file and for nothing else, warnings and
-`warnings_summary` identical to a compile with `authoring.log` alone, and both identities unchanged. Each of
-ten mutations (no magic test, no size test, `>=` at the ceiling, the first `.jsonl` line only, `.json` not
-parsed, latin-1 instead of UTF-8, a case-sensitive extension, no info line, `.log` checked, SVG admitted)
-turned a test red before the code was kept.
+Tests: `compiler/tests/test_logs.py`. One module carries fourteen files that ship (three `.log`: one with a
+latin-1 byte, one under a hidden directory; a `.jsonl` with a blank line, one with a raw U+2028 in a string,
+and one with a byte-order mark; `.json`, and one with a byte-order mark; `.md`; `.txt`; png, jpg and jpeg
+with real magic; an upper-case `.JSON`) and a png exactly at the ceiling, beside sixteen that stay behind
+(malformed `.json`, a `.jsonl` with one bad line, a GIF named `.png`, a PNG named `.jpg`, an SVG, latin-1
+`.txt`/`.md`/`.json`, a `.json` nested past the recursion limit, a `.bin`, a `.zip`, three valid files on
+hidden paths, a symlink to valid JSON outside the module, and a real png one byte over the ceiling). It
+asserts the exact set in `manifest.logs` and in the output's `logs/`, the info line for each newly shipped
+file and for nothing else, warnings and `warnings_summary` identical to a compile with `authoring.log`
+alone, and both identities unchanged. `compiler/tests/test_cli.py` asserts the `log ships:` lines, which
+failed before the CLI printed them. Each of fifteen mutations (no magic test, no size test, `>=` at the
+ceiling, the first `.jsonl` line only, `.json` not parsed, latin-1 instead of UTF-8, the byte-order mark
+kept, `splitlines()` for `.jsonl`, `RecursionError` uncaught, a case-sensitive extension, no info line,
+`.log` checked, SVG admitted, hidden paths admitted, symlinks admitted) turned a test red before the code
+was kept.
 
 **Residuals** RM337 — the warning naming each file left behind under `logs/`, the failed check's reason
 included; the logo stays extension-checked and is not reopened here

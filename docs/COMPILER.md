@@ -689,12 +689,15 @@ and still publishes `manifest.sources`. Both of those are renames only a major m
    over it would punish the author for the enricher's generosity).
 9. **Collect** logs / `provenance.json` / logo / readme (a malformed one fails the compile, not
    raises). Log discovery takes `*.log` beside the spec and, under `logs/` at any depth, every `*.log`
-   unchecked plus each file whose content matches its name (RM338): `.txt`/`.md` decode as UTF-8,
-   `.json` parses, every non-blank `.jsonl` line parses, and a `.png`/`.jpg`/`.jpeg` starts with its
-   format's magic and is at most `LOG_IMAGE_MAX_BYTES` (5 MiB). The extension is compared lowercased.
-   SVG and every other file stay behind without a word (RM337 is the warning); each file that ships and
-   is not `*.log` is named by an info line on `just_dna_compiler.compiler`. An explicit `log_files`
-   list skips discovery and ships what it names. The readme is discovered from
+   unchecked, exactly as before, plus each file whose content matches its name (RM338): `.txt`/`.md`
+   decode as UTF-8 (a byte-order mark allowed), `.json` parses, every non-blank `\n`-terminated `.jsonl`
+   line parses, and a `.png`/`.jpg`/`.jpeg` starts with its format's magic and is at most
+   `LOG_IMAGE_MAX_BYTES` (5 MiB). Only an exact `.log` suffix skips the check; any other extension is
+   compared lowercased, so a `.LOG` is checked as text. A hidden path (any part starting with `.`) or a
+   symlink never takes the checked route. SVG and every other file stay behind without a word (RM337 is
+   the warning). Each file that ships and is not `*.log` is named by an info line on
+   `just_dna_compiler.compiler` and, in `just-dna-compiler compile`, by a `log ships: <name>` line. An
+   explicit `log_files` list skips discovery and ships what it names. The readme is discovered from
    `manifest.README_CANDIDATES` and hashed into `manifest.readme`, outside `artifact.files` — so it is attested without being content (S25).
 10. **Read the verification attestation** (`verification.json`, RM45): recompute the binding over the
     authored inputs — with `\r\n` read as `\n` since 0.6 (RM82), so an editor's line endings are not an
