@@ -1789,3 +1789,35 @@ rework), which constrains every option below.
 - Does the reference consumer (just-dna-lite) need all three, or `concise` first? That orders the build.
 - Should drafting ever fill a register? The house answer so far is that a provider fills facts, never
   prose; a register is prose.
+
+## RM238 — a per-tissue eQTL has no row, and `expression_effects.csv` is the wrong table to widen
+
+**0.9, decided 2026-11-04 by the pm seat, on the lead's build plan (PROPOSAL_0_8_PT2 §4 question 2).** The coloc input v2's effector confidence needs comes from Open Targets' `colocalisation` dataset, in RM333's lane under the same CC0 marking. So this per-tissue GTEx table goes back to waiting on a consumer: one lane and one licence instead of three sources, the maintainer's reduction rule.
+
+
+**Severity** low · **Status** open — **filed 2026-09-13 from [RM188](#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)'s
+ClawBio half; PARKED on a consumer, deliberately** · **Owner** enricher · **Motivating case**
+[`probes/CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md) § *nine databases, and the two axes that come
+back with no home*
+
+**For longevitymap v2 (2026-11-03):** the cis-QTL colocalisation behind effector confidence E1/E2. See [the group](ROADMAP_0_8.md#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
+
+`clawbio.py run gwas --demo` on rs3798220 returns five cis-eQTLs **by named tissue** from GTEx and the
+EBI eQTL Catalogue — `LPA` in Liver at β −0.82, in Adipose at −0.45, `SLC22A3` in Liver at +0.31.
+Nothing here holds that. `expression_effects.csv` exists and is the wrong place: it is
+AlphaGenome-shaped, one row per `(variant, gene)` **aggregating 371 tissue tracks** into
+`tracks_agreeing`/`tracks_total`, and [`expression.py`](../schema/src/just_dna_format/expression.py)
+argues at length that one row per track "is lossless and unreadable". A GTEx row is not a track — it
+is a measured cis-eQTL in one named tissue with its own β and p, ~50 tissues rather than 371, and
+**the tissue is the fact** rather than something to consensus over. Different grain, different source,
+different terms. So: `eqtl_effects.csv`, one row per `(variant, gene, tissue, dataset)`, tissue as an
+ontology term where the source gives one.
+
+**This is filed open and parked, and the parking reason is a rule rather than a shortage of time.**
+[USE_CASES § 7.2](USE_CASES.md#7-regulatory-effect--which-gene-a-non-coding-variant-moves-and-which-way-07)
+closes with *"reopen this with a consumer, never with an argument"*, and a competitor rendering the
+table is an argument. **Reopen it with somebody who needs the answer.** When that happens, the first
+step is the acquisition measurement that correctly parked the frequency snapshot — what the GTEx and
+eQTL Catalogue bulk artifacts weigh, and what their terms say (`@probe-the-real-file`).
+
+**Related** RM188, RM194/RM200 (the AlphaGenome table this must not be folded into), USE_CASES § 7.2.
