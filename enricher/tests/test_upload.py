@@ -1590,10 +1590,28 @@ _MALFORMED: dict[str, typing.Callable[[dict], None]] = {
     "logs": lambda d: d.__setitem__("logs", "logs/authoring.log"),
     "logs[0].sha256": lambda d: d["logs"][0].__setitem__("sha256", ["sha256:" + "0" * 64]),
     "logo": lambda d: d.__setitem__("logo", "logo.png"),
+    "logo.name": lambda d: d["logo"].__setitem__("name", ["logo.png"]),
+    "provenance.file": lambda d: d["provenance"].__setitem__("file", 7),
     "readme": lambda d: d.__setitem__("readme", ["README.md"]),
     "provenance": lambda d: d.__setitem__("provenance", "provenance.json"),
     "provenance.sha256": lambda d: d["provenance"].__setitem__("sha256", 5),
 }
+
+
+def test_a_file_that_goes_missing_after_the_check_is_a_refusal_not_a_traceback(tmp_path: Path) -> None:
+    """A planned file deleted between the check and the send (a recompile unlinking it) is the same
+    `PlanChangedError`, never a bare `FileNotFoundError` the CLI no longer catches."""
+    out = _compile_with_everything(tmp_path, version=_AUTHORED_VERSION)
+    api, remote = _remote(tmp_path, None)
+
+    def a_recompile_unlinks_it(**kwargs: Any) -> bool:
+        (out / "logs" / "authoring.log").unlink()
+        return False
+
+    api.file_exists.side_effect = a_recompile_unlinks_it
+    with pytest.raises(upload.PlanChangedError, match=r"logs/authoring.log \(unreadable"):
+        _upload(out, api, remote)
+    api.create_commit.assert_not_called()
 
 
 @pytest.mark.parametrize("field", sorted(_MALFORMED))
@@ -1652,6 +1670,18 @@ def test_the_manifest_itself_is_compared_at_the_versioned_path(tmp_path: Path) -
     assert type(caught.value) is PublishCollisionError
     api.create_commit.assert_not_called()
     api.upload_folder.assert_not_called()
+
+
+def test_a_non_file_key_inside_a_declared_field_is_compared(tmp_path: Path) -> None:
+    """The manifest arm skips only the keys the other two arms compare (name, hash, size, digest), so
+    `provenance.generator` differing under one version is a collision named by its path."""
+    out = _compile_with_everything(tmp_path, version=_AUTHORED_VERSION)
+    published = _published_as(out)
+    published["provenance"]["generator"] = "another generator"
+    api, remote = _remote(tmp_path, published)
+    with pytest.raises(PublishCollisionError, match=r"provenance\.generator"):
+        _upload(out, api, remote)
+    api.create_commit.assert_not_called()
 
 
 def test_the_dry_run_runs_the_versioned_path_check_and_writes_nothing(tmp_path: Path) -> None:

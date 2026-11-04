@@ -107,7 +107,10 @@ allowlisted reproduction check); and the file-wide network block. Each was mutat
 change, not taken). A recompile of an unchanged spec states a new `compiled_at`, so republishing it
 under the same version is a collision — the version's manifest would change (P4). The two plan
 refusals keep `FileNotFoundError` as a second base within 0.8, so no existing handler stops
-catching them. RM355's decision that an optional entry naming no file is dropped stands.
+catching them. RM355's decision that an optional entry naming no file (an empty or blank name) is
+dropped stands; a name present and not a string is malformed and refuses. The send holds the module's
+bytes in memory for the two commits, which a module affords; it is the reason the snapshot send is a
+residual rather than the same mechanism.
 
 ## RM270 — an indel's artifact key is its source's spelling: a left-aligned VCF misses a respelled row, and the spelling-independent id the enricher mints never reaches the artifact
 

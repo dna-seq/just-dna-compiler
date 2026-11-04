@@ -286,7 +286,7 @@ def civic_publish_(
     dry_run: bool = typer.Option(
         False,
         "--dry-run",
-        help="Show what would be uploaded without contacting HuggingFace.",
+        help="Show what would be uploaded, after the checks the publish runs. Reads the repo's file list; uploads nothing.",
     ),
 ) -> None:
     """Upload a built CIViC snapshot to a HuggingFace dataset repo (publisher/dev).

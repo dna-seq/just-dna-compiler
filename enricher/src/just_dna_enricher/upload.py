@@ -542,7 +542,7 @@ class _Declarations:
 
 
 def _declarations(document: dict) -> _Declarations:
-    """Walk ``DECLARED_FILE_FIELDS`` once: the entries each field declares, and what is malformed.
+    """Walk ``DECLARED_FILE_FIELDS``: the entries each field declares, and what is malformed.
 
     **Present and unreadable is the refusal; absent is the unknown arm**
     (`@an-absent-input-is-the-unknown-arm-and-a-malformed-one-is-the-refusal`). A field that is
@@ -552,7 +552,8 @@ def _declarations(document: dict) -> _Declarations:
     a gate: the attestation check, or the hash check on that file. Those are now listed here and the
     plan refuses on them, quoting each.
 
-    An entry that names no file stays outside ``malformed``: an attested one is refused separately
+    A ``name`` (``provenance.file``) present and not a string is malformed too. An entry whose name is
+    absent, empty or blank stays outside ``malformed``: an attested one is refused separately
     (``_unnamed_attested``), an optional one declares nothing (RM355).
     """
     entries: list[tuple[str, object]] = []
@@ -585,7 +586,13 @@ def _declarations(document: dict) -> _Declarations:
         else:
             entries.append((field, value))
     for path, entry in entries:
-        sha256 = entry.get("sha256") if isinstance(entry, dict) else None
+        if not isinstance(entry, dict):
+            continue
+        # The name is `file` on the provenance summary and `name` everywhere else.
+        name_key = "file" if path == "provenance" else "name"
+        name, sha256 = entry.get("name"), entry.get("sha256")
+        if name is not None and not isinstance(name, str):
+            malformed.append(f"{path}.{name_key} is {_shape(name)}, not a string")
         if _named_entry(entry) is not None and sha256 is not None and not isinstance(sha256, str):
             malformed.append(f"{path}.sha256 is {_shape(sha256)}, not a string")
     return _Declarations(tuple(entries), tuple(malformed), attested)
@@ -860,10 +867,17 @@ def _plan_from_document(
 
 
 def _planned_hash(module_dir: Path, name: str, read: _ManifestRead) -> str:
-    """The sha256 a planned file has now — the manifest's from the one read the plan parsed."""
+    """The sha256 a planned file has now — the manifest's from the one read the plan parsed.
+
+    A file the plan found that can no longer be read (it went between the listing and the hash, or is
+    not readable) is a refusal of the publish, never a bare `OSError`: the caller handles the family.
+    """
     if name == _MANIFEST_FILENAME and read.sha256 is not None:
         return read.sha256
-    return sha256_file(module_dir / name)
+    try:
+        return sha256_file(module_dir / name)
+    except OSError as exc:
+        raise ModuleNotPublishable(f"{name} in {module_dir} could not be read to plan it ({exc})") from exc
 
 
 def _verified_payload(module_dir: Path, plan: UploadPlan) -> list[tuple[str, bytes]]:
@@ -877,10 +891,13 @@ def _verified_payload(module_dir: Path, plan: UploadPlan) -> list[tuple[str, byt
     payload: list[tuple[str, bytes]] = []
     changed: list[str] = []
     for name in plan.files:
-        path = module_dir / name
-        data = path.read_bytes() if path.is_file() else None
-        if data is None or sha256_bytes(data) != plan.sha256.get(name):
-            changed.append(name if data is not None else f"{name} (gone)")
+        try:
+            data = (module_dir / name).read_bytes()
+        except OSError as exc:
+            changed.append(f"{name} (unreadable: {exc.strerror or exc})")
+            continue
+        if sha256_bytes(data) != plan.sha256.get(name):
+            changed.append(name)
             continue
         payload.append((name, data))
     if changed:
@@ -921,10 +938,10 @@ def _declared_hashes(document: dict) -> dict[str, str]:
 def _manifest_differences(local: dict, published: dict) -> list[str]:
     """The dotted paths at which two manifests differ, outside what the declared-file arm compares.
 
-    The digest and every declared file's name and hash are `_versioned_conflict`'s own arms, with
-    their unknown rule (a declaration with no legible hash does not disagree), so their fields are
-    skipped here — `provenance`'s other keys (`generator`, `item_count`, …) are compared. Everything
-    else in the manifest is part of what the version names: a new title, a new `compiled_at`.
+    The digest and every declared file's name, hash and size are `_versioned_conflict`'s own arms,
+    with their unknown rule (a declaration with no legible hash does not disagree), so those keys
+    (`_GOVERNED_KEYS`) are skipped here; every other key, inside a declared field or not —
+    `provenance.generator`, `provenance.item_count`, a new title, a new `compiled_at` — is compared.
     """
     differing: list[str] = []
 
@@ -935,17 +952,26 @@ def _manifest_differences(local: dict, published: dict) -> list[str]:
         elif left != right:
             differing.append(path)
 
+    def ungoverned(value: object) -> object:
+        """A declared field less the keys the other two arms compare."""
+        if isinstance(value, list):
+            return [ungoverned(entry) for entry in value]
+        if isinstance(value, dict):
+            return {k: v for k, v in value.items() if k not in _GOVERNED_KEYS}
+        return value
+
     for key in sorted(local.keys() | published.keys()):
         left, right = local.get(key), published.get(key)
-        if key == "provenance" and isinstance(left, dict) and isinstance(right, dict):
-            walk(
-                {k: v for k, v in left.items() if k not in ("file", "sha256")},
-                {k: v for k, v in right.items() if k not in ("file", "sha256")},
-                key,
-            )
-        elif key not in DECLARED_FILE_FIELDS:
-            walk(left, right, key)
+        if key in DECLARED_FILE_FIELDS:
+            left, right = ungoverned(left), ungoverned(right)
+        walk(left, right, key)
     return differing
+
+
+#: The keys inside a declared field that the digest arm and the declared-file arm compare (with their
+#: unknown rule), so `_manifest_differences` leaves them to those arms. `files` is `artifact.files`,
+#: whose entries the declared-file arm compares by name and hash.
+_GOVERNED_KEYS = frozenset({"digest", "files", "name", "file", "sha256", "size"})
 
 
 def _versioned_conflict(api, plan: "UploadPlan", local: dict | None) -> tuple[str, dict] | None:

@@ -2684,12 +2684,15 @@ because the table carrying them was dropped at upload.
   - **The plan is paths and hashes.** `UploadPlan.sha256` holds every planned file's sha256 as the plan
     read it, `manifest.json` from the very bytes it was parsed from. After the guard, each file is read
     once more, checked against its entry, and those bytes are what `create_commit` carries — never a
-    path the hub reads later. A file that changed or went missing in between is a `PlanChangedError`,
-    naming each, before either commit.
+    path the hub reads later. A file that changed, went missing or became unreadable in between is a
+    `PlanChangedError`, naming each, before either commit. The cost is memory: the module's files are
+    held for the two commits, which a module's size (megabytes) affords and a 32 GB snapshot would not,
+    so the snapshot publisher keeps its allowlist send.
   - **A malformed declared field refuses; an absent one withholds**
     (`@an-absent-input-is-the-unknown-arm-and-a-malformed-one-is-the-refusal`). `artifact.files`
     present but not a list used to fall back to the allowlist and drop the attestation check; a
-    `sha256` present but not a string used to read as unknown and drop the hash check. The fields
+    `sha256` present but not a string used to read as unknown and drop the hash check, and a `name` (or
+    `provenance.file`) present but not a string used to read as no file and drop the file. The fields
     walked are `upload.DECLARED_FILE_FIELDS`, and a test asserts they and `SPEC_SIDE_FILE_FIELDS` are
     exactly the `ModuleManifest` fields that reach a `FileEntry` or a `Provenance`, so a new
     file-naming field goes red until the publisher decides whether it travels. A missing or `null`
@@ -2698,7 +2701,8 @@ because the table carrying them was dropped at upload.
     blank; a whitespace-only name used to name a file. The attested refusal is wider than an empty
     `name`: it covers every `artifact.files` entry that is not an object with a non-blank string
     `name` (a missing name, a number, a bare string), quoting each.
-  - **The manifest itself is compared at the versioned path** (below).
+  - **The manifest itself is compared at the versioned path** (below): every key except the ones the
+    digest and declared-file arms compare (`digest`, `files`, `name`, `file`, `sha256`, `size`).
   - **The dry run rehearses.** `upload --dry-run` calls `rehearse_upload`: the plan plus the
     versioned-path read, with a read-only client (a token when there is one, anonymous otherwise),
     creating no repo and committing nothing; it refuses as `ALREADY PUBLISHED` or `TOOLCHAIN DIFFERS`
