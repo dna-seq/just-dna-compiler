@@ -948,7 +948,10 @@ those rows anyway. **A proxy is not one of the module's loci**, so the passes th
 as the module's own coordinates — the frequency pass and the clinical-assertion pass — leave out every
 row keyed by a proxy-only rsID (`enrich.subjects.study_proxy_rsids`), and the GWAS pass never asks about
 one. Otherwise each would spend a request on a locus the module does not annotate and write a fact row
-the compile reports as `derived_row_orphan`.
+the compile reports as `derived_row_orphan`. Naming those rsIDs runs the subject collector, so the
+frequency and clinical-assertion passes now refuse an invalid `pharm_variants.csv`, `haplotypes.csv` or
+`heteroplasmy.csv` with their own error type, as `enrich` already did; before 0.8 they read only
+`resolution.csv`.
 
 **What the enricher resolves is not what the compiler applies.** These subjects all land in
 `resolution.csv`, and the compiler applies that table to `variants.csv` only; a PGx or heteroplasmy

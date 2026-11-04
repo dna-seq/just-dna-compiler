@@ -78,7 +78,9 @@ stood in for the row's lead. A proxy on a row naming no variant, or equal to its
 stated, never the lead's, and names both in its text; a proxy with no `resolution.csv` row withholds.
 `enrich` resolves each stated proxy as a subject (after every table naming a module variant), so the
 row exists. A proxy is not one of the module's loci, so the GWAS, frequency and clinical-assertion passes
-leave proxy-only rows out. An invalid study row does not stop `enrich`: the valid rows' proxies are
+leave proxy-only rows out (naming them runs the subject collector, so the frequency and
+clinical-assertion passes now refuse an invalid PGx or heteroplasmy table, as `enrich` already did). An
+invalid study row does not stop `enrich`: the valid rows' proxies are
 asked for and one warning names the rest. The r² between proxy and lead, computed in the study's
 `ancestry`, is still to come on 0.8.
 
