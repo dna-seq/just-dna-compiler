@@ -62,7 +62,13 @@ from just_dna_enricher.licensing import (
     require_sources_file,
     sidecar_path,
 )
-from just_dna_enricher.net import PacingGate, attempt_floor, raise_if_retired, retry_if_transient
+from just_dna_enricher.net import (
+    PacingGate,
+    RetiredEndpoint,
+    attempt_floor,
+    raise_if_retired,
+    retry_if_transient,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +99,7 @@ class LdUnavailable(LdError):
     """
 
 
-class LdRetired(LdUnavailable):
+class LdRetired(LdUnavailable, RetiredEndpoint):
     """Ensembl answered HTTP 410: it retired the endpoint asked (RM354).
 
     A fact about the source, not an outage, and not retried. An `LdUnavailable` so every existing handler

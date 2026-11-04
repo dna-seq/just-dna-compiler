@@ -66,7 +66,15 @@ from just_dna_enricher.licensing import (
     pgs_score_terms,
     withdraw_stale_dataset,
 )
-from just_dna_enricher.net import PacingGate, attempt_floor, dedupe, raise_if_retired
+from just_dna_enricher.net import (
+    UNREACHABLE,
+    PacingGate,
+    RetiredEndpoint,
+    attempt_floor,
+    could_not_ask_reason,
+    dedupe,
+    raise_if_retired,
+)
 from just_dna_enricher.pgs import (
     PGS_SOURCE,
     CatalogRelease,
@@ -127,7 +135,7 @@ class IdentifierUnavailable(IdentifierCheckError):
     """
 
 
-class IdentifierRetired(IdentifierUnavailable):
+class IdentifierRetired(IdentifierUnavailable, RetiredEndpoint):
     """OLS4 or HGNC answered HTTP 410: it retired the endpoint asked (RM354).
 
     A fact about the source, not an outage, and not retried; an `IdentifierUnavailable` so every
@@ -1157,7 +1165,7 @@ def _check_pgs(
                 payload = catalog.score(accession)
             except PgsCatalogUnavailable as exc:
                 report.pgs_not_checked = (
-                    "unreachable",
+                    could_not_ask_reason(exc),
                     f"the PGS Catalog could not be reached ({exc}); {len(report.pgs)} of "
                     f"{len(roster.ids)} authored accession(s) had been answered when it stopped",
                 )
@@ -1497,7 +1505,7 @@ def verification_records(
 
 
 def unreachable_records(
-    *, check_traits: bool, check_genes: bool, check_pgs: bool = True, detail: str
+    *, check_traits: bool, check_genes: bool, check_pgs: bool = True, detail: str, reason: str = UNREACHABLE
 ) -> list[VerificationRecord]:
     """The same five checks, for a run whose registry never answered.
 
@@ -1513,7 +1521,7 @@ def unreachable_records(
     return [
         record
         if record.skipped == "not_requested"
-        else skipped(record.check, "unreachable", detail=detail, source=record.source)
+        else skipped(record.check, reason, detail=detail, source=record.source)
         for record in verification_records(
             IdentifierReport(),
             check_traits=check_traits,

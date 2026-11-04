@@ -83,7 +83,15 @@ from tenacity import retry, retry_if_exception_type, wait_exponential_jitter
 
 from just_dna_enricher.clingen_allele import ClingenAlleleClient, anchor_indel
 from just_dna_enricher.licensing import overlaid_input_rows
-from just_dna_enricher.net import PacingGate, attempt_floor, dedupe, raise_if_retired
+from just_dna_enricher.net import (
+    RETIRED,
+    PacingGate,
+    RetiredEndpoint,
+    attempt_floor,
+    could_not_ask_reason,
+    dedupe,
+    raise_if_retired,
+)
 from just_dna_enricher.verification import examples, ran, skipped
 
 logger = logging.getLogger(__name__)
@@ -143,6 +151,7 @@ VALID_COVERAGE_REASON: frozenset[str] = frozenset(
         # tier == "unchecked"
         "offline",
         "index_unreachable",
+        "index_retired",
         "registry_unreachable",
         "allele_not_comparable",
     }
@@ -158,6 +167,7 @@ COVERAGE_REASON_TIER: dict[str, str] = {
     "no_node_for_rsid": "absent",
     "offline": "unchecked",
     "index_unreachable": "unchecked",
+    "index_retired": "unchecked",
     "registry_unreachable": "unchecked",
     "allele_not_comparable": "unchecked",
 }
@@ -176,7 +186,7 @@ class LitvarUnavailable(LitvarError):
     """
 
 
-class LitvarRetired(LitvarUnavailable):
+class LitvarRetired(LitvarUnavailable, RetiredEndpoint):
     """LitVar answered HTTP 410: it retired the endpoint asked (RM354).
 
     A fact about the source, not an outage, and not retried; a `LitvarUnavailable` so every existing
@@ -690,6 +700,10 @@ def coverage_reason(coverage: LocusCoverage) -> str:
             f"{rsid}: LitVar could not be consulted — unreachable, or an answer this client could "
             f"not read — so nothing is established about this locus."
         ),
+        "index_retired": (
+            f"{rsid}: LitVar answered HTTP 410 — it retired the route this client reads — so nothing "
+            f"is established about this locus until the enricher is upgraded."
+        ),
         "registry_unreachable": (
             f"{rsid}: the ClinGen Allele Registry could not be reached for the allele nodes at this "
             f"locus ({answerable}), so whether one of them is this module's allele was never asked."
@@ -798,7 +812,9 @@ def _one_locus(
         allele_pmids = {caid: index.pmids(n.node_id) for caid, n in _allele_nodes(index, caids)}
     except LitvarError as exc:
         logger.warning("LitVar could not answer for %s (%s)", rsid, exc)
-        return LocusCoverage(rsid=rsid, asked_tier=asked, tier="unchecked", reason="index_unreachable")
+        # A 410 is the index retiring the route, cleared by an upgrade rather than a re-run (RM361).
+        reason = "index_retired" if could_not_ask_reason(exc) == RETIRED else "index_unreachable"
+        return LocusCoverage(rsid=rsid, asked_tier=asked, tier="unchecked", reason=reason)
 
     residue = len(position - frozenset().union(*allele_pmids.values()))
     common = {
@@ -955,7 +971,7 @@ def verification_records(report: LiteratureCoverageReport) -> list[VerificationR
         return [
             skipped(
                 "literature_coverage",
-                "unreachable",
+                "retired" if any(locus.reason == "index_retired" for locus in report.loci) else "unreachable",
                 detail=(
                     f"none of the {len(report.loci)} locus/loci could be looked up: "
                     f"{examples([locus.rsid for locus in report.loci])}"

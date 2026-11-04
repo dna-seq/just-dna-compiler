@@ -216,9 +216,10 @@ class LiteratureRow(BaseModel):
     fulltext_status: str | None = Field(
         default=None,
         description=(
-            "How the fulltext question ended: retrieved|absent|unreachable (RM258). `unreachable` "
-            "means the request never got an answer, so the next run asks again; `absent` means no "
-            "service holds a copy, which is permanent. Null means the question was not asked: no "
+            "How the fulltext question ended: retrieved|absent|unreachable|retired (RM258, RM361). "
+            "`unreachable` means the request never got an answer, so the next run asks again; "
+            "`retired` means the service answered 410 for the route asked, which the next run asks "
+            "again too; `absent` means no service holds a copy, which is permanent. Null means the question was not asked: no "
             "quote to check, or a row written before 0.8, which the next run asks once. Provenance "
             "about the fetch rather than a fact about the article, so it is outside "
             "`literature_signature` and a re-ask that heals a row moves no signature."
@@ -321,7 +322,8 @@ class LiteratureRow(BaseModel):
         miss settles a quote only against fulltext: an abstract is not the body, so a quote absent
         from it may still be in the article. Hence the three arms:
 
-        * `quotes_found` null — nothing was retrievable, so nothing is settled: `0`.
+        * `quotes_found` null — nothing was retrievable, or a `provenance_regex` could not be evaluated
+          (RM361), so nothing is settled: `0`.
         * `quote_source == "fulltext"` — every quote was looked for in the whole text: all of them.
         * anything else (`abstract`, or a count with no `quote_source`) — only the hits are settled.
 

@@ -55,7 +55,14 @@ from just_dna_enricher.clinvar_gkm import (
     ClinVarGkmError,
     ClinVarGkmUnavailable,
 )
-from just_dna_enricher.net import PacingGate, attempt_floor, raise_if_retired, retry_if_transient
+from just_dna_enricher.net import (
+    PacingGate,
+    RetiredEndpoint,
+    attempt_floor,
+    could_not_ask_reason,
+    raise_if_retired,
+    retry_if_transient,
+)
 from just_dna_enricher.pgs import (
     PGS_SOURCE,
     PgsCatalogClient,
@@ -80,7 +87,7 @@ class ReleaseUnavailable(ReleaseProbeError):
     """
 
 
-class ReleaseRetired(ReleaseUnavailable):
+class ReleaseRetired(ReleaseUnavailable, RetiredEndpoint):
     """The source answered HTTP 410: it retired the file the probe asks for (RM354).
 
     A fact about the source, not an outage, and not retried. A `ReleaseUnavailable` so every existing
@@ -346,7 +353,7 @@ class CurrencyCheck:
 #: satisfied two conditions at once and reporting the transient one falsely promised that a re-run
 #: would answer it. Here the reasons belong to *different* sources and the record's `detail` names
 #: every one of them, so nothing is hidden by leading with the reason an author can act on.
-_SKIP_PRECEDENCE: tuple[str, ...] = ("offline", "unreachable", "no_reference", "unsupported")
+_SKIP_PRECEDENCE: tuple[str, ...] = ("offline", "retired", "unreachable", "no_reference", "unsupported")
 
 
 def check_dataset_currency(
@@ -442,7 +449,7 @@ def _ask(probes: Mapping[str, ReleaseProbe], source: str) -> tuple[str | None, s
         # what it said could not be used — opposite histories, and folding them into one reason is the
         # conflation `clingen`/`gene_validity` had to be repaired for. Catching only the subclass would
         # instead let a future probe's parent-typed failure abort the whole run.
-        reason = "unreachable" if isinstance(exc, ReleaseUnavailable) else "no_reference"
+        reason = could_not_ask_reason(exc) if isinstance(exc, ReleaseUnavailable) else "no_reference"
         logger.info(
             "Could not settle which release %s publishes (%s); its recorded dataset is unchecked "
             "(%s) rather than current.",

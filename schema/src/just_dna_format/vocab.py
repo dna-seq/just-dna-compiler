@@ -849,8 +849,12 @@ VALID_QUOTE_SOURCE: frozenset[str] = frozenset({"fulltext", "abstract"})
 # service will serve (**absent**: a 404, BioC's "no result" body, or no PMCID at all), which is
 # permanent; or the request never got an answer (**unreachable**: a 5xx or a transport failure),
 # which is transient and is asked again on the next run. A null cell on a row is the fourth reading,
-# *not asked*: a row with no quote to check, or one written before the column existed.
-VALID_FULLTEXT_STATUS: frozenset[str] = frozenset({"retrieved", "absent", "unreachable"})
+# *not asked*: a row with no quote to check, or one written before the column existed. **retired**
+# (RM361) is a request answered HTTP 410: the service retired the route, so nothing was learned about
+# the article; it is asked again, and it answers once the enricher reads the service's new route.
+# Only a 404 and BioC's recorded "no result" body are `absent`: a 429, any other 4xx, and a 200 that
+# does not parse are `unreachable`.
+VALID_FULLTEXT_STATUS: frozenset[str] = frozenset({"retrieved", "absent", "unreachable", "retired"})
 
 # ── The clinical-significance concordance record (0.7, RM130) ───────────────────────────────────
 #
@@ -1085,6 +1089,7 @@ VALID_VERIFICATION_SKIPS: frozenset[str] = frozenset(
         "offline",  # the check needs egress and the run had none
         "no_reference",  # no snapshot / sequence / list was provisioned to compare against
         "unreachable",  # the source was asked and never answered (a failed request, not a no)
+        "retired",  # the source answered HTTP 410: it retired the endpoint asked, cleared by an upgrade
         "nothing_to_check",  # the module carries no row this check applies to
         "tautology",  # the module was drafted from the very source the check reads (S4)
         "unsupported",  # this tier cannot put the question for these rows (e.g. an unbuilt assembly)

@@ -45,6 +45,7 @@ from tenacity import (
 
 from just_dna_enricher.net import (
     PacingGate,
+    RetiredEndpoint,
     attempt_floor,
     batched,
     dedupe,
@@ -139,7 +140,7 @@ class RateLimitedError(GnomadError):
     """gnomAD answered HTTP 429. Retried with backoff; the pacing gate should normally prevent it."""
 
 
-class GnomadRetired(GnomadError):
+class GnomadRetired(GnomadError, RetiredEndpoint):
     """gnomAD answered HTTP 410: it retired the endpoint asked (RM354). A fact about the source, not an
     outage, and not retried; a `GnomadError` so every existing handler still catches it."""
 

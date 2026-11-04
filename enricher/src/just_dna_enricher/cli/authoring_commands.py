@@ -16,6 +16,7 @@ from just_dna_enricher.identifiers import pgs_withheld_sentences as identifier_p
 from just_dna_enricher.identifiers import unreachable_records as identifier_unreachable
 from just_dna_enricher.identifiers import verification_records as identifier_records
 from just_dna_enricher.licensing import sidecar_path
+from just_dna_enricher.net import could_not_ask_reason
 from just_dna_enricher.pgx_draft import draft_gene
 from just_dna_enricher.sequences import SequenceProxy
 from just_dna_enricher.verification import record_verification, skipped
@@ -210,7 +211,13 @@ def check_identifiers_(
         # the comment above says needs it most. The comment already named the right shape one clause
         # over; the type now matches it.
         _attest_on_the_way_out(
-            identifier_unreachable(check_traits=traits, check_genes=genes, check_pgs=pgs, detail=str(exc)),
+            identifier_unreachable(
+                check_traits=traits,
+                check_genes=genes,
+                check_pgs=pgs,
+                detail=str(exc),
+                reason=could_not_ask_reason(exc),
+            ),
             spec_dir,
         )
         typer.secho(f"IDENTIFIER CHECK FAILED: {exc}", fg=typer.colors.RED, err=True)

@@ -53,7 +53,13 @@ from just_dna_format.snapshot import SNAPSHOT_DATA_DIRNAME, SnapshotRelease, rea
 from just_dna_format.vrs import vrs_spec_release
 from tenacity import retry, wait_exponential_jitter
 
-from just_dna_enricher.net import PacingGate, attempt_floor, raise_if_retired, retry_if_transient
+from just_dna_enricher.net import (
+    PacingGate,
+    RetiredEndpoint,
+    attempt_floor,
+    raise_if_retired,
+    retry_if_transient,
+)
 
 try:  # the one guarded optional import (CLAUDE.md): polars reads the slice
     import polars as pl
@@ -118,7 +124,7 @@ class ClinVarGkmUnavailable(ClinVarGkmError):
     """
 
 
-class ClinVarGkmRetired(ClinVarGkmUnavailable):
+class ClinVarGkmRetired(ClinVarGkmUnavailable, RetiredEndpoint):
     """The source answered HTTP 410: it retired the file asked for (RM354).
 
     A fact about the source, not an outage, and not retried. A `ClinVarGkmUnavailable` so every existing

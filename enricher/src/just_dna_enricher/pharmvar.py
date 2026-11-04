@@ -43,7 +43,13 @@ from tenacity import (
 )
 
 from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME, env_value
-from just_dna_enricher.net import PacingGate, attempt_floor, raise_if_retired, retry_if_transient
+from just_dna_enricher.net import (
+    PacingGate,
+    RetiredEndpoint,
+    attempt_floor,
+    raise_if_retired,
+    retry_if_transient,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +95,7 @@ class PharmVarError(RuntimeError):
     """A PharmVar request failed in a way the caller must see (auth, or a broken query)."""
 
 
-class PharmVarRetired(PharmVarError):
+class PharmVarRetired(PharmVarError, RetiredEndpoint):
     """PharmVar answered HTTP 410: it retired the endpoint asked (RM354). A fact about the source, not
     an outage, and not retried; a `PharmVarError` so every existing handler still catches it."""
 

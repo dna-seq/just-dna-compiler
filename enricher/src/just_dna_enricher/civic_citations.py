@@ -78,6 +78,7 @@ from just_dna_enricher.licensing import (
     require_sources_file,
     sidecar_path,
 )
+from just_dna_enricher.net import aggregate_reason, could_not_ask_reason
 
 logger = logging.getLogger(__name__)
 
@@ -510,7 +511,7 @@ def draft_civic_citations(
         except CivicApiUnavailable as exc:
             # The question was never put. `offline` is the caller's own switch and is named as such,
             # because a re-run with egress clears one of these and not the other.
-            result.unreachable[subject.variant_id] = "offline" if api.offline else "unreachable"
+            result.unreachable[subject.variant_id] = "offline" if api.offline else could_not_ask_reason(exc)
             logger.info("CIViC was not asked about variant %s (%s)", subject.variant_id, exc)
             continue
         except CivicApiError as exc:
@@ -766,8 +767,8 @@ def check_evidence_status_currency(
     for key, subject in askable.items():
         try:
             items = api.evidence_items(subject.variant_id)
-        except CivicApiUnavailable:
-            check.unreachable[subject.variant_id] = "offline" if api.offline else "unreachable"
+        except CivicApiUnavailable as exc:
+            check.unreachable[subject.variant_id] = "offline" if api.offline else could_not_ask_reason(exc)
             continue
         except CivicApiError as exc:
             check.unreachable[subject.variant_id] = "unreadable"
@@ -799,5 +800,5 @@ def check_evidence_status_currency(
                     MovedCitation(CIVIC_CITATION_ADDED, subject, pmid, None, citation.status or "unstated")
                 )
     if not check.subjects:
-        check.skip = "unreachable"
+        check.skip = aggregate_reason(check.unreachable.values())
     return check

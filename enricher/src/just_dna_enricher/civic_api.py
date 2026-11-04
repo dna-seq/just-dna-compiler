@@ -49,7 +49,7 @@ from dataclasses import dataclass
 import httpx
 from tenacity import retry, retry_if_exception_type, wait_exponential_jitter
 
-from just_dna_enricher.net import PacingGate, attempt_floor, raise_if_retired
+from just_dna_enricher.net import PacingGate, RetiredEndpoint, attempt_floor, raise_if_retired
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +128,7 @@ class CivicApiUnavailable(CivicApiError):
     """
 
 
-class CivicApiRetired(CivicApiUnavailable):
+class CivicApiRetired(CivicApiUnavailable, RetiredEndpoint):
     """CIViC answered HTTP 410: it retired the endpoint asked (RM354).
 
     A fact about the source, not an outage, and not retried; a `CivicApiUnavailable` so every existing

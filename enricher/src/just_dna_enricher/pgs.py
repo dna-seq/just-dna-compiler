@@ -43,7 +43,7 @@ from dataclasses import dataclass
 import httpx
 from tenacity import retry, retry_if_exception_type, wait_exponential_jitter
 
-from just_dna_enricher.net import GONE, PacingGate, attempt_floor, retired_message
+from just_dna_enricher.net import GONE, PacingGate, RetiredEndpoint, attempt_floor, retired_message
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +84,7 @@ class PgsCatalogUnavailable(PgsCatalogError):
     """
 
 
-class PgsCatalogRetired(PgsCatalogUnavailable):
+class PgsCatalogRetired(PgsCatalogUnavailable, RetiredEndpoint):
     """The PGS Catalog answered HTTP 410: it retired the endpoint asked (RM354).
 
     A fact about the source, not an outage, and not retried; a `PgsCatalogUnavailable` so every

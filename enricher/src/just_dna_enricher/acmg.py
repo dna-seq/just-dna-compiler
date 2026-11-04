@@ -78,6 +78,7 @@ from just_dna_enricher.locations import (
     RELEASE_FILENAME,
     resolve_acmg_reference,
 )
+from just_dna_enricher.net import could_not_ask_reason
 from just_dna_enricher.verdict import Verdict
 from just_dna_enricher.verification import examples, ran, skipped
 
@@ -438,7 +439,7 @@ def fetch_acmg_page(url: str = DEFAULT_ACMG_URL, *, timeout: float = 60.0) -> st
     except httpx.HTTPError as exc:
         raise AcmgListUnavailable(
             f"could not fetch the ACMG secondary-findings page from {url}: {exc}",
-            skip="unreachable",
+            skip=could_not_ask_reason(exc),
         ) from exc
     return response.text
 
