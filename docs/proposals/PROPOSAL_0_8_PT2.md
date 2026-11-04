@@ -212,6 +212,10 @@ alternative is beside it. Names still get the P5 audit in §5, and the audit can
 
 ## 4. Sent to the pm, each with the default the build takes meanwhile
 
+**Answered by the pm, 2026-11-04:** questions 2, 3, 4, 5 and 7 accepted as their defaults (RM238 moved to
+0.9 in 3c18ea3); 6 answered in the third addendum. Question 1 is with the person; the build takes its
+default meanwhile.
+
 1. **The meta-table's member grammar and name (§3 items 1–4).** A one-way door at the cut. Default: as
    written. This is the block to read closely.
 2. **One Open Targets lane for four inputs.** The 26.09 release on EBI's FTP lists `l2g_prediction`,
