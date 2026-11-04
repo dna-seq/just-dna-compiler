@@ -1083,35 +1083,6 @@ schema.
 
 **Residuals** none yet.
 
-## RM339 — an interrupted snapshot pull leaves a cache that reads as complete, so it is never finished
-
-**Severity** high · **Status** open — **a patch** · **Owner** enricher (`download._provision_snapshot`) ·
-**Motivating case** S126 in CONSUMER_SUGGESTIONS_HISTORY.md (just-dna-registry `warm-caches`,
-2026-10-08) · *related* `@a-derived-lane-has-parents-and-an-absent-parent-is-not-an-empty-result`,
-`@a-failed-fetch-is-not-a-no-op`
-
-**Reproduced 2026-11-03.** A cache directory holding one footer-valid `homo_sapiens-chr1.parquet` and
-nothing else: `ensure_snapshot` returns it without touching the network. `if existing and not corrupt:
-return cache_dir` trusts any non-empty set of whole files, and the `.part`-then-rename staging that
-keeps each file whole is exactly what makes an interrupted pull look finished: every file present
-verifies, and the missing ones leave no trace. The lane's `resolve()` inherits the answer, so
-`warm-caches`, its dry run and just-dna-lite's `prepare-caches` agree the lane is present. In the
-reported run that was 3 of 25 chromosomes, and `enrich` would have resolved rsIDs against them silently.
-Every snapshot sharing the helper has it.
-
-**The patch.** Trust a cache only when it carries a record of a finished pull and every file the record
-names is present and whole; without one, fetch what is missing and skip what verifies, which keeps "no
-network on a warm cache". The reporter's candidate writes that record at the end of a successful pull.
-`release.json` is already fetched last, after every parquet, so where a repo publishes one its presence
-marks a finished pull; whether it lists the files, and whether every lane's repo publishes one, is the
-first thing to check when building, before adding a file to the layout (`locations`, and
-`docs/CACHE_SURFACE.md`'s checklist). Caches provisioned before the record existed either refetch once
-or are compared with the remote listing the first time the network is reachable; that choice is the
-build's. Second, smaller: name `HF_HUB_DOWNLOAD_TIMEOUT` in the error a read timeout raises, since the
-10 s default is short for files of 0.5–1 GB.
-
-**Residuals** none yet.
-
 ## RM340 — the VRS-coverage warning counts alleles with no ALT and does not point at the record that says why
 
 **Severity** low · **Status** open — **a patch** · **Owner** compiler (`_vrs_coverage` warning) ·

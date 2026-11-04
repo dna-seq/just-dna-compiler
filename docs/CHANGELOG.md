@@ -41,6 +41,17 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM339: an interrupted snapshot pull no longer reads as complete (patch, on `main`)
+
+**enricher** — A snapshot pull now writes `pull-record.json` from the remote listing before its first
+download. A pull that stops part-way therefore names the files it never got: every parquet resolver reports
+the lane absent instead of present, and the next `cache pull`, `cache prepare` or `ensure_*` fetches only
+what is missing. Before, a cache holding 3 of 25 whole chromosome files was trusted, and `enrich` would
+have resolved against it (S126). A cache with no record, built locally or pulled before this release, is
+compared with the published listing once; with no route to the Hub it is used as it is, with a warning. A
+download that times out names `HF_HUB_DOWNLOAD_TIMEOUT`. New in `locations`: `PULL_RECORD_FILENAME`,
+`parquet_footer_ok`, `snapshot_record_missing`.
+
 ## 2026-11-04 — a new major of an upstream: the liaison maps it, and a cap needs a proven break (seats, on `main`)
 
 **repo** — The person's rule, written into the liaison's and the lead's primings. The liaison decides what

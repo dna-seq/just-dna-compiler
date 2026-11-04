@@ -181,6 +181,7 @@ def test_every_gate_with_a_module_reads_its_recorded_declaration() -> None:
     }, gates
     assert gates["direct"] == {
         "caches._gate",
+        "caches._present_or_completed",
         "caches.prepare_lane",
         "cli.cache_pull_",
         "cli.clinpgx_build_",

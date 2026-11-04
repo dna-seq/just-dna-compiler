@@ -6081,7 +6081,7 @@ and you may want one of them to say which applies to a hand-written uncited row.
 ## S126 — an interrupted snapshot pull leaves a cache that reads as complete, so it is never finished
 
 **Status — accepted, filed as
-[RM339](ROADMAP.md#rm339--an-interrupted-snapshot-pull-leaves-a-cache-that-reads-as-complete-so-it-is-never-finished),
+[RM339](ROADMAP_HISTORY.md#rm339--an-interrupted-snapshot-pull-leaves-a-cache-that-reads-as-complete-so-it-is-never-finished),
 a patch, severity high.** Reproduced on 2026-11-03 against enricher 0.7.3: a cache directory holding one
 footer-valid `homo_sapiens-chr1.parquet` and nothing else is returned by `ensure_snapshot` without a
 network call. The cause is the line you named: the `.part`-then-rename staging that

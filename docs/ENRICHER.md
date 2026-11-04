@@ -1346,9 +1346,15 @@ just-dna-enricher cache pull --use non-commercial    # …and the gated ones you
 just-dna-enricher cache pull --only clinvar --only cpic --use non-commercial
 ```
 
-`cache pull` is **re-runnable and cheap**: a complete cache is trusted without touching the network, and
-only an empty or corrupt one refetches. One snapshot failing does not sink the rest — each reports its
-own line, and the command exits 1 if any failed.
+`cache pull` is **re-runnable and cheap**: a cache whose pull record says the pull finished is trusted
+without touching the network, and anything else fetches only what it lacks. The record
+(`pull-record.json` beside `data/`) is written from the remote listing **before** the first download, so
+an interrupted pull names the files it never got, every resolver reports the lane absent rather than
+present, and the next run finishes it (RM339). A cache with no record, built here or pulled before the
+record existed, is compared with the published listing once; with no route to the Hub it is used as it
+is, with a warning that its completeness is unknown. A download that times out names
+`HF_HUB_DOWNLOAD_TIMEOUT` (10 s by default, short for a 1 GB file). One snapshot failing does not sink
+the rest — each reports its own line, and the command exits 1 if any failed.
 
 Four things worth knowing before you run it on a server:
 

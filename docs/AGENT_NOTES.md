@@ -3461,6 +3461,19 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   file and then raises, exactly as the real client does, and both regression tests were run against
   the pre-fix loop and observed to fail.
 
+  **And staging every file whole makes a pull that stopped look finished (RM339, S126, 2026-11-04).**
+  The `.part`-then-rename idiom guarantees that each file under its real name is whole, and that is
+  exactly why a pull killed after 3 of 25 chromosomes left a cache nothing could tell from a complete
+  one: every file present verified, and the 22 missing left no trace. `if existing and not corrupt`
+  trusted it, the resolvers called the lane present, and `enrich` would have resolved against a third
+  of the genome. A per-file guarantee says nothing about the set. The repair is a record of the **set**,
+  `pull-record.json`, and its timing is the whole fix: written from the remote listing *before* the
+  first download, it names what the pull meant to bring, so an interrupted one is visible as
+  "named and absent". The reporter's candidate wrote it at the end, which leaves an interrupted pull
+  looking exactly like a cache from before the record existed. Absence of the record is the third
+  state (built here, or pulled before RM339): compared with the listing once, and used as it is, with
+  a warning, when the listing cannot be read.
+
 - `@a-lane-with-two-halves-publishes-the-provenance-of-one` — **A snapshot built in two halves on two
   cadences is described by one file, and the half that writes it wins (RM179, 2026-09-03).** A ClinVar
   snapshot is the VCF *and* `var_citations.txt`, which ClinVar publishes separately — the reason

@@ -65,6 +65,7 @@ from just_dna_enricher import (
 )
 from just_dna_enricher.clinvar import clinvar_dataset_label
 from just_dna_enricher.download import (
+    SNAPSHOT_FILE_GLOBS,
     SnapshotNotPublished,
     ensure_alphagenome_avi_snapshot,
     ensure_civic_snapshot,
@@ -117,6 +118,7 @@ from just_dna_enricher.locations import (
     PUBMIND_CACHE_VAR,
     PUBMIND_SUBDIR,
     RELEASE_FILENAME,
+    SNAPSHOT_DATA_DIRNAME,
     STRCHIVE_CACHE_VAR,
     STRCHIVE_SUBDIR,
     default_acmg_cache_dir,
@@ -152,6 +154,7 @@ from just_dna_enricher.locations import (
     resolve_pharmvar_reference,
     resolve_pubmind_reference,
     resolve_strchive_reference,
+    snapshot_record_missing,
 )
 from just_dna_enricher.upload import (
     DEFAULT_ALPHAGENOME_AVI_REPO_ID,
@@ -1367,6 +1370,61 @@ class PrepareOutcome:
         return {True: self.route, False: "FAILED", None: "unavailable"}[self.ready]
 
 
+def _payload_names(directory: Path) -> set[str]:
+    """The parquet files a snapshot directory holds under `data/`, by name."""
+    data_dir = directory / SNAPSHOT_DATA_DIRNAME
+    return {p.name for p in data_dir.glob("*.parquet")} if data_dir.is_dir() else set()
+
+
+def _present_or_completed(lane: CacheLane, existing: Path, request: RebuildRequest) -> PrepareOutcome:
+    """A lane that resolves: left alone, unless it is a pulled parquet cache that carries no pull record.
+
+    **That one cache is compared with the published listing once** (RM339). It was pulled before the
+    record existed, or built here, and nothing on disk can say whether it is whole: an interrupted pull
+    of 3 of 25 chromosomes resolved, and this command called it present. A cache with a record is
+    judged by the resolver, which answers `None` for an unfinished pull and sends it down the pull
+    route in `prepare_lane`. So only the unrecorded one reaches `ensure` from here, and it reaches it
+    only where `ensure` writes (the default directory, not an override pointing elsewhere) and only
+    when the terms would let it be pulled at all. A gated lane under `--use unstated` stays present as
+    before rather than turning into skipped.
+    """
+    present = PrepareOutcome(lane.name, True, "present", f"already provisioned at {existing}", existing)
+    if (
+        lane.ensure is None
+        or lane.name not in SNAPSHOT_FILE_GLOBS
+        or snapshot_record_missing(existing) is not None
+        or existing.resolve() != lane.default_dir().resolve()
+    ):
+        return present
+    if lane.terms is not None:
+        try:
+            if check_declared_use(lane.terms, request.declared_use) is not None:
+                return present
+        except LicenseRefusal:
+            return present
+    before = _payload_names(existing)
+    try:
+        path = lane.ensure()
+    except Exception as exc:
+        return PrepareOutcome(
+            lane.name,
+            True,
+            "present",
+            f"already provisioned at {existing}; checking it against the published listing failed: {exc}",
+            existing,
+        )
+    fetched = sorted(_payload_names(path) - before)
+    if fetched:
+        return PrepareOutcome(
+            lane.name,
+            True,
+            "pulled",
+            f"completed at {path}: it carried no pull record and lacked {len(fetched)} published file(s)",
+            path,
+        )
+    return present
+
+
 def prepare_lane(lane: CacheLane, request: RebuildRequest) -> PrepareOutcome:
     """Provision one lane by whichever route it has: pull it, or build it, or say why neither.
 
@@ -1384,7 +1442,7 @@ def prepare_lane(lane: CacheLane, request: RebuildRequest) -> PrepareOutcome:
     """
     existing = lane.resolve()
     if existing is not None:
-        return PrepareOutcome(lane.name, True, "present", f"already provisioned at {existing}", existing)
+        return _present_or_completed(lane, existing, request)
 
     if lane.ensure is not None:
         if lane.terms is not None:

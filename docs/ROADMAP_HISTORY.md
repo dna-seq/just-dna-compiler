@@ -204,6 +204,67 @@ The count is a log line, not a `MissBuildResult` field (minor-class). The three 
 Principle 2 (the lane docstring, the `mitomap miss` CLI note, the drafter note) and ENRICHER.md's
 bucket table now say what happens instead.
 
+## RM339 — an interrupted snapshot pull leaves a cache that reads as complete, so it is never finished
+
+**Severity** high · **Status** ✅ **SHIPPED 2026-11-04 on `main`, uncut — a patch** (enricher only) · **Owner**
+enricher (`download._provision_snapshot`, the parquet resolvers, `caches.prepare_lane`) ·
+**Motivating case** S126 in CONSUMER_SUGGESTIONS_HISTORY.md (just-dna-registry `warm-caches`,
+2026-10-08) · *related* `@a-derived-lane-has-parents-and-an-absent-parent-is-not-an-empty-result`,
+`@a-failed-fetch-is-not-a-no-op`
+
+**Reproduced 2026-11-03.** A cache directory holding one footer-valid `homo_sapiens-chr1.parquet` and
+nothing else: `ensure_snapshot` returns it without touching the network. `if existing and not corrupt:
+return cache_dir` trusts any non-empty set of whole files, and the `.part`-then-rename staging that
+keeps each file whole is exactly what makes an interrupted pull look finished: every file present
+verifies, and the missing ones leave no trace. The lane's `resolve()` inherits the answer, so
+`warm-caches`, its dry run and just-dna-lite's `prepare-caches` agree the lane is present. In the
+reported run that was 3 of 25 chromosomes, and `enrich` would have resolved rsIDs against them silently.
+Every snapshot sharing the helper has it.
+
+**The patch.** Trust a cache only when it carries a record of a finished pull and every file the record
+names is present and whole; without one, fetch what is missing and skip what verifies, which keeps "no
+network on a warm cache". The reporter's candidate writes that record at the end of a successful pull.
+`release.json` is already fetched last, after every parquet, so where a repo publishes one its presence
+marks a finished pull; whether it lists the files, and whether every lane's repo publishes one, is the
+first thing to check when building, before adding a file to the layout (`locations`, and
+`docs/CACHE_SURFACE.md`'s checklist). Caches provisioned before the record existed either refetch once
+or are compared with the remote listing the first time the network is reachable; that choice is the
+build's. Second, smaller: name `HF_HUB_DOWNLOAD_TIMEOUT` in the error a read timeout raises, since the
+10 s default is short for files of 0.5–1 GB.
+
+**Residuals** none
+
+**What shipped.** `release.json` could not be the record: it lists no files, and the Ensembl lane, the
+reported one, publishes none. The record is a new file, `locations.PULL_RECORD_FILENAME`
+(`pull-record.json` beside `data/`), kept out of `SNAPSHOT_ROOT_FILENAMES` so no publish carries it.
+`_provision_snapshot` lists the data and the sidecar directories, writes the record atomically, and only
+then downloads. **Written first rather than last**, because a record written at the end leaves an
+interrupted pull looking exactly like a cache from before the record existed.
+
+- `locations.snapshot_record_missing` answers three ways: `[]` (complete), the named files that are absent
+  or fail the footer check (an unfinished pull), or `None` (no record). Both parquet resolvers return
+  `None` for an unfinished pull, so `cache status`, `prepare`, `warm-caches` and `enrich` stop calling
+  it present; Ensembl's prebuilt `.duckdb` keeps its standing. The footer check moved to
+  `locations.parquet_footer_ok`, kept importable as `download._parquet_footer_ok`.
+- A recorded complete cache is not even listed. A cache with no record (built here, or pulled before
+  RM339) is compared with the listing once, fetches what it lacks and gains a record. When the listing
+  cannot be read it is used as it is, with a warning that its completeness is unknown, and no record is
+  written.
+- `prepare_lane` sends an unrecorded parquet cache in the default directory through `ensure` once, when
+  the terms permit a pull, and reports `pulled` if files arrived. An override pointing elsewhere, a
+  gated lane under an unstated use, and a recorded cache stay `present` as before.
+- A read timeout (`httpx.TimeoutException`, after the transport's retries) raises the lane's own error
+  naming `HF_HUB_DOWNLOAD_TIMEOUT` and its current value, and leaves no `.part` behind.
+
+Tests: `test_download.py` (an interrupted pull, run through a fake that lets one download through and
+kills the next, is not resolvable and the next call fetches only the two missing files; a truncated
+recorded file; a recorded cache asks nothing; an unrecorded one is listed once, completed when partial,
+and served offline; the timeout message) and `test_cache_lanes.py` (the `prepare` route, and the three
+places it stays `present`). The resolver half was shown on `main` first: a cache holding one of a
+snapshot's files resolved as present. ENRICHER.md's `cache pull` paragraph, the `cache pull` docstring
+and AGENT_NOTES `@a-failed-fetch-is-not-a-no-op` say the new rule.
+
+
 ## RM343 — duckdb 2.0 spells the hash join `Hash Join`, so a query-shape test goes red on a fresh install
 
 **Severity** low · **Status** ✅ **SHIPPED 2026-11-04 on `main`, uncut — a patch** (a test's assertion; no

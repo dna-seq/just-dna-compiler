@@ -1914,8 +1914,9 @@ def cache_pull_(
     """Download the published parquet snapshots from HuggingFace into the local caches.
 
     The provisioning step a hosted deployment runs **once**, so no pass ever reaches a source live per
-    request. Already-complete caches are trusted without touching the network, so this is re-runnable
-    and cheap; a truncated file is removed and refetched.
+    request. A cache whose pull record says the pull finished is trusted without touching the network,
+    so this is re-runnable and cheap; an interrupted pull fetches only what it lacks, and a truncated
+    file is removed and refetched (RM339).
 
     A lane with nothing published says so and names its reason, which is a field on the registry
     rather than a comment: PharmVar's and PubMind's are refusals, ACMG's and MANE's are permissions
