@@ -186,7 +186,7 @@ Feature: Resolution from the injected table
     Given a resolution.csv row keyed by rs761191455 at 13:48041104 G>GG
     And a row keyed by the position 13:48041103:T:TG whose rsID was back-filled as rs761191455
     When the module is compiled in best_effort mode
-    Then a warning says the table "holds two placement sets for this one rsID"
+    Then a warning says the table holds "two placement sets for this one rsID"
     And it names both answers, their releases or "releases not recorded", and the remedy "--rederive"
     And a strict validate and a strict compile both refuse
     # The 0.8 migration probe's instance: an enrich fills only subjects it has no row for, so a table
