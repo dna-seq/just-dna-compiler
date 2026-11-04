@@ -2,11 +2,11 @@
 
 The liaison's working state, rewritten to the present before each reset.
 
-## State on 2026-11-03 (first seating, machine october)
+## State on 2026-11-04 (machine october)
 
-**Ledgers:** `docs/UPSTREAM_GA4GH_VRS.md`, `docs/UPSTREAM_POLARS.md`, `docs/UPSTREAM_DUCKDB.md`. Read marks are the
-installed versions: ga4gh.vrs 2.3.3, polars 1.44.2, duckdb 1.5.5. `mkdocs.yml` `not_in_nav` carries
-`UPSTREAM_*.md`.
+**Ledgers:** `docs/UPSTREAM_GA4GH_VRS.md`, `docs/UPSTREAM_POLARS.md`, `docs/UPSTREAM_DUCKDB.md`. Read marks:
+ga4gh.vrs 2.3.3 (pre-releases read through 2.4.0-a6), polars `py-2.1.0`, duckdb `2.0.0`. Installed (`uv.lock`):
+2.3.3, 1.44.2, 1.5.5. `mkdocs.yml` `not_in_nav` carries `UPSTREAM_*.md`.
 
 **Clones** (in `/data/sources`, lines in `$XDG_STATE_HOME/agent-seat-blueprints/liaison/upstreams`):
 
@@ -16,14 +16,14 @@ installed versions: ga4gh.vrs 2.3.3, polars 1.44.2, duckdb 1.5.5. `mkdocs.yml` `
   slow, because it fetches blobs.
 - `duckdb` (the engine) is blobless and unwatched. It is there to read source at `path:line`.
 
-**Watchers** (`.blueprints.toml`): `ga4gh-vrs` polls every 300 s with no path filter. `polars` and
-`duckdb-python` poll every 86400 s, also with no path filter: their trunks are busy, and `--path` would drop
-the tag lines. duckdb-python's patch releases are tagged on version branches, so a `--path` watcher on main
-would miss them. A tags-only mode would fit better; that is a kit wish.
+**Watchers** (`.blueprints.toml`): `ga4gh-vrs` polls its trunk every 300 s. `polars --tags --tag-pattern '^py-'` and
+`duckdb-python --tags` say tags only, one wake per release (kit v0.1.119, #246), a patch tagged on a version branch
+included.
 
-**Half read (the backlog):** polars `py-2.0.0`/`py-2.1.0` and duckdb `1.5.6`/`2.0.0`. Their breaking-change
-lists are read against our uses, and both majors were measured (suites, bytes, storage), so the verdicts are in
-the ledgers. The full entry lists are not read, so the read marks stay at the installed versions.
+**Backlog: none.** Read entry by entry on 2026-11-04, unattended: polars `py-2.0.0-rc.1` through `py-2.1.0` with the
+2.0 migration guide, and duckdb `1.5.6` and `2.0.0` (both packages' notes). Nothing new breaks us; the verdicts and
+the RMs stand. One new fact: duckdb 1.5.6 refuses a 2.0 file with a different message (`version number 69`, not
+`999`), the same `IOException`, so RM344's handler must key on the type. The lead was told.
 
 **The person's rule (2026-11-04, relayed by the lead):** the liaison decides adoption blockers and hands the
 lead adoption maps. A pin goes on only when a new major is proven to break something, and only until support is
@@ -39,9 +39,8 @@ ga4gh/vrs-python#665 (`RleSubunitMode`, which `vrs/2.1` will default to SMALLEST
 
 **Lock schedule:** duckdb 2.x once RM344 lands; polars 2.x with RM342 (0.9). RM343 (EXPLAIN test) is done.
 
-**Push:** the pm pushed main at the person's word on 2026-11-04 (dfcdb89..150d916), with the liaison's commits
-through 1e7aa80. 4424266 (the watchers switched to tags only) waits on main with the lead's notes. This seat has
-not pushed: a push would carry the lead's commits too, and the lead asked that no seat push for it.
+**Push:** origin/main holds every liaison commit through 324eaee (pushed with the other seats' commits on
+2026-11-04). The liaison pushes only its own ledgers and notes, and only as a fast-forward that carries no other seat's
+commit.
 
-**Watchers since kit v0.1.119:** `polars --tags --tag-pattern '^py-'` and `duckdb-python --tags`, one wake per
-release (#246). The priming change c339487 (cap on a proven break, adoption maps) was read; no concern.
+**Priming c339487** (a cap on a proven break; adoption maps to the lead) was read; no concern.

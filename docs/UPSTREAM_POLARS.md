@@ -6,10 +6,10 @@ liaison rather than writing in this file. Upstream: <https://github.com/pola-rs/
 
 ## Marks
 
-- **Read mark: `1.44.2`**, the version `uv.lock` installs. Pins: `polars>=1.42.0` in `compiler/pyproject.toml`
-  (core) and in the enricher's `dev` extra (builders only). **No upper bound.**
-- **Backlog: `py-2.0.0`, `py-2.1.0`** (newest, 2026-10-25) are past the read mark. Not read entry by entry yet;
-  measured as a whole on 2026-11-03 (below). The read mark moves when the entries are read and sorted.
+- **Read mark: `py-2.1.0`** (2026-11-04): the release notes of `py-2.0.0-rc.1`, `py-2.0.0-rc.2`, `py-2.0.0` and
+  `py-2.1.0`, and the 2.0 migration guide (`docs/source/releases/upgrade/2.md` at `py-2.1.0`), read entry by entry.
+- **Installed:** `1.44.2` (`uv.lock`). Pins: `polars>=1.42.0` in `compiler/pyproject.toml` (core) and in the
+  enricher's `dev` extra (builders only). **No upper bound.**
 
 ## What we use of it
 
@@ -73,6 +73,34 @@ move in the release that takes 2.x into `uv.lock`. Plan sent to the lead 2026-11
 **Lock schedule (the liaison's, 2026-11-04):** move `uv.lock` to polars 2.x in the release that ships RM342, so
 the one-time digest move arrives together with the field that explains it, plus a `RELEASE_RECORDS` line
 (parquet bytes move, content unchanged). Nothing breaks on 2.x in the meantime, so there is no earlier deadline.
+
+### py-2.0.0-rc.1 … py-2.1.0, read entry by entry — nothing past the digest (2026-11-04)
+
+The verdict above stands. Every entry that could reach us was checked against the 19 files that import polars:
+
+- **The lazy API now runs on the streaming engine**, which does not keep row order for joins, `group_by` or
+  `unpivot`. Our lazy queries are three: `alphagenome_check.py:318` (scan, filter, collect; the result is keyed
+  into a dict, so order is moot), `alphagenome_avi_build.py:599` (a row count) and `sweep.py:207` (a schema).
+  Every join and `group_by` we run is eager, which 2.0 leaves on the in-memory engine;
+  `alphagenome_avi_build.py:545` passes `maintain_order=True` anyway.
+- **`read_csv` now runs as `scan_csv(...).collect()`.** Our two calls (`clinvar_build.py:340`;
+  `alphagenome_avi_build.py:370`, with `new_columns` and a `schema_overrides` dict) use only parameters that
+  2.1.0's `read_csv` still has, and both are under tests that passed on 2.1.0 (`test_clinvar.py`,
+  `test_alphagenome_avi_build.py`).
+- **`is_in` coerces only when nothing is lost.** Our one call (`alphagenome_check.py:319`) compares integer
+  positions with an integer column.
+- **`pl.concat(how="horizontal")` now requires equal heights.** We never concatenate horizontally;
+  `concat(rechunk=False)` (`alphagenome_avi_build.py:615`) is still a parameter.
+- **`pl.Categorical` loses its `ordering` argument, and int↔categorical casts are gone.** We cast strings only
+  (`alphagenome_avi_build.py:573`, `:575`).
+- **The removed 1.x API** (melt, `with_row_count`, `join_nulls`, `how="outer"`, `replace(default=)`, the
+  `streaming=` and `rechunk=` reader arguments, and the rest of the guide's table): grepped, none used.
+- **Parquet written by 2.1.0:** besides the nested-column writer (#30251, #30245), #29868 writes statistics and a
+  column index for nested values, which is a third candidate for the data pages that moved.
+- **Levers, nothing to act on:** 2.1.0 filters Categorical and Enum parquet columns while decoding and compares
+  their dictionaries as strings for `is_in` (#29882, #29885). Out-of-core spilling is on by default from 2.0
+  (#29741, #29734), at 80 % of RAM and up to 64 GB of disk. The AVI builder avoided the streaming engine on
+  purpose (`alphagenome_avi_build.py:588`), so neither change applies to it.
 
 ## Our pieces that duplicate an upstream feature
 

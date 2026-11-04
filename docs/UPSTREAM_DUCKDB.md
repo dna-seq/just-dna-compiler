@@ -8,10 +8,10 @@ liaison rather than writing in this file. What pip installs is built from <https
 
 ## Marks
 
-- **Read mark: `1.5.5`**, the version `uv.lock` installs. Pin: `duckdb>=1.1.0` in `enricher/pyproject.toml`
-  (core). **No upper bound.**
-- **Backlog: `1.5.6`, `2.0.0`** are past the read mark. Not read entry by entry yet; 2.0.0 measured as a whole on
-  2026-11-03 (below). The read mark moves when the entries are read and sorted.
+- **Read mark: `2.0.0`** (2026-11-04): duckdb-python's notes for `v1.5.6` (a pointer to the engine's) and
+  `v2.0.0`, and the engine's changelogs for `v1.5.6` and `v2.0.0`, read entry by entry.
+- **Installed:** `1.5.5` (`uv.lock`). Pin: `duckdb>=1.1.0` in `enricher/pyproject.toml` (core). **No upper
+  bound.**
 
 ## What we use of it
 
@@ -58,6 +58,39 @@ and it belongs to the lead. Sent to the lead 2026-11-03.
 
 **Lock schedule (the liaison's, 2026-11-04):** move `uv.lock` to duckdb 2.x once RM344 has landed. Before that,
 a 2.0 lock would build caches that a 1.x enricher crashes on.
+
+### 1.5.6 — nothing for us; the refusal of a 2.0 file reads differently (2026-11-04)
+
+A bug-fix release on `v1.5-variegata`. Its wrong-result fixes are in Top-N window elimination, `UNION ALL` common
+subplans, LIMIT through volatile projections and hive partition columns; our SQL uses none of these (grepped over
+the ten files that import duckdb).
+
+- **Storage, measured:** a file 1.5.6 wrote opens read-only under 1.5.5 and 2.0.0. A file 2.0.0 wrote is still
+  refused by 1.5.6 with the same type, `duckdb.IOException`, but #25573 changed the message: `version number 69,
+  but we can only read versions between 64 and 68. The database file was created with a newer version of DuckDB.`
+  1.5.5 said `version number 999`. **RM344's handler must key on the exception type, never on the text.** RM344's
+  entry quotes the 1.5.5 message.
+
+### 2.0.0, read entry by entry — the measured verdict stands (2026-11-04)
+
+- **duckdb-python 2.0: results stream.** An open result holds its connection, and a second `execute()` replaces
+  it. Every site we have (`cpic.py:617`, `clinpgx.py:217`, `pharmvar.py:374`, `clinvar.py:230`,
+  `drug_labels.py:405`, the `rows = con.execute(...)` sites) opens its own connection, executes once and calls
+  `fetchall()` at once, and reads `cursor.description` before the fetch, which the suite exercised on 2.0. We call
+  no relation method that 2.0 removed (`fetchone`/`fetchmany`/`fetch_df_chunk`/`execute` on a relation), no Arrow
+  export, no `register`, and no `con.sql`.
+- **The engine changelog** is about 840 pull requests, most of them internal (parser, C API, extensions, CI).
+  Behaviour changes that could reach SQL like ours:
+  - integer division by zero raises (#25004); our SQL does not divide;
+  - collations without ICU (#24403, #24463); our `ORDER BY` uses the default binary collation;
+  - `preserve_identifier_case` has three states (#24375);
+  - a `utf8_validation` option on the Parquet reader (#24743);
+  - the implicit table-function string is deprecated (#23350); we always write `read_parquet(...)`.
+
+  None changed a result in the 2.0 suite run.
+- **Levers, nothing to act on:** 2.0 prunes Parquet row groups for `IN` lists and `IS NOT DISTINCT FROM`, and
+  applies bloom filters there (#24101, #24374, #24338). The batch lookups already probe through a hash join over a
+  temporary table (`@hash-the-probe`), so these speed nothing we rely on.
 
 ## Our pieces that duplicate an upstream feature
 
