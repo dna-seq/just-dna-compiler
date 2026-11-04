@@ -41,6 +41,23 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM353: the module publisher sends and guards exactly what the manifest declares (patch, on `main`)
+
+**enricher** — `upload_module` (and `just-dna-enricher upload`) now sends `manifest.json` plus every file
+the manifest declares in the module directory: the parquets `artifact.files` attests, the logo, the
+readme, `provenance.json` (named in `manifest.provenance` and never uploaded until now) and every log. A
+file on disk that the manifest does not declare is no longer sent, so a parquet left by an earlier compile,
+or a logo the manifest does not name, stays behind. A declared name that leaves the module directory is
+skipped with a warning, as RM347 did for logs. A declared file whose bytes no longer match the sha256
+the manifest states (edited after the compile) refuses the publish and asks for a recompile. When the
+manifest is absent, unparseable or has no `artifact.files` list, the publisher falls back to its old
+allowlist, as before. The guard on `data/<name>/v<version>/` now compares every declared file's sha256 as well as `artifact.digest`, so
+republishing a version whose logs, provenance, logo or readme changed is refused without `--force`; the
+`PublishCollisionError` message names the files that differ. Every name passed to the hub is now
+glob-escaped by one helper: the snapshot publisher's file list (a `data/chr[1].parquet` selected
+`data/chr1.parquet` instead), a declared retirement's deletion, and `cache prune`'s deletion. No format or
+compiler change, and no identity moves.
+
 ## 2026-11-04 — RM333, RM239, RM236: the Open Targets lane fills a locus-to-gene table, its colocalisations, per-transcript consequences and a fine-mapping posterior (0.8, uncut)
 
 - **A new snapshot lane, `opentargets`.** `just-dna-enricher opentargets build` mirrors Open Targets Platform

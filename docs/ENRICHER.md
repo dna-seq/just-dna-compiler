@@ -2454,12 +2454,13 @@ plan_reference_snapshot(snapshot_dir, repo_id=None) -> SnapshotPlan     # dry-ru
 publish_reference_snapshot(snapshot_dir, repo_id=None, token=None, commit_message=None) -> SnapshotPlan
 ```
 
-`upload_module` uploads **every parquet the compiled artifact carries** + `manifest.json` + optional
-logo and readme + **every log `manifest.logs` names** (RM347) to `datasets/<repo>/data/<name>/` (default repo `just-dna-seq/annotators`), matching
+`upload_module` uploads `manifest.json` and **every file it declares** — the parquets
+`artifact.files` attests, the logo, the readme, `provenance.json` and every log `manifest.logs` names
+(RM347, RM353) — to `datasets/<repo>/data/<name>/` (default repo `just-dna-seq/annotators`), matching
 just-dna-lite's discovery layout, **and the same files again to `data/<name>/v<version>/`** (RM84 —
-see below). The parquet half of the allowlist is `just_dna_compiler.compiler.ARTIFACT_PARQUETS`,
-imported rather than restated — see *what publishes, and what refuses* below for why that is a rule
-rather than a tidiness. `publish_reference_snapshot` uploads a built `data/*.parquet` + its
+see below). When the manifest cannot say what it declares, the fallback allowlist's parquet half is
+`just_dna_compiler.compiler.ARTIFACT_PARQUETS`, imported rather than restated — see *what publishes,
+and what refuses* below for why that is a rule rather than a tidiness. `publish_reference_snapshot` uploads a built `data/*.parquet` + its
 parquet **sidecars** + `release.json` to the **root** of a dataset repo (default `just-dna-seq/clinvar`),
 matching the `download.ensure_*_snapshot` layout. Both go through `ensure_repo` — one
 create-or-update-then-upload pathway (`create_repo` was added here; the origin `v1_port.publish` assumed
@@ -2505,9 +2506,9 @@ because the table carrying them was dropped at upload.
   | `weights.parquet` never travels alone | a half-finished SNP-core compile | scoped to the weights-led shape — a `pharm_variants`-led module legitimately has neither companion |
   | at least one **lead** parquet (`LEAD_PARQUETS`: `weights` + the nine 0.4 families) | a directory of `manifest.json` + README with no data | this is what discovery actually probes to decide a directory is a module |
 
-- **The first rule is a self-check as much as a module check**, which is why it is worth having on top
-  of a derived allowlist: it compares what would be sent against what the artifact says it contains, so
-  the two can never drift apart silently again.
+- **The first rule now catches a missing file, not a lagging list.** Since RM353 the parquets sent are
+  the ones `artifact.files` names, so the rule can no longer fire because the publisher fell behind the
+  compiler; it fires when an attested file is absent from disk or its name leaves the module directory.
 - **An unreadable or absent `manifest.json` withholds, it does not refuse.** Same tri-state as
   `version_unknown_reason` below, and the same reason: a manifest that cannot say what the artifact
   contains has said *unknown*. A directory with no manifest is still publishable, exactly as before.
@@ -2535,6 +2536,29 @@ because the table carrying them was dropped at upload.
   `upload_module` passes the plan itself to `upload_folder` as its allowlist, each path glob-escaped
   (the hub matches with `fnmatch`, so `logs/fig[1].png` unescaped would select `logs/fig1.png`), so the
   dry run lists exactly what is sent — the rule `publish_reference_snapshot` already followed.
+- **Every declared file travels, and nothing else does (RM353).** `provenance.json` is named and
+  hashed in `manifest.provenance` and was in no list, so it was never uploaded. The plan is now
+  `manifest.json` plus every file the manifest declares in the module directory, read by one helper
+  (`_declared_files`) from five fields: `artifact.files`, `logo`, `readme`, `provenance` (a summary
+  carrying `file` and `sha256`, not a `FileEntry`) and `logs`. `inputs` and `derived` describe files
+  beside the spec and are not sent. Three consequences:
+  - a file on disk the manifest does not declare is **not sent** — a parquet an earlier compile left in
+    the directory, or a logo the manifest does not name. On the flat path a stale parquet reads to
+    discovery as part of the module, so this is narrower than the old allowlist on purpose;
+  - RM347's path guard reads every declared name, so a hand-edited `provenance.file` of `../x` is
+    skipped with the same warning a log gets; a declared optional file absent from disk is skipped
+    quietly;
+  - when the manifest is absent, unparseable or has no `artifact.files` list, the plan falls back to
+    `_ALLOW_PATTERNS` on disk, as before: an unknown withholds;
+  - each declared file sent must hash to the sha256 the manifest states, or the plan refuses and asks
+    for a recompile. The guard below compares manifests, so a log edited after the compile would
+    otherwise arrive under a manifest stating its old hash and pass the guard unchanged.
+
+  **Every name handed to the hub is made literal by one helper** (`_literal_patterns`): the module
+  publisher's `allow_patterns`, both of the snapshot publisher's (where `data/chr[1].parquet` unescaped
+  selected `data/chr1.parquet` and never itself), a declared retirement's `delete_patterns`
+  (`LayoutShift.retires` is one name, never a glob) and `cache prune`'s `delete_patterns`, where an
+  unescaped listed name would delete a file nobody was shown.
 
 ### A module is published twice, and the second path is the one that can name a release (RM84)
 
@@ -2579,12 +2603,17 @@ of the reader. The half this tier owns is the layout, and it is written twice no
   different bytes — the same overwrite the flat path has always done, but under a name that invites
   caching. **Closed in 0.6.1 (RM88): the versioned path refuses unless `--force`.** Before either
   write, the published `manifest.json` at that path is read and its `artifact.digest` compared with
-  this module's; a *different* digest raises `PublishCollisionError`, and the CLI reports it as
+  this module's — and, **since RM353, the sha256 of every file each manifest declares**. The digest
+  excludes logs, provenance, logo and readme by design, so comparing it alone let a second publish of
+  one version replace its logs without `--force`. A different digest, a declared file whose hash
+  differs, or one declared on one side only raises `PublishCollisionError`, whose message names the
+  arm (*a different artifact*, or *the same compiled data but different declared files* with the
+  names); a declaration with no legible hash is not compared. The CLI reports it as
   `ALREADY PUBLISHED` rather than `UPLOAD FAILED`, because the module is fine and the remote is what
   disagrees. Four things about the gate that are decisions rather than details:
-  - **Identical bytes are not a collision.** The comparator is the digest, not presence — a presence
-    check would refuse exactly the re-run this section documents as the recovery when the second
-    commit fails.
+  - **Identical bytes are not a collision.** The comparator is the digest and the declared hashes,
+    not presence — a presence check would refuse exactly the re-run this section documents as the
+    recovery when the second commit fails.
   - **The flat path is not guarded.** It means *latest*; overwriting it is what it is for, and the
     whole point of the versioned copy is that it is the one that does not move.
   - **It fails open.** An unreadable published manifest is an *unknown*, and nothing established a

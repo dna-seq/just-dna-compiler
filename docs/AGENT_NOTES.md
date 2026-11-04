@@ -3216,6 +3216,15 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   does **not** catch it, because an absent file is not a failure there: an attestation check that
   tolerates absence cannot substitute for the publisher carrying the file. Test it as **set equality**
   over `LOGO_EXTENSIONS` — a floor passed, two of three already being listed.
+  **The list was still a second statement of the manifest, and RM353 retired it to a fallback.**
+  `manifest.provenance` named and hashed `provenance.json` and no list held it, so it never travelled;
+  the guard read only `artifact.digest`, which excludes every optional file, so a logs-only republish
+  replaced a version's logs unasked. Both were one defect: the plan and the guard each held their own
+  idea of what a module is. Now both read one helper over the five declaring fields, and the list
+  answers only when the manifest cannot. A field that is not a `FileEntry` (`provenance` carries
+  `file` + `sha256`) is the one a `FileEntry` walk misses — walk the fields, not the type. And **a name
+  handed to the hub is a pattern**: `allow_patterns` and `delete_patterns` are `fnmatch`ed, so every
+  list of names goes through one escaping helper, deletions included.
 
 - `@off-switch-needs-a-probe` — **A knob's disabling value is its own case, and reading the code is not
   running it.** Two instances a day apart, and neither was visible in review. The watcher's `BRANCH`

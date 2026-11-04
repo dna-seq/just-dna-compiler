@@ -106,7 +106,8 @@ def upload_(
         False,
         "--force",
         help=(
-            "Overwrite data/<name>/v<version>/ even when it already holds a different artifact. "
+            "Overwrite data/<name>/v<version>/ even when it already holds a different artifact "
+            "or different declared files (logs, provenance, logo, readme). "
             "Without this the publish refuses; the flat path is always overwritten."
         ),
     ),
@@ -118,9 +119,11 @@ def upload_(
     that order, as two commits. With no version, the flat path alone,
     and the reason why.
 
-    Refuses when the versioned path already holds a different artifact
-    (compare by artifact.digest), unless --force. The flat path means
-    latest and is overwritten either way.
+    Sends what manifest.json declares: the artifact files, the logo,
+    the readme, provenance.json and every log. Refuses when the versioned
+    path already holds a different artifact or a different declared file
+    (compare by artifact.digest and each declared sha256), unless --force.
+    The flat path means latest and is overwritten either way.
     """
     from just_dna_enricher.upload import (
         PublishCollisionError,
@@ -130,29 +133,20 @@ def upload_(
     )
 
     module_name = name or module_dir.name
-    if dry_run:
-        plan = plan_upload(module_dir, module_name, repo_id)
-        typer.echo(f"Would upload to {plan.repo_id} at {plan.path_in_repo}/:")
-        for f in plan.files:
-            typer.echo(f"  • {f}")
-        if plan.versioned_path_in_repo is not None:
-            typer.echo(f"…and the same files to {plan.versioned_path_in_repo}/")
-        else:
-            typer.secho(
-                f"no versioned copy: {plan.version_unknown_reason}",
-                fg=typer.colors.YELLOW,
-                err=True,
-            )
-        return
-
+    # The dry run sits inside the same `try` as the real run, so a refusal reads the same from either
+    # (RM355): the plan refuses before anything contacts the hub, and a dry run that tracebacks on a
+    # refusal the real run prints as one line is the run an author reads first.
     try:
-        plan = upload_module(
-            module_dir,
-            module_name,
-            repo_id=repo_id,
-            commit_message=commit_message,
-            force=force,
-        )
+        if dry_run:
+            plan = plan_upload(module_dir, module_name, repo_id)
+        else:
+            plan = upload_module(
+                module_dir,
+                module_name,
+                repo_id=repo_id,
+                commit_message=commit_message,
+                force=force,
+            )
     except ToolchainDiffersError as exc:
         # Before the collision's branch, which would otherwise catch it (a subclass, RM342): the
         # versioned path is still protected, and the refusal says the digest moved because the
@@ -168,6 +162,19 @@ def upload_(
     except (FileNotFoundError, PermissionError, ImportError) as exc:
         typer.secho(f"UPLOAD FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
+    if dry_run:
+        typer.echo(f"Would upload to {plan.repo_id} at {plan.path_in_repo}/:")
+        for f in plan.files:
+            typer.echo(f"  • {f}")
+        if plan.versioned_path_in_repo is not None:
+            typer.echo(f"…and the same files to {plan.versioned_path_in_repo}/")
+        else:
+            typer.secho(
+                f"no versioned copy: {plan.version_unknown_reason}",
+                fg=typer.colors.YELLOW,
+                err=True,
+            )
+        return
     typer.secho(
         f"uploaded: {module_name} → {plan.repo_id}/{plan.path_in_repo} ({len(plan.files)} files)",
         fg=typer.colors.GREEN,
