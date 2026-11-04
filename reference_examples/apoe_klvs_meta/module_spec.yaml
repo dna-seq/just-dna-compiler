@@ -1,0 +1,15 @@
+schema_version: '1.0'
+module:
+  title: APOE, KL-VS and the legacy tier — the meta-table
+  description: APOE scored only as ε diplotypes, with per-allele facts on the meta-table, KL-VS
+    buffering in ε4 carriers as a combination, and a legacy tag tier beaten by a locus row.
+  report_title: APOE, KL-VS and the legacy tier
+  icon: brain
+  icon_set: fomantic
+  color: '#a333c8'
+  name: apoe_klvs_meta
+defaults:
+  curator: ai-module-creator
+  method: literature-review
+genome_build: GRCh38
+tier_scale: longevitymap_v2

@@ -1,0 +1,6 @@
+gene,allele,function_status
+TPMT,*1,normal_function
+TPMT,*2,no_function
+TPMT,*3A,no_function
+NUDT15,*1,normal_function
+NUDT15,*3,no_function

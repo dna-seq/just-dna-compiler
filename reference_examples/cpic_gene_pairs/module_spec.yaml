@@ -1,0 +1,15 @@
+schema_version: '1.0'
+module:
+  title: TPMT × NUDT15 — azathioprine phenotype pairs
+  description: CPIC's thiopurine recommendations are keyed on a TPMT phenotype and a NUDT15 phenotype
+    together. Each pair is one meta-table row over two phenotype selectors; this module carries
+    azathioprine's.
+  report_title: TPMT × NUDT15 — azathioprine
+  icon: pills
+  icon_set: fomantic
+  color: '#6435c9'
+  name: cpic_gene_pairs
+defaults:
+  curator: ai-module-creator
+  method: literature-review
+genome_build: GRCh38

@@ -1,0 +1,11 @@
+haplotype_name,rsid,allele,gene
+ε2,rs429358,T,APOE
+ε2,rs7412,T,APOE
+ε3,rs429358,T,APOE
+ε3,rs7412,C,APOE
+ε4,rs429358,C,APOE
+ε4,rs7412,C,APOE
+KL-VS,rs9536314,G,KL
+KL-VS,rs9527025,C,KL
+ref,rs9536314,T,KL
+ref,rs9527025,G,KL
