@@ -2,7 +2,8 @@
 `meta.parquet` and `meta_resolved.parquet`.
 
 The model and the grammar are the format tier's (`just_dna_format.meta`); this module needs the
-module's other tables in hand, which is why it lives here.
+module's other tables in hand, which is why it lives here. The table is loaded by the one loader every
+authored table outside the table kinds shares (`load.load_authored_table`, RM357).
 
 **Expansion reads the authored rows, after the symbolic-allele drop and before resolution**, on both
 sides: `validate_spec` and `compile_module` hand it the same view, so a member matches the same rows in
@@ -34,7 +35,6 @@ members, so ε2 protective on one trait and ε4 risk on another is not a trade-o
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, NamedTuple
 
 import polars as pl
@@ -53,8 +53,6 @@ from just_dna_format.meta import (
     split_members,
 )
 
-from just_dna_compiler.compiler.load import load_csv_rows
-from just_dna_compiler.compiler.table_checks import _validate_table_kind
 from just_dna_compiler.compiler.tables import META_CSV, _polars_type
 
 #: The order tables are expanded and `meta_resolved.parquet` is sorted in: `META_MEMBER_TABLES`' own.
@@ -102,24 +100,6 @@ class MetaBuild:
             for index, texts in enumerate(self.texts)
             for position, text in enumerate(texts)
         ]
-
-
-def load_meta(spec_dir: Path) -> tuple[list[MetaRow], list[str], list[str]]:
-    """Read `meta.csv` and answer with `(rows, errors, warnings)`; `([], [], [])` when absent.
-
-    A present file with no rows is an error, the answer every authored table gives. The duplicate key
-    goes through `_validate_table_kind`, so it reads as every other keyed table's does.
-    """
-    path = Path(spec_dir) / META_CSV
-    if not path.is_file():
-        return [], [], []
-    rows, errors, warnings = load_csv_rows(path, MetaRow, META_CSV)
-    if errors:
-        return [], errors, warnings
-    if not rows:
-        return [], [f"{META_CSV} is present but has no rows."], warnings
-    key_errors, key_warnings = _validate_table_kind(META_CSV, MetaRow, rows)
-    return (rows if not key_errors else []), key_errors, [*warnings, *key_warnings]
 
 
 def member_tables(variants: list[Any], kind_rows: Mapping[str, list[Any]]) -> dict[str, list[Any]]:

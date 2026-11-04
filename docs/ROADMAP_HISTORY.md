@@ -35,6 +35,69 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM357 — the authored tables that are not table kinds have no registry: three copies of one loader, and a refused `meta.csv` reports its citations as uncited
+
+**0.8, filed 2026-11-04 by the lead** as a second-pass item: found by a 0.8 builder.
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** · **Owner** compiler (`load_meta`, `load_model_organisms`,
+`load_overlay` and the lists that name them) · **Motivating case** a 0.8 builder's report, 2026-11-04 · *related*
+RM335, RM28, `@registry-completeness`, `@overlay-not-inside`
+
+**One class: a category of table with no registry.** `meta.csv` (RM28, `compiler/meta.py` on `0.8`),
+`model_organisms.csv` (RM335, `compiler/model_organisms.py` on `build/RM335`) and `overrides.csv`
+(`load_overlay`) are authored tables outside the table-kind registry. Each has its own copy of one loader body,
+and about ten hand-kept lists say which of them cites literature, names a gene or is a lead table. A fourth such
+table means another copy and ten more edits, and a list that misses one fails silently.
+
+**The instance that misleads an author.** `load_meta` drops all its rows on a duplicate-key error. In the same run,
+a `literature.csv` row cited only by `meta.csv` is then reported as uncited, which points the author at
+`literature.csv` when the defect is in `meta.csv`.
+
+**The fix, as one rule.** One registry of authored non-kind tables, each entry carrying its loader and its citing,
+gene and lead flags; every list is derived from it and a test asserts equality over the walked set. A loader that
+refuses still hands its parsed rows to the other checks, so one table's error never becomes another table's
+finding.
+
+
+**What shipped.** `tables.AUTHORED_NON_KIND_TABLES` (public, entries of `NonKindTable`) registers the three
+tables in `ARTIFACT_PARQUETS` order: CSV name, parquets (the first carries every authored cell and is what
+`reverse` reads), row model and `row_checks` (the overlay's `overlay_coherence_errors`). The entry asked for
+citing, gene and lead flags; none is declared. Whether an entry cites is read off its model (`pmid`). "Not a
+lead table" is membership itself, and so is "its `gene` is not the module's" (`manifest.stats.genes` reads
+`variants.csv` and the kinds only, and the enricher's scope follows it by excluding every registered table);
+a declared gene flag could only ever be `False`, since `module_stats` would not read a `True` one. Every
+entry is draftable. One loader, `load.load_authored_table(spec_dir, csv_name)`, replaces the three bodies:
+`compiler/model_organisms.py` is gone, `meta.load_meta` is gone, and `load_overlay` stays public (the
+enricher calls it) as that loader on `overrides.csv`. `validate_spec` and `compile_module` each load all
+three once, in one loop over the registry. A refused table keeps its rows for the citing view: all of them
+on a duplicate key or a `row_checks` error; on a parse error the rows that parsed, only for a table that
+cites (the overlay applied half-parsed would raise findings against the tables it corrects, which a review
+of this build reproduced). A refused `meta.csv` is not expanded, so its findings stay the refusal.
+
+The lists now derived from the registry: `tables._INPUT_FILES`, `tables.ARTIFACT_PARQUETS`,
+`tables.table_bindings()`, `tables._TABLE_DUPE_KEYS`, `load.spec_tables`' roster (so `content_signature`),
+`binning_checks._CITING_TABLE_KINDS` (so `load_citing_rows` and `table_citations`),
+`table_checks._KNOWN_SPEC_FILES`, the citing view in `validate_spec` (`citing_kinds`/`citing_survivors`) and
+in `compile_module` (`citing_rows`), `reverse_module`'s three write-backs (one loop), `draft.DRAFTABLE` (so
+the describe/template/requirements/stub/hint dispatch and the enricher's `identifiers._id_bearing_tables`
+and `litvar` rosters), and the enricher's `gene_metrics._NOT_THE_MODULES_GENES`. The format tier cannot
+import the compiler, so its three reference groups became one declared group,
+`reference._AUTHORED_NON_KIND_MODELS`, asserted equal to the registry's models. Left as they were: the
+compile's write sites (`meta.csv` builds two derived frames, the other two go through `_build_table`), and
+the enricher's `subjects.meta_member_rsids`, which reads `meta.csv` for the rsIDs its members name and
+refuses on a parse error only.
+
+Tests: `compiler/tests/test_authored_non_kind_tables.py` (the registry against the format tier's model walk,
+the input files, `DRAFTABLE`, the artifact listing, `LEAD_PARQUETS` and the gene facet; the one loader's
+absent and empty arms; a module carrying all three tables round-trips to the same digest and signature);
+a malformed overlay is not applied; `test_meta_compile.py`'s two RM357 tests (the duplicate-key case, red
+before; the parse-error case, red before). Each
+derivation was broken once and its test went red. The 16 reference examples and the meta, model-organism and
+overlay fixtures give identical validate and compile warnings and errors, digests, `artifact.files`,
+signatures and reversed files before and after.
+
+**Residuals** none
+
 ## RM333 — the effector gene behind a GWAS locus has no source and no column
 
 **Placement settled 2026-11-04.** The effector-confidence label is never authored (RM323's cut). This lane's derived table is one of its inputs, beside coloc and the coding consequence.

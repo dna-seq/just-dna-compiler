@@ -41,6 +41,24 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM357: the authored tables that are not table kinds have one registry and one loader, and a refused `meta.csv` no longer reports its citations as uncited (0.8, uncut)
+
+- **One registry.** `just_dna_compiler.compiler.AUTHORED_NON_KIND_TABLES` registers `overrides.csv`,
+  `meta.csv` and `model_organisms.csv` (CSV name, parquets, row model, its own table checks). Every list that named them is derived from it, among them `_INPUT_FILES`,
+  `ARTIFACT_PARQUETS`, `_TABLE_DUPE_KEYS`, `_CITING_TABLE_KINDS`, `draft.DRAFTABLE`, `reverse_module` and
+  the enricher's gene scope; COMPILER.md § The authored tables that are not table kinds has the full list.
+- **One loader**, `load_authored_table(spec_dir, csv_name)`, for all three. `load_overlay` stays and is that
+  loader on `overrides.csv`; `compiler.meta.load_meta` and `compiler.model_organisms` (both new in 0.8) are
+  gone.
+- **A refused table keeps its rows for the citing view.** A `meta.csv` with a duplicate key used to drop
+  every row, so a `literature.csv` row only it cited was also reported as uncited, pointing the author at
+  the wrong file. Now the duplicate is the one finding. A `meta.csv` or `model_organisms.csv` with a row
+  that will not parse keeps the rows that did, so only the malformed row's own citation can still read as
+  uncited; a malformed `overrides.csv` is still applied not at all.
+- On a module with none of those refusals nothing moves: the 16 reference examples and the meta,
+  model-organism and overlay fixtures give the same warnings, errors, digests and `artifact.files` listing
+  as before.
+
 ## 2026-11-04 — RM333, RM239, RM236: the Open Targets lane fills a locus-to-gene table, its colocalisations, per-transcript consequences and a fine-mapping posterior (0.8, uncut)
 
 - **A new snapshot lane, `opentargets`.** `just-dna-enricher opentargets build` mirrors Open Targets Platform

@@ -55,9 +55,6 @@ from just_dna_format.layout import (
     sidecar_key,
     sidecar_spellings,
 )
-from just_dna_format.meta import MetaRow
-from just_dna_format.model_organisms import ModelOrganismRow
-from just_dna_format.overrides import OverrideRow
 from just_dna_format.sources import SourceRow
 from just_dna_format.spec import StudyRow, VariantRow
 from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
@@ -66,9 +63,7 @@ from pydantic import BaseModel
 from just_dna_compiler.compiler import (
     _TABLE_DUPE_KEYS,
     _TABLE_KINDS,
-    META_CSV,
-    MODEL_ORGANISMS_CSV,
-    OVERRIDES_CSV,
+    AUTHORED_NON_KIND_TABLES,
     _key_of,
     _list_cell,
     _list_fields,
@@ -99,12 +94,10 @@ DRAFTABLE: dict[str, type[BaseModel]] = {
     "studies.csv": StudyRow,
     **{csv_name: model for csv_name, _, model in _TABLE_KINDS},
     **dict.fromkeys(sidecar_spellings(SOURCES_CSV), SourceRow),
-    OVERRIDES_CSV: OverrideRow,
-    # The meta-table (0.8): authored, one legal name, so every authoring surface answers for it.
-    META_CSV: MetaRow,
-    # The model-organism table (0.8, RM335): authored, one legal name. Being here is also what puts its
+    # The authored tables that are not table kinds (RM357), each by its one legal name: authored, so every
+    # authoring surface answers for them. Being here is also what puts the model-organism table's
     # `gene` column in front of the enricher's `check-identifiers` HGNC currency roster.
-    MODEL_ORGANISMS_CSV: ModelOrganismRow,
+    **{table.csv: table.model for table in AUTHORED_NON_KIND_TABLES},
 }
 
 # The SNP core's natural keys, the two `_TABLE_DUPE_KEYS` does not carry because the compiler checks

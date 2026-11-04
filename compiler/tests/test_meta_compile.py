@@ -319,6 +319,48 @@ def test_a_present_but_empty_meta_csv_is_refused(tmp_path: Path) -> None:
     assert any("meta.csv is present but has no rows" in e for e in result.errors), result.errors
 
 
+# A PMID no table but meta.csv cites; `studies.csv` names three others.
+_META_ONLY_PMID = "19117549"
+_SH2B3_CITED = f"variants[variant_key=rs3184504],,,,,,B,,,,{_META_ONLY_PMID},,\n"
+
+
+def test_a_literature_row_cited_only_by_meta_is_never_called_uncited_beside_a_duplicate(
+    tmp_path: Path,
+) -> None:
+    """RM357: a refused `meta.csv` keeps its rows for the other checks, so its error is its own.
+
+    On a clean compile the literature row is kept, since the meta row cites it. With the same row
+    written twice, the one finding is the duplicate in `meta.csv`; before RM357 the loader dropped
+    every row on that error and the literature check then sent the author to `literature.csv`.
+    """
+    spec = _module(tmp_path / "spec", _META + _SH2B3_CITED)
+    (spec / "literature.csv").write_text(f"pmid\n{_META_ONLY_PMID}\n", encoding="utf-8")
+    _compile(spec, tmp_path / "out")
+    assert pl.read_parquet(tmp_path / "out" / "literature.parquet")["pmid"].to_list() == [_META_ONLY_PMID]
+
+    (spec / "meta.csv").write_text(
+        _META + _SH2B3_CITED + _SH2B3_CITED.replace(",B,", ",C,"), encoding="utf-8"
+    )
+    result = validate_spec(spec)
+    assert any("meta.csv: duplicate row for key" in e for e in result.errors), result.errors
+    assert not [w for w in result.warnings if "no study, bin or pharm row" in w], result.warnings
+
+
+def test_a_row_that_will_not_parse_keeps_the_rows_that_did_for_the_citing_view(tmp_path: Path) -> None:
+    """RM357, the parse arm: one malformed row is that row's error, never every other row's citation.
+
+    The rows that parsed stay in the citing view because `meta.csv` cites. The malformed row's own
+    citation, if it had one, could still read as uncited: its `pmid` was never read.
+    """
+    # Another locus, so no duplicate key; `sex`, the last column, is a closed vocabulary.
+    malformed = "variants[variant_key=rs9536314],,,,,,B,,,,,,nobody\n"
+    spec = _module(tmp_path / "spec", _META + _SH2B3_CITED + malformed)
+    (spec / "literature.csv").write_text(f"pmid\n{_META_ONLY_PMID}\n", encoding="utf-8")
+    result = validate_spec(spec)
+    assert any(e.startswith("meta.csv line") and "sex" in e for e in result.errors), result.errors
+    assert not [w for w in result.warnings if "no study, bin or pharm row" in w], result.warnings
+
+
 # ── the round trip and determinism ───────────────────────────────────────────────────────────────
 
 

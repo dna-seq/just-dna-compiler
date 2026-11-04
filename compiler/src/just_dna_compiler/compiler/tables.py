@@ -5,14 +5,15 @@ into CSV cells.
 
 import csv
 import types
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Union, get_args, get_origin
 
 import polars as pl
 from just_dna_format.alleles import split_genotype
 from just_dna_format.assertions import ClinicalAssertionRow
-from just_dna_format.base import IDENTITY_FIELDS, authored_field_names, derive_variant_key
+from just_dna_format.base import IDENTITY_FIELDS, AuthoredModel, authored_field_names, derive_variant_key
 from just_dna_format.binning import ActivityPhenotypeRow, CopyNumberRow, HeteroplasmyRow, RepeatAlleleRow
 from just_dna_format.concordance import ClinSigAuthorityCallRow, ClinSigConcordanceRow
 from just_dna_format.consequences import ConsequenceRow
@@ -29,7 +30,7 @@ from just_dna_format.locus_genes import ColocalisationRow, LocusToGeneRow
 from just_dna_format.manifest import FileEntry
 from just_dna_format.meta import MetaRow
 from just_dna_format.model_organisms import ModelOrganismRow
-from just_dna_format.overrides import OverrideRow
+from just_dna_format.overrides import OverrideRow, overlay_coherence_errors
 from just_dna_format.pgs import PgsRow
 from just_dna_format.pgx import AlleleFunctionRow, DiplotypeRow, HaplotypeRow, PharmVariantRow
 from just_dna_format.sources import SourceRow
@@ -72,88 +73,6 @@ _TABLE_KINDS: tuple[tuple[str, str, type[BaseModel]], ...] = (
 
 
 _TABLE_KIND_CSVS: tuple[str, ...] = tuple(csv for csv, _, _ in _TABLE_KINDS)
-
-
-# Natural identity key per table kind, for duplicate-row detection (the 0.4 analog of the SNP core's
-# duplicate-(variant, genotype) check). Binning kinds are omitted: an exact-duplicate *resolved* bin
-# is caught as an overlap by `validate_bins`, and duplicate *unresolved* sentinels are caught
-# separately in `_validate_table_kind`. A `HaplotypeRow`'s identity is (allele, defining variant); a
-# `PgsRow`/`DiplotypeRow`/`PharmVariantRow` key includes `trait_efo_id`/`drug` so a legitimately
-# pleiotropic or multi-drug row is not a false duplicate. `PharmVariantRow` additionally keys on
-# `genotype`, `phenotype_category` and `annotation_id` (0.5) — each earned by real ClinPGx data.
-# PharmGKB publishes one annotation *per genotype*, so (variant, drug) alone rejected the corpus
-# outright. One variant+drug then carries several *distinct* annotations: 1,199 of 17,380
-# (variant, drug, genotype) triples map to more than one, 839 of them differing by category
-# (rs4149056+simvastatin is Metabolism/PK, Efficacy AND Toxicity). `annotation_id` is the
-# last-resort tie-break for the 283 that differ by neither — a source accession as identity, the
-# same shape as `PgsRow.pgs_id`.
-#
-# **Derived from each model's own `_KEY_FIELDS`, not restated here as a lambda (S48).** The columns
-# and the key were two statements of one fact for four releases, and a consumer wanting the *column
-# names* could get nothing out of `lambda r: (r.gene, r.allele)` without reading our source — which
-# is what the reporting consumer ended up doing, and then hand-kept a string that went stale the day
-# 0.6 deprecated a column in it. Each model now declares its key and this dict reads it, so
-# `hints.key_fields` can name the columns and cannot disagree with the check.
-#
-# The per-key reasoning stays with the declarations: `HaplotypeRow` keys on the *stamped*
-# `variant_key` (RM43), `DiplotypeRow` carries `clinical_context` since 0.5.1 (RM29b), and
-# `PharmVariantRow` carries the full ClinPGx key.
-def study_coordinate_key(chrom: str | None, start: int | None, ref: str | None) -> str | None:
-    """The `chrom:start:ref` half of "a study names a variant by ANY shared identifier", or `None`.
-
-    One expression for the two places that ask the question — `_cross_validate_studies`' orphan check
-    and the study facts `weights.parquet` derives (0.8) — so a study the check counts as naming a
-    variant is the study that variant's derived columns read, and the two cannot drift apart. The other
-    half is plain `rsid` equality.
-    """
-    return derive_variant_key(None, chrom, start, ref) if chrom is not None else None
-
-
-def _key_of(row: Any) -> tuple:
-    """A keyed row's identity tuple, read off the model's declared `_KEY_FIELDS`."""
-    return tuple(getattr(row, name) for name in row._KEY_FIELDS)
-
-
-# `SourceRow` joined the map with RM107, and it is the one member that is not a `_TABLE_KINDS` entry:
-# `sources.csv`/`licensing.csv` is a fact table, so the `_TABLE_KINDS` loop never reached it and a
-# duplicate `(source, layer)` row compiled green under `--strict` — no warning, a moved
-# `source_signature`, and a pair free to carry *opposite* `commercial_use` in the one file the compile
-# gate keys on. Drafting has refused to append over that key since S48 and `licensing.merge_sources_csv`
-# merges on it, so the compiler was the only writer in the ecosystem not treating it as a key. The
-# fact-table loop in `validate_spec` now runs `_validate_table_kind` too, which is what gives the
-# entry below its effect; registering the model alone would have done nothing.
-_TABLE_DUPE_KEYS: dict[type[BaseModel], Callable[[Any], tuple]] = dict.fromkeys(
-    (
-        HaplotypeRow,
-        AlleleFunctionRow,
-        DiplotypeRow,
-        PgsRow,
-        PharmVariantRow,
-        SourceRow,
-        # The concordance record and its paired detail table (RM130). The parent keys on
-        # `(variant_key, genotype)` and the detail on `(variant_key, genotype, authority)`, and both
-        # are registered for the reason `SourceRow` was: a duplicate under the key is two answers to
-        # one question with no order between them, and here it would be two verdicts about one
-        # contested subject — which is what an overlay row is written against, so the author would
-        # be answering a question the module states twice.
-        ClinSigConcordanceRow,
-        ClinSigAuthorityCallRow,
-        # `OverrideRow` keys on `(table, subject, member, field)` — the overlay's own key. Two rows
-        # under it are two answers to one question with no defined order between them, which is the
-        # `SourceRow` failure one table over: a pair free to carry opposite values in the file a
-        # later stage keys on.
-        OverrideRow,
-        # `MetaRow` keys on `(members_key, trait_efo_id, sex)` (0.8): the member set normalized, so
-        # `A & B` and `B & A` are one key. The same key twice is the one place two meta values can
-        # contradict each other, so it is refused here like every other keyed table's duplicate.
-        MetaRow,
-        # `ModelOrganismRow` keys on every column but the finding's two (0.8, RM335): one gene,
-        # orthologue, species, intervention, sex, diet and citation are one experiment, and the same
-        # experiment stated twice with two lifespan effects is two answers with no order between them.
-        ModelOrganismRow,
-    ),
-    _key_of,
-)
 
 
 #: The authored overlay (RM124). A **third category**, registered nowhere else on purpose.
@@ -224,14 +143,141 @@ MODEL_ORGANISMS_CSV: str = "model_organisms.csv"
 MODEL_ORGANISMS_PARQUET: str = "model_organisms.parquet"
 
 
+@dataclass(frozen=True)
+class NonKindTable:
+    """One authored table that is deliberately **not** a `_TABLE_KINDS` entry (RM357).
+
+    What the three have in common is the category the constants above argue one by one: a human writes
+    every row, so the CSV is input (raw-byte hashed into `manifest.inputs`, inside `content_signature`);
+    the rows are keyed, so a duplicate is refused through `_TABLE_DUPE_KEYS`; and the table is never a
+    lead table, so a directory carrying only it is not a module and none of its parquets is in
+    `LEAD_PARQUETS`. Membership here **is** that last statement, so there is no `lead` flag to set, and
+    it is also why no `gene` here is a gene the module's findings are about: `manifest.stats.genes` reads
+    `variants.csv` and the table kinds, and the enricher's gene scope follows that published set by
+    excluding every table registered here. Whether an entry cites is read off its model (`cites`), and
+    every entry is draftable (`draft.DRAFTABLE`), so neither is a flag either.
+
+    Every list that names these tables is derived from `AUTHORED_NON_KIND_TABLES` rather than kept by
+    hand, and one loader body reads them all (`load.load_authored_table`). Before RM357 each had its own
+    copy of the loader and about ten lists named them, and the copy that dropped its rows on a duplicate
+    key made a `literature.csv` row cited only by `meta.csv` read as uncited in the same run.
+    """
+
+    #: The one legal name, at the spec root.
+    csv: str
+    #: Every parquet the table compiles to, in `manifest.artifact.files` listing order. The **first** is
+    #: the one that carries every authored cell verbatim, which is what `reverse_module` reads back.
+    parquets: tuple[str, ...]
+    model: type[AuthoredModel]
+    #: Table-level errors beyond the parse and the duplicate key, run over the parsed rows after both.
+    row_checks: Callable[[Sequence[Any]], list[str]] | None = None
+
+    @property
+    def cites(self) -> bool:
+        """A citation site exactly when the model declares `pmid` (RM132's rule, `_CITING_TABLE_KINDS`)."""
+        return "pmid" in self.model.model_fields
+
+
+#: The registry, in `ARTIFACT_PARQUETS` order: each entry's parquets are appended there in this order,
+#: so this order **is** the `manifest.artifact.files` listing order a reader sees (never the digest,
+#: which name-sorts). Append a new member last, where a module carrying no such file keeps its digest.
+#: **PUBLIC** because the enricher derives a scope from it, and a private name reached across a package
+#: is the RM41 shape.
+AUTHORED_NON_KIND_TABLES: tuple[NonKindTable, ...] = (
+    NonKindTable(
+        OVERRIDES_CSV,
+        (OVERRIDES_PARQUET,),
+        OverrideRow,
+        # A key group carrying several operations is the overlay's own refusal (RM124).
+        row_checks=overlay_coherence_errors,
+    ),
+    NonKindTable(META_CSV, (META_PARQUET, META_RESOLVED_PARQUET), MetaRow),
+    # Its `gene` names the gene a mouse experiment altered, not a gene the module's findings are about.
+    NonKindTable(MODEL_ORGANISMS_CSV, (MODEL_ORGANISMS_PARQUET,), ModelOrganismRow),
+)
+
+
+# Natural identity key per table kind, for duplicate-row detection (the 0.4 analog of the SNP core's
+# duplicate-(variant, genotype) check). Binning kinds are omitted: an exact-duplicate *resolved* bin
+# is caught as an overlap by `validate_bins`, and duplicate *unresolved* sentinels are caught
+# separately in `_validate_table_kind`. A `HaplotypeRow`'s identity is (allele, defining variant); a
+# `PgsRow`/`DiplotypeRow`/`PharmVariantRow` key includes `trait_efo_id`/`drug` so a legitimately
+# pleiotropic or multi-drug row is not a false duplicate. `PharmVariantRow` additionally keys on
+# `genotype`, `phenotype_category` and `annotation_id` (0.5) — each earned by real ClinPGx data.
+# PharmGKB publishes one annotation *per genotype*, so (variant, drug) alone rejected the corpus
+# outright. One variant+drug then carries several *distinct* annotations: 1,199 of 17,380
+# (variant, drug, genotype) triples map to more than one, 839 of them differing by category
+# (rs4149056+simvastatin is Metabolism/PK, Efficacy AND Toxicity). `annotation_id` is the
+# last-resort tie-break for the 283 that differ by neither — a source accession as identity, the
+# same shape as `PgsRow.pgs_id`.
+#
+# **Derived from each model's own `_KEY_FIELDS`, not restated here as a lambda (S48).** The columns
+# and the key were two statements of one fact for four releases, and a consumer wanting the *column
+# names* could get nothing out of `lambda r: (r.gene, r.allele)` without reading our source — which
+# is what the reporting consumer ended up doing, and then hand-kept a string that went stale the day
+# 0.6 deprecated a column in it. Each model now declares its key and this dict reads it, so
+# `hints.key_fields` can name the columns and cannot disagree with the check.
+#
+# The per-key reasoning stays with the declarations: `HaplotypeRow` keys on the *stamped*
+# `variant_key` (RM43), `DiplotypeRow` carries `clinical_context` since 0.5.1 (RM29b), and
+# `PharmVariantRow` carries the full ClinPGx key.
+def study_coordinate_key(chrom: str | None, start: int | None, ref: str | None) -> str | None:
+    """The `chrom:start:ref` half of "a study names a variant by ANY shared identifier", or `None`.
+
+    One expression for the two places that ask the question — `_cross_validate_studies`' orphan check
+    and the study facts `weights.parquet` derives (0.8) — so a study the check counts as naming a
+    variant is the study that variant's derived columns read, and the two cannot drift apart. The other
+    half is plain `rsid` equality.
+    """
+    return derive_variant_key(None, chrom, start, ref) if chrom is not None else None
+
+
+def _key_of(row: Any) -> tuple:
+    """A keyed row's identity tuple, read off the model's declared `_KEY_FIELDS`."""
+    return tuple(getattr(row, name) for name in row._KEY_FIELDS)
+
+
+# `SourceRow` joined the map with RM107, and it is the one member that is not a `_TABLE_KINDS` entry:
+# `sources.csv`/`licensing.csv` is a fact table, so the `_TABLE_KINDS` loop never reached it and a
+# duplicate `(source, layer)` row compiled green under `--strict` — no warning, a moved
+# `source_signature`, and a pair free to carry *opposite* `commercial_use` in the one file the compile
+# gate keys on. Drafting has refused to append over that key since S48 and `licensing.merge_sources_csv`
+# merges on it, so the compiler was the only writer in the ecosystem not treating it as a key. The
+# fact-table loop in `validate_spec` now runs `_validate_table_kind` too, which is what gives the
+# entry below its effect; registering the model alone would have done nothing.
+_TABLE_DUPE_KEYS: dict[type[BaseModel], Callable[[Any], tuple]] = dict.fromkeys(
+    (
+        HaplotypeRow,
+        AlleleFunctionRow,
+        DiplotypeRow,
+        PgsRow,
+        PharmVariantRow,
+        SourceRow,
+        # The concordance record and its paired detail table (RM130). The parent keys on
+        # `(variant_key, genotype)` and the detail on `(variant_key, genotype, authority)`, and both
+        # are registered for the reason `SourceRow` was: a duplicate under the key is two answers to
+        # one question with no order between them, and here it would be two verdicts about one
+        # contested subject — which is what an overlay row is written against, so the author would
+        # be answering a question the module states twice.
+        ClinSigConcordanceRow,
+        ClinSigAuthorityCallRow,
+        # The authored tables that are not table kinds (RM357), every one of them keyed: the overlay on
+        # `(table, subject, member, field)`, the meta-table on `(members_key, trait_efo_id, sex)` (the
+        # member set normalized, so `A & B` and `B & A` are one key), the model-organism table on every
+        # column but the finding's two. Under each key two rows are two answers to one question with no
+        # order between them, the `SourceRow` failure one table over.
+        *(table.model for table in AUTHORED_NON_KIND_TABLES),
+    ),
+    _key_of,
+)
+
+
 _INPUT_FILES: tuple[str, ...] = (
     "module_spec.yaml",
     "variants.csv",
     "studies.csv",
     *_TABLE_KIND_CSVS,
-    OVERRIDES_CSV,
-    META_CSV,
-    MODEL_ORGANISMS_CSV,
+    *(table.csv for table in AUTHORED_NON_KIND_TABLES),
 )
 
 
@@ -246,8 +292,8 @@ _INPUT_FILES: tuple[str, ...] = (
 # which is `@fieldnames-from-model` one tier out. The sixteen is history and not the current size —
 # spelled out because a bare number beside a registry reads as the registry's (RM218).
 #: The SNP core's `csv -> parquet(s)` binding, the one part of the artifact map that was spelled
-#: per-call. `_TABLE_KINDS` and `_FACT_TABLES` each carry their own binding, and `OVERRIDES_PARQUET`
-#: names the overlay's, but the three core parquets were three literals at the write site and three more
+#: per-call. `_TABLE_KINDS`, `_FACT_TABLES` and `AUTHORED_NON_KIND_TABLES` each carry their own
+#: binding, but the three core parquets were three literals at the write site and three more
 #: in `ARTIFACT_PARQUETS` — so nothing could answer *"which parquet does `variants.csv` become"* without
 #: a human reading `_write_*`. That question has two callers now: `ARTIFACT_PARQUETS` below, and the
 #: docs site's generated per-table reference, which must not hand-keep a fourth copy
@@ -299,21 +345,14 @@ ARTIFACT_PARQUETS: tuple[str, ...] = (
     "colocalisations.parquet",
     "consequences.parquet",
     "sources.parquet",
-    # RM124 (0.7), last — and **not for the digest reason the entries above give**, which does not
-    # reach it. `integrity.artifact_digest` sorts the listing by name before hashing, so a member's
-    # position in this tuple is invisible to the digest; what protects every already-published module
-    # is that they carry no `overrides.csv`, so the file is absent and contributes nothing. (The
-    # position rule two entries up is about `manifest.artifact.files` and the emission order a reader
-    # sees, which is a real thing and a different one.) Last is simply where a new member belongs.
-    # It is also the only member here that is not derived from a source — see `OVERRIDES_CSV` for why
-    # it needs a parquet at all.
-    OVERRIDES_PARQUET,
-    # The meta-table's pair (0.8), after the overlay for the overlay's reason: last is where a new
-    # member belongs, and a module carrying no meta.csv carries neither file and keeps its digest.
-    META_PARQUET,
-    META_RESOLVED_PARQUET,
-    # The model-organism table (0.8, RM335), last for the same reason.
-    MODEL_ORGANISMS_PARQUET,
+    # The authored tables that are not table kinds (RM357), last, in the registry's order: the overlay
+    # (RM124, 0.7), the meta-table's pair (0.8) and the model-organism table (0.8, RM335). Last is where
+    # a new member belongs, and **not for the digest reason the fact-table entries above give**, which
+    # does not reach these: `integrity.artifact_digest` sorts the listing by name before hashing, so a
+    # member's position here is invisible to the digest. What protects every already-published module
+    # is that it carries none of these files, so each is absent and contributes nothing. The overlay is
+    # also the only member here not derived from a source; `OVERRIDES_CSV` says why it needs a parquet.
+    *(parquet for table in AUTHORED_NON_KIND_TABLES for parquet in table.parquets),
 )
 
 
@@ -395,20 +434,18 @@ def table_bindings() -> dict[str, tuple[str, ...]]:
     new table kind whose parquet is written by a literal at its own write site fails the test instead of
     quietly missing a reference page.
 
-    Six registries, each owning its own slice: `SNP_CORE_PARQUETS` (the core, where `variants.csv`
-    fans out to two), `_TABLE_KINDS` (the optional authored kinds), `_FACT_TABLES` (the derived facts),
-    `OVERRIDES_PARQUET` (the overlay, whose CSV is authored but is not a table kind), the meta-table's
-    pair (`META_CSV`, which fans out to two like `variants.csv`) and the model-organism table
-    (`MODEL_ORGANISMS_CSV`).
+    Four registries, each owning its own slice: `SNP_CORE_PARQUETS` (the core, where `variants.csv`
+    fans out to two), `_TABLE_KINDS` (the optional authored kinds), `_FACT_TABLES` (the derived facts)
+    and `AUTHORED_NON_KIND_TABLES` (the authored tables that are not kinds, where `meta.csv` fans out to
+    two like `variants.csv`).
     """
     bound: dict[str, tuple[str, ...]] = dict(SNP_CORE_PARQUETS)
     for csv_name, parquet, _model in _TABLE_KINDS:
         bound[csv_name] = (parquet,)
     for csv_name, parquet, _model in _FACT_TABLES:
         bound[csv_name] = (parquet,)
-    bound[OVERRIDES_CSV] = (OVERRIDES_PARQUET,)
-    bound[META_CSV] = (META_PARQUET, META_RESOLVED_PARQUET)
-    bound[MODEL_ORGANISMS_CSV] = (MODEL_ORGANISMS_PARQUET,)
+    for table in AUTHORED_NON_KIND_TABLES:
+        bound[table.csv] = table.parquets
     return bound
 
 

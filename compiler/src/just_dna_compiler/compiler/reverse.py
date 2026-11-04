@@ -20,20 +20,12 @@ from just_dna_format.manifest import (
     Verification,
     read_manifest,
 )
-from just_dna_format.meta import MetaRow
-from just_dna_format.model_organisms import ModelOrganismRow
-from just_dna_format.overrides import OverrideRow
 
 from just_dna_compiler.compiler.positional import _POSITIONAL_TABLE_KINDS
 from just_dna_compiler.compiler.tables import (
     _FACT_TABLES,
     _TABLE_KINDS,
-    META_CSV,
-    META_PARQUET,
-    MODEL_ORGANISMS_CSV,
-    MODEL_ORGANISMS_PARQUET,
-    OVERRIDES_CSV,
-    OVERRIDES_PARQUET,
+    AUTHORED_NON_KIND_TABLES,
     _list_cell,
     _scalar_cell,
     _write_table_csv,
@@ -510,37 +502,25 @@ def reverse_module(
         if fact_path.is_file():
             _write_table_csv(pl.read_parquet(fact_path), model, sidecar_paths[csv_name])
 
-    # The authored overlay (RM124), at the spec **root** and under its one legal name — it is authored
-    # like `variants.csv`, not a machine-written sidecar, so it does not go through `sidecar_paths`.
+    # The authored tables that are not table kinds (RM357), each at the spec **root** under its one legal
+    # name, from the first of its parquets, which carries every authored cell verbatim. They are
+    # authored like `variants.csv`, not machine-written sidecars, so none goes through `sidecar_paths`.
+    # `_write_table_csv` writes the authored columns only, so what a compile derived beside them falls
+    # away and the recompile derives it again: the meta-table's `members_key` and matches, and the whole
+    # of `meta_resolved.parquet`, which has no CSV and is rebuilt from these rows and the tables they name.
     #
-    # **This emits the post-overlay derived tables above AND the overlay, so the overlay applies
-    # twice, and that is the design rather than an oversight.** The alternative — emitting the
+    # **The overlay: this emits the post-overlay derived tables above AND the overlay, so the overlay
+    # applies twice, and that is the design rather than an oversight.** The alternative — emitting the
     # *pre*-overlay tables so the apply happens exactly once — needs the overlay to record the value
     # it replaced, which is a derived cell inside an authored table and rots the moment the source
     # moves. All three operations are idempotent set operations instead (an update to a value already
     # present, an insert of a row already keyed, a suppress of a row already absent are each a
     # no-op), so the second lap is a fixed point and buys the round trip at no schema cost. It is
     # checked by test, never assumed — Principle 7 requires that of every derivation.
-    overlay_parquet = parquet_dir / OVERRIDES_PARQUET
-    if overlay_parquet.is_file():
-        _write_table_csv(pl.read_parquet(overlay_parquet), OverrideRow, output_dir / OVERRIDES_CSV)
-
-    # The meta-table (0.8), at the spec root like the overlay. `meta.parquet` carries every authored
-    # cell verbatim — the selectors included — beside what the compile derived (`members_key`, the
-    # matches, `withheld`), and `_write_table_csv` writes the authored columns only, so the derived
-    # ones fall away and the recompile derives them again. `meta_resolved.parquet` has no CSV: it is
-    # rebuilt from these rows and the tables they name.
-    meta_parquet = parquet_dir / META_PARQUET
-    if meta_parquet.is_file():
-        _write_table_csv(pl.read_parquet(meta_parquet), MetaRow, output_dir / META_CSV)
-
-    # The model-organism table (0.8, RM335), at the spec root like the meta-table. The parquet carries
-    # every authored cell verbatim, so the generic writer is the whole of the reverse.
-    model_organisms_parquet = parquet_dir / MODEL_ORGANISMS_PARQUET
-    if model_organisms_parquet.is_file():
-        _write_table_csv(
-            pl.read_parquet(model_organisms_parquet), ModelOrganismRow, output_dir / MODEL_ORGANISMS_CSV
-        )
+    for table in AUTHORED_NON_KIND_TABLES:
+        authored_parquet = parquet_dir / table.parquets[0]
+        if authored_parquet.is_file():
+            _write_table_csv(pl.read_parquet(authored_parquet), table.model, output_dir / table.csv)
 
     return output_dir
 

@@ -22,9 +22,7 @@ from just_dna_compiler.compiler.tables import (
     _PROVENANCE_FILE,
     _TABLE_DUPE_KEYS,
     _TABLE_KIND_CSVS,
-    META_CSV,
-    MODEL_ORGANISMS_CSV,
-    OVERRIDES_CSV,
+    AUTHORED_NON_KIND_TABLES,
     study_coordinate_key,
 )
 
@@ -514,15 +512,12 @@ def _validate_table_kind(
 _KNOWN_SPEC_FILES: frozenset[str] = frozenset(
     {"module_spec.yaml", "variants.csv", "studies.csv", _PROVENANCE_FILE, VERIFICATION_JSON}
     | set(_TABLE_KIND_CSVS)
-    # The overlay joins by its ONE legal name and deliberately not through `sidecar_spellings`: it is
-    # authored, so it has one place (the spec root) like `variants.csv`, and being in the authored set
-    # is what makes a stray `derived/overrides.csv` reported as a misplaced table rather than
-    # tolerated — the rows in it would otherwise be read from nowhere.
-    | {OVERRIDES_CSV}
-    # The meta-table (0.8) is authored and has one legal name and place, the overlay's terms.
-    | {META_CSV}
-    # The model-organism table (0.8, RM335), on the same terms.
-    | {MODEL_ORGANISMS_CSV}
+    # The authored tables that are not table kinds (RM357) join by their ONE legal name each and
+    # deliberately not through `sidecar_spellings`: authored, so one place (the spec root) like
+    # `variants.csv`, and being in the authored set is what makes a stray `derived/overrides.csv`
+    # reported as a misplaced table rather than tolerated — the rows in it would otherwise be read
+    # from nowhere.
+    | {table.csv for table in AUTHORED_NON_KIND_TABLES}
     # Every accepted spelling, not just the one the registries name — a sidecar the compiler happily
     # reads under an alias must not also be reported as a near-miss stray file in the same run (RM51).
     | {name for csv, _, _ in _FACT_TABLES for name in sidecar_spellings(csv)}

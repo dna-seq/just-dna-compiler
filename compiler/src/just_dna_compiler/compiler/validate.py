@@ -17,7 +17,6 @@ from just_dna_format.overrides import (
     VINDICATING_OVERLAY_TABLES,
     OverrideRow,
     apply_overrides,
-    overlay_coherence_errors,
     update_targets,
 )
 from just_dna_format.resolution import ResolutionRow
@@ -49,7 +48,7 @@ from just_dna_compiler.compiler.fact_checks import (
     _cross_check_gene_validity,
     _cross_check_literature,
 )
-from just_dna_compiler.compiler.load import _load_csv_rows, _load_yaml, load_csv_rows
+from just_dna_compiler.compiler.load import _load_csv_rows, _load_yaml, load_authored_table
 from just_dna_compiler.compiler.manifest import (
     _check_declared_license_agrees,
     _check_license_gate,
@@ -59,8 +58,7 @@ from just_dna_compiler.compiler.manifest import (
     build_disagreement_error,
     module_stats,
 )
-from just_dna_compiler.compiler.meta import build_meta, load_meta, member_tables
-from just_dna_compiler.compiler.model_organisms import load_model_organisms
+from just_dna_compiler.compiler.meta import build_meta, member_tables
 from just_dna_compiler.compiler.positional import (
     _GENE_BEARING_TABLE_KINDS,
     _POSITIONAL_TABLE_KINDS,
@@ -78,6 +76,7 @@ from just_dna_compiler.compiler.table_checks import (
 from just_dna_compiler.compiler.tables import (
     _FACT_TABLES,
     _TABLE_KINDS,
+    AUTHORED_NON_KIND_TABLES,
     META_CSV,
     MODEL_ORGANISMS_CSV,
     OVERRIDES_CSV,
@@ -117,22 +116,10 @@ def load_overlay(spec_dir: Path) -> tuple[list[OverrideRow], list[str], list[str
     consults a derived table, which is what keeps every finding identical on both laps of a round
     trip.
 
-    A file that is present with no rows is an **error**, the same answer `_TABLE_KINDS` gives: an
-    empty authored table is a header somebody meant to fill.
+    The body is `load_authored_table`'s, the one every authored table outside the table kinds shares
+    (RM357); the overlay's own part is its registry entry's `row_checks`, `overlay_coherence_errors`.
     """
-    path = spec_dir / OVERRIDES_CSV
-    if not path.is_file():
-        return [], [], []
-    rows, errors, warnings = load_csv_rows(path, OverrideRow, OVERRIDES_CSV)
-    if errors:
-        return [], errors, warnings
-    if not rows:
-        return [], [f"{OVERRIDES_CSV} is present but has no rows."], warnings
-    key_errors, key_warnings = _validate_table_kind(OVERRIDES_CSV, OverrideRow, rows)
-    errors.extend(key_errors)
-    warnings.extend(key_warnings)
-    errors.extend(overlay_coherence_errors(rows))
-    return rows, errors, warnings
+    return load_authored_table(spec_dir, OVERRIDES_CSV)
 
 
 def _overlay_targets_missing(overrides: list[OverrideRow], applied: set[str]) -> list[str]:
@@ -378,7 +365,11 @@ def _validate_spec(
     # below asks what the module *asserts*, and since 0.7 that is the derived table plus the author's
     # recorded corrections — so a check reading the raw sidecar would report a finding the artifact
     # does not carry, and `compile` would then disagree with its own pre-flight.
-    overrides, overlay_errors, overlay_warnings = load_overlay(spec_dir)
+    # Every authored table that is not a table kind is loaded here, once, by the one loader (RM357); each
+    # table's findings are reported where its own checks run, the overlay's here and the meta-table's and
+    # model-organism table's further down, once `studies` is in hand.
+    non_kind = {table.csv: load_authored_table(spec_dir, table.csv) for table in AUTHORED_NON_KIND_TABLES}
+    overrides, overlay_errors, overlay_warnings = non_kind[OVERRIDES_CSV]
     all_errors.extend(overlay_errors)
     all_warnings.extend(overlay_warnings)
     overlaid: set[str] = set()
@@ -684,10 +675,12 @@ def _validate_spec(
     # post-drop authored rows — the view `compile_module` hands it too — so a member matches the same
     # rows on both sides and each finding is one sentence (`@parity-by-check`). Every check here is
     # pure computation over authored bytes; none is a mode ladder.
-    meta_rows, meta_errors, meta_warnings = load_meta(spec_dir)
+    meta_rows, meta_errors, meta_warnings = non_kind[META_CSV]
     all_errors.extend(meta_errors)
     all_warnings.extend(meta_warnings)
-    if meta_rows:
+    # A refused meta.csv keeps its rows for the citing view below (RM357), but is not expanded: its own
+    # findings are the refusal, and a duplicate key would read as a precedence conflict.
+    if meta_rows and not meta_errors:
         meta_build = build_meta(
             meta_rows,
             member_tables(_apply_symbolic_drops(variants, would_drop.get("variants.csv", set())), survivors),
@@ -698,19 +691,14 @@ def _validate_spec(
     # The model-organism table (0.8, RM335): parse, the present-but-empty refusal and the duplicate key,
     # nothing else. It names no row of another table and no rule reads it, so it needs no other check.
     # It does not take part in the composition check above (`tables.MODEL_ORGANISMS_CSV` says why).
-    model_organism_rows, model_organism_errors, model_organism_warnings = load_model_organisms(spec_dir)
+    _model_organism_rows, model_organism_errors, model_organism_warnings = non_kind[MODEL_ORGANISMS_CSV]
     all_errors.extend(model_organism_errors)
     all_warnings.extend(model_organism_warnings)
-    citing_kinds: dict[str, list[Any]] = {
-        **loaded_kinds,
-        META_CSV: meta_rows,
-        MODEL_ORGANISMS_CSV: model_organism_rows,
-    }
-    citing_survivors: dict[str, list[Any]] = {
-        **survivors,
-        META_CSV: meta_rows,
-        MODEL_ORGANISMS_CSV: model_organism_rows,
-    }
+    # The citing view: the table kinds plus every authored non-kind table that cites, read off the
+    # registry (RM357), refused or not (`load_authored_table` keeps a refused table's rows for this).
+    citing_non_kind = {table.csv: non_kind[table.csv][0] for table in AUTHORED_NON_KIND_TABLES if table.cites}
+    citing_kinds: dict[str, list[Any]] = {**loaded_kinds, **citing_non_kind}
+    citing_survivors: dict[str, list[Any]] = {**survivors, **citing_non_kind}
 
     # RM137, and this is the point the loop above deferred to: `studies` and the citing tables are both
     # in scope now, so "could an artifact of this module carry that row" is answerable. Split here in

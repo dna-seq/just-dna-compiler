@@ -69,7 +69,7 @@ from just_dna_compiler.compiler.fact_checks import (
     _cross_check_literature,
     split_cited_literature,
 )
-from just_dna_compiler.compiler.load import _load_csv_rows, _load_yaml, content_signature
+from just_dna_compiler.compiler.load import _load_csv_rows, _load_yaml, content_signature, load_authored_table
 from just_dna_compiler.compiler.manifest import (
     UNCLOSED_PHRASE,
     _build_manifest,
@@ -101,13 +101,11 @@ from just_dna_compiler.compiler.manifest import (
 )
 from just_dna_compiler.compiler.meta import (
     build_meta,
-    load_meta,
     member_tables,
     meta_frame,
     meta_resolved_frame,
     meta_scale_errors,
 )
-from just_dna_compiler.compiler.model_organisms import load_model_organisms
 from just_dna_compiler.compiler.parquets import (
     _build_annotations,
     _build_frequencies,
@@ -122,18 +120,20 @@ from just_dna_compiler.compiler.positional import (
 from just_dna_compiler.compiler.tables import (
     _FACT_TABLES,
     _TABLE_KINDS,
+    AUTHORED_NON_KIND_TABLES,
     BA1_ALLELE_FREQUENCY_THRESHOLD,
     META_CSV,
     META_PARQUET,
     META_RESOLVED_PARQUET,
     MODEL_ORGANISMS_CSV,
     MODEL_ORGANISMS_PARQUET,
+    OVERRIDES_CSV,
     OVERRIDES_PARQUET,
     SNP_CORE_PARQUETS,
     _build_table,
     _locate_sidecar,
 )
-from just_dna_compiler.compiler.validate import _overlay_targets_missing, _validate_spec, load_overlay
+from just_dna_compiler.compiler.validate import _overlay_targets_missing, _validate_spec
 from just_dna_compiler.compiler.variant_checks import (
     _check_build_coordinates,
     _check_contig_ploidy,
@@ -291,26 +291,21 @@ def compile_module(
     # EXPANDED further down, after the positional fill, against `authored_variants`: the post-drop,
     # pre-resolution rows. That is the view `validate_spec` expands against (its survivors are filled
     # too), so a member matches the same rows on both sides and each finding is one sentence.
-    meta_rows, meta_errors, _ = load_meta(spec_dir)
+    # Every authored table that is not a table kind, loaded once by the one loader (RM357) and refused
+    # below in the order the checks always ran: the meta-table, the model-organism table, the overlay.
+    non_kind = {table.csv: load_authored_table(spec_dir, table.csv) for table in AUTHORED_NON_KIND_TABLES}
+    meta_rows, meta_errors, _ = non_kind[META_CSV]
     meta_errors = meta_errors or meta_scale_errors(meta_rows, config.tier_scale)
     if meta_errors:
         return CompilationResult(success=False, errors=meta_errors, warnings=all_warnings)
     authored_variants = variants
     # The model-organism table (0.8, RM335), loaded and refused before `mkdir` on the meta-table's terms
     # (the pre-flight has already refused anything this could). It is written verbatim further down.
-    model_organism_rows, model_organism_errors, model_organism_warnings = load_model_organisms(spec_dir)
+    model_organism_rows, model_organism_errors, model_organism_warnings = non_kind[MODEL_ORGANISMS_CSV]
     # De-duplicated on the message: the pre-flight emitted these over the same bytes.
     all_warnings.extend(w for w in model_organism_warnings if w not in all_warnings)
     if model_organism_errors:
         return CompilationResult(success=False, errors=model_organism_errors, warnings=all_warnings)
-    # The citation view: the table kinds plus the meta and model-organism rows, whose `pmid` is a
-    # citation site (`_CITING_TABLE_KINDS`). Every literature check below reads this rather than
-    # `kind_rows`.
-    citing_rows: dict[str, list[Any]] = {
-        **kind_rows,
-        META_CSV: meta_rows,
-        MODEL_ORGANISMS_CSV: model_organism_rows,
-    }
 
     # The source-independent resolution table (0.5), if authored/produced beside the spec. When
     # present it is the *preferred* resolution path: the compiler consumes already-resolved facts and
@@ -319,13 +314,20 @@ def compile_module(
     # The authored overlay (RM124), loaded before the first derived table it lies on. `validate_spec`
     # above already reported every finding it has — this pass re-loads its own copy, the way it
     # re-loads `variants.csv`, because the rows themselves are needed to build the artifact.
-    overrides, overlay_errors, overlay_warnings = load_overlay(spec_dir)
+    overrides, overlay_errors, overlay_warnings = non_kind[OVERRIDES_CSV]
     if overlay_errors:
         return CompilationResult(success=False, errors=overlay_errors, warnings=all_warnings)
     # De-duplicated on the message like every other check that runs on both sides: the pre-flight
     # already emitted these over the same bytes. Extended rather than discarded so a finding this
     # loader gains later cannot go missing from a compile that never runs `validate` separately.
     all_warnings.extend(w for w in overlay_warnings if w not in all_warnings)
+    # The citation view: the table kinds plus every authored non-kind table that cites, read off the
+    # registry (RM357), as `validate_spec` builds it. Every literature check below reads this rather than
+    # `kind_rows`.
+    citing_rows: dict[str, list[Any]] = {
+        **kind_rows,
+        **{table.csv: non_kind[table.csv][0] for table in AUTHORED_NON_KIND_TABLES if table.cites},
+    }
     overlaid: set[str] = set()
     #: RM137, the compile's half of the same stash: unmatched `update` targets for the two tables a
     #: reverse rebuilds from something narrower, split below once `studies` and the citing tables are
