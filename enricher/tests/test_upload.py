@@ -1206,3 +1206,20 @@ def test_a_declaration_with_no_legible_hash_is_not_compared(tmp_path: Path) -> N
     api, remote = _remote(tmp_path, published)
     _upload(out, api, remote)
     assert len(api.upload_folder.call_args_list) == 2
+
+
+def test_a_declared_file_edited_after_the_compile_refuses(tmp_path: Path) -> None:
+    """The guard compares manifests, so the manifest has to be true of the bytes sent: a log appended
+    to after the compile (a hand edit, an override recorded into the artifact directory) would arrive
+    under a manifest stating its old sha256, and a republish of the same version would replace the
+    published log with the guard comparing two identical manifests."""
+    out = _compile_with_everything(tmp_path, version=_AUTHORED_VERSION)
+    published = _published_as(out)
+    with (out / "logs" / "authoring.log").open("a", encoding="utf-8") as handle:
+        handle.write("an override, after the compile\n")
+    with pytest.raises(FileNotFoundError, match="logs/authoring.log"):
+        plan_upload(out, _LOGS_EXAMPLE)
+    api, remote = _remote(tmp_path, published)
+    with pytest.raises(FileNotFoundError, match="Re-compile"):
+        _upload(out, api, remote)
+    api.upload_folder.assert_not_called()

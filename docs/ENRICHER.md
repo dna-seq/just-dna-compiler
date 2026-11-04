@@ -2444,7 +2444,10 @@ because the table carrying them was dropped at upload.
     skipped with the same warning a log gets; a declared optional file absent from disk is skipped
     quietly;
   - when the manifest is absent, unparseable or has no `artifact.files` list, the plan falls back to
-    `_ALLOW_PATTERNS` on disk, as before: an unknown withholds.
+    `_ALLOW_PATTERNS` on disk, as before: an unknown withholds;
+  - each declared file sent must hash to the sha256 the manifest states, or the plan refuses and asks
+    for a recompile. The guard below compares manifests, so a log edited after the compile would
+    otherwise arrive under a manifest stating its old hash and pass the guard unchanged.
 
   **Every name handed to the hub is made literal by one helper** (`_literal_patterns`): the module
   publisher's `allow_patterns`, both of the snapshot publisher's (where `data/chr[1].parquet` unescaped

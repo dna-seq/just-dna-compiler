@@ -48,9 +48,10 @@ the manifest declares in the module directory: the parquets `artifact.files` att
 readme, `provenance.json` (named in `manifest.provenance` and never uploaded until now) and every log. A
 file on disk that the manifest does not declare is no longer sent, so a parquet left by an earlier compile,
 or a logo the manifest does not name, stays behind. A declared name that leaves the module directory is
-skipped with a warning, as RM347 did for logs. When the manifest is absent, unparseable or has no
-`artifact.files` list, the publisher falls back to its old allowlist, as before. The guard on
-`data/<name>/v<version>/` now compares every declared file's sha256 as well as `artifact.digest`, so
+skipped with a warning, as RM347 did for logs. A declared file whose bytes no longer match the sha256
+the manifest states (edited after the compile) refuses the publish and asks for a recompile. When the
+manifest is absent, unparseable or has no `artifact.files` list, the publisher falls back to its old
+allowlist, as before. The guard on `data/<name>/v<version>/` now compares every declared file's sha256 as well as `artifact.digest`, so
 republishing a version whose logs, provenance, logo or readme changed is refused without `--force`; the
 `PublishCollisionError` message names the files that differ. Every name passed to the hub is now
 glob-escaped by one helper: the snapshot publisher's file list (a `data/chr[1].parquet` selected

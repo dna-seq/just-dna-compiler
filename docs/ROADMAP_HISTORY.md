@@ -269,7 +269,9 @@ out, since they describe files beside the spec. `plan_upload` sends `manifest.js
 the manifest does not name, now stays behind (the old allowlist sent both, and a stale parquet on the flat path
 reads to discovery as part of the module). RM347's path guard, renamed `_declared_refusal_reason`, reads every
 declared name, so a hand-edited `provenance.file` of `../x` is skipped with a warning; an attested parquet
-refused or absent still raises rule 1, and an optional one absent is skipped quietly. With no readable manifest
+refused or absent still raises rule 1, and an optional one absent is skipped quietly. A declared file whose
+bytes on disk no longer hash to the stated sha256 refuses the plan (found in review: the guard compares
+manifests, so a log appended to after the compile would otherwise pass it). With no readable manifest
 or no `artifact.files` list the plan falls back to `_ALLOW_PATTERNS` on disk, as before. `_literal_patterns` is
 the one escaping helper, applied to the module publisher's `allow_patterns`, both of the snapshot publisher's,
 the declared retirement's `delete_patterns` (`LayoutShift.retires` is one name, never a glob) and, beyond the

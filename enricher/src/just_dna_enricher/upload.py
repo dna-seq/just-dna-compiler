@@ -31,6 +31,7 @@ from pathlib import Path, PurePosixPath
 
 from just_dna_compiler.compiler import ARTIFACT_PARQUETS, LEAD_PARQUETS
 from just_dna_format.identity import is_valid_version
+from just_dna_format.integrity import sha256_file
 from just_dna_format.manifest import LOGO_EXTENSIONS, README_CANDIDATES
 from pydantic import BaseModel, Field
 
@@ -519,8 +520,11 @@ def plan_upload(
     `manifest.artifact.files` is legible, the plan is `manifest.json` plus every file the manifest
     names in the module directory — the attested parquets, the logo, the readme, `provenance.json` and
     each log — and nothing else: a parquet an earlier compile left behind, or a logo the manifest does
-    not name, would arrive unattested, and on the flat path a stale parquet reads to discovery as part
-    of the module. A declared optional file that leaves the module directory is skipped with a warning
+    not name, would arrive unattested, and a stale parquet this publish put on the flat path would read
+    to discovery as part of the module. (One already on the remote stays; a publish deletes only what
+    it declares.) Each declared file sent must still hash to the sha256 the manifest states, or the
+    plan refuses: the manifest is the guard's comparator, so it has to be true of the bytes. A
+    declared optional file that leaves the module directory is skipped with a warning
     naming the reason; one absent from disk is skipped quietly, since every optional file is optional
     (`verify` skips an absent log or logo the same way). **When the manifest cannot say** — absent,
     unparseable, or with no `artifact.files` list — the plan falls back to `_ALLOW_PATTERNS` found on
@@ -568,6 +572,18 @@ def plan_upload(
             reason,
         )
     files.extend(f for f in sendable if f not in files)
+    # The bytes sent are the bytes declared: a file edited after the compile would arrive under a
+    # manifest stating a different sha256, and the versioned-path guard — which compares the two
+    # manifests — would wave it through (RM353). A declaration with no hash is not checked.
+    hashes = _declared_hashes(document)
+    moved = [f for f in files if f in hashes and sha256_file(module_dir / f) != hashes[f]]
+    if moved:
+        raise FileNotFoundError(
+            f"{name}: {moved} on disk {'is' if len(moved) == 1 else 'are'} not the bytes "
+            f"{_MANIFEST_FILENAME} declares (the sha256 differs), so the published manifest would "
+            f"describe files the repository does not hold. Re-compile {module_dir} so the manifest "
+            f"states what is there."
+        )
     if "weights.parquet" in files:
         half = [f for f in _EXPECTED_WITH_WEIGHTS if f not in files]
         if half:
@@ -673,9 +689,11 @@ def _versioned_conflict(api, plan: "UploadPlan", local: dict | None) -> str | No
             f"what happened, this refusal is still protecting the bytes the published version was cut "
             f"from"
         )
-    here, there = _declared_hashes(local), _declared_hashes(published)
+    local_declared, remote_declared = _declared_files(local), _declared_files(published)
+    here = {n: h for n, h in local_declared if h is not None}
+    there = {n: h for n, h in remote_declared if h is not None}
     # A name declared with no legible hash on either side is an unknown, and an unknown cannot disagree.
-    unhashed = {n for n, h in [*_declared_files(local), *_declared_files(published)] if h is None}
+    unhashed = {n for n, h in [*local_declared, *remote_declared] if h is None}
     differing = [
         f"{n} ({'changed' if n in here and n in there else 'declared only here' if n in here else 'declared only there'})"
         for n in sorted((here.keys() | there.keys()) - unhashed)
