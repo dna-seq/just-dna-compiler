@@ -72,6 +72,10 @@ fact tables were never checked at all.
 10. `enricher.enrich.subjects.SUBJECT_TABLES` — a hand list; left as it is (its order is precedence and each table has
     its own subject shape) and pinned equal to `MODULE_LOCUS_TABLES` plus `studies.csv`.
 
+11. `positional._GENE_BEARING_TABLE_KINDS` / `_POSITIONAL_TABLE_KINDS` — the same predicates stated a second time →
+    read off the two rosters, so the predicate is written once.
+12. `meta.member_variant_rows` — the study check's meta arm, now unreachable → removed, with the test pinning its reach.
+
 **Checked and held:** `_cross_check_clin_sig_concordance` reads `variants.csv` because its pass
 (`clinical.compare_clin_sig`) compares only `variants.csv`'s `clin_sig`; `_check_ba1_lint` (a `variants.csv` claim);
 `pgx._module_genes` (whether the star-allele tables are present, not the module's genes); `litvar.module_loci` and
@@ -82,7 +86,11 @@ fact tables were never checked at all.
 `MULTI_SEP`, positions, identities, placed keys, and `genes_unknown`/`loci_unknown`, which withhold when a roster table is
 present and loaded no row). A table off the rosters is ignored, so `model_organisms.csv`'s gene stays out by
 construction. Each check keeps its join (gene, `chrom:start:ref`, `variant_key`/`rsid`) and every pinned sentence;
-the study warning's tail is now read off the roster.
+the study warning's tail is now read off the roster. A row with no `start` contributes no position (a
+`19:None:None` key would have matched every unplaced row on 19). `validate_spec` asks with two views of the one function:
+the rows a compile keeps (symbolic drops applied) for the gene orphans and the overlay's reachability, so each sentence
+is the compile's, and every authored row for the study check, which counts a dropped row as carried (the lead,
+2026-11-04) and runs in that pass only.
 
 **The guard.** Equalities: the rosters against the registry walk; the enricher's gene tables against
 `MODULE_GENE_TABLES`; `SUBJECT_TABLES` less `studies.csv` against `MODULE_LOCUS_TABLES`; meta's `LOCUS_TABLES` within the

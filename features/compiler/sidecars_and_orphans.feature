@@ -42,11 +42,12 @@ Feature: Derived sidecars, their arithmetic, and their orphans
     And a <sidecar> row about that <subject>
     When the module is compiled
     Then no orphan is reported
-    And manifest.stats.genes and the enricher's gene scope give the same gene set
+    And the enricher's gene scope asks about exactly the genes manifest.stats.genes publishes
     # RM362. The orphan checks read variants.csv alone and skipped a module without one, while
     # stats.genes and the enricher read every gene-bearing table: a diplotype-scored APOE module was
     # told its own gene_metrics.csv row for APOE named a gene it never mentions. model_organisms.csv is
-    # not on the roster, because its gene is the one a mouse experiment altered.
+    # not on the roster, because its gene is the one a mouse experiment altered. A composite cell
+    # (`IFNL3;IFNL4`) is published whole and asked about by its parts; a row naming either matches.
     Examples:
       | subject | table              | sidecar             |
       | gene    | diplotypes.csv     | gene_metrics.csv    |

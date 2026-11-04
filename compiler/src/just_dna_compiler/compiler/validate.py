@@ -642,6 +642,21 @@ def _validate_spec(
     all_warnings.extend(
         _check_positional_joinability(survivors, membership_table, declared_build, fill_applied=fill_applied)
     )
+    # What the module carries, asked once (RM362): its genes, loci and identities over `variants.csv` and
+    # every table kind on `subjects`' rosters, the set `stats.genes` publishes and the enricher's scopes
+    # ask about. After the positional fill, which is in place, so a placed haplotype row carries its
+    # position. A roster table present and loaded no row withholds (its load errors are the report).
+    # Two views of one function, never two rosters: `kept` is the rows a compile keeps (the symbolic
+    # drops applied), the view `compile_module` asks with, so the gene orphans and the overlay's
+    # reachability say the same sentence on both sides; `subjects` keeps every authored row, because the
+    # study check counts a dropped row as carried (the lead, 2026-11-04) and runs in this pass only.
+    unreadable = {"variants.csv"} if has_variants and not variants else set()
+    unreadable |= {csv_name for csv_name, rows in loaded_kinds.items() if not rows}
+    subjects = module_subjects({"variants.csv": variants, **loaded_kinds}, unreadable=unreadable)
+    kept = module_subjects(
+        {"variants.csv": _apply_symbolic_drops(variants, would_drop.get("variants.csv", set())), **survivors},
+        unreadable=unreadable,
+    )
 
     # Composition: a module must carry at least one recognized table kind.
     if not has_variants and not kind_row_counts:
@@ -721,7 +736,7 @@ def _validate_spec(
             deferred_unmatched,
             studies,
             citing_kinds,
-            variants,
+            kept,
             [row for rows in membership_table.values() for row in rows],
         )
     )
@@ -905,23 +920,15 @@ def _validate_spec(
     # RM326's class check, outside `if variants:` for the same reason: a citation-only `studies.csv`
     # (RM47) beside a table kind and no `variants.csv` is legal, and its classes need the same check.
     all_warnings.extend(_check_phenotype_classes(studies))
-    # What the module carries, asked once (RM362): its genes, loci and identities over `variants.csv`
-    # and every table kind on `subjects`' rosters, the set `stats.genes` publishes and the enricher's
-    # scopes ask about. Over the authored rows, the view `variants` is read in, after the positional
-    # fill (in place, so a placed haplotype row carries its position): a symbolic-allele row the compile
-    # drops stays carried, in `pharm_variants.csv` as in `variants.csv`. A roster table present and
-    # loaded no row withholds the orphan checks (its load errors are the report).
-    unreadable = {"variants.csv"} if has_variants and not variants else set()
-    unreadable |= {csv_name for csv_name, rows in loaded_kinds.items() if not rows}
-    subjects = module_subjects({"variants.csv": variants, **loaded_kinds}, unreadable=unreadable)
+    # The two gene-keyed orphan checks, over `kept` (above): the compile's view, so one sentence each.
     for table, rows in gene_keyed_rows:
         check = _cross_check_gene_metrics if table == "gene_metrics.csv" else _cross_check_gene_validity
-        all_warnings.extend(check(rows, subjects))
+        all_warnings.extend(check(rows, kept))
     # The study-orphan check, outside `if variants:` (the lead, 2026-11-04): a diplotype-only or
     # PGx-only module cites variants as much as a SNP module does, and the gate skipped it outright
     # (`@roster-is-as-wide-as-the-tables-it-reads`). A study's variant is carried when a row on the
-    # locus roster carries it; a meta member reaches only rows already on it (RM28's widening, now a
-    # subset the roster covers by construction).
+    # locus roster carries it, a symbolic-allele row the compile drops included; a meta member reaches
+    # only rows already on it (RM28's widening, now a subset the roster covers by construction).
     if studies:
         _, study_warnings = _cross_validate_studies(studies, subjects)
         all_warnings.extend(study_warnings)

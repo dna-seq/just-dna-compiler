@@ -27,6 +27,7 @@ from just_dna_compiler.compiler.subjects import (
     MODULE_LOCUS_TABLES,
     module_subjects,
 )
+from just_dna_compiler.compiler.tables import _TABLE_KINDS
 from just_dna_format.meta import LOCUS_TABLES
 from just_dna_format.model_organisms import ModelOrganismRow
 
@@ -243,8 +244,15 @@ def test_a_study_on_a_heteroplasmy_locus_is_not_an_orphan(tmp_path: Path) -> Non
 def test_the_rosters_are_derived_from_the_table_registry() -> None:
     """Equalities over the walked registry, never a list: a table kind gaining `gene` or `chrom`+`start`
     joins the module's subjects by existing."""
-    assert set(MODULE_GENE_TABLES) == {"variants.csv", *(name for name, _ in _GENE_BEARING_TABLE_KINDS)}
-    assert set(MODULE_LOCUS_TABLES) == {"variants.csv", *(name for name, _ in _POSITIONAL_TABLE_KINDS)}
+    gene_kinds = {name for name, _parquet, model in _TABLE_KINDS if "gene" in model.model_fields}
+    locus_kinds = {
+        name for name, _parquet, model in _TABLE_KINDS if {"chrom", "start"} <= set(model.model_fields)
+    }
+    assert set(MODULE_GENE_TABLES) == {"variants.csv", *gene_kinds}
+    assert set(MODULE_LOCUS_TABLES) == {"variants.csv", *locus_kinds}
+    # The positional module's two rosters are these, read off them rather than re-derived.
+    assert {name for name, _ in _GENE_BEARING_TABLE_KINDS} == gene_kinds
+    assert {name for name, _ in _POSITIONAL_TABLE_KINDS} == locus_kinds
     # `model_organisms.csv` carries `gene`, and its gene is the one a mouse experiment altered.
     assert "model_organisms.csv" not in MODULE_GENE_TABLES
 
@@ -263,6 +271,18 @@ def test_the_module_subjects_ignore_a_table_off_the_roster() -> None:
     subjects = module_subjects({"model_organisms.csv": [type("R", (), {"gene": "Apoe"})()]})
     assert subjects.genes == ()
     assert not subjects.names_gene("Apoe")
+
+
+def test_a_row_with_no_start_sits_nowhere() -> None:
+    """An unplaced locus row is not a position: `19:None:None` would match every unplaced row on 19."""
+    row = type(
+        "R", (), {"chrom": "19", "start": None, "ref": None, "variant_key": "rs429358", "rsid": "rs429358"}
+    )()
+    subjects = module_subjects({"haplotypes.csv": [row]})
+    assert subjects.positions == frozenset()
+    assert subjects.placed == frozenset()
+    assert not subjects.sits_at("19", None, None)
+    assert subjects.carries("rs429358")
 
 
 @pytest.mark.parametrize("example", sorted(p.parent.name for p in _EXAMPLES.glob("*/module_spec.yaml")))

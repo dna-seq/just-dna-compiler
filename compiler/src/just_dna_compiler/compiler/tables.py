@@ -228,9 +228,9 @@ def study_coordinate_key(chrom: str | None, start: int | None, ref: str | None) 
     One expression for the two places that ask the question — `_cross_validate_studies`' orphan check
     and the study facts `weights.parquet` derives (0.8) — so the two match a study to a variant by the
     same rule. The other half is plain `rsid` equality. They match against different SETS, by design:
-    the orphan check also counts `haplotypes.csv`'s defining variants, `pharm_variants.csv`'s rows and
-    the rows a `meta.csv` member reached (RM28), while `weights.parquet` has a row only for a
-    `variants.csv` variant. So a study on an ε-defining SNP of a diplotype-scored APOE is not an orphan
+    the orphan check counts every row of the module's locus roster (`subjects.module_subjects`, RM362:
+    `variants.csv` and every positional table kind, which hold every row a `meta.csv` member reaches),
+    while `weights.parquet` has a row only for a `variants.csv` variant. So a study on an ε-defining SNP of a diplotype-scored APOE is not an orphan
     and feeds no `weights.parquet` row.
     """
     return derive_variant_key(None, chrom, start, ref) if chrom is not None else None

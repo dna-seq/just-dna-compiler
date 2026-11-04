@@ -9,6 +9,7 @@ from just_dna_format.findings import CodedWarning
 from just_dna_format.resolution import ResolutionRow
 from pydantic import BaseModel
 
+from just_dna_compiler.compiler.subjects import MODULE_GENE_TABLES, MODULE_LOCUS_TABLES
 from just_dna_compiler.compiler.table_checks import _examples
 from just_dna_compiler.compiler.tables import _TABLE_KINDS
 from just_dna_compiler.resolution import resolve_positional_rows
@@ -32,10 +33,11 @@ from just_dna_compiler.resolution_findings import skipped_cross_build
 #: symbol for themselves to reach our HTT row. The columns that would close it wait for 0.7+, gated on
 #: a real repeat-caller sample; what is corrected here is the claim, because a claim the spec
 #: contradicts is a defect in its own right whatever release fixes the underlying gap.
+#:
+#: The predicate lives once, on `subjects.MODULE_LOCUS_TABLES` (RM362), the module's locus roster every
+#: orphan check and the enricher's subject collection read; this is that roster's table kinds with models.
 _POSITIONAL_TABLE_KINDS: tuple[tuple[str, type[BaseModel]], ...] = tuple(
-    (csv_name, model)
-    for csv_name, _parquet, model in _TABLE_KINDS
-    if {"chrom", "start"} <= set(model.model_fields)
+    (csv_name, model) for csv_name, _parquet, model in _TABLE_KINDS if csv_name in MODULE_LOCUS_TABLES
 )
 
 
@@ -54,8 +56,9 @@ _VRS_BEARING_TABLES: frozenset[str] = frozenset(
 #: reason: a hand-kept list goes stale the moment a kind is added, and this one feeds a **published
 #: manifest number** (S57). Seven of the eight non-variant kinds make `gene` *required*, so a module
 #: built on any of them knows its genes exactly while `manifest.stats.genes` used to publish `[]`.
+#: The predicate lives once, on `subjects.MODULE_GENE_TABLES` (RM362).
 _GENE_BEARING_TABLE_KINDS: tuple[tuple[str, type[BaseModel]], ...] = tuple(
-    (csv_name, model) for csv_name, _parquet, model in _TABLE_KINDS if "gene" in model.model_fields
+    (csv_name, model) for csv_name, _parquet, model in _TABLE_KINDS if csv_name in MODULE_GENE_TABLES
 )
 
 

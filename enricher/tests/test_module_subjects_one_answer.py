@@ -52,6 +52,13 @@ def test_the_gene_scope_reads_the_compilers_gene_roster() -> None:
     assert set(_id_bearing_tables("gene")) - _NOT_THE_MODULES_GENES == set(MODULE_GENE_TABLES)
 
 
+def test_each_gene_table_has_its_own_model() -> None:
+    """`module_genes` files a row under its table by the row's model, so two tables sharing a model would
+    file one table's genes under the other's name."""
+    models = list(_id_bearing_tables("gene").values())
+    assert len(set(models)) == len(models)
+
+
 def test_the_resolution_subjects_are_the_compilers_locus_roster() -> None:
     """`collect_subjects` asks about the module's loci plus a study's LD proxy, and nothing else: its
     tables less `studies.csv` are `MODULE_LOCUS_TABLES`. A positional kind added to the compiler without

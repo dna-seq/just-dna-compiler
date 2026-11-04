@@ -36,7 +36,7 @@ from just_dna_format.resolution import ResolutionRow
 from just_dna_format.spec import StudyRow, VariantRow, extract_pmids
 
 from just_dna_compiler.compiler.load import table_citations
-from just_dna_compiler.compiler.subjects import ModuleSubjects, module_subjects
+from just_dna_compiler.compiler.subjects import ModuleSubjects
 from just_dna_compiler.compiler.tables import BA1_ALLELE_FREQUENCY_THRESHOLD
 
 # Relative tolerance for the float redundancy checks. These are published numbers rendered through a
@@ -610,7 +610,7 @@ def _classify_deferred_overlay_updates(
     deferred: dict[str, list[tuple[tuple[str, str], bool]]],
     studies: list[StudyRow],
     kind_rows: dict[str, list[Any]],
-    variants: list[VariantRow],
+    subjects: ModuleSubjects,
     resolution_rows: list[ResolutionRow],
 ) -> list[str]:
     """Split each deferred unmatched set by whether the artifact could carry the row (RM137).
@@ -632,9 +632,7 @@ def _classify_deferred_overlay_updates(
         if table == "literature.csv":
             survives = literature_target_survives(studies, kind_rows)
         elif table == "resolution.csv":
-            survives = resolution_target_survives(
-                module_subjects({"variants.csv": variants, **kind_rows}), resolution_rows
-            )
+            survives = resolution_target_survives(subjects, resolution_rows)
         else:  # pragma: no cover - only the deferred tables reach here
             survives = None
         findings.extend(classify_update_targets(table, targets, survives))

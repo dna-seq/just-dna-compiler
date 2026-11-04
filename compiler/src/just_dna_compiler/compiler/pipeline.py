@@ -1033,7 +1033,7 @@ def compile_module(
     all_warnings.extend(
         w
         for w in _classify_deferred_overlay_updates(
-            compile_deferred, studies, citing_rows, variants, resolution_rows
+            compile_deferred, studies, citing_rows, subjects, resolution_rows
         )
         if w not in all_warnings
     )
