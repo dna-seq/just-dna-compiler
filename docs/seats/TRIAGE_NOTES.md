@@ -39,6 +39,10 @@ three scripts are the kit's, two of them copied into `.claude/` for CI.
 **First pass**: S125–S127 answered and archived (`5e2cc18`), after committing the items alone
 (`1ee5925`). Filed RM337–RM340.
 
+**Sign every commit `Seat: just-dna-compiler/triage`** (a trailer line above `Co-Authored-By`). The
+`inbox-commits` watcher is the kit's `watch-remote.sh --path`, which drops a commit carrying the seat's own
+`Seat:` line; without it, triage's own S129 commits woke triage twice (2026-11-04).
+
 ## Routes with other repos' triage seats
 
 - **just-dna-registry/triage** (agreed 2026-11-04): a registry consumer item whose fix belongs to format,
