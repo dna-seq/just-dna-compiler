@@ -1732,3 +1732,36 @@ and STRchive's vocabulary is open upstream (`combobox: true`), so a closed `froz
 priced against a source that adds members. The alternatives to weigh first are a derived sidecar
 (half price) or the manifest's provenance block, and whether RM170's CIViC answer already fixed the
 shape. Decide on the `0.8` branch.
+
+## RM337 — a file under `logs/` that is not `*.log` is dropped from the compile, and nothing says so
+
+**0.9, placed 2026-11-04 by the pm seat.** The maintainer scoped 0.8 on 2026-11-03 to the work already built, the fixes already chosen and longevitymap v2. This was re-sized to a minor after that, so the rule puts it in 0.9. RM338's patch half ships without it: most non-`.log` files then ship, and only a file that fails the content check stays behind unnamed until this item lands.
+
+**Severity** medium · **Status** open — **a minor, release undecided** (corrected 2026-11-04 from "a
+patch") · **Owner** compiler (`_collect_logs`) · **Motivating case** S125 in CONSUMER_SUGGESTIONS_HISTORY.md
+(just-module-creator `F116`, 2026-10-05) · *related* RM338, RM147, RM308
+
+**Reproduced 2026-11-03** on a copy of `reference_examples/apoe_epsilon` with six files under `logs/`
+(`authoring.log`, `trace/session-a.jsonl`, `run.json`, `notes.md`, `notes.txt`, `fig.png`):
+`compile_module` succeeds, no warning mentions a log, and both `manifest.logs` and the output's `logs/`
+hold `logs/authoring.log` alone. Discovery globs `*.log` at the top level and `logs/**/*.log` below it,
+and skips everything else under `logs/` without a word. The registry's server-side compile leaves
+discovery to the compiler, so an upload carries the file and the published version does not.
+
+**The patch.** A coded warning, in both modes, naming each file under `logs/` that discovery left behind
+and saying that only `*.log` ships. It changes no verdict and ships nothing new, so it is legal whatever
+RM338 decides; once RM338 widens the set, the warning names whatever is still left out. An explicit
+`log_files` list is unaffected, since it already ships any path it names. The new code owes a
+`features/` scenario.
+
+**Sized wrong at filing; a minor (2026-11-04).** No existing member of `VALID_WARNING_CODES` names this
+finding, and every compile warning must carry one (`compiler/tests/test_warning_codes.py`), so the item
+adds a member. A new member is minor-class: `Compilation.warnings_summary` validates its keys, so a reader
+pinned to an older `just-dna-format` refuses a manifest that carries the new code. RM308 is the shipped
+precedent ("a new warning code, so minor-class"). A `logger` line would be patch-legal and is not taken:
+it is not the warnings channel, so the registry's server-side compile, where S125's file goes missing,
+would still say nothing to the uploader. Borrowing a code that names another finding is refused too
+(`@warning-code-names-the-finding`). Which minor takes it is the pm's to place. RM338's shipping half
+stays a patch; the warning half of its decision is this item.
+
+**Residuals** none yet.

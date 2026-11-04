@@ -5969,7 +5969,7 @@ location), and 0.27.1 changes it to `usecwd=True`. Our SDK imports no dotenv at 
 ## S125 — `logs/` ships only `*.log`, and a `.jsonl`, `.json`, `.md`, `.txt` or image beside it is dropped without a word
 
 **Status — accepted, filed as two items: the silent drop as
-[RM337](ROADMAP.md#rm337--a-file-under-logs-that-is-not-log-is-dropped-from-the-compile-and-nothing-says-so)
+[RM337](ROADMAP_0_9.md#rm337--a-file-under-logs-that-is-not-log-is-dropped-from-the-compile-and-nothing-says-so)
 (a patch), and which files ship as
 [RM338](ROADMAP.md#rm338--which-files-under-logs-ship-log-only-a-text-allowlist-content-checked-text-or-images-too)
 (undecided); the addendum's contradiction is fixed in `docs/TABLES.md`.** Reproduced on 2026-11-03 with
