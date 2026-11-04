@@ -45,6 +45,6 @@ three scripts are the kit's, two of them copied into `.claude/` for CI.
 |---|---|
 | RM339 (S126, snapshot cache trusted when partial) | `done`: `74e0e87`, unpushed when built (the pm pushed it in `e2fed68`). A pull writes `pull-record.json` before its first download |
 | RM337 (S125, silent drop under `logs/`) | handed on: it needs a new warning code, so it is a minor (`172a215`, sized wrong at filing). The pm placed it, now in `ROADMAP_0_8.md` (`f3377a6`) |
-| RM340 (S127, VRS warning names `verification.json`) | `done`: `280813b`, unpushed |
+| RM340 (S127, VRS warning names `verification.json`) | `done`: `280813b`, on `origin/main` (the pm's fast-forward pushes carried it) |
 | RM338 (S125, which files under `logs/` ship) | the lead's: taken into its plan and put to the maintainer, 2026-11-03 |
 | push of `main` | the maintainer's: auto mode denies a seat's granted push (kit #238), so the maintainer pushes until it lands; the lead asked triage not to push its commits |
