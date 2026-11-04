@@ -61,6 +61,34 @@ STAR_ALLELE_PATTERN: re.Pattern[str] = re.compile(r"^\*[0-9A-Za-z][0-9A-Za-z.\-+
 # had no rule at all, and a negligible one — neither could ever have named a real haplotype.
 HAPLOTYPE_NAME_PATTERN: re.Pattern[str] = re.compile(r"^\S+$")
 
+# ── 0.8: RM334, where the name IS a grammar. ──
+#
+# The permissive rule above is right for a haplotype name in general, and wrong for one family: an HLA
+# allele's name is IPD-IMGT/HLA nomenclature, and its field count is the resolution the name states
+# (`*15:01` is a protein, `*57:01:01` a coding sequence, `*02:01:01:02N` a full-length allele that is
+# not expressed). So where `AlleleFunctionRow.gene` starts with `HLA-`, the allele must be `*`, then
+# two to four colon-separated numeric fields of at least two digits each, then an optional expression
+# suffix from `N`/`L`/`S`/`C`/`A`/`Q` (PROPOSAL_0_8_PT2 §3 item 22). One field (`*15`) states no
+# resolution and is refused; the pre-2010 colon-less spelling (`*1501`) is refused because it reads as
+# one field. No quantifier here nests, so the pattern is linear-time (Principle 1's ReDoS clause).
+# The gene decides, never the shape of the name: a non-HLA allele keeps the rule above whatever it
+# looks like. Whether an allele EXISTS in IPD-IMGT/HLA's list is a separate question, an enricher lane
+# the maintainer put in 0.9.
+HLA_GENE_PREFIX: str = "HLA-"
+HLA_ALLELE_PATTERN: re.Pattern[str] = re.compile(r"\*[0-9]{2,}(?::[0-9]{2,}){1,3}[NLSCAQ]?")
+
+
+def validate_hla_allele(gene: str, allele: str) -> str:
+    """Refuse an HLA allele name outside IPD-IMGT/HLA's grammar (RM334); any other gene passes."""
+    if gene.startswith(HLA_GENE_PREFIX) and not HLA_ALLELE_PATTERN.fullmatch(allele):
+        raise ValueError(
+            f"allele: {gene} is an HLA gene, so its allele must follow IPD-IMGT/HLA nomenclature: `*`, "
+            "then two to four colon-separated numeric fields of at least two digits each, then an "
+            "optional expression suffix (N, L, S, C, A or Q), e.g. *15:01, *57:01:01, *02:01:01:02N; "
+            f"the field count is the resolution the name states, so at least two are needed. Got: {allele!r}"
+        )
+    return allele
+
 
 def validate_haplotype_name(value: str, field_name: str) -> str:
     """One rule for a haplotype name, shared by all three PGx tables so they cannot disagree."""
@@ -218,6 +246,10 @@ class AlleleFunctionRow(AuthoredModel):
     identity. `copy_number`/`sv_type`/`hybrid_orientation` are optional parsed conveniences of the
     *cis* allele-unit — the star-string remains truth.
 
+    Since 0.8 (RM334) this is also where an HLA allele lives, and for an `HLA-` gene the name is
+    checked against IPD-IMGT/HLA's grammar (`validate_hla_allele`); every other gene keeps the
+    permissive haplotype-name rule.
+
     Inherits `AuthoredModel` (reserved-namespace guard)."""
 
     #: What makes two rows the same row (see `HaplotypeRow._KEY_FIELDS`).
@@ -226,7 +258,10 @@ class AlleleFunctionRow(AuthoredModel):
     gene: str = Field(json_schema_extra=since("0.4.0"), description="Gene symbol, e.g. CYP2D6")
     allele: str = Field(
         json_schema_extra=since("0.4.0"),
-        description="Star-allele string, verbatim canonical identity, e.g. *4",
+        description=(
+            "Star-allele string, verbatim canonical identity, e.g. *4. For an HLA- gene, an "
+            "IPD-IMGT/HLA name of two to four fields, e.g. *15:01 or *57:01:01 (0.8)"
+        ),
     )
     activity_value: float | None = Field(
         json_schema_extra=since("0.4.0"),
@@ -276,6 +311,12 @@ class AlleleFunctionRow(AuthoredModel):
     @classmethod
     def _validate_function_status(cls, v: str | None) -> str | None:
         return check_vocab(v, VALID_FUNCTION_STATUS, "function_status")
+
+    @model_validator(mode="after")
+    def _validate_hla_nomenclature(self) -> "AlleleFunctionRow":
+        # Needs `gene` and `allele` together, so it runs after both field validators (RM334).
+        validate_hla_allele(self.gene, self.allele)
+        return self
 
 
 class DiplotypeRow(AuthoredModel):

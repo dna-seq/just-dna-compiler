@@ -93,6 +93,15 @@ truth**; the others exist so a consumer need not re-parse it.
 `suballele` is optional extra precision (Aldy's `Minor`, e.g. `1.001`) and never replaces the core
 star. A consumer keyed on the suballele silently misses every row that carries only the core.
 
+**An HLA allele lives here too, and its name is a grammar (0.8).** HLA-DRB1\*15:01 is a typed allele,
+not a set of defining variants, so it is an `allele_function.csv` row with `gene` `HLA-DRB1` and
+`allele` `*15:01`, never a `haplotypes.csv` definition: a tag SNP is an ancestry-dependent proxy, and
+writing it as a definition would be a false claim. Where `gene` starts with `HLA-`, the name must be
+IPD-IMGT/HLA's: `*`, then two to four colon-separated numeric fields, then an optional expression
+suffix. The field count is the resolution the name states, so `*15` and the old colon-less `*1501`
+are refused rather than guessed at. The symptom of the wrong spelling is a refusal naming the shape,
+never a row that silently joins nothing.
+
 ## diplotypes.csv
 
 **One row is one haplotype pair → one phenotype**, and the pair is canonicalised (`haplotype_a <=

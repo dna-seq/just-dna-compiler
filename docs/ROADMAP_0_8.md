@@ -53,7 +53,7 @@ land wherever RM323 puts per-locus facts. RM322 next, since APOE is the lead loc
 | [RM331](#rm331--a-study-measured-on-an-ld-proxy-cannot-say-so-and-filing-it-under-the-lead-checks-the-proxys-allele-against-the-leads) | `StudyRow` proxy variant + r²; the allele check follows the proxy | full ×2–3 |  |
 | [RM332](#rm332--a-beta-has-no-unit-on-authored-rows-while-gwas_effectscsv-has-carried-one-since-06) | `effect_unit` on authored rows, as `gwas_effects.csv` has | full ×1–2 |  |
 | [RM333](#rm333--the-effector-gene-behind-a-gwas-locus-has-no-source-and-no-column) | an Open Targets lane; effector gene, score, release on a derived table | half, plus a lane | licence unprobed |
-| [RM334](#rm334--an-hla-allele-has-no-table-and-tag-snps-cannot-stand-in-for-one) | an HLA allele table keyed `(gene, allele)` | full (new kind) |  |
+| [RM334](ROADMAP_HISTORY.md#rm334--an-hla-allele-has-no-table-and-tag-snps-cannot-stand-in-for-one) | the IPD-IMGT/HLA name grammar on `allele_function.csv` (the table was cut) | near-zero (a refusal) | ✅ shipped 2026-11-04 |
 | [RM335](#rm335--model-organism-evidence-has-nowhere-to-go-and-a-study-row-naming-the-rsid-claims-the-mouse-study-was-about-the-human-variant) | a model-organism evidence table | full (new kind) |  |
 | [RM336](#rm336--a-doi-written-into-pmid-parses-as-five-or-six-pubmed-ids-and-the-literature-pass-looks-each-one-up) | a DOI-token arm in `validate_pmid_cell` | near-zero (a refusal or a warning code) | reproduced |
 
@@ -415,27 +415,6 @@ Open Targets.
 **licence probed first** (not verified here). Effector gene, score, method and release on a derived table
 (half cost). The C1–C4 / E1–E4 labels are the module's rubric over those inputs, so they are computed
 once the inputs exist, never authored.
-
-## RM334 — an HLA allele has no table, and tag SNPs cannot stand in for one
-
-**Cut 2026-11-04 by the maintainer, after the final measuring run** (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §3): **the new HLA table.** `allele_function.csv` (keyed `(gene, allele)`) holds the 8 v2 alleles, and meta-table rows hold their facts and findings. The nomenclature grammar check applies to HLA genes on `allele_function.csv`.
-
-**Decided 2026-11-04 by the maintainer: grammar now, the list in 0.9.** The format checks the nomenclature's grammar (`gene*field:field` at a stated resolution). Checking that an allele exists in IPD-IMGT/HLA's list is an enricher lane whose licence is unprobed, and it waits for 0.9.
-
-**Severity** low · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format · **Motivating case** longevitymap v2 requirements §2 (R-HLA), §10 · *for* longevitymap v2 · *related* RM331
-
-**Need.** HLA-DRB1\*15:01 and B\*57:01 are v2's most consistent non-APOE signals, and the plan defers
-them to tag SNPs flagged with r².
-
-**Why no existing brick fits.** `HaplotypeRow` is a *definition*: the variants that are on one strand.
-An HLA tag SNP is a probabilistic proxy whose r² depends on ancestry, so writing it as a definition would
-be a false claim. `AlleleFunctionRow` has the nearest key, `(gene, allele)`, but its columns are PGx
-activity and function.
-
-**Shape.** A per-allele carrier table keyed on `(gene, allele)` at a stated field resolution (two-field),
-with `direction`, `trait_efo_id`, `conclusion` and a citation. The consumer joins it against an HLA
-typing call, which is a measurement a SNP VCF does not contain. The tag-SNP fallback reuses RM331's proxy
-shape. Full, a new table kind. Validating the nomenclature (IPD-IMGT/HLA) is an open question.
 
 ## RM335 — model-organism evidence has nowhere to go, and a study row naming the rsID claims the mouse study was about the human variant
 

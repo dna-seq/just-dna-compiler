@@ -35,6 +35,51 @@ up.
 The bugfix round [PROPOSAL_0_8_PT1.md](proposals/PROPOSAL_0_8_PT1.md) decided on 2026-09-29, built on
 the `0.8` branch in the proposal's order. Newest first.
 
+## RM334 — an HLA allele has no table, and tag SNPs cannot stand in for one
+
+**Cut 2026-11-04 by the maintainer, after the final measuring run** (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §3): **the new HLA table.** `allele_function.csv` (keyed `(gene, allele)`) holds the 8 v2 alleles, and meta-table rows hold their facts and findings. The nomenclature grammar check applies to HLA genes on `allele_function.csv`.
+
+**Decided 2026-11-04 by the maintainer: grammar now, the list in 0.9.** The format checks the nomenclature's grammar (`gene*field:field` at a stated resolution). Checking that an allele exists in IPD-IMGT/HLA's list is an enricher lane whose licence is unprobed, and it waits for 0.9.
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** ([PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §5 A4, §3 item 22), taken into 0.8 on 2026-11-03 as a priority · **Owner** format · **Motivating case** longevitymap v2 requirements §2 (R-HLA), §10 · *for* longevitymap v2 · *related* RM331
+
+**What shipped.** No new table, as the maintainer cut it: an HLA allele is an `allele_function.csv`
+row. Where `AlleleFunctionRow.gene` starts with `HLA-`, `allele` must match `pgx.HLA_ALLELE_PATTERN` in
+full: `*`, two to four colon-separated numeric fields of at least two digits each, and an optional
+expression suffix from `N`, `L`, `S`, `C`, `A`, `Q`. The field count is the stated resolution, so a
+one-field name is refused, and so is the colon-less `*1501`. A malformed name is a refusal at the model
+(`validate_hla_allele`), so `validate` and `compile` refuse it alike in both modes, naming the row, the
+shape and an example. Every other gene keeps the permissive haplotype-name rule.
+
+**The published-module scan (2026-11-04), which the refusal was gated on.** The reference examples:
+two `allele_function.csv` files (`cyp2c19_star_alleles`, `cyp2c9_warfarin_grch37`), no `HLA-` row. The
+registry's prod catalogue: 24 modules and 46 versions, read through each version's manifest; one module
+carries `allele_function.csv` (`antonkulaga/fut2_secretor` 1.0.0 and 1.1.0, three `FUT2` rows each,
+downloaded and read), no `HLA-` row. The HLA genes in `big_five_personality_snps` and `pathogenic`
+are `variants.csv` genes, outside the check. The `test` group on prod lists nothing. So the refusal
+breaks no published module.
+
+Not in this item: checking that an allele exists in IPD-IMGT/HLA's list, which the maintainer put in
+0.9 as an enricher lane with an unprobed licence; no `RMn` carries it yet. Tests:
+`schema/tests/test_rm334_hla_grammar.py` (the accepted and refused names, mutation-checked on the field
+count and on the gene test) and `compiler/tests/test_rm334_hla_refusal.py` (validate/compile parity, and
+a well-formed HLA row through compile → reverse → compile).
+
+**Residuals** none
+
+**Need.** HLA-DRB1\*15:01 and B\*57:01 are v2's most consistent non-APOE signals, and the plan defers
+them to tag SNPs flagged with r².
+
+**Why no existing brick fits.** `HaplotypeRow` is a *definition*: the variants that are on one strand.
+An HLA tag SNP is a probabilistic proxy whose r² depends on ancestry, so writing it as a definition would
+be a false claim. `AlleleFunctionRow` has the nearest key, `(gene, allele)`, but its columns are PGx
+activity and function.
+
+**Shape.** A per-allele carrier table keyed on `(gene, allele)` at a stated field resolution (two-field),
+with `direction`, `trait_efo_id`, `conclusion` and a citation. The consumer joins it against an HLA
+typing call, which is a measurement a SNP VCF does not contain. The tag-SNP fallback reuses RM331's proxy
+shape. Full, a new table kind. Validating the nomenclature (IPD-IMGT/HLA) is an open question.
+
 ## RM322 — `diplotypes.csv` carries none of the axes a scored finding needs, so APOE, the module's headline result, cannot state its tier, mechanism or trade-off
 
 **Cut 2026-11-04 by the maintainer, after the final measuring run** (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §3): `priority` (it restates the tier; v2 says it is "derived from tier") and `actionability` (v2's policy "late-acting ⇒ descriptive" belongs in its README). `DiplotypeRow` gains only **`negatives` and `category`**.

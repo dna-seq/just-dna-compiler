@@ -71,6 +71,16 @@ sees more columns.
 | --- | --- | --- |
 | `diplotypes.csv` / `diplotypes.parquet` `negatives`, `category` | RM322 | Free text, the `VariantRow` columns of the same names; `category` has no vocabulary. Null when unstated. Every module carrying `diplotypes.csv` gets a new `artifact.digest` on a 0.8 recompile, with `content_signature` unchanged unless a cell is filled. |
 
+## 1.6 A new refusal: HLA allele names on `allele_function.csv`
+
+Where `gene` starts with `HLA-`, `allele` must follow IPD-IMGT/HLA's grammar (`*`, two to four
+colon-separated numeric fields, an optional `N`/`L`/`S`/`C`/`A`/`Q` suffix), or `validate` and
+`compile` refuse the row (RM334). Other genes are unaffected. Principle 3 holds: the published-module
+scan of 2026-11-04 found no `allele_function.csv` row with an `HLA-` gene in the reference examples (two
+files) or in the registry's prod catalogue (24 modules, 46 versions; the one module carrying the table,
+`antonkulaga/fut2_secretor`, names only `FUT2`). A tool that writes HLA alleles into this table, or a
+module built outside the catalogue, should spell them `*15:01`, never `*1501` or `HLA-DRB1*15:01`.
+
 ## 2. What to change
 
 1. If you parse `manifest.json` with `just-dna-format`, move your pin to 0.8 when you start reading
