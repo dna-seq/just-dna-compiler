@@ -57,7 +57,7 @@ checks, and the meta-table's expansion two files away still compared raw.
   `fact_checks.py:587-590/705-708` (`derived_row_orphan`) → `gene_key`; `tables.py:244` `_gene_key`, a
   compiler-private copy → `spelling.gene_key`. Enricher: `pgx.py:229/232/294/596` (authored gene against
   PharmVar's/CPIC's), `clingen.py:238/242`, `gene_validity.py:472/480`, `gene_metrics.py:284`,
-  `identifiers.py:1424/1434`, `drug_labels.py:353/368/555`, and four drafters' `--gene` filters
+  `identifiers.py:1424/1434`, `drug_labels.py:353/368/555`, the CPIC snapshot client's SQL (`cpic.py:635/641/659/683/732/740/756`, `gene = ?` → `lower(gene) = ?` with `gene_key`, found by the review), and four drafters' `--gene` filters
   re-typing `.strip().upper()` (`clinpgx_draft.py:183/198/344`, `mitomap_draft.py:259/263`,
   `strchive_draft.py:234/235`, `civic_draft.py:461/465`) → `gene_key`.
 - **Contig.** `VariantRow` folded `chr12` → `12`; `StudyRow` (`spec.py:1198`), `HaplotypeRow` (`pgx.py:159`),
@@ -104,7 +104,7 @@ attribute outside a key function, the six one-source sites excepted by equality;
 `partner_gene` field added) and went red. Behaviour on the real compile path:
 `compiler/tests/test_one_normalizer_per_kind.py`, with a round trip carrying two spellings of each kind.
 
-**Residuals** won't fix — within 0.x, the duplicate-row refusal of a table older than 0.8 still keys on stored cells, because folding gene or drug case there would refuse rows a published module may hold (Principle 3); a table new in 0.8 (`meta.csv`, `model_organisms.csv`) folds, derived from its fields' `first_seen` marks in `tables._key_compared` · won't fix — `trait_efo_id` written `EFO_n` and `EFO:n` stays two values, because unifying an ontology CURIE's two legal forms is a vocabulary decision and not a second normalizer · won't fix — an enricher query to a remote source (PharmVar's alleles for a gene, gnomAD's constraint, HGNC) still sends the authored spelling, because which case each remote accepts is that source's convention and the answers are now compared by key
+**Residuals** won't fix — within 0.x, the duplicate-row refusal of a table older than 0.8 still keys on stored cells, because folding gene or drug case there would refuse rows a published module may hold (Principle 3); a table new in 0.8 (`meta.csv`, `model_organisms.csv`) folds, derived from its fields' `first_seen` marks in `tables._key_compared` · won't fix — `trait_efo_id` written `EFO_n` and `EFO:n` stays two values, because unifying an ontology CURIE's two legal forms is a vocabulary decision and not a second normalizer · won't fix — a live query (the CPIC REST client's `eq.{gene}` filters in `cpic.py`, PharmVar's alleles for a gene, HGNC) still sends the authored spelling, because which case each remote accepts is that service's convention and upper-casing would break symbols such as `C4orf33`; the CPIC snapshot client compares `lower(gene)` with `gene_key` in SQL, where the AST guard cannot see it, so `test_gated_snapshots` pins it · won't fix — a `pmid` cell inside a key (`model_organisms.csv`) still compares verbatim, because its normalizer `extract_pmids` lives in `spec`, which imports `spelling`, so registering it would be an import cycle; `duplicate_study_citation` goes through `spec.citation_key`
 
 ## RM270 — an indel's artifact key is its source's spelling: a left-aligned VCF misses a respelled row, and the spelling-independent id the enricher mints never reaches the artifact
 

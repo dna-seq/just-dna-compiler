@@ -23,7 +23,7 @@ Two shapes, and which one a kind takes is decided by what it already did:
 stored as its member) and rsIDs (`^rs\\d+$`, one spelling) are compared verbatim everywhere: one rule each,
 not two, so none is an instance of the class.
 
-Format tier: imports only `vrs`, so `base` can use `ChromCell` without a cycle.
+Format tier: imports only `vrs`, so every model module can import it.
 """
 
 import re

@@ -305,6 +305,23 @@ def test_defining_variants_from_a_snapshot_carry_the_chromosome(tmp_path: Path) 
     assert warnings == []
 
 
+def test_the_cpic_snapshot_answers_a_gene_written_in_another_case(tmp_path: Path) -> None:
+    """RM363: the snapshot client compares in SQL, out of the AST guard's sight, so it is pinned here: every
+    gene-keyed question answers `Cyp2c9` as it answers `CYP2C9`."""
+    client = CpicSnapshotClient(_cpic_snapshot(tmp_path / "cpic"))
+    for asked in ("CYP2C9", "cyp2c9", " Cyp2c9 "):
+        assert client.chrom_for_gene(asked) == client.chrom_for_gene("CYP2C9") is not None
+        assert client.defining_variants(asked) == client.defining_variants("CYP2C9")
+        assert client.partner_genes(asked, "fluvastatin") == ["SLCO1B1"]
+    assert (
+        client.recommendations("cyp2c19", "clopidogrel")
+        == client.recommendations("CYP2C19", "clopidogrel")
+        != []
+    )
+    assert client.alleles_for_gene("cyp2c19") == client.alleles_for_gene("CYP2C19") != []
+    assert client.diplotypes_for_gene("cyp2c19") == client.diplotypes_for_gene("CYP2C19") != []
+
+
 def test_a_snapshot_built_by_an_older_builder_says_which_table_is_missing(tmp_path: Path) -> None:
     """Silence would read as "CPIC has nothing for this gene", which is a claim about the data."""
     root = _cpic_snapshot(tmp_path / "cpic")
