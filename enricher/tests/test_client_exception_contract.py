@@ -28,6 +28,7 @@ from collections.abc import Callable
 import httpx
 import pytest
 from just_dna_enricher.civic_api import CivicApiClient, CivicApiUnavailable
+from just_dna_enricher.clinvar_gkm import ClinVarGkmClient, ClinVarGkmError
 from just_dna_enricher.cpic import CpicClient, CpicError
 from just_dna_enricher.currency import ClinVarReleaseClient, ReleaseUnavailable
 from just_dna_enricher.ensembl import EnsemblResolver, EnsemblSettings
@@ -110,6 +111,15 @@ def _currency(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[]
         client=httpx.Client(transport=httpx.MockTransport(handler)), gate=_instant_gate()
     )
     return client.current_release
+
+
+def _clinvar_gkm(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], object]:
+    """RM305's manifest read. Transport and status legs arrive as `ClinVarGkmUnavailable`; a 200 that
+    is not a manifest is the parent, `ClinVarGkmError`, which is why the parent is asserted here."""
+    client = ClinVarGkmClient(
+        client=httpx.Client(transport=httpx.MockTransport(handler)), gate=_instant_gate()
+    )
+    return client.parquet_manifest
 
 
 def _ontology(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], object]:
@@ -230,6 +240,10 @@ CLIENTS = [
     # parent is the exact assertion rather than a weakened one. `GwasNotFound` is the 404 arm and is
     # an *answer*, not a failure, so it is deliberately not what these cases drive.
     ("gwas", _gwas, GwasError),
+    # The parent, because one leg this file drives (a 200 HTML page) is an answer the client cannot
+    # read rather than an unreachable source; the transport and status legs are the
+    # `ClinVarGkmUnavailable` subclass, asserted in `test_clinvar_gkm.py`.
+    ("clinvar_gkm", _clinvar_gkm, ClinVarGkmError),
 ]
 
 
