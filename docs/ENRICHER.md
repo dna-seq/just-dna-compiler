@@ -3339,7 +3339,8 @@ N parts of each dataset, and `release.json` then records `parts_read` beside `pa
 written to `data.building/` and swapped in only when the build finishes, so a failed build leaves the
 previous snapshot whole; a mirror the command downloaded (`<out>/source/<release>/`, ~22 GB) is deleted
 once the snapshot is written, and `--source` parts are left alone. The full build took 15 minutes here
-and the snapshot is 5.2 GB, 4.6 GB of it coloc.
+and the snapshot is 5.2 GB, 4.6 GB of it coloc; with `rs_ids` (2026-11-04) `cache status` measures
+5,457.3 MB, inside the lane's declared 5,500.
 No row is dropped for its value: no L2G, posterior or h4 threshold is applied anywhere.
 
 **Fill.** `just-dna-enricher opentargets enrich <spec>` reads the module's `resolution.csv` (overlaid,
