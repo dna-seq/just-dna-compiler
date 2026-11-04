@@ -916,14 +916,22 @@ def _validate_spec(
     # a meta member reached (RM28's widening). Every arm is the authored rows, the view `variants` is
     # read in (the positional fill is in place, so they carry it). No authored haplotype row reaches the
     # symbolic-allele drop today; a `pharm_variants.csv` row can, and stays carried here exactly as a
-    # dropped `variants.csv` row does, so the arms read one view.
+    # dropped `variants.csv` row does, so the arms read one view. An arm whose file is present but
+    # loaded no row withholds the orphan half (its load errors are the report); the gate used to
+    # withhold that case for `variants.csv` by accident.
     if studies:
         carried = [
             *(loaded_kinds.get("haplotypes.csv") or []),
             *(loaded_kinds.get("pharm_variants.csv") or []),
             *meta_carried,
         ]
-        _, study_warnings = _cross_validate_studies(studies, variants, carried)
+        unreadable_arm = (has_variants and not variants) or any(
+            csv_name in loaded_kinds and not loaded_kinds[csv_name]
+            for csv_name in ("haplotypes.csv", "pharm_variants.csv")
+        )
+        _, study_warnings = _cross_validate_studies(
+            studies, variants, carried, carried_unknown=unreadable_arm
+        )
         all_warnings.extend(study_warnings)
 
     if variants:

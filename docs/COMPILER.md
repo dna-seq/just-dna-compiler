@@ -486,8 +486,10 @@ nothing the others miss). A module scoring APOE only as diplotypes therefore dra
 `study_variant_orphan` for its studies on rs429358 and rs7412, and those studies feed no
 `weights.parquet` row, since there is none. The check runs whenever the module has a `studies.csv`, with
 or without a `variants.csv`: a diplotype-only or PGx-only module is checked against the arms it has, and
-`duplicate_study_citation`, computed in the same pass, now runs there too. The message keeps its pinned
-prefix, `Studies reference variants not in variants.csv`, and names the wider search after the keys.
+`duplicate_study_citation`, computed in the same pass, now runs there too. When an arm's file is present
+but no row of it could be read, the orphan half withholds: what the module carries is unknown, and the
+load errors are the report. The message keeps its pinned prefix, `Studies reference variants not in
+variants.csv`, and names the wider search after the keys.
 
 - **`effect_unit`** (RM332) — the unit of the variant's effect, when every supporting study row that
   states a unit states the same one. Null when none states one, and null when two disagree: never the

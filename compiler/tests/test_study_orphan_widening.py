@@ -19,6 +19,9 @@ import shutil
 from pathlib import Path
 
 from just_dna_compiler.compiler import compile_module, validate_spec
+from just_dna_compiler.compiler.load import load_csv_rows
+from just_dna_compiler.compiler.meta import build_meta, load_meta, member_tables, member_variant_rows
+from just_dna_format.pgx import PharmVariantRow
 
 _APOE = Path(__file__).resolve().parents[2] / "reference_examples" / "apoe_epsilon"
 _CODE = "study_variant_orphan"
@@ -217,15 +220,30 @@ def test_a_selector_member_changes_no_orphan(tmp_path: Path) -> None:
     assert with_member == without
 
 
-def test_a_locus_member_covers_its_pharm_variant(tmp_path: Path) -> None:
-    """`pharm_variants[variant_key=…]` is the locus form, looked up by key rather than scanned; the
-    loci it names are carried, as they are with no member."""
-    meta = (
-        "members,conclusion\n"
-        "pharm_variants[variant_key=rs9923231],VKORC1.\n"
-        "pharm_variants[variant_key=rs1057910],CYP2C9.\n"
-    )
-    assert _orphans(validate_spec(_pgx_module(tmp_path / "m", meta=meta)).warnings) == []
+def _reach(spec: Path) -> set[str]:
+    """The rsIDs of the rows the meta arm hands the check: `member_variant_rows` over `build_meta`'s
+    expansion of this module's `meta.csv`, the call `validate_spec` makes."""
+    pharm, errors, _ = load_csv_rows(spec / "pharm_variants.csv", PharmVariantRow, "pharm_variants.csv")
+    assert errors == []
+    rows, errors, _ = load_meta(spec)
+    assert errors == []
+    tables = member_tables([], {"pharm_variants.csv": pharm})
+    return {row.rsid for row in member_variant_rows(build_meta(rows, tables, None), tables)}
+
+
+def test_the_meta_arm_reaches_exactly_the_rows_its_members_matched(tmp_path: Path) -> None:
+    """The meta arm adds nothing the table arms miss today, so its reach is pinned where it is computed:
+    a selector reaches the rows it matched, the locus form the loci it names, a member matching
+    nothing reaches nothing."""
+    selector = "members,conclusion\npharm_variants[gene=VKORC1],VKORC1.\n"
+    locus = "members,conclusion\npharm_variants[variant_key=rs1057910],CYP2C9.\n"
+    nothing = "members,conclusion\npharm_variants[gene=CYP4F2],No such rows here.\n"
+    by_gene = {
+        gene: {row["rsid"] for row in _rows(_PHARM) if row["gene"] == gene} for gene in ("VKORC1", "CYP2C9")
+    }
+    assert _reach(_pgx_module(tmp_path / "selector", meta=selector)) == by_gene["VKORC1"]
+    assert _reach(_pgx_module(tmp_path / "locus", meta=locus)) == {"rs1057910"} == by_gene["CYP2C9"]
+    assert _reach(_pgx_module(tmp_path / "nothing", meta=nothing)) == set()
 
 
 def test_a_member_matching_nothing_covers_nothing(tmp_path: Path) -> None:
@@ -237,3 +255,30 @@ def test_a_member_matching_nothing_covers_nothing(tmp_path: Path) -> None:
     baseline = _orphans(validate_spec(_pgx_module(tmp_path / "base", meta=None, studies=studies)).warnings)
     assert len(baseline) == 1
     assert _orphans(warnings) == baseline
+
+
+def test_duplicate_citations_are_checked_on_a_module_with_no_variants_csv(tmp_path: Path) -> None:
+    """`duplicate_study_citation` is computed in the same pass, so it came off the gate with the orphan
+    half: one (variant, pmid) written twice on a PGx-only module warns."""
+    studies = _PGX_STUDIES + "rs9923231,31413261\n"
+    spec = _pgx_module(tmp_path / "m", meta=None, studies=studies)
+    (spec / "variants.csv").unlink()
+    duplicates = [w for w in validate_spec(spec).warnings if "Duplicate (variant, pmid)" in w]
+    assert len(duplicates) == 1 and "rs9923231" in duplicates[0] and "31413261" in duplicates[0]
+
+
+def test_an_arm_that_loaded_no_rows_withholds_the_orphan_half(tmp_path: Path) -> None:
+    """A `variants.csv` whose every row fails its model carries variants nobody could read: what the
+    module carries is unknown, so the orphan half withholds rather than name every study. The load
+    errors are the report; the gate used to withhold this by accident."""
+    spec = _apoe_module(tmp_path / "apoe")
+    for name in ("haplotypes.csv", "diplotypes.csv"):
+        (spec / name).unlink()
+    broken = _VARIANTS.replace(",protective,", ",not_a_state,")
+    (spec / "variants.csv").write_text(broken, encoding="utf-8")
+    result = validate_spec(spec)
+    assert result.errors, "every variants.csv row should fail its model"
+    assert _orphans(result.warnings) == []
+    # One readable row is enough to know the arm: the check runs, and names the studies it misses.
+    (spec / "variants.csv").write_text(_VARIANTS, encoding="utf-8")
+    assert len(_orphans(validate_spec(spec).warnings)) == 1

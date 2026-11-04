@@ -307,7 +307,11 @@ def _examples(groups: list[str], limit: int = 3) -> str:
 
 
 def _cross_validate_studies(
-    studies: list[StudyRow], variants: list[VariantRow], carried: Sequence[Any] = ()
+    studies: list[StudyRow],
+    variants: list[VariantRow],
+    carried: Sequence[Any] = (),
+    *,
+    carried_unknown: bool = False,
 ) -> tuple[list[str], list[str]]:
     """Validate study rows against the variants the module carries. Returns (errors, warnings).
 
@@ -338,14 +342,18 @@ def _cross_validate_studies(
     are `haplotypes.csv` rows and no `variants.csv` row, and every such link used to draw this warning.
     The match is the same "any shared identifier" rule over the wider set, and `variants` may be empty:
     a module with no `variants.csv` is checked against the other arms. The message keeps its pinned
-    prefix (`@warning-text-is-api`) and names the wider search after the keys."""
+    prefix (`@warning-text-is-api`) and names the wider search after the keys.
+
+    **`carried_unknown` withholds the orphan half** when an arm's file is present and no row of it could
+    be read: what the module carries is then unknown, and naming every study as an orphan would bury
+    the load errors that are the real report. The duplicate half reads only `studies` and still runs."""
     warnings: list[str] = []
     subjects: list[Any] = [*variants, *carried]
     variant_rsids = {v.rsid for v in subjects if v.rsid is not None}
     variant_coords = {study_coordinate_key(v.chrom, v.start, v.ref) for v in subjects if v.chrom is not None}
     orphans: list[str] = []
     for row in studies:
-        if row.variant_key is None:
+        if row.variant_key is None or carried_unknown:
             continue
         by_rsid = row.rsid is not None and row.rsid in variant_rsids
         by_coord = (
