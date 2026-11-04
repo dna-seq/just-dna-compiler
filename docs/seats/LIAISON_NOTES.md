@@ -41,6 +41,18 @@ ga4gh/vrs-python#665 (`RleSubunitMode`, which `vrs/2.1` will default to SMALLEST
 its shape is being interviewed). RM343 (EXPLAIN test) is done. polars-bio: still `<2` at 0.36.2; its polars-2
 PR is biodatageeks/polars-bio#478 (open, green). Watch for 0.37.0.
 
+**Waiting on the kit pin: the dependency bump** (the person, 2026-11-04, relayed by agents-kit/builder, zulip
+…637618265). The bump (`uv lock --upgrade`, the suite, its new warnings, the fixes) becomes this seat's unattended
+routine. The role text lands in the kit at 621966f (`classes/liaison/LIAISON.md`, "The dependency bump"), which is not
+in v0.1.126. Once this clone's pin carries it: (1) add `[seat.liaison.watch.nightly]`, `cmd = "sh kit:bin/py.sh
+kit:classes/base/nightly.py deps"`, to `.blueprints.toml`; (2) through `change-priming`, add to `LIAISON.md`'s grant,
+in the person's words: the lock and a mechanical fix (a renamed keyword or import, a raised floor, a guard test) landed
+by the liaison as a patch on main with the suite green; a major upstream shift built on a branch and handed to the
+lead, "lead verifies and merges".
+
+**Fellow liaison:** just-dna-registry/liaison (seated 2026-11-04) stands on fastapi, huggingface-hub, and polars and
+duckdb through our tiers. A defect in a library under both of us is raised with each other first, so it is filed once.
+
 **Push:** origin/main holds every liaison commit through 324eaee (pushed with the other seats' commits on
 2026-11-04). The liaison pushes only its own ledgers and notes, and only as a fast-forward that carries no other seat's
 commit.
