@@ -28,6 +28,7 @@ import pkgutil
 import just_dna_format
 import pytest
 from just_dna_format import base, vocab
+from just_dna_format.reference import _ALL_MODELS
 from just_dna_format.spec import VariantRow
 from just_dna_format.vocab import ACTIONABILITY_SEED, VALID_ACTIONABILITY
 from pydantic import BaseModel
@@ -51,10 +52,12 @@ def _marked_fields() -> list[tuple[type[BaseModel], str, dict]]:
                 and obj not in seen
             ):
                 seen.add(obj)
-                for name, field in obj.model_fields.items():
-                    extra = field.json_schema_extra
-                    if isinstance(extra, dict) and isinstance(extra.get("vocabulary"), dict):
-                        found.append((obj, name, extra["vocabulary"]))
+                # Through `field_vocabularies`, the one route every consumer reads (RM365). Reading
+                # `json_schema_extra` here measured only the fields marked at their own declaration
+                # and skipped every `SHARED_VOCABULARIES` one (`clin_sig`, `direction`,
+                # `source_element`, … on two dozen fields), whose closedness the published reference
+                # states all the same.
+                found.extend((obj, name, marker) for name, marker in base.field_vocabularies(obj).items())
     return found
 
 
@@ -71,8 +74,15 @@ def _refuses(model: type[BaseModel], name: str, value: str) -> bool:
 
 
 def test_there_are_marked_vocabularies_to_check() -> None:
-    """The floor. A marker rename would otherwise make every assertion below vacuous."""
-    assert len(_marked_fields()) >= 10
+    """Not vacuous, and as wide as what is published: every vocabulary field of every registry model
+    is among the measured ones. This was `>= 10` (RM365), a floor that held while the walk skipped
+    every shared-vocabulary field the authoring reference publishes a `closed` flag for. One-way on
+    purpose: the walk also covers models outside the registry (`manifest.Compilation`'s codes), so
+    only this direction is entailed."""
+    published = {(model, name) for model in _ALL_MODELS.values() for name in base.field_vocabularies(model)}
+    measured = {(model, name) for model, name, _marker in _marked_fields()}
+    assert published, "no registry model publishes a vocabulary; the marker moved"
+    assert published <= measured, sorted(f"{m.__name__}.{n}" for m, n in published - measured)
 
 
 @pytest.mark.parametrize("closed_flag", [True, False])

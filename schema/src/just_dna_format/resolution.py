@@ -36,6 +36,17 @@ from just_dna_format.vrs import split_vrs_ids, validate_caid, validate_vrs_id_li
 # deliberately EXCLUDING the provenance columns (`source`/`status`/`fetched_at`) so a human-filled and
 # an Ensembl-filled table carrying identical facts hash equal. This is the structural reason the table
 # is hashed by its facts (a stable, producer-independent identity) rather than by its raw bytes.
+#
+# The rest of the columns are outside too, each for a reason SCHEMAS.md § resolution.csv states at
+# length (named here since RM365, which found them outside with no word about them on this tuple):
+# `authority` is out as provenance beside `source`: it names the link that answered (RM33), and a
+# reversed table has none to name. `rsid_alternates`, `rsid_current` and `rsid_status` are out because
+# they describe dbSNP's time-varying state about the rsID, not the placement, and stay out of the
+# artifact on purpose. `vrs_id`, `vrs_spec` and `caid` are out as cross-references to the allele the
+# coordinate already names; leaving them out meant adding them in 0.5 moved no signature.
+# `placement_witness`/`placement_verdict` (RM267) and `left_aligned` (RM270) are out as the enricher's
+# verdicts about a placement or a spelling — a check's answer recorded on the row, not the fact it was
+# checking.
 RESOLUTION_FACT_FIELDS: tuple[str, ...] = (
     "variant_key",
     "rsid",

@@ -57,8 +57,10 @@ class DerivedProducer:
     #: from tables already beside the spec rather than from a fetch names the sources those rows came
     #: from, because that is the provenance question a reader of the table is actually asking.
     sources: tuple[str, ...]
-    #: `VALID_VERIFICATION_CHECKS` members this pass attests while it writes. Empty is honest and
-    #: common: filling a table is a recording pass, and only some of them also compare something.
+    #: `VALID_VERIFICATION_CHECKS` members this pass attests while it writes — all of them: the union
+    #: over a command's producers equals the names its code passes to `ran`/`skipped`, under a walking
+    #: test (RM365). Empty is honest and common: filling a table is a recording pass, and only some of
+    #: them also compare something.
     checks: tuple[str, ...] = ()
     #: Why this pass writes a table another pass also writes, stated iff it shares one. Two writers of
     #: one table is the shape that needs a reason on the page rather than a reader inferring one.
@@ -80,13 +82,23 @@ DERIVED_PRODUCERS: dict[str, tuple[DerivedProducer, ...]] = {
             # The resolver chain in the order `enrich` tries it: the cache/snapshot first, then the
             # two links that answer where it does not. ENRICHER.md § Resolver chain is the long form.
             sources=(ENSEMBL_TERMS.source, CLINVAR_TERMS.source, GNOMAD_TERMS.source),
+            # Every check `enrich` writes into `verification.json`, asserted equal to the names its
+            # record builder passes to `ran`/`skipped` (RM365: this listed six while it wrote nine).
+            # A run writes its records once, so they sit on the producer of the table the run exists
+            # to fill. Two read CIViC, which `sources` above does not name because no row of this
+            # table comes from it: `published_refutation` (an authored `direction` against CIViC's
+            # refutations) and `evidence_status_currency` (a recorded CIViC curation status against
+            # what CIViC says now).
             checks=(
                 "reference_allele",
                 "rsid_currency",
                 "clinical_significance",
                 "rsid_coordinate_agreement",
+                "placement_agreement",
                 "genome_build_agreement",
                 "dataset_currency",
+                "published_refutation",
+                "evidence_status_currency",
             ),
         ),
     ),
@@ -166,7 +178,7 @@ DERIVED_PRODUCERS: dict[str, tuple[DerivedProducer, ...]] = {
             # PubMed and Europe PMC are the two registries this pass records against; Crossref answers
             # existence for what PubMed does not index (`@citation-existence`) and writes no row.
             sources=("pubmed", "europepmc"),
-            checks=("citation_existence", "citation_identifier"),
+            checks=("citation_existence", "citation_identifier", "provenance_quote"),
         ),
     ),
     "clin_sig_concordance.csv": (

@@ -30,7 +30,10 @@ from just_dna_format.vocab import VALID_IMPACTS, check_vocab
 
 # Fact columns feeding `integrity.consequence_signature`: everything but `source`/`fetched_at`. `gene`
 # (the symbol) is outside on `expression.py`'s reasoning turned around: here the accession `gene_id` is
-# the source's identity for the gene and the symbol is a label it renames between releases.
+# the source's identity for the gene and the symbol is a label it renames between releases. `rsid` is
+# outside on `assertions.py`'s reasoning: it is the module's own rsID for the variant (the field says
+# "as the module knows it"), not something the source answered, so inside it would make two modules
+# holding the same consequences hash differently by whether their resolver attached one.
 CONSEQUENCE_FACT_FIELDS: tuple[str, ...] = (
     "variant_key",
     "transcript",

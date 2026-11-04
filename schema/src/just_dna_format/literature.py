@@ -71,6 +71,17 @@ from just_dna_format.vocab import (
 # `fulltext_status` (0.8, RM258) is **out** for the same reason: it records how a fetch ended on the
 # day it ran, so a re-ask that turns `unreachable` into `retrieved` changes the run, not the article.
 #
+# `quote_source` is **out** with `quotes_found`, whose denominator it labels: which text was searched
+# (abstract or fulltext) is what was retrievable on the day. `source`/`status`/`fetched_at` are the
+# provenance columns, out as they are in every sibling.
+#
+# `doi_exists` / `doi_checked` are **out, and no reason was ever recorded** (RM365 found them so). They
+# are the DOI half of the existence verdict beside `exists`, which is inside: `doi_exists` since 0.5.0,
+# and `doi_checked`, which names the DOI it is a verdict about, since the 0.6 dogfood round. Neither
+# ever joined this tuple. Adding them now would move every literature
+# signature on disk — a correction a release has to declare — so the question is named here rather
+# than settled by a test fix.
+#
 # What remains is stable identity: which article this is, and whether the registry has it.
 LITERATURE_FACT_FIELDS: tuple[str, ...] = (
     "pmid",

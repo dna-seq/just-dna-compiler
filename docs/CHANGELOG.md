@@ -41,6 +41,28 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM365: the registry guards that were floors or subsets are equalities, and the registries they guard name what they describe (0.8, uncut)
+
+- **`DERIVED_PRODUCERS` names every check its passes write.** `resolution.csv`'s `enrich` producer
+  gains `placement_agreement`, `published_refutation` and `evidence_status_currency`; `literature`'s
+  gains `provenance_quote`. Each command's claimed checks now equal what its modules pass to
+  `ran`/`skipped`, read by one AST walker the vocabulary-wide emitter guard shares.
+- **The first-seen guards measure.** The model registry is held equal to every pydantic model the
+  format package defines (less the documents the tooling writes and two named bases) instead of
+  `>= 31` models; `_RELEASES` equals the release tags plus the uncut version (it lacked 0.7.1–0.7.3);
+  and every field's `since()` must equal the first tag whose model carries it, measured from the tags'
+  own sources. All 538 declarations hold, `ResolutionRow.vrs_spec`'s `0.5.0` included.
+- **`COMPILER.md`'s `ARTIFACT_PARQUETS` diagram** drew 26 of the 30 names, partly out of order; it is
+  now the tuple, compared in order by `test_counted_prose.py`, and the `_INPUT_FILES` bullet (which
+  lacked `meta.csv` and `model_organisms.csv`) is compared as a set.
+- **Every `*_FACT_FIELDS` tuple partitions its model**: a column is in the fact set or named, with its
+  reason, in the comment above the tuple. Fifteen columns sat outside their signatures with no word
+  about them; each now has its documented reason, and `literature.csv`'s `doi_exists`/`doi_checked`
+  say that none was ever recorded. No tuple changed and no signature moves.
+- Three more guards narrower than their claim: the sidecar-path roster (seven derived tables behind) is
+  derived from the producers, the validate/compile parity cases equal the injected tables, and the
+  vocabulary-closedness walk measures the shared vocabularies it skipped.
+
 ## 2026-11-04 — RM28: a `meta.csv` row can be scoped to a drug, so one phenotype pair states each thiopurine's recommendation (0.8, uncut)
 
 - **`meta.csv` gains an optional `drug`** (`MetaRow.drug`, free text as on `diplotypes.csv`, first in

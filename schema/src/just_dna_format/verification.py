@@ -65,6 +65,7 @@ from just_dna_format.signing import sign_digest
 #: `detail` is out because it is prose — rewording a sentence must not move a signature, the same call
 #: `LiteratureRow` made about which of its columns are facts. `checked_at` is out for the reason
 #: `fetched_at` is out everywhere: when a pass ran is a fact about the run, not about the module.
+#: `producer` (0.7) is out for the same reason — *who* ran a check is a fact about the run.
 #:
 #: RM292's three (0.8) are facts — which source was read, which it was read against, and how many rows
 #: a tolerance abstained on — and joining here moved no signature already on disk, because
