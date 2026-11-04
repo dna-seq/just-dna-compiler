@@ -31,6 +31,7 @@ maintained one, and where the two disagree this one is what a consumer may rely 
 | `vrs` | GA4GH VRS allele ids: `derive_vrs_allele_id`, the GRCh38 refget table, the `vrs_id` cell codec and the PAR geometry (stdlib only) | — (stdlib leaf) |
 | `alleles` | Reference-free allele algebra: `parsimony_reduce`, `event_profile` — what two spellings of one indel have in common (0.5, RM31) — plus `split_genotype`, the genotype cell → allele list rule every tier and every consumer reads (0.6, S30) | — (stdlib leaf) |
 | `layout` | Where a module's machine-written sidecars live, what they may be called, and the atomic write that puts one there (S66) | — (stdlib leaf) |
+| `snapshot` | The reference-snapshot layout (`data/`, sidecars, `LICENSE.txt`, `release.json`), the `SnapshotRelease` record, `read_release`/`write_release` and the payload predicate (0.8, RM303) | `layout` |
 | `base` | `AuthoredModel` + `derive_variant_key` | `vocab`, `vrs` |
 | `manifest` | The `manifest.json` contract | `identity`, `vocab` |
 | `findings` | `CodedWarning` — a `str` subclass carrying the code its emission site named, and the carried/actionable split (0.7, RM131) | `vocab` |
@@ -2664,6 +2665,67 @@ and deleting the block moves neither `artifact.digest` nor `content_signature`.
   key rather than managing one.
 - **`aggregate.aggregate_logs` / `aggregate_provenance`** — the deduplicated union of logs/provenance
   across a set of version manifests ("v3 provenance = v1+v2+v3"), first-occurrence order.
+
+## The reference-snapshot contract (0.8, RM303) — `release.json`
+
+`just_dna_format.snapshot` defines the second on-disk format this package owns, beside the module: a
+**reference snapshot**, the directory the enricher's builders cut and its passes read. A snapshot is
+`data/*.parquet` (or one named payload file at the root: `acmg_sf.csv`, `STRchive-loci.json`),
+optional parquet sidecar directories beside `data/` (`SNAPSHOT_SIDECAR_DIRNAMES`, today `citations/`),
+and the root files `SNAPSHOT_ROOT_FILENAMES` in publish order: `LICENSE.txt`, `avi_knots.parquet`,
+and `release.json` **last**, so the description never arrives before the bytes it describes.
+
+The names were constants in the enricher until 0.8, so any other repository that wanted the layout had
+to import the network tier. They live here now, pydantic + stdlib, reading no environment; where a
+snapshot sits on a given machine (the cache base, the per-lane variables, the pull record) stays in the
+enricher's `locations`, which imports these names rather than restating them.
+
+**`SnapshotRelease`** is the model of `release.json`. A key some reader reads is a typed optional
+field; every other key rides in `extra="allow"` and survives a rewrite unchanged.
+
+| Field | Type | Read by |
+|---|---|---|
+| `dataset` | `str` | the release label: `cache status`, every pass that stamps `SourceRow.dataset` |
+| `source_url`, `source_sha256` | `str` | ACMG, STRchive, the ClinVar label's digest fallback, `mitomap_miss`'s parent pin |
+| `built_at`, `builder_version` | `str` | ACMG's verification record (`built_at`); every builder writes both |
+| `license`, `license_sha256` | `str` | ClinPGx's licence-hash stamp (`license_sha256`) |
+| `row_count`, `row_counts` | `int`, `dict[str, int]` | `mitomap_miss`'s parent pin |
+| `record_count` | `int` | `mitomap_miss`'s parent pin |
+| `genome_build` | `str` | PharmVar |
+| `parents` | `dict[str, dict]` | `mitomap_miss` (staleness, its own label) |
+| `clinvar_file_date` | `str` | the ClinVar label, `clinical_assertions.csv`'s `dataset`, the parent pin |
+| `status_basis` | `str` | CIViC drafting and refutation |
+| `sf_version` | `str` | ACMG |
+
+**Unstated is `None`, never a default.** `write_release` dumps with `exclude_unset`: a key the builder
+never set is not written, and a key it set to `None` is written as `null`, because a recorded `null`
+is a stated unknown (pubmind's `source_url` on a local build). Values are verbatim: `source_sha256` is
+`sha256:`-prefixed by some builders and bare in others, and the model normalizes spellings, not values.
+
+**Old spellings are read on input and never written.** Snapshots already published keep their keys,
+and a republish writes the canonical one rather than anyone editing a published file:
+
+| Old key | Read as |
+|---|---|
+| `licence` (CIViC) | `license` |
+| `rows` holding an int (AlphaGenome AVI) | `row_count` |
+| `rows` holding a per-file map (MANE, MITOMAP) | `row_counts` (CPIC's spelling) |
+| no `dataset`, `clinvar_file_date` present (ClinVar before 0.8) | `dataset` = `clinvar_release_label(clinvar_file_date, source_sha256)` |
+
+The canonical key wins when a file states both. The ClinVar row is the one lane-shaped rule: ClinVar's
+builder wrote its release as `clinvar_file_date` and no `dataset`, so `cache status` printed a blank
+label for it, and the repair was a per-lane reader in the enricher. The builder now writes `dataset`
+through the same `clinvar_release_label` the model uses to read an older snapshot, so the label is one
+formula on both sides and the per-lane reader is gone. `builder` (ACMG's, a module path) is not a
+version and is not an alias of `builder_version`; it rides in extra.
+
+**`read_release(dir) -> SnapshotRelease | None`** answers `None` for an absent file and for an
+unreadable one (does not parse, is not an object, or a typed key holds the wrong kind of value), with a
+warning for the second. **`write_release(dir, release)`** is the one way a builder writes the record:
+atomic, sorted keys, newline-terminated. An AST walk over the enricher's `*_build.py` refuses any other
+write of `release.json` (`enricher/tests/test_release_json_through_the_model.py`).
+**`holds_snapshot_payload(dir, *, payload_filename=None)`** is the payload predicate: a directory holding
+only `release.json`, or nothing, is not a snapshot.
 
 ## The release record (0.7, RM126) — what a release changed about compiled output
 

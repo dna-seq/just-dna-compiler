@@ -14,6 +14,46 @@ the disagreement is a defect in this file.
 
 Newest first.
 
+## 0.8 — the format package also defines the reference-snapshot layout (2026-11-04)
+
+Recorded in Goals as the second bullet, *Be the contract for the reference-snapshot layout as well*.
+
+Goal 1 scoped `just-dna-format` to "annotation modules", and a reference snapshot is not a module. No
+principle forbade moving the snapshot layout down into this package: it brings no network and no new
+dependency (pydantic and the standard library, plus the package's own atomic writer). But it widens
+what the package is for, so it is recorded as a deliberate amendment rather than as a side effect of
+[RM303](ROADMAP_HISTORY.md).
+
+**What broke.** A snapshot is `data/*.parquet`, optional sidecars, `LICENSE.txt` and `release.json`, and
+six parties have to agree on those names: the builder, the publisher, the provisioner, the resolver, the
+reporter (`cache status`) and every pass that reads a release. The names were constants in the
+enricher's `locations.py`, so another repository wanting the layout had to import the network tier,
+and `release.json` had no model at all: fourteen builders wrote it by hand at fifteen sites. The keys
+drifted (`rows` beside `row_count`, `licence` beside `license`, `builder` beside `builder_version`), and
+one drift reached a user. ClinVar's builder wrote its release as `clinvar_file_date` and no `dataset`,
+so `cache status` printed a blank label for the one snapshot that refreshes weekly (RM180/RM182). The
+repair then was a per-lane reader in the enricher, which fixed the reader and left the contract as it
+was. With the model in this package, the builder writes `dataset` through the same formula the model
+uses to read an older ClinVar snapshot, and the per-lane reader is gone.
+
+**Why here and not elsewhere.** `release.json` is the snapshot's twin of `manifest.json`, the module's
+provenance record this package already owns, and pydantic is already its one dependency.
+
+**Refused on the same day.**
+
+- **Renaming `just-dna-format`** (to `just-dna-schema`, the workspace directory's name). With the
+  snapshot contract added, "format" is *more* accurate: the package now defines two on-disk formats. A
+  rename would touch about 130 importing files across five repositories and keep two distribution
+  names alive for a major. Refused by the maintainer.
+- **A `just-dna-datasets` / `just-dna-builders` package.** First offered in the RM261 round on
+  2026-09-25 and declined then without being recorded. It forms a cycle (builders need the layout from
+  the enricher, and `cache rebuild` needs the builders), and breaking the cycle means moving the layout
+  below both, which is this amendment; after that a separate package buys nothing. Its dependencies
+  would be the enricher's own, every snapshot change would become a release of two packages, and since
+  builders fetch it would also need a Goal 2 / Principle 2 amendment naming a second tier that may.
+- **A nano-library holding only the convention.** Too small to be a package of its own, when this one
+  already depends on pydantic and already owns the module's provenance record.
+
 ## 0.6 — release class and artifact staleness are different axes
 
 Recorded in Principle 3 as *Release class and artifact staleness are different axes* and *Authored
