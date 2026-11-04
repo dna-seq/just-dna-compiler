@@ -136,7 +136,8 @@ one diplotype row), so it is a property of that statement. Two rows of one locus
 APOE's ε2/ε4 and ε3/ε4 rows each carry their own age-of-action confidence, which dissolves the ε2 versus
 ε4 break the archive check found. So no agreement warning is built. When a locus's facts are meant to be
 identical on every row, that is the author's to keep, and the 1.0 normalized shape will show any
-disagreement as two values.
+disagreement as two values. (Superseded by C the same day: facts are not repeated on rows, and the key rule under RM28 decides
+what counts as a disagreement.)
 
 **Reopened 2026-11-04 by the maintainer**: "why can't each part of the combination live in its respective table, and the combination plus its finding in the meta-table? A new table is the most expensive thing." The decisions below stand until the analysis is answered.
 
@@ -793,6 +794,27 @@ the column; hashing it would make a reworded note move the digest, which is the 
 [FAQ](FAQ.md) already answers twice.
 
 ## RM28 — Meta-conclusions (the predicate half)
+
+**Where a difference ends and a disagreement begins: the key, weighed 2026-11-04 by the pm seat at the
+maintainer's direction ("it's the good old 'what's a key' in a new skin").** A meta-table row's key is **its
+member set, plus `trait_efo_id` on a per-trait row**. The rule follows from it:
+
+- **The same key twice is a disagreement.** Two rows with one member set (and one trait) are a duplicate key,
+  and they are refused as on every other keyed authored table. This is the only place two values can
+  contradict each other, so no separate agreement warning is needed.
+- **Different keys that nest are a difference.** A locus-level row (`variant_key` alone), a genotype-level row
+  (`variant_key` + genotype) and a combination that contains them are three statements. The most specific
+  matching row wins, column by column; that is the "combination replaces" decision, extended down to a
+  single locus.
+- **Unstated is not different** (`@absent-is-not-different`). A specific row that leaves a fact empty does not
+  contradict the general row's value, and the general value fills it.
+- **The residual is identity, not facts.** One variant reachable under two keys would hide a real
+  disagreement as a difference. The archive found exactly one such case: IL6R's rs8192284, merged into
+  rs2228145, seeded with two tiers. The existing rsID-merge check catches it during enrichment, because NCBI
+  is the merge oracle. It must keep running over meta-table members.
+
+The objection that "tier copies on genotype rows are never compared" no longer applies: under C a fact is
+written once, never copied onto genotype rows.
 
 **Final shape, 2026-11-04 ("go with C").** One new table. A row is a composite statement, meaning one or more
 members, each an item of a single-statement table, mapped to a finding and/or the per-locus facts. A one-member
