@@ -54,6 +54,8 @@ provenance record this package already owns, and pydantic is already its one dep
 - **A nano-library holding only the convention.** Too small to be a package of its own, when this one
   already depends on pydantic and already owns the module's provenance record.
 
+**Wording vetted.** The maintainer read the changed sentences old → new in chat on 2026-11-04 and accepted them as written ("Good, I accept"). Deciding that an amendment happens is not approving its sentences, so the acceptance is recorded here.
+
 ## 0.8 — reproducibility is pinned by the recorded toolchain too (2026-11-04)
 
 Recorded in Principle 4's last sentence, which now pins reproducibility via `compiler_version`, *the
@@ -86,6 +88,8 @@ comparison then keeps its old answer: an unknown never explains anything.
 **Left as it was.** The Goals' sentence on integrity still says the two identities are reproducible by
 anyone holding the inputs and *the pinned compiler version*; it was outside this amendment's decision
 and is named for the next one.
+
+**Wording vetted.** The maintainer read the changed sentences old → new in chat on 2026-11-04 and accepted them as written ("Good, I accept"). Deciding that an amendment happens is not approving its sentences, so the acceptance is recorded here.
 
 ## 0.6 — release class and artifact staleness are different axes
 
