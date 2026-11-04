@@ -172,5 +172,8 @@ def test_live_rest_is_asked_through_its_gate() -> None:
         loci, source = resolver.resolve_rsid_rest("rs1801133")
     finally:
         resolver.close()
-    assert source == "ensembl-rest" and loci == _LOCI
+    # MTHFR C677T on GRCh38 (domain constant; the mocked `_MAPPING` above is a shape, not this answer).
+    assert source == "ensembl-rest" and loci is not None
+    assert [(locus["chrom"], locus["start"], locus["ref"]) for locus in loci] == [("1", 11796321, "G")]
+    assert "A" in str(loci[0]["alts"]).split(",")
     assert resolver.gate is not None and resolver.gate.spent >= 1
