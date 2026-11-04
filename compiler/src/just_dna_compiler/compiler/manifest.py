@@ -2,6 +2,7 @@
 the sources and licence gate, the verification and closure blocks, and `_build_manifest`.
 """
 
+import codecs
 import json
 import logging
 import shutil
@@ -101,9 +102,10 @@ def _now_iso() -> str:
 
 
 # What discovery ships from under a module's `logs/` (RM338, decided 2026-11-03), keyed by lowercase
-# extension without the dot. Text ships when its content agrees with its name (`_log_content_agrees`);
-# an image ships when its leading bytes are the format's magic and it is no larger than the ceiling.
-# SVG is in neither set on purpose: it is XML that can carry script, so it never ships by discovery.
+# extension without the dot. Text ships when its content agrees with its name; an image ships when its
+# leading bytes are the format's magic and it is no larger than the ceiling. SVG is in neither set on
+# purpose: it is XML that can carry script, so it never ships by discovery. `_log_left_behind_reason`
+# decides and explains in one place.
 LOG_TEXT_EXTENSIONS: frozenset[str] = frozenset({"log", "txt", "md", "json", "jsonl"})
 LOG_IMAGE_MAGIC: dict[str, bytes] = {
     "png": b"\x89PNG\r\n\x1a\n",
@@ -115,53 +117,113 @@ LOG_IMAGE_MAGIC: dict[str, bytes] = {
 LOG_IMAGE_MAX_BYTES: int = 5 * 1024 * 1024
 
 
-def _log_content_agrees(path: Path, ext: str) -> bool:
-    """Whether a file under `logs/` with lowercase extension `ext` holds what its name says.
+#: The fragment every `log_file_not_shipped` line carries (RM337). A consumer greps for it, so it is
+#: pinned by a test (`@warning-text-is-api`).
+LOG_NOT_SHIPPED_PHRASE = "does not ship with the module"
 
-    `.txt`/`.md`/`.log` decode as UTF-8, `.json` parses, every non-blank `.jsonl` line parses, and a
-    png/jpg/jpeg is at most `LOG_IMAGE_MAX_BYTES` and starts with its format's magic. Any other
-    extension, SVG included, is refused. The size is read before any byte, so an oversized image is
-    never loaded."""
+#: One sentence per arm of `_log_left_behind_reason`, keyed by arm. Pairwise distinct, and none
+#: contains another, which a test walks: a verdict function with several arms owes a reason with the
+#: same arms, and the way that rots is one arm inheriting another's sentence (`@answered-is-not-absent`).
+#: Each is fixed text; the function appends only what the bytes decide (an extension, an offset, a line
+#: number, two sizes), never an interpreter's error message, because the line reaches `manifest.json`.
+LOG_NOT_SHIPPED_REASONS: dict[str, str] = {
+    "hidden_path": "it is on a hidden path (a part of it starts with '.'), which is tool state, not a log",
+    "symlink": "it is a symlink, and a link can reach outside the module",
+    "oversize": "it is larger than the ceiling for an image under logs/",
+    "magic": "its first bytes are not the signature of the image format its extension names",
+    "svg": "an SVG is XML that can carry script, so it never ships",
+    "extension": "its extension is not one that ships from logs/",
+    "not_utf8": "it is not UTF-8 text",
+    "json": "it does not parse as one JSON document",
+    "jsonl": "every non-blank line of a .jsonl must parse as JSON",
+}
+
+
+def _log_left_behind_reason(path: Path, logs_dir: Path) -> str | None:
+    """Why discovery leaves this path under `logs_dir` behind, or `None` when it ships (RM338/RM337).
+
+    One function decides and explains, so the verdict and its reason cannot drift. In order: an exact
+    `.log` suffix on a regular file ships unchecked, as it always has (hidden or linked included); a
+    hidden path or a symlink stays behind (tool state, or a reach outside the module); a png/jpg/jpeg
+    ships at most `LOG_IMAGE_MAX_BYTES` and starting with its format's magic, the size read before any
+    byte; SVG and any extension outside `LOG_TEXT_EXTENSIONS` stay behind; text decodes as UTF-8 (a
+    byte-order mark allowed), a `.json` parses as one document, and every non-blank `.jsonl` line parses.
+    The caller passes a regular file or a symlink, never a directory.
+    """
+    if path.suffix == ".log" and path.is_file():
+        return None
+    reasons = LOG_NOT_SHIPPED_REASONS
+    if any(part.startswith(".") for part in path.relative_to(logs_dir).parts):
+        return reasons["hidden_path"]
+    if path.is_symlink():
+        return reasons["symlink"]
+    ext = path.suffix.lower().lstrip(".")
     magic = LOG_IMAGE_MAGIC.get(ext)
     if magic is not None:
-        if path.stat().st_size > LOG_IMAGE_MAX_BYTES:
-            return False
+        size = path.stat().st_size
+        if size > LOG_IMAGE_MAX_BYTES:
+            return f"{reasons['oversize']} ({size} bytes, and the ceiling is {LOG_IMAGE_MAX_BYTES})"
         with path.open("rb") as handle:
-            return handle.read(len(magic)) == magic
+            if handle.read(len(magic)) != magic:
+                return f"{reasons['magic']} (.{ext})"
+        return None
+    if ext == "svg":
+        return reasons["svg"]
     if ext not in LOG_TEXT_EXTENSIONS:
-        return False
+        shown = f".{ext}" if ext else "none"
+        shipped = ", ".join(f".{e}" for e in sorted(LOG_TEXT_EXTENSIONS | set(LOG_IMAGE_MAGIC)))
+        return f"{reasons['extension']} (this one is {shown}; {shipped} do)"
+    data = path.read_bytes()
+    # A byte-order mark is UTF-8 a Windows editor writes, and no part of the JSON. It is stripped
+    # here rather than by `utf-8-sig`, whose error offset counts from after the mark, so the offset
+    # named below is the file's own.
+    skip = len(codecs.BOM_UTF8) if data.startswith(codecs.BOM_UTF8) else 0
     try:
-        # `utf-8-sig`: a byte-order mark is UTF-8 a Windows editor writes, and no part of the JSON.
-        text = path.read_bytes().decode("utf-8-sig")
-    except UnicodeDecodeError:
-        return False
-    if ext not in {"json", "jsonl"}:
-        return True
-    # A JSON Lines record ends at `\n` only: `str.splitlines()` also breaks at U+2028 and the other
-    # separators JSON allows raw inside a string, which would refuse a valid ledger.
-    documents = [text] if ext == "json" else [line for line in text.split("\n") if line.strip()]
+        text = data[skip:].decode("utf-8")
+    except UnicodeDecodeError as exc:
+        return f"{reasons['not_utf8']} (the first byte that does not decode is at offset {skip + exc.start})"
+    if ext == "json":
+        return None if _parses_as_json(text) else reasons["json"]
+    if ext == "jsonl":
+        # A JSON Lines record ends at `\n` only: `str.splitlines()` also breaks at U+2028 and the other
+        # separators JSON allows raw inside a string, which would refuse a valid ledger. Lines are
+        # numbered before blanks are skipped, so the number is the one an editor shows.
+        for number, line in enumerate(text.split("\n"), start=1):
+            if line.strip() and not _parses_as_json(line):
+                return f"line {number} does not parse, and {reasons['jsonl']}"
+    return None
+
+
+def _parses_as_json(document: str) -> bool:
+    """Whether `document` is one JSON value.
+
+    `RecursionError` is what `json.loads` raises on nesting past the interpreter's limit: a file this
+    compile cannot parse stays behind under the same reason as any other that does not parse, rather
+    than failing the compile."""
     try:
-        for document in documents:
-            json.loads(document)
-    # RecursionError is what `json.loads` raises on nesting past the interpreter's limit: a file
-    # this compile cannot parse stays behind rather than failing the compile.
+        json.loads(document)
     except (ValueError, RecursionError):
         return False
     return True
 
 
-def _collect_logs(spec_dir: Path, output_dir: Path, explicit: list[Path] | None) -> list[FileEntry]:
+def _collect_logs(
+    spec_dir: Path, output_dir: Path, explicit: list[Path] | None
+) -> tuple[list[FileEntry], list[str]]:
     """Gather optional run/provenance logs into the module dir and hash them.
 
     Auto-discovers a top-level aggregate log (`*.log` in `spec_dir`) plus files under a
-    `spec_dir/logs/` folder, preserving each file's path relative to the module. Under `logs/`, a
-    `*.log` ships as it always has, unchecked; a `.txt`/`.md`/`.json`/`.jsonl`/`.png`/`.jpg`/`.jpeg`
-    ships when `_log_content_agrees` (RM338) and is neither on a hidden path nor a symlink, and is
-    named by an info line so an author sees it before publishing; anything else stays behind. An
-    explicit `log_files` list overrides discovery and ships what it names. Files are copied into `output_dir` (so they ship with the module) and
-    returned as hashed `FileEntry` rows. No logs → empty list (a valid module).
+    `spec_dir/logs/` folder, preserving each file's path relative to the module. Under `logs/`,
+    `_log_left_behind_reason` decides: a `*.log` ships as it always has, unchecked; a
+    `.txt`/`.md`/`.json`/`.jsonl`/`.png`/`.jpg`/`.jpeg` ships when its content matches its name (RM338)
+    and is named by an info line so an author sees it before publishing; every other path under `logs/`
+    stays behind with a `log_file_not_shipped` warning naming it and the reason (RM337), in both modes.
+    An explicit `log_files` list overrides discovery, ships what it names and warns about nothing.
+    Files are copied into `output_dir` (so they ship with the module) and returned as hashed
+    `FileEntry` rows, beside the warnings. No logs → empty lists (a valid module).
     """
     pairs: list[tuple[str, Path]] = []  # (relative name in module dir, source file)
+    warnings: list[str] = []
     if explicit is not None:
         for path in map(Path, explicit):
             try:
@@ -175,24 +237,22 @@ def _collect_logs(spec_dir: Path, output_dir: Path, explicit: list[Path] | None)
         logs_dir = spec_dir / "logs"
         if logs_dir.is_dir():
             for path in sorted(logs_dir.rglob("*")):
-                if not path.is_file():
+                # A real directory is walked, not judged. A symlink is judged whatever it points at (a
+                # file, a directory, nothing), since discovery never follows one into the module.
+                if not path.is_symlink() and not path.is_file():
                     continue
                 rel = path.relative_to(spec_dir).as_posix()
-                # `*.log` keeps shipping unchecked, exactly as before RM338: checking it now would
-                # silently drop a `.log` that shipped yesterday, and the warning for a file left
-                # behind is RM337's, a minor.
-                if path.suffix == ".log":
-                    pairs.append((rel, path))
+                reason = _log_left_behind_reason(path, logs_dir)
+                if reason is not None:
+                    warnings.append(
+                        CodedWarning("log_file_not_shipped", f"{rel} {LOG_NOT_SHIPPED_PHRASE}: {reason}.")
+                    )
                     continue
-                # The new kinds skip a hidden path (tool state: an editor's, a notebook's, an
-                # agent's settings) and a symlink (it can reach outside the module): a published
-                # file is permanent, and neither is a ledger the author put there to publish.
-                hidden = any(part.startswith(".") for part in path.relative_to(logs_dir).parts)
-                if hidden or path.is_symlink():
-                    continue
-                if _log_content_agrees(path, path.suffix.lower().lstrip(".")):
+                # `*.log` ships unchecked and unannounced, exactly as before RM338; a newly shipped
+                # kind is named so an author sees it before publishing a permanent file.
+                if path.suffix != ".log":
                     logger.info("%s ships with the module (its content matches its name)", rel)
-                    pairs.append((rel, path))
+                pairs.append((rel, path))
 
     seen: set[str] = set()
     names: list[str] = []
@@ -205,7 +265,7 @@ def _collect_logs(spec_dir: Path, output_dir: Path, explicit: list[Path] | None)
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(src, dest)
         names.append(rel)
-    return file_entries(output_dir, names)
+    return file_entries(output_dir, names), warnings
 
 
 def _collect_provenance(spec_dir: Path, output_dir: Path, explicit: Path | None) -> Provenance | None:

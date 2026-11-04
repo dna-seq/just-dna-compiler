@@ -15,7 +15,7 @@ Every item is additive under Principles 3/4/8, so each is legal in a minor. Inde
 |---|---|---|---|
 | Built on the `0.8` branch, uncut | PT1's RM241, RM258, RM263, RM272, RM275, RM278, RM283, RM288, RM300, RM308, RM313; earlier RM256, RM257, RM259, RM260, RM262 and RM264's docs half | `proposals/PROPOSAL_0_8_PT1.md` and ROADMAP_HISTORY on the `0.8` branch | done (their entries are in ROADMAP_HISTORY since the 2026-11-04 sync) |
 | The indel-placement fixes | [RM304](ROADMAP.md#rm304--a-vrs_id-does-not-say-which-vrs-minted-it-and-vrs-21-moves-some-insertion-ids) first, then [RM267](ROADMAP.md#rm267--the-ensembl-snapshot-anchors-a-class-of-insertions-one-base-early-and-resolutioncsv-serves-them-as-a-different-event), [RM270](ROADMAP.md#rm270--an-indels-artifact-key-is-its-sources-spelling-a-left-aligned-vcf-misses-a-respelled-row-and-the-spelling-independent-id-the-enricher-mints-never-reaches-the-artifact), [RM292](ROADMAP.md#rm292--a-verification-check-does-not-say-what-it-checked-against-so-a-check-that-witnesses-itself-reads-as-verified), [RM305](ROADMAP.md#rm305--clinvar-gkms-allele-table-is-an-offline-independent-witness-for-where-an-indel-sits-and-nothing-reads-it) | [ROADMAP.md](ROADMAP.md) | one design, interviewed before it is built; four are high severity |
-| The lead's ready minors (2026-11-04) | RM337 (a warning naming each `logs/` file left behind), RM342 (the toolchain in the manifest, with the polars 2 lock) | this file | RM337 ready; RM342 after its interview |
+| The lead's ready minors (2026-11-04) | RM337 (a warning naming each `logs/` file left behind), RM342 (the toolchain in the manifest, with the polars 2 lock) | this file; RM337's entry is in ROADMAP_HISTORY | RM337 built on `0.8` (2026-11-04); RM342 after its interview |
 | Chosen earlier | [RM303](#rm303--the-snapshot-layout-is-a-contract-with-six-parties-and-no-model-so-it-belongs-in-just-dna-format) (the snapshot layout as a model), [RM253](#rm253--a-repeat-count-star-allele-ugt1a1-28--ta8-has-no-home-a-diplotype-can-name-and-the-cpic-drafter-translates-none-of-cpics-notation) (a repeat-count star allele) | this file | taken into 0.8 in September |
 | longevitymap v2 | RM28's combination half, RM322–RM336 ([the group](#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03)), and [RM236](#rm236--consequence-and-impact-are-planned-axes-with-no-slot-and-an-acmg-engine-reads-both-as-primary-inputs), [RM239](#rm239--a-fine-mapping-posterior-has-no-column-and-gwas_effectscsv-already-has-its-key) as inputs to RM333's confidence labels | this file and [ROADMAP.md](ROADMAP.md) | design first; RM323 decides before RM324, RM326 and RM329 |
 
@@ -1181,40 +1181,6 @@ remaining class gets the same treatment — a plain column, on demand, one at a 
   life; it stays that way, here.
 
 Neither is built until a real module needs it.
-
-## RM337 — a file under `logs/` that is not `*.log` is dropped from the compile, and nothing says so
-
-**0.8, decided 2026-11-04.** The maintainer told the lead to push its ready-to-build minors into 0.8's scope, and the lead listed this one as ready: about an hour on the `0.8` branch. It also carries the half of RM338 that needs the new warning code.
-
-
-**Severity** medium · **Status** open — **a minor, release undecided** (corrected 2026-11-04 from "a
-patch") · **Owner** compiler (`_collect_logs`) · **Motivating case** S125 in CONSUMER_SUGGESTIONS_HISTORY.md
-(just-module-creator `F116`, 2026-10-05) · *related* RM338, RM147, RM308
-
-**Reproduced 2026-11-03** on a copy of `reference_examples/apoe_epsilon` with six files under `logs/`
-(`authoring.log`, `trace/session-a.jsonl`, `run.json`, `notes.md`, `notes.txt`, `fig.png`):
-`compile_module` succeeds, no warning mentions a log, and both `manifest.logs` and the output's `logs/`
-hold `logs/authoring.log` alone. Discovery globs `*.log` at the top level and `logs/**/*.log` below it,
-and skips everything else under `logs/` without a word. The registry's server-side compile leaves
-discovery to the compiler, so an upload carries the file and the published version does not.
-
-**The patch.** A coded warning, in both modes, naming each file under `logs/` that discovery left behind
-and saying that only `*.log` ships. It changes no verdict and ships nothing new, so it is legal whatever
-RM338 decides; once RM338 widens the set, the warning names whatever is still left out. An explicit
-`log_files` list is unaffected, since it already ships any path it names. The new code owes a
-`features/` scenario.
-
-**Sized wrong at filing; a minor (2026-11-04).** No existing member of `VALID_WARNING_CODES` names this
-finding, and every compile warning must carry one (`compiler/tests/test_warning_codes.py`), so the item
-adds a member. A new member is minor-class: `Compilation.warnings_summary` validates its keys, so a reader
-pinned to an older `just-dna-format` refuses a manifest that carries the new code. RM308 is the shipped
-precedent ("a new warning code, so minor-class"). A `logger` line would be patch-legal and is not taken:
-it is not the warnings channel, so the registry's server-side compile, where S125's file goes missing,
-would still say nothing to the uploader. Borrowing a code that names another finding is refused too
-(`@warning-code-names-the-finding`). Which minor takes it is the pm's to place. RM338's shipping half
-stays a patch; the warning half of its decision is this item.
-
-**Residuals** none yet.
 
 ## RM342 — the manifest does not record the toolchain that wrote the bytes, so a digest that moves cannot say why
 

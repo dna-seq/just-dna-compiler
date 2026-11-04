@@ -163,8 +163,9 @@ def compile_module(
         ensembl_reference: Pinned reference id recorded in the manifest for reproducibility.
         log_files: Explicit run/provenance log files to record. If None, auto-discovers a top-level
             `*.log` plus, under `spec_dir/logs/`, every `*.log` and each `.txt`/`.md`/`.json`/
-            `.jsonl`/`.png`/`.jpg`/`.jpeg` whose content matches its name (`_collect_logs`, RM338).
-            Logs are optional.
+            `.jsonl`/`.png`/`.jpg`/`.jpeg` whose content matches its name (`_collect_logs`, RM338);
+            each other path under `logs/` draws a `log_file_not_shipped` warning with its reason
+            (RM337). An explicit list draws none. Logs are optional.
         provenance_file: Explicit structured-provenance document. If None, auto-discovers
             `spec_dir/provenance.json`. Optional; summarized into `manifest.provenance`.
         logo_file: Explicit module logo image. If None, auto-discovers `spec_dir/logo.{png,jpg,jpeg}`.
@@ -937,7 +938,10 @@ def compile_module(
     authority_call_rows: list[ClinSigAuthorityCallRow] = fact_rows.get(ClinSigAuthorityCallRow, [])
     source_rows: list[SourceRow] = fact_rows.get(SourceRow, [])
 
-    logs = _collect_logs(spec_dir, output_dir, log_files)
+    # RM337: a file under `logs/` left behind is a warning in both modes, never a refusal — it changes
+    # no verdict, and the registry's server-side compile shows an uploader only this channel.
+    logs, log_warnings = _collect_logs(spec_dir, output_dir, log_files)
+    all_warnings.extend(w for w in log_warnings if w not in all_warnings)
     # Authored side-car assets are validated here (validate_spec does not read them). Surface a
     # malformed one as a compile error instead of letting the exception escape mid-compile.
     try:

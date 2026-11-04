@@ -93,6 +93,23 @@ Feature: The spec directory and the cells inside it
     # already the weak one, and refusing would add nothing. The message is built by `layout` as a refusal
     # and coded at the point where it becomes a warning, which is the only place that knows it is one.
 
+  # source: compiler/src/just_dna_compiler/compiler/manifest.py
+  # anchor: _collect_logs
+  @code:log_file_not_shipped @actionable @both_modes
+  Scenario: a file under logs/ that discovery leaves behind
+    Given a spec directory whose logs/ holds "notes.svg", "data.bin", a "ledger.jsonl" with one bad line, and "authoring.log"
+    When the module is compiled
+    Then one warning per file left behind says it "does not ship with the module", naming the path
+    And for the SVG the reason is that "an SVG is XML that can carry script, so it never ships"
+    And for the ledger it names the first bad line, since "every non-blank line of a .jsonl must parse as JSON"
+    And authoring.log ships and draws no warning
+    And the same warnings fire under strict, and the compile succeeds in both modes
+    # RM337. One reason per arm of `_log_left_behind_reason`, which also decides the verdict, so the two
+    # cannot drift: a hidden path, a symlink, an image over the ceiling (both sizes named) or with the
+    # wrong signature, SVG, any other extension, text that is not UTF-8, a `.json` that does not parse,
+    # a `.jsonl` line that does not parse. An explicit `log_files` list ships what it names and draws
+    # none; a non-`.log` file beside the spec is the ordinary tolerance of unknown files, not a log.
+
   # source: compiler/src/just_dna_compiler/compiler/validate.py
   # anchor: _validate_spec
   @code:module_version_coerced @actionable @both_modes

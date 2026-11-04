@@ -41,6 +41,25 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM337: a coded warning names each file under `logs/` that does not ship (0.8, uncut)
+
+**format** — `VALID_WARNING_CODES` gains `log_file_not_shipped` (actionable). An older reader refuses a
+manifest that carries it ([INTEGRATION_0_8 § 1](INTEGRATION_0_8.md)).
+
+**compiler** — Every path under `logs/` that discovery leaves behind now draws one warning, in both
+modes and never a refusal: `<path> does not ship with the module: <reason>.` The reason is one of the fixed sentences
+in `LOG_NOT_SHIPPED_REASONS`: a hidden path; a symlink, including one to a directory or to nothing; an
+image over `LOG_IMAGE_MAX_BYTES`, with both sizes; an image whose first bytes are not its format's
+signature; an SVG, which can carry script; any other extension; text that is not UTF-8, with the
+offset of the first bad byte; a `.json` that does not parse; and a `.jsonl` line that does not parse,
+with the first such line's number. `_log_content_agrees` became `_log_left_behind_reason`, which returns
+the reason or `None` and so decides and explains in one place, and `_collect_logs` returns its warnings
+beside the entries. The warnings reach `CompilationResult.warnings`,
+`manifest.compilation.warnings_summary` and the `compile` output. One line per file, with no cap. An
+explicit `log_files` list draws none, and the top level is unchanged. What ships, and both identities,
+are as RM338 left them. Before this, the registry's server-side compile dropped such a file without a
+word to the uploader (S125).
+
 ## 2026-11-04 — RM338: `logs/` ships checked text and images, not only `*.log` (patch, on `main`)
 
 **compiler** — Under a module's `logs/`, discovery now ships `.txt`, `.md`, `.json` and `.jsonl` when the
