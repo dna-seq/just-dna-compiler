@@ -31,7 +31,7 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from just_dna_format.normalize import now_utc_iso
-from just_dna_format.snapshot import SnapshotRelease, write_release
+from just_dna_format.snapshot import SnapshotRelease, begin_snapshot_write
 
 from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME
 from just_dna_enricher.pharmvar import (
@@ -120,7 +120,6 @@ def build_snapshot(
         )
     out_dir = Path(out_dir)
     data_dir = out_dir / SNAPSHOT_DATA_DIRNAME
-    data_dir.mkdir(parents=True, exist_ok=True)
 
     owned = client is None
     pharmvar = client or PharmVarClient()
@@ -164,6 +163,8 @@ def build_snapshot(
 
     schemas = _schemas()
     by_file = {ALLELES_PARQUET: allele_records, VARIANTS_PARQUET: variant_records}
+    snapshot = begin_snapshot_write(out_dir)
+    data_dir.mkdir(parents=True, exist_ok=True)
     for name, records in by_file.items():
         pl.DataFrame(records, schema=schemas[name]).write_parquet(data_dir / name, compression="zstd")
 
@@ -189,7 +190,7 @@ def build_snapshot(
         built_at=now_utc_iso(),
         builder_version=_builder_version(),
     )
-    write_release(out_dir, release)
+    snapshot.commit(release)
     logger.info(
         "PharmVar snapshot: %d gene(s), %d allele(s), %d defining variant(s) on %s → %s",
         len(by_gene),

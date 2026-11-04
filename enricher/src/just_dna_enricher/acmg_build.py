@@ -46,7 +46,7 @@ from typing import Any
 
 from just_dna_format.layout import atomic_writer
 from just_dna_format.normalize import now_utc_iso
-from just_dna_format.snapshot import SnapshotRelease, write_release
+from just_dna_format.snapshot import SnapshotRelease, begin_snapshot_write
 
 from just_dna_enricher.acmg import (
     MIN_GENES,
@@ -265,7 +265,7 @@ def build_acmg_snapshot(
     about ACMG's list with nothing behind it, and this is the same pin `clinvar build` writes.
     """
     sf_list = parse_acmg_workbook(workbook)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    snapshot = begin_snapshot_write(out_dir)
 
     csv_path = out_dir / ACMG_SNAPSHOT_FILENAME
     with atomic_writer(csv_path, newline="") as handle:
@@ -289,7 +289,7 @@ def build_acmg_snapshot(
         built_at=sf_list.retrieved_at,
         builder="just_dna_enricher.acmg_build",
     )
-    write_release(out_dir, release)
+    snapshot.commit(release)
     logger.info(
         "wrote ACMG SF v%s snapshot to %s (%d genes, %d rows)",
         sf_list.version,

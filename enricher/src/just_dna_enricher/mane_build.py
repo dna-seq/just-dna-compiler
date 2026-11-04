@@ -72,7 +72,7 @@ from pathlib import Path
 
 import httpx
 from just_dna_format.normalize import now_utc_iso
-from just_dna_format.snapshot import SnapshotRelease, write_release
+from just_dna_format.snapshot import SnapshotRelease, SnapshotWrite, begin_snapshot_write
 
 from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME
 from just_dna_enricher.net import stream_to_file
@@ -657,7 +657,6 @@ def build_snapshot(
 
     out_dir = Path(out_dir)
     data_dir = out_dir / SNAPSHOT_DATA_DIRNAME
-    data_dir.mkdir(parents=True, exist_ok=True)
 
     result = ManeBuildResult(
         out_dir=out_dir,
@@ -667,6 +666,8 @@ def build_snapshot(
     result.release = result.versions.get(MANE_VERSION_LABEL) or release
     result.dataset = None if result.release is None else f"mane_grch38_v{result.release}"
 
+    snapshot = begin_snapshot_write(out_dir)
+    data_dir.mkdir(parents=True, exist_ok=True)
     for table in MANE_TABLES:
         read, schema = _READERS[table.name]
         records = read(paths[table.name], result)
@@ -687,7 +688,7 @@ def build_snapshot(
         None if versions_file is None else _sha256_file(Path(versions_file))
     )
 
-    _write_release_json(out_dir, result, downloads=given)
+    _write_release_json(snapshot, result, downloads=given)
     logger.info(
         "Built the MANE snapshot (%s): %s → %s. %d gene(s) excluded over %d reason(s); %d changed "
         "MANE Select accession(s).",
@@ -749,7 +750,7 @@ def _per_input(downloads: Mapping[str, ManeDownload], attribute: str) -> dict[st
 
 
 def _write_release_json(
-    out_dir: Path, result: ManeBuildResult, *, downloads: Mapping[str, ManeDownload]
+    snapshot: SnapshotWrite, result: ManeBuildResult, *, downloads: Mapping[str, ManeDownload]
 ) -> Path:
     """Write `release.json` — the provenance MANE hands over, plus what this build measured.
 
@@ -797,7 +798,7 @@ def _write_release_json(
         built_at=now_utc_iso(),
         builder_version=_builder_version(),
     )
-    return write_release(out_dir, release)
+    return snapshot.commit(release)
 
 
 def _builder_version() -> str:

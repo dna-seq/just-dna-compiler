@@ -49,7 +49,7 @@ from pathlib import Path
 import httpx
 from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
-from just_dna_format.snapshot import SnapshotRelease, write_release
+from just_dna_format.snapshot import SnapshotRelease, begin_snapshot_write
 
 from just_dna_enricher.locations import SNAPSHOT_LICENSE_FILENAME
 from just_dna_enricher.net import stream_to_file
@@ -358,7 +358,6 @@ def build_snapshot(
     csv.field_size_limit(_CSV_FIELD_LIMIT)
     zip_path, out_dir = Path(zip_path), Path(out_dir)
     data_dir = out_dir / "data"
-    data_dir.mkdir(parents=True, exist_ok=True)
 
     with zipfile.ZipFile(zip_path) as archive:
         vintage = require_current_archive(archive)  # refuses the retired 2025 spelling by name
@@ -393,6 +392,8 @@ def build_snapshot(
         )
 
     frame = pl.DataFrame(records, schema=_schema()).sort(["annotation_id", "genotype"], nulls_last=True)
+    snapshot = begin_snapshot_write(out_dir)
+    data_dir.mkdir(parents=True, exist_ok=True)
     parquet_path = data_dir / "annotations.parquet"
     frame.write_parquet(parquet_path, compression="zstd")
 
@@ -419,7 +420,7 @@ def build_snapshot(
         **({"archive_last_modified": dict(archive_dates.dates)} if archive_dates is not None else {}),
     )
     staleness = staleness_finding(archive_dates) if archive_dates is not None else None
-    write_release(out_dir, release)
+    snapshot.commit(release)
     if staleness:
         logger.warning("%s", staleness)
     logger.info(

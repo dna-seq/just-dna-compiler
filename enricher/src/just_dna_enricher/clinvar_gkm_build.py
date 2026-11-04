@@ -31,7 +31,7 @@ from just_dna_format.snapshot import (
     SNAPSHOT_DATA_DIRNAME,
     SNAPSHOT_LICENSE_FILENAME,
     SnapshotRelease,
-    write_release,
+    begin_snapshot_write,
 )
 
 from just_dna_enricher.civic_build import GRCH38_REFSEQ_ACCESSIONS
@@ -336,6 +336,7 @@ def build_snapshot(
         .sort(["chrom", "pos", "ref", "alt", "vrs_id", "rsid", "clinvar_variation_id"], nulls_last=True)
     )
     data_dir = out_dir / SNAPSHOT_DATA_DIRNAME
+    snapshot = begin_snapshot_write(out_dir)
     data_dir.mkdir(parents=True, exist_ok=True)
     witness_file = data_dir / WITNESS_PARQUET
     staged = witness_file.with_name(witness_file.name + ".part")
@@ -358,8 +359,7 @@ def build_snapshot(
         latest_release=latest_release,
         source_sha256={name: f"sha256:{bare_digest(digests[name])}" for name in INPUT_FILES},
     )
-    write_release(
-        out_dir,
+    snapshot.commit(
         SnapshotRelease(
             dataset=dataset,
             source_url=source_url or {name: parquet_url(name) for name in INPUT_FILES},

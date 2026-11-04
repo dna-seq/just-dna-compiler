@@ -111,9 +111,14 @@ the point of the list is to not need the suite to find out.
 **Data and terms**
 - [ ] any root-level file the snapshot needs is in `SNAPSHOT_ROOT_FILENAMES` (in `just_dna_format.snapshot`
       since 0.8), with `release.json` last (`test_a_publish_carries_the_knot_table_and_not_only_the_scores`)
-- [ ] the builder writes `release.json` with `write_release(out_dir, SnapshotRelease(dataset=…, …))`, never
-      a hand-built dict, and names its release in `dataset`
-      (`test_release_json_through_the_model.py::test_every_builder_writes_through_the_model`)
+- [ ] the builder opens its write with `snapshot = begin_snapshot_write(out_dir)` immediately before the
+      first byte of the live payload moves, and describes it last with
+      `snapshot.commit(SnapshotRelease(dataset=…, …))`, never `write_release` or a hand-built dict; it
+      names its release in `dataset`
+      (`test_release_json_through_the_model.py::test_every_builder_opens_a_write_and_none_writes_the_record_itself`,
+      and a run of it in `test_a_build_withdraws_its_description_first.py::_RUNS`, RM369)
+- [ ] any `release.json` key a reader acts on is a typed `SnapshotRelease` field
+      (`test_release_json_through_the_model.py::test_no_reader_acts_on_an_untyped_release_key`, RM369)
 - [ ] `terms` is a `SourceTerms` whose permission axes are each either **documented** or recorded as
       a **reading**, and the difference is written down somewhere — `sources.csv` shows only booleans
       (`test_the_three_permission_axes_each_rest_on_a_different_kind_of_ground`)

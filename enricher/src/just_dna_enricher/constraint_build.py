@@ -40,7 +40,7 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from just_dna_format.normalize import now_utc_iso
-from just_dna_format.snapshot import SnapshotRelease, write_release
+from just_dna_format.snapshot import SnapshotRelease, SnapshotWrite, begin_snapshot_write
 
 from just_dna_enricher.gnomad import normalize_constraint_flags
 from just_dna_enricher.net import stream_to_file
@@ -266,7 +266,6 @@ def build_snapshot(
         raise FileNotFoundError(f"gnomAD constraint TSV not found at {tsv}")
     out_dir = Path(out_dir)
     data_dir = out_dir / "data"
-    data_dir.mkdir(parents=True, exist_ok=True)
 
     by_gene: dict[str, list[dict]] = {}
     source_rows = 0
@@ -289,11 +288,13 @@ def build_snapshot(
     schema = _empty_schema()
     frame = pl.DataFrame(records, schema=schema).sort("gene")
     parquet_path = data_dir / "gnomad_constraint.parquet"
+    snapshot = begin_snapshot_write(out_dir)
+    data_dir.mkdir(parents=True, exist_ok=True)
     frame.write_parquet(parquet_path)
 
     source_sha256 = _sha256_file(tsv)
     _write_release_json(
-        out_dir,
+        snapshot,
         source_url=source_url,
         source_sha256=source_sha256,
         gene_count=frame.height,
@@ -319,7 +320,7 @@ def build_snapshot(
 
 
 def _write_release_json(
-    out_dir: Path,
+    snapshot: SnapshotWrite,
     *,
     source_url: str,
     source_sha256: str,
@@ -339,4 +340,4 @@ def _write_release_json(
         built_at=now_utc_iso(),
         builder_version=_builder_version(),
     )
-    return write_release(out_dir, release)
+    return snapshot.commit(release)

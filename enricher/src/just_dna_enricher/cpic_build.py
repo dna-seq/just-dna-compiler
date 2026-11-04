@@ -38,7 +38,7 @@ from pathlib import Path
 from typing import Any
 
 from just_dna_format.normalize import now_utc_iso
-from just_dna_format.snapshot import SnapshotRelease, write_release
+from just_dna_format.snapshot import SnapshotRelease, begin_snapshot_write
 
 from just_dna_enricher.cpic import DEFAULT_CPIC_ENDPOINT, CpicClient, CpicError, normalize_chrom
 from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME
@@ -172,7 +172,6 @@ def build_snapshot(
         )
     out_dir = Path(out_dir)
     data_dir = out_dir / SNAPSHOT_DATA_DIRNAME
-    data_dir.mkdir(parents=True, exist_ok=True)
 
     owned = client is None
     cpic = client or CpicClient(endpoint)
@@ -297,6 +296,8 @@ def build_snapshot(
         RECOMMENDATIONS_PARQUET: recommendation_records,
     }
     counts: dict[str, int] = {}
+    snapshot = begin_snapshot_write(out_dir)
+    data_dir.mkdir(parents=True, exist_ok=True)
     for name, records in by_file.items():
         pl.DataFrame(records, schema=schemas[name]).write_parquet(data_dir / name, compression="zstd")
         counts[name] = len(records)
@@ -315,7 +316,7 @@ def build_snapshot(
         built_at=now_utc_iso(),
         builder_version=_builder_version(),
     )
-    write_release(out_dir, release)
+    snapshot.commit(release)
     logger.info(
         "CPIC snapshot: %d genes, %d alleles, %d diplotypes, %d defining variants, %d recommendations → %s",
         len(gene_records),

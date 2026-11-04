@@ -32,7 +32,7 @@ maintained one, and where the two disagree this one is what a consumer may rely 
 | `spelling` | One comparison per compared kind (RM363): `gene_key`, `drug_key`, `doi_key`/`doi_token`, `COMPARISON_KEYS` + `comparison_key`, and the `chrom` input fold `ChromCell` every model with a `chrom` declares; also `VALID_CHROMOSOMES` and `DOI_PATTERN` (0.8) | `vrs` |
 | `alleles` | Reference-free allele algebra: `parsimony_reduce`, `event_profile` — what two spellings of one indel have in common (0.5, RM31) — plus `split_genotype`, the genotype cell → allele list rule every tier and every consumer reads (0.6, S30) | — (stdlib leaf) |
 | `layout` | Where a module's machine-written sidecars live, what they may be called, and the atomic write that puts one there (S66) | — (stdlib leaf) |
-| `snapshot` | The reference-snapshot layout (`data/`, sidecars, `LICENSE.txt`, `release.json`), the `SnapshotRelease` record, `read_release`/`write_release` and the payload predicate (0.8, RM303) | `layout` |
+| `snapshot` | The reference-snapshot layout (`data/`, sidecars, `LICENSE.txt`, `release.json`), the `SnapshotRelease` record, `read_release`/`write_release`, the write order (`begin_snapshot_write`/`begin_block_write`, RM369) and the payload predicate (0.8, RM303) | `layout` |
 | `base` | `AuthoredModel` + `derive_variant_key` | `vocab`, `vrs` |
 | `manifest` | The `manifest.json` contract | `identity`, `vocab` |
 | `findings` | `CodedWarning` — a `str` subclass carrying the code its emission site named, and the carried/actionable split (0.7, RM131) | `vocab` |
@@ -2975,6 +2975,17 @@ field; every other key rides in `extra="allow"` and survives a rewrite unchanged
 | `clinvar_file_date` | `str` | the ClinVar label, `clinical_assertions.csv`'s `dataset`, the parent pin |
 | `status_basis` | `str` | CIViC drafting and refutation |
 | `sf_version` | `str` | ACMG |
+| `parts_read`, `parts_total` | `dict[str, int]` | the Open Targets pass (partial snapshot, `strict` refuses; RM369) |
+| `source_release`, `vrs_version` | `str` | ClinVar-GKM's currency check and its VRS comparability (RM369) |
+
+**A key a reader acts on is a typed field (RM369).** Open Targets' part counts and ClinVar-GKM's two
+keys were read out of `extra` (`getattr`, a `model_dump()` and `.get`), where a misspelt key reads as
+absent and a value of the wrong kind reaches the reader unchecked: a `parts_total` of `"seven"` raised a
+`TypeError` in the pass. Typed, an old value is read through the field's validator (`"3"` reads as `3`,
+pydantic's lax mode, the rule every typed key already had) and one of the wrong kind costs that key and
+never the record. An AST walk over all three tiers' sources refuses `getattr`, `.get`, subscripts and
+`model_extra` on a release, an attribute that is not a typed field, and a computed key into its dump
+(`enricher/tests/test_release_json_through_the_model.py`).
 
 **Unstated is `None`, never a default.** `write_release` dumps with `exclude_unset`: a key the builder
 never set is not written, and a key it set to `None` is written as `null`, because a recorded `null`
@@ -3000,9 +3011,29 @@ version and is not an alias of `builder_version`; it rides in extra.
 
 **`read_release(dir) -> SnapshotRelease | None`** answers `None` for an absent file and for an
 unreadable one (does not parse, is not an object, or a typed key holds the wrong kind of value), with a
-warning for the second. **`write_release(dir, release)`** is the one way a builder writes the record:
-atomic, sorted keys, newline-terminated. An AST walk over the enricher's `*_build.py` refuses any other
-write of `release.json` (`enricher/tests/test_release_json_through_the_model.py`).
+warning for the second. **`write_release(dir, release)`** writes the record: atomic, sorted keys,
+newline-terminated.
+
+**A builder never calls it; it opens a write (RM369).** The order is **withdraw the record, move the
+bytes, describe them**. `begin_snapshot_write(dir)` removes `release.json` and returns a `SnapshotWrite`
+whose `commit(release)` is the only route a builder has to the writer, so describing a snapshot without
+having withdrawn the old description is not expressible. Every builder used to swap its payload in and
+write the record after, so a crash between the two left new bytes under the previous build's record,
+which every reader believed. Now the worst a crash leaves is a payload with no record, which reads as
+an unstated release and is withheld. The write is opened immediately before the first byte of the
+live payload moves, never at the top of a build: a download or a parse that fails earlier leaves the
+old snapshot whole and still described. A build that fails after it is not given its old record back,
+because that record would describe bytes the failed build may have changed. A second half that owns
+one **block** of another build's record (ClinVar's `citations`) uses `begin_block_write(dir, name)`
+instead: it withdraws that block only, and its `commit(block)` merges the new one back, leaving an
+unreadable record alone (`False`).
+
+Two guards hold it. An AST walk over the enricher's `*_build.py` asserts that the builders opening a
+write are exactly the builders, that none names `write_release`, and that none spells `release.json`
+outside an import or an `.unlink` (`enricher/tests/test_release_json_through_the_model.py`). And every
+builder is run offline against a directory that already holds a described snapshot, with the describe
+step made to fail: nothing a reader globs may have moved when the record is withdrawn, and no
+`release.json` may be left (`enricher/tests/test_a_build_withdraws_its_description_first.py`).
 **`holds_snapshot_payload(dir, *, payload_filename=None)`** is the payload predicate: a directory holding
 only `release.json`, or nothing, is not a snapshot. **`release_label(dir)`** is the one reader of the
 label (`dataset`, stripped, `None` when blank or unstated), and **`release_is_unreadable(dir)`** tells a

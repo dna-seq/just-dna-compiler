@@ -41,6 +41,27 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM369: a snapshot build that dies before its last write leaves no `release.json`, never the previous build's (0.8, uncut)
+
+- **Every builder withdraws `release.json` before its payload moves and writes the new one last.**
+  `just_dna_format.snapshot.begin_snapshot_write(dir)` removes the record and returns a `SnapshotWrite`
+  whose `commit(release)` writes it; all sixteen builders and `opentargets subset` go through it, opened
+  immediately before the first payload byte moves, so a fetch or parse that fails earlier leaves the old
+  snapshot whole and described. Before, a crash between the payload swap and the record left new bytes
+  described by the previous build, and every reader (the `cache status` label, `SourceRow.dataset`, a
+  child's parent pin) believed it. Now the worst case reads as an unstated release and is withheld.
+- **ClinVar's citations half withdraws its own block only** (`begin_block_write(dir, "citations")`),
+  so the records' provenance is never touched; `clinvar_build._merge_release_block` is gone.
+- **AlphaGenome AVI and CIViC write `LICENSE.txt` before `release.json`**, the order
+  `SNAPSHOT_ROOT_FILENAMES` states; both wrote the record first.
+- **`SnapshotRelease` types the four keys readers act on**: `parts_read` and `parts_total`
+  (`dict[str, int]`, Open Targets), `source_release` and `vrs_version` (`str`, ClinVar-GKM). A value of
+  the wrong kind in an old `release.json` now costs that key (read as unstated, with the existing
+  warning) instead of raising in the Open Targets pass or being stringified into a VRS comparison.
+- Guards: an AST walk asserting the builders opening a write equal the builders and none names
+  `write_release`; a reader walk over all three tiers refusing an untyped release read; and every
+  builder run offline with its describe step failing.
+
 ## 2026-11-04 — RM367: `validate` and `compile` reach one verdict, and a refused compile writes nothing (0.8, uncut)
 
 - **One resolution step for both commands.** `validate_spec` now runs the compile's own resolution step

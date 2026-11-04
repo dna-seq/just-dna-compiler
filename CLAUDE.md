@@ -406,7 +406,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - A snapshot built in two halves is described by one `release.json`, and a publish of one half overwrites the other's provenance. `@a-lane-with-two-halves-publishes-the-provenance-of-one`
 - A lane's release label belongs on the lane; a reporter that composes one blanks the lane that spells it differently. `@the-reporter-cannot-compose-a-lanes-label`
 - The publisher's allowlist is derived from the artifact's file list; what it drops, the manifest still attests. `@publisher-allowlist-derived`
-- The snapshot layout and `release.json`'s model live in `just_dna_format.snapshot` (`locations` imports them); a sidecar is a sibling of `data/`; a builder writes `release.json` only through `write_release`. `@snapshot-layout-locations`
+- The snapshot layout and `release.json`'s model live in `just_dna_format.snapshot` (`locations` imports them); a sidecar is a sibling of `data/`; a builder withdraws `release.json` right before its payload moves and writes it last, only through `begin_snapshot_write(...).commit`; a key a reader acts on is a typed field. `@snapshot-layout-locations`
 - A second published artifact makes provenance a question — answer it in `release.json`. `@release-json-provenance`
 - A `latest` pointer discovers a version; a versioned directory pins it, and a local file names neither URL. `@current-discovers-a-version-a-directory-pins`
 - Run a knob's **disabling** value; a flag the callee never sees is a flag that does nothing. `@off-switch-needs-a-probe`

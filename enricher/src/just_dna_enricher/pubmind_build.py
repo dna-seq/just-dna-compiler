@@ -51,7 +51,7 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from just_dna_format.normalize import now_utc_iso
-from just_dna_format.snapshot import SnapshotRelease, write_release
+from just_dna_format.snapshot import SnapshotRelease, SnapshotWrite, begin_snapshot_write
 
 from just_dna_enricher.clin_sig import normalize_clin_sig
 from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME
@@ -336,7 +336,6 @@ def build_snapshot(
         raise FileNotFoundError(f"PubMind table not found at {table}")
     out_dir = Path(out_dir)
     data_dir = out_dir / SNAPSHOT_DATA_DIRNAME
-    data_dir.mkdir(parents=True, exist_ok=True)
 
     dropped = dict.fromkeys(PUBMIND_DROP_REASONS, 0)
     input_rows = 0
@@ -417,6 +416,8 @@ def build_snapshot(
     unique.sort(key=lambda r: (_CHROM_INDEX[r["chrom"]], r["start"], r["ref"], r["alt"], r["pvid"]))
     frame = pl.DataFrame(unique, schema=_schema())
     parquet_file = data_dir / PUBMIND_PARQUET
+    snapshot = begin_snapshot_write(out_dir)
+    data_dir.mkdir(parents=True, exist_ok=True)
     frame.write_parquet(parquet_file, compression="zstd")
 
     derivations = dict.fromkeys(sorted(PUBMIND_DERIVATIONS), 0)
@@ -445,7 +446,7 @@ def build_snapshot(
     )
     result.dataset = None if result.source_sha256 is None else f"pubmind_{result.source_sha256[:12]}"
     _write_release_json(
-        out_dir,
+        snapshot,
         result,
         source_url=source_url,
         source_etag=source_etag,
@@ -479,7 +480,7 @@ def _sha256_file(path: Path) -> str | None:
 
 
 def _write_release_json(
-    out_dir: Path,
+    snapshot: SnapshotWrite,
     result: PubMindBuildResult,
     *,
     source_url: str | None,
@@ -488,7 +489,7 @@ def _write_release_json(
 ) -> Path:
     """Write `release.json` — the provenance, every drop count, and the multi-PVID finding.
 
-    A plain write rather than `clinvar_build._merge_release_block`: that shape exists so two blocks
+    A whole-record write rather than `snapshot.begin_block_write`: that shape exists so two blocks
     can cohabit one snapshot directory (ClinVar's citations beside its records), and this snapshot
     directory holds one thing.
 
@@ -525,7 +526,7 @@ def _write_release_json(
         built_at=now_utc_iso(),
         builder_version=_builder_version(),
     )
-    return write_release(out_dir, release)
+    return snapshot.commit(release)
 
 
 def _builder_version() -> str:

@@ -29,10 +29,10 @@ from pathlib import Path
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.snapshot import (
     SnapshotRelease,
+    SnapshotWrite,
+    begin_block_write,
+    begin_snapshot_write,
     clinvar_release_label,
-    read_release,
-    release_is_unreadable,
-    write_release,
 )
 from just_dna_format.spec import extract_pmids
 
@@ -385,6 +385,10 @@ def build_citations(
             kept.height,
         )
     target = Path(out_dir) / CITATIONS_DIRNAME
+    # This half owns the record's `citations` block and nothing else: withdrawn before the table moves,
+    # merged back after it (RM369), so a failure between the two leaves no block describing a table
+    # this build replaced, and the records' own provenance is never touched.
+    block = begin_block_write(Path(out_dir), "citations")
     target.mkdir(parents=True, exist_ok=True)
     kept.write_parquet(target / "citations.parquet")
     logger.info("Wrote %s PubMed citation link(s)", kept.height)
@@ -393,9 +397,7 @@ def build_citations(
     # be an unknown we chose not to establish — and `source_sha256` is what RM4's `reference_sha256`
     # pins against, so an unhashed citations table is not pinnable.
     digest = source_sha256 or _sha256_file(Path(citations_txt))
-    updated = _merge_release_block(
-        Path(out_dir),
-        "citations",
+    updated = block.commit(
         {
             "source_url": source_url,
             "source_sha256": digest,
@@ -434,28 +436,6 @@ def _sha256_file(path: Path) -> str | None:
     return hasher.hexdigest()
 
 
-def _merge_release_block(out_dir: Path, name: str, block: dict) -> bool:
-    """Merge one provenance block into `release.json`, preserving whatever else is in it.
-
-    Read-modify-write rather than rewrite: `build_snapshot` owns the VCF's keys and this owns its own,
-    and a citations build must never erase the records' provenance. An unparseable existing file is left
-    alone and reported — overwriting it would destroy the only statement of where the data came from.
-    """
-    if release_is_unreadable(out_dir):
-        # `read_release` has already said why; the block is the part that is lost, and it says so.
-        logger.warning(
-            "the snapshot's release.json in %s is present but unreadable; leaving it alone rather than "
-            "overwriting its provenance. The %s block was not recorded.",
-            out_dir,
-            name,
-        )
-        return False
-    existing = read_release(out_dir)
-    stated = existing.model_dump(exclude_unset=True) if existing is not None else {}
-    write_release(out_dir, SnapshotRelease.model_validate({**stated, name: block}))
-    return True
-
-
 def build_snapshot(
     vcf: Path,
     out_dir: Path,
@@ -479,7 +459,6 @@ def build_snapshot(
         raise FileNotFoundError(f"ClinVar VCF not found at {vcf}")
     out_dir = Path(out_dir)
     data_dir = out_dir / "data"
-    data_dir.mkdir(parents=True, exist_ok=True)
 
     by_chrom: dict[str, list[dict]] = {}
     skipped_non_acgt = skipped_too_long = skipped_bad_chrom = 0
@@ -531,6 +510,8 @@ def build_snapshot(
     ordered = [c for c in _CHROM_ORDER if c in by_chrom] + sorted(
         c for c in by_chrom if c not in _CHROM_ORDER
     )
+    snapshot = begin_snapshot_write(out_dir)
+    data_dir.mkdir(parents=True, exist_ok=True)
     for chrom in ordered:
         df = pl.DataFrame(by_chrom[chrom], schema=schema).sort(
             ["start", "ref", "alt", "rsid", "variation_id"], nulls_last=True
@@ -544,7 +525,7 @@ def build_snapshot(
     file_date = _read_file_date(vcf)
     source_sha256 = _sha256_file(vcf)
     _write_release_json(
-        out_dir,
+        snapshot,
         clinvar_file_date=file_date,
         source_url=source_url,
         source_sha256=source_sha256,
@@ -574,7 +555,7 @@ def build_snapshot(
 
 
 def _write_release_json(
-    out_dir: Path,
+    snapshot: SnapshotWrite,
     *,
     clinvar_file_date: str | None,
     source_url: str,
@@ -594,4 +575,4 @@ def _write_release_json(
         built_at=now_utc_iso(),
         builder_version=_builder_version(),
     )
-    return write_release(out_dir, release)
+    return snapshot.commit(release)
