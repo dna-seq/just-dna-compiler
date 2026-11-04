@@ -154,6 +154,12 @@ import from there keeps working.
 | --- | --- | --- |
 | log discovery in `compile_module` | RM348 | A symlinked `*.log` (beside the spec or under `logs/`), anything under a `logs/` that is itself a link, and any discovered file over `LOG_MAX_BYTES` (5 MiB) used to ship, the `*.log` ones since before RM338; they now stay behind with `log_file_not_shipped`. A file the compile cannot read stays behind the same way instead of failing the compile, and a directory it cannot list is named in place of the files it hides. An explicit `log_files` list is unaffected. The ceiling is now `LOG_MAX_BYTES`; `LOG_IMAGE_MAX_BYTES`, RM338's name on `main`, stays as an alias of it. |
 
+## 1.10 Which alleles `star_allele_undefined` reports (no new code)
+
+| Surface | Item | What changed |
+| --- | --- | --- |
+| `star_allele_undefined` (validate and compile) | RM351 | Matched on `(gene, allele)`, not the bare name: a gene that uses an allele another gene defines (CYP2C9 `*2` beside CYP2C19 `*2`) is now reported, and an HLA gene that `haplotypes.csv` defines nothing for is no longer reported (its alleles are typed). A `haplotypes.csv` row with no `gene` still defines its name for every gene. The text keeps every phrase and appends `By gene: <gene> <alleles>; …`, then, when an HLA gene was skipped, `Not checked for <genes>: …`. `diplotype_definitions_identical` and `diplotype_phase_ambiguous` read each gene's own definitions, so one gene's `*2` no longer hides a finding about another's. |
+
 ## 2. What to change
 
 1. If you parse `manifest.json` with `just-dna-format`, move your pin to 0.8 when you start reading

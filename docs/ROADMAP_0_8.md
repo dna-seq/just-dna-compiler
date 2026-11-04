@@ -858,21 +858,6 @@ applies: the check names the title it found.
 
 **Residuals** none yet.
 
-## RM351 — a PGx check keys a named allele on its bare name, so `star_allele_undefined` fires on every HLA allele
-
-**0.8, filed 2026-11-04 by the lead** as a second-pass item: found while building RM334.
-
-**Severity** medium · **Status** open — **a minor**, joins 0.8 · **Owner** compiler (`table_checks._cross_validate_haplotype_definitions` and its siblings) · **Motivating case** the RM322/RM334 builder's e2e: `['*15:01', '*57:01:01']` reported as used but not defined · *related* RM334, RM28
-
-**One class.** The cross-table PGx checks collect allele names into sets keyed on the bare `allele` string, not on
-`(gene, allele)`. A typed allele that has no defining variants by design (an HLA allele, called by a typer, not a
-SNP) is then reported as "can never match", which is false, and two genes sharing an allele name (`*2`) are
-conflated. The meta-table's `allele_function` members (RM28) make this the v2 shape. The fix keys every such set
-on `(gene, allele)` and exempts a gene whose alleles are typed rather than defined (the HLA grammar's genes). Grep
-for the class, not the instance: every `used.setdefault(row.allele` and set of bare allele names in the compiler.
-
-**Residuals** none yet.
-
 ## RM352 — release records have no change kind for a toolchain-only byte move, so the 0.8 cut cannot declare polars 2
 
 **0.8, filed 2026-11-04 by the lead** as a second-pass item: RM342's residual, and a cut gate.
