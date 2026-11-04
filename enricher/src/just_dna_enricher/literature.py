@@ -2332,9 +2332,10 @@ def _doi_existence_parts(result: LiteratureResult) -> list[str]:
     if not result.doi_citations:
         return [_doi_only_clause(result)] if result.citations_without_pmid else []
     cites = result.doi_citations
+    asked = any(c.crossref_asked for c in cites)
     parts = [
         f"{result.citations_without_pmid} citation(s) have pmid NONE and cite {len(cites)} DOI(s) "
-        f"alone, asked of Crossref by DOI"
+        f"alone" + (", asked of Crossref by DOI" if asked else "")
     ]
     named = [f"{c.doi} as {c.title!r}" for c in cites if c.exists and c.title]
     if named:
