@@ -2170,7 +2170,8 @@ vocabulary, and every member of a row stating one must fix an allele (`allele_be
 locus states one `effect_allele` (if not, the warning `meta_member_allele_ambiguous` and the direction is
 withheld); anything else is `false` and refused. `tier` is open text graded on the scale
 `module_spec.yaml` names once as `tier_scale`; a `tier` with no scale is refused. `pmid` and `doi` follow
-the citing tables' rules (RM336's pair validator plugs in where `MetaRow` carries `# RM336:`).
+the citing tables' rules: `MetaRow` inherits `spec.CitationPair`, so `pmid=NONE` makes `doi` mandatory
+(RM336).
 
 ### Precedence, from the conditions
 

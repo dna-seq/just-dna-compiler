@@ -34,7 +34,7 @@ from just_dna_format.base import (
     vocabulary,
 )
 from just_dna_format.pgx import AlleleFunctionRow, DiplotypeRow, PharmVariantRow
-from just_dna_format.spec import DOI_PATTERN, VariantRow, validate_pmid_cell
+from just_dna_format.spec import CitationPair, VariantRow, validate_pmid_cell
 from just_dna_format.vocab import MULTI_SEP, check_vocab
 
 #: The single-statement tables a member may name, in the order the compiler expands and sorts them.
@@ -310,7 +310,7 @@ def member_rank(member: MetaMember, target: Mapping[str, Any]) -> tuple[int, int
     return (1, len(columns))
 
 
-class MetaRow(AuthoredModel):
+class MetaRow(CitationPair, AuthoredModel):
     """One row of `meta.csv`: a composite statement mapped to a finding and/or per-locus facts.
 
     The key is the normalized member set plus `trait_efo_id` plus `sex` (§3 item 4), so `A & B` and
@@ -415,7 +415,12 @@ class MetaRow(AuthoredModel):
     doi: str | None = Field(
         json_schema_extra=since("0.8.0"),
         default=None,
-        description="DOI beside or instead of `pmid`, kept verbatim, as on studies.csv.",
+        description=(
+            "Digital Object Identifier of the work THIS row cites, kept verbatim (bare or as a doi.org "
+            "URL). Optional beside a PubMed id; **mandatory when `pmid` is `NONE`**, the sentinel for "
+            "a work PubMed does not index (a preprint, a book, a dataset), RM336. Same rule as "
+            "`StudyRow.doi`."
+        ),
     )
     sex: str | None = Field(
         default=None,
@@ -454,22 +459,9 @@ class MetaRow(AuthoredModel):
     @field_validator("pmid")
     @classmethod
     def _validate_pmid(cls, v: str | None) -> str | None:
-        # RM336: the shared pmid/doi pair validator (the `NONE` sentinel, a DOI written into `pmid`)
-        # plugs in here, replacing this call and `_validate_doi` below. Until it lands this is
-        # `PharmVariantRow.pmid`'s rule: the one grammar every citation pointer goes through, optional.
+        # `PharmVariantRow.pmid`'s rule: the one grammar every citation pointer goes through, optional
+        # here. The `doi` cell and the pmid/doi pair (`NONE` makes `doi` mandatory) are `CitationPair`'s.
         return validate_pmid_cell(v, "pmid", required=False)
-
-    @field_validator("doi")
-    @classmethod
-    def _validate_doi(cls, v: str | None) -> str | None:
-        # `StudyRow.doi`'s rule, verbatim (RM336 replaces both with the pair validator).
-        if v is None:
-            return v
-        if not DOI_PATTERN.search(v):
-            raise ValueError(
-                f"doi must contain a DOI token (10.<registrant>/<suffix>, bare or as a doi.org URL), got: {v!r}"
-            )
-        return v
 
     @model_validator(mode="after")
     def _validate_statement(self) -> "MetaRow":
