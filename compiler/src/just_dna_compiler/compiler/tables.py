@@ -114,6 +114,39 @@ def _key_of(row: Any) -> tuple:
     return tuple(getattr(row, name) for name in row._KEY_FIELDS)
 
 
+def _gene_key(gene: str) -> str:
+    """A gene symbol as the PGx checks compare it (RM351, RM356). Case and surrounding space do not
+    make two genes: the bare-name key ignored the gene entirely, so a symbol spelled `Cyp2c19` in one
+    place and `CYP2C19` in another must not turn every allele of it into a new finding or a new row."""
+    return gene.strip().casefold()
+
+
+def _distinct_when_stated(row: Any, other: Any) -> bool:
+    """Whether a `_KEY_DISTINCT_WHEN_STATED` column tells two rows apart (RM356): both state it and the
+    stated values differ. An unstated cell is unknown and never "different" (`@absent-is-not-different`),
+    so a model declaring no such column answers `False` for every pair.
+
+    The comparison is a gene symbol's (`_gene_key`, case- and space-insensitive), because the one
+    declared column is a gene. A test pins every declared column as a gene-named `str | None` field, so a
+    column that would need another comparison fails CI rather than being case-folded here."""
+    for name in getattr(row, "_KEY_DISTINCT_WHEN_STATED", ()):
+        mine, theirs = getattr(row, name, None), getattr(other, name, None)
+        if mine is not None and theirs is not None and _gene_key(mine) != _gene_key(theirs):
+            return True
+    return False
+
+
+def same_row(row: Any, earlier: list[Any]) -> Any | None:
+    """The first of `earlier` — rows already sharing `row`'s key — that `row` is the same row as, or
+    `None`.
+
+    The one predicate every "same row" site asks: the compile/validate refusal, the drafting merge and
+    the hints lint. Bucketing by the key tuple first and comparing within the bucket is forced, not
+    chosen: since RM356 the relation is not transitive (a gene-less `*2` collides with UGT1A1's and with
+    UGT1A6's, which do not collide with each other), so no hashable value can stand for it."""
+    return next((candidate for candidate in earlier if not _distinct_when_stated(row, candidate)), None)
+
+
 # `SourceRow` joined the map with RM107, and it is the one member that is not a `_TABLE_KINDS` entry:
 # `sources.csv`/`licensing.csv` is a fact table, so the `_TABLE_KINDS` loop never reached it and a
 # duplicate `(source, layer)` row compiled green under `--strict` — no warning, a moved

@@ -2005,6 +2005,14 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   code (`@warning-text-is-api`) — the change is behaviour, not text — and a test asserting exactly that
   over a spec with no such column at all is what proves no published module moved.
 
+  **When several surfaces must split alike, declare it on the model, still outside `_KEY_FIELDS`**
+  (RM356). `haplotypes.csv`'s `gene` had to split the compile refusal, the drafting merge and the hints
+  lint at once, or a drafter would append a row the compiler then refused. A restated tuple in one check
+  cannot reach the other two, so the model declares `_KEY_DISTINCT_WHEN_STATED` and every site asks
+  `compiler.tables.same_row`. The relation is **not transitive** — a gene-less `*2` collides with
+  UGT1A1's and UGT1A6's, which do not collide with each other — so it can never be a hashable key: bucket
+  by the unchanged key, compare pairwise within the bucket.
+
 - `@dedup-key-decides-rows` — **Which columns may become several rows is decided by the DEDUP KEY, not by the source's dialect
   (R2-1).** ClinPGx `;`-joins both `drugs` and `gene`. `drug` is *in* `PharmVariantRow`'s dedup key, so
   one record legitimately becomes one row per drug; `gene` is **outside** it, so the same move makes

@@ -60,6 +60,11 @@ only the enricher, holding a reference, can catch that.
 the haplotype. Many rows per haplotype, and a variant recurs across many: CYP2D6's rs1065852 is
 core-defining in 22 alleles. Nobody should expect one row to describe `*4`.
 
+**A row is its name, variant and allele, and its gene when the gene is stated (0.8).** Fill `gene`.
+The UGT1A genes share exons 2–5, so UGT1A1's `*2` and UGT1A6's `*2` can be defined by the same variant
+and allele; with both genes stated they are two rows, and with either left empty the compiler refuses
+the second as a duplicate, because an empty gene says nothing about which gene the row is not.
+
 **A haplotype carries the reference allele at every site of its gene that it does not list.** This
 is the PharmVar/CPIC reading, and the compiler's phase-ambiguity check already computes with it: an
 unlisted site and a row whose `allele` equals its own `ref` mean the same thing. So a sparse table is

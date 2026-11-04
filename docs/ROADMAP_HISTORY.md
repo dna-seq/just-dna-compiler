@@ -35,6 +35,62 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM356 — a named-allele row's identity key omits `gene`, so two genes' `*2` defined by the same variant are one duplicate
+
+**0.8, filed 2026-11-04 by the lead** as a second-pass item: found by a 0.8 builder alongside RM351.
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** · **Owner** format (`pgx.py` `_KEY_FIELDS`) + compiler
+(the dedup sites that read it) · **Motivating case** a 0.8 builder's report, 2026-11-04: the UGT1A genes share
+their exons 2–5, so two genes' `*2` can be defined by the same variant and allele · *related* RM351,
+`@absent-is-not-different`
+
+**One class: an identity or dedup key that names an allele without its gene.** `HaplotypeRow._KEY_FIELDS` is
+`("haplotype_name", "variant_key", "allele")`. A UGT1A1 `*2` row and a UGT1A6 `*2` row on the same shared-exon
+variant and allele are then the same row, and the duplicate check refuses the second. RM351 found the same shape
+in the cross-table checks, which key a named allele on its bare name; `AlleleFunctionRow` already keys
+`(gene, allele)`. Grep for the class, not the instance: every `_KEY_FIELDS` and every dedup or merge key in the
+three tiers that carries an allele name and no gene.
+
+**The P3 question the fix answers first.** Adding `gene` to a key narrows what counts as a duplicate: a pair that is
+refused today becomes legal, nothing legal today is refused, so the change is additive. But `gene` is optional on
+`HaplotypeRow`, so two rows split on it only when **both state it and the values differ**
+(`@absent-is-not-different`); a row with no `gene` still collides with one that has it, and the check narrows
+rather than the key splitting on an absence. The merge identity drafting uses moves with the key, so a module
+drafted before the change must re-draft to the same rows (a lap test).
+
+**What shipped.** `gene` joins the identity as a declared split, not as a `_KEY_FIELDS` member. A tuple member
+would have read an absent gene as a distinct value, and the relation the entry asks for is not transitive (a
+gene-less `*2` collides with UGT1A1's and with UGT1A6's, which do not collide with each other), so no hashable key
+can carry it.
+
+- `HaplotypeRow._KEY_DISTINCT_WHEN_STATED = ("gene",)` (schema `pgx.py`): columns that split two rows sharing
+  `_KEY_FIELDS` only when both state them and the stated values differ. `_KEY_FIELDS` is unchanged.
+- `compiler.tables.same_row(row, earlier)`: the one predicate, comparing a stated gene through RM351's
+  `_gene_key` (moved here from `table_checks.py`, so both items compare a gene one way). Asked by the
+  compile/validate refusal (`_validate_table_kind`, bucketed by the key), by `draft.append_rows` (so a second
+  gene's drafted row is `added`, and a re-draft over its own rows reports every row `already_present`) and by
+  the hints lint (`_check_duplicate_keys`). The refusal text is byte-identical and still prints the
+  three-member key.
+- `hints.TableKey.distinct_when_stated` (and `describe_table(...)["key"]`) publishes the column beside
+  `columns`; a walking test over `reference._ALL_MODELS` pins that every declared column is an optional
+  authored field outside `_KEY_FIELDS`.
+- Recompile stability: the four reference examples with `haplotypes.csv` compile to the same `artifact.digest`
+  and `content_signature` with and without the declaration (a test, on one toolchain), and all six PGx examples
+  matched a pre-change compile byte for byte.
+
+The class survey found no second instance. `AlleleFunctionRow` keys `(gene, allele)`, `DiplotypeRow` keys on
+`gene`, the CPIC provider's `match_on` is `(gene, allele)`, the enricher's function cross-check keys
+`(row.gene, row.allele)`, `drug_labels` subjects carry the gene, RM351 re-keyed the cross-table checks, the
+meta-table's member tables do not include `haplotypes`, and `haplotypes.csv` is no overlay target. Read and left
+alone: `enrich/subjects.py` builds a resolution subject from a haplotype row's position (a variant-level fact,
+which the gene does not change), and `allele_checks.py` labels a symbolic-allele finding with the bare
+`haplotype_name` when a row has no `variant_key` (a message label, not a key). Tests:
+`compiler/tests/test_haplotype_key_gene.py` (six arrangements through validate, compile, drafting and the lint,
+the non-transitive case, the lap test, a round trip, the walking test, digest stability); one scenario in
+`features/compiler/licensing_closure_pgx.feature`.
+
+**Residuals** none
+
 ## RM333 — the effector gene behind a GWAS locus has no source and no column
 
 **Placement settled 2026-11-04.** The effector-confidence label is never authored (RM323's cut). This lane's derived table is one of its inputs, beside coloc and the coding consequence.
@@ -693,6 +749,10 @@ cases; a gene spelled in another case; an HLA gene defined by a tag SNP; the per
 six PGx reference examples, checked against the bare-name rule restated in the test, and for the phase
 check against a run with `haplotypes.csv`'s genes blanked); one scenario in
 `features/compiler/licensing_closure_pgx.feature`.
+
+**2026-11-04, RM356.** The same class reached `haplotypes.csv`'s own duplicate rule, which keyed a row on
+`(haplotype_name, variant_key, allele)` with no gene, so two genes' `*2` on one variant were one row. RM356
+splits it on a stated `gene` and moved `_gene_key` beside the shared predicate, `compiler.tables.same_row`.
 
 **Residuals** none
 

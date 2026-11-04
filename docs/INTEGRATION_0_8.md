@@ -260,6 +260,15 @@ so do not drop the record. `null` is unknown, never independent.
 | `currency.PROBE_SOURCES` | Gains `clinvar_gkm`, so `--verify-datasets` can answer for a `sources.csv` row naming it. | Nothing; a row with that source was `unsupported` before. |
 | `licensing.TERMS_BY_SOURCE` | Gains `clinvar_gkm` (CC0-1.0 over ClinGen's transformation). | Nothing, until a check writes that `SourceRow`. |
 
+## 1.15 Two genes' allele on one variant are two `haplotypes.csv` rows (RM356, no new warning code)
+
+| Surface | What changed | What to do |
+| --- | --- | --- |
+| `haplotypes.csv` duplicate refusal (validate and compile) | Two rows sharing `(haplotype_name, variant_key, allele)` are no longer refused when both state `gene` and the genes differ (case and surrounding space ignored). A row with no `gene`, or the same gene twice, is refused exactly as before, with the same `haplotypes.csv: duplicate row for key (…)` text. | Nothing, unless you keep your own duplicate rule for this table: then split it the same way, only on two stated genes that differ. |
+| `haplotypes.parquet` | `(haplotype_name, variant_key, allele)` is no longer unique in a compiled artifact: two rows may share it and differ by `gene`. A module with no such pair compiles to the same bytes as before. | A reader that indexes this table by name, variant and allele adds `gene` to its key, or it merges two genes' definitions of one name. |
+| `draft.append_rows`, `hints.inspect_rows` | Ask the compiler's predicate (`compiler.tables.same_row`), so a drafted second gene's row is `added` and the lint stops flagging it. | Nothing. |
+| `hints.TableKey` / `describe_table(...)["key"]` | Gains `distinct_when_stated` (`("gene",)` for `haplotypes.csv`, `()` for every other kind): columns outside `columns` that split two rows only when both state them and the values differ. | A tool that tells an author when two rows collide reads it beside `columns`. One reading only `columns` over-reports for this table, as before. |
+
 ## 2. What to change
 
 1. If you parse `manifest.json` with `just-dna-format`, move your pin to 0.8 when you start reading

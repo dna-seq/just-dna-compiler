@@ -41,6 +41,26 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM356: two genes' `*2` defined by one variant are two `haplotypes.csv` rows (0.8, uncut)
+
+- **`haplotypes.csv`'s duplicate rule reads `gene`, when both rows state it.** The key stays
+  `(haplotype_name, variant_key, allele)`; `HaplotypeRow._KEY_DISTINCT_WHEN_STATED = ("gene",)` declares
+  that two rows under it are two rows when both state a gene and the genes differ (case- and
+  space-insensitive). The UGT1A genes share exons 2-5, so UGT1A1's and UGT1A6's `*2` can share a defining
+  variant and allele, and the second was refused. An unstated gene is unknown, so a gene-less row still
+  collides with any row under its key (`@absent-is-not-different`), and every refusal keeps its text.
+- **One predicate at every "same row" site:** `compiler.tables.same_row`, asked by the compile/validate
+  refusal, `draft.append_rows` (so a second gene's drafted row is `added`, never refused at compile) and the
+  hints lint. RM351's `_gene_key` moved beside it so the two compare a gene one way.
+- **`hints.TableKey.distinct_when_stated`** publishes the column beside `columns` (`describe_table` too).
+- **`haplotypes.parquet` may now carry two rows sharing `(haplotype_name, variant_key, allele)`**, differing by
+  `gene`; a reader indexing the table on those three adds `gene` (INTEGRATION_0_8 § 1.15).
+- Additive: it only narrows what is refused. The reference examples carrying `haplotypes.csv` compile to the
+  same `artifact.digest` and `content_signature` with and without the declaration. Tests:
+  `compiler/tests/test_haplotype_key_gene.py`; one scenario in `features/compiler/licensing_closure_pgx.feature`.
+- The class survey found no second instance: `AlleleFunctionRow` and `DiplotypeRow` key on `gene`, the CPIC
+  drafter matches `(gene, allele)`, and RM351 had already re-keyed the cross-table checks.
+
 ## 2026-11-04 — RM333, RM239, RM236: the Open Targets lane fills a locus-to-gene table, its colocalisations, per-transcript consequences and a fine-mapping posterior (0.8, uncut)
 
 - **A new snapshot lane, `opentargets`.** `just-dna-enricher opentargets build` mirrors Open Targets Platform
