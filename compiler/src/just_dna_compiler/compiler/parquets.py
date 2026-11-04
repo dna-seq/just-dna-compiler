@@ -4,6 +4,7 @@ from typing import Any
 
 import polars as pl
 from just_dna_format.frequency import FrequencyRow
+from just_dna_format.resolution import ResolutionRow
 from just_dna_format.spec import ModuleSpecConfig, StudyRow, VariantRow
 from just_dna_format.vocab import OUTCOME_STRIP_CELLS
 
@@ -314,8 +315,69 @@ def _build_annotations(variants: list[VariantRow], module_name: str) -> pl.DataF
     return pl.DataFrame(records, schema=schema)
 
 
-def _build_studies(studies: list[StudyRow], module_name: str) -> pl.DataFrame:
-    """Build the studies.parquet DataFrame from validated study rows."""
+#: One resolved locus of a study's LD proxy, as `studies.parquet.proxy_loci` carries it (RM331): the
+#: `resolution.csv` fact columns a reverse needs to re-emit the proxy's row, `genome_build` aside (the
+#: module's, which reverse knows).
+PROXY_LOCUS_DTYPE = pl.Struct(
+    {
+        "rsid": pl.Utf8,
+        "chrom": pl.Utf8,
+        "start": pl.UInt32,
+        "ref": pl.Utf8,
+        "alts": pl.Utf8,
+        "locus_index": pl.Int64,
+    }
+)
+
+
+def _proxy_loci(
+    proxy_rsid: str | None, resolution: dict[str, list[ResolutionRow]], genome_build: str
+) -> list[dict[str, Any]] | None:
+    """The proxy's resolved loci on this build, in `locus_index` order, or `None` when it has none.
+
+    **Why a parquet carries them (RM331).** `collect_subjects` asks a coordinate for each proxy, so the
+    enricher writes its `resolution.csv` row and the compile's allele check reads it. `reverse_module`
+    rebuilds `resolution.csv` from parquets, and no other parquet holds a proxy's coordinate (a proxy is
+    usually not a module variant), so the reversed spec lost the row, `resolution_signature` moved and
+    the check went silent. Positioned loci only, the rule the weights and positional passes keep: a
+    `not_found` row carries no fact for reverse to restore.
+    """
+    if proxy_rsid is None:
+        return None
+    loci = sorted(
+        (
+            r
+            for r in resolution.get(proxy_rsid, [])
+            if r.genome_build == genome_build and r.chrom is not None and r.start is not None
+        ),
+        key=lambda r: r.locus_index,
+    )
+    if not loci:
+        return None
+    return [
+        {
+            "rsid": r.rsid,
+            "chrom": r.chrom,
+            "start": r.start,
+            "ref": r.ref,
+            "alts": r.alts,
+            "locus_index": r.locus_index,
+        }
+        for r in loci
+    ]
+
+
+def _build_studies(
+    studies: list[StudyRow],
+    module_name: str,
+    resolution: dict[str, list[ResolutionRow]] | None = None,
+    genome_build: str = "GRCh38",
+) -> pl.DataFrame:
+    """Build the studies.parquet DataFrame from validated study rows.
+
+    `resolution` (the overlaid injected table, keyed by `variant_key`) fills `proxy_loci`; without it the
+    column is null, which is what a compile with no `resolution.csv` honestly has.
+    """
     records: list[dict[str, Any]] = []
     for s in studies:
         records.append(
@@ -384,6 +446,9 @@ def _build_studies(studies: list[StudyRow], module_name: str) -> pl.DataFrame:
                 "proxy_rsid": s.proxy_rsid,
                 # RM332: the unit of `effect_size`, verbatim.
                 "effect_unit": s.effect_unit,
+                # RM331: the proxy's resolved loci, so reverse can re-emit its `resolution.csv` row.
+                # Compiler-filled and never authored; last, so no earlier column moves.
+                "proxy_loci": _proxy_loci(s.proxy_rsid, resolution or {}, genome_build),
             }
         )
     schema = {
@@ -425,5 +490,6 @@ def _build_studies(studies: list[StudyRow], module_name: str) -> pl.DataFrame:
         "stratum_level": pl.Utf8,
         "proxy_rsid": pl.Utf8,
         "effect_unit": pl.Utf8,
+        "proxy_loci": pl.List(PROXY_LOCUS_DTYPE),
     }
     return pl.DataFrame(records, schema=schema)

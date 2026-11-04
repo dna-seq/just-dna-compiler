@@ -225,6 +225,15 @@ DERIVED_PRODUCERS: dict[str, tuple[DerivedProducer, ...]] = {
             sources=(OPENTARGETS_TERMS.source,),
         ),
     ),
+    # RM331 (0.8): r² between a study's proxy and its lead, in the study's one superpopulation.
+    "ld_pairs.csv": (
+        DerivedProducer(
+            table="ld_pairs.csv",
+            command="ld-pairs",
+            module="ld_pairs",
+            sources=(ENSEMBL_TERMS.source,),
+        ),
+    ),
 }
 
 #: Source tokens a producer may name that have **no** `SourceTerms`, each with the reason — because

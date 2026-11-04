@@ -35,6 +35,7 @@ from just_dna_format.frequency import FREQUENCY_FACT_FIELDS
 from just_dna_format.gene_metrics import GENE_METRICS_FACT_FIELDS
 from just_dna_format.gene_validity import GENE_VALIDITY_FACT_FIELDS
 from just_dna_format.gwas import GWAS_FACT_FIELDS
+from just_dna_format.ld_pairs import LD_PAIR_FACT_FIELDS
 from just_dna_format.literature import LITERATURE_FACT_FIELDS
 from just_dna_format.locus_genes import COLOCALISATION_FACT_FIELDS, LOCUS_TO_GENE_FACT_FIELDS
 from just_dna_format.manifest import (
@@ -440,6 +441,15 @@ def consequence_signature(rows: Sequence[BaseModel]) -> str:
     move the hash.
     """
     return fact_signature(rows, CONSEQUENCE_FACT_FIELDS)
+
+
+def ld_pair_signature(rows: Sequence[BaseModel]) -> str:
+    """Fact-hash of `ld_pairs.csv` (`ld_pairs.LD_PAIR_FACT_FIELDS`), 0.8 / RM331.
+
+    `status` is **inside**: a withheld pair and its reason are the claim as much as a number is, and a
+    pair moving from `not_reported` to `resolved` is a different fact. `answered_rsid` is outside, a label.
+    """
+    return fact_signature(rows, LD_PAIR_FACT_FIELDS)
 
 
 def clin_sig_concordance_signature(rows: Sequence[BaseModel]) -> str:

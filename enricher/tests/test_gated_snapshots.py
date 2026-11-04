@@ -594,6 +594,9 @@ def test_every_live_client_reads_the_floor_rather_than_a_frozen_constant(
         "eutils.EutilsClient._request",
         "gnomad.GnomadClient._request",
         "grch37.Grch37Client._get",
+        # RM331. Ensembl's pairwise LD: the retried inner GETs (5xx/429/transport only; a 400 is the
+        # service answering), the outer (`_request`) translates every `httpx` failure into `LdUnavailable`.
+        "ld_pairs.LdClient._get",
         # `_request`, not `_get`, since RM208 — the last client whose transport leg had no
         # translation outside the retry, so `reraise=True` handed a caller raw `httpx`.
         "gwas.GwasCatalogClient._request",

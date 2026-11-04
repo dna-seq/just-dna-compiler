@@ -32,6 +32,7 @@ from just_dna_format.frequency import FrequencyRow
 from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.gene_validity import GeneValidityRow
 from just_dna_format.gwas import GwasEffectRow
+from just_dna_format.ld_pairs import LdPairRow
 from just_dna_format.literature import LiteratureRow
 from just_dna_format.locus_genes import ColocalisationRow, LocusToGeneRow
 from just_dna_format.manifest import (
@@ -168,6 +169,9 @@ _FACT_MODELS: dict[str, type[BaseModel]] = {
     "LocusToGeneRow": LocusToGeneRow,
     "ColocalisationRow": ColocalisationRow,
     "ConsequenceRow": ConsequenceRow,
+    # RM331 (0.8): nobody hand-writes one either, and `status` binds a closed vocabulary only this walk
+    # can find undeclared.
+    "LdPairRow": LdPairRow,
     "VerificationRecord": VerificationRecord,
 }
 

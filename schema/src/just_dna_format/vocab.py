@@ -656,7 +656,29 @@ VALID_SOURCE_LAYERS: frozenset[str] = frozenset(
         "locus_to_gene",
         "colocalisation",
         "consequence",
+        # 0.8 (RM331) — the computed LD pair behind a proxy-measured study, same fact class: an r² from
+        # a public reference panel is a value the reference computes identically for everyone. Written by
+        # `ld-pairs`, from Ensembl's pairwise LD.
+        "ld_pair",
         "annotation",
+    }
+)
+
+# What `ld_pairs.csv.status` says about a (proxy, lead, panel) pair (RM331). Closed: each member is an arm
+# the `ld-pairs` pass reaches, and only `resolved` carries a number. The CONSTANT carries the lane's name
+# (`@a-lane-local-vocabulary-may-not-shadow-a-schema-one`), so it cannot be imported in place of
+# `VALID_RESOLUTION_STATUS`. One member is shared with it, `resolved`, in the same sense (the source
+# answered with the fact); `not_found` is deliberately not reused, because Ensembl's `200 []` is not
+# "absent" but below its floor or not in LD, unknown which (`not_reported`), and its 400 is about an id
+# (`rsid_unknown`). Read a `status` together with the table it sits in.
+VALID_LD_PAIR_STATUS: frozenset[str] = frozenset(
+    {
+        "resolved",
+        "not_reported",
+        "rsid_unknown",
+        "ancestry_mixed",
+        "ancestry_unstated",
+        "lead_has_no_rsid",
     }
 )
 

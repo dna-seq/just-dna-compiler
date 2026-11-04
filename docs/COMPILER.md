@@ -1641,7 +1641,15 @@ plus each authored table that is not a kind (`overrides.csv` since 0.7, RM124; `
   they came from) with `locus_index` counting within that key, and `source="reversed"`,
   `status="resolved"`. So **`reverse → compile` reproduces the identical `artifact.digest` with no
   reference and no network** — hardening Principle 7's round-trip from reference-dependent to
-  self-contained.
+  self-contained. **It rebuilds from every table the enricher asks a coordinate for**
+  (`reverse.RESOLUTION_SOURCE_TABLES`, asserted equal to `enrich.subjects.SUBJECT_TABLES`): `weights.parquet`,
+  the three positional parquets, and since 0.8 `studies.parquet.proxy_loci`, the compiler-filled list of
+  a study's LD proxy's resolved loci (RM331). A proxy is usually not a module variant, so before that
+  column the reversed spec lost the proxy's row, `resolution_signature` moved, and the proxy allele check
+  went silent on the second lap. Proxy rows come last and never replace a row another table emitted
+  under the same key. `proxy_loci` is read from the post-overlay `resolution.csv`, and not at all under
+  `--no-resolve`, so `studies.parquet` (like `weights.parquet`'s filled coordinates) moves with the injected
+  table while `content_signature` does not.
 - **The derived sidecars come back POST-overlay, and `overrides.csv` comes back beside them** (0.7,
   RM124). The overlay is applied at compile, so what reverse reads out of the parquets is already the
   corrected table — and it re-emits the overlay too, which means **the overlay applies twice and the
@@ -1722,7 +1730,7 @@ late it sits in the tuple. What the position does govern is the order a consumer
 listing, not the hash; what keeps an already-published digest still is that the module has no such
 file at all.
 
-Twenty-nine names. `LEAD_PARQUETS` is the ones carrying a module's own annotation rows — `weights` plus one
+Thirty names. `LEAD_PARQUETS` is the ones carrying a module's own annotation rows — `weights` plus one
 per table kind — which is the publisher's *is this a module* rule and what discovery probes.
 
 **The per-parquet column lists are deliberately not reproduced here.** They are derivable from the

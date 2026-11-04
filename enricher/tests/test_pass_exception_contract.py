@@ -58,6 +58,7 @@ from just_dna_enricher.identifiers import (
     check_identifiers,
     check_rsids,
 )
+from just_dna_enricher.ld_pairs import LdClient, LdError, LdUnavailable, enrich_ld_pairs
 from just_dna_enricher.literature import (
     LiteratureEnrichmentError,
     LiteratureUnavailable,
@@ -129,6 +130,19 @@ class _StubGkm(ClinVarGkmClient):
         raise ClinVarGkmUnavailable("could not read ClinVar-GKM's Parquet manifest: 503")
 
 
+class _StubLd(LdClient):
+    """Ensembl down: the release probe is retried and translated inside the client."""
+
+    def release(self) -> int:  # type: ignore[override]
+        raise LdUnavailable("Ensembl could not be asked (info/data): 503 Service Unavailable")
+
+
+def _with_a_proxy(spec: Path) -> Path:
+    """`hboc_palb2` measures no study on a proxy, so without this row the pass never reaches its client."""
+    (spec / "studies.csv").write_text("rsid,pmid,proxy_rsid,ancestry\nrs646776,30642433,rs4970836,EUR\n")
+    return spec
+
+
 @dataclass(frozen=True)
 class Case:
     """One pass, and what a caller of it is entitled to.
@@ -165,6 +179,14 @@ PASSES: list[Case] = [
         lambda spec: download_and_build(spec / "clinvar_gkm", client=_StubGkm()),
         ClinVarGkmError,
         ClinVarGkmUnavailable,
+        translates=False,
+    ),
+    Case(
+        # RM331. Client and pass share one module's family, so the pass propagates (`translates=False`).
+        "ld_pairs.enrich_ld_pairs",
+        lambda spec: enrich_ld_pairs(_with_a_proxy(spec), write=False, client=_StubLd()),
+        LdError,
+        LdUnavailable,
         translates=False,
     ),
     Case(

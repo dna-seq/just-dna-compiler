@@ -35,6 +35,56 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM331 — a study measured on an LD proxy cannot say so, and filing it under the lead checks the proxy's allele against the lead's
+
+**Built on 0.8, 2026-11-04: `proxy_rsid` and the allele check.** `StudyRow.proxy_rsid` (refused on a row naming no variant, or equal to its own `rsid`) reaches `studies.parquet` and `reverse`; `_check_study_effect_alleles` reads the proxy's resolved alleles when one is stated and withholds when it has none; `enrich.collect_subjects` admits each proxy as a subject, last, and the GWAS pass leaves them out. The computed pair followed the same day (below).
+
+**Cut 2026-11-04 by the maintainer, after the final measuring run** (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §3): **authors write only `proxy_rsid`.** r² has no meaning without its population, so r² and its population are a pair, and the pair is **computed**: the enricher asks an LD reference for the r² between proxy and lead in the study's own `ancestry` and writes it to a machine-written table (half price). The allele check runs against the proxy's alleles.
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** (PROPOSAL_0_8_PT2 §5 D3) · **Owner** format + compiler (`_check_study_effect_alleles`) · **Motivating case** longevitymap v2 requirements §6.2 (`rsid`, `ld_proxy_of`), §6.4 (APOE proxies) · *for* longevitymap v2 · *related* RM91
+
+**What was confirmed.** The plan scores lead variants only and records proxies "on study rows". But
+`StudyRow` has no `flags`, so there is nowhere to write that. A study of a proxy then has two homes, and
+both are wrong:
+
+- **Under the lead's rsID**, `_check_study_effect_alleles` checks the proxy's `effect_allele` against
+  the lead's alleles. It refuses if they differ and passes silently, with the wrong meaning, if they
+  happen to match.
+- **Under the proxy's rsID**, it raises `study_variant_orphan`.
+
+The APOE region alone has five proxies (rs2075650, rs4420638, rs769449, rs405509, rs449647), and
+rs2075650 is the one genome-wide hit in the Sebastiani 2012 classifier.
+
+**Shape.** A proxy column pair on `StudyRow` (the measured variant and its r², plus the LD reference
+population), with `effect_allele` checked against the proxy's alleles rather than the lead's. Full ×2–3.
+
+**Built 2026-11-04 on `0.8` (build/RM331): the computed pair.** `just-dna-enricher ld-pairs <spec>` asks
+Ensembl REST's pairwise LD (PT2 §4 question 4) for r² and |D′| between each study row's `proxy_rsid` and its
+lead, in the 1000 Genomes phase 3 superpopulation the row's one `ancestry` code names, and writes the derived
+table `ld_pairs.csv` (`LdPairRow`, key `(proxy_rsid, variant_key, ld_population)`; `ld_population` is the
+panel's own name, `1000GENOMES:phase_3:EUR`). `status` (closed, `VALID_LD_PAIR_STATUS`) carries the reason
+whenever r² is withheld: `not_reported` for Ensembl's `200 []` (below its floor or not in LD, never r² = 0),
+`rsid_unknown` for its `400`, `ancestry_mixed` / `ancestry_unstated` for a study naming several
+superpopulations or none (the pm's setting: no panel is picked; the row is written, against PT2 D3's "no row
+and counted", per the build brief), and `lead_has_no_rsid` for a coordinate-authored lead with no rsID.
+`answered_rsid` records a merged proxy's current id; `dataset` is the release read in band (`ensembl_116`).
+The `(ensembl, ld_pair)` licence row commits inside the table's write, only on a run Ensembl answered. It
+compiles to `ld_pairs.parquet` with a `manifest.ld_pairs` block, and `reverse` writes it back (P7, tested on
+the real paths). The hand-run calls are `probes/LANES_0_8.md` § 6.
+
+**Fixed the same day: the author's half did not survive a reverse (P7).** The proxy's `resolution.csv` row
+reached no parquet, so `reverse_module` (which rebuilds that table from parquets) dropped it: lap 2's
+`resolution_signature` moved and the proxy allele check went silent (found by the examples builder,
+`test_reference_example_round_trips_to_a_fixed_point`). `studies.parquet` now carries the proxy's
+resolved loci (`proxy_loci`, compiler-filled) and reverse re-emits them, last. The class was checked, not
+only the instance: of the five tables `collect_subjects` draws subjects from (`variants`,
+`pharm_variants`, `haplotypes`, `heteroplasmy`, `studies`), `studies.csv` was the only one reverse did
+not rebuild from; `meta.csv` members are asked of dbSNP but never resolved, so they write no row. A test
+now holds `enrich.subjects.SUBJECT_TABLES` (walked from every `Subject(...)` origin) equal to
+`reverse.RESOLUTION_SOURCE_TABLES`.
+
+**Residuals** none
+
 ## RM267 — the Ensembl snapshot anchors a class of insertions one base early, and `resolution.csv` serves them as a different event
 
 **0.8, decided 2026-11-03.** Taken into 0.8 by the maintainer, with the rest of the indel-placement fixes (RM304, RM267, RM270, RM292, RM305). The status line below predates that decision.

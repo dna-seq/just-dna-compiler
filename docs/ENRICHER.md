@@ -420,6 +420,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `assertions` | RM25: `resolution.csv` + the ClinVar snapshot → `clinical_assertions.csv` (the call **and** the review tier) | `duckdb` via `clinvar`, format |
 | `gwas` | RM90: the GWAS Catalog REST API (v2 since RM354) → `gwas_effects.csv` (published effect sizes **with their units**). Fills no `weight` | `httpx`, format |
 | `expression` | RM194/RM200: the Atlas `ListDenseVariantScores` RNA_SEQ interval → `expression_effects.csv` (per-gene direction, **with the distance beside it**). Non-commercial, so an undeclared run writes nothing | `atlas_client`, `gene_spans`, format |
+| `ld_pairs` | **0.8** (RM331): Ensembl REST pairwise LD → `ld_pairs.csv`, r² between each study's `proxy_rsid` and its lead in the study's one superpopulation. Online only | `httpx`, `tenacity`, format |
 | `opentargets` | **0.8** (RM333/RM239/RM236): the Open Targets snapshot → `locus_to_gene.csv`, `colocalisations.csv`, `consequences.csv`, and the fine-mapping posterior on `gwas_effects.csv`. Reads only the snapshot; coordinates from `resolution.csv` | `duckdb`, `opentargets` lane, format |
 | `gene_spans` | RM194: gene symbol → GRCh38 span, out of the operator-built MANE snapshot. A module with a plain name rather than a private helper, so the second caller can find it. RM259 added the reverse, `genes_covering`: a GRCh38 position → every gene whose span plus the 512 kb attribution horizon covers it, a **query hint** for a row with no authored `gene`, never an attribution (50 candidates at HFE H63D, 34 at APOE) | `polars`, `mane` lane |
 | `atlas_client` | RM192: the AlphaGenome Atlas gRPC client — `ListDenseVariantScores` and the interval RPCs, on `[atlas]` (grpcio + protobuf, 19 MB measured) rather than the 550 MB upstream wheel | `grpcio`, `protobuf` (extra) |
@@ -974,7 +975,10 @@ measured in place of the row's lead, and the compiler checks the row's `effect_a
 proxy's resolved alleles. A proxy is usually not a module variant (rs4970836 for longevitymap's
 rs646776), so without a subject of its own it has no `resolution.csv` row and the check withholds. It is
 admitted after every table above, so a proxy that is also a module variant keeps that row's subject,
-and a later run keeps its row in scope. The r² between proxy and lead is not computed here yet.
+and a later run keeps its row in scope. The r² between proxy and lead is the `ld-pairs` pass's (§ The
+computed LD pair). The compile carries the proxy's resolved loci on `studies.parquet.proxy_loci`, so
+`reverse` re-emits its `resolution.csv` row; every table listed here is in `SUBJECT_TABLES`, which a test
+holds equal to the tables reverse rebuilds rows from.
 An invalid study row does **not** stop the run, unlike an invalid `pharm_variants.csv` or
 `haplotypes.csv` (coordinate sources, so a run that cannot read one has nothing honest to resolve):
 `studies.csv` only adds proxies, so the valid rows' proxies are asked for and one warning names the
@@ -3435,6 +3439,54 @@ three tables and the posterior are the inputs, a module states its rubric, and a
 correction in `overrides.csv`. It carries no symbol for an L2G gene (the source's table has none), and
 no credible-set level beside the posterior (the release publishes the 95% set only).
 
+## The computed LD pair (`ld_pairs.py`, online only) — RM331
+
+`just-dna-enricher ld-pairs <spec>` fills `ld_pairs.csv`: for each `studies.csv` row naming a
+`proxy_rsid`, r² and |D′| between the proxy and the row's lead, in the superpopulation the row's
+`ancestry` names, from Ensembl REST's pairwise LD (`/ld/human/pairwise/<proxy>/<lead>?population_name=
+1000GENOMES:phase_3:<CODE>`). The hand-run probe behind every rule below is
+[probes/LANES_0_8.md](probes/LANES_0_8.md) § 2, and the run that recorded the test fixtures is its § 6.
+
+| the study row, or the answer | the row written |
+|---|---|
+| one `ancestry` code, Ensembl answers a row | `resolved`, with `r2`, `d_prime` (parsed from Ensembl's JSON strings) and `answered_rsid` |
+| one code, Ensembl answers `200 []` | `not_reported`, r² empty: below its floor or not in LD, never r² = 0 |
+| one code, Ensembl answers `400 … variation object` | `rsid_unknown`: an answer, so neither retried nor read as an outage |
+| several codes, or none | `ancestry_mixed` / `ancestry_unstated`, no population, nobody asked |
+| a coordinate-authored lead with no rsID, here or back-filled in `resolution.csv` | `lead_has_no_rsid`, nobody asked |
+
+**The five superpopulation names are spelled here**, because `?filter=LD` does not list them although the
+endpoint answers for them; a `400 … population object` is therefore a defect of this spelling and raises
+`LdError`, never a withhold. **The proxy goes first in the URL**, so `variation1` is the proxy as Ensembl
+names it, which is how a merged id is recorded (`rs1624712` answers as `rs646776`); the row stays keyed on
+what the author wrote. **The release is read in band** from `/info/data` on the run that asks, and is the
+row's `dataset` (`ensembl_116`) and the `(ensembl, ld_pair)` licence row's. That licence row commits inside
+the table's write, and only on a run where Ensembl answered: a run that wrote withholds alone consulted no
+source.
+
+**The client contract.** 5xx (EBI serves its 500 as an HTML page), 429 and transport errors are retried,
+then raised as `LdUnavailable`: could-not-ask, cleared by a re-run. Everything a re-run would repeat is
+the parent `LdError`: a 404 or other 4xx (a moved path, a wrong species), a 400 that is not JSON or names
+no variation, and a 200 that is not a JSON array of pairs. The timeout is 90 seconds (the probe measured a
+37-second answer) and the pacing gate one request per 100 ms, under Ensembl's 15 per second and its
+55,000 per hour.
+
+**Who the lead is.** The study row's own rsID; for a coordinate-authored lead, the rsID `resolution.csv`
+back-filled **at the same place** (`chrom`, `start`, `ref`), never looked up by key, since a `StudyRow`
+keys without `alts` and the `VariantRow` resolution answered for keys with them; a place two rows
+back-fill differently gives no rsID. A repeated `ancestry` code (`EUR;EUR`) is one superpopulation.
+
+**What a run commits.** A pair already in the file is not asked again (`@sidecar-authoritative`); delete
+the file to re-ask after a new release. A recorded pair no study row names any more (its ancestry or proxy
+was edited) is dropped and counted (`LdPairsResult.dropped`), so a withheld row does not linger beside the
+answer that replaced it. `--offline` asks nothing and writes nothing: there is no LD snapshot, and a row for
+an unasked pair would claim an answer. A pair whose answer this pass cannot use gets no row and costs that
+pair alone: the queue goes on, the run's other rows are committed, and the pass then raises `LdError`
+naming it. When Ensembl stays down past the retries, the queue stops, the pairs answered this run are
+committed, nothing is written for the rest, and the pass raises `LdUnavailable` naming how many were not
+asked; a re-run asks only those. There is no `--strict`: every arm above is a reproducible answer or a
+stated reason, so a strict mode would refuse nothing.
+
 ## Gene–disease validity (`gene_validity.py`, online only) — RM24
 
 `enrich_gene_validity(spec_dir, *, source, mode, offline, write, export_text, url)` takes the `gene`
@@ -5267,6 +5319,7 @@ and `EnsemblResolver` are the latter, and are exempt from the contract suite for
 | `gene_validity` | `GeneValidityError` | `GeneValidityUnavailable` |
 | `gwas` | `GwasError` | `GwasNotFound`, `GwasRetired` |
 | `identifiers` | `IdentifierCheckError` | `IdentifierUnavailable`, `IdentifierRetired` (under the one before it) |
+| `ld_pairs` | `LdError` | `LdUnavailable`, `LdRetired` (under the one before it) |
 | `literature` | `LiteratureEnrichmentError` | `LiteratureUnavailable`, `FulltextUnavailable` (RM258: the fulltext clients' unanswered request), `LiteratureRetired` (under `LiteratureUnavailable`) |
 | `opentargets` | `OpenTargetsError` | — (it never fetches) |
 | `litvar` | `LitvarError` | `LitvarUnavailable`, `LitvarRetired` (under the one before it) |

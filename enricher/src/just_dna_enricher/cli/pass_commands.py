@@ -1,5 +1,5 @@
 """The enrichment passes: `enrich`, `frequencies`, `gene-metrics`, `dosage`, `gene-validity`, `gwas`,
-`assertions`, `literature` and `pgx` (RM260 split this out of the former single-file `cli.py`).
+`assertions`, `literature`, `pgx` and `ld-pairs` (RM260 split this out of the former single-file `cli.py`).
 """
 
 from pathlib import Path
@@ -21,6 +21,7 @@ from just_dna_enricher.gene_validity import CLINGEN_SOURCE as CLINGEN_VALIDITY_S
 from just_dna_enricher.gene_validity import GeneValidityError, enrich_gene_validity
 from just_dna_enricher.grch37 import summarize_build_diagnoses
 from just_dna_enricher.gwas import GwasError, enrich_gwas
+from just_dna_enricher.ld_pairs import LD_PAIRS_CSV, LdError, LdUnavailable, enrich_ld_pairs
 from just_dna_enricher.licensing import LicenseRefusal, sidecar_path, sources_path
 from just_dna_enricher.literature import DoiCitation, LiteratureEnrichmentError, enrich_literature
 from just_dna_enricher.pgx import PgxEnrichmentError, enrich_pgx
@@ -727,6 +728,45 @@ def pgx_(
 
 #: How many DOI-only citations the `literature` report lists one per line (RM349).
 _DOI_LINES = 10
+
+
+@app.command("ld-pairs")
+def ld_pairs_(
+    spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
+    offline: bool = typer.Option(
+        False, "--offline", help="Ask nothing and write nothing: there is no LD snapshot (online only)."
+    ),
+) -> None:
+    """Fill ld_pairs.csv: r² between each study's proxy_rsid and its lead, in the study's own ancestry.
+
+    Asks Ensembl REST's pairwise LD in the 1000 Genomes phase 3 superpopulation the study names. A study
+    naming several superpopulations, or none, gets its row with r² withheld and the reason; an empty
+    answer is withheld too (below the reference's floor, or not in LD), never written as r² = 0.
+    """
+    try:
+        result = enrich_ld_pairs(spec_dir, offline=offline)
+    except LdUnavailable as exc:
+        typer.secho(f"LD PAIRS UNREACHABLE: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    except LdError as exc:
+        typer.secho(f"LD PAIRS FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    if result.skipped_offline:
+        typer.secho(
+            f"skipped: --offline (no LD snapshot); {len(result.unasked)} pair(s) not asked",
+            fg=typer.colors.YELLOW,
+        )
+        return
+    typer.secho(f"ld pairs: {sidecar_path(spec_dir, LD_PAIRS_CSV, error=LdError)}", fg=typer.colors.GREEN)
+    statuses: dict[str, int] = {}
+    for row in result.written:
+        statuses[row.status] = statuses.get(row.status, 0) + 1
+    typer.echo(
+        f"rows: {len(result.rows)}  written this run: {len(result.written)}  requests: {result.requests}  "
+        f"release: {result.dataset or '-'}"
+    )
+    for status in sorted(statuses):
+        typer.echo(f"  {status}: {statuses[status]}")
 
 
 def _doi_citation_line(cited: DoiCitation) -> str:

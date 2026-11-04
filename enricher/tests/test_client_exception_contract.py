@@ -40,6 +40,7 @@ from just_dna_enricher.gnomad import GnomadClient, GnomadError, GnomadRetired, G
 from just_dna_enricher.grch37 import Grch37Client
 from just_dna_enricher.gwas import GwasCatalogClient, GwasError, GwasRetired
 from just_dna_enricher.identifiers import IdentifierRetired, IdentifierUnavailable, OntologyClient
+from just_dna_enricher.ld_pairs import LdClient, LdError, LdRetired
 from just_dna_enricher.literature import (
     CrossrefClient,
     EuropePmcClient,
@@ -130,6 +131,13 @@ def _clinvar_gkm(handler: Callable[[httpx.Request], httpx.Response]) -> Callable
         client=httpx.Client(transport=httpx.MockTransport(handler)), gate=_instant_gate()
     )
     return client.parquet_manifest
+
+
+def _ld_pairs(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], object]:
+    """RM331's Ensembl pairwise LD. A 400 naming a variation is an ANSWER (`LdAnswer.unknown`), so it is
+    not what these cases drive; a 404 means the endpoint moved, which is could-not-ask."""
+    client = LdClient(client=httpx.Client(transport=httpx.MockTransport(handler)), gate=_instant_gate())
+    return lambda: client.pairwise("rs4970836", "rs646776", "1000GENOMES:phase_3:EUR")
 
 
 def _ontology(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], object]:
@@ -254,6 +262,10 @@ CLIENTS = [
     # read rather than an unreachable source; the transport and status legs are the
     # `ClinVarGkmUnavailable` subclass, asserted in `test_clinvar_gkm.py`.
     ("clinvar_gkm", _clinvar_gkm, ClinVarGkmError),
+    # The parent, because two legs this file drives are not outages: a 404 means the path moved or the
+    # species is wrong (a re-run repeats it), and a 200 HTML page is an answer that cannot be read. The
+    # 5xx and transport legs are the `LdUnavailable` subclass, asserted in `test_ld_pairs.py`.
+    ("ld_pairs", _ld_pairs, LdError),
 ]
 
 
@@ -462,6 +474,7 @@ RETIRED_IS_NAMED = {
     "currency": ReleaseRetired,
     "pgs": PgsCatalogRetired,
     "litvar": LitvarRetired,
+    "ld_pairs": LdRetired,
     "civic_api": CivicApiRetired,
     "clinvar_gkm": ClinVarGkmRetired,
     "gwas": GwasRetired,

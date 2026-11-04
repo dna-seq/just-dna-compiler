@@ -24,6 +24,18 @@ from just_dna_enricher.resolver import PairCheck, check_rsid_coordinates
 
 logger = logging.getLogger(__name__)
 
+#: Every table whose rows `collect_subjects` admits as resolution subjects, in its precedence order. Each
+#: writes `resolution.csv` rows, so each must be a table `reverse_module` rebuilds those rows from
+#: (`just_dna_compiler.compiler.reverse.RESOLUTION_SOURCE_TABLES`), or `compile → reverse → compile`
+#: loses them (RM331's proxy did). Asserted equal to the `Subject(...)` origins below by an AST walk.
+SUBJECT_TABLES: tuple[str, ...] = (
+    "variants.csv",
+    "pharm_variants.csv",
+    "haplotypes.csv",
+    "heteroplasmy.csv",
+    "studies.csv",
+)
+
 
 @dataclass(frozen=True)
 class Subject:

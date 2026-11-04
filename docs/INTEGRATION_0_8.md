@@ -115,6 +115,17 @@ The manifest blocks are `{signature, sources, datasets, row_count, variant_count
 gains `locus_to_gene`, `colocalisation` and `consequence`; a 0.7 reader refuses a `sources.csv` row
 carrying one, which is the same upgrade-first rule.
 
+## 1.2.4 The computed LD pair: one derived table, one parquet (RM331, no break)
+
+`ld_pairs.csv` → `ld_pairs.parquet`, listed after `consequences.parquet` in `ARTIFACT_PARQUETS` (not a
+`LEAD_PARQUET`; a module carrying none keeps its digest), summarised by a new top-level manifest block
+`ld_pairs` (`{signature, sources, datasets, populations, row_count, with_r2}`) that a 0.7 reader drops. Key
+`(proxy_rsid, variant_key, ld_population)`; `status` is the closed `VALID_LD_PAIR_STATUS` (`resolved`,
+`not_reported`, `rsid_unknown`, `ancestry_mixed`, `ancestry_unstated`, `lead_has_no_rsid`), and only
+`resolved` carries `r2`/`d_prime`. `VALID_SOURCE_LAYERS` gains `ld_pair`; a 0.7 reader refuses a
+`sources.csv` row carrying it, the same upgrade-first rule as 1.2.3. Written by the new
+`just-dna-enricher ld-pairs` command (online only). No new warning code.
+
 ## 1.3 New derived column and client method (no break)
 
 | Surface | Item | What changed |
@@ -155,6 +166,7 @@ sees more columns.
 | `studies.csv` / `studies.parquet` `age_min`, `age_max`, `age_of` | RM329 | The age band an estimate covers, in years (`Float64`, either bound may be null: an open band), and whose age it is (`participant` or `parent`, closed). No rule ties the three together. |
 | `studies.csv` / `studies.parquet` `stratum`, `stratum_level` | RM330 | The modifier an estimate was measured within and its level, free text, both or neither (one without the other is refused). |
 | `studies.csv` / `studies.parquet` `proxy_rsid` | RM331 | The LD proxy a study measured in place of the row's lead. `study_effect_allele_not_at_locus` then reads the proxy's resolved alleles, and its text names both (`<lead> via proxy <proxy> (PMID …)`, `at the proxy`); a row with no proxy keeps the 0.7 text byte for byte. The enricher resolves each proxy as a subject, so `resolution.csv` gains rows for rsIDs no other table names (keyed by the rsID); the GWAS, frequency and clinical-assertion passes leave them out, so no fact table gains a row for a proxy. A reader treating every `resolution.csv` row as a module locus should do the same: a proxy-only rsID is a `studies.csv` `proxy_rsid` that no other table names. |
+| `studies.parquet` `proxy_loci` (compiler-filled) | RM331 | `List(Struct{rsid, chrom, start, ref, alts, locus_index})`: the proxy's resolved loci on the module's build, null when the row names no proxy or the proxy did not resolve. Not authored and never written to `studies.csv`; `reverse` re-emits them as the proxy's `resolution.csv` rows, so `compile → reverse → compile` keeps `resolution_signature`. Appended last, so **every module carrying `studies.csv` gets a new `artifact.digest` on a 0.8 recompile**; `content_signature` does not move. |
 | `studies.csv` / `studies.parquet` `effect_unit` | RM332 | The unit of `effect_size`, free text and verbatim (as on `gwas_effects.csv`). |
 | `weights.parquet` `effect_unit` (derived) | RM332 | The unit of the variant's effect, joined from its study rows when every one that states a unit states the same one; null when none does or two disagree. Not authored on `variants.csv` and never written back by `reverse`. Appended after every 0.7 column, so **every module carrying `variants.csv` gets a new `artifact.digest` on a 0.8 recompile**; `content_signature` does not move. |
 | `weights.parquet` `eur_only_evidence` (derived) | RM328 | Nullable `Boolean`: true when every supporting study row states only `EUR`, false when one states another code, null when any states none or the variant has no study rows. Repeated on each genotype row of the locus. |

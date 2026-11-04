@@ -16,6 +16,7 @@ from just_dna_format.gene_validity import GeneValidityRow
 from just_dna_format.gwas import GwasEffectRow
 from just_dna_format.integrity import resolution_signature as _resolution_signature
 from just_dna_format.layout import SOURCES_CSV, VERIFICATION_JSON, SidecarCollision, sidecar_write_path
+from just_dna_format.ld_pairs import LdPairRow
 from just_dna_format.literature import LiteratureRow
 from just_dna_format.locus_genes import ColocalisationRow, LocusToGeneRow
 from just_dna_format.manifest import VerificationDoc, write_manifest
@@ -89,6 +90,7 @@ from just_dna_compiler.compiler.manifest import (
     _gene_metrics_block,
     _gene_validity_block,
     _gwas_effects_block,
+    _ld_pairs_block,
     _literature_block,
     _locus_to_gene_block,
     _module_binding,
@@ -687,7 +689,15 @@ def compile_module(
     # SNP core: weights/annotations only when the module actually has variants.
     weights_df = _build_weights(variants, config, studies) if variants else None
     annotations_df = _build_annotations(variants, module_name) if variants else None
-    studies_df = _build_studies(studies, module_name) if studies else None
+    studies_df = (
+        # Gated like every resolution read: under `--no-resolve` the table was not read, so no proxy's
+        # loci may reach the artifact either (RM331).
+        _build_studies(
+            studies, module_name, resolution_table if resolve_with_ensembl else None, config.genome_build
+        )
+        if studies
+        else None
+    )
     # Names taken from `SNP_CORE_PARQUETS` rather than spelled again: this is the site the binding was
     # extracted from, so a literal here would be the copy the constant exists to remove.
     _weights_name, _annotations_name = SNP_CORE_PARQUETS["variants.csv"]
@@ -933,6 +943,8 @@ def compile_module(
         LocusToGeneRow: (_no_checks, lambda rows: _build_table(rows, LocusToGeneRow, module_name)),
         ColocalisationRow: (_no_checks, lambda rows: _build_table(rows, ColocalisationRow, module_name)),
         ConsequenceRow: (_no_checks, lambda rows: _build_table(rows, ConsequenceRow, module_name)),
+        # RM331, the same reason: every row is the `ld-pairs` pass's answer about a study row's pair.
+        LdPairRow: (_no_checks, lambda rows: _build_table(rows, LdPairRow, module_name)),
         ClinSigConcordanceRow: (
             _concordance_checks,
             lambda rows: _build_table(rows, ClinSigConcordanceRow, module_name),
@@ -1047,6 +1059,7 @@ def compile_module(
     locus_to_gene_rows: list[LocusToGeneRow] = fact_rows.get(LocusToGeneRow, [])
     colocalisation_rows: list[ColocalisationRow] = fact_rows.get(ColocalisationRow, [])
     consequence_rows: list[ConsequenceRow] = fact_rows.get(ConsequenceRow, [])
+    ld_pair_rows: list[LdPairRow] = fact_rows.get(LdPairRow, [])
     concordance_rows: list[ClinSigConcordanceRow] = fact_rows.get(ClinSigConcordanceRow, [])
     authority_call_rows: list[ClinSigAuthorityCallRow] = fact_rows.get(ClinSigAuthorityCallRow, [])
     source_rows: list[SourceRow] = fact_rows.get(SourceRow, [])
@@ -1116,6 +1129,7 @@ def compile_module(
         locus_to_gene=_locus_to_gene_block(locus_to_gene_rows),
         colocalisations=_colocalisations_block(colocalisation_rows),
         consequences=_consequences_block(consequence_rows),
+        ld_pairs=_ld_pairs_block(ld_pair_rows),
         clin_sig_concordance=_clin_sig_concordance_block(concordance_rows, authority_call_rows),
         literature=_literature_block(literature_rows),
         sources=_sources_block(source_rows),

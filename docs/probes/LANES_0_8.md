@@ -634,3 +634,35 @@ The GWAS Catalog's legacy REST API, which the `gwas` pass reads
 with "This legacy GWAS Catalog REST API is no longer available", pointing at its v2 migration guide. The v2
 endpoint (`/gwas/rest/api/v2/associations?rs_id=`) answers 200. So `gwas_effects.csv` cannot be filled for a
 new module until the pass moves to v2; RM239's posterior is filled on rows that already exist.
+
+---
+
+## 6. Built 2026-11-04: the `ld-pairs` pass (RM331)
+
+### 6.1 The hand-run before the build
+
+Re-run by hand on 2026-11-04 between 14:30 and 14:35 UTC with `curl -H 'Content-Type: application/json'`,
+before any code read the endpoint, to check §2 still held and to record the bodies the tests serve
+(`enricher/tests/test_ld_pairs.py`, verbatim) [M]:
+
+| request | HTTP, time | body |
+|---|---|---|
+| `pairwise/rs646776/rs4970836?population_name=1000GENOMES:phase_3:EUR` | 200, 37.7 s | one row, r² `"0.924767"`, D′ `"0.975903"`, `variation1: "rs646776"` |
+| `pairwise/rs4970836/rs646776?…EUR` (the proxy first, as the pass asks) | 200, 2.2 s | the same numbers, `variation1: "rs4970836"`: the order asked is the order answered |
+| `pairwise/rs429358/rs2075650?…AFR` and `rs2075650/rs429358?…AFR` | 200, 12.4 s / 2.9 s | `[]` |
+| `pairwise/rs646776/rs999999999999?…EUR` | 400, 16.7 s | `{"error":"Could not fetch variation object for id: rs999999999999."}` |
+| `pairwise/rs1624712/rs4970836?…EUR`, first attempt | **500, 0.24 s** | EBI's HTML error page (`<title>Error: 500 \| EMBL's European Bionformatics Institute</title>`) |
+| the same, a minute later, twice | 200, 0.5 s / 0.2 s | one row naming `variation1: "rs646776"`: the synonym answers under its current id |
+| `info/data` | 200, 0.2 s | `{"releases":[116]}` |
+
+Rate-limit headers unchanged: `x-ratelimit-limit: 55000`, `x-ratelimit-period: 3600`. The 500 the probe saw
+at 02:39 UTC came back at 14:30, on the first call of a session, so the retry is not decoration.
+
+### 6.2 What the build took from it
+
+The pass asks the proxy first (§6.1 row 2), so `variation1` is the proxy's answered name, recorded as
+`answered_rsid`; it spells the five populations itself (§2.2); it writes `[]` as `not_reported` with no r²
+(§2.4); it reads a `400 … variation object` as `rsid_unknown` and a `400 … population object` as its own
+defect; it retries 5xx, 429 and transport errors with a 90-second timeout; it labels rows with the release
+`/info/data` names on the run that asks (`ensembl_116`). ENRICHER.md § The computed LD pair is the
+maintained description.
