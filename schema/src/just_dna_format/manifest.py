@@ -781,6 +781,36 @@ class OpenTargetsTable(BaseModel):
     variant_count: int = Field(default=0, description="Distinct `variant_key`s the rows reach")
 
 
+class LdPairs(BaseModel):
+    """Summary of a module's computed LD-pair sidecar (0.8, RM331).
+
+    `with_r2` beside `row_count` is the one number a consumer needs before reading the parquet: a row
+    with no r² is a withheld pair carrying its reason, never a zero, so the two counts differ by design.
+    """
+
+    signature: str | None = Field(
+        default=None,
+        description="Fact-hash of the table (integrity.ld_pair_signature); out of artifact.digest",
+    )
+    sources: list[str] = Field(default_factory=list, description="Sorted union of the rows' `source` values")
+    datasets: list[str] = Field(
+        default_factory=list,
+        description="Sorted union of the reference releases that answered, e.g. ['ensembl_116']",
+    )
+    populations: list[str] = Field(
+        default_factory=list,
+        description="Sorted union of the reference panels r² was asked in, e.g. ['1000GENOMES:phase_3:EUR']",
+    )
+    row_count: int = Field(default=0, description="Rows in the table")
+    with_r2: int = Field(
+        default=0,
+        description=(
+            "Rows carrying an r² (`status` resolved). The rest are withheld with their reason: not "
+            "reported by the reference, an rsID it does not know, or a study naming no single population."
+        ),
+    )
+
+
 class ExpressionEffects(BaseModel):
     """Summary of a module's injected expression-effect sidecar (0.7, RM194/RM200).
 
@@ -2034,6 +2064,11 @@ class ModuleManifest(BaseModel):
         default=None,
         json_schema_extra=since("0.8.0"),
         description="Summary of the per-transcript consequence sidecar (0.8, RM236), when the module carries one.",
+    )
+    ld_pairs: LdPairs | None = Field(
+        default=None,
+        json_schema_extra=since("0.8.0"),
+        description="Summary of the computed LD-pair sidecar (0.8, RM331), when the module carries one.",
     )
     literature: Literature | None = Field(
         default=None,

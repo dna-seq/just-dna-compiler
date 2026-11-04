@@ -71,6 +71,7 @@ _MOVABLE = (
     "locus_to_gene.csv",
     "colocalisations.csv",
     "consequences.csv",
+    "ld_pairs.csv",
     "sources.csv",
     LICENSING_CSV,
 )

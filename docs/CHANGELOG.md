@@ -41,6 +41,22 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM331: a study measured on an LD proxy gets r² with its proxy, in the study's own superpopulation (0.8, uncut)
+
+- **`just-dna-enricher ld-pairs <spec>`** asks Ensembl REST's pairwise LD for r² and |D′| between each
+  `studies.csv` row's `proxy_rsid` and its lead, in the 1000 Genomes phase 3 superpopulation the row's one
+  `ancestry` code names, and writes a new derived table, `ld_pairs.csv`, keyed
+  `(proxy_rsid, variant_key, ld_population)`. Online only; `--offline` asks and writes nothing.
+- **Withheld is a status, never a zero.** Ensembl's `200 []` is `not_reported` (below its floor or not in LD),
+  its `400` for an unknown id is `rsid_unknown`, a study naming several superpopulations or none gets its row
+  as `ancestry_mixed` / `ancestry_unstated` with no population asked, and a coordinate-authored lead with no
+  rsID is `lead_has_no_rsid`. Only `resolved` carries a number. A merged proxy's current id is kept in
+  `answered_rsid`; the release (`ensembl_116`) is read in band.
+- **Compiled and reversed**: `ld_pairs.parquet` joins `ARTIFACT_PARQUETS` after `consequences.parquet` (a
+  module without the table keeps its digest), `manifest.ld_pairs` summarises it, `reverse` writes the CSV
+  back. `VALID_SOURCE_LAYERS` gains `ld_pair`, and the `(ensembl, ld_pair)` licence row commits inside the
+  table's write. No new warning code. INTEGRATION_0_8 § 1.2.4; the hand-run is `probes/LANES_0_8.md` § 6.
+
 ## 2026-11-04 — RM333, RM239, RM236: the Open Targets lane fills a locus-to-gene table, its colocalisations, per-transcript consequences and a fine-mapping posterior (0.8, uncut)
 
 - **A new snapshot lane, `opentargets`.** `just-dna-enricher opentargets build` mirrors Open Targets Platform

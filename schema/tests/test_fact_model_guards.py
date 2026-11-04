@@ -26,6 +26,7 @@ from just_dna_format.frequency import FrequencyRow
 from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.gene_validity import GeneValidityRow
 from just_dna_format.gwas import GwasEffectRow
+from just_dna_format.ld_pairs import LdPairRow
 from just_dna_format.literature import LiteratureRow
 from just_dna_format.locus_genes import ColocalisationRow, LocusToGeneRow
 from just_dna_format.resolution import ResolutionRow
@@ -77,6 +78,15 @@ _MINIMAL: dict[type, dict] = {
         "variant_key": "rs1800562",
         "transcript": "ENST00000357618",
         "dataset": "opentargets_26.09",
+    },
+    # RM331. A resolved row carries its r² (the model refuses one without), so the guard's `resolved`
+    # member needs the number beside it.
+    LdPairRow: {
+        "proxy_rsid": "rs4970836",
+        "variant_key": "rs646776",
+        "ld_population": "1000GENOMES:phase_3:EUR",
+        "r2": 0.924767,
+        "dataset": "ensembl_116",
     },
 }
 

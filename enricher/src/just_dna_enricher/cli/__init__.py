@@ -28,6 +28,7 @@ from just_dna_enricher.cli.pass_commands import gene_validity_ as gene_validity_
 from just_dna_enricher.cli.pass_commands import gwas_ as gwas_
 from just_dna_enricher.cli.pass_commands import literature_ as literature_
 from just_dna_enricher.cli.pass_commands import pgx_ as pgx_
+from just_dna_enricher.cli.pass_commands import ld_pairs_ as ld_pairs_
 from just_dna_enricher.cli.authoring_commands import _mint_record as _mint_record
 from just_dna_enricher.cli.authoring_commands import check_identifiers_ as check_identifiers_
 from just_dna_enricher.cli.authoring_commands import draft_ as draft_

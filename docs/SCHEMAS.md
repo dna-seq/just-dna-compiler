@@ -48,6 +48,7 @@ maintained one, and where the two disagree this one is what a consumer may rely 
 | `expression` | `ExpressionEffectRow` (the 0.7 expression-effect table, RM194/RM200) | `base`, `normalize`, `vocab` |
 | `locus_genes` | `LocusToGeneRow`, `ColocalisationRow` (the 0.8 Open Targets study-locus tables, RM333) | `base`, `normalize`, `vocab` |
 | `consequences` | `ConsequenceRow` (the 0.8 per-transcript consequence table, RM236) | `base`, `normalize`, `vocab` |
+| `ld_pairs` | `LdPairRow` (the 0.8 computed LD pair behind a proxy-measured study, RM331) | `base`, `normalize`, `vocab` |
 | `spec` | Authored DSL — `ModuleSpecConfig`, `VariantRow`, `StudyRow` | `base`, `derive`, `identity`, `manifest`, `vocab` |
 | `binning` | Measure→phenotype binning rows (4 table kinds) | `base`, `spec`, `vocab` |
 | `pgx` | PGx star-allele rows (4 table kinds) | `base`, `spec`, `vocab` |
@@ -104,10 +105,10 @@ existence and identifiers exactly like a study-grounded one. `sources.csv` does 
 either: it records a *dataset's* terms and attribution, which answers where a table came from, never
 why a bound is where it is. `resolution.csv` is compiler *input*, produced by the enricher, not authored
 annotation (see [§ resolution table](#the-resolution-table-05-provisional)) — and the same is true of
-the **thirteen** derived-fact sidecars `frequencies.csv` / `gene_metrics.csv` / `literature.csv` /
+the **fourteen** derived-fact sidecars `frequencies.csv` / `gene_metrics.csv` / `literature.csv` /
 `gene_validity.csv` / `clinical_assertions.csv` / `gwas_effects.csv` / `clin_sig_concordance.csv` /
 `clin_sig_authority_calls.csv` / `expression_effects.csv` / `locus_to_gene.csv` /
-`colocalisations.csv` / `consequences.csv` / `sources.csv`, which are therefore absent
+`colocalisations.csv` / `consequences.csv` / `ld_pairs.csv` / `sources.csv`, which are therefore absent
 from the table below. **The number is `len(_FACT_TABLES)`** — stated here so a release that lands a
 sidecar moves it by one, rather than left to be recounted off a list that has gone stale twice.
 Since 0.7 an author corrects them through `overrides.csv`, which *is* authored and therefore *is* in
@@ -117,7 +118,7 @@ excluded for the opposite reason: it records what each archive published, and an
 question a conflict asks rather than rewriting the answer an archive gave. `resolution.csv` *is*
 covered — see [§ the authored overlay](#the-authored-overlay-07-rm124--overridescsv).
 
-**`sources.csv` is the one of those thirteen a human is expected to write, and 0.5.4 stopped pretending
+**`sources.csv` is the one of those fourteen a human is expected to write, and 0.5.4 stopped pretending
 otherwise (S21).** The others are produced by an enricher pass, so an author never starts one by
 hand; this one the schema tells them to write — a source read **by hand** leaves no `source` cell
 anywhere for the compiler's coverage check to find, so declaring it as a row here is the only route
@@ -278,6 +279,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
   | `VALID_GENE_VALIDITY` | 9 (closed) |  |
   | `VALID_IMPACTS` | 4 (closed) | VEP's impact class on one transcript, `consequences.csv.impact` (RM236) |
   | `VALID_INHERITANCE_MODE` | 9 (closed) |  |
+  | `VALID_LD_PAIR_STATUS` | 6 (closed) | what `ld_pairs.csv.status` says about a (proxy, lead, panel) pair; only `resolved` carries an r² (RM331) |
   | `VALID_PHENOTYPE_CATEGORIES` | 6 (closed) |  |
   | `VALID_QUOTE_SOURCE` | 2 (closed) |  |
   | `VALID_RECOMMENDATION_STRENGTH` | 4 (closed) |  |
@@ -288,7 +290,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
   | `VALID_SAMPLE_UNITS` | 2 (closed) | what a `StudyRow.sample_size` counts — people, or lives where a study counts each participant's parents (RM325) |
   | `VALID_SIGNIFICANCE` | 4 (closed) |  |
   | `VALID_SUPERPOPULATIONS` | 5 (closed) | the 1000 Genomes superpopulation codes: what `StudyRow.ancestry` binds, and — plus `multi` — `pgs.VALID_TRAINING_ANCESTRY`, derived from it so the codes are one list (RM328) |
-  | `VALID_SOURCE_LAYERS` | 12 (closed) |  |
+  | `VALID_SOURCE_LAYERS` | 13 (closed) |  |
   | `VALID_VERIFICATION_CHECKS` | 26 (closed) |  |
   | `VALID_VERIFICATION_SKIPS` | 8 (closed) |  |
   | `VALID_VERIFICATION_INDEPENDENCE` | 2 (closed) | `VerificationRecord.independence`, derived from the record's two sources and never typed (RM292) |
@@ -2480,12 +2482,12 @@ does not carry a coordinate, and it is the wrong one — RM43 (0.6) is the right
 
 ## The hash family — the complete roster
 
-Twenty functions, in three groups, and **the rule that fixes the number is stated here rather than
+Twenty-one functions, in three groups, and **the rule that fixes the number is stated here rather than
 the number being restated elsewhere**: it is one `*_signature` per derived sidecar, plus the shared
 `fact_signature` they are built on, plus the two identity halves, plus the three on the verification
 side. So a release that lands a new sidecar moves this count by one and nothing else has to be edited
-to agree. RM130 landed two at once (0.7), RM194/RM200 landed a tenth sidecar and RM333/RM236 three
-more (0.8), which is why the fact-signature family is now **fifteen** where older prose says nine — a reader counting to nine and
+to agree. RM130 landed two at once (0.7), RM194/RM200 landed a tenth sidecar, RM333/RM236 three
+more and RM331 one (0.8), which is why the fact-signature family is now **sixteen** where older prose says nine — a reader counting to nine and
 stopping would miss `module_binding` and `pow_digest` entirely, which is the reason this section
 exists at all.
 
@@ -2499,7 +2501,7 @@ bytes, from this compiler*.
 built on it: `frequency_signature`, `gene_metrics_signature`, `literature_signature`,
 `gene_validity_signature`, `clinical_assertion_signature`, `gwas_effect_signature`,
 `clin_sig_concordance_signature`, `clin_sig_authority_call_signature`, `expression_effect_signature`,
-`locus_to_gene_signature`, `colocalisation_signature`, `consequence_signature`,
+`locus_to_gene_signature`, `colocalisation_signature`, `consequence_signature`, `ld_pair_signature`,
 `source_signature`, `resolution_signature`. Each hashes a **normalized fact tuple** rather than raw bytes, which is the
 whole point — these tables are multi-producer (enricher, human, `reverse`), so a raw-bytes hash would be
 unstable across producers writing the same facts. It is also why none of them appears in
@@ -3219,6 +3221,36 @@ column (a ranking policy). The transcript set is Open Targets' choice, one Ensem
 per nearby gene, which `canonical` records; `mane_select` names the MANE transcript where there is one.
 `consequence_so_ids` holds accessions (`SO_0001583`), verbatim; the name `consequence` stays free for a
 term label.
+
+## The LD-pair table (0.8, RM331)
+
+`ld_pairs.csv` → `ld_pairs.parquet` is the derived half of a study measured on an LD proxy. The author
+writes only `StudyRow.proxy_rsid`; r² means nothing without the population it was computed in, so r² and
+its population are a pair, and `just-dna-enricher ld-pairs` computes it from a reference panel (Ensembl's
+pairwise LD over the 1000 Genomes phase 3 superpopulations) instead of an author typing it.
+
+| key | what one row says |
+|---|---|
+| `(proxy_rsid, variant_key, ld_population)` | r² and \|D′\| between the proxy a study measured and the study row's lead, in one reference panel, or the reason they are withheld |
+
+**`ld_population` is the panel's own name** (`1000GENOMES:phase_3:EUR`), not the study's code (`EUR`): it
+says which reference the number came from, and another panel is another key rather than the same word
+meaning two things. It is null on a row whose study names several superpopulations or none.
+
+**Withheld is a `status`, never a zero** (`VALID_LD_PAIR_STATUS`). Only `resolved` carries `r2` and
+`d_prime`, and the model refuses a number on any other row and a resolved row without one. `not_reported`
+is Ensembl's `200 []`, which it serves both for a pair on two chromosomes and for a pair below an internal
+floor (the APOE pair in AFR): below the floor or not in LD, unknown which. `rsid_unknown` is the reference
+not knowing one of the two ids. `ancestry_mixed` and `ancestry_unstated` are a study naming several
+superpopulations or none: the pass never picks a panel for it. `lead_has_no_rsid` is a coordinate-authored
+lead with no rsID known, since the endpoint takes rsIDs.
+
+`answered_rsid` is the proxy as the reference named it (a merged id answers under its current one), kept
+beside the key the author wrote and outside `ld_pair_signature`; `dataset` (`ensembl_116`) is inside it,
+since r² is recomputed from each release's genotypes. `manifest.ld_pairs` summarises the table:
+`{signature, sources, datasets, populations, row_count, with_r2}`, the last two differing by the withheld
+rows. No compile check reads it, and the overlay does not cover it: an author has no correction to make to
+a reference panel's r², and a wrong `ancestry` is fixed on the study row.
 
 ## The expression-effect table (0.7, RM194 + RM200)
 

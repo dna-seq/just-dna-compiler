@@ -37,6 +37,7 @@ from just_dna_enricher.gnomad import GnomadClient, GnomadError, GnomadSettings
 from just_dna_enricher.grch37 import Grch37Client
 from just_dna_enricher.gwas import GwasCatalogClient, GwasError
 from just_dna_enricher.identifiers import IdentifierUnavailable, OntologyClient
+from just_dna_enricher.ld_pairs import LdClient, LdUnavailable
 from just_dna_enricher.literature import CrossrefClient, EuropePmcClient, LiteratureUnavailable, PmcBiocClient
 from just_dna_enricher.litvar import LitvarClient, LitvarUnavailable
 from just_dna_enricher.net import PacingGate
@@ -120,6 +121,13 @@ def _clinvar_gkm(handler: Callable[[httpx.Request], httpx.Response]) -> Callable
         client=httpx.Client(transport=httpx.MockTransport(handler)), gate=_instant_gate()
     )
     return client.parquet_manifest
+
+
+def _ld_pairs(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], object]:
+    """RM331's Ensembl pairwise LD. A 400 naming a variation is an ANSWER (`LdAnswer.unknown`), so it is
+    not what these cases drive; a 404 means the endpoint moved, which is could-not-ask."""
+    client = LdClient(client=httpx.Client(transport=httpx.MockTransport(handler)), gate=_instant_gate())
+    return lambda: client.pairwise("rs4970836", "rs646776", "1000GENOMES:phase_3:EUR")
 
 
 def _ontology(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], object]:
@@ -244,6 +252,10 @@ CLIENTS = [
     # read rather than an unreachable source; the transport and status legs are the
     # `ClinVarGkmUnavailable` subclass, asserted in `test_clinvar_gkm.py`.
     ("clinvar_gkm", _clinvar_gkm, ClinVarGkmError),
+    # `LdUnavailable` rather than its parent: every leg this file drives (5xx, transport, 404, a 200 that
+    # is EBI's HTML error page) means Ensembl could not be asked. `LdError` is the parent and covers an
+    # answer the pass cannot use (a 400 for a population, a pair with no readable r²).
+    ("ld_pairs", _ld_pairs, LdUnavailable),
 ]
 
 

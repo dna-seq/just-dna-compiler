@@ -57,6 +57,7 @@ _WORDS: dict[str, int] = {
     "twenty-seven": 27,
     "twenty-eight": 28,
     "twenty-nine": 29,
+    "thirty": 30,
 }
 
 
@@ -112,7 +113,7 @@ def test_the_two_spelled_numbers_agree_with_the_roster() -> None:
     doc = (_DOCS / "SCHEMAS.md").read_text(encoding="utf-8")
     family = len(_per_table_signatures()) + 1
     assert _spelled(doc, r"fact-signature family is now \*\*(\w+)\*\*") == family
-    assert _spelled(doc, r"^(\w+) functions, in three groups") == family + 2 + 3
+    assert _spelled(doc, r"^(\w+(?:-\w+)?) functions, in three groups") == family + 2 + 3
 
 
 @pytest.mark.parametrize(

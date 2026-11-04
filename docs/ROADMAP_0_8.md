@@ -50,7 +50,7 @@ land wherever RM323 puts per-locus facts. RM322 next, since APOE is the lead loc
 | [RM328](ROADMAP_HISTORY.md#rm328--no-study-row-can-name-the-ancestry-it-was-measured-in-so-european-only-evidence-is-a-hand-set-flag) | `StudyRow` ancestry on a vocabulary; `eur_only_evidence` derived | full ×1, derived near-zero | ✅ shipped 2026-11-04 |
 | [RM329](ROADMAP_HISTORY.md#rm329--an-age-stratified-estimate-has-no-age-band-so-age-of-action-is-reconstructed-from-statistical_test-prose) | `StudyRow` age band and whose age | full ×3 | ✅ shipped 2026-11-04 |
 | [RM330](ROADMAP_HISTORY.md#rm330--an-effect-measured-in-one-sex-one-smoking-stratum-or-one-genotype-has-no-row) | the stratum an estimate was measured in; sex as the first query-time modifier | full ×2 | ✅ shipped 2026-11-04 |
-| [RM331](#rm331--a-study-measured-on-an-ld-proxy-cannot-say-so-and-filing-it-under-the-lead-checks-the-proxys-allele-against-the-leads) | `StudyRow` proxy variant + r²; the allele check follows the proxy | full ×2–3 |  |
+| [RM331](ROADMAP_HISTORY.md#rm331--a-study-measured-on-an-ld-proxy-cannot-say-so-and-filing-it-under-the-lead-checks-the-proxys-allele-against-the-leads) | `StudyRow` proxy variant; r² and its population computed into `ld_pairs.csv` | full ×1, derived half | ✅ shipped 2026-11-04 on `0.8`, uncut |
 | [RM332](ROADMAP_HISTORY.md#rm332--a-beta-has-no-unit-on-authored-rows-while-gwas_effectscsv-has-carried-one-since-06) | `effect_unit` on `StudyRow`, joined onto `weights.parquet` when the studies agree | full ×1, derived near-zero | ✅ shipped 2026-11-04 |
 | [RM333](ROADMAP_HISTORY.md#rm333--the-effector-gene-behind-a-gwas-locus-has-no-source-and-no-column) | an Open Targets lane; effector gene, score, release on a derived table | half, plus a lane | ✅ shipped 2026-11-04 on `0.8`, uncut |
 | [RM334](ROADMAP_HISTORY.md#rm334--an-hla-allele-has-no-table-and-tag-snps-cannot-stand-in-for-one) | the IPD-IMGT/HLA name grammar on `allele_function.csv` (the table was cut) | near-zero (a refusal) | ✅ shipped 2026-11-04 |
@@ -75,29 +75,6 @@ scope decision put each in 0.8 or 0.9, as marked):
 
 The authored `report:` block in [ROADMAP.md's idea-book](ROADMAP.md) is the unnumbered half of RM248 and
 answers v2's §8 consumer requests 1 and 2 (category prose from the module, no "Net weight").
-
-## RM331 — a study measured on an LD proxy cannot say so, and filing it under the lead checks the proxy's allele against the lead's
-
-**Built on 0.8, 2026-11-04: `proxy_rsid` and the allele check.** `StudyRow.proxy_rsid` (refused on a row naming no variant, or equal to its own `rsid`) reaches `studies.parquet` and `reverse`; `_check_study_effect_alleles` reads the proxy's resolved alleles when one is stated and withholds when it has none; `enrich.collect_subjects` admits each proxy as a subject, last, and the GWAS pass leaves them out. Still open: the computed LD pair (r² and its population, from the study's `ancestry`), which is built under this item on 0.8 by a later unit.
-
-**Cut 2026-11-04 by the maintainer, after the final measuring run** (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §3): **authors write only `proxy_rsid`.** r² has no meaning without its population, so r² and its population are a pair, and the pair is **computed**: the enricher asks an LD reference for the r² between proxy and lead in the study's own `ancestry` and writes it to a machine-written table (half price). The allele check runs against the proxy's alleles.
-
-**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format + compiler (`_check_study_effect_alleles`) · **Motivating case** longevitymap v2 requirements §6.2 (`rsid`, `ld_proxy_of`), §6.4 (APOE proxies) · *for* longevitymap v2 · *related* RM91
-
-**What was confirmed.** The plan scores lead variants only and records proxies "on study rows". But
-`StudyRow` has no `flags`, so there is nowhere to write that. A study of a proxy then has two homes, and
-both are wrong:
-
-- **Under the lead's rsID**, `_check_study_effect_alleles` checks the proxy's `effect_allele` against
-  the lead's alleles. It refuses if they differ and passes silently, with the wrong meaning, if they
-  happen to match.
-- **Under the proxy's rsID**, it raises `study_variant_orphan`.
-
-The APOE region alone has five proxies (rs2075650, rs4420638, rs769449, rs405509, rs449647), and
-rs2075650 is the one genome-wide hit in the Sebastiani 2012 classifier.
-
-**Shape.** A proxy column pair on `StudyRow` (the measured variant and its r², plus the LD reference
-population), with `effect_allele` checked against the proxy's alleles rather than the lead's. Full ×2–3.
 
 ## RM28 — Meta-conclusions (the predicate half)
 

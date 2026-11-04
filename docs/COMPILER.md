@@ -1652,7 +1652,7 @@ late it sits in the tuple. What the position does govern is the order a consumer
 listing, not the hash; what keeps an already-published digest still is that the module has no such
 file at all.
 
-Twenty-nine names. `LEAD_PARQUETS` is the ten carrying a module's own annotation rows — `weights` plus the
+Thirty names. `LEAD_PARQUETS` is the ten carrying a module's own annotation rows — `weights` plus the
 nine table kinds — which is the publisher's *is this a module* rule and what discovery probes.
 
 **The per-parquet column lists are deliberately not reproduced here.** They are derivable from the

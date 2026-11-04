@@ -42,6 +42,8 @@ def test_layer_and_declared_use_are_closed_vocabularies() -> None:
         "locus_to_gene",
         "colocalisation",
         "consequence",
+        # 0.8 (RM331) — the computed LD pair, written by `ld-pairs` from Ensembl's pairwise LD.
+        "ld_pair",
         "annotation",
     } == VALID_SOURCE_LAYERS
     assert {"unstated", "non_commercial", "commercial"} == VALID_DECLARED_USE

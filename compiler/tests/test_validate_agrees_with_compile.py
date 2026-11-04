@@ -182,6 +182,15 @@ _INJECTED_ROW_CASES: tuple[tuple[str, str, str], ...] = (
         ),
         "impact",
     ),
+    # RM331: an r² outside [0, 1].
+    (
+        "ld_pairs.csv",
+        (
+            "proxy_rsid,variant_key,ld_population,status,r2,dataset,source\n"
+            "rs4970836,rs646776,1000GENOMES:phase_3:EUR,resolved,1.5,ensembl_116,ensembl\n"
+        ),
+        "r2",
+    ),
     (
         "sources.csv",
         # This case used to be spelled `non-commercial`, on the reasoning that the hyphen is wrong

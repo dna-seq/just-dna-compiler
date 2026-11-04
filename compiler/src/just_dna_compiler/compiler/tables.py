@@ -24,6 +24,7 @@ from just_dna_format.gene_validity import GeneValidityRow
 from just_dna_format.gwas import GwasEffectRow
 from just_dna_format.integrity import newline_normalized_file_entries
 from just_dna_format.layout import VERIFICATION_JSON, SidecarCollision, deprecation_notice, resolve_sidecar
+from just_dna_format.ld_pairs import LdPairRow
 from just_dna_format.literature import LiteratureRow
 from just_dna_format.locus_genes import ColocalisationRow, LocusToGeneRow
 from just_dna_format.manifest import FileEntry
@@ -298,6 +299,8 @@ ARTIFACT_PARQUETS: tuple[str, ...] = (
     "locus_to_gene.parquet",
     "colocalisations.parquet",
     "consequences.parquet",
+    # The computed LD pair (0.8, RM331), beside its siblings for the same reason.
+    "ld_pairs.parquet",
     "sources.parquet",
     # RM124 (0.7), last — and **not for the digest reason the entries above give**, which does not
     # reach it. `integrity.artifact_digest` sorts the listing by name before hashing, so a member's
@@ -353,6 +356,7 @@ _FACT_TABLES: tuple[tuple[str, str, type[BaseModel]], ...] = (
     ("locus_to_gene.csv", "locus_to_gene.parquet", LocusToGeneRow),
     ("colocalisations.csv", "colocalisations.parquet", ColocalisationRow),
     ("consequences.csv", "consequences.parquet", ConsequenceRow),
+    ("ld_pairs.csv", "ld_pairs.parquet", LdPairRow),
     ("sources.csv", "sources.parquet", SourceRow),
 )
 

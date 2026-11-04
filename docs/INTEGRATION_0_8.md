@@ -115,6 +115,17 @@ The manifest blocks are `{signature, sources, datasets, row_count, variant_count
 gains `locus_to_gene`, `colocalisation` and `consequence`; a 0.7 reader refuses a `sources.csv` row
 carrying one, which is the same upgrade-first rule.
 
+## 1.2.4 The computed LD pair: one derived table, one parquet (RM331, no break)
+
+`ld_pairs.csv` → `ld_pairs.parquet`, listed after `consequences.parquet` in `ARTIFACT_PARQUETS` (not a
+`LEAD_PARQUET`; a module carrying none keeps its digest), summarised by a new top-level manifest block
+`ld_pairs` (`{signature, sources, datasets, populations, row_count, with_r2}`) that a 0.7 reader drops. Key
+`(proxy_rsid, variant_key, ld_population)`; `status` is the closed `VALID_LD_PAIR_STATUS` (`resolved`,
+`not_reported`, `rsid_unknown`, `ancestry_mixed`, `ancestry_unstated`, `lead_has_no_rsid`), and only
+`resolved` carries `r2`/`d_prime`. `VALID_SOURCE_LAYERS` gains `ld_pair`; a 0.7 reader refuses a
+`sources.csv` row carrying it, the same upgrade-first rule as 1.2.3. Written by the new
+`just-dna-enricher ld-pairs` command (online only). No new warning code.
+
 ## 1.3 New derived column and client method (no break)
 
 | Surface | Item | What changed |

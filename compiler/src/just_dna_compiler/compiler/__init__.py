@@ -292,6 +292,7 @@ from just_dna_compiler.compiler.manifest import _gene_validity_block as _gene_va
 from just_dna_compiler.compiler.manifest import _gene_validity_signature as _gene_validity_signature
 from just_dna_compiler.compiler.manifest import _gwas_effect_signature as _gwas_effect_signature
 from just_dna_compiler.compiler.manifest import _gwas_effects_block as _gwas_effects_block
+from just_dna_compiler.compiler.manifest import _ld_pairs_block as _ld_pairs_block
 from just_dna_compiler.compiler.manifest import _literature_block as _literature_block
 from just_dna_compiler.compiler.manifest import _literature_signature as _literature_signature
 from just_dna_compiler.compiler.manifest import _locus_to_gene_block as _locus_to_gene_block

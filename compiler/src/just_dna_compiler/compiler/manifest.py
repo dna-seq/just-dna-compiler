@@ -31,6 +31,7 @@ from just_dna_format.integrity import (
     consequence_signature,
     file_entries,
     file_entry,
+    ld_pair_signature,
     locus_to_gene_signature,
     sha256_file,
 )
@@ -59,6 +60,7 @@ from just_dna_format.manifest import (
     GeneValidity,
     GwasEffects,
     Identity,
+    LdPairs,
     Literature,
     MetaSelectorCount,
     ModuleManifest,
@@ -633,6 +635,20 @@ def _colocalisations_block(rows: list) -> OpenTargetsTable | None:
 
 def _consequences_block(rows: list) -> OpenTargetsTable | None:
     return _open_targets_block(rows, consequence_signature)
+
+
+def _ld_pairs_block(rows: list) -> LdPairs | None:
+    """The manifest's `ld_pairs` summary (RM331), or `None` when the module carries no such sidecar."""
+    if not rows:
+        return None
+    return LdPairs(
+        signature=ld_pair_signature(rows),
+        sources=sorted({r.source for r in rows if r.source}),
+        datasets=sorted({r.dataset for r in rows if r.dataset}),
+        populations=sorted({r.ld_population for r in rows if r.ld_population}),
+        row_count=len(rows),
+        with_r2=sum(1 for r in rows if r.r2 is not None),
+    )
 
 
 def _gwas_effects_block(rows: list[GwasEffectRow]) -> GwasEffects | None:
@@ -1284,6 +1300,7 @@ def _build_manifest(
     locus_to_gene: OpenTargetsTable | None = None,
     colocalisations: OpenTargetsTable | None = None,
     consequences: OpenTargetsTable | None = None,
+    ld_pairs: LdPairs | None = None,
     clin_sig_concordance: ClinSigConcordance | None = None,
     literature: Literature | None = None,
     sources: Sources | None = None,
@@ -1369,6 +1386,7 @@ def _build_manifest(
         locus_to_gene=locus_to_gene,
         colocalisations=colocalisations,
         consequences=consequences,
+        ld_pairs=ld_pairs,
         clin_sig_concordance=clin_sig_concordance,
         literature=literature,
         sources=sources,

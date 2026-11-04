@@ -19,6 +19,7 @@ from just_dna_format.gene_validity import (
     undecidable_groups,
 )
 from just_dna_format.gwas import GWAS_FACT_FIELDS, GwasEffectRow
+from just_dna_format.ld_pairs import LD_PAIR_FACT_FIELDS, LdPairRow
 from just_dna_format.literature import LITERATURE_FACT_FIELDS, LiteratureRow
 from just_dna_format.locus_genes import (
     COLOCALISATION_FACT_FIELDS,
@@ -60,6 +61,7 @@ FACT_CONTRADICTION_FIELDS: dict[type, tuple[str, ...]] = {
     LocusToGeneRow: LOCUS_TO_GENE_FACT_FIELDS,
     ColocalisationRow: COLOCALISATION_FACT_FIELDS,
     ConsequenceRow: CONSEQUENCE_FACT_FIELDS,
+    LdPairRow: LD_PAIR_FACT_FIELDS,
 }
 
 
