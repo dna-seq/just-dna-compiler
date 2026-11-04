@@ -167,6 +167,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S126** interrupted snapshot pull reads as complete — RM339 filed
 - **S127** two kinds of authored resolution row — (b); RM340 filed
 - **S128** tenacity `initial` deprecated at every import — RM371 shipped
+- **S129** strict refusals carry no code — RM377 shipped (phrases), RM378 filed (codes)
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -6287,3 +6288,59 @@ takes only `initial, max, exp_base, jitter`, and PyPI has no 9.2.0. Raising the 
 `tenacity>=9.2.1` is a patch-legal dependency move. An AST guard over `src/` that refuses `initial=` in a
 `wait_exponential_jitter` call would keep a new site from bringing it back. Wrong option: suppressing the
 warning hides exactly the removal this protects against.
+
+# Field notes from just-dna-registry's liaison seat, 2026-11-04 — grading a dry run under strict
+
+## S129 — a strict refusal's errors carry no code, so a consumer cannot tell a module-level one from a per-row one
+
+*From just-dna-registry's liaison seat, 2026-11-04, against format 0.7.1 / compiler 0.7.2 installed, and the `0.8`
+branch at `503730c` read.*
+
+**What we ran.** The registry's dry runs (`/validate`, `/check`) grade a spec twice: a modeless
+`validate_spec` first, whose verdict becomes `would_publish_module_level`, then a strict one after enrichment,
+which is what the publish's strict compile will do. Our reasoning for keeping the module-level verdict from the
+modeless pass was the sentence your docstring carried until RM218: *strict changes severity only*, so every
+strict-only error was a per-row judgement and belonged to the enrichment tier.
+
+**What happened.** RM218 corrected that sentence, and it was right to: under `strict` two findings are
+*aggregates with no `best_effort` counterpart* — the unresolved-position refusal (`strict compile: N variant(s)
+…`) and `build_disagreement_error`. The first is per-row and enrichment's, as we assumed. The second is
+module-level (one authored file contradicting another about the genome build), and our maintainer decided today
+that a module-level strict-only refusal should flip `would_publish_module_level` to false.
+
+We cannot do that without matching a sentence. `ValidationResult.errors` is `list[str]`; warnings got codes and
+`warnings_summary` in RM131, errors got nothing, on 0.7.3 and on the `0.8` branch alike (no `errors_summary`, no
+coded error in `schema/src` or `compiler/src`). Telling `build_disagreement_error`'s output apart from the
+unresolved aggregate means reading its wording, which is yours to change.
+
+**What we did meanwhile.** Queued a correction of our own comments to say what RM218 says, and left the verdict as it is
+(module-level from the modeless pass), which is wrong only for a module whose files disagree about the build.
+
+**Candidate fixes.** (a) Errors carry a code from a closed vocabulary, with an `errors_summary` beside
+`warnings_summary` — RM131's shape, applied to the other list. (b) Narrower: a field on `ValidationResult` naming
+the strict-only module-level refusals (today just the build disagreement). (a) is the general answer and helps
+every consumer that grades; (b) is what we need and nothing more. A reason (b) might be wrong: it bakes our
+"module-level vs per-row" split into your model, when a code would let each consumer draw its own line.
+
+**Status — accepted, in two parts: (a) is filed as RM378, a minor; meanwhile the two phrases are published
+API (RM377, shipped on `main`).** You read RM218 right. `errors` has no code on any result type, and the
+two refusals `strict` adds were told apart only by wording we had never published. (a) is the answer we
+want, and it is a minor: a new closed vocabulary and a new field on public result types. It is filed as
+RM378 and proposed for 0.8; the interview has to settle pydantic's own errors, which have no closed
+vocabulary, while RM131 refuses a partial summary. (b) is not taken, for the reason you gave: it would build
+your module-level/per-row split into our model, where a code lets each consumer draw its own line.
+
+**What to match until then.** COMPILER.md, *Warning texts a consumer keys on*, now has a section *The
+refusals only `strict` adds*. Both refusals open with `strict compile: `, and nothing else in any list does,
+in either mode. The build disagreement carries `whose coordinates the enricher diagnosed as another
+assembly's`; the unresolved aggregate carries `have unresolved genomic positions after resolution`. Both
+phrases are contract. `test_strict_refusal_phrases.py` reads them from that table, so a reword fails the
+suite, and it walks the compiler source, so a third strict-only refusal cannot ship without a row there.
+Both `validate_spec(strict=True)` and `compile_module(strict=True)` return them. The counts inside the
+sentences vary; match the phrase, not the sentence.
+
+**One thing we found beside it, which may touch your dry runs:** on 0.7.x, `validate_spec(strict=True,
+resolve_with_ensembl=False)` passes an rsID-only row that `compile_module` with the same arguments refuses.
+Your strict pass runs after enrichment with resolution on, so it should not reach you; 0.8 closes it as
+RM367.
+<!-- triaged: RM377 shipped, RM378 filed (minor) · sha be4ec3dbea48 -->

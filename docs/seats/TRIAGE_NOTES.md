@@ -53,6 +53,8 @@ three scripts are the kit's, two of them copied into `.claude/` for CI.
 | RM339 (S126, snapshot cache trusted when partial) | `done`: `74e0e87`, unpushed when built (the pm pushed it in `e2fed68`). A pull writes `pull-record.json` before its first download |
 | RM337 (S125, silent drop under `logs/`) | handed on: it needs a new warning code, so it is a minor (`172a215`, sized wrong at filing). The pm placed it, now in `ROADMAP_0_8.md` (`f3377a6`) |
 | RM340 (S127, VRS warning names `verification.json`) | `done`: `280813b`, on `origin/main` (the pm's fast-forward pushes carried it) |
-| RM371 (S128, tenacity `initial=` deprecated at every enricher import) | `done`: `742b1ff`, unpushed. 18 sites renamed `multiplier=`, floor `tenacity>=9.2.1`, AST guard; `0.8` has 21 sites, so the guard goes red at the merge until the lead renames the 3 extra |
+| RM371 (S128, tenacity `initial=` deprecated at every enricher import) | `done`: `742b1ff`, on `origin/main`. 18 sites renamed `multiplier=`, floor `tenacity>=9.2.1`, AST guard; `0.8` has 21 sites, so the guard goes red at the merge until the lead renames the 3 extra |
+| RM377 (S129, strict-only refusals told apart by wording) | `done`: `2a4655e7`, unpushed. Two phrases published in COMPILER.md, read by `test_strict_refusal_phrases.py`; doc + test only, so it passes unchanged on `origin/0.8`. Beside it: on `main`, `validate --strict` with resolution off passes what `compile` refuses; `0.8` closes it as RM367, so no item |
+| RM378 (S129, coded errors with an `errors_summary`) | handed on: a minor, filed in `ROADMAP.md` (`0b99facb`), proposed for 0.8; the pm places it |
 | RM338 (S125, which files under `logs/` ship) | the lead's: taken into its plan and put to the maintainer, 2026-11-03 |
 | push of `main` | the maintainer's: auto mode denies a seat's granted push (kit #238), so the maintainer pushes until it lands; the lead asked triage not to push its commits |
