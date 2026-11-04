@@ -435,7 +435,7 @@ def lane_currency(
 ) -> LaneCurrency:
     """Ask the source whether `snapshot_dir` is current. Reads the snapshot; writes nothing."""
     release = read_release(Path(snapshot_dir)) or SnapshotRelease()
-    pinned_release = getattr(release, "source_release", None)
+    pinned_release = release.source_release
     pinned = LaneCurrency(pinned_release=pinned_release, pinned_sha256=_pinned_digests(release))
     if offline:
         return LaneCurrency(pinned.pinned_release, pinned.pinned_sha256, unchecked="offline")
@@ -517,8 +517,7 @@ class ClinVarGkmWitness:
     @property
     def vrs_version(self) -> str | None:
         """The VRS version the witness's ids were minted under, as `release.json` declares it."""
-        stated = getattr(self.release, "vrs_version", None)
-        return str(stated) if stated else None
+        return (self.release.vrs_version or "").strip() or None
 
     @property
     def dataset(self) -> str | None:

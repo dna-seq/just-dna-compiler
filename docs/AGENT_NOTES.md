@@ -3198,6 +3198,22 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   SnapshotRelease(...))`; `test_release_json_through_the_model.py` refuses any builder that spells
   `release.json` outside an import or an `.unlink`. Old spellings are read, never written.
 
+  **The model fixed the spellings and left the order (RM369, 2026-11-04).** Every builder still swapped
+  its payload in and wrote the record after, so a crash between the two left new bytes under the old
+  record, which every reader believed. STRchive alone unlinked first, with a comment saying why, and the
+  guard had a test blessing exactly that unlink: the right shape was in the tree, as one builder's local
+  habit. It is now the only shape: `begin_snapshot_write(out_dir)` withdraws the record and returns the
+  handle whose `commit` is a builder's only route to the writer. The repair refused was the strong one,
+  staging the whole snapshot and swapping it once: a directory cannot be renamed over a non-empty one,
+  so the swap is two renames with an absent snapshot between them, which is the same "no description"
+  state for a rewrite of sixteen builders' path plumbing. **Place the withdrawal immediately before
+  the payload moves, never at the top of a build:** CPIC's build fetches over the network first, and a
+  withdrawal at the top would strip a whole, valid snapshot of its record on every transport failure.
+  The order is checked by running the builder (`test_a_build_withdraws_its_description_first.py`), not
+  by the AST walk, which can say a builder opens a write but not where. The same round typed the four
+  keys readers acted on out of `extra` (`parts_read`, `parts_total`, `source_release`, `vrs_version`):
+  an extra key is read untyped, and `getattr(release, "x", None)` turns a typo into an absence.
+
 - `@release-json-provenance` — **Publishing a second artifact makes provenance a question — answer it in `release.json`.** ClinVar
   publishes `var_citations.txt` on its own cadence, so a snapshot can carry records and citations from
   different releases; `build_citations` merges its own block (read-modify-write, so the VCF's keys

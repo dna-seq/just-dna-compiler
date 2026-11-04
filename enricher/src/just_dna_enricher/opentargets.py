@@ -70,7 +70,7 @@ from just_dna_format.layout import atomic_writer
 from just_dna_format.locus_genes import ColocalisationRow, LocusToGeneRow
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.resolution import ResolutionRow
-from just_dna_format.snapshot import read_release
+from just_dna_format.snapshot import SnapshotRelease, read_release
 from pydantic import BaseModel
 
 from just_dna_enricher.licensing import (
@@ -195,13 +195,19 @@ def _connect(snapshot: Path) -> duckdb.DuckDBPyConnection:
     return con
 
 
-def _partial_datasets(release: dict) -> dict[str, tuple[int, int]]:
-    read = release.get("parts_read") or {}
-    total = release.get("parts_total") or {}
+def _partial_datasets(release: SnapshotRelease) -> dict[str, tuple[int, int]]:
+    """`{dataset: (read, total)}` for every dataset the snapshot read short of the release's total.
+
+    Read off the typed fields (RM369): a count of the wrong kind in an old `release.json` is read as
+    unstated by `read_release`, never coerced here, and an unstated total is the unknown arm the
+    caller withholds on.
+    """
+    read = release.parts_read or {}
+    total = release.parts_total or {}
     return {
-        dataset: (int(read[dataset]), int(total[dataset]))
+        dataset: (read[dataset], total[dataset])
         for dataset in sorted(read)
-        if dataset in total and int(read[dataset]) < int(total[dataset])
+        if dataset in total and read[dataset] < total[dataset]
     }
 
 
@@ -366,15 +372,14 @@ def enrich_opentargets(
             "this is not a finding that Open Targets holds nothing for these variants."
         )
         return OpenTargetsResult(skipped="no_snapshot")
-    record = read_release(resolved)
-    release = record.model_dump() if record is not None else {}
-    dataset = release.get("dataset") or ""
+    release = read_release(resolved) or SnapshotRelease()
+    dataset = release.dataset or ""
     if not dataset:
         raise OpenTargetsError(
             f"the Open Targets snapshot at {resolved} has no release label in release.json"
         )
     partial = _partial_datasets(release)
-    if not release.get("parts_total"):
+    if not release.parts_total:
         if mode == "strict":
             raise OpenTargetsError(
                 f"strict Open Targets enrichment: the snapshot at {resolved} does not record how many "

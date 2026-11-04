@@ -44,7 +44,7 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from just_dna_format.normalize import now_utc_iso
-from just_dna_format.snapshot import SnapshotRelease, read_release, write_release
+from just_dna_format.snapshot import SnapshotRelease, SnapshotWrite, begin_snapshot_write, read_release
 from pydantic import ValidationError
 
 from just_dna_enricher._rcrs import RCRS
@@ -145,8 +145,7 @@ class MissBuildResult:
 
 def _pin_of(release: SnapshotRelease) -> dict:
     """The `PIN_KEYS` a release states, in their canonical spelling."""
-    stated = release.model_dump(mode="json", exclude_unset=True)
-    return {key: stated[key] for key in PIN_KEYS if key in stated}
+    return release.model_dump(mode="json", include=set(PIN_KEYS), exclude_unset=True)
 
 
 def parent_pin(directory: Path | None) -> dict:
@@ -382,13 +381,14 @@ def build_miss_snapshot(mitomap_dir: Path, clinvar_dir: Path, out_dir: Path) -> 
     }
 
     data_dir = out_dir / "data"
-    data_dir.mkdir(parents=True, exist_ok=True)
     frame = pl.DataFrame(rows, schema=_miss_schema()).sort(
         ["table", "start", "ref", "alt", "record_id"], nulls_last=True
     )
+    snapshot = begin_snapshot_write(out_dir)
+    data_dir.mkdir(parents=True, exist_ok=True)
     frame.write_parquet(result.parquet_file)
     result.citation_links = _write_citations(mitomap_dir, data_dir, frame)
-    _write_release_json(out_dir, result, source_rows=source.height)
+    _write_release_json(snapshot, result, source_rows=source.height)
     logger.info(
         "Built the MITOMAP-miss snapshot: %s → %s (%d `:` deletion(s) anchored on rCRS, RM293)",
         ", ".join(f"{name} {count}" for name, count in result.buckets.items()),
@@ -451,7 +451,7 @@ def _miss_schema() -> dict:
     return schema
 
 
-def _write_release_json(out_dir: Path, result: MissBuildResult, *, source_rows: int) -> Path:
+def _write_release_json(snapshot: SnapshotWrite, result: MissBuildResult, *, source_rows: int) -> Path:
     """Both parent pins, every bucket count, and the partition check, beside the data.
 
     The counts are here for the reason every derived number in this tier is: one computed and dropped
@@ -474,4 +474,4 @@ def _write_release_json(out_dir: Path, result: MissBuildResult, *, source_rows: 
         built_at=now_utc_iso(),
         builder_version=_builder_version(),
     )
-    return write_release(out_dir, release)
+    return snapshot.commit(release)

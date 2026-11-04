@@ -351,7 +351,7 @@ truncation reads as full coverage, so each of these lands as a number in `releas
 **`release.json` carries the provenance and the aggregate.** Source URL, the file's sha256, its ETag
 and Last-Modified (all three available, all three recorded, so an upstream revision becomes a finding
 rather than a silent change of answer), the PubMind-DB version, our builder version, and the drop
-counts above. `_merge_release_block` is the existing shape for adding a block without clobbering a
+counts above. `snapshot.begin_block_write` (`_merge_release_block` before RM369) is the shape for adding a block without clobbering a
 sibling snapshot's (`@snapshot-accumulates`).
 
 **`pubmind publish` is refused, and that is the design, not an omission.** PharmVar is the standing

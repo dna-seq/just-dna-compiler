@@ -35,6 +35,94 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM369 — a snapshot's description is written around its bytes by hand: every builder describes a payload it has already swapped in, and readers act on keys the model does not type
+
+**SHIPPED 2026-11-04 on `0.8`, uncut — a minor (the 0.8 audit, round 1).** Owner format + enricher,
+severity low. Found by the four-model audit of 0.8 (GPT-5.6 Sol's findings 5 and 8).
+
+**The class.** RM303 made `release.json` a model with one writer and one reader, and stopped there: the
+model fixed the record's spellings but neither the order a builder writes it in nor the type of the
+keys a reader acts on. Two shapes of one gap, a contract a party can bypass while the walk stays green:
+
+- **Write order.** Every builder moved its payload first and wrote `release.json` after. A build that
+  died between the two (a full disk, a killed process) left new bytes under the previous build's
+  record, and every reader believes the record: the label `cache status` prints, the `dataset` a pass
+  stamps onto `SourceRow`, a child's parent pin. The house `cache rebuild` builds into a fresh
+  `<base>/<lane>/`, so only a direct build onto an existing snapshot was exposed.
+- **Untyped reads.** `SnapshotRelease` is `extra="allow"`, so a key read out of `extra` (`getattr`, a
+  `model_dump()` and `.get`) is unchecked: a misspelt key reads as absent, and a value of the wrong kind
+  reaches logic. A `parts_total` of `"seven"` raised a `TypeError` in the Open Targets pass.
+
+**Instances (re-verified on `0.8` at `0a5293b`; file:line before → after).** Write order, one per
+builder, 16 modules, 18 write sites:
+
+| Builder | Before: payload, then `write_release` | After: `begin_snapshot_write` → payload → `commit` |
+|---|---|---|
+| `acmg_build.py` | `:292` after the CSV | `:268` → `:292` |
+| `alphagenome_avi_build.py` | `:775`, and **before** `LICENSE.txt` (`:779`), against `SNAPSHOT_ROOT_FILENAMES`' order | `:727` → `:791`, after the licence |
+| `civic_build.py` | `:746`, and **before** `LICENSE.txt` (`:747`) | `:709` → `:749`, after the licence |
+| `clinpgx_build.py` | `:422` | `:395` → `:423` |
+| `clinvar_build.py` (records) | `:546` | `:513` → `:578` |
+| `clinvar_build.py` (citations) | `_merge_release_block` `:396`, the old `citations` block standing over a new table | `begin_block_write` `:391` → `:400`: the block only is withdrawn, the records' provenance kept |
+| `clinvar_gkm_build.py` | `:361`, after parquet and licence (the listed instance) | `:339` → `:362` |
+| `constraint_build.py` | `:295` | `:291` → `:343` |
+| `cpic_build.py` | `:318` | `:299` → `:319`, after the network fetch, never before it |
+| `drug_labels_build.py` | `:229` | `:213` → `:296` |
+| `mane_build.py` | `:690` | `:669` → `:801` |
+| `mitomap_build.py` | `:370` | `:275` → `:426` |
+| `mitomap_miss_build.py` | `:391` | `:387` → `:477` |
+| `opentargets_build.py` (build) | `:460`, after `rmtree(live)` and the rename (the listed instance) | `:459`, immediately before `rmtree(live)` → `:463` |
+| `opentargets_build.py` (`subset_snapshot`) | `:557` | `:547` → `:560` |
+| `pharmvar_build.py` | `:192` | `:166` → `:193` |
+| `pubmind_build.py` | `:447` | `:419` → `:529` |
+| `strchive_build.py` | **not an instance**: it unlinked the record before the rename (`:143`), the one builder already right | the same order through `begin_snapshot_write` `:144` |
+
+Untyped reads, 3 modules, 6 sites: `opentargets.py:199-205` (`parts_read`/`parts_total` via
+`model_dump().get` and `int()`) and `:377` → typed attributes at `:198-210` and `:382`;
+`clinvar_gkm.py:438` (`getattr(release, "source_release", None)`) → `release.source_release`;
+`clinvar_gkm.py:520` (`getattr(self.release, "vrs_version", None)`, then `str()`) →
+`self.release.vrs_version`; `mitomap_miss_build.py:149` (`stated[key]`, a computed key into a dump) →
+`model_dump(include=set(PIN_KEYS))` at `:148`, with `PIN_KEYS ⊆` the typed fields asserted. The hunt
+found no reader in `schema/` or `compiler/`, and every other enricher reader already read typed fields.
+
+**The mechanism.** In `just_dna_format.snapshot`: `begin_snapshot_write(dir)` withdraws `release.json`
+and returns a `SnapshotWrite` whose `commit(release)` is a builder's only route to `write_release`, so
+describing a snapshot without having withdrawn the old description is not expressible. It is opened
+immediately before the first byte of the live payload moves, so a download, fetch or parse that fails
+earlier leaves the old snapshot whole and described; a build that fails after it is not given its old
+record back. `begin_block_write(dir, name)` is the same for a half that owns one block of another
+build's record. And four keys readers act on are typed optional fields on `SnapshotRelease`:
+`parts_read`, `parts_total` (`dict[str, int]`), `source_release`, `vrs_version` (`str`). An old value
+reads through the field's validator; one of the wrong kind costs that key and never the record.
+
+**The guards.** `enricher/tests/test_release_json_through_the_model.py`: the builders opening a write
+**equal** the `*_build.py` modules, no builder names `write_release` (planted shapes shown refused), and
+an AST walk over every source module of all three tiers refuses `getattr`/`hasattr`, `.get`,
+subscripts and `model_extra` on a release, any attribute that is not a typed field, and a non-field or
+computed key into its dump (six planted shapes refused, including the two 0.8 shipped).
+`enricher/tests/test_a_build_withdraws_its_description_first.py` runs **every** builder offline (the
+run table's keys equal the `*_build.py` modules, nothing exempted) against a directory already holding
+a described snapshot, with the describe step failing: nothing a reader globs may have moved when the
+record is withdrawn, and no `release.json` may be left. Red on `0.8` for all sixteen builders and
+`subset_snapshot` (STRchive red on the withdrawal check only); mutating `begin_snapshot_write` to skip
+the withdrawal turns 18 tests red, and moving CPIC's `begin_snapshot_write` after its payload write turns
+its run red on the withdrawal check.
+
+**Refused.** Staging the whole snapshot and swapping it once: a directory cannot be renamed over a
+non-empty one, so the swap is two renames with an absent snapshot between them, the same "no
+description" state the withdrawal reaches, for a rewrite of sixteen builders' path plumbing
+(AlphaGenome's `.knots` beside `data/`, ClinVar-GKM's `_downloads`). And restoring the old record when a
+build fails: it would describe bytes the failed build may have changed.
+
+**Residuals** won't fix — an in-place builder that dies mid-payload still leaves mixed old and new
+bytes, now under no record rather than a confident wrong one; the in-place write predates this item and
+`cache rebuild` builds into a fresh directory · won't fix — `write_release` stays public, so a builder
+outside this repository can still write without withdrawing; the guard walks this tree only, and
+INTEGRATION_0_8 tells such a builder what to call · won't fix — the provisioner's root-file path
+(`download.py` `_provision_root_file_snapshot`) fetches the payload, then `release.json`, and keeps a
+previous `release.json` when the second fetch fails; it is a different party from the builders this
+class covers, and it only runs when the payload is absent or unreadable.
+
 ## RM270 — an indel's artifact key is its source's spelling: a left-aligned VCF misses a respelled row, and the spelling-independent id the enricher mints never reaches the artifact
 
 **0.8, decided 2026-11-03.** Taken into 0.8 by the maintainer, with the rest of the indel-placement fixes (RM304, RM267, RM270, RM292, RM305). The status line below predates that decision.

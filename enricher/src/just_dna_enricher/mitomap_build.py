@@ -28,7 +28,7 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from just_dna_format.normalize import now_utc_iso
-from just_dna_format.snapshot import SnapshotRelease, write_release
+from just_dna_format.snapshot import SnapshotRelease, SnapshotWrite, begin_snapshot_write
 
 from just_dna_enricher.mitomap import (
     DUMP_TABLES,
@@ -272,6 +272,7 @@ def build_snapshot(
         )
 
     data_dir = out_dir / "data"
+    snapshot = begin_snapshot_write(out_dir)
     data_dir.mkdir(parents=True, exist_ok=True)
     result = MitomapBuildResult(out_dir=out_dir, parquet_files=[])
 
@@ -367,7 +368,7 @@ def build_snapshot(
     result.source_sha256 = source_sha256 or _sha256_file(dump)
     result.source_last_modified = source_last_modified
     result.dataset = dataset_label(result.edit_dates)
-    _write_release_json(out_dir, result, source_url=source_url)
+    _write_release_json(snapshot, result, source_url=source_url)
     logger.info(
         "Built MITOMAP snapshot: %s → %s",
         ", ".join(f"{name} {count}" for name, count in result.rows.items()),
@@ -396,7 +397,7 @@ def _citation_schema() -> dict:
     return {"table": pl.Utf8, "record_id": pl.Utf8, "reference_id": pl.Utf8, "pmid": pl.Utf8}
 
 
-def _write_release_json(out_dir: Path, result: MitomapBuildResult, *, source_url: str) -> Path:
+def _write_release_json(snapshot: SnapshotWrite, result: MitomapBuildResult, *, source_url: str) -> Path:
     """The snapshot's provenance, including every count this build computed and would otherwise drop.
 
     `withheld_brackets` and `unmintable` are in here for the same reason as the row counts: they are
@@ -422,4 +423,4 @@ def _write_release_json(out_dir: Path, result: MitomapBuildResult, *, source_url
         built_at=now_utc_iso(),
         builder_version=_builder_version(),
     )
-    return write_release(out_dir, release)
+    return snapshot.commit(release)

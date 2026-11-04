@@ -47,7 +47,7 @@ from pathlib import Path
 
 from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
-from just_dna_format.snapshot import SnapshotRelease, read_release, write_release
+from just_dna_format.snapshot import SnapshotRelease, begin_snapshot_write, read_release
 
 from just_dna_enricher.net import stream_to_file
 
@@ -454,11 +454,13 @@ def build_snapshot(
     markers = _croissant_markers(source)
     digest = _source_digest(source)
     live = out_dir / "data"
+    # The record is withdrawn here and not earlier: until the live payload is removed it still
+    # describes it, and the staging above can fail for hours without touching it (RM369).
+    snapshot = begin_snapshot_write(out_dir)
     if live.exists():
         shutil.rmtree(live)
     data_dir.rename(live)
-    write_release(
-        out_dir,
+    snapshot.commit(
         SnapshotRelease(
             dataset=release_label(release),
             source_url=f"{base_url.rstrip('/')}/{release}/output/",
@@ -499,7 +501,6 @@ def subset_snapshot(
     _require_polars()
     snapshot, out_dir = Path(snapshot), Path(out_dir)
     src, data_dir = snapshot / "data", out_dir / "data"
-    data_dir.mkdir(parents=True, exist_ok=True)
     wanted = pl.DataFrame(
         alleles, schema={"chrom": pl.Utf8, "position": pl.Int64, "ref": pl.Utf8, "alt": pl.Utf8}, orient="row"
     )
@@ -542,10 +543,12 @@ def subset_snapshot(
         .collect(),
     }
     counts: dict[str, int] = {}
+    parent = read_release(snapshot)
+    write = begin_snapshot_write(out_dir)
+    data_dir.mkdir(parents=True, exist_ok=True)
     for name, frame in tables.items():
         frame.write_parquet(data_dir / name)
         counts[name] = frame.height
-    parent = read_release(snapshot)
     record = parent.model_dump(exclude_none=True) if parent is not None else {}
     record.update(
         {
@@ -554,5 +557,5 @@ def subset_snapshot(
             "subset_of": [f"{c}_{p}_{r}_{a}" for c, p, r, a in alleles],
         }
     )
-    write_release(out_dir, SnapshotRelease(**record))
+    write.commit(SnapshotRelease(**record))
     return counts

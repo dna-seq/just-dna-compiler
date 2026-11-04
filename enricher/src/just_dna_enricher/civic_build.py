@@ -57,7 +57,7 @@ from pathlib import Path
 
 from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
-from just_dna_format.snapshot import SnapshotRelease, write_release
+from just_dna_format.snapshot import SnapshotRelease, SnapshotWrite, begin_snapshot_write
 
 from just_dna_enricher.civic_identities import (
     CIVIC_CURATION_STATES,
@@ -706,6 +706,7 @@ def build_snapshot(
     records.sort(key=_sort_key)
     out_dir = Path(out_dir)
     data_dir = out_dir / SNAPSHOT_DATA_DIRNAME
+    snapshot = begin_snapshot_write(out_dir)
     data_dir.mkdir(parents=True, exist_ok=True)
     parquet_file = data_dir / CIVIC_PARQUET
     frame = (
@@ -743,8 +744,9 @@ def build_snapshot(
         profile_sha256=profile_sha256,
         dataset=f"civic_{release}" if release else None,
     )
-    _write_release_json(out_dir, result, release=release)
+    # The licence first: the description is the last file a snapshot gains (`SNAPSHOT_ROOT_FILENAMES`).
     _write_license(out_dir)
+    _write_release_json(snapshot, result, release=release)
     return result
 
 
@@ -1079,7 +1081,7 @@ def _status_notice(result: CivicBuildResult) -> str:
     )
 
 
-def _write_release_json(out_dir: Path, result: CivicBuildResult, *, release: str | None) -> Path:
+def _write_release_json(snapshot: SnapshotWrite, result: CivicBuildResult, *, release: str | None) -> Path:
     """Write `release.json` — the provenance, the status basis, and every count the build made."""
     payload = SnapshotRelease(
         source="civic",
@@ -1120,7 +1122,7 @@ def _write_release_json(out_dir: Path, result: CivicBuildResult, *, release: str
         built_at=now_utc_iso(),
         builder_version=_builder_version(),
     )
-    return write_release(out_dir, payload)
+    return snapshot.commit(payload)
 
 
 def _builder_version() -> str:

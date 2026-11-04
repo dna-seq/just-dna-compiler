@@ -18,6 +18,7 @@ reads `rows` and `licence` into the canonical fields, and ClinVar's `clinvar_fil
 
 import json
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -172,6 +173,14 @@ class SnapshotRelease(BaseModel):
     status_basis: str | None = None
     #: The ACMG secondary-findings list version.
     sf_version: str | None = None
+    #: Open Targets: how many parts of each dataset the build read, and how many the release has. A
+    #: snapshot read short of the total is partial, and a pass over it must say so (RM369).
+    parts_read: dict[str, int] | None = None
+    parts_total: dict[str, int] | None = None
+    #: ClinVar-GKM: the weekly release the Parquet set was cut from, and the VRS version its ids were
+    #: minted under, as the source declares it (RM369).
+    source_release: str | None = None
+    vrs_version: str | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -264,8 +273,95 @@ def release_label(reference: Path) -> str | None:
 def write_release(directory: Path, release: SnapshotRelease) -> Path:
     """Write `release` as `directory/release.json`, atomically, and return the path.
 
-    The one way a builder writes the record, so every snapshot carries the canonical spellings.
-    Atomic because a `release.json` truncated mid-write parses as valid JSON that is simply missing
-    keys, and a reader would believe it.
+    Every snapshot carries the canonical spellings because every record is written here. Atomic
+    because a `release.json` truncated mid-write parses as valid JSON that is simply missing keys, and
+    a reader would believe it. **A builder does not call this**: it opens a write with
+    `begin_snapshot_write`, whose `commit` calls it after the old record was withdrawn (RM369).
     """
     return atomic_write_text(Path(directory) / RELEASE_FILENAME, release.to_json())
+
+
+# ── the write order: withdraw the record, move the bytes, describe them (RM369) ──────────────────
+
+
+def _withdraw(directory: Path) -> None:
+    """Remove `directory/release.json`, if there is one. The one place a record is withdrawn."""
+    (Path(directory) / RELEASE_FILENAME).unlink(missing_ok=True)
+
+
+@dataclass(frozen=True)
+class SnapshotWrite:
+    """An open write into a snapshot whose record has been withdrawn; `commit` describes the result."""
+
+    directory: Path
+
+    def commit(self, release: SnapshotRelease) -> Path:
+        """Write `release` as the snapshot's record, after every byte it describes is in place."""
+        return write_release(self.directory, release)
+
+
+def begin_snapshot_write(directory: Path) -> SnapshotWrite:
+    """Withdraw `directory`'s `release.json` before its payload changes, and return the write handle.
+
+    The order is the contract: **withdraw, move the bytes, describe them.** A builder that swapped its
+    payload in first and wrote the record after left, on a crash between the two (a full disk, a
+    killed process), new bytes under the previous build's record, and every reader believed it. With
+    the record withdrawn first, the worst a crash leaves is a snapshot that states no release, which
+    every reader already treats as an unknown and withholds.
+
+    **Call it immediately before the first byte of the live payload moves**, never at the top of a
+    build: a download or a parse that fails before then leaves the old snapshot whole, and it should
+    stay described. And a build that fails after it is **not** given its old record back, because a
+    restored record would describe bytes the failed build may have changed.
+
+    The handle's `commit` is the only way a builder writes `release.json`, so describing a snapshot
+    without having withdrawn the old description is not expressible.
+    """
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    _withdraw(directory)
+    return SnapshotWrite(directory)
+
+
+@dataclass(frozen=True)
+class BlockWrite:
+    """An open write into one block of a snapshot's record; `commit` merges the new block in."""
+
+    directory: Path
+    name: str
+    #: `False` when the record was present and unreadable, and is being left alone.
+    readable: bool
+
+    def commit(self, block: dict[str, Any]) -> bool:
+        """Merge `block` under `name` into the record; `False` when the record could not be read."""
+        if not self.readable or release_is_unreadable(self.directory):
+            logger.warning(
+                "the snapshot's release.json in %s is present but unreadable; leaving it alone rather "
+                "than overwriting its provenance. The %s block was not recorded.",
+                self.directory,
+                self.name,
+            )
+            return False
+        existing = read_release(self.directory)
+        stated = existing.model_dump(exclude_unset=True) if existing is not None else {}
+        write_release(self.directory, SnapshotRelease.model_validate({**stated, self.name: block}))
+        return True
+
+
+def begin_block_write(directory: Path, name: str) -> BlockWrite:
+    """Withdraw block `name` from `directory`'s record before the bytes it describes change.
+
+    For a second half that writes a sidecar beside a snapshot another build owns (ClinVar's
+    citations): the half owns one block of the record, never the record, so it withdraws that block
+    and leaves the rest. Read-modify-write rather than rewrite, and an unreadable record is left
+    alone, because overwriting it would destroy the only statement of where the data came from.
+    """
+    directory = Path(directory)
+    if release_is_unreadable(directory):
+        return BlockWrite(directory, name, readable=False)
+    existing = read_release(directory)
+    if existing is not None and name in (existing.model_extra or {}):
+        stated = existing.model_dump(exclude_unset=True)
+        stated.pop(name)
+        write_release(directory, SnapshotRelease.model_validate(stated))
+    return BlockWrite(directory, name, readable=True)

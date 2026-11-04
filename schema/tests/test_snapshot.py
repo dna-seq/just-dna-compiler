@@ -22,6 +22,8 @@ from just_dna_format.snapshot import (
     SNAPSHOT_DATA_DIRNAME,
     SNAPSHOT_ROOT_FILENAMES,
     SnapshotRelease,
+    begin_block_write,
+    begin_snapshot_write,
     clinvar_release_label,
     holds_snapshot_payload,
     read_release,
@@ -225,3 +227,98 @@ def test_unreadable_is_told_apart_from_absent(tmp_path: Path) -> None:
     broken.mkdir()
     (broken / RELEASE_FILENAME).write_text("{not json", encoding="utf-8")
     assert release_is_unreadable(broken) is True
+
+
+# ── RM369: the keys a reader acts on are typed ───────────────────────────────────────────────────
+
+
+def test_the_keys_a_reader_acts_on_are_typed_and_an_old_value_reads_through_the_type(tmp_path: Path) -> None:
+    """Open Targets' part counts and ClinVar-GKM's release and VRS version were extras, read untyped.
+
+    A count spelled as a numeric string reads as the number (pydantic's lax mode, the same rule every
+    typed key already had); a value of the wrong kind costs that key and never the record.
+    """
+    stated = {
+        "dataset": "opentargets_26.09",
+        "parts_read": {"variant": "3"},
+        "parts_total": {"variant": 7},
+        "source_release": "2026-10-20",
+        "vrs_version": "2.0",
+    }
+    release = read_release(_release_file(tmp_path / "typed", stated))
+    assert release is not None
+    assert release.parts_read == {"variant": 3}
+    assert release.parts_total == {"variant": 7}
+    assert release.source_release == "2026-10-20"
+    assert release.vrs_version == "2.0"
+    assert not (set(stated) & set(release.model_extra or {}))
+
+    wrong = {"dataset": "clinvar_gkm_2026-10-20", "vrs_version": 2, "parts_total": "seven"}
+    directory = _release_file(tmp_path / "wrong", wrong)
+    release = read_release(directory)
+    assert release is not None
+    assert release.dataset == "clinvar_gkm_2026-10-20"
+    assert release.vrs_version is None
+    assert release.parts_total is None
+    assert release_is_unreadable(directory) is True
+
+
+# ── RM369: a build withdraws the description before the bytes move, and describes them last ───────
+
+
+def test_a_snapshot_write_withdraws_the_record_first_and_describes_last(tmp_path: Path) -> None:
+    directory = _release_file(tmp_path / "snap", {"dataset": "old"})
+    write = begin_snapshot_write(directory)
+    assert not (directory / RELEASE_FILENAME).exists()
+    path = write.commit(SnapshotRelease(dataset="new"))
+    assert path == directory / RELEASE_FILENAME
+    assert json.loads(path.read_text(encoding="utf-8")) == {"dataset": "new"}
+
+
+def test_a_build_that_fails_inside_the_window_leaves_no_description(tmp_path: Path) -> None:
+    """Restoring the old record would describe bytes the failed build may have changed; absent is unknown."""
+    directory = _release_file(tmp_path / "snap", {"dataset": "old"})
+    with pytest.raises(OSError):
+        begin_snapshot_write(directory)
+        raise OSError("no space left on device")
+    assert read_release(directory) is None
+    assert release_label(directory) is None
+
+
+def test_a_snapshot_write_makes_a_new_directory(tmp_path: Path) -> None:
+    directory = tmp_path / "fresh" / "snap"
+    begin_snapshot_write(directory).commit(SnapshotRelease(dataset="x"))
+    assert release_label(directory) == "x"
+
+
+def test_a_block_write_withdraws_its_own_block_only(tmp_path: Path) -> None:
+    """ClinVar's citations half: the records' provenance survives, and the old citations block does not."""
+    stated = {"dataset": "clinvar_2026-06-27", "citations": {"row_count": 1}}
+    directory = _release_file(tmp_path / "snap", stated)
+    write = begin_block_write(directory, "citations")
+    during = read_release(directory)
+    assert during is not None
+    assert during.dataset == "clinvar_2026-06-27"
+    assert "citations" not in (during.model_extra or {})
+    assert write.commit({"row_count": 2}) is True
+    after = json.loads((directory / RELEASE_FILENAME).read_text(encoding="utf-8"))
+    assert after == {"dataset": "clinvar_2026-06-27", "citations": {"row_count": 2}}
+
+
+def test_a_block_write_leaves_an_unreadable_record_alone(tmp_path: Path) -> None:
+    directory = tmp_path / "broken"
+    directory.mkdir()
+    (directory / RELEASE_FILENAME).write_text("{not json", encoding="utf-8")
+    write = begin_block_write(directory, "citations")
+    assert write.commit({"row_count": 2}) is False
+    assert (directory / RELEASE_FILENAME).read_text(encoding="utf-8") == "{not json"
+
+
+def test_a_block_write_with_no_record_writes_one_with_the_block(tmp_path: Path) -> None:
+    """Partial provenance beats none, as the citations build always said."""
+    directory = tmp_path / "bare"
+    directory.mkdir()
+    assert begin_block_write(directory, "citations").commit({"row_count": 2}) is True
+    assert json.loads((directory / RELEASE_FILENAME).read_text(encoding="utf-8")) == {
+        "citations": {"row_count": 2}
+    }
