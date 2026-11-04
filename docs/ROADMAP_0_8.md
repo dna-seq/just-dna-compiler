@@ -16,6 +16,7 @@ Every item is additive under Principles 3/4/8, so each is legal in a minor. Inde
 | Built on the `0.8` branch, uncut | PT1's RM241, RM258, RM263, RM272, RM275, RM278, RM283, RM288, RM300, RM308, RM313; earlier RM256, RM257, RM259, RM260, RM262 and RM264's docs half | `proposals/PROPOSAL_0_8_PT1.md` and ROADMAP_HISTORY on the `0.8` branch | done; `main`'s roadmap still lists RM241, RM263 and RM308 until the next sync |
 | The indel-placement fixes | [RM304](ROADMAP.md#rm304--a-vrs_id-does-not-say-which-vrs-minted-it-and-vrs-21-moves-some-insertion-ids) first, then [RM267](ROADMAP.md#rm267--the-ensembl-snapshot-anchors-a-class-of-insertions-one-base-early-and-resolutioncsv-serves-them-as-a-different-event), [RM270](ROADMAP.md#rm270--an-indels-artifact-key-is-its-sources-spelling-a-left-aligned-vcf-misses-a-respelled-row-and-the-spelling-independent-id-the-enricher-mints-never-reaches-the-artifact), [RM292](ROADMAP.md#rm292--a-verification-check-does-not-say-what-it-checked-against-so-a-check-that-witnesses-itself-reads-as-verified), [RM305](ROADMAP.md#rm305--clinvar-gkms-allele-table-is-an-offline-independent-witness-for-where-an-indel-sits-and-nothing-reads-it) | [ROADMAP.md](ROADMAP.md) | one design, interviewed before it is built; four are high severity |
 | The lead's ready minors (2026-11-04) | RM337 (a warning naming each `logs/` file left behind), RM342 (the toolchain in the manifest, with the polars 2 lock) | this file | RM337 ready; RM342 after its interview |
+| Added by the maintainer (2026-11-04) | [RM372](#rm372--the-ensembl-snapshot-moved-to-a-new-hugging-face-repo-and-a-warm-cache-never-migrates) (the Ensembl snapshot moves to its new Hugging Face repo) | this file | decided, for the lead |
 | Chosen earlier | [RM303](#rm303--the-snapshot-layout-is-a-contract-with-six-parties-and-no-model-so-it-belongs-in-just-dna-format) (the snapshot layout as a model), [RM253](#rm253--a-repeat-count-star-allele-ugt1a1-28--ta8-has-no-home-a-diplotype-can-name-and-the-cpic-drafter-translates-none-of-cpics-notation) (a repeat-count star allele) | this file | taken into 0.8 in September |
 | longevitymap v2 | RM28's combination half, RM322–RM336 ([the group](#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03)), and [RM236](#rm236--consequence-and-impact-are-planned-axes-with-no-slot-and-an-acmg-engine-reads-both-as-primary-inputs), [RM239](#rm239--a-fine-mapping-posterior-has-no-column-and-gwas_effectscsv-already-has-its-key) as inputs to RM333's confidence labels | this file and [ROADMAP.md](ROADMAP.md) | design first; RM323 decides before RM324, RM326 and RM329 |
 
@@ -1441,5 +1442,56 @@ amendment.
 appears, Python); whether `verify` reports a digest mismatch whose recorded toolchain differs from the running
 one as its own reason (`@vrs-three-outcomes` asks for that); and whether P4's sentence on reproducibility needs
 an amendment once the toolchain is recorded.
+
+**Residuals** none yet.
+
+## RM372 — the Ensembl snapshot moved to a new Hugging Face repo, and a warm cache never migrates
+
+**Taken into 0.8 on 2026-11-04 by the maintainer**: "check compatibility and take action to be compatible if
+needed", after prepare-annotations published a new Ensembl variation release overnight. Measured the same day
+by a read-only pm subagent on a detached `0.8` worktree, reading chr21 and chrMT bytes of both repos.
+
+**Severity** medium · **Status** open — **a minor, joins 0.8** · **Owner** enricher (`download`, the Ensembl lane)
+\+ format (`locations`, `snapshot`) · **Motivating case** prepare-annotations 1019891 and 8044abf (2026-11-04) ·
+*related* RM303, RM267, RM270, RM304
+
+**What was published.** A **separate** dataset, `just-dna-seq/ensembl_variations_split` (tag
+`ensembl-variation-2026_07_13-vep116.0`), dbSNP 157 + VEP 116, written by DuckDB. The repo 0.8 reads,
+`just-dna-seq/ensembl_variations` (`download.py` `_ENSEMBL_HF_PREFIX`), has had no commit since 2026-01-15, so 0.8
+is not broken today. In the new release:
+
+- 25 flat files, `data/homo_sapiens-chr*.parquet` (the old glob still matches), plus `groups/*` sidecars outside
+  `data/`, a `manifest.json` (release id, per-file sha256) and no `release.json`.
+- The core columns are `chrom, start, ref, alt, id, row_idx`. `start` is still the 1-based POS, and chrom is
+  spelled as before.
+- **One row per ALT.** `alt` is never pipe-joined, which retires `@snapshot-pipe-alt` for this repo. `id` is
+  always an `rs…`.
+- Indels are left-aligned: 301 of 400 sampled indel loci move one base left, so RM267's class disappears from
+  the source.
+
+**What the 0.8 reader does with it.** It reads the new bytes correctly. `test_resolver_integration.py` passes
+against the real files, offline `enrich` gives byte-identical `resolution.csv` on two MT examples, and the
+compiler suite passes under polars 1.44.2.
+
+**The build (decided):** switch `_ENSEMBL_HF_PREFIX` to the new repo, plus three fixes.
+
+1. **A warm cache must not serve the old repo's bytes.** `snapshot_record_missing` (`locations.py`) checks only that
+   the files exist, never the pull record's `repo`. The file names are identical across the two repos, so a
+   switched prefix silently keeps the old bytes. A record naming another repo is not this snapshot.
+2. **A mixed-release cache must not serve without a word.** Old chrMT beside new chr21 answered 100 rsIDs and nothing
+   complained. just-dna-lite's downloader writes the same names into the same `<base>/ensembl_variations/data/`.
+   Read `manifest.json`'s release id (add it to `SNAPSHOT_ROOT_FILENAMES`) and its per-file sha256. A file the
+   manifest does not attest is withheld as a different release, never merged.
+3. **Tests and docs.** Every fixture uses the old pipe-joined `alt` and none pins one row per ALT: add one. `caches.py`
+   names just-dna-pipelines as the lane's builder, but prepare-annotations builds it. Rewrite `@snapshot-pipe-alt`
+   as two spellings, the old repo's and the new one's.
+
+**What moves for a module (INTEGRATION_0_8 owes a line).** Resolutions move as data, not as code. Indel loci change
+spelling, some rsIDs gain or lose an allele (which can flip a hosting verdict), and two chr21 rsIDs are absent.
+An existing `resolution.csv` keeps the old spelling until it is deleted (`@sidecar-authoritative`). The RM267/RM270
+placement verdicts against ClinVar were **not** re-run against the new snapshot, so the build re-runs them.
+
+**Not verified:** whole-genome claims, since only chr21 and chrMT were read. Also unknown: whether the two missing
+rsIDs moved in dbSNP or were dropped by the builder.
 
 **Residuals** none yet.
