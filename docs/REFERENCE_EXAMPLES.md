@@ -572,3 +572,62 @@ cross-build annotatability unrecorded. What ships is the narrower and more basic
 **state which build they are working in and never quietly change it**. A coordinate key is
 build-relative, so a GRCh37 module's keys will not join against a GRCh38 module's; that is a true fact
 about coordinates, and the warning says it rather than hiding it behind an id that looks portable.
+
+## 12. Longevity GWAS evidence, per analysis — the 0.8 `StudyRow` columns
+
+Built for real as [`reference_examples/longevity_studies/`](../reference_examples/longevity_studies), from the
+longevitymap v2 shape audit's candidates 5–9, 11 and 13 (PROPOSAL_0_8_PT2 §6), rebuilt from the papers. Five
+loci and thirteen `studies.csv` rows. A row says which outcome it measured, how many were analysed and in which
+unit, over which age band and whose age, within which stratum, in which superpopulation, and on which variant:
+
+```csv
+rsid,pmid,doi,proxy_rsid,phenotype_class,effect_allele,effect_size,effect_measure,sample_size,sample_unit,n_cases,age_min,age_max,age_of,stratum,stratum_level,ancestry
+rs10455872,32678081,,,HEALTHSPAN,A,0.057,beta,300477,individuals,,,,,,,EUR
+rs10455872,32678081,,,PARENTAL_LIFESPAN,A,0.076,beta,1012240,lives,,,,,,,EUR
+rs10455872,30642433,,,PARENTAL_LIFESPAN,,0.0722,beta,272204,lives,,60,70,parent,parent_sex,father,EUR
+rs429358,31413261,,,EXTREME_SURVIVAL_CC,C,0.60,OR,36745,individuals,11262,,,,,,EUR
+rs646776,30642433,,rs4970836,PARENTAL_LIFESPAN,G,0.2234,beta,1012240,lives,,40,,parent,,,EUR
+rs75571981,NONE,10.21203/rs.3.rs-6869504/v1,,EXTREME_SURVIVAL_CC,,,,8270,individuals,964,,,,,,EAS
+```
+
+One paper's rows are told apart by `phenotype_class`, by the band or by the stratum, each only when both rows
+state it and the values differ. Deelen's ≥90th and ≥99th percentile analyses share a class, so only
+`statistical_test` separates them: a percentile threshold has no typed home. The README names what the build
+broke: reverse drops the LD proxy's `resolution.csv` row (RM331); Timmers 2019 states two different effect
+alleles for one estimate, so its band rows withhold `effect_allele`; the audit's age bands were v2's pooling,
+not the paper's; and an r² cannot say which lead allele a proxy allele tags.
+
+## 13. HLA alleles — `allele_function.csv` items on `meta.csv`, by sex and by DOI
+
+Built for real as [`reference_examples/hla_alleles/`](../reference_examples/hla_alleles) (audit candidate 10).
+An HLA allele is an `allele_function.csv` item under RM334's grammar, and its finding is a `meta.csv` row:
+
+```csv
+members,trait_efo_id,direction,sex,pmid,doi
+"allele_function[gene=HLA-DRB1, allele=*15:01]",OBA_VT0005372,risk,male,41116190,10.1186/s13073-025-01554-1
+"allele_function[gene=HLA-DRB1, allele=*15:01]",OBA_VT0005372,,female,41116190,10.1186/s13073-025-01554-1
+"allele_function[gene=HLA-A, allele=*02:01]",OBA_VT0005372,risk,,NONE,10.1101/2025.03.30.25324899
+```
+
+`sex` is part of the key, so a male finding and its female counterpart are two statements. A preprint allele
+cites by `pmid=NONE` plus `doi`, which closes the hole the audit's second run left open. Still open: an
+allele's odds ratio has no numeric home (a study row names a variant or nothing), and a tag SNP standing for
+an allele has no column (RM331's proxy points from variant to variant).
+
+## 14. Model-organism lifespan evidence — `model_organisms.csv` beside a lead table
+
+Built for real as [`reference_examples/model_organisms/`](../reference_examples/model_organisms) (audit
+candidate 12/13, RM335). The table is annotation only and is not a lead table, so the module also carries
+`variants.csv` (PPARG Pro12Ala for type 2 diabetes):
+
+```csv
+gene,orthologue,species,model_type,sex,diet,lifespan_effect,concordance,pmid
+PPARG,Pparg,Mus musculus,knock-in Pro12Ala (Ala/Ala),,chow,Ala/Ala mice lived longer; the abstract gives no figure,,19117549
+IGF1R,Igf1r,Mus musculus,heterozygous knockout (Igf1r+/-),female,,+33% against wild-type females (P < 0.001),concordant,12483226
+IGF1R,Igf1r,Mus musculus,heterozygous knockout (Igf1r+/-),male,,+16% against wild-type males (not significant),,12483226
+```
+
+One experiment in two sexes is two keys. `concordance` stays empty where no human lifespan direction exists to
+agree with. The README records that the audit's PPARG row read a metabolic result as a lifespan one, that the
+v2 "uncited" rows checked here have a primary reference GenAge loads by script, and that a database entry has
+no citation column.

@@ -1,0 +1,14 @@
+schema_version: '1.0'
+module:
+  name: hla_alleles
+  title: HLA alleles and longevity
+  description: Three HLA alleles each held as an allele_function.csv item, with their longevity findings on
+    meta.csv. One finding is scoped to men, and one cites a preprint by DOI alone.
+  report_title: HLA alleles and longevity
+  icon: shield
+  icon_set: fomantic
+  color: '#6435c9'
+defaults:
+  curator: ai-module-creator
+  method: literature-review
+genome_build: GRCh38

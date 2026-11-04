@@ -1,0 +1,14 @@
+{
+  "module_hash": "sha256:f4061186658c374009f61be2ec35adc4fd17b7bfc5a152663c295e19ecdcfad6",
+  "signature": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "difficulty": 20,
+  "nonce": 132295,
+  "producer": null,
+  "produced_at": null,
+  "closure": {
+    "closed_at": "2026-11-04T14:51:41Z",
+    "closed_by": null,
+    "signature": null
+  },
+  "records": []
+}

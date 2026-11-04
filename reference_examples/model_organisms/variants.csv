@@ -1,0 +1,2 @@
+rsid,genotype,state,direction,conclusion,gene,trait_efo_id
+rs1801282,C/G,protective,protective,"One copy of the PPARG Ala12 (G) allele. The more common Pro12 allele carries a modest, 1.25-fold higher risk of type 2 diabetes, so an Ala12 carrier sits on the lower-risk side. Mice engineered to carry Ala/Ala lived longer on a chow diet (model_organisms.csv).",PPARG,EFO_0001360
