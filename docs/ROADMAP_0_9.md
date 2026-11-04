@@ -1713,3 +1713,22 @@ withheld rather than written as permissive. AlphaGenome §2.6's (e) and (f) are 
 are not reopened here.
 
 **Residuals** none yet.
+
+## RM294 — STRchive's evidence grade has no place in the module, so a Refuted locus is doubted only in a draft note
+
+**0.9, decided 2026-11-04.** The maintainer chose one tier column with the scale declared per module, so a source's own grade cannot sit beside the module's tier. This item waits for 0.9, where a separate home for a source's grade can be weighed (a machine-written side table, or the manifest's provenance block).
+
+
+**Severity** low · **Status** open — **a minor, release undecided** · **Owner** format / enricher ·
+**Motivating case** RM276's minor half, split off when the warning shipped on 2026-09-27 · *related*
+RM276, RM170, RM165
+
+**For longevitymap v2 (2026-11-03):** a source's evidence grade travelling into a module is the same column family as RM324's tier. See [the group](ROADMAP_0_8.md#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
+
+RM276 names a drafted locus STRchive grades `Refuted` or `Disputed`, in a note the drafting run prints
+once. Nothing in the module keeps it, so the next reader of `repeat_alleles.csv` sees `DMD`'s bands
+with no trace of the source's doubt. Carrying it is a minor: an authored column costs full price (P9),
+and STRchive's vocabulary is open upstream (`combobox: true`), so a closed `frozenset` would have to be
+priced against a source that adds members. The alternatives to weigh first are a derived sidecar
+(half price) or the manifest's provenance block, and whether RM170's CIViC answer already fixed the
+shape. Decide on the `0.8` branch.

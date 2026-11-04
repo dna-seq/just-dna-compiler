@@ -16,7 +16,7 @@ Every item is additive under Principles 3/4/8, so each is legal in a minor. Inde
 | Built on the `0.8` branch, uncut | PT1's RM241, RM258, RM263, RM272, RM275, RM278, RM283, RM288, RM300, RM308, RM313; earlier RM256, RM257, RM259, RM260, RM262 and RM264's docs half | `proposals/PROPOSAL_0_8_PT1.md` and ROADMAP_HISTORY on the `0.8` branch | done; `main`'s roadmap still lists RM241, RM263 and RM308 until the next sync |
 | The indel-placement fixes | [RM304](ROADMAP.md#rm304--a-vrs_id-does-not-say-which-vrs-minted-it-and-vrs-21-moves-some-insertion-ids) first, then [RM267](ROADMAP.md#rm267--the-ensembl-snapshot-anchors-a-class-of-insertions-one-base-early-and-resolutioncsv-serves-them-as-a-different-event), [RM270](ROADMAP.md#rm270--an-indels-artifact-key-is-its-sources-spelling-a-left-aligned-vcf-misses-a-respelled-row-and-the-spelling-independent-id-the-enricher-mints-never-reaches-the-artifact), [RM292](ROADMAP.md#rm292--a-verification-check-does-not-say-what-it-checked-against-so-a-check-that-witnesses-itself-reads-as-verified), [RM305](ROADMAP.md#rm305--clinvar-gkms-allele-table-is-an-offline-independent-witness-for-where-an-indel-sits-and-nothing-reads-it) | [ROADMAP.md](ROADMAP.md) | one design, interviewed before it is built; four are high severity |
 | Chosen earlier | [RM303](#rm303--the-snapshot-layout-is-a-contract-with-six-parties-and-no-model-so-it-belongs-in-just-dna-format) (the snapshot layout as a model), [RM253](#rm253--a-repeat-count-star-allele-ugt1a1-28--ta8-has-no-home-a-diplotype-can-name-and-the-cpic-drafter-translates-none-of-cpics-notation) (a repeat-count star allele) | this file | taken into 0.8 in September |
-| longevitymap v2 | RM28's combination half, RM322–RM336 ([the group](#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03)), [RM294](ROADMAP.md#rm294--strchives-evidence-grade-has-no-place-in-the-module-so-a-refuted-locus-is-doubted-only-in-a-draft-note), [RM302](ROADMAP.md#rm302--one-conclusion-serves-every-place-a-report-shows-it-a-table-cell-a-details-card-and-an-explanatory-mode-want-different-wordings), and [RM236](#rm236--consequence-and-impact-are-planned-axes-with-no-slot-and-an-acmg-engine-reads-both-as-primary-inputs), [RM238](#rm238--a-per-tissue-eqtl-has-no-row-and-expression_effectscsv-is-the-wrong-table-to-widen), [RM239](#rm239--a-fine-mapping-posterior-has-no-column-and-gwas_effectscsv-already-has-its-key) as inputs to RM333's confidence labels | this file and [ROADMAP.md](ROADMAP.md) | design first; RM323 decides before RM324, RM326 and RM329 |
+| longevitymap v2 | RM28's combination half, RM322–RM336 ([the group](#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03)), [RM294](ROADMAP_0_9.md#rm294--strchives-evidence-grade-has-no-place-in-the-module-so-a-refuted-locus-is-doubted-only-in-a-draft-note), [RM302](ROADMAP.md#rm302--one-conclusion-serves-every-place-a-report-shows-it-a-table-cell-a-details-card-and-an-explanatory-mode-want-different-wordings), and [RM236](#rm236--consequence-and-impact-are-planned-axes-with-no-slot-and-an-acmg-engine-reads-both-as-primary-inputs), [RM238](#rm238--a-per-tissue-eqtl-has-no-row-and-expression_effectscsv-is-the-wrong-table-to-widen), [RM239](#rm239--a-fine-mapping-posterior-has-no-column-and-gwas_effectscsv-already-has-its-key) as inputs to RM333's confidence labels | this file and [ROADMAP.md](ROADMAP.md) | design first; RM323 decides before RM324, RM326 and RM329 |
 
 Patch-class items stay on `main` and are not part of this scope, as [RELEASE_CYCLE.md](RELEASE_CYCLE.md) says.
 
@@ -64,7 +64,7 @@ scope decision put each in 0.8 or 0.9, as marked):
 - **RM239** (this file, **0.8**) — the fine-mapping posterior is the input to causal confidence C1–C4.
 - **RM241** (this file, **built on `0.8`**) — v2 declares `weighting:` precisely to say it has no weights, and `reverse` drops the block.
 - **RM263** ([ROADMAP.md](ROADMAP.md), **built on `0.8`**) — v2 cites preprints, whose rows hold a DOI and need a PMID; RM336 is the parsing half.
-- **RM294** ([ROADMAP.md](ROADMAP.md), **0.8**) — a source's evidence grade travelling into a module is the same column family as RM324's tier.
+- **RM294** ([ROADMAP_0_9.md](ROADMAP_0_9.md), **0.9** since 2026-11-04, after the one-scale tier decision) — a source's evidence grade travelling into a module is the same column family as RM324's tier.
 - **RM302** ([ROADMAP.md](ROADMAP.md), **0.8**) — v2 writes for three readers (citizen, geneticist, ageing researcher), which is the register question.
 - **RM308** ([ROADMAP.md](ROADMAP.md), **built on `0.8`**) — v2 hand-writes per-genotype conclusions for its scored loci and a 528-rsID legacy layer.
 - **RM321** ([ROADMAP.md](ROADMAP.md), **a patch on `main`**) — v2's plan sets `pleiotropic` and `conditional` expecting behaviour.
@@ -151,6 +151,8 @@ The decision is where the per-locus axes live. RM324's tier, RM326's derived out
 RM329's age-of-action class all land wherever this decides.
 
 ## RM324 — there is no evidence-tier column, so the axis that gates visibility is a `flags: tier:A` token
+
+**Decided 2026-11-04 by the maintainer: one `tier` column, with the scale declared once per module.** The tier column goes on RM323's fact table. The module names the scale it grades on once in `module_spec.yaml`, as `weighting:` names its scale. A module therefore holds one scale, and a source's own grade cannot sit beside the module's tier in this column. RM294 (STRchive's grade) moved to 0.9 for that reason.
 
 **Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format · **Motivating case** longevitymap v2 requirements §4.1 · *for* longevitymap v2 · *related* RM323, RM188 (axis 5), RM294
 
@@ -535,6 +537,26 @@ surfacing as an incident, and it was repaired at the reader rather than at the c
   `release.json` is that record's snapshot twin.
 
 ## RM253 — a repeat-count star allele (UGT1A1 `*28` = TA(8)) has no home a diplotype can name, and the CPIC drafter translates none of CPIC's notation
+
+**Seam 1 decided 2026-11-04 by the pm seat, on the evidence, as the maintainer asked: spelled, VCF-anchored
+and left-normalized.**
+
+A subagent read the site in about 120 PGP-HMS VCFs plus local runs. The evidence, all measured:
+
+- DeepVariant, DRAGEN, GATK, Clair3, Isaac, Helix, the imputation servers and CGI vcfBeta all write `*28`
+  as the ordinary indel `C>CAT` at the anchor (GRCh38 `2:233760233`, GRCh37 `2:234668879`), left-normalized.
+- No file holds a symbolic allele at the site, and no caller gives a repeat count in place of sequence.
+- freeBayes and `bcftools mpileup` write the whole 16-base run unnormalized. They match only once the
+  consumer normalizes, which the consumer guide already says no format guarantees.
+
+So `*1` is the reference, `*28` is `C>CAT`, `*36` is `CAT>C` and `*37` is `C>CATAT`. Seam 2 follows the
+same rule: CPIC's `DEL<bases>`/`INS<bases>` are spelled the same way, and the bare `DEL` with no length
+stays skipped.
+
+**One trap to carry into the build.** `rs3064744` appears in no VCF's ID column. Arrays (23andMe,
+AncestryDNA) and dbSNP-annotated VCFs carry `rs34983651` for the `+TA` allele, and one imputation server
+stamps `rs606231201`, which dbSNP places as a different allele. So an rsID-keyed row must not rely on
+`rs3064744`.
 
 **Decided 2026-11-04, in part.** DPYD (seam 3): the drafter writes CPIC's full name with the spaces dropped, as the maintainer chose. The comma between variants is replaced, because a comma inside a name would split any multi-valued cell (MULTI_SEP is `,;|`). The maintainer suggested `:`, tentatively ("maybe?"). **The pm seat picked `&` instead**, and the maintainer may still veto it before the drafter ships. `&` was picked because every other candidate already means something in an allele name. `:` is HGVS's reference separator. `+` is an intronic offset (`c.1905+1G>A`, DPYD `*2A`). `_` is an HGVS range. `/` separates the two halves of a diplotype. So HapB3 is `c.1129-5923C>G&c.1236G>A(HapB3)`. Seam 1, how a repeat count is spelled: open, decided after checking precedent in real VCFs (PGP-HMS, and just-vcf's seats).
 

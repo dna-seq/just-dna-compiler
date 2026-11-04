@@ -589,24 +589,6 @@ code. That is an old-reader break (the INTEGRATION_0_7 shape), which `main` cann
 existing code would name the wrong finding (`@warning-code-names-the-finding`), and a log line alone
 is invisible to every consumer reading findings. Build it on the `0.8` branch, with the INTEGRATION
 note that says a reader must be at 0.8 to read such a manifest.
-## RM294 — STRchive's evidence grade has no place in the module, so a Refuted locus is doubted only in a draft note
-
-**0.8, decided 2026-11-03.** Taken into 0.8 by the maintainer as a longevitymap v2 requirement. The status line below predates that decision.
-
-**Severity** low · **Status** open — **a minor, release undecided** · **Owner** format / enricher ·
-**Motivating case** RM276's minor half, split off when the warning shipped on 2026-09-27 · *related*
-RM276, RM170, RM165
-
-**For longevitymap v2 (2026-11-03):** a source's evidence grade travelling into a module is the same column family as RM324's tier. See [the group](ROADMAP_0_8.md#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
-
-RM276 names a drafted locus STRchive grades `Refuted` or `Disputed`, in a note the drafting run prints
-once. Nothing in the module keeps it, so the next reader of `repeat_alleles.csv` sees `DMD`'s bands
-with no trace of the source's doubt. Carrying it is a minor: an authored column costs full price (P9),
-and STRchive's vocabulary is open upstream (`combobox: true`), so a closed `frozenset` would have to be
-priced against a source that adds members. The alternatives to weigh first are a derived sidecar
-(half price) or the manifest's provenance block, and whether RM170's CIViC answer already fixed the
-shape. Decide on the `0.8` branch.
-
 ## RM278 — the `compile` command cannot pass `ensembl_reference` or `ba1_threshold`, so every CLI-compiled manifest has a null `ensembl_reference`
 
 **Severity** low · **Status** open — **a minor**, for the `0.8` branch · **Owner** compiler (`cli.py`
