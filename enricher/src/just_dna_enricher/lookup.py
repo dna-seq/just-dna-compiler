@@ -530,6 +530,10 @@ def _lookup_frequencies(hint: VariantHint, clients: LookupClients, alts: str | N
     answered: list[str] = []
     for variant_id, (_locus, alt) in asked.items():
         record = found.get(variant_id)
+        if record is None and variant_id in getattr(client, "unanswered", {}):
+            # gnomAD answered this allele with an error, not an absence (RM361).
+            hint.findings.append(Finding(None, None, "info", f"frequencies unchecked for {variant_id}"))
+            continue
         if record is None:
             # Per allele, and the id carries the allele — so a `G>C,T` locus whose `C` is known and
             # whose `T` is not says exactly that, rather than one sentence about the pair.

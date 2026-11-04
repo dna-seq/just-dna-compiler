@@ -112,7 +112,7 @@ same nine azathioprine texts as the first, byte for byte, and the 18 other rows 
   `*1` reference row, so no phenotype the module states depends on it, and removal is the
   `cyp2c19_star_alleles` precedent (curated by removal). Correcting the start by hand was not done: it is
   the rewrite RM267's open half withholds from the enricher.
-- **Rows with no rsID and no `ref` get a `variant_key` like `13:48037749:None`.** Nine of the drafted
-  `*1` rows carry a position and an allele but no rsID and no reference base, and `derive_variant_key`
-  formats the missing `ref` as the Python literal `None`. It compiles and round-trips; the key is still
-  wrong. Reported to the 0.8 lead for filing, not fixed here.
+- **Rows with no rsID and no `ref` key as `13:48037749`.** Nine of the drafted `*1` rows carry a
+  position and an allele but no rsID and no reference base. Until RM361 `derive_variant_key` formatted
+  the missing `ref` as the Python literal (`13:48037749:None`); an absent cell is now an empty segment
+  (`coordinate_key`), and this example's `resolution.csv` carries the corrected keys.

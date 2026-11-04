@@ -990,6 +990,9 @@ class VariantRow(AuthoredModel):
         `compile → reverse → compile` would stop being a fixed point. Accepted-and-overwritten is the
         same treatment `variant_key` gets one line up.
         """
+        if self.rsid is None and self.chrom is None and self.start is None:
+            # No identity to freeze: `_validate_identification` refuses the row with its own message.
+            return self
         self.variant_key = derive_variant_key(self.rsid, self.chrom, self.start, self.ref, self.alts)
         self.authored_ident = [
             name for name in ("rsid", "chrom", "start", "ref", "alts") if getattr(self, name) is not None

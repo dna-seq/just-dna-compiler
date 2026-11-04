@@ -506,6 +506,38 @@ def test_a_repo_nobody_has_created_is_absent_rather_than_failed(monkeypatch, tmp
         dl.ensure_strchive_snapshot(tmp_path / "strchive")
 
 
+@pytest.mark.parametrize(
+    "failure",
+    [TimeoutError("read timed out"), PermissionError("401 Unauthorized"), OSError("429 Too Many Requests")],
+    ids=["timeout", "401", "429"],
+)
+def test_a_hub_that_never_answered_is_a_failure_not_absent(
+    monkeypatch, tmp_path: Path, failure: Exception
+) -> None:
+    """The other side of the type above (RM361): only the Hub saying nothing is there is
+    `SnapshotNotPublished`. Before, every failure of `fs.ls` or `fs.get` was, so `cache pull` printed
+    "not published yet" and exited 0 through a timeout, a throttle or a refused token."""
+    import huggingface_hub
+
+    class _UnwellHub:
+        def ls(self, prefix: str, detail: bool = True):
+            raise failure
+
+        def get(self, remote: str, local: str) -> None:
+            raise failure
+
+    monkeypatch.setattr(huggingface_hub, "HfFileSystem", lambda token=None: _UnwellHub())
+    monkeypatch.setattr(huggingface_hub, "get_token", lambda: None)
+
+    for ensure, cache in ((dl.ensure_civic_snapshot, "civic"), (dl.ensure_strchive_snapshot, "strchive")):
+        with pytest.raises(Exception) as caught:
+            ensure(tmp_path / cache)
+        assert not isinstance(caught.value, dl.SnapshotNotPublished), (
+            f"{cache}: {type(caught.value).__name__}"
+        )
+        assert type(caught.value).__module__.startswith("just_dna_enricher")
+
+
 def test_cache_pull_reports_an_unpublished_lane_without_exiting_one(monkeypatch, tmp_path: Path) -> None:
     """The behaviour the type buys, at the command an operator actually runs first."""
     import huggingface_hub

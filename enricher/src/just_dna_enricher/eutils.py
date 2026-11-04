@@ -33,6 +33,7 @@ from tenacity import (
 
 from just_dna_enricher.locations import env_value
 from just_dna_enricher.net import (
+    EndpointRetired,
     PacingGate,
     attempt_floor,
     batched,
@@ -63,7 +64,7 @@ class EutilsRateLimitedError(EutilsError):
     """NCBI answered HTTP 429. Retried with backoff; the pacing gate should normally prevent it."""
 
 
-class EutilsRetired(EutilsError):
+class EutilsRetired(EutilsError, EndpointRetired):
     """NCBI answered HTTP 410: it retired the eutils endpoint asked (RM354). A fact about the source,
     not an outage, and not retried; an `EutilsError` so every existing handler still catches it."""
 
@@ -199,7 +200,18 @@ class EutilsClient:
         out: dict[str, dict[str, Any]] = {}
         for batch in batched(wanted, self.settings.batch_size):
             payload = self._get("esummary.fcgi", {"db": db, "id": ",".join(batch), "retmode": "json"})
-            result = payload.get("result") or {}
+            result = payload.get("result") if isinstance(payload, dict) else None
+            if result is None and _invalid_uid_envelope(payload):
+                # NCBI's answer for a batch of only invalid or nonexistent uids: no summary block, and
+                # an `esummaryresult` naming them. An answer, so every uid is "no such document".
+                result = {"uids": []}
+            if not isinstance(result, dict) or not isinstance(result.get("uids"), list):
+                # A 200 whose JSON is not a summary — NCBI's `{"error": …}` envelope (a throttle or an
+                # API-key refusal), or a schema it changed — answered nothing about any uid in the batch.
+                # Reading it as "no such document" for every uid stamped `absent` on live rsIDs and
+                # `not_found` on real PMIDs (RM361); it is the could-not-ask type instead.
+                said = " ".join(str(payload).split())[:200]
+                raise EutilsError(f"eutils answered esummary for {db} with no summary block: {said}")
             for uid in batch:
                 record = result.get(uid)
                 if isinstance(record, dict):
@@ -210,6 +222,12 @@ class EutilsClient:
                     # silently omitted.
                     out[uid] = {"uid": uid, "error": NO_SUMMARY}
         return out
+
+
+def _invalid_uid_envelope(payload: object) -> bool:
+    """Whether a 200 with no summary block is NCBI's "these uids are invalid" answer (RM361)."""
+    said = payload.get("esummaryresult") if isinstance(payload, dict) else None
+    return isinstance(said, list) and bool(said) and all("invalid uid" in str(s).lower() for s in said)
 
 
 def is_missing(record: dict[str, Any]) -> bool:

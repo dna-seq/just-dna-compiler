@@ -14,6 +14,7 @@ carry three quirks a fabricated fixture would have smoothed over:
 """
 
 import json
+import time
 from pathlib import Path
 
 import httpx
@@ -23,6 +24,7 @@ from just_dna_enricher.eutils import EutilsClient, EutilsSettings
 from just_dna_enricher.literature import (
     CrossrefClient,
     EuropePmcClient,
+    FulltextRetired,
     FulltextUnavailable,
     LiteratureEnrichmentError,
     PmcBiocClient,
@@ -69,6 +71,13 @@ _YAML = (
 # ── fixtures / doubles ──────────────────────────────────────────────────────────────────────────
 
 
+@pytest.fixture(autouse=True)
+def _no_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The fulltext routes retry a 5xx and a 429 since RM361; the attempt count is the contract, the
+    backoff's wall-clock is not."""
+    monkeypatch.setattr(time, "sleep", lambda _seconds: None)
+
+
 def _eutils() -> EutilsClient:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=_ESUMMARY)
@@ -95,8 +104,9 @@ def _epmc(
     return client
 
 
-def _bioc(payload: object = None, status: int = 200) -> PmcBiocClient:
-    """A BioC double answering every request the same way; `payload=None` is the "no copy" body.
+def _bioc(payload: object = None, status: int = 200, body: str | None = None) -> PmcBiocClient:
+    """A BioC double answering every request the same way; `payload=None` is the "no copy" body, and
+    `body` a 200 with that text instead (a maintenance page).
 
     `requested` records the PMCIDs asked about, so a test can assert the rung was or was not reached.
     """
@@ -105,6 +115,8 @@ def _bioc(payload: object = None, status: int = 200) -> PmcBiocClient:
         client.requested.append(request.url.path.rstrip("/").split("/")[-2])
         if status != 200:
             return httpx.Response(status)
+        if body is not None:
+            return httpx.Response(200, text=body, headers={"content-type": "text/html"})
         if payload is None:
             return httpx.Response(200, text=_BIOC_NO_RESULT)
         return httpx.Response(200, json=payload)
@@ -399,15 +411,32 @@ def test_the_fulltext_off_switch_reaches_the_bioc_rung(tmp_path: Path) -> None:
     assert result.rows[0].quote_source is None
 
 
-@pytest.mark.parametrize("status, recorded", [(200, "absent"), (404, "absent"), (500, "unreachable")])
+_MAINTENANCE = "<html><body>Scheduled maintenance</body></html>"
+
+
+@pytest.mark.parametrize(
+    "status, body, recorded",
+    [
+        (200, None, "absent"),
+        (404, None, "absent"),
+        (500, None, "unreachable"),
+        # RM361: before it, every status below 500 and every 200 that was not JSON read as `absent`,
+        # which is permanent — a throttle, a retired route and a maintenance page were never asked again.
+        (429, None, "unreachable"),
+        (403, None, "unreachable"),
+        (410, None, "retired"),
+        (200, _MAINTENANCE, "unreachable"),
+    ],
+)
 def test_every_way_bioc_has_no_text_reads_as_not_retrieved(
-    tmp_path: Path, status: int, recorded: str
+    tmp_path: Path, status: int, body: str | None, recorded: str
 ) -> None:
     """The recorded "no copy" 200, a 404 and a 500 all leave the row on the abstract, never on a miss.
 
     RM258 split the arms: the first two are the service saying it holds no copy, which is permanent,
     and the 500 is a request that never got an answer, which the next run asks again. Until RM258 all
-    three wrote the same row, and the 500's was never asked about again.
+    three wrote the same row, and the 500's was never asked about again. RM361 narrowed `absent` to
+    those first two: anything else the service sends never answered the question.
     """
     spec = _spec(tmp_path / "s", f"rsid,pmid,provenance_quote\nrs334,{_REAL},anything\n")
     result = enrich_literature(
@@ -415,7 +444,7 @@ def test_every_way_bioc_has_no_text_reads_as_not_retrieved(
         eutils=_eutils(),
         europepmc=_epmc(search=_manuscript_search()),
         crossref=_crossref(),
-        bioc=_bioc(None, status=status),
+        bioc=_bioc(None, status=status, body=body),
     )
     assert result.rows[0].quote_source == "abstract"
     assert result.quotes_unchecked == 1
@@ -452,7 +481,8 @@ def test_an_outage_that_fails_again_keeps_the_row_and_stays_open(tmp_path: Path)
     written = (spec / "literature.csv").read_bytes()
     again = _bioc(None, status=503)
     second = _literature_run(spec, again)
-    assert again.requested == ["PMC5753237"]
+    # One question, put again on each retry of the 5xx (RM361), never another article's.
+    assert set(again.requested) == {"PMC5753237"}
     assert second.rows[0].fulltext_status == "unreachable"
     assert (spec / "literature.csv").read_bytes() == written
 
@@ -510,6 +540,20 @@ def test_the_three_way_clients_raise_only_for_an_unanswered_request() -> None:
     with pytest.raises(FulltextUnavailable):
         _epmc(fulltext=None, fulltext_status=500).fetch_fulltext("PMC5753237")
     assert _epmc(fulltext=None, fulltext_status=404).fetch_fulltext("PMC5753237") is None
+    # RM361: a 410 is the route retired, a 429 a throttle, a page that does not parse a 200 that answered
+    # nothing — none of them is the service saying it holds no copy.
+    with pytest.raises(FulltextRetired):
+        _bioc(None, status=410).fetch_fulltext("PMC5753237")
+    with pytest.raises(FulltextRetired):
+        _epmc(fulltext=None, fulltext_status=410).fetch_fulltext("PMC5753237")
+    for client in (_bioc(None, status=429), _bioc(None, body=_MAINTENANCE)):
+        with pytest.raises(FulltextUnavailable) as caught:
+            client.fetch_fulltext("PMC5753237")
+        assert not isinstance(caught.value, FulltextRetired)
+    for client in (_epmc(fulltext=None, fulltext_status=429), _epmc(fulltext=_MAINTENANCE)):
+        with pytest.raises(FulltextUnavailable) as caught:
+            client.fetch_fulltext("PMC5753237")
+        assert not isinstance(caught.value, FulltextRetired)
     # The folded form keeps its pre-0.8 contract for callers that rely on it.
     assert _bioc(None, status=502).fulltext("PMC5753237") is None
     assert _epmc(fulltext=None, fulltext_status=500).fulltext("PMC5753237") is None

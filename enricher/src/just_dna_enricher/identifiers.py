@@ -67,7 +67,15 @@ from just_dna_enricher.licensing import (
     pgs_score_terms,
     withdraw_stale_dataset,
 )
-from just_dna_enricher.net import PacingGate, attempt_floor, dedupe, raise_if_retired
+from just_dna_enricher.net import (
+    UNREACHABLE,
+    EndpointRetired,
+    PacingGate,
+    attempt_floor,
+    could_not_ask_reason,
+    dedupe,
+    raise_if_retired,
+)
 from just_dna_enricher.pgs import (
     PGS_SOURCE,
     CatalogRelease,
@@ -128,7 +136,7 @@ class IdentifierUnavailable(IdentifierCheckError):
     """
 
 
-class IdentifierRetired(IdentifierUnavailable):
+class IdentifierRetired(IdentifierUnavailable, EndpointRetired):
     """OLS4 or HGNC answered HTTP 410: it retired the endpoint asked (RM354).
 
     A fact about the source, not an outage, and not retried; an `IdentifierUnavailable` so every
@@ -666,7 +674,18 @@ class OntologyClient:
         )
         if response.status_code == 404:
             return TraitStatus(curie=curie, state="absent")
-        terms = (_json(response).get("_embedded") or {}).get("terms") or []
+        payload = _json(response)
+        embedded = payload.get("_embedded")
+        terms = embedded.get("terms") if isinstance(embedded, dict) else None
+        if not isinstance(terms, list):
+            # HAL omits `_embedded` for an empty page, and then the page's own count says so; a body
+            # with neither is a shape this client cannot read, never "no such term" (RM361).
+            page = payload.get("page")
+            if not (isinstance(page, dict) and page.get("totalElements") == 0):
+                raise IdentifierUnavailable(
+                    f"OLS4 answered for {curie} with no terms block and no page count"
+                )
+            terms = []
         if not terms:
             return TraitStatus(curie=curie, state="absent")
         term = terms[0]
@@ -710,7 +729,13 @@ class OntologyClient:
         response = self._get(f"{self.hgnc_base.rstrip('/')}/fetch/{path}")
         if response.status_code == 404:
             return []
-        return (_json(response).get("response") or {}).get("docs") or []
+        body = _json(response).get("response")
+        docs = body.get("docs") if isinstance(body, dict) else None
+        if not isinstance(docs, list):
+            # HGNC's answer is `response.docs`, empty for a symbol it does not hold; a body without it
+            # answered nothing, so it is never the empty answer (RM361).
+            raise IdentifierUnavailable(f"HGNC answered fetch/{path} with no response.docs block")
+        return docs
 
 
 def _json(response: httpx.Response) -> dict:
@@ -1158,7 +1183,7 @@ def _check_pgs(
                 payload = catalog.score(accession)
             except PgsCatalogUnavailable as exc:
                 report.pgs_not_checked = (
-                    "unreachable",
+                    could_not_ask_reason(exc),
                     f"the PGS Catalog could not be reached ({exc}); {len(report.pgs)} of "
                     f"{len(roster.ids)} authored accession(s) had been answered when it stopped",
                 )
@@ -1498,7 +1523,7 @@ def verification_records(
 
 
 def unreachable_records(
-    *, check_traits: bool, check_genes: bool, check_pgs: bool = True, detail: str
+    *, check_traits: bool, check_genes: bool, check_pgs: bool = True, detail: str, reason: str = UNREACHABLE
 ) -> list[VerificationRecord]:
     """The same five checks, for a run whose registry never answered.
 
@@ -1514,7 +1539,7 @@ def unreachable_records(
     return [
         record
         if record.skipped == "not_requested"
-        else skipped(record.check, "unreachable", detail=detail, source=record.source)
+        else skipped(record.check, reason, detail=detail, source=record.source)
         for record in verification_records(
             IdentifierReport(),
             check_traits=check_traits,

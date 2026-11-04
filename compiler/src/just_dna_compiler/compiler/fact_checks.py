@@ -6,7 +6,7 @@ from collections.abc import Callable
 from typing import Any
 
 from just_dna_format.assertions import CLINICAL_ASSERTION_FACT_FIELDS, ClinicalAssertionRow
-from just_dna_format.base import derive_variant_key, merge_key
+from just_dna_format.base import coordinate_key, derive_variant_key, merge_key
 from just_dna_format.consequences import CONSEQUENCE_FACT_FIELDS, ConsequenceRow
 from just_dna_format.expression import EXPRESSION_FACT_FIELDS, ExpressionEffectRow
 from just_dna_format.findings import CodedWarning
@@ -225,7 +225,7 @@ def _cross_check_frequencies(rows: list[FrequencyRow], subjects: ModuleSubjects)
         return []
     orphans = sorted(
         {
-            f"{r.chrom}:{r.start}:{r.ref}"
+            coordinate_key(r.chrom, r.start, r.ref)
             for r in rows
             if r.chrom is not None and not subjects.sits_at(r.chrom, r.start, r.ref)
         }
@@ -743,7 +743,7 @@ def _cross_check_clinical_assertions(rows: list[ClinicalAssertionRow], subjects:
         return []
     orphans = sorted(
         {
-            f"{r.chrom}:{r.start}:{r.ref}"
+            coordinate_key(r.chrom, r.start, r.ref)
             for r in rows
             if r.chrom is not None and not subjects.sits_at(r.chrom, r.start, r.ref)
         }

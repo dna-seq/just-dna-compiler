@@ -48,8 +48,11 @@ VALID_VERDICT_CODES: frozenset[str] = frozenset(
 #: denominators that already exist. `unreachable` is absent for a stronger reason: a registry outage
 #: raises `IdentifierUnavailable` before a report is built, so no path could ever set it, and a
 #: vocabulary member nothing writes is the defect `@registry-completeness` names — `VALID_SOURCE_LAYERS`
-#: carried reserved members no file ever wrote, and that is the incident behind the rule.
-_DELIBERATELY_ABSENT: frozenset[str] = frozenset({"not_requested", "nothing_to_check", "unreachable"})
+#: carried reserved members no file ever wrote, and that is the incident behind the rule. `retired`
+#: (RM361) is absent for the same reason: a 410 raises `IdentifierRetired`, an `IdentifierUnavailable`.
+_DELIBERATELY_ABSENT: frozenset[str] = frozenset(
+    {"not_requested", "nothing_to_check", "unreachable", "retired"}
+)
 
 
 @dataclass(frozen=True)

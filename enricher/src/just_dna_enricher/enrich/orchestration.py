@@ -90,6 +90,7 @@ from just_dna_enricher.locations import (
     resolve_ensembl_reference,
     resolve_pubmind_reference,
 )
+from just_dna_enricher.net import could_not_ask_reason
 from just_dna_enricher.placement import (
     PlacementCheck,
     answered_placements,
@@ -679,11 +680,13 @@ def _run_enrichment(
         )
 
     # ── live Ensembl link (V2→V1), for cache misses, unless offline ────────────────────────────
+    ensembl_link: object | None = None
     if live_ensembl_runs:
         missing = [v.rsid for v in need_pos if v.rsid and v.rsid not in rsid_to_loci]
         if missing:
             owned = resolver is None
             client = resolver or EnsemblResolver()
+            ensembl_link = client
             try:
                 for rsid in missing:
                     loci, src = client.resolve_rsid(rsid)
@@ -735,6 +738,17 @@ def _run_enrichment(
                         source_of_rsid[rsid] = "gnomad"
                         journal.record(rsid, "gnomad", loci)
                         tracker.settle(subjects_of_rsid.get(rsid, ()))
+                # An rsID gnomAD answered with an error is named, and its row stays whatever an earlier
+                # link answered: the last-resort link's outage may not overwrite another registry's
+                # answer (`@one-registrys-outage-may-not-speak-for-another`, RM361).
+                errored = sorted(set(getattr(client, "unanswered", {})) & set(missing))
+                if errored:
+                    logger.warning(
+                        "gnomAD answered %d rsID(s) with an error rather than a record: %s; their rows "
+                        "keep the earlier links' answer.",
+                        len(errored),
+                        ", ".join(errored),
+                    )
             except GnomadError as exc:  # a last-resort link must not sink the whole enrichment
                 logger.warning("gnomAD link failed (%s); continuing without it.", exc)
             finally:
@@ -1462,6 +1476,9 @@ def _run_enrichment(
     # because doing so would migrate `variant_key` by network lookup. See `identifiers.check_rsids`.
     stale_rsids: list[RsidStatus] = []
     rsid_subjects = 0
+    # Why dbSNP never answered, when it did not (RM361): the record is then a skip, never `ran` over
+    # subjects nobody asked about with zero findings.
+    rsid_unanswered: tuple[str, str] | None = None
     if verify_rsids and not offline:
         # The rows the table carries, and every rsID a meta.csv member names (0.8): one variant under
         # two keys is a meta-table disagreement hidden as a difference, and NCBI is the merge oracle.
@@ -1489,6 +1506,10 @@ def _run_enrichment(
             # run never established — `@unreachable-not-absent`, one column over.
             logger.warning("dbSNP rsID check failed (%s); continuing without rsID verdicts.", exc)
             statuses = []
+            rsid_unanswered = (
+                could_not_ask_reason(exc),
+                f"dbSNP could not be asked about {rsid_subjects} rsID(s): {exc}",
+            )
         by_rsid = {s.rsid: s for s in statuses}
         for row in out:
             status = by_rsid.get(row.rsid or "")
@@ -1685,7 +1706,16 @@ def _run_enrichment(
         answered_calls=answered_calls,
     )
 
-    if unreachable_rsids:
+    if unreachable_rsids and getattr(ensembl_link, "retired", None):
+        # A 410 is not an outage (RM361): a re-run asks a route the source no longer serves.
+        logger.warning(
+            "%d rsID(s) could not be asked of live Ensembl because it retired the route (%s): %s. "
+            "Upgrade just-dna-enricher; re-running will not answer them.",
+            len(unreachable_rsids),
+            ensembl_link.retired,
+            ", ".join(sorted(unreachable_rsids)),
+        )
+    elif unreachable_rsids:
         # Warned in BOTH modes, and not escalated by `strict`: nothing an author can edit clears a
         # failed request, and `strict` means "reproducible artifact" (P5). What it does change is the
         # reading of the run — an unresolved key here may well resolve on the next one.
@@ -1892,6 +1922,7 @@ def _run_enrichment(
                 verify_rsids=verify_rsids,
                 rsid_subjects=rsid_subjects,
                 stale_rsids=stale_rsids,
+                rsid_unanswered=rsid_unanswered,
                 pairs=pair_check,
                 ensembl_ref=reference,
                 placement=placement,

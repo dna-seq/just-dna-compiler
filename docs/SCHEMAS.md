@@ -279,7 +279,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
   | `VALID_ELEMENT_RULES` | 8 (closed) | the composition rules a `Display` element may declare |
   | `VALID_EVIDENCE_LEVELS` | 6 (closed) |  |
   | `VALID_FREQUENCY_STATUS` | 3 (closed) |  |
-  | `VALID_FULLTEXT_STATUS` | 3 (closed) | how the literature pass's fulltext question ended (RM258); a null cell is the fourth reading, *not asked* |
+  | `VALID_FULLTEXT_STATUS` | 4 (closed) | how the literature pass's fulltext question ended (RM258; `retired`, a 410, RM361); a null cell is the fourth reading, *not asked* |
   | `VALID_GENE_VALIDITY` | 9 (closed) |  |
   | `VALID_IMPACTS` | 4 (closed) | VEP's impact class on one transcript, `consequences.csv.impact` (RM236) |
   | `VALID_INHERITANCE_MODE` | 9 (closed) |  |
@@ -297,7 +297,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
   | `VALID_SUPERPOPULATIONS` | 5 (closed) | the 1000 Genomes superpopulation codes: what `StudyRow.ancestry` binds, and — plus `multi` — `pgs.VALID_TRAINING_ANCESTRY`, derived from it so the codes are one list (RM328) |
   | `VALID_SOURCE_LAYERS` | 13 (closed) |  |
   | `VALID_VERIFICATION_CHECKS` | 27 (closed) |  |
-  | `VALID_VERIFICATION_SKIPS` | 8 (closed) |  |
+  | `VALID_VERIFICATION_SKIPS` | 9 (closed) |  |
   | `VALID_VERIFICATION_INDEPENDENCE` | 2 (closed) | `VerificationRecord.independence`, derived from the record's two sources and never typed (RM292) |
   | `VALID_WARNING_CODES` | 83 (closed) | every code a compile may stamp on a finding (members in `RETIRED_WARNING_CODES` are no longer emitted); the catalogue with texts is in [COMPILER.md](COMPILER.md) |
 

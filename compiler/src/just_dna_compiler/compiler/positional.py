@@ -162,6 +162,9 @@ def _table_row_key(row: Any, genome_build: str) -> str | None:
     key = getattr(row, "variant_key", None)
     if key:
         return str(key)
+    if getattr(row, "rsid", None) is None and row.chrom is None and row.start is None:
+        # A gene-only row names no variant: no key, never the string `None:None:None` (RM361).
+        return None
     return derive_variant_key(
         getattr(row, "rsid", None),
         row.chrom,

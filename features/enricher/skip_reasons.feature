@@ -1,4 +1,4 @@
-# Why a check did not run — the eight members of `VALID_VERIFICATION_SKIPS`.
+# Why a check did not run — the members of `VALID_VERIFICATION_SKIPS`.
 #
 # Source of truth: schema/src/just_dna_format/vocab.py's VALID_VERIFICATION_SKIPS and the comment block
 # above it, docs/ENRICHER.md.
@@ -59,6 +59,17 @@ Feature: The skip vocabulary
     Then the record is a skip with reason "unreachable"
     # A failed request, not a no. One registry's outage may not write a skip against another's check
     # (`@one-registrys-outage-may-not-speak-for-another`).
+
+  # source: enricher/src/just_dna_enricher/litvar.py
+  # anchor: verification_records
+  @skip:retired
+  Scenario: the source answered that it retired the endpoint
+    Given a LitVar request answered HTTP 410 for every locus
+    When the pass attests
+    Then the record is a skip with reason "retired"
+    # A 410 is the source saying the route moved, so the remedy is an upgrade, not a re-run; every
+    # `*Retired` error is still its client's could-not-ask type, and `net.could_not_ask_reason` is what
+    # tells the two apart where the handler records the reason (RM361).
 
   # source: enricher/src/just_dna_enricher/identifiers.py
   # anchor: _gene_locus_record

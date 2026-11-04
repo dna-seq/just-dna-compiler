@@ -63,6 +63,7 @@ from just_dna_enricher.licensing import (
     require_sources_file,
     sidecar_path,
 )
+from just_dna_enricher.net import release_dataset
 
 logger = logging.getLogger(__name__)
 
@@ -261,7 +262,7 @@ def map_inheritance(wording: str | None, *, unmapped: set[str] | None = None) ->
 
 def parse_clingen_validity(
     text: str, *, unmapped: set[str] | None = None
-) -> tuple[list[ValidityAssertion], str]:
+) -> tuple[list[ValidityAssertion], str | None]:
     """Parse ClinGen's gene-validity CSV → `(assertions, release label)`.
 
     The file's layout is the reason this is not two lines of `csv.DictReader`: four preamble rows
@@ -289,7 +290,7 @@ def parse_clingen_validity(
             for row in rows[:header_index]
             if row and row[0].strip().startswith(_CLINGEN_RELEASE_PREFIX)
         ),
-        "unknown",
+        None,
     )
     header = [cell.strip() for cell in rows[header_index]]
     out: list[ValidityAssertion] = []
@@ -334,7 +335,7 @@ def _clingen_assertion_id(report_url: str | None) -> str | None:
     return tail or None
 
 
-def parse_gencc(text: str, *, unmapped: set[str] | None = None) -> tuple[list[ValidityAssertion], str]:
+def parse_gencc(text: str, *, unmapped: set[str] | None = None) -> tuple[list[ValidityAssertion], str | None]:
     """Parse GenCC's submission export → `(assertions, release label)`.
 
     GenCC publishes no release identifier at all, so the label is derived from the latest
@@ -377,7 +378,7 @@ def parse_gencc(text: str, *, unmapped: set[str] | None = None) -> tuple[list[Va
                 report_url=(record.get("submitted_as_public_report_url") or "").strip() or None,
             )
         )
-    return out, (max(run_dates) if run_dates else "unknown")
+    return out, (max(run_dates) if run_dates else None)
 
 
 def fetch_validity_export(url: str, *, timeout: float = 180.0) -> str:
@@ -463,10 +464,10 @@ def enrich_gene_validity(
     )
     if source == CLINGEN_SOURCE:
         assertions, released = parse_clingen_validity(text, unmapped=unmapped)
-        dataset = f"clingen_gene_validity_{released}"
+        dataset = release_dataset("clingen_gene_validity", released)
     else:
         assertions, released = parse_gencc(text, unmapped=unmapped)
-        dataset = f"gencc_submissions_{released}"
+        dataset = release_dataset("gencc_submissions", released)
 
     by_gene: dict[str, list[ValidityAssertion]] = {}
     for assertion in assertions:

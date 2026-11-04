@@ -54,6 +54,7 @@ from just_dna_enricher.locations import (
     SNAPSHOT_DATA_DIRNAME,
     resolve_alphagenome_avi_reference,
 )
+from just_dna_enricher.net import could_not_ask_reason
 from just_dna_enricher.verification import ran, record_verification, skipped
 
 # The guarded optional import (CLAUDE.md), and here it guards **most of this module**: everything
@@ -384,8 +385,8 @@ def _refine(client, variant: VariantRow, label: str, result: VariantImpactResult
             )
         )
         return
-    except AtlasUnavailable:
-        result.unanswered.append((label, "unreachable"))
+    except AtlasUnavailable as exc:
+        result.unanswered.append((label, could_not_ask_reason(exc)))
         return
     except AtlasRefused as exc:
         result.unanswered.append((label, "refused"))
@@ -557,7 +558,7 @@ def check_variant_impact(
         try:
             _refine(client, by_label[label], label, result)
         except AtlasError as exc:  # pragma: no cover - `_refine` translates every arm it knows
-            result.unanswered.append((label, "unreachable"))
+            result.unanswered.append((label, could_not_ask_reason(exc)))
             logger.warning("atlas refinement failed for %s: %s", label, exc)
 
     return _attest(
