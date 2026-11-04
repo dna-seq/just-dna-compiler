@@ -54,7 +54,8 @@ LOCUS_TO_GENE_FACT_FIELDS: tuple[str, ...] = (
     "dataset",
 )
 
-# Fact columns feeding `integrity.colocalisation_signature`. `right_gene_id` and `right_biosample_id`
+# Fact columns feeding `integrity.colocalisation_signature`: everything but the provenance columns
+# (`source`/`fetched_at`), as in `LOCUS_TO_GENE_FACT_FIELDS` above. `right_gene_id` and `right_biosample_id`
 # are inside although they are looked up from the right-hand study rather than read off the coloc row:
 # they are what the pair is ABOUT, and a coloc against a different tissue is a different claim.
 COLOCALISATION_FACT_FIELDS: tuple[str, ...] = (

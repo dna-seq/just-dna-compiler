@@ -32,7 +32,8 @@ LD_RESOLVED = "resolved"
 #: The members written without asking the reference: the study row leaves no single panel to ask in.
 LD_POPULATION_WITHHELD: frozenset[str] = frozenset({"ancestry_mixed", "ancestry_unstated"})
 
-# Fact columns feeding `integrity.ld_pair_signature`: everything but the provenance columns.
+# Fact columns feeding `integrity.ld_pair_signature`: everything but the provenance columns
+# (`source`/`fetched_at`).
 # `answered_rsid` is outside on `consequences.py`'s reasoning for `gene`: it is the reference's current
 # label for the proxy, renamed by a dbSNP merge without the number moving. `dataset` is inside: r² is
 # recomputed from each release's genotypes, so two releases' values are two facts.
