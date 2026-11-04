@@ -49,6 +49,17 @@ grepping.
 The allocator writes here. A row below is a number some session has claimed; it moves to its page when
 the entry is written.
 
+- 🔷 **reserved** **RM370** — a pass that answered nothing still writes a file (audit class K). Claimed by an allocator run so a concurrent session cannot take the same id; replace this line with the item's real entry, or drop it with `item-next.py --release RM370`.
+- 🔷 **reserved** **RM369** — the snapshot contract is bypassed: release.json after payload, lane keys untyped (audit class I). Claimed by an allocator run so a concurrent session cannot take the same id; replace this line with the item's real entry, or drop it with `item-next.py --release RM369`.
+- 🔷 **reserved** **RM368** — the module publisher trusts what it re-reads (audit class G). Claimed by an allocator run so a concurrent session cannot take the same id; replace this line with the item's real entry, or drop it with `item-next.py --release RM368`.
+- 🔷 **reserved** **RM367** — a check runs on one path and not the other, or after side effects (audit class F). Claimed by an allocator run so a concurrent session cannot take the same id; replace this line with the item's real entry, or drop it with `item-next.py --release RM367`.
+- 🔷 **reserved** **RM366** — paired fields validate half-stated (audit class E). Claimed by an allocator run so a concurrent session cannot take the same id; replace this line with the item's real entry, or drop it with `item-next.py --release RM366`.
+- 🔷 **reserved** **RM365** — registry guards that are floors or subsets (audit class D). Claimed by an allocator run so a concurrent session cannot take the same id; replace this line with the item's real entry, or drop it with `item-next.py --release RM365`.
+- 🔷 **reserved** **RM364** — reverse drops what compile carried (audit class C). Claimed by an allocator run so a concurrent session cannot take the same id; replace this line with the item's real entry, or drop it with `item-next.py --release RM364`.
+- 🔷 **reserved** **RM363** — one value, several normalizers: gene case, chromosome, DOI, drug (audit class B2). Claimed by an allocator run so a concurrent session cannot take the same id; replace this line with the item's real entry, or drop it with `item-next.py --release RM363`.
+- 🔷 **reserved** **RM362** — the module-subject set is answered three ways (audit class B1). Claimed by an allocator run so a concurrent session cannot take the same id; replace this line with the item's real entry, or drop it with `item-next.py --release RM362`.
+- 🔷 **reserved** **RM361** — an unknown or failed answer is recorded as a definite one (audit class A). Claimed by an allocator run so a concurrent session cannot take the same id; replace this line with the item's real entry, or drop it with `item-next.py --release RM361`.
+
 ## 🔒 The major bucket — unnumbered on purpose, and that is why it hides
 
 Everything needing a **major** lives in one table in
