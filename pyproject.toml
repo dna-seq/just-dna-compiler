@@ -189,6 +189,10 @@ exclude_also = [
 [tool.pytest.ini_options]
 testpaths = ["schema/tests", "compiler/tests", "enricher/tests"]
 addopts = "-vvv --import-mode=importlib"
+# Keep only failing tests' tmp_path dirs. Parallel build sessions each keep their own last three
+# basetemps under /tmp (a tmpfs with 1M inodes), and on 2026-11-04 the kept runs, 780k files, used up
+# its inodes and stopped every session on the machine.
+tmp_path_retention_policy = "failed"
 markers = [
     "integration: needs external data/network (an Ensembl reference cache or HuggingFace). Set JUST_DNA_ENSEMBL_CACHE to run resolver tests; skipped otherwise.",
 ]
