@@ -17,6 +17,7 @@ from just_dna_enricher.identifiers import unreachable_records as identifier_unre
 from just_dna_enricher.identifiers import verification_records as identifier_records
 from just_dna_enricher.licensing import sidecar_path
 from just_dna_enricher.pgx_draft import draft_gene
+from just_dna_enricher.sequences import SequenceProxy
 from just_dna_enricher.verification import record_verification, skipped
 from just_dna_enricher.vrs import MintResult
 
@@ -34,7 +35,9 @@ def draft_(
         [],
         "--allele",
         help=(
-            "Draft only these star alleles, in all three tables (repeatable; `*1` is always kept). "
+            "Draft only these alleles, in all three tables (repeatable; `*1` is always kept, and so is "
+            "CPIC's `Reference`). A star allele, or an HGVS-named one as CPIC spells it or as it is "
+            "written (`c.1003G>T(*11)`). "
             "A caller emits a bounded allele set, and n alleles is n(n+1)/2 pairs — CYP2D6 is 16,290 "
             "diplotypes unfiltered. Requires a single --gene, since a star name is gene-scoped."
         ),
@@ -55,7 +58,10 @@ def draft_(
     offline: bool = typer.Option(
         False,
         "--offline",
-        help="Draft from a built CPIC snapshot only; never reach CPIC live.",
+        help=(
+            "Draft from a built CPIC snapshot only; never reach CPIC live, and read no reference bases, "
+            "so CPIC's DEL/INS/repeat-count alleles are withheld with the reason (RM253)."
+        ),
     ),
     cpic_cache: Path | None = typer.Option(None, "--cpic-cache", help="Explicit CPIC snapshot dir."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Report what would be added; write nothing."),
@@ -79,6 +85,9 @@ def draft_(
         )
         raise typer.Exit(code=2)
     total_added = 0
+    # One reference reader for the whole run, so a locus read for one gene is not read again for the next
+    # and an unreachable service is found once (RM253).
+    sequences = SequenceProxy(offline=offline)
     for name in gene:
         try:
             result = draft_gene(
@@ -91,6 +100,7 @@ def draft_(
                 dry_run=dry_run,
                 offline=offline,
                 cpic_cache=cpic_cache,
+                sequences=sequences,
             )
         except pgx_draft.ERRORS as exc:
             typer.secho(f"DRAFT FAILED ({name}): {exc}", fg=typer.colors.RED, err=True)

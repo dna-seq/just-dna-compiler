@@ -22,11 +22,18 @@ published table is machine work; deciding what a module says about a patient is 
 * CYP2D6's structural alleles (`*5` whole-gene deletion, `*1x2` duplication) have no defining
   nucleotide event to write, so they are skipped with a warning. That is RM5, not a bug here.
 
+**CPIC's own notation is translated, not skipped (RM253).** A `DEL<bases>`, `INS<bases>` or repeat
+count `UNIT(n)` is spelled as the VCF-anchored, left-normalized indel a caller writes (`cpic_notation`),
+reading the anchor base and the run from the GRCh38 reference; and an HGVS-named allele (DPYD's
+`c.1129-5923C>G, c.1236G>A (HapB3)`) is written with its spaces dropped and `&` for the comma between
+variants (`_draft_name`), since a comma would split any multi-valued cell.
+
 Coordinates from CPIC are GRCh38 and **1-based**, which is what this pipeline already stores — the
 instinctive `-1` introduces an off-by-one.
 """
 
 import logging
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -39,6 +46,7 @@ from just_dna_format.pgx import (
     HaplotypeRow,
     hla_allele_refusal,
 )
+from just_dna_format.vrs import UnsupportedBuildError, refget_accession
 
 from just_dna_enricher.cpic import (
     CpicClient,
@@ -47,10 +55,20 @@ from just_dna_enricher.cpic import (
     CpicRecommendation,
     CpicSnapshotClient,
 )
+from just_dna_enricher.cpic_notation import (
+    NOT_SPELLED_EXPLANATION,
+    Notation,
+    ReadWindow,
+    Spelled,
+    delins_partner,
+    parse_notation,
+    spell,
+)
 from just_dna_enricher.drafting import DRAFT_PROVIDERS, licence_commit, record_draft_provenance
 from just_dna_enricher.enrich import EnrichmentError, source_build_mismatch
 from just_dna_enricher.licensing import CPIC_TERMS, LicenseRefusal, check_declared_use, effective_declared_use
 from just_dna_enricher.locations import resolve_cpic_reference
+from just_dna_enricher.sequences import SequenceProxy
 
 #: This provider's registry entry (RM228).
 _PROVIDER = DRAFT_PROVIDERS["cpic"]
@@ -78,8 +96,69 @@ logger = logging.getLogger(__name__)
 #: CPIC's spelling for "not scored" — an absence, never a value the module should carry.
 _NOT_SCORED: frozenset[str] = frozenset({"n/a", "na", "none", "-"})
 
-#: CPIC writes a diplotype as `*1/*2`; both halves must be star alleles the format can hold.
+#: CPIC writes a diplotype as `*1/*2`; both halves must be names `_draft_name` can write.
 _DIPLOTYPE_SEP = "/"
+
+#: CPIC's name for the reference allele of a gene it does not name with stars (DPYD, RYR1, CACNA1S,
+#: MT-RNR1). A name, so it is written as CPIC spells it.
+_REFERENCE_NAME = "Reference"
+
+#: One variant of an HGVS-named allele once spaces are dropped: `c.`/`g.`/`m.`/`n.` and an expression,
+#: then CPIC's optional label in parentheses (`(*11)`, `(HapB3)`). Nothing in it may be `&`, which joins
+#: the variants of one allele, a `MULTI_SEP` character (`,;|`), which would split the cell, or `/`, which
+#: separates the halves of a diplotype.
+_HGVS_VARIANT = re.compile(r"^[cgmn]\.[^\s&(),;|/]+(\([^\s&(),;|/]+\))?$")
+
+
+def _draft_name(raw: str | None) -> str | None:
+    """The name a CPIC allele is written under, or `None` when the drafter cannot write it (RM253).
+
+    A star allele and CPIC's `Reference` are written as they are. An **HGVS-named** allele is written
+    with its spaces dropped and `&` for the comma between its variants, so DPYD's
+    `c.1129-5923C>G, c.1236G>A (HapB3)` is `c.1129-5923C>G&c.1236G>A(HapB3)` — the maintainer's choice of
+    the full name, and the pm's `&` because every other candidate already means something in an allele
+    name (`:` is HGVS's reference separator, `+` an intronic offset, `_` a range, `/` a diplotype).
+
+    **Only when every part is HGVS.** G6PD's `Mediterranean, Dallas, Panama, …` uses the comma between
+    *aliases*, and an `&` there would claim a compound of variants that is not one; CFTR's legacy names,
+    `rs2231142 reference (G)` and HLA's `*57:01` are not HGVS either. They stay skipped, as before.
+
+    A fixed point: a written name translates to itself, so a name read back out of a module is found.
+    """
+    if not raw:
+        return None
+    if STAR_ALLELE_PATTERN.match(raw) or raw == _REFERENCE_NAME:
+        return raw
+    written = re.sub(r"\s+", "", raw.replace(",", "&"))
+    if all(_HGVS_VARIANT.match(part) for part in written.split("&")):
+        return written
+    return None
+
+
+def _no_reference(chrom: str, start: int, end: int) -> str | None:
+    """The reader for a caller with no sequence access: every notation is then withheld, not guessed."""
+    return None
+
+
+def _reference_reader(sequences: SequenceProxy, *, offline: bool) -> ReadWindow:
+    """GRCh38 bases over 1-based `[start, end]` through `sequences`, or `None` (offline, no accession).
+
+    `offline` outranks an injected proxy, as it outranks an injected client: a run documented as
+    making no requests makes none, whoever built the reader.
+    """
+
+    def read_window(chrom: str, start: int, end: int) -> str | None:
+        if offline:
+            return None
+        try:
+            accession = refget_accession(chrom, CPIC_GENOME_BUILD)
+        except UnsupportedBuildError:  # pragma: no cover - CPIC_GENOME_BUILD has a refget table
+            return None
+        if accession is None:
+            return None
+        return sequences.subsequence(accession, start - 1, end)
+
+    return read_window
 
 
 @dataclass
@@ -99,22 +178,67 @@ class PgxDraftResult:
         return sum(len(r.differs) for r in self.reports)
 
 
-def _haplotype_rows(variants: list[CpicDefiningVariant]) -> tuple[list[HaplotypeRow], list[str]]:
-    """CPIC's defining variants → `haplotypes.csv` rows, skipping what the grammar cannot hold."""
+def _haplotype_rows(
+    variants: list[CpicDefiningVariant],
+    read_window: ReadWindow = _no_reference,
+    *,
+    whole_gene: list[CpicDefiningVariant] | None = None,
+) -> tuple[list[HaplotypeRow], list[str]]:
+    """CPIC's defining variants → `haplotypes.csv` rows, skipping what the grammar cannot hold.
+
+    A value in CPIC's deletion/insertion/repeat notation is spelled through `read_window` (RM253); the
+    default reader reads nothing, so a caller with no sequence access withholds those rows, by reason.
+    `whole_gene` is every defining variant CPIC publishes for the gene, before an `--allele` filter: a
+    locus is read as a delins from all of its rows, never from the ones a filter happened to keep.
+    """
     rows: list[HaplotypeRow] = []
     warnings: list[str] = []
     # Aggregated for the third time in this file, and the same reason each time: a real CYP2D6 draft
     # emits ten of these for `*1` alone, one line apiece, which buries the licence row and the allele
     # skips underneath them.
     no_locus: list[str] = []
-    for variant in variants:
-        if variant.unusable or not variant.variant_allele:
-            continue  # already reported by the client; nothing definite to write
-        if not STAR_ALLELE_PATTERN.match(variant.allele or ""):
-            warnings.append(
-                f"{variant.gene}: {variant.allele!r} is not a star-allele string this format can "
-                f"hold — skipped."
+    not_spelled: dict[str, list[str]] = {}
+    # Every value CPIC states at a locus, across the gene's alleles: a `DEL` row is read against its
+    # neighbours, since RYR1 writes a delins as `DEL<bases>` on its reference allele and `INS<bases>` on
+    # the variant, and one row alone cannot tell that from a deletion.
+    values_at: dict[tuple[str | None, int | None], list[tuple[str, str]]] = {}
+    for variant in variants if whole_gene is None else whole_gene:
+        if variant.variant_allele:
+            values_at.setdefault((variant.chrom, variant.start), []).append(
+                (variant.allele, variant.variant_allele)
             )
+    for variant in variants:
+        if not variant.variant_allele:
+            continue  # nothing definite to write
+        if variant.unusable and variant.unusable != "notation":
+            continue  # already reported by the client
+        name = _draft_name(variant.allele)
+        if name is None:
+            warnings.append(
+                f"{variant.gene}: {variant.allele!r} is not a star-allele string or an HGVS-named allele "
+                f"this drafter can write — skipped."
+            )
+            continue
+        if variant.unusable == "notation":
+            label = f"{variant.allele}={variant.variant_allele}"
+            parsed = parse_notation(variant.variant_allele)
+            if isinstance(parsed, str):
+                not_spelled.setdefault(parsed, []).append(label)
+                continue
+            if variant.chrom is None or variant.start is None:
+                no_locus.append(f"{variant.allele}@{variant.start}")
+                continue
+            spelled = spell(
+                parsed,
+                variant.chrom,
+                variant.start,
+                read_window,
+                delins_ref=delins_partner(values_at[(variant.chrom, variant.start)], _REFERENCE_NAMES),
+            )
+            if isinstance(spelled, str):
+                not_spelled.setdefault(spelled, []).append(label)
+                continue
+            rows.append(_spelled_row(name, variant, parsed, spelled))
             continue
         # Mirror `HaplotypeRow._validate_identification` exactly: rsid, or chrom AND start. The
         # guard used to accept a bare `start`, so `draft --gene CYP2C9` built a row with a position,
@@ -130,7 +254,7 @@ def _haplotype_rows(variants: list[CpicDefiningVariant]) -> tuple[list[Haplotype
             continue
         rows.append(
             HaplotypeRow(
-                haplotype_name=variant.allele,
+                haplotype_name=name,
                 rsid=variant.rsid,
                 # `chrom` was dropped on the floor here: `CpicDefiningVariant` carries one and this
                 # never passed it, so a coordinate-identified variant would have been built without
@@ -152,27 +276,88 @@ def _haplotype_rows(variants: list[CpicDefiningVariant]) -> tuple[list[Haplotype
             f"locus for them (no position, or no `chr` on the gene), and a haplotype row identified "
             f"by neither resolves to nothing. e.g. {shown}{rest}."
         )
+    gene = variants[0].gene if variants else "?"
+    for reason, entries in sorted(not_spelled.items()):
+        shown = ", ".join(entries[:3])
+        rest = f" (+{len(entries) - 3} more)" if len(entries) > 3 else ""
+        warnings.append(
+            f"{gene}: {len(entries)} defining allele(s) in CPIC's notation not spelled — "
+            f"{NOT_SPELLED_EXPLANATION[reason]}. e.g. {shown}{rest}."
+        )
     return rows, warnings
 
 
+def _spelled_row(
+    name: str, variant: CpicDefiningVariant, notation: Notation, spelled: Spelled
+) -> HaplotypeRow:
+    """A translated notation as a coordinate-keyed haplotype row (RM253).
+
+    **A repeat row carries no rsID.** CPIC names the whole multi-allelic site (`rs3064744` for UGT1A1's
+    TA run), and that id is in no caller's ID column: arrays and dbSNP-annotated VCFs carry
+    `rs34983651` for the `+TA` allele, and one imputation server stamps `rs606231201`, which dbSNP
+    places as a different allele. A row keyed on the site id would key a spelling no input carries, so
+    the coordinate is the key. A `DEL`/`INS` row keeps CPIC's rsID beside the coordinate, as a plain
+    SNV row does: it names one event, and the coordinate check leaves an indel's re-anchoring undecided
+    rather than calling it a disagreement.
+    """
+    return HaplotypeRow(
+        haplotype_name=name,
+        rsid=None if notation.kind == "repeat" else variant.rsid,
+        chrom=spelled.chrom,
+        start=spelled.start,
+        ref=spelled.ref,
+        allele=spelled.alt,
+        gene=variant.gene,
+    )
+
+
 def _split_diplotype(diplotype: str) -> tuple[str, str] | None:
+    """A CPIC diplotype → its two halves under the names they are written as, or `None`."""
     parts = [p.strip() for p in diplotype.split(_DIPLOTYPE_SEP)]
-    if len(parts) != 2 or not all(STAR_ALLELE_PATTERN.match(p) for p in parts):
+    if len(parts) != 2:
         return None
-    return parts[0], parts[1]
+    first, second = _draft_name(parts[0]), _draft_name(parts[1])
+    if first is None or second is None:
+        return None
+    return first, second
 
 
 def _unparsable_by_reason(diplotypes: Sequence[str]) -> dict[str, list[str]]:
     """`copy_number` for a pair whose halves are star strings carrying `x`/`≥` copy-number notation;
-    `not_star` for a pair whose half is not a star string at all (DPYD's HGVS names)."""
+    `single` for an entry naming one allele and no pair (MT-RNR1's haploid calls, `m.1555A>G`);
+    `not_star` for a pair whose half is neither a star string nor a name `_draft_name` writes.
+
+    `single` is its own bucket since RM253 made MT-RNR1's names writable: filed under `not_star`, its
+    entries were reported as names the drafter cannot write, which is false — they are names it writes
+    in every other table, and what fails is that `diplotypes.csv` is a table of pairs.
+    """
     out: dict[str, list[str]] = {}
     for diplotype in diplotypes:
         halves = [p.strip() for p in diplotype.split(_DIPLOTYPE_SEP)]
         copy_number = len(halves) == 2 and all(
             STAR_ALLELE_PATTERN.match(h.replace("≥", "")) or STAR_ALLELE_PATTERN.match(h) for h in halves
         )
-        out.setdefault("copy_number" if copy_number else "not_star", []).append(diplotype)
+        bucket = "copy_number" if copy_number else "single" if len(halves) == 1 else "not_star"
+        out.setdefault(bucket, []).append(diplotype)
     return out
+
+
+#: What each `_unparsable_by_reason` bucket means, in the author's terms.
+_UNPARSABLE_EXPLANATION: dict[str, str] = {
+    "copy_number": (
+        "carry copy-number notation and were skipped — CPIC writes `x≥3`, and `≥` is not a star-string "
+        "character"
+    ),
+    "single": (
+        "name one allele rather than a pair and were skipped — CPIC's call for a haploid gene, which "
+        "diplotypes.csv, a table of pairs, cannot hold"
+    ),
+    "not_star": (
+        "name alleles that are neither star strings nor HGVS names and were skipped — the drafter writes "
+        "a star allele, CPIC's `Reference`, and an HGVS-named allele (`c.1003G>T (*11)` as "
+        "`c.1003G>T(*11)`, RM253), and these are none of the three (legacy or alias names)"
+    ),
+}
 
 
 #: The reference allele, always kept by an `--allele` filter. It is *defined* by carrying no variants, so
@@ -195,14 +380,23 @@ def _selected_alleles(requested: Sequence[str], published: Sequence[str], gene: 
     """
     if not requested:
         return None
-    wanted = {a.strip() for a in requested if a.strip()}
-    unknown = sorted(wanted - set(published))
+    # Compared under the names the module writes, so `c.1003G>T (*11)` and `c.1003G>T(*11)` are one
+    # allele; a name the drafter cannot write is compared as CPIC spells it.
+    written = {(_draft_name(p) or p) for p in published}
+    wanted = {(_draft_name(a.strip()) or a.strip()) for a in requested if a.strip()}
+    unknown = sorted(wanted - written)
     if unknown:
         raise CpicError(
             f"{gene}: CPIC publishes no allele(s) {unknown}. Available: "
-            f"{', '.join(sorted(published)) or '(none)'}."
+            f"{', '.join(sorted(written)) or '(none)'}."
         )
-    return frozenset(wanted | {_REFERENCE_ALLELE})
+    # A gene CPIC does not name with stars has `Reference` where others have `*1`; kept for the same
+    # reason, and only where CPIC publishes it, so a star-named gene's set is unchanged.
+    return frozenset(wanted | {_REFERENCE_ALLELE} | ({_REFERENCE_NAME} & written))
+
+
+#: The names CPIC gives a gene's reference allele: `*1` for a star-named gene, `Reference` otherwise.
+_REFERENCE_NAMES: frozenset[str] = frozenset({_REFERENCE_ALLELE, _REFERENCE_NAME})
 
 
 def _pair_in(diplotype: str, selected: frozenset[str]) -> bool:
@@ -296,6 +490,7 @@ def draft_gene(
     offline: bool = False,
     cpic_cache: Path | None = None,
     client: CpicClient | CpicSnapshotClient | None = None,
+    sequences: SequenceProxy | None = None,
 ) -> PgxDraftResult:
     """Draft one gene's `haplotypes.csv`, `allele_function.csv` and `diplotypes.csv` rows.
 
@@ -312,6 +507,10 @@ def draft_gene(
     so a caller running the family under one switch had to know out of band that drafting ignored it,
     and forgetting meant silent egress from a run documented as making none. A built CPIC snapshot
     serves the draft; with none and `offline` set, nothing is drafted and the reason is returned.
+
+    `sequences` (RM253) reads the GRCh38 bases a `DEL`/`INS`/repeat notation is spelled with; one proxy
+    per run, so its cache is shared, and built lazily, so a gene with no notation reads nothing. Under
+    `offline` nothing is read and those rows are withheld with the reason.
     """
     declared_use, declared_from = effective_declared_use(spec_dir, CPIC_TERMS, declared_use)  # S105
     skip_reason = check_declared_use(CPIC_TERMS, declared_use)
@@ -399,6 +598,9 @@ def draft_gene(
     # at the top of the function; reported here.
     if build_warning:
         warnings.append(f"{gene}: {build_warning}")
+    # Every defining variant CPIC publishes, kept before the filter below narrows `defining`: a locus
+    # is judged a delins from all of its rows (RM253).
+    whole_gene = defining
     selected = _selected_alleles(alleles, [a.allele for a in published], gene)
     if selected is not None:
         # Filtered once, here, so the three tables and the drug rows all see the same set — the drug rows
@@ -412,31 +614,38 @@ def draft_gene(
         kept_parsable = [d for d in kept if _split_diplotype(d.diplotype) is not None]
         warnings.append(
             f"{gene}: --allele kept {len(selected)} allele(s) {sorted(selected)} (`*1` is always kept, "
-            f"since it is defined by carrying no variants) — {len(kept_parsable)} of {len(parsable)} "
+            f"and so is CPIC's `Reference` where it publishes one, since a reference allele is defined "
+            f"by carrying no variants) — {len(kept_parsable)} of {len(parsable)} "
             f"diplotype(s) drafted; the rest name an allele outside the set."
         )
         diplotypes = kept
-        published = [a for a in published if a.allele in selected]
-        defining = [v for v in defining if v.allele in selected]
+        published = [a for a in published if (_draft_name(a.allele) or a.allele) in selected]
+        defining = [v for v in defining if (_draft_name(v.allele) or v.allele) in selected]
 
-    haplotypes, haplotype_warnings = _haplotype_rows(defining)
+    read_window = _reference_reader(sequences or SequenceProxy(offline=offline), offline=offline)
+    haplotypes, haplotype_warnings = _haplotype_rows(defining, read_window, whole_gene=whole_gene)
     warnings.extend(haplotype_warnings)
 
     function_rows: list[AlleleFunctionRow] = []
     for allele in published:
-        if not STAR_ALLELE_PATTERN.match(allele.allele or ""):
-            warnings.append(f"{gene}: allele {allele.allele!r} is not a star-allele string — skipped.")
+        name = _draft_name(allele.allele)
+        if name is None:
+            warnings.append(
+                f"{gene}: allele {allele.allele!r} is not a star-allele string or an HGVS-named allele "
+                f"this drafter can write — skipped."
+            )
             continue
-        # The model's own HLA rule (RM334), asked rather than restated: the star pattern above accepts
-        # `*5701`, which `AlleleFunctionRow` refuses for an `HLA-` gene.
-        hla_refusal = hla_allele_refusal(allele.gene, allele.allele)
+        # The model's own HLA rule (RM334), asked rather than restated, on the name the row is written
+        # under: `_draft_name` keeps a star allele such as `*5701`, which `AlleleFunctionRow` refuses
+        # for an `HLA-` gene.
+        hla_refusal = hla_allele_refusal(allele.gene, name)
         if hla_refusal is not None:
             warnings.append(f"{gene}: allele skipped, {hla_refusal}")
             continue
         function_rows.append(
             AlleleFunctionRow(
                 gene=allele.gene,
-                allele=allele.allele,
+                allele=name,
                 activity_value=allele.activity_value,
                 function_status=allele.function_status,
             )
@@ -483,16 +692,7 @@ def draft_gene(
         shown = ", ".join(entries[:3])
         rest = f" (+{len(entries) - 3} more)" if len(entries) > 3 else ""
         warnings.append(
-            f"{gene}: {len(entries)} diplotype(s) "
-            + (
-                "carry copy-number notation and were skipped — CPIC writes `x≥3`, and `≥` is not a "
-                "star-string character"
-                if bucket == "copy_number"
-                else "name alleles that are not star strings and were skipped — CPIC names this gene's "
-                "alleles as HGVS variants (`c.1003G>T (*11)`), which the haplotype-name rule refuses "
-                "for their whitespace and this drafter does not yet translate (RM253)"
-            )
-            + f". e.g. {shown}{rest}."
+            f"{gene}: {len(entries)} diplotype(s) {_UNPARSABLE_EXPLANATION[bucket]}. e.g. {shown}{rest}."
         )
 
     for bucket, entries in sorted(unscorable.items()):

@@ -97,6 +97,13 @@ files) or in the registry's prod catalogue (24 modules, 46 versions; the one mod
 `antonkulaga/fut2_secretor`, names only `FUT2`). A tool that writes HLA alleles into this table, or a
 module built outside the catalogue, should spell them `*15:01`, never `*1501` or `HLA-DRB1*15:01`.
 
+## 1.8 The CPIC drafter's output (no break)
+
+| Surface | Item | What changed |
+| --- | --- | --- |
+| `pgx_draft.draft_gene` / `draft --gene` | RM253 | CPIC's `DEL<bases>`/`INS<bases>`/`UNIT(n)` defining alleles are drafted as VCF-anchored, left-normalized REF/ALT rows (UGT1A1 `*28` = `2:233760233 C>CAT`), keyed by coordinate for a repeat; HGVS-named alleles are written with spaces dropped and `&` for the comma (`c.1003G>T(*11)`). A tool that drafts DPYD, RYR1, CACNA1S or MT-RNR1 gets rows where it got none. A new optional `sequences` argument; spelling reads GRCh38 bases from the seqrepo service, so `--offline` withholds those rows with a stated reason. |
+| CPIC client warnings | RM253 | `defining_variants` no longer returns a "skipped — … notation" line; the drafter reports what it could not spell, one line per reason (`not spelled — a bare \`DEL\`…`, `… alternatives …`, `… could not be read …`). A consumer that grepped the old sentence, which named RM253 as tracking it, reads the new ones. |
+
 ## 2. What to change
 
 1. If you parse `manifest.json` with `just-dna-format`, move your pin to 0.8 when you start reading

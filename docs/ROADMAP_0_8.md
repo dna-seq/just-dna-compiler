@@ -16,7 +16,7 @@ Every item is additive under Principles 3/4/8, so each is legal in a minor. Inde
 | Built on the `0.8` branch, uncut | PT1's RM241, RM258, RM263, RM272, RM275, RM278, RM283, RM288, RM300, RM308, RM313; earlier RM256, RM257, RM259, RM260, RM262 and RM264's docs half | `proposals/PROPOSAL_0_8_PT1.md` and ROADMAP_HISTORY on the `0.8` branch | done (their entries are in ROADMAP_HISTORY since the 2026-11-04 sync) |
 | The indel-placement fixes | [RM304](ROADMAP_HISTORY.md#rm304--a-vrs_id-does-not-say-which-vrs-minted-it-and-vrs-21-moves-some-insertion-ids) first, then [RM267](ROADMAP.md#rm267--the-ensembl-snapshot-anchors-a-class-of-insertions-one-base-early-and-resolutioncsv-serves-them-as-a-different-event), [RM270](ROADMAP.md#rm270--an-indels-artifact-key-is-its-sources-spelling-a-left-aligned-vcf-misses-a-respelled-row-and-the-spelling-independent-id-the-enricher-mints-never-reaches-the-artifact), [RM292](ROADMAP.md#rm292--a-verification-check-does-not-say-what-it-checked-against-so-a-check-that-witnesses-itself-reads-as-verified), [RM305](ROADMAP.md#rm305--clinvar-gkms-allele-table-is-an-offline-independent-witness-for-where-an-indel-sits-and-nothing-reads-it) | [ROADMAP.md](ROADMAP.md) | one design, interviewed before it is built; four are high severity |
 | The lead's ready minors (2026-11-04) | RM337 (a warning naming each `logs/` file left behind), RM342 (the toolchain in the manifest, with the polars 2 lock) | their entries are in ROADMAP_HISTORY | both built on `0.8` (2026-11-04) |
-| Chosen earlier | [RM303](#rm303--the-snapshot-layout-is-a-contract-with-six-parties-and-no-model-so-it-belongs-in-just-dna-format) (the snapshot layout as a model), [RM253](#rm253--a-repeat-count-star-allele-ugt1a1-28--ta8-has-no-home-a-diplotype-can-name-and-the-cpic-drafter-translates-none-of-cpics-notation) (a repeat-count star allele) | this file | taken into 0.8 in September |
+| Chosen earlier | [RM303](#rm303--the-snapshot-layout-is-a-contract-with-six-parties-and-no-model-so-it-belongs-in-just-dna-format) (the snapshot layout as a model), [RM253](ROADMAP_HISTORY.md#rm253--a-repeat-count-star-allele-ugt1a1-28--ta8-has-no-home-a-diplotype-can-name-and-the-cpic-drafter-translates-none-of-cpics-notation) (a repeat-count star allele) | this file; RM253 shipped 2026-11-04 (ROADMAP_HISTORY) | taken into 0.8 in September |
 | longevitymap v2 | RM28's combination half, RM322–RM336 ([the group](#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03)), and [RM236](#rm236--consequence-and-impact-are-planned-axes-with-no-slot-and-an-acmg-engine-reads-both-as-primary-inputs), [RM239](#rm239--a-fine-mapping-posterior-has-no-column-and-gwas_effectscsv-already-has-its-key) as inputs to RM333's confidence labels | this file and [ROADMAP.md](ROADMAP.md) | design first; RM323 decides before RM324, RM326 and RM329 |
 
 Patch-class items stay on `main` and are not part of this scope, as [RELEASE_CYCLE.md](RELEASE_CYCLE.md) says.
@@ -520,81 +520,6 @@ surfacing as an incident, and it was repaired at the reader rather than at the c
 - **A nano-library holding only the convention.** Too small to be its own package. Format already
   depends on pydantic and already owns the module's provenance record (`manifest.json`), and
   `release.json` is that record's snapshot twin.
-
-## RM253 — a repeat-count star allele (UGT1A1 `*28` = TA(8)) has no home a diplotype can name, and the CPIC drafter translates none of CPIC's notation
-
-**Seam 1 decided 2026-11-04 by the pm seat, on the evidence, as the maintainer asked: spelled, VCF-anchored
-and left-normalized.**
-
-A subagent read the site in about 120 PGP-HMS VCFs plus local runs. The evidence, all measured:
-
-- DeepVariant, DRAGEN, GATK, Clair3, Isaac, Helix, the imputation servers and CGI vcfBeta all write `*28`
-  as the ordinary indel `C>CAT` at the anchor (GRCh38 `2:233760233`, GRCh37 `2:234668879`), left-normalized.
-- No file holds a symbolic allele at the site, and no caller gives a repeat count in place of sequence.
-- freeBayes and `bcftools mpileup` write the whole 16-base run unnormalized. They match only once the
-  consumer normalizes, which the consumer guide already says no format guarantees.
-
-So `*1` is the reference, `*28` is `C>CAT`, `*36` is `CAT>C` and `*37` is `C>CATAT`. Seam 2 follows the
-same rule: CPIC's `DEL<bases>`/`INS<bases>` are spelled the same way, and the bare `DEL` with no length
-stays skipped.
-
-**One trap to carry into the build.** `rs3064744` appears in no VCF's ID column. Arrays (23andMe,
-AncestryDNA) and dbSNP-annotated VCFs carry `rs34983651` for the `+TA` allele, and one imputation server
-stamps `rs606231201`, which dbSNP places as a different allele. So an rsID-keyed row must not rely on
-`rs3064744`.
-
-**Decided 2026-11-04, in part.** DPYD (seam 3): the drafter writes CPIC's full name with the spaces dropped, as the maintainer chose. The comma between variants is replaced, because a comma inside a name would split any multi-valued cell (MULTI_SEP is `,;|`). The maintainer suggested `:`, tentatively ("maybe?"). **The pm seat picked `&` instead**, and the maintainer may still veto it before the drafter ships. `&` was picked because every other candidate already means something in an allele name. `:` is HGVS's reference separator. `+` is an intronic offset (`c.1905+1G>A`, DPYD `*2A`). `_` is an HGVS range. `/` separates the two halves of a diplotype. So HapB3 is `c.1129-5923C>G&c.1236G>A(HapB3)`. Seam 1, how a repeat count is spelled: open, decided after checking precedent in real VCFs (PGP-HMS, and just-vcf's seats).
-
-**0.8, confirmed 2026-11-03** by the maintainer when scoping 0.8.
-
-**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-09-21** · **Owner** format (schema) +
-enricher (`pgx_draft`) · **Motivating case**
-[S106](CONSUMER_SUGGESTIONS_HISTORY.md#s106--a-repeat-count-star-allele-ugt1a1-28--ta8-has-no-home-repeat_allelescsv-bins-a-count-and-haplotypescsv-names-an-allele-and-nothing-joins-the-two)
-— the most common UGT1A1 allele, the one atazanavir and the irinotecan labels key on, ships undefined
-
-**Reproduced on the snapshot, and the reporter's reading holds with one correction.** CPIC defines
-`UGT1A1*1` as `TA(7)`, `*28` as `TA(8)`, `*36` as `TA(6)` and `*37` as `TA(9)`, all at **rs3064744**
-(the report said rs8175347, the promoter's other name in the literature), plus `*80+*28` and `*80+*37`
-as two-variant haplotypes. `draft_gene` skips all six repeat rows, so `haplotypes.csv` defines `*28` by
-nothing while `allele_function.csv` and `diplotypes.csv` name it, and `validate` warns *"Star allele(s)
-used but not defined"* — correctly, and unfixably by the author. Across the whole snapshot the notation
-the drafter skips is 25 distinct spellings: `DEL<bases>` (the bulk, e.g. `DELTCT`), a bare `DEL` (4
-rows, lengthless), `INSCGGG`, and `UNIT(n)` repeats (`TA(8)`, `AAAGGGGCG(2)`, `GGA(1)`, `TCAG(2)`).
-NUDT15 `*2` has **no** defining row in the snapshot at all, so that half of the report is scoped to the
-live API, which was not probed.
-
-**Three seams, and they are not one item's worth of the same thing.**
-
-1. **A repeat count as a defining allele.** The format holds `<CNV:TR:n>` since RM5 — but `n` is a
-   *length in bases*, so `TA(8)` would be `<CNV:TR:16>`: legal, distinguishable from `*36`/`*37`/`*1`
-   by length, and lossy about the unit. Whether that is the right spelling, or whether the sequence
-   should be spelled out (sixteen bases, the standard's own preference when the sequence is known —
-   but VCF-anchored, which needs the preceding base the drafter does not have and the Ensembl row
-   RM251 now records does), or whether `repeat_alleles.csv` should gain a join to a haplotype name, is
-   the design question. The reporter's framing is exact: today it is a bin **or** a name, never both,
-   and the diplotype table needs the name. `@hosting-tri-state` says a symbolic allele compares as
-   *undecided* against a spelled call, so the first option moves the join to the consumer's caller
-   (`requires_callable`) — which may be the honest answer for a VNTR, and is still a decision.
-2. **`DEL<bases>` / `INS<bases>` → `<DEL:n>` / `<INS:n>`.** A drafter translation, not a schema gap:
-   the length is the notation's own, and the symbolic spelling is exactly what RM5 built for a variant
-   "whose sequence is deliberately unspelled". The bare `DEL` stays skipped (no length). The open
-   question is whether a spelled deletion should be spelled — CPIC gives the deleted bases and the
-   position, and the anchor base is one reference read away.
-3. **HGVS-named alleles (DPYD).** `HAPLOTYPE_NAME_PATTERN` refuses whitespace, and CPIC's names are
-   `c.1003G>T (*11)` and `c.1129-5923C>G, c.1236G>A (HapB3)`. The report's claim that
-   `haplotype_name` accepts them is **wrong as spelled** — probed, all three PGx models refuse on the
-   space — so this is a naming *policy* for the drafter (the legacy star in the parenthesis? the HGVS
-   string with the space removed? both, one as `suballele`?) before it is anything else. 167 defining
-   rows and 3,570 diplotypes wait on it.
-
-**What shipped with the filing (message only, in the uncut 0.7 line):** the RM5 notation warning now
-names the three symbolic spellings the format holds and says the *drafter* does not translate into
-them, pointing here; and the unparsable-diplotype sentence is bucketed by reason, so DPYD's HGVS names
-are no longer reported as CYP2D6's copy-number notation.
-
-**Parking-condition gate audit:** none of the three needs a consumer to act first — the corpus is the
-snapshot, already provisioned, and the probe module is a `draft_gene("UGT1A1")` away. This is a design
-decision, not a wait.
 
 ## RM236 — `consequence` and `impact` are planned axes with no slot, and an ACMG engine reads both as primary inputs
 
