@@ -366,3 +366,27 @@ def test_both_parquets_are_in_the_artifact_listing(tmp_path: Path, name: str) ->
     _compile(_module(tmp_path / "spec"), tmp_path / "out")
     manifest = json.loads((tmp_path / "out" / "manifest.json").read_text(encoding="utf-8"))
     assert name in {f["name"] for f in manifest["artifact"]["files"]}
+
+
+def test_a_member_over_a_resolution_filled_column_matches_on_both_sides(tmp_path: Path) -> None:
+    """Parity: the pre-flight expands over the positional tables AFTER the fill, so the compile must too.
+
+    An rsID-authored pharm row has no `chrom` until `resolution.csv` fills it; a member selecting on that
+    column matched in `validate` and not in `compile` while the compile expanded before the fill.
+    """
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    (spec / "module_spec.yaml").write_text(_YAML + _TIER_SCALE, encoding="utf-8")
+    (spec / "pharm_variants.csv").write_text(
+        "rsid,drug,genotype,conclusion\nrs9923231,warfarin,C/T,Reduced dose.\n", encoding="utf-8"
+    )
+    (spec / "resolution.csv").write_text(
+        "variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,source,status\n"
+        "rs9923231,rs9923231,16,31096368,C,T,GRCh38,0,authored,resolved\n",
+        encoding="utf-8",
+    )
+    (spec / "meta.csv").write_text(_META_HEADER + "pharm_variants[chrom=16],,,,,,A,,,,,,\n", encoding="utf-8")
+    assert not any("matches no row" in w for w in validate_spec(spec).warnings)
+    result = _compile(spec, tmp_path / "out")
+    assert "meta_selector_matches_nothing" not in _codes(result)
+    assert [s.matches for s in result.manifest.meta_selectors] == [1]

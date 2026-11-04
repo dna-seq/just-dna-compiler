@@ -253,21 +253,30 @@ def _resolve(
     return resolved
 
 
+def meta_scale_errors(rows: list[MetaRow], tier_scale: str | None) -> list[str]:
+    """The one refusal that needs the module but no other table: a `tier` with no `tier_scale` (RM324).
+
+    Separate from `build_meta` so `compile_module` can ask it before `mkdir` while expanding after the
+    positional fill, where its rows match the pre-flight's.
+    """
+    tiered = [_line(index) for index, row in enumerate(rows) if row.tier is not None]
+    if not tiered or tier_scale:
+        return []
+    return [
+        f"{META_CSV} states `tier` on line(s) {tiered} and module_spec.yaml names no `tier_scale` — a "
+        f"tier with no scale beside it is a grade nobody can read. Name the scale once in "
+        f"module_spec.yaml as `tier_scale:` (free text, e.g. the rubric your README defines)."
+    ]
+
+
 def build_meta(rows: list[MetaRow], tables: dict[str, list[Any]], tier_scale: str | None) -> MetaBuild:
     """Expand every member against `tables`, judge the rows that need the module, and resolve precedence.
 
     Pure computation over rows already loaded, so both `validate_spec` and `compile_module` run it, on
     the same view, and reach the same sentences. Nothing here reads or writes a file.
     """
-    errors: list[str] = []
+    errors: list[str] = meta_scale_errors(rows, tier_scale)
     warnings: list[str] = []
-    tiered = [_line(index) for index, row in enumerate(rows) if row.tier is not None]
-    if tiered and not tier_scale:
-        errors.append(
-            f"{META_CSV} states `tier` on line(s) {tiered} and module_spec.yaml names no `tier_scale` — a "
-            f"tier with no scale beside it is a grade nobody can read. Name the scale once in "
-            f"module_spec.yaml as `tier_scale:` (free text, e.g. the rubric your README defines)."
-        )
 
     all_members: list[list[MetaMember]] = []
     all_texts: list[list[str]] = []

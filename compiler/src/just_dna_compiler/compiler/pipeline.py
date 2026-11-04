@@ -98,6 +98,7 @@ from just_dna_compiler.compiler.meta import (
     member_tables,
     meta_frame,
     meta_resolved_frame,
+    meta_scale_errors,
 )
 from just_dna_compiler.compiler.parquets import (
     _build_annotations,
@@ -272,21 +273,16 @@ def compile_module(
         # *kind* table has to move `genes` too, and the old placement could not see one.
         validation.stats.update(module_stats(variants, kind_rows))
 
-    # The meta-table (0.8), expanded here: after the symbolic drop decides which rows exist and before
-    # resolution touches `variants`, which is the view `validate_spec` expands against too — so every
-    # member matches the same rows on both sides and each finding is one sentence, de-duplicated on the
-    # message like every check the pre-flight already ran. Before `mkdir`, so a refusal leaves nothing
-    # written; the pre-flight has already refused anything this could, so the arm is defensive.
+    # The meta-table (0.8), loaded and refused here, before `mkdir`, so a refusal leaves nothing written
+    # (the pre-flight has already refused anything these could, so the arms are defensive). It is
+    # EXPANDED further down, after the positional fill, against `authored_variants`: the post-drop,
+    # pre-resolution rows. That is the view `validate_spec` expands against (its survivors are filled
+    # too), so a member matches the same rows on both sides and each finding is one sentence.
     meta_rows, meta_errors, _ = load_meta(spec_dir)
+    meta_errors = meta_errors or meta_scale_errors(meta_rows, config.tier_scale)
     if meta_errors:
         return CompilationResult(success=False, errors=meta_errors, warnings=all_warnings)
-    meta_build = (
-        build_meta(meta_rows, member_tables(variants, kind_rows), config.tier_scale) if meta_rows else None
-    )
-    if meta_build is not None:
-        all_warnings.extend(w for w in meta_build.warnings if w not in all_warnings)
-        if meta_build.errors:
-            return CompilationResult(success=False, errors=meta_build.errors, warnings=all_warnings)
+    authored_variants = variants
     # The citation view: the table kinds plus the meta rows, whose `pmid` is a citation site
     # (`_CITING_TABLE_KINDS`). Every literature check below reads this rather than `kind_rows`.
     citing_rows: dict[str, list[Any]] = {**kind_rows, META_CSV: meta_rows}
@@ -669,6 +665,16 @@ def compile_module(
         kind_rows, resolution_table, config.genome_build, resolve=resolve_with_ensembl
     )
     all_warnings.extend(w for w in fill_warnings if w not in all_warnings)
+
+    # The meta expansion (0.8), on the same view as the pre-flight's: the positional tables filled, and
+    # `variants` as authored (resolution copies the rows it changes, so `authored_variants` is untouched).
+    meta_build = (
+        build_meta(meta_rows, member_tables(authored_variants, kind_rows), config.tier_scale)
+        if meta_rows
+        else None
+    )
+    if meta_build is not None:
+        all_warnings.extend(w for w in meta_build.warnings if w not in all_warnings)
 
     # 0.4 table kinds (RM1): materialize each present CSV via the generic materializer. The rows were
     # loaded above, before `mkdir`, so the symbolic-allele check could refuse without leaving a

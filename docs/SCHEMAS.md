@@ -2102,7 +2102,9 @@ members), numeric ranges (`<`, `>`), joins across tables (`table.column`), and s
 A concrete row is a member naming its table's full key (`variants[variant_key=rs429358,
 genotype=C/C]`), a locus is `variants[variant_key=rs10455872]`, a named allele is
 `allele_function[gene=APOE, allele=ε4]` (the module needs that `allele_function.csv` row, every other
-column may be empty), and a tag set is `variants[flags=legacy_longevitymap]`.
+column may be empty), and a tag set is `variants[flags=legacy_longevitymap]`. **The locus form is
+`variant_key=`**: `variants[rsid=…]` is legal but ranks as a one-condition selector, so against another
+one-condition selector (the legacy tag) it is incomparable and a disagreeing fact is withheld.
 
 ### The key, and what a row must say
 
