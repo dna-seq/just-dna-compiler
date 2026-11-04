@@ -447,6 +447,10 @@ def test_every_column_the_studies_writer_declares_is_actually_written(tmp_path: 
         # the model — so the guard fills both or neither.
         "confidence": "submitted",
         "confidence_unit": "civic_evidence_status",
+        # 0.8's StudyRow batch (PROPOSAL_0_8_PT2 §3 items 11–17).
+        "sample_size": "389166",
+        "sample_unit": "individuals",
+        "n_cases": "11262",
     }
     # Derived from the model, so a column added to StudyRow without a value here fails loudly rather
     # than being quietly excluded from the guard.

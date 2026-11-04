@@ -55,6 +55,7 @@ from just_dna_format.vocab import (
     RECOMMENDED_EFFECT_MEASURES,
     VALID_CLIN_SIG,  # noqa: F401 — re-exported for backward compat (see note below)
     VALID_DIRECTIONS,  # noqa: F401 — re-exported for backward compat
+    VALID_SAMPLE_UNITS,
     VALID_SIGNIFICANCE,  # noqa: F401 — re-exported for backward compat
     check_vocab,
     reject_template_placeholders,
@@ -1412,6 +1413,39 @@ class StudyRow(CitationPair, AuthoredModel):
         ),
     )
 
+    # ── The 0.8 batch (PROPOSAL_0_8_PT2 §3 items 11–17), declared after every 0.7 column so no column
+    # of a 0.7 `studies.parquet` changes position. ──
+    # RM325: how many were analysed, in what unit, and how many of them were cases. longevitymap v2's
+    # tier A is stated in N ("N ≥ 100k lives, or ≥ 3k cases"), and nothing in the format carried one.
+    # `sample_size` is the TOTAL analysed, cases included, so `n_cases` can never exceed it; the unit
+    # beside it is what keeps a parental study's lives apart from a cohort's people.
+    sample_size: int | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        ge=0,
+        description=(
+            "How many were analysed for this row's estimate, cases included, in the unit "
+            "`sample_unit` names (required beside it)."
+        ),
+    )
+    sample_unit: str | None = Field(
+        default=None,
+        json_schema_extra={**vocabulary("sample_unit", VALID_SAMPLE_UNITS), **since("0.8.0")},
+        description=(
+            "What `sample_size` counts: `individuals`, or `lives` where a study counts each "
+            "participant's parents (two lives per participant)."
+        ),
+    )
+    n_cases: int | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        ge=0,
+        description=(
+            "How many of the analysed were cases, for a case-control or extreme-phenotype design. "
+            "Never more than `sample_size` when both are stated."
+        ),
+    )
+
     @property
     def variant_key(self) -> str | None:
         """Stable key matching VariantRow.variant_key, or `None` when the row names no variant.
@@ -1484,6 +1518,30 @@ class StudyRow(CitationPair, AuthoredModel):
                 f"confidence={self.confidence!r} names a magnitude with no instrument beside it — "
                 f"set confidence_unit (e.g. 'civic_evidence_status'), because two sources publish "
                 f"values on scales that are not the same quantity"
+            )
+        return self
+
+    @field_validator("sample_unit")
+    @classmethod
+    def _validate_sample_unit(cls, v: str | None) -> str | None:
+        return check_vocab(v, VALID_SAMPLE_UNITS, "sample_unit")
+
+    @model_validator(mode="after")
+    def _refuse_a_count_with_no_unit_or_more_cases_than_analysed(self) -> "StudyRow":
+        # RM325. A count of 1,012,240 is a parental-lifespan study's LIVES or a cohort's people, and
+        # the two differ by a factor of two (`@weight-has-no-unit`). Only the asymmetric case is
+        # refused, as `confidence` does: a unit with no count names nothing that was measured.
+        if self.sample_size is not None and self.sample_unit is None:
+            raise ValueError(
+                f"sample_size={self.sample_size} has no unit beside it — set sample_unit "
+                f"({'|'.join(sorted(VALID_SAMPLE_UNITS))}), because a parental-lifespan study counts "
+                f"two lives per participant"
+            )
+        # Both columns are new, so no published row can hold the pair, and the two cannot both be true.
+        if self.sample_size is not None and self.n_cases is not None and self.n_cases > self.sample_size:
+            raise ValueError(
+                f"n_cases={self.n_cases} is more than sample_size={self.sample_size} — sample_size is the "
+                f"total analysed, cases included"
             )
         return self
 

@@ -272,6 +272,12 @@ def _build_studies(studies: list[StudyRow], module_name: str) -> pl.DataFrame:
                 # pattern — see `_build_frequencies`).
                 "p_value_num": s.p_value_num,
                 "neg_log10_p": s.neg_log10_p,
+                # ── 0.8: the StudyRow batch (PROPOSAL_0_8_PT2 §3 items 11–17), after every 0.7 column so
+                # none of them moves. Passthroughs; nothing here derives one from another. ──
+                # RM325: how many were analysed, in what unit, and how many were cases.
+                "sample_size": s.sample_size,
+                "sample_unit": s.sample_unit,
+                "n_cases": s.n_cases,
             }
         )
     schema = {
@@ -299,5 +305,10 @@ def _build_studies(studies: list[StudyRow], module_name: str) -> pl.DataFrame:
         "curator": pl.Utf8,
         "p_value_num": pl.Float64,
         "neg_log10_p": pl.Float64,
+        # Int64, not UInt32: a consumer sums these across studies (`@a-count-that-fits-every-partition-
+        # need-not-fit-their-sum`), and polars' `sum()` keeps the input dtype.
+        "sample_size": pl.Int64,
+        "sample_unit": pl.Utf8,
+        "n_cases": pl.Int64,
     }
     return pl.DataFrame(records, schema=schema)

@@ -229,6 +229,11 @@ it since 0.8. The symptom of skipping it is a refusal naming the DOI you wrote; 
 column over. When the preprint is later published, write its PMID instead of `NONE`
 (`just-dna-enricher hint citation --doi` finds it where PubMed has one).
 
+**A sample size is a count of something, and the something is a cell** (0.8). `sample_size` is the
+total analysed, cases included, and `sample_unit` says whether it counts people or lives: a
+parental-lifespan study counts two lives per participant, so the same number means half as many
+genotyped people. A size without its unit is refused, and so is an `n_cases` larger than the size.
+
 **The symptom of confusing it with `literature.csv` is a dropped row.** `literature.csv` is
 machine-produced and keeps every article it found; the compiler **discards an uncited literature row**
 when nothing references it. `studies.csv` is the authored side and is never dropped. If a citation

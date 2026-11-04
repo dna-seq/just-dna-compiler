@@ -44,7 +44,7 @@ land wherever RM323 puts per-locus facts. RM322 next, since APOE is the lead loc
 | [RM323](ROADMAP_HISTORY.md#rm323--a-fact-about-a-locus-has-no-authored-home-so-every-per-locus-axis-is-copied-onto-each-genotype-row-and-nothing-checks-the-copies-agree) | where per-locus facts live: typed columns per genotype plus an agreement warning, or a locus table | full ×n, or a new table kind | **decide first** |
 | [RM322](ROADMAP_HISTORY.md#rm322--diplotypescsv-carries-none-of-the-axes-a-scored-finding-needs-so-apoe-the-modules-headline-result-cannot-state-its-tier-mechanism-or-trade-off) | `DiplotypeRow` gains `negatives` and `category` (`priority`, `actionability`, `flags` cut) | full ×2 | ✅ shipped 2026-11-04 |
 | [RM324](ROADMAP_HISTORY.md#rm324--there-is-no-evidence-tier-column-so-the-axis-that-gates-visibility-is-a-flags-tiera-token) | evidence tier as value + scheme | full ×2 | home from RM323 |
-| [RM325](#rm325--studiescsv-has-no-sample-size-and-v2s-tier-a-rule-is-stated-in-n) | `StudyRow` sample size (and cases) | full ×1–2 |  |
+| [RM325](ROADMAP_HISTORY.md#rm325--studiescsv-has-no-sample-size-and-v2s-tier-a-rule-is-stated-in-n) | `StudyRow` sample size, its unit, and cases | full ×3 | ✅ shipped 2026-11-04 |
 | [RM326](#rm326--a-study-row-cannot-say-which-outcome-it-measured-so-the-definition-of-pro-longevity-lives-in-a-study_design-prefix) | `StudyRow` phenotype class; evidence role and the outcome strip derived from it | full ×1, derived near-zero | check EFO first |
 | [RM327](#rm327--pleiotropy-has-no-per-trait-row-so-a-trade-off-can-only-be-prose-and-tradeoff-is-computed-rather-than-authored) | per-trait benefit/harm table (mediator folds in); `tradeoff` computed; reserve the name | full (new kind), derived near-zero, reservation a patch | `tradeoff` decided |
 | [RM328](#rm328--no-study-row-can-name-the-ancestry-it-was-measured-in-so-european-only-evidence-is-a-hand-set-flag) | `StudyRow` ancestry on a vocabulary; `eur_only_evidence` derived | full ×1, derived near-zero | RM188 axis 2 |
@@ -75,22 +75,6 @@ scope decision put each in 0.8 or 0.9, as marked):
 
 The authored `report:` block in [ROADMAP.md's idea-book](ROADMAP.md) is the unnumbered half of RM248 and
 answers v2's §8 consumer requests 1 and 2 (category prose from the module, no "Net weight").
-
-## RM325 — `studies.csv` has no sample size, and v2's tier A rule is stated in N
-
-**Decided 2026-11-04 by the maintainer: `sample_size`, a closed `sample_unit` beside it (individuals / lives), and `n_cases`.** A magnitude carries its unit beside it (`@weight-has-no-unit`), so v2's "N ≥ 100k lives" is checkable from the artifact. The names still get the P5 audit in the proposal.
-
-**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format (+ enricher, if a derived N is filled) · **Motivating case** longevitymap v2 requirements §4.1 · *for* longevitymap v2 · *related* RM324, RM326
-
-**What was confirmed.** Tier A requires "N ≥ 100k lives, or ≥ 3k cases above the 90th percentile".
-No table in the format carries a sample size. A grep for `sample_size` or `n_cases` over the schema
-finds nothing, on `StudyRow` or on `GwasEffectRow`. So the rubric cannot be checked from the artifact.
-
-**Shape.** `sample_size` (and `n_cases` for case-control designs) on `StudyRow`. Full ×1–2. **The
-name needs the P5 audit**: parental-lifespan studies count *lives* (two parents per participant),
-which is not the number of people genotyped. A derived N on `gwas_effects.csv` is a separate half-cost
-option. The GWAS Catalog publishes its sample description as text, so probe the real field before
-modelling it (`@probe-the-real-file`).
 
 ## RM326 — a study row cannot say which outcome it measured, so the definition of "pro-longevity" lives in a `study_design` prefix
 

@@ -112,6 +112,7 @@ sees more columns.
 
 | Surface | Item | What changed |
 | --- | --- | --- |
+| `studies.csv` / `studies.parquet` `sample_size`, `sample_unit`, `n_cases` | RM325 | The total analysed (cases included), what it counts (`individuals` or `lives`, closed) and the case count. The counts are `Int64` in the parquet. A size without a unit, or more cases than analysed, is refused. Appended after every 0.7 column. Every module carrying `studies.csv` gets a new `artifact.digest` on a 0.8 recompile, with `content_signature` unchanged unless a cell is filled. |
 | `diplotypes.csv` / `diplotypes.parquet` `negatives`, `category` | RM322 | Free text, the `VariantRow` columns of the same names; `category` has no vocabulary. Null when unstated. Appended as the last two columns, so every 0.7 column keeps its position. Every module carrying `diplotypes.csv` gets a new `artifact.digest` on a 0.8 recompile, with `content_signature` unchanged unless a cell is filled. |
 
 ## 1.7 A new refusal: HLA allele names on `allele_function.csv`

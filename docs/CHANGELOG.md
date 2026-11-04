@@ -41,6 +41,16 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM325: a study row states how many were analysed, in what unit, and how many were cases (0.8, uncut)
+
+**format, compiler** — `studies.csv` gains `sample_size` (the total analysed, cases included),
+`sample_unit` (closed: `individuals`, `lives`) and `n_cases`, optional and declared after every 0.7
+column. A `sample_size` without its unit is refused, since a parental-lifespan study counts two lives
+per participant, and so is an `n_cases` larger than the `sample_size` beside it. The three reach
+`studies.parquet` (the counts as `Int64`) and `reverse` writes them back. A module that leaves them out
+keeps its `content_signature`; every module with `studies.csv` gets a new `artifact.digest` on a 0.8
+recompile, because the parquet gains columns.
+
 ## 2026-11-04 — RM348: `logs/` discovery stops trusting the filesystem (0.8, uncut)
 
 **compiler** — Every path log discovery considers, the top-level `*.log` included, must resolve to

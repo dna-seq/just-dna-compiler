@@ -276,6 +276,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
   | `VALID_RELEASE_OUTPUT_AXES` | 5 (closed) |  |
   | `VALID_RESOLUTION_STATUS` | 3 (closed) |  |
   | `VALID_RSID_STATUS` | 4 (closed) |  |
+  | `VALID_SAMPLE_UNITS` | 2 (closed) | what a `StudyRow.sample_size` counts — people, or lives where a study counts each participant's parents (RM325) |
   | `VALID_SIGNIFICANCE` | 4 (closed) |  |
   | `VALID_SOURCE_LAYERS` | 9 (closed) |  |
   | `VALID_VERIFICATION_CHECKS` | 26 (closed) |  |
@@ -551,6 +552,11 @@ the manifest's `authorship` (S55). 0.7 adds **`statistical_test?`** — which *a
 row's `p_value`/`effect_size`, free text like `study_design` beside it (RM140) — and
 **`confidence?`/`confidence_unit?`**, how far the *citing source* stands behind this evidence link, in
 that source's own units (RM160).
+0.8 adds the facts longevitymap v2 tiers and sorts its evidence by (PROPOSAL_0_8_PT2 §3 items 11–17),
+each optional and declared after every 0.7 column: **`sample_size?`/`sample_unit?`/`n_cases?`**
+(RM325) — `sample_size` is the total analysed, cases included, and is refused without its unit
+(`VALID_SAMPLE_UNITS`: `individuals`, or `lives` where a study counts each participant's parents); a
+row whose `n_cases` exceeds its `sample_size` is refused.
 
 **The pmid/doi pair (0.8, RM336) — one rule on every table that cites.** `pmid` never holds a DOI: a
 cell whose only identifier is a DOI is refused, naming the DOI, the way RM50 refuses a PMC id, because

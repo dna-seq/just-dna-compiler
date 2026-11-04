@@ -35,6 +35,35 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM325 — `studies.csv` has no sample size, and v2's tier A rule is stated in N
+
+**Decided 2026-11-04 by the maintainer: `sample_size`, a closed `sample_unit` beside it (individuals / lives), and `n_cases`.** A magnitude carries its unit beside it (`@weight-has-no-unit`), so v2's "N ≥ 100k lives" is checkable from the artifact. The names still get the P5 audit in the proposal.
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** ([PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §5 A5), taken into 0.8 on 2026-11-03 as a priority · **Owner** format (+ enricher, if a derived N is filled) · **Motivating case** longevitymap v2 requirements §4.1 · *for* longevitymap v2 · *related* RM324, RM326
+
+**What shipped.** `StudyRow` gains `sample_size` (an integer ≥ 0, the total analysed with the cases
+included), `sample_unit` (closed, `VALID_SAMPLE_UNITS`: `individuals`, `lives`) and `n_cases` (an
+integer ≥ 0), all optional with first release 0.8.0 and declared after every 0.7 column. A
+`sample_size` without its unit is refused (`@weight-has-no-unit`: a parental-lifespan study counts two
+lives per participant), and so is an `n_cases` larger than the `sample_size` beside it; a unit or a case
+count alone is legal. The three reach `studies.parquet` (the counts as `Int64`, since a consumer sums
+them), `reverse` writes them back, and a stated cell is inside `content_signature`. The derived N on
+`gwas_effects.csv` the entry priced as a separate half-cost option was not built: nothing asked for it.
+Tests: `compiler/tests/test_studyrow_0_8.py` (a copy of `reference_examples/hfe_hemochromatosis` with the
+columns filled, compile → reverse → compile to a fixed point on both identities, and the two refusals).
+
+**Residuals** none
+
+**What was confirmed.** Tier A requires "N ≥ 100k lives, or ≥ 3k cases above the 90th percentile".
+No table in the format carries a sample size. A grep for `sample_size` or `n_cases` over the schema
+finds nothing, on `StudyRow` or on `GwasEffectRow`. So the rubric cannot be checked from the artifact.
+
+**Shape.** `sample_size` (and `n_cases` for case-control designs) on `StudyRow`. Full ×1–2. **The
+name needs the P5 audit**: parental-lifespan studies count *lives* (two parents per participant),
+which is not the number of people genotyped. A derived N on `gwas_effects.csv` is a separate half-cost
+option. The GWAS Catalog publishes its sample description as text, so probe the real field before
+modelling it (`@probe-the-real-file`).
+
 ## RM303 — the snapshot layout is a contract with six parties and no model, so it belongs in `just-dna-format`
 
 **0.8, confirmed 2026-11-03** by the maintainer when scoping 0.8.

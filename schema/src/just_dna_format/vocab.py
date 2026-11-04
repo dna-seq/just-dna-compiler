@@ -675,6 +675,12 @@ RECOMMENDED_EFFECT_MEASURES: frozenset[str] = frozenset(
     {"OR", "HR", "RR", "beta", "log(OR)", "log(HR)", "NR"}
 )
 
+# ── The 0.8 `StudyRow` batch (PROPOSAL_0_8_PT2 §3 items 11–15) ──────────────────────────────────
+# What `StudyRow.sample_size` counts (RM325). A parental-lifespan study counts LIVES, two parents per
+# genotyped participant, so "N = 1,012,240" is not the number of people genotyped, and a sample size
+# with no unit beside it is refused (`@weight-has-no-unit`). Closed: a third unit is a new member.
+VALID_SAMPLE_UNITS: frozenset[str] = frozenset({"individuals", "lives"})
+
 # Which way the effect allele moves the MEASURED TRAIT — the GWAS Catalog's `betaDirection` (RM90).
 #
 # **Not `VALID_DIRECTIONS`, and the separation is structural rather than stylistic.** That vocabulary

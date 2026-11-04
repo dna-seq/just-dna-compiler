@@ -1019,6 +1019,11 @@ def _write_studies_csv(studies_df: pl.DataFrame, output_path: Path) -> None:
         # 0.5: the authored numeric p-value. `neg_log10_p` is deliberately absent — it is derived on
         # write, so re-emitting it would author a value the next compile recomputes anyway.
         "p_value_num",
+        # 0.8: the StudyRow batch (PROPOSAL_0_8_PT2 §3 items 11–17). Each is named twice, here and in
+        # the row dict below, and the behavioural guard in test_roundtrip_regressions fills them all.
+        "sample_size",
+        "sample_unit",
+        "n_cases",
     ]
     with open(output_path, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -1052,5 +1057,8 @@ def _write_studies_csv(studies_df: pl.DataFrame, output_path: Path) -> None:
                     "provenance_regex": _scalar_cell(row.get("provenance_regex")),
                     "curator": _scalar_cell(row.get("curator")),
                     "p_value_num": _scalar_cell(row.get("p_value_num")),
+                    "sample_size": _scalar_cell(row.get("sample_size")),
+                    "sample_unit": _scalar_cell(row.get("sample_unit")),
+                    "n_cases": _scalar_cell(row.get("n_cases")),
                 }
             )
