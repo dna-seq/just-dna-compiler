@@ -88,7 +88,7 @@ unstated), `pmid`, `doi` (optional; an uncited row draws no warning). It compile
 `model_organisms.parquet`, listed last in `ARTIFACT_PARQUETS` and not in `LEAD_PARQUETS`; a module
 carrying no such file keeps its digest. **Annotation only**: it reaches no weight, effect, tier or
 meta-table member, it does not make a directory a module on its own, and its genes are not in
-`manifest.stats.genes`. A 0.7 reader of the artifact ignores the parquet; a 0.7 compiler does not read
+`manifest.stats.genes` nor in the enricher's gene-level scope (constraint, gene validity, dosage). A 0.7 reader of the artifact ignores the parquet; a 0.7 compiler does not read
 the CSV, so it neither checks nor compiles it.
 
 ## 1.3 New derived column and client method (no break)

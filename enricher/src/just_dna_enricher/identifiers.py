@@ -823,7 +823,9 @@ ROWS_PASSED_IN = "rows were passed in, so only variants.csv was available"
 BENIGN_NOT_READ: frozenset[str] = frozenset({NOT_PRESENT, ROWS_PASSED_IN})
 
 
-def authored_identifiers(spec_dir: Path, column: str) -> IdentifierRoster:
+def authored_identifiers(
+    spec_dir: Path, column: str, *, exclude: frozenset[str] = frozenset()
+) -> IdentifierRoster:
     """Every value of `column` across every authored table that declares it, and what was read.
 
     The roster `check_identifiers` runs on when it is given a spec directory. Rows are loaded with the
@@ -832,11 +834,16 @@ def authored_identifiers(spec_dir: Path, column: str) -> IdentifierRoster:
 
     Multi-valued cells are split on `MULTI_SEP` for **both** columns. A `gene` cell is single-valued in
     practice, and splitting it costs nothing and cannot mis-read one: a symbol contains no separator.
+
+    `exclude` names tables to leave out of this roster altogether (neither read nor counted as unread):
+    for a caller whose question is narrower than "every authored id", such as `module_genes`.
     """
-    return authored_rows(spec_dir, column)[1]
+    return authored_rows(spec_dir, column, exclude=exclude)[1]
 
 
-def authored_rows(spec_dir: Path, column: str) -> tuple[list[BaseModel], IdentifierRoster]:
+def authored_rows(
+    spec_dir: Path, column: str, *, exclude: frozenset[str] = frozenset()
+) -> tuple[list[BaseModel], IdentifierRoster]:
     """The rows behind that roster, in table-then-file order, beside the roster itself.
 
     One loader for both shapes. RM163's drift check needs the **rows** rather than the ids — an
@@ -847,6 +854,8 @@ def authored_rows(spec_dir: Path, column: str) -> tuple[list[BaseModel], Identif
     roster = IdentifierRoster()
     kept: list[BaseModel] = []
     for name, model in sorted(_id_bearing_tables(column).items()):
+        if name in exclude:
+            continue
         try:
             table = resolve_sidecar(spec_dir, name) or spec_dir / name
         except SidecarCollision as exc:

@@ -293,7 +293,9 @@ def compile_module(
     authored_variants = variants
     # The model-organism table (0.8, RM335), loaded and refused before `mkdir` on the meta-table's terms
     # (the pre-flight has already refused anything this could). It is written verbatim further down.
-    model_organism_rows, model_organism_errors, _ = load_model_organisms(spec_dir)
+    model_organism_rows, model_organism_errors, model_organism_warnings = load_model_organisms(spec_dir)
+    # De-duplicated on the message: the pre-flight emitted these over the same bytes.
+    all_warnings.extend(w for w in model_organism_warnings if w not in all_warnings)
     if model_organism_errors:
         return CompilationResult(success=False, errors=model_organism_errors, warnings=all_warnings)
     # The citation view: the table kinds plus the meta and model-organism rows, whose `pmid` is a

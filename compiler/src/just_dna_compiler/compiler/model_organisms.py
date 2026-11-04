@@ -20,8 +20,12 @@ def load_model_organisms(spec_dir: Path) -> tuple[list[ModelOrganismRow], list[s
     """Read `model_organisms.csv` and answer with `(rows, errors, warnings)`; `([], [], [])` when absent.
 
     A present file with no rows is an error, the answer every authored table gives. The duplicate key goes
-    through `_validate_table_kind`, so it reads as every other keyed table's does. No rows are returned
-    alongside an error, so a caller cannot build a parquet from a table it has just refused.
+    through `_validate_table_kind`, so it reads as every other keyed table's does.
+
+    Rows that parsed come back **with** a duplicate-key error, as `load_overlay`'s do: the pre-flight's
+    citing view still needs them, or a `literature.csv` row this table cites would be reported as uncited
+    in the same run as the duplicate, sending the author to the wrong file. Both callers refuse on any
+    error before a parquet could be built from them.
     """
     path = Path(spec_dir) / MODEL_ORGANISMS_CSV
     if not path.is_file():
@@ -32,4 +36,4 @@ def load_model_organisms(spec_dir: Path) -> tuple[list[ModelOrganismRow], list[s
     if not rows:
         return [], [f"{MODEL_ORGANISMS_CSV} is present but has no rows."], warnings
     key_errors, key_warnings = _validate_table_kind(MODEL_ORGANISMS_CSV, ModelOrganismRow, rows)
-    return (rows if not key_errors else []), key_errors, [*warnings, *key_warnings]
+    return rows, key_errors, [*warnings, *key_warnings]

@@ -59,6 +59,11 @@ genes stay out of `manifest.stats.genes`. Annotation only: it reaches no weight,
 member. `describe`/`template`/`stub` answer for it (`DRAFTABLE`), which also puts its `gene` in front of
 `check-identifiers`. A module carrying no such file keeps its digest. INTEGRATION_0_8 § 1.2.2.
 
+**enricher** — `gene_metrics.module_genes`, the scope of the constraint, gene-validity and ClinGen dosage
+passes, leaves `model_organisms.csv` out (a gene named only there is not one of the module's genes, as
+`manifest.stats.genes` already says); `authored_identifiers`/`authored_rows` gain a keyword-only
+`exclude` for it. `check-identifiers` reads the table as it reads every authored one.
+
 ## 2026-11-04 — RM348: `logs/` discovery stops trusting the filesystem (0.8, uncut)
 
 **compiler** — Every path log discovery considers, the top-level `*.log` included, must resolve to

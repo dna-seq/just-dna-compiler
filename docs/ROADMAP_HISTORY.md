@@ -66,8 +66,10 @@ least one recognized table", is a `LEAD_PARQUETS` member the publish gate and di
 `schema/tests/test_model_organisms.py` and `compiler/tests/test_model_organisms_compile.py` (the audit's
 two rows through compile → reverse → compile with equal digest and `content_signature`, the signature
 moving on an edited cell, the duplicate refusal, the vocabulary refusal, no warning from an uncited row,
-the module-alone refusal); the duplicate key, the signature roster, the citing roster and the reverse
-were each broken once and their test went red.
+the module-alone refusal, a literature row cited only here); the duplicate key, the signature roster, the
+citing roster and the reverse were each broken once and their test went red. The enricher's gene scope
+(`gene_metrics.module_genes`, which the constraint, gene-validity and dosage passes read) leaves the table
+out, as `manifest.stats.genes` does; `check-identifiers` still reads it.
 
 **Residuals** none
 
@@ -75,7 +77,8 @@ were each broken once and their test went red.
 matching found 20 of the 22 genes NCBI orthologues found), species, model type, sex, diet, the lifespan
 effect, and the direction concordance with the human allele (`concordant`, `discordant`,
 `nonmonotone`), with a citation. Annotation only: it never reaches an effect column or a tier
-(R-ANIMAL-1). Full, a new table kind.
+(R-ANIMAL-1). Full, a new table kind. *(As built, a new authored table at full price, registered beside
+the meta-table rather than as a `_TABLE_KINDS` entry: see What shipped.)*
 
 ## RM303 — the snapshot layout is a contract with six parties and no model, so it belongs in `just-dna-format`
 

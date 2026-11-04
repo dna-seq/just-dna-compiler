@@ -169,3 +169,19 @@ def test_it_never_reaches_a_lead_table_a_meta_member_or_the_gene_facet(tmp_path:
     # IGF1R is named only by the model-organism table: evidence beside the findings, not a gene the
     # module's findings are about.
     assert "IGF1R" not in result.manifest.stats.genes
+
+
+def test_a_literature_row_cited_only_here_is_kept_and_never_called_uncited(tmp_path: Path) -> None:
+    # The PPARG row is the only citer of 19117549. Kept into literature.parquet on a clean compile, and
+    # not reported as uncited in a pre-flight that also refuses a duplicate in this table: the citing view
+    # still holds the parsed rows, so the one finding is the duplicate and it names the right file.
+    spec = _module(tmp_path / "spec")
+    (spec / "literature.csv").write_text("pmid\n19117549\n", encoding="utf-8")
+    _compile(spec, tmp_path / "out")
+    assert pl.read_parquet(tmp_path / "out" / "literature.parquet")["pmid"].to_list() == ["19117549"]
+
+    contradicting = _IGF1R.replace("+33% (female)", "no change")
+    (spec / "model_organisms.csv").write_text(_ROWS + contradicting, encoding="utf-8")
+    result = validate_spec(spec)
+    assert any("model_organisms.csv" in e and "uplicate" in e for e in result.errors), result.errors
+    assert not [w for w in result.warnings if "no study, bin or pharm row" in w], result.warnings

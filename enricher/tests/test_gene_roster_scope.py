@@ -138,3 +138,20 @@ def test_the_pgx_cross_checks_own_pair_is_not_this_roster() -> None:
         "haplotypes.csv",
     }
     assert set(_id_bearing_tables("gene")) > {name for name, _m, _a in _GENE_TABLES}
+
+
+_MODEL_ORGANISMS = (
+    "gene,orthologue,species,model_type,sex,lifespan_effect,concordance\n"
+    "IGF1R,Igf1r,Mus musculus,heterozygous knockout,female,+33% (female),concordant\n"
+)
+
+
+def test_a_model_organism_gene_is_checked_for_currency_but_is_not_the_modules_scope(tmp_path: Path) -> None:
+    """RM335: `model_organisms.csv` names genes a mouse experiment was about, not genes the module's
+    findings are about. `check-identifiers` asks HGNC about its symbols like any authored table's, but the
+    three gene-level enrichment passes take their scope from what `manifest.stats.genes` publishes, which
+    leaves it out, so a gene named only there is not enriched as one of the module's genes."""
+    spec = _spec(tmp_path, variants__csv=_VARIANTS, model_organisms__csv=_MODEL_ORGANISMS)
+    assert "IGF1R" in authored_identifiers(spec, "gene").ids
+    assert module_genes(spec) == ["MTHFR"]
+    assert validity_genes(spec) == ["MTHFR"]
