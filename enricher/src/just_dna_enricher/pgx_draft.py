@@ -99,8 +99,9 @@ _REFERENCE_NAME = "Reference"
 
 #: One variant of an HGVS-named allele once spaces are dropped: `c.`/`g.`/`m.`/`n.` and an expression,
 #: then CPIC's optional label in parentheses (`(*11)`, `(HapB3)`). Nothing in it may be `&`, which joins
-#: the variants of one allele, or a comma, which `MULTI_SEP` would split.
-_HGVS_VARIANT = re.compile(r"^[cgmn]\.[^\s&(),]+(\([^\s&(),]+\))?$")
+#: the variants of one allele, a `MULTI_SEP` character (`,;|`), which would split the cell, or `/`, which
+#: separates the halves of a diplotype.
+_HGVS_VARIANT = re.compile(r"^[cgmn]\.[^\s&(),;|/]+(\([^\s&(),;|/]+\))?$")
 
 
 def _draft_name(raw: str | None) -> str | None:
@@ -172,12 +173,17 @@ class PgxDraftResult:
 
 
 def _haplotype_rows(
-    variants: list[CpicDefiningVariant], read_window: ReadWindow = _no_reference
+    variants: list[CpicDefiningVariant],
+    read_window: ReadWindow = _no_reference,
+    *,
+    whole_gene: list[CpicDefiningVariant] | None = None,
 ) -> tuple[list[HaplotypeRow], list[str]]:
     """CPIC's defining variants → `haplotypes.csv` rows, skipping what the grammar cannot hold.
 
     A value in CPIC's deletion/insertion/repeat notation is spelled through `read_window` (RM253); the
     default reader reads nothing, so a caller with no sequence access withholds those rows, by reason.
+    `whole_gene` is every defining variant CPIC publishes for the gene, before an `--allele` filter: a
+    locus is read as a delins from all of its rows, never from the ones a filter happened to keep.
     """
     rows: list[HaplotypeRow] = []
     warnings: list[str] = []
@@ -186,14 +192,15 @@ def _haplotype_rows(
     # skips underneath them.
     no_locus: list[str] = []
     not_spelled: dict[str, list[str]] = {}
-    spelled_count = 0
     # Every value CPIC states at a locus, across the gene's alleles: a `DEL` row is read against its
     # neighbours, since RYR1 writes a delins as `DEL<bases>` on its reference allele and `INS<bases>` on
     # the variant, and one row alone cannot tell that from a deletion.
-    values_at: dict[tuple[str | None, int | None], list[str]] = {}
-    for variant in variants:
+    values_at: dict[tuple[str | None, int | None], list[tuple[str, str]]] = {}
+    for variant in variants if whole_gene is None else whole_gene:
         if variant.variant_allele:
-            values_at.setdefault((variant.chrom, variant.start), []).append(variant.variant_allele)
+            values_at.setdefault((variant.chrom, variant.start), []).append(
+                (variant.allele, variant.variant_allele)
+            )
     for variant in variants:
         if not variant.variant_allele:
             continue  # nothing definite to write
@@ -220,13 +227,12 @@ def _haplotype_rows(
                 variant.chrom,
                 variant.start,
                 read_window,
-                delins_ref=delins_partner(values_at[(variant.chrom, variant.start)]),
+                delins_ref=delins_partner(values_at[(variant.chrom, variant.start)], _REFERENCE_NAMES),
             )
             if isinstance(spelled, str):
                 not_spelled.setdefault(spelled, []).append(label)
                 continue
             rows.append(_spelled_row(name, variant, parsed, spelled))
-            spelled_count += 1
             continue
         # Mirror `HaplotypeRow._validate_identification` exactly: rsid, or chrom AND start. The
         # guard used to accept a bare `start`, so `draft --gene CYP2C9` built a row with a position,
@@ -265,12 +271,6 @@ def _haplotype_rows(
             f"by neither resolves to nothing. e.g. {shown}{rest}."
         )
     gene = variants[0].gene if variants else "?"
-    if spelled_count:
-        warnings.append(
-            f"{gene}: {spelled_count} defining allele(s) CPIC writes as `DEL<bases>`, `INS<bases>` or a "
-            f"repeat count `UNIT(n)` were spelled as the VCF-anchored, left-normalized indel a caller "
-            f"writes, reading the anchor and the run from the GRCh38 reference (RM253)."
-        )
     for reason, entries in sorted(not_spelled.items()):
         shown = ", ".join(entries[:3])
         rest = f" (+{len(entries) - 3} more)" if len(entries) > 3 else ""
@@ -387,6 +387,10 @@ def _selected_alleles(requested: Sequence[str], published: Sequence[str], gene: 
     # A gene CPIC does not name with stars has `Reference` where others have `*1`; kept for the same
     # reason, and only where CPIC publishes it, so a star-named gene's set is unchanged.
     return frozenset(wanted | {_REFERENCE_ALLELE} | ({_REFERENCE_NAME} & written))
+
+
+#: The names CPIC gives a gene's reference allele: `*1` for a star-named gene, `Reference` otherwise.
+_REFERENCE_NAMES: frozenset[str] = frozenset({_REFERENCE_ALLELE, _REFERENCE_NAME})
 
 
 def _pair_in(diplotype: str, selected: frozenset[str]) -> bool:
@@ -588,6 +592,9 @@ def draft_gene(
     # at the top of the function; reported here.
     if build_warning:
         warnings.append(f"{gene}: {build_warning}")
+    # Every defining variant CPIC publishes, kept before the filter below narrows `defining`: a locus
+    # is judged a delins from all of its rows (RM253).
+    whole_gene = defining
     selected = _selected_alleles(alleles, [a.allele for a in published], gene)
     if selected is not None:
         # Filtered once, here, so the three tables and the drug rows all see the same set — the drug rows
@@ -610,7 +617,7 @@ def draft_gene(
         defining = [v for v in defining if (_draft_name(v.allele) or v.allele) in selected]
 
     read_window = _reference_reader(sequences or SequenceProxy(offline=offline), offline=offline)
-    haplotypes, haplotype_warnings = _haplotype_rows(defining, read_window)
+    haplotypes, haplotype_warnings = _haplotype_rows(defining, read_window, whole_gene=whole_gene)
     warnings.extend(haplotype_warnings)
 
     function_rows: list[AlleleFunctionRow] = []

@@ -23,6 +23,7 @@ from just_dna_enricher.cpic_notation import (
     NOT_SPELLED_REASONS,
     Notation,
     Spelled,
+    delins_partner,
     parse_notation,
     spell,
 )
@@ -376,6 +377,49 @@ def test_a_notation_the_reference_does_not_bear_out_is_withheld() -> None:
     assert isinstance(spell(Notation("deletion", "TA"), chrom, run_start, read), Spelled)
     # Off the recording is the unreadable arm, never a guess.
     assert spell(Notation("deletion", "TA"), chrom, 1_000, read) == "reference_unreadable"
+
+
+def test_a_repeat_position_inside_the_run_is_withheld_not_miscounted() -> None:
+    """One unit into UGT1A1's run, a rightward count is one short and `TA(8)` would be spelled +2 units."""
+    read = _reference_reader(_RecordedReference(), offline=False)
+    assert isinstance(spell(Notation("repeat", "TA", 8), "2", 233760235, read), Spelled)
+    assert spell(Notation("repeat", "TA", 8), "2", 233760237, read) == "reference_disagrees"
+
+
+def test_a_short_read_at_a_delins_is_unreadable_never_a_disagreement() -> None:
+    def clipped(chrom: str, start: int, end: int) -> str | None:
+        return "T"
+
+    assert (
+        spell(Notation("insertion", "CT"), "19", 38572266, clipped, delins_ref="TC") == "reference_unreadable"
+    )
+
+
+def test_a_delins_needs_its_deletion_on_the_reference_allele() -> None:
+    """Two variant alleles, one deleting and one inserting at a locus, are two events, not a delins."""
+    names = frozenset({"*1", "Reference"})
+    assert delins_partner([("Reference", "DELTC"), ("c.13994_13995delTCinsCT", "INSCT")], names) == "TC"
+    assert delins_partner([("*7", "DELA"), ("*9", "INSG")], names) is None
+    assert delins_partner([("*1", "DEL"), ("*9", "INSG")], names) is None
+    assert delins_partner([("*1", "A"), ("*7", "DELA"), ("*9", "INSG")], names) is None
+
+
+@_needs_snapshot
+def test_the_allele_filter_does_not_change_how_a_locus_is_read(tmp_path: Path) -> None:
+    """Filtered to an unrelated RYR1 allele, `Reference` keeps its reference state at the delins locus;
+    judged from the filtered rows alone, its `DELTC` would read as a deletion CPIC never stated."""
+    spec, _ = _draft(tmp_path, "RYR1", alleles=["c.14510delA"])
+    at = [
+        (r.ref, r.allele)
+        for r in _rows(spec, "haplotypes.csv", HaplotypeRow)
+        if r.haplotype_name == "Reference" and r.start == 38572266
+    ]
+    assert at == [("TC", "TC")]
+
+
+def test_a_written_name_never_holds_a_separator() -> None:
+    for raw in ("c.[61C>G;70A>G]", "c.61C>G|c.70A>G", "c.61C>G/c.70A>G"):
+        assert _draft_name(raw) is None, raw
 
 
 # ── The registries the warnings index ────────────────────────────────────────────────────────────

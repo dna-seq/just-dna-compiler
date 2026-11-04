@@ -76,7 +76,7 @@ NOT_SPELLED_EXPLANATION: dict[str, str] = {
     ),
     "reference_disagrees": (
         "a notation the GRCh38 reference does not bear out at CPIC's position (the deleted bases are "
-        "not there, or the repeat unit does not start there) — withheld, since spelling it would "
+        "not there, or the repeat run does not start there) — withheld, since spelling it would "
         "invent an event"
     ),
 }
@@ -121,22 +121,28 @@ def parse_notation(value: str) -> Notation | str:
     return "unrecognized"
 
 
-def delins_partner(values: list[str]) -> str | None:
+def delins_partner(entries: list[tuple[str, str]], reference_names: frozenset[str]) -> str | None:
     """The reference bases of a delins site, or `None` when the locus is not one.
 
-    `values` is every `variantallele` CPIC states at one locus, across all of the gene's alleles. The
-    locus is a delins when they are exactly one `DEL<bases>` spelling plus `INS<bases>`, and nothing
-    else: a locus where some allele is written as plain bases or a bare `DEL` has its reference state
-    written that way, so its `DEL`/`INS` rows are ordinary deletions and insertions.
+    `entries` is every `(allele, variantallele)` CPIC states at one locus, across **all** of the gene's
+    alleles (never a filtered subset: whether a locus is a delins cannot depend on which alleles an
+    author asked for). The locus is a delins only when the values are `DEL<bases>` and `INS<bases>`
+    and nothing else, every `DEL` names the same bases, there is an `INS`, and the `DEL` sits on the
+    gene's **reference allele** (`reference_names`). That last condition is what makes the `DEL` the
+    reference state rather than a second variant: RYR1's `DELTC` is on `Reference`. A locus where the
+    deletion and the insertion are two variant alleles, or where the reference is written as plain
+    bases or a bare `DEL`, is read one row at a time.
     """
-    parsed = [parse_notation(v) for v in values]
-    if not all(isinstance(p, Notation) and p.kind in ("deletion", "insertion") for p in parsed):
+    parsed = [(allele, parse_notation(value)) for allele, value in entries]
+    if not all(isinstance(p, Notation) and p.kind in ("deletion", "insertion") for _, p in parsed):
         return None
-    deleted = {p.bases for p in parsed if isinstance(p, Notation) and p.kind == "deletion"}
-    inserted = [p for p in parsed if isinstance(p, Notation) and p.kind == "insertion"]
-    if len(deleted) == 1 and inserted:
-        return next(iter(deleted))
-    return None
+    deletions = [(allele, p) for allele, p in parsed if isinstance(p, Notation) and p.kind == "deletion"]
+    inserted = [p for _, p in parsed if isinstance(p, Notation) and p.kind == "insertion"]
+    if not inserted or len({p.bases for _, p in deletions}) != 1:
+        return None
+    if not all(allele in reference_names for allele, _ in deletions):
+        return None
+    return deletions[0][1].bases
 
 
 def spell(
@@ -154,7 +160,7 @@ def spell(
     """
     if delins_ref is not None and notation.kind in ("deletion", "insertion"):
         here = read_window(chrom, start, start + len(delins_ref) - 1)
-        if here is None:
+        if here is None or len(here) != len(delins_ref):
             return "reference_unreadable"
         if here.upper() != delins_ref:
             return "reference_disagrees"
@@ -182,6 +188,16 @@ def spell(
     # A repeat: count the reference's own copies of the unit from `start`, then insert or delete the
     # difference after the base before the run.
     unit = notation.bases
+    if notation.count is None:  # pragma: no cover - `parse_notation` sets it for every repeat
+        return "unrecognized"
+    # CPIC's position is the run's first base, so a whole copy of the unit just before it means the
+    # position sits inside the run and the rightward count below would come out short — an indel of
+    # the wrong size, published without a word. Withheld instead.
+    before = read_window(chrom, start - len(unit), start - 1)
+    if before is None or len(before) != len(unit):
+        return "reference_unreadable"
+    if before.upper() == unit:
+        return "reference_disagrees"
     run = read_window(chrom, start - 1, start - 1 + _RUN_WINDOW)
     if run is None or len(run) < len(unit) + 1:
         return "reference_unreadable"
@@ -194,7 +210,7 @@ def spell(
         return "reference_disagrees"
     if (copies + 1) * len(unit) > len(body):
         return "reference_unreadable"  # the run reaches the window's edge: the count would be clipped
-    count = notation.count or 0
+    count = notation.count
     if count > copies:
         return _normalized(chrom, start - 1, anchor, anchor + unit * (count - copies), read_window)
     if count < copies:

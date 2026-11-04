@@ -4594,7 +4594,11 @@ separate step.
   - **A `DEL` beside an `INS` at one locus is a delins.** RYR1 writes `c.13994_13995delTCinsCT` as
     `DELTC` on `Reference` and `INSCT` on the variant; read one row at a time, `Reference` would carry
     a deletion. Read by locus (`cpic_notation.delins_partner`), the pair is `TC>CT` and the `DEL` half
-    is the reference state.
+    is the reference state — only when the `DEL` sits on the reference allele (`*1`/`Reference`), and
+    judged from every row CPIC states there, never from the rows an `--allele` filter kept.
+  - **A repeat's position must be the run's first base.** A whole copy of the unit just before it
+    means the position sits inside the run, where a rightward count comes out short; that row is
+    withheld as a disagreement rather than spelled one unit too long.
   - **A repeat row carries no rsID.** CPIC names UGT1A1's run `rs3064744`, which no caller writes in
     its ID column (arrays and dbSNP-annotated VCFs carry `rs34983651` for `+TA`; one imputation server
     stamps `rs606231201`, a different allele in dbSNP). The row is keyed by `chrom:start:ref`. A
