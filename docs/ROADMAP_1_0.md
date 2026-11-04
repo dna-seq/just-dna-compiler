@@ -386,6 +386,27 @@ breaking half, and the line is owed by whoever created the obligation.
 
 ---
 
+## RM346 — the authored tables are denormalized for people, and the parquets copy that shape, so a machine reader gets it too
+
+**Severity** low · **Status** open, 1.0 (the maintainer's ask, 2026-11-04) · **Owner** compiler (the artifact shape) + format (the manifest's table list) · **Motivating case** the 0.8 interview on RM323 · *related* RM323, RM28, RM52
+
+**The decision behind it.** On 2026-11-04 the maintainer kept the authored layer human-centred: the same fact
+columns (tier, causal and effector confidence, age of action) repeat across the single-statement tables
+(`variants.csv`, `diplotypes.csv`, the meta-table) instead of living in one normalized fact table. "If it were
+a db it'd be 10x more tables, because many columns are duplicated across individual-loci-type tables and
+properly normalized db resolves this by pairing adapters. Humans have trouble reading such. Compilation can
+still transform them, add a 1.0 todo item to make a normalized shape of this human-centred facet, so that a
+parquet is more machine/SQL friendly."
+
+**The item.** Compile emits a normalized shape beside, or instead of, today's per-table parquets: one
+statement table carrying the shared columns once, joined to per-kind tables through keys (the "pairing
+adapters"), so a SQL reader can ask about every statement without a union over kinds. The authored CSVs do
+not change. `reverse` must still rebuild them losslessly (P7).
+
+**Why it is filed under 1.0.** Removing or reshaping the parquets a reader already consumes is major-only (P3).
+**Adding** a normalized parquet beside them is additive, and nearly free under P9, so that half could land in
+a minor if a consumer asks first. RM52's upgrade procedure owes a line for whichever half lands at 1.0.
+
 ## RM55 (removal half) — the integer copy-number and repeat-count columns
 
 **Severity** high · **Status** the whole usable fix **shipped in 0.6**, so what is left here is a

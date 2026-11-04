@@ -107,6 +107,23 @@ gene-pair subject (it does not if that home is keyed on `variant_key`).
 
 ## RM323 — a fact about a locus has no authored home, so every per-locus axis is copied onto each genotype row and nothing checks the copies agree
 
+**Re-decided 2026-11-04 by the maintainer: no new fact table, and no subject kinds.** This supersedes the
+`(subject_kind, subject)` key below.
+
+The per-locus facts become **columns on the single-statement tables** that already exist, such as
+`variants.csv` and `diplotypes.csv`, and on the meta-table's rows. The maintainer: "Authoring surface is
+human centered. If it were a db it'd be 10x more tables, because many columns are duplicated across
+individual-loci-type tables and properly normalized db resolves this by pairing adapters. Humans have trouble
+reading such." So the authored layer stays denormalized on purpose. Compilation may normalize it, which is
+[RM346](ROADMAP_1_0.md#rm346--the-authored-tables-are-denormalized-for-people-and-the-parquets-copy-that-shape-so-a-machine-reader-gets-it-too) (1.0).
+
+**What this means for a value that differs between rows.** A fact sits on a statement (one genotype row,
+one diplotype row), so it is a property of that statement. Two rows of one locus may legitimately differ:
+APOE's ε2/ε4 and ε3/ε4 rows each carry their own age-of-action confidence, which dissolves the ε2 versus
+ε4 break the archive check found. So no agreement warning is built. When a locus's facts are meant to be
+identical on every row, that is the author's to keep, and the 1.0 normalized shape will show any
+disagreement as two values.
+
 **Reopened 2026-11-04 by the maintainer**: "why can't each part of the combination live in its respective table, and the combination plus its finding in the meta-table? A new table is the most expensive thing." The decisions below stand until the analysis is answered.
 
 **Decided 2026-11-04 by the maintainer: a per-locus fact table keyed `(subject_kind, subject)`.** It has three
@@ -153,6 +170,8 @@ The decision is where the per-locus axes live. RM324's tier, RM326's derived out
 RM329's age-of-action class all land wherever this decides.
 
 ## RM324 — there is no evidence-tier column, so the axis that gates visibility is a `flags: tier:A` token
+
+**Placement updated 2026-11-04.** The one `tier` column goes on the single-statement tables and the meta-table (RM323's re-decision), not on a fact table. The scale is still declared once per module.
 
 **Decided 2026-11-04 by the maintainer: one `tier` column, with the scale declared once per module.** The tier column goes on RM323's fact table. The module names the scale it grades on once in `module_spec.yaml`, as `weighting:` names its scale. A module therefore holds one scale, and a source's own grade cannot sit beside the module's tier in this column. RM294 (STRchive's grade) moved to 0.9 for that reason.
 
@@ -234,6 +253,8 @@ Two things become **derived, near-zero**, once it exists:
   two-valued: a locus with no study row of a class is **untested** and withheld, never "no effect".
 
 ## RM327 — pleiotropy has no per-trait row, so a trade-off can only be prose, and `tradeoff` is computed rather than authored
+
+**Key to re-derive, 2026-11-04.** RM323 no longer has subject kinds, so "align on RM323's subject" now means: a per-trait row is keyed on an item of a single-statement table plus `trait_efo_id`, using the same item references as the meta-table's members. The proposal settles the exact spelling.
 
 **Decided 2026-11-04 by the maintainer: the key aligns on RM323's subject.** It is `(subject_kind, subject, trait_efo_id)`, and `effect_allele` is kept for `variant` subjects only; a haplotype or gene subject is its own allele. RM323, this table and later RM28 then share one identity, so APOE ε4's per-trait rows are `haplotype` rows.
 
@@ -756,6 +777,16 @@ the column; hashing it would make a reworded note move the digest, which is the 
 [FAQ](FAQ.md) already answers twice.
 
 ## RM28 — Meta-conclusions (the predicate half)
+
+**Shape decided 2026-11-04 by the maintainer: the meta-table is a map from a composite statement to a finding.**
+A composite statement is keyed on **items of the single-statement tables**: a `variants.csv` row's
+`(variant_key, genotype)`, a `diplotypes.csv` row's key, and so on. There is no new subject or state grammar.
+"KL-VS heterozygous AND APOE ε4 carrier" therefore names the KL-VS genotype row and the ε4-carrying
+diplotype rows, one composite per diplotype, since rows are already a disjunction.
+
+The consequence, raised and accepted: a member must exist as a row of its own table, and that row carries
+its own required `conclusion`. The meta-table's rows carry the same per-locus fact columns as the
+single-statement tables (RM323).
 
 **Decided 2026-11-04 by the maintainer: a matching combination replaces the single-locus findings it names.** A genome that is KL-VS heterozygous and an APOE ε4 carrier gets the buffered finding instead of the plain ε4 risk. The accepted cost is that a reader that predates the combination table shows the unbuffered risk alone.
 
