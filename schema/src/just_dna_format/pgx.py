@@ -82,7 +82,7 @@ def validate_hla_allele(gene: str, allele: str) -> str:
     """Refuse an HLA allele name outside IPD-IMGT/HLA's grammar (RM334); any other gene passes."""
     if gene.startswith(HLA_GENE_PREFIX) and not HLA_ALLELE_PATTERN.fullmatch(allele):
         raise ValueError(
-            f"allele: {gene} is an HLA gene, so its allele must follow IPD-IMGT/HLA nomenclature: `*`, "
+            f"{gene} is an HLA gene, so its allele must follow IPD-IMGT/HLA nomenclature: `*`, "
             "then two to four colon-separated numeric fields of at least two digits each, then an "
             "optional expression suffix (N, L, S, C, A or Q), e.g. *15:01, *57:01:01, *02:01:01:02N; "
             f"the field count is the resolution the name states, so at least two are needed. Got: {allele!r}"
@@ -296,11 +296,18 @@ class AlleleFunctionRow(AuthoredModel):
 
     @field_validator("allele")
     @classmethod
-    def _validate_allele(cls, v: str) -> str:
+    def _validate_allele(cls, v: str, info: ValidationInfo) -> str:
         # A name, not a star-allele grammar — see `HAPLOTYPE_NAME_PATTERN`. This column used to be the
         # only one of the three that demanded a leading `*`, which made APOE's ε alleles unstateable
         # here while being perfectly legal in the other two tables.
-        return validate_haplotype_name(v, "allele")
+        validate_haplotype_name(v, "allele")
+        # RM334: an HLA gene's allele IS a grammar. A field validator rather than a model one, so the
+        # refusal names its column; `gene` is declared first, so it is in `info.data` once valid (a
+        # gene that failed has its own error, and the HLA question is then unanswerable).
+        gene = info.data.get("gene")
+        if gene is not None:
+            validate_hla_allele(gene, v)
+        return v
 
     @field_validator("activity_value")
     @classmethod
@@ -311,12 +318,6 @@ class AlleleFunctionRow(AuthoredModel):
     @classmethod
     def _validate_function_status(cls, v: str | None) -> str | None:
         return check_vocab(v, VALID_FUNCTION_STATUS, "function_status")
-
-    @model_validator(mode="after")
-    def _validate_hla_nomenclature(self) -> "AlleleFunctionRow":
-        # Needs `gene` and `allele` together, so it runs after both field validators (RM334).
-        validate_hla_allele(self.gene, self.allele)
-        return self
 
 
 class DiplotypeRow(AuthoredModel):

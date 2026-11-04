@@ -50,7 +50,8 @@ def test_a_malformed_hla_name_is_refused_by_validate_and_compile_naming_its_row(
         hla = [e for e in errors if "IPD-IMGT/HLA" in e]
         # One refusal, on the fourth data row (line 5 with the header), naming the value given.
         assert len(hla) == 1, errors
-        assert hla[0].startswith("allele_function.csv line 5")
+        # The column is named, as a field error names it: a model-level error renders as `[]`.
+        assert hla[0].startswith("allele_function.csv line 5 [allele]:")
         assert "'*1501'" in hla[0]
     assert validation.errors == compiled.errors
 
