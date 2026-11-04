@@ -33,7 +33,7 @@ from typing import ClassVar
 
 from pydantic import ConfigDict, Field, field_validator
 
-from just_dna_format.base import since, vocabulary
+from just_dna_format.base import Companion, PairedFields, both_or_neither, since, vocabulary
 from just_dna_format.normalize import normalize_utc_timestamp
 from just_dna_format.spec import CitationPair, validate_pmid_cell
 from just_dna_format.vocab import (
@@ -91,7 +91,7 @@ GWAS_FACT_FIELDS: tuple[str, ...] = (
 )
 
 
-class GwasEffectRow(CitationPair):
+class GwasEffectRow(CitationPair, PairedFields):
     """One published GWAS association: the magnitude, its unit, and the allele it is relative to.
 
     Standalone (not an `AuthoredModel`) for the same reason every fact row is — machine-produced
@@ -108,6 +108,14 @@ class GwasEffectRow(CitationPair):
     #: **Per record, not per variant** — a variant gains associations as papers publish, so keying on
     #: the variant would pin a module to whatever the Catalog held the first time (S51).
     _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("association_id",)
+    #: Columns meaningless without a companion (RM366, `base.Companion`). Both columns are new in 0.8
+    #: and one pass writes them together; it withholds a posterior whose method the release left empty.
+    _PAIRED_FIELDS: ClassVar[tuple[Companion, ...]] = both_or_neither(
+        "posterior_probability",
+        "fine_mapping_method",
+        "a posterior inclusion probability means nothing without the fine-mapping method that produced "
+        "it, so the two are filled together or left empty together",
+    )
 
     model_config = ConfigDict(extra="forbid")
 

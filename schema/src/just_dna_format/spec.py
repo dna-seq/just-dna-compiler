@@ -28,6 +28,8 @@ from just_dna_format.base import (
     CASE_INSENSITIVE_ALLELE,
     COMPILER_MANAGED,
     AuthoredModel,
+    Companion,
+    both_or_neither,
     derive_variant_key,
     since,
     stamped_identity_field,
@@ -246,6 +248,15 @@ def validate_doi_cell(value: str | None) -> str | None:
             f"URL), got: {value!r}"
         )
     return value  # kept verbatim
+
+
+#: Why `effect_size` wants `effect_measure` beside it, on both tables that carry the pair (RM366).
+#: Reported, never refused: both columns date from 0.3.
+_MAGNITUDE_WITHOUT_MEASURE = (
+    "effect_measure is what the number means (OR, HR, beta), and an odds ratio of 1.3 and a beta of "
+    "1.3 are different claims, so a magnitude with no measure is a number nothing can read. Set "
+    "effect_measure, or clear effect_size"
+)
 
 
 class CitationPair(BaseModel):
@@ -609,6 +620,20 @@ class VariantRow(AuthoredModel):
     #: keyed kind answers `hints.key_fields` from one place (S48); the compiler checks these two
     #: inline (`_cross_validate_variants`) rather than through `_TABLE_DUPE_KEYS`.
     _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("variant_key", "genotype")
+    #: Columns meaningless without a companion (RM366, `base.Companion`). The quality floor is both or
+    #: neither, refused since 0.5: a bound with no field does not say what must clear it, and a field
+    #: with no bound states no threshold, so either half reads as a configured gate and is not one.
+    #: A magnitude with no measure is reported, never refused — both columns date from 0.3, so a
+    #: published module may hold the half (P3).
+    _PAIRED_FIELDS: ClassVar[tuple[Companion, ...]] = (
+        *both_or_neither(
+            "quality_from",
+            "min_quality",
+            "quality_from and min_quality are both-or-neither: a floor needs a field to be measured "
+            "against, and a field needs a floor to be a floor",
+        ),
+        Companion("effect_size", ("effect_measure",), _MAGNITUDE_WITHOUT_MEASURE, refuse=False),
+    )
     variant_key: str | None = Field(
         default=None,
         json_schema_extra={**COMPILER_MANAGED, **since("0.4.0")},
@@ -946,23 +971,6 @@ class VariantRow(AuthoredModel):
         return validate_finite(v, "min_quality")
 
     @model_validator(mode="after")
-    def _require_quality_pair(self) -> "VariantRow":
-        """Both or neither — half a floor states nothing a consumer can act on.
-
-        A bound with no field does not say *what* must clear it, and a field with no bound states no
-        threshold at all. Either half alone reads as a configured gate and is not one, which is worse
-        than an empty cell: a consumer would have to guess the missing half, and every guess is a
-        clinical policy the module did not write.
-        """
-        if (self.quality_from is None) != (self.min_quality is None):
-            missing = "min_quality" if self.min_quality is None else "quality_from"
-            raise ValueError(
-                f"quality_from and min_quality are both-or-neither; {missing} is empty. A floor "
-                f"needs a field to be measured against, and a field needs a floor to be a floor."
-            )
-        return self
-
-    @model_validator(mode="after")
     def _freeze_identity(self) -> "VariantRow":
         """Stamp the frozen identity *and the authored shape* at load, ignoring authored values for
         both (no foot-gun). Because a `mode="after"` validator does not re-run on `model_copy`, the
@@ -1189,6 +1197,38 @@ class StudyRow(CitationPair, AuthoredModel):
 
     #: What makes two rows the same row (see `VariantRow._KEY_FIELDS`).
     _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("variant_key", "pmid")
+    #: Columns meaningless without a companion (RM366, `base.Companion`). Each refusal below names
+    #: columns that were refused half-stated before this declaration existed (`confidence` since 0.7)
+    #: or that are new in 0.8, so no published row can hold the half; `effect_size` without its measure
+    #: dates from 0.3 and is reported instead (P3).
+    #:
+    #: A unit with no magnitude (`confidence_unit`, `sample_unit`) is harmless — it names an
+    #: instrument nothing was measured on — so only the magnitude's half is a rule. `age_of` and the
+    #: band are not a pair either way: RM329 decided `age_of` stands with or without bounds
+    #: (`test_no_refusal_ties_the_band_together`), and two longevity examples state it unbounded.
+    _PAIRED_FIELDS: ClassVar[tuple[Companion, ...]] = (
+        Companion(
+            "confidence",
+            ("confidence_unit",),
+            "it names a magnitude with no instrument beside it — set confidence_unit (e.g. "
+            "'civic_evidence_status'), because two sources publish values on scales that are not the "
+            "same quantity",
+        ),
+        Companion(
+            "sample_size",
+            ("sample_unit",),
+            f"it has no unit beside it — set sample_unit ({'|'.join(sorted(VALID_SAMPLE_UNITS))}), "
+            f"because a parental-lifespan study counts two lives per participant (RM325)",
+        ),
+        *both_or_neither(
+            "stratum",
+            "stratum_level",
+            "a stratum is written as both or neither (the modifier, and the level of it this estimate "
+            "was measured in) — a modifier with no level does not say which stratum, and a level with "
+            "no modifier cannot be told from another axis (RM330)",
+        ),
+        Companion("effect_size", ("effect_measure",), _MAGNITUDE_WITHOUT_MEASURE, refuse=False),
+    )
 
     rsid: str | None = Field(
         json_schema_extra=since("0.2.0"), default=None, description="dbSNP identifier or variant key"
@@ -1602,21 +1642,6 @@ class StudyRow(CitationPair, AuthoredModel):
         # cannot reload as a `""` that the coherence rule below would then have to reason about.
         return (v or "").strip() or None
 
-    @model_validator(mode="after")
-    def _refuse_a_magnitude_with_no_instrument(self) -> "StudyRow":
-        # `@weight-has-no-unit`, restated on the one pair this model carries. A `confidence` of `3`
-        # is unreadable without being told it is a review-star count, and the sources this column
-        # exists for publish values on scales that are not the same quantity. A unit with no
-        # magnitude is harmless — it names an instrument nothing was measured on — so only the
-        # asymmetric case is refused, exactly as `ClinSigAuthorityCallRow` refuses it.
-        if self.confidence is not None and self.confidence_unit is None:
-            raise ValueError(
-                f"confidence={self.confidence!r} names a magnitude with no instrument beside it — "
-                f"set confidence_unit (e.g. 'civic_evidence_status'), because two sources publish "
-                f"values on scales that are not the same quantity"
-            )
-        return self
-
     @field_validator("proxy_rsid")
     @classmethod
     def _validate_proxy_rsid(cls, v: str | None) -> str | None:
@@ -1639,18 +1664,6 @@ class StudyRow(CitationPair, AuthoredModel):
             raise ValueError(
                 f"proxy_rsid={self.proxy_rsid!r} is the row's own rsid — leave proxy_rsid empty when "
                 f"the study measured the lead itself"
-            )
-        return self
-
-    @model_validator(mode="after")
-    def _refuse_half_a_stratum(self) -> "StudyRow":
-        # RM330. A modifier with no level says the estimate was stratified without saying in which
-        # stratum it sits, and a level with no modifier (`male`) cannot be told from another axis.
-        if (self.stratum is None) != (self.stratum_level is None):
-            stated, missing = ("stratum", "stratum_level") if self.stratum else ("stratum_level", "stratum")
-            raise ValueError(
-                f"{stated} is set and {missing} is not — a stratum is written as both or neither (the "
-                f"modifier, and the level of it this estimate was measured in)"
             )
         return self
 
@@ -1688,17 +1701,9 @@ class StudyRow(CitationPair, AuthoredModel):
         return [check_vocab(tok, VALID_SUPERPOPULATIONS, "ancestry") or tok for tok in v]
 
     @model_validator(mode="after")
-    def _refuse_a_count_with_no_unit_or_more_cases_than_analysed(self) -> "StudyRow":
-        # RM325. A count of 1,012,240 is a parental-lifespan study's LIVES or a cohort's people, and
-        # the two differ by a factor of two (`@weight-has-no-unit`). Only the asymmetric case is
-        # refused, as `confidence` does: a unit with no count names nothing that was measured.
-        if self.sample_size is not None and self.sample_unit is None:
-            raise ValueError(
-                f"sample_size={self.sample_size} has no unit beside it — set sample_unit "
-                f"({'|'.join(sorted(VALID_SAMPLE_UNITS))}), because a parental-lifespan study counts "
-                f"two lives per participant"
-            )
-        # Both columns are new, so no published row can hold the pair, and the two cannot both be true.
+    def _refuse_more_cases_than_analysed(self) -> "StudyRow":
+        # RM325. The count-with-no-unit half of this rule is a declared pair (`_PAIRED_FIELDS`). Both
+        # columns are new, so no published row can hold the pair, and the two cannot both be true.
         if self.sample_size is not None and self.n_cases is not None and self.n_cases > self.sample_size:
             raise ValueError(
                 f"n_cases={self.n_cases} is more than sample_size={self.sample_size} — sample_size is the "

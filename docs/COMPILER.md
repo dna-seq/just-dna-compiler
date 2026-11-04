@@ -444,6 +444,14 @@ the rows stand; the warning exists for the second spelling, since v2 writes `FAM
 `FAMILIAL` and `MR_MEDIATOR` beside `MR`. Text: `studies.csv phenotype_class outside the recommended
 set: 'FAMILIAL_LONGEVITY' (2 rows), … — the set is open, so the rows stand; …`.
 
+**A published column stated without its companion warns once per table and column (0.8, RM366).**
+`paired_field_half_stated` reports the `refuse=False` entries of a model's `_PAIRED_FIELDS` — today
+`effect_size` with `effect_measure` empty on `variants.csv` and `studies.csv` — with the row count and one
+example value, in both modes, from the pre-flight `validate` runs (so `compile` carries it unchanged).
+The pairs that refuse never reach it: the row failed to load. Text: `studies.csv: 11 row(s) state
+effect_size with effect_measure empty (e.g. effect_size=…) — effect_measure is what the number means …
+Reported rather than refused: a module published before this rule may hold the half.`
+
 **A proxied study is checked against the proxy (0.8, RM331).** `study_effect_allele_not_at_locus` reads
 the resolved alleles of `proxy_rsid` when a row states one, never the lead's: filed under the lead, a
 proxy's allele used to be refused when the two loci differ and passed with the wrong meaning when they
@@ -1930,7 +1938,7 @@ actionable, which is `vocab.ACTIONABLE_WARNING_CODES`, derived by subtraction:
   `diplotype_phase_ambiguous`
 - **studies and literature** — `study_variant_orphan`, `duplicate_study_citation`,
   `p_value_encodings_disagree`, `study_effect_allele_not_at_locus`, `phenotype_class_unrecognized`,
-  `citation_not_in_pubmed`,
+  `paired_field_half_stated`, `citation_not_in_pubmed`,
   `literature_row_uncited`, `quote_counter_stale`, `quoted_article_license_restrictive`
 - **sources and licensing** — `source_row_unused`, `source_terms_unrecorded`,
   `declared_license_disagrees`

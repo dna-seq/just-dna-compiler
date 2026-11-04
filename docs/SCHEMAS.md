@@ -298,7 +298,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
   | `VALID_VERIFICATION_CHECKS` | 27 (closed) |  |
   | `VALID_VERIFICATION_SKIPS` | 8 (closed) |  |
   | `VALID_VERIFICATION_INDEPENDENCE` | 2 (closed) | `VerificationRecord.independence`, derived from the record's two sources and never typed (RM292) |
-  | `VALID_WARNING_CODES` | 81 (closed) | every code a compile may stamp on a finding (members in `RETIRED_WARNING_CODES` are no longer emitted); the catalogue with texts is in [COMPILER.md](COMPILER.md) |
+  | `VALID_WARNING_CODES` | 82 (closed) | every code a compile may stamp on a finding (members in `RETIRED_WARNING_CODES` are no longer emitted); the catalogue with texts is in [COMPILER.md](COMPILER.md) |
 
   Vocabularies owned by a leaf rather than by `vocab` (`spec`, `binning`, `pgx`, `pgs`, `manifest`,
   `sources`) are reached through the field markers above and not listed here, for the reason the bullet
@@ -322,6 +322,20 @@ reason its `source` column is inside its fact set while everywhere else `source`
   than a per-field marker because `{chrom, start}` is one group meaning "both together", which no
   annotation on `chrom` alone expresses; a test derives cases from the declaration and checks them
   against the validator, so the two cannot drift.
+- **`_PAIRED_FIELDS` (`base.PairedFields`, 0.8, RM366).** The columns a row may not state without a
+  companion: a statistic and its method, a witness and its verdict, a magnitude and its instrument, a
+  qualifier and what it qualifies. Each entry is a `base.Companion` — *`field` stated ⇒ one of `needs`
+  stated* — so *both or neither* is two entries and *a unit with no magnitude* is simply not declared
+  (it names an instrument nothing was measured on, which is harmless). One validator on the
+  `PairedFields` mixin reads every model's declaration; `AuthoredModel` inherits it, and so do the fact
+  rows that carry a pair (`ResolutionRow`, `GwasEffectRow`, `ColocalisationRow`,
+  `ClinSigAuthorityCallRow`). `paired_fields(model)` is the reader, and it adds the element-rule pairs
+  derived from `VCF_POINTER_COMPANIONS` rather than restating them. An entry marked `refuse=False` is a
+  pair a published module may already hold half-stated (`effect_size` without `effect_measure` on
+  `variants.csv`/`studies.csv`, both 0.3): never refused, reported by the compiler as
+  `paired_field_half_stated`. Every refusing entry on an authored model either was refused before RM366
+  declared it or names only 0.8 columns, and `test_paired_fields.py` asserts that set as an equality, so
+  a new refusal on a published column fails there rather than in a consumer's module.
 - **`vocab.TEMPLATE_PLACEHOLDER` (`<<REPLACE>>`, 0.5).** The cell a generated template writes where a
   human must decide. Refused by a recursive `mode="before"` guard on every authored row and on
   `module_spec.yaml`, so an unreplaced stub is diagnosed by column and row instead of surfacing as a

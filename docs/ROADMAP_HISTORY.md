@@ -126,6 +126,65 @@ the model registry (drop `LdPairRow`), the tag measurement (`vrs_spec` → `0.8.
 exclusion (unname `answered_rsid`) and the closedness walk (restore the narrow read) each red under
 mutation.
 
+## RM366 — a column meaningless without its companion validates half-stated, and the pairs that are checked are checked by eight hand-written validators
+
+**0.8, found by the four-model audit of 0.8, round 1 (2026-11-04).**
+
+**Severity** low · **Status** SHIPPED 2026-11-04 on `0.8`, uncut — a minor (the 0.8 audit, round 1) · **Owner** format
+(`base.py` and the row models) + compiler (`validate.py`) + enricher (`opentargets.py`) · **Motivating case** the
+audit's finding 7 (GPT-5.6 Sol), each instance constructed and validated · *related* RM330, RM325, RM267, RM239,
+RM304, RM329, RM54, RM160, `@weight-has-no-unit`
+
+**The class.** A value whose meaning is another column — a statistic and the method that computed it, a witness
+and its verdict, a magnitude and its instrument or measure, a qualifier and what it qualifies. Stated without its
+companion, the row reads as an answer and is not one. Before this item the rule existed as eight hand-written
+validators on six models, each with its own wording, and was missing wherever nobody had written one.
+
+**The instances, each re-verified on `0.8` before the fix (all still held).**
+
+| Where | Before | After |
+| --- | --- | --- |
+| `gwas.py:113` `GwasEffectRow` | `posterior_probability` without `fine_mapping_method`, or the reverse, loaded | refused (both or neither); both 0.8 |
+| `locus_genes.py:211` `ColocalisationRow` | `h4` or `clpp` without `method` loaded | refused (a statistic needs its method; a method alone stays legal); 0.8 |
+| `resolution.py:73` `ResolutionRow` | `placement_witness` without `placement_verdict`, or the reverse, loaded | refused (both or neither); 0.8 |
+| `spec.py:628` / `spec.py:1209` `VariantRow`, `StudyRow` | `effect_size` without `effect_measure` loaded silently | reported as `paired_field_half_stated` in both modes, never refused: both columns are 0.3, so a published module may hold the half (P3) |
+| `spec.py` `VariantRow._require_quality_pair` | hand-written | declared (`both_or_neither`), refused since 0.5 as before |
+| `spec.py` `StudyRow._refuse_a_magnitude_with_no_instrument`, `_refuse_half_a_stratum`, the unit half of `_refuse_a_count_with_no_unit…` | hand-written | declared; the `n_cases > sample_size` half stays a validator (`_refuse_more_cases_than_analysed`), being a comparison and not a pair |
+| `concordance.py` `ClinSigAuthorityCallRow.model_post_init` (its `confidence` half) | hand-written | declared |
+| `binning.py:509` `CopyNumberRow._validate_modifier` (its gene/dosage half) | hand-written | declared, one entry naming both dosage spellings; the both-spellings refusal stays a validator |
+| `meta.py:335` `MetaRow._validate_statement` (its `trait_role` half) | hand-written | declared |
+| `base.py` `AuthoredModel._validate_pointer_companions` | hand-written loop over `VCF_POINTER_COMPANIONS` | derived by `paired_fields` from the same map, for every model carrying the element column |
+| `opentargets.py:591`, `:676` (the two writers) | would have tracebacked on a release stating a statistic with no method | withhold the statistic and keep the row; a withheld posterior is counted as its own reason, `PosteriorCounts.method_missing`, never as "not in the set" (measured: 26.09 has no such row in 1,519,507 credible sets or 79,887,470 colocalisations) |
+
+**Not pairs, and why.** Two candidates the brief named were tried and withdrawn when the full suite refused them. `ResolutionRow.vrs_spec` without `vrs_id`: both columns are 0.5, and the shape is real — an expansion's second locus and the `vrs_version_differs` remedy both clear an id beside a stated version, and `compilation.vrs_version` already reads it as nothing to pin (`test_no_id_means_no_pin`); refusing it would break P3. `StudyRow.age_of` without a band: RM329 decided `age_of` stands with or without bounds (`test_no_refusal_ties_the_band_together`), and two longevity examples state it unbounded. `MetaRow.age_of_action_confidence` without `age_of_action`: both are per-locus facts the
+meta expansion resolves column by column across every row reaching a locus, so a row stating only the confidence
+combines with another's age, and it is one of `REQUIRED_ANY_OF`'s groups alone (the walking test of that
+declaration is what refused the first draft). A unit with no magnitude (`confidence_unit`, `sample_unit`,
+`effect_unit`): it names an instrument nothing was measured on, which is harmless, as RM160 and RM325 decided.
+`n_cases` without `sample_size`: its description allows it ("never more than `sample_size` when both are
+stated"). A value-dependent rule (`LdPairRow`'s `status`↔`r2`, `rsid_current` beside `rsid_status=merged`) is a
+different shape from a companion column and stays a validator.
+
+**The mechanism.** `base.Companion(field, needs, reason, refuse)` — *`field` stated ⇒ one of `needs` stated* —
+declared per model as `_PAIRED_FIELDS`, read by `base.paired_fields(model)` (which adds the element-rule pairs
+derived from `VCF_POINTER_COMPANIONS`), and enforced by the one validator on the `PairedFields` mixin.
+`AuthoredModel` inherits the mixin, and so do the four fact rows that carry a pair. A `refuse=False` entry is
+reported by `compiler.validate._check_half_stated_pairs` as `paired_field_half_stated`, one line per table and
+column. Every refusal reads `<field>=<value> is set and <companion> is empty — <why>`, keeping each rule's own
+explanation, so the phrases tests pinned survive.
+
+**The guards** (`schema/tests/test_paired_fields.py`). A parametrized walk over every `(model, rule)` of
+`_ALL_MODELS` constructs the half and the whole; the models declaring a pair and the columns any rule names are
+asserted equal to the test's base rows and sample values, so a new pair cannot go unwalked; every model declaring
+a pair must inherit `PairedFields`, or the declaration is inert. **The P3 guard** asserts, as an equality, the set
+of refusing rules on authored models naming a column first seen before 0.8 — exactly the rules that refused before
+this item; a second equality lists the refusals on machine-written rows naming an older column (`ClinSigAuthorityCallRow.confidence`, refused since 0.7), so a new one is a stated decision; and no machine-written model may carry a `refuse=False` rule, which the pre-flight would never report. Mutated twice: turning `StudyRow`'s `effect_size` rule into a refusal fails the P3 guard, and disabling
+the validator fails 32 of the walk's cases. The writers' withholding is pinned by
+`test_a_statistic_whose_method_the_release_left_empty_is_withheld_not_a_crash`, red (a `ValidationError`
+traceback) without it; the warning by `compiler/tests/test_paired_field_warning.py`, red with the check disabled.
+
+**Residuals** won't fix — `LiteratureRow.doi_exists` without `doi_checked` is a row written before 0.6 added the second column, and the table is a pin a re-run never refetches, so refusing it would refuse true data · won't fix — the older derived tables' plausible pairs (`quotes_found` beside `quote_source`, `review_stars` beside `review_status`) were not declared because every earlier writer of those tables was not audited for the half, and a refusal there stops an enrich run on a table it merges · won't fix — `GwasEffectRow.effect_size` without `effect_measure` (both 0.6) is not declared: the `gwas` pass always writes the two together, a refusal would break a published hand-edited table, and a `refuse=False` rule on a machine-written row would be reported nowhere because the pre-flight reads the authored tables only
+
 ## RM270 — an indel's artifact key is its source's spelling: a left-aligned VCF misses a respelled row, and the spelling-independent id the enricher mints never reaches the artifact
 
 **0.8, decided 2026-11-03.** Taken into 0.8 by the maintainer, with the rest of the indel-placement fixes (RM304, RM267, RM270, RM292, RM305). The status line below predates that decision.

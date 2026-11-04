@@ -1714,6 +1714,7 @@ VALID_WARNING_CODES: frozenset[str] = frozenset(
         "p_value_encodings_disagree",  # `p_value` and `p_value_num` are two readings of one number
         "study_effect_allele_not_at_locus",  # a study's `effect_allele` is not among the resolved alleles
         "phenotype_class_unrecognized",  # a study's `phenotype_class` outside the recommended set (RM326)
+        "paired_field_half_stated",  # a column whose companion is empty, on a published pair (RM366)
         "citation_not_in_pubmed",  # a `pmid` PubMed has no record of
         "literature_row_uncited",  # a literature row nothing in the module cites — kept in the CSV
         "quote_counter_stale",  # `quotes_authored` disagrees with the quotes that cite it

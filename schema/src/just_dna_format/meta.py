@@ -28,6 +28,7 @@ from pydantic import Field, field_validator, model_validator
 
 from just_dna_format.base import (
     AuthoredModel,
+    Companion,
     authored_field_names,
     since,
     stamped_identity_field,
@@ -324,6 +325,21 @@ class MetaRow(CitationPair, AuthoredModel):
     """
 
     _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("members_key", "trait_efo_id", "sex", "drug")
+    #: A column meaningless without a companion (RM366, `base.Companion`), new in 0.8. The converse is
+    #: not a rule: a trait with no role is an effect.
+    #:
+    #: `age_of_action_confidence` with no `age_of_action` is deliberately **not** a pair. Both are
+    #: per-locus facts resolved column by column across every row reaching a locus (the compiler's
+    #: meta expansion), so a row stating only the confidence combines with another row's age, and it
+    #: is one of `REQUIRED_ANY_OF`'s groups on its own — refusing it would make that group unsatisfiable.
+    _PAIRED_FIELDS: ClassVar[tuple[Companion, ...]] = (
+        Companion(
+            "trait_role",
+            ("trait_efo_id",),
+            "trait_role says how a trait is reached, and there is no trait — name the trait, or clear "
+            "trait_role",
+        ),
+    )
     #: A row must state at least one finding or fact column — any ONE of these satisfies it. Declared
     #: beside `_validate_statement` so a tool listing what a row needs can see the rule (the
     #: `VariantRow` rsid-or-coordinate precedent); `conclusion` first, the one a stub offers.
@@ -484,11 +500,6 @@ class MetaRow(CitationPair, AuthoredModel):
                 f"meta row {self.members!r} states no finding and no fact — fill at least one of "
                 f"{[*META_FINDING_COLUMNS, *META_FACT_COLUMNS]}; a member set with nothing attached says "
                 f"nothing"
-            )
-        if self.trait_role is not None and self.trait_efo_id is None:
-            raise ValueError(
-                "trait_role says how a trait is reached, and trait_efo_id is empty — name the trait, or "
-                "clear trait_role"
             )
         if self.direction is not None:
             refused = [m.canonical() for m in parse_members(self.members) if allele_bearing(m) is False]

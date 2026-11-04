@@ -31,6 +31,7 @@ rely on that.
 | `vrs_version_differs` | RM304 | A `resolution.csv` row's `vrs_spec` names a VRS version other than the module's pin (`compilation.vrs_version`). Reported beside each allele's own verdict, never instead: within the pin's major a substitution that recomputes differently is still the mismatch error, and only one under another major (a different digest serialization) is counted in this line. The enricher's mint pass emits it too, for a recorded id under a version other than its own. One line per stated version. A warning in both modes. Actionable: clear `vrs_id` and `vrs_spec` on those rows and re-run `just-dna-enricher vrs mint`. |
 | `meta_selector_matches_nothing` | RM28 | A `meta.csv` member matches no row of its table, almost always a value spelled other than the table stores it. A warning in both modes. Actionable. |
 | `phenotype_class_unrecognized` | RM326 | A `studies.csv` `phenotype_class` outside the recommended twelve (`RECOMMENDED_PHENOTYPE_CLASSES`), one finding naming each token with its row count. The set is open and the rows stand. A warning in both modes. Actionable: respell a second spelling of a recommended class, or leave a genuinely new class. |
+| `paired_field_half_stated` | RM366 | A published column stated without the companion it means nothing without — today `effect_size` with `effect_measure` empty, on `variants.csv` or `studies.csv` (both 0.3). One finding per table and column, with the row count and one example value. Never refused: a module published before the rule may hold the half. A warning in both modes. Actionable: state the measure, or clear the magnitude. |
 | `meta_member_allele_ambiguous` | RM28 / RM327 | A bare-locus member (`variants[variant_key=…]`) on a `meta.csv` row stating a `direction`, whose `variants.csv` rows do not share one `effect_allele`; the row's direction is withheld (`meta.parquet` `withheld`). A warning in both modes. Actionable. |
 
 ### 1.1 A retired code: `quality_floor_inverted`
@@ -394,6 +395,27 @@ forbids unknown columns. Same remedy.
 `published_refutation` and `evidence_status_currency`, and the `literature` producer gains
 `provenance_quote`. A tool or page reading the field named four fewer attestations than the passes
 write; nothing else changed, and no artifact, signature or record moves.
+
+## 1.21 Paired columns are refused half-stated (RM366, one new code)
+
+A column whose meaning is another column is now refused when the other is empty, by one declaration on
+each model (`_PAIRED_FIELDS`, read through `just_dna_format.base.paired_fields`) and one validator.
+The new refusals land only on columns that are new in 0.8, so no module published under 0.7 stops
+validating:
+
+| Table | Refused | Why |
+| --- | --- | --- |
+| `gwas_effects.csv` | `posterior_probability` without `fine_mapping_method`, or the reverse | A posterior means nothing without its method; the `opentargets` pass fills both or neither, and now withholds a posterior whose method the release left empty, counted as `PosteriorCounts.method_missing`. |
+| `colocalisations.csv` | `h4` or `clpp` without `method` | A statistic needs the method that computed it. A method with no statistic stays legal. The pass withholds the numbers when the release states no method. |
+| `resolution.csv` | `placement_witness` without `placement_verdict`, or the reverse | Who was asked and what they answered are one record. |
+
+The refusals that existed before (`quality_from`/`min_quality`, `confidence`→`confidence_unit` on two
+tables, `sample_size`→`sample_unit`, `stratum`/`stratum_level`, `modifier_gene`/its dosage,
+`source_element`→`source_field`, `trait_role`→`trait_efo_id`) are the same rules read from the same
+declaration. Their message is now one shape, `<field>=<value> is set and <companion> is empty — <why>`,
+and keeps each rule's own explanation; a consumer matching the old full sentence should match the
+explanation instead. `paired_field_half_stated` (§ 1) is the published pair that is reported rather
+than refused.
 
 ## 2. What to change
 
