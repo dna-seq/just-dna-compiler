@@ -1639,14 +1639,20 @@ def test_authority_is_outside_the_resolution_fact_set(tmp_path: Path) -> None:
     assert a.manifest.compilation.resolution_signature == b.manifest.compilation.resolution_signature
 
 
-def test_reverse_does_not_re_emit_the_authority_column(tmp_path: Path) -> None:
-    """Reverse emits facts and discards provenance — a reversed table has no authority to name."""
+def test_reverse_keeps_the_authority_and_restamps_the_link(tmp_path: Path) -> None:
+    """A reversed row keeps the authority of the row it came from; only the link is reverse's (RM380).
+
+    RM33 once had reverse write no `authority`, reasoning that a reversed table's facts came out of
+    parquet. That is the link (`source`), which reverse does restamp; the facts are still Ensembl's, and
+    dropping the authority made the second lap name a declared `ensembl` source unused."""
     rows = f"{_SICKLE},rs334,11,5227002,T,A,GRCh38,0,ensembl-rest,ensembl,resolved\n"
     spec = _with_links(_spec(tmp_path, sources=None), rows)
     assert compile_module(spec, tmp_path / "orig").success
     reverse_module(tmp_path / "orig", tmp_path / "rev")
-    header = (tmp_path / "rev" / "resolution.csv").read_text().splitlines()[0]
-    assert "authority" not in header and "source" in header
+    with (tmp_path / "rev" / "resolution.csv").open(newline="", encoding="utf-8") as handle:
+        reversed_rows = list(csv.DictReader(handle))
+    assert reversed_rows
+    assert {(r["source"], r["authority"]) for r in reversed_rows} == {("reversed", "ensembl")}
     assert ResolutionRow(variant_key="x").authority is None
 
 
