@@ -216,7 +216,9 @@ def test_one_indel_spelled_two_ways_now_resolves(tmp_path: Path) -> None:
     result = enrich(spec, offline=True, ensembl_cache=cache)
     assert result.fully_resolved, result.unresolved
     row = _rows_by_key(spec)[_SHOX_RSID][0]
-    assert (row.chrom, row.start, row.ref, row.alts) == ("X", 634690, "AGAG", "AG")
+    # Ensembl's ALT in its own spelling (RM381: the reader trims the shared flank, which reads no
+    # reference); left-aligning it to ClinVar's `634689 CAG>C` needs the bases, and this run is offline.
+    assert (row.chrom, row.start, row.ref, row.alts) == ("X", 634690, "AGA", "A")
     assert row.status == "resolved"
 
 

@@ -471,6 +471,20 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `rs4244285` with genotype `A/G` came back `not_found`. Unit fixtures were comma-separated, so only a real
   cache showed it. A multi-allelic resolver fixture covers **both** spellings: `test_enrich.py`'s
   `multiallelic_cache` is parametrized over `pipe_joined` and `one_row_per_alt`.
+  **And never group by the snapshot's `ref` (RM381, 0.8).** The split repo pads every ALT of a site to one
+  shared ref (`16:23635706 GTT>G / GTT>GT / GTT>GTTT`), so the old `GROUP BY id, chrom, start, ref` handed on
+  `GTT>G,GT,GTTT`, a frame no caller writes. Offline nothing trimmed it; online `_filled_pieces` read the
+  module's `G/GT` in it as a compound het of two deletions and wrote the locus whole, and SHOX's `C/CAG`
+  as the deletion alone, dropping the duplication RM270 had written. Every reader of a snapshot's `alt`
+  (both resolvers, ClinVar's, REST's `allele_string`, gnomAD's ids, the three position→rsID readers) spells each
+  ALT alone through `alleles.trim_allele` and regroups by that (`per_alt_loci`), offline too, since a
+  trim reads no reference; left-alignment past it is still `left_normalize`'s. The rejected repair was
+  trimming inside `normalize_locus` only: the frame rule still sees the padded set, and the miss
+  reproduces online. `test_split_snapshot_per_alt.py` walks the readers by AST against a registry.
+  **And the genotype is the other spelling of the same vocabulary**: a module authored from an
+  unnormalized multi-ALT record carries `G/GTTT` in the padded frame. `resolution.site_verdicts` trims its
+  alleles with the same `alleles.trim_allele` and tests both sides' raw tokens. Accepting "a padded
+  compound het finds no locus" as won't-fix was refused (P3): an existing module must keep behaving.
 
 - `@resolution-reads-pgx-tables` — **Resolution reads `pharm_variants.csv` and `haplotypes.csv` too, not just `variants.csv`** (0.5,
   `enrich.collect_subjects`). PGx modules carry no `variants.csv`, so they used to enrich to an empty

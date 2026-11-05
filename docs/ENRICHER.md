@@ -1004,11 +1004,25 @@ RM43.
 
 The Ensembl snapshot has **two published spellings** of a multi-allelic site. The old repo
 (`just-dna-seq/ensembl_variations`) stores it as **one row whose `alt` is pipe-joined** (`A|C|T`); the
-split repo 0.8 reads (`just-dna-seq/ensembl_variations_split`, RM372) stores **one row per ALT**, which
-the lookup's `string_agg` groups back into one locus. Live Ensembl, ClinVar and gnomAD all emit
-comma-separated lists. `resolver._snapshot_alleles` normalizes at that one boundary so a locus dict's
-`alts` has a single canonical shape whichever spelling the cache holds; `test_enrich.py` runs the
-multi-allelic tests over both.
+split repo 0.8 reads (`just-dna-seq/ensembl_variations_split`, RM372) stores **one row per ALT**, every
+ALT of a site padded to one shared `ref`. Live Ensembl, ClinVar and gnomAD all emit comma-separated lists.
+`resolver._snapshot_alleles` normalizes at that one boundary so a locus dict's `alts` has a single
+canonical shape whichever spelling the cache holds; `test_enrich.py` runs the multi-allelic tests over both.
+
+**Each ALT is then spelled alone, never in the site's padded frame (RM381).** The split repo writes
+`rs1555461597` as `16:23635706 GTT>G`, `GTT>GT` and `GTT>GTTT`. Grouping those rows by their `ref` gave one
+locus, `GTT>G,GT,GTTT`, which no caller writes: offline nothing could respell it, and online the fill read
+the module's `G/GT` in that frame as two deletions and kept the locus whole. Every reader of a snapshot's
+`alt` now passes each ALT through `alleles.trim_allele` (drop the bases both sides end with, then those
+both start with, while each keeps one: `bcftools norm`'s trim, which reads no reference) and regroups by
+the trimmed spelling (`sequences.per_alt_loci`): the three loci `G>GT`, `GT>G` and `GTT>G`. That is the
+Ensembl and ClinVar rsID lookups, REST's `allele_string` (`TCTT/T/TCTTCTT` is one such frame), gnomAD's
+variant ids, and the three position→rsID readers, which match an authored allele as the row spells it or as trimmed. The old
+repo's pipe-joined row is trimmed the same way. Left-alignment past the trim still reads the reference
+(`left_normalize`), so offline an indel piece is written trimmed with `left_aligned` unknown. The split
+repo anchors left, so for its sites the trim is usually the whole normalization.
+`test_split_snapshot_per_alt.py` holds the readers to ClinVar's own per-ALT records on real rows, and
+an AST walk keeps every function whose SQL reads a snapshot's `alt` in its registry.
 
 This is load-bearing, not tidying. The hosting predicate splits alleles on commas, so an un-normalized `A|C|T`
 collapsed into one opaque "allele", no genotype was ever a subset of `{ref} ∪ alts`, and the
@@ -1250,7 +1264,11 @@ misses the row, though nobody is wrong (S120).
   (`AG/AGAGAG`) has no one left-aligned locus, so the source is written whole, as the link gave it, and
   judged; otherwise every piece that can host it (`C/CAG` fits either). When any ALT cannot be decided
   (offline, an unreadable window, a non-nucleotide allele) the locus is written as the link gave it:
-  half a respelling would put two conventions in one cell.
+  half a respelling would put two conventions in one cell. Since RM381 the link gives each ALT already
+  trimmed to its own spelling (§ Multi-allelic snapshot rows), and the hosting filter before it reads a
+  genotype authored in a site's padded frame in that frame (`resolution.site_verdicts`, the same trim on
+  the genotype's alleles): `GTT/GTTT` names `G>GT` alone, and the compound het `G/GTTT` names `GTT>G`
+  and `G>GT`, one allele each.
 - **An authored coordinate is judged, never rewritten** (`@enrichment-is-validation`). The cell is the
   row's identity, so every subject that authored a whole coordinate is checked against its leftmost
   spelling on every run, and a difference is a warning naming both (`EnrichmentResult.spelling.findings`,

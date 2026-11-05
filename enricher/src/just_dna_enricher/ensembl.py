@@ -36,7 +36,7 @@ from just_dna_enricher.net import (
     retry_if_transient_within,
     wait_retry_after,
 )
-from just_dna_enricher.sequences import SequenceProxy
+from just_dna_enricher.sequences import SequenceProxy, per_alt_loci
 
 logger = logging.getLogger(__name__)
 
@@ -346,9 +346,11 @@ def _loci_from_rest(
     `AGTAAG/-` over `[start, end]`; in both the base before the event sits at `start - 1`, which is
     `anchor_indel`'s convention (the interbase point is the preceding base). Every allele is prefixed
     with that base, so a mixed string such as `-/G/GT` anchors whole; a string with no `-`
-    (`ATCATC/ATC`, `TCTT/T/TCTTCTT`) is already anchored and passes through untouched.
+    (`ATCATC/ATC`, `TCTT/T/TCTTCTT`) is already anchored and needs no read. Either way each ALT is then
+    spelled alone (`sequences.per_alt_loci`, RM381): `TCTT/T/TCTTCTT` is the deletion `TCTT>T` and the
+    insertion `T>TCTT`, two loci, as the snapshot readers hand on a split site.
     """
-    loci: list[dict] = []
+    alleles_placed: list[tuple[str, int, str, str]] = []
     withheld = 0
     unplaceable = 0
     for m in payload.get("mappings", []):
@@ -371,9 +373,11 @@ def _loci_from_rest(
             unplaceable += 1
             continue
         ref, alts = placed
-        loci.append({"chrom": chrom, "start": start, "ref": ref, "alts": ",".join(alts)})
-    ordered = sorted(loci, key=lambda locus: (locus["chrom"], locus["start"], locus["ref"]))
-    return ordered, withheld, unplaceable
+        alleles_placed.extend((chrom, start, ref, alt) for alt in alts)
+    # RM381: a string with no `-` is one joint frame (`TCTT/T/TCTTCTT`), every ALT padded to one ref; each
+    # ALT is handed on in its own spelling and regrouped by it, across mappings, as the snapshot readers
+    # do, so two mappings spelling one allele give one locus. `per_alt_loci` sorts by (chrom, start, ref).
+    return per_alt_loci(alleles_placed), withheld, unplaceable
 
 
 def _anchor_rest_alleles(

@@ -648,6 +648,15 @@ reads the record and no longer calls such a row a contradiction.
 | `reverse`'s `resolution.csv` | Gains `caid`, `authority`, `placement_witness`, `placement_verdict`, `left_aligned` and `source_release`, in the model's column order, written back from the locus; a reversed row keeps the authority and release of the row it came from, and an `ambiguous` row stays `ambiguous` (it came back `resolved` before, so lap 2 dropped the warning and `strict` built). `source=reversed` and an empty `fetched_at` are unchanged; `rsid_alternates`/`rsid_current`/`rsid_status` are still not written. A second-lap compile now reads the same `authority` and witness the first did, so it no longer names a declared source unused. | None. A consumer that read an empty `authority` as "reversed" reads `source`. |
 | `rsid_coordinate_disagrees` strict refusal | The `strict`-only continuation now reads "The authored value is kept and the table's position is carried beside it, so the next compile reaches this same finding: strict builds only on an authored pair the table agrees with." The warning text and the closing "Fix one of the two, or compile without strict." are unchanged. | A consumer grepping "does not survive a reverse" greps the new phrase. |
 
+### 1.35 A filled multi-ALT site is written ALT by ALT, offline too (RM381, no new code)
+
+| Surface | What changed | What to do |
+| --- | --- | --- |
+| `resolution.csv` filled from the Ensembl snapshot, ClinVar or REST | Each ALT is written in its own trimmed spelling, regrouped by it, never under a site's shared padded ref: the split repo's `16:23635706 GTT>G,GT,GTTT` is `G>GT` and `GT>G` (the pieces the genotype fits), and a padded row such as `CT>CA,CC,CG` is handed on as `T>A,C,G` one base on. An rsID can therefore expand to more loci than before, and a fill's `start` can move right by the shared leading bases. Offline an indel piece is trimmed, not proven leftmost, so `left_aligned` is empty; online it is left-aligned as RM270 writes it. | A consumer joining `(chrom, pos, ref, alt)` against a `bcftools norm -m -any` VCF meets these rows after a re-derive. `resolution_signature` and `artifact.digest` move where a fill did; `content_signature` does not. |
+| Position→rsID back-fill | A coordinate authored in a caller's spelling (`16:23635706 GT>G`) gets the rsID the split repo files under its padded row (`rs1555461597`). | An authored positional row can gain an `rsid` on re-derive; check the module does not also author that rsID's same allele by rsID (`Duplicate (variant, genotype)`). |
+| A genotype spelled in a site's padded frame | Read in that frame, both tiers (`just_dna_compiler.resolution.site_verdicts`): each allele is trimmed against a locus's ref with the readers' own trim, so `GTT/GTTT` names the insertion `G>GT` alone and the site's other pieces do not host it, and a compound het no piece hosts alone (`G/GTTT`) is hosted by the piece each allele names. A caller-spelled genotype (`G/GT`, a homozygote) is judged per locus as before. | None: a module authored from an unnormalized multi-ALT record keeps resolving and compiling. |
+| `just_dna_format.alleles`, `just_dna_enricher.sequences`, `just_dna_compiler.resolution` | New public names `alleles.trim_allele`, `sequences.per_alt_loci`, `resolution.frame_reading`, `resolution.site_verdicts`, `resolution.LocusSpelling`. | None. |
+
 ## 2. What to change
 
 ### Upgrade order
@@ -751,7 +760,9 @@ reads the record and no longer calls such a row a contradiction.
     enricher wrote. All six reach a parquet, inside `resolution_loci` and `proxy_loci`, with `caid`,
     `authority` and `status` (§ 1.34). An empty `source_release` means not recorded, never current. A key
     is spelled without `:None` now (§ 1.26): respell a stored `13:48037749:None` in `overrides.csv`, or it
-    stops matching.
+    stops matching. A fill from a multi-ALT site is written ALT by ALT in its trimmed spelling, so after a
+    re-derive an rsID can expand to more loci and a fill's `start` can move right by the shared leading
+    bases, and a positional row can gain its `rsid` (§ 1.35).
 15. **Parquet readers.** The variant and positional parquets gain `vrs_id` and `vrs_spec` (§ 1.19) and
     `resolution_loci` (§ 1.28), whose struct is every `ResolutionRow` column but the eight
     `parquets.RESOLUTION_LOCUS_EXCLUDED` names, in the model's order (§ 1.31, § 1.34): read its fields by

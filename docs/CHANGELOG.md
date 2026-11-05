@@ -41,6 +41,22 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-05 — RM381: a split-snapshot site is filled ALT by ALT in the caller's spelling, offline too (0.8, uncut)
+
+- **Every reader of a snapshot's `alt` spells each ALT alone** (`alleles.trim_allele`, regrouped by
+  `sequences.per_alt_loci`): the Ensembl and ClinVar rsID lookups, REST's `allele_string`, gnomAD's
+  variant ids and the three position→rsID readers. The split repo pads every ALT of a site to one ref, and the readers grouped by it,
+  so `rs1555461597` was filled as `16:23635706 GTT>G,GT,GTTT`; it is now `G>GT` and `GT>G` (`GTT>G` is the
+  2 bp deletion its genotype cannot host), and SHOX's `rs1569493663` regains `C>CAG` beside `CAG>C`. The
+  trim reads no reference; left-alignment past it is still online only, so an offline indel piece records
+  `left_aligned` unknown.
+- **A caller-spelled coordinate back-fills its rsID** from the split rows (`16:23635706 GT>G` →
+  `rs1555461597`).
+- **A genotype authored in a site's padded frame is read in it**, by trimming its alleles with the same
+  helper (`site_verdicts`, both tiers): `GTT/GTTT` names the insertion `G>GT` alone, the compound het
+  `G/GTTT` names `GTT>G` and `G>GT`, and the old repo's `AGA/AGAGA` names SHOX's duplication alone. A
+  caller-spelled genotype reads as before. No new column or code.
+
 ## 2026-11-05 — INTEGRATION_0_8 is finished for downstream to integrate against the branch (0.8, uncut)
 
 - **[INTEGRATION_0_8.md](INTEGRATION_0_8.md) now covers every § 1 item from § 2 and § 3**: an upgrade order

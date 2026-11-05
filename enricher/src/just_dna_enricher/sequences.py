@@ -33,10 +33,11 @@ one tier that has the sequence to do it with.
 """
 
 import logging
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 from ga4gh.vrs.dataproxy import create_dataproxy
+from just_dna_format.alleles import trim_allele
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.vrs import UnsupportedBuildError, refget_accession, refget_supports_build
 
@@ -171,14 +172,30 @@ def left_normalize(
     if not ref or not alt or ref == alt or not _ACGT.issuperset(ref) or not _ACGT.issuperset(alt):
         return None
     if len(ref) == len(alt):
-        while len(ref) > 1 and ref[-1] == alt[-1]:
-            ref, alt = ref[:-1], alt[:-1]
-        while len(ref) > 1 and ref[0] == alt[0]:
-            ref, alt, pos = ref[1:], alt[1:], pos + 1
-        return chrom, pos, ref, alt
+        return (chrom, *trim_allele(pos, ref, alt))
     if read_window is None:
         return None
     return _left_align(chrom, pos, ref, alt, read_window)
+
+
+def per_alt_loci(alleles: Iterable[tuple[str, int, str, str]]) -> list[dict[str, object]]:
+    """Alleles `(chrom, start, ref, alt)` → loci, each ALT in its own spelling (`trim_allele`) (RM381).
+
+    The one way a reader turns a source's rows into the locus dicts the chain passes on. ALTs whose
+    trimmed `(chrom, start, ref)` agree share a locus, their `alts` comma-joined, sorted and deduplicated;
+    ALTs that trim to different refs are different loci, the split a caller's `bcftools norm -m -any`
+    makes. Loci come back sorted by `(chrom, start, ref)` (P7). So the split repo's
+    `16:23635706 GTT>G / GTT>GT / GTT>GTTT` is three loci, `G>GT`, `GT>G` and `GTT>G`, and never the
+    padded `GTT>G,GT,GTTT`, in which a genotype would be read in a frame no caller writes.
+    """
+    grouped: dict[tuple[str, int, str], set[str]] = {}
+    for chrom, start, ref, alt in alleles:
+        pos, tref, talt = trim_allele(start, ref, alt)
+        grouped.setdefault((chrom, pos, tref), set()).add(talt)
+    return [
+        {"chrom": chrom, "start": pos, "ref": ref, "alts": ",".join(sorted(alts))}
+        for (chrom, pos, ref), alts in sorted(grouped.items())
+    ]
 
 
 @dataclass(frozen=True)
