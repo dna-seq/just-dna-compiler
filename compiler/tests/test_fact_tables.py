@@ -1651,8 +1651,11 @@ def test_reverse_keeps_the_authority_and_restamps_the_link(tmp_path: Path) -> No
     reverse_module(tmp_path / "orig", tmp_path / "rev")
     with (tmp_path / "rev" / "resolution.csv").open(newline="", encoding="utf-8") as handle:
         reversed_rows = list(csv.DictReader(handle))
-    assert reversed_rows
-    assert {(r["source"], r["authority"]) for r in reversed_rows} == {("reversed", "ensembl")}
+    # Only the table's row: another variant the table never answered is rebuilt from its own cells
+    # and has no authority to keep.
+    answered = [r for r in reversed_rows if r["variant_key"] == _SICKLE]
+    assert answered
+    assert {(r["source"], r["authority"]) for r in answered} == {("reversed", "ensembl")}
     assert ResolutionRow(variant_key="x").authority is None
 
 
