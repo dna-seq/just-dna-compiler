@@ -15,8 +15,8 @@ caught someone every release: **answered, in the tree, cut and installable are f
 states**. Nothing here is installable yet.
 
 **This release is two batches, and a consumer on 0.6.6 has seen neither.** The
-[2026-08-24 pass](CHANGELOG.md) answered twelve consumer items (S63–S74) and was deliberately left
-uncut with no number; [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md) then decided twelve roadmap items with
+[2026-08-24 pass](../CHANGELOG.md) answered twelve consumer items (S63–S74) and was deliberately left
+uncut with no number; [PROPOSAL_0_7](../proposals/PROPOSAL_0_7.md) then decided twelve roadmap items with
 the maintainer, one at a time, and all twelve shipped. RM140 landed after the round closed, as a dated
 addendum, and RM139 / RM141 / RM142 landed on top of it from three more consumer reports. They are one
 release because the version bump happened once; read this document as covering the whole interval.
@@ -24,7 +24,7 @@ release because the version bump happened once; read this document as covering t
 **Everything this document describes is committed.** RM143 (S78) carried an "in the working tree and
 not committed" label for a while; it **shipped on 2026-08-31** and the label outlived it in two places
 while § 5 already said it had landed. A status claim here goes stale the moment the work lands —
-[RM_TOC.md](RM_TOC.md) is the per-item file that is actually maintained, so check any status sentence
+[RM_TOC.md](../RM_TOC.md) is the per-item file that is actually maintained, so check any status sentence
 in this document against it rather than reading one as normative.
 
 ---
@@ -383,7 +383,7 @@ the old filename still answers 200 and serves a frozen 2025 object), and every b
 defaults to `data/repro/<lane>/` — `cpic build`, `clinpgx build`, `clinpgx build-labels` and
 `pharmvar build` no longer require it, the nine that defaulted to a bare relative name no longer
 write into the working directory, and `civic reproduce` moved to `data/repro/civic_reproduce`
-([RM177](ROADMAP_HISTORY.md#rm177--nine-builders-wrote-their-snapshot-beside-pyprojecttoml-because-the-rule-that-forbade-it-was-prose)). A caller passing `--out` is unaffected.
+([RM177](../ROADMAP_HISTORY.md#rm177--nine-builders-wrote-their-snapshot-beside-pyprojecttoml-because-the-rule-that-forbade-it-was-prose)). A caller passing `--out` is unaffected.
 
 **One flag added late in the line, and it is the one an error message tells you to use.**
 `check-identifiers` gains `--use` (`unstated | non-commercial | commercial`, default `unstated`),
@@ -489,7 +489,7 @@ against its own round trip, that difference is gone.
 
 New pinned phrase: `SUPPRESSED_PHRASE` (`"suppress override(s) remove"`). The overlay's two other
 warnings — an `update` reaching no row, and an overlay naming a table the module does not carry — are
-pinned in [COMPILER.md](COMPILER.md). The new `clin_sig_concordance_contested` code is **actionable
+pinned in [COMPILER.md](../COMPILER.md). The new `clin_sig_concordance_contested` code is **actionable
 rather than carried**, unlike its neighbour `verification_findings_recorded`, because it counts the
 *post-overlay* rows: writing the answer clears the finding. It never escalates under `--strict`, for
 the reason the check beneath it does not.
@@ -706,7 +706,7 @@ any size and a declared layout retirement rides it as `delete_patterns`.
    consequence is worse than for an ordinary table: an overlay row is an author's recorded judgement
    that a derived value is wrong, so losing it silently restores the value they rejected while the
    module keeps compiling green. This ask was carried in
-   [INTEGRATION_0_6 § 9](history/INTEGRATION_0_6.md) as a warning about a coming release; the release is here.
+   [INTEGRATION_0_6 § 9](INTEGRATION_0_6.md) as a warning about a coming release; the release is here.
 2. Add `clin_sig_concordance.csv` and `clin_sig_authority_calls.csv` to the same list — derived, so a
    drop is recoverable by re-running `enrich`, but a re-publish that loses them silently shrinks the
    module.

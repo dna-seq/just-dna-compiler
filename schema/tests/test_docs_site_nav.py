@@ -86,8 +86,9 @@ def _excluded(patterns: str, walked: set[str]) -> set[str]:
 
     Three spellings, because that is what `mkdocs.yml` spells: a bare filename, a directory with a
     trailing slash meaning everything beneath it, and a **`!` line that re-includes** — gitignore
-    semantics, applied in order, which is how one archived page (`history/INTEGRATION_0_6.md`) sits in
-    the nav while the rest of `history/` stays out of it. Comment lines are skipped.
+    semantics, applied in order, which is how the archived upgrade notes (`history/INTEGRATION_0_6.md`,
+    `history/INTEGRATION_0_7.md`) sit in the nav while the rest of `history/` stays out of it. Comment
+    lines are skipped.
 
     Implemented rather than delegated because the real matcher lives in `mkdocs`, which is not installed
     here — and a fourth spelling appearing in the config would show up as a file in neither half, which

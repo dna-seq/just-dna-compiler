@@ -741,7 +741,7 @@ finished when it was not.
 
 ## 9. The one 0.7 change a consumer must act on before the release lands
 
-**0.7 has since landed in the tree and has its own document — [INTEGRATION_0_7.md](../INTEGRATION_0_7.md).**
+**0.7 has since landed in the tree and has its own document — [INTEGRATION_0_7.md](INTEGRATION_0_7.md).**
 This section stays as written, because it is what a consumer reading it before the release was told;
 the full delta, and the registry ask below restated with the release actually here, are there.
 

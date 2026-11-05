@@ -39,7 +39,9 @@ from just_dna_compiler.compiler import ARTIFACT_PARQUETS
 from just_dna_format import vocab
 from just_dna_format.reference import authoring_reference
 
-_DOC = Path(__file__).resolve().parents[2] / "docs" / "INTEGRATION_0_7.md"
+# Archived to `docs/history/` at the 0.8.0 cut. The guard keeps walking it there: it is still the note a
+# reader on 0.6 upgrades through.
+_DOC = Path(__file__).resolve().parents[2] / "docs" / "history" / "INTEGRATION_0_7.md"
 
 #: Nouns this document uses for what a registry holds, and the registry that decides how many.
 _NOUNS: dict[str, str] = {

@@ -235,18 +235,20 @@ nav:
       - Cache surface: CACHE_SURFACE.md
       - CLI reference: cli/
       - Python API: api/
-  # **Both guides, and the archived one is here on purpose.** `INTEGRATION_0_6.md` moved to
-  # `docs/history/` as superseded, which it is *for a reader on 0.6* — and that reader is not the one who
-  # needs it. Somebody still on 0.5.4 upgrades through 0.6 first, and *Upgrading* is the one place they
-  # will look; leaving the sidebar with a single 0.6.6→0.7 line reads as "there is no path from 0.5",
-  # which is false. Its label says archived so nobody mistakes it for the current delta. Listing a
-  # `history/` file in the nav is not editing the archive — the file stays where it was moved. It does
-  # need an exception in `not_in_nav` below: `history/` is a prefix pattern and goes on matching it, and
-  # the partition guard refuses a page that is both navigated and excluded. It caught exactly that on
-  # the first attempt, where this comment had claimed otherwise.
+  # **The live guide and the archived ones, and the archived ones are here on purpose.** Each
+  # superseded note moves to `docs/history/` at the next cut (`INTEGRATION_0_6.md` at 0.7.0,
+  # `INTEGRATION_0_7.md` at 0.8.0), which makes it superseded *for a reader on the release it delivers*
+  # — and that reader is not the one who needs it. Somebody still on 0.5.4 upgrades through 0.6 and 0.7
+  # first, and *Upgrading* is the one place they will look; a sidebar holding only the newest line
+  # reads as "there is no path from here", which is false. The labels say archived so nobody mistakes
+  # one for the current delta. Listing a `history/` file in the nav is not editing the archive — the
+  # file stays where it was moved. Each one does need an exception in `not_in_nav` below: `history/` is
+  # a prefix pattern and goes on matching it, and the partition guard refuses a page that is both
+  # navigated and excluded. It caught exactly that on the first attempt, where this comment had claimed
+  # otherwise.
   - Upgrading:
-      - "0.7 → 0.8 (in progress)": INTEGRATION_0_8.md
-      - "0.6.6 → 0.7": INTEGRATION_0_7.md
+      - "0.7 → 0.8": INTEGRATION_0_8.md
+      - "0.6.6 → 0.7 (archived)": history/INTEGRATION_0_7.md
       - "0.5.4 → 0.6 (archived)": history/INTEGRATION_0_6.md
   # **The roadmap ledgers are in the sidebar, and they are the one group here written for a maintainer.**
   # They were in `not_in_nav` on the argument that a reader wading through shipped-roadmap rationale is
@@ -288,9 +290,10 @@ not_in_nav: |
   UPSTREAM_*.md
   audit/
   history/
-  # Re-included, gitignore style: this one archived page is in the nav (see the *Upgrading* comment
-  # above), and a `!` line is how `not_in_nav` spells an exception to the directory line before it.
+  # Re-included, gitignore style: the archived upgrade notes are in the nav (see the *Upgrading*
+  # comment above), and a `!` line is how `not_in_nav` spells an exception to the directory line before it.
   !history/INTEGRATION_0_6.md
+  !history/INTEGRATION_0_7.md
   probes/
   proposals/
   seats/

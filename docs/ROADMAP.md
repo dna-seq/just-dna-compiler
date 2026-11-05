@@ -49,7 +49,7 @@ to [CHANGELOG.md](CHANGELOG.md) / [COMPILER.md](COMPILER.md).
 `v0.7.0` at `2001215` and it moved through four positions before settling there, each because a gate
 found something rather than because anyone changed their mind; the sequence and the reason for each
 move are in
-[INTEGRATION_0_7 § 5](INTEGRATION_0_7.md#5-readiness). PyPI has all six artifacts as of 15:49–15:50
+[INTEGRATION_0_7 § 5](history/INTEGRATION_0_7.md#5-readiness). PyPI has all six artifacts as of 15:49–15:50
 UTC that day, and their hashes are the ones that section lists. The previous cut was **0.6.6,
 `v0.6.6`** (2026-08-21), carrying nine patch fixes: the 2026-08-19 doc-audit round (RM104–RM107,
 RM109, RM111), the two shipped items of the S57–S60 batch (RM121, RM123), and S61's lookup fix

@@ -265,5 +265,5 @@ every change by surface, and [SCHEMAS.md](SCHEMAS.md) holds the columns.
 - **[FAQ.md](FAQ.md)** — settled questions, keyed by the question you would actually ask.
 - **[Upgrading to 0.8](INTEGRATION_0_8.md)** — the 0.7 → 0.8 surface delta, the upgrade order, and
   the old-reader breaks.
-- **[Upgrading to 0.7](INTEGRATION_0_7.md)** — the surface delta, including the one break for an old
-  reader.
+- **[Upgrading to 0.7](history/INTEGRATION_0_7.md)** (archived) — the 0.6.6 → 0.7 surface delta,
+  including the one break for an old reader. Read it first if you are still on 0.6.
