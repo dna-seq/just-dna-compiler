@@ -142,7 +142,24 @@ reported, never asked about, and they never freeze scope.
 9. **The cut**, at **zero active items**: versions and floors, the lock, the CHANGELOG cut heading, the
    release record (measured by sweeps; a toolchain move is declared only from a sweep that holds the
    compiler fixed), the INTEGRATION file finished, the branch merged into `main`, the dists built and
-   checked. Publishing stays the maintainer's; the tag follows the publish.
+   checked. Publishing stays the maintainer's; step 10 follows the publish.
+10. **After the publish** (added 2026-11-05: at 0.8.0 the tag, the GitHub release and the docs refresh were
+    all missing hours after the publish). Once the maintainer has published, the lead does all three
+    without asking:
+    - **The tag**: `vX.Y.Z` on the cut commit on `main`, annotated, naming each package's version
+      (`just-dna-format 0.8.0, just-dna-compiler 0.8.0, just-dna-enricher 0.8.0`), and pushed.
+    - **The GitHub release** on that tag (`gh release create vX.Y.Z --title "X.Y.Z — <one line>"
+      --notes-file …`). The lead writes the notes: what the release lets a module or a consumer do, in plain
+      words; what a consumer must do at the boundary (pins, caches, re-derivation, which digests move); a
+      pointer to the INTEGRATION file and the CHANGELOG; the known issues. Every claim is checked against
+      the code, not copied from an entry's title. The 0.7.0 release is the model.
+    - **The docs refresh**, by a subagent on a branch off `main`, merged by the lead. It moves the
+      previous release's INTEGRATION file into `docs/history/` with its links and the site navigation, and
+      refreshes every live sentence about the present (the current release, the current upgrade note, the
+      open minor) in README, the user guides, the tier references and `CLAUDE.md`'s doc map. Dated
+      records stay as they are. The strict docs build and the doc-link tests run before the merge. The
+      docs site publishes from `main` on every push (`.github/workflows/pages.yml`), so the merge is what
+      updates the site.
 
 **The failure this sequence guards against** is an urgently needed feature pushed into a release that
 has not been cut yet. It resets the cycle, and in earlier lines it produced the `PROPOSAL_*_PT2`/`PT3`
