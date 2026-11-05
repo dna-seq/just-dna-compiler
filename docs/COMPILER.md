@@ -1612,8 +1612,10 @@ shape is one row.)
 
 **A contradiction is an instability, not a difference of opinion.** An authored coordinate that
 disagrees with the table used to be a warning and nothing more. It has to be stronger: the artifact
-keeps what the author wrote, so the table's position does not survive a reverse, and the next compile
-resolves from a table that no longer says what it said.
+keeps what the author wrote, and an all-or-nothing artifact should not rest on a pair its own table
+contradicts. Until RM364 the table's position was also lost on a reverse; it now rides `resolution_loci`
+beside the authored value, so the next compile reaches the same finding, and `strict` refuses for the
+contradiction alone (RM380 corrected the refusal sentence, which still gave the old reason).
 
 ## The meta-table (0.8) — expansion, precedence and the two parquets
 

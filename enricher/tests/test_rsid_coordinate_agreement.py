@@ -199,7 +199,7 @@ def test_a_disagreement_is_reported_in_both_modes_and_refuses_neither(tmp_path: 
     """A dbSNP merge or a build difference is not something an authored edit is owed — P5.
 
     `strict` means *reproducible artifact*; the compiler's half of this question escalates because the
-    authored value wins and the table's position is then lost on a reverse. Here nothing is dropped,
+    authored value wins over the table in the artifact. Here nothing is dropped,
     so escalating would refuse a compile for a finding the enricher itself carries as a warning.
     """
     spec = _spec(tmp_path, "rs429358,19,999,T,C,C/T,risk,contradicts the snapshot\n")

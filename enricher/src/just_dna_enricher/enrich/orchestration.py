@@ -1655,8 +1655,8 @@ def _run_enrichment(
     # chain already opened — so there is one question, two tiers and one attestation name.
     #
     # A warning in BOTH modes, and the difference from the compiler's half is not an oversight. There,
-    # the authored value wins and the table's position is lost on a reverse, so a contradiction is an
-    # instability in the artifact; here nothing is dropped or rewritten and the likely causes — a dbSNP
+    # the authored value wins over the table in the artifact, so strict builds only on a pair the table
+    # agrees with; here nothing is dropped or rewritten and the likely causes — a dbSNP
     # merge, a coordinate from another build — are not cleared by any authored edit this run can name
     # (P5, the `not_covered` class).
     #
