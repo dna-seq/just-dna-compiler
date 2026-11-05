@@ -21,10 +21,12 @@ from pathlib import Path
 import duckdb
 import polars as pl
 import pytest
-from just_dna_compiler.resolution import hosting_verdict
-from just_dna_enricher import clinvar, ensembl, gnomad, resolver, sequences
+from just_dna_compiler.compiler import compile_module
+from just_dna_compiler.resolution import hosting_verdict, site_verdicts
+from just_dna_enricher import clinvar, ensembl, gnomad, resolver
 from just_dna_enricher.enrich import enrich
 from just_dna_enricher.enrich.orchestration import _filled_pieces
+from just_dna_format import alleles
 
 _ROOT = Path(__file__).resolve().parents[2]
 FIXTURE = _ROOT / "assets" / "ensembl_split_multialt"
@@ -155,12 +157,19 @@ def test_offline_the_position_back_fill_meets_a_caller_spelled_coordinate(
 
 
 def _written(
-    snapshot: Path, rsid: str, read_window: Callable[[str, int, int], str | None] | None
+    snapshot: Path,
+    rsid: str,
+    read_window: Callable[[str, int, int], str | None] | None,
+    genotype: str | None = None,
 ) -> set[Spelling]:
-    """What `enrich` writes for an rsID-only row: the reader's loci, the hosting filter, then RM270's fill."""
+    """What `enrich` writes for an rsID-only row: the reader's loci, the site-framed hosting filter
+    (`site_verdicts`, what `enrich` asks), then RM270's fill."""
     loci, _, _ = resolver.lookup_loci(snapshot, [rsid], [])
-    genotype = GENOTYPES[rsid]
-    hosted = [lo for lo in loci[rsid] if hosting_verdict(genotype, lo["ref"], lo["alts"]) is not False]
+    genotype = genotype or GENOTYPES[rsid]
+    spellings = [(lo["chrom"], lo["start"], lo["ref"], lo["alts"]) for lo in loci[rsid]]
+    hosted = [
+        lo for lo, ok in zip(loci[rsid], site_verdicts(genotype, spellings), strict=True) if ok is not False
+    ]
     return _per_alt([piece for lo in hosted for piece, _ in _filled_pieces(genotype, lo, read_window)])
 
 
@@ -178,18 +187,93 @@ def test_offline_trimming_alone_reaches_the_callers_spelling_on_the_split_rows(r
     assert _written(SPLIT, rsid, None) == _hosted(rsid)
 
 
-def test_a_compound_het_spelled_in_a_sites_joint_frame_no_longer_finds_a_locus(
+# ── both sides' raw tokens: a genotype in a site's padded frame names the piece its trimmed form does ──
+#: `(rsid, the event's caller spelling, the split repo's padded genotype, the old repo's padded genotype)`.
+#: Each padded genotype is the ref and the one ALT of that record's own frame, so it names the event alone;
+#: the caller's ref/ALT pair (`G/GT`, `C/CAG`) also reads as the other ALT, RM270's either-reading rule.
+FRAMED = [
+    ("rs1555461597", ("16", 23635706, "G", "GT"), "GTT/GTTT", "TT/TTT"),
+    ("rs1569493663", ("X", 634689, "C", "CAG"), "CAG/CAGAG", "AGA/AGAGA"),
+]
+
+
+@pytest.mark.parametrize(("rsid", "event", "split_frame", "old_frame"), FRAMED)
+def test_a_genotype_in_the_split_rows_padded_frame_names_its_event_alone(
+    rsid: str, event: Spelling, split_frame: str, old_frame: str
+) -> None:
+    """Padded genotype against the split rows, offline and online: one piece, the event's."""
+    assert _written(SPLIT, rsid, None, split_frame) == {event}
+    assert _written(SPLIT, rsid, _window, split_frame) == {event}
+
+
+@pytest.mark.parametrize(("rsid", "event", "split_frame", "old_frame"), FRAMED)
+def test_a_genotype_in_the_old_rows_padded_frame_names_its_event_alone(
+    rsid: str, event: Spelling, split_frame: str, old_frame: str
+) -> None:
+    """Padded genotype against the old pipe-joined row (`AGA/AGAGA` is the duplication alone in
+    `X:634690 AGA>A|AGAGA`), online, where the old right-shifted row reaches the caller's spelling."""
+    assert _written(OLD, rsid, _window, old_frame) == {event}
+
+
+@pytest.mark.parametrize(("rsid", "event", "split_frame", "old_frame"), FRAMED)
+def test_the_trimmed_genotype_names_the_event_on_both_snapshots(
+    rsid: str, event: Spelling, split_frame: str, old_frame: str
+) -> None:
+    """The caller's spelling against both repos: the event, plus the other ALT it also reads as, the same
+    set on both, and ClinVar's per-ALT records of that pair."""
+    trimmed = "/".join(sorted((event[2], event[3])))
+    written = _written(SPLIT, rsid, _window, trimmed)
+    assert event in written and written == _written(OLD, rsid, _window, trimmed) == _written(
+        SPLIT, rsid, None, trimmed
+    )
+
+
+def test_a_compound_het_in_the_padded_frame_finds_both_its_pieces(
     tmp_path: Path, no_ambient_caches: Path
 ) -> None:
-    """The cost, stated as a test. `G/GTTT` read in the padded frame `GTT>G,GT,GTTT` is a compound het of
-    the 2 bp deletion and the 1 bp insertion. Per ALT no locus holds both, so the source answered and
-    every locus was rejected (S85's fourth state), where the joint locus used to be written whole. The
-    joint frame moves between releases (`16:23635707 TT` in the old repo, `16:23635706 GTT` in the split
-    one), so a genotype spelled in it was never stable; a caller writes each ALT on its own record."""
+    """`G/GTTT` read in the split repo's frame `GTT>G,GT,GTTT` is the 2 bp deletion and the 1 bp insertion:
+    each allele trims to one piece, so both are written and the compile hosts it on both, offline. A
+    published module authored from such a record keeps behaving (P3)."""
     spec = _spec(tmp_path, ["rs1555461597,G/GTTT,risk,c"])
+    (spec / "studies.csv").write_text("rsid,pmid\nrs1555461597,9545397\n", encoding="utf-8")
     result = enrich(spec, offline=True, ensembl_cache=SPLIT, clinvar_cache=tmp_path / "no_clinvar")
-    assert [m.rsid for m in result.allele_mismatches] == ["rs1555461597"]
-    assert [r for r in result.rows if r.chrom is not None] == []
+    assert result.allele_mismatches == []
+    written = {(r.chrom, r.start, r.ref, r.alts) for r in result.rows if r.chrom is not None}
+    assert written == {("16", 23635706, "GTT", "G"), ("16", 23635706, "G", "GT")}
+    compiled = compile_module(spec, tmp_path / "out", strict=True)
+    weights = pl.read_parquet(tmp_path / "out" / "weights.parquet")
+    assert {
+        (c, s, r, tuple(a)) for c, s, r, a in weights.select("chrom", "start", "ref", "alts").iter_rows()
+    } == {
+        ("16", 23635706, "GTT", ("G",)),
+        ("16", 23635706, "G", ("GT",)),
+    }
+    assert not [w for w in compiled.warnings if "not_at_locus" in str(w) or "cannot host" in str(w)]
+
+
+def test_site_verdicts_read_one_frame_per_site_and_leave_other_sites_alone() -> None:
+    """The ladder on the split pieces, and a paralog at another site keeping its own verdict."""
+    pieces = [("16", 23635706, "G", "GT"), ("16", 23635706, "GT", "G"), ("16", 23635706, "GTT", "G")]
+    assert site_verdicts("G/GT", pieces) == [
+        True,
+        True,
+        False,
+    ]  # ref/ALT in G and in GT; never GTT's two deletions
+    assert site_verdicts("GTT/GTTT", pieces) == [True, False, False]
+    assert site_verdicts("G/GTTT", pieces) == [
+        True,
+        False,
+        True,
+    ]  # a compound het only when no ref/ALT reading
+    elsewhere = ("2", 100, "GT", "G")
+    assert site_verdicts("GTT/GTTT", [*pieces, elsewhere]) == [
+        True,
+        False,
+        False,
+        hosting_verdict("GTT/GTTT", "GT", "G"),
+    ]
+    # No frame names every allele: per-locus `hosting_verdict`, as before.
+    assert site_verdicts("C/T", [("1", 5, "G", "A")]) == [hosting_verdict("C/T", "G", "A")]
 
 
 # ── the mechanism: every reader goes through one helper ─────────────────────────────────────────────
@@ -431,10 +515,10 @@ def test_no_snapshot_sql_aggregates_alt() -> None:
 
 def test_the_trim_is_vcf_parsimony_and_needs_no_reference() -> None:
     """One ALT against a padded ref: shared trailing bases first, then leading ones, one anchor kept."""
-    assert sequences.trim_allele(23635706, "GTT", "GT") == (23635706, "GT", "G")
-    assert sequences.trim_allele(23635706, "GTT", "GTTT") == (23635706, "G", "GT")
-    assert sequences.trim_allele(23635706, "GTT", "G") == (23635706, "GTT", "G")
+    assert alleles.trim_allele(23635706, "GTT", "GT") == (23635706, "GT", "G")
+    assert alleles.trim_allele(23635706, "GTT", "GTTT") == (23635706, "G", "GT")
+    assert alleles.trim_allele(23635706, "GTT", "G") == (23635706, "GTT", "G")
     # A shared leading base past the anchor moves the start, as `bcftools norm` does.
-    assert sequences.trim_allele(29608, "TC", "TTG") == (29609, "C", "TG")
+    assert alleles.trim_allele(29608, "TC", "TTG") == (29609, "C", "TG")
     # Not bases: nothing to trim, handed back as given.
-    assert sequences.trim_allele(5, "TA", "<DEL>") == (5, "TA", "<DEL>")
+    assert alleles.trim_allele(5, "TA", "<DEL>") == (5, "TA", "<DEL>")

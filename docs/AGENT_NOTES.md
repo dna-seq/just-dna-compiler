@@ -477,10 +477,14 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   module's `G/GT` in it as a compound het of two deletions and wrote the locus whole, and SHOX's `C/CAG`
   as the deletion alone, dropping the duplication RM270 had written. Every reader of a snapshot's `alt`
   (both resolvers, ClinVar's, REST's `allele_string`, gnomAD's ids, the three position→rsID readers) spells each
-  ALT alone through `sequences.trim_allele` and regroups by that (`per_alt_loci`), offline too, since a
+  ALT alone through `alleles.trim_allele` and regroups by that (`per_alt_loci`), offline too, since a
   trim reads no reference; left-alignment past it is still `left_normalize`'s. The rejected repair was
   trimming inside `normalize_locus` only: the frame rule still sees the padded set, and the miss
   reproduces online. `test_split_snapshot_per_alt.py` walks the readers by AST against a registry.
+  **And the genotype is the other spelling of the same vocabulary**: a module authored from an
+  unnormalized multi-ALT record carries `G/GTTT` in the padded frame. `resolution.site_verdicts` trims its
+  alleles with the same `alleles.trim_allele` and tests both sides' raw tokens. Accepting "a padded
+  compound het finds no locus" as won't-fix was refused (P3): an existing module must keep behaving.
 
 - `@resolution-reads-pgx-tables` — **Resolution reads `pharm_variants.csv` and `haplotypes.csv` too, not just `variants.csv`** (0.5,
   `enrich.collect_subjects`). PGx modules carry no `variants.csv`, so they used to enrich to an empty

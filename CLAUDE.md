@@ -202,7 +202,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - `compile → reverse → compile` reproduces the module or `strict` refuses; `authored_ident` is why. `@resolution-reversible`
 - Allele membership compares the union of every locus a key resolves to, before expansion. `@membership-union`
 - The Ensembl snapshot spells a multi-allelic site two ways (old repo pipe-joins `alt`, split repo one row per ALT); every other link uses commas. `@snapshot-pipe-alt`
-- A reader trims each ALT alone (`per_alt_loci`) and never groups by a source's padded `ref`. `@snapshot-pipe-alt`
+- A reader trims each ALT alone (`per_alt_loci`) and never groups by a source's padded `ref`; a genotype in that padded frame is read with the same trim (`site_verdicts`). `@snapshot-pipe-alt`
 - Resolution reads the PGx tables too; subjects dedupe with `variants.csv` first. `@resolution-reads-pgx-tables`
 - Reverse dropping `rsid_alternates` is closed, not a bug — don't re-flag it. `@rsid-alternates-closed`
 - A round-trip gate made of digests cannot see a value that lives only in the manifest; compare the authored projection. `@a-digest-gate-cannot-see-the-manifest`

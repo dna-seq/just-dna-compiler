@@ -393,6 +393,37 @@ def non_nucleotide_alleles(ref: str | None, alts: str | None) -> dict[str, str]:
     return found
 
 
+_ACGT_BASES = frozenset("ACGT")
+
+
+def trim_allele(pos: int, ref: str, alt: str) -> tuple[int, str, str]:
+    """One ALT against its REF → `(pos, ref, alt)` in its own parsimonious VCF spelling, with no reference read (RM381).
+
+    Drop the bases both sides end with, then the bases both start with, while each side keeps one, so an
+    indel keeps its anchor and a substitution or MNV keeps only what differs. This is what `bcftools norm`
+    does before it left-aligns. It is pure string work, so offline gets it too, and it lives in this tier
+    so the compiler reads a genotype in a site's frame with the same trim
+    (`just_dna_compiler.resolution.site_verdicts`). Left-alignment past the trim reads flanking bases and
+    stays the enricher's (`sequences.left_normalize`). A source that pads every ALT of a site to one
+    shared REF (the split Ensembl repo's `16:23635706 GTT>GT`) is trimmed here to the spelling a caller
+    writes for that ALT alone (`GT>G`). An allele that is not bases is handed back as given: `<DEL>` has no
+    flank to trim.
+    """
+    if (
+        not ref
+        or not alt
+        or not _ACGT_BASES.issuperset(ref.upper())
+        or not _ACGT_BASES.issuperset(alt.upper())
+    ):
+        return pos, ref, alt
+    ref, alt = ref.upper(), alt.upper()
+    while len(ref) > 1 and len(alt) > 1 and ref[-1] == alt[-1]:
+        ref, alt = ref[:-1], alt[:-1]
+    while len(ref) > 1 and len(alt) > 1 and ref[0] == alt[0]:
+        ref, alt, pos = ref[1:], alt[1:], pos + 1
+    return pos, ref, alt
+
+
 def parsimony_reduce(alleles: Iterable[str]) -> frozenset[str]:
     """Strip the flanking sequence every allele shares, leaving the event each one represents.
 

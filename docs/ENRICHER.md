@@ -1013,7 +1013,7 @@ canonical shape whichever spelling the cache holds; `test_enrich.py` runs the mu
 `rs1555461597` as `16:23635706 GTT>G`, `GTT>GT` and `GTT>GTTT`. Grouping those rows by their `ref` gave one
 locus, `GTT>G,GT,GTTT`, which no caller writes: offline nothing could respell it, and online the fill read
 the module's `G/GT` in that frame as two deletions and kept the locus whole. Every reader of a snapshot's
-`alt` now passes each ALT through `sequences.trim_allele` (drop the bases both sides end with, then those
+`alt` now passes each ALT through `alleles.trim_allele` (drop the bases both sides end with, then those
 both start with, while each keeps one: `bcftools norm`'s trim, which reads no reference) and regroups by
 the trimmed spelling (`sequences.per_alt_loci`): the three loci `G>GT`, `GT>G` and `GTT>G`. That is the
 Ensembl and ClinVar rsID lookups, REST's `allele_string` (`TCTT/T/TCTTCTT` is one such frame), gnomAD's
@@ -1265,9 +1265,10 @@ misses the row, though nobody is wrong (S120).
   judged; otherwise every piece that can host it (`C/CAG` fits either). When any ALT cannot be decided
   (offline, an unreadable window, a non-nucleotide allele) the locus is written as the link gave it:
   half a respelling would put two conventions in one cell. Since RM381 the link gives each ALT already
-  trimmed to its own spelling (§ Multi-allelic snapshot rows), so the frame this rule reads a genotype
-  in is a trimmed one; a compound het spelled only in a site's padded frame (`G/GTTT` on the split
-  repo's `GTT>G,GT,GTTT`) finds no locus, since per ALT none holds both alleles.
+  trimmed to its own spelling (§ Multi-allelic snapshot rows), and the hosting filter before it reads a
+  genotype authored in a site's padded frame in that frame (`resolution.site_verdicts`, the same trim on
+  the genotype's alleles): `GTT/GTTT` names `G>GT` alone, and the compound het `G/GTTT` names `GTT>G`
+  and `G>GT`, one allele each.
 - **An authored coordinate is judged, never rewritten** (`@enrichment-is-validation`). The cell is the
   row's identity, so every subject that authored a whole coordinate is checked against its leftmost
   spelling on every run, and a difference is a warning naming both (`EnrichmentResult.spelling.findings`,

@@ -11,7 +11,12 @@ from pathlib import Path
 from typing import Optional
 
 from just_dna_compiler.compiler import _restamp_for_build, load_csv_rows
-from just_dna_compiler.resolution import contradiction_reason, hosting_verdict, undecided_reason
+from just_dna_compiler.resolution import (
+    contradiction_reason,
+    hosting_verdict,
+    site_verdicts,
+    undecided_reason,
+)
 from just_dna_format.alleles import (
     is_unobservable_allele,
     parsimony_reduce,
@@ -1012,12 +1017,33 @@ def _run_enrichment(
             all_loci = [lo for lo in rsid_to_loci.get(v.rsid, []) if placement.keeps(v.rsid, lo)]
             loci = []
             subject = "allele" if v.origin == "haplotypes.csv" else "genotype"
-            for lo in all_loci:
-                verdict = (
-                    True
-                    if v.constraint is None
-                    else hosting_verdict(v.constraint, lo.get("ref"), lo.get("alts"))
+            # RM381: the genotype read in its site's frame, so a padded `G/GTTT` and the per-ALT pieces the
+            # readers hand on meet (`site_verdicts`); a piece of the site it does not name is not hosted.
+            framed = (
+                site_verdicts(
+                    v.constraint,
+                    [(lo.get("chrom"), lo.get("start"), lo.get("ref"), lo.get("alts")) for lo in all_loci],
                 )
+                if v.constraint is not None
+                else [True] * len(all_loci)
+            )
+            for lo, verdict in zip(all_loci, framed, strict=True):
+                if (
+                    verdict is False
+                    and hosting_verdict(v.constraint, lo.get("ref"), lo.get("alts")) is not False
+                ):  # type: ignore[arg-type]
+                    logger.info(
+                        "%s: %s:%s %s>%s is left out: read in its site's frame, the authored %s %s names "
+                        "another ALT of the site (RM381).",
+                        v.rsid,
+                        lo.get("chrom"),
+                        lo.get("start"),
+                        lo.get("ref"),
+                        lo.get("alts"),
+                        subject,
+                        v.constraint,
+                    )
+                    continue
                 settled = (
                     _settle_by_reference(v.constraint, lo, read_window)
                     if verdict is None and v.constraint is not None and read_window is not None

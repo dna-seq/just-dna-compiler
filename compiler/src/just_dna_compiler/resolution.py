@@ -26,6 +26,7 @@ from just_dna_format.alleles import (
     parsimony_reduce,
     split_genotype,
     strand_flip_explains,
+    trim_allele,
 )
 from just_dna_format.base import derive_variant_key
 from just_dna_format.findings import CodedWarning
@@ -986,6 +987,111 @@ def genotype_fits(genotype: str, ref: str | None, alts: str | None) -> bool:
     return hosting_verdict(genotype, ref, alts) is not False
 
 
+#: One locus as `site_verdicts` reads it: `(chrom, start, ref, alts)`, `alts` comma-joined.
+LocusSpelling = tuple[str | None, int | None, str | None, str | None]
+
+
+def frame_reading(genotype: str, loci: Sequence[LocusSpelling]) -> frozenset[int] | None:
+    """Which of a key's loci a genotype names, read in the frame of one of their refs (RM381), or `None`.
+
+    A source can spell every ALT of a site against one shared padded ref (the split Ensembl repo's
+    `16:23635706 GTT>G / GT / GTTT`), and a genotype authored from such a record keeps that frame
+    (`G/GTTT`, the 2 bp deletion and the 1 bp insertion). The readers hand each ALT on in its own
+    spelling (`G>GT`, `GT>G`, `GTT>G`), so a genotype must be read the same way: each allele is trimmed
+    against a candidate frame with `alleles.trim_allele`, the one trim the readers use, and the frame
+    names the loci whose own spelling each allele trims to. Pure string work, so it is offline too, and
+    the padded and the trimmed spelling of one event name the same locus (`@one-normalizer-two-spellings`).
+
+    The candidate frames are the loci's own refs (the padded site ref is one of them when the site has
+    the ALT that pads it; `GTT>G` does here). A frame the genotype's own allele equals is a ref/ALT
+    reading (`G/GT` in `G` is the insertion, in `GT` the deletion: both are kept, RM270's either-reading
+    rule); a frame in which every allele is an ALT is a compound het, and is read only when no ref/ALT
+    reading exists, so `G/GT` is never the two deletions of the frame `GTT`. `None` when no frame names
+    every allele: the caller asks `hosting_verdict` per locus, as before.
+    """
+    called = sorted(
+        {a.strip().upper() for a in split_genotype(genotype) if a.strip() and not is_unobservable_allele(a)}
+    )
+    if not called:
+        return None
+    spelled: list[tuple[str, int, str, frozenset[str]] | None] = []
+    for chrom, start, ref, alts in loci:
+        if chrom is None or start is None or not ref or not alts:
+            spelled.append(None)
+            continue
+        spelled.append(
+            (
+                str(chrom),
+                int(start),
+                ref.strip().upper(),
+                frozenset(a.strip().upper() for a in alts.split(",")),
+            )
+        )
+    readings: dict[bool, set[int]] = {True: set(), False: set()}
+    for frame in spelled:
+        if frame is None:
+            continue
+        chrom, start, ref, _ = frame
+        named: set[int] = set()
+        for allele in called:
+            if allele == ref:
+                continue
+            spelling = trim_allele(start, ref, allele)
+            hit = {
+                k
+                for k, locus in enumerate(spelled)
+                if locus is not None
+                and (locus[0], locus[1], locus[2]) == (chrom, *spelling[:2])
+                and spelling[2] in locus[3]
+            }
+            if not hit:
+                break
+            named |= hit
+        else:
+            if named:
+                readings[ref in called] |= named
+    for kind in (True, False):
+        if readings[kind]:
+            return frozenset(readings[kind])
+    return None
+
+
+def site_verdicts(genotype: str, loci: Sequence[LocusSpelling]) -> list[bool | None]:
+    """`hosting_verdict` for each of a key's loci, the genotype read in its site's frame where it needs one (RM381).
+
+    Per locus first, as always. `frame_reading` then decides two cases the per-locus strings cannot:
+
+    * **A padded genotype** (its two alleles share a flank past the anchor, `GTT/GTTT`, `AGA/AGAGA`):
+      it names one record's ALT in that record's frame, so the loci the reading names host it and the
+      other loci **at the same site** (`chrom`, `start`) do not. Per locus, the direction-blind string
+      algebra would also accept the sibling it does not name (`AGA/AGAGA` reduces like the deletion).
+    * **No locus hosts it alone** (a compound het spelled in a padded frame, `G/GTTT` on
+      `GTT>G,GT,GTTT`): the loci the reading names host it, one allele each.
+
+    Otherwise nothing moves: a caller-spelled `G/GT` keeps RM270's either reading, and a homozygote keeps
+    the one-to-many expansion (`@membership-union`, COMPILER.md § Resolution). A locus at another site
+    (a paralog, a PAR partner) always keeps its own verdict. Both resolvers and the compiler's expansion
+    and membership ask this, so the tiers read one genotype one way.
+    """
+    per_locus = [hosting_verdict(genotype, ref, alts) for _, _, ref, alts in loci]
+    named = frame_reading(genotype, loci)
+    if named is None:
+        return per_locus
+    called = sorted(
+        {a.strip().upper() for a in split_genotype(genotype) if a.strip() and not is_unobservable_allele(a)}
+    )
+    padded = len(called) == 2 and trim_allele(0, called[0], called[1])[1:] != (called[0], called[1])
+    if padded:
+        sites = {(loci[k][0], loci[k][1]) for k in named}
+        return [
+            True if k in named else False if (chrom, start) in sites else verdict
+            for k, ((chrom, start, _, _), verdict) in enumerate(zip(loci, per_locus, strict=True))
+        ]
+    if all(verdict is False for verdict in per_locus):
+        return [True if k in named else verdict for k, verdict in enumerate(per_locus)]
+    return per_locus
+
+
 def _hostable_loci(
     loci: list[ResolutionRow], genotype: str
 ) -> tuple[list[ResolutionRow], list[ResolutionRow], list[ResolutionRow]]:
@@ -1008,8 +1114,9 @@ def _hostable_loci(
     usable: list[ResolutionRow] = []
     rejected: list[ResolutionRow] = []
     undecided: list[ResolutionRow] = []
-    for locus in loci:
-        verdict = hosting_verdict(genotype, locus.ref, locus.alts)
+    # RM381: read in its site's frame, so a padded genotype and the per-ALT pieces meet (`site_verdicts`).
+    verdicts = site_verdicts(genotype, [(lo.chrom, lo.start, lo.ref, lo.alts) for lo in loci])
+    for locus, verdict in zip(loci, verdicts, strict=True):
         if verdict is False:
             rejected.append(locus)
             continue

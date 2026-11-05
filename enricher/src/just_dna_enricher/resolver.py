@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import duckdb
-from just_dna_compiler.resolution import genotype_fits
+from just_dna_compiler.resolution import site_verdicts
 from just_dna_compiler.resolution_findings import (
     ambiguous_pick,
     coordinate_disagrees,
@@ -189,7 +189,12 @@ def resolve_variants(
                 # injected-table path does. The shared predicate is imported rather than reimplemented
                 # because digest parity between the two paths is a documented guarantee, and a filter
                 # applied on one side only would silently break it.
-                usable = [lo for lo in loci if genotype_fits(v.genotype, lo.get("ref"), lo.get("alts"))]
+                # RM381: the genotype read in its site's frame, as the injected-table path reads it.
+                verdicts = site_verdicts(
+                    v.genotype,
+                    [(lo.get("chrom"), lo.get("start"), lo.get("ref"), lo.get("alts")) for lo in loci],
+                )
+                usable = [lo for lo, verdict in zip(loci, verdicts, strict=True) if verdict is not False]
                 for lo in loci:
                     if lo not in usable:
                         # Coded with the same members its injected-table twin in

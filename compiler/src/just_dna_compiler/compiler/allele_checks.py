@@ -26,7 +26,7 @@ from just_dna_format.vocab import ALLELE_PATTERN
 from just_dna_compiler.compiler.table_checks import _examples
 from just_dna_compiler.compiler.tables import _split_genotype
 from just_dna_compiler.ladder import LadderFinding, route
-from just_dna_compiler.resolution import hosting_verdict, row_release
+from just_dna_compiler.resolution import hosting_verdict, row_release, site_verdicts
 
 
 def _allowed_alleles(
@@ -99,11 +99,9 @@ def _resolved_allele_verdict(
     host that call" is exactly the drift `_allele_verdict`'s own docstring records, where membership
     and resolution disagreed the moment one indel was spelled two ways.
     """
-    verdicts = [
-        hosting_verdict(call, row.ref, row.alts)
-        for row in resolution_table.get(variant_key or "", [])
-        if row.ref and row.alts
-    ]
+    # RM381: the same site-frame reading resolution asked (`site_verdicts`), over the key's loci.
+    rows = [row for row in resolution_table.get(variant_key or "", []) if row.ref and row.alts]
+    verdicts = site_verdicts(call, [(row.chrom, row.start, row.ref, row.alts) for row in rows])
     if not verdicts:
         return None
     if any(verdict is True for verdict in verdicts):

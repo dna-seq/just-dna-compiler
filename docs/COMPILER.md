@@ -252,7 +252,10 @@ row; `locus_index` is the 0-based ordinal that lines that row up with its `resol
 things about the pair:
 
 - **The ordinal counts within `usable`**, i.e. after `_hostable_loci` dropped any locus that positively
-  contradicts the genotype — not within the injected table's own `locus_index`, which `_sorted_loci`
+  contradicts the genotype (asked through `site_verdicts` since RM381: a genotype authored in a site's
+  padded frame, `GTT/GTTT`, is read in it, so only the piece it names is usable, and a compound het no
+  single piece holds is usable on the piece each allele names; anything else is `hosting_verdict` per
+  locus) — not within the injected table's own `locus_index`, which `_sorted_loci`
   only *orders* by. Under `strict` a dropped locus is a refusal, so the two coincide there.
 - **`locus_count` defaults to `1`, not `0`.** A row that was never expanded genuinely resolves to one
   locus. A zero default would make the predicate read `locus_count > 1 or locus_count == 0`, which is

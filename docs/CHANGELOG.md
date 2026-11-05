@@ -43,7 +43,7 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 
 ## 2026-11-05 — RM381: a split-snapshot site is filled ALT by ALT in the caller's spelling, offline too (0.8, uncut)
 
-- **Every reader of a snapshot's `alt` spells each ALT alone** (`sequences.trim_allele`, regrouped by
+- **Every reader of a snapshot's `alt` spells each ALT alone** (`alleles.trim_allele`, regrouped by
   `sequences.per_alt_loci`): the Ensembl and ClinVar rsID lookups, REST's `allele_string`, gnomAD's
   variant ids and the three position→rsID readers. The split repo pads every ALT of a site to one ref, and the readers grouped by it,
   so `rs1555461597` was filled as `16:23635706 GTT>G,GT,GTTT`; it is now `G>GT` and `GT>G` (`GTT>G` is the
@@ -52,8 +52,10 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   `left_aligned` unknown.
 - **A caller-spelled coordinate back-fills its rsID** from the split rows (`16:23635706 GT>G` →
   `rs1555461597`).
-- A genotype spelled only in a site's padded frame, a compound het such as `G/GTTT`, no longer finds a
-  locus. No new column or code.
+- **A genotype authored in a site's padded frame is read in it**, by trimming its alleles with the same
+  helper (`site_verdicts`, both tiers): `GTT/GTTT` names the insertion `G>GT` alone, the compound het
+  `G/GTTT` names `GTT>G` and `G>GT`, and the old repo's `AGA/AGAGA` names SHOX's duplication alone. A
+  caller-spelled genotype reads as before. No new column or code.
 
 ## 2026-11-05 — RM379: every authority the concordance record names has its licence row (0.8, uncut)
 
