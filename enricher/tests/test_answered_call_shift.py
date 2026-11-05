@@ -499,10 +499,16 @@ def _enrich_spec(tmp_path: Path, *, with_answer: bool) -> Path:
 
 
 def _run(spec: Path, tmp_path: Path, **kwargs):
-    """`enrich` with every network-touching pass off and no cache to find."""
+    """`enrich` with every network-touching pass off and no cache to find.
+
+    `offline` is the switch that says so. The pass flags below turn off four passes, but the chain's
+    live-Ensembl link has no flag of its own, so until RM391 every run here asked `rest.ensembl.org`
+    and passed on whatever came back, or on the refusal.
+    """
     from just_dna_enricher.enrich import enrich
 
     defaults = {
+        "offline": True,
         "ensembl_cache": tmp_path / "no-ensembl-cache",
         "clinvar_cache": tmp_path / "no-clinvar-cache",
         "download": False,

@@ -396,6 +396,9 @@ def test_an_unreachable_rsid_writes_no_not_found_row(cache: Path, tmp_path: Path
         resolver=resolver,
         use_gnomad=False,
         download=False,
+        # RM391: the reference and dbSNP passes ask seqrepo and eutils, and this test is about neither.
+        verify_ref=False,
+        verify_rsids=False,
     )
 
     assert result.unreachable_rsids == ["rs6567160"]  # named, not merely absent from a set
@@ -432,6 +435,8 @@ def test_an_unanchorable_ensembl_answer_writes_no_row_and_is_named_apart(
         resolver=resolver,
         use_gnomad=False,
         download=False,
+        verify_ref=False,  # RM391: seqrepo and eutils are not what this asks about
+        verify_rsids=False,
     )
 
     unanchored = [r.getMessage() for r in caplog.records if "could not be anchored" in r.getMessage()]
@@ -473,7 +478,14 @@ def test_three_answered_or_failed_states_are_named_apart_and_stay_unresolved(
         "rsid,genotype,state,conclusion\nrs6567160,C/T,risk,c\nrs8176719,T/TC,risk,c\nrs2101156061,G/G,risk,c\n",
     )
     result = enrich(
-        spec, ensembl_cache=cache, clinvar_cache=tmp_path, resolver=resolver, use_gnomad=False, download=False
+        spec,
+        ensembl_cache=cache,
+        clinvar_cache=tmp_path,
+        resolver=resolver,
+        use_gnomad=False,
+        download=False,
+        verify_ref=False,  # RM391: seqrepo and eutils are not what this asks about
+        verify_rsids=False,
     )
 
     lists = {
@@ -534,6 +546,7 @@ def test_a_dbsnp_outage_does_not_sink_a_finished_enrichment(
         verify_rsids=True,
         use_gnomad=False,
         download=False,
+        verify_ref=False,  # RM391: the reference pass asks seqrepo, and the outage under test is dbSNP's
     )
 
     assert result.rows, "the resolution the run had already done must survive the outage"
@@ -643,6 +656,9 @@ def test_gnomad_link_never_overrides_an_earlier_link(cache: Path, tmp_path: Path
         # An online run with no ClinVar snapshot provisions one, and this test means none: before the
         # hub fence (RM372) it downloaded ClinVar from HuggingFace into `tmp_path` on every run.
         download=False,
+        # RM391: the reference and dbSNP passes ask seqrepo and eutils; the chain is the subject here.
+        verify_ref=False,
+        verify_rsids=False,
     )
 
     row = next(r for r in result.rows if r.rsid == "rs1801133")
@@ -664,6 +680,8 @@ def test_gnomad_link_fills_only_what_nothing_else_could(cache: Path, tmp_path: P
         resolver=stub,
         gnomad_client=_gnomad_client(transport),
         download=False,  # no ClinVar provisioning: see `test_gnomad_link_never_overrides_an_earlier_link`
+        verify_ref=False,  # RM391: as there
+        verify_rsids=False,
     )
 
     row = next(r for r in result.rows if r.rsid == "rs88888888")

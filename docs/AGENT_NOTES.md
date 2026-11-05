@@ -3432,6 +3432,29 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
 - `@network-tests-optin` — **Network tests are opt-in:** `JUST_DNA_NETWORK_TESTS=1` runs the live gnomAD query, the seqrepo
   refget re-derivation, and indel-normalization round-trips. They pass; they just aren't run by default.
 
+  **And since RM391 the rest are refused, at the transport.** For a release nothing enforced the rule
+  but the habit of the test writer: the 0.8 audit (round 2) ran the suite with sockets and DNS refused
+  and found 31 tests in 7 files asking ClinGen, Ensembl REST, eutils and the seqrepo proxy, every one of
+  them still green. Each client is written to turn a refused connection into its own *unreachable*, and
+  each test was content with that, so a suite whose answers came from whatever a remote service said
+  that day passed offline too, which is exactly why nobody saw it. RM372 had fenced one client (the HF
+  hub) by name, which is the per-client shape the next client walks past. The root `conftest.py` now
+  fences `socket.getaddrinfo`, `socket.socket.connect`/`connect_ex` and gRPC's channel constructors
+  (its C core opens sockets no Python patch sees), for every host but this machine. Three choices are
+  the point, and each has a failed alternative behind it: it raises `NetworkReachedInTests`, a
+  `RuntimeError` no transport maps, because an `OSError` is translated into "unreachable" and the test
+  passes (the audit's own probe, `ConnectionRefusedError`, measured exactly that); it **records** the
+  reach and fails a test at teardown when the body passed anyway, because `SequenceProxy.proxy()`'s
+  broad `except` swallows even a `RuntimeError`, and so does a citation lookup (seven of the 31 passed
+  their body that way), and a reach no test's teardown can claim (a module fixture's finalizer) fails
+  the run at session end under the test that made it; and it
+  reports a reach that already failed the test once, not twice. `test_the_network_is_fenced.py` drives
+  every transport into it and holds the enricher's imported transports equal to the set it drives.
+  `JUST_DNA_NETWORK_GUARD_LOG=<file>` lists the reaching tests. What the 31 wanted was nearly always
+  an incidental pass: `verify_ref` (seqrepo) and `verify_rsids` (eutils) are on by default, and
+  `enrich()` has no flag for its live-Ensembl link, so a test meaning "no network" passes
+  `offline=True`, and a test about one pass turns the others off or injects their clients.
+
 - `@flag-means-same` — **A flag must mean the same thing in every function that takes one (RM39).** `enrich_dosage_sensitivity`
   was the only pass without `offline`, so a caller running the family under one switch had to know, out
   of band, that one member ignored it — and the cost of forgetting was silent egress from a path the

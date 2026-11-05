@@ -30,6 +30,9 @@ refuse, and a test that wants a hub installs its own fake over this one. With th
 hub is reached, and a fetch whose local target is under the developer's real cache base still
 refuses: no test writes into the shared base under any setting. Set `JUST_DNA_HUB_GUARD_LOG` to a
 file to have every refusal append its test id there, which is how the reaching tests were listed.
+Since RM391 the root `conftest.py` fences every client at the transport; this one stays because it
+refuses before any socket, with the hub's own remedy in the message, and because its real-base half
+holds under the opt-in, where the transport fence steps aside.
 
 **`fake_hub` is the publisher's instrument (RM386)**: a git-backed repo in memory, with a head, a tree
 per revision and a hub-side refusal of a stale `parent_commit`, installed as the hub `HfApi(...)` and
@@ -48,6 +51,7 @@ than listed, so a fifteenth lane is covered the day it is declared.
 """
 
 import ast
+import functools
 import gzip
 import hashlib
 import os
@@ -65,8 +69,9 @@ from huggingface_hub import CommitOperationDelete
 from huggingface_hub.errors import HfHubHTTPError, RemoteEntryNotFoundError
 from huggingface_hub.hf_api import RepoFile
 from huggingface_hub.utils import filter_repo_objects
-from just_dna_enricher import clinvar_build, download, locations
+from just_dna_enricher import civic_draft, clinvar_build, download, locations
 from just_dna_enricher.caches import CACHE_LANES
+from just_dna_enricher.clingen_allele import ClingenAlleleClient
 from just_dna_enricher.mitomap_build import build_snapshot as build_mitomap_snapshot
 from just_dna_enricher.mitomap_miss_build import build_miss_snapshot
 
@@ -165,6 +170,23 @@ def _fenced_hub(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(huggingface_hub, "hf_hub_download", _fenced_hf_hub_download)
     for name in _PROVISIONERS:
         monkeypatch.setattr(download, name, _fenced_provisioner(getattr(download, name)))
+
+
+@pytest.fixture
+def clingen_registry_down(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The CIViC drafter's default ClinGen client answers 503, so a CAID row is *unchecked* (RM391).
+
+    The CIViC slice's CAID-only rows ask the ClinGen Allele Registry whenever a test passes no
+    `registry=`, and most CIViC-draft tests are about the CIViC rows, not the registry. Until RM391 that
+    was a live request every run, and the tests passed on whatever came back. The scripted outage is
+    the state they had been passing in offline: the real client, its real translation of a failed
+    request into `unchecked`, and no egress. A file uses it with `pytestmark`; a test about the registry
+    passes its own (`registry=`, `offline=True`), which this does not touch.
+    """
+    down = httpx.Client(transport=httpx.MockTransport(lambda _request: httpx.Response(503)))
+    monkeypatch.setattr(
+        civic_draft, "ClingenAlleleClient", functools.partial(ClingenAlleleClient, client=down)
+    )
 
 
 #: A CSI escape sequence — what rich emits to colour a span. See `cli_text`.
