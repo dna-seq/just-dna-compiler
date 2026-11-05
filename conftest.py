@@ -28,14 +28,15 @@ draft of this file for exactly that reason. Phrase matching goes through `cli_te
 **No network (RM391, `@network-tests-optin`).** Network tests are opt-in with
 `JUST_DNA_NETWORK_TESTS=1`, and until RM391 nothing enforced it: the only fence was RM372's, over the
 HuggingFace hub. The 0.8 audit (round 2) ran the suite with sockets and DNS refused and found 31
-tests in 8 files asking ClinGen, Ensembl REST, eutils and the seqrepo proxy, every one of them still
+tests in 7 files asking ClinGen, Ensembl REST, eutils and the seqrepo proxy, every one of them still
 passing, because each client turned the refused connection into its own "unreachable" answer and the
 test was content with that. A suite whose green depends on what a remote service says that day is not
 a gate.
 
 So the fence is here, at the transport, rather than per client: `socket.getaddrinfo`,
 `socket.socket.connect` and `connect_ex` refuse any host that is not this machine, and so do gRPC's
-channel constructors, because gRPC's C core opens its own sockets where no Python patch can see them.
+channel constructors (`grpc` and `grpc.aio`, every target form gRPC names), because gRPC's C core
+opens its own sockets where no Python patch can see them.
 That covers httpx (sync and async), requests (through which `ga4gh.vrs`'s seqrepo proxy speaks),
 `urllib`, `huggingface_hub` and gRPC in one place; `enricher/tests/test_the_network_is_fenced.py`
 drives each of them into it, and asserts the enricher imports no network library it does not drive.
@@ -49,7 +50,10 @@ Three choices in it are load-bearing:
 - **It also records the reach, and `_fenced_network` fails the test at teardown when one was
   recorded and the test still passed.** A pass that catches broadly (`@incidental-call-isolated`)
   could still swallow the raise, and a fence a test can swallow is the audit's finding again. A test
-  that already failed is not failed a second time, so one reach is one red line.
+  that already failed (or xfailed) is not failed a second time, so one reach is one red line. Each
+  reach is filed under the test that made it, so one no teardown can claim (a module fixture's
+  finalizer runs after its last test's) fails the run at session end under its own name instead of
+  failing whichever test runs next.
 - **It is active from the moment this file is imported**, collection included, and names the test
   when one is running (`PYTEST_CURRENT_TEST`). The one reach the audit saw outside a test was
   `atlas_protos.fetch_protos` at import, in a copy of the tree that had never generated the Atlas
@@ -85,15 +89,24 @@ class NetworkReachedInTests(RuntimeError):
     """A test asked a host that is not this machine without `JUST_DNA_NETWORK_TESTS=1`."""
 
 
-#: Every refusal since the last test's teardown, as "<host> via <what>". `_fenced_network` empties it.
-_REACHES: list[str] = []
+#: Every refusal not yet reported, as (the test's node id, "<host> via <what>").
+_REACHES: list[tuple[str, str]] = []
 
 _REAL_GETADDRINFO = socket.getaddrinfo
 _REAL_CONNECT = socket.socket.connect
 _REAL_CONNECT_EX = socket.socket.connect_ex
+#: gRPC's channel constructors, sync and asyncio, by (module, name): its C core opens its own sockets.
 _REAL_GRPC_CHANNELS = (
-    {} if grpc is None else {"secure_channel": grpc.secure_channel, "insecure_channel": grpc.insecure_channel}
+    {}
+    if grpc is None
+    else {
+        (module, name): getattr(module, name)
+        for module in (grpc, grpc.aio)
+        for name in ("secure_channel", "insecure_channel")
+    }
 )
+#: gRPC's target schemes that name addresses rather than a `host:port` (its naming doc).
+_GRPC_ADDRESS_SCHEMES = ("ipv4:", "ipv6:")
 
 
 def _is_local(host: object) -> bool:
@@ -121,7 +134,7 @@ def _guard(host: object, via: str) -> None:
     running = os.environ.get("PYTEST_CURRENT_TEST")
     test = running or "collection (outside any test)"
     if running:
-        _REACHES.append(reach)
+        _REACHES.append((running.rsplit(" (", 1)[0], reach))
     log = os.environ.get(NETWORK_GUARD_LOG)
     if log:
         with Path(log).open("a", encoding="utf-8") as handle:
@@ -155,21 +168,35 @@ def _fenced_connect_ex(self, address):
     return _REAL_CONNECT_EX(self, address)
 
 
-def _grpc_host(target: str) -> object:
-    """The host a gRPC target names: `dns:///h:p`, `h:p`, `[v6]:p`; `None` for a `unix:` socket."""
+def _host_of(address: str) -> str:
+    """`h`, from `h`, `h:p`, `[v6]` or `[v6]:p`; a bare IPv6 address is returned whole."""
+    if address.startswith("["):
+        return address[1:].split("]", 1)[0]
+    return address.rsplit(":", 1)[0] if address.count(":") == 1 else address
+
+
+def _grpc_hosts(target: str) -> list[object]:
+    """Every host a gRPC target names; `[None]` (local) for a Unix socket.
+
+    The forms gRPC's naming document gives: `h:p`, `dns:h:p`, `dns:///h:p`, `dns://authority/h:p`,
+    `ipv4:a:p,b:p`, `ipv6:[a]:p,...`, `unix:path`, `unix-abstract:name`.
+    """
     if target.startswith(("unix:", "unix-abstract:")):
-        return None
-    authority = target.split("///", 1)[1] if "///" in target else target
-    if authority.startswith("["):
-        return authority[1:].split("]", 1)[0]
-    return authority.rsplit(":", 1)[0] if authority.count(":") == 1 else authority
+        return [None]
+    if target.startswith(_GRPC_ADDRESS_SCHEMES):
+        return [_host_of(address) for address in target.split(":", 1)[1].split(",")]
+    rest = target.removeprefix("dns:")
+    if rest.startswith("//"):
+        rest = rest[2:].split("/", 1)[1]
+    return [_host_of(rest)]
 
 
-def _fenced_grpc(name: str):
-    real = _REAL_GRPC_CHANNELS[name]
+def _fenced_grpc(module, name: str):
+    real = _REAL_GRPC_CHANNELS[(module, name)]
 
     def fenced(target, *args, **kwargs):
-        _guard(_grpc_host(target), f"grpc.{name}")
+        for host in _grpc_hosts(target):
+            _guard(host, f"{module.__name__}.{name}")
         return real(target, *args, **kwargs)
 
     return fenced
@@ -178,8 +205,8 @@ def _fenced_grpc(name: str):
 socket.getaddrinfo = _fenced_getaddrinfo
 socket.socket.connect = _fenced_connect
 socket.socket.connect_ex = _fenced_connect_ex
-for _name in _REAL_GRPC_CHANNELS:
-    setattr(grpc, _name, _fenced_grpc(_name))
+for _module, _name in _REAL_GRPC_CHANNELS:
+    setattr(_module, _name, _fenced_grpc(_module, _name))
 
 
 class NetworkFence:
@@ -187,11 +214,17 @@ class NetworkFence:
 
     error = NetworkReachedInTests
 
-    def take(self) -> list[str]:
-        """The reaches recorded so far, removed — a test that provokes the fence on purpose owns them."""
-        taken = list(_REACHES)
-        _REACHES.clear()
-        return taken
+    def take(self, test: str | None = None) -> list[str]:
+        """The reaches recorded (by `test` only, when named), removed: whoever takes them reports them.
+
+        A test that provokes the fence on purpose takes its own; `_fenced_network` takes the reaches of
+        the test it closes and leaves another's, which is how a late reach (a module fixture's
+        finalizer, a thread outliving its test) is reported under its own name at session end rather
+        than blamed on whichever test happens to run next.
+        """
+        taken = [entry for entry in _REACHES if test is None or entry[0] == test]
+        _REACHES[:] = [entry for entry in _REACHES if entry not in taken]
+        return [reach for _test, reach in taken]
 
 
 @pytest.fixture
@@ -200,27 +233,42 @@ def network_fence() -> NetworkFence:
     return NetworkFence()
 
 
-#: Set on a test item whose setup or call already failed, so a reach that raised is reported once.
-_ALREADY_FAILED = pytest.StashKey[bool]()
+#: Set on a test item whose setup or call already failed (or xfailed), so a reach is reported once.
+_ALREADY_REPORTED = pytest.StashKey[bool]()
 
 
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
     outcome = yield
     report = outcome.get_result()
-    if report.when in ("setup", "call") and report.failed:
-        item.stash[_ALREADY_FAILED] = True
+    if report.when in ("setup", "call") and (report.failed or hasattr(report, "wasxfail")):
+        item.stash[_ALREADY_REPORTED] = True
 
 
 @pytest.fixture(autouse=True)
 def _fenced_network(request: pytest.FixtureRequest):
     """Fail the test at teardown when it reached the network and still passed: something swallowed the
-    raise. A test that already failed has been reported, by the raise or otherwise, and is not reported
-    twice."""
+    raise. A test that already failed (or xfailed) has been reported and is not reported twice."""
     yield
-    reached = NetworkFence().take()
-    if reached and not request.node.stash.get(_ALREADY_FAILED, False):
+    reached = NetworkFence().take(request.node.nodeid)
+    if reached and not request.node.stash.get(_ALREADY_REPORTED, False):
         pytest.fail(
             f"reached the network without {NETWORK_OPT_IN}=1 (RM391): " + "; ".join(sorted(set(reached))),
             pytrace=False,
         )
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    """A reach no test's teardown could claim fails the run, under the name of the test that made it."""
+    late = list(_REACHES)
+    _REACHES.clear()
+    if not late:
+        return
+    reporter = session.config.pluginmanager.get_plugin("terminalreporter")
+    if reporter is not None:
+        reporter.write_sep(
+            "=", f"reached the network after its test's teardown, without {NETWORK_OPT_IN}=1 (RM391)"
+        )
+        for test, reach in late:
+            reporter.write_line(f"{test}: {reach}")
+    session.exitstatus = pytest.ExitCode.TESTS_FAILED

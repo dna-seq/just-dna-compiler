@@ -3,7 +3,7 @@
 The fence is the root `conftest.py`'s: `socket.getaddrinfo`, `socket.socket.connect`/`connect_ex` and
 gRPC's channel constructors refuse every host that is not this machine while a test runs, and
 `_fenced_network` fails a test at teardown when it reached one, even if something swallowed the raise.
-Before it, 31 tests in 8 files asked ClinGen, Ensembl REST, eutils and the seqrepo proxy and passed
+Before it, 31 tests in 7 files asked ClinGen, Ensembl REST, eutils and the seqrepo proxy and passed
 anyway, because each client translated the refused connection into its own "unreachable".
 
 These tests drive every transport the workspace can open into the fence, and assert that the set they
@@ -50,10 +50,14 @@ _CLIENTS: dict[str, Callable[[], object]] = {
     "huggingface_hub": lambda: huggingface_hub.HfApi(endpoint=f"https://{_HOST}").model_info("x/y"),
     "grpc (secure)": lambda: grpc.secure_channel(f"{_HOST}:443", grpc.ssl_channel_credentials()),
     "grpc (insecure)": lambda: grpc.insecure_channel(f"dns:///{_HOST}:443"),
+    "grpc (an address list)": lambda: grpc.insecure_channel(f"ipv4:127.0.0.1:1,{_HOST}:443"),
+    "grpc.aio (secure)": lambda: grpc.aio.secure_channel(f"{_HOST}:443", grpc.ssl_channel_credentials()),
+    "grpc.aio (insecure)": lambda: grpc.aio.insecure_channel(f"{_HOST}:443"),
 }
-#: Driven above although no source file imports it, with the dependency that speaks it.
-_DRIVEN_FOR_A_DEPENDENCY = {
+#: Driven above although no source file imports it, each with why it is driven anyway.
+_DRIVEN_WITHOUT_AN_IMPORT = {
     "requests": "`ga4gh.vrs`'s seqrepo REST proxy (`sequences.SequenceProxy`) speaks requests",
+    "grpc.aio": "gRPC's other C-core constructor, fenced before the Atlas client reaches for it",
 }
 #: Import roots that can open a connection. A source import under one of these is a transport the
 #: fence must be shown to cover; `urllib.parse` and `urllib.error` open nothing and are not here.
@@ -61,6 +65,7 @@ _TRANSPORT_ROOTS = (
     "aiohttp",
     "ftplib",
     "grpc",
+    "grpc.aio",
     "http.client",
     "httpx",
     "huggingface_hub",
@@ -121,41 +126,72 @@ def test_a_reach_something_swallowed_is_still_recorded(
     assert network_fence.take() == [f"{_HOST} via DNS (socket.getaddrinfo)"]
 
 
-def test_a_swallowed_reach_fails_the_test_at_teardown(tmp_path: Path) -> None:
-    """End to end, in a child pytest carrying the real root conftest: green body, red teardown."""
-    (tmp_path / "conftest.py").write_text(
+def _child_pytest(directory: Path, files: dict[str, str]) -> str:
+    """Run a child pytest over `files` beside a copy of the real root conftest; its `-rA` output."""
+    (directory / "conftest.py").write_text(
         (_ROOT / "conftest.py").read_text(encoding="utf-8"), encoding="utf-8"
     )
-    (tmp_path / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
-    (tmp_path / "test_swallow.py").write_text(
-        "import httpx\n\n"
-        "def test_swallows():\n"
-        "    try:\n"
-        f"        httpx.get('https://{_HOST}/', timeout=5)\n"
-        "    except Exception:\n"
-        "        pass\n\n"
-        "def test_reports_its_own_reach():\n"
-        f"    httpx.get('https://{_HOST}/', timeout=5)\n",
-        encoding="utf-8",
-    )
+    (directory / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
+    for name, text in files.items():
+        (directory / name).write_text(text, encoding="utf-8")
     env = {**os.environ, "JUST_DNA_NETWORK_TESTS": ""}
-    env.pop("PYTEST_CURRENT_TEST", None)
+    # The parent's running test, its enumeration log and its options are not the child's.
+    for name in ("PYTEST_CURRENT_TEST", "JUST_DNA_NETWORK_GUARD_LOG", "PYTEST_ADDOPTS"):
+        env.pop(name, None)
     child = subprocess.run(
-        [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-rA", str(tmp_path)],
-        cwd=tmp_path,
+        [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-rA", str(directory)],
+        cwd=directory,
         env=env,
         capture_output=True,
         text=True,
         check=False,
     )
-    out = child.stdout
-    assert child.returncode == 1, out
+    assert child.returncode == 1, child.stdout
+    return child.stdout
+
+
+_REACH = f"httpx.get('https://{_HOST}/', timeout=5)"
+
+
+def test_a_swallowed_reach_fails_the_test_at_teardown_and_a_raised_one_fails_it_once(tmp_path: Path) -> None:
+    """End to end, in a child pytest carrying the real root conftest."""
+    out = _child_pytest(
+        tmp_path,
+        {
+            "test_swallow.py": "import contextlib\n\nimport httpx\nimport pytest\n\n"
+            "def test_swallows():\n"
+            f"    with contextlib.suppress(Exception):\n        {_REACH}\n\n"
+            f"def test_reports_its_own_reach():\n    {_REACH}\n\n"
+            f"@pytest.mark.xfail(raises=RuntimeError)\ndef test_xfails():\n    {_REACH}\n",
+        },
+    )
     # The swallowed reach: the body passed, the teardown is the error.
     assert "PASSED test_swallow.py::test_swallows" in out, out
     assert "ERROR test_swallow.py::test_swallows" in out, out
-    # The reach that raised fails once, in the call, not a second time at teardown.
+    # A reach that raised is reported once, by the call, never a second time at teardown; an expected
+    # failure stays expected.
     assert "FAILED test_swallow.py::test_reports_its_own_reach" in out, out
     assert "ERROR test_swallow.py::test_reports_its_own_reach" not in out, out
+    assert "XFAIL test_swallow.py::test_xfails" in out, out
+    assert "ERROR test_swallow.py::test_xfails" not in out, out
+
+
+def test_a_late_reach_fails_the_run_under_its_own_name_and_never_the_next_test(tmp_path: Path) -> None:
+    """A module fixture's finalizer runs after its last test's `_fenced_network`; the next test is innocent."""
+    out = _child_pytest(
+        tmp_path,
+        {
+            "test_a_late.py": "import contextlib\n\nimport httpx\nimport pytest\n\n"
+            "@pytest.fixture(scope='module')\ndef pinger():\n    yield\n"
+            f"    with contextlib.suppress(Exception):\n        {_REACH}\n\n"
+            "def test_owner(pinger):\n    pass\n",
+            "test_b_innocent.py": "def test_innocent():\n    pass\n",
+        },
+    )
+    assert "PASSED test_b_innocent.py::test_innocent" in out, out
+    assert "ERROR test_b_innocent.py::test_innocent" not in out, out
+    assert "reached the network after its test's teardown" in out, out
+    assert f"test_a_late.py::test_owner: {_HOST} via DNS (socket.getaddrinfo)" in out, out
 
 
 def test_this_machine_stays_reachable(network_fence, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -168,6 +204,7 @@ def test_this_machine_stays_reachable(network_fence, monkeypatch: pytest.MonkeyP
         with socket.create_connection(("localhost", port), timeout=5):
             pass
     grpc.insecure_channel(f"127.0.0.1:{port}").close()
+    grpc.insecure_channel(f"ipv4:127.0.0.1:{port}").close()
     assert network_fence.take() == []
 
 
@@ -180,8 +217,8 @@ def test_the_opt_in_opens_it(network_fence, monkeypatch: pytest.MonkeyPatch) -> 
 
 def test_every_transport_the_enricher_imports_is_driven_into_the_fence() -> None:
     driven = {_root(label) for label in _CLIENTS}
-    assert set(_DRIVEN_FOR_A_DEPENDENCY) <= driven
-    assert _transports_imported_by(_ROOT / "enricher" / "src") == driven - set(_DRIVEN_FOR_A_DEPENDENCY)
+    assert set(_DRIVEN_WITHOUT_AN_IMPORT) <= driven
+    assert _transports_imported_by(_ROOT / "enricher" / "src") == driven - set(_DRIVEN_WITHOUT_AN_IMPORT)
 
 
 def test_the_format_and_compiler_tiers_import_no_transport() -> None:
