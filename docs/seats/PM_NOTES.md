@@ -56,6 +56,9 @@ patches right after real use started, so the pm reads an audit sceptically: the 
   maker for this." The pm parks and unparks as it sees fit. The maintainer highlights zones of interest for a minor (as with
   longevitymap v2); a parked item such a zone touches is unparked into it. Parked items live in ROADMAP.md with a gate, each checked
   in its gate-audit table. RM388 and RM390 parked on this rule (2026-11-05).
+- **Audit round 3 and the docs pass sized, 2026-11-05.** Four block (all on the rederive migration path), six go in as the docs pass,
+  eleven park without a number in ROADMAP.md's "Audit findings parked without a number" (an `RMn` only on unparking, to keep the
+  entity count down). The containment breach (two outside runs left their copy) is already the kit's #278.
 - **Owed: re-size ROADMAP_0_9.md under this rule** (about an hour). Most of its items went there under the old automatic-next-minor
   policy; each either stays (a zone the maintainer named, or a real run hits it) or parks in ROADMAP.md with a gate. Decided by the
   maintainer's "park/unpark as you see fit", so no desk question. **Waits until** the 0.8 cut or the 7-day window's next reset

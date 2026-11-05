@@ -1505,6 +1505,35 @@ consumers can use before we build anything, and every item that names it is aski
 a problem, never about a solution. That is the structural reason only RM16 failed: it is the one entry
 whose gate named the *user of the output* rather than the *holder of the problem*.
 
+## Audit findings parked without a number (until a real run meets them)
+
+The maintainer's rule (2026-11-05): "judge how frequently would any bug would realistically fire. For once per known universe
+scenario defer to 'when roadmap is empty/someone steps on this defect'." The findings below were confirmed by a pre-cut audit, but no
+real run or example has hit them. Each gets an `RMn` only when it **unparks**: a run, a consumer or a test meets it, a scope the
+maintainer highlights touches it, or the roadmap is empty. One line each, so the finding is not re-reported as new.
+
+**Audit round 3 of 0.8 (2026-11-05, at `64c835b9`)**, sized by the pm:
+
+- **A client built in a function and never closed**: `clinvar_gkm.py` `lane_currency`, `caches.py`, `clinvar_gkm_build.py`,
+  `cli/clinvar_gkm_commands.py`, `currency.py` (two sites). Nothing leaks past a short process. The guard in `test_cli_surface.py`
+  skips a function with no `close()` at all. Unparks when a long-lived process (a server) holds the enricher.
+- **The S85 warning "recorded as unresolved" fires for an rsID+coordinate pair** (written `authored`/`resolved`; since 0.7) and for an
+  rsID-only subject whose placement `--rederive` carries (RM382). Wrong words on a correct table. Unparks on a report of it.
+- **RM391's test fence lets a loopback `HTTPS_PROXY` through.** No proxy is set on any machine that runs the suite. Unparks when one is.
+- **The regex timeout counts the worker's start-up** (0.4 s under forkserver), so `test_literature.py`'s catastrophic-regex test cannot
+  fail. Since 0.7. Unparks when that bound guards a real regex.
+- **A ClinVar witness on another contig reads `unplaced`** (`placement.py` `events.counterparts` needs the same contig). Measured: 0 of
+  145 corpus rows. Unparks on the first real one.
+- **`test_acmg.py` depends on the working directory** (fails from `enricher/`). Since 0.7. Unparks when the suite runs per package.
+- **Europe PMC's two DOI lookups raise the outage type on a 410** (`pmids_for_doi`, `record_for_doi`); the recorded reason is still
+  `retired`, so only the type is wrong. RM361's guard checks the module, not each method. Unparks when a caller catches by type.
+- **`net.py`'s retired-endpoint message advises "upgrade just-dna-enricher"** even when the operator chose the release or URL
+  (RM361's amendment, 0.8). Rare; the advice is wrong only for a hand-picked release. Unparks on a report of it.
+- **Two leftover import guards for a core dependency** in `download.py`. Dead code, no effect.
+- **A malformed legacy `rows` scalar rides along as an extra** in `snapshot.py` (RM303). No instance.
+- **STRchive's snapshot has no prefix and no pull record** (`SNAPSHOT_FILE_GLOBS` has no `strchive`). Unparks when STRchive is pulled
+  through the shared path.
+
 ## Reserved namespace
 
 Because backward-compat makes column names and vocabularies **permanent within a major** (CONSTITUTION
