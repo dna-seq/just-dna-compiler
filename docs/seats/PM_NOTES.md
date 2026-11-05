@@ -74,8 +74,9 @@ purpose; normalization is the compiled parquet's job (RM346, 1.0).
   tail: RM372 is the maintainer's 0.8 item, the registry's 0.8 adoption pins the name, about 30 minutes. The line
   against RM378: a fix that completes a decided 0.8 item goes in; a new capability goes to 0.9. If the lead
   finds no room before the cut, it goes to 0.9.
-- **RM380–RM383** are reserved by the lead (found regenerating the examples for RM373). Asked the lead whether
-  they are 0.8, for the scope row.
+- **RM380–RM383 are 0.8** (the lead, 2026-11-05), in the migration-probe scope row (8aab3e5d). RM382 reverses
+  S85's "the row stays" by the maintainer's word; triage notes it at S85. The lead confirmed RM384 fits.
+- **RM385 written for 0.9** (5dc2598f), on the maintainer's word: offline enrich has no reference at all.
 - **RM253's precedent, from just-vcf's lead (2026-11-04)**: the short-read callers they read (GATK,
   DeepVariant, DRAGEN, freeBayes, CGI) all write a repeat-length change as a left-aligned sequence indel,
   so 0.8's spelling matches. The repeat-count forms (ExpansionHunter `<STRn>` + REPCN, TRGT AL/MC,
