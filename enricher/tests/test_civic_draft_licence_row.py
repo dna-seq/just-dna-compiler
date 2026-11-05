@@ -20,34 +20,17 @@ both real runs of the real provider rather than a stubbed report.
 """
 
 import csv
-import functools
 from pathlib import Path
 
-import httpx
 import pytest
-from just_dna_enricher import civic_draft
 from just_dna_enricher.civic_build import build_snapshot
 from just_dna_enricher.civic_draft import CIVIC_SOURCE, draft_panel_from_civic
-from just_dna_enricher.clingen_allele import ClingenAlleleClient
 
 SLICE = Path(__file__).resolve().parents[2] / "assets" / "civic_slice"
 _RELEASE = "01-Aug-2026"
 
 
-@pytest.fixture(autouse=True)
-def _registry_down(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The drafter's default ClinGen client answers 503 here, so a CAID row is *unchecked* (RM391).
-
-    The CAID-only rows in the slice ask the ClinGen Allele Registry whenever a test passes no
-    `registry=`, and these tests are about the CIViC rows, not the registry. Until RM391 that was a live
-    request every run, and the tests passed on whatever came back. The scripted outage is the state
-    they had been passing in offline: the real client, its real translation of a failed request into
-    `unchecked`, and no egress. A test about the registry passes its own (`_StubRegistry`, `offline`).
-    """
-    down = httpx.Client(transport=httpx.MockTransport(lambda _request: httpx.Response(503)))
-    monkeypatch.setattr(
-        civic_draft, "ClingenAlleleClient", functools.partial(ClingenAlleleClient, client=down)
-    )
+pytestmark = pytest.mark.usefixtures("clingen_registry_down")
 
 
 @pytest.fixture
