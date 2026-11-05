@@ -41,8 +41,13 @@ head once it is pushed.
 indels trimmed per ALT (§ 1.35); RM382, reversing S85 (§ 1.36), and RM383 (§ 1.37); and audit round 2's
 items: RM387 (§ 1.38), RM384 (§ 1.39), RM386 (§ 1.40), RM389, RM361's amendment (§ 1.26), RM391 and RM392;
 and `hboc_palb2` and `pathogenic_clinvar` regenerated (§ 1.29 says why they waited).
-**What can still land before the cut:** whatever audit round 3 finds. Everything else listed here as able to land has
-landed. § 4 lists what 0.8 ships with unfixed.
+
+**Landed since, from audit round 3 and the docs pass:** RM395, the commands the user guides run (§ 1.41);
+RM393, a re-derivation with no position→rsID map keeping the back-filled rsID (§ 1.42); RM394, the
+re-derivation's report by arm, carry reason and per-source remedy (§ 1.43); the user guides re-run, and
+`mt_common_deletion` re-derived without its stale licence row.
+**What can still land before the cut:** nothing listed. Round 3's other eleven findings are parked in
+ROADMAP.md. § 4 lists what 0.8 ships with unfixed.
 
 [RM_TOC.md](RM_TOC.md) is the per-item record; a status sentence here goes stale when work lands, so
 check it there.
