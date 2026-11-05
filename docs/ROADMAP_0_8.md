@@ -16,7 +16,7 @@ Every item is additive under Principles 3/4/8, so each is legal in a minor. Inde
 | Built on the `0.8` branch, uncut | PT1's RM241, RM258, RM263, RM272, RM275, RM278, RM283, RM288, RM300, RM308, RM313; earlier RM256, RM257, RM259, RM260, RM262 and RM264's docs half | `proposals/PROPOSAL_0_8_PT1.md` and ROADMAP_HISTORY on the `0.8` branch | done; `main`'s roadmap still lists RM241, RM263 and RM308 until the next sync |
 | The indel-placement fixes | [RM304](ROADMAP.md#rm304--a-vrs_id-does-not-say-which-vrs-minted-it-and-vrs-21-moves-some-insertion-ids) first, then [RM267](ROADMAP.md#rm267--the-ensembl-snapshot-anchors-a-class-of-insertions-one-base-early-and-resolutioncsv-serves-them-as-a-different-event), [RM270](ROADMAP.md#rm270--an-indels-artifact-key-is-its-sources-spelling-a-left-aligned-vcf-misses-a-respelled-row-and-the-spelling-independent-id-the-enricher-mints-never-reaches-the-artifact), [RM292](ROADMAP.md#rm292--a-verification-check-does-not-say-what-it-checked-against-so-a-check-that-witnesses-itself-reads-as-verified), [RM305](ROADMAP.md#rm305--clinvar-gkms-allele-table-is-an-offline-independent-witness-for-where-an-indel-sits-and-nothing-reads-it) | [ROADMAP.md](ROADMAP.md) | one design, interviewed before it is built; four are high severity |
 | The lead's ready minors (2026-11-04) | RM337 (a warning naming each `logs/` file left behind), RM342 (the toolchain in the manifest, with the polars 2 lock) | this file | RM337 ready; RM342 after its interview |
-| Added by the maintainer (2026-11-04) | [RM372](#rm372--the-ensembl-snapshot-moved-to-a-new-hugging-face-repo-and-a-warm-cache-never-migrates) (the Ensembl snapshot moves to its new Hugging Face repo) | this file | decided, for the lead |
+| Added by the maintainer (2026-11-04) | [RM372](#rm372--the-ensembl-snapshot-moved-to-a-new-hugging-face-repo-and-a-warm-cache-never-migrates) (the Ensembl snapshot moves to its new Hugging Face repo), and RM384, its tail placed by the pm on 2026-11-05 (a public name for the moved lane) | this file | decided, for the lead |
 | The pre-cut audit, round 1 (2026-11-04) | RM361–RM370, one item per class of error the audit found; and RM267's REST witness (Ensembl REST as the placement's third, online-only witness, paced under its budget) | ROADMAP_HISTORY on the `0.8` branch | all shipped on `0.8` (2026-11-04) |
 | Added by the maintainer (2026-11-04, the interview on RM372's migration probe) | RM373 (each resolution row names the release that answered it, and the `SourceRow` its dataset), RM374 (one rsID with two placements warns, and is refused under strict), RM375 (the enricher judges whether two spellings are one event, and compile trusts that answer), RM376; and every example's `resolution.csv` regenerated against the new snapshot | ROADMAP_HISTORY on the `0.8` branch | RM374 built; RM376 closed as not a defect, records only; RM373 and RM375 building |
 | Chosen earlier | [RM303](#rm303--the-snapshot-layout-is-a-contract-with-six-parties-and-no-model-so-it-belongs-in-just-dna-format) (the snapshot layout as a model), [RM253](#rm253--a-repeat-count-star-allele-ugt1a1-28--ta8-has-no-home-a-diplotype-can-name-and-the-cpic-drafter-translates-none-of-cpics-notation) (a repeat-count star allele) | this file | taken into 0.8 in September |
@@ -1495,5 +1495,43 @@ placement verdicts against ClinVar were **not** re-run against the new snapshot,
 
 **Not verified:** whole-genome claims, since only chr21 and chrMT were read. Also unknown: whether the two missing
 rsIDs moved in dbSNP or were dropped by the builder.
+
+**Residuals** none yet.
+
+## RM384 — the Ensembl lane's repository has no public name on 0.8, and every pulled lane spells its repository twice
+
+**0.8, placed 2026-11-05 by the pm**, as the tail of RM372, which the maintainer added to 0.8: RM372 moved the Ensembl lane, and this gives the moved lane a public name the registry's 0.8 adoption can pin. About 30 minutes, near free under P9. If the lead finds it does not fit before the cut, it goes to 0.9 and the registry keeps its spelled string and drift test meanwhile.
+
+**Severity** low · **Status** open — **a minor, 0.8** (placed by the pm on 2026-11-05; proposed for 0.8 by triage: the registry's 0.8
+adoption pins it, and about 30 minutes on the `0.8` branch) · **Owner** enricher
+(`upload.py`, `download.py`) · **Motivating case** S130 in CONSUMER_SUGGESTIONS_HISTORY.md (just-dna-registry's
+liaison seat, 2026-11-05) · *related* RM372, RM278, RM202
+
+**The gap, read on `origin/0.8` at `5b1b73b8`.** Every lane this tier publishes has a public
+`DEFAULT_*_REPO_ID` in `upload.py`. The Ensembl lane is pulled and never published here (prepare-annotations
+builds it), so it has none: its repository is spelled once, in the private
+`download._ENSEMBL_HF_PREFIX = "datasets/just-dna-seq/ensembl_variations_split/data"`, and in the public
+`SNAPSHOT_REPO_PREFIXES["ensembl"]` (RM372) only as that fsspec prefix. A consumer pinning
+`ManifestCompilation.ensembl_reference`, whose description gives the shape `org/repo@<rev>`, either spells the
+string or strips `datasets/` and `/data` off a private one. The registry's 0.8 pre-build does the first, with a
+test reading the second to catch drift.
+
+**The same shape for the other nine.** Each pulled lane's repository is written twice, as a repo id in
+`upload.py` and again inside its prefix in `download.py`, and nothing ties the pair; `test_ensembl_split_release.py`
+asserts the prefix map's keys equal the globs', not that each prefix names its lane's repo. The rename RM372
+made by hand is the one a pair lets go wrong (`@registry-completeness`, *derive, never restate*).
+
+**What it would be.** One public map, lane → repo id, holding the Ensembl repo with the rest, and every
+`_*_HF_PREFIX` derived from it as `datasets/<repo id>/data`; the `DEFAULT_*_REPO_ID` names stay as working
+aliases (P3). The reporter's candidate (b), which also answers (a). A test asserts each prefix equals its
+derivation, over the walked map.
+
+**Sizing.** A new public name in the enricher is new surface, and the lane it names exists only on `0.8`, so
+`main` has nothing to fix: a minor. P9 prices it near free (no authored or published field moves).
+
+**The reporter's other question.** A reproducibility pin wants the repository *and* a revision, which is the
+shape `ensembl_reference` documents; the release label (`locations.ensembl_release_label`) names which data,
+not which bytes, so it is the wrong half to pin alone. Recording both is a separate question this item does
+not open.
 
 **Residuals** none yet.

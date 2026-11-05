@@ -973,42 +973,6 @@ running duckdb cannot read rather than mocking `connect`.
 
 **Residuals** none yet.
 
-## RM384 — the Ensembl lane's repository has no public name on 0.8, and every pulled lane spells its repository twice
-
-**Severity** low · **Status** open — **a minor, release undecided** (proposed for 0.8: the registry's 0.8
-adoption pins it, and about 30 minutes on the `0.8` branch; the pm places it) · **Owner** enricher
-(`upload.py`, `download.py`) · **Motivating case** S130 in CONSUMER_SUGGESTIONS_HISTORY.md (just-dna-registry's
-liaison seat, 2026-11-05) · *related* RM372, RM278, RM202
-
-**The gap, read on `origin/0.8` at `5b1b73b8`.** Every lane this tier publishes has a public
-`DEFAULT_*_REPO_ID` in `upload.py`. The Ensembl lane is pulled and never published here (prepare-annotations
-builds it), so it has none: its repository is spelled once, in the private
-`download._ENSEMBL_HF_PREFIX = "datasets/just-dna-seq/ensembl_variations_split/data"`, and in the public
-`SNAPSHOT_REPO_PREFIXES["ensembl"]` (RM372) only as that fsspec prefix. A consumer pinning
-`ManifestCompilation.ensembl_reference`, whose description gives the shape `org/repo@<rev>`, either spells the
-string or strips `datasets/` and `/data` off a private one. The registry's 0.8 pre-build does the first, with a
-test reading the second to catch drift.
-
-**The same shape for the other nine.** Each pulled lane's repository is written twice, as a repo id in
-`upload.py` and again inside its prefix in `download.py`, and nothing ties the pair; `test_ensembl_split_release.py`
-asserts the prefix map's keys equal the globs', not that each prefix names its lane's repo. The rename RM372
-made by hand is the one a pair lets go wrong (`@registry-completeness`, *derive, never restate*).
-
-**What it would be.** One public map, lane → repo id, holding the Ensembl repo with the rest, and every
-`_*_HF_PREFIX` derived from it as `datasets/<repo id>/data`; the `DEFAULT_*_REPO_ID` names stay as working
-aliases (P3). The reporter's candidate (b), which also answers (a). A test asserts each prefix equals its
-derivation, over the walked map.
-
-**Sizing.** A new public name in the enricher is new surface, and the lane it names exists only on `0.8`, so
-`main` has nothing to fix: a minor. P9 prices it near free (no authored or published field moves).
-
-**The reporter's other question.** A reproducibility pin wants the repository *and* a revision, which is the
-shape `ensembl_reference` documents; the release label (`locations.ensembl_release_label`) names which data,
-not which bytes, so it is the wrong half to pin alone. Recording both is a separate question this item does
-not open.
-
-**Residuals** none yet.
-
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
