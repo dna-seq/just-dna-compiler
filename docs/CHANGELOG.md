@@ -41,6 +41,18 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-05 — `hboc_palb2` and `pathogenic_clinvar` regenerated against the split snapshot (0.8, uncut)
+
+- The two examples the first regeneration withheld are re-derived online now that RM381, RM382 and RM387
+  are on `0.8`, so every example that commits a `resolution.csv` answers from
+  `ensembl-variation-2026_07_13-vep116.0`. Both pass `validate --strict` and `compile → reverse → compile`
+  is a fixed point; neither raises `rsid_placements_disagree`, `positional_identity_contradicted` or
+  `derived_row_orphan`. `pathogenic_clinvar`'s `rs613985` resolves again (ClinVar, `11:5226724`).
+- **`pathogenic_clinvar` drops one authored row**, the coordinate-only `11:5226762 C>CAAAG`, which dbSNP 157
+  now files under `rs80356821` with the same genotype and annotation as the module's own `rs80356821` row.
+  Its `content_signature` moves and the module was closed again. The first regeneration's entry below, its
+  table and INTEGRATION_0_8 § 1.29 now count all 16 examples.
+
 ## 2026-11-05 — INTEGRATION_0_8 names the known issues 0.8 ships with (0.8, uncut)
 
 - **[INTEGRATION_0_8 § 4](INTEGRATION_0_8.md#4-known-issues)** lists what 0.8 ships with unfixed, each
@@ -220,31 +232,39 @@ repo id written anywhere else. → [ROADMAP_HISTORY § RM384](ROADMAP_HISTORY.md
 
 ## 2026-11-05 — The reference examples' `resolution.csv` regenerated against the split snapshot (0.8, uncut)
 
-- **14 of the 16 examples that commit a `resolution.csv` were re-derived** (`enrich --rederive`) against
+- **All 16 examples that commit a `resolution.csv` were re-derived** (`enrich --rederive`) against
   `just-dna-seq/ensembl_variations_split`, release `ensembl-variation-2026_07_13-vep116.0` (the maintainer's
-  decision of 2026-11-04). Every rewritten row now records `source_release`, and RM267's, RM270's and RM375's
-  columns. Ten ran online, because their committed tables held what only an online run produces (an indel
+  decision of 2026-11-04): 14 in the first pass, and `hboc_palb2` and `pathogenic_clinvar` once RM381, RM382
+  and RM387 had landed on `0.8`. Every rewritten row now records `source_release`, and RM267's, RM270's and
+  RM375's columns. Ten ran online (the two later ones among them), because their committed tables held what only an online run produces (an indel
   `vrs_id`, an `rsid_status`, a REST-answered row, or online checks in `verification.json`). Six ran
   offline (marked *off* below), because their tables held nothing an offline run would lose.
-- **`content_signature` did not move on any example but `cpic_gene_pairs`**, where an authored row was
-  corrected (below). `compile → reverse → compile` is a fixed point for `artifact.digest` and every signature
-  on all 14 (`verification` is outside the round trip by `REVERSE_MANIFEST_EXCLUDED`). Every example passes
+- **`content_signature` did not move on any example but `cpic_gene_pairs` and `pathogenic_clinvar`**, where
+  an authored row was corrected or removed (below). `compile → reverse → compile` is a fixed point for
+  `artifact.digest` and every signature on all 16 (`verification` is outside the round trip by `REVERSE_MANIFEST_EXCLUDED`). Every example passes
   `validate --strict`, no example raises `rsid_placements_disagree` or `positional_identity_contradicted`,
   and the only `authored_event` verdict in the corpus is `rs761191455`'s `same_event` (cpic). Every closure
-  survived except cpic's, which was closed again.
+  survived except cpic's and `pathogenic_clinvar`'s, which were closed again.
 - **`cpic_gene_pairs`: NUDT15 `*1` `rs1457579126` is authored at `13:48040977 GA`, no longer at
   48040982.** 48040982 is the HGVS deleted-base position of a one-base deletion in `G AAAAA T`
   (977–983), inside the event and not a VCF anchor. The row now uses the snapshot's left-aligned anchor
   and the `*1` (reference) allele. The README records the edit, since the example keeps no `logs/`.
   `assets/consumer_join` grew its chr13 window to cover the row.
-- **Withheld: `hboc_palb2` and `pathogenic_clinvar`** keep their 0.7-era tables. Re-derived, they spell six
-  multi-ALT indel alleles with the snapshot's shared padded `ref` (`16:23635706 GTT>GT`, `11:5226773
-  TGG>TG`, …), which a `bcftools norm`ed VCF never meets, and `test_consumer_join` refuses it. That is RM381,
-  and `hboc_palb2` is regenerated once it lands. `pathogenic_clinvar` has a second blocker that RM381 does
-  not touch, and it needs a decision. Its rsID-only HBB row `rs613985` comes back unresolved, so `--strict`
-  refuses. Both snapshots place that rsID at `3:159434329 T>G`. The hosting filter rejects that locus for
-  the authored genotype `C/CATAACAGCATCAG`, and the chain never asks ClinVar, which still has the row at
-  `11:5226724 CATAACAGCATCAG>C`. So this is how the chain behaves, not a snapshot move.
+- **`hboc_palb2` and `pathogenic_clinvar` were withheld from the first pass and regenerated after
+  RM381.** Re-derived before it, they spelled six multi-ALT indel alleles with the snapshot's shared padded
+  `ref` (`16:23635706 GTT>GT`, `11:5226773 TGG>TG`, …), which a `bcftools norm`ed VCF never meets, and
+  `test_consumer_join` refused it. With the per-ALT trim every indel keeps its caller spelling, the hosting
+  filter leaves out the pieces the authored genotype cannot carry (`16:23634953 CAA>C`, `11:5226773 TGG>T`),
+  and no row of `frequencies.csv` or `clinical_assertions.csv` in `hboc_palb2` is orphaned, so neither pass
+  was re-run. `pathogenic_clinvar`'s `rs613985` resolves again: both snapshots place it where its authored
+  `C/CATAACAGCATCAG` cannot sit, and since RM382 the chain asks ClinVar, which has it at `11:5226724
+  CATAACAGCATCAG>C`; `source_loci` names the three placements it saw.
+- **`pathogenic_clinvar`: the coordinate-only row `11:5226762 C>CAAAG` is removed, with its `studies.csv`
+  row.** dbSNP 157 files that insertion under `rs80356821`, beside the deletion `CAAAG>C` the module authors
+  by that rsID with the same genotype string `C/CAAAG`, so the rsID row expanded onto the positional row's key
+  and `--strict` refused `Duplicate (variant, genotype)`. The two rows state the same annotation
+  (`risk`, `pathogenic`, HBB, `clin_sig=pathogenic`, PMID 29165669), so the positional one went and the rsID
+  row covers both events. The example's README records the edit, since it keeps no `logs/`.
 - **Seven test files read a shape off an example that the regeneration changed.** Each now builds that
   shape on its copy, so the test still checks what it was written to check. `apoe_epsilon` had no ALT
   (`test_verification_block`'s no-ALT line, `test_opentargets`' whole-release case). `hfe_hemochromatosis`
@@ -269,7 +289,8 @@ repo id written anywhere else. → [ROADMAP_HISTORY § RM384](ROADMAP_HISTORY.md
 | `pgx_slco1b1_simvastatin` *(off)* | 1 | 0 | 0 | 0 | 0 | `licensing.csv` | artifact, sources |
 | `pleiotropy_tradeoff` | 3 | 0 | 0 | 0 | 0 | `licensing.csv` | artifact, sources |
 | `shox_par1` | 10 | 1 | 2 | 0 | 1 | new concordance pair | artifact, resolution, sources, concordance |
-| `hboc_palb2`, `pathogenic_clinvar` | | | | | | withheld (RM381) | none |
+| `hboc_palb2` | 16 | 0 | 5 | 0 | 11 | `licensing.csv` | artifact, resolution, sources |
+| `pathogenic_clinvar` | 327 | 0 | 51 | 7 | 249 | new `licensing.csv`, new concordance pair | artifact, resolution, sources, concordance, **content** |
 
 *Respelled*: a subject's locus moved (cpic's two NUDT15 indels; shox's split `rs1569493663` is now the one
 locus `X:634689 CAG>C`, which hosts its authored `C/CAG`). *Allele gained*: the snapshot lists ALTs the old
@@ -277,14 +298,18 @@ table did not, or the row had none (`apoe_epsilon`, `hfe_compound_het`). *rsID f
 subject gained its rsID. *Source only*: the facts are unchanged and the answering link moved (`clinvar` or
 `ensembl-rest` to the snapshot). The *sources* signature moved everywhere because each licence row is now
 labelled by the release its rows state (RM373). The concordance pair (`clin_sig_concordance.csv`,
-`clin_sig_authority_calls.csv`) is a 0.8 `enrich` output, first written into these three examples by
-this run. `verification.json` was rewritten on all 14. The new warnings:
-`clin_sig_concordance_contested` (three examples, one subject each, between the two authorities themselves),
+`clin_sig_authority_calls.csv`) is a 0.8 `enrich` output, first written into these four examples by
+this run. `verification.json` was rewritten on all 16. The new warnings:
+`clin_sig_concordance_contested` (three examples with one subject each, and `pathogenic_clinvar` with 21,
+4 of them opposed calls, every one between the two authorities themselves),
+`verification_findings_recorded` on `hboc_palb2` and `pathogenic_clinvar` (a `dataset_currency` finding:
+ClinVar has published `clinvar_2026-11-01` since the snapshot these were answered from),
 and on `mt_common_deletion` `source_row_unused`, for the `clinvar,resolution` licence row that no
 resolution row uses any longer.
 
 The *Digests that moved* column compares each example against its own 0.7-era table, before RM380,
-which landed beside this regeneration and widens the locus struct: it moves `artifact.digest` again on
+which landed beside this regeneration and widens the locus struct (the two later rows compare against the
+same committed table compiled at `80506f72`, after RM380, so they show only what their regeneration moved): it moves `artifact.digest` again on
 20 of the 22 examples, `cyp2c9_warfarin_grch37` included, and moves no signature. The final digests are
 measured by the release record at the cut, not read off this table.
 
