@@ -71,7 +71,7 @@ against the published 0.8.0. A defect a consumer finds is filed as an `Sn` in
 is a closed vocabulary. A reader pinned to an older `just-dna-format` therefore **refuses** a manifest
 that carries a code added after its pin: `read_manifest` raises rather than ignoring the key. This is
 the same shape as 0.7's `verification.checks[].producer` break
-([INTEGRATION_0_7 § 1](INTEGRATION_0_7.md)), and the remedy is the same: **a consumer reading manifests
+([INTEGRATION_0_7 § 1](history/INTEGRATION_0_7.md)), and the remedy is the same: **a consumer reading manifests
 compiled by 0.8 upgrades `just-dna-format` to 0.8 with them.** Only a manifest whose module actually
 triggers one of these findings carries the code, so most 0.8 manifests still parse under 0.7; do not
 rely on that.
@@ -337,7 +337,7 @@ fields, all `null` on a record written before 0.8:
 **This breaks a 0.7 reader, unconditionally.** `VerificationRecord` forbids unknown keys, so a reader
 pinned to 0.7 refuses every 0.8-written `verification.json`, and every manifest whose `verification`
 block a 0.8 enricher wrote — unlike § 1's codes, which appear only when a module triggers them. It is
-0.7's `producer` break again ([INTEGRATION_0_7 § 1](INTEGRATION_0_7.md)), with the same remedy:
+0.7's `producer` break again ([INTEGRATION_0_7 § 1](history/INTEGRATION_0_7.md)), with the same remedy:
 upgrade `just-dna-format` to 0.8 before reading 0.8-attested modules. A 0.8 reader parses every older
 record and leaves the four fields `null`.
 

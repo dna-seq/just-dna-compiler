@@ -2,8 +2,8 @@
 
 **What this file is.** Items that need a **major**, plus the one item that is release-blocking for it.
 Split out of [ROADMAP.md](ROADMAP.md) on 2026-08-13, alongside the minor-deferral file — then
-`ROADMAP_0_7.md`, now [ROADMAP_0_8.md](history/ROADMAP_0_8.md), with the closed round in
-[history/](history/ROADMAP_0_7.md) — so the
+`ROADMAP_0_7.md`, now [ROADMAP_0_9.md](ROADMAP_0_9.md), with the closed rounds in
+[history/](history/ROADMAP_0_8.md) — so the
 active roadmap describes the line being built.
 
 **What makes an item belong here.** Under the amended charter (2026-08-11) a new optional column or

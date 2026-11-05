@@ -477,8 +477,8 @@ block rather than adding to a list that has stopped being a plan.
 **Patch-level fixes are not counted toward a cut (since 2026-09-25).** Every non-blocked patch item
 goes into the next patch batch on `main` by default, and a patch carries however many fixes the latest
 wave of usage produced; see [RELEASE_CYCLE.md](RELEASE_CYCLE.md). **A minor-class fix is never built
-on `main`**: file it, and build it only on the open minor branch (`0.8` today) when the loop runs there
-with the maintainer's grant; `main` holds patch scope only, so a patch can be cut from it at any
+on `main`**: file it, and build it only on the open minor branch (none since `0.8` merged at the 0.8.0
+cut) when the loop runs there with the maintainer's grant; `main` holds patch scope only, so a patch can be cut from it at any
 moment. This paragraph read *around ten
 accumulated patch-level fixes, publish time* until then. **Publishing** is the user's domain and always
 an ask; **bumping, tagging and building a dist are inside §5's grant** for a patch, which is that
