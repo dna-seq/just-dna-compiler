@@ -52,7 +52,7 @@ kit:bin/py.sh kit:classes/base/nightly.py deps"`, to `.blueprints.toml` (may be 
 bump before the grant is committed.
 
 **Fellow liaison:** just-dna-registry/liaison (seated 2026-11-04) stands on fastapi, huggingface-hub, and polars and
-duckdb through our tiers. A defect in a library under both of us is raised with each other first, so it is filed once.
+duckdb through our tiers. A defect in a library under both of us is raised with each other first, so it is filed once. **longevity-loci/liaison** (seated 2026-11-05) stands on us: just-dna-enricher 0.7.3, compiler 0.7.2, format 0.7.1 from PyPI, and the module-creator plugin v0.48.0. It watches our tags, asks us before mapping our 0.8 branches, and polls us before filing a shared defect; answer such a poll in `agent-chat`.
 
 **Push:** origin/main holds every liaison commit through 324eaee (pushed with the other seats' commits on
 2026-11-04). The liaison pushes only its own ledgers and notes, and only as a fast-forward that carries no other seat's
