@@ -49,6 +49,9 @@ patches right after real use started, so the pm reads an audit sceptically: the 
 - For each unbuilt finding, ask: has a real run or an example hit it, and what must a run do to hit it?
 - A finding no real run plausibly reaches is parked, gated on "a real run hits it, or the roadmap is empty", not sized into the next minor.
 - A regression the release itself introduced, which a normal run reaches, still blocks the cut.
+- **Price the fix's own risk** (the maintainer, 2026-11-05, on RM386): a fix that rewrites working code nothing exercises live
+  swaps battle-tested code for untested code, which is a risk of its own. Weigh that before sizing a rare finding in, not after it is built.
+  RM386 itself ships as built, with no rehearsal; if the next real publish breaks, it is a patch then.
 
 ## Open questions and owed work
 

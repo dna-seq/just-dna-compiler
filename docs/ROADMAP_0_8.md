@@ -1539,7 +1539,7 @@ not open.
 
 ## RM386 — a snapshot publish is not tied to the bytes or the revision it sends
 
-**0.8, the maintainer (2026-11-05)**: "if branch is built, what's the sense to defer then? Defer unbuilt items." It overrides the pm's first sizing the same day (0.9, as "purely theoretical": a concurrent writer, snapshots published about yearly). **Built** on `build/RM386` at bf234700; the lead merges it into 0.8.
+**0.8, the maintainer (2026-11-05)**: "if branch is built, what's the sense to defer then? Defer unbuilt items." It overrides the pm's first sizing the same day (0.9, as "purely theoretical": a concurrent writer, snapshots published about yearly). **Built** on `build/RM386` at bf234700; the lead merges it into 0.8. **Shipped without a live rehearsal** (the maintainer, 2026-11-05): it replaces working publish code with code no run has sent to the live Hugging Face hub, since the suite runs offline. No practice publish before the cut. The next real snapshot publish, likely a year away, is its first live run: whoever runs it suspects this code first if the publish fails, and the fix is a patch.
 
 **Severity** low · **Status** open — **a minor, 0.8**, built · **Owner** enricher (`upload.py`) · **Motivating case** audit round 2, class 1 (the lead's scratchpad audit2/report.md (audit round 2 of 0.8, 2026-11-05)) · *related* RM368, RM199
 
