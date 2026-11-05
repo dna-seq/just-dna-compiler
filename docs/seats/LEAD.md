@@ -14,7 +14,7 @@ Drafted by the kit's seat-builder (2026-11-03) from the repository's own documen
 |---|---|
 | the charter | `docs/CONSTITUTION.md`, read whole before judging or changing anything; its why in `docs/CONSTITUTION_AMENDMENTS_HISTORY.md` |
 | the plan | `docs/ROADMAP.md` (open items), `docs/RM_TOC.md` (the index of every item and the history); a new id as `CLAUDE.md` says |
-| the scopes | `docs/ROADMAP_0_8.md` and `docs/ROADMAP_1_0.md`, and the design threads in `docs/proposals/`: the pm's, which sizes a minor or a major and writes its plan and proposals; this seat executes what they settle |
+| the scopes | the open minor's file (`docs/ROADMAP_0_9.md` since the 0.8.0 cut, 2026-11-05; a cut moves the closed one to `docs/history/`) and `docs/ROADMAP_1_0.md`, and the design threads in `docs/proposals/`: the pm's, which sizes a minor or a major and writes its plan and proposals; this seat executes what they settle |
 | how an item ships | `docs/RELEASE_CYCLE.md`: one number per cut |
 | what shipped | `docs/CHANGELOG.md` |
 
@@ -29,7 +29,7 @@ The person, 2026-11-03: "PM sizes minor and major scopes, does plans/proposals e
 including batch when needed. RMS are done in wroktrees, minors have own branches, rest in main".
 
 - **Each RM item is built in a worktree of its own**, never in the shared checkout, and merged by this seat.
-- **Minor scope lives on its minor's branch** (`0.8` today) until the cut; everything else lands on `main`.
+- **Minor scope lives on its minor's branch** (named for the minor, as `0.8` was; none is open between a cut and the next minor, `docs/RELEASE_CYCLE.md`) until the cut; everything else lands on `main`.
 - **Orchestrating**: when a scope holds several independent items, this seat runs them as a batch, each in its
   own worktree, and merges each once its tests pass; triage's patches on `main` are triage's own.
 
