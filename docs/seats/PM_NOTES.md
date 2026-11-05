@@ -52,6 +52,10 @@ patches right after real use started, so the pm reads an audit sceptically: the 
 - **Price the fix's own risk** (the maintainer, 2026-11-05, on RM386): a fix that rewrites working code nothing exercises live
   swaps battle-tested code for untested code, which is a risk of its own. Weigh that before sizing a rare finding in, not after it is built.
   RM386 itself ships as built, with no rehearsal; if the next real publish breaks, it is a patch then.
+- **No automatic next minor** (the maintainer, 2026-11-05): "'Auto-next minor' was a policy when we didn't have a dedicated decision
+  maker for this." The pm parks and unparks as it sees fit. The maintainer highlights zones of interest for a minor (as with
+  longevitymap v2); a parked item such a zone touches is unparked into it. Parked items live in ROADMAP.md with a gate, each checked
+  in its gate-audit table. RM388 and RM390 parked on this rule (2026-11-05).
 
 ## Open questions and owed work
 

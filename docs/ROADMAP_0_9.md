@@ -1945,27 +1945,3 @@ none is. "No reference configured" stays a named could-not-ask, never an absence
    (`CACHE_SURFACE.md`), or a URI the operator passes. The fewer-entities rule weighs toward the URI.
 
 **Residuals** none yet.
-
-## RM388 — placement readers bypass `usable_loci`
-
-**0.9, sized by the pm (2026-11-05)**: only a hand-written or multi-build `resolution.csv` reaches it.
-
-**Severity** low · **Status** open — **a minor, 0.9** · **Owner** compiler (`allele_checks.py`, `positional.py`, `resolution.read_resolution`) · **Motivating case** audit round 2, class 3 (the lead's scratchpad audit2/report.md (audit round 2 of 0.8, 2026-11-05)) · *related* RM362
-
-**The gap.** RM362 made `resolution.usable_loci` the one rule for which loci an identity sits at: the module's build, and placements only. `allele_checks.py` (~:60-65, :102-105, :405-409) and `positional.py` (~:239-251) read loci without it and filter neither build nor `not_found`, and `read_resolution` does not filter by build.
-
-**What it would be.** Every placement reader goes through `usable_loci`, with an AST guard that no reader of resolution loci bypasses it.
-
-**Residuals** none yet.
-
-## RM390 — the enricher never states a table-level finding the compile acts on
-
-**0.9, sized by the pm (2026-11-05)**: design it after RM387.
-
-**Severity** low · **Status** open — **a minor, 0.9** · **Owner** enricher (`enrich/orchestration.py`, `verification_records.py`) · **Motivating case** audit round 2, class 5 (the lead's scratchpad audit2/report.md (audit round 2 of 0.8, 2026-11-05)) · *related* RM374, RM373, RM387
-
-**The gap.** RM374's `rsid_placements_disagree` runs only in the compiler (`resolution_step.py` ~:167), so an `enrich` run that writes a mixed or disagreeing `resolution.csv` says nothing, and the author learns of it only when compile refuses. RM373's mixed-release reason likewise appears only in the `ran` arm of `verification_records.py` (~:433-438).
-
-**What it would be.** The enricher runs the same predicate the compiler does on the table it is about to commit, and warns with the same code and text. RM373's withheld-release reason appears in every arm. Design it after RM387 settles what RM374 compares.
-
-**Residuals** none yet.
