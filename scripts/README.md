@@ -7,6 +7,7 @@ itself would be a second source of truth nothing tests.
 | Script | What it drives |
 |---|---|
 | [`rebuild-caches.sh`](rebuild-caches.sh) | `just-dna-enricher cache rebuild` over every lane the registry carries — acquire, build, and with `--publish` upload. Writes each lane into `<base>/<lane>/`, never over a live cache; from a checkout, pass `data/caches`. |
+| [`build-dists.sh`](build-dists.sh) | `uv build --package` for every workspace member (read from `[tool.uv.workspace] members`) into a freshly wiped `dist/`, since a bare `uv build` at the workspace root fails. **Exit 3 when a wheel is over `WHEEL_ALARM_BYTES`** (default 1 MiB), with that wheel's largest members listed: a sign that a build exclusion is missing. Run it before `uv publish`. |
 | [`check-zensical.sh`](check-zensical.sh) | Asks whether Zensical can build the docs site yet — the one measurement that would reverse the ProperDocs choice. Exit 0 still blocked, **exit 3 it can**. Ephemeral `uv run --with` install, so it cannot alter `uv.lock` or the `docs` group it probes against. Scheduled fortnightly by `.github/workflows/zensical-watch.yml`; safe to run by hand any time. |
 | [`gen_api_pages.py`](gen_api_pages.py) | The docs site's home page and its API reference, written into the build. **The one file here a person does not run** — `properdocs build` does, through the `mkdocs-gen-files` plugin. It is here rather than in `.claude/` because no agent needs it either, and the only other home is a loose module in the repository root. |
 
