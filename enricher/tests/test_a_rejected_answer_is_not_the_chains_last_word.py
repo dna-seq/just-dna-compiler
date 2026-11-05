@@ -12,6 +12,7 @@ release, and the two ClinVar records naming `RS=613985` in the 2026-06-27 GRCh38
 `4074264`, the second a 1 bp deletion 254 bp downstream that the genotype cannot host either).
 """
 
+import re
 from pathlib import Path
 
 import polars as pl
@@ -38,6 +39,10 @@ _CLINVAR = {
 }
 #: Where the hostable answer is, as the table records it.
 _PLACED = ("11", 5226724, "CATAACAGCATCAG", "C")
+#: `strict`'s RM382 sentence, as INTEGRATION_0_8 quotes it.
+_STRICT_PHRASE = (
+    "were answered only at loci the authored genotype cannot host, by every link this run could ask (RM382)"
+)
 
 
 def _spec(root: Path) -> Path:
@@ -130,7 +135,8 @@ def test_every_links_rejected_answer_is_named_when_none_can_host(tmp_path: Path)
 
 def test_strict_names_the_rejection_rather_than_asking_for_a_cache(tmp_path: Path) -> None:
     spec = _spec(tmp_path)
-    with pytest.raises(EnrichmentError, match="cannot host") as raised:
+    # The pinned phrase INTEGRATION_0_8 § 1.34 quotes to consumers (`@warning-text-is-api`).
+    with pytest.raises(EnrichmentError, match=re.escape(_STRICT_PHRASE)) as raised:
         _enrich(spec, ensembl_cache=_ensembl(tmp_path), mode="strict")
     assert _RSID in str(raised.value) and "Provide a complete cache" not in str(raised.value)
 

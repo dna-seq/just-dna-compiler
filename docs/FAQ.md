@@ -132,6 +132,14 @@ Every derived sidecar is merge-not-clobber: an existing row is authoritative bec
 overridden it. Delete the file to re-derive. → [ENRICHER.md](ENRICHER.md), and
 [MODULE_LIFECYCLE § 6.3](MODULE_LIFECYCLE.md) for what deleting costs.
 
+**Why did my `not_found` row in `resolution.csv` disappear after a re-derive?**
+Because it said the source has no record of an rsID the source has. Since 0.8 (RM382, reversing S85) a
+link whose every locus your genotype cannot sit on is a miss, so the next link is asked; if one places
+it you get its row, and if none can you get no row, an unresolved key and an `allele_mismatches` entry
+naming every link's loci. Check the genotype's alleles and strand. →
+[ENRICHER.md § Resolution is allele-aware in both directions](ENRICHER.md#resolution-is-allele-aware-in-both-directions),
+[INTEGRATION_0_8 § 1.34](INTEGRATION_0_8.md).
+
 **Can `resolution.csv` be published as a parquet like the other tables?**
 No, and this is the first repair everyone proposes. It is a build-time lookup, not a published fact
 table: its provenance columns are outside the fact set by design, `reverse_module` cannot reconstruct

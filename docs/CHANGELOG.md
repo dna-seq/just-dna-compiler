@@ -57,8 +57,10 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   arrives; one that every subject of the rsID rejects (one of them rsID-only) is set aside and the next link is asked
   (ClinVar cache, staged answers, live Ensembl, gnomAD). `pathogenic_clinvar`'s HBB `rs613985`, whose only
   split-snapshot locus is `3:159434329 T>G`, now resolves from ClinVar at `11:5226724 CATAACAGCATCAG>C`.
-- **An rsID-only subject every link rejected gets no `resolution.csv` row** (was `status=not_found`, a
-  false absence beside the "the source HAS these variants" warning). It stays unresolved; `strict` names
+- **An rsID-only subject every link rejected gets no `resolution.csv` row** — this **reverses S85**
+  (0.7), which kept the `status=not_found` row beside the "the source HAS these variants" warning; the
+  maintainer accepted the reversal on 2026-11-05. INTEGRATION_0_8 § 1.34 and § 2 step 12 say what a
+  reader of the table sees now. It stays unresolved; `strict` names
   the rejection in its own arm. `--rederive` drops a recorded `not_found` for it and keeps a recorded
   placement.
 - `AlleleMismatch` gains `links` and `placed_by`; `EnrichmentResult.superseded_answers` names each
