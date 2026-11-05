@@ -499,6 +499,45 @@ running duckdb cannot read rather than mocking `connect`.
 
 **Residuals** none yet.
 
+## RM396 — six paced clients keep their default interval or their gate private, so a host sharing one gate reads a private name
+
+**Severity** low · **Status** open — **a minor, parked** (the pm, 2026-11-05; triage proposed 0.9). The reporter's
+interim, reading `pgs._REQUEST_INTERVAL`, works, and only one host shares one client's pace today. **Unparks when** a host
+needs a second client's pace or `clingen_allele`'s, when someone renames a private name the registry reads, or when the
+roadmap is empty. Until then, keep `pgs._REQUEST_INTERVAL` and `_gate` as they are · **Owner** enricher (`pgs.py`,
+`litvar.py`, `civic_api.py`, `clingen_allele.py`, `pharmvar.py`, `atlas_client.py`, ENRICHER.md) · **Motivating
+case** S131 in CONSUMER_SUGGESTIONS_HISTORY.md (just-dna-registry's liaison seat, 2026-11-05) · *related* RM203,
+RM156, RM384
+
+**The gap, read on `origin/0.8` at `64c835b9` (the same on `main`).** A host that answers many checks holds one
+`PacingGate` per upstream and builds a fresh client around it per check, the shape `gate=` and the S15 sharing
+contract invite. Building that gate needs the client's interval, and reading the gate back (`gate.spent`, RM203)
+needs the gate. The dataclass clients answer both publicly: a `gate` field, and an interval as a public
+constant or a settings field. Six do not:
+
+| Client | Default interval | Gate kept as | Takes `gate=` |
+|---|---|---|---|
+| `pgs.PgsCatalogClient` | `_REQUEST_INTERVAL` (private) | `_gate` | yes |
+| `litvar` | `_REQUEST_INTERVAL` (private) | `_gate` | yes |
+| `civic_api` | `_REQUEST_INTERVAL` (private) | `_gate` | yes |
+| `clingen_allele` | `_REQUEST_INTERVAL` (private) | `_gate` | **no**: no host can share its pace at all |
+| `pharmvar` | `PHARMVAR_MIN_INTERVAL` | `_gate` | yes |
+| `atlas_client.AtlasClient` | `ATLAS_REQUEST_INTERVAL` | `_gate` | yes |
+
+ENRICHER.md's RM203 paragraph sends a meter to `client._gate.spent` and names five of the six; `atlas_client`
+is missing, which is the hand-kept-list failure (`@registry-completeness`).
+
+**What it would be.** Every paced client takes `gate=`, keeps it as a public `gate`, and names its default
+interval publicly (`PGS_REQUEST_INTERVAL` and the like, beside the existing public ones). The private names stay
+as aliases, since a downstream reads `pgs._REQUEST_INTERVAL` today (P3 does not bind a private name, but nothing
+is gained by breaking it). The reporter's (a) and (b) together, over the six rather than PGS alone. A test walks
+every `PacingGate(` construction in the enricher (AST) and asserts its client exposes `gate` and its interval
+under a public name, so a seventh client cannot reopen it; the ENRICHER.md sentence about `_gate` goes.
+
+**Sizing.** New public names in the enricher are new surface: a minor. P9 prices it near free (no authored or
+published field moves). About an hour with the walking test. Not asked, and not proposed: a PGS field in
+`LookupClients`, whose bundle is shared while the PGS score cache is per run.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
@@ -1006,6 +1045,35 @@ a *consumer report that would have to describe the unbuilt thing* — the `Sn` i
 consumers can use before we build anything, and every item that names it is asking for a report about
 a problem, never about a solution. That is the structural reason only RM16 failed: it is the one entry
 whose gate named the *user of the output* rather than the *holder of the problem*.
+
+## Audit findings parked without a number (until a real run meets them)
+
+The maintainer's rule (2026-11-05): "judge how frequently would any bug would realistically fire. For once per known universe
+scenario defer to 'when roadmap is empty/someone steps on this defect'." The findings below were confirmed by a pre-cut audit, but no
+real run or example has hit them. Each gets an `RMn` only when it **unparks**: a run, a consumer or a test meets it, a scope the
+maintainer highlights touches it, or the roadmap is empty. One line each, so the finding is not re-reported as new.
+
+**Audit round 3 of 0.8 (2026-11-05, at `64c835b9`)**, sized by the pm:
+
+- **A client built in a function and never closed**: `clinvar_gkm.py` `lane_currency`, `caches.py`, `clinvar_gkm_build.py`,
+  `cli/clinvar_gkm_commands.py`, `currency.py` (two sites). Nothing leaks past a short process. The guard in `test_cli_surface.py`
+  skips a function with no `close()` at all. Unparks when a long-lived process (a server) holds the enricher.
+- **The S85 warning "recorded as unresolved" fires for an rsID+coordinate pair** (written `authored`/`resolved`; since 0.7) and for an
+  rsID-only subject whose placement `--rederive` carries (RM382). Wrong words on a correct table. Unparks on a report of it.
+- **RM391's test fence lets a loopback `HTTPS_PROXY` through.** No proxy is set on any machine that runs the suite. Unparks when one is.
+- **The regex timeout counts the worker's start-up** (0.4 s under forkserver), so `test_literature.py`'s catastrophic-regex test cannot
+  fail. Since 0.7. Unparks when that bound guards a real regex.
+- **A ClinVar witness on another contig reads `unplaced`** (`placement.py` `events.counterparts` needs the same contig). Measured: 0 of
+  145 corpus rows. Unparks on the first real one.
+- **`test_acmg.py` depends on the working directory** (fails from `enricher/`). Since 0.7. Unparks when the suite runs per package.
+- **Europe PMC's two DOI lookups raise the outage type on a 410** (`pmids_for_doi`, `record_for_doi`); the recorded reason is still
+  `retired`, so only the type is wrong. RM361's guard checks the module, not each method. Unparks when a caller catches by type.
+- **`net.py`'s retired-endpoint message advises "upgrade just-dna-enricher"** even when the operator chose the release or URL
+  (RM361's amendment, 0.8). Rare; the advice is wrong only for a hand-picked release. Unparks on a report of it.
+- **Two leftover import guards for a core dependency** in `download.py`. Dead code, no effect.
+- **A malformed legacy `rows` scalar rides along as an extra** in `snapshot.py` (RM303). No instance.
+- **STRchive's snapshot has no prefix and no pull record** (`SNAPSHOT_FILE_GLOBS` has no `strchive`). Unparks when STRchive is pulled
+  through the shared path.
 
 ## Reserved namespace
 
