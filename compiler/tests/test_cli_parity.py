@@ -104,6 +104,19 @@ def test_keygen_refuses_to_overwrite_a_key(tmp_path: Path) -> None:
     assert key.read_bytes() == before
 
 
+def test_keygen_creates_a_missing_parent_directory_as_compile_and_reverse_do(tmp_path: Path) -> None:
+    """RM395 D1: COMPILING.md runs `keygen --out ./keys/private.pem` in a fresh directory.
+
+    It raised a `FileNotFoundError` traceback there, while `compile` and `reverse` create their missing
+    parents. The guide's command is re-runnable only if `keygen` does the same.
+    """
+    key = tmp_path / "keys" / "nested" / "private.pem"
+    result = runner.invoke(app, ["keygen", "--out", str(key)])
+    assert result.exit_code == 0, result.output
+    assert key.read_bytes().startswith(b"-----BEGIN PRIVATE KEY-----")
+    assert key.stat().st_mode & 0o777 == 0o600
+
+
 def test_keygen_without_an_out_path_writes_no_file(tmp_path: Path) -> None:
     before = set(tmp_path.iterdir())
     result = runner.invoke(app, ["keygen"])

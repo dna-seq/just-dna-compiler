@@ -427,6 +427,9 @@ def keygen(
             err=True,
         )
         raise typer.Exit(code=1)
+    # A missing parent is created, as `compile` and `reverse` create theirs (RM395): the guide's
+    # `--out ./keys/private.pem` runs in a fresh directory.
+    out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(private_key_pem)
     out.chmod(0o600)
     typer.secho(f"private key: {out} (mode 600)", fg=typer.colors.GREEN)
