@@ -1016,8 +1016,8 @@ the module's `G/GT` in that frame as two deletions and kept the locus whole. Eve
 `alt` now passes each ALT through `sequences.trim_allele` (drop the bases both sides end with, then those
 both start with, while each keeps one: `bcftools norm`'s trim, which reads no reference) and regroups by
 the trimmed spelling (`sequences.per_alt_loci`): the three loci `G>GT`, `GT>G` and `GTT>G`. That is the
-Ensembl and ClinVar rsID lookups, REST's `allele_string` (`TCTT/T/TCTTCTT` is one such frame), and the
-three position→rsID readers, which match an authored allele as the row spells it or as trimmed. The old
+Ensembl and ClinVar rsID lookups, REST's `allele_string` (`TCTT/T/TCTTCTT` is one such frame), gnomAD's
+variant ids, and the three position→rsID readers, which match an authored allele as the row spells it or as trimmed. The old
 repo's pipe-joined row is trimmed the same way. Left-alignment past the trim still reads the reference
 (`left_normalize`), so offline an indel piece is written trimmed with `left_aligned` unknown. The split
 repo anchors left, so for its sites the trim is usually the whole normalization.

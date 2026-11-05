@@ -410,11 +410,11 @@ def _lookup_rsid_candidates(
     ).fetchall()
     by_pos: dict[tuple, list[tuple]] = defaultdict(list)
     for chrom, start, ref, alt, rid in rows:
-        by_pos[(str(chrom), int(start))].append((int(start), str(ref), str(alt), str(rid)))
+        by_pos[(str(chrom), int(start))].append((str(ref), str(alt), str(rid)))
     result: dict[tuple, list[str]] = {}
     for chrom, start, ref, alt in uniq:
         cands: list[str] = []
-        for rstart, rref, ralt, rid in by_pos.get((str(chrom), int(start)) if chrom is not None else (), []):
+        for rref, ralt, rid in by_pos.get((str(chrom), int(start)) if chrom is not None else (), []):
             placed = _placeable_alleles(rref, _snapshot_alleles(ralt))
             if placed is None:
                 continue  # RM271: a row with no nucleotide allele names no variant to back-fill from
@@ -423,7 +423,7 @@ def _lookup_rsid_candidates(
             # is matched as the row spells it and as `trim_allele` spells it alone (RM381): the split
             # repo pads every ALT of a site to one ref, so `16:23635706 GTT>GT` is a caller's `GT>G`.
             if not any(
-                _names_allele((int(start), ref, alt), (rstart, rref, ralt_one)) for ralt_one in placed[1]
+                _names_allele((int(start), ref, alt), (int(start), rref, ralt_one)) for ralt_one in placed[1]
             ):
                 continue
             if rid not in cands:  # rows already ordered by ... id
@@ -465,8 +465,9 @@ def _snapshot_alleles(cell: object) -> list[str]:
 
     The old Ensembl repo records a multi-allelic site as a **single row whose `alt` is pipe-joined**
     (`A|C|T`); the split repo read since RM372 writes one row per ALT, every ALT of a site padded to one
-    shared ref. Each allele is then spelled alone and regrouped by that spelling (`per_alt_loci`, RM381). Every other link in the chain — live Ensembl (`_loci_from_rest`), ClinVar,
-    gnomAD — emits a comma-separated list, and that is the shape `ResolutionRow.alts` is written in.
+    shared ref. Each allele is then spelled alone and regrouped by that spelling (`per_alt_loci`, RM381).
+    Every other link in the chain — live Ensembl (`_loci_from_rest`), ClinVar, gnomAD — emits a
+    comma-separated list, and that is the shape `ResolutionRow.alts` is written in.
     Normalizing here, at the one boundary where the snapshot is read, keeps a locus dict's `alts` in
     exactly one canonical form no matter which link produced it.
 

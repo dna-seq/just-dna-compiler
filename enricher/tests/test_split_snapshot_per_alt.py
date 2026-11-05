@@ -22,7 +22,7 @@ import duckdb
 import polars as pl
 import pytest
 from just_dna_compiler.resolution import hosting_verdict
-from just_dna_enricher import clinvar, ensembl, resolver, sequences
+from just_dna_enricher import clinvar, ensembl, gnomad, resolver, sequences
 from just_dna_enricher.enrich import enrich
 from just_dna_enricher.enrich.orchestration import _filled_pieces
 
@@ -275,6 +275,19 @@ def _first_id(con: duckdb.DuckDBPyConnection, spellings: list) -> Callable[[Spel
     return lambda s: {found[f"{s[0]}:{s[1]}:{s[2]}"]} if f"{s[0]}:{s[1]}:{s[2]}" in found else set()
 
 
+def _forward_gnomad(tmp_path: Path) -> dict[str, set[Spelling]]:
+    """gnomAD's `chrom-pos-ref-alt` ids folded into loci, one id per split row (a padded id is its worst case)."""
+    frame = pl.read_parquet(next((SPLIT / "data").glob("*.parquet")))
+    out: dict[str, set[Spelling]] = {}
+    for rsid in GENOTYPES:
+        ids = [
+            f"{r['chrom']}-{r['start']}-{r['ref']}-{r['alt']}"
+            for r in frame.filter(pl.col("id") == rsid).iter_rows(named=True)
+        ]
+        out[rsid] = _per_alt(gnomad._loci_from_variant_ids(ids))
+    return out
+
+
 #: Every reader of a snapshot's `alt`, keyed by `module.function` as `test_every_snapshot_reader_is_registered`
 #: walks them. A forward reader gives each ALT exactly ClinVar's spelling; a position reader names the
 #: rsID at every ClinVar spelling it has (`_lookup_rsids_by_position` picks ONE id per `chrom:start:ref`,
@@ -283,6 +296,7 @@ READERS: dict[str, Callable[[Path], dict[str, set[Spelling]]]] = {
     "resolver._lookup_positions_by_rsid": _forward_ensembl,
     "clinvar._lookup_positions_by_rsid": _forward_clinvar,
     "ensembl._loci_from_rest": _forward_rest,
+    "gnomad._loci_from_variant_ids": _forward_gnomad,
     "resolver._lookup_rsid_candidates": _back_fill(_candidates),
     "resolver._lookup_rsid_sets_by_position": _back_fill(_id_sets),
     "resolver._lookup_rsids_by_position": _back_fill(_first_id),
@@ -353,7 +367,53 @@ def _calls(module: str, function: str) -> set[str]:
 
 def test_every_snapshot_reader_is_registered() -> None:
     """A new reader of a snapshot's `alt` fails here until it is placed: a reader, or not one, with a reason."""
-    assert _snapshot_sql_functions() == (set(READERS) - {"ensembl._loci_from_rest"}) | set(NOT_READERS)
+    unsql = {"ensembl._loci_from_rest", "gnomad._loci_from_variant_ids"}  # a payload parser, no SQL
+    assert _snapshot_sql_functions() == (set(READERS) - unsql) | set(NOT_READERS)
+
+
+def _alts_joiners() -> set[str]:
+    """`module.function` for every function that builds a locus dict whose `alts` joins several alleles."""
+    found: set[str] = set()
+    for path in sorted(ENRICHER_SRC.rglob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            for d in ast.walk(node):
+                if isinstance(d, ast.Dict) and any(
+                    isinstance(k, ast.Constant)
+                    and k.value == "alts"
+                    and isinstance(v, ast.Call)
+                    and isinstance(v.func, ast.Attribute)
+                    and v.func.attr == "join"
+                    for k, v in zip(d.keys, d.values, strict=True)
+                ):
+                    found.add(f"{path.stem}.{node.name}")
+    return found
+
+
+def test_only_the_helper_groups_alleles_into_a_locus() -> None:
+    """The regroup itself, whatever the reader reads (SQL, a payload, polars): `per_alt_loci` groups trimmed
+    ALTs, and `normalize_locus` groups ALTs it has just left-aligned one by one. A third function joining
+    `alts` under one ref is a reader grouping by a source's spelling, and fails here (it found gnomAD's)."""
+    assert _alts_joiners() == {"sequences.per_alt_loci", "sequences.normalize_locus"}
+
+
+def test_a_clinvar_record_with_no_alt_is_present_never_absent(tmp_path: Path) -> None:
+    """A record that places nothing is not an rsID the snapshot lacks (`@unreachable-not-absent`)."""
+    data = tmp_path / "clinvar" / "data"
+    data.mkdir(parents=True)
+    pl.DataFrame(
+        {"chrom": ["16"], "start": [23635706], "ref": ["G"], "alt": [None], "rsid": ["rs1555461597"]},
+        schema={"chrom": pl.Utf8, "start": pl.Int64, "ref": pl.Utf8, "alt": pl.Utf8, "rsid": pl.Utf8},
+    ).write_parquet(data / "clinvar-null.parquet")
+    warnings: list[str] = []
+    con = clinvar._connect(tmp_path / "clinvar")
+    try:
+        loci = clinvar._lookup_positions_by_rsid(con, ["rs1555461597", "rs1"], warnings)
+    finally:
+        con.close()
+    assert loci == {}
+    assert [w.split(":")[0] for w in warnings] == ["rs1"]
 
 
 @pytest.mark.parametrize("name", sorted(READERS))

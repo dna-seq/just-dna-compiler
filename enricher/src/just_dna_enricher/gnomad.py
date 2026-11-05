@@ -53,6 +53,7 @@ from just_dna_enricher.net import (
     raise_if_retired,
     retry_if_transient,
 )
+from just_dna_enricher.sequences import per_alt_loci
 
 logger = logging.getLogger(__name__)
 
@@ -224,22 +225,19 @@ def _errors_by_alias(payload: dict) -> tuple[dict[str, str], list[str], list[str
 def _loci_from_variant_ids(variant_ids: Iterable[str]) -> list[dict]:
     """Fold `chrom-pos-ref-alt` ids into the resolver's locus shape, one entry per (chrom,pos,ref).
 
-    Alts at one locus are aggregated into a sorted comma-joined cell, matching what the Ensembl and
-    ClinVar links produce — so `enrich()` treats every link's output identically. Loci are sorted by
-    `(chrom, start, ref)`, the same explicit ordering the DuckDB links pin with `ORDER BY` (P7).
+    Through `sequences.per_alt_loci`, the one regroup every link uses (RM381): each ALT in its own
+    trimmed spelling, alts at one locus in a sorted comma-joined cell, loci sorted by
+    `(chrom, start, ref)` (P7). gnomAD's ids are already one minimal allele each, so the trim is the
+    shared mechanism rather than a repair here.
     """
-    grouped: dict[tuple[str, int, str], set[str]] = {}
+    alleles: list[tuple[str, int, str, str]] = []
     for variant_id in variant_ids:
         match = _VARIANT_ID_RE.match(variant_id.strip())
         if match is None:
             logger.warning("gnomAD returned an unparseable variant id %r; skipping", variant_id)
             continue
-        key = (match["chrom"], int(match["pos"]), match["ref"].upper())
-        grouped.setdefault(key, set()).add(match["alt"].upper())
-    return [
-        {"chrom": chrom, "start": start, "ref": ref, "alts": ",".join(sorted(alts))}
-        for (chrom, start, ref), alts in sorted(grouped.items())
-    ]
+        alleles.append((match["chrom"], int(match["pos"]), match["ref"].upper(), match["alt"].upper()))
+    return per_alt_loci(alleles)
 
 
 def _populations_from_joint(joint: dict) -> list[dict]:

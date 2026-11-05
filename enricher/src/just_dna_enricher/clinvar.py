@@ -178,17 +178,20 @@ def _lookup_positions_by_rsid(
         f"""
         SELECT DISTINCT rsid, chrom, start, ref, alt
         FROM clinvar
-        WHERE rsid IN ({placeholders}) AND alt IS NOT NULL
+        WHERE rsid IN ({placeholders})
         ORDER BY rsid, chrom, start, ref, alt
         """,
         rsids,
     ).fetchall()
     alleles: dict[str, list[tuple[str, int, str, str]]] = defaultdict(list)
+    present: set[str] = set()
     for rsid, chrom, start, ref, alt in rows:
-        alleles[rsid].append((str(chrom), int(start), str(ref), str(alt)))
+        present.add(rsid)
+        if alt is not None:  # a record with no ALT places nothing, and is still not an absence
+            alleles[rsid].append((str(chrom), int(start), str(ref), str(alt)))
     result = {rsid: per_alt_loci(found) for rsid, found in alleles.items()}
     for rsid in rsids:
-        if rsid not in result:
+        if rsid not in present:
             # `resolver.lookup_loci`'s twin, and it owes the same two silences: an injected snapshot
             # is what was searched, not ClinVar, and whether the position stays unset is the caller's
             # to state once every leg has run (S61). This half kept the older wording straight through

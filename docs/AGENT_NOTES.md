@@ -476,7 +476,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `GTT>G,GT,GTTT`, a frame no caller writes. Offline nothing trimmed it; online `_filled_pieces` read the
   module's `G/GT` in it as a compound het of two deletions and wrote the locus whole, and SHOX's `C/CAG`
   as the deletion alone, dropping the duplication RM270 had written. Every reader of a snapshot's `alt`
-  (both resolvers, ClinVar's, REST's `allele_string`, the three position→rsID readers) now spells each
+  (both resolvers, ClinVar's, REST's `allele_string`, gnomAD's ids, the three position→rsID readers) spells each
   ALT alone through `sequences.trim_allele` and regroups by that (`per_alt_loci`), offline too, since a
   trim reads no reference; left-alignment past it is still `left_normalize`'s. The rejected repair was
   trimming inside `normalize_locus` only: the frame rule still sees the padded set, and the miss

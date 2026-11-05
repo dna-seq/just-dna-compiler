@@ -47,7 +47,9 @@ genotype spelled in it was never release-stable, and the old repo's pipe-joined 
 now writes both pieces for `AG/AGAG`, as the string algebra reads it, where RM270 wrote the deletion · won't
 fix — not in this item: a position→rsID reader joins snapshot rows at the probe's own `start`, so an
 allele whose trim moves it right of its row (9,954 of 44.5 M chr16 rows, mostly one base, a substitution
-or delins sharing the site's leading base) is matched only as the row spells it · won't fix — an rsID-only
+or delins sharing the site's leading base) is matched only as the row spells it, and a ref-less authored
+coordinate at such a row's padded start reads as a different event from the trimmed substitution, which
+it is · won't fix — an rsID-only
 genotype that is both a ref/alt pair of the deletion and of the duplication (`C/CAAAG`) is written on both
 pieces, RM270's either-reading rule; `pathogenic_clinvar` also authors `11:5226762 C>CAAAG` positionally,
 so re-derived it has one `(variant, genotype)` twice, which is the examples-regen unit's data decision
@@ -81,10 +83,16 @@ left as it is.
   its `_check_rsid_coord_consistency`.
 - `enricher/src/just_dna_enricher/clinvar.py:163` `_lookup_positions_by_rsid` — the same SQL group → raw
   rows through `per_alt_loci`. ClinVar's VCF is one minimal ALT per record (0 of 16,568 multi-base records
-  of the 2026-06 snapshot move under the trim), so this closes the shape by mechanism, not a live miss.
+  of the 2026-06 snapshot move under the trim), so this closes the shape by mechanism, not a live miss. A
+  record with no ALT places nothing and is no longer reported "not in the injected ClinVar snapshot" (it
+  used to produce the locus `alts="None"`).
 - `enricher/src/just_dna_enricher/ensembl.py:339` `_loci_from_rest` — an anchored `allele_string`
-  (`TCTT/T/TCTTCTT`) passed through as one locus → `per_alt_loci`, so RM267's REST witness and the live
-  fill compare the same per-ALT spellings the snapshot readers give.
+  (`TCTT/T/TCTTCTT`) passed through as one locus → `per_alt_loci` over every mapping's alleles at once, so
+  RM267's REST witness and the live fill compare the same per-ALT spellings the snapshot readers give, and
+  two mappings spelling one allele give one locus.
+- `enricher/src/just_dna_enricher/gnomad.py` `_loci_from_variant_ids` — its own copy of the regroup, by
+  the id's raw ref → `per_alt_loci`. gnomAD's ids are one minimal allele each, so this closes the copy,
+  not a live miss; the review found it, because it reads no SQL.
 - `enricher/src/just_dna_enricher/resolver.py:386` `_lookup_rsid_candidates` (also ClinVar's back-fill) —
   `rref != ref` against the padded ref → each nucleotide ALT matched as spelled or as trimmed at the probe's
   start (`_names_allele`).
@@ -100,10 +108,11 @@ left as it is.
 the consumer-join slice as the oracle: `enrich` offline writes each ALT in ClinVar's spelling with
 `left_aligned` unknown; the position back-fill meets a caller-spelled coordinate; online the split rows and
 the old pipe-joined rows write the same caller spelling (the old one was right only online, being
-right-shifted); a registry of the six readers, each held to ClinVar's records; an AST walk asserting the
+right-shifted); a registry of the seven readers, each held to ClinVar's records; an AST walk asserting the
 set of functions whose SQL reads a snapshot's `alt` equals that registry plus two named non-readers, that
-every reader reaches `trim_allele`/`per_alt_loci`, and that no SQL aggregates `alt`. Red on `1007a26d` (23
-of 25). Dropping the trim's suffix loop turns 12 red; routing ClinVar's reader around the helper turns its
+every reader reaches `trim_allele`/`per_alt_loci`, that no SQL aggregates `alt`, and that the only
+functions building a locus whose `alts` joins several alleles are `per_alt_loci` and `normalize_locus`
+(the walk that found gnomAD's copy). Red on `1007a26d` (23 of 25 at first writing). Dropping the trim's suffix loop turns 12 red; routing ClinVar's reader around the helper turns its
 two red. Three tests pinned the padded spelling and now read the per-ALT one: `test_enrich.py`'s RM31 SHOX
 row (`634690 AGA>A`), `test_ensembl_indel_anchor.py`'s REST strings, `test_ensembl_non_nucleotide.py`'s
 `rs33946775` (`11:5225643 T>A,C,G`, three substitutions padded with a leading base).
