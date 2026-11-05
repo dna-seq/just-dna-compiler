@@ -1,5 +1,6 @@
 """Building the SNP-core and frequency parquets: weights, annotations, studies, frequencies."""
 
+from collections.abc import Mapping
 from typing import Any
 
 import polars as pl
@@ -8,6 +9,7 @@ from just_dna_format.frequency import FrequencyRow
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.spec import ModuleSpecConfig, StudyRow, VariantRow
 from just_dna_format.vocab import OUTCOME_STRIP_CELLS
+from just_dna_format.vrs import join_vrs_ids
 
 from just_dna_compiler.compiler.subjects import ResolutionTable, row_positions
 from just_dna_compiler.compiler.tables import _polars_type, _split_genotype, study_coordinate_key
@@ -138,11 +140,6 @@ def _build_weights(
         )
         vrs_ids, vrs_spec = vrs.lookup(authored_key, v.chrom, v.start, v.ref, alts)
         authored_keys.append(authored_key)
-        cell_facts.append(
-            None
-            if v.chrom is None or v.start is None
-            else _locus_fact(v.rsid, v.chrom, v.start, v.ref, v.alts, v.locus_index)
-        )
         records.append(
             {
                 "rsid": v.rsid,
@@ -233,6 +230,10 @@ def _build_weights(
                 "resolution_loci": resolution_loci(authored_key, resolution or {}, config.genome_build),
             }
         )
+        # What reverse's cell rebuild writes for this record, read off the record itself so every rebuilt
+        # column, `vrs_id`/`vrs_spec` included, is the one the parquet holds (RM389).
+        record = records[-1]
+        cell_facts.append(None if v.chrom is None or v.start is None else cell_fact(record))
     schema = {
         "rsid": pl.Utf8,
         "authored_ident": pl.List(pl.Utf8),
@@ -437,6 +438,12 @@ _CELL_REBUILT: frozenset[str] = frozenset(
     {"rsid", "chrom", "start", "ref", "alts", "locus_index", "vrs_id", "vrs_spec"}
 )
 _LOCUS_ONLY: tuple[str, ...] = tuple(name for name in RESOLUTION_LOCUS_FIELDS if name not in _CELL_REBUILT)
+#: The columns `withhold_reproduced_loci` compares a locus on: `_CELL_REBUILT`, in the carried order, and
+#: nothing else. Derived, so the comparison cannot leave out a column the registry says the cells rebuild:
+#: a hand-kept six-column tuple once left out `vrs_id`/`vrs_spec`, and a locus with a `vrs_spec` and no id
+#: was withheld while the cell rebuild wrote it back empty (RM389). With `_LOCUS_ONLY` it partitions every
+#: carried column, so each one is either compared or kept whenever it holds a value.
+CELL_FACT_FIELDS: tuple[str, ...] = tuple(name for name in RESOLUTION_LOCUS_FIELDS if name in _CELL_REBUILT)
 #: What the cell rebuild writes for a carried column no cell holds, where that is not empty: every
 #: positioned locus it rebuilds is `resolved`, so only an `ambiguous` one has to ride the struct.
 _CELL_REBUILD_WRITES: dict[str, object] = {"status": "resolved"}
@@ -478,9 +485,28 @@ def resolution_loci(
     return [{name: getattr(r, name) for name in RESOLUTION_LOCUS_FIELDS} for r in loci]
 
 
-def _locus_fact(rsid: Any, chrom: Any, start: Any, ref: Any, alts: Any, locus_index: Any) -> tuple[Any, ...]:
-    """One table row's facts as `reverse` rebuilds them, `genome_build` and the key aside."""
-    return (rsid or None, chrom, start, ref or None, alts or None, locus_index or 0)
+def _as_cell(value: Any) -> Any:
+    """A carried value as `resolution.csv` spells it, so a row's cells and a locus compare on the fact: a
+    list (a `weights.parquet` row's `alts`/`vrs_id`) joined with its holes kept, an empty string absent.
+    A zero stays a zero (`start` may be 0)."""
+    if isinstance(value, list):
+        return join_vrs_ids(value)
+    return None if value == "" else value
+
+
+def cell_fact(cells: Mapping[str, Any]) -> tuple[Any, ...]:
+    """What `reverse`'s cell rebuild writes for one row, over every `CELL_FACT_FIELDS` column, in order.
+
+    `cells` holds the row's value for each of those columns, a `resolution_loci` locus holds them as
+    stored, and the two compare equal exactly when the cell rebuild would write the locus back. Indexed:
+    every caller states each column, the positional one by `row.get` because `_resolution_record` reads
+    a kind's missing column as empty too. The defect this replaced (RM389) was a column not compared at
+    all; one compared as empty against a locus holding a value keeps that locus, the safe direction.
+    `locus_index` absent is 0, the ordinal reverse gives a row that names none.
+    """
+    return tuple(
+        (cells[name] or 0) if name == "locus_index" else _as_cell(cells[name]) for name in CELL_FACT_FIELDS
+    )
 
 
 def withhold_reproduced_loci(
@@ -517,18 +543,7 @@ def withhold_reproduced_loci(
         # `source_loci`, ...), so a locus holding any is never rebuilt from the cells (RM380). `False` is
         # a value: `is not None`.
         and not any(_locus_holds_more_than_cells(locus) for locus in cell)
-        and by_key[key]
-        == {
-            _locus_fact(
-                locus["rsid"],
-                locus["chrom"],
-                locus["start"],
-                locus["ref"],
-                locus["alts"],
-                locus["locus_index"],
-            )
-            for locus in cell
-        }
+        and by_key[key] == {cell_fact(locus) for locus in cell}
     }
     return [None if key in reproduced else cell for key, cell in zip(keys, cells, strict=True)]
 
@@ -545,10 +560,12 @@ def with_resolution_loci(
     """
     keys = table["variant_key"].to_list()
     cells = [resolution_loci(key, resolution, genome_build) for key in keys]
+    # `row.get` where reverse's cell rebuild reads `row.get` too (`_resolution_record`): a kind with no
+    # `rsid`, `ref` or `vrs_id` column writes those empty, and a positional row's ordinal is always 0.
     facts = [
         None
         if row["chrom"] is None or row["start"] is None
-        else _locus_fact(row.get("rsid"), row["chrom"], row["start"], row.get("ref"), row.get("alts"), 0)
+        else cell_fact({**{name: row.get(name) for name in CELL_FACT_FIELDS}, "locus_index": 0})
         for row in table.iter_rows(named=True)
     ]
     cells = withhold_reproduced_loci(cells, keys, facts)

@@ -41,6 +41,19 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-05 — RM389: a locus with a `vrs_spec` and no id survives the round trip (0.8, uncut)
+
+- **`resolution_loci` is withheld only when the row's cells rebuild the locus on every column the cell
+  rebuild writes.** The comparison was a hand-kept tuple of six that left out `vrs_id`/`vrs_spec`, so a
+  locus stating `vrs_spec` with no id (legal) or an id on a row with no `ref` was withheld and reverse
+  wrote the value back empty. It now reads `parquets.CELL_FACT_FIELDS`, derived from `_CELL_REBUILT`.
+  Reachable only from a table without provenance (hand-filled, reversed from an older artifact, or the
+  deprecated path's); an enriched table's loci were already kept. Where it bites, `resolution_loci` is
+  filled where it was null, so `artifact.digest` moves; `content_signature` does not.
+- Guarded by an equality with `_CELL_REBUILT`, a walk over every carried column, and a round trip over
+  every reference example with a `resolution.csv` (`test_reproduced_locus_compares_every_rebuilt_column.py`).
+  The 0.8 audit, round 2, class 4.
+
 ## 2026-11-05 — RM384: every pulled lane's repository has one public name, the Ensembl lane's included (0.8, uncut)
 
 `locations.SNAPSHOT_REPO_IDS` maps each lane this tier pulls to its HuggingFace repository (`org/repo`),

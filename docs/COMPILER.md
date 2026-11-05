@@ -1821,9 +1821,11 @@ plus each authored table that is not a kind (`overrides.csv` since 0.7, RM124; `
   `proxy_loci`: the loci the post-overlay table files under the row's **authored** key, on the module's
   build, kept wherever the row's own cells would not rebuild them exactly and null on a cleanly resolved
   row (`parquets.withhold_reproduced_loci`), so a clean module's parquets match the deprecated
-  `ensembl_cache` path's byte for byte. Reverse writes the loci back, and rebuilds a null row from its
-  cells as before. A row the fill leaves alone is
-  the reason: one whose authored coordinate the table contradicts, a one-to-many none of whose loci was
+  `ensembl_cache` path's byte for byte. "Exactly" is on every column the cell rebuild writes,
+  `parquets.CELL_FACT_FIELDS`, derived from `_CELL_REBUILT` and so including `vrs_id`/`vrs_spec`: a
+  locus stating a `vrs_spec` with no id, or an id on a row with no `ref` (which the cell lookup skips),
+  is kept, since withholding it wrote the value back empty (RM389). Reverse writes the loci back, and
+  rebuilds a null row from its cells as before. A row the fill leaves alone is the reason: one whose authored coordinate the table contradicts, a one-to-many none of whose loci was
   taken, a locus dropped because it cannot host the genotype, and every row of a module on a build the
   fill skips. Before the column, reverse rebuilt such a row's table rows from its own cells, which lost
   the rows the fill did not take and wrote the **authored** coordinate back as a resolution fact; the
