@@ -67,6 +67,9 @@ patches right after real use started, so the pm reads an audit sceptically: the 
     RM286 as the same licence-shape design); and RM265, which a real run hits (S114: it warns on every compile of just-dna-lite's
     three ClinVar panel modules).
   - **Kept in 0.9 as notes, not work:** RM67, RM84's consumer half and RM149 (frozen).
+  - **Fixed after the first commit:** the move had carried two group headings of the 0.9 file (the VCF 4.4 items, the 0.7
+    vocabulary residue) into ROADMAP.md; they are back. RM16's circular gate is restated as its shape question. The RM_TOC rows of
+    the 22 say "parked" but still sit under their old 0.9-era headings; a later TOC pass may move them.
   - **The §4 counter lamp now counts parked items.** `grep -c 'Status** open — **a minor'` reads 25, past the 20 lamp, and
     most of that is parked. The lamp asks nothing (RELEASE_CYCLE), so this is information for triage, not a change I make.
 - **Owed, a priming edit through change-priming:** `docs/seats/PM.md:14` (and `LEAD.md:17`) still name `docs/ROADMAP_0_8.md`, which

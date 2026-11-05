@@ -1122,11 +1122,9 @@ plus the compile gate already confine that to the modules that use them, while p
 **What would unpark it:** the acquisition measurement done, and a decision on per-transcript grain.
 That is a research task, not a schema task, and it commits nothing.
 
----
-
 ## RM16 — Authored PRS weights (a scoring file, not a manifest)
 
-**Parked, the pm (2026-11-05)**, out of `ROADMAP_0_9.md`, under the maintainer's rule that a minor takes the zones they name and nothing by default ("'Auto-next minor' was a policy when we didn't have a dedicated decision maker for this"). It reached 0.9 by the 2026-11-03 sweep that moved everything outside 0.8's scope to 0.9. **Unparks when** its own gate below is met (on shape, since 2026-09-13), when a scope the maintainer highlights touches it, or when the roadmap is empty.
+**Parked, the pm (2026-11-05)**, out of `ROADMAP_0_9.md`, under the maintainer's rule that a minor takes the zones they name and nothing by default ("'Auto-next minor' was a policy when we didn't have a dedicated decision maker for this"). It reached 0.9 by the 2026-11-03 sweep that moved everything outside 0.8's scope to 0.9. **Unparks when** the shape question below is answered: how the weights combine, what reference distribution a score is stated against, and whether a percentile travels with it. That needs nothing built; the PGS Catalog's scoring files and the transcribed table below are enough to try it. The old gate, "a real consumer", was circular (the gate audit), and this restates it. Or when a scope the maintainer highlights touches it, or when the roadmap is empty.
 
 **Severity** medium-large (on demand) · **Status** open — **a minor, parked** · *before parking:* deferred — **considered for 0.6 on 2026-08-13 and
 held; parked on *shape* rather than on demand since 2026-09-13, and its unpark condition needs
@@ -1206,16 +1204,6 @@ reference distribution the score is stated against, and whether a percentile tra
 unanswered, and a transcribed table shows the columns without showing the semantics. The one-way door
 is the shape, never the demand, so what this instance does is **move the entry from parked-on-demand to
 parked-on-shape** — a smaller and much more answerable place to be parked.
-
----
-
-# The VCF 4.4 items deferred out of 0.6
-
-Numbered and triaged on 2026-08-13 from [VCF_4_4_AUDIT.md](probes/VCF_4_4_AUDIT.md); the rest of that cluster
-(RM53, RM54, RM56–RM64, and RM65's comment fix) went into 0.6 — see
-[PROPOSAL_0_6.md](proposals/PROPOSAL_0_6.md). The audit remains the evidence document: spec quotations,
-`file:line` references and probe transcripts live there and are not duplicated.
-
 
 **Register cross-reference (2026-09-27).** [RM302](ROADMAP_0_9.md#rm302--one-conclusion-serves-every-place-a-report-shows-it-a-table-cell-a-details-card-and-an-explanatory-mode-want-different-wordings)
 gives `conclusion` optional lay and concise wordings, two columns by default. If this item lands a
@@ -1298,8 +1286,6 @@ outcomes they wanted, or **RM15**, which dissolves the premise: once identity is
 provider can write the coordinate under the build it came from, and there is nothing left to refuse or
 strip. A behaviour fixed before RM15 lands is one RM15 would have to undo, which is the strongest single
 argument for leaving this at a warning.
-
-# Vocabulary residue from the 0.7 consumer round
 
 ## RM266 — the phase-confusable diplotype-pair set is computed at compile and dropped: it reaches the artifact only as a capped warning string
 
@@ -2409,7 +2395,7 @@ possibly already satisfied, and the rest sound** — the sweep's value is mostly
 
 | Item | Gate as written | Verdict |
 |---|---|---|
-| **RM16** — authored PRS weights | "a real consumer" — one that combines authored weights into a score | **Circular.** No such consumer can exist before the table does. Re-parked on *shape* 2026-09-13; the gate itself still needs restating when the entry is next opened for a decision. |
+| **RM16** — authored PRS weights | "a real consumer" — one that combines authored weights into a score | **Circular.** No such consumer can exist before the table does. Re-parked on *shape* 2026-09-13. **Restated 2026-11-05 by the pm** as the shape question, which needs nothing built: **Sound** now. |
 | **RM28** tail — the two remaining cofactor classes (ancestry, family structure) | "Neither is built until a real module needs it" | **Marginally circular**, the same family. A module cannot *need* a cofactor class it has no way to express, so read strictly nothing satisfies this. It survives on the looser reading — an author saying *"I want to write this and cannot"* — which is what the clause should say. Low stakes: both classes are on-demand-only and shapeless by design. |
 | **RM122** — the measure lookup as a public function | "what it waits on is a caller, not a decision" | **Sound but possibly already met, and nobody has checked.** The rule is normative prose in SCHEMAS.md today, so a consumer can implement it without the function — which means callers may already exist and be silently disagreeing, which is the exact failure the item predicts. **Ask `just-dna-lite` whether it implements the measure lookup** before treating this as waiting. |
 | **RM238** — per-tissue eQTL | "reopen this with a consumer, never with an argument" | **Sound.** Somebody can need a per-tissue eQTL answer without our table existing; they would be asking for the data. |

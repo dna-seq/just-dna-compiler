@@ -151,9 +151,18 @@ Measure against the PureTarget VCFs first. The probe lists them, with FMR1, HTT 
 **Legality.** A contract sentence alone is a patch. A new element rule or pointer shape is a minor. It
 is filed against 0.8 because the RM66 overlap wants one decision.
 
+---
+
+# The VCF 4.4 items deferred out of 0.6
+
+Numbered and triaged on 2026-08-13 from [VCF_4_4_AUDIT.md](probes/VCF_4_4_AUDIT.md); the rest of that cluster
+(RM53, RM54, RM56–RM64, and RM65's comment fix) went into 0.6 — see
+[PROPOSAL_0_6.md](proposals/PROPOSAL_0_6.md). The audit remains the evidence document: spec quotations,
+`file:line` references and probe transcripts live there and are not duplicated.
+
 ## RM56 (policy half) — the rule for a measurement that spans bins
 
-**0.9, decided 2026-11-03.** The maintainer scoped 0.8 to the work already built, the chosen fixes and longevitymap v2, and moved everything else to 0.9. The status line below predates that decision.
+**Stays in 0.9, the pm (2026-11-05)**: it is in the PacBio zone: the real repeat-caller output it waits on is TRGT's, the same evidence as RM319. The status line below predates this.
 
 **Severity** high on the flagship example · **Status** 0.6 ships withhold plus an explicitly
 not-implemented warning; **the policy lands here, gated on real caller output** · **Owner** format
@@ -176,7 +185,7 @@ puts a *measurement* in the module, which the data-agnostic north star forbids o
 
 ## RM65 (implementation half) — repeat and copy-number tables are positional
 
-**0.9, decided 2026-11-03.** The maintainer scoped 0.8 to the work already built, the chosen fixes and longevitymap v2, and moved everything else to 0.9. The status line below predates that decision.
+**Stays in 0.9, the pm (2026-11-05)**: it is in the PacBio zone: its coordinates wait on a real repeat-caller VCF, which TRGT's output (RM319) is. The status line below predates this.
 
 **Severity** medium · **Status** 0.6 corrects the false claim in the code; **the coordinates wait here**
 · **Owner** format (schema) + compiler
@@ -200,7 +209,7 @@ a line whoever implements it must clear.
 
 ## RM66 — one repeat locus, several motifs
 
-**0.9, decided 2026-11-03.** The maintainer scoped 0.8 to the work already built, the chosen fixes and longevitymap v2, and moved everything else to 0.9. The status line below predates that decision.
+**Stays in 0.9, the pm (2026-11-05)**: it is in the PacBio zone: TRGT writes several motifs per locus (RM319's `FORMAT/MC`), and STRchive's `locus_structure` already decides it. The status line below predates this.
 
 **Severity** medium · **Status** deferred here; filed beside RM65, but **its evidence has since arrived on its own** (below) · **Owner** format (schema)
 
@@ -222,7 +231,7 @@ first.
 
 ## RM67 — polyploid and partially-phased genotypes
 
-**0.9, decided 2026-11-03.** The maintainer scoped 0.8 to the work already built, the chosen fixes and longevitymap v2, and moved everything else to 0.9. The status line below predates that decision.
+**Stays in 0.9, the pm (2026-11-05)**: it is not work, so it is a note here, not a parked item. The status line below predates this.
 
 **Status** **not work** — a documented divergence, numbered so it is findable and not re-probed
 
@@ -243,22 +252,7 @@ more, and nothing is queued against it. Recorded as D3-2 in
 
 ---
 
-# The 0.6 dogfooding items deferred out of the fix round
-
-The findings from [DOGFOOD_0_6_FINDINGS.md](probes/DOGFOOD_0_6_FINDINGS.md) whose obvious repair is itself a
-design decision — the round filed five, and two have since left: RM69 for
-[ROADMAP_1_0.md](ROADMAP_1_0.md) (see the header), and **RM70 shipped in 0.7**, its entry now in
-[ROADMAP_HISTORY.md](ROADMAP_HISTORY.md). The three below are what remains. No fixed count is stated
-here on purpose: one goes wrong silently the next time an item leaves, and this section has already
-lost two. The ledger classes each **surface** rather than **fix**, which is this repo's standing
-split: a false claim, a misdiagnosis, an unaggregated wall or an unreached guard gets fixed in the round
-that finds it; anything whose repair has to be *chosen* gets filed with the candidates and the reason
-each one fails. The refutations are the point of these entries — an item that only names a gap is one
-somebody re-derives from scratch a release later.
-
-Everything below is legal in a minor. Where a repair would be additive it says so; where the only
-candidate repairs are illegal it says which principle bars them. Legality sizes the release; severity
-only orders the queue.
+# Vocabulary residue from the 0.7 consumer round
 
 ## RM149 — expected behaviour lives in prose, and the prose is where two readers split
 
@@ -487,7 +481,7 @@ Everything here is legal in a minor.
 
 ## RM84 — a module has no version identity on the discovery path, and the publisher is the half we own
 
-**0.9, decided 2026-11-03.** The maintainer scoped 0.8 to the work already built, the chosen fixes and longevitymap v2, and moved everything else to 0.9. The status line below predates that decision.
+**Stays in 0.9, the pm (2026-11-05)**: the open half is the consumer's, so it is a note here, not a parked item. The status line below predates this.
 
 **Severity** medium-high · **Status** **our half SHIPPED in the 0.6 PT2 batch (lane D, 2026-08-17)** —
 `upload_module` writes `data/<name>/` and `data/<name>/v<version>/`. **The segment spelling is settled
@@ -595,11 +589,11 @@ recorded here because this entry is where a reader meets the publisher.
 
 # Moved from ROADMAP.md: the minors whose release was undecided
 
-These ten were open on [ROADMAP.md](ROADMAP.md) as *a minor, release undecided*. The maintainer's 2026-11-03 scope decision for 0.8 left them out, so each now waits on 0.9.
+Ten were open on [ROADMAP.md](ROADMAP.md) as *a minor, release undecided* until the maintainer's 2026-11-03 scope decision for 0.8 moved them here. The 2026-11-05 re-size sent eight back to ROADMAP.md as parked; RM265 and RM286 stay, each saying why.
 
 ## RM265 — the `panel:` deprecation has no "accepted" signal: on the replaced branch the warning fires whether or not you need the three fields it tells you to keep the block for
 
-**0.9, decided 2026-11-03.** The maintainer scoped 0.8 to the work already built, the chosen fixes and longevitymap v2, and moved everything else to 0.9. The status line below predates that decision.
+**Stays in 0.9, the pm (2026-11-05)**: a real run hits it: S114 found the warning on every compile of just-dna-lite's three ClinVar panel modules. The status line below predates this.
 
 **Severity** medium · **Status** open — **a minor, release undecided** · **Owner** compiler / format
 (`panel:`, the licence row) · **Motivating case** [S114](CONSUMER_SUGGESTIONS_HISTORY.md#s114--the-panel_block_deprecated-replaced-branch-warns-whether-or-not-you-need-the-three-fields-it-says-to-keep-the-block-for-so-there-is-no-way-to-signal-accepted)
@@ -642,7 +636,7 @@ since that tracker is the procedure P3 turns on.
 
 ## RM286 — PharmVar's research-use-only, personal-key restriction lives in `notice` prose, and RM27 closed without the axis RM38 handed it
 
-**0.9, decided 2026-11-03.** The maintainer scoped 0.8 to the work already built, the chosen fixes and longevitymap v2, and moved everything else to 0.9. The status line below predates that decision.
+**Stays in 0.9, the pm (2026-11-05)**: it is the same design question as RM345 (a licence shape `SourceRow` cannot state), which stays for longevitymap v2's Open Targets rows. The status line below predates this.
 
 **Severity** low · **Status** open — **a minor, release undecided** · **Owner** format (`SourceRow`) +
 enricher (the PharmVar terms constant) · **Motivating case** RM38's *"belongs to the RM27 design
