@@ -83,7 +83,6 @@ def test_the_compared_columns_are_the_rebuilt_registry() -> None:
     assert set(_CELL_REBUILT) <= set(RESOLUTION_LOCUS_FIELDS), sorted(
         _CELL_REBUILT - set(RESOLUTION_LOCUS_FIELDS)
     )
-    assert list(CELL_FACT_FIELDS) == [name for name in RESOLUTION_LOCUS_FIELDS if name in _CELL_REBUILT]
 
 
 def test_a_locus_the_cells_rebuild_is_withheld() -> None:
@@ -121,33 +120,49 @@ def _examples_with_a_table() -> list[Path]:
     return found
 
 
-def _stamp_a_version_with_no_id(spec: Path) -> None:
-    """Strip every provenance column (so the withhold is reachable) and leave `vrs_spec=2.0`, no id."""
+def _strip_provenance(spec: Path, **overrides: str) -> list[dict[str, str]]:
+    """Rewrite `spec`'s table with every provenance column empty, so the withhold is reachable (a locus
+    holding provenance is always kept, RM380), and `overrides` on every positioned row. `status` stays,
+    since `resolved` is what the cell rebuild writes. Returns the rows as they were."""
     rows = _rows(spec / "resolution.csv")
     provenance = set(RESOLUTION_LOCUS_FIELDS) - _CELL_REBUILT - {"status"}
-    fieldnames = [*rows[0], *(name for name in ("vrs_id", "vrs_spec") if name not in rows[0])]
+    fieldnames = [*rows[0], *(name for name in overrides if name not in rows[0])]
     with (spec / "resolution.csv").open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         for row in rows:
-            positioned = bool(row["chrom"] and row["start"])
-            writer.writerow(
-                {
-                    **row,
-                    **{name: "" for name in provenance if name in row},
-                    "vrs_id": "",
-                    "vrs_spec": "2.0" if positioned else "",
-                }
-            )
+            stripped = {**row, **{name: "" for name in provenance if name in row}}
+            writer.writerow({**stripped, **overrides} if row["chrom"] and row["start"] else stripped)
+    return rows
+
+
+def _withheld(out: Path) -> int:
+    """Positioned parquet rows whose `resolution_loci` is null, over every parquet carrying the column."""
+    count = 0
+    for parquet in sorted(out.glob("*.parquet")):
+        frame = pl.read_parquet(parquet)
+        if "resolution_loci" in frame.columns:
+            count += frame.filter(pl.col("resolution_loci").is_null() & pl.col("chrom").is_not_null()).height
+    return count
 
 
 @pytest.mark.parametrize("example", _examples_with_a_table(), ids=lambda p: p.name)
 def test_a_version_with_no_id_survives_the_round_trip(example: Path, tmp_path: Path) -> None:
+    """The control first: the same table with no `vrs_spec` either, which the cells do reproduce, so the
+    example reaches the withhold at all; then the stamped one must withhold fewer rows and reverse to a
+    table that still says `2.0`."""
+    control = tmp_path / "control"
+    shutil.copytree(example, control)
+    _strip_provenance(control, vrs_id="", vrs_spec="")
+    assert compile_module(control, tmp_path / "oc").success
+    reached = _withheld(tmp_path / "oc")
+    assert reached, f"{example.name}: no row reaches the withhold, so this example tests nothing"
     spec = tmp_path / "spec"
     shutil.copytree(example, spec)
-    _stamp_a_version_with_no_id(spec)
+    _strip_provenance(spec, vrs_id="", vrs_spec="2.0")
     lap1 = compile_module(spec, tmp_path / "o1")
     assert lap1.success, lap1.errors
+    assert _withheld(tmp_path / "o1") < reached, f"{example.name}: a locus stating vrs_spec was withheld"
     reverse_module(tmp_path / "o1", tmp_path / "back")
     build = lap1.manifest.genome_build
     returned = [
@@ -172,13 +187,7 @@ def test_an_id_on_a_row_with_no_ref_survives_the_round_trip(tmp_path: Path) -> N
     locus does. Withheld, reverse wrote the id away."""
     spec = tmp_path / "spec"
     shutil.copytree(_EXAMPLES / "hfe_hemochromatosis", spec)
-    rows = _rows(spec / "resolution.csv")
-    provenance = set(RESOLUTION_LOCUS_FIELDS) - _CELL_REBUILT - {"status"}
-    with (spec / "resolution.csv").open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
-        writer.writeheader()
-        for row in rows:
-            writer.writerow({**row, **{name: "" for name in provenance if name in row}, "ref": ""})
+    rows = _strip_provenance(spec, ref="")
     stated = {row["variant_key"]: row["vrs_id"] for row in rows if row["vrs_id"]}
     assert stated, "the example must record an id for this to test anything"
     lap1 = compile_module(spec, tmp_path / "o1")

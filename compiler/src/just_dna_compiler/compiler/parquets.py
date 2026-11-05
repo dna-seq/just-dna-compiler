@@ -498,10 +498,11 @@ def cell_fact(cells: Mapping[str, Any]) -> tuple[Any, ...]:
     """What `reverse`'s cell rebuild writes for one row, over every `CELL_FACT_FIELDS` column, in order.
 
     `cells` holds the row's value for each of those columns, a `resolution_loci` locus holds them as
-    stored, and the two compare equal exactly when the cell rebuild would write the locus back. Indexed,
-    never `.get`: a caller that does not supply a rebuilt column fails here rather than comparing it as
-    empty, which is the shape of the defect this replaced (RM389). `locus_index` absent is 0, the
-    ordinal reverse gives a row that names none.
+    stored, and the two compare equal exactly when the cell rebuild would write the locus back. Indexed:
+    every caller states each column, the positional one by `row.get` because `_resolution_record` reads
+    a kind's missing column as empty too. The defect this replaced (RM389) was a column not compared at
+    all; one compared as empty against a locus holding a value keeps that locus, the safe direction.
+    `locus_index` absent is 0, the ordinal reverse gives a row that names none.
     """
     return tuple(
         (cells[name] or 0) if name == "locus_index" else _as_cell(cells[name]) for name in CELL_FACT_FIELDS
