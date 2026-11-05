@@ -94,7 +94,8 @@ def test_the_snapshot_serves_only_nucleotide_loci(snapshot: Path, caplog: pytest
     rsids = ["rs2100212723", "rs1553186440", "rs33946775", "rs3838485", "rs1603142144"]
     loci, _, warnings = lookup_loci(snapshot, rsids, [])
     assert loci == {
-        "rs33946775": [{"chrom": "11", "start": 5225642, "ref": "CT", "alts": "CA,CC,CG"}],
+        # Three substitutions padded with a shared leading base, each spelled alone (RM381).
+        "rs33946775": [{"chrom": "11", "start": 5225643, "ref": "T", "alts": "A,C,G"}],
         "rs3838485": [{"chrom": "1", "start": 153985723, "ref": "G", "alts": "GGG"}],
         "rs1603142144": [{"chrom": "X", "start": 10277, "ref": "C", "alts": "CCC"}],
     }

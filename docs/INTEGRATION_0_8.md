@@ -583,6 +583,15 @@ reads the record and no longer calls such a row a contradiction.
 | `licensing.csv`, `manifest.sources` | New rows at the new `clin_sig_authority_call` layer (`VALID_SOURCE_LAYERS`, 14 members) for ClinVar and PubMind when a run writes `clin_sig_authority_calls.csv` naming them, consulted. `sources.signature` and `artifact.digest` move on the next enrich and compile of a module with a concordance record. Fact class: never taints. | A reader closed over the 13 layers accepts the new member. |
 | `concordance.write_concordance_tables` | Takes `error=` (the caller's type for a licence table that will not merge), and reads the licence table before it writes. | None. |
 
+## 1.34 A filled multi-ALT site is written ALT by ALT, offline too (RM381, no new code)
+
+| Surface | What changed | What to do |
+| --- | --- | --- |
+| `resolution.csv` filled from the Ensembl snapshot, ClinVar or REST | Each ALT is written in its own trimmed spelling, regrouped by it, never under a site's shared padded ref: the split repo's `16:23635706 GTT>G,GT,GTTT` is `G>GT` and `GT>G` (the pieces the genotype fits), `11:5225642 CT>CA,CC,CG` is `11:5225643 T>A,C,G`. An rsID can therefore expand to more loci than before, and a fill's `start` can move right by the shared leading bases. Offline an indel piece is trimmed, not proven leftmost, so `left_aligned` is empty; online it is left-aligned as RM270 writes it. | A consumer joining `(chrom, pos, ref, alt)` against a `bcftools norm -m -any` VCF meets these rows after a re-derive. `resolution_signature` and `artifact.digest` move where a fill did; `content_signature` does not. |
+| Position→rsID back-fill | A coordinate authored in a caller's spelling (`16:23635706 GT>G`) gets the rsID the split repo files under its padded row (`rs1555461597`). | An authored positional row can gain an `rsid` on re-derive; check the module does not also author that rsID's same allele by rsID (`Duplicate (variant, genotype)`). |
+| A genotype spelled in a site's padded joint frame | A compound het of two ALTs (`G/GTTT` on the padded `GTT>G,GT,GTTT`) finds no locus: per ALT none holds both. The run reports it as an allele mismatch (S85). | Author each ALT's row in its own spelling. |
+| `just_dna_enricher.sequences` | New public names `trim_allele`, `per_alt_loci`. | None. |
+
 ## 2. What to change
 
 1. If you parse `manifest.json` with `just-dna-format`, move your pin to 0.8 when you start reading

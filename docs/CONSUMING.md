@@ -86,7 +86,9 @@ order. It is a string, it is stable across recompiles, and it is what the derive
     The compiler cannot normalize an indel: left-alignment reads the reference sequence around the
     event, and the compile path has none. Since 0.8 the enricher writes a coordinate it **fills** from
     an rsID in its leftmost parsimonious spelling, ALT by ALT — the spelling `bcftools norm -m -any -f
-    <reference>` writes — so those rows join a normalized VCF exactly. A coordinate the module's
+    <reference>` writes — so those rows join a normalized VCF exactly. Offline the enricher cannot
+    left-align, but it still trims each ALT against its ref (RM381), so a split-snapshot site is written
+    per ALT, never in the snapshot's padded multi-ALT frame. A coordinate the module's
     **author** wrote keeps its author's spelling, and VCF allows several spellings of one event: the
     Ensembl snapshot often writes an indel one base right of the left-aligned form your caller emits
     (CCR5-Δ32, `rs333`: `3:46373453 ACAGT…CCAGA>A` against `3:46373452 TACAGT…CCAG>T` in a GATK or

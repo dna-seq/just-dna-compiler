@@ -27,6 +27,7 @@ from just_dna_format.snapshot import clinvar_release_label, read_release, releas
 
 from just_dna_enricher.locations import CITATIONS_DIRNAME
 from just_dna_enricher.resolver import _lookup_rsid_candidates, probe_table
+from just_dna_enricher.sequences import per_alt_loci
 
 logger = logging.getLogger(__name__)
 
@@ -165,24 +166,27 @@ def _lookup_positions_by_rsid(
     """Batch lookup: rsid -> [{chrom, start, ref, alts}, ...] (all loci, deterministically ordered).
 
     Mirrors `resolver._lookup_positions_by_rsid`: every locus is returned so a one-to-many rsid
-    expands to one row per locus, and `string_agg(DISTINCT alt, ',' ORDER BY alt)` + an explicit
-    `ORDER BY rsid, chrom, start, ref` keep both the alt list and the emitted order stable (P7)."""
+    expands to one row per locus, each ALT in its own spelling and regrouped by it
+    (`sequences.per_alt_loci`, RM381), alts and loci sorted so the emitted order is stable (P7). ClinVar's
+    VCF is already one minimal ALT per record (no record of the 2026-10 snapshot moved under the trim), so
+    this is the shared mechanism rather than a repair: a reader that grouped by the source's `ref` would
+    hand a padded multi-ALT frame on unexamined."""
     if not rsids:
         return {}
     placeholders = ", ".join("?" for _ in rsids)
     rows = con.execute(
         f"""
-        SELECT rsid, chrom, start, ref, string_agg(DISTINCT alt, ',' ORDER BY alt) AS alts
+        SELECT DISTINCT rsid, chrom, start, ref, alt
         FROM clinvar
-        WHERE rsid IN ({placeholders})
-        GROUP BY rsid, chrom, start, ref
-        ORDER BY rsid, chrom, start, ref
+        WHERE rsid IN ({placeholders}) AND alt IS NOT NULL
+        ORDER BY rsid, chrom, start, ref, alt
         """,
         rsids,
     ).fetchall()
-    result: dict[str, list[dict]] = defaultdict(list)
-    for rsid, chrom, start, ref, alts in rows:
-        result[rsid].append({"chrom": str(chrom), "start": int(start), "ref": str(ref), "alts": str(alts)})
+    alleles: dict[str, list[tuple[str, int, str, str]]] = defaultdict(list)
+    for rsid, chrom, start, ref, alt in rows:
+        alleles[rsid].append((str(chrom), int(start), str(ref), str(alt)))
+    result = {rsid: per_alt_loci(found) for rsid, found in alleles.items()}
     for rsid in rsids:
         if rsid not in result:
             # `resolver.lookup_loci`'s twin, and it owes the same two silences: an injected snapshot

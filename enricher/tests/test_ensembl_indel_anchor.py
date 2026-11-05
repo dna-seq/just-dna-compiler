@@ -66,7 +66,10 @@ def test_every_written_allele_is_in_the_allele_grammar() -> None:
 
 
 def test_an_already_anchored_string_passes_through_without_a_base_read() -> None:
-    """rs121908745 and rs113993960 answer two-sided strings; nothing to anchor, so nothing is read."""
+    """rs121908745 and rs113993960 answer two-sided strings; nothing to anchor, so nothing is read.
+
+    Each ALT is handed on in its own spelling (RM381): `TCTT/T/TCTTCTT` is one joint frame, a deletion
+    and an insertion padded to one ref, which a caller writes as two records."""
 
     def must_not_read(chrom: str, pos: int) -> str | None:
         raise AssertionError(f"read a base for an anchored allele string at {chrom}:{pos}")
@@ -79,8 +82,9 @@ def test_an_already_anchored_string_passes_through_without_a_base_read() -> None
     }
     loci, withheld, _ = _loci_from_rest(payload, must_not_read)
     assert loci == [
-        {"chrom": "7", "start": 117559587, "ref": "ATCATC", "alts": "ATC"},
-        {"chrom": "7", "start": 117559591, "ref": "TCTT", "alts": "T,TCTTCTT"},
+        {"chrom": "7", "start": 117559587, "ref": "ATCA", "alts": "A"},
+        {"chrom": "7", "start": 117559591, "ref": "T", "alts": "TCTT"},
+        {"chrom": "7", "start": 117559591, "ref": "TCTT", "alts": "T"},
     ]
     assert withheld == 0
 

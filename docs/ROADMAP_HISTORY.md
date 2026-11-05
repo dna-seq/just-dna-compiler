@@ -35,6 +35,87 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM381 — a reader regrouped a source's per-ALT rows under their shared padded ref, and no ALT was ever spelled alone
+
+✅ **SHIPPED 2026-11-05 on `0.8`, uncut — a minor (found regenerating the reference examples).** Owner
+enricher, severity high.
+
+**Residuals** won't fix — a genotype spelled only in a site's padded joint frame (a compound het such as
+`G/GTTT` on `16:23635706 GTT>G,GT,GTTT`) finds no hosting locus, because per ALT none holds both alleles;
+that frame moved between the two snapshot releases (`16:23635707 TT` against `16:23635706 GTT`), so a
+genotype spelled in it was never release-stable, and the old repo's pipe-joined SHOX row through `enrich`
+now writes both pieces for `AG/AGAG`, as the string algebra reads it, where RM270 wrote the deletion · won't
+fix — not in this item: a position→rsID reader joins snapshot rows at the probe's own `start`, so an
+allele whose trim moves it right of its row (9,954 of 44.5 M chr16 rows, mostly one base, a substitution
+or delins sharing the site's leading base) is matched only as the row spells it · won't fix — an rsID-only
+genotype that is both a ref/alt pair of the deletion and of the duplication (`C/CAAAG`) is written on both
+pieces, RM270's either-reading rule; `pathogenic_clinvar` also authors `11:5226762 C>CAAAG` positionally,
+so re-derived it has one `(variant, genotype)` twice, which is the examples-regen unit's data decision
+
+**The class.** A reader that turns a source's rows into loci grouped them by the source's own
+`(chrom, start, ref)`. The split Ensembl repo (`ensembl_variations_split`, RM372) pads every ALT of a site
+to one shared ref, so that group is a multi-ALT frame no caller writes: `rs1555461597` read as
+`16:23635706 GTT>G,GT,GTTT`, `rs267607291` as `11:5226773 TGG>T,TG`, SHOX's `rs1569493663` as
+`X:634689 CAG>C,CAGAG`. Nothing then spelled an ALT alone. Offline RM270's fill cannot left-align an indel,
+so the padded locus was written whole; online `_filled_pieces` split it but read the genotype in the padded
+frame, so `G/GT` was a compound het of two deletions (locus kept whole, `left_aligned` false) and SHOX's
+`C/CAG` named the deletion alone, dropping the duplication RM270 had written. The position→rsID readers
+compared an authored allele with the padded row, so a caller-spelled `16:23635706 GT>G` back-filled no
+rsID. Re-deriving `hboc_palb2` and `pathogenic_clinvar` cost `test_every_row_clinvar_carries_joins` six
+alleles, and `shox_par1` lost an ALT.
+
+**The mechanism.** One trim, `sequences.trim_allele` (drop the bases both sides end with, then those both
+start with, while each keeps one: `bcftools norm`'s trim, pure string work, so offline gets it), and one
+regroup, `sequences.per_alt_loci` (each ALT trimmed, loci keyed by the trimmed `(chrom, start, ref)`, alts
+and loci sorted, P7). `left_normalize`'s substitution branch now calls `trim_allele`, so there is one
+spelling-trim. Left-alignment past the trim still reads the reference (`left_normalize`, RM270/RM375's
+judge), so each piece is decided apart: a substitution `left_aligned` true offline, an indel unknown offline
+and checked online. `events._trimmed` is a comparison key that strips to empty, not a VCF spelling, and is
+left as it is.
+
+**Instances (before → after), re-verified on `1007a26d`.**
+
+- `enricher/src/just_dna_enricher/resolver.py:483` `_lookup_positions_by_rsid` — SQL `string_agg(DISTINCT
+  alt) … GROUP BY id, chrom, start, ref` → raw rows, RM271's `_placeable_alleles` per row, then
+  `per_alt_loci` per rsID. Serves `enrich`, `lookup_loci`/`lookup_variant`, the deprecated DuckDB path and
+  its `_check_rsid_coord_consistency`.
+- `enricher/src/just_dna_enricher/clinvar.py:163` `_lookup_positions_by_rsid` — the same SQL group → raw
+  rows through `per_alt_loci`. ClinVar's VCF is one minimal ALT per record (0 of 16,568 multi-base records
+  of the 2026-06 snapshot move under the trim), so this closes the shape by mechanism, not a live miss.
+- `enricher/src/just_dna_enricher/ensembl.py:339` `_loci_from_rest` — an anchored `allele_string`
+  (`TCTT/T/TCTTCTT`) passed through as one locus → `per_alt_loci`, so RM267's REST witness and the live
+  fill compare the same per-ALT spellings the snapshot readers give.
+- `enricher/src/just_dna_enricher/resolver.py:386` `_lookup_rsid_candidates` (also ClinVar's back-fill) —
+  `rref != ref` against the padded ref → each nucleotide ALT matched as spelled or as trimmed at the probe's
+  start (`_names_allele`).
+- `resolver.py:821` `_lookup_rsid_sets_by_position` and `:848` `_lookup_rsids_by_position` — `WHERE … ref =
+  ?` against the padded ref → rows fetched by `(chrom, start)`, each answering its own ref and every ALT's
+  trimmed ref at that start (`_refs_named`).
+- Not instances: `resolver._connect`'s view is `SELECT *`; `clinvar.lookup_clin_sig` and
+  `clinvar.select_by_gene` read one ClinVar record at a time in its own spelling; the ClinVar-GKM witness is
+  one gnomAD-spelled allele per row and regroups nothing (0 of the slice's 13 rows move under the trim).
+
+**The guard.** `enricher/tests/test_split_snapshot_per_alt.py`, on the real rows
+(`assets/ensembl_split_multialt/`, both repos' bytes at the three sites) with ClinVar's per-ALT records in
+the consumer-join slice as the oracle: `enrich` offline writes each ALT in ClinVar's spelling with
+`left_aligned` unknown; the position back-fill meets a caller-spelled coordinate; online the split rows and
+the old pipe-joined rows write the same caller spelling (the old one was right only online, being
+right-shifted); a registry of the six readers, each held to ClinVar's records; an AST walk asserting the
+set of functions whose SQL reads a snapshot's `alt` equals that registry plus two named non-readers, that
+every reader reaches `trim_allele`/`per_alt_loci`, and that no SQL aggregates `alt`. Red on `1007a26d` (23
+of 25). Dropping the trim's suffix loop turns 12 red; routing ClinVar's reader around the helper turns its
+two red. Three tests pinned the padded spelling and now read the per-ALT one: `test_enrich.py`'s RM31 SHOX
+row (`634690 AGA>A`), `test_ensembl_indel_anchor.py`'s REST strings, `test_ensembl_non_nucleotide.py`'s
+`rs33946775` (`11:5225643 T>A,C,G`, three substitutions padded with a leading base).
+
+**What it moves.** Re-derived offline against the split snapshot, `hboc_palb2`, `pathogenic_clinvar` and
+`shox_par1` pass `test_consumer_join` (the examples-regen unit's tables miss 6 alleles there); SHOX's
+`rs1569493663` is `X:634689 CAG>C` and `C>CAG` again. Several rsIDs gain the duplication beside their
+deletion where the genotype fits both (`rs587776418 T/TTA`), as ClinVar records both, and
+`pathogenic_clinvar`'s positional `11:5226762 C>CAAAG` back-fills `rs80356821`. A filled coordinate is
+outside `content_signature`, so no authored identity moves; `resolution_signature` and `artifact.digest`
+move where a fill did. No new column, code or vocabulary member.
+
 ## RM376 — one rsID, three ALTs offline and one online on the same snapshot: not a misread, RM270's reference-dependent spelling rule
 
 ✖ **CLOSED 2026-11-04 on `0.8` — not a defect, no code change (the 0.8 Ensembl migration probe).** Owner

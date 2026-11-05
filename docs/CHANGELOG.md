@@ -41,6 +41,20 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-05 — RM381: a split-snapshot site is filled ALT by ALT in the caller's spelling, offline too (0.8, uncut)
+
+- **Every reader of a snapshot's `alt` spells each ALT alone** (`sequences.trim_allele`, regrouped by
+  `sequences.per_alt_loci`): the Ensembl and ClinVar rsID lookups, REST's `allele_string` and the three
+  position→rsID readers. The split repo pads every ALT of a site to one ref, and the readers grouped by it,
+  so `rs1555461597` was filled as `16:23635706 GTT>G,GT,GTTT`; it is now `G>GT` and `GT>G` (`GTT>G` is the
+  2 bp deletion its genotype cannot host), and SHOX's `rs1569493663` regains `C>CAG` beside `CAG>C`. The
+  trim reads no reference; left-alignment past it is still online only, so an offline indel piece records
+  `left_aligned` unknown.
+- **A caller-spelled coordinate back-fills its rsID** from the split rows (`16:23635706 GT>G` →
+  `rs1555461597`).
+- A genotype spelled only in a site's padded frame, a compound het such as `G/GTTT`, no longer finds a
+  locus. No new column or code.
+
 ## 2026-11-05 — RM379: every authority the concordance record names has its licence row (0.8, uncut)
 
 - **`enrich` records ClinVar's and PubMind's terms at the new `clin_sig_authority_call` layer** for each
