@@ -300,7 +300,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
   | `VALID_VERIFICATION_CHECKS` | 27 (closed) |  |
   | `VALID_VERIFICATION_SKIPS` | 9 (closed) |  |
   | `VALID_VERIFICATION_INDEPENDENCE` | 2 (closed) | `VerificationRecord.independence`, derived from the record's two sources and never typed (RM292) |
-  | `VALID_WARNING_CODES` | 83 (closed) | every code a compile may stamp on a finding (members in `RETIRED_WARNING_CODES` are no longer emitted); the catalogue with texts is in [COMPILER.md](COMPILER.md) |
+  | `VALID_WARNING_CODES` | 84 (closed) | every code a compile may stamp on a finding (members in `RETIRED_WARNING_CODES` are no longer emitted); the catalogue with texts is in [COMPILER.md](COMPILER.md) |
 
   Vocabularies owned by a leaf rather than by `vocab` (`spec`, `binning`, `pgx`, `pgs`, `manifest`,
   `sources`) are reached through the field markers above and not listed here, for the reason the bullet
