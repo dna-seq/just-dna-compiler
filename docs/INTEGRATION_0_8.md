@@ -591,6 +591,13 @@ reads the record and no longer calls such a row a contradiction.
 | `AlleleMismatch.links`, `.placed_by`; `EnrichmentResult.superseded_answers` | New: the links whose answers were rejected (chain order, `loci` in the same order), and the later link that placed the rsID, if any. | None; additive. |
 | `enrich(mode="strict")` refusal | A third arm names the keys every link answered at loci the genotype cannot host (RM382), apart from RM267's placement disagreement and from a missing cache. | A host matching the refusal's wording reads the new sentence. |
 
+## 1.35 A re-derivation retires a licence row no resolution row names (RM383, no new code)
+
+| Surface | What changed | What to do |
+| --- | --- | --- |
+| `licensing.csv`, `manifest.sources` | After `enrich --rederive`, a `resolution`-layer row for a licensed source no `resolution.csv` row names is removed; the concordance record does the same at `clin_sig_authority_call` on every write. `sources.signature` and `artifact.digest` move on the next compile of such a module. A row for a source with no terms constant is never touched. | None, unless you hand-wrote a `resolution`-layer row for a licensed source no row uses: it goes on the next `--rederive`. |
+| `licensing.record_table_sources` | New keyword-only argument `answered_every_row`, default `False` (no retirement, the old behaviour). | None; pass `True` only when your commit is the table's whole answer. |
+
 ## 2. What to change
 
 1. If you parse `manifest.json` with `just-dna-format`, move your pin to 0.8 when you start reading

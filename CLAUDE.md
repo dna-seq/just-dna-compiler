@@ -299,6 +299,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - Licensing lives as data in the licence table, never as a table in the compiler. `@licensing-as-data`
 - Every pass that consults a source **writes** its `SourceRow`. `@write-the-sourcerow`
 - And one that **contributes nothing writes none** — key on what this run covered, never on the table or on `not missing`. `@write-the-sourcerow`
+- A run that answered every row retires its own licence row no committed row names; a merge never does — the caller declares which. `@write-the-sourcerow`
 - Nor any **table**: every sidecar writer asks `layout.nothing_to_write` — zero rows and no file writes nothing; an existing file is still the pass's to empty; `resolution.csv` and an overlay-answered concordance record are the stated exceptions. `@write-the-sourcerow`
 - A second surface of an already-declared source may not claim the lane's `(source, layer)` row. `@write-the-sourcerow`
 - Derive a column list from the model; a hand-kept one loses a column. `@fieldnames-from-model`

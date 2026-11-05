@@ -1840,6 +1840,18 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `source_row_unused` on every module that runs the pass. The check writes no row, which is also what the
   converse above already required of it, and the module docstring says so where a reader would look.
 
+  **A run that answered every row retires the row no committed row names (RM383, 2026-11-05).** The
+  converse above, at the other end of a module's life: `mt_common_deletion`'s point variants moved from
+  ClinVar's back-fill to the split Ensembl snapshot's under `--rederive`, and `clinvar,resolution` stayed
+  in the licence table, because `merge_sources_file` never clobbers and nothing ever removed a row. Two
+  repairs refused. *Keep it with a stated reason*: `SourceRow` has no field a gate could act on, and an
+  exclusion in prose is the `@one-side-only-has-two-causes` defect. *Retire on every run*: a routine
+  merge's contract is merge-not-clobber, and a deletion it was not asked for is exactly the side effect
+  `@a-publish-may-not-orphan-the-bytes-it-stops-describing` forbids, however true "no row names it" is.
+  So the caller declares it (`record_table_sources(answered_every_row=…)`, default `False` for a host's
+  call, stated by every call here and walked by an AST guard): `enrich` passes `rederive`, the concordance record (rewritten whole) passes `True`, every merge
+  pass `False`. Only the pass's own rows go: its layer, a source with a terms constant.
+
 - `@fieldnames-from-model` — **A column list written by hand will lose a column — derive it from the model.** `SOURCES_FIELDNAMES`
   was a literal and omitted `redistribution`, so every `sources.csv` ever written recorded *unknown* for
   an axis the terms constants state as `True`, and `merge_sources_file` dropped it again on each merge —

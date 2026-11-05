@@ -415,6 +415,8 @@ def enrich_clinical_assertions(
                 "clinical_assertion",
                 spec_dir,
                 error=ClinicalAssertionError,
+                # A routine merge declares nothing, so it retires no licence row (RM383).
+                answered_every_row=False,
             ),
         )
     return result

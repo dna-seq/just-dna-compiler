@@ -466,7 +466,11 @@ def test_a_curators_row_for_a_source_with_no_terms_is_never_restamped(tmp_path: 
     path = sources_path(spec, error=RuntimeError)
     write_sources_csv([SourceRow(source="manual", layer="frequency", dataset="my_curation_v2")], path)
     record_table_sources(
-        {"manual": [None], "gnomad": ["gnomad_v4.1_joint"]}, "frequency", spec, error=RuntimeError
+        {"manual": [None], "gnomad": ["gnomad_v4.1_joint"]},
+        "frequency",
+        spec,
+        error=RuntimeError,
+        answered_every_row=True,
     )
     rows, errors, _ = _load_csv_rows(path, SourceRow, path.name)
     assert errors == []

@@ -487,6 +487,8 @@ def enrich_gene_metrics(
                 "gene_metrics",
                 spec_dir,
                 error=GeneMetricsEnrichmentError,
+                # A routine merge declares nothing, so it retires no licence row (RM383).
+                answered_every_row=False,
             ),
         )
     return result

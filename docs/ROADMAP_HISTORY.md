@@ -35,6 +35,62 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM383 — a re-derivation leaves a licence row for a source that no committed row names any more
+
+**SHIPPED 2026-11-05 on `0.8`, uncut — a minor (found regenerating the reference examples).** Owner
+enricher, severity low.
+
+**Residuals** won't fix — the nine merge passes (frequencies, gene metrics, gene validity, clinical
+assertions, ClinGen dosage, GWAS effects, expression effects, LD pairs, Open Targets) have no
+`--rederive`, so nothing declares that their table is the whole answer, and a licence row one of them
+stops earning stays until the table is deleted and the pass re-run · won't fix — a plain `enrich` that
+prunes a variant the author deleted can leave its source's row, since a merge never retires · won't fix
+— a concordance record deleted by hand and found uncontested writes no table (RM370), so no commit runs
+to retire its authorities' rows
+
+**The class.** A derived pass's licence row for a source that no row of the committed table names any
+more. `merge_sources_file` never clobbers and nothing removed a row, so once a pass stopped earning a
+source the row stayed, and the compile warned `source_row_unused` about a row the pass wrote itself.
+Measured regenerating `reference_examples/mt_common_deletion`: its two point variants were back-filled
+from ClinVar before and from the split Ensembl snapshot after, and `enrich --rederive` kept
+`clinvar,resolution` (its `dataset` blank).
+
+**The choice: remove, by declaration.** `@write-the-sourcerow`'s converse makes the row a false
+statement in a published artifact (*this module uses this source*). Keeping it with a reason was
+refused: `SourceRow` has no field a gate could read, and an exclusion stated in prose is
+`@one-side-only-has-two-causes`. `@licence-row-inside-the-commit` puts the removal inside the table's
+commit, and `@a-publish-may-not-orphan-the-bytes-it-stops-describing` wants deletion by declaration, never
+as a side effect: the declaration is `--rederive` (the operator saying every row is re-answered), or a
+record rewritten whole on every run that writes it. A routine merging run retires nothing: its
+committed table may name no row of a source just as truly, but merge-not-clobber is that run's contract,
+and a deletion it makes without being asked is the side effect the rule forbids.
+
+**Instances, before → after.** Every call of `licensing.record_table_sources` (RM373's one route):
+`enrich/orchestration.py` (the `resolution` layer: retired nothing → retires under `rederive`),
+`concordance.py` (the `clin_sig_authority_call` layer, rewritten whole: retired nothing, and recorded
+nothing when no authority was consulted → retires on every write; this closes RM379's second residual),
+and the nine merge passes in `assertions.py`, `clingen.py`, `expression.py`, `frequencies.py`,
+`gene_metrics.py`, `gene_validity.py`, `gwas.py`, `ld_pairs.py`, `opentargets.py` (unchanged, now stated
+`answered_every_row=False`).
+
+**The mechanism.** `record_table_sources` takes `answered_every_row`, keyword-only, default `False` so a
+host's existing call keeps its behaviour (P3), and every call in the package passes it. When
+true, a row with the pass's layer and a source in `TERMS_BY_SOURCE` that the committed table does not
+name is removed (the relabel's own ownership filter, so a curator's row for a source with no terms
+constant is never touched), the licence table is rewritten, and an info line names each `source,layer`.
+Keyed on the committed table, so a subject nobody could ask carries its rows forward and its source
+stays.
+
+**The guards.** `enricher/tests/test_a_rederive_retires_an_unused_licence_row.py`, on a copy of the
+example with an Ensembl cache holding its two loci as the split release does: `--rederive` retires
+`clinvar,resolution`, keeps `ensembl,resolution`, logs it, and the compile raises no `source_row_unused`;
+a plain enrich keeps both; an offline `--rederive` that could ask nothing keeps ClinVar's; a curator's
+row for an unknown source survives; and an AST walk asserts every `record_table_sources` call under
+`just_dna_enricher` passes `answered_every_row` by keyword. Red on b712a2fc (the retirement test, and
+the walk, which named every call); the filter forced empty turns the retirement test red, dropping the
+keyword from `gwas.py` turns the walk red, ignoring the declaration turns the plain-enrich test red, and
+dropping the terms-constant ownership check turns the curator test red.
+
 ## RM382 — a resolution answer the hosting filter rejects ends the chain, and the row is written `not_found` about an rsID the sources have
 
 **SHIPPED 2026-11-05 on `0.8`, uncut — a minor (found regenerating the reference examples).** Owner
@@ -308,9 +364,8 @@ Owner enricher + format + compiler, severity low.
 
 **Residuals** won't fix — CIViC writes no licence row, correctly: its two checks compare authored cells
 and write no row of any table, so it contributes nothing (`@write-the-sourcerow`'s second half) · won't
-fix — a licence row an authority stops earning keeps its old label, because the record is rewritten whole
-and an absent authority is not re-stamped; the compiler does not corroborate this layer, so it warns
-nothing either
+fix — the compiler does not corroborate this layer, so a stale row there warns nothing · RM383 (a
+licence row an authority stops earning is retired by the record's whole rewrite, 2026-11-05)
 
 **The class (RM373's, one rule over).** A pass that consults a source writes its `SourceRow`, and one
 that contributes nothing writes none. `enrich` read the `pubmind` lane (and ClinVar's) for the

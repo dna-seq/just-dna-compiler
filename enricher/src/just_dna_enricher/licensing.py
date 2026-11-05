@@ -1081,6 +1081,7 @@ def record_table_sources(
     spec_dir: Path,
     *,
     error: type[Exception],
+    answered_every_row: bool = False,
     declared_use: str = "unstated",
 ) -> list[SourceRow]:
     """Record the terms of every source a derived table's rows came from, `dataset` labelled by the table.
@@ -1097,6 +1098,17 @@ def record_table_sources(
     holds rows from releases nobody recorded, so its label can only be kept or withdrawn, while a derived
     table's rows each name their release, so recomputing the label from them is always the honest answer.
     The row is the pass's own (a derived layer is machine-written), so no curator's cell is overwritten.
+
+    **`answered_every_row` is the caller's declaration that this commit is the pass's whole answer**
+    (RM383): an `enrich --rederive`, or a table rewritten whole on every run. Then a row of the pass's own
+    — this layer, a source with a terms constant — that no committed row names is a false *this module
+    uses this source* (`@write-the-sourcerow`), and it is retired here, inside the table's commit, and
+    named in the log. Never as a side effect: a routine merging run passes `False` and retires nothing,
+    because merge-not-clobber is its contract and a deletion needs a declaration
+    (`@a-publish-may-not-orphan-the-bytes-it-stops-describing`). The default is `False`, so a host's
+    existing call keeps its behaviour; every call in this package states it by keyword, which
+    `test_a_rederive_retires_an_unused_licence_row.py` walks. Returns the licence table as written, or
+    `[]` when nothing was written.
     """
     labels = {source: table_release(rows) for source, rows in releases.items()}
     recorded = record_source_terms(
@@ -1107,22 +1119,37 @@ def record_table_sources(
         declared_use=declared_use,
         datasets={source: label for source, label in labels.items() if label},
     )
+
+    def owned(row: SourceRow) -> bool:
+        # Only the rows this call writes: a source with no terms constant (`manual`) gets no row from
+        # it, so a curator's hand-written row for one is never touched, relabelled or retired.
+        return row.layer == layer and row.source in TERMS_BY_SOURCE
+
     stale = [
-        r
-        for r in recorded
-        # Only the rows this call writes: a source with no terms constant (`manual`) gets no row
-        # from it, so a curator's hand-written row for one is never touched.
-        if r.layer == layer
-        and r.source in labels
-        and r.source in TERMS_BY_SOURCE
-        and (r.dataset or None) != labels[r.source]
+        r for r in recorded if owned(r) and r.source in labels and (r.dataset or None) != labels[r.source]
     ]
-    if not stale:
+    # A source the committed table no longer names at all (RM383), under the caller's declaration only.
+    # Read from the file when this call recorded nothing: a table naming no licensed source writes no
+    # row, and its stale ones are exactly what is left to retire.
+    pool = recorded or (require_sources_file(spec_dir, error=error) if answered_every_row else [])
+    kept: list[SourceRow] = []
+    retired: list[SourceRow] = []
+    for row in pool:
+        (retired if answered_every_row and owned(row) and row.source not in labels else kept).append(row)
+    if not stale and not retired:
         return recorded
     for row in stale:
         row.dataset = labels[row.source]
-    write_sources_csv(recorded, sources_path(spec_dir, error=error))
-    return recorded
+    if retired:
+        logger.info(
+            "Retired %d licence row(s) at the %r layer for a source no committed row names, since this "
+            "run answered every row (RM383): %s.",
+            len(retired),
+            layer,
+            ", ".join(f"{r.source},{r.layer}" for r in retired),
+        )
+    write_sources_csv(kept, sources_path(spec_dir, error=error))
+    return kept
 
 
 def check_declared_use(terms: SourceTerms, declared_use: str) -> str | None:

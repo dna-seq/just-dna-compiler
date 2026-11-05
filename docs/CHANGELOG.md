@@ -41,6 +41,16 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-05 — RM383: a re-derivation retires the licence row for a source no resolution row names (0.8, uncut)
+
+- **`enrich --rederive` removes a `resolution`-layer licence row whose source no committed row names**
+  (`mt_common_deletion`'s `clinvar,resolution`, left behind when its loci moved to the Ensembl
+  snapshot), inside the table's commit, with an info line naming it. The compile's `source_row_unused`
+  for it goes away. A plain enrich never removes a row.
+- The concordance record, rewritten whole on each run that writes it, retires an authority's
+  `clin_sig_authority_call` row once no call row names it.
+- `licensing.record_table_sources` takes `answered_every_row` (default `False`); every call in the package states it.
+
 ## 2026-11-05 — RM382: a resolution answer the authored genotype cannot host lets the next link answer, and is never written as an absence (0.8, uncut)
 
 - **A rejected answer no longer ends the chain.** Each link's answer passes the allele-aware filter as it

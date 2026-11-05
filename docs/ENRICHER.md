@@ -1361,6 +1361,22 @@ release had answered. Three pieces now, one rule each (`enrich/releases.py`):
   this run, and a carried row speaks through the label recorded before this run, which was computed over
   every row the table then held — so a run with nothing to do does not withdraw a label still true.
   Only rows of a source with a terms constant are stamped, so a curator's `manual` row is never touched.
+- **A run that answered every row retires the licence row no committed row names (RM383, 0.8).**
+  `record_table_sources` takes `answered_every_row` (keyword-only, default `False`, and stated by every
+  call in this package, which a test walks). `enrich` passes `rederive`, and the concordance record, rewritten whole
+  on each run that writes it, passes `True`. Then a row of the pass's own (its layer, a source with a
+  terms constant) that no committed row names is removed inside the table's commit, and an info line
+  names each `source,layer` retired. Measured on `mt_common_deletion`: its two point variants moved from
+  ClinVar's back-fill to the split Ensembl snapshot's, and `--rederive` left `clinvar,resolution` behind,
+  so the compile warned `source_row_unused`. Removing it, rather than keeping it with a reason, is the
+  `@write-the-sourcerow` converse (a row for a source the table does not use is a false statement in a
+  published artifact, and `SourceRow` has no field a gate could read as "stale"); it is deletion by
+  declaration, because `--rederive` is the operator saying every row is re-answered
+  (`@a-publish-may-not-orphan-the-bytes-it-stops-describing`). A routine merging run, and every other
+  derived pass, passes `False` and retires nothing: merge-not-clobber is its contract, and a deletion it
+  was not asked for is the side effect the rule forbids. A row a subject
+  nobody could ask carries forward still names its source, so an offline `--rederive` that asked
+  nothing retires nothing.
 - **The run's own record withholds its label over a mixed table.** `rsid_coordinate_agreement.release`
   is the snapshot's label only when every row the snapshot's link (`source=cache`) answered carries it;
   otherwise it is null and `detail` counts why: `release withheld: N of M snapshot-answered row(s) in

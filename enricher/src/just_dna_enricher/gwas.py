@@ -806,6 +806,8 @@ def enrich_gwas(
                     "gwas_effect",
                     spec_dir,
                     error=GwasError,
+                    # A routine merge declares nothing, so it retires no licence row (RM383).
+                    answered_every_row=False,
                     declared_use=declared_use,
                 ),
             )

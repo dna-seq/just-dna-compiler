@@ -2234,6 +2234,9 @@ def _run_enrichment(
                 "resolution",
                 spec_dir,
                 error=EnrichmentError,
+                # `--rederive` re-answers every row, so the committed table is this pass's whole answer
+                # and a licence row no row names is retired with it (RM383). A merging run keeps them.
+                answered_every_row=rederive,
             ),
         )
         if clin_sig_record is not None:
