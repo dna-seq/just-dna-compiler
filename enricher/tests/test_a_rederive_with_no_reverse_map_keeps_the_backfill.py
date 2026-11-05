@@ -40,21 +40,29 @@ def _positional(rows: list[dict[str, str]]) -> dict[str, dict[str, str]]:
 
 
 def _rederive(spec: Path, nowhere: Path):
+    return _rederive_with(spec, nowhere)
+
+
+def _rederive_with(spec: Path, nowhere: Path, **caches: Path):
+    options = {
+        "ensembl_cache": nowhere,
+        "clinvar_cache": nowhere,
+        "clinvar_gkm_cache": nowhere,
+        "pubmind_cache": nowhere,
+        "civic_cache": nowhere,
+    }
+    options.update(caches)
     return enrich(
         spec,
         rederive=True,
         offline=True,
         download=False,
-        ensembl_cache=nowhere,
-        clinvar_cache=nowhere,
-        clinvar_gkm_cache=nowhere,
-        pubmind_cache=nowhere,
-        civic_cache=nowhere,
         use_gnomad=False,
         verify_ref=False,
         verify_rsids=False,
         verify_clinsig=False,
         verify_datasets=False,
+        **options,
     )
 
 
@@ -127,3 +135,26 @@ def test_a_reverse_map_that_was_read_and_names_no_rsid_still_replaces(tmp_path: 
         recorded, ("", "authored")
     )
     assert {d.variant_key for d in result.rederived or ()} >= set(recorded)
+
+
+def test_a_clinvar_map_read_alone_does_not_answer_for_an_ensembl_back_fill(tmp_path: Path) -> None:
+    """The realistic way in: the 14.5 GB Ensembl pull failed and the ClinVar snapshot is there. ClinVar's
+    map was read and has nothing at the allele, but the recorded rsID came from Ensembl's, which was not
+    read, so it was not re-asked and is carried (the code review of RM393, 2026-11-05)."""
+    pristine = tmp_path / "pristine"
+    shutil.copytree(_EXAMPLE, pristine)
+    spec = tmp_path / "hfe"
+    shutil.copytree(_EXAMPLE, spec)
+    recorded = _positional(_rows(spec))
+    assert {row["source"] for row in recorded.values()} == {"cache"}
+    clinvar = tmp_path / "clinvar"
+    (clinvar / "data").mkdir(parents=True)
+    pl.DataFrame(
+        {"rsid": ["rs1800562"], "chrom": ["6"], "start": [26092913], "ref": ["G"], "alt": ["A"]}
+    ).write_parquet(clinvar / "data" / "c.parquet")
+
+    _rederive_with(spec, tmp_path / "nowhere", clinvar_cache=clinvar)
+
+    fresh = _positional(_rows(spec))
+    for key, row in recorded.items():
+        assert {c: fresh[key][c] for c in _KEPT} == {c: row[c] for c in _KEPT}, key

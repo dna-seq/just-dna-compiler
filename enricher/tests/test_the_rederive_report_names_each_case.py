@@ -19,7 +19,9 @@ from itertools import combinations
 from pathlib import Path
 
 import pytest
+from just_dna_enricher.currency import DatasetCurrency
 from just_dna_enricher.enrich import enrich
+from just_dna_enricher.enrich.orchestration import _derived_by_case
 from just_dna_enricher.enrich.outcome import SubjectDrift, _drift_case
 from just_dna_enricher.enrich.rederive_words import (
     CARRY_REASONS,
@@ -198,7 +200,7 @@ _CURRENCY_REMEDY = {
     "table_behind_snapshot": ("`enrich --rederive`", "cache pull"),
     "snapshot_behind": ("cache pull --only clinvar", "is current"),
     "both_behind": ("cache pull --only clinvar", "is current"),
-    "snapshot_unread": ("cache status", "is current"),
+    "snapshot_unread": ("cache status", "--only"),
 }
 
 #: `(recorded, current, local, comparable)` reaching each case.
@@ -217,8 +219,9 @@ def test_every_currency_case_has_one_remedy_and_the_right_one() -> None:
         text = currency_remedy(case, lane="clinvar", local="clinvar_2026-06-27")
         assert named in text and absent not in text, case
         assert "{" not in text, case
-    # Only the case where the table alone is behind sends the operator to a re-derivation alone.
-    for case in CURRENCY_CASES - {"table_behind_snapshot"}:
+    # Only the case where the table alone is behind sends the operator to a re-derivation alone; the one
+    # that read no snapshot names no lane, since the source may have none.
+    for case in CURRENCY_CASES - {"table_behind_snapshot", "snapshot_unread"}:
         assert "cache pull --only clinvar" in currency_remedy(case, lane="clinvar", local=None), case
 
 
@@ -232,3 +235,25 @@ def test_a_snapshot_label_in_another_form_is_unread_never_a_guessed_side() -> No
         currency_case("clinvar_2026-06-27", "clinvar_2026-11-01", "clinvar_sha256:" + "ab" * 32, False)
         == "snapshot_unread"
     )
+
+
+def test_an_rsid_change_whose_events_are_unsettled_reads_as_it_did_before_the_split() -> None:
+    """`respelled` keeps its 0.8 meaning: an rsID change the run cannot call a naming change is a change."""
+    before = [_row("AG", ref="A")]
+    after = [_row("AG,AGG", ref="A", rsid="rs2")]
+    assert _drift_case(before, after) == "moved"
+    assert _drift_case([_row("", rsid="rs1")], [_row("", rsid="rs2")]) == "moved"
+
+
+def test_two_sources_behind_in_one_case_are_two_lines_each_naming_its_lane() -> None:
+    """ClinVar and ClinVar-GKM both behind their snapshots on the migration machine: two pulls, not one."""
+    legs = [
+        DatasetCurrency("clinvar", "resolution", "clinvar_2026-06-27", "clinvar_2026-11-01"),
+        DatasetCurrency("clinvar_gkm", "resolution", "gkm_2026-06-27", "gkm_2026-11-01"),
+    ]
+    local = {"clinvar": "clinvar_2026-06-27", "clinvar_gkm": "gkm_2026-06-27"}
+    grouped = _derived_by_case(legs, local)
+    assert set(grouped) == {("snapshot_behind", "clinvar"), ("snapshot_behind", "clinvar_gkm")}
+    lines = [currency_remedy(case, lane=source, local=local[source]) for case, source in grouped]
+    assert any("--only clinvar`" in line and "gkm_2026" not in line for line in lines)
+    assert any("--only clinvar_gkm`" in line and "gkm_2026-06-27" in line for line in lines)

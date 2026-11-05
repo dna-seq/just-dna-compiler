@@ -164,21 +164,23 @@ def _split_by_layer(behind: list[DatasetCurrency]) -> tuple[list[DatasetCurrency
 
 def _derived_by_case(
     legs: list[DatasetCurrency], local_releases: Mapping[str, str | None]
-) -> dict[str, list[DatasetCurrency]]:
-    """Superseded derived legs grouped by `rederive_words.CURRENCY_CASES` member, in the registry's order.
+) -> dict[tuple[str, str], list[DatasetCurrency]]:
+    """Superseded derived legs grouped by `(CURRENCY_CASES member, source)`, sorted.
 
-    A source this run holds no snapshot label for (`local_releases` lacks it, or the label is `None`) is
-    `snapshot_unread`: which side is behind is unknown, and the sentence names both remedies.
+    Per source as well as per case, because the remedy names the source's lane and its snapshot's label:
+    ClinVar and ClinVar-GKM both behind are two pulls. A source this run holds no snapshot label for
+    (`local_releases` lacks it, or the label is `None`) is `snapshot_unread`: which side is behind is
+    unknown, and the sentence names `cache status` and both remedies.
     """
-    grouped: dict[str, list[DatasetCurrency]] = {}
+    grouped: dict[tuple[str, str], list[DatasetCurrency]] = {}
     for leg in legs:
         local = local_releases.get(leg.source)
         current = leg.current or ""
         case = currency_case(
             leg.recorded, current, local, local is not None and comparable_labels(local, current)
         )
-        grouped.setdefault(case, []).append(leg)
-    return {case: grouped[case] for case in sorted(grouped)}
+        grouped.setdefault((case, leg.source), []).append(leg)
+    return {key: grouped[key] for key in sorted(grouped)}
 
 
 def _superseded(legs: list[DatasetCurrency]) -> str:
@@ -710,12 +712,14 @@ def _run_enrichment(
     pos_candidates: dict[tuple, list[str]] = {}
     rev_candidates: dict[tuple, list[str]] = {}  # (chrom,start,ref,alt) -> sorted candidate rsids
     rev_source: dict[tuple, str] = {}  # which link produced the candidates
-    # **Whether a position→rsID map was read at all this run (RM393).** Only the two snapshot links fill
-    # `rev_candidates` — no live link answers a position — so a run with neither snapshot queryable has
-    # no answer about any positional subject's rsID, and an empty `rev_candidates` then means nobody
-    # asked, never that the source names no rsID there. Narrower than `rsid_links_consulted` below on
-    # purpose: that one is also true for a run that may go live, which back-fills nothing.
-    reverse_map_read = False
+    # **Which position→rsID maps were read this run (RM393)**, by the link name a back-filled row records
+    # in `source` (`cache` for the Ensembl snapshot, `clinvar`). Only those two snapshot links fill
+    # `rev_candidates` — no live link answers a position — so an empty candidate list is an answer only
+    # from a map that was read: a recorded back-fill whose link's map was not read this run (no snapshot,
+    # or a failed pull of one while the other is present) was not re-asked. Narrower than
+    # `rsid_links_consulted` below on purpose: that one is also true for a run that may go live, which
+    # back-fills nothing.
+    reverse_maps_read: set[str] = set()
     positions = [(v.chrom, v.start, v.ref, _authored_alt(v)) for v in need_rsid]
 
     # One proxy, one read cache for the run: the hosting filter settles an undecided indel with it
@@ -800,7 +804,7 @@ def _run_enrichment(
             rsid_to_loci, pos_candidates, _ = lookup_loci(
                 reference, rsids, positions, non_nucleotide=non_nucleotide_rsids
             )
-            reverse_map_read = True
+            reverse_maps_read.add("cache")
         except Exception as exc:
             # A *located* cache can still be unusable — a stale snapshot, or a parquet a different
             # tool wrote — and the query then raises rather than returning nothing. That was fatal
@@ -873,7 +877,7 @@ def _run_enrichment(
                     cv_rsid_to_loci, cv_pos_candidates, _ = clinvar.lookup_loci(
                         clinvar_ref, cv_rsids, cv_positions
                     )
-                    reverse_map_read = True
+                    reverse_maps_read.add("clinvar")
                 except Exception as exc:
                     logger.warning(
                         "ClinVar reference at %s is present but not queryable (%s); continuing "
@@ -1551,13 +1555,21 @@ def _run_enrichment(
             # deterministic pick + status="ambiguous" + the full candidate list, never a silent guess.
             pt = (v.chrom, v.start, v.ref, _authored_alt(v))
             cands = rev_candidates.get(pt, [])
-            if rederive and not reverse_map_read and _subject_key(v) in existing:
-                # **Nobody asked, so nothing replaces the recorded row (RM393).** With no reverse map
-                # read, an empty `cands` is not an answer, and writing `rsid=None, source=authored`
-                # here erased a back-filled rsID that the recompiled artifact then shipped as null.
-                # No row, like every other could-not-ask branch: the carry-forward below puts the
-                # recorded rows back unchanged (`@rederive-never-shortens`). A first enrich keeps the
-                # authored row: with nothing recorded, the coordinate is the whole identity.
+            if (
+                rederive
+                and not cands
+                and any(
+                    r.rsid is not None and r.source not in reverse_maps_read
+                    for r in existing.get(_subject_key(v), ())
+                )
+            ):
+                # **Nobody asked, so nothing replaces the recorded row (RM393).** The recorded rsID came
+                # from a map this run did not read, so an empty `cands` is not an answer about it, and
+                # writing `rsid=None, source=authored` here erased a back-filled rsID that the recompiled
+                # artifact then shipped as null. No row, like every other could-not-ask branch: the
+                # carry-forward below puts the recorded rows back unchanged (`@rederive-never-shortens`).
+                # A map that was read and has no rsID at the allele is an answer, and replaces. A first
+                # enrich keeps the authored row: with nothing recorded, the coordinate is the identity.
                 no_row_reason[_subject_key(v)] = "no_reverse_map" if genome_build == "GRCh38" else "off_build"
                 continue
             if not cands:
@@ -2154,12 +2166,12 @@ def _run_enrichment(
         # table was drafted. **Which release is behind decides the remedy (RM394)**: a re-derivation
         # reads the local snapshot, so when the snapshot is the old release it repeats this line, and
         # the remedy is the lane's pull. One line per case, each naming its own.
-        for case, legs in _derived_by_case(derived_behind, local_releases).items():
+        for (case, source), legs in _derived_by_case(derived_behind, local_releases).items():
             logger.warning(
                 "Dataset currency (derived tables): %s. Not a strict matter: a source publishing past "
                 "the release that answered is the source working. %s.",
                 _superseded(legs),
-                currency_remedy(case, lane=legs[0].source, local=local_releases.get(legs[0].source)),
+                currency_remedy(case, lane=source, local=local_releases.get(source)),
             )
         for line in unchecked_sentences(dataset_currency):
             # INFO, not WARNING, and the level is the judgement: this is not a finding about the

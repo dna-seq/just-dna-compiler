@@ -893,8 +893,8 @@ restated — because the provenance columns move on every run by design.
   replace (it writes a `not_found` row); could-not-ask is not. The carry-forward warns, naming the
   subjects it kept, grouped by the reason each has no fresh row (RM394,
   `rederive_words.CARRY_REASONS`): nobody could be asked (`--offline` with no snapshot), a build no link
-  serves, no position→rsID map read for a coordinate-only subject (RM393: no Ensembl and no ClinVar
-  snapshot read, so a back-filled rsID is carried rather than erased), a link asked and no usable answer,
+  serves, no position→rsID map read for a coordinate-only subject (RM393: the map that back-filled its
+  rsID, Ensembl's or ClinVar's, was not read, so the rsID is carried rather than erased), a link asked and no usable answer,
   or every answer rejected by the hosting filter with a recorded placement standing (RM382). Each reason
   names its own remedy.
 * **The drift label has seven arms (RM394, `rederive_words.DRIFT_CASES`)**: `respelled`, `gained_allele`
@@ -1452,7 +1452,8 @@ publishing past the release that answered is the source working and no authored 
 the label of the snapshot this run read for the source: the snapshot current and the table behind it is
 `enrich --rederive`; the snapshot the release the table recorded is `cache pull --only <lane>` (or `cache
 rebuild`) first, because a re-derivation reads that same snapshot and prints the same line; a snapshot
-between the two is both; and no comparable snapshot read names `cache status` and both. Only a drafted
+that is neither is both; and no comparable snapshot read names `cache status` and both. One line per
+source, since each names its own lane. Only a drafted
 layer's superseded release refuses under `strict` and says re-draft.
 
 ### Reverse (position→rsid) back-fill is allele-aware

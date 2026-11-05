@@ -65,14 +65,17 @@ def drift_case(
     `kept` is whether every recorded allele is the same event as a fresh one, and `nothing_new` the same
     the other way (`events.covers`, three-valued each). Another build is another answer. An unknown in
     the direction that decides the arm is `undecided`, never a guessed arm; Kleene, so a `False` either
-    way still decides a move where the other direction is unknown.
+    way still decides a move where the other direction is unknown. An rsID or build change whose events
+    are not the same is `moved`, as it was before the arms split, so `respelled` reads exactly as in 0.8.
     """
     if not same_build:
         return "moved"
     events = False if False in (kept, nothing_new) else None if None in (kept, nothing_new) else True
     if rsids_before != rsids_after:
+        # The rsID changed, which is known whatever the events: only the same events make it a naming
+        # change, and anything else stays the change in the answer it always read as.
         if events is not True:
-            return "undecided" if events is None else "moved"
+            return "moved"
         return "gained_rsid" if rsids_before == frozenset({None}) else "renamed"
     if events is True:
         return "respelled"
@@ -88,7 +91,7 @@ def drift_case(
 #: Why a subject has no fresh row, so the carry-forward keeps its recorded one. `not_asked`: no link
 #: could be asked (offline, with no snapshot). `off_build`: the module's build is one no link serves
 #: (every link answers GRCh38 only), so nothing can re-ask it. `no_reverse_map`: a
-#: coordinate-only subject, and no position→rsID map was read (RM393). `unreachable`: asked, and no usable
+#: coordinate-only subject whose recorded rsID came from a position→rsID map this run did not read (RM393). `unreachable`: asked, and no usable
 #: answer came back (the request failed, or an indel's anchor base could not be read). `rejected`: asked,
 #: and every link's answer sat where the authored genotype cannot (RM382), so the recorded placement
 #: stands. `not_re_answered`: a subject no branch declared a reason for, said without claiming one.
@@ -102,9 +105,9 @@ CARRY_SENTENCES: dict[str, str] = {
     "snapshot); pull the snapshots with `just-dna-enricher cache pull`, or re-run without --offline",
     "off_build": "on a build no link serves (every link answers GRCh38 only), so nothing re-asks them; "
     "their recorded rows are the table's answer until the module moves build",
-    "no_reverse_map": "coordinate-only, and no position→rsID map was read (no Ensembl and no ClinVar "
-    "snapshot), so their back-filled rsIDs were not re-asked; pull the Ensembl snapshot with `just-dna-enricher "
-    "cache pull --only ensembl`",
+    "no_reverse_map": "coordinate-only, and the position→rsID map that back-filled their rsID (the Ensembl "
+    "or the ClinVar snapshot) was not read, so it was not re-asked; pull that snapshot with "
+    "`just-dna-enricher cache pull --only ensembl` (or `--only clinvar`)",
     "unreachable": "a link was asked and no usable answer came back (the request failed, or an indel's "
     "anchor base could not be read); re-run when the link answers",
     "rejected": "every link answered, at a place the authored genotype cannot sit, so the recorded "
@@ -123,9 +126,10 @@ def carry_sentence(reason: str, count: int, examples: str) -> str:
 #: Where a derived layer's superseded release sits, relative to the local snapshot this run read.
 #: `table_behind_snapshot`: the snapshot is current, the table recorded an older one. `snapshot_behind`:
 #: the snapshot is the release the table recorded, and the source has published since. `both_behind`:
-#: the snapshot is newer than the table and still not the source's current release. `snapshot_unread`:
-#: this run read no snapshot of the source, or one whose label cannot be compared, so which is behind is
-#: unknown and both remedies are named.
+#: the snapshot is neither the table's release nor the source's current one (newer than the table, or a
+#: rollback: the labels do not say which). `snapshot_unread`: this run read no snapshot of the source,
+#: or one whose label cannot be compared, so which is behind is unknown; it names no lane, since a
+#: source this run read no snapshot of may have none.
 CURRENCY_CASES: frozenset[str] = frozenset(
     {"table_behind_snapshot", "snapshot_behind", "both_behind", "snapshot_unread"}
 )
@@ -138,12 +142,13 @@ CURRENCY_REMEDIES: dict[str, str] = {
     "snapshot_behind": "The local snapshot ({local}) is the release the table recorded, so a "
     "re-derivation repeats this line: bring the snapshot forward with `just-dna-enricher cache pull "
     "--only {lane}` (or `cache rebuild --only {lane}`), then re-derive",
-    "both_behind": "The local snapshot ({local}) is newer than the table and older than the source: "
+    "both_behind": "The local snapshot ({local}) is neither the release the table recorded nor the "
+    "source's current one: "
     "`just-dna-enricher cache pull --only {lane}` (or `cache rebuild --only {lane}`), then `enrich "
     "--rederive`",
     "snapshot_unread": "This run read no comparable local snapshot of it, so which is behind is unknown: "
-    "`just-dna-enricher cache status` shows the snapshot's release; if it is the old one, `cache pull "
-    "--only {lane}` (or `cache rebuild`), then `enrich --rederive`",
+    "`just-dna-enricher cache status` shows each lane's release; pull or rebuild the lane that holds the "
+    "old one, if any, then `enrich --rederive`",
 }
 
 
