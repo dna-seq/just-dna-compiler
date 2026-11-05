@@ -169,6 +169,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S128** tenacity `initial` deprecated at every import — RM371 shipped
 - **S129** strict refusals carry no code — RM377 shipped (phrases), RM378 filed (codes)
 - **S130** the Ensembl lane's repo has no public name on 0.8 — RM384 filed
+- **S131** the PGS client's pace has no public name — RM396 filed (six clients)
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -6397,3 +6398,46 @@ data (dbSNP 157 / VEP 116) and not which bytes, so on its own it is the weaker p
 it from the map once RM384 ships, and retire your spelled string and the test that reads our private prefix
 then. Until then your spelling is the one to keep.
 <!-- triaged: RM384 filed (minor, proposed for 0.8) · sha 70379b943329 -->
+
+## S131 — the PGS Catalog client's pace has no public name, so a host sharing it reads a private one
+
+*From just-dna-registry's liaison seat, 2026-11-05, against the `0.8` branch at `a4a401e7`, relayed from the
+registry's lead while it pre-builds its 0.8 adoption.*
+
+**What we ran.** The registry's `/check` runs `check_identifiers`, whose PGS leg (RM156) takes
+`pgs_client=PgsCatalogClient(...)`. A server answers many checks, so one fresh client per check with its own
+`PacingGate` would pace each check alone and the process at N times the Catalog's rate. `PgsCatalogClient`
+takes `gate=`, and its docstring calls the gate and the score cache per-run state, so we hold one `PacingGate`
+per process and build a fresh client per check around it. That is the shape your API invites, and we kept it.
+
+**What happened.** Building that gate needs the Catalog's interval, and it has no public name:
+`pgs._REQUEST_INTERVAL = 0.2` (`pgs.py:63`), private, and the client keeps its gate as `self._gate`
+(`pgs.py:368`), private too. Most paced clients here expose theirs: `currency.py` has a public `gate` field
+and `CLINVAR_MIN_INTERVAL`, `ensembl.py`, `civic_api.py` and `atlas_client.py` take and keep `gate`. Your own
+history notes the split (`client.gate.spent`, "or `_gate` on the clients that keep it private — `pgs`,
+`litvar`, `civic_api`").
+
+**What we did meanwhile.** Our lead reads `pgs._REQUEST_INTERVAL` in one place (registry 0.28 branch,
+`ffe263d`), with a comment naming it private. A rename on a patch would break our `/check` at its first PGS
+call, not at import.
+
+**Candidate fixes.** (a) A public `PGS_REQUEST_INTERVAL` (or the same for each client that keeps its interval
+private), which is all a host needs to build the shared gate. (b) A public `gate` attribute on
+`PgsCatalogClient`, as the dataclass clients have, which also lets a host read `gate.spent`. (a) is the
+smaller change and answers our case; (b) answers a meter as well. Not asked: a PGS field in
+`LookupClients`, since its cache is per-run and the bundle is shared.
+
+**Status — accepted as (a) and (b) together, filed as RM396, a minor for our pm to place (we proposed
+0.9).** You read the split right, and it is wider than PGS. Six paced clients keep their interval or their
+gate private: `pgs`, `litvar` and `civic_api` keep both private; `pharmvar` and `atlas_client` publish the
+interval and keep the gate as `_gate`; and `clingen_allele` takes no `gate=` at all, so no host can share its
+pace. Our own ENRICHER.md sends a meter to `client._gate.spent` and names five of those six. So RM396 takes
+both your candidates over all six: every paced client takes `gate=`, keeps it as a public `gate`, and names
+its default interval publicly. A test walks every `PacingGate(` construction, so a seventh client cannot
+reopen it. It is a minor because each new public name is new surface. We proposed 0.9 because your interim
+works.
+
+**On your interim.** Reading `pgs._REQUEST_INTERVAL` is safe to keep. No patch renames it, and RM396 keeps
+the private names as aliases beside the public ones. Move to the public name once RM396 ships, and drop the
+comment then. We agree with leaving PGS out of `LookupClients`, for the reason you give.
+<!-- triaged: RM396 filed (minor, proposed for 0.9) · sha 2efba4597714 -->
