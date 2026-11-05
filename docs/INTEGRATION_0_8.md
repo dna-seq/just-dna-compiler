@@ -652,7 +652,7 @@ reads the record and no longer calls such a row a contradiction.
 
 | Surface | What changed | What to do |
 | --- | --- | --- |
-| `download.SNAPSHOT_REPO_IDS` | New public name: lane → HuggingFace repository (`org/repo`) for every lane this tier pulls, eleven of them, the Ensembl lane's `just-dna-seq/ensembl_variations_split` included. The one place a repo id is written. | Take the `org/repo` half of `manifest.compilation.ensembl_reference` (`org/repo@<rev>`) from `SNAPSHOT_REPO_IDS["ensembl"]`; the revision is yours to pin. |
+| `locations.SNAPSHOT_REPO_IDS` | New public name: lane → HuggingFace repository (`org/repo`) for every lane this tier pulls, eleven of them, the Ensembl lane's `just-dna-seq/ensembl_variations_split` included. The one place a repo id is written. | Take the `org/repo` half of `manifest.compilation.ensembl_reference` (`org/repo@<rev>`) from `SNAPSHOT_REPO_IDS["ensembl"]`; the revision is yours to pin. |
 | `download.SNAPSHOT_REPO_PREFIXES`, `upload.DEFAULT_*_REPO_ID`, `CacheLane.publish_repo` | Derived from the map: each prefix is `datasets/<repo id>/data`, each publisher default is an alias of its lane's entry, each `publish_repo` reads one. Every value is unchanged. The private `download._*_HF_PREFIX` constants are removed. | A caller reading a private prefix reads `SNAPSHOT_REPO_PREFIXES[lane]`, or the repo from `SNAPSHOT_REPO_IDS[lane]`. |
 
 ## 2. What to change
@@ -806,7 +806,7 @@ reads the record and no longer calls such a row a contradiction.
 22. **Levers, not changes.** `just_dna_format.spelling` is the one comparison for a gene, drug, DOI, PMID
     or contig (§ 1.22); `compiler.subjects.module_subjects` answers which genes and loci a module is about
     (§ 1.25); `layout.nothing_to_write` is the predicate a sidecar writer of yours may ask (§ 1.24).
-23. **Pinning a snapshot repository.** Read the repo id from `download.SNAPSHOT_REPO_IDS[lane]` rather than
+23. **Pinning a snapshot repository.** Read the repo id from `locations.SNAPSHOT_REPO_IDS[lane]` rather than
     spelling it or stripping `datasets/` and `/data` off a prefix (§ 1.35). A compile host passing
     `ensembl_reference` builds it as `f"{SNAPSHOT_REPO_IDS['ensembl']}@<rev>"`.
 
@@ -834,7 +834,7 @@ follows that map; the differences are listed last.
    are derived. Add them to the recognized spec files, better by deriving the list (§ 2 step 9): a
    `meta.csv` the `revalidate`/`upgrade` rebuild drops moves the module's signature.
 3. **The Ensembl repo (M8).** The default `ensembl_reference` moves to
-   `just-dna-seq/ensembl_variations_split`, read from `download.SNAPSHOT_REPO_IDS["ensembl"]` rather than
+   `just-dna-seq/ensembl_variations_split`, read from `locations.SNAPSHOT_REPO_IDS["ensembl"]` rather than
    spelled (§ 1.35, § 2 step 23), and each box pulls 14.5 GB before the 0.8 deploy (§ 1.29,
    § 2 upgrade step 3).
 4. **The catalog recompile (M3).** Every module with `variants.csv` gets a new `artifact.digest`: one

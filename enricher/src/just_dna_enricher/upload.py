@@ -42,10 +42,10 @@ from just_dna_format.manifest import (
 )
 from pydantic import BaseModel, Field
 
-from just_dna_enricher.download import SNAPSHOT_REPO_IDS
 from just_dna_enricher.locations import (
     RELEASE_FILENAME,
     SNAPSHOT_DATA_DIRNAME,
+    SNAPSHOT_REPO_IDS,
     SNAPSHOT_ROOT_FILENAMES,
     SNAPSHOT_SIDECAR_DIRNAMES,
     env_value,
@@ -113,7 +113,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_REPO_ID = "just-dna-seq/annotators"
 # Each lane's publish default below is a **working alias** (P3) of its entry in
-# `download.SNAPSHOT_REPO_IDS`, the one spelling of every pulled lane's repo (RM384): the names stay
+# `locations.SNAPSHOT_REPO_IDS`, the one spelling of every pulled lane's repo (RM384): the names stay
 # importable, and the repo id is never written here a second time. `DEFAULT_REPO_ID` is the module
 # repo, not a lane's, so it is the one literal.
 DEFAULT_CLINVAR_REPO_ID = SNAPSHOT_REPO_IDS["clinvar"]
@@ -222,7 +222,7 @@ class LayoutShift:
 
     #: The repo this is about. Keyed on the repo rather than on the lane name, because the publisher
     #: is handed a `repo_id`, and a publish may target a repo no lane names (`--repo`). The lane→repo
-    #: map is `download.SNAPSHOT_REPO_IDS` (RM384); an entry here takes its repo from one of the
+    #: map is `locations.SNAPSHOT_REPO_IDS` (RM384); an entry here takes its repo from one of the
     #: `DEFAULT_*_REPO_ID` aliases of it, never from a literal.
     repo_id: str
     #: Repo-relative path of the file being retired. One name, never a glob: a migration that deletes

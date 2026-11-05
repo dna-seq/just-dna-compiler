@@ -73,20 +73,33 @@ registry's 0.8 adoption).
 record's `repo` is the derived prefix, byte-identical to before, so no cache on any machine reads as
 pulled from elsewhere.
 
-**The mechanism.** One public map, `download.SNAPSHOT_REPO_IDS` (lane → `org/repo`, eleven entries: every
-lane in `CACHE_LANES` with an `ensure`), the only place a repo id is written. In `download.py` beside
-`SNAPSHOT_REPO_PREFIXES`, where S130 asked for it; `upload.py` imports it (download imports nothing that
-reaches upload). The module repo `just-dna-seq/annotators` stays the one other literal, `DEFAULT_REPO_ID`.
+**The mechanism.** One public map, `locations.SNAPSHOT_REPO_IDS` (lane → `org/repo`, eleven entries: every
+lane in `CACHE_LANES` with an `ensure`), the only place a repo id is written. In `locations.py`, not beside
+`SNAPSHOT_REPO_PREFIXES` in `download.py` where S130 asked for it: the publisher reads it too, and
+`locations` is the leaf both import, while `upload` importing `download` loaded the resolver, duckdb and
+httpx (about 330 ms measured) to name a repo. The module repo `just-dna-seq/annotators` stays the one other
+literal, `DEFAULT_REPO_ID`.
 
 **The guard**, `enricher/tests/test_snapshot_repo_ids.py`, equalities over the walked map with the
 expected side spelled in the test: the map's keys equal the pulled lanes; the prefix map's keys equal the
 map's minus the root-payload lane (STRchive, named with its reason) and each prefix equals
 `f"datasets/{id}/data"`; STRchive's root equals `f"datasets/{id}"`; every non-`None` `publish_repo` equals
-its lane's entry; every lane `DEFAULT_*_REPO_ID` is a value of the map. And an AST walk over the three
-source trees refuses a repo id inside any string literal but a docstring, the map's own assignment and
-`DEFAULT_REPO_ID`'s. Shown red before the change (7 of 7, no map); mutated once each after it: a literal
-`DEFAULT_CPIC_REPO_ID` failed the walk (`upload.py:126 spells just-dna-seq/cpic`), and the CPIC lane's
-`publish_repo` pointed at the ClinPGx alias failed the publish-repo equality.
+its lane's entry; each `DEFAULT_<LANE>_REPO_ID` equals its own lane's entry (per alias, since a subset
+check passes `DEFAULT_DRUG_LABELS_REPO_ID = SNAPSHOT_REPO_IDS["clinpgx"]`). And an AST walk over the three
+source trees refuses the organisation `just-dna-seq/` inside any string literal but a docstring, the map's
+own assignment and `DEFAULT_REPO_ID`'s, so a repo composed from pieces is refused as well as a whole one.
+Shown red before the change (7 of 7, no map); mutated once each after it: a literal `DEFAULT_CPIC_REPO_ID`
+failed the walk (`upload.py:126 spells just-dna-seq/cpic`); the CPIC lane's `publish_repo` pointed at the
+ClinPGx alias failed the publish-repo equality; the drug-labels alias pointed at ClinPGx's entry failed the
+alias equality; `"just-dna-seq/" + "cpic"` added to `download.py` failed the walk.
+`test_ensembl_split_release.py::test_every_provisioned_lane_states_its_repo` (prefix keys equal the globs'
+keys) is removed: the prefixes are now a comprehension over the globs, so it could not fail
+(`@tautology-zero`); the new test's key equality replaces it.
+
+**Observed, not fixed (outside the item).** `download.pulled_from_elsewhere` keys on
+`SNAPSHOT_REPO_PREFIXES`, which STRchive is not in, so a STRchive cache pulled from a renamed repo would
+never be re-pulled. STRchive's root-file provisioner writes no pull record, so there is nothing to compare
+yet; it matters only if that repo ever moves.
 
 **The reporter's other question.** A reproducibility pin wants the repository and a revision, the shape
 `ensembl_reference` documents; the release label (`locations.ensembl_release_label`) names which data,

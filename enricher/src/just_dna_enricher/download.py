@@ -29,6 +29,7 @@ from just_dna_enricher.locations import (
     RELEASE_FILENAME,
     SNAPSHOT_DATA_DIRNAME,
     SNAPSHOT_MANIFEST_FILENAME,
+    SNAPSHOT_REPO_IDS,
     SNAPSHOT_ROOT_FILENAMES,
     SNAPSHOT_SIDECAR_DIRNAMES,
     STRCHIVE_CATALOGUE_FILENAME,
@@ -56,34 +57,6 @@ from just_dna_enricher.locations import (
 from just_dna_enricher.resolver import EnsemblReferenceError
 
 logger = logging.getLogger(__name__)
-
-#: Every pulled lane's HuggingFace dataset repository, by lane name: the **one** place a repo id is
-#: spelled (RM384). Each lane's fsspec prefix (`SNAPSHOT_REPO_PREFIXES`), each publisher default
-#: (`upload.DEFAULT_*_REPO_ID`) and each lane's `CacheLane.publish_repo` is derived from it. Before
-#: RM384 every repo was written twice, as a repo id in `upload.py` and inside a prefix here, with
-#: nothing tying the pair, and the Ensembl lane had only the private prefix, so a consumer pinning
-#: `manifest.compilation.ensembl_reference` (`org/repo@<rev>`) took the `org/repo` half by stripping
-#: `datasets/` and `/data` off it (S130). The keys equal the lanes in `caches.CACHE_LANES` with an
-#: `ensure`, asserted by test, and an AST walk refuses a repo id written as a literal anywhere else.
-#:
-#: Ensembl's is the split release since RM372: prepare-annotations publishes dbSNP 157 / VEP 116 as a
-#: **separate** repo, one row per ALT, left-aligned indels, with a `manifest.json` (release id,
-#: per-file sha256) and no `release.json`. The old repo, `just-dna-seq/ensembl_variations`, is no
-#: longer written and keeps the same file names, which is why a warm cache compares its pull record's
-#: repo with this one. This tier pulls it and never publishes it.
-SNAPSHOT_REPO_IDS: dict[str, str] = {
-    "ensembl": "just-dna-seq/ensembl_variations_split",
-    "clinvar": "just-dna-seq/clinvar",
-    "constraint": "just-dna-seq/gnomad_constraint",
-    "clinpgx": "just-dna-seq/clinpgx",
-    "cpic": "just-dna-seq/cpic",
-    "drug_labels": "just-dna-seq/clinpgx_drug_labels",
-    "civic": "just-dna-seq/civic",
-    "strchive": "just-dna-seq/strchive",
-    "mitomap": "just-dna-seq/mitomap",
-    "alphagenome_avi": "just-dna-seq/alphagenome_avi",
-    "clinvar_gkm": "just-dna-seq/clinvar_gkm",
-}
 
 
 def _hf_dataset_root(repo_id: str) -> str:
@@ -175,10 +148,10 @@ SNAPSHOT_FILE_GLOBS: dict[str, str] = {
 
 #: Where each lane in `SNAPSHOT_FILE_GLOBS` is pulled from, by lane name: the second half of what a
 #: pull is (RM372). A cache whose pull record names another repo is not this lane's snapshot, however
-#: complete, so `cache pull` sends it down the pull route; asserted equal in keys to the globs, so a
-#: lane cannot gain one and not the other. Each is derived, `datasets/<repo id>/data`, from
-#: `SNAPSHOT_REPO_IDS` (RM384): a prefix is where a repo keeps its parquet, never a second spelling of
-#: which repo.
+#: complete, so `cache pull` sends it down the pull route. Derived (RM384): one entry per lane in the
+#: globs, each `datasets/<repo id>/data` from `locations.SNAPSHOT_REPO_IDS`, so a prefix is where a repo
+#: keeps its parquet and never a second spelling of which repo. A glob lane with no repo id fails this
+#: module's import with a `KeyError` naming the lane.
 SNAPSHOT_REPO_PREFIXES: dict[str, str] = {
     lane: f"{_hf_dataset_root(SNAPSHOT_REPO_IDS[lane])}/{SNAPSHOT_DATA_DIRNAME}"
     for lane in SNAPSHOT_FILE_GLOBS

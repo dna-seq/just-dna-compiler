@@ -286,6 +286,37 @@ def snapshot_record_missing(cache_dir: Path) -> list[str] | None:
     return [name for name in files if not parquet_footer_ok(Path(cache_dir) / name)]
 
 
+#: Every pulled lane's HuggingFace dataset repository, by lane name: the **one** place a repo id is
+#: spelled (RM384). Each lane's fsspec prefix (`download.SNAPSHOT_REPO_PREFIXES`), each publisher default
+#: (`upload.DEFAULT_*_REPO_ID`) and each lane's `CacheLane.publish_repo` is derived from it. Before
+#: RM384 every repo was written twice, as a repo id in `upload.py` and inside a prefix in `download.py`, with
+#: nothing tying the pair, and the Ensembl lane had only the private prefix, so a consumer pinning
+#: `manifest.compilation.ensembl_reference` (`org/repo@<rev>`) took the `org/repo` half by stripping
+#: `datasets/` and `/data` off it (S130). The keys equal the lanes in `caches.CACHE_LANES` with an
+#: `ensure`, asserted by test, and an AST walk refuses a repo id written as a literal anywhere else.
+#: Here rather than in `download` because both the provisioner and the publisher read it, and this is
+#: the leaf they both import: the publisher must not load the resolver stack to name a repo.
+#:
+#: Ensembl's is the split release since RM372: prepare-annotations publishes dbSNP 157 / VEP 116 as a
+#: **separate** repo, one row per ALT, left-aligned indels, with a `manifest.json` (release id,
+#: per-file sha256) and no `release.json`. The old repo, `just-dna-seq/ensembl_variations`, is no
+#: longer written and keeps the same file names, which is why a warm cache compares its pull record's
+#: repo with this one. This tier pulls it and never publishes it.
+SNAPSHOT_REPO_IDS: dict[str, str] = {
+    "ensembl": "just-dna-seq/ensembl_variations_split",
+    "clinvar": "just-dna-seq/clinvar",
+    "constraint": "just-dna-seq/gnomad_constraint",
+    "clinpgx": "just-dna-seq/clinpgx",
+    "cpic": "just-dna-seq/cpic",
+    "drug_labels": "just-dna-seq/clinpgx_drug_labels",
+    "civic": "just-dna-seq/civic",
+    "strchive": "just-dna-seq/strchive",
+    "mitomap": "just-dna-seq/mitomap",
+    "alphagenome_avi": "just-dna-seq/alphagenome_avi",
+    "clinvar_gkm": "just-dna-seq/clinvar_gkm",
+}
+
+
 #: The pull-record key a repo switch writes beside `repo` while it is under way (RM372): the repo the
 #: cache's bytes came from until the switch finishes. The provisioner drops it once every file is the
 #: new repo's, so a switch interrupted half-way still reads as a cache of the old repo.

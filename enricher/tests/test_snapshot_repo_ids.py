@@ -1,4 +1,4 @@
-"""Every pulled lane's repository is spelled once, in `download.SNAPSHOT_REPO_IDS` (RM384).
+"""Every pulled lane's repository is spelled once, in `locations.SNAPSHOT_REPO_IDS` (RM384).
 
 Before RM384 each pulled lane's repository was written twice, as a `DEFAULT_*_REPO_ID` in `upload.py`
 and again inside its fsspec prefix in `download.py`, and nothing tied the pair. The Ensembl lane had
@@ -19,8 +19,9 @@ import just_dna_compiler
 import just_dna_enricher
 import just_dna_format
 from just_dna_enricher import download as dl
-from just_dna_enricher import upload
+from just_dna_enricher import locations, upload
 from just_dna_enricher.caches import CACHE_LANES
+from just_dna_enricher.locations import SNAPSHOT_REPO_IDS
 
 #: The one pulled lane whose snapshot has no `data/` directory: STRchive's payload is a JSON catalogue
 #: at the repo root, so it has a repo id and no `data/` prefix (and no glob, for the same reason).
@@ -30,43 +31,47 @@ _ROOT_PAYLOAD_LANES = frozenset({"strchive"})
 def test_the_map_holds_every_pulled_lane() -> None:
     """A lane this tier can pull has a repository, and a repository here names a lane that is pulled."""
     pulled = {lane.name for lane in CACHE_LANES if lane.ensure is not None}
-    assert set(dl.SNAPSHOT_REPO_IDS) == pulled
+    assert set(SNAPSHOT_REPO_IDS) == pulled
 
 
 def test_the_ensembl_repository_has_a_public_name() -> None:
     """The S130 case: the `org/repo` half of `ensembl_reference`'s `org/repo@<rev>`, read off the map."""
-    assert dl.SNAPSHOT_REPO_IDS["ensembl"] == "just-dna-seq/ensembl_variations_split"
+    assert SNAPSHOT_REPO_IDS["ensembl"] == "just-dna-seq/ensembl_variations_split"
 
 
 def test_each_prefix_is_its_repository_under_data() -> None:
     """Every `data/`-shaped lane's prefix is `datasets/<repo id>/data`; only a root-payload lane has none."""
-    assert set(dl.SNAPSHOT_REPO_PREFIXES) == set(dl.SNAPSHOT_REPO_IDS) - _ROOT_PAYLOAD_LANES, (
+    assert set(dl.SNAPSHOT_REPO_PREFIXES) == set(SNAPSHOT_REPO_IDS) - _ROOT_PAYLOAD_LANES, (
         "a lane whose snapshot is a data/ directory has a prefix; STRchive's payload sits at the repo root"
     )
     for lane, prefix in dl.SNAPSHOT_REPO_PREFIXES.items():
-        assert prefix == f"datasets/{dl.SNAPSHOT_REPO_IDS[lane]}/data", lane
+        assert prefix == f"datasets/{SNAPSHOT_REPO_IDS[lane]}/data", lane
 
 
 def test_a_root_payload_lane_is_fetched_from_its_repository_root() -> None:
-    assert dl._STRCHIVE_HF_REPO == f"datasets/{dl.SNAPSHOT_REPO_IDS['strchive']}"
+    assert dl._STRCHIVE_HF_REPO == f"datasets/{SNAPSHOT_REPO_IDS['strchive']}"
 
 
 def test_every_publish_repo_is_its_lanes_repository() -> None:
     """The third spelling: `CacheLane.publish_repo` is where this tier publishes, and that is where it pulls."""
     published = {lane.name: lane.publish_repo for lane in CACHE_LANES if lane.publish_repo is not None}
-    assert published == {name: dl.SNAPSHOT_REPO_IDS[name] for name in published}
+    assert published == {name: SNAPSHOT_REPO_IDS[name] for name in published}
 
 
-def test_every_lane_publisher_default_is_a_mapped_repository() -> None:
-    """The `DEFAULT_*_REPO_ID` aliases (P3) are values of the map; `DEFAULT_REPO_ID` is modules', not a lane's."""
+def test_every_lane_publisher_default_is_its_lanes_repository() -> None:
+    """Each `DEFAULT_<LANE>_REPO_ID` alias (P3) equals its own lane's entry; `DEFAULT_REPO_ID` is modules', no lane's.
+
+    Per alias, not a subset: `DEFAULT_DRUG_LABELS_REPO_ID = SNAPSHOT_REPO_IDS["clinpgx"]` is a value of
+    the map and would publish the drug labels into the ClinPGx repo.
+    """
     aliases = {
-        name: value
+        name.removeprefix("DEFAULT_").removesuffix("_REPO_ID").lower(): value
         for name, value in vars(upload).items()
         if name.startswith("DEFAULT_") and name.endswith("_REPO_ID") and name != "DEFAULT_REPO_ID"
     }
     assert aliases
-    assert set(aliases.values()) <= set(dl.SNAPSHOT_REPO_IDS.values())
-    assert upload.DEFAULT_REPO_ID not in dl.SNAPSHOT_REPO_IDS.values()
+    assert aliases == {lane: SNAPSHOT_REPO_IDS[lane] for lane in aliases}
+    assert upload.DEFAULT_REPO_ID not in SNAPSHOT_REPO_IDS.values()
 
 
 # ── the class guard: a repository is spelled once ───────────────────────────────────────────────
@@ -99,7 +104,7 @@ def _definition_ids(tree: ast.AST, names: frozenset[str]) -> set[int]:
 
 #: Where each repo id may be written as a literal: the map, and the module repo's own constant.
 _DEFINITIONS = {
-    Path(dl.__file__).resolve(): frozenset({"SNAPSHOT_REPO_IDS"}),
+    Path(locations.__file__).resolve(): frozenset({"SNAPSHOT_REPO_IDS"}),
     Path(upload.__file__).resolve(): frozenset({"DEFAULT_REPO_ID"}),
 }
 
@@ -109,9 +114,10 @@ def test_no_repository_is_spelled_outside_its_definition() -> None:
 
     The CLI's `--repo` help text was the instance the walk found beyond the prefixes: four commands
     wrote `Default: just-dna-seq/<repo>.` by hand where the alphagenome command already interpolated
-    its constant.
+    its constant. The walk matches the **organisation** (`just-dna-seq/`), not only whole repo ids, so
+    a repo composed from pieces (`"just-dna-seq/" + lane`, `f"just-dna-seq/{lane}"`) is refused too.
     """
-    repos = set(dl.SNAPSHOT_REPO_IDS.values()) | {upload.DEFAULT_REPO_ID}
+    repos = {repo.split("/", 1)[0] + "/" for repo in {*SNAPSHOT_REPO_IDS.values(), upload.DEFAULT_REPO_ID}}
     roots = {
         Path(pkg.__file__).resolve().parent for pkg in (just_dna_format, just_dna_compiler, just_dna_enricher)
     }

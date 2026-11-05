@@ -43,7 +43,7 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 
 ## 2026-11-05 — RM384: every pulled lane's repository has one public name, the Ensembl lane's included (0.8, uncut)
 
-`download.SNAPSHOT_REPO_IDS` maps each lane this tier pulls to its HuggingFace repository (`org/repo`),
+`locations.SNAPSHOT_REPO_IDS` maps each lane this tier pulls to its HuggingFace repository (`org/repo`),
 so a consumer pinning `manifest.compilation.ensembl_reference` takes `just-dna-seq/ensembl_variations_split`
 from `SNAPSHOT_REPO_IDS["ensembl"]` instead of spelling it or stripping a private prefix (S130). It is the
 only place a repo id is written: `SNAPSHOT_REPO_PREFIXES` is derived from it as `datasets/<repo id>/data`,

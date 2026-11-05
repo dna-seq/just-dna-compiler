@@ -107,7 +107,7 @@ the point of the list is to not need the suite to find out.
       `publish_command`, exactly one (`test_every_publishable_lane_can_actually_be_published`)
 - [ ] **run the publish command's `--dry-run` and read the file list.** A field being set is not a
       capability — that is the whole of RM202
-- [ ] if the lane has an `ensure`: its HF repository is an entry of `download.SNAPSHOT_REPO_IDS`, the one
+- [ ] if the lane has an `ensure`: its HF repository is an entry of `locations.SNAPSHOT_REPO_IDS`, the one
       place a repo id is written, and its prefix, `DEFAULT_*_REPO_ID` alias and `publish_repo` read that
       entry (`test_snapshot_repo_ids.py::test_the_map_holds_every_pulled_lane`,
       `…::test_no_repository_is_spelled_outside_its_definition`, RM384)

@@ -2389,7 +2389,7 @@ every lap (`@a-set-that-silences-is-narrower-than-one-that-raises`, taken the ot
 - **`download.py`** — `ensure_snapshot`, `ensure_clinvar_snapshot` and `ensure_constraint_snapshot` pull
   the parquet slice from the HF datasets (`just-dna-seq/ensembl_variations_split` / `just-dna-seq/clinvar` /
   `just-dna-seq/gnomad_constraint`) via one shared footer-checked/atomic body. Every pulled lane's repo
-  id is spelled once, in the public `download.SNAPSHOT_REPO_IDS` (lane → `org/repo`, RM384): each
+  id is spelled once, in the public `locations.SNAPSHOT_REPO_IDS` (lane → `org/repo`, RM384): each
   `download.SNAPSHOT_REPO_PREFIXES` row, keyed like `SNAPSHOT_FILE_GLOBS`, is derived from it as
   `datasets/<repo id>/data`, and so are the `upload.DEFAULT_*_REPO_ID` aliases and every
   `CacheLane.publish_repo`. A consumer pinning `ensembl_reference` (`org/repo@<rev>`) takes the repo
