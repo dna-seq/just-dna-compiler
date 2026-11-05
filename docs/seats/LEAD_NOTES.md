@@ -44,16 +44,18 @@ None open.
 
 ## Plan
 
-- **0.8.0 cut, 2026-11-05** (the /batch run, plan `~/.claude/plans/glimmering-greeting-sketch.md`): `main` at
-  e97339a3 = `cut-0.8.0` (merge cb6be8a4, which has no Co-Authored-By trailer: amending is gated), `0.8` at
-  edf2661c; both pushed. Dists in the scratchpad's `wt-dist/dist/`, twine-checked. **Left for the person:** PyPI
-  publish, then the `v0.8.0` tags; the just-dna-lite side told that the Ensembl cache moved (its `.sha256`
-  sidecars describe the old release).
-- **Cache swap done:** `/data/just-dna-cache/ensembl_variations` is the split release
-  `ensembl-variation-2026_07_13-vep116.0`; the old one is `ensembl_variations.pre-0.8`, to drop on the person's word.
-- **Not done, the person's:** the worktree `.claude/worktrees/lead-RM372/data/rm372/fence_check` (registered, uncommitted
-  probe edits) and every `build/*` branch and `lead-*` worktree of the run (deletion is gated).
-- **Priming edits owed** (change-priming, not the lead's alone): `docs/seats/LEAD.md:17` and `PM.md:14` still name
-  `docs/ROADMAP_0_8.md`, now in `docs/history/`.
-- **Records gap:** no release records for 0.7.1 or 0.7.2, so the chain jumps from 0.7.0 to 0.8.0.
+- **0.8.0 released, 2026-11-05.** Published on PyPI by the person; tag `v0.8.0` on e97339a3; GitHub release
+  up; docs refreshed (INTEGRATION_0_7 archived) and merged. RELEASE_CYCLE step 10 now makes tag, GitHub
+  release and docs refresh the lead's after every publish (auto-mode rule 13 covers the release, kit #283).
+- **Patches on `main` since the cut, uncut:** RM397 (the enricher wheel no longer ships the Atlas proto
+  sources twice), `scripts/build-dists.sh` (wipes `dist/`, builds every member, exit 3 on a non-`.py` share
+  over 3% or duplicate bytes), `uv-build<0.13`. They go into the next patch cut.
+- **Cache:** `/data/just-dna-cache/ensembl_variations` is the split release; the old one is
+  `ensembl_variations.pre-0.8`, to drop on the person's word. The just-dna-lite side still to be told.
+- **Desk:** #210 (should the liaison keep `docs/DOWNSTREAM.md`, who waits on us; default: no list) and
+  #211 (the stale-branch script in the scratchpad, `delete_stale_branches.sh`; default: nothing deleted).
+- **Not done, the person's:** the worktree `.claude/worktrees/lead-RM372/data/rm372/fence_check`; merge
+  commit cb6be8a4 has no Co-Authored-By trailer.
+- **Records gap:** no release records for 0.7.1 or 0.7.2.
+- **Kit v0.1.136:** in this shared clone, commit by path (`git commit --only -- <paths>`).
 - Parked: RM388, RM390, RM396 and round-3 findings without a number (ROADMAP.md). 0.9: RM385.
