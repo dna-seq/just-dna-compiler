@@ -14,8 +14,10 @@ from pathlib import Path
 
 import duckdb
 import httpx
+import huggingface_hub
 import pytest
 from just_dna_enricher import download as dl
+from just_dna_enricher.cli import app as enricher_app
 from just_dna_enricher.locations import (
     CITATIONS_DIRNAME,
     PULL_RECORD_FILENAME,
@@ -24,6 +26,7 @@ from just_dna_enricher.locations import (
     resolve_clinvar_reference,
     snapshot_record_missing,
 )
+from typer.testing import CliRunner
 
 
 def _write_parquet(path: Path, column: str) -> None:
@@ -588,3 +591,34 @@ def test_cache_pull_reports_an_unpublished_lane_without_exiting_one(monkeypatch,
     assert result.exit_code == 0, result.output
     assert result.output.count("not published yet") == 2
     assert "FAILED" not in result.output
+
+
+class _NothingPublishedHub:
+    """A hub where no repo exists: every listing and fetch is the 404 `SnapshotNotPublished` reads."""
+
+    def ls(self, prefix: str, detail: bool = True):
+        raise FileNotFoundError(prefix)
+
+    def get(self, remote: str, local: str) -> None:
+        raise FileNotFoundError(remote)
+
+
+def test_cache_pull_names_only_what_is_on_disk_as_available(monkeypatch, no_ambient_caches: Path) -> None:
+    """RM395 D3: the closing line listed every lane with a pull route, whatever the run found.
+
+    ENRICHING.md's `cache pull --only clinvar_gkm` printed "not published yet" and then "caches
+    available: alphagenome_avi, civic, …, clinvar_gkm" on a machine holding none of them. The summary
+    is what the run left on disk, and an unpublished lane is named as one, with no directory left.
+    """
+    monkeypatch.setattr(huggingface_hub, "HfFileSystem", lambda token=None: _NothingPublishedHub())
+    monkeypatch.setattr(huggingface_hub, "get_token", lambda: None)
+
+    result = CliRunner().invoke(enricher_app, ["cache", "pull", "--only", "civic", "--only", "strchive"])
+
+    assert result.exit_code == 0, result.output
+    assert "caches available" not in result.output
+    summary = result.output.strip().splitlines()[-1]
+    assert summary == "nothing pulled; nothing published for: civic, strchive", result.output
+    # Asked and absent leaves nothing behind: an empty `data/` made the next `cache status` call the
+    # place occupied and `cache prepare` refuse to build there.
+    assert not no_ambient_caches.exists() or list(no_ambient_caches.iterdir()) == []

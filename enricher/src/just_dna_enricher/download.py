@@ -388,7 +388,6 @@ def _provision_snapshot(
             f"just-dna-enricher (which depends on it) or point at a local cache"
         ) from exc
 
-    data_dir.mkdir(parents=True, exist_ok=True)
     # A token is optional on the read side and doubles the per-IP rate allowance, so the `.env`
     # is read here for the same reason the publisher reads it (`@credential-where-read`):
     # anonymous traffic sleeping on a 429 looks exactly like a hung download. `env_value` reads the
@@ -429,6 +428,10 @@ def _provision_snapshot(
             f"({', '.join(ignored) or 'none at all'})"
         )
     logger.info("Found %d remote parquet files", len(remote_files))
+    # Made only once there is something to put in it (RM395): a pull that found nothing published left
+    # an empty `data/`, which `cache status` then called occupied and `cache prepare` refused to build
+    # over.
+    data_dir.mkdir(parents=True, exist_ok=True)
 
     repo_root = hf_repo_prefix.rsplit("/", 1)[0]
 
@@ -898,6 +901,7 @@ def _provision_root_file_snapshot(
             f"just-dna-enricher (which depends on it) or point at a local cache"
         ) from exc
 
+    created = not cache_dir.exists()
     cache_dir.mkdir(parents=True, exist_ok=True)
     # A token is optional on the read side and doubles the per-IP rate allowance, so the `.env`
     # is read here for the same reason the publisher reads it (`@credential-where-read`):
@@ -909,6 +913,10 @@ def _provision_root_file_snapshot(
         fs.get(f"{hf_repo}/{payload}", str(tmp_path))
     except Exception as exc:
         tmp_path.unlink(missing_ok=True)
+        if created and not any(cache_dir.iterdir()):
+            # The directory this call made for the fetch, and nothing came (RM395): left behind, it is
+            # a place `cache status` calls occupied and `cache prepare` refuses to build over.
+            cache_dir.rmdir()
         if not _hub_says_absent(exc):
             raise error_cls(
                 f"{payload} in {hf_repo} could not be fetched ({type(exc).__name__}: {exc}); whether it "

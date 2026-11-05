@@ -1134,3 +1134,20 @@ def test_a_present_lane_reports_its_size_and_an_absent_one_reports_none(
     result = CliRunner().invoke(app, ["cache", "status"])
     line = next(ln for ln in result.output.splitlines() if ln.strip().startswith(lane.name))
     assert line.rstrip().endswith("MB") and "present" in line
+
+
+def test_an_absent_lanes_line_names_every_route_that_can_provision_it(no_ambient_caches: Path) -> None:
+    """RM395 D3: `cache status` cannot see offline whether a lane's repo has anything published.
+
+    It printed "provision with `cache pull`" for `clinvar_gkm`, whose repo is empty, so the guide's
+    next command answered "not published yet". A lane with a pull route and a builder names both;
+    one with a single route names that one. Walked over the registry, per lane.
+    """
+    result = CliRunner().invoke(app, ["cache", "status"])
+    assert result.exit_code == 0, result.output
+    lines = {ln.split()[0]: ln for ln in result.output.splitlines() if ln.strip()}
+    for lane in CACHE_LANES:
+        line = lines[lane.name]
+        assert ("`cache pull`" in line) is (lane.ensure is not None), line
+        if lane.build_command is not None:
+            assert f"`{lane.build_command}`" in line, line

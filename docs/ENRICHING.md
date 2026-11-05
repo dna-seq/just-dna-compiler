@@ -196,8 +196,11 @@ just-dna-enricher cache prune       # asks before deleting
 ```text
   ensembl       present  <base>/ensembl_variations  ensembl-variation-2026_07_13-vep116.0  14539.7 MB
   opentargets   present  <base>/opentargets  opentargets_26.09  5455.6 MB
-  clinvar_gkm   absent   — ClinVar-GKM indels, the placement witness (RM292's checks, RM267); provision with `cache pull`
+  clinvar_gkm   absent   — ClinVar-GKM indels, the placement witness (RM292's checks, RM267); provision with `cache pull` or `clinvar-gkm build`
 ```
+
+`cache status` reads only, so it cannot see whether a lane's repository has anything published; a lane
+that can be pulled or built names both routes.
 
 Each pulled lane's HuggingFace repository is written in one place, `locations.SNAPSHOT_REPO_IDS`, so
 pin a snapshot by reading it there rather than spelling the repo:
@@ -209,10 +212,12 @@ SNAPSHOT_REPO_IDS["ensembl"]      # 'just-dna-seq/ensembl_variations_split'
 ```
 
 `clinvar_gkm` is in that map, but nothing is published there yet, so `cache pull --only clinvar_gkm`
-says so and `clinvar-gkm build` (or `cache prepare`) builds it locally:
+says so, leaves nothing on disk, and ends with what it actually pulled; `clinvar-gkm build` builds it
+locally (`cache prepare` reports the same *nothing published yet* and does not build a pullable lane):
 
 ```text
   clinvar_gkm: not published yet — nothing is published at datasets/just-dna-seq/clinvar_gkm/data — the repo or its data/ does not exist. Build the snapshot locally (`cache rebuild --only …`), or publish one.
+nothing pulled; nothing published for: clinvar_gkm
 ```
 
 A lane has three stages, and where one is absent the status says **why** as a field rather than

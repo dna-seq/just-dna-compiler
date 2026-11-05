@@ -1765,7 +1765,10 @@ Four things worth knowing before you run it on a server:
   counting it as a failure**: nobody-published is the same third state as nobody-asked, and the
   command that provisions a deployment must not exit 1 on a fresh machine because a snapshot has
   never been uploaded. A download that *breaks* is still a failure and still exits 1. Build and
-  publish them once (below), or point at a locally built directory.
+  publish them once (below), or point at a locally built directory. Since RM395 such a pull leaves no
+  directory behind (an empty one read as *occupied* to `cache status` and was refused by `cache
+  prepare`), and its closing line names what the run left on disk and which lanes had nothing
+  published, never the registry's list of pullable lanes.
 - **A published dataset accumulates.** Each `ensure_*` fetches only the files its own snapshot is made
   of, because the ClinVar repo still carries a 159 MB `clinvar.parquet` from the single-file era whose
   columns are raw VCF INFO fields. The readers glob `data/*.parquet`, so one foreign file puts two
