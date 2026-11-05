@@ -39,6 +39,17 @@ build it with 30 for 'tidiness', it is clutter and bloat in guise of strict-typi
 A new table kind counts as about 10 authored columns. The authored surface is human-centred and denormalized on
 purpose; normalization is the compiled parquet's job (RM346, 1.0).
 
+## Standing rule for audit findings (the maintainer, 2026-11-05)
+
+"For the next list of findings, judge how frequently would any bug would realistically fire. For once per known universe scenario defer
+to 'when roadmap is empty/someone steps on this defect'." Audit rounds have found exotic defects, and every minor still needed a few
+patches right after real use started, so the pm reads an audit sceptically: the adversary to a lead who wants to fix everything.
+
+- A built branch is never deferred (the same morning: "Defer unbuilt items").
+- For each unbuilt finding, ask: has a real run or an example hit it, and what must a run do to hit it?
+- A finding no real run plausibly reaches is parked, gated on "a real run hits it, or the roadmap is empty", not sized into the next minor.
+- A regression the release itself introduced, which a normal run reaches, still blocks the cut.
+
 ## Open questions and owed work
 
 - **0.8's scope, agreed 2026-11-04.**
