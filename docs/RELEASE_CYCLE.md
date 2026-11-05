@@ -73,7 +73,7 @@ worth doing.
 
 **A commit on `main` is patch scope only.** Anything that sizes as a minor under Principle 3 (a new
 field, table, public function, method or CLI surface) never lands on `main`, not even uncut: it goes on
-the open minor branch (`0.8` today), or it is filed and waits for one. Everything on `main` must be
+the open minor branch (named for the minor, as `0.8` was; none is open between a cut and the next minor), or it is filed and waits for one. Everything on `main` must be
 cuttable as a patch at any moment, because the next patch is cut from whatever `main` holds.
 
 This was implicit until 2026-09-25 and broke the day before: the triage seat committed RM256, RM257,
