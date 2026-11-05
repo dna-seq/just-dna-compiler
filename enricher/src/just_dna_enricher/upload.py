@@ -21,6 +21,7 @@ Extracted from ``just_dna_pipelines.v1_port.publish`` (just-dna-lite); ``create_
 (the origin assumed the repo pre-existed) so a brand-new dataset repo can be created on first push.
 """
 
+import hashlib
 import json
 import logging
 from collections.abc import Iterable
@@ -30,6 +31,8 @@ from glob import escape as glob_escape
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from huggingface_hub import CommitOperationAdd, CommitOperationDelete
+from huggingface_hub.errors import HfHubHTTPError
 from just_dna_compiler.compiler import ARTIFACT_PARQUETS, LEAD_PARQUETS
 from just_dna_format.identity import is_valid_version
 from just_dna_format.integrity import sha256_bytes, sha256_file
@@ -282,8 +285,9 @@ class PublishRefused(Exception):
     members apart by type: the local module or snapshot is not publishable (`ModuleNotPublishable`,
     `SnapshotNotPublishable`), a planned file changed before it was sent (`PlanChangedError`), the
     remote already holds something else (`PublishCollisionError`, `ToolchainDiffersError`,
-    `OrphanedSidecarError`). Two things stay outside it because they say nothing about what would be
-    sent: a missing write token (`PermissionError`) and a missing `huggingface_hub` (`ImportError`).
+    `OrphanedSidecarError`), or the remote moved after the plan read it (`RemoteMovedError`). Two
+    things stay outside it because they say nothing about what would be sent: a missing write token
+    (`PermissionError`) and a missing `huggingface_hub` (`ImportError`).
 
     **A base class, so a caller's `except` order is load-bearing** (`@client-exception-contract`): a
     handler for a member goes before the handler for the family, as the CLI's do.
@@ -307,11 +311,25 @@ class SnapshotNotPublishable(PublishRefused, FileNotFoundError):
 
 
 class PlanChangedError(PublishRefused):
-    """A planned file's bytes are not the ones the plan read and checked (RM368).
+    """A planned file's bytes are not the ones the plan read and checked (RM368, RM386).
 
-    The send reads each planned file once more and sends exactly the bytes it hashed; a file whose hash
-    is not the plan's (a recompile landing between the check and the send, an edit) or that cannot be
-    read any more refuses the publish before anything is committed.
+    The module send reads each planned file once more and sends exactly the bytes it hashed; a file
+    whose hash is not the plan's (a recompile landing between the check and the send, an edit) or that
+    cannot be read any more refuses the publish before anything is committed. A snapshot's payload is
+    too large to hold, so the hub reads it from the directory: what the hub then holds is checked
+    against the plan's hashes, and a difference withholds the description (`release.json`), so nothing
+    ever describes bytes nothing checked.
+    """
+
+
+class RemoteMovedError(PublishRefused):
+    """The repo is not at the revision the plan read, so the write would act on a state nobody checked (RM386).
+
+    Every publish and prune reads the repo at one revision (`_head`) and commits on top of exactly that
+    revision (`parent_commit`), and the hub refuses a commit whose parent is no longer the head. A
+    concurrent writer between the read and the write — another publish, a prune — therefore refuses
+    this one instead of being overwritten unseen. A prune plan that states no revision read none and
+    refuses too. Nothing was committed by the write that refused; re-run to read the repo again.
     """
 
 
@@ -495,6 +513,69 @@ def _module_version(document: dict | None, unread_reason: str | None) -> tuple[s
     if not isinstance(version, str) or not is_valid_version(version):
         return None, f"{_MANIFEST_FILENAME}'s identity.version is not MAJOR.MINOR.PATCH: {version!r}"
     return version, None
+
+
+def _head(api, repo_id: str) -> str:
+    """The commit the repo's main branch points at: the one revision a plan reads and commits on (RM386).
+
+    The only remote read that names no revision, because it is the read that chooses one.
+    """
+    return api.repo_info(repo_id=repo_id, repo_type="dataset").sha
+
+
+def _commit(
+    api,
+    repo_id: str,
+    parent: str,
+    message: str,
+    *,
+    operations: list[Any] | None = None,
+    folder: Path | None = None,
+    allow_patterns: list[str] | None = None,
+    delete_patterns: list[str] | None = None,
+) -> str:
+    """Every write this tier makes to the hub, pinned to `parent`; returns the new head (RM386).
+
+    One commit of `operations`, or an `upload_folder` of `folder` filtered by `allow_patterns` (the
+    snapshot payload, kept on the hub's resumable, multi-commit uploader for RM199's reason). Either way
+    `parent_commit` is the revision the plan read, so a commit landing in between makes the hub refuse
+    this one; the refusal is a `RemoteMovedError`, decided by reading the head again rather than by the
+    status code the hub answers with. Any other hub error is re-raised as it came. An AST walk holds
+    every hub write in the package to this function (`test_every_hub_write_goes_through_the_one_pinned_helper`).
+
+    In an `upload_folder` the hub splits into several commits, `parent_commit` pins the first; what the
+    later parts landed is checked against the plan's hashes afterwards (`_check_on_the_hub`).
+    """
+    try:
+        if folder is None:
+            info = api.create_commit(
+                repo_id=repo_id,
+                repo_type="dataset",
+                operations=operations or [],
+                commit_message=message,
+                parent_commit=parent,
+            )
+        else:
+            info = api.upload_folder(
+                folder_path=str(folder),
+                path_in_repo="",
+                repo_id=repo_id,
+                repo_type="dataset",
+                allow_patterns=allow_patterns,
+                delete_patterns=delete_patterns,
+                commit_message=message,
+                parent_commit=parent,
+            )
+    except HfHubHTTPError as exc:
+        head = _head(api, repo_id)
+        if head != parent:
+            raise RemoteMovedError(
+                f"{repo_id} moved after the plan read it (read at {parent[:12]}, now at {head[:12]}): "
+                f"another writer committed in between, so this write would act on a repo nobody "
+                f"checked. Nothing of it was committed; re-run to read the repo again."
+            ) from exc
+        raise
+    return info.oid
 
 
 def _literal_patterns(paths: Iterable[str]) -> list[str]:
@@ -1020,7 +1101,9 @@ COMPILATION_COMPARED: frozenset[str] = frozenset(
 _GOVERNED_KEYS = frozenset({"digest", "files", "name", "file", "sha256", "size"})
 
 
-def _versioned_conflict(api, plan: "UploadPlan", local: dict | None) -> tuple[str, dict] | None:
+def _versioned_conflict(
+    api, plan: "UploadPlan", local: dict | None, revision: str | None
+) -> tuple[str, dict] | None:
     """How the release already at the versioned path **differs** from this one — else ``None``.
 
     Returned beside the published manifest it read, so the caller can compare the recorded
@@ -1056,6 +1139,10 @@ def _versioned_conflict(api, plan: "UploadPlan", local: dict | None) -> tuple[st
     Reads the remote `manifest.json` rather than listing per-file hashes: the manifest states every
     declared file's sha256, so one small download answers the question that a tree listing could
     only answer for whatever happens to be LFS-backed.
+
+    **Read at `revision`** (RM386): the one the publish then commits on, so a version landing after
+    this read refuses the commit rather than being overwritten. `None` reads the head, which only a
+    rehearsal does — it commits nothing.
     """
     if plan.versioned_path_in_repo is None or local is None:
         return None
@@ -1063,12 +1150,15 @@ def _versioned_conflict(api, plan: "UploadPlan", local: dict | None) -> tuple[st
     try:
         from huggingface_hub import hf_hub_download
 
-        if not api.file_exists(repo_id=plan.repo_id, filename=remote_manifest, repo_type="dataset"):
+        if not api.file_exists(
+            repo_id=plan.repo_id, filename=remote_manifest, repo_type="dataset", revision=revision
+        ):
             return None
         local_copy = hf_hub_download(
             repo_id=plan.repo_id,
             filename=remote_manifest,
             repo_type="dataset",
+            revision=revision,
             token=api.token,
         )
         raw = Path(local_copy).read_bytes()
@@ -1119,10 +1209,12 @@ def _versioned_conflict(api, plan: "UploadPlan", local: dict | None) -> tuple[st
     ), published
 
 
-def _refuse_a_collision(api, plan: UploadPlan, document: dict | None, name: str) -> None:
+def _refuse_a_collision(
+    api, plan: UploadPlan, document: dict | None, name: str, revision: str | None
+) -> None:
     """Raise the versioned-path collision, if there is one — the one check the real run and the
-    rehearsal share (RM368)."""
-    conflict = _versioned_conflict(api, plan, document)
+    rehearsal share (RM368), read at `revision` (RM386)."""
+    conflict = _versioned_conflict(api, plan, document, revision)
     if conflict is None:
         return
     sentence, published = conflict
@@ -1175,10 +1267,6 @@ def _read_only_api(token: str | None = None):
 
 def _commit_operations(prefix: str, payload: list[tuple[str, bytes]]) -> list[Any]:
     """One add per planned file under ``prefix``, carrying the verified bytes themselves."""
-    try:
-        from huggingface_hub import CommitOperationAdd
-    except ImportError as exc:
-        raise ImportError("huggingface_hub is required to publish to HuggingFace") from exc
     return [
         CommitOperationAdd(path_in_repo=f"{prefix}/{name}", path_or_fileobj=data) for name, data in payload
     ]
@@ -1203,7 +1291,7 @@ def rehearse_upload(
     read = _manifest_document(module_dir)
     plan = _plan_from_document(module_dir, name, repo_id, read)
     if not force and plan.versioned_path_in_repo is not None and read.document is not None:
-        _refuse_a_collision(_read_only_api(token), plan, read.document, name)
+        _refuse_a_collision(_read_only_api(token), plan, read.document, name, revision=None)
     return plan
 
 
@@ -1224,6 +1312,11 @@ def upload_module(
     collision check, each is read once more, checked against that hash, and sent as those bytes through
     `create_commit` — never re-read from the directory by the hub. A file that changed in between (a
     recompile still writing, an edit) is a `PlanChangedError` before either commit.
+
+    **And the revision it read (RM386).** The repo is read once at its head, the versioned-path check
+    reads at that revision, the flat commit is pinned on it and the versioned commit on the flat one
+    (`_commit`), so a version another publisher lands after the check is a `RemoteMovedError` rather
+    than an overwrite nobody saw.
 
     **The two writes are two commits, not one.** Each `create_commit` is its own commit, so a reader can
     briefly see the flat path refreshed while the versioned copy is not there yet; the flat path goes
@@ -1259,22 +1352,25 @@ def upload_module(
     read = _manifest_document(module_dir)
     plan = _plan_from_document(module_dir, name, repo_id, read)
     api = ensure_repo(plan.repo_id, token)
+    revision = _head(api, plan.repo_id)
     if not force:
-        _refuse_a_collision(api, plan, read.document, name)
+        _refuse_a_collision(api, plan, read.document, name, revision)
     payload = _verified_payload(module_dir, plan)
-    api.create_commit(
-        repo_id=plan.repo_id,
-        repo_type="dataset",
+    flat = _commit(
+        api,
+        plan.repo_id,
+        revision,
+        commit_message or f"Add {name} module",
         operations=_commit_operations(plan.path_in_repo, payload),
-        commit_message=commit_message or f"Add {name} module",
     )
     if plan.versioned_path_in_repo is not None:
         segment = plan.versioned_path_in_repo.rsplit("/", 1)[-1]
-        api.create_commit(
-            repo_id=plan.repo_id,
-            repo_type="dataset",
+        _commit(
+            api,
+            plan.repo_id,
+            flat,
+            commit_message or f"Add {name} module {segment}",
             operations=_commit_operations(plan.versioned_path_in_repo, payload),
-            commit_message=commit_message or f"Add {name} module {segment}",
         )
     return plan
 
@@ -1284,6 +1380,16 @@ class SnapshotPlan(BaseModel):
 
     repo_id: str = Field(description="Target HuggingFace dataset repo (owner/name)")
     files: list[str] = Field(description="Repo-relative paths that will be uploaded")
+    sha256: dict[str, str] = Field(
+        default_factory=dict,
+        description="Each sent file's `sha256:`, from the one local read the publish checks the hub "
+        "against (RM386); empty on a rehearsal, which reads no bytes",
+    )
+    revision: str | None = Field(
+        default=None,
+        description="The commit the publish read the repo at and committed on top of (RM386); None on "
+        "a rehearsal, which reads the head and commits nothing",
+    )
 
 
 def plan_reference_snapshot(
@@ -1342,7 +1448,9 @@ def plan_reference_snapshot(
     return SnapshotPlan(repo_id=resolved_repo, files=files)
 
 
-def check_publish_orphans_no_sidecar(plan: SnapshotPlan, api=None, token: str | None = None) -> None:
+def check_publish_orphans_no_sidecar(
+    plan: SnapshotPlan, api=None, token: str | None = None, *, revision: str | None = None
+) -> None:
     """Refuse a publish that would leave a remote sidecar undescribed. Reads the repo; writes nothing.
 
     **The remote tree, not the remote `release.json`.** The block is a *description* of the bytes and
@@ -1359,13 +1467,16 @@ def check_publish_orphans_no_sidecar(plan: SnapshotPlan, api=None, token: str | 
     is no reason to build a second); a dry run passes none and gets an anonymous reader, since listing
     a public repo needs no token and a dry run must not require write access to say what a publish
     would do.
+
+    `revision` is the commit a publish read and will commit on (RM386); a dry run passes none and reads
+    the head.
     """
     if RELEASE_FILENAME not in plan.files:
         return
     if api is None:
         api = _read_only_api(token)
     try:
-        remote = list(api.list_repo_files(repo_id=plan.repo_id, repo_type="dataset"))
+        remote = list(api.list_repo_files(repo_id=plan.repo_id, repo_type="dataset", revision=revision))
     except Exception as exc:
         # Nobody has published here yet, or the listing failed. Neither is an orphan, and a publish
         # that cannot read the repo will fail on its own terms a moment later with a better message.
@@ -1421,6 +1532,11 @@ class PrunePlan(BaseModel):
 
     repo_id: str
     candidates: list[PruneCandidate] = Field(default_factory=list)
+    revision: str | None = Field(
+        default=None,
+        description="The commit the listing was read at; the deletion commits on top of exactly it or "
+        "not at all (RM386). None only on a plan no listing produced, which `prune_repo` refuses",
+    )
 
     @property
     def total_bytes(self) -> int:
@@ -1447,7 +1563,14 @@ def plan_prune(repo_id: str, filename_glob: str, api=None) -> PrunePlan:
         except ImportError as exc:
             raise ImportError("huggingface_hub is required to inspect a published repo") from exc
         api = HfApi(token=env_value("HF_TOKEN") or get_token())
-    entries = list(api.list_repo_tree(repo_id=repo_id, repo_type="dataset", recursive=True, expand=True))
+    # The listing is pinned to one revision, and the plan carries it, so the deletion can refuse a repo
+    # that changed after a person was shown the list (RM386).
+    revision = _head(api, repo_id)
+    entries = list(
+        api.list_repo_tree(
+            repo_id=repo_id, repo_type="dataset", recursive=True, expand=True, revision=revision
+        )
+    )
     sizes = {getattr(e, "path", ""): getattr(e, "size", None) for e in entries}
     remote = [path for path in sizes if path]
 
@@ -1473,7 +1596,9 @@ def plan_prune(repo_id: str, filename_glob: str, api=None) -> PrunePlan:
             size=sizes.get(shift.retires),
             reason=f"declared retired — {shift.reason}",
         )
-    return PrunePlan(repo_id=repo_id, candidates=[candidates[k] for k in sorted(candidates)])
+    return PrunePlan(
+        repo_id=repo_id, candidates=[candidates[k] for k in sorted(candidates)], revision=revision
+    )
 
 
 def prune_repo(plan: PrunePlan, token: str | None = None, commit_message: str | None = None) -> int:
@@ -1482,20 +1607,97 @@ def prune_repo(plan: PrunePlan, token: str | None = None, commit_message: str | 
     Returns the number of paths deleted. Deleting is a commit on a git-backed repo, so a superseded
     revision still resolves — but that is a reason to be able to undo a mistake, never a reason to
     remove something nobody looked at, which is why this takes a plan rather than a repo id.
+
+    **Exactly the listed paths, at the listed revision (RM386).** One delete operation per candidate —
+    a path, never a pattern the hub matches (RM353 escaped the patterns; there are none now) — in one
+    commit whose parent is the revision the listing was read at. A repo that changed after the plan
+    was shown (a file republished under a listed name) is a `RemoteMovedError` and nothing is deleted;
+    so is a plan that states no revision, since it read nothing a deletion could be held to.
     """
     if not plan.candidates:
         return 0
+    if plan.revision is None:
+        raise RemoteMovedError(
+            f"this prune plan for {plan.repo_id} read no revision, so there is no repo state its "
+            f"candidates were listed from; nothing was deleted. Plan it with `plan_prune`."
+        )
     api = _hf_api(plan.repo_id, token)
-    api.delete_files(
-        repo_id=plan.repo_id,
-        # Each a literal: `delete_files` matches with `fnmatch`, and a listed `data/x[1].parquet`
-        # unescaped would delete `data/x1.parquet`, a file nobody was shown (RM353).
-        delete_patterns=_literal_patterns(c.path for c in plan.candidates),
-        repo_type="dataset",
-        commit_message=commit_message
-        or (f"Prune {len(plan.candidates)} file(s) that are not part of this snapshot"),
+    _commit(
+        api,
+        plan.repo_id,
+        plan.revision,
+        commit_message or f"Prune {len(plan.candidates)} file(s) that are not part of this snapshot",
+        operations=[CommitOperationDelete(path_in_repo=c.path) for c in plan.candidates],
     )
     return len(plan.candidates)
+
+
+@dataclass(frozen=True)
+class _ReadOnce:
+    """One planned snapshot file as the publish read it: both ids the hub may state for it (RM386)."""
+
+    sha256: str
+    blob_id: str
+
+
+_CHUNK = 1 << 20
+
+
+def _read_once(path: Path) -> _ReadOnce:
+    """The `sha256:` and the git blob id of `path`, from one streaming read.
+
+    The hub's tree states an LFS file by its sha256 and any other file by its git blob id (a sha1 over
+    `blob <size>\\0` and the bytes), and which a file is stored as is the hub's choice, so both are taken
+    from the same read. The blob header needs the size first: a file whose length moves while it is
+    read is a file being rewritten, and refuses.
+    """
+    sha256, sha1 = hashlib.sha256(), hashlib.sha1()
+    with path.open("rb") as handle:
+        size = path.stat().st_size
+        sha1.update(b"blob %d\x00" % size)
+        read = 0
+        for chunk in iter(lambda: handle.read(_CHUNK), b""):
+            sha256.update(chunk)
+            sha1.update(chunk)
+            read += len(chunk)
+    if read != size:
+        raise PlanChangedError(f"{path} changed size while the publish read it ({size} → {read} bytes)")
+    return _ReadOnce(sha256=f"sha256:{sha256.hexdigest()}", blob_id=sha1.hexdigest())
+
+
+def _check_on_the_hub(api, repo_id: str, revision: str, planned: dict[str, _ReadOnce]) -> None:
+    """Refuse unless every planned file at `revision` is the bytes the plan read (RM386).
+
+    The payload is sent by the hub reading the directory, after the plan did; this is where the two
+    readings meet. An LFS entry is compared by sha256, any other by its git blob id; a planned file the
+    tree does not hold, or holds as anything else, is named. Withholding is the caller's: it is the
+    description that must not follow.
+    """
+    tree = {
+        entry.path: entry
+        for entry in api.list_repo_tree(
+            repo_id=repo_id, repo_type="dataset", recursive=True, revision=revision
+        )
+    }
+    differ = []
+    for name, read in planned.items():
+        entry = tree.get(name)
+        if entry is None:
+            differ.append(f"{name} (not on the hub)")
+            continue
+        lfs = getattr(entry, "lfs", None)
+        held, expected = (
+            (f"sha256:{lfs.sha256}", read.sha256) if lfs is not None else (entry.blob_id, read.blob_id)
+        )
+        if held != expected:
+            differ.append(name)
+    if differ:
+        raise PlanChangedError(
+            f"{repo_id}@{revision[:12]}: {', '.join(differ)} on the hub are not the bytes this publish "
+            f"read and hashed (a rebuild while the upload ran?). The payload commit has landed; its "
+            f"description ({RELEASE_FILENAME}) was withheld, so nothing describes bytes nothing checked. "
+            f"Re-publish once the snapshot has stopped changing."
+        )
 
 
 def publish_reference_snapshot(
@@ -1511,17 +1713,24 @@ def publish_reference_snapshot(
     Uploads ``data/*.parquet`` + any parquet sidecars (ClinVar's ``citations/``) + ``release.json``, so
     the tree matches ``download.ensure_*_snapshot`` and a provisioned snapshot is the same artifact a
     built one is — PMIDs included, which is what a drafted gene panel needs to compile.
+
+    **Tied to the bytes it read and the revision it read (RM386).** The repo is read at one revision
+    and both commits are pinned on it (`_commit`), so a concurrent writer refuses the publish
+    (`RemoteMovedError`) rather than being overwritten. Every planned file is hashed once; the payload
+    goes up through the hub's own uploader, and what the hub then holds is checked against those
+    hashes before the description is sent (`PlanChangedError` if not); the description is sent as the
+    bytes read with the rest, never read again. The returned plan states the revision and the hashes.
+
     Raises PermissionError if no token is available and ImportError if huggingface_hub is absent.
     """
     plan = plan_reference_snapshot(snapshot_dir, repo_id, payload=payload)
     api = ensure_repo(plan.repo_id, token)
-    check_publish_orphans_no_sidecar(plan, api)
+    revision = _head(api, plan.repo_id)
+    check_publish_orphans_no_sidecar(plan, api, revision=revision)
     # A declared retirement rides in the same commit as the upload that replaces it (RM186). Listed
-    # once and reused: `check_publish_orphans_no_sidecar` has already read the repo, but its answer is
-    # about sidecars, and a second listing is cheaper to reason about than a shared cache of a remote
-    # state two checks disagree about the meaning of.
+    # again at the same revision: both answers are about one pinned state, so they cannot disagree.
     try:
-        remote = list(api.list_repo_files(repo_id=plan.repo_id, repo_type="dataset"))
+        remote = list(api.list_repo_files(repo_id=plan.repo_id, repo_type="dataset", revision=revision))
     except Exception as exc:
         logger.info(
             "Could not list %s (%s); no declared retirement can apply.", plan.repo_id, type(exc).__name__
@@ -1557,37 +1766,55 @@ def publish_reference_snapshot(
     # That is `@a-publish-may-not-orphan-the-bytes-it-stops-describing` from the other direction, and
     # it costs one extra commit on a path that is already several.
     payload_files = [f for f in plan.files if f != RELEASE_FILENAME]
-    description = [f for f in plan.files if f == RELEASE_FILENAME]
+    # **The one local read** (RM386). Every planned file is hashed here; the description's bytes are
+    # kept and are what is sent, and the payload is held to these hashes on the hub before anything
+    # describes it. A file that cannot be read now is a refusal, as at the module send.
+    planned: dict[str, _ReadOnce] = {}
+    description: bytes | None = None
+    for name in plan.files:
+        try:
+            if name == RELEASE_FILENAME:
+                description = (snapshot_dir / name).read_bytes()
+                planned[name] = _ReadOnce(
+                    sha256=sha256_bytes(description),
+                    blob_id=hashlib.sha1(b"blob %d\x00" % len(description) + description).hexdigest(),
+                )
+            else:
+                planned[name] = _read_once(snapshot_dir / name)
+        except OSError as exc:
+            raise PlanChangedError(f"{name} in {snapshot_dir} could not be read to send it ({exc})") from exc
+    plan = plan.model_copy(
+        update={"sha256": {name: read.sha256 for name, read in planned.items()}, "revision": revision}
+    )
 
-    api.upload_folder(
-        folder_path=str(snapshot_dir),
-        path_in_repo="",
-        repo_id=plan.repo_id,
-        repo_type="dataset",
-        # The retirement is a `delete_patterns` on the same call, so the new file arriving and the old
-        # one leaving are one operation rather than a window in which the repo has neither or both.
-        # `retires` is one name, never a glob, and made literal so the hub cannot read it as one (RM353).
-        delete_patterns=_literal_patterns(shift.retires for shift in due) or None,
+    sent = _commit(
+        api,
+        plan.repo_id,
+        revision,
+        commit_message
+        or (
+            f"Publish reference snapshot ({len(payload_files)} files)"
+            + (f", retiring {', '.join(s.retires for s in due)}" if due else "")
+        ),
+        folder=snapshot_dir,
         # Derived from the plan rather than restated as a pattern list. The two had to agree and did
         # not: `--dry-run` printed a file the patterns then dropped, which is the failure mode that
         # lost `citations/` and `LICENSE.txt` in the first place. One list, computed once, so what a
         # dry run promises is exactly what an upload sends (`@publisher-allowlist-derived`) — each
         # name made literal, since the hub reads a pattern and `data/chr[1].parquet` is one (RM353).
         allow_patterns=_literal_patterns(payload_files),
-        commit_message=commit_message
-        or (
-            f"Publish reference snapshot ({len(payload_files)} files)"
-            + (f", retiring {', '.join(s.retires for s in due)}" if due else "")
-        ),
+        # The retirement is a `delete_patterns` on the same call, so the new file arriving and the old
+        # one leaving are one operation rather than a window in which the repo has neither or both.
+        # `retires` is one name, never a glob, and made literal so the hub cannot read it as one (RM353).
+        delete_patterns=_literal_patterns(shift.retires for shift in due) or None,
     )
-
-    if description:
-        api.upload_folder(
-            folder_path=str(snapshot_dir),
-            path_in_repo="",
-            repo_id=plan.repo_id,
-            repo_type="dataset",
-            allow_patterns=_literal_patterns(description),
-            commit_message=f"Describe the snapshot ({RELEASE_FILENAME})",
+    _check_on_the_hub(api, plan.repo_id, sent, {name: planned[name] for name in payload_files})
+    if description is not None:
+        _commit(
+            api,
+            plan.repo_id,
+            sent,
+            f"Describe the snapshot ({RELEASE_FILENAME})",
+            operations=[CommitOperationAdd(path_in_repo=RELEASE_FILENAME, path_or_fileobj=description)],
         )
     return plan

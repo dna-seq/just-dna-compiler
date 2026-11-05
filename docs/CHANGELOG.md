@@ -41,6 +41,22 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-05 — RM386: a publish refuses a concurrent writer, and a snapshot's description describes the bytes that were sent (0.8, uncut)
+
+Every write the enricher makes to Hugging Face now goes through one helper that commits on top of the
+revision its plan read (`parent_commit`), and every remote read after that names the revision. A second
+publisher or a prune landing in between makes the hub refuse the write, raised as the new
+`upload.RemoteMovedError` (a `PublishRefused`), where before it was overwritten unseen; this covers
+`upload_module` (the versioned-path check and both commits), `publish_reference_snapshot` (the orphan
+check, the retirement listing, the payload and the description) and `cache prune`. A snapshot publish
+hashes every file once (`SnapshotPlan.sha256`, with `SnapshotPlan.revision`), checks the tree the hub holds
+at the payload commit against those hashes, and only then sends `release.json` as the bytes it read, so a
+rebuild during a publish can no longer put the next release's description over this one's rows; a
+mismatch withholds the description (`PlanChangedError`). `prune_repo` deletes exactly the listed paths at
+`PrunePlan.revision`, and refuses a plan with none; `cache prune --yes` prints `PRUNE REFUSED` instead of a
+traceback. An AST walk holds every hub write to the one helper and every read to a revision; the tests run
+on a new `fake_hub` fixture, a repository with a head. → [ROADMAP_HISTORY § RM386](ROADMAP_HISTORY.md#rm386--a-publish-plan-was-not-tied-to-the-bytes-it-sent-or-the-revision-it-read)
+
 ## 2026-11-05 — INTEGRATION_0_8 is finished for downstream to integrate against the branch (0.8, uncut)
 
 - **[INTEGRATION_0_8.md](INTEGRATION_0_8.md) now covers every § 1 item from § 2 and § 3**: an upgrade order

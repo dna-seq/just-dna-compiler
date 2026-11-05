@@ -30,6 +30,9 @@ _NOT_A_LOCAL_FETCH = {
     "DEFAULT_IGNORE_PATTERNS": "a constant",
     "CommitOperationAdd": "a commit operation the publisher builds in memory (RM368); it reads and sends "
     "nothing until the stubbed `HfApi` is asked to commit it",
+    "CommitOperationDelete": "a deletion the publisher builds in memory (RM386); it removes nothing until "
+    "the stubbed `HfApi` is asked to commit it",
+    "HfHubHTTPError": "an exception type the publisher catches to tell a moved repo apart (RM386)",
 }
 
 

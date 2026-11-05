@@ -298,7 +298,7 @@ def cache_prune_(
     """
     from just_dna_enricher.download import SNAPSHOT_FILE_GLOBS
     from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME
-    from just_dna_enricher.upload import plan_prune, prune_repo
+    from just_dna_enricher.upload import PublishRefused, plan_prune, prune_repo
 
     _, lanes = _selected(only)
     planned = 0
@@ -343,7 +343,13 @@ def cache_prune_(
             typer.echo(f"      • {candidate.path}{size} — {candidate.reason}")
         if not yes:
             continue
-        deleted = prune_repo(plan)
+        try:
+            deleted = prune_repo(plan)
+        except PublishRefused as exc:
+            # The repo moved after this plan read it (RM386): nothing was deleted, and the list above
+            # is no longer what the repo holds.
+            typer.secho(f"      PRUNE REFUSED — {exc}", fg=typer.colors.RED, err=True)
+            continue
         typer.secho(f"      deleted {deleted} file(s) from {lane.publish_repo}", fg=typer.colors.GREEN)
     if planned and not yes:
         typer.echo("Nothing was deleted. Re-run with --yes to remove the files listed above.")
