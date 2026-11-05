@@ -203,6 +203,11 @@ repo id written anywhere else. → [ROADMAP_HISTORY § RM384](ROADMAP_HISTORY.md
 - The concordance record, rewritten whole on each run that writes it, retires an authority's
   `clin_sig_authority_call` row once no call row names it.
 - `licensing.record_table_sources` takes `answered_every_row` (default `False`); every call in the package states it.
+- `reference_examples/mt_common_deletion` is re-derived with this in place (`enrich --offline --rederive`,
+  as its regeneration ran): the regeneration had run before RM383 merged and kept the row. The row is
+  gone, so is the compile's `source_row_unused`, and `resolution.csv` gains RM387's `source_loci` header.
+  `content_signature` is unchanged; `compile → reverse → compile` gives one `artifact.digest`. The RM383
+  tests plant the old row on their copy.
 
 ## 2026-11-05 — RM382: a resolution answer the authored genotype cannot host lets the next link answer, and is never written as an absence (0.8, uncut)
 
