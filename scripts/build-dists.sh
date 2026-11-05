@@ -11,8 +11,8 @@
 # The alarm: a wheel whose non-`.py` files are more than WHEEL_NONPY_ALARM_PCT percent of its
 # uncompressed bytes (default 3) usually means a build exclusion is missing and data, a cache or a
 # test fixture went into the wheel. A share, not a total size: source grows with the code and must
-# never trip it. The line sits just above the highest share at 0.8.0 (the enricher, 2.6%: its
-# AlphaGenome protos and their licence text; format and compiler ship under 1%). Every wheel is
+# never trip it. The line was set just above the highest share at 0.8.0 (the enricher, 2.6%, half
+# of it the duplicate protos RM397 removed; 1.6% since, and format and compiler under 1%). Every wheel is
 # still built; the script then lists the largest non-`.py` members of each wheel over the line and
 # exits 3, so a `build-dists.sh && uv publish` chain stops before the upload. If the list is all
 # intended, raise the line for that run (`WHEEL_NONPY_ALARM_PCT=5 scripts/build-dists.sh`) or here.
