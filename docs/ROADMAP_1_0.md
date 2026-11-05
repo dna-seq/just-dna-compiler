@@ -296,7 +296,7 @@ documented limit of P7 on non-GRCh38 modules*, not a breach.
   function of the *artifact*, and takes an artifact directory. The original `resolution.csv` is not one
   of its inputs. Making it one would turn reverse into a function of the spec directory as well, which
   is a different transform — and it would re-emit provenance reverse discards on purpose (`source`
-  becomes `reversed`, `status` becomes `resolved`, `fetched_at` empties).
+  becomes `reversed`, `fetched_at` empties; since RM380 every other column comes back off the parquets).
 - **Write the injected coordinate into the positional parquet without joining.** The join spelled
   differently. Writing the coordinate is what the gate forbids, and doing it without re-deriving the key
   yields a parquet row whose coordinate and whose `variant_key` were computed on two different

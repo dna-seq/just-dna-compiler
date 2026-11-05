@@ -1230,6 +1230,10 @@ after a round-trip means re-running the enricher, which is where a statement abo
 moment belongs. What reverse *does* now carry back correctly is the resolved **facts** and the authored
 **shape** — see [COMPILER.md § Resolution](COMPILER.md) for the enumerated round-trip contract that
 replaced the old "reverse emits position-only" rule.
+*Addendum 2026-11-05 (RM380):* the decision stands and the rationale moved. The parquets now carry every
+`ResolutionRow` column but a reasoned few on their resolution loci, `status` and `authority` among them,
+so "holds no provenance" is no longer true; these three stay out as statements about dbSNP at a moment
+(`parquets.RESOLUTION_LOCUS_NOT_WRITTEN`).
 
 **The strategic reading:** this whole class of problem is *label drift*, and it exists only for
 rsid-keyed rows. A coordinate-authored row keys on a VRS allele id, which is content-addressed and
