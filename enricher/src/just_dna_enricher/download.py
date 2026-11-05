@@ -57,13 +57,39 @@ from just_dna_enricher.resolver import EnsemblReferenceError
 
 logger = logging.getLogger(__name__)
 
-#: The split release since RM372: prepare-annotations publishes dbSNP 157 / VEP 116 as a **separate**
-#: repo, one row per ALT, left-aligned indels, with a `manifest.json` (release id, per-file sha256) and
-#: no `release.json`. The old repo, `just-dna-seq/ensembl_variations`, is no longer written and keeps
-#: the same file names, which is why a warm cache compares its pull record's repo with this one.
-_ENSEMBL_HF_PREFIX = "datasets/just-dna-seq/ensembl_variations_split/data"
-_CLINVAR_HF_PREFIX = "datasets/just-dna-seq/clinvar/data"
-_CONSTRAINT_HF_PREFIX = "datasets/just-dna-seq/gnomad_constraint/data"
+#: Every pulled lane's HuggingFace dataset repository, by lane name: the **one** place a repo id is
+#: spelled (RM384). Each lane's fsspec prefix (`SNAPSHOT_REPO_PREFIXES`), each publisher default
+#: (`upload.DEFAULT_*_REPO_ID`) and each lane's `CacheLane.publish_repo` is derived from it. Before
+#: RM384 every repo was written twice, as a repo id in `upload.py` and inside a prefix here, with
+#: nothing tying the pair, and the Ensembl lane had only the private prefix, so a consumer pinning
+#: `manifest.compilation.ensembl_reference` (`org/repo@<rev>`) took the `org/repo` half by stripping
+#: `datasets/` and `/data` off it (S130). The keys equal the lanes in `caches.CACHE_LANES` with an
+#: `ensure`, asserted by test, and an AST walk refuses a repo id written as a literal anywhere else.
+#:
+#: Ensembl's is the split release since RM372: prepare-annotations publishes dbSNP 157 / VEP 116 as a
+#: **separate** repo, one row per ALT, left-aligned indels, with a `manifest.json` (release id,
+#: per-file sha256) and no `release.json`. The old repo, `just-dna-seq/ensembl_variations`, is no
+#: longer written and keeps the same file names, which is why a warm cache compares its pull record's
+#: repo with this one. This tier pulls it and never publishes it.
+SNAPSHOT_REPO_IDS: dict[str, str] = {
+    "ensembl": "just-dna-seq/ensembl_variations_split",
+    "clinvar": "just-dna-seq/clinvar",
+    "constraint": "just-dna-seq/gnomad_constraint",
+    "clinpgx": "just-dna-seq/clinpgx",
+    "cpic": "just-dna-seq/cpic",
+    "drug_labels": "just-dna-seq/clinpgx_drug_labels",
+    "civic": "just-dna-seq/civic",
+    "strchive": "just-dna-seq/strchive",
+    "mitomap": "just-dna-seq/mitomap",
+    "alphagenome_avi": "just-dna-seq/alphagenome_avi",
+    "clinvar_gkm": "just-dna-seq/clinvar_gkm",
+}
+
+
+def _hf_dataset_root(repo_id: str) -> str:
+    """The `HfFileSystem` path of a dataset repo's root: `datasets/<repo id>`."""
+    return f"datasets/{repo_id}"
+
 
 # What each snapshot is *made of*, so provisioning fetches its own files and nothing else.
 #
@@ -87,8 +113,6 @@ _CONSTRAINT_FILES = "gnomad_constraint.parquet"
 _CLINPGX_FILES = "*.parquet"
 _CPIC_FILES = "*.parquet"
 
-_CLINPGX_HF_PREFIX = "datasets/just-dna-seq/clinpgx/data"
-_CPIC_HF_PREFIX = "datasets/just-dna-seq/cpic/data"
 
 # The three lanes that had a builder and a licence permitting publication, and no way to fetch the
 # result (RM176). CIViC's absent `ensure_*` was recorded in the cache roster as a *gap* rather than a
@@ -98,8 +122,6 @@ _CPIC_HF_PREFIX = "datasets/just-dna-seq/cpic/data"
 # The drug labels are a **second** ClinPGx archive with its own cadence, so they get their own repo
 # rather than a table inside `clinpgx/`: `summaryAnnotations.zip` and `drugLabels.zip` do not refresh
 # together, and one repo holding both would date the pair from whichever was published last.
-_CIVIC_HF_PREFIX = "datasets/just-dna-seq/civic/data"
-_DRUG_LABELS_HF_PREFIX = "datasets/just-dna-seq/clinpgx_drug_labels/data"
 _CIVIC_FILES = "*.parquet"
 _DRUG_LABELS_FILES = "*.parquet"
 
@@ -107,7 +129,6 @@ _DRUG_LABELS_FILES = "*.parquet"
 #: biconditional says a lane this tier builds is publishable exactly when it is pullable, and CC BY
 #: 3.0 grants the redistribution outright, so shipping the builder without these two halves would
 #: have recreated the gap RM176 closed three times over.
-_MITOMAP_HF_PREFIX = "datasets/just-dna-seq/mitomap/data"
 _MITOMAP_FILES = "mitomap-*.parquet"
 
 #: AlphaGenome AVI, added with the publish half rather than after it (RM198). The lane is the first
@@ -115,18 +136,16 @@ _MITOMAP_FILES = "mitomap-*.parquet"
 #: brought only `data/*.parquet` would hand over scores nobody can rank. `_provision_snapshot` fetches
 #: the root files from `SNAPSHOT_ROOT_FILENAMES` for every lane, so this needs no special case — it
 #: needed the registry to exist, which is the other half of RM198.
-_ALPHAGENOME_AVI_HF_PREFIX = "datasets/just-dna-seq/alphagenome_avi/data"
 _ALPHAGENOME_AVI_FILES = "alphagenome_avi-*.parquet"
 
 #: ClinVar-GKM's indel witness (RM305), added with the lane: CC0 over ClinGen's transformation of
 #: public-domain ClinVar grants redistribution, so a deployment pulls ~16 MB instead of downloading
 #: ~5 GB of Parquet to cut it. The attribution and ClinVar's disclaimer travel as `LICENSE.txt`.
-_CLINVAR_GKM_HF_PREFIX = "datasets/just-dna-seq/clinvar_gkm/data"
 _CLINVAR_GKM_FILES = "clinvar_gkm-*.parquet"
 
 #: STRchive's repo root, not a `data/` prefix: this snapshot is the upstream catalogue verbatim beside
 #: its provenance, and it holds no parquet at all.
-_STRCHIVE_HF_REPO = "datasets/just-dna-seq/strchive"
+_STRCHIVE_HF_REPO = _hf_dataset_root(SNAPSHOT_REPO_IDS["strchive"])
 
 
 #: What each publishable lane's `data/` consists of, by lane name — the same globs the `ensure_*`
@@ -157,18 +176,12 @@ SNAPSHOT_FILE_GLOBS: dict[str, str] = {
 #: Where each lane in `SNAPSHOT_FILE_GLOBS` is pulled from, by lane name: the second half of what a
 #: pull is (RM372). A cache whose pull record names another repo is not this lane's snapshot, however
 #: complete, so `cache pull` sends it down the pull route; asserted equal in keys to the globs, so a
-#: lane cannot gain one and not the other.
+#: lane cannot gain one and not the other. Each is derived, `datasets/<repo id>/data`, from
+#: `SNAPSHOT_REPO_IDS` (RM384): a prefix is where a repo keeps its parquet, never a second spelling of
+#: which repo.
 SNAPSHOT_REPO_PREFIXES: dict[str, str] = {
-    "ensembl": _ENSEMBL_HF_PREFIX,
-    "clinvar": _CLINVAR_HF_PREFIX,
-    "constraint": _CONSTRAINT_HF_PREFIX,
-    "clinpgx": _CLINPGX_HF_PREFIX,
-    "cpic": _CPIC_HF_PREFIX,
-    "drug_labels": _DRUG_LABELS_HF_PREFIX,
-    "civic": _CIVIC_HF_PREFIX,
-    "mitomap": _MITOMAP_HF_PREFIX,
-    "alphagenome_avi": _ALPHAGENOME_AVI_HF_PREFIX,
-    "clinvar_gkm": _CLINVAR_GKM_HF_PREFIX,
+    lane: f"{_hf_dataset_root(SNAPSHOT_REPO_IDS[lane])}/{SNAPSHOT_DATA_DIRNAME}"
+    for lane in SNAPSHOT_FILE_GLOBS
 }
 
 
@@ -685,7 +698,7 @@ def ensure_snapshot(ensembl_cache: Path | None = None) -> Path:
     cache_dir = Path(ensembl_cache) if ensembl_cache is not None else default_ensembl_cache_dir()
     return _provision_snapshot(
         cache_dir,
-        _ENSEMBL_HF_PREFIX,
+        SNAPSHOT_REPO_PREFIXES["ensembl"],
         label="Ensembl",
         error_cls=EnsemblReferenceError,
         filename_glob=SNAPSHOT_FILE_GLOBS["ensembl"],
@@ -697,7 +710,7 @@ def ensure_clinvar_snapshot(clinvar_cache: Path | None = None) -> Path:
     cache_dir = Path(clinvar_cache) if clinvar_cache is not None else default_clinvar_cache_dir()
     return _provision_snapshot(
         cache_dir,
-        _CLINVAR_HF_PREFIX,
+        SNAPSHOT_REPO_PREFIXES["clinvar"],
         label="ClinVar",
         error_cls=ClinVarReferenceError,
         filename_glob=SNAPSHOT_FILE_GLOBS["clinvar"],
@@ -713,7 +726,7 @@ def ensure_constraint_snapshot(constraint_cache: Path | None = None) -> Path:
     cache_dir = Path(constraint_cache) if constraint_cache is not None else default_constraint_cache_dir()
     return _provision_snapshot(
         cache_dir,
-        _CONSTRAINT_HF_PREFIX,
+        SNAPSHOT_REPO_PREFIXES["constraint"],
         label="gnomAD constraint",
         error_cls=ConstraintReferenceError,
         filename_glob=SNAPSHOT_FILE_GLOBS["constraint"],
@@ -732,7 +745,7 @@ def ensure_clinpgx_snapshot(clinpgx_cache: Path | None = None) -> Path:
     cache_dir = Path(clinpgx_cache) if clinpgx_cache is not None else default_clinpgx_cache_dir()
     return _provision_snapshot(
         cache_dir,
-        _CLINPGX_HF_PREFIX,
+        SNAPSHOT_REPO_PREFIXES["clinpgx"],
         label="ClinPGx",
         error_cls=GatedSnapshotError,
         filename_glob=SNAPSHOT_FILE_GLOBS["clinpgx"],
@@ -754,7 +767,7 @@ def ensure_cpic_snapshot(cpic_cache: Path | None = None) -> Path:
     cache_dir = Path(cpic_cache) if cpic_cache is not None else default_cpic_cache_dir()
     return _provision_snapshot(
         cache_dir,
-        _CPIC_HF_PREFIX,
+        SNAPSHOT_REPO_PREFIXES["cpic"],
         label="CPIC",
         error_cls=GatedSnapshotError,
         filename_glob=SNAPSHOT_FILE_GLOBS["cpic"],
@@ -772,7 +785,7 @@ def ensure_civic_snapshot(civic_cache: Path | None = None) -> Path:
     cache_dir = Path(civic_cache) if civic_cache is not None else default_civic_cache_dir()
     return _provision_snapshot(
         cache_dir,
-        _CIVIC_HF_PREFIX,
+        SNAPSHOT_REPO_PREFIXES["civic"],
         label="CIViC",
         error_cls=OpenSnapshotError,
         filename_glob=SNAPSHOT_FILE_GLOBS["civic"],
@@ -791,7 +804,7 @@ def ensure_drug_labels_snapshot(drug_labels_cache: Path | None = None) -> Path:
     cache_dir = Path(drug_labels_cache) if drug_labels_cache is not None else default_drug_labels_cache_dir()
     return _provision_snapshot(
         cache_dir,
-        _DRUG_LABELS_HF_PREFIX,
+        SNAPSHOT_REPO_PREFIXES["drug_labels"],
         label="ClinPGx drug labels",
         error_cls=GatedSnapshotError,
         filename_glob=SNAPSHOT_FILE_GLOBS["drug_labels"],
@@ -810,7 +823,7 @@ def ensure_mitomap_snapshot(mitomap_cache: Path | None = None) -> Path:
     cache_dir = Path(mitomap_cache) if mitomap_cache is not None else default_mitomap_cache_dir()
     return _provision_snapshot(
         cache_dir,
-        _MITOMAP_HF_PREFIX,
+        SNAPSHOT_REPO_PREFIXES["mitomap"],
         label="MITOMAP",
         error_cls=OpenSnapshotError,
         filename_glob=SNAPSHOT_FILE_GLOBS["mitomap"],
@@ -827,7 +840,7 @@ def ensure_clinvar_gkm_snapshot(clinvar_gkm_cache: Path | None = None) -> Path:
     cache_dir = Path(clinvar_gkm_cache) if clinvar_gkm_cache is not None else default_clinvar_gkm_cache_dir()
     return _provision_snapshot(
         cache_dir,
-        _CLINVAR_GKM_HF_PREFIX,
+        SNAPSHOT_REPO_PREFIXES["clinvar_gkm"],
         label="ClinVar-GKM",
         error_cls=OpenSnapshotError,
         filename_glob=SNAPSHOT_FILE_GLOBS["clinvar_gkm"],
@@ -855,7 +868,7 @@ def ensure_alphagenome_avi_snapshot(alphagenome_avi_cache: Path | None = None) -
     )
     return _provision_snapshot(
         cache_dir,
-        _ALPHAGENOME_AVI_HF_PREFIX,
+        SNAPSHOT_REPO_PREFIXES["alphagenome_avi"],
         label="AlphaGenome AVI",
         error_cls=OpenSnapshotError,
         filename_glob=SNAPSHOT_FILE_GLOBS["alphagenome_avi"],

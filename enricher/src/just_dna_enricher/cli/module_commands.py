@@ -11,6 +11,7 @@ from just_dna_enricher.cli._shared import _mode, app
 from just_dna_enricher.enrich import EnrichmentError, enrich
 from just_dna_enricher.frequencies import FrequencyEnrichmentError, enrich_frequencies
 from just_dna_enricher.gene_metrics import GeneMetricsEnrichmentError, enrich_gene_metrics
+from just_dna_enricher.upload import DEFAULT_REPO_ID
 
 
 @app.command("enrich-and-compile")
@@ -81,7 +82,7 @@ def upload_(
     repo_id: str | None = typer.Option(
         None,
         "--repo",
-        help="Target HF dataset (owner/name). Default: just-dna-seq/annotators.",
+        help=f"Target HF dataset (owner/name). Default: {DEFAULT_REPO_ID}.",
     ),
     name: str | None = typer.Option(
         None,

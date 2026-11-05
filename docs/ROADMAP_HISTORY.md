@@ -35,6 +35,63 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM384 — the Ensembl lane's repository has no public name on 0.8, and every pulled lane spells its repository twice
+
+✅ **SHIPPED 2026-11-05 on `0.8`, uncut — a minor (S130, the tail of RM372).** Owner enricher (`download.py`,
+`upload.py`), severity low. *related* RM372, RM278, RM202
+
+**Residuals** none
+
+**The class.** A registry fact restated beside the place it is defined, with nothing asserting the two agree
+(`@registry-completeness`, *derive, never restate*). Here the fact is which HuggingFace repository a lane
+lives in: written as a repo id in `upload.py`, again inside an fsspec prefix in `download.py`, and a third
+time as `CacheLane.publish_repo`, which happened to read the first. RM372 renamed the Ensembl repository by
+hand, which is the edit a pair lets go wrong; and the Ensembl lane, pulled and never published here, had
+only the private prefix, so a consumer pinning `ManifestCompilation.ensembl_reference` (`org/repo@<rev>`)
+spelled the string or stripped `datasets/` and `/data` off `download._ENSEMBL_HF_PREFIX` (S130, the
+registry's 0.8 adoption).
+
+**The instances, on `5b1b73b8`.**
+
+- `download.py:64–66, 90–91, 101–102, 110, 118, 124` — ten `_*_HF_PREFIX = "datasets/just-dna-seq/<repo>/data"`
+  literals → removed; each `ensure_*` reads `SNAPSHOT_REPO_PREFIXES["<lane>"]`, as it already read
+  `SNAPSHOT_FILE_GLOBS["<lane>"]`.
+- `download.py:161–172` — `SNAPSHOT_REPO_PREFIXES`, a hand-kept dict of those ten → a comprehension over
+  `SNAPSHOT_FILE_GLOBS`, `datasets/<repo id>/<SNAPSHOT_DATA_DIRNAME>` (the format tier's name for `data`,
+  no longer a third literal).
+- `download.py:129` — `_STRCHIVE_HF_REPO = "datasets/just-dna-seq/strchive"` → derived as
+  `datasets/<repo id>`; STRchive's payload sits at the repo root, so it has a repo id and no prefix.
+- `upload.py:114–152` — ten `DEFAULT_*_REPO_ID` literals → working aliases (P3) of the map's entries.
+- `cli/clinvar_commands.py:79`, `cli/civic_commands.py:284`, `cli/gene_reference_commands.py:85`,
+  `cli/module_commands.py:84` — `--repo` help text writing `Default: just-dna-seq/<repo>.` by hand → an
+  f-string over the alias, as `cli/alphagenome_commands.py:458` already did. Found by the walk, not by
+  the entry. The fourth is the module repo (`DEFAULT_REPO_ID`), not a lane's, and is the same restatement.
+- `upload.py:219` — `LayoutShift.repo_id`'s comment said a lane→repo map "would be a second copy of
+  `CacheLane.publish_repo`" and could not live there → points at the map.
+
+`caches.py` and `locations.py` spell no repository: every `publish_repo` reads an alias, and the pull
+record's `repo` is the derived prefix, byte-identical to before, so no cache on any machine reads as
+pulled from elsewhere.
+
+**The mechanism.** One public map, `download.SNAPSHOT_REPO_IDS` (lane → `org/repo`, eleven entries: every
+lane in `CACHE_LANES` with an `ensure`), the only place a repo id is written. In `download.py` beside
+`SNAPSHOT_REPO_PREFIXES`, where S130 asked for it; `upload.py` imports it (download imports nothing that
+reaches upload). The module repo `just-dna-seq/annotators` stays the one other literal, `DEFAULT_REPO_ID`.
+
+**The guard**, `enricher/tests/test_snapshot_repo_ids.py`, equalities over the walked map with the
+expected side spelled in the test: the map's keys equal the pulled lanes; the prefix map's keys equal the
+map's minus the root-payload lane (STRchive, named with its reason) and each prefix equals
+`f"datasets/{id}/data"`; STRchive's root equals `f"datasets/{id}"`; every non-`None` `publish_repo` equals
+its lane's entry; every lane `DEFAULT_*_REPO_ID` is a value of the map. And an AST walk over the three
+source trees refuses a repo id inside any string literal but a docstring, the map's own assignment and
+`DEFAULT_REPO_ID`'s. Shown red before the change (7 of 7, no map); mutated once each after it: a literal
+`DEFAULT_CPIC_REPO_ID` failed the walk (`upload.py:126 spells just-dna-seq/cpic`), and the CPIC lane's
+`publish_repo` pointed at the ClinPGx alias failed the publish-repo equality.
+
+**The reporter's other question.** A reproducibility pin wants the repository and a revision, the shape
+`ensembl_reference` documents; the release label (`locations.ensembl_release_label`) names which data,
+not which bytes. Recording both is a separate question this item did not open.
+
 ## RM380 — a hand-kept struct mirrored `ResolutionRow` with nothing asserting the two agree, so reverse dropped every 0.8 provenance column
 
 ✅ **SHIPPED 2026-11-05 on `0.8`, uncut — a minor (found building RM375).** Owner compiler, severity
