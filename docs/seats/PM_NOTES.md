@@ -70,6 +70,12 @@ purpose; normalization is the compiled parquet's job (RM346, 1.0).
 - **RM378 (coded errors, from S129) placed in 0.9, 2026-11-05** (f8b595d6), against triage's proposal of 0.8:
   the person's "the rest goes to 0.9", a permanent vocabulary, two open questions, and RM377 already covers
   the reporter. The person may take it into 0.8; told in the report, no desk item, since their rule decides it.
+- **RM384 (a public name for the Ensembl lane's repo, from S130) placed in 0.8, 2026-11-05** (81e7dde2), as RM372's
+  tail: RM372 is the maintainer's 0.8 item, the registry's 0.8 adoption pins the name, about 30 minutes. The line
+  against RM378: a fix that completes a decided 0.8 item goes in; a new capability goes to 0.9. If the lead
+  finds no room before the cut, it goes to 0.9.
+- **RM380–RM383** are reserved by the lead (found regenerating the examples for RM373). Asked the lead whether
+  they are 0.8, for the scope row.
 - **RM253's precedent, from just-vcf's lead (2026-11-04)**: the short-read callers they read (GATK,
   DeepVariant, DRAGEN, freeBayes, CGI) all write a repeat-length change as a left-aligned sequence indel,
   so 0.8's spelling matches. The repeat-count forms (ExpansionHunter `<STRn>` + REPCN, TRGT AL/MC,
