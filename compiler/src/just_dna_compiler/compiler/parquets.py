@@ -513,8 +513,9 @@ def withhold_reproduced_loci(
         for key, cell in zip(keys, cells, strict=True)
         if key is not None
         and cell
-        # A row's cells hold no provenance (RM375's verdict, RM267's witness, RM373's release, ...), so a
-        # locus holding any is never rebuilt from the cells (RM380). `False` is a value: `is not None`.
+        # A row's cells hold no provenance (RM375's verdict, RM267's witness, RM373's release, RM387's
+        # `source_loci`, ...), so a locus holding any is never rebuilt from the cells (RM380). `False` is
+        # a value: `is not None`.
         and not any(_locus_holds_more_than_cells(locus) for locus in cell)
         and by_key[key]
         == {

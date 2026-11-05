@@ -1353,6 +1353,17 @@ substitution); `--rederive` called the respelling a source change whenever a row
 - **Offline is `undecided`** for an indel: the reference is read through seqrepo, which has no local
   equivalent here, so an offline run never settles a respelled indel. `--rederive` online settles it.
 
+### The rsID's whole answer beside the narrowed one (0.8, RM387)
+
+The hosting filter, a disputed placement (RM267) and the pseudoautosomal choice narrow the loci written
+under an rsID's own key, while a positional row's rsID is back-filled from the unfiltered answer. So the
+forward branch records every place the links offered this run (each link's answer, RM382's set-aside ones
+included) as `source_loci` ([SCHEMAS.md](SCHEMAS.md)) wherever that holds a place the rows stand for
+nowhere; a respelled piece stands for its source locus and a Y pseudoautosomal twin for its X partner
+(`orchestration._wider_answer`). RM374's compile check reads the union, so a positional row at a sibling
+locus is one answer. A subject an ordinary run carries keeps what it recorded; `--rederive` writes the
+column, and reports no drift for it, since it is no fact.
+
 ### Which release answered — per row, and what the table may say (0.8, RM373)
 
 `source` names the link and `authority` the licensed source; until 0.8 nothing named the **release**, so

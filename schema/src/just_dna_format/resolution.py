@@ -17,6 +17,8 @@ are deliberately excluded from it (a human-filled and an Ensembl-filled table wi
 must hash equal — see `RESOLUTION_FACT_FIELDS`).
 """
 
+import re
+from collections.abc import Iterable
 from typing import ClassVar
 
 from pydantic import ConfigDict, Field, field_validator, model_validator
@@ -54,6 +56,9 @@ from just_dna_format.vrs import normalize_chrom, split_vrs_ids, validate_caid, v
 # (`@provenance-beside-a-claim-is-outside-content-identity`): it says which release of the link's source
 # answered, so two releases agreeing on a placement hash equal, and a release that moves a fact moves
 # the fact columns, which is where the signature already sees it.
+# `source_loci` (RM387) is out as a record of the question beside the answer: it names every place the
+# links offered for an rsID, of which the fact columns hold the ones the authored genotype can sit on,
+# so a run that offered more and a run that offered exactly those hash equal on the placement they chose.
 RESOLUTION_FACT_FIELDS: tuple[str, ...] = (
     "variant_key",
     "rsid",
@@ -74,6 +79,47 @@ def authored_coordinate_key(chrom: str | None, start: int | None, ref: str | Non
     (`normalize_chrom`), `ref` uppercased, an absent cell an empty segment (`coordinate_key`).
     """
     return coordinate_key(normalize_chrom(chrom), start, ref.upper() if ref else None)
+
+
+#: One `source_loci` member: a contig (no separator in it) and a 1-based position.
+_SOURCE_LOCUS = re.compile(r"([A-Za-z0-9_.]+):([0-9]+)")
+
+
+def source_loci_cell(places: Iterable[tuple[str | None, int | None]]) -> str | None:
+    """Places as `resolution.csv` `source_loci` spells them (RM387): `chrom:start`, comma-joined, sorted.
+
+    The one spelling both tiers use: the enricher writes the cell through it and the compiler reads it
+    back with `split_source_loci`. The contig is folded (`normalize_chrom`) and the order is the sort of
+    `(chrom, start)`, so one set of places is one string whatever order the links answered in. A place
+    with no contig or no start places nothing and is left out; nothing left is `None`.
+    """
+    folded = {
+        (chrom, int(start))
+        for raw, start in places
+        if start is not None and (chrom := normalize_chrom(raw)) is not None
+    }
+    return ",".join(f"{chrom}:{start}" for chrom, start in sorted(folded)) or None
+
+
+def split_source_loci(cell: str | None) -> frozenset[tuple[str, int]]:
+    """The `(chrom, start)` places a `source_loci` cell names, or an empty set for an empty cell (RM387).
+
+    Raises `ValueError` on a member that is not `chrom:start` with a non-negative integer start, which is
+    what the field validator reports at load, so a cell that loaded always parses here.
+    """
+    if not cell:
+        return frozenset()
+    out: set[tuple[str, int]] = set()
+    for member in cell.split(","):
+        match = _SOURCE_LOCUS.fullmatch(member.strip())
+        folded = normalize_chrom(match.group(1)) if match else None
+        if match is None or not folded:
+            raise ValueError(
+                f"source_loci member {member!r} is not `chrom:start` (a contig, a colon, a 1-based "
+                f"position); the cell is comma-joined places, e.g. `5:500,6:600`"
+            )
+        out.add((folded, int(match.group(2))))
+    return frozenset(out)
 
 
 class ResolutionRow(PairedFields):
@@ -345,10 +391,36 @@ class ResolutionRow(PairedFields):
         ),
     )
 
+    # ── the source's whole answer (0.8, RM387; EXCLUDED from resolution_signature) ──
+    # The rows under an rsID's own key are the loci its authored genotype can sit on (the hosting filter
+    # runs before they are written), never every locus the source placed it at; a positional row's rsID
+    # is back-filled from the unfiltered answer. A check comparing the two needs the whole set beside the
+    # narrowed one, or a sibling locus reads as a second placement (RM374's check, the 0.8 audit).
+    source_loci: str | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description=(
+            "Every place the links answered this rsID at in the run that wrote the row, as "
+            "`chrom:start` comma-joined and sorted (`5:500,6:600`), before the authored genotype chose "
+            "among them: the hosting filter, a disputed placement (RM267) and the pseudoautosomal choice "
+            "narrow what the rows place. Written on the rows under the rsID's own key, and only where "
+            "the set holds a place they stand for nowhere (a respelled piece stands for its source "
+            "locus, a Y pseudoautosomal twin for its X partner). Empty "
+            "means the rows place the whole answer, or the row predates the column (RM387); either way "
+            "the compiler reads the rows as the whole answer."
+        ),
+    )
+
     @field_validator("rsid")
     @classmethod
     def _validate_rsid(cls, v: str | None) -> str | None:
         return validate_rsid(v)
+
+    @field_validator("source_loci")
+    @classmethod
+    def _validate_source_loci(cls, v: str | None) -> str | None:
+        split_source_loci(v)
+        return v or None
 
     @field_validator("status")
     @classmethod

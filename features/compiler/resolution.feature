@@ -194,7 +194,9 @@ Feature: Resolution from the injected table
     # consumer's positional join meets one of them. One key is one answer, so an rsID with several
     # loci, or one multi-ALT locus split into pieces, under ONE key is never this finding. Where the
     # table cannot tell (no row keyed by the rsID itself, or one key repeating a `locus_index`) the
-    # check withholds rather than refuses.
+    # check withholds rather than refuses. The rsID's own key holds only the loci its genotype can sit
+    # on, so its full answer is those loci plus the `source_loci` its rows record (RM387): a positional
+    # row at a sibling locus the source offered is one answer, never this finding.
 
   # source: compiler/src/just_dna_compiler/compiler/positional.py
   # anchor: _apply_positional_resolution

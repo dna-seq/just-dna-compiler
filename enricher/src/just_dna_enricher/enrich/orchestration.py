@@ -25,11 +25,11 @@ from just_dna_format.alleles import (
 )
 from just_dna_format.base import merge_key
 from just_dna_format.normalize import now_utc_iso
-from just_dna_format.resolution import ResolutionRow
+from just_dna_format.resolution import ResolutionRow, source_loci_cell
 from just_dna_format.snapshot import release_label as snapshot_release_label
 from just_dna_format.spec import VariantRow
 from just_dna_format.vocab import ALLELE_PATTERN
-from just_dna_format.vrs import refget_accession
+from just_dna_format.vrs import normalize_chrom, par_partner, refget_accession
 
 from just_dna_enricher import clinvar
 from just_dna_enricher.civic_citations import check_evidence_status_currency, read_studies
@@ -437,6 +437,44 @@ def _authored_verdict(judged: Mapping[str, SpellingVerdict], v: Subject) -> bool
     """`left_aligned` for a row recorded with the subject's own coordinate, judged once per subject."""
     verdict = judged.get(v.variant_key)
     return None if verdict is None else verdict.verdict
+
+
+def _wider_answer(
+    offered: Iterable[Mapping[str, object]], placed: Iterable[Mapping[str, object]], genome_build: str
+) -> str | None:
+    """`source_loci` for the rows written under an rsID's key: every place offered, where that is wider.
+
+    `offered` is every locus the links answered the rsID with this run, before the hosting filter, a
+    disputed placement (RM267) and the pseudoautosomal choice; `placed` is the loci the rows written for it
+    stand for, each respelled piece's source locus included (RM270's respelling moves a start, it drops
+    nothing, and RM374 already reads a respelling apart). Compared as places with a pseudoautosomal Y read
+    as its X partner, the compiler's own fold, so a PAR twin or a respelled indel is not "wider". `None`
+    where nothing offered is missing, so a cleanly resolved rsID carries nothing new (RM387).
+    """
+    offered_places = {p for lo in offered if (p := _place_of(lo)) is not None}
+    placed_places = {p for lo in placed if (p := _place_of(lo)) is not None}
+    folded = {_par_folded(p, genome_build) for p in placed_places}
+    if not {p for p in offered_places if _par_folded(p, genome_build) not in folded}:
+        return None
+    return source_loci_cell(offered_places)
+
+
+def _place_of(locus: Mapping[str, object]) -> tuple[str, int] | None:
+    chrom, start = normalize_chrom(_text(locus.get("chrom"))), locus.get("start")
+    return None if chrom is None or start is None else (chrom, int(start))  # type: ignore[call-overload]
+
+
+def _text(value: object) -> str | None:
+    return None if value is None else str(value)
+
+
+def _par_folded(place: tuple[str, int], genome_build: str) -> tuple[str, int]:
+    """A Y pseudoautosomal place as its X partner, as `resolution._place` folds it in the compiler."""
+    if place[0] == "Y":
+        partner = par_partner(place[0], place[1], build=genome_build)
+        if partner is not None:
+            return partner
+    return place
 
 
 def _filled_pieces(
@@ -1190,6 +1228,12 @@ def _run_enrichment(
             # A locus holding an allele two authorities place as different events is not written
             # (RM267); the rest of the rsID's loci are, and `disputed` above caught the all-withheld case.
             all_loci = [lo for lo in rsid_to_loci.get(v.rsid, []) if placement.keeps(v.rsid, lo)]
+            # Everything the links offered for the rsID this run, before any of the filters below narrow
+            # it: what the rows written here record as `source_loci` when they place less (RM387).
+            offered = [
+                *rsid_to_loci.get(v.rsid, []),
+                *(lo for _, answer in rejected_answers.get(v.rsid, ()) for lo in answer),
+            ]
             loci = []
             subject = "allele" if v.origin == "haplotypes.csv" else "genotype"
             # RM381: the genotype read in its site's frame, so a padded `G/GTTT` and the per-ALT pieces the
@@ -1337,6 +1381,9 @@ def _run_enrichment(
                         for piece, aligned in pieces
                         if locus_key(piece) not in {locus_key(w) for w, _, _ in written}
                     )
+                wider = _wider_answer(
+                    offered, [lo for piece, source, _ in written for lo in (piece, source)], genome_build
+                )
                 for i, (locus, source_locus, aligned) in enumerate(written):
                     witness, verdict = placement.row_columns(v.rsid, source_locus)
                     # RM375: whether the coordinate the module authored (whole, or CPIC's half) spells
@@ -1359,6 +1406,7 @@ def _run_enrichment(
                             left_aligned=aligned,
                             authored_event=judged[0] if judged else None,
                             judged_coordinate=judged[1] if judged else None,
+                            source_loci=wider,
                             **locus,
                         )
                     )
@@ -1379,6 +1427,9 @@ def _run_enrichment(
                         source="authored",
                         status="resolved",
                         left_aligned=_authored_verdict(authored_spelling, v),
+                        source_loci=_wider_answer(
+                            offered, [{"chrom": v.chrom, "start": v.start}], genome_build
+                        ),
                     )
                 )
             elif all_loci:

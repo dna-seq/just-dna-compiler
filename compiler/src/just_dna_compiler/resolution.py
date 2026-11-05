@@ -30,7 +30,7 @@ from just_dna_format.alleles import (
 )
 from just_dna_format.base import derive_variant_key
 from just_dna_format.findings import CodedWarning
-from just_dna_format.resolution import ResolutionRow, authored_coordinate_key
+from just_dna_format.resolution import ResolutionRow, authored_coordinate_key, split_source_loci
 from just_dna_format.spec import VariantRow
 from just_dna_format.vrs import par_partner
 
@@ -1377,7 +1377,10 @@ def row_release(row: ResolutionRow) -> str | None:
 
 def _place(row: ResolutionRow, genome_build: str) -> tuple[str, int]:
     """Where a locus is, with a pseudoautosomal Y spelling read as its X partner (one place, two contigs)."""
-    chrom, start = str(row.chrom), int(row.start)  # callers pass rows with a start only
+    return _folded_place(str(row.chrom), int(row.start), genome_build)  # callers pass rows with a start only
+
+
+def _folded_place(chrom: str, start: int, genome_build: str) -> tuple[str, int]:
     if chrom == "Y":
         partner = par_partner(chrom, start, build=genome_build)
         if partner is not None:
@@ -1387,6 +1390,10 @@ def _place(row: ResolutionRow, genome_build: str) -> tuple[str, int]:
 
 def _answer_label(key: str, loci: list[ResolutionRow], recorded: bool) -> str:
     shown = ", ".join(f"{lo.chrom}:{lo.start} {lo.ref}>{lo.alts}" for lo in _sorted_loci(loci))
+    # The places the source offered beside the ones kept (RM387), which the comparison read too.
+    offered = sorted({place for lo in loci for place in split_source_loci(lo.source_loci)})
+    if offered:
+        shown += f" (the source offered {', '.join(f'{c}:{p}' for c, p in offered)})"
     if not recorded:
         return f"under {key} at {shown}"
     releases = sorted({release for lo in loci if (release := row_release(lo))})
@@ -1409,7 +1416,11 @@ def placement_disagreements(rows: list[ResolutionRow], genome_build: str) -> lis
     answer is the ordinary one-to-many case (`@membership-union`), never this finding. Two answers about
     one rsID are two KEYS whose rows carry it: the rsID's own key, which is the full answer (every locus
     the source placed it at that the authored allele can sit on), and a positional key whose rsID was
-    back-filled, which answers for the one locus its row was authored at.
+    back-filled, which answers for the one locus its row was authored at. The rsID's own key holds the
+    loci the authored genotype can sit on, while the back-fill reads the source's unfiltered answer, so the
+    full answer is those loci plus the `source_loci` its rows record: every place the links offered in the
+    run that wrote them (RM387). Read without it, a positional row at a sibling locus the hosting filter
+    left out was a second placement, and `--rederive` wrote the same table again.
 
     **The finding.** A positional answer whose locus is not among the full answer's loci: the table then
     holds one identity at two placements, which is what merge-not-clobber leaves behind when the source
@@ -1450,7 +1461,15 @@ def placement_disagreements(rows: list[ResolutionRow], genome_build: str) -> lis
         full = by_key.get(rsid)
         if full is None:
             continue
-        places = {_place(lo, genome_build) for lo in full}
+        # The source's whole answer, never the narrowed one (RM387): the rows under the rsID's key are the
+        # loci its authored genotype can sit on, and `source_loci` records what the links offered beside
+        # them, so a positional row at a sibling locus the filter left out is one answer, not two. A row
+        # with no `source_loci` (none was dropped, or it predates the column) is read as the whole answer.
+        places = {_place(lo, genome_build) for lo in full} | {
+            _folded_place(chrom, start, genome_build)
+            for lo in full
+            for chrom, start in split_source_loci(lo.source_loci)
+        }
         disagreeing = {
             key: loci
             for key, loci in sorted(by_key.items())

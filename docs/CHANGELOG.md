@@ -41,6 +41,21 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-05 — RM387: a positional row at a sibling locus of a one-to-many rsID no longer refuses a valid module (0.8, uncut)
+
+- **RM374's `rsid_placements_disagree` compares against the source's whole answer.** The rows under an
+  rsID's own key are the loci its genotype can sit on (the hosting filter runs before they are written),
+  while a positional row's rsID is back-filled from the unfiltered answer, so a positional row at the
+  sibling locus read as a second placement, `compile --strict` refused, and `--rederive` wrote the same
+  table. The rsID-keyed rows now record every place the links offered in a new derived
+  `resolution.csv` column, `source_loci` (`chrom:start`, comma-joined; written only where it is wider than
+  what the rows place, outside `resolution_signature`), and the check reads the union. A table recorded
+  before the column still fires; `enrich --rederive` writes it.
+- The parquets' `resolution_loci` struct carries `source_loci`, and `reverse` writes it back, so the
+  second lap reads the first lap's answer. `artifact.digest` moves on a recompile of a module carrying
+  the struct; `content_signature` does not.
+- New `just_dna_format.resolution.source_loci_cell` / `split_source_loci`, the one spelling both tiers use.
+
 ## 2026-11-05 — RM383: a re-derivation retires the licence row for a source no resolution row names (0.8, uncut)
 
 - **`enrich --rederive` removes a `resolution`-layer licence row whose source no committed row names**

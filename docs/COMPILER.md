@@ -1459,9 +1459,18 @@ X partner. Alleles are not compared: a stale allele **set** under one key is the
   Within 0.8 a filled coordinate is written left-aligned, so a stale answer re-filled now agrees with the
   fresh one; a true/false pair is one event spelled two ways in one release (an old snapshot's spelling
   beside the respelled fill), which `--rederive` would write again. That is the spelling question.
-- A positional row at a locus of a one-to-many rsID that the rsID's own answer dropped for its genotype is
-  **not** withheld: the table records no trace of the dropped locus, so this reads as two placements.
-  No reference example has the shape.
+
+**The full answer is the rows plus `source_loci` (RM387, 2026-11-05).** The rows under the rsID's own key
+are the loci its authored genotype can sit on, because the enricher writes them after the hosting filter,
+a disputed placement (RM267) and the pseudoautosomal choice; a positional
+row's rsID is back-filled from the source's unfiltered answer. So for an rsID the source places at two
+loci, a positional row at the sibling locus the filter left out read as a second placement, `--strict`
+refused a valid module, and `--rederive` wrote the same table again. The rsID-keyed rows now record
+every place the links offered in `source_loci` wherever that is wider than what they place, and the check
+compares against the union, with a Y pseudoautosomal place read as its X partner as before; the sentence
+then names the offered places, `(the source offered 1:1000, 1:6000)`, after the rsID's own answer. A row with no
+`source_loci` is read as the whole answer: the rows place everything offered, or the table predates the
+column, and then RM374's stale case still fires and `--rederive` is what clears a sibling.
 
 The sentence names each answer as `under <variant_key> at <chrom:start ref>alts>`, then the releases: each
 answer's `[release …]` when rows record one (`ResolutionRow.source_release`, RM373), else
