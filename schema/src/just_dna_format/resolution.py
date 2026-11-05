@@ -48,7 +48,8 @@ from just_dna_format.vrs import normalize_chrom, split_vrs_ids, validate_caid, v
 # coordinate already names; leaving them out meant adding them in 0.5 moved no signature.
 # `placement_witness`/`placement_verdict` (RM267), `left_aligned` (RM270) and `authored_event` (RM375)
 # are out as the enricher's verdicts about a placement or a spelling — a check's answer recorded on the
-# row, not the fact it was checking.
+# row, not the fact it was checking. `judged_coordinate` (RM375) is out with `authored_event`, its pair:
+# it names the authored coordinate that verdict judged, not a fact about the placement.
 # `source_release` (RM373) is out as provenance beside the claim
 # (`@provenance-beside-a-claim-is-outside-content-identity`): it says which release of the link's source
 # answered, so two releases agreeing on a placement hash equal, and a release that moves a fact moves
