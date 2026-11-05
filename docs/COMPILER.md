@@ -1129,7 +1129,11 @@ byte-identical `weights.parquet` (hence `artifact.digest`). The one order-sensit
 expansion — is pinned by sorting on `(locus_index, chrom, start, ref)`. **Since 0.8 it holds when the
 table records no `vrs_id`**: path 1 carries the ids `resolution.csv` records onto the parquets (RM270),
 and path 2 has no table to read them from, so with ids recorded the two `weights.parquet` differ in
-`vrs_id`/`vrs_spec` and nowhere else (`test_offline_enrich_then_compile_matches_duckdb_digest`).
+`vrs_id`/`vrs_spec` and nowhere else. **Since RM380 it holds for the facts, not the bytes**: a key whose
+locus holds a value no row cell rebuilds keeps its `resolution_loci`, and every enricher-written row records
+`authority`, so path 1 carries loci path 2 has no table to fill. The two artifacts then agree on every file
+but `weights.parquet`, and that file differs in `resolution_loci` (and, with ids recorded,
+`vrs_id`/`vrs_spec`) alone (`test_offline_enrich_then_compile_matches_duckdb_digest`).
 
 ## Resolution
 

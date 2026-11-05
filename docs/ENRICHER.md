@@ -6162,7 +6162,7 @@ place where the code and a stated rule disagree, and these are places where noth
 
 `uv run pytest enricher/tests`. All network-free: the cache side uses a tiny synthetic
 `ensembl_variations` parquet; the live-Ensembl side uses an `httpx.MockTransport`; upload is tested
-against a fake `HfApi`. Coverage includes offline enrich → compile matching the DuckDB digest, `--offline`
+against a fake `HfApi`. Coverage includes offline enrich → compile matching the DuckDB path's facts (every file but the loci RM380 carries), `--offline`
 making zero network calls, the V2 503 → V1 REST fallback, tenacity retrying a transient error, strict
 failure, one-to-many expansion, and the upload plan/token paths. Integration tests that need a real cache
 are `@integration` (skipped without `JUST_DNA_ENSEMBL_CACHE`).
