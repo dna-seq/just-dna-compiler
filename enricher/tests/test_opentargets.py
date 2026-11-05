@@ -10,7 +10,6 @@ run time from the slice's own parquet, never copied from it.
 
 import csv
 import json
-import os
 import shutil
 from pathlib import Path
 
@@ -621,7 +620,7 @@ def test_rs646776_gets_rows_for_every_set_it_is_a_member_of(tmp_path: Path) -> N
     assert {r.study_locus_id for r in rows if r.lead_variant_id == variant_id} == led & scored
 
 
-@pytest.mark.skipif(os.environ.get("JUST_DNA_NETWORK_TESTS") != "1", reason="network test (opt-in)")
+@pytest.mark.network
 def test_the_pinned_release_lists_its_five_datasets(tmp_path: Path) -> None:
     """The live leg: the FTP's https listing names parquet parts for every dataset the builder reads."""
     for dataset in OPENTARGETS_DATASETS:

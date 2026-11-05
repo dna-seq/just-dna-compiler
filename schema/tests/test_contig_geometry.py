@@ -12,7 +12,6 @@ about a claim. Adding a second build's *identity* is RM15, and `refget_accession
 """
 
 import json
-import os
 import urllib.request
 
 import pytest
@@ -187,6 +186,7 @@ class TestChromRejectionNamesTheBuild:
 
 
 @pytest.mark.integration
+@pytest.mark.network
 def test_the_contig_tables_match_the_two_live_ensembl_services() -> None:
     """Re-derive both length tables and both difference sets from `/info/assembly/homo_sapiens`.
 
@@ -199,8 +199,6 @@ def test_the_contig_tables_match_the_two_live_ensembl_services() -> None:
 
     Opt-in: two live requests.
     """
-    if not os.getenv("JUST_DNA_NETWORK_TESTS"):
-        pytest.skip("reads two live Ensembl services — set JUST_DNA_NETWORK_TESTS=1 to run")
 
     endpoints = {
         "GRCh38": "https://rest.ensembl.org",

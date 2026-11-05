@@ -12,7 +12,6 @@ overwritten in place), and a mock would hand back whatever the test said.
 import hashlib
 import http.server
 import json
-import os
 import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -496,9 +495,7 @@ def test_the_provisioned_snapshot_places_the_two_known_insertions() -> None:
     assert witness.lookup("rs8176719") == []
 
 
-@pytest.mark.skipif(
-    not os.getenv("JUST_DNA_NETWORK_TESTS"), reason="reads the live source — set JUST_DNA_NETWORK_TESTS=1"
-)
+@pytest.mark.network
 def test_the_live_manifest_still_reads_and_names_a_release() -> None:
     client = ClinVarGkmClient()
     manifest = client.parquet_manifest()

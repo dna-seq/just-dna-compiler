@@ -16,6 +16,7 @@ import ast
 import asyncio
 import contextlib
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -225,3 +226,33 @@ def test_the_format_and_compiler_tiers_import_no_transport() -> None:
     """Principle 2, as an import walk: the fence has nothing to cover there because nothing is there."""
     assert _transports_imported_by(_ROOT / "schema" / "src") == set()
     assert _transports_imported_by(_ROOT / "compiler" / "src") == set()
+
+
+def test_the_opt_in_is_exactly_one(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The fence's `network_opted_in` reads `1` as yes and nothing else; a truthiness check let `0` in."""
+    fence = next(p for p in request.config.pluginmanager.get_plugins() if hasattr(p, "network_opted_in"))
+    for value, opted_in in (("1", True), ("0", False), ("true", False), ("", False)):
+        monkeypatch.setenv("JUST_DNA_NETWORK_TESTS", value)
+        assert fence.network_opted_in() is opted_in, value
+
+
+#: A read of the opt-in in a test file: the variable's name, read off the environment.
+_OPT_IN_READ = re.compile(
+    r'(?:getenv|environ\.get|environ\[)\(?\s*"JUST_DNA_NETWORK_TESTS"\s*\)?\]?(?P<rest>[^\n]{0,12})'
+)
+
+
+def test_every_live_test_skips_on_the_fences_reading_of_the_opt_in() -> None:
+    """A live test carries `@pytest.mark.network`, whose skip asks the fence's own `network_opted_in`.
+    A test reading the variable itself must compare it with `"1"` (the two that also need an API key),
+    never test it for truth: a file that did read `JUST_DNA_NETWORK_TESTS=0` as yes and ran its live
+    tests into a fence that refuses them (RM391)."""
+    truthy = [
+        f"{path.relative_to(_ROOT)}:{text[: m.start()].count(chr(10)) + 1}"
+        for tree in ("schema/tests", "compiler/tests", "enricher/tests")
+        for path in sorted((_ROOT / tree).rglob("*.py"))
+        for text in [path.read_text(encoding="utf-8")]
+        for m in _OPT_IN_READ.finditer(text)
+        if not m.group("rest").lstrip().startswith('== "1"')
+    ]
+    assert truthy == []

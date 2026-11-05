@@ -12,7 +12,6 @@ UGT1A1 (`C>CAT`, `CAT>C`, `C>CATAT` at `2:233760233`) are domain constants and a
 """
 
 import json
-import os
 from pathlib import Path
 
 import pytest
@@ -464,7 +463,7 @@ def test_the_skipped_spellings_shrink_to_what_the_decision_keeps(tmp_path: Path)
             assert "bare `DEL`" in line or "alternatives" in line, line
 
 
-@pytest.mark.skipif(os.environ.get("JUST_DNA_NETWORK_TESTS") != "1", reason="network test (opt-in)")
+@pytest.mark.network
 @_needs_snapshot
 def test_the_live_reference_spells_star28_as_the_decision_says(tmp_path: Path) -> None:
     spec, _ = _draft(tmp_path, "UGT1A1", sequences=SequenceProxy())

@@ -12,7 +12,6 @@ sleeper, so nothing waits for real and every wait is observed.
 
 import email.utils
 import inspect
-import os
 import time
 
 import httpx
@@ -165,7 +164,7 @@ def test_a_wait_past_the_ceiling_is_not_slept_and_nothing_is_asked_until_it_pass
     assert requests == ["rs1", "rs3"]
 
 
-@pytest.mark.skipif(os.environ.get("JUST_DNA_NETWORK_TESTS") != "1", reason="set JUST_DNA_NETWORK_TESTS=1")
+@pytest.mark.network
 def test_live_rest_is_asked_through_its_gate() -> None:
     resolver = EnsemblResolver()
     try:

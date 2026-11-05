@@ -18,7 +18,6 @@ Every response here is **recorded from the live services** on 2026-11-04, never 
 """
 
 import json
-import os
 from pathlib import Path
 
 import httpx
@@ -486,10 +485,7 @@ def test_offline_asks_nothing_and_says_offline(tmp_path: Path) -> None:
 # ── live (opt-in) ───────────────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.skipif(
-    not os.environ.get("JUST_DNA_NETWORK_TESTS"),
-    reason="set JUST_DNA_NETWORK_TESTS=1 to run live literature probes",
-)
+@pytest.mark.network
 def test_live_a_biorxiv_preprint_is_checked_and_its_quote_found(tmp_path: Path) -> None:
     """The recordings above against the live services, including the undocumented `fulltextRepo`
     route, which is the one most likely to drift."""

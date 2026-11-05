@@ -13,7 +13,6 @@ locus, so the provider withholds it. Neither number is typed into an assertion.
 
 import csv
 import json
-import os
 from pathlib import Path
 
 import pytest
@@ -506,9 +505,7 @@ def test_a_fractional_ref_copies_is_never_rounded_into_a_cell(
 # ── live ────────────────────────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.skipif(
-    not os.getenv("JUST_DNA_NETWORK_TESTS"), reason="set JUST_DNA_NETWORK_TESTS=1 to hit the network"
-)
+@pytest.mark.network
 def test_the_whole_published_catalogue_drafts_without_losing_a_locus(tmp_path: Path) -> None:
     """82 loci through the real provider: every one drafted or counted, and no band cell written."""
     from just_dna_enricher.strchive_build import build_strchive_snapshot

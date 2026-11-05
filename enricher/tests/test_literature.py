@@ -647,10 +647,7 @@ def test_one_study_row_citing_several_pmids_fans_out(tmp_path: Path) -> None:
 # ── live probes (opt-in) ────────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.skipif(
-    not __import__("os").environ.get("JUST_DNA_NETWORK_TESTS"),
-    reason="set JUST_DNA_NETWORK_TESTS=1 to run live literature probes",
-)
+@pytest.mark.network
 def test_live_services_still_behave_as_recorded() -> None:
     """Guards the recordings: if PubMed or Europe PMC change shape, this fails before the unit tests
     start passing against a fiction."""

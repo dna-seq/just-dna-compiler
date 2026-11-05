@@ -19,7 +19,6 @@ from __future__ import annotations
 import csv
 import gzip
 import json
-import os
 from pathlib import Path
 
 import httpx
@@ -602,7 +601,7 @@ def test_there_is_no_publish_and_no_use_flag() -> None:
 # ── the live source (opt-in) ────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.skipif(not os.getenv("JUST_DNA_NETWORK_TESTS"), reason="set JUST_DNA_NETWORK_TESTS=1 to run")
+@pytest.mark.network
 def test_current_discovers_a_version_that_resolves_to_a_versioned_directory() -> None:
     """`current/` is read to discover, never to download from.
 

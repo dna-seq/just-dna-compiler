@@ -85,6 +85,15 @@ NETWORK_OPT_IN = "JUST_DNA_NETWORK_TESTS"
 NETWORK_GUARD_LOG = "JUST_DNA_NETWORK_GUARD_LOG"
 
 
+def network_opted_in() -> bool:
+    """The opt-in, read one way everywhere: exactly `1`. `JUST_DNA_NETWORK_TESTS=0` or `=false` opts
+    nobody in, where a truthiness check read either as yes and let a live test run unfenced (RM391).
+
+    The fence asks it, and so does the `network` marker every live test carries, so a test cannot skip
+    on a different reading from the one the fence refuses on."""
+    return os.environ.get(NETWORK_OPT_IN) == "1"
+
+
 class NetworkReachedInTests(RuntimeError):
     """A test asked a host that is not this machine without `JUST_DNA_NETWORK_TESTS=1`."""
 
@@ -126,7 +135,7 @@ def _is_local(host: object) -> bool:
 
 def _guard(host: object, via: str) -> None:
     """Refuse `host` unless the opt-in is set or the host is this machine; record it inside a test."""
-    if os.environ.get(NETWORK_OPT_IN) == "1" or _is_local(host):
+    if network_opted_in() or _is_local(host):
         return
     if isinstance(host, bytes):  # asyncio resolves through `getaddrinfo(b"host", ...)`
         host = host.decode("idna")
@@ -225,6 +234,18 @@ class NetworkFence:
         taken = [entry for entry in _REACHES if test is None or entry[0] == test]
         _REACHES[:] = [entry for entry in _REACHES if entry not in taken]
         return [reach for _test, reach in taken]
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line(
+        "markers", f"network: a live test; skipped unless {NETWORK_OPT_IN}=1 (`network_opted_in`, RM391)"
+    )
+
+
+def pytest_runtest_setup(item: pytest.Item) -> None:
+    """Skip a `network`-marked test unless the opt-in is set, read by the fence's own `network_opted_in`."""
+    if item.get_closest_marker("network") is not None and not network_opted_in():
+        pytest.skip(f"a live test: set {NETWORK_OPT_IN}=1 to run it")
 
 
 @pytest.fixture

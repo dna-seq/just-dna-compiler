@@ -6,7 +6,6 @@ rule changes at), and reports an already-recorded id stated under another versio
 `vrs_version_differs` — never re-minting over it and never calling it a mismatch.
 """
 
-import os
 from pathlib import Path
 
 import ga4gh.vrs
@@ -79,6 +78,7 @@ def test_a_table_written_without_the_column_loads_as_unstated(tmp_path: Path) ->
 
 
 @pytest.mark.integration
+@pytest.mark.network
 def test_the_pinned_insertion_mints_its_recorded_id() -> None:
     """`rs72613567` (`4-87310240-T-TA`), the ClinVar-GKM id, under VRS 2.0's repeat-unit rule.
 
@@ -86,8 +86,6 @@ def test_the_pinned_insertion_mints_its_recorded_id() -> None:
     repeat is where VRS 2.1 picks a different repeat-unit factor (vrs-python #637, #665), so this is
     the test that turns red when a library upgrade changes the rule.
     """
-    if os.getenv("JUST_DNA_NETWORK_TESTS") != "1":
-        pytest.skip("needs the live sequence service — set JUST_DNA_NETWORK_TESTS=1 to run")
     row = ResolutionRow(variant_key="rs72613567", chrom="4", start=87310240, ref="T", alts="TA")
     result = mint_resolution_rows([row], minter=VrsMinter())
     assert result.minted_normalized == 1

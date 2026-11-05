@@ -19,7 +19,6 @@ rs646776, proxy rs4970836, the snapshot rows as the provisioned Ensembl cache ca
 """
 
 import csv
-import os
 from collections.abc import Callable
 from pathlib import Path
 
@@ -350,9 +349,7 @@ def test_the_status_vocabulary_is_the_arms_the_pass_can_reach() -> None:
         LdPairRow(proxy_rsid="rs1", variant_key="rs2", status="resolved", r2=0.5)
 
 
-@pytest.mark.skipif(
-    not os.getenv("JUST_DNA_NETWORK_TESTS"), reason="set JUST_DNA_NETWORK_TESTS=1 to hit Ensembl"
-)
+@pytest.mark.network
 def test_live_ensembl_answers_the_longevitymap_pair_in_eur(tmp_path: Path) -> None:
     """rs646776 / rs4970836 in EUR, asked of the live service. The value is release-specific, so the
     assertion is the shape: resolved, high LD, the population spelled, the release recorded."""

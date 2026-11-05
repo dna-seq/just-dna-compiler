@@ -24,7 +24,6 @@ red test. The reference modules are copied into `tmp_path` first — they are cl
 
 import csv
 import json
-import os
 import shutil
 import zipfile
 from pathlib import Path
@@ -708,14 +707,13 @@ def test_the_authored_action_vocabulary_is_the_one_the_classifier_accepts() -> N
         classify_labels("maybe", [])
 
 
+@pytest.mark.network
 def test_the_live_snapshot_still_answers_the_corpus(tmp_path: Path) -> None:
     """Opt-in (`JUST_DNA_NETWORK_TESTS=1`): the whole file, against every corpus module.
 
     Relationships rather than the day's numbers — the live archive must reach at least what the slice
     reaches, and must state no level this release cannot place.
     """
-    if not os.getenv("JUST_DNA_NETWORK_TESTS"):
-        pytest.skip("network test; set JUST_DNA_NETWORK_TESTS=1 to run")
 
     archive, digest = download_drug_labels_zip(tmp_path / "drugLabels.zip")
     built = build_drug_label_snapshot(archive, tmp_path / "snap", source_sha256=digest)

@@ -438,10 +438,7 @@ def test_a_clean_module_reports_clean() -> None:
 # ── live probes (opt-in) ────────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.skipif(
-    not __import__("os").environ.get("JUST_DNA_NETWORK_TESTS"),
-    reason="set JUST_DNA_NETWORK_TESTS=1 to run live identifier probes",
-)
+@pytest.mark.network
 def test_live_registries_still_behave_as_recorded() -> None:
     """Guards the recordings — including the indistinguishability finding, which is the one most
     likely to be silently invalidated by a dbSNP release."""

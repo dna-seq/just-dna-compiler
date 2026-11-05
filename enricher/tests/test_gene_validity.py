@@ -7,7 +7,6 @@ naive reader, and a tidy CSV would prove nothing about the files actually read. 
 transcribed from the 2026-08-13 downloads.
 """
 
-import os
 from pathlib import Path
 
 import httpx
@@ -344,7 +343,7 @@ def test_an_unknown_submitter_refuses_and_names_the_ones_it_has(tmp_path: Path) 
         enrich_gene_validity(spec, source="hpo", export_text=_CLINGEN_CSV)
 
 
-@pytest.mark.skipif(os.environ.get("JUST_DNA_NETWORK_TESTS") != "1", reason="set JUST_DNA_NETWORK_TESTS=1")
+@pytest.mark.network
 @pytest.mark.parametrize("url", [DEFAULT_CLINGEN_VALIDITY_URL, DEFAULT_GENCC_URL], ids=["clingen", "gencc"])
 def test_each_default_download_answers_where_it_is_named_not_through_a_redirect(url: str) -> None:
     """A default URL that answers 301 is a surface the source moved away from: the download still works

@@ -3454,6 +3454,10 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   an incidental pass: `verify_ref` (seqrepo) and `verify_rsids` (eutils) are on by default, and
   `enrich()` has no flag for its live-Ensembl link, so a test meaning "no network" passes
   `offline=True`, and a test about one pass turns the others off or injects their clients.
+  **A live test carries `@pytest.mark.network`** (the root conftest's marker), whose skip asks the
+  fence's own `network_opted_in`: exactly `1`. Most live tests had tested the variable for truth,
+  so `JUST_DNA_NETWORK_TESTS=0` ran them into a fence that refused them; a walk over the test trees
+  (`test_every_live_test_skips_on_the_fences_reading_of_the_opt_in`) now refuses a truthy read.
 
 - `@flag-means-same` — **A flag must mean the same thing in every function that takes one (RM39).** `enrich_dosage_sensitivity`
   was the only pass without `offline`, so a caller running the family under one switch had to know, out

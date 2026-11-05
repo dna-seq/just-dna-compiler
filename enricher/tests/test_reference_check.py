@@ -380,12 +380,9 @@ def test_verify_ref_can_be_turned_off(tmp_path: Path, cache: Path, monkeypatch: 
 
 
 @pytest.mark.integration
+@pytest.mark.network
 def test_against_the_real_reference_sequence() -> None:
     """The unit tests above trust `_TRUE_REF`; this one earns it from the live sequence service."""
-    import os
-
-    if not os.getenv("JUST_DNA_NETWORK_TESTS"):
-        pytest.skip("reads the live sequence service — set JUST_DNA_NETWORK_TESTS=1 to run")
 
     assert verify_reference_alleles([_row(_TRUE_REF)]).mismatches == []
     (finding,) = verify_reference_alleles([_row("C")]).mismatches

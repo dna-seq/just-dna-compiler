@@ -5,7 +5,6 @@ cross-examines comes back `applied=False` with a reason, and a check that could 
 `unchecked` rather than `absent` (`None` is not `False`).
 """
 
-import os
 from pathlib import Path
 
 import polars as pl
@@ -929,10 +928,7 @@ def test_a_gnomad_outage_still_reports_rather_than_raises(tmp_path: Path) -> Non
     assert hint.populations == []
 
 
-_NETWORK = pytest.mark.skipif(
-    not os.environ.get("JUST_DNA_NETWORK_TESTS"),
-    reason="set JUST_DNA_NETWORK_TESTS=1 to run live Europe PMC / PubMed / Crossref probes",
-)
+_NETWORK = pytest.mark.network
 
 
 @_NETWORK

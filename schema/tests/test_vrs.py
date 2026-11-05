@@ -241,6 +241,7 @@ def test_stdlib_agrees_with_the_reference_library() -> None:
 
 
 @pytest.mark.integration
+@pytest.mark.network
 def test_refget_table_matches_the_public_seqrepo() -> None:
     """Re-derive every accession from seqrepo's REST aliases.
 
@@ -249,11 +250,7 @@ def test_refget_table_matches_the_public_seqrepo() -> None:
     makes 25 live requests, so an ordinary offline run skips it.
     """
     import json
-    import os
     import urllib.request
-
-    if not os.getenv("JUST_DNA_NETWORK_TESTS"):
-        pytest.skip("makes 25 live seqrepo requests — set JUST_DNA_NETWORK_TESTS=1 to run")
 
     base = "https://services.genomicmedlab.org/seqrepo/1/metadata/GRCh38:"
     for chrom, accession in sorted(REFGET_GRCh38.items()):

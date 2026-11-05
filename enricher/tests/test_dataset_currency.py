@@ -13,7 +13,6 @@ test in this tier.
 from __future__ import annotations
 
 import gzip
-import os
 from collections.abc import Callable
 
 import httpx
@@ -371,10 +370,7 @@ def test_the_unavailability_type_is_a_subclass_so_an_existing_handler_keeps_firi
     assert issubclass(ReleaseUnavailable, ReleaseProbeError)
 
 
-@pytest.mark.skipif(
-    os.environ.get("JUST_DNA_NETWORK_TESTS") != "1",
-    reason="network tests are opt-in (JUST_DNA_NETWORK_TESTS=1)",
-)
+@pytest.mark.network
 def test_ncbi_states_a_release_the_probe_can_read() -> None:
     """The one live leg: the header really is where NCBI states the date, and it is in reach."""
     client = ClinVarReleaseClient()

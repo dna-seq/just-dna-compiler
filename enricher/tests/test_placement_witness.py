@@ -19,7 +19,6 @@ first test proves the windows: the two RM270 alleles mint the ids RM270 and Clin
 import gzip
 import hashlib
 import json
-import os
 from pathlib import Path
 
 import httpx
@@ -774,7 +773,7 @@ def test_offline_asks_rest_nothing(
     assert result.placement is not None and result.placement.not_asked == []
 
 
-@pytest.mark.skipif(os.environ.get("JUST_DNA_NETWORK_TESTS") != "1", reason="set JUST_DNA_NETWORK_TESTS=1")
+@pytest.mark.network
 def test_live_rest_places_s117_as_dbsnp_does() -> None:
     """The live rung, unmocked: REST's `-/C` anchors on GRCh38's own base to ClinVar/dbSNP's spelling,
     which the snapshot's `9:133257520 G>GC` is not."""

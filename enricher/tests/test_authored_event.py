@@ -18,7 +18,6 @@ import ast
 import csv
 import io
 import json
-import os
 import re
 from pathlib import Path
 
@@ -446,7 +445,7 @@ def test_the_pair_check_reads_the_judge(tmp_path: Path) -> None:
     assert (blind.subjects, blind.disagreements, blind.undecided) == (0, [], [RSID])
 
 
-@pytest.mark.skipif(os.environ.get("JUST_DNA_NETWORK_TESTS") != "1", reason="network test (opt-in)")
+@pytest.mark.network
 def test_the_cpic_row_against_seqrepo(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_ambient_caches: Path
 ) -> None:

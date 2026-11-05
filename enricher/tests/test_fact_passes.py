@@ -738,6 +738,7 @@ def test_the_symbolic_reason_outranks_the_build_it_was_authored_on() -> None:
 
 
 @pytest.mark.integration
+@pytest.mark.network
 def test_indel_normalization_is_representation_independent() -> None:
     """Two equivalent spellings of one insertion must mint the same id.
 
@@ -745,10 +746,6 @@ def test_indel_normalization_is_representation_independent() -> None:
     chr1:55039968 the reference has a `CC` run, so inserting a `C` anchored on either base of the run
     is the same biological event written two ways. Equal ids prove justification really ran.
     """
-    import os
-
-    if not os.getenv("JUST_DNA_NETWORK_TESTS"):
-        pytest.skip("needs the live sequence service — set JUST_DNA_NETWORK_TESTS=1 to run")
 
     minter = VrsMinter()
     left, how_left = minter.mint("1", 55039968, "C", "CC")
