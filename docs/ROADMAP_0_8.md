@@ -16,9 +16,10 @@ Every item is additive under Principles 3/4/8, so each is legal in a minor. Inde
 | Built on the `0.8` branch, uncut | PT1's RM241, RM258, RM263, RM272, RM275, RM278, RM283, RM288, RM300, RM308, RM313; earlier RM256, RM257, RM259, RM260, RM262 and RM264's docs half | `proposals/PROPOSAL_0_8_PT1.md` and ROADMAP_HISTORY on the `0.8` branch | done (their entries are in ROADMAP_HISTORY since the 2026-11-04 sync) |
 | The indel-placement fixes | [RM304](ROADMAP_HISTORY.md#rm304--a-vrs_id-does-not-say-which-vrs-minted-it-and-vrs-21-moves-some-insertion-ids) first, then [RM267](ROADMAP_HISTORY.md#rm267--the-ensembl-snapshot-anchors-a-class-of-insertions-one-base-early-and-resolutioncsv-serves-them-as-a-different-event), [RM270](ROADMAP_HISTORY.md#rm270--an-indels-artifact-key-is-its-sources-spelling-a-left-aligned-vcf-misses-a-respelled-row-and-the-spelling-independent-id-the-enricher-mints-never-reaches-the-artifact), [RM292](ROADMAP_HISTORY.md#rm292--a-verification-check-does-not-say-what-it-checked-against-so-a-check-that-witnesses-itself-reads-as-verified), [RM305](ROADMAP_HISTORY.md#rm305--clinvar-gkms-allele-table-is-an-offline-independent-witness-for-where-an-indel-sits-and-nothing-reads-it) | [ROADMAP_HISTORY.md](ROADMAP_HISTORY.md) | all five shipped on `0.8` (2026-11-04) |
 | The lead's ready minors (2026-11-04) | RM337 (a warning naming each `logs/` file left behind), RM342 (the toolchain in the manifest, with the polars 2 lock) | their entries are in ROADMAP_HISTORY | both built on `0.8` (2026-11-04) |
-| Added by the maintainer (2026-11-04) | [RM372](ROADMAP_HISTORY.md#rm372--the-ensembl-snapshot-moved-to-a-new-hugging-face-repo-and-a-warm-cache-never-migrates) (the Ensembl snapshot moves to its new Hugging Face repo) | ROADMAP_HISTORY | shipped 2026-11-04 on `0.8` |
+| Added by the maintainer (2026-11-04) | [RM372](ROADMAP_HISTORY.md#rm372--the-ensembl-snapshot-moved-to-a-new-hugging-face-repo-and-a-warm-cache-never-migrates) (the Ensembl snapshot moves to its new Hugging Face repo), and RM384, its tail placed by the pm on 2026-11-05 (a public name for the moved lane) | this file | decided, for the lead |
 | The pre-cut audit, round 1 (2026-11-04) | RM361–RM370, one item per class of error the audit found; and RM267's REST witness (Ensembl REST as the placement's third, online-only witness, paced under its budget) | ROADMAP_HISTORY on the `0.8` branch | all shipped on `0.8` (2026-11-04) |
-| Added by the maintainer (2026-11-04, the interview on RM372's migration probe) | RM373 (each resolution row names the release that answered it, and the `SourceRow` its dataset), RM374 (one rsID with two placements warns, and is refused under strict), RM375 (the enricher judges whether two spellings are one event, and compile trusts that answer), RM376; and every example's `resolution.csv` regenerated against the new snapshot | ROADMAP_HISTORY on the `0.8` branch | RM373, RM374 and RM375 merged into `0.8` (2026-11-05); RM376 closed as not a defect, records only; the examples' regeneration is next |
+| The pre-cut audit, round 2 (2026-11-05), sized by the pm at the maintainer's request ("what really blocks the release") | **Blocks the cut:** RM387 (a hosting-narrowed rsID answer is compared as if it were the source's whole answer, so strict refuses a valid module whose rsID the source places at two loci; RM374's new check, and `--rederive` writes the same shape, so the author has no remedy) and RM389 (reverse empties a legal `vrs_spec` cell, a P7 loss, because the reproduced-locus check compares fewer columns than its own registry rebuilds; from RM364). Both are 0.8's own regressions, never in a release. **In only if built and cheap to merge:** RM361's amendment (a retired endpoint recorded as an outage in more lanes; merged whole), RM391 (the test network fence covers only the Hugging Face hub; 31 tests reach live services), RM392 (prose counts drifting from the table beside them). **Built, so in (the maintainer: "defer unbuilt items"):** RM386 (a snapshot publish not pinned to its bytes or revision; rare, since it needs a concurrent writer). **Parked** until a real run meets them (the maintainer's rule, 2026-11-05): RM388 (placement readers that skip the shared build and not-found filter: only a hand-written or multi-build table reaches them), RM390 (the enricher does not warn about what compile will refuse; compile still refuses correctly) | ROADMAP_HISTORY on the `0.8` branch; RM386 below; RM388, RM390 parked in ROADMAP.md | RM387, RM389 building; RM361's amendment, RM386, RM391 and RM392 built |
+| Added by the maintainer (2026-11-04, the interview on RM372's migration probe) | RM373 (each resolution row names the release that answered it, and the `SourceRow` its dataset), RM374 (one rsID with two placements warns, and is refused under strict), RM375 (the enricher judges whether two spellings are one event, and compile trusts that answer), RM376; and every example's `resolution.csv` regenerated against the new snapshot. Found while building and regenerating these (the lead, 2026-11-05): RM380 (reverse carries every `resolution.csv` column), RM381 (each ALT of the new snapshot's multi-ALT indels trimmed on its own), RM382 (an answer the hosting filter rejects no longer ends the chain; reverses S85's "the row stays" for an rsID no link could host, by the maintainer's word), RM383 (a rederive drops a licence row no row names) | ROADMAP_HISTORY on the `0.8` branch | RM374 built; RM376 closed as not a defect, records only; RM373 and RM375 building; RM380 merged; RM381–RM383 built, merging next |
 | Chosen earlier | [RM303](ROADMAP_HISTORY.md#rm303--the-snapshot-layout-is-a-contract-with-six-parties-and-no-model-so-it-belongs-in-just-dna-format) (the snapshot layout as a model), [RM253](ROADMAP_HISTORY.md#rm253--a-repeat-count-star-allele-ugt1a1-28--ta8-has-no-home-a-diplotype-can-name-and-the-cpic-drafter-translates-none-of-cpics-notation) (a repeat-count star allele) | ROADMAP_HISTORY | both shipped 2026-11-04 on `0.8` |
 | longevitymap v2 | RM28's combination half, RM322–RM336 ([the group](#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03)), and [RM236](ROADMAP_HISTORY.md#rm236--consequence-and-impact-are-planned-axes-with-no-slot-and-an-acmg-engine-reads-both-as-primary-inputs), [RM239](ROADMAP_HISTORY.md#rm239--a-fine-mapping-posterior-has-no-column-and-gwas_effectscsv-already-has-its-key) as inputs to RM333's confidence labels | this file and [ROADMAP.md](ROADMAP.md) | design first; RM323 decides before RM324, RM326 and RM329 |
 
@@ -502,3 +503,53 @@ remaining class gets the same treatment — a plain column, on demand, one at a 
   life; it stays that way, here.
 
 Neither is built until a real module needs it.
+
+## RM384 — the Ensembl lane's repository has no public name on 0.8, and every pulled lane spells its repository twice
+
+**0.8, placed 2026-11-05 by the pm**, as the tail of RM372, which the maintainer added to 0.8: RM372 moved the Ensembl lane, and this gives the moved lane a public name the registry's 0.8 adoption can pin. About 30 minutes, near free under P9. If the lead finds it does not fit before the cut, it goes to 0.9 and the registry keeps its spelled string and drift test meanwhile.
+
+**Severity** low · **Status** open — **a minor, 0.8** (placed by the pm on 2026-11-05; proposed for 0.8 by triage: the registry's 0.8
+adoption pins it, and about 30 minutes on the `0.8` branch) · **Owner** enricher
+(`upload.py`, `download.py`) · **Motivating case** S130 in CONSUMER_SUGGESTIONS_HISTORY.md (just-dna-registry's
+liaison seat, 2026-11-05) · *related* RM372, RM278, RM202
+
+**The gap, read on `origin/0.8` at `5b1b73b8`.** Every lane this tier publishes has a public
+`DEFAULT_*_REPO_ID` in `upload.py`. The Ensembl lane is pulled and never published here (prepare-annotations
+builds it), so it has none: its repository is spelled once, in the private
+`download._ENSEMBL_HF_PREFIX = "datasets/just-dna-seq/ensembl_variations_split/data"`, and in the public
+`SNAPSHOT_REPO_PREFIXES["ensembl"]` (RM372) only as that fsspec prefix. A consumer pinning
+`ManifestCompilation.ensembl_reference`, whose description gives the shape `org/repo@<rev>`, either spells the
+string or strips `datasets/` and `/data` off a private one. The registry's 0.8 pre-build does the first, with a
+test reading the second to catch drift.
+
+**The same shape for the other nine.** Each pulled lane's repository is written twice, as a repo id in
+`upload.py` and again inside its prefix in `download.py`, and nothing ties the pair; `test_ensembl_split_release.py`
+asserts the prefix map's keys equal the globs', not that each prefix names its lane's repo. The rename RM372
+made by hand is the one a pair lets go wrong (`@registry-completeness`, *derive, never restate*).
+
+**What it would be.** One public map, lane → repo id, holding the Ensembl repo with the rest, and every
+`_*_HF_PREFIX` derived from it as `datasets/<repo id>/data`; the `DEFAULT_*_REPO_ID` names stay as working
+aliases (P3). The reporter's candidate (b), which also answers (a). A test asserts each prefix equals its
+derivation, over the walked map.
+
+**Sizing.** A new public name in the enricher is new surface, and the lane it names exists only on `0.8`, so
+`main` has nothing to fix: a minor. P9 prices it near free (no authored or published field moves).
+
+**The reporter's other question.** A reproducibility pin wants the repository *and* a revision, which is the
+shape `ensembl_reference` documents; the release label (`locations.ensembl_release_label`) names which data,
+not which bytes, so it is the wrong half to pin alone. Recording both is a separate question this item does
+not open.
+
+**Residuals** none yet.
+
+## RM386 — a snapshot publish is not tied to the bytes or the revision it sends
+
+**0.8, the maintainer (2026-11-05)**: "if branch is built, what's the sense to defer then? Defer unbuilt items." It overrides the pm's first sizing the same day (0.9, as "purely theoretical": a concurrent writer, snapshots published about yearly). **Built** on `build/RM386` at bf234700; the lead merges it into 0.8. **Shipped without a live rehearsal** (the maintainer, 2026-11-05): it replaces working publish code with code no run has sent to the live Hugging Face hub, since the suite runs offline. No practice publish before the cut. The next real snapshot publish, likely a year away, is its first live run: whoever runs it suspects this code first if the publish fails, and the fix is a patch.
+
+**Severity** low · **Status** open — **a minor, 0.8**, built · **Owner** enricher (`upload.py`) · **Motivating case** audit round 2, class 1 (the lead's scratchpad audit2/report.md (audit round 2 of 0.8, 2026-11-05)) · *related* RM368, RM199
+
+**The gap.** The snapshot `upload_folder` re-reads unhashed paths after the plan hashed them, `create_commit` passes no `parent_commit`, and prune deletes by path at whatever the repo has become. Every case needs a concurrent writer to the same dataset repo. RM368 already ties the *module* publish to its bytes; this extends it to snapshots and prune.
+
+**What the branch does.** One `upload._commit` helper pins `parent_commit` and walks the commit history for a token, so a concurrent writer raises `RemoteMovedError` (a `PublishRefused`). A snapshot is hashed once and checked against the hub's tree before `release.json` is sent. Prune deletes exactly the paths it listed, at a pinned revision. AST guards cover every hub write. Before merging, re-run its tests on the current `0.8`; also drop the dead lazy `ImportError` guards it leaves in `_hf_api`/`_read_only_api`/`plan_prune`.
+
+**Residuals** none yet.

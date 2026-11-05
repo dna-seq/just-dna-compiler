@@ -479,6 +479,30 @@ running duckdb cannot read rather than mocking `connect`.
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
 
+## RM388 — placement readers bypass `usable_loci`
+
+**Parked, the pm (2026-11-05)**, under the maintainer's rule for audit findings: "for once per known universe scenario defer to 'when roadmap is empty/someone steps on this defect'". **Unparks when** a real `resolution.csv` that reaches compile carries a row off the module's build or a `not_found` row with coordinates (the enricher writes neither; only a hand-written or multi-build table does), or when the roadmap is empty, or when a scope the maintainer highlights touches it.
+
+**Severity** low · **Status** open — **a minor, parked** · **Owner** compiler (`allele_checks.py`, `positional.py`, `resolution.read_resolution`) · **Motivating case** audit round 2, class 3 (the lead's scratchpad audit2/report.md (audit round 2 of 0.8, 2026-11-05)) · *related* RM362
+
+**The gap.** RM362 made `resolution.usable_loci` the one rule for which loci an identity sits at: the module's build, and placements only. `allele_checks.py` (~:60-65, :102-105, :405-409) and `positional.py` (~:239-251) read loci without it and filter neither build nor `not_found`, and `read_resolution` does not filter by build.
+
+**What it would be.** Every placement reader goes through `usable_loci`, with an AST guard that no reader of resolution loci bypasses it.
+
+**Residuals** none yet.
+
+## RM390 — the enricher never states a table-level finding the compile acts on
+
+**Parked, the pm (2026-11-05)**, under the maintainer's rule for audit findings: "for once per known universe scenario defer to 'when roadmap is empty/someone steps on this defect'". **Unparks when** an author reports an `enrich` that passed and a `compile --strict` that then refused on the same table. It is not a defect: compile still refuses correctly, and the enricher would only say so earlier. If it unparks, design it after RM387, which settles what RM374 compares, or when the roadmap is empty, or when a scope the maintainer highlights touches it.
+
+**Severity** low · **Status** open — **a minor, parked** · **Owner** enricher (`enrich/orchestration.py`, `verification_records.py`) · **Motivating case** audit round 2, class 5 (the lead's scratchpad audit2/report.md (audit round 2 of 0.8, 2026-11-05)) · *related* RM374, RM373, RM387
+
+**The gap.** RM374's `rsid_placements_disagree` runs only in the compiler (`resolution_step.py` ~:167), so an `enrich` run that writes a mixed or disagreeing `resolution.csv` says nothing, and the author learns of it only when compile refuses. RM373's mixed-release reason likewise appears only in the `ran` arm of `verification_records.py` (~:433-438).
+
+**What it would be.** The enricher runs the same predicate the compiler does on the table it is about to commit, and warns with the same code and text. RM373's withheld-release reason appears in every arm. Design it after RM387 settles what RM374 compares.
+
+**Residuals** none yet.
+
 ## RM7 — Evaluation-output / report-card schema
 
 **Severity** — · **Status** **not format scope** — a consumer contract · **Owner** consumer
@@ -973,6 +997,8 @@ possibly already satisfied, and the rest sound** — the sweep's value is mostly
 | **RM68** — a drafting provider off GRCh38 | "an author with a non-GRCh38 module saying which outcome they wanted" | **Sound.** Such modules exist — `reference_examples/grch37_build` is one. |
 | **RM279** — a `conclusion` checked against its own row (filed 2026-09-27) | a measured precision for the locus-restricted rule | **Sound, and met on 2026-09-28**: 10 of 10 real over 653,706 rows, shipped as a hint. |
 | **RM309** — a `state` its own conclusion negates (filed 2026-09-28) | a hand-judged precision over the reporter's six curated modules and the registry corpus | **Sound.** The corpus and the rule both exist today, and RM279 met the same gate the day this was filed. |
+| **RM388** — placement readers bypass `usable_loci` (parked 2026-11-05) | a real table reaching compile with a row off the module's build or a `not_found` row with coordinates | **Sound.** Anyone who hand-writes or merges a `resolution.csv` can produce one today; nothing needs the fix to exist first. |
+| **RM390** — the enricher does not say what compile will refuse (parked 2026-11-05) | an author reporting an `enrich` that passed and a `compile --strict` that refused | **Sound.** The refusal already fires at compile, so the report can come in through `Sn` today. |
 | **RM15** / **RM69** / **RM52** and the 1.0 queue | a major-version bump | **Sound, and not this kind of gate.** A release boundary is a schedule, not a satisfier. |
 
 **What the sweep did not find, stated so it is not re-run for a while.** No gate anywhere is parked on

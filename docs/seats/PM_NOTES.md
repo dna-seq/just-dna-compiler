@@ -39,6 +39,24 @@ build it with 30 for 'tidiness', it is clutter and bloat in guise of strict-typi
 A new table kind counts as about 10 authored columns. The authored surface is human-centred and denormalized on
 purpose; normalization is the compiled parquet's job (RM346, 1.0).
 
+## Standing rule for audit findings (the maintainer, 2026-11-05)
+
+"For the next list of findings, judge how frequently would any bug would realistically fire. For once per known universe scenario defer
+to 'when roadmap is empty/someone steps on this defect'." Audit rounds have found exotic defects, and every minor still needed a few
+patches right after real use started, so the pm reads an audit sceptically: the adversary to a lead who wants to fix everything.
+
+- A built branch is never deferred (the same morning: "Defer unbuilt items").
+- For each unbuilt finding, ask: has a real run or an example hit it, and what must a run do to hit it?
+- A finding no real run plausibly reaches is parked, gated on "a real run hits it, or the roadmap is empty", not sized into the next minor.
+- A regression the release itself introduced, which a normal run reaches, still blocks the cut.
+- **Price the fix's own risk** (the maintainer, 2026-11-05, on RM386): a fix that rewrites working code nothing exercises live
+  swaps battle-tested code for untested code, which is a risk of its own. Weigh that before sizing a rare finding in, not after it is built.
+  RM386 itself ships as built, with no rehearsal; if the next real publish breaks, it is a patch then.
+- **No automatic next minor** (the maintainer, 2026-11-05): "'Auto-next minor' was a policy when we didn't have a dedicated decision
+  maker for this." The pm parks and unparks as it sees fit. The maintainer highlights zones of interest for a minor (as with
+  longevitymap v2); a parked item such a zone touches is unparked into it. Parked items live in ROADMAP.md with a gate, each checked
+  in its gate-audit table. RM388 and RM390 parked on this rule (2026-11-05).
+
 ## Open questions and owed work
 
 - **0.8's scope, agreed 2026-11-04.**
@@ -70,6 +88,21 @@ purpose; normalization is the compiled parquet's job (RM346, 1.0).
 - **RM378 (coded errors, from S129) placed in 0.9, 2026-11-05** (f8b595d6), against triage's proposal of 0.8:
   the person's "the rest goes to 0.9", a permanent vocabulary, two open questions, and RM377 already covers
   the reporter. The person may take it into 0.8; told in the report, no desk item, since their rule decides it.
+- **RM384 (a public name for the Ensembl lane's repo, from S130) placed in 0.8, 2026-11-05** (81e7dde2), as RM372's
+  tail: RM372 is the maintainer's 0.8 item, the registry's 0.8 adoption pins the name, about 30 minutes. The line
+  against RM378: a fix that completes a decided 0.8 item goes in; a new capability goes to 0.9. If the lead
+  finds no room before the cut, it goes to 0.9.
+- **RM380–RM383 are 0.8** (the lead, 2026-11-05), in the migration-probe scope row (8aab3e5d). RM382 reverses
+  S85's "the row stays" by the maintainer's word; triage notes it at S85. The lead confirmed RM384 fits.
+- **RM385 written for 0.9** (5dc2598f), on the maintainer's word: offline enrich has no reference at all.
+- **Audit round 2 sized, 2026-11-05** (the maintainer asked, through the lead, for "what really blocks the release"). The line: a defect 0.8 itself
+  introduced on a surface a consumer gates on (a strict refusal of a valid module, a P7 loss) blocks; a defect that was already there is
+  sized by how often a real run hits it; the maintainer's word overrides. Blocks: RM387 (from RM374), RM389 (from RM364). In if built
+  and cheap: RM361's amendment (merged whole, the lead's call), RM391, RM392. 0.9: RM388, RM390. RM386 first went to 0.9; the
+  maintainer moved it to 0.8 the same morning: "if branch is built, what's the sense to defer then? Defer unbuilt items." So a built
+  branch is never deferred; only unbuilt work is sized by frequency. RM387's reach measured on the 16 examples'
+  `resolution.csv` at origin/0.8: no rsID at two loci, so it is rare in the corpus, but the enricher writes the shape itself. Residuals
+  owed on 0.8: RM368 → RM386, RM362 → RM388, RM374 → RM390 (the lead's edit).
 - **RM253's precedent, from just-vcf's lead (2026-11-04)**: the short-read callers they read (GATK,
   DeepVariant, DRAGEN, freeBayes, CGI) all write a repeat-length change as a left-aligned sequence indel,
   so 0.8's spelling matches. The repeat-count forms (ExpansionHunter `<STRn>` + REPCN, TRGT AL/MC,

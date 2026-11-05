@@ -105,13 +105,23 @@ reported, never asked about, and they never freeze scope.
 4. **Second pass**: items that emerge during implementation join the same release automatically,
    unless they need a major.
 5. **Review wave and dogfooding wave.** What they find becomes new items, interviewed on their
-   decisions and implemented. Repeat until a review comes back clean. The triage seat monitors the
+   decisions and implemented. Repeat until the pm finds no new blocker (below). The triage seat monitors the
    branch meanwhile and processes whatever arrived during the build.
    - **A review reports error classes, never single instances** (the maintainer, 2026-11-04: "so that the
      same error in a second module is not found as a separate item"). Each finding names the rule broken,
      lists every instance across packages, tables, lanes and clients, and names the mechanism that catches
      the whole class (a registry-walking equality test, one shared helper, an AST guard). One item per
      class, fixed as a class.
+   - **The pm triages every review's classes before any fix is built** (the maintainer, 2026-11-05): each class
+     is placed as *blocks the cut*, or deferred to the next minor. A defect the release itself introduced on a
+     surface consumers gate on (a strict refusal of a valid module, a round-trip loss) blocks; a defect that was
+     already there is weighed by how often a real run hits it. **A built branch is never deferred**: "if branch is
+     built, what's the sense to defer then? Defer unbuilt items."
+   - **Deferred items ship as known issues**, listed in the release's INTEGRATION file and its CHANGELOG cut entry,
+     each with its `RMn` in the next minor's roadmap. **The review loop ends when the pm finds no new blocker**
+     ("If PM finds no new blockers we ship"), not when a review comes back with nothing at all. The next review
+     runs on the merged candidate after the blockers' fixes land, and gets the known issues so it does not
+     report them again.
    - **A builder's finding outside its unit is filed as a class the same way**, and checked against the
      review's classes before filing, so one defect is never two items.
    - **Changed charter wording is shown to the maintainer, old to new, before the cut.** Deciding that an
