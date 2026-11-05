@@ -51,7 +51,7 @@ CLINGEN_TARGET_BUILD = "GRCh38"
 #: kept a 102-CAID sweep comfortably inside whatever the server tolerates.
 _REQUEST_INTERVAL = 0.1
 
-#: What one lookup concluded. **Three, and the third is not padding** — the same rule
+#: What one lookup concluded. **`unchecked` is not padding** — the same rule
 #: `VALID_RECOVERY_OUTCOME` states one module over: a registry that answered and has no placeable
 #: identity is an established absence, while a request that failed is nobody-asked, and a pass that
 #: reports the second as the first turns a network blip into a permanent negative about a variant.

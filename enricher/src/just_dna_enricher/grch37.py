@@ -66,7 +66,7 @@ _REQUEST_INTERVAL = 0.1
 
 #: What one recovery attempt concluded.
 #:
-#: **Four, and the fourth is not padding.** The decision names three — *recovered*, *none*,
+#: **`unchecked` is not padding.** The decision names three answers — *recovered*, *none*,
 #: *ambiguous* — because that is where a liftover library goes wrong: `pyliftover` fuses the last two,
 #: reporting "no result" both for a position that maps nowhere and for one that maps to several. But
 #: those three are all answers, and S20 established in this exact resolution path that an
@@ -74,7 +74,7 @@ _REQUEST_INTERVAL = 0.1
 #: into a definite negative and put two published variants in a consumer's "fabricated" pile. So
 #: `unchecked` sits beside them on the other axis. A 4xx is an answer — the GRCh37 service 400s on an
 #: unknown contig and on a position past the end of one — so only a 5xx, a transport error or a
-#: timeout is `unchecked`.
+#: timeout is `unchecked`. `skipped_offline` is the run that did not ask, under `--offline`.
 VALID_RECOVERY_OUTCOME: frozenset[str] = frozenset(
     {"recovered", "ambiguous", "none", "unchecked", "skipped_offline"}
 )

@@ -773,9 +773,10 @@ def module_trait_ids(variants: list[VariantRow]) -> list[str]:
     `trait_efo_id` is a multi-valued cell (comma/semicolon/pipe-separated), so one row can name
     several traits.
 
-    **This is the roster of one table, and eleven authored tables carry the column.** Kept as-is
-    because a caller holding rows is the only thing it can serve, and widened where the tables are
-    actually reachable: `authored_identifiers` below takes a spec directory and reads all of them.
+    **This is the roster of one table, and every table `_id_bearing_tables` names carries the
+    column.** Kept as-is because a caller holding rows is the only thing it can serve, and widened
+    where the tables are actually reachable: `authored_identifiers` below takes a spec directory and
+    reads all of them.
     A caller passing `variants=` gets this narrow roster and is told so (S86).
     """
     out: list[str] = []
@@ -790,7 +791,7 @@ def _id_bearing_tables(column: str) -> dict[str, type[BaseModel]]:
     """`{filename: model}` for every **authored** table whose model declares `column`.
 
     **Derived from `DRAFTABLE`, never restated** (`@registry-completeness`). The defect this repairs
-    is a roster that named one table while eleven carry the column, so a hand-kept list here would be
+    is a roster that named one table while many carried the column, so a hand-kept list here would be
     the same bug with a longer literal in it: a table kind added later must join this set by existing,
     not by someone remembering. `DRAFTABLE` is the filename→model map the authoring surfaces already
     share, and it is built from `_TABLE_KINDS`, so it carries every optional kind by construction.

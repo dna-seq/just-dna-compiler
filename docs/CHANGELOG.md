@@ -41,6 +41,24 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-05 — RM392: a count beside a registry or table is dropped or compared, in the docs and in code comments (0.8, uncut)
+
+- **A total stated in the comment above a registry must be its size.** `test_source_counted_prose.py`
+  walks every module-level registry in the three packages; a bold headline number (`**Nine, and …`) or a
+  number before the registry's own noun ("the three states" over `LANE_STATES`) must equal it. Its first
+  run found `OVERRIDABLE_TABLES` saying nine over twelve, and `VALID_CAID_OUTCOME` and
+  `VALID_RECOVERY_OUTCOME` saying three and four over five.
+- **`SCHEMAS.md`'s lists are compared to their registries as sets.** The authored roster gains
+  `meta.csv` and drops `gwas_effects.csv` (a derived sidecar its own paragraph leaves out); the overlay key
+  table gains `locus_to_gene.csv`, `colocalisations.csv` and `consequences.csv`; the exclusions sentence
+  names `ld_pairs.csv`, the third table outside the overlay.
+- **`COMPILER.md` describes reverse as it is since RM364 and RM380** (the table's own loci, every column
+  but `RESOLUTION_LOCUS_EXCLUDED`), and `pipeline.py` no longer calls two resolution ladders compile-only
+  after RM367.
+- Stale counts dropped in `INTEGRATION_0_8.md` (the excluded locus columns, the 0.8 parquets), `ENRICHER.md`,
+  `tables.py`, `binning_checks.py`, `fact_checks.py`, `civic_vcf.py` and `identifiers.py`. No code path
+  or published surface changed.
+
 ## 2026-11-05 — RM391: no test reaches the network without `JUST_DNA_NETWORK_TESTS=1`, whichever client it uses (0.8, uncut)
 
 - The root `conftest.py` fences the transport: `socket.getaddrinfo`, `socket.socket.connect`/`connect_ex`

@@ -1573,7 +1573,7 @@ could have noticed: `cache status` reported nine caches on a machine that has tw
 live in `locations` as `<LANE>_CACHE_VAR` beside `CACHE_BASE_VAR`, the one variable no lane owns. A
 consumer generating a `.env.template`, clearing its test environment, or auditing which caches were
 provisioned by variable derives the whole set as `{lane.env_var for lane in CACHE_LANES} |
-{CACHE_BASE_VAR}` rather than keeping the fourteen names by hand.
+{CACHE_BASE_VAR}` rather than keeping the names by hand.
 **The status half is `caches.lane_status()` (S91, RM204)**, one `LaneStatus` per lane in registry
 order, and `cache status` renders it — a consumer serving the same answer over HTTP reads the function
 rather than re-writing the loop, which is two projections of one registry. Its `state` is
@@ -6061,7 +6061,7 @@ onto the report, which is a field and therefore not a patch.
 left two gates in front of itself, both keyed on the one table it had stopped depending on:
 `check_identifiers(spec_dir=)` loaded `variants.csv` unconditionally and raised
 `variants.csv is invalid: ... not found`, and the command returned *"no variants.csv — nothing to
-check"* before ever calling it. The table has never been mandatory, and four of the nine that carry
+check"* before ever calling it. The table has never been mandatory, and four of the tables that carry
 `gene` are the PGx kinds a module is built entirely out of — this repo ships four such reference
 examples, and `cyp2c19_star_alleles` names CYP2C19 on every row it has. The rows are wanted for one
 thing, placing a symbol against the chromosome its variant sits on, so an absent `variants.csv` is now

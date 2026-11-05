@@ -232,9 +232,10 @@ def _cross_check_frequencies(rows: list[FrequencyRow], subjects: ModuleSubjects)
     )
     if not orphans:
         return []
-    # One code across all five orphan checks. They are one finding — a fact row describing something
-    # no variant in the module names — reached through five tables, and the fix is the same edit in
-    # every one of them, so the sentence names the table and the code names the kind.
+    # One code across every orphan check. They are one finding — a fact row describing something
+    # no variant in the module names — reached through every fact table that has an orphan check,
+    # and the fix is the same edit in every one of them, so the sentence names the table and the code
+    # names the kind.
     return [
         CodedWarning(
             "derived_row_orphan",

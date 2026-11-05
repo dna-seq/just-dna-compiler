@@ -1146,7 +1146,7 @@ AUTHORED_SOURCE: str = "authored"
 # source swap into a schema change. What makes a label interpretable is not membership here but the
 # row's `dataset` column, which names the release the label belongs to.
 #
-# Seeded with gnomAD v4's ten ancestry groups plus `global` (the whole-dataset row, which gnomAD
+# Seeded with gnomAD v4's ancestry groups plus `global` (the whole-dataset row, which gnomAD
 # reports under a bare empty id). Unknown labels are normalized and kept, not rejected.
 RECOMMENDED_ANCESTRY_GROUPS: frozenset[str] = frozenset(
     {
@@ -1655,7 +1655,7 @@ VALID_RELEASE_CHANGE_KINDS: frozenset[str] = frozenset({"correction", "addition"
 #     authored edit at all".
 #
 # One code carries one remediation. Where two sentences are cleared by the same edit they share a
-# code and the sentence says which cell (the weight-sign pair, the five orphan fact tables); where
+# code and the sentence says which cell (the weight-sign pair, the orphan fact tables); where
 # the edit differs they do not (a VCF pointer collision is qualified, an unselected element is given
 # a rule).
 #

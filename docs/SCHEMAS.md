@@ -146,8 +146,8 @@ reason its `source` column is inside its fact set while everywhere else `source`
 | `diplotypes.csv` | `pgx.DiplotypeRow` | canonicalized diplotype pair → phenotype |
 | `pharm_variants.csv` | `pgx.PharmVariantRow` | single-variant drug response (PharmGKB) |
 | `pgs.csv` | `pgs.PgsRow` | PGS-Catalog-ID manifest + ancestry-validity fields |
-| `gwas_effects.csv` | `gwas.GwasEffectRow` | injected GWAS Catalog effect sizes (0.6, RM90; enricher-produced) |
 | `overrides.csv` | `overrides.OverrideRow` | the authored overlay over the covered derived tables (0.7, RM124) — the set is `OVERRIDABLE_TABLES`, and it has grown once already |
+| `meta.csv` | `meta.MetaRow` | the meta-table: combinations, per-locus and per-trait facts, a row's `sex` condition and `drug` (0.8) — see [§ the meta-table](#the-meta-table-08--metacsv) |
 | `model_organisms.csv` | `model_organisms.ModelOrganismRow` | model-organism lifespan evidence about a human gene (0.8, RM335) — annotation only, never a lead table |
 
 ## Conventions (the idioms every model obeys)
@@ -1955,7 +1955,8 @@ The 2026-08-12 cost amendment (CONSTITUTION Principle 9) names this class in its
 derived table that is both machine-written and human-overridable can be edited into a state that is
 not merely stale but a false claim, which wants a mechanism rather than a convention.* RM45 discharged
 it for exactly one table by making `verification.json` unwritable by hand. `overrides.csv` discharges
-it for the seven where overriding **is** the intended feature.
+it for every table in `overrides.OVERRIDABLE_TABLES`, the ones where overriding **is** the intended
+feature.
 
 **The overlay lies on top of a derived table and is never merged into it.** The derived files become
 pure build products — `derived = f(source, overlay)` — and four things follow. Nothing is hand-edited,
@@ -1985,19 +1986,25 @@ grammar was rejected. The meaning of both is the named table's own:
 | `clinical_assertions.csv` | `variant_key` | `variation_id` |
 | `literature.csv` | `pmid` | — |
 | `gwas_effects.csv` | `association_id` | — |
-| `expression_effects.csv` | `variant_key` | `gene` |
 | `clin_sig_concordance.csv` | `variant_key` | `genotype` |
+| `expression_effects.csv` | `variant_key` | `gene` |
+| `locus_to_gene.csv` | `study_locus_id` | `gene_id` |
+| `colocalisations.csv` | `study_locus_id` | `right_study_locus_id` |
+| `consequences.csv` | `variant_key` | `transcript` |
 
-**Two** derived sidecars sit outside the set, not one. `sources.csv` / `licensing.csv` has its own
-merge path and is the one derived table the schema tells a human to hand-write, so an overlay over it
-would put a second spelling of the licence position beside the first. `clin_sig_authority_calls.csv`
-is excluded for the opposite reason: it records what each archive published, and an author answers the
-question a conflict asks rather than rewriting the answer an archive gave. Its parent record —
-`clin_sig_concordance.csv`, the row that *asks* — is in.
+Each derived sidecar outside `OVERRIDABLE_TABLES` is out for its own reason. `sources.csv` /
+`licensing.csv` has its own merge path and is the one derived table the schema tells a human to
+hand-write, so an overlay over it would put a second spelling of the licence position beside the first.
+`clin_sig_authority_calls.csv` is excluded for the opposite reason: it records what each archive
+published, and an author answers the question a conflict asks rather than rewriting the answer an
+archive gave. Its parent record — `clin_sig_concordance.csv`, the row that *asks* — is in.
+`ld_pairs.csv` (0.8, RM331) is a reference panel's r², with nothing of the author's in it: a wrong
+`ancestry` is fixed on the study row, after which the pass asks again.
 
 The registry is `overrides.OVERRIDABLE_TABLES`, and a test asserts it equals every derived sidecar
-minus those two. **Derive the set from that registry, never from this table**: it read seven for a
-release after the eighth landed.
+minus those exclusions; `test_counted_prose.py` compares the table above to it as a set (RM392).
+**Derive the set from that registry, never from this table**: the table read seven for a release
+after the eighth landed, and read nine over twelve until RM392.
 
 ### Which release a column appeared in (0.7, RM146)
 
