@@ -41,6 +41,28 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-05 — Docs pass: the user guides re-run against the 0.8 candidate, and 0.8's surfaces added (0.8, uncut)
+
+RELEASE_CYCLE § Minors step 8, run at `64c835b9`. Every command in `index.md`, `GETTING_STARTED.md`,
+`COMPILING.md`, `CONSUMING.md` and `ENRICHING.md` was re-run on a scratch copy of the module it uses.
+Quoted outputs now match the run (`apoe_epsilon`'s digest is `c86809…` with three parquets; its
+`content_signature` did not move). Three commands had been wrong as written and are corrected: `hint`
+in COMPILING takes a kind and `--file`/`--row`, `hint variant`/`hint citation` take `--rsid`/`--pmid`,
+and `draft`/`draft-clinpgx` draft nothing from a no-sale source without `--use`. `scaffold` stubs only
+the kinds named with `--kind`.
+
+Added, each with a command that ran: validate's strict switches and the refusals new in 0.8 (COMPILING),
+`meta.csv` and `model_organisms.csv` with their table pages, the `studies.csv` columns and the `pmid`
+`NONE` + `doi` pair (COMPILING, CONSUMING), what 0.8 added to the artifact including `source_release`
+inside `resolution_loci` (CONSUMING), and in ENRICHING `enrich --rederive` after the snapshot switch,
+`cache pull --only ensembl`, `SNAPSHOT_REPO_IDS`, the ClinVar-GKM placement witness, the Open Targets
+lane and the publisher's `PublishRefused` family. CLAUDE.md's doc map gains the `INTEGRATION_0_8.md` row.
+
+Two guide commands still fail as written because the code is wrong, and are left for the fix rather
+than worked around: `keygen --out` into a directory that does not exist raises a traceback, and
+`draft-repeats` without `--catalogue` does not find a provisioned STRchive lane although its help says
+it does.
+
 ## 2026-11-05 — `hboc_palb2` and `pathogenic_clinvar` regenerated against the split snapshot (0.8, uncut)
 
 - The two examples the first regeneration withheld are re-derived online now that RM381, RM382 and RM387
