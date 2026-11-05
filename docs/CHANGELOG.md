@@ -41,6 +41,23 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-05 — INTEGRATION_0_8 is finished for downstream to integrate against the branch (0.8, uncut)
+
+- **[INTEGRATION_0_8.md](INTEGRATION_0_8.md) now covers every § 1 item from § 2 and § 3**: an upgrade order
+  (format, compiler, enricher pins; `uv lock`; the `ensembl_variations` cache moving to the split release;
+  recompile; `enrich --rederive` after the snapshot switch), § 2 steps 12–21 for RM267 through RM379, and
+  per-consumer lists for just-dna-registry (checked against its M1–M11 map), just-dna-lite,
+  just-dna-pipelines, just-dna-agents and the new longevity-loci. The status line is the honest pre-cut one
+  (`0.8` at `1007a26d`, not on PyPI, git dependency for testing only), and the file records that consumer
+  pre-integration (RELEASE_CYCLE § Minors step 6) was skipped for 0.8 by the maintainer's call. Two wrong
+  pointers fixed (RM368 is § 1.27, RM267's `undecided` § 1.18), and RM_TOC's RM364 row now points at § 1.28.
+  Docs only.
+- **Merged beside RM380 and the examples' regeneration**, it gains RM380 as § 1.34, the regeneration's
+  paragraph under § 1.29, and a § 2 step 21 for a tool that parses a reversed `resolution.csv` (the levers
+  are step 22 now). Steps 12, 14 and 15 and the § 1.19, § 1.28 and § 1.32 rows say what RM380 carries, and
+  the status names what has landed since `1007a26d` and what still can: RM381, RM382, RM383, `hboc_palb2` and
+  `pathogenic_clinvar` regenerated, and the second audit round.
+
 ## 2026-11-05 — The reference examples' `resolution.csv` regenerated against the split snapshot (0.8, uncut)
 
 - **14 of the 16 examples that commit a `resolution.csv` were re-derived** (`enrich --rederive`) against
