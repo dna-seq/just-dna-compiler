@@ -885,7 +885,7 @@ class 4, already reserved as its own item.
 **SHIPPED 2026-11-04 on `0.8`, uncut — a minor (the 0.8 Ensembl migration probe).** Owner compiler, severity
 medium.
 
-**Residuals** RM275 · won't fix — one key repeating a `locus_index` and positional-only answers
+**Residuals** RM275 · [RM390](ROADMAP.md#rm390--the-enricher-never-states-a-table-level-finding-the-compile-acts-on) (the enricher runs the placement check too; parked) · won't fix — one key repeating a `locus_index` and positional-only answers
 are withheld, because the table cannot tell them from a legitimate one-to-many rsID · RM387 — a
 positional row at a locus the rsID's own answer dropped for its genotype read as two placements; the
 dropped locus left no trace in the table · won't fix — not in this item: a merged rsID's own key
@@ -1932,7 +1932,7 @@ fixture (`rsid_coordinate_disagrees`), so no strict artifact's `weights.parquet`
 module in this state is not a fixed point before or after this change: the second lap's orphan returns and a study
 fact joined through the table's spelling is lost. RM364's `resolution_loci` makes it one; nothing here depends on it.
 
-**Residuals** won't fix — gene symbols compare as written here; folding case and space is the gene-key class (the
+**Residuals** [RM388](ROADMAP.md#rm388--placement-readers-bypass-usable_loci) (the placement readers that bypass `usable_loci`; parked) · won't fix — gene symbols compare as written here; folding case and space is the gene-key class (the
 audit's class 3), not this one.
 
 ## RM361 — an unknown or failed answer is recorded as a definite one: a retired endpoint as an outage, a throttle as "no copy", an unread part as "not in the release", a timed-out regex as a missed quote, an absent cell as the word `None`

@@ -41,6 +41,15 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-05 — INTEGRATION_0_8 names the known issues 0.8 ships with (0.8, uncut)
+
+- **[INTEGRATION_0_8 § 4](INTEGRATION_0_8.md#4-known-issues)** lists what 0.8 ships with unfixed, each
+  line with its item: RM385 (offline enrich cannot left-align an indel, for 0.9), RM376 (an offline and an
+  online fill differ), RM388 and RM390 (parked, each with its return condition), and RM386's first live
+  run being the next real snapshot publish. The status section says the release candidate holds every
+  item listed as able to land, but the two examples' regeneration and audit round 3.
+- RM362's and RM374's `**Residuals**` name RM388 and RM390, their parked remainders.
+
 ## 2026-11-05 — RM392: a count beside a registry or table is dropped or compared, in the docs and in code comments (0.8, uncut)
 
 - **A total stated in the comment above a registry must be its size.** `test_source_counted_prose.py`

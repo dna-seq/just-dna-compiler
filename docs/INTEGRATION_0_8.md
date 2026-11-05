@@ -4,7 +4,8 @@ For the repos that consume this one: **just-dna-pipelines**, **just-dna-lite**, 
 (formerly just-dna-marketplace; one repository, `dna-seq/just-dna-registry`), **just-dna-agents**, and,
 new this release, **longevity-loci**. It answers one question: *given a working 0.7 integration, what do
 I have to check, and what do I have to change?* § 1 is the surface delta, item by item. § 2 is the
-upgrade order and the changes it implies, by surface. § 3 is the same list cut per consumer.
+upgrade order and the changes it implies, by surface. § 3 is the same list cut per consumer. § 4 lists
+the known issues 0.8 ships with.
 
 **Status, pre-cut (2026-11-05): 0.8 is feature-complete on the `0.8` branch at `1007a26d`, pushed as
 `origin/0.8`. It is not cut and not on PyPI.** The cut rewrites this paragraph and the three below it.
@@ -36,9 +37,12 @@ witnessed contributing REST's release (§ 1.32); and 14 reference examples' `res
 against the new Ensembl snapshot (§ 1.29). A consumer that tested at `1007a26d` tests again at the branch
 head once it is pushed.
 
-**What can still land before the cut**, each recorded here when it does: RM381, the split snapshot's
-multi-ALT indels trimmed per ALT; RM382 and RM383; `hboc_palb2` and `pathogenic_clinvar` regenerated (§ 1.29
-says why they wait); and whatever the second audit round finds.
+**Landed since, the release candidate audit round 3 reads:** RM381, the split snapshot's multi-ALT
+indels trimmed per ALT (§ 1.35); RM382, reversing S85 (§ 1.36), and RM383 (§ 1.37); and audit round 2's
+items: RM387 (§ 1.38), RM384 (§ 1.39), RM386 (§ 1.40), RM389, RM361's amendment (§ 1.26), RM391 and RM392.
+**What can still land before the cut:** `hboc_palb2` and `pathogenic_clinvar` regenerated (§ 1.29 says
+why they waited), and whatever audit round 3 finds. Everything else listed here as able to land has
+landed. § 4 lists what 0.8 ships with unfixed.
 
 [RM_TOC.md](RM_TOC.md) is the per-item record; a status sentence here goes stale when work lands, so
 check it there.
@@ -1083,3 +1087,30 @@ and its module seat authors and compiles with the just-module-creator plugin v0.
      diff (§ 1.29, § 1.31).
    - **`source_release`** on every `resolution.csv` row the run answered names the release that answered
      it; empty means not recorded, never current (§ 1.32).
+3. **A first 0.8 module also waits on the registry deploy.** The module-creator plugin caps the trio below
+   0.8 until both registry instances serve 0.8, so the plugin answers from 0.8 only after that deploy.
+
+---
+
+## 4. Known issues
+
+What 0.8 ships with, known and not fixed. Each line names its item; [RM_TOC.md](RM_TOC.md) has its state.
+
+- **Offline enrich cannot left-align an indel (RM385, for 0.9).** `--offline` turns off the reference as
+  well as the network, so an offline run trims an indel's pieces but cannot prove them leftmost, and
+  writes `left_aligned` empty. Enrich indels online until 0.9 lets an offline run read a local reference.
+- **An offline and an online fill of one snapshot can differ (RM376).** The same rule, seen from the
+  table: an indel the online run left-aligns is written as the offline run trimmed it, so
+  `resolution_signature` can move between the two runs of one module. `enrich --rederive`, online, is the
+  migration (§ 2, upgrade order step 5).
+- **Placement readers that bypass `usable_loci` (RM388, parked).** Returns when a real `resolution.csv`
+  that reaches compile carries a row off the module's build or a `not_found` row with coordinates (the
+  enricher writes neither), when the roadmap is empty, or when a scope the maintainer highlights
+  touches it.
+- **The enricher does not say what compile will refuse (RM390, parked).** Compile still refuses
+  correctly; `enrich` would only say so earlier. Returns when an author reports an `enrich` that passed
+  and a `compile --strict` that then refused on the same table, when the roadmap is empty, or when a
+  scope the maintainer highlights touches it.
+- **RM386's publish pinning has no live run yet (RM386).** It shipped with no practice publish to a
+  throwaway Hugging Face repo, by the maintainer's decision. The next real snapshot publish is its first
+  live run; if that publish fails, suspect this code first, and the fix is a patch.
