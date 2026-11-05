@@ -694,9 +694,12 @@ not do is restore a module:
 - **Lost, because it is not in the artifact:** `verification.json` — every check record *and* the
   closure. A reversed spec is open and warns until a human closes it again, which is deliberate:
   reverse holds no key and no standing to declare someone else's authoring finished.
-- **Lost, because they were deliberately never materialized:** `resolution.csv`'s provenance —
-  `authority`, `rsid_alternates`, `rsid_current`, `rsid_status`; `source` resets to `reversed` and
-  `status` to `resolved`. Recovering them means re-running the enricher.
+- **Lost, because they were deliberately never materialized:** `resolution.csv`'s time-varying
+  provenance — `rsid_alternates`, `rsid_current`, `rsid_status`; `source` resets to `reversed`,
+  `status` to `resolved`, `fetched_at` to empty. Recovering them means re-running the enricher.
+- **Kept since RM380:** every other `resolution.csv` column — `authority`, the placement witness and its
+  verdict, `left_aligned`, `source_release`, `caid` — on the parquets' resolution loci, under a test that
+  walks `ResolutionRow` against the carried struct.
 - **Kept since RM364, on any build:** the resolution rows filed under a positional row's key, because
   every positional parquet carries them as `resolution_loci`. Before that, a non-GRCh38 module lost its
   hand-authored positional rows, since the fill is gated on GRCh38 (RM15) and the parquet held nothing

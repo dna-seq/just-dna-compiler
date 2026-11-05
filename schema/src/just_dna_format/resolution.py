@@ -210,7 +210,8 @@ class ResolutionRow(PairedFields):
             "The licensed data source the link speaks for — `ensembl` for `ensembl-rest`/"
             "`ensembl-graphql`/`cache`, `clinvar` for the snapshot, `gnomad` for the last-resort link. "
             "Joins `sources.csv.source`. Empty when there is no external authority to declare "
-            "(`authored`, `reversed`, `manual`: the module's own bytes or a human)."
+            "(`authored`, `manual`: the module's own bytes or a human). A `reversed` row keeps the "
+            "authority of the row it was reversed from, since its facts are still that source's (RM380)."
         ),
     )
     status: str | None = Field(
@@ -337,8 +338,9 @@ class ResolutionRow(PairedFields):
             "or `release.json` `dataset`, a ClinVar snapshot's `clinvar_<date>`, live Ensembl REST's "
             "data release (`ensembl_116`, from `/info/data`), gnomAD's dataset id. Written only by the "
             "run that answered the row, and never back-filled onto a row it did not answer. Empty means "
-            "not recorded (a source that states no release, a row written before 0.8, an authored or "
-            "reversed row), never the current release."
+            "not recorded (a source that states no release, a row written before 0.8, an authored row), "
+            "never the current release. A `reversed` row keeps the release of the row it was reversed "
+            "from (RM380)."
         ),
     )
 

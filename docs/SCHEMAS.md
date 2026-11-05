@@ -2424,8 +2424,8 @@ Produced by [`just-dna-enricher`](ENRICHER.md); a human may hand-author or edit 
 authored input or a published fact table with a parquet beside it; this one is neither. Its only two
 consumers are the compiler, which reads it to resolve a key, and the enricher's own update run, which
 merges into it. Promoting it to a published table would make it a consumer contract it was never designed
-to be — its provenance columns are explicitly outside the fact set, `reverse_module` cannot reconstruct
-half of them, and a downstream reader keying on it would be reading the *lookup* rather than the *answer*,
+to be — its provenance columns are explicitly outside the fact set, `reverse_module` leaves the
+time-varying ones to the enricher, and a downstream reader keying on it would be reading the *lookup* rather than the *answer*,
 which is materialized into `weights.parquet` and the positional tables where it belongs. This is written
 down here because "publish it as a parquet" is the first repair anyone proposes on finding a table that
 does not carry a coordinate, and it is the wrong one — RM43 (0.6) is the right one, and it is what makes
@@ -2470,13 +2470,16 @@ row's own cells alone.
   otherwise make a one-way door. Its severity is deliberately not `absent`'s. A merged or absent rsID
   leaves the annotation intact (dated, or unserved); a retracted variant may leave it describing
   nothing, so `withdrawn` is the one resolution finding that is **fatal in `best_effort` too**.
-- **Reverse emits facts and drops provenance, by design.** `reverse_module` rebuilds this table from
-  `weights.parquet`, which holds no provenance at all — it resets `source` to `reversed`, `status` to
-  `resolved`, blanks `fetched_at`, writes `vrs_id`/`vrs_spec` back from the parquets (RM270), and cannot emit `authority`/`rsid_alternates`/`rsid_current`/`rsid_status`
-  because those columns are kept out of the artifact on purpose. (For `authority` there is a second reason
-  and it is not a limitation: a reversed table's facts came out of parquet, so no licensed source answered
-  for them.) Recovering them after a round-trip
-  means re-running the enricher, which is where a statement about a reference at a moment belongs.
+- **Reverse gives back every column a parquet's locus carries (RM380).** Each variant parquet's
+  `resolution_loci` (and `studies.parquet.proxy_loci`) carries every `ResolutionRow` column but the ones
+  `parquets.RESOLUTION_LOCUS_EXCLUDED` names with a reason, the struct is derived from the model, and a
+  test asserts the model's fields equal the carried ones plus the excluded ones. So `authority`,
+  `placement_witness`/`placement_verdict`, `left_aligned`, `source_release`, `caid`, `vrs_id`/`vrs_spec`
+  and `authored_event`/`judged_coordinate` survive the round trip. Reverse stamps `source=reversed`,
+  `status=resolved` and an empty `fetched_at` itself, and leaves out `rsid_alternates`/`rsid_current`/
+  `rsid_status`, statements about a reference at a moment that re-running the enricher recovers. Before
+  RM380 the struct was a hand-kept list and every 0.8 provenance column the enricher began to write was
+  dropped by the first round trip, so the second lap's compile read a table that said less than the first.
 - It is a **standalone `BaseModel`** (not `AuthoredModel`) with `extra="forbid"` — a resolution fact is
   not an annotation and must not inherit VariantRow's annotation validators; it reuses only the shared
   `rsid` grammar and the `status` vocabulary.

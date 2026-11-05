@@ -379,28 +379,63 @@ def _build_annotations(variants: list[VariantRow], module_name: str) -> pl.DataF
     return pl.DataFrame(records, schema=schema)
 
 
-#: One resolved locus, as a parquet carries it beside the row whose key it was filed under: the
-#: `resolution.csv` fact columns a reverse needs to re-emit the row, `genome_build` aside (the module's,
-#: which reverse knows). Two carriers: `studies.parquet.proxy_loci` (a study's LD proxy, RM331) and
-#: `resolution_loci` on `weights.parquet` and every positional parquet (RM364).
+#: The `ResolutionRow` columns a carried locus leaves out, each with the reason (RM380). Every other
+#: column is carried: `reverse_module` rebuilds `resolution.csv` from the loci, so a column missing here
+#: is a column the round trip drops (P7), and outside a signature is not the same as dropped.
+#: `test_resolution_locus_carries_the_row` asserts the model's fields equal the carried ones plus these.
+RESOLUTION_LOCUS_EXCLUDED: dict[str, str] = {
+    "variant_key": "the key a parquet files the loci under, the row's authored key or `proxy_rsid`",
+    "genome_build": "the module's own build, which the manifest states and reverse writes on every row",
+    "source": (
+        "the link that wrote the row; a reversed row was written by reverse, so it says `reversed` "
+        "(`compilation.resolution_sources` is excluded from the round trip for that reason)"
+    ),
+    "status": (
+        "reverse writes `resolved` for every positioned locus it re-emits; a `not_found` row places "
+        "nothing and carries no locus"
+    ),
+    "fetched_at": "when a pass wrote the row; reverse reads no clock, so its emit stays deterministic",
+    "rsid_alternates": (
+        "a candidate list from a reverse back-fill against a reference at a moment, recovered by "
+        "re-running the enricher (`@rsid-alternates-closed`)"
+    ),
+    "rsid_current": (
+        "what dbSNP serves today for a merged rsID, time-varying external state recovered by re-running "
+        "the enricher (`@rsid-alternates-closed`)"
+    ),
+    "rsid_status": (
+        "what dbSNP says about the rsID today, time-varying external state recovered by re-running the "
+        "enricher (`@rsid-alternates-closed`)"
+    ),
+}
+
+#: A carried column whose parquet type is not the one its annotation maps to.
+_LOCUS_DTYPE_OVERRIDES: dict[str, pl.DataType] = {"start": pl.UInt32}
+
+#: The carried columns, in `ResolutionRow`'s order: every field `RESOLUTION_LOCUS_EXCLUDED` does not name.
+RESOLUTION_LOCUS_FIELDS: tuple[str, ...] = tuple(
+    name for name in ResolutionRow.model_fields if name not in RESOLUTION_LOCUS_EXCLUDED
+)
+
+#: One resolved locus, as a parquet carries it beside the row whose key it was filed under: every
+#: `resolution.csv` column but the ones `RESOLUTION_LOCUS_EXCLUDED` names, derived from the model so a
+#: column the enricher begins to write reaches the struct with it (RM380). Two carriers:
+#: `studies.parquet.proxy_loci` (a study's LD proxy, RM331) and `resolution_loci` on `weights.parquet`
+#: and every positional parquet (RM364).
 RESOLUTION_LOCUS_DTYPE = pl.Struct(
     {
-        "rsid": pl.Utf8,
-        "chrom": pl.Utf8,
-        "start": pl.UInt32,
-        "ref": pl.Utf8,
-        "alts": pl.Utf8,
-        "locus_index": pl.Int64,
-        # RM270: the row's `vrs_id` cell (comma-joined, parallel to `alts`) and its `vrs_spec`, so
-        # `reverse` re-emits the ids with the row.
-        "vrs_id": pl.Utf8,
-        "vrs_spec": pl.Utf8,
-        # RM375: the enricher's verdict on the authored spelling and the coordinate it judged, which the
-        # compile read as agreement or not, so the second lap reads the same verdict the first did.
-        "authored_event": pl.Utf8,
-        "judged_coordinate": pl.Utf8,
+        name: _LOCUS_DTYPE_OVERRIDES.get(name, _polars_type(ResolutionRow.model_fields[name].annotation))
+        for name in RESOLUTION_LOCUS_FIELDS
     }
 )
+
+#: The carried columns a parquet row's own cells rebuild, the locus facts plus the row's `vrs_id`/`vrs_spec`
+#: columns (RM270). A locus holding a value in any OTHER carried column is never withheld as reproduced:
+#: no cell holds it, so withholding it is dropping it.
+_CELL_REBUILT: frozenset[str] = frozenset(
+    {"rsid", "chrom", "start", "ref", "alts", "locus_index", "vrs_id", "vrs_spec"}
+)
+_LOCUS_ONLY: tuple[str, ...] = tuple(name for name in RESOLUTION_LOCUS_FIELDS if name not in _CELL_REBUILT)
 
 
 def resolution_loci(
@@ -431,21 +466,7 @@ def resolution_loci(
     )
     if not loci:
         return None
-    return [
-        {
-            "rsid": r.rsid,
-            "chrom": r.chrom,
-            "start": r.start,
-            "ref": r.ref,
-            "alts": r.alts,
-            "locus_index": r.locus_index,
-            "vrs_id": r.vrs_id,
-            "vrs_spec": r.vrs_spec,
-            "authored_event": r.authored_event,
-            "judged_coordinate": r.judged_coordinate,
-        }
-        for r in loci
-    ]
+    return [{name: getattr(r, name) for name in RESOLUTION_LOCUS_FIELDS} for r in loci]
 
 
 def _locus_fact(rsid: Any, chrom: Any, start: Any, ref: Any, alts: Any, locus_index: Any) -> tuple[Any, ...]:
@@ -477,8 +498,9 @@ def withhold_reproduced_loci(
         for key, cell in zip(keys, cells, strict=True)
         if key is not None
         and cell
-        # A row's cells carry no verdict, so loci holding one (RM375) are never rebuilt from the cells.
-        and not any(locus.get("authored_event") for locus in cell)
+        # A row's cells hold no provenance (RM375's verdict, RM267's witness, RM373's release, ...), so a
+        # locus holding any is never rebuilt from the cells (RM380). `False` is a value: `is not None`.
+        and not any(locus.get(name) is not None for locus in cell for name in _LOCUS_ONLY)
         and by_key[key]
         == {
             _locus_fact(

@@ -230,8 +230,8 @@ a third reading too (RM374): the row was resolved against an earlier snapshot re
 enriched against now, because an enrich never re-asks a subject it has a row for. It names the release the
 row records (`ResolutionRow.source_release`) or says `release not recorded`, and gives `enrich --rederive`
 as the remedy. Which release is older is not decidable offline, so it is a reading, never a verdict, and it
-is given only where an external source answered the row (`authority` set): a hand-filled or reversed row
-came from no snapshot. The comparison is also made
+is given only where an external source answered the row (`authority` set): a hand-filled row came from no
+snapshot, and a reversed row keeps the authority and release of the row it came from (RM380). The comparison is also made
 against the **union** of every locus a key resolves to, never per-expanded-row, for the same reason.
 
 **"Exactly one of those rows can match" is a statement about matching, and a reader does more than
@@ -1866,8 +1866,8 @@ plus each authored table that is not a kind (`overrides.csv` since 0.7, RM124; `
   models, and every round-trip gate compares `reconstructed_projection` (the reconstructed fields, as JSON)
   lap against lap — `compilation.resolution_signature` among them, from the first lap, on every reference
   example. The exclusions are the attestation, what a registry stamps, the byte hashes of re-emitted
-  files, `compiled_at`, the warnings (the first lap's include the attestation and the resolution
-  provenance reverse drops), `dropped_rows` and `resolution_sources`.
+  files, `compiled_at`, the warnings (the first lap's include the attestation and the time-varying resolution
+  provenance reverse leaves to the enricher), `dropped_rows` and `resolution_sources`.
 - **Normalized, only for a bare parquet directory with no manifest:** title/report_title fall back to
   name-derived defaults, description to `Annotation module: <name>`, icon/color to
   `database`/`#6435c9`, curator/method to the most-common column value, `genome_build` to `GRCh38`.

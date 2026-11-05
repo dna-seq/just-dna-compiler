@@ -134,8 +134,8 @@ overridden it. Delete the file to re-derive. → [ENRICHER.md](ENRICHER.md), and
 
 **Can `resolution.csv` be published as a parquet like the other tables?**
 No, and this is the first repair everyone proposes. It is a build-time lookup, not a published fact
-table: its provenance columns are outside the fact set by design, `reverse_module` cannot reconstruct
-half of them, and a consumer keying on it would be reading the lookup rather than the answer — which
+table: its provenance columns are outside the fact set by design, `reverse_module` leaves the
+time-varying ones to the enricher, and a consumer keying on it would be reading the lookup rather than the answer — which
 is materialized into `weights.parquet` and the positional tables where it belongs.
 → [SCHEMAS § The resolution table](SCHEMAS.md#the-resolution-table-05-provisional).
 
