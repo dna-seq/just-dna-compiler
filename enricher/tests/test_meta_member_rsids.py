@@ -77,6 +77,7 @@ def test_the_currency_pass_asks_dbsnp_about_meta_members(
         verify_rsids=True,
         use_gnomad=False,
         download=False,
+        verify_ref=False,  # RM391: the reference pass asks seqrepo; dbSNP's oracle is the subject
     )
     assert asked and "rs8192284" in asked[0]
     assert [(s.rsid, s.current) for s in result.stale_rsids] == [("rs8192284", "rs2228145")]

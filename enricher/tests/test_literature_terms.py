@@ -356,6 +356,9 @@ def test_a_pmcid_and_a_pmid_that_disagree_are_compared_not_merged() -> None:
     """A caller supplying both has two identifiers in mind; silently replacing one hides the finding."""
     clients = LookupClients(
         pmc_idconv=_idconv([{"pmcid": _PMC, "requested-id": _PMC, "pmid": int(_PMC_PMID)}]),
+        # RM391: the PMID's existence check asks eutils and Europe PMC; scripted, as the sibling above.
+        eutils=_eutils(),
+        europepmc=_epmc(_EPMC_SEARCH),
     )
     hint = lookup_citation(pmid="9545397", pmcid=_PMC, clients=clients)
     assert any("name different articles" in f.message for f in hint.findings)
