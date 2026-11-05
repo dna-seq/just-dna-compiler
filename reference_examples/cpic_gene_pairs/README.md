@@ -100,17 +100,25 @@ same nine azathioprine texts as the first, byte for byte, and the 18 other rows 
 
 ## What building it broke
 
-- **`*1,rs1457579126,13,48040982,A,NUDT15` keeps the start CPIC gives, and the compile says so.** CPIC
-  places this NUDT15 deletion at 48040982; the Ensembl cache places it at `48040978 AA>A`, the
-  left-aligned spelling. The compiler warns that the row "authored an identity the resolution table
-  disagrees with" and leaves it as authored. The row was removed while this example was first built,
+- **`*1,rs1457579126` is authored at `13:48040977 GA`, not at the 48040982 CPIC gives.** CPIC
+  places this NUDT15 deletion at 48040982; the old Ensembl cache placed it at `48040978 AA>A`, and the
+  split snapshot (`ensembl-variation-2026_07_13-vep116.0`) at `48040977 GA>G`, the left-aligned spelling.
+  The event is a one-base deletion in `G AAAAA T` (977–983), so its VCF anchors are 977–981 and 982 is
+  the HGVS deleted-base position: inside the event and no VCF anchor, which the enricher can only judge
+  `undecided`. The compiler used to warn that the row "authored an identity the resolution table
+  disagrees with" and leave it as authored. The row was removed while this example was first built,
   because `reverse` then rebuilt `resolution.csv` from the row's own cells: it wrote the authored
   48040982 back as a resolution fact, the second lap's warning went silent, and the first lap's
   `resolution_signature` moved (`test_reference_example_round_trips_to_a_fixed_point[cpic_gene_pairs]`).
   RM364 fixed that in the compiler: `haplotypes.parquet` carries `resolution_loci`, the table's own
   answer under each row's key, and `reverse` writes that back. The row was restored, `enrich --strict`
-  added its `resolution.csv` row, and the module was closed again. Correcting the start by hand was not
-  done: it is the rewrite RM267's open half withholds from the enricher.
+  added its `resolution.csv` row, and the module was closed again. The start was then corrected by
+  hand on 2026-11-05, when 0.8 regenerated every example's `resolution.csv` against the split snapshot:
+  the row now names the deletion at the snapshot's anchor, with the `*1` (reference) allele `GA`. This is
+  an authored edit, so `content_signature` moved and the module was re-enriched and closed again. The
+  enricher still never makes that rewrite itself (RM267's open half). `*1,rs761191455,13,48041104,G` is
+  left as CPIC spells it: 48041104 is a valid anchor of that insertion, which the online re-derive
+  judges `same_event`.
 - **Rows with no rsID and no `ref` key as `13:48037749`.** Nine of the drafted `*1` rows carry a
   position and an allele but no rsID and no reference base. Until RM361 `derive_variant_key` formatted
   the missing `ref` as the Python literal (`13:48037749:None`); an absent cell is now an empty segment

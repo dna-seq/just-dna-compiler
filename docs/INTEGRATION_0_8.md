@@ -540,6 +540,21 @@ round-trip gates make, lap against lap.
 | `locations` | New public names: `SnapshotManifest`, `SnapshotManifestFile`, `read_snapshot_manifest`, `manifest_coverage`, `ManifestCoverage`, `manifest_attests`, `pull_record_repo`, `ensembl_release_label`; `download.SNAPSHOT_REPO_PREFIXES`, `download.pulled_from_elsewhere`; `just_dna_format.snapshot.SNAPSHOT_MANIFEST_FILENAME`, now in `SNAPSHOT_ROOT_FILENAMES` before `release.json`. | A publisher walking `SNAPSHOT_ROOT_FILENAMES` uploads a snapshot's `manifest.json` when one is present; no builder here writes one. |
 | `cache status`, the `rsid_coordinate_agreement` record | The Ensembl lane's label is the manifest's `release_id`; the old repo's cache still shows none. | None. |
 
+**What moved for the reference examples (2026-11-05).** 14 of the 16 examples that commit a
+`resolution.csv` were re-derived against `ensembl-variation-2026_07_13-vep116.0`. Their `artifact.digest`
+moved, except `cyp2c9_warfarin_grch37`'s: it is GRCh37, so nothing was re-asked (RM380, § 1.34, moves
+it anyway, as it moves 20 of the 22; the final digests are the release record's, measured at the cut). Their
+`content_signature` did not, except `cpic_gene_pairs`, whose NUDT15 `*1` `rs1457579126` row was corrected from 48040982 (the HGVS deleted-base position) to the VCF anchor
+`13:48040977 GA`. Across the 14: 3 subjects respelled, 38 gained an allele, 3 gained an rsID and 14 changed
+only the link that answered them. `sources.signature` moved on every recompiled example, because licence
+rows are now labelled by the release their rows state (RM373). `hboc_palb2` and `pathogenic_clinvar` are
+withheld until RM381: re-derived, they spell six multi-ALT indel alleles with the snapshot's padded `ref`,
+which an exact `(chrom, pos, ref, alt)` join against a normalized VCF misses. `pathogenic_clinvar` has a
+second blocker that RM381 does not touch: `rs613985` comes back unresolved, so `--strict` refuses. Both
+snapshots place it at `3:159434329 T>G`, the hosting filter rejects that locus, and the chain never asks
+ClinVar. The per-example table is in
+the CHANGELOG entry of 2026-11-05.
+
 ## 1.30 One rsID, one placement set in `resolution.csv` (RM374, one new code)
 
 | Surface | What changed | What to do |

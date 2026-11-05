@@ -1001,7 +1001,8 @@ def test_a_key_with_a_stated_allele_is_still_answered_beside_a_no_alt_row(module
     assert result.posterior == authored.posterior
 
 
-#: APOE ε, as `reference_examples/apoe_epsilon` authors it: two rsID-only rows, `alts` empty.
+#: APOE ε, `reference_examples/apoe_epsilon`: two rsID-only rows. Its `resolution.csv` carried no `alts`
+#: until the 0.8 regeneration against the split snapshot filled them, so the test empties them on its copy.
 APOE = _ROOT / "reference_examples" / "apoe_epsilon"
 
 
@@ -1020,8 +1021,16 @@ def test_apoe_rows_with_no_alt_get_rows_against_the_whole_release(tmp_path: Path
     spec = tmp_path / "apoe"
     shutil.copytree(APOE, spec)
     with (spec / "resolution.csv").open(newline="") as handle:
-        rows = list(csv.DictReader(handle))
-    assert rows and all(not r["alts"] and r["rsid"] for r in rows), "the example states no ALT"
+        reader = csv.DictReader(handle)
+        fields = list(reader.fieldnames or [])
+        rows = [{**r, "alts": "", "vrs_id": "", "vrs_spec": ""} for r in reader]
+    with (spec / "resolution.csv").open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields, lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(rows)
+    assert len(rows) == 2 and all(r["rsid"] and r["chrom"] and r["start"] for r in rows), (
+        "apoe_epsilon is no longer two placed rsID rows"
+    )
     result = enrich_opentargets(spec, snapshot=full, write=False)
     for row in rows:
         carrying = variants.filter(

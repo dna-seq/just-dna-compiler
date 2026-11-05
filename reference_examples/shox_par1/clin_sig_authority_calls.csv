@@ -1,0 +1,3 @@
+variant_key,genotype,authority,status,clin_sig,clin_sig_raw,confidence,confidence_unit,dataset,checked_at
+rs137852556,C/T,clinvar,recorded,pathogenic,Pathogenic,2,review_stars,clinvar_2026-06-27,2026-11-05T00:22:56Z
+rs137852556,C/T,pubmind,recorded,conflicting,Benign|Pathogenic,,,pubmind_ca224ebf5ef3,2026-11-05T00:22:56Z
