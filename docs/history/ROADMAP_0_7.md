@@ -8,7 +8,7 @@ re-deriving — several of these entries are the record of what a probe observed
 where an entry was later overturned.
 
 **Where its contents went.** Everything still waiting moved to
-[ROADMAP_0_8.md](../ROADMAP_0_8.md) — RM122, RM23, RM16, RM28, RM56, RM65, RM66, RM67, RM68, RM84 —
+[ROADMAP_0_8.md](ROADMAP_0_8.md) — RM122, RM23, RM16, RM28, RM56, RM65, RM66, RM67, RM68, RM84 —
 unchanged but for the file they sit in. The two that **built in 0.7**, RM126 and RM71, have their
 shipped entries in [ROADMAP_HISTORY.md](../ROADMAP_HISTORY.md). What stays below is the round's closed
 record: RM55, RM72, RM82, RM87 and RM124, each shipped, plus RM83 (closed, not shipped) and RM86

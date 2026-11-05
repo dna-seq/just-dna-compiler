@@ -33,10 +33,11 @@ one tier that has the sequence to do it with.
 """
 
 import logging
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 from ga4gh.vrs.dataproxy import create_dataproxy
+from just_dna_format.alleles import trim_allele
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.vrs import UnsupportedBuildError, refget_accession, refget_supports_build
 
@@ -150,21 +151,201 @@ def _left_align(
     return chrom, pos, ref, alt
 
 
-def _indel_payloads(
+def left_normalize(
+    chrom: str,
+    pos: int,
+    ref: str,
+    alt: str,
+    read_window: Callable[[str, int, int], str | None] | None,
+) -> tuple[str, int, str, str] | None:
+    """One ALT → its leftmost parsimonious VCF spelling, or `None` when this run cannot decide it (RM270).
+
+    The spelling a caller writes after `bcftools norm -m -any`, so an exact `(chrom, pos, ref, alt)`
+    join meets it. A substitution or MNV has one spelling once its shared flank is trimmed, so it needs
+    no reference read and is decided offline. An insertion or deletion can slide inside a repeat, so it
+    goes through `_left_align`, the one normalizer RM267's comparison also uses
+    (`@one-normalizer-two-spellings`); with no `read_window`, or an unreadable one, it is `None`. A
+    non-nucleotide allele (symbolic, `.`, `*`, an `N`) names no spelling to align, and an ALT equal to
+    its REF names no event: both are `None`, never a guess.
+    """
+    ref, alt = ref.upper(), alt.upper()
+    if not ref or not alt or ref == alt or not _ACGT.issuperset(ref) or not _ACGT.issuperset(alt):
+        return None
+    if len(ref) == len(alt):
+        return (chrom, *trim_allele(pos, ref, alt))
+    if read_window is None:
+        return None
+    return _left_align(chrom, pos, ref, alt, read_window)
+
+
+def per_alt_loci(alleles: Iterable[tuple[str, int, str, str]]) -> list[dict[str, object]]:
+    """Alleles `(chrom, start, ref, alt)` → loci, each ALT in its own spelling (`trim_allele`) (RM381).
+
+    The one way a reader turns a source's rows into the locus dicts the chain passes on. ALTs whose
+    trimmed `(chrom, start, ref)` agree share a locus, their `alts` comma-joined, sorted and deduplicated;
+    ALTs that trim to different refs are different loci, the split a caller's `bcftools norm -m -any`
+    makes. Loci come back sorted by `(chrom, start, ref)` (P7). So the split repo's
+    `16:23635706 GTT>G / GTT>GT / GTT>GTTT` is three loci, `G>GT`, `GT>G` and `GTT>G`, and never the
+    padded `GTT>G,GT,GTTT`, in which a genotype would be read in a frame no caller writes.
+    """
+    grouped: dict[tuple[str, int, str], set[str]] = {}
+    for chrom, start, ref, alt in alleles:
+        pos, tref, talt = trim_allele(start, ref, alt)
+        grouped.setdefault((chrom, pos, tref), set()).add(talt)
+    return [
+        {"chrom": chrom, "start": pos, "ref": ref, "alts": ",".join(sorted(alts))}
+        for (chrom, pos, ref), alts in sorted(grouped.items())
+    ]
+
+
+@dataclass(frozen=True)
+class SpellingVerdict:
+    """Whether a recorded spelling is the left-aligned one, per `ResolutionRow.left_aligned` (RM270).
+
+    `verdict` is Kleene over the ALTs: `False` when any ALT has another leftmost spelling, else `None`
+    when any could not be decided, else `True`. `normalized` is the leftmost spelling of each ALT the
+    run decided, in ALT order, `None` where it could not.
+    """
+
+    verdict: bool | None
+    normalized: tuple[tuple[str, int, str, str] | None, ...]
+
+
+def spelling_verdict(
+    chrom: str | None,
+    start: int | None,
+    ref: str | None,
+    alts: str | None,
+    read_window: Callable[[str, int, int], str | None] | None,
+) -> SpellingVerdict:
+    """Check a recorded locus against its left-aligned spelling, ALT by ALT, and never rewrite it.
+
+    A multi-allelic cell is judged per ALT, as a caller splitting it would read it: `CAG>C,CAGAG` is
+    the jointly trimmed spelling of a deletion and an insertion, and its second ALT taken alone is
+    `C>CAG`, so the cell reads `False`. A locus with no coordinate or no ALT has nothing to judge.
+    """
+    members = [a.strip() for a in alts.split(",")] if alts else []
+    if chrom is None or start is None or not ref or not members:
+        return SpellingVerdict(None, ())
+    normalized = tuple(
+        left_normalize(chrom, start, ref, alt, read_window) if alt else None for alt in members
+    )
+    if any(
+        n is not None and n != (chrom, start, ref.upper(), alt.upper())
+        for n, alt in zip(normalized, members, strict=True)
+    ):
+        return SpellingVerdict(False, normalized)
+    return SpellingVerdict(None if None in normalized else True, normalized)
+
+
+def _spelled(chrom: object, start: object, ref: object, alts: object) -> str:
+    return f"{chrom}:{start} {ref}>{alts}"
+
+
+@dataclass
+class SpellingCheck:
+    """What RM270's spelling pass did in one `enrich` run — never an empty list read as a pass.
+
+    * `respelled` — `"<rsid> <as the link gave it> → <as written>"`, one per locus this run filled and
+      wrote in another spelling than its link's. A fill is outside `content_signature`
+      (`@rm43-positional-fill`), so writing it left-aligned is legal; it reaches a recorded table only
+      on `--rederive` (`@sidecar-authoritative`).
+    * `findings` — `"<variant_key>: <authored> → <left-aligned>"`, one per authored coordinate whose
+      leftmost spelling differs. Reported, never rewritten (`@enrichment-is-validation`): the cell is
+      the row's identity, and the row's `vrs_id` is what joins it to a caller's spelling.
+    * `checked` — authored coordinates judged either way, the findings' denominator.
+    * `unknown` — authored coordinates no verdict was reached for (an indel with no reference read, a
+      non-nucleotide allele), counted apart so an offline run never reads as a clean bill.
+    """
+
+    respelled: list[str] = field(default_factory=list)
+    findings: list[str] = field(default_factory=list)
+    checked: int = 0
+    unknown: int = 0
+
+    def judge(self, key: str, chrom: str, start: int, ref: str, alts: str, verdict: SpellingVerdict) -> None:
+        """Count one authored coordinate and, when it is not left-aligned, name its leftmost spelling."""
+        if verdict.verdict is None:
+            self.unknown += 1
+            return
+        self.checked += 1
+        if verdict.verdict is False:
+            normalized = [
+                _spelled(n[0], n[1], n[2], n[3]) if n is not None else f"{alt} undecided"
+                for n, alt in zip(verdict.normalized, alts.split(","), strict=True)
+            ]
+            self.findings.append(f"{key}: {_spelled(chrom, start, ref, alts)} → {', '.join(normalized)}")
+
+
+@dataclass(frozen=True)
+class NormalizedLocus:
+    """A filled locus in its left-aligned spelling (`normalize_locus`).
+
+    * `loci` — one or more loci, each in the leftmost parsimonious spelling of the ALTs it holds; the
+      locus unchanged when `aligned` is `None`.
+    * `aligned` — `True` when every ALT was decided (so every piece is left-aligned), `None` when any
+      could not be, in which case nothing was respelled.
+    * `piece_of` — for each ALT of the source locus, in its order, the index into `loci` it landed in.
+    """
+
+    loci: list[dict[str, object]]
+    aligned: bool | None
+    piece_of: tuple[int, ...]
+
+
+def normalize_locus(
+    locus: Mapping[str, object],
+    read_window: Callable[[str, int, int], str | None] | None,
+) -> NormalizedLocus:
+    """Left-normalize a locus the enricher fills (RM270).
+
+    Each ALT takes its leftmost parsimonious spelling (`left_normalize`); ALTs that land on one
+    `(start, ref)` stay one locus, in their recorded order, and ALTs that land on two become two loci,
+    the split a caller's `bcftools norm -m -any` makes. Ensembl's `X:634690 AGAG>AG,AGAGAG` (SHOX) is a
+    2 bp deletion and a duplication that a caller writes `X:634689 CAG>C` and `X:634689 C>CAG`: two
+    references, so two loci. A spelling no ALT changes comes back as it was.
+
+    **Whole or not at all.** When any ALT cannot be decided (no reference read, a non-nucleotide
+    allele) the locus comes back unchanged with `None`: half a respelling would put two conventions in
+    one cell. Every other key of the locus is carried onto each piece.
+    """
+    chrom, start, ref = locus.get("chrom"), locus.get("start"), locus.get("ref")
+    members = [a.strip() for a in str(locus.get("alts") or "").split(",")]
+    unchanged = NormalizedLocus([dict(locus)], None, tuple(0 for _ in members))
+    if chrom is None or start is None or not ref or not all(members):
+        return unchanged
+    normalized = [left_normalize(str(chrom), int(start), str(ref), alt, read_window) for alt in members]  # type: ignore[arg-type]
+    if any(n is None for n in normalized):
+        return unchanged
+    groups: dict[tuple[int, str], list[str]] = {}
+    piece_of: list[int] = []
+    for _chrom, pos, nref, nalt in normalized:  # type: ignore[misc]
+        if (pos, nref) not in groups:
+            groups[(pos, nref)] = []
+        groups[(pos, nref)].append(nalt)
+        piece_of.append(list(groups).index((pos, nref)))
+    loci = [
+        {**locus, "start": pos, "ref": nref, "alts": ",".join(alts)} for (pos, nref), alts in groups.items()
+    ]
+    return NormalizedLocus(loci, True, tuple(piece_of))
+
+
+def indel_spellings(
     chrom: str,
     pos: int,
     ref: str,
     alt: str,
     read_window: Callable[[str, int, int], str | None],
-) -> frozenset[str] | None:
-    """Every payload one pure indel can be spelled with inside its repeat, or `None` (RM274).
+) -> list[tuple[str, int, str, str]] | None:
+    """Every anchored VCF spelling of one pure indel inside its repeat, leftmost first, or `None`.
 
     Left-align, then slide the event right one base at a time while the reference allows it: a
     deletion of `P` over `[pos+1, pos+n]` also reads as a deletion one base right when the base after
     it equals `P[0]`, and its payload rotates to `P[1:] + base`; an insertion slides the same way
-    against the bases after its anchor. `AGAG>AG` in an `AGAGAG` run is therefore `{AG, GA}`. `None`
-    for anything that is not a single-anchored insertion or deletion, for an unreadable reference,
-    and for a repeat longer than the window, which is withheld rather than truncated.
+    against the bases after its anchor. Each slide's new anchor base is that next base, so the spelling
+    one step right is `base + payload` against `base`. `None` for anything that is not a single-anchored
+    insertion or deletion, for an unreadable reference, and for a repeat longer than the window, which
+    is withheld rather than truncated (RM274, RM375: the payloads and the anchors are one walk).
     """
     left = _left_align(chrom, pos, ref, alt, read_window)
     if left is None:
@@ -178,13 +359,31 @@ def _indel_payloads(
     window = read_window(chrom, first, first + _LEFT_ALIGN_WINDOW - 1)
     if window is None:
         return None
-    seen = [payload]
+    seen = [(chrom, pos, ref, alt)]
     for base in window.upper():
         if base != payload[0]:
-            return frozenset(seen)
+            return seen
         payload = payload[1:] + base
-        seen.append(payload)
+        pos += 1
+        seen.append((chrom, pos, base + payload, base) if deletion else (chrom, pos, base, base + payload))
     return None
+
+
+def _indel_payloads(
+    chrom: str,
+    pos: int,
+    ref: str,
+    alt: str,
+    read_window: Callable[[str, int, int], str | None],
+) -> frozenset[str] | None:
+    """Every payload one pure indel can be spelled with inside its repeat, or `None` (RM274).
+
+    `AGAG>AG` in an `AGAGAG` run is `{AG, GA}`: the payload of each spelling `indel_spellings` walks.
+    """
+    spellings = indel_spellings(chrom, pos, ref, alt, read_window)
+    if spellings is None:
+        return None
+    return frozenset((r if len(r) > len(a) else a)[1:] for _c, _p, r, a in spellings)
 
 
 @dataclass
@@ -295,6 +494,9 @@ class RefCheck:
     mismatches: list[RefMismatch]
     subjects: int = 0
     not_checked: str | None = None
+    #: Comparable rows whose reference read failed (RM361): never in `subjects`, and when every one
+    #: failed the whole check is `unreachable` rather than a clean pass over nothing.
+    unread: int = 0
 
 
 def verify_reference_alleles(
@@ -348,6 +550,7 @@ def verify_reference_alleles(
 
     mismatches: list[RefMismatch] = []
     subjects = 0
+    unread = 0
     for row in rows:
         if row.chrom is None or row.start is None or not row.ref:
             continue
@@ -362,6 +565,7 @@ def verify_reference_alleles(
             continue
         actual, shift = _read_with_neighbours(sequences, accession, row.start, len(claimed), claimed)
         if actual is None:
+            unread += 1
             continue
         subjects += 1
         if actual == claimed:
@@ -377,7 +581,11 @@ def verify_reference_alleles(
                 shift=shift,
             )
         )
-    return RefCheck(mismatches, subjects)
+    if unread and not subjects:
+        # Rows were there to compare and no read came back: a check that could not run (RM361), never
+        # `ran(subjects=0)` and a build diagnosis saying no authored ref disagreed.
+        return RefCheck([], 0, "unreachable", unread=unread)
+    return RefCheck(mismatches, subjects, unread=unread)
 
 
 def _read_with_neighbours(

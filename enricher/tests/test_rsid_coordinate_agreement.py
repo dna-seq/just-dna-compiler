@@ -125,6 +125,11 @@ def test_an_authored_pair_is_compared_against_the_reference(tmp_path: Path, cach
     assert (record.subjects, record.findings) == (2, 1)
     assert record.source == "ensembl"
     assert "rs429358" in (record.detail or "")
+    # RM292: the witness is named, and the tolerance class was measured and found empty — a 0, not
+    # an unset count, because both pairs are substitutions and the class exists for this check.
+    assert (record.checked_source, record.witness_source) == ("authored", "ensembl")
+    assert record.independence == "independent"
+    assert record.undecided == 0
 
 
 def test_a_module_authoring_no_pair_says_nothing_to_check(tmp_path: Path, cache: Path) -> None:
@@ -147,6 +152,7 @@ def test_no_reference_is_a_skip_not_a_clean_pass(tmp_path: Path) -> None:
     assert record is not None
     assert record.skipped == "offline", "offline with no snapshot is cleared by egress, so say so"
     assert (record.subjects, record.findings) == (0, 0)
+    assert record.undecided is None, "no snapshot measured nothing, so there is no count to publish"
 
 
 def test_a_pair_the_snapshot_never_heard_of_is_not_an_agreement(tmp_path: Path, cache: Path) -> None:
@@ -193,7 +199,7 @@ def test_a_disagreement_is_reported_in_both_modes_and_refuses_neither(tmp_path: 
     """A dbSNP merge or a build difference is not something an authored edit is owed — P5.
 
     `strict` means *reproducible artifact*; the compiler's half of this question escalates because the
-    authored value wins and the table's position is then lost on a reverse. Here nothing is dropped,
+    authored value wins over the table in the artifact. Here nothing is dropped,
     so escalating would refuse a compile for a finding the enricher itself carries as a warning.
     """
     spec = _spec(tmp_path, "rs429358,19,999,T,C,C/T,risk,contradicts the snapshot\n")
@@ -262,6 +268,30 @@ def test_an_indel_anchored_a_base_earlier_is_undecided_not_a_disagreement(tmp_pa
     assert record.findings == 0, "an alternative anchoring is not a contradiction"
     assert record.skipped == "no_reference", "and it is not a comparison either"
     assert "rs869312907" in (record.detail or "")
+    # RM292 / `@tautology-zero`: the abstention is counted in a field, not only named in prose.
+    assert record.undecided == 1
+
+
+def test_an_undecided_indel_is_counted_beside_a_decided_pair(tmp_path: Path) -> None:
+    """The postmortem's B2 case in miniature: the tolerance abstains on the indel, and the record that
+    reached a verdict on the substitution publishes the abstention beside it, outside `subjects`."""
+    data = tmp_path / "cache" / "data"
+    data.mkdir(parents=True)
+    pl.DataFrame(
+        {
+            "id": ["rs869312907", "rs1801133"],
+            "chrom": ["X", "1"],
+            "start": [634690, 11796321],
+            "ref": ["AGAG", "G"],
+            "alt": ["AG", "A"],
+        }
+    ).write_parquet(data / "chr.parquet")
+    spec = _haplotype_spec(tmp_path, "*2,rs869312907,X,634689,C,SHOX\n*3,rs1801133,1,11796321,A,MTHFR\n")
+    _enrich(spec, tmp_path / "cache")
+
+    record = _record(spec)
+    assert record is not None and record.skipped is None
+    assert (record.subjects, record.findings, record.undecided) == (1, 0, 1)
 
 
 def test_an_unqueryable_cache_does_not_become_fatal_because_of_this_check(tmp_path: Path) -> None:

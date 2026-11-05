@@ -40,15 +40,24 @@ from just_dna_format.base import merge_key
 from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.sources import SourceRow
+from just_dna_format.spelling import gene_key
 from just_dna_format.vocab import DOSAGE_SENSITIVITY_BY_CODE
 
 from just_dna_enricher.gene_metrics import _write_gene_metrics_csv, module_genes
-from just_dna_enricher.licensing import CLINGEN_TERMS, merge_sources_file, require_sources_file, sidecar_path
+from just_dna_enricher.licensing import (
+    CLINGEN_TERMS,
+    record_table_sources,
+    require_sources_file,
+    sidecar_path,
+)
+from just_dna_enricher.net import EndpointRetired, raise_if_retired, release_dataset, stated_release
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_CLINGEN_URL = "https://ftp.clinicalgenome.org/ClinGen_gene_curation_list_GRCh38.tsv"
 CLINGEN_SOURCE = CLINGEN_TERMS.source
+#: The bare lane a dosage row carries when the file states no release (`release_dataset`).
+DOSAGE_LANE = "clingen_dosage"
 # The header line the file's comment block ends with (see the module docstring).
 _HEADER_PREFIX = "#Gene Symbol"
 _NOT_EVALUATED = "not yet evaluated"
@@ -70,6 +79,15 @@ class ClinGenUnavailable(ClinGenError):
     depend on, and the alternative of matching the message is worse: neither string is pinned as an
     API, so a reword would silently flip a consumer's verdict from "unchecked" to "your table is
     broken".
+    """
+
+
+class ClinGenRetired(ClinGenUnavailable, EndpointRetired):
+    """The source answered HTTP 410: it retired the gene-curation list (RM361, audit round 2).
+
+    Its lane's `ClinGenUnavailable`, so every handler still catches it; marked `EndpointRetired`, so
+    the reason is `retired` and the message says the file moved and to upgrade, never that the
+    host was down.
     """
 
 
@@ -118,12 +136,12 @@ def decode_rating(cell: str | None) -> str | None:
     return term
 
 
-def parse_curation_list(text: str) -> tuple[dict[str, DosageRating], str]:
+def parse_curation_list(text: str) -> tuple[dict[str, DosageRating], str | None]:
     """Parse the gene-curation TSV → `{gene: DosageRating}` plus the release date it declares.
 
     The release line (`#01 Aug,2026`) is the only version this file carries — ClinGen publishes no
     numbered release — so it becomes the `dataset` label the same way the ClinPGx snapshot uses its
-    `CREATED_<date>` marker."""
+    `CREATED_<date>` marker. `None` when the file states no release line (RM361), never a word."""
     lines = text.splitlines()
     header_index = next((i for i, line in enumerate(lines) if line.startswith(_HEADER_PREFIX)), None)
     if header_index is None:
@@ -132,7 +150,7 @@ def parse_curation_list(text: str) -> tuple[dict[str, DosageRating], str]:
         )
     released = next(
         (line.lstrip("#").strip() for line in lines[:header_index] if line[1:2].isdigit()),
-        "unknown",
+        None,
     )
     body = [lines[header_index].lstrip("#"), *lines[header_index + 1 :]]
     reader = csv.DictReader(io.StringIO("\n".join(body)), delimiter="\t")
@@ -156,6 +174,7 @@ def fetch_curation_list(url: str = DEFAULT_CLINGEN_URL, *, timeout: float = 60.0
         response = httpx.get(url, timeout=timeout, follow_redirects=True)
         response.raise_for_status()
     except httpx.HTTPError as exc:
+        raise_if_retired(exc, ClinGenRetired, "ClinGen")
         raise ClinGenUnavailable(f"could not fetch the ClinGen curation list from {url}: {exc}") from exc
     return response.text
 
@@ -227,7 +246,7 @@ def enrich_dosage_sensitivity(
             existing[merge_key(row)] = row
 
     ratings, released = parse_curation_list(curation_text or fetch_curation_list(url))
-    dataset = f"clingen_dosage_{released}"
+    dataset = release_dataset(DOSAGE_LANE, released)
     fetched_at = now_utc_iso()
 
     out: list[GeneMetricsRow] = list(existing.values())
@@ -235,11 +254,13 @@ def enrich_dosage_sensitivity(
     missing: list[str] = []
     # Read off the rows rather than rebuilding the merge key here — same reason the dict now reads
     # `GeneMetricsRow._KEY_FIELDS` instead of restating `(gene, dataset)` (S51).
-    done = {row.gene for row in existing.values() if row.dataset == dataset}
+    # Both sides by `gene_key` (RM363): ClinGen writes `APOE`, and an authored `Apoe` is that gene.
+    done = {gene_key(row.gene) for row in existing.values() if row.dataset == dataset}
+    rated = {gene_key(symbol): rating for symbol, rating in ratings.items()}
     for gene in module_genes(spec_dir):
-        if gene in done:
+        if gene_key(gene) in done:
             continue
-        rating = ratings.get(gene)
+        rating = rated.get(gene_key(gene))
         if rating is None or (rating.haploinsufficiency is None and rating.triplosensitivity is None):
             missing.append(gene)
             continue
@@ -298,7 +319,27 @@ def enrich_dosage_sensitivity(
             out,
             output_path,
             before_commit=(
-                (lambda: merge_sources_file([source_row], spec_dir, error=ClinGenError)) if covered else None
+                # Labelled by the release every committed ClinGen row states (RM373); the table's gnomAD
+                # rows are another pass's and name another source.
+                (
+                    lambda: record_table_sources(
+                        {
+                            CLINGEN_SOURCE: [
+                                stated_release(row.dataset, DOSAGE_LANE)
+                                for row in out
+                                if row.source == CLINGEN_SOURCE
+                            ]
+                        },
+                        source_row.layer,
+                        spec_dir,
+                        error=ClinGenError,
+                        # A routine merge declares nothing, so it retires no licence row (RM383).
+                        answered_every_row=False,
+                        declared_use=declared_use,
+                    )
+                )
+                if covered
+                else None
             ),
         )
     return ClinGenResult(

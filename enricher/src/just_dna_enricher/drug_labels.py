@@ -51,7 +51,6 @@ one: ClinPGx's terms are accepted when the data is taken, so a `commercial` decl
 too, and the skip is `not_permitted` — what clears it is a *declaration*, not egress.
 """
 
-import json
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -61,13 +60,15 @@ import duckdb
 from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.manifest import VerificationRecord
 from just_dna_format.pgx import DiplotypeRow, PharmVariantRow
+from just_dna_format.snapshot import read_release
+from just_dna_format.spelling import drug_key, gene_key
 
 from just_dna_enricher.licensing import CLINPGX_TERMS, check_declared_use, effective_declared_use
 from just_dna_enricher.locations import (
-    RELEASE_FILENAME,
     SNAPSHOT_DATA_DIRNAME,
     resolve_drug_labels_reference,
 )
+from just_dna_enricher.net import EndpointRetired
 from just_dna_enricher.verification import examples, ran, record_verification, skipped
 
 logger = logging.getLogger(__name__)
@@ -216,6 +217,15 @@ class DrugLabelUnavailable(DrugLabelError):
     """No snapshot was provisioned, so the comparison could not be put at all."""
 
 
+class DrugLabelRetired(DrugLabelUnavailable, EndpointRetired):
+    """The source answered HTTP 410: it retired the drug-label file (RM361, audit round 2).
+
+    Its lane's `DrugLabelUnavailable`, so every handler still catches it; marked `EndpointRetired`, so
+    the reason is `retired` and the message says the file moved and to upgrade, never that the
+    host was down.
+    """
+
+
 @dataclass(frozen=True)
 class LabelRow:
     """One regulator's label annotation, reduced to what this check reads.
@@ -346,12 +356,12 @@ class DrugLabelIndex:
         self._by_allele.clear()
         self._by_gene.clear()
         for row in self.labels:
-            chemicals = {value.casefold() for value in row.chemicals}
+            chemicals = {drug_key(value) for value in row.chemicals}
             for chemical in chemicals:
                 for token in row.variants:
                     self._by_allele.setdefault((token.casefold(), chemical), []).append(row)
                 for gene in row.genes:
-                    self._by_gene.setdefault((gene.casefold(), chemical), []).append(row)
+                    self._by_gene.setdefault((gene_key(gene), chemical), []).append(row)
 
     def testing_levels(self) -> frozenset[str]:
         """Every level this snapshot actually states — the walked set the vocabulary is asserted against."""
@@ -362,11 +372,11 @@ class DrugLabelIndex:
 
     def by_allele(self, allele: str, drug: str) -> tuple[LabelRow, ...]:
         """Labels naming this allele token and this chemical, in file order."""
-        return tuple(self._by_allele.get((allele.casefold(), drug.casefold()), ()))
+        return tuple(self._by_allele.get((allele.casefold(), drug_key(drug)), ()))
 
     def by_gene(self, gene: str, drug: str) -> tuple[LabelRow, ...]:
         """Labels naming this gene symbol and this chemical, in file order."""
-        return tuple(self._by_gene.get((gene.casefold(), drug.casefold()), ()))
+        return tuple(self._by_gene.get((gene_key(gene), drug_key(drug)), ()))
 
 
 def _split(cell: str | None) -> tuple[str, ...]:
@@ -387,17 +397,10 @@ def load_drug_labels(reference: Path) -> DrugLabelIndex:
     parquet = reference / SNAPSHOT_DATA_DIRNAME / LABELS_PARQUET
     if not parquet.is_file():
         raise DrugLabelUnavailable(f"no drug-label snapshot at {parquet}")
-    release_path = reference / RELEASE_FILENAME
-    dataset: str | None = None
-    if release_path.is_file():
-        try:
-            release = json.loads(release_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError) as exc:
-            # A snapshot whose provenance file is damaged still holds readable labels; losing the
-            # label is a weaker outcome than refusing the comparison, and the record says `None`.
-            logger.warning("Could not read %s (%s); the release label is unknown.", release_path, exc)
-        else:
-            dataset = (release.get("dataset") or None) if isinstance(release, dict) else None
+    # A snapshot whose provenance file is damaged still holds readable labels; losing the label is
+    # a weaker outcome than refusing the comparison, and the record says `None`.
+    release = read_release(reference)
+    dataset = (release.dataset or None) if release is not None else None
 
     pattern = str(parquet).replace("'", "''")
     con = duckdb.connect(":memory:")
@@ -560,7 +563,7 @@ def _allele_keys(gene: str, allele: str) -> tuple[str, ...]:
     stripped = allele.strip()
     if not stripped:
         return ()
-    if stripped.casefold().startswith(gene.casefold()):
+    if gene_key(stripped).startswith(gene_key(gene)):
         return (stripped,)
     return (f"{gene}{stripped}", f"{gene} {stripped}", stripped)
 

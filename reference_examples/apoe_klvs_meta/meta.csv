@@ -1,0 +1,7 @@
+members,trait_efo_id,trait_role,direction,conclusion,negatives,tier,age_of_action,age_of_action_confidence,flags,pmid,doi,sex
+variants[flags=legacy_longevitymap],,,,,,D,,,,,,
+variants[variant_key=rs10455872],,,,,,A,MIDLIFE,DIRECT_WEAK,,30642433,,
+"allele_function[gene=APOE, allele=ε4]",,,,,,A,LATE,DIRECT,ap:weak,30642433,,
+"allele_function[gene=APOE, allele=ε2]",,,,,,A,LATE,DIRECT_WEAK,protect:presence,31413261,,
+"diplotypes[gene=APOE, haplotype_a=ε2, haplotype_b=ε4]",,,,,,,,INFERRED,,,,
+"diplotypes[gene=KL, haplotype_a=KL-VS, haplotype_b=ref] & diplotypes[gene=APOE, haplotype_b=ε4]",MONDO:0004975,,protective,"You carry APOE ε4 and one KL-VS haplotype. In ε4 carriers aged 60 to 80, KL-VS heterozygosity was associated with lower Alzheimer's risk.",,C,,,,32282020,,

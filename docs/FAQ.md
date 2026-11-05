@@ -53,9 +53,10 @@ timestamp is a column in the parquet. → S7, which also rejects the two other p
 **Does a rebuild always mint a new digest?**
 No. An untouched spec recompiled under a fixed compiler reproduces it exactly. What moves it across
 rebuilds is a **toolchain change** — parquet is not byte-deterministic across polars/arrow versions,
-which is why P4 scopes the guarantee to a fixed `compiler_version`. polars from 2.0 writes its own version into
-every parquet footer, so two installs of one `compiler_version` with different polars releases mint different
-digests for the same content; RM342 records the toolchain so such a mismatch can be explained.
+which is why P4 pins the guarantee to `compiler_version` and the recorded toolchain. polars from 2.0 writes its
+own version into every parquet footer, so two installs of one `compiler_version` with different polars releases
+mint different digests for the same content. Since 0.8 `compilation.toolchain` records which Python and polars
+wrote the bytes (RM342), and a publish collision or a release sweep names such a difference `toolchain_differs`.
 → [CONSTITUTION](CONSTITUTION.md) P4, and [MODULE_LIFECYCLE § 6.4](MODULE_LIFECYCLE.md).
 
 **Does re-running the enricher restamp `fetched_at` and churn my digest?**
@@ -131,18 +132,36 @@ Every derived sidecar is merge-not-clobber: an existing row is authoritative bec
 overridden it. Delete the file to re-derive. → [ENRICHER.md](ENRICHER.md), and
 [MODULE_LIFECYCLE § 6.3](MODULE_LIFECYCLE.md) for what deleting costs.
 
+**Why did my `not_found` row in `resolution.csv` disappear after a re-derive?**
+Because it said the source has no record of an rsID the source has. Since 0.8 (RM382, reversing S85) a
+link whose every locus your genotype cannot sit on is a miss, so the next link is asked; if one places
+it you get its row, and if none can you get no row, an unresolved key and an `allele_mismatches` entry
+naming every link's loci. Check the genotype's alleles and strand. →
+[ENRICHER.md § Resolution is allele-aware in both directions](ENRICHER.md#resolution-is-allele-aware-in-both-directions),
+[INTEGRATION_0_8 § 1.36](INTEGRATION_0_8.md#136-a-rejected-resolution-answer-asks-the-next-link-and-is-never-a-not_found-row-rm382-no-new-code).
+
 **Can `resolution.csv` be published as a parquet like the other tables?**
 No, and this is the first repair everyone proposes. It is a build-time lookup, not a published fact
-table: its provenance columns are outside the fact set by design, `reverse_module` cannot reconstruct
-half of them, and a consumer keying on it would be reading the lookup rather than the answer — which
+table: its provenance columns are outside the fact set by design, `reverse_module` leaves the
+time-varying ones to the enricher, and a consumer keying on it would be reading the lookup rather than the answer — which
 is materialized into `weights.parquet` and the positional tables where it belongs.
 → [SCHEMAS § The resolution table](SCHEMAS.md#the-resolution-table-05-provisional).
 
 **Does `reverse` give me my spec back?**
-No. It is a fixed point, not a backup. Manifest-only fields (`authorship`, `provenance`, `logo`,
-`readme`, and since 0.6 `weighting`), the whole verification attestation *and its closure*, and
-`resolution.csv`'s provenance are all lost — deliberately, in each case. → [COMPILER § Reverse](COMPILER.md#reverse) and
+No. It is a fixed point, not a backup. Since 0.8 it does write back every spec field the manifest
+carries (RM241), and every file the compile shipped beside the parquets: the README, the logo,
+`provenance.json` and the logs (RM364). What is still lost is what the artifact does not hold: the
+verification attestation *and its closure*, and `resolution.csv`'s provenance. Which manifest fields a
+round trip gives back is a registry, `reverse.REVERSE_MANIFEST_RECONSTRUCTED`, with the rest in
+`REVERSE_MANIFEST_EXCLUDED` and a reason each. → [COMPILER § Reverse](COMPILER.md#reverse) and
 [MODULE_LIFECYCLE § 6.9](MODULE_LIFECYCLE.md).
+
+**My reversed module lost its title, colour, `weighting` or README. Is that expected?**
+Not since 0.8. Before RM241, reverse rebuilt the `module:` block from the module name and dropped
+`weighting`, `license`, `authorship`, `authority_precedence`, `panel` and the README, and the
+round-trip test passed anyway because both identity digests leave the manifest out. Reverse now reads
+them from the artifact's `manifest.json`; a bare parquet directory with no manifest still gets the
+name-derived defaults. → [COMPILER § Reverse](COMPILER.md#reverse).
 
 **Reverse drops `rsid_alternates` — is that a bug to file?**
 No, closed, do not re-flag. Reverse rebuilds the table from `weights.parquet`, which carries no
@@ -212,11 +231,12 @@ Only if it ran. A check that could not run reports *why* (`clin_sig_not_checked`
 says both "compared everything" and "never compared". → [ENRICHER.md](ENRICHER.md).
 
 **The manifest says `quotes_found: 0, quotes_unchecked: 0` — were the quotes checked and missed?**
-Not if only the abstract was searched: an abstract miss settles nothing, and `quotes_unchecked` counts
-only citations with no text at all. `abstract_only_count > 0` beside `quotes_found < quotes_authored`
-is the case to treat as unchecked; per citation, `quote_source` = `abstract` beside `quotes_found` = 0
-in `literature.csv` means unsettled. A counter that settles it outright is a minor's, on the `0.8`
-branch. → RM264 / RM256 / S109.
+Not if the text searched was only the abstract: an abstract miss settles nothing, and
+`quotes_unchecked` counts only citations with no text at all. From the 0.8 line, read `quotes_found`
+against `quotes_checked`. On a 0.7.x manifest, which has no `quotes_checked`, a row in
+`literature.csv` with `quote_source` = `abstract` beside `quotes_found` = 0 is unsettled; holding only
+the manifest, `abstract_only_count > 0` beside `quotes_found < quotes_authored` is the case to treat as
+unchecked. → RM256 / RM264 / S109.
 
 ---
 

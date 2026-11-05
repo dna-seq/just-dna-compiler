@@ -32,11 +32,13 @@ from just_dna_enricher.licensing import (
     ALPHAGENOME_ATLAS_TERMS,
     CIVIC_TERMS,
     CLINGEN_TERMS,
+    CLINVAR_GKM_TERMS,
     CLINVAR_TERMS,
     ENSEMBL_TERMS,
     GENCC_TERMS,
     GNOMAD_TERMS,
     GWAS_CATALOG_TERMS,
+    OPENTARGETS_TERMS,
     PUBMIND_TERMS,
 )
 
@@ -56,12 +58,21 @@ class DerivedProducer:
     #: from tables already beside the spec rather than from a fetch names the sources those rows came
     #: from, because that is the provenance question a reader of the table is actually asking.
     sources: tuple[str, ...]
-    #: `VALID_VERIFICATION_CHECKS` members this pass attests while it writes. Empty is honest and
-    #: common: filling a table is a recording pass, and only some of them also compare something.
+    #: `VALID_VERIFICATION_CHECKS` members this pass attests while it writes — all of them: the union
+    #: over a command's producers equals the names its code passes to `ran`/`skipped`, under a walking
+    #: test (RM365). Empty is honest and common: filling a table is a recording pass, and only some of
+    #: them also compare something.
     checks: tuple[str, ...] = ()
     #: Why this pass writes a table another pass also writes, stated iff it shares one. Two writers of
     #: one table is the shape that needs a reason on the page rather than a reader inferring one.
     shares_table_because: str = ""
+    #: `(source, lane)`: the cache lane this pass reads whose release reaches its licence row (RM373).
+    #: `source` is the `SourceTerms.source` the table's rows name and `lane` the `CACHE_LANES` member
+    #: that answered them; the pass writes the lane's own `release_label` into that source's
+    #: `SourceRow.dataset` through `licensing.record_table_sources`, withheld when the committed rows
+    #: state two releases. `test_producers.py` walks each module's lane reads against this field,
+    #: so a pass that starts reading a lane names it here or in `LANES_READ_WITHOUT_A_LICENCE_ROW`.
+    release_lanes: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self) -> None:
         if not self.sources:
@@ -79,13 +90,30 @@ DERIVED_PRODUCERS: dict[str, tuple[DerivedProducer, ...]] = {
             # The resolver chain in the order `enrich` tries it: the cache/snapshot first, then the
             # two links that answer where it does not. ENRICHER.md § Resolver chain is the long form.
             sources=(ENSEMBL_TERMS.source, CLINVAR_TERMS.source, GNOMAD_TERMS.source),
+            # Every check `enrich` writes into `verification.json`, asserted equal to the names its
+            # record builder passes to `ran`/`skipped` (RM365: this listed six while it wrote nine).
+            # A run writes its records once, so they sit on the producer of the table the run exists
+            # to fill. Two read CIViC, which `sources` above does not name because no row of this
+            # table comes from it: `published_refutation` (an authored `direction` against CIViC's
+            # refutations) and `evidence_status_currency` (a recorded CIViC curation status against
+            # what CIViC says now).
+            release_lanes=(
+                (ENSEMBL_TERMS.source, "ensembl"),
+                (CLINVAR_TERMS.source, "clinvar"),
+                # The placement witness (RM267): no row is *answered* by it, but every row it was
+                # asked about names it, so its licence row carries its release like a link's.
+                (CLINVAR_GKM_TERMS.source, "clinvar_gkm"),
+            ),
             checks=(
                 "reference_allele",
                 "rsid_currency",
                 "clinical_significance",
                 "rsid_coordinate_agreement",
+                "placement_agreement",
                 "genome_build_agreement",
                 "dataset_currency",
+                "published_refutation",
+                "evidence_status_currency",
             ),
         ),
     ),
@@ -103,6 +131,7 @@ DERIVED_PRODUCERS: dict[str, tuple[DerivedProducer, ...]] = {
             command="gene-metrics",
             module="gene_metrics",
             sources=(GNOMAD_TERMS.source,),
+            release_lanes=((GNOMAD_TERMS.source, "constraint"),),
             shares_table_because=(
                 "constraint and dosage sensitivity are two different measurements of one gene from two "
                 "authorities, and they share a table because a consumer asks one question of it"
@@ -133,6 +162,7 @@ DERIVED_PRODUCERS: dict[str, tuple[DerivedProducer, ...]] = {
             command="assertions",
             module="assertions",
             sources=(CLINVAR_TERMS.source,),
+            release_lanes=((CLINVAR_TERMS.source, "clinvar"),),
         ),
     ),
     "gwas_effects.csv": (
@@ -141,6 +171,21 @@ DERIVED_PRODUCERS: dict[str, tuple[DerivedProducer, ...]] = {
             command="gwas",
             module="gwas",
             sources=(GWAS_CATALOG_TERMS.source,),
+            shares_table_because=(
+                "writes the association rows; `opentargets enrich` fills two columns on them "
+                "(`posterior_probability`, `fine_mapping_method`, RM239) and adds no row"
+            ),
+        ),
+        DerivedProducer(
+            table="gwas_effects.csv",
+            command="opentargets enrich",
+            module="opentargets",
+            sources=(OPENTARGETS_TERMS.source,),
+            release_lanes=((OPENTARGETS_TERMS.source, "opentargets"),),
+            shares_table_because=(
+                "fills RM239's fine-mapping posterior on rows the `gwas` pass wrote, keyed on their "
+                "(variant, study), and never adds or removes an association"
+            ),
         ),
     ),
     "literature.csv": (
@@ -151,7 +196,7 @@ DERIVED_PRODUCERS: dict[str, tuple[DerivedProducer, ...]] = {
             # PubMed and Europe PMC are the two registries this pass records against; Crossref answers
             # existence for what PubMed does not index (`@citation-existence`) and writes no row.
             sources=("pubmed", "europepmc"),
-            checks=("citation_existence", "citation_identifier"),
+            checks=("citation_existence", "citation_identifier", "provenance_quote"),
         ),
     ),
     "clin_sig_concordance.csv": (
@@ -172,6 +217,8 @@ DERIVED_PRODUCERS: dict[str, tuple[DerivedProducer, ...]] = {
             module="concordance",
             sources=(CLINVAR_TERMS.source, CIVIC_TERMS.source, PUBMIND_TERMS.source),
             checks=("clinical_significance",),
+            # RM379: each authority a written call row names, consulted, has its licence row.
+            release_lanes=((CLINVAR_TERMS.source, "clinvar"), (PUBMIND_TERMS.source, "pubmind")),
             shares_table_because=(
                 "the per-authority calls are the detail rows behind each concordance verdict, written by "
                 "the same pass so a verdict and the calls it was computed from cannot disagree"
@@ -184,6 +231,42 @@ DERIVED_PRODUCERS: dict[str, tuple[DerivedProducer, ...]] = {
             command="alphagenome expression",
             module="expression",
             sources=(ALPHAGENOME_ATLAS_TERMS.source,),
+        ),
+    ),
+    "locus_to_gene.csv": (
+        DerivedProducer(
+            table="locus_to_gene.csv",
+            command="opentargets enrich",
+            module="opentargets",
+            sources=(OPENTARGETS_TERMS.source,),
+            release_lanes=((OPENTARGETS_TERMS.source, "opentargets"),),
+        ),
+    ),
+    "colocalisations.csv": (
+        DerivedProducer(
+            table="colocalisations.csv",
+            command="opentargets enrich",
+            module="opentargets",
+            sources=(OPENTARGETS_TERMS.source,),
+            release_lanes=((OPENTARGETS_TERMS.source, "opentargets"),),
+        ),
+    ),
+    "consequences.csv": (
+        DerivedProducer(
+            table="consequences.csv",
+            command="opentargets enrich",
+            module="opentargets",
+            sources=(OPENTARGETS_TERMS.source,),
+            release_lanes=((OPENTARGETS_TERMS.source, "opentargets"),),
+        ),
+    ),
+    # RM331 (0.8): r² between a study's proxy and its lead, in the study's one superpopulation.
+    "ld_pairs.csv": (
+        DerivedProducer(
+            table="ld_pairs.csv",
+            command="ld-pairs",
+            module="ld_pairs",
+            sources=(ENSEMBL_TERMS.source,),
         ),
     ),
 }
@@ -202,6 +285,16 @@ SOURCES_WITHOUT_TERMS: dict[str, str] = {
     "europepmc": (
         "the same rule one index over: Europe PMC's own terms are not the terms of the articles it "
         "surfaces, and the per-article record is what `literature.csv` carries"
+    ),
+}
+
+#: `(command, lane)` pairs where a pass reads a cache lane and writes no licence row for it, each with
+#: the reason (RM373; keyed by command since RM379, because one run reads in one module and writes in another). The complement of `DerivedProducer.release_lanes` in the walk over each
+#: module's lane reads, so a lane a pass starts reading is named in one place or the other.
+LANES_READ_WITHOUT_A_LICENCE_ROW: dict[tuple[str, str], str] = {
+    ("enrich", "civic"): (
+        "read for two checks (`published_refutation`, `evidence_status_currency`) that compare authored "
+        "cells with CIViC and write no row of any table, so no licence row is owed for a derived fact"
     ),
 }
 

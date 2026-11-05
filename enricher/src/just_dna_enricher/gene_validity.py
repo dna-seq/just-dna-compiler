@@ -51,17 +51,20 @@ from just_dna_format.gene_validity import (
     superseded_groups,
     undecidable_groups,
 )
-from just_dna_format.layout import atomic_writer
+from just_dna_format.layout import atomic_writer, nothing_to_write
 from just_dna_format.normalize import normalize_utc_timestamp, now_utc_iso
+from just_dna_format.spelling import gene_key
 
 from just_dna_enricher.gene_metrics import GeneMetricsEnrichmentError, module_genes
 from just_dna_enricher.licensing import (
     CLINGEN_TERMS,
     GENCC_TERMS,
-    record_source_terms,
+    record_table_sources,
     require_sources_file,
     sidecar_path,
+    table_datasets,
 )
+from just_dna_enricher.net import EndpointRetired, raise_if_retired, release_dataset, stated_release
 
 logger = logging.getLogger(__name__)
 
@@ -69,10 +72,13 @@ logger = logging.getLogger(__name__)
 #: and a second `+++` line before the data — neither a plain CSV nor a comment-prefixed one.
 DEFAULT_CLINGEN_VALIDITY_URL = "https://search.clinicalgenome.org/kb/gene-validity/download"
 
-#: GenCC's full submission export — every submitter's assertions in one CSV, ~28 MB.
-DEFAULT_GENCC_URL = "https://search.thegencc.org/download/action/submissions-export-csv"
+#: GenCC's full submission export — every submitter's assertions in one CSV, ~28 MB. On `thegencc.org`
+#: since `search.thegencc.org` began answering 301 there (probed 2026-11-04, same 28 MB body).
+DEFAULT_GENCC_URL = "https://thegencc.org/download/action/submissions-export-csv"
 
 CLINGEN_SOURCE = CLINGEN_TERMS.source
+#: The bare lanes a row carries when its file states no release (`release_dataset`): ClinGen's, GenCC's.
+VALIDITY_LANES = ("clingen_gene_validity", "gencc_submissions")
 GENCC_SOURCE = GENCC_TERMS.source
 
 #: Which submitters this pass can reach, by the name that joins `sources.csv.source`.
@@ -159,6 +165,15 @@ class GeneValidityUnavailable(GeneValidityError):
     existing `gene_validity.csv` is invalid", and only the first means a source was asked. Found by
     walking the passes rather than by a report — S37 named ClinGen's instance and this one is its
     twin, which is why the repair is a walked registry and not two hand-picked sites.
+    """
+
+
+class GeneValidityRetired(GeneValidityUnavailable, EndpointRetired):
+    """The source answered HTTP 410: it retired a submitter's export (RM361, audit round 2).
+
+    Its lane's `GeneValidityUnavailable`, so every handler still catches it; marked `EndpointRetired`, so
+    the reason is `retired` and the message says the file moved and to upgrade, never that the
+    host was down.
     """
 
 
@@ -260,7 +275,7 @@ def map_inheritance(wording: str | None, *, unmapped: set[str] | None = None) ->
 
 def parse_clingen_validity(
     text: str, *, unmapped: set[str] | None = None
-) -> tuple[list[ValidityAssertion], str]:
+) -> tuple[list[ValidityAssertion], str | None]:
     """Parse ClinGen's gene-validity CSV → `(assertions, release label)`.
 
     The file's layout is the reason this is not two lines of `csv.DictReader`: four preamble rows
@@ -288,7 +303,7 @@ def parse_clingen_validity(
             for row in rows[:header_index]
             if row and row[0].strip().startswith(_CLINGEN_RELEASE_PREFIX)
         ),
-        "unknown",
+        None,
     )
     header = [cell.strip() for cell in rows[header_index]]
     out: list[ValidityAssertion] = []
@@ -333,7 +348,7 @@ def _clingen_assertion_id(report_url: str | None) -> str | None:
     return tail or None
 
 
-def parse_gencc(text: str, *, unmapped: set[str] | None = None) -> tuple[list[ValidityAssertion], str]:
+def parse_gencc(text: str, *, unmapped: set[str] | None = None) -> tuple[list[ValidityAssertion], str | None]:
     """Parse GenCC's submission export → `(assertions, release label)`.
 
     GenCC publishes no release identifier at all, so the label is derived from the latest
@@ -376,7 +391,7 @@ def parse_gencc(text: str, *, unmapped: set[str] | None = None) -> tuple[list[Va
                 report_url=(record.get("submitted_as_public_report_url") or "").strip() or None,
             )
         )
-    return out, (max(run_dates) if run_dates else "unknown")
+    return out, (max(run_dates) if run_dates else None)
 
 
 def fetch_validity_export(url: str, *, timeout: float = 180.0) -> str:
@@ -391,6 +406,8 @@ def fetch_validity_export(url: str, *, timeout: float = 180.0) -> str:
         response = httpx.get(url, timeout=timeout, follow_redirects=True)
         response.raise_for_status()
     except httpx.HTTPError as exc:
+        # The host names the submitter: this one fetch serves ClinGen's export and GenCC's.
+        raise_if_retired(exc, GeneValidityRetired, httpx.URL(url).host or url)
         raise GeneValidityUnavailable(f"could not fetch the gene-validity export from {url}: {exc}") from exc
     return response.text
 
@@ -462,14 +479,14 @@ def enrich_gene_validity(
     )
     if source == CLINGEN_SOURCE:
         assertions, released = parse_clingen_validity(text, unmapped=unmapped)
-        dataset = f"clingen_gene_validity_{released}"
+        dataset = release_dataset(VALIDITY_LANES[0], released)
     else:
         assertions, released = parse_gencc(text, unmapped=unmapped)
-        dataset = f"gencc_submissions_{released}"
+        dataset = release_dataset(VALIDITY_LANES[1], released)
 
     by_gene: dict[str, list[ValidityAssertion]] = {}
     for assertion in assertions:
-        by_gene.setdefault(assertion.gene, []).append(assertion)
+        by_gene.setdefault(gene_key(assertion.gene), []).append(assertion)
 
     fetched_at = now_utc_iso()
     seen = {_merge_key(row) for row in existing_rows}
@@ -477,7 +494,7 @@ def enrich_gene_validity(
     covered: list[str] = []
     missing: list[str] = []
     for gene in _module_genes(spec_dir):
-        found = by_gene.get(gene, [])
+        found = by_gene.get(gene_key(gene), [])
         if not found:
             missing.append(gene)
             continue
@@ -571,11 +588,15 @@ def enrich_gene_validity(
         _write_gene_validity_csv(
             out,
             output_path,
-            before_commit=lambda: record_source_terms(
-                {row.source for row in out if row.source},
+            # Each source's licence row labelled by the release every committed row it answered
+            # states, or withheld when they differ (RM373, `licensing.record_table_sources`).
+            before_commit=lambda: record_table_sources(
+                table_datasets(out, release=lambda row: stated_release(row.dataset, *VALIDITY_LANES)),
                 "gene_validity",
                 spec_dir,
                 error=GeneValidityError,
+                # A routine merge declares nothing, so it retires no licence row (RM383).
+                answered_every_row=False,
             ),
         )
     return result
@@ -654,6 +675,8 @@ def _write_gene_validity_csv(
     when the source published one. A row keyed only on the gene's grain can be corrected
     group-scoped, by `gene`, and not more finely than that.
     """
+    if nothing_to_write(output_path, rows):
+        return  # RM370: a pass that answered nothing leaves no table
     with atomic_writer(output_path, newline="", before_commit=before_commit) as handle:
         writer = csv.DictWriter(handle, fieldnames=_FIELDNAMES)
         writer.writeheader()

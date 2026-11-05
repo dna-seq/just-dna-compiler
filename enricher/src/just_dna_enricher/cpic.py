@@ -19,9 +19,8 @@ coerced:**
   recorded one uncertainty.
 * The same column also carries **deletion/insertion and repeat notations** — `DELTCT`,
   `AAAGGGGCG(2)`, `GGA(1)` in CYP2D6 — which are *not* ambiguity codes, and were reported as if they
-  were until a real CYP2D6 draft showed them. They are a grammar gap (RM5) rather than an uncertainty
-  CPIC recorded, so `unusable_allele_reason` names which of the two a value is and the two are
-  reported separately.
+  were until a real CYP2D6 draft showed them. `unusable_allele_reason` names which of the two a value
+  is; an ambiguity is reported here, and a notation is the drafter's to spell (RM253, `cpic_notation`).
 * `gene_result.activityscore` is an inequality *string* (`"≥3.0"`, `"n/a"`), not a number, so it does
   not drop into `MeasureBinRow`'s numeric `measure_min`/`measure_max`. The raw string is carried and
   the parsing left to a human, because guessing a bound from `≥3.0` means inventing the upper one.
@@ -39,7 +38,6 @@ rightly refused — a star allele's defining variant is in the gene the allele b
 location row already names that gene.
 """
 
-import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -48,13 +46,15 @@ from typing import Any
 import duckdb
 import httpx
 from just_dna_format.alleles import non_nucleotide_reason, symbolic_allele_defect
+from just_dna_format.snapshot import SnapshotRelease, read_release
+from just_dna_format.spelling import drug_key, gene_key
 from tenacity import (
     retry,
     wait_exponential_jitter,
 )
 
-from just_dna_enricher.locations import RELEASE_FILENAME, SNAPSHOT_DATA_DIRNAME
-from just_dna_enricher.net import attempt_floor, raise_if_retired, retry_if_transient
+from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME
+from just_dna_enricher.net import EndpointRetired, attempt_floor, raise_if_retired, retry_if_transient
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +66,7 @@ class CpicError(RuntimeError):
     """A CPIC request failed in a way the caller must see."""
 
 
-class CpicRetired(CpicError):
+class CpicRetired(CpicError, EndpointRetired):
     """CPIC answered HTTP 410: it retired the endpoint asked (RM354). A fact about the source, not an
     outage, and not retried; a `CpicError` so every existing handler still catches it."""
 
@@ -122,13 +122,6 @@ _UNUSABLE_EXPLANATION: dict[str, str] = {
         "allele is a rule, and a rule about an allele nobody saw states nothing. Dead against the "
         "live source (CPIC publishes no `*`), and kept because the classifier is shared"
     ),
-    "notation": (
-        "a deletion/insertion or repeat notation (`DELTCT`, `INSCGGG`, `TA(8)`) rather than a "
-        "nucleotide string — a drafter gap rather than an ambiguity. The format holds the symbolic "
-        "spellings `<DEL:n>`, `<INS:n>` and `<CNV:TR:n>` since RM5, and this drafter does not yet "
-        "translate CPIC's notation into them; a repeat *count* has no home a diplotype can name "
-        "either, so a bare `DEL` and every `UNIT(n)` stay skipped — RM253 tracks both"
-    ),
     # The third reason `non_nucleotide_reason` answers since RM58. CPIC has never been observed to write
     # it, but this map is indexed directly by `_unusable_warnings`, so an unlisted member is a KeyError
     # in a warning path rather than a missing sentence — the reason it is filled in here on the same
@@ -140,10 +133,20 @@ _UNUSABLE_EXPLANATION: dict[str, str] = {
 }
 
 
+#: The reasons this client classifies and does **not** report, because the drafter spells them (RM253).
+#: `"notation"` (`DELTCT`, `INSCGGG`, `TA(8)`) used to be reported here as skipped; the drafter now
+#: translates it into a VCF-anchored indel, and reports by reason only what it still cannot spell
+#: (`cpic_notation.NOT_SPELLED_EXPLANATION`). A "skipped" line from here would be false for every row
+#: the drafter goes on to write.
+_SPELLED_BY_THE_DRAFTER: frozenset[str] = frozenset({"notation"})
+
+
 def _unusable_warnings(gene: str, by_reason: dict[str, list[str]]) -> list[str]:
     """One aggregated line per reason, with the count and a few real examples."""
     lines: list[str] = []
     for reason, entries in sorted(by_reason.items()):
+        if reason in _SPELLED_BY_THE_DRAFTER:
+            continue
         shown = ", ".join(entries[:3])
         rest = f" (+{len(entries) - 3} more)" if len(entries) > 3 else ""
         lines.append(
@@ -433,7 +436,7 @@ class CpicClient:
         Deterministically ordered (population, phenotype) so a re-draft emits the same rows in the
         same order (Principle 7).
         """
-        found = self._get("drug", {"select": "drugid,name", "name": f"eq.{drug.strip().lower()}"})
+        found = self._get("drug", {"select": "drugid,name", "name": f"eq.{drug_key(drug)}"})
         if not found:
             return []
         rows = self._get(
@@ -457,7 +460,7 @@ class CpicClient:
                 CpicRecommendation(
                     gene=gene,
                     phenotype=phenotype,
-                    drug=drug.strip().lower(),
+                    drug=drug_key(drug),
                     population=(row.get("population") or "").strip(),
                     classification=map_classification(row.get("classification")),
                     recommendation=(row.get("drugrecommendation") or "").strip() or None,
@@ -481,7 +484,7 @@ class CpicClient:
         explain a *negative*: the ordinary path already knows the drug exists, and paying a second
         request on every successful draft to answer a question nobody asked is the wrong trade.
         """
-        return bool(self._get("drug", {"select": "name", "name": f"eq.{drug.strip().lower()}"}))
+        return bool(self._get("drug", {"select": "name", "name": f"eq.{drug_key(drug)}"}))
 
     def partner_genes(self, gene: str, drug: str) -> list[str]:
         """The genes CPIC keys this drug's recommendations on *together with* `gene` (S102).
@@ -498,7 +501,7 @@ class CpicClient:
         same thing. Empty means no multi-gene row names `gene` for this drug, which is also what an
         unknown drug returns — `knows_drug` is the one that tells those apart.
         """
-        found = self._get("drug", {"select": "drugid,name", "name": f"eq.{drug.strip().lower()}"})
+        found = self._get("drug", {"select": "drugid,name", "name": f"eq.{drug_key(drug)}"})
         if not found:
             return []
         rows = self._get("recommendation", {"select": "phenotypes", "drugid": f"eq.{found[0]['drugid']}"})
@@ -592,8 +595,7 @@ class CpicSnapshotClient:
         if not data_dir.is_dir() or not any(data_dir.glob("*.parquet")):
             raise CpicError(f"no CPIC snapshot at {data_dir} — build one with `just-dna-enricher cpic build`")
         self._data_dir = data_dir
-        release_path = self.reference / RELEASE_FILENAME
-        self.release: dict[str, Any] = json.loads(release_path.read_text()) if release_path.is_file() else {}
+        self.release: SnapshotRelease = read_release(self.reference) or SnapshotRelease()
 
     @property
     def dataset(self) -> str | None:
@@ -602,7 +604,7 @@ class CpicSnapshotClient:
         A consumer must be able to tell a pinned file from a live API: the two can differ by a release,
         and `dataset` is inside the fact set where `source` is not.
         """
-        return self.release.get("dataset")
+        return self.release.dataset
 
     def close(self) -> None:
         """No-op, so a caller can `close()` this and a live client identically."""
@@ -617,6 +619,9 @@ class CpicSnapshotClient:
                 f"{parquet} is not in the CPIC snapshot at {self.reference} — it was built by an "
                 f"older builder; rebuild it with `just-dna-enricher cpic build`."
             )
+        # A gene is compared as `lower(gene) = ?` with `spelling.gene_key` on the parameter (RM363): the
+        # snapshot stores CPIC's spelling and an authored `Cyp2c19` is that gene. The comparison lives in
+        # SQL, where the AST guard over attribute comparisons cannot see it, so the query text says it.
         pattern = str(path).replace("'", "''")
         con = duckdb.connect(":memory:")
         try:
@@ -630,14 +635,14 @@ class CpicSnapshotClient:
             con.close()
 
     def chrom_for_gene(self, gene: str) -> str | None:
-        rows = self._rows("genes.parquet", "gene = ?", [gene], "chrom")
+        rows = self._rows("genes.parquet", "lower(gene) = ?", [gene_key(gene)], "chrom")
         return rows[0]["chrom"] if rows else None
 
     def alleles_for_gene(self, gene: str) -> list[CpicAllele]:
         rows = self._rows(
             "alleles.parquet",
-            "gene = ?",
-            [gene],
+            "lower(gene) = ?",
+            [gene_key(gene)],
             "gene, allele, activity_value, clinical_function_status",
             "allele",
         )
@@ -654,8 +659,8 @@ class CpicSnapshotClient:
     def diplotypes_for_gene(self, gene: str) -> list[CpicDiplotype]:
         rows = self._rows(
             "diplotypes.parquet",
-            "gene = ?",
-            [gene],
+            "lower(gene) = ?",
+            [gene_key(gene)],
             "gene, diplotype, phenotype, activity_score",
             "diplotype",
         )
@@ -678,8 +683,8 @@ class CpicSnapshotClient:
         """
         rows = self._rows(
             "recommendations.parquet",
-            "gene = ? AND drug = ? AND gene_count = 1",
-            [gene, drug.strip().lower()],
+            "lower(gene) = ? AND drug = ? AND gene_count = 1",
+            [gene_key(gene), drug_key(drug)],
             "gene, phenotype, drug, population, classification, recommendation, implication, activity_score",
         )
         out = [
@@ -727,16 +732,16 @@ class CpicSnapshotClient:
         """
         named = self._rows(
             "recommendations.parquet",
-            "gene = ? AND drug = ? AND gene_count > 1",
-            [gene, drug.strip().lower()],
+            "lower(gene) = ? AND drug = ? AND gene_count > 1",
+            [gene_key(gene), drug_key(drug)],
             "gene",
         )
         if not named:
             return []
         others = self._rows(
             "recommendations.parquet",
-            "drug = ? AND gene_count > 1 AND gene <> ?",
-            [drug.strip().lower(), gene],
+            "drug = ? AND gene_count > 1 AND lower(gene) <> ?",
+            [drug_key(drug), gene_key(gene)],
             "DISTINCT gene",
             "gene",
         )
@@ -751,8 +756,8 @@ class CpicSnapshotClient:
         """
         rows = self._rows(
             "allele_definitions.parquet",
-            "gene = ?",
-            [gene],
+            "lower(gene) = ?",
+            [gene_key(gene)],
             "gene, allele, rsid, chrom, start, variant_allele",
             "allele, start, variant_allele",
         )

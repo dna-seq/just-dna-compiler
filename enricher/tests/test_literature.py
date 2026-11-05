@@ -14,16 +14,23 @@ carry three quirks a fabricated fixture would have smoothed over:
 """
 
 import json
+import time
 from pathlib import Path
 
 import httpx
 import pytest
+from just_dna_compiler.compiler import _literature_block
 from just_dna_enricher.eutils import EutilsClient, EutilsSettings
 from just_dna_enricher.literature import (
     CrossrefClient,
     EuropePmcClient,
+    FulltextRetired,
+    FulltextUnavailable,
     LiteratureEnrichmentError,
+    PmcBiocClient,
+    crossref_bibliographic,
     enrich_literature,
+    extract_bioc_text,
     extract_text,
     quote_matches,
     regex_matches,
@@ -45,6 +52,12 @@ _ESUMMARY = json.loads((_ASSETS / "pubmed_esummary_payload.json").read_text())
 _EPMC_SEARCH = json.loads((_ASSETS / "europepmc_search_payload.json").read_text())
 _FULLTEXT_XML = (_ASSETS / "europepmc_fulltext_PMC5753237.xml").read_text()
 _CROSSREF = json.loads((_ASSETS / "crossref_works_payload.json").read_text())
+# PMC's BioC service, recorded 2026-09-24 and trimmed to a handful of passages (reference entries kept
+# so the test can show they are dropped): the ClinVar paper the suite already uses, the Kunkle 2019
+# author manuscript S110 was about, and the service's 200 "no copy" answer for an article outside it.
+_BIOC_CLINVAR = json.loads((_ASSETS / "pmc_bioc_PMC5753237.json").read_text())
+_BIOC_KUNKLE = json.loads((_ASSETS / "pmc_bioc_PMC6463297.json").read_text())
+_BIOC_NO_RESULT = (_ASSETS / "pmc_bioc_no_result.txt").read_text()
 
 _REAL = "29165669"  # ClinVar paper: exists, open access, in PMC
 _PAYWALLED = "12345678"  # real PubMed record, NOT in PMC
@@ -58,6 +71,13 @@ _YAML = (
 # ── fixtures / doubles ──────────────────────────────────────────────────────────────────────────
 
 
+@pytest.fixture(autouse=True)
+def _no_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The fulltext routes retry a 5xx and a 429 since RM361; the attempt count is the contract, the
+    backoff's wall-clock is not."""
+    monkeypatch.setattr(time, "sleep", lambda _seconds: None)
+
+
 def _eutils() -> EutilsClient:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=_ESUMMARY)
@@ -68,18 +88,57 @@ def _eutils() -> EutilsClient:
     return client
 
 
-def _epmc(fulltext: str | None = _FULLTEXT_XML, fulltext_status: int = 200) -> EuropePmcClient:
+def _epmc(
+    fulltext: str | None = _FULLTEXT_XML, fulltext_status: int = 200, search: dict | None = None
+) -> EuropePmcClient:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/fullTextXML"):
             if fulltext is None:
                 return httpx.Response(fulltext_status)
             return httpx.Response(fulltext_status, text=fulltext)
-        return httpx.Response(200, json=_EPMC_SEARCH)
+        return httpx.Response(200, json=search or _EPMC_SEARCH)
 
     client = EuropePmcClient()
     client._client = httpx.Client(transport=httpx.MockTransport(handler))
     client.gate = PacingGate(interval=0.0, clock=lambda: 0.0, sleeper=lambda _s: None)
     return client
+
+
+def _bioc(payload: object = None, status: int = 200, body: str | None = None) -> PmcBiocClient:
+    """A BioC double answering every request the same way; `payload=None` is the "no copy" body, and
+    `body` a 200 with that text instead (a maintenance page).
+
+    `requested` records the PMCIDs asked about, so a test can assert the rung was or was not reached.
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        client.requested.append(request.url.path.rstrip("/").split("/")[-2])
+        if status != 200:
+            return httpx.Response(status)
+        if body is not None:
+            return httpx.Response(200, text=body, headers={"content-type": "text/html"})
+        if payload is None:
+            return httpx.Response(200, text=_BIOC_NO_RESULT)
+        return httpx.Response(200, json=payload)
+
+    client = PmcBiocClient()
+    client.requested = []  # type: ignore[attr-defined]
+    client._client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.gate = PacingGate(interval=0.0, clock=lambda: 0.0, sleeper=lambda _s: None)
+    return client
+
+
+def _manuscript_search() -> dict:
+    """The recorded search payload with the ClinVar paper re-flagged `isOpenAccess: N`.
+
+    The shape of an NIH author manuscript, which is what S110 measured on Kunkle 2019: in PMC, served
+    by BioC for text mining, and closed as far as Europe PMC's open-access flag is concerned.
+    """
+    payload = json.loads(json.dumps(_EPMC_SEARCH))
+    for record in payload["resultList"]["result"]:
+        if record.get("pmid") == _REAL:
+            record["isOpenAccess"] = "N"
+    return payload
 
 
 def _crossref() -> CrossrefClient:
@@ -275,11 +334,247 @@ def test_a_404_fulltext_falls_back_to_the_abstract(tmp_path: Path) -> None:
         eutils=_eutils(),
         europepmc=_epmc(fulltext=None, fulltext_status=404),
         crossref=_crossref(),
+        bioc=_bioc(),  # the BioC rung has no copy either (RM257)
     )
     assert result.rows[0].quote_source == "abstract"
     assert result.rows[0].quotes_found == 0
     assert result.quotes_unchecked == 1
     assert result.fulltext_checked == [] and result.abstract_checked == [_REAL]
+
+
+def test_an_author_manuscript_europe_pmc_calls_closed_is_read_through_bioc(tmp_path: Path) -> None:
+    """S110: Europe PMC is never asked for a record it flags closed, and PMC serves it anyway.
+
+    The quote is read out of the recorded BioC body at runtime, so the hit is the rung's own. With
+    the whole text searched, a miss is now a verdict too, which is what `quote_source="fulltext"`
+    says, and what `quotes_checked` counts.
+    """
+    body = next(
+        p["text"]
+        for p in _BIOC_CLINVAR[0]["documents"][0]["passages"]
+        if p["infons"].get("section_type") == "INTRO"
+    )
+    phrase = " ".join(body.split()[2:9])
+    spec = _spec(
+        tmp_path / "s",
+        f'rsid,pmid,provenance_quote\nrs334,{_REAL},"{phrase}"\nrs429358,{_REAL},"certainly not in this paper"\n',
+    )
+    bioc = _bioc(_BIOC_CLINVAR)
+    result = enrich_literature(
+        spec,
+        eutils=_eutils(),
+        europepmc=_epmc(search=_manuscript_search()),
+        crossref=_crossref(),
+        bioc=bioc,
+    )
+    row = result.rows[0]
+    assert bioc.requested == ["PMC5753237"]
+    assert row.is_open_access is False  # the licence facts are Europe PMC's, and untouched
+    assert (row.quote_source, row.quotes_authored, row.quotes_found) == ("fulltext", 2, 1)
+    assert (result.quotes_found, result.quotes_checked, result.quotes_unchecked) == (1, 2, 0)
+    assert result.fulltext_checked == [_REAL] and result.abstract_checked == []
+
+
+def test_bioc_is_the_rung_after_a_failed_europe_pmc_fetch_and_not_before_one(tmp_path: Path) -> None:
+    """Europe PMC stays first: an open record it serves never costs a BioC request, one it fails on does."""
+    spec = _spec(tmp_path / "s", f"rsid,pmid,provenance_quote\nrs334,{_REAL},variant interpretations\n")
+    served = _bioc(_BIOC_CLINVAR)
+    enrich_literature(spec, eutils=_eutils(), europepmc=_epmc(), crossref=_crossref(), bioc=served)
+    assert served.requested == []
+
+    (spec / "literature.csv").unlink()
+    failed = _bioc(_BIOC_CLINVAR)
+    result = enrich_literature(
+        spec,
+        eutils=_eutils(),
+        europepmc=_epmc(fulltext=None, fulltext_status=500),
+        crossref=_crossref(),
+        bioc=failed,
+    )
+    assert failed.requested == ["PMC5753237"]
+    assert result.rows[0].quote_source == "fulltext"
+
+
+def test_the_fulltext_off_switch_reaches_the_bioc_rung(tmp_path: Path) -> None:
+    """`check_fulltext=False` asks neither host (`@off-switch-needs-a-probe`)."""
+    spec = _spec(tmp_path / "s", f"rsid,pmid,provenance_quote\nrs334,{_REAL},anything\n")
+    bioc = _bioc(_BIOC_CLINVAR)
+    result = enrich_literature(
+        spec,
+        check_fulltext=False,
+        eutils=_eutils(),
+        europepmc=_epmc(search=_manuscript_search()),
+        crossref=_crossref(),
+        bioc=bioc,
+    )
+    assert bioc.requested == []
+    assert result.rows[0].quote_source is None
+
+
+_MAINTENANCE = "<html><body>Scheduled maintenance</body></html>"
+
+
+@pytest.mark.parametrize(
+    "status, body, recorded",
+    [
+        (200, None, "absent"),
+        (404, None, "absent"),
+        (500, None, "unreachable"),
+        # RM361: before it, every status below 500 and every 200 that was not JSON read as `absent`,
+        # which is permanent — a throttle, a retired route and a maintenance page were never asked again.
+        (429, None, "unreachable"),
+        (403, None, "unreachable"),
+        (410, None, "retired"),
+        (200, _MAINTENANCE, "unreachable"),
+    ],
+)
+def test_every_way_bioc_has_no_text_reads_as_not_retrieved(
+    tmp_path: Path, status: int, body: str | None, recorded: str
+) -> None:
+    """The recorded "no copy" 200, a 404 and a 500 all leave the row on the abstract, never on a miss.
+
+    RM258 split the arms: the first two are the service saying it holds no copy, which is permanent,
+    and the 500 is a request that never got an answer, which the next run asks again. Until RM258 all
+    three wrote the same row, and the 500's was never asked about again. RM361 narrowed `absent` to
+    those first two: anything else the service sends never answered the question.
+    """
+    spec = _spec(tmp_path / "s", f"rsid,pmid,provenance_quote\nrs334,{_REAL},anything\n")
+    result = enrich_literature(
+        spec,
+        eutils=_eutils(),
+        europepmc=_epmc(search=_manuscript_search()),
+        crossref=_crossref(),
+        bioc=_bioc(None, status=status, body=body),
+    )
+    assert result.rows[0].quote_source == "abstract"
+    assert result.quotes_unchecked == 1
+    assert result.rows[0].fulltext_status == recorded
+
+
+def _literature_run(spec: Path, bioc: PmcBiocClient):
+    return enrich_literature(
+        spec, eutils=_eutils(), europepmc=_epmc(search=_manuscript_search()), crossref=_crossref(), bioc=bioc
+    )
+
+
+def test_an_outage_is_asked_again_and_heals_when_it_answers(tmp_path: Path) -> None:
+    """RM258. The first run's BioC request 500s, so the row is written on the abstract as
+    `unreachable`; the second run asks that one question again (one request), gets the text, and the
+    row moves to `fulltext` with its counts, while every answered field stays as it was."""
+    spec = _spec(tmp_path / "s", f"rsid,pmid,provenance_quote\nrs334,{_REAL},anything\n")
+    first = _literature_run(spec, _bioc(None, status=500))
+    [row] = first.rows
+    assert (row.quote_source, row.fulltext_status) == ("abstract", "unreachable")
+
+    healed_by = _bioc(_BIOC_CLINVAR)
+    second = _literature_run(spec, healed_by)
+    assert healed_by.requested == ["PMC5753237"]  # asked once, never more
+    [healed] = second.rows
+    assert (healed.quote_source, healed.fulltext_status) == ("fulltext", "retrieved")
+    for field in ("pmid", "doi", "pmcid", "exists", "is_open_access", "license", "quotes_authored"):
+        assert getattr(healed, field) == getattr(row, field), field
+
+
+def test_an_outage_that_fails_again_keeps_the_row_and_stays_open(tmp_path: Path) -> None:
+    spec = _spec(tmp_path / "s", f"rsid,pmid,provenance_quote\nrs334,{_REAL},anything\n")
+    _literature_run(spec, _bioc(None, status=500))
+    written = (spec / "literature.csv").read_bytes()
+    again = _bioc(None, status=503)
+    second = _literature_run(spec, again)
+    # One question, put again on each retry of the 5xx (RM361), never another article's.
+    assert set(again.requested) == {"PMC5753237"}
+    assert second.rows[0].fulltext_status == "unreachable"
+    assert (spec / "literature.csv").read_bytes() == written
+
+
+def test_an_absent_copy_is_never_asked_again(tmp_path: Path) -> None:
+    spec = _spec(tmp_path / "s", f"rsid,pmid,provenance_quote\nrs334,{_REAL},anything\n")
+    _literature_run(spec, _bioc(None, status=404))
+    again = _bioc(_BIOC_CLINVAR)
+    second = _literature_run(spec, again)
+    assert again.requested == []
+    assert second.rows[0].fulltext_status == "absent"
+
+
+def test_a_row_written_before_the_column_is_asked_exactly_once(tmp_path: Path) -> None:
+    """A null status on a row that did not match against a fulltext means *not asked*: the next run
+    asks once, and the run after that has nothing to do and changes nothing (`@empty-work-is-a-path`)."""
+    spec = _spec(tmp_path / "s", f"rsid,pmid,provenance_quote\nrs334,{_REAL},anything\n")
+    _literature_run(spec, _bioc(None, status=404))
+    path = spec / "literature.csv"
+    lines = path.read_text(encoding="utf-8").splitlines()
+    header = lines[0].split(",")
+    column = header.index("fulltext_status")
+    # Strip the column, as a pre-0.8 writer produced it.
+    path.write_text(
+        "\n".join(",".join(c for i, c in enumerate(line.split(",")) if i != column) for line in lines) + "\n",
+        encoding="utf-8",
+    )
+
+    once = _bioc(None, status=404)
+    second = _literature_run(spec, once)
+    assert once.requested == ["PMC5753237"]
+    assert second.rows[0].fulltext_status == "absent"
+    settled = path.read_bytes()
+
+    never = _bioc(None, status=404)
+    _literature_run(spec, never)
+    assert never.requested == []
+    assert path.read_bytes() == settled
+
+
+def test_a_row_already_matched_against_a_fulltext_is_not_asked_again(tmp_path: Path) -> None:
+    spec = _spec(tmp_path / "s", f"rsid,pmid,provenance_quote\nrs334,{_REAL},anything\n")
+    first = _literature_run(spec, _bioc(_BIOC_CLINVAR))
+    assert first.rows[0].fulltext_status == "retrieved"
+    again = _bioc(_BIOC_CLINVAR)
+    _literature_run(spec, again)
+    assert again.requested == []
+
+
+def test_the_three_way_clients_raise_only_for_an_unanswered_request() -> None:
+    assert _bioc(None, status=404).fetch_fulltext("PMC5753237") is None
+    assert _bioc(None, status=200).fetch_fulltext("PMC5753237") is None
+    with pytest.raises(FulltextUnavailable):
+        _bioc(None, status=502).fetch_fulltext("PMC5753237")
+    with pytest.raises(FulltextUnavailable):
+        _epmc(fulltext=None, fulltext_status=500).fetch_fulltext("PMC5753237")
+    assert _epmc(fulltext=None, fulltext_status=404).fetch_fulltext("PMC5753237") is None
+    # RM361: a 410 is the route retired, a 429 a throttle, a page that does not parse a 200 that answered
+    # nothing — none of them is the service saying it holds no copy.
+    with pytest.raises(FulltextRetired):
+        _bioc(None, status=410).fetch_fulltext("PMC5753237")
+    with pytest.raises(FulltextRetired):
+        _epmc(fulltext=None, fulltext_status=410).fetch_fulltext("PMC5753237")
+    for client in (_bioc(None, status=429), _bioc(None, body=_MAINTENANCE)):
+        with pytest.raises(FulltextUnavailable) as caught:
+            client.fetch_fulltext("PMC5753237")
+        assert not isinstance(caught.value, FulltextRetired)
+    for client in (_epmc(fulltext=None, fulltext_status=429), _epmc(fulltext=_MAINTENANCE)):
+        with pytest.raises(FulltextUnavailable) as caught:
+            client.fetch_fulltext("PMC5753237")
+        assert not isinstance(caught.value, FulltextRetired)
+    # The folded form keeps its pre-0.8 contract for callers that rely on it.
+    assert _bioc(None, status=502).fulltext("PMC5753237") is None
+    assert _epmc(fulltext=None, fulltext_status=500).fulltext("PMC5753237") is None
+
+
+def test_bioc_text_keeps_the_tables_and_drops_the_reference_list() -> None:
+    """For a GWAS paper the per-locus rows are in the body tables, so a table cell must be findable.
+
+    Asserted on the Kunkle 2019 manuscript S110 reported, with the phrases read out of the recording:
+    a run of tab-separated header cells matches as a quote once whitespace is normalized, and the text
+    of a reference entry is not in the extracted body.
+    """
+    passages = _BIOC_KUNKLE[0]["documents"][0]["passages"]
+    table = next(p["text"] for p in passages if p["infons"].get("type") == "table")
+    reference = next(p["text"] for p in passages if p["infons"].get("section_type") == "REF")
+    text = extract_bioc_text(_BIOC_KUNKLE)
+    cells = [c for c in table.split("\t") if c.strip()][8:12]
+    assert quote_matches(" ".join(cells), text)
+    assert "\t" in table and "\t" not in text
+    assert reference not in text
+    assert extract_bioc_text([{"documents": []}]) is None
 
 
 # ── the regex bound ─────────────────────────────────────────────────────────────────────────────
@@ -352,10 +647,7 @@ def test_one_study_row_citing_several_pmids_fans_out(tmp_path: Path) -> None:
 # ── live probes (opt-in) ────────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.skipif(
-    not __import__("os").environ.get("JUST_DNA_NETWORK_TESTS"),
-    reason="set JUST_DNA_NETWORK_TESTS=1 to run live literature probes",
-)
+@pytest.mark.network
 def test_live_services_still_behave_as_recorded() -> None:
     """Guards the recordings: if PubMed or Europe PMC change shape, this fails before the unit tests
     start passing against a fiction."""
@@ -446,6 +738,33 @@ def test_an_abstract_hit_settles_a_quote_but_a_miss_does_not(tmp_path: Path) -> 
     assert "not a verdict" in result.coverage
 
 
+def test_the_manifest_and_the_pass_report_agree_on_what_an_abstract_settled(tmp_path: Path) -> None:
+    """S109: the pass report called an abstract miss unchecked; the manifest called it checked.
+
+    Both now read `LiteratureRow.quotes_checked`, so the published denominator is the report's. Run on
+    real recorded responses — one abstract hit and one abstract miss on the same paywalled paper — and
+    the rows the pass wrote go straight into the compiler's block.
+    """
+    record = next(
+        r
+        for r in _EPMC_SEARCH["resultList"]["result"]
+        if r.get("abstractText") and r.get("isOpenAccess") == "N"
+    )
+    pmid, abstract = record["pmid"], record["abstractText"]
+    phrase = " ".join(abstract.split()[3:8]).replace('"', "")
+    spec = _spec(
+        tmp_path / "s",
+        f'rsid,pmid,provenance_quote\nrs334,{pmid},"{phrase}"\n'
+        f'rs429358,{pmid},"certainly not in this abstract at all"\n',
+    )
+    result = enrich_literature(spec, eutils=_eutils(), europepmc=_epmc(), crossref=_crossref())
+    block = _literature_block(result.rows)
+    assert (block.quotes_authored, block.quotes_found, block.quotes_checked) == (2, 1, 1)
+    assert block.quotes_found == result.quotes_found
+    assert block.quotes_checked == result.quotes_checked
+    assert block.quotes_authored - block.quotes_checked == result.quotes_unchecked
+
+
 # ── Crossref: the citations PubMed structurally cannot cover ────────────────────────────────────
 
 
@@ -461,6 +780,54 @@ def test_crossref_confirms_a_real_doi_and_rejects_a_fabricated_one() -> None:
     assert client.exists("10.1101/2024.06.17.599351") is True  # bioRxiv preprint, no PMID
     assert client.exists("10.9999/definitely-not-a-real-doi") is False
     assert _CROSSREF["10.1101/2024.06.17.599351"]["message"]["type"] == "posted-content"
+
+
+def test_a_doi_names_the_work_it_found_off_the_same_request() -> None:
+    """RM262, S113: the body `exists` used to discard says which paper the DOI is.
+
+    Expected values are read off the recording, never typed: `10.1038/ng826` is Enattah 2002, the DOI
+    the consumer ran, recorded 2026-09-25 and trimmed to the identity fields. The preprint keeps its
+    title and has no journal — an empty `container-title` is `None`, never `""`.
+    """
+    client = _crossref()
+    message = _CROSSREF["10.1038/ng826"]["message"]
+    work = client.work("10.1038/ng826")
+    first = next(a for a in message["author"] if a["sequence"] == "first")
+    assert work.exists is True
+    assert work.title == message["title"][0]
+    assert work.journal == message["container-title"][0]
+    assert work.year == str(message["issued"]["date-parts"][0][0])
+    assert work.first_author is not None and work.first_author.startswith(first["family"] + " ")
+
+    preprint = client.work("10.1101/2024.06.17.599351")
+    assert preprint.exists is True
+    assert preprint.title == _CROSSREF["10.1101/2024.06.17.599351"]["message"]["title"][0]
+    assert preprint.journal is None
+
+    absent = client.work("10.9999/definitely-not-a-real-doi")
+    assert (absent.exists, absent.title, absent.journal, absent.year, absent.first_author) == (
+        False,
+        None,
+        None,
+        None,
+        None,
+    )
+
+
+def test_the_first_author_is_the_one_crossref_marks_first_not_index_zero() -> None:
+    """`sequence: "first"` decides, and an organisational author has only a `name`. Both shapes are
+    constructed here because no recording carries them; the recorded one above has the first author at
+    index 0, which is exactly the case that cannot tell the two rules apart."""
+    reordered = {
+        "author": [
+            {"given": "Timo", "family": "Sahi", "sequence": "additional"},
+            {"given": "Nabil Sabri", "family": "Enattah", "sequence": "first"},
+        ]
+    }
+    assert crossref_bibliographic(reordered)["first_author"] == "Enattah NS"
+    consortium = {"author": [{"name": "The 1000 Genomes Project Consortium", "sequence": "first"}]}
+    assert crossref_bibliographic(consortium)["first_author"] == "The 1000 Genomes Project Consortium"
+    assert crossref_bibliographic({}) == {"title": None, "journal": None, "year": None, "first_author": None}
 
 
 def test_a_doi_crossref_cannot_resolve_is_reported(tmp_path: Path) -> None:
@@ -516,6 +883,10 @@ def test_the_three_checks_are_recorded_with_their_own_denominators(tmp_path: Pat
     # Half a check is reported as half a check: `--no-doi` leaves a DOI-only citation unasked, and a
     # record that did not say so would let a reader read the zero as covering both registries.
     assert "--no-doi" in (existence.detail or "")
+    # RM292: no DOI verdict is among the subjects, so the witness is PubMed alone — never a Crossref
+    # comparison nobody made.
+    assert existence.witness_source == "pubmed"
+    assert (existence.checked_source, existence.independence) == ("authored", "independent")
 
     # No authored doi or PMC id anywhere: nothing to compare, and that is not a clean pass.
     assert records["citation_identifier"].skipped == "nothing_to_check"
@@ -567,6 +938,7 @@ def test_a_citation_that_resolves_in_neither_registry_is_one_finding(tmp_path: P
     assert (existence.subjects, existence.findings) == (1, 1)
     assert "no PubMed record" in (existence.detail or "")
     assert "do not resolve in Crossref" in (existence.detail or "")
+    assert existence.witness_source == "crossref+pubmed", "a Crossref verdict is among the subjects"
 
 
 def test_an_authored_identifier_is_compared_and_the_disagreement_recorded(tmp_path: Path) -> None:

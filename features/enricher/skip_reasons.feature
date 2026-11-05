@@ -1,4 +1,4 @@
-# Why a check did not run — the eight members of `VALID_VERIFICATION_SKIPS`.
+# Why a check did not run — the members of `VALID_VERIFICATION_SKIPS`.
 #
 # Source of truth: schema/src/just_dna_format/vocab.py's VALID_VERIFICATION_SKIPS and the comment block
 # above it, docs/ENRICHER.md.
@@ -28,7 +28,7 @@ Feature: The skip vocabulary
     # between *the check was not run* and *it ran without the flag*, which reintroduces the
     # two-readings-of-one-absence defect the vocabulary was built to end.
 
-  # source: enricher/src/just_dna_enricher/enrich.py
+  # source: enricher/src/just_dna_enricher/enrich/verification_records.py
   # anchor: _verification_records
   @skip:offline
   Scenario: the check needs egress and the run had none
@@ -60,6 +60,17 @@ Feature: The skip vocabulary
     # A failed request, not a no. One registry's outage may not write a skip against another's check
     # (`@one-registrys-outage-may-not-speak-for-another`).
 
+  # source: enricher/src/just_dna_enricher/litvar.py
+  # anchor: verification_records
+  @skip:retired
+  Scenario: the source answered that it retired the endpoint
+    Given a LitVar request answered HTTP 410 for every locus
+    When the pass attests
+    Then the record is a skip with reason "retired"
+    # A 410 is the source saying the route moved, so the remedy is an upgrade, not a re-run; every
+    # `*Retired` error is still its client's could-not-ask type, and `net.could_not_ask_reason` is what
+    # tells the two apart where the handler records the reason (RM361).
+
   # source: enricher/src/just_dna_enricher/identifiers.py
   # anchor: _gene_locus_record
   @skip:nothing_to_check
@@ -70,7 +81,7 @@ Feature: The skip vocabulary
     # A check that cannot fail must not report a zero (`@tautology-zero`). This is the shape where the
     # subject set is genuinely empty, as opposed to the tautology below where it is not.
 
-  # source: enricher/src/just_dna_enricher/enrich.py
+  # source: enricher/src/just_dna_enricher/enrich/orchestration.py
   # anchor: _run_enrichment
   # text: enricher/src/just_dna_enricher/clinical.py
   @skip:tautology

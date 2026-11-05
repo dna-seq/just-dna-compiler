@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import ast
 import json
-import os
 from pathlib import Path
 
 import httpx
@@ -799,9 +798,7 @@ def test_a_module_naming_no_rsid_records_nothing_to_check(tmp_path: Path) -> Non
 # ── live ────────────────────────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.skipif(
-    not os.getenv("JUST_DNA_NETWORK_TESTS"), reason="set JUST_DNA_NETWORK_TESTS=1 to hit LitVar"
-)
+@pytest.mark.network
 def test_live_the_index_still_tiers_apoe_and_still_holds_nothing_for_the_civic_insertions() -> None:
     """Two live facts, and the second is the bound this lane ships with.
 

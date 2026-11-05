@@ -190,6 +190,118 @@ def gene_span(symbol: str, *, mane_cache: Path | None = None) -> SpanLookup:
     )
 
 
+@dataclass(frozen=True)
+class NearbyGenes:
+    """The genes whose attribution horizon covers a position, or a reason there are none (RM259).
+
+    **The reverse of `gene_span`, and a query hint in the same sense** (S112). A row that authors no
+    `gene` cannot be put to the Atlas, whose gene filter is mandatory, and no derived sidecar maps a
+    position to a gene: the variant-keyed ones carry no gene and the gene-keyed ones no position. The
+    answer is not a gene for the row. It is the set of genes worth *asking about* for that
+    position, so the Atlas, which names the gene on every record it returns, does the attributing.
+    Nothing may write one of these into `variants.csv`, and nothing may pick one of them as "the"
+    gene (`@gene-map-is-another-sources-attribution`).
+
+    **The set is large, and that is the answer, not noise to be trimmed.** Measured on the MANE lane on
+    2026-09-24: fifty candidate genes cover the HFE H63D position (6:26090951, the histone cluster) and
+    thirty-four cover APOE's rs429358. The horizon is the model's own half-window, so every one of them
+    is a gene the Atlas *could* attribute that variant to. Narrowing to the nearest would be choosing
+    a gene on the Atlas's behalf. The count is the caller's to price.
+
+    Exactly one of `spans`/`reason` is set: `no_snapshot` (nobody asked) or
+    `no_gene_within_horizon` (asked, and MANE places nothing within reach, which is also what the
+    Atlas would say).
+    """
+
+    spans: tuple[GeneSpan, ...] | None = None
+    reason: str | None = None
+
+    def __post_init__(self) -> None:
+        if (not self.spans) == (self.reason is None):
+            raise GeneSpanError(
+                "NearbyGenes states candidate spans or a reason and never both or neither — an empty "
+                "tuple is an answer only when a reason says which one"
+            )
+
+
+def genes_covering(
+    chrom: str, position: int, *, mane_cache: Path | None = None, flank: int = ATTRIBUTION_HORIZON_BP
+) -> NearbyGenes:
+    """Every MANE gene on `chrom` whose span, widened by `flank`, covers `position`. GRCh38 only.
+
+    MANE places genes on GRCh38, so `position` must be a GRCh38 coordinate; the caller holds the
+    module's build (`@build-in-manifest-only`) and a GRCh37 row is not a question this can answer.
+
+    Per symbol the rows are unioned exactly as `gene_span` unions them, over the rows placed on
+    `chrom`. A symbol whose other rows sit on a different contig is still a candidate here: the
+    question is which genes are within reach *of this position*, and the Atlas names the gene it
+    attributes. Candidates come back ordered by `(start, gene)`, never in the snapshot's row order.
+    """
+    snapshot = resolve_mane_reference(mane_cache)
+    table = _summary_path(snapshot) if snapshot is not None else None
+    if table is None or not table.is_file():
+        return NearbyGenes(reason="no_snapshot")
+    try:
+        con = _connect(snapshot)
+    except duckdb.Error as exc:
+        raise GeneSpanError(
+            f"the MANE snapshot at {snapshot} could not be opened: {exc}. Rebuild it with "
+            f"`just-dna-enricher mane build`."
+        ) from exc
+    try:
+        rows = con.execute(
+            "SELECT symbol, grch38_chr, chr_start, chr_end, mane_status FROM mane "
+            "WHERE chr_start IS NOT NULL AND chr_end IS NOT NULL "
+            "AND chr_start - ? <= ? AND chr_end + ? >= ?",
+            [flank, position, flank, position],
+        ).fetchall()
+    except duckdb.Error as exc:
+        raise GeneSpanError(
+            f"the MANE snapshot at {snapshot} could not be read at {chrom}:{position}: {exc}. Rebuild "
+            f"it with `just-dna-enricher mane build`."
+        ) from exc
+    finally:
+        con.close()
+
+    # The accession's version suffix varies across MANE releases, so the contig is compared after
+    # `chrom_from_accession`, never as the full `NC_…` string.
+    by_symbol: dict[str, list[tuple]] = {}
+    for symbol, accession, start, end, status in rows:
+        if chrom_from_accession(str(accession).split(".")[0].removeprefix("NC_")) == chrom:
+            by_symbol.setdefault(str(symbol), []).append((int(start), int(end), status))
+    spans = sorted(
+        (
+            GeneSpan(
+                gene=symbol,
+                chrom=chrom,
+                start=min(r[0] for r in placed),
+                end=max(r[1] for r in placed),
+                mane_status=tuple(sorted({str(r[2]) for r in placed if r[2]})),
+            )
+            for symbol, placed in by_symbol.items()
+        ),
+        key=lambda s: (s.start, s.gene),
+    )
+    if not spans:
+        return NearbyGenes(reason="no_gene_within_horizon")
+    return NearbyGenes(spans=tuple(spans))
+
+
+#: What each `NearbyGenes.reason` means to an operator. Its own map rather than rows in
+#: `SPAN_REASONS`, because the two lookups answer different questions and a shared map would let one
+#: print the other's sentence.
+NEARBY_REASONS: dict[str, str] = {
+    "no_snapshot": (
+        "no candidate genes are available: the `mane` cache lane is not provisioned, so nothing was "
+        "asked rather than asked and not found. Build it with `just-dna-enricher mane build`"
+    ),
+    "no_gene_within_horizon": (
+        "the MANE snapshot places no gene within the Atlas's attribution horizon of this position, "
+        "so there is no gene to ask the Atlas about here; it would attribute the variant to none"
+    ),
+}
+
+
 #: What each `SpanLookup.reason` means to an operator, in the words the pass prints. Separate from
 #: the token so a reason map is one edit rather than a sentence copied into every caller — and a
 #: verdict with several arms owes a reason function with the same arms, pairwise distinct

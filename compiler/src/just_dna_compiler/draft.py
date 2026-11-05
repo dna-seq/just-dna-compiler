@@ -55,7 +55,6 @@ from just_dna_format.layout import (
     sidecar_key,
     sidecar_spellings,
 )
-from just_dna_format.overrides import OverrideRow
 from just_dna_format.sources import SourceRow
 from just_dna_format.spec import StudyRow, VariantRow
 from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
@@ -64,13 +63,14 @@ from pydantic import BaseModel
 from just_dna_compiler.compiler import (
     _TABLE_DUPE_KEYS,
     _TABLE_KINDS,
-    OVERRIDES_CSV,
+    AUTHORED_NON_KIND_TABLES,
     _key_of,
     _list_cell,
     _list_fields,
     _load_csv_rows,
     _scalar_cell,
 )
+from just_dna_compiler.compiler.tables import same_row
 
 #: Every authored CSV a draft can target: the SNP core, the optional table kinds, and the one fact
 #: sidecar a human writes.
@@ -95,7 +95,10 @@ DRAFTABLE: dict[str, type[BaseModel]] = {
     "studies.csv": StudyRow,
     **{csv_name: model for csv_name, _, model in _TABLE_KINDS},
     **dict.fromkeys(sidecar_spellings(SOURCES_CSV), SourceRow),
-    OVERRIDES_CSV: OverrideRow,
+    # The authored tables that are not table kinds (RM357), each by its one legal name: authored, so every
+    # authoring surface answers for them. Being here is also what puts the model-organism table's
+    # `gene` column in front of the enricher's `check-identifiers` HGNC currency roster.
+    **{table.csv: table.model for table in AUTHORED_NON_KIND_TABLES},
 }
 
 # The SNP core's natural keys, the two `_TABLE_DUPE_KEYS` does not carry because the compiler checks
@@ -445,11 +448,14 @@ def append_rows(
         with open(path, encoding="utf-8", newline="") as handle:
             existing_header = next(csv.reader(handle), [])
 
-    by_key: dict[tuple, BaseModel] = {}
+    # Every row under a key, in file order, not just the first: since RM356 two rows may share a key
+    # and still be two rows (two genes' `*2` on one variant), so "already there" is `same_row` against
+    # the bucket — the compiler's own predicate, so an append never writes a row it then refuses.
+    by_key: dict[tuple, list[BaseModel]] = {}
     for row in existing_rows:
         key = natural_key(row)
         if key is not None:
-            by_key.setdefault(key, row)
+            by_key.setdefault(key, []).append(row)
 
     outcomes: list[RowOutcome] = []
     to_write: list[BaseModel] = []
@@ -459,10 +465,11 @@ def append_rows(
             outcomes.append(RowOutcome(key=None, status="appended_unkeyed"))
             to_write.append(row)
             continue
-        authored = by_key.get(key)
+        earlier = by_key.setdefault(key, [])
+        authored = same_row(row, earlier)
         if authored is None:
             outcomes.append(RowOutcome(key=key, status="added"))
-            by_key[key] = row  # so a duplicate inside `rows` itself is caught too
+            earlier.append(row)  # so a duplicate inside `rows` itself is caught too
             to_write.append(row)
             continue
         differences = _compare(authored, row)

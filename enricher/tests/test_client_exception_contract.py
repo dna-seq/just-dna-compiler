@@ -31,6 +31,7 @@ import httpx
 import just_dna_enricher
 import pytest
 from just_dna_enricher.civic_api import CivicApiClient, CivicApiRetired, CivicApiUnavailable
+from just_dna_enricher.clinvar_gkm import ClinVarGkmClient, ClinVarGkmError, ClinVarGkmRetired
 from just_dna_enricher.cpic import CpicClient, CpicError, CpicRetired
 from just_dna_enricher.currency import ClinVarReleaseClient, ReleaseRetired, ReleaseUnavailable
 from just_dna_enricher.ensembl import EnsemblResolver, EnsemblSettings
@@ -39,9 +40,16 @@ from just_dna_enricher.gnomad import GnomadClient, GnomadError, GnomadRetired, G
 from just_dna_enricher.grch37 import Grch37Client
 from just_dna_enricher.gwas import GwasCatalogClient, GwasError, GwasRetired
 from just_dna_enricher.identifiers import IdentifierRetired, IdentifierUnavailable, OntologyClient
-from just_dna_enricher.literature import EuropePmcClient, LiteratureRetired, LiteratureUnavailable
+from just_dna_enricher.ld_pairs import LdClient, LdError, LdRetired
+from just_dna_enricher.literature import (
+    CrossrefClient,
+    EuropePmcClient,
+    LiteratureRetired,
+    LiteratureUnavailable,
+    PmcBiocClient,
+)
 from just_dna_enricher.litvar import LitvarClient, LitvarRetired, LitvarUnavailable
-from just_dna_enricher.net import PacingGate
+from just_dna_enricher.net import PacingGate, could_not_ask_reason
 from just_dna_enricher.pgs import PgsCatalogClient, PgsCatalogRetired, PgsCatalogUnavailable
 from just_dna_enricher.pharmvar import PharmVarClient, PharmVarError, PharmVarRetired
 from tenacity import BaseRetrying, RetryCallState
@@ -114,6 +122,22 @@ def _currency(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[]
         client=httpx.Client(transport=httpx.MockTransport(handler)), gate=_instant_gate()
     )
     return client.current_release
+
+
+def _clinvar_gkm(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], object]:
+    """RM305's manifest read. Transport and status legs arrive as `ClinVarGkmUnavailable`; a 200 that
+    is not a manifest is the parent, `ClinVarGkmError`, which is why the parent is asserted here."""
+    client = ClinVarGkmClient(
+        client=httpx.Client(transport=httpx.MockTransport(handler)), gate=_instant_gate()
+    )
+    return client.parquet_manifest
+
+
+def _ld_pairs(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], object]:
+    """RM331's Ensembl pairwise LD. A 400 naming a variation is an ANSWER (`LdAnswer.unknown`), so it is
+    not what these cases drive; a 404 means the endpoint moved, which is could-not-ask."""
+    client = LdClient(client=httpx.Client(transport=httpx.MockTransport(handler)), gate=_instant_gate())
+    return lambda: client.pairwise("rs4970836", "rs646776", "1000GENOMES:phase_3:EUR")
 
 
 def _ontology(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], object]:
@@ -234,6 +258,14 @@ CLIENTS = [
     # parent is the exact assertion rather than a weakened one. `GwasNotFound` is the 404 arm, and
     # since v2 (RM354) only `follow` reads it as an answer; `GwasRetired` is the 410 arm.
     ("gwas", _gwas, GwasError),
+    # The parent, because one leg this file drives (a 200 HTML page) is an answer the client cannot
+    # read rather than an unreachable source; the transport and status legs are the
+    # `ClinVarGkmUnavailable` subclass, asserted in `test_clinvar_gkm.py`.
+    ("clinvar_gkm", _clinvar_gkm, ClinVarGkmError),
+    # The parent, because two legs this file drives are not outages: a 404 means the path moved or the
+    # species is wrong (a re-run repeats it), and a 200 HTML page is an answer that cannot be read. The
+    # 5xx and transport legs are the `LdUnavailable` subclass, asserted in `test_ld_pairs.py`.
+    ("ld_pairs", _ld_pairs, LdError),
 ]
 
 
@@ -258,7 +290,15 @@ def test_every_network_client_in_the_tier_is_covered() -> None:
     import just_dna_enricher
 
     discovered: set[str] = set()
-    for module_info in pkgutil.iter_modules(list(just_dna_enricher.__path__)):
+    # `cli` and `enrich` are packages since RM260: their submodules hold the definitions each `__init__`
+    # only re-exports, and `obj.__module__ == module.__name__` would skip every one of them there.
+    for module_info in [
+        *pkgutil.iter_modules(list(just_dna_enricher.__path__)),
+        *pkgutil.iter_modules(list(importlib.import_module("just_dna_enricher.cli").__path__), prefix="cli."),
+        *pkgutil.iter_modules(
+            list(importlib.import_module("just_dna_enricher.enrich").__path__), prefix="enrich."
+        ),
+    ]:
         module = importlib.import_module(f"just_dna_enricher.{module_info.name}")
         for name, obj in vars(module).items():
             if not (inspect.isclass(obj) and obj.__module__ == module.__name__):
@@ -299,6 +339,10 @@ def test_every_network_client_in_the_tier_is_covered() -> None:
         # `httpx.ConnectError` and `json.JSONDecodeError`. A justification that names one method
         # exempts every other method beside it. When adding a name here, say what the **class**
         # promises, or the next reader inherits a blind spot that reads as a decision.
+        #
+        # `CrossrefClient` promises a withhold, not an error: `exists` and `work` answer `None` (or a
+        # `CrossrefWork` with `exists=None`) on every failure leg. Pinned in `WITHHOLDING_CLIENTS`
+        # since RM262, which found the HTML leg answering `True` — `exists` read only the status.
         "literature.CrossrefClient",
         "literature.PmcIdConverterClient",
         # Raises nothing at all: every httpx path returns `None` or `[]`, which is the withhold. A
@@ -314,6 +358,11 @@ def test_every_network_client_in_the_tier_is_covered() -> None:
         # because a caller is never asked to: the three outcomes ARE the contract, and asserting an
         # exception here would pin the opposite of what this client promises.
         "clingen_allele.ClingenAlleleClient",
+        # RM257. `fulltext` answers text or `None`, and every failure leg is the `None`: a 404, the
+        # service's own 200 "no copy" body, a 5xx and a transport error alike. That one `None` for two
+        # answers is RM258's open question, not this roster's; what is pinned below is that no leg
+        # raises, since the pass calls it with no handler inside its fetch loop.
+        "literature.PmcBiocClient",
     }
     uncovered = {
         name for name in discovered if name.split(".")[0] not in covered and name not in covered_classes
@@ -425,7 +474,9 @@ RETIRED_IS_NAMED = {
     "currency": ReleaseRetired,
     "pgs": PgsCatalogRetired,
     "litvar": LitvarRetired,
+    "ld_pairs": LdRetired,
     "civic_api": CivicApiRetired,
+    "clinvar_gkm": ClinVarGkmRetired,
     "gwas": GwasRetired,
 }
 
@@ -472,6 +523,23 @@ def test_a_410_is_the_clients_named_retired_error(label, builder, error) -> None
     assert isinstance(caught.value, RETIRED_IS_NAMED[label]), type(caught.value).__name__
     assert issubclass(RETIRED_IS_NAMED[label], error)
     assert "410" in str(caught.value) and "v2 guide" in str(caught.value)
+
+
+@pytest.mark.parametrize("label,builder,error", CLIENTS, ids=[c[0] for c in CLIENTS])
+def test_a_handler_reads_a_410_as_retired_and_an_outage_as_unreachable(label, builder, error) -> None:
+    """What a handler records is read off the exception it caught, never written as `unreachable` (RM361).
+
+    Every `*Retired` error is its client's could-not-ask type, so the handler that records an outage
+    caught a 410 too, and before RM361 wrote `unreachable` about a source that had moved.
+    """
+
+    def gone(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(410, text="This legacy API is no longer available.")
+
+    for handler, reason in ((gone, "retired"), (_serve(503), "unreachable"), (_refuse, "unreachable")):
+        with pytest.raises(error) as caught:
+            builder(handler)()
+        assert could_not_ask_reason(caught.value) == reason, f"{label}: {type(caught.value).__name__}"
 
 
 def test_no_retry_policy_in_the_tier_retries_a_permanent_4xx() -> None:
@@ -531,6 +599,18 @@ def _ensembl(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[],
     return lambda: resolver.resolve_rsid("rs334")
 
 
+def _pmc_bioc(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], object]:
+    client = PmcBiocClient(gate=_instant_gate())
+    client._client = httpx.Client(transport=httpx.MockTransport(handler))
+    return lambda: client.fulltext("PMC6463297")
+
+
+def _crossref(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], object]:
+    client = CrossrefClient(gate=_instant_gate())
+    client._client = httpx.Client(transport=httpx.MockTransport(handler))
+    return lambda: client.exists("10.1038/ng826")
+
+
 #: `(label, builder, the value that means could-not-ask)`: the clients whose contract is a withhold
 #: rather than an exception. They are exempt from `CLIENTS` for the right reason, and that exemption
 #: is what let the non-JSON leg leak from both — a raw `JSONDecodeError` out of a method whose whole
@@ -539,6 +619,8 @@ def _ensembl(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[],
 WITHHOLDING_CLIENTS = [
     ("grch37", _grch37, None),
     ("ensembl", _ensembl, (None, None)),
+    ("pmc_bioc", _pmc_bioc, None),
+    ("crossref", _crossref, None),
 ]
 
 
@@ -548,7 +630,7 @@ WITHHOLDING_CLIENTS = [
 @pytest.mark.parametrize("handler", [_serve(503), _refuse, _serve_html], ids=["5xx", "transport", "html"])
 def test_a_withholding_client_withholds_on_every_failed_leg(label, builder, withheld, handler) -> None:
     """Every failure leg — status, transport, unreadable body — is the same withheld value, and none
-    of them is an exception. `ensembl` is the sharper case: with the GraphQL leg answering HTML the
-    resolver used to raise instead of falling through to REST, and `enrich` wraps the call in a
-    `try/finally` with no `except`, so the whole run aborted mid-loop."""
+    of them is an exception. `ensembl` is the sharper case: with Ensembl answering HTML the resolver
+    used to raise, and `enrich` wraps the call in a `try/finally` with no `except`, so the whole run
+    aborted mid-loop."""
     assert builder(handler)() == withheld

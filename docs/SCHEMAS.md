@@ -29,27 +29,34 @@ maintained one, and where the two disagree this one is what a consumer may rely 
 | `derive` | Legacy→0.3 column derivations + read-time aliases | — (stdlib leaf) |
 | `normalize` | Inject-only authority-key stripper, `normalize_version` | — (stdlib leaf) |
 | `vrs` | GA4GH VRS allele ids: `derive_vrs_allele_id`, the GRCh38 refget table, the `vrs_id` cell codec and the PAR geometry (stdlib only) | — (stdlib leaf) |
+| `spelling` | One comparison per compared kind (RM363): `gene_key`, `drug_key`, `doi_key`/`doi_token`, `COMPARISON_KEYS` + `comparison_key`, and the `chrom` input fold `ChromCell` every model with a `chrom` declares; also `VALID_CHROMOSOMES` and `DOI_PATTERN` (0.8) | `vrs` |
 | `alleles` | Reference-free allele algebra: `parsimony_reduce`, `event_profile` — what two spellings of one indel have in common (0.5, RM31) — plus `split_genotype`, the genotype cell → allele list rule every tier and every consumer reads (0.6, S30) | — (stdlib leaf) |
 | `layout` | Where a module's machine-written sidecars live, what they may be called, and the atomic write that puts one there (S66) | — (stdlib leaf) |
+| `snapshot` | The reference-snapshot layout (`data/`, sidecars, `LICENSE.txt`, `release.json`), the `SnapshotRelease` record, `read_release`/`write_release`, the write order (`begin_snapshot_write`/`begin_block_write`, RM369) and the payload predicate (0.8, RM303) | `layout` |
 | `base` | `AuthoredModel` + `derive_variant_key` | `vocab`, `vrs` |
 | `manifest` | The `manifest.json` contract | `identity`, `vocab` |
 | `findings` | `CodedWarning` — a `str` subclass carrying the code its emission site named, and the carried/actionable split (0.7, RM131) | `vocab` |
 | `release_records` | What each release changed about compiled output + `needs_recompile` + the recomputation roster (0.7, RM126) | `base`, `identity`, `vocab` |
-| `resolution` | `ResolutionRow` (the 0.5 resolution table) | `vocab`, `vrs` |
-| `frequency` | `FrequencyRow` (the 0.5 allele-frequency table) | `vocab`, `vrs` |
+| `resolution` | `ResolutionRow` (the 0.5 resolution table) | `spelling`, `vocab`, `vrs` |
+| `frequency` | `FrequencyRow` (the 0.5 allele-frequency table) | `spelling`, `vocab`, `vrs` |
 | `gene_metrics` | `GeneMetricsRow` (the 0.5 gene-constraint table) | `vocab` |
-| `literature` | `LiteratureRow` (the 0.5 citation table) | `spec`, `vocab` |
+| `literature` | `LiteratureRow` (the 0.5 citation table) | `base`, `normalize`, `spelling`, `vocab` |
 | `sources` | `SourceRow` (the 0.5 data-source licensing table) | `vocab` |
 | `gene_validity` | `GeneValidityRow` (the 0.6 gene–disease validity table, RM24) | `base`, `normalize`, `vocab` |
-| `assertions` | `ClinicalAssertionRow` (the 0.6 clinical-assertion table, RM25) | `base`, `normalize`, `vocab` |
-| `gwas` | `GwasEffectRow` (the 0.6 GWAS-effect table, RM90) | `base`, `normalize`, `vocab` |
+| `assertions` | `ClinicalAssertionRow` (the 0.6 clinical-assertion table, RM25) | `base`, `normalize`, `spelling`, `vocab` |
+| `gwas` | `GwasEffectRow` (the 0.6 GWAS-effect table, RM90) | `base`, `normalize`, `spec`, `vocab` |
 | `concordance` | `ClinSigConcordanceRow` + `AuthorityCallRow` (the 0.7 paired concordance record, RM130) | `base`, `normalize`, `vocab` |
-| `expression` | `ExpressionEffectRow` (the 0.7 expression-effect table, RM194/RM200) | `base`, `normalize`, `vocab` |
-| `spec` | Authored DSL — `ModuleSpecConfig`, `VariantRow`, `StudyRow` | `base`, `derive`, `identity`, `manifest`, `vocab` |
-| `binning` | Measure→phenotype binning rows (4 table kinds) | `base`, `vocab` |
-| `pgx` | PGx star-allele rows (4 table kinds) | `base`, `vocab` |
+| `expression` | `ExpressionEffectRow` (the 0.7 expression-effect table, RM194/RM200) | `base`, `normalize`, `spelling`, `vocab` |
+| `locus_genes` | `LocusToGeneRow`, `ColocalisationRow` (the 0.8 Open Targets study-locus tables, RM333) | `base`, `normalize`, `vocab` |
+| `consequences` | `ConsequenceRow` (the 0.8 per-transcript consequence table, RM236) | `base`, `normalize`, `vocab` |
+| `ld_pairs` | `LdPairRow` (the 0.8 computed LD pair behind a proxy-measured study, RM331) | `base`, `normalize`, `vocab` |
+| `spec` | Authored DSL — `ModuleSpecConfig`, `VariantRow`, `StudyRow` | `base`, `derive`, `identity`, `manifest`, `spelling`, `vocab` |
+| `binning` | Measure→phenotype binning rows (the binning table kinds) | `base`, `spec`, `spelling`, `vocab` |
+| `pgx` | PGx star-allele rows (the PGx table kinds) | `base`, `spec`, `spelling`, `vocab` |
 | `pgs` | `PgsRow` (PGS-Catalog-ID manifest) | `base`, `vocab` |
 | `overrides` | `OverrideRow` + `OVERRIDABLE_TABLES` + `apply_overrides` — the 0.7 authored overlay over the covered derived tables (RM124) | `base`, `normalize`, `vocab`, and the covered derived row models |
+| `meta` | `MetaRow` + the member grammar (`parse_members`, `normalize_members`, `member_rank`) — the 0.8 meta-table (RM28/RM323/RM324) | `base`, `pgx`, `spec`, `vocab` |
+| `model_organisms` | `ModelOrganismRow` + `VALID_MODEL_ORGANISM_CONCORDANCE` — the 0.8 model-organism evidence table (RM335) | `base`, `spec`, `vocab` |
 | `integrity` | SHA-256 hashing, the signatures, Ed25519 verify | `manifest`, `resolution`, `frequency`, `gene_metrics`, `literature`, `sources`, `cryptography` |
 | `signing` | Ed25519 private-key signing (over `artifact.digest`) | `integrity`, `manifest`, `cryptography` |
 | `verification` | `verification.json` — the attestation's binding, its proof-of-work and the table's fact hash (0.6, RM45) | `integrity`, `layout`, `manifest`, `signing` |
@@ -80,7 +87,7 @@ second citation site and one rule for reading it: the bin row cites, the citatio
 compiler and the enricher cannot come to read different halves of it.
 
 - **`MeasureBinRow.pmid` is a pointer on the row that states the threshold** — one optional column on
-  the binning base, so it reaches all four kinds. Free-form like `StudyRow.pmid` and validated by the
+  the binning base, so it reaches every binning kind. Free-form like `StudyRow.pmid` and validated by the
   same grammar.
 - **The citation table's subject requirement is relaxed**: a `studies.csv` row may now exist without
   naming a variant, so the paper behind a threshold can be described honestly instead of an author
@@ -99,19 +106,22 @@ existence and identifiers exactly like a study-grounded one. `sources.csv` does 
 either: it records a *dataset's* terms and attribution, which answers where a table came from, never
 why a bound is where it is. `resolution.csv` is compiler *input*, produced by the enricher, not authored
 annotation (see [§ resolution table](#the-resolution-table-05-provisional)) — and the same is true of
-the **ten** derived-fact sidecars `frequencies.csv` / `gene_metrics.csv` / `literature.csv` /
+the **fourteen** derived-fact sidecars `frequencies.csv` / `gene_metrics.csv` / `literature.csv` /
 `gene_validity.csv` / `clinical_assertions.csv` / `gwas_effects.csv` / `clin_sig_concordance.csv` /
-`clin_sig_authority_calls.csv` / `expression_effects.csv` / `sources.csv`, which are therefore absent
+`clin_sig_authority_calls.csv` / `expression_effects.csv` / `locus_to_gene.csv` /
+`colocalisations.csv` / `consequences.csv` / `ld_pairs.csv` / `sources.csv`, which are therefore absent
 from the table below. **The number is `len(_FACT_TABLES)`** — stated here so a release that lands a
 sidecar moves it by one, rather than left to be recounted off a list that has gone stale twice.
 Since 0.7 an author corrects them through `overrides.csv`, which *is* authored and therefore *is* in
-the table — **except two**. `sources.csv` the overlay deliberately does not cover: it has its own
+the table — **except three**. `sources.csv` the overlay deliberately does not cover: it has its own
 merge path and is the one derived table a human is told to write. `clin_sig_authority_calls.csv` is
 excluded for the opposite reason: it records what each archive published, and an author answers the
-question a conflict asks rather than rewriting the answer an archive gave. `resolution.csv` *is*
+question a conflict asks rather than rewriting the answer an archive gave. `ld_pairs.csv` (0.8, RM331)
+is out because there is nothing of the author's to correct: it is a reference panel's r², and a wrong
+`ancestry` is fixed on the study row, after which the pass asks again. `resolution.csv` *is*
 covered — see [§ the authored overlay](#the-authored-overlay-07-rm124--overridescsv).
 
-**`sources.csv` is the one of those ten a human is expected to write, and 0.5.4 stopped pretending
+**`sources.csv` is the one of those fourteen a human is expected to write, and 0.5.4 stopped pretending
 otherwise (S21).** The others are produced by an enricher pass, so an author never starts one by
 hand; this one the schema tells them to write — a source read **by hand** leaves no `source` cell
 anywhere for the compiler's coverage check to find, so declaring it as a row here is the only route
@@ -136,8 +146,9 @@ reason its `source` column is inside its fact set while everywhere else `source`
 | `diplotypes.csv` | `pgx.DiplotypeRow` | canonicalized diplotype pair → phenotype |
 | `pharm_variants.csv` | `pgx.PharmVariantRow` | single-variant drug response (PharmGKB) |
 | `pgs.csv` | `pgs.PgsRow` | PGS-Catalog-ID manifest + ancestry-validity fields |
-| `gwas_effects.csv` | `gwas.GwasEffectRow` | injected GWAS Catalog effect sizes (0.6, RM90; enricher-produced) |
 | `overrides.csv` | `overrides.OverrideRow` | the authored overlay over the covered derived tables (0.7, RM124) — the set is `OVERRIDABLE_TABLES`, and it has grown once already |
+| `meta.csv` | `meta.MetaRow` | the meta-table: combinations, per-locus and per-trait facts, a row's `sex` condition and `drug` (0.8) — see [§ the meta-table](#the-meta-table-08--metacsv) |
+| `model_organisms.csv` | `model_organisms.ModelOrganismRow` | model-organism lifespan evidence about a human gene (0.8, RM335) — annotation only, never a lead table |
 
 ## Conventions (the idioms every model obeys)
 
@@ -229,8 +240,9 @@ reason its `source` column is inside its fact set while everywhere else `source`
   because the vocabularies live in the leaves that own them (`vocab`, `spec`, `binning`, `pgx`,
   `pgs`, `manifest`) and a central registry would either need `vocab` to import `pgx` — the cycle
   `base`'s dependency note exists to avoid — or be a second hand-kept list, which is the thing being
-  fixed. `authoring_reference()["vocabularies"]` is generated from these markers — 21 entries today,
-  against the hand-kept dict it replaced, which had already drifted twice.
+  fixed. `authoring_reference()["vocabularies"]` is generated from these markers, so its size is whatever
+  the models declare and no number here states it. It replaced a hand-kept dict that had already
+  drifted twice.
   `closed=False` marks a *recommended* set, and that flag is load-bearing: `actionability` was
   published as an open seed while `VariantRow` rejected non-members, so a tool offering a novel value
   got a rejection it had been told to expect. Keyed by **vocabulary name**, not field name, which is
@@ -250,7 +262,10 @@ reason its `source` column is inside its fact set while everywhere else `source`
   |---|---|---|
   | `RECOMMENDED_ANCESTRY_GROUPS` | 11 (open) | gnomAD's population labels — **open**, and deliberately not merged with `PgsRow.training_ancestry`'s 1000G superpopulations |
   | `RECOMMENDED_AUTHOR_KINDS` | 7 (open) |  |
+  | `RECOMMENDED_PHENOTYPE_CLASSES` | 12 (open) | which outcome a `StudyRow` measured — longevitymap v2's twelve classes; a token outside them warns (`phenotype_class_unrecognized`) and is kept (RM326) |
   | `RECOMMENDED_EFFECT_MEASURES` | 7 (open) | the units a `StudyRow` effect size is usually in — **open**, since a real study may report another |
+  | `RECOMMENDED_QTL_STUDY_TYPES` | 6 (open) | what the right-hand study of a colocalisation measured, as Open Targets spells it (RM333) — **open**, since the source adds QTL kinds |
+  | `VALID_AGE_OF` | 2 (closed) | whose age a `StudyRow` age band is — the participant's, or a parent's (RM329) |
   | `VALID_ACTIONABILITY` | 7 (closed) | what a consumer's return-of-results policy may act on. Shipped as `ACTIONABILITY_SEED`, which survives as a working alias — the `_SEED` name and a comment beside it both read as open while the validator refuses a non-member (RM225) |
   | `VALID_AUTHORED_POSITION` | 5 (closed) | what an `overrides.csv` row claims about the author's own standing on the value |
   | `VALID_AUTHORITY_CALL_STATUS` | 3 (closed) | whether an authority was asked, answered, or not consulted |
@@ -264,20 +279,28 @@ reason its `source` column is inside its fact set while everywhere else `source`
   | `VALID_ELEMENT_RULES` | 8 (closed) | the composition rules a `Display` element may declare |
   | `VALID_EVIDENCE_LEVELS` | 6 (closed) |  |
   | `VALID_FREQUENCY_STATUS` | 3 (closed) |  |
+  | `VALID_FULLTEXT_STATUS` | 4 (closed) | how the literature pass's fulltext question ended (RM258; `retired`, a 410, RM361); a null cell is the fourth reading, *not asked* |
   | `VALID_GENE_VALIDITY` | 9 (closed) |  |
+  | `VALID_IMPACTS` | 4 (closed) | VEP's impact class on one transcript, `consequences.csv.impact` (RM236) |
   | `VALID_INHERITANCE_MODE` | 9 (closed) |  |
+  | `VALID_LD_PAIR_STATUS` | 6 (closed) | what `ld_pairs.csv.status` says about a (proxy, lead, panel) pair; only `resolved` carries an r² (RM331) |
   | `VALID_PHENOTYPE_CATEGORIES` | 6 (closed) |  |
   | `VALID_QUOTE_SOURCE` | 2 (closed) |  |
+  | `VALID_PLACEMENT_VERDICTS` | 3 (closed) | what a second authority answered about a `resolution.csv` row's placement — `same_event`, `undecided`, `unplaced`; no `different_event`, because a contradicted placement is withheld (RM267) |
+  | `VALID_AUTHORED_EVENT_VERDICTS` | 3 (closed) | whether a module's authored coordinate spells the same event as the `resolution.csv` locus written for it, judged by the enricher against the reference — `same_event`, `different_event`, `undecided` (RM375) |
   | `VALID_RECOMMENDATION_STRENGTH` | 4 (closed) |  |
-  | `VALID_RELEASE_CHANGE_KINDS` | 2 (closed) |  |
+  | `VALID_RELEASE_CHANGE_KINDS` | 3 (closed) |  |
   | `VALID_RELEASE_OUTPUT_AXES` | 5 (closed) |  |
   | `VALID_RESOLUTION_STATUS` | 3 (closed) |  |
   | `VALID_RSID_STATUS` | 4 (closed) |  |
+  | `VALID_SAMPLE_UNITS` | 2 (closed) | what a `StudyRow.sample_size` counts — people, or lives where a study counts each participant's parents (RM325) |
   | `VALID_SIGNIFICANCE` | 4 (closed) |  |
-  | `VALID_SOURCE_LAYERS` | 9 (closed) |  |
-  | `VALID_VERIFICATION_CHECKS` | 26 (closed) |  |
-  | `VALID_VERIFICATION_SKIPS` | 8 (closed) |  |
-  | `VALID_WARNING_CODES` | 73 (closed) | every code a compile may stamp on a finding; the catalogue with texts is in [COMPILER.md](COMPILER.md) |
+  | `VALID_SUPERPOPULATIONS` | 5 (closed) | the 1000 Genomes superpopulation codes: what `StudyRow.ancestry` binds, and — plus `multi` — `pgs.VALID_TRAINING_ANCESTRY`, derived from it so the codes are one list (RM328) |
+  | `VALID_SOURCE_LAYERS` | 14 (closed) | `clin_sig_authority_call` since 0.8 (RM379): each consulted authority of the concordance record |
+  | `VALID_VERIFICATION_CHECKS` | 27 (closed) |  |
+  | `VALID_VERIFICATION_SKIPS` | 9 (closed) |  |
+  | `VALID_VERIFICATION_INDEPENDENCE` | 2 (closed) | `VerificationRecord.independence`, derived from the record's two sources and never typed (RM292) |
+  | `VALID_WARNING_CODES` | 84 (closed) | every code a compile may stamp on a finding (members in `RETIRED_WARNING_CODES` are no longer emitted); the catalogue with texts is in [COMPILER.md](COMPILER.md) |
 
   Vocabularies owned by a leaf rather than by `vocab` (`spec`, `binning`, `pgx`, `pgs`, `manifest`,
   `sources`) are reached through the field markers above and not listed here, for the reason the bullet
@@ -301,6 +324,20 @@ reason its `source` column is inside its fact set while everywhere else `source`
   than a per-field marker because `{chrom, start}` is one group meaning "both together", which no
   annotation on `chrom` alone expresses; a test derives cases from the declaration and checks them
   against the validator, so the two cannot drift.
+- **`_PAIRED_FIELDS` (`base.PairedFields`, 0.8, RM366).** The columns a row may not state without a
+  companion: a statistic and its method, a witness and its verdict, a magnitude and its instrument, a
+  qualifier and what it qualifies. Each entry is a `base.Companion` — *`field` stated ⇒ one of `needs`
+  stated* — so *both or neither* is two entries and *a unit with no magnitude* is simply not declared
+  (it names an instrument nothing was measured on, which is harmless). One validator on the
+  `PairedFields` mixin reads every model's declaration; `AuthoredModel` inherits it, and so do the fact
+  rows that carry a pair (`ResolutionRow`, `GwasEffectRow`, `ColocalisationRow`,
+  `ClinSigAuthorityCallRow`). `paired_fields(model)` is the reader, and it adds the element-rule pairs
+  derived from `VCF_POINTER_COMPANIONS` rather than restating them. An entry marked `refuse=False` is a
+  pair a published module may already hold half-stated (`effect_size` without `effect_measure` on
+  `variants.csv`/`studies.csv`, both 0.3): never refused, reported by the compiler as
+  `paired_field_half_stated`. Every refusing entry on an authored model either was refused before RM366
+  declared it or names only 0.8 columns, and `test_paired_fields.py` asserts that set as an equality, so
+  a new refusal on a published column fails there rather than in a consumer's module.
 - **`vocab.TEMPLATE_PLACEHOLDER` (`<<REPLACE>>`, 0.5).** The cell a generated template writes where a
   human must decide. Refused by a recursive `mode="before"` guard on every authored row and on
   `module_spec.yaml`, so an unreplaced stub is diagnosed by column and row instead of surfacing as a
@@ -333,8 +370,10 @@ reason its `source` column is inside its fact set while everywhere else `source`
   the disease id and must not invent phenotype ids from names.
 
 - **Reserved namespace (`vocab.RESERVED_NAMES_0_4`).** Only names expected to become real module
-  columns later (P5) — today `{reference_db, callable_element, quality_element, tradeoff}`, each with a reason
-  in `RESERVED_NAME_REASONS`. It is *not* a catalogue of barred names (`extra="forbid"` already
+  columns later (P5) — today `{reference_db, callable_element, quality_element}`, each with a reason
+  in `RESERVED_NAME_REASONS`. (`tradeoff` was reserved from 2026-11-03 until 0.8 computed it on
+  `meta_resolved.parquet`; it moved to `MISPLACED_COLUMN_REASONS`, the map for a column real on a
+  generated table and never authored.) It is *not* a catalogue of barred names (`extra="forbid"` already
   rejects any unknown column). (`callable_from` was reserved for RM6 and is now **built**, so it left
   the set: a reserved name is refused at author time, which would make the built column unwritable.)
 
@@ -396,8 +435,11 @@ always-`False` columns that look like the missing half of it.
 
 **`manifest.stats.pathogenic_count` counts the boolean and therefore counts both tiers.** That is
 consistent with the boolean's meaning rather than a second bug, but it is not what "pathogenic" reads
-as: a module of 400k pathogenic and 215k likely-pathogenic rows reports 615k. Facet on `clin_sig` when
-the tiers matter. Note also that it counts **authored `variants.csv` rows**, not parquet rows — the two
+as: a module of 400k pathogenic and 215k likely-pathogenic rows reports 615k. **Since 0.8 (RM300) the
+split is in the manifest:** `stats.clin_sig_counts` gives authored rows per tier and
+`stats.clin_sig_variant_counts` distinct `variant_key`s per tier, each keyed on every `VALID_CLIN_SIG`
+member in sorted order with zeros included, from the effective `clin_sig`. A row with no derivable tier
+is in no key, so its count is a total minus the sum rather than a stored field. Note also that it counts **authored `variants.csv` rows**, not parquet rows — the two
 diverge wherever resolution expanded one authored row onto several loci, so it is not the number of
 rows a consumer reading `weights.parquet` will find.
 
@@ -531,7 +573,7 @@ unphased `A/G` (must be sorted), or a single allele (hemizygous/homoplasmic). Re
 `effective_direction`/`effective_stat_significance`/`effective_clin_sig`/`effective_pathogenic`/
 `effective_benign`, `needs_upgrade`, and a materializing `upgraded()`.
 
-**`StudyRow` → `studies.csv`.** Required `pmid` (must contain a PubMed token — kept verbatim). Optional
+**`StudyRow` → `studies.csv`.** Required `pmid` (must contain a PubMed token, or be the sentinel `NONE` with a `doi` — kept verbatim; see *The pmid/doi pair* below). Optional
 `rsid`/`chrom`/`start`/`ref` — **all of them, since 0.6**: a citation row may name no variant at all
 and ground the module or a binning bound instead (RM47), in which case `variant_key` is `None` and the
 compiler's orphan check skips it. `population`, `p_value`, `conclusion`,
@@ -545,6 +587,54 @@ the manifest's `authorship` (S55). 0.7 adds **`statistical_test?`** — which *a
 row's `p_value`/`effect_size`, free text like `study_design` beside it (RM140) — and
 **`confidence?`/`confidence_unit?`**, how far the *citing source* stands behind this evidence link, in
 that source's own units (RM160).
+0.8 adds the facts longevitymap v2 tiers and sorts its evidence by (PROPOSAL_0_8_PT2 §3 items 11–17),
+each optional and declared after every 0.7 column: **`sample_size?`/`sample_unit?`/`n_cases?`**
+(RM325) — `sample_size` is the total analysed, cases included, and is refused without its unit
+(`VALID_SAMPLE_UNITS`: `individuals`, or `lives` where a study counts each participant's parents); a
+row whose `n_cases` exceeds its `sample_size` is refused. **`phenotype_class?`** (RM326) — which
+*outcome* the study measured, a different axis from `study_design`; open over
+`RECOMMENDED_PHENOTYPE_CLASSES` (v2's twelve), and a token outside them draws
+`phenotype_class_unrecognized` once per module, naming each token with its row count.
+**`ancestry?`** (RM328) — the 1000 Genomes superpopulation code(s) the estimate was measured in,
+multi-valued and closed over `VALID_SUPERPOPULATIONS` (`AFR`, `AMR`, `EAS`, `EUR`, `SAS`); a
+trans-ethnic study lists its codes, never `multi`, and `population` stays free text beside it.
+`PgsRow.training_ancestry`'s set is now derived from the same constant plus `multi`.
+**`age_min?`/`age_max?`/`age_of?`** (RM329) — the age band an age-stratified estimate covers, in years
+(finite, ≥ 0; either bound may be empty for an open band), and whose age it is (`VALID_AGE_OF`:
+`participant`, `parent`). No refusal ties the three together. **`stratum?`/`stratum_level?`**
+(RM330, the study's half) — the modifier an estimate was measured within and its level, free text,
+written both or neither (`sex`/`male`, `parent_sex`/`father`). A conclusion that *depends* on sex is
+`meta.csv`'s `sex` condition, a different thing. **`proxy_rsid?`** (RM331, the author's half) — the
+variant the study measured when it is an LD proxy of the row's lead; the row stays filed under the lead,
+`effect_allele` is the proxy's allele, and the compiler checks it against the proxy's resolved alleles.
+A proxy on a row naming no variant, or equal to the row's own `rsid`, is refused. Authors never write
+the r² or its population: that pair is computed. **`effect_unit?`** (RM332) — the unit of `effect_size`,
+free text and verbatim, as on `gwas_effects.csv`; `StudyRow` only (the `VariantRow` half was cut), and
+`weights.parquet` carries it per variant when every supporting study row that states one agrees.
+`weights.parquet` also derives `eur_only_evidence` (from `ancestry`) and the outcome strip
+`outcome_healthspan`/`outcome_lifespan`/`outcome_exceptional` (from `phenotype_class` through
+`vocab.OUTCOME_STRIP_CELLS`), both Kleene and neither authored; COMPILER.md § Locus-level columns has
+the rules.
+
+**The pmid/doi pair (0.8, RM336) — one rule on every table that cites.** `pmid` never holds a DOI: a
+cell whose only identifier is a DOI is refused, naming the DOI, the way RM50 refuses a PMC id, because
+`10.1101/2025.03.01.640000` used to parse as six PubMed ids (`10`, `1101`, …) that the literature pass
+looked up as the row's citations; `extract_pmids` now skips a DOI's digits, so a cell carrying a PMID
+beside a DOI keeps the PMID. A work PubMed does not index (a preprint, a book, a dataset) is cited as
+`pmid=NONE` — exactly that spelling; `NA`, `n/a`, `-` and `none` stay refused, with a pointer to it —
+and then `doi` is **mandatory** and must carry a DOI token (`spec.DOI_PATTERN`), the same check a
+stated `doi` gets anywhere. The rule lives once, as `spec.CitationPair` (a mixin carrying the `doi`
+check and the pair check, with `spec.check_citation_pair` the plain function behind it); the `pmid`
+grammar stays `validate_pmid_cell` on each model, because whether `pmid` is required differs between
+them. Every model with a `pmid` inherits it — `StudyRow`, the binning kinds, `PharmVariantRow` and the
+derived `GwasEffectRow`, the last three gaining `doi?` in 0.8 — and a test walks the model registry
+and asserts that equality, with `LiteratureRow` the one named exemption (its `pmid` is the article's
+digit identity, not a citation). `pmid` stays required on `StudyRow`: the sentinel is a value in the
+cell, so the change is additive (P8). Two `NONE` study rows on one variant are told apart by their DOI
+in the duplicate-citation check. The literature pass asks Crossref whether a `NONE` row's DOI exists
+and matches its quote against the text Europe PMC holds for it (RM349), and writes neither answer to
+`literature.csv`, whose rows stay keyed on a PubMed id; `just-dna-enricher hint citation --doi` reports
+a PMID where PubMed has one (RM263).
 
 - **Row-level, because the work is mixed at row granularity.** A human may read a review while an
   agent traverses its citations, in one module, in one pass, and a module-level contributor list
@@ -626,6 +716,7 @@ row type), inclusive `[measure_min, measure_max]` (finite; `unresolved=True` car
 no-call sentinel, expected on every table but enforced only one-sidedly; see below), `conclusion`, plus `direction?`/`clin_sig?`/`phenotype?`/`trait_efo_id?`
 and the `source_field?` VCF pointer plus its `source_element?` rule, plus **`pmid?` — the boundary
 citation added in 0.6 (RM47)**, a free-form PubMed pointer under the same grammar as `StudyRow.pmid`,
+and its **`doi?`** (0.8, RM336) under the pmid/doi pair rule above (`pmid=NONE` makes it mandatory),
 plus **`measure_tiling?` — how the axis is divided, added in 0.6 (RM55)**, described below.
 The bin row cites; the citation table describes, which is what keeps `StudyRow`'s provenance column set
 from migrating here one column at a time. Per-kind key fields: `ActivityPhenotypeRow`→`(gene)`;
@@ -645,7 +736,7 @@ them indiscriminately. That is why RM47 put `pmid` on the **bin row** rather tha
 | table | its claims are per | cites through |
 |---|---|---|
 | `variants.csv` | `(variant_key, genotype)` | `studies.csv` — full provenance: `pmid`, `provenance_quote`, `curator`, population, effect size |
-| the four binning kinds | the bin's own key + `[measure_min, measure_max]` | `MeasureBinRow.pmid` on the row (RM47), with `literature.csv` describing the article |
+| the binning kinds | the bin's own key + `[measure_min, measure_max]` | `MeasureBinRow.pmid` on the row (RM47), with `literature.csv` describing the article |
 | `pharm_variants.csv` | `(variant_key, drug, genotype, phenotype_category, annotation_id)` | `PharmVariantRow.pmid` on the row (RM132, 0.7), with `literature.csv` describing the article |
 
 `evidence_level` is **not** the provenance handle and never was: it points at somebody else's
@@ -676,7 +767,7 @@ compile rule is per-group but one-sided, the hint is table-level. Write a sentin
 
 **`measure_tiling` — how the axis is divided, which is not what is measured (RM55, 0.6).** A closed
 two-member vocabulary (`VALID_MEASURE_TILINGS` = `{quantised, continuous}`), optional, on the binning
-base so it reaches all four kinds. `quantised` means the axis is a grid: two bins may not share an
+base so it reaches every binning kind. `quantised` means the axis is a grid: two bins may not share an
 endpoint, and a hole narrower than one step is not a hole. `continuous` means it is dense: adjacent
 bins share an endpoint and the higher one owns it, and any positive hole is reported. It is a separate
 column rather than a sixth `measure_kind` because kind answers *what is measured* and tiling answers
@@ -773,13 +864,13 @@ tie-break has nothing to order.
 **PGx rows** (`pgx.py`). `HaplotypeRow` (variant↔`allele` junction; the allele is bases or a symbolic
 structural allele — see *The allele grammar* above);
 `AlleleFunctionRow` (`gene`+star `allele` verbatim identity, `function_status` in `VALID_FUNCTION_STATUS`,
-`activity_value?`, CN/SV conveniences); `DiplotypeRow` (`gene`+`haplotype_a`/`haplotype_b` canonicalized
-`a ≤ b`, `conclusion`, PharmGKB `drug?`/`response?`/`evidence_level?`, CPIC `recommendation_strength?`
-and `clinical_context?`); `PharmVariantRow` (`drug`+
+`activity_value?`, CN/SV conveniences; an `HLA-` gene's `allele` follows IPD-IMGT/HLA's grammar, 0.8); `DiplotypeRow` (`gene`+`haplotype_a`/`haplotype_b` canonicalized
+`a ≤ b`, `conclusion`, `negatives?`/`category?` (0.8, RM322), PharmGKB `drug?`/`response?`/
+`evidence_level?`, CPIC `recommendation_strength?` and `clinical_context?`); `PharmVariantRow` (`drug`+
 `conclusion`, single-variant, `evidence_level?` 1A…4, `genotype?`, `phenotype_category?`,
 `annotation_id?`, and **`pmid?` — the claim citation added in 0.7 (RM132)**, free-form under the same
 grammar as `StudyRow.pmid`, a separate axis from `evidence_level` because one points at the evidence
-and the other grades it).
+and the other grades it, with its **`doi?`** (0.8, RM336) under the pmid/doi pair rule).
 `HaplotypeRow` and `PharmVariantRow` also carry a **compiler-filled `alts`** since 0.6 — parquet-only,
 never authored, outside the key; see *Stamped identity on the positional tables* above.
 
@@ -818,6 +909,27 @@ grammar is the shared `AuthoredModel` one, so a genotype means the same thing he
 allele (`del/del`) is now spellable — RM5 shipped in 0.6 — but ClinPGx publishes no **length** for it,
 and a lengthless symbolic allele is a rule the compiler drops, so `clinpgx_draft` still declines to
 write those rows and now says which of the two reasons it is.
+
+**The HLA nomenclature grammar on `AlleleFunctionRow` (0.8, RM334).** An HLA allele is an
+`allele_function.csv` row; there is no HLA table. Where `gene` starts with `HLA-`, `allele` must match
+`pgx.HLA_ALLELE_PATTERN` in full: `*`, then two to four colon-separated numeric fields of at least two
+digits each, then an optional expression suffix from `N`, `L`, `S`, `C`, `A`, `Q`
+(`*15:01`, `*57:01:01`, `*02:01:01:02N`). "At a stated resolution" is read off the name: its field
+count is the resolution, so no column states it, and a one-field name (`*15`) or the pre-2010
+colon-less spelling (`*1501`) is **refused** at the model, so `validate` and `compile` refuse alike, in
+both modes. The gene decides, never the name's shape: every other gene keeps the permissive
+haplotype-name rule. The refusal was legal under Principle 3 because the published-module scan of
+2026-11-04 found no `allele_function.csv` row with an `HLA-` gene (INTEGRATION_0_8 records it). G and P
+group designations (`*01:01:01G`, `*01:01P`) are outside the grammar PT2 decided and are refused too.
+Whether the allele exists in IPD-IMGT/HLA's list is not checked here; the maintainer put that enricher
+lane in 0.9.
+
+**`negatives?` and `category?` on `DiplotypeRow` (0.8, RM322)** are `VariantRow`'s columns of the same
+names, copied with their descriptions: free text, outside the key, and `category` binds no vocabulary
+on either table. They exist because a scored diplotype is often a module's headline finding (APOE ε is
+scored once, as a pair) and could state neither its trade-off nor its report group. Both are authored
+content, so a stated cell moves `content_signature`; an absent or empty one does not. The item was cut
+to these two by the maintainer: `priority`, `actionability` and `flags` were cut, not deferred.
 
 `DiplotypeRow.clinical_context` (0.5, RM29b) is the same shape of fix one table over: CPIC scopes a
 gene/drug recommendation to a **setting**, and the settings disagree. Clopidogrel carries three
@@ -923,7 +1035,7 @@ Both are `pl.UInt32`, compiler-managed and stamped at the expansion — no autho
 authored cell of that name is overwritten, and `reverse_module` does not re-emit them into
 `variants.csv`. Both are **outside `content_signature`**: they record what resolution did, not what a
 human wrote, so adding them moved no module's authored identity (only a recompile's `artifact.digest`,
-which Principle 4 already scopes to a fixed `compiler_version`).
+which Principle 4 already scopes to a fixed `compiler_version` and recorded toolchain).
 
 The consumer-side workaround this replaces — withholding on a locus whose `ref` differs from its
 siblings' — was **partial**: it catches the ClinVar dup/del shape and nothing else. A same-`ref`
@@ -986,17 +1098,18 @@ Four columns above name fields in a file this format never sees, so the rules fo
 part of the same contract. Each of these is a real way to get a well-formed number and a wrong answer,
 and none of them is detectable by any offline gate.
 
-**`QUAL` changes sign with the record, and `requires_callable` rows are read from the record where it
-is inverted (RM57).** §1.6.1.6 defines QUAL as `−10log10 prob(no variant)` when ALT is present and
-`−10log10 prob(variant)` when ALT is `.`. So a QUAL of 60 on a variant record means the variant is
-almost certainly real, while the same 60 on a monomorphic reference record means the position is almost
-certainly *variant* — the opposite of a clean reference call. A `requires_callable` row is exactly the
-one a consumer proves against the reference record, so `quality_from=QUAL, min_quality=30` there asks
-for evidence that the position *is* variant before concluding that it is not, and raising the floor
-makes the answer more confidently wrong. Prefer a per-sample confidence field (`GQ`). The compiler
-warns when it sees the combination and does not refuse it: whether QUAL is inverted depends on the
-record, which the compile path will never see, and the same row read against a variant record elsewhere
-in the file is legitimate.
+**A QUAL floor cannot be read on the evidence a `requires_callable` row is decided from (RM313).** VCF
+§1.6.1 item 6 (the same in 4.4 and 4.5) makes QUAL the Phred-scaled confidence in whatever ALT asserts:
+where ALT is `.` it is `−10log10 P(variant)`, so a high QUAL there is a confident *reference* call, and
+QUAL does not invert. A `requires_callable` row is decided from a reference record, usually a gVCF `<*>`
+block, and such a block conventionally carries QUAL `.`. So `quality_from=QUAL, min_quality=30` there is
+a check that **cannot run**: the row either always withholds or, if the consumer skips a missing value,
+is never gated. On a joint-called site record QUAL is also a site-level number, not this sample's. No
+replacement field is named, because what a caller writes on its reference blocks varies and the spec
+reserves no per-sample reference-confidence key; `GQ`, which this paragraph used to recommend, is
+conditioned on the site being variant. The compiler warns (`qual_floor_on_reference_evidence`) and does
+not refuse. **Until 0.8 this paragraph said the opposite** (RM57's reading, that a high QUAL on the
+reference record means "probably variant"); the 4.4 audit carries the dated correction.
 
 **Reference evidence is a block, so callability is interval containment and the depth field is
 `MIN_DP` (RM57).** A gVCF states reference confidence as one `<*>` record spanning a range, not one
@@ -1293,6 +1406,13 @@ because every consumer that reads the column has to agree on it and a second imp
 - **`is_substitution(ref, alt)`** — the predicate behind minting's "substitutions only" rule, exposed
   so a caller can ask *before* getting a `None` back and having to guess which of the several reasons
   applied.
+- **`VRS_SPEC_VERSION` and `vrs_spec_release(value)`** (0.8, RM304) — which VRS rule an id was minted
+  under. The id rule changes at a VRS **minor** (2.1 re-ids some ambiguous insertions), so a version is
+  compared at `major.minor`: `vrs_spec_release` reads `"2.0.1"` (the library's spelling) as `"2.0"`,
+  answers `None` for an unstated cell, and hands back an unreadable value untouched so it equals no pin
+  and is quoted whole. The enricher stamps `ResolutionRow.vrs_spec` through it and the compiler's verify
+  pass compares through it; `VRS_SPEC_VERSION` is the rule `derive_vrs_allele_id` implements and the
+  module's pin (`manifest.compilation.vrs_version`).
 - **`normalize_chrom` / `refget_accession`** — contig spelling and the accession lookup.
   `refget_accession` **raises** `UnsupportedBuildError` for a build with no table rather than
   returning `None` — including for `None` or `""`, since the GRCh38 default lives in the signature and
@@ -1340,7 +1460,7 @@ Position-level **matching** helpers (studies, the reverse pos→rsid lookup, hap
 
 ## The derived-fact tables (0.5–0.7, **provisional**)
 
-Eight siblings of `resolution.csv` at eight different grains — `frequency.FrequencyRow` →
+Siblings of `resolution.csv`, each at its own grain (the complete roster is the derived-fact sidecar list above; these are the ones this paragraph describes) — `frequency.FrequencyRow` →
 `frequencies.csv` per **allele**, `gene_metrics.GeneMetricsRow` → `gene_metrics.csv` per **gene**,
 `literature.LiteratureRow` → `literature.csv` per **citation**, `gene_validity.GeneValidityRow` →
 `gene_validity.csv` per **(gene, disease, inheritance mode, submitter)** (0.6, RM24),
@@ -1363,7 +1483,8 @@ contributed nothing records no source (RM142), and the consultation is a fact ab
 than about the service the author reached it through. Nothing is owed to the licensing table for
 reading an abstract.
 
-All but two are machine-produced and human-*overridable* through `overrides.csv`. `sources.csv` is
+All but three are machine-produced and human-*overridable* through `overrides.csv` (the third,
+`ld_pairs.csv`, is a reference panel's r², with nothing of the author's in it; § the LD-pair table). `sources.csv` is
 machine-produced and human-**authored**, because a source a curator read by hand has no pass to write
 its row (see above) — which is why it is the only one with a `draft`/`template` route and a natural
 key. `clin_sig_authority_calls.csv` is the other exception and a different one: it records what an
@@ -1371,7 +1492,7 @@ archive published, and an author does not get to rewrite that. Its parent **is**
 an overlay row against a contested subject is precisely how an author answers the question the record
 asks.
 
-**Why eight tables is not sprawl, stated once because the instinct recurs.** The 0.6 charter amendment
+**Why this many tables is not sprawl, stated once because the instinct recurs.** The 0.6 charter amendment
 prices a schema addition by the layer it lands in: a parquet column is approximately free, a *derived*
 CSV is half, and an **authored** schema is full cost. The "one CSV, one concern, do not burden the
 rare author" gate is a rule about the authored layer — nobody hand-writes `gene_validity.csv`, so its
@@ -1412,7 +1533,7 @@ different things — the compile licence gate reads `sources.csv` and no other f
 own fact set with its own exclusions, which one merged table could not do.
 
 The naming is the weakest part of this: `sources.csv` is a licensing and attribution ledger whose name
-collides with the `source` *column* that means "which link answered" in four other tables. The better
+collides with the `source` *column* that means "which link answered" in other tables. The better
 name is `licensing.csv`, and the rename splits.
 
 **The input half landed in 0.6** (RM51): `licensing.csv` is a second accepted spelling, `sources.csv`
@@ -1496,7 +1617,8 @@ hundred with the same DOI repeated — the same argument that put gene constrain
 the one that keeps the file readable by the human the DSL exists for. Facts: `pmid`, `doi?`, `pmcid?`,
 `exists?`. Everything else is provenance or time-varying state: `doi_exists?`, `doi_checked?`,
 `is_open_access?`, `license?`, `share_alike?`, `commercial_use?`, `redistribution?`,
-`quotes_authored?`, `quotes_found?`, `quote_source?`, `source?`, `status?`, `fetched_at?`.
+`quotes_authored?`, `quotes_found?`, `quote_source?`, `fulltext_status?` (0.8), `source?`, `status?`,
+`fetched_at?`.
 
 - **No `dataset` column**, unlike its two siblings. gnomAD ships numbered releases; PubMed and Europe
   PMC are continuously updated and publish no release identifier, so the column could only ever be null
@@ -1535,11 +1657,19 @@ the one that keeps the file readable by the human the DSL exists for. Facts: `pm
   phrase found in an abstract is in the paper, while a phrase absent from a 200-word abstract says
   nothing about the body. Without the column a `quotes_found` of 0 would read as a verdict when it was
   only a partial look.
+- **`fulltext_status` records how the fulltext question ended** (0.8, RM258): `retrieved`, `absent` (no
+  service holds a copy, permanent) or `unreachable` (never answered, asked again next run). Null is the
+  fourth reading, *not asked*. Outside `literature_signature`, like every other column here but the four
+  identity facts, so a re-ask that heals a row moves no signature.
 - **Quote coverage is two integer counts, not a boolean.** A quote is authored per *study row* while
   this table's grain is the citation, and two study rows may cite one paper with different quotes, so a
   single flag would have to lie about one of them. `quotes_found` is **null when no fulltext could be
   retrieved** and `0` when a fulltext was read and the quote was not in it — a distinction the manifest
-  block preserves, because collapsing it would report an unread paper as a wrong citation.
+  block preserves, because collapsing it would report an unread paper as a wrong citation. **An
+  abstract-only `0` is the third state, and the manifest missed it until RM256** (S109): it is neither
+  null nor a verdict, so `quotes_unchecked`, which counts null *citations*, could not see it. The block
+  now publishes `quotes_checked`, the quotes a retrieved text settled, from the one rule both tiers read
+  (`LiteratureRow.quotes_checked`): fulltext settles every quote, an abstract only its hits.
 
 **`GeneValidityRow` — one row per curated gene–disease assertion (0.6, RM24).** The question
 `gene_metrics.csv` cannot answer: constraint says how intolerant of variation a gene looks and dosage
@@ -1778,7 +1908,7 @@ with the same `content_signature` and the same `artifact.digest`. It is priced a
 layer's full rate under Principle 9 and pays for itself by making a methodological position readable;
 and because nothing resolves with it, it has no arity to outgrow. Advisory in the same class as
 `weighting:`/`authorship:`/`license:` — copied into the manifest, out of both identity halves, and
-not reconstructed by the lossy `reverse_module`. A per-variant exception is an `overrides.csv` row
+written back by `reverse_module` from there (RM241). A per-variant exception is an `overrides.csv` row
 rather than a second mechanism.
 
 The vocabulary is **open**, because `authority` is open wherever else it appears. The two things it
@@ -1825,7 +1955,8 @@ The 2026-08-12 cost amendment (CONSTITUTION Principle 9) names this class in its
 derived table that is both machine-written and human-overridable can be edited into a state that is
 not merely stale but a false claim, which wants a mechanism rather than a convention.* RM45 discharged
 it for exactly one table by making `verification.json` unwritable by hand. `overrides.csv` discharges
-it for the seven where overriding **is** the intended feature.
+it for every table in `overrides.OVERRIDABLE_TABLES`, the ones where overriding **is** the intended
+feature.
 
 **The overlay lies on top of a derived table and is never merged into it.** The derived files become
 pure build products — `derived = f(source, overlay)` — and four things follow. Nothing is hand-edited,
@@ -1855,19 +1986,25 @@ grammar was rejected. The meaning of both is the named table's own:
 | `clinical_assertions.csv` | `variant_key` | `variation_id` |
 | `literature.csv` | `pmid` | — |
 | `gwas_effects.csv` | `association_id` | — |
-| `expression_effects.csv` | `variant_key` | `gene` |
 | `clin_sig_concordance.csv` | `variant_key` | `genotype` |
+| `expression_effects.csv` | `variant_key` | `gene` |
+| `locus_to_gene.csv` | `study_locus_id` | `gene_id` |
+| `colocalisations.csv` | `study_locus_id` | `right_study_locus_id` |
+| `consequences.csv` | `variant_key` | `transcript` |
 
-**Two** derived sidecars sit outside the set, not one. `sources.csv` / `licensing.csv` has its own
-merge path and is the one derived table the schema tells a human to hand-write, so an overlay over it
-would put a second spelling of the licence position beside the first. `clin_sig_authority_calls.csv`
-is excluded for the opposite reason: it records what each archive published, and an author answers the
-question a conflict asks rather than rewriting the answer an archive gave. Its parent record —
-`clin_sig_concordance.csv`, the row that *asks* — is in.
+Each derived sidecar outside `OVERRIDABLE_TABLES` is out for its own reason. `sources.csv` /
+`licensing.csv` has its own merge path and is the one derived table the schema tells a human to
+hand-write, so an overlay over it would put a second spelling of the licence position beside the first.
+`clin_sig_authority_calls.csv` is excluded for the opposite reason: it records what each archive
+published, and an author answers the question a conflict asks rather than rewriting the answer an
+archive gave. Its parent record — `clin_sig_concordance.csv`, the row that *asks* — is in.
+`ld_pairs.csv` (0.8, RM331) is a reference panel's r², with nothing of the author's in it: a wrong
+`ancestry` is fixed on the study row, after which the pass asks again.
 
 The registry is `overrides.OVERRIDABLE_TABLES`, and a test asserts it equals every derived sidecar
-minus those two. **Derive the set from that registry, never from this table**: it read seven for a
-release after the eighth landed.
+minus those exclusions; `test_counted_prose.py` compares the table above to it as a set (RM392).
+**Derive the set from that registry, never from this table**: the table read seven for a release
+after the eighth landed, and read nine over twelve until RM392.
 
 ### Which release a column appeared in (0.7, RM146)
 
@@ -2059,6 +2196,94 @@ clear is noise rather than notice. Merging the two now was rejected: it is legal
 survives as a working derived alias, which means shipping the unification *and* its compatibility shim
 in a release where the overlay has no users yet.
 
+## The meta-table (0.8) — `meta.csv`
+
+One authored table holds the combinations RM28 left open, the per-locus facts RM323 had no home for,
+RM324's `tier`, RM327's per-trait judgements and RM330's `sex` condition (the maintainer's "go with C",
+2026-11-04), and the `drug` a row is about (the lead, 2026-11-04). `MetaRow` (`just_dna_format.meta`) is an `AuthoredModel`; what the compiler does with it is
+[COMPILER.md § The meta-table](COMPILER.md#the-meta-table-08--expansion-precedence-and-the-two-parquets).
+
+### The member grammar
+
+A row's `members` cell is one or more members joined by `&` at bracket depth 0, each
+`table[column=value, column=value]`:
+
+- the member tables are `variants`, `diplotypes`, `pharm_variants` and `allele_function`
+  (`META_MEMBER_TABLES`); `haplotypes.csv` defines alleles and is not one, and `studies.csv` is out of
+  bounds;
+- a column is any authored column of that table, plus `variant_key`;
+- conditions are AND-ed, and on a list column (`flags`) `=` means contains;
+- a value may not contain `[`, `]`, `,` or `=`, and is refused naming the character; `&` and `|` inside a
+  value are data (a DPYD haplotype name, a phased genotype). The shared `MULTI_SEP` splitter never
+  touches this cell.
+
+Out of bounds, each refused with its own message: negation (`!=`, `NOT`), OR (`|` or `OR` between
+members), numeric ranges (`<`, `>`), joins across tables (`table.column`), and selectors over
+`studies.csv`. Rows are already a disjunction. There is no bare-rsID shorthand.
+
+A concrete row is a member naming its table's full key (`variants[variant_key=rs429358,
+genotype=C/C]`), a locus is `variants[variant_key=rs10455872]`, a named allele is
+`allele_function[gene=APOE, allele=ε4]` (the module needs that `allele_function.csv` row, every other
+column may be empty), and a tag set is `variants[flags=legacy_longevitymap]`. **The locus form is
+`variant_key=`**: `variants[rsid=…]` is legal but ranks as a one-condition selector, so against another
+one-condition selector (the legacy tag) it is incomparable and a disagreeing fact is withheld.
+
+### The key, and what a row must say
+
+The key is `(members_key, trait_efo_id, sex, drug)`. `members_key` is stamped from `members`: members
+sorted, conditions sorted within each, so `A & B` and `B & A` are one key and are refused as a duplicate.
+The cell itself stays verbatim. `sex` and `drug` are in the key because each scopes the whole row: a
+`male` and a `female` row for one member set are two statements, and so are an `azathioprine` and a
+`mercaptopurine` row for one TPMT × NUDT15 phenotype pair, which CPIC answers once per thiopurine.
+`drug` is free text, as `DiplotypeRow.drug` and `PharmVariantRow.drug` are, and means what it means
+there: the drug the statement is about. It is not a member condition: `diplotypes[drug=…]` selects the
+diplotype rows that carry that drug, while the row's `drug` scopes what the row itself says.
+
+A row must state at least one of `conclusion`, `direction`, `negatives`, `tier`, `age_of_action`,
+`age_of_action_confidence` or `flags` (`REQUIRED_ANY_OF`). `trait_role` (closed: `mediator`; empty means
+the trait is an effect) needs `trait_efo_id`. `sex` is closed: `male`, `female`. `direction` is the shared
+vocabulary, and every member of a row stating one must fix an allele (`allele_bearing`, three-valued): a
+`genotype` condition, a `diplotypes` member naming either haplotype, or any `allele_function` member, is
+`true`; a bare `variants[variant_key=…]` locus is `None`, decided at compile by whether every row of the
+locus states one `effect_allele` (if not, the warning `meta_member_allele_ambiguous` and the direction is
+withheld); anything else is `false` and refused. `tier` is open text graded on the scale
+`module_spec.yaml` names once as `tier_scale`; a `tier` with no scale is refused. `pmid` and `doi` follow
+the citing tables' rules: `MetaRow` inherits `spec.CitationPair`, so `pmid=NONE` makes `doi` mandatory
+(RM336).
+
+### Precedence, from the conditions
+
+`member_rank(member, target)` is `(3, 0)` for a concrete row key, `(2, 0)` for a locus, `(1, n)` for a
+selector of `n` conditions, compared as tuples; equal ranks are incomparable. Across tables, a diplotype
+outranks the alleles it contains, and a row scoped by `sex` or `drug` outranks the same key without that
+scope, for that sex or drug (one scoped on both outranks either).
+Two incomparable rows that state different values withhold the column. The compiler applies it.
+
+## The model-organism table (0.8, RM335) — `model_organisms.csv`
+
+One row is one model-organism lifespan finding about a **human gene**: `gene` (required, the human HGNC
+symbol), `orthologue`, `species`, `model_type`, `sex`, `diet`, `lifespan_effect`, `concordance`, `pmid`,
+`doi`. `ModelOrganismRow` (`just_dna_format.model_organisms`) is an `AuthoredModel` and inherits
+`spec.CitationPair`.
+
+- **The key is every column except the finding's two**, `lifespan_effect` and `concordance`: one gene,
+  orthologue, species, intervention, sex, diet and citation are one experiment, so the same experiment
+  stated twice is refused as a duplicate. A male and a female cohort are two rows.
+- **`concordance` is closed** (`concordant`, `discordant`, `nonmonotone`). Empty is unstated, never a
+  fourth member: it is what a source's "unclear" becomes.
+- **`pmid` and `doi` are optional, and an uncited row draws no warning.** A row that does cite follows the
+  pair's rules (`pmid=NONE` makes `doi` mandatory, RM336). Its `pmid` is a citation site the literature
+  checks read (`_CITING_TABLE_KINDS`).
+- **`sex` is the animals' sex, free text** (`female`, `both`, `hermaphrodite`). It is not `meta.csv`'s
+  `sex`, which is a closed condition a consumer matches against a person's karyotype; the two share a word
+  and not an axis.
+- **Annotation only.** Nothing here reaches an effect column, a weight, a tier or a meta-table member, and
+  the table is not a lead table: `model_organisms.parquet` is in `ARTIFACT_PARQUETS` and not in
+  `LEAD_PARQUETS`, and a module carrying only this file is refused as having no recognized table. Its
+  genes do not enter `manifest.stats.genes`, which counts the genes a module's findings are about.
+- **`gene` has no model-level grammar**, like `VariantRow.gene`; the enricher's `check-identifiers`
+  reads it for HGNC currency because the table is in `DRAFTABLE`.
+
 ## The verification attestation (0.6) — `verification.json`
 
 A downloaded manifest is detailed about how rs-numbers were *resolved* and, until 0.6, silent about
@@ -2070,9 +2295,27 @@ everything" and "never compared"). The layer that outlives the run had inherited
 
 **Shape.** `manifest.VerificationDoc` — an attestation over `VerificationRecord`s, one per check:
 `check` (`VALID_VERIFICATION_CHECKS`), `subjects`, `findings`, `skipped?`
-(`VALID_VERIFICATION_SKIPS`), `detail?`, `source?`, `release?`, `checked_at?`. Facts:
-`check`/`subjects`/`findings`/`skipped`/`source`/`release`; prose and the timestamp are out, as
-everywhere else. The compiler confirms it and stamps `manifest.verification`.
+(`VALID_VERIFICATION_SKIPS`), `detail?`, `source?`, `release?`, `checked_at?`, and since 0.8
+`checked_source?`, `witness_source?`, `independence?` (`VALID_VERIFICATION_INDEPENDENCE`) and
+`undecided?`. Facts: `check`/`subjects`/`findings`/`skipped`/`source`/`release`/`checked_source`/
+`witness_source`/`undecided`; prose, the timestamp and the derived `independence` are out. The compiler
+confirms it and stamps `manifest.verification`.
+
+- **A check names its witness (RM292, 0.8).** `checked_source` is where the values the check read came
+  from — `authored` (`vocab.AUTHORED_SOURCE`) for cells the module's author wrote, or a source key when
+  the run established they are that source's copy — and `witness_source` is what they were compared
+  against. When the checked side is the witness the record's `independence` reads `self_consistent`,
+  never `independent`: agreement with the source a value was copied from proves nothing about the value
+  (a disagreement still says the source moved). It is derived on the model
+  (`VerificationRecord.derived_independence`), so a record cannot state one its two sources contradict,
+  and it is withheld when either side is unknown or the checked side is one of several witnesses. `witness_source` is not `source`: `source` is a single licence-table
+  join key and stays null on a check with two authorities, where `witness_source` names them all,
+  `+`-joined in sorted order. **`undecided`** is the count a tolerance abstained on, outside `subjects`
+  (`@tautology-zero`): null for a check with no tolerance class, 0 for one whose class was empty, and
+  allowed on a skip, because a check that reached a verdict on nothing may still have abstained on
+  something. The values each check states, and why, are the enricher's roster
+  ([ENRICHER.md](ENRICHER.md), the check table). All four are optional and `None` on every record
+  written before 0.8, and `fact_signature` drops a `None`, so no attestation already on disk moved.
 
 - **A JSON document, not a fifth fact CSV, and the reason is structural.** The object has two levels —
   one attestation over many records — and a CSV expresses that only with a non-data service row (the
@@ -2188,12 +2431,16 @@ Produced by [`just-dna-enricher`](ENRICHER.md); a human may hand-author or edit 
 authored input or a published fact table with a parquet beside it; this one is neither. Its only two
 consumers are the compiler, which reads it to resolve a key, and the enricher's own update run, which
 merges into it. Promoting it to a published table would make it a consumer contract it was never designed
-to be — its provenance columns are explicitly outside the fact set, `reverse_module` cannot reconstruct
-half of them, and a downstream reader keying on it would be reading the *lookup* rather than the *answer*,
+to be — its provenance columns are explicitly outside the fact set, `reverse_module` leaves the
+time-varying ones to the enricher, and a downstream reader keying on it would be reading the *lookup* rather than the *answer*,
 which is materialized into `weights.parquet` and the positional tables where it belongs. This is written
 down here because "publish it as a parquet" is the first repair anyone proposes on finding a table that
 does not carry a coordinate, and it is the wrong one — RM43 (0.6) is the right one, and it is what makes
-"materialized into the positional tables where it belongs" true rather than aspirational.
+"materialized into the positional tables where it belongs" true rather than aspirational. What does ride
+a parquet is the answer **per row**, beside the row it answers: `studies.parquet.proxy_loci` (RM331) and,
+on `weights.parquet` and every positional parquet, `resolution_loci` (RM364), the loci the table files
+under the row's authored key, so `reverse` can rebuild the table from the artifact when the fill left the
+row's own cells alone.
 
 - **Join key:** `variant_key` (the frozen authored identity). **Facts** (feed `resolution_signature`):
   `rsid?`, `chrom?`, `start? (ge=0)`, `ref?`, `alts?`, `genome_build="GRCh38"` (the RM15 forward hook),
@@ -2203,13 +2450,13 @@ does not carry a coordinate, and it is the wrong one — RM43 (0.6) is the right
   rsids for the exact allele — a dbSNP merge), `rsid_alternates?` (the full candidate list when
   `ambiguous`; `rsid` holds the deterministic pick), `rsid_current?` / `rsid_status?`
   (`VALID_RSID_STATUS = {live, merged, absent, withdrawn}` — what dbSNP says about `rsid` today),
-  `fetched_at?`.
+  `fetched_at?`, `placement_witness?`, `placement_verdict?`, `left_aligned?`, `authored_event?`, `judged_coordinate?`, `source_release?`, `source_loci?` (0.8, below).
 - **`source` names the link; `authority` names the licensed source it speaks for (RM33).** `source` is
   `ensembl-rest`/`ensembl-graphql`/`cache`/`clinvar`/`gnomad`/`authored`/`reversed`/`manual` — *which link
-  answered*, which matters for diagnosing a compile and has no other home. `authority` is the thing
+  answered* (`ensembl-graphql` is no longer written since its leg was retired in 0.8, and still reads), which matters for diagnosing a compile and has no other home. `authority` is the thing
   `sources.csv.source` joins on (`ensembl`, `clinvar`, `gnomad`), and it is **empty** where there is no
-  external source to name: `authored` is the module's own bytes, `reversed` is the compiler, `manual` is a
-  human. Before the split, the compiler compared the link against `sources.csv` by string and every
+  external source to name: `authored` is the module's own bytes, `manual` is a human. A `reversed` row
+  keeps the authority of the row it was reversed from, since its facts are still that source's (RM380). Before the split, the compiler compared the link against `sources.csv` by string and every
   enriched module was told `ensembl-rest` has no terms recorded. The link→authority map lives in the
   **enricher**, the only tier permitted a source convention (P2) — never in the compiler.
   Every *other* fact table's `source` already names the licensed source directly, so only this table
@@ -2230,21 +2477,111 @@ does not carry a coordinate, and it is the wrong one — RM43 (0.6) is the right
   otherwise make a one-way door. Its severity is deliberately not `absent`'s. A merged or absent rsID
   leaves the annotation intact (dated, or unserved); a retracted variant may leave it describing
   nothing, so `withdrawn` is the one resolution finding that is **fatal in `best_effort` too**.
-- **Reverse emits facts and drops provenance, by design.** `reverse_module` rebuilds this table from
-  `weights.parquet`, which holds no provenance at all — it resets `source` to `reversed`, `status` to
-  `resolved`, blanks `fetched_at`, and cannot emit `authority`/`rsid_alternates`/`rsid_current`/`rsid_status`
-  because those columns are kept out of the artifact on purpose. (For `authority` there is a second reason
-  and it is not a limitation: a reversed table's facts came out of parquet, so no licensed source answered
-  for them.) Recovering them after a round-trip
-  means re-running the enricher, which is where a statement about a reference at a moment belongs.
+- **Reverse gives back every column a parquet's locus carries (RM380).** Each variant parquet's
+  `resolution_loci` (and `studies.parquet.proxy_loci`) carries every `ResolutionRow` column but the ones
+  `parquets.RESOLUTION_LOCUS_EXCLUDED` names with a reason, the struct is derived from the model, and a
+  test asserts the model's fields equal the carried ones plus the excluded ones. So `authority`,
+  `placement_witness`/`placement_verdict`, `left_aligned`, `source_release`, `caid`, `vrs_id`/`vrs_spec`
+  `authored_event`/`judged_coordinate` and `status` survive the round trip (an `ambiguous` pick stays one;
+  a row rebuilt from a parquet row's own cells reads `resolved`). Reverse stamps `source=reversed` and an
+  empty `fetched_at` itself, and leaves out `rsid_alternates`/`rsid_current`/
+  `rsid_status`, statements about a reference at a moment that re-running the enricher recovers. Before
+  RM380 the struct was a hand-kept list and every 0.8 provenance column the enricher began to write was
+  dropped by the first round trip, so the second lap's compile read a table that said less than the first.
 - It is a **standalone `BaseModel`** (not `AuthoredModel`) with `extra="forbid"` — a resolution fact is
   not an annotation and must not inherit VariantRow's annotation validators; it reuses only the shared
   `rsid` grammar and the `status` vocabulary.
 - **Cross-references (0.5, outside the fact set):** `vrs_id?` (`ga4gh:VA.…`), `vrs_spec?` (`"2.0"`),
-  `caid?` (`CA\d+`), each with a grammar validator. Three registries, three columns — never one
+  `caid?` (`CA\d+`); `vrs_id` and `caid` with a grammar validator. Three registries, three columns — never one
   overloaded `identifier` field (Principle 5). They stay out of `RESOLUTION_FACT_FIELDS` so adding them
   moves no existing `resolution_signature`; the identity they carry reaches the artifact through
-  `variant_key` instead, so the fact set does not need them.
+  `variant_key` for a resolved substitution, and since 0.8 `vrs_id` itself reaches every variant parquet
+  (RM270), so the fact set does not need them.
+- **`vrs_spec` is the per-row VRS version, and since 0.8 it is read (RM304).** It records the VRS minor
+  the row's ids were minted under, written by the run that minted them and by no later one — an empty
+  cell is *unstated*, never the current version, because merge-not-clobber forbids a later pass writing
+  into an earlier pass's row. The module-wide half is the pin, `manifest.compilation.vrs_version`:
+  the rule this compiler verifies against, `None` when no allele carries an id. A row whose `vrs_spec`
+  differs from the pin is reported as `vrs_version_differs`, beside each allele's own verdict; only a
+  substitution under another VRS **major**, whose digest serialization differs, is counted there instead
+  of being a mismatch.
+  Both halves exist because a pin alone cannot describe a table mixing runs, and a per-row value alone
+  cannot say which version is intended. RM304 was filed believing nothing recorded a version; the
+  per-row half had shipped in 0.5 under this name, and 0.8 added the pin, the comparison and the
+  minter reading its version off `ga4gh.vrs`. **Since RM270 (0.8) both reach the artifact**: every
+  variant parquet carries `vrs_id` and `vrs_spec`, copied from this table by allele (COMPILER.md § *The
+  VRS ids on the variant parquets*), and `reverse` writes them back, so they survive a round trip.
+  `frequencies.parquet`'s `vrs_id` is gnomAD's and gets no `vrs_spec`.
+- **`placement_witness` and `placement_verdict` say who else placed the row, and what they said (0.8,
+  RM267).** Provenance, outside the fact set: which second authority the enricher asked where this rsID
+  sits (`clinvar`, `clinvar_gkm`, and on an online run `ensembl` for a snapshot indel neither of those
+  holds, `+`-joined), and its
+  answer (`VALID_PLACEMENT_VERDICTS`: `same_event` — one VRS id, or one left-aligned spelling;
+  `undecided` — another spelling nothing this run held could settle, an offline run; `unplaced` — the
+  witness holds no placement of this allele, so the row has one witness only). `ensembl` is Ensembl
+  REST, the snapshot's own authority: its `same_event` is self-consistent rather than independent, and
+  the row still has one independent witness only. Both empty means nobody was asked: none was loaded,
+  the row's own link is ClinVar's, or REST could not be reached. Two columns, not
+  one, because who was asked and what they answered are two axes (P5). There is no `different_event`:
+  a placement two authorities give as two events is **withheld** — that locus gets no row, and an rsID
+  left with none is unresolved — so that answer never reaches a written row. `same_event` means every
+  ALT of the row was placed the same; one ALT no witness holds makes the row `unplaced`. Before 0.8 every coordinate here had one
+  witness and `authority=ensembl` read the same whether a second authority agreed, disagreed or was
+  never asked (S117, S121). Reverse cannot emit them, for `authority`'s reason above.
+- **`left_aligned` is the spelling verdict the enricher stamps (0.8, RM270).** Tri-state, outside the
+  fact set: `true` when the row's spelling was checked to be the leftmost parsimonious one ALT by ALT
+  (the spelling a caller's `bcftools norm -m -any` writes), `false` when it was checked and is not,
+  empty when unknown (no reference read, a non-nucleotide allele, a row written before 0.8). A coordinate
+  the enricher fills from an rsID is written left-aligned, so it reads `true` wherever a read was made;
+  a coordinate a module authored, and a pair's recorded reference locus, are recorded as given and only
+  judged. A stamped verdict rather than an authored `coordinate_normalization` key: an author's claim of
+  a convention is one no offline tier can check. A `false` row's indel joins a caller's spelling only
+  through `vrs_id`. Reverse cannot emit it, for `authority`'s reason above.
+- **`authored_event` is the enricher's verdict on the authored spelling (0.8, RM375).** Outside the fact
+  set, `VALID_AUTHORED_EVENT_VERDICTS`: `same_event` — the coordinate the module authored for this subject
+  is another spelling of this row's event (an indel anchored elsewhere in its repeat, NUDT15's
+  `13:48041104 G>GG` against `13:48041103 T>TG`); `different_event` — it is not; `undecided` — nothing the
+  run held could tell (no reference read, a padded `ref`, a position inside the event that is no
+  anchor). Written only where the authored `chrom`, `start` or `ref` differs from the row's; empty where
+  they agree, and on a row written before 0.8. **`judged_coordinate`** beside it (a pair: both or
+  neither) is the coordinate judged, `authored_coordinate_key` (`chrom:start[:ref]`, the contig empty for
+  a half coordinate): the compiler reads `same_event` as agreement, and judges nothing itself (P2), only
+  for a row still authoring that coordinate. Unlike the two verdicts above, **reverse carries it**: the parquets'
+  `resolution_loci` struct has both fields, so the second lap reads the verdict the first did.
+- **`source_release` names the release that answered the row (0.8, RM373).** Provenance beside the
+  claim, so outside the fact set (`@provenance-beside-a-claim-is-outside-content-identity`): two releases
+  agreeing on a placement hash equal, and a release that moves a fact moves a fact column, which the
+  signature already sees. `source` names the link and `authority` the licensed source, and neither named
+  the release, so an old-release answer and a new-release one read alike to every tier (the 0.8 Ensembl
+  migration probe). The value is the release as the answering source states it: an Ensembl snapshot's
+  `manifest.json` `release_id` (`ensembl-variation-2026_07_13-vep116.0`) or `release.json` `dataset`, a
+  ClinVar snapshot's `clinvar_<date>`, live REST's data release from `/info/data` (`ensembl_116`, never
+  `/info/rest`, which is the REST software's version). Written only by the run
+  that answered the row: a row a later run carries forward keeps it, a row written before 0.8 keeps
+  none, and nothing back-fills one (`@sidecar-authoritative`); `enrich --rederive` re-answers every row
+  and stamps each. **Empty is "not recorded", never "current"**: the old Ensembl repo states no release,
+  the retired GraphQL link stated none, gnomAD's dataset id (`gnomad_r4`) names a release line rather than a release, an
+  authored or `manual` row has no source that answered, and an
+  answer seeded from an interrupted run's journal never had its release written down. Per row rather
+  than per table because merge-not-clobber makes a table two releases answered the normal case. Reverse
+  writes it back from the parquets' resolution loci (RM380), as it does `authority`. The licence rows `enrich` writes take their `dataset`
+  from it (ENRICHER.md § *Which release answered*).
+- **`source_loci` is the source's whole answer beside the narrowed one (0.8, RM387).** The rows under an
+  rsID's own key are the loci its authored genotype can sit on: the hosting filter, a disputed placement
+  (RM267) and the pseudoautosomal choice all run before they are written. A
+  positional row's rsID is back-filled from the source's unfiltered answer. So the rows were never every
+  place the source put the rsID, and RM374's check read them as if they were. `source_loci` records every
+  place the links answered the rsID at in the run that wrote the row (`chrom:start`, comma-joined, sorted:
+  `5:500,6:600`; `resolution.source_loci_cell` writes it and `split_source_loci` reads it, and a malformed
+  cell is refused at load). It is written on the rows under the rsID's own key, and only where that set
+  holds a place they stand for nowhere (a respelled piece stands for its source locus and a Y
+  pseudoautosomal twin for its X partner, the compiler's fold), so a cleanly resolved rsID carries nothing
+  new. The finding's sentence names the offered places when it fires against a recorded set. **Empty means the rows
+  place the whole answer, or the row predates the column**, and the compiler reads either as the whole
+  answer, which keeps RM374's stale case firing; `enrich --rederive` writes the column. Outside the fact
+  set: it records what was offered beside the placement chosen. **Reverse carries it** on the parquets'
+  `resolution_loci` struct, and a key whose locus records it always keeps its loci, so the second lap reads
+  the answer the first did.
 - **`RESOLUTION_FACT_FIELDS`** names the fact columns; `integrity.resolution_signature` hashes only
   those (provenance deliberately excluded), so a human-filled and an Ensembl-filled table with identical
   facts hash equal.
@@ -2258,12 +2595,12 @@ does not carry a coordinate, and it is the wrong one — RM43 (0.6) is the right
 
 ## The hash family — the complete roster
 
-Seventeen functions, in three groups, and **the rule that fixes the number is stated here rather than
+Twenty-one functions, in three groups, and **the rule that fixes the number is stated here rather than
 the number being restated elsewhere**: it is one `*_signature` per derived sidecar, plus the shared
 `fact_signature` they are built on, plus the two identity halves, plus the three on the verification
 side. So a release that lands a new sidecar moves this count by one and nothing else has to be edited
-to agree. RM130 landed two at once (0.7) and RM194/RM200 landed a tenth sidecar, which is why the
-fact-signature family is now **twelve** where older prose says nine — a reader counting to nine and
+to agree. RM130 landed two at once (0.7), RM194/RM200 landed a tenth sidecar, RM333/RM236 three
+more and RM331 one (0.8), which is why the fact-signature family is now **sixteen** where older prose says nine — a reader counting to nine and
 stopping would miss `module_binding` and `pow_digest` entirely, which is the reason this section
 exists at all.
 
@@ -2277,6 +2614,7 @@ bytes, from this compiler*.
 built on it: `frequency_signature`, `gene_metrics_signature`, `literature_signature`,
 `gene_validity_signature`, `clinical_assertion_signature`, `gwas_effect_signature`,
 `clin_sig_concordance_signature`, `clin_sig_authority_call_signature`, `expression_effect_signature`,
+`locus_to_gene_signature`, `colocalisation_signature`, `consequence_signature`, `ld_pair_signature`,
 `source_signature`, `resolution_signature`. Each hashes a **normalized fact tuple** rather than raw bytes, which is the
 whole point — these tables are multi-producer (enricher, human, `reverse`), so a raw-bytes hash would be
 unstable across producers writing the same facts. It is also why none of them appears in
@@ -2322,8 +2660,22 @@ any column describing the *outside world's* current state rather than the module
 (`is_open_access`, `rsid_current`/`rsid_status`). A signature that moved because dbSNP merged an rsID or
 an embargo lifted would no longer be reproducible from the module alone.
 
-Reproducibility identity is the triple **`(content_signature, resolution_signature, compiler_version)
-⟹ artifact.digest`** — a holder of the two small CSVs reproduces the artifact byte-for-byte, offline.
+Reproducibility identity is **`(content_signature, resolution_signature, compiler_version,
+compilation.toolchain) ⟹ artifact.digest`** — a holder of the two small CSVs reproduces the artifact
+byte-for-byte, offline, under the same compiler and toolchain.
+
+**The toolchain is the fourth term since 0.8 (RM342).** From polars 2 the parquet footer names the
+polars release that wrote it, so one `compiler_version` beside two polars releases mints two digests
+for equal content. `compilation.toolchain` records the libraries that wrote the bytes as one map,
+`{"polars": …, "python": …}` (a library added later is a new key), outside `artifact.digest` like
+`compiler_version`. `None` on a manifest compiled before 0.8 means *not recorded*, never an empty
+toolchain. `manifest.toolchains_differ(before, after)` is the one comparison every reader shares: `True`
+when a library both manifests name stands at two releases, `False` when both name the same libraries at
+the same releases, and `None` otherwise (either side unrecorded, or a library only one side names).
+Where a fresh compile meets a recorded digest — the publish collision check and the release sweep — a
+digest difference with `toolchains_differ(...) is True` carries the reason `TOOLCHAIN_DIFFERS`
+(`"toolchain_differs"`) instead of the plain mismatch; `verify_manifest` re-hashes files and never
+names it.
 
 **A moved `artifact.digest` beside an unmoved `content_signature` is the intended reading of a
 provenance-only change, not a puzzle** (CONSUMER_SUGGESTIONS_HISTORY § S7, where a registry spent an
@@ -2364,6 +2716,8 @@ do not), `populations`/`variant_count` on `frequency`, `genes` on `gene_metrics`
 `unrated_count`/`not_found_count` on `clinical_assertions`, the quote and open-access counters on
 `literature`, and the licence roll-up on `sources` (`licenses`, `attributions`, the per-layer facets
 and the derived `commercial_use` / `redistribution`). All six are out of `artifact.digest`.
+`compilation.toolchain` (0.8, RM342) records the Python and polars that wrote the bytes; see
+§ identity & integrity for how a comparison reads it.
 
 **`stats` describes the module, not `variants.csv`.** `Stats` is the card/detail block a catalog
 facets on — `variant_count`, `study_count`, `gene_count`/`genes`, `categories` and the three ClinVar
@@ -2432,7 +2786,9 @@ Resolution *policy and outcome*: `resolution_mode?` (`strict`/`best_effort`), `f
 `resolution_signature?`, `resolution_sources`. Allele-identity *coverage*: `vrs_alleles` and `vrs_alleles_identified`, the
 counts `_vrs_coverage_warnings` reports, so a consumer can read how completely the identity scheme
 names this module's alleles instead of inferring it from the absence of warnings. "Complete" is
-`identified == alleles`, derived rather than stored twice.
+`identified == alleles`, derived rather than stored twice. Beside them, `vrs_version?` (0.8, RM304): the
+VRS minor those ids are pinned to, the rule the compiler verified against, `None` when no allele carries
+an id; a row stating another version in `resolution.csv`'s `vrs_spec` is `vrs_version_differs`.
 
 **Read `fully_resolved` with `resolution_subjects` or you will trust the wrong modules (RM44, 0.6).**
 The flag is `all(...)` over the module's variant rows, so on a module with no `variants.csv` it is
@@ -2557,7 +2913,9 @@ and deleting the block moves neither `artifact.digest` nor `content_signature`.
   `module:` keys a publishing registry fills, mapped to why each is not authored
   (`normalize.IDENTITY_AUTHORITY_KEYS` / `IDENTITY_AUTHORITY_REASONS`). `module.version` is
   deliberately in the first group, not the third — it is a genuine advisory authored field, coerced to
-  SemVer (RM17) rather than stripped.
+  SemVer (RM17) rather than stripped. Beside `reserved_names`, **`misplaced_columns`** (0.8, RM327) maps
+  each name real on a generated table, or only on a compiled parquet, to the reason an authored table
+  refuses it (`vocab.MISPLACED_COLUMN_REASONS`): `source`, and `tradeoff` since it left the reserved set.
 
   **The registry-owned half is two families, not one, and 0.7 adds the second** (RM133).
   `IDENTITY_AUTHORITY_KEYS` (`namespace`, `owner`, `canonical_id`) says *which module this is*;
@@ -2651,6 +3009,100 @@ and deleting the block moves neither `artifact.digest` nor `content_signature`.
 - **`aggregate.aggregate_logs` / `aggregate_provenance`** — the deduplicated union of logs/provenance
   across a set of version manifests ("v3 provenance = v1+v2+v3"), first-occurrence order.
 
+## The reference-snapshot contract (0.8, RM303) — `release.json`
+
+`just_dna_format.snapshot` defines the second on-disk format this package owns, beside the module: a
+**reference snapshot**, the directory the enricher's builders cut and its passes read. A snapshot is
+`data/*.parquet` (or one named payload file at the root: `acmg_sf.csv`, `STRchive-loci.json`),
+optional parquet sidecar directories beside `data/` (`SNAPSHOT_SIDECAR_DIRNAMES`, today `citations/`),
+and the root files `SNAPSHOT_ROOT_FILENAMES` in publish order: `LICENSE.txt`, `avi_knots.parquet`,
+and `release.json` **last**, so the description never arrives before the bytes it describes.
+
+The names were constants in the enricher until 0.8, so any other repository that wanted the layout had
+to import the network tier. They live here now, pydantic + stdlib, reading no environment; where a
+snapshot sits on a given machine (the cache base, the per-lane variables, the pull record) stays in the
+enricher's `locations`, which imports these names rather than restating them.
+
+**`SnapshotRelease`** is the model of `release.json`. A key some reader reads is a typed optional
+field; every other key rides in `extra="allow"` and survives a rewrite unchanged.
+
+| Field | Type | Read by |
+|---|---|---|
+| `dataset` | `str` | the release label: `cache status`, every pass that stamps `SourceRow.dataset` |
+| `source_url`, `source_sha256` | `str`, or `dict[str, str \| None]` per input (MANE) | ACMG, STRchive, the ClinVar label's digest fallback, `mitomap_miss`'s parent pin |
+| `built_at`, `builder_version` | `str` | ACMG's verification record (`built_at`); every builder writes both |
+| `license`, `license_sha256` | `str` | ClinPGx's licence-hash stamp (`license_sha256`) |
+| `row_count`, `row_counts` | `int`, `dict[str, int]` | `mitomap_miss`'s parent pin |
+| `record_count` | `int` | `mitomap_miss`'s parent pin |
+| `genome_build` | `str` | PharmVar |
+| `parents` | `dict[str, dict]` | `mitomap_miss` (staleness, its own label) |
+| `clinvar_file_date` | `str` | the ClinVar label, `clinical_assertions.csv`'s `dataset`, the parent pin |
+| `status_basis` | `str` | CIViC drafting and refutation |
+| `sf_version` | `str` | ACMG |
+| `parts_read`, `parts_total` | `dict[str, int]` | the Open Targets pass (partial snapshot, `strict` refuses; RM369) |
+| `source_release`, `vrs_version` | `str` | ClinVar-GKM's currency check and its VRS comparability (RM369) |
+
+**A key a reader acts on is a typed field (RM369).** Open Targets' part counts and ClinVar-GKM's two
+keys were read out of `extra` (`getattr`, a `model_dump()` and `.get`), where a misspelt key reads as
+absent and a value of the wrong kind reaches the reader unchecked: a `parts_total` of `"seven"` raised a
+`TypeError` in the pass. Typed, an old value is read through the field's validator (`"3"` reads as `3`,
+pydantic's lax mode, the rule every typed key already had) and one of the wrong kind costs that key and
+never the record. An AST walk over all three tiers' sources refuses `getattr`, `.get`, subscripts and
+`model_extra` on a release, an attribute that is not a typed field, and a computed key into its dump
+(`enricher/tests/test_release_json_through_the_model.py`).
+
+**Unstated is `None`, never a default.** `write_release` dumps with `exclude_unset`: a key the builder
+never set is not written, and a key it set to `None` is written as `null`, because a recorded `null`
+is a stated unknown (pubmind's `source_url` on a local build). Values are verbatim: `source_sha256` is
+`sha256:`-prefixed by some builders and bare in others, and the model normalizes spellings, not values.
+
+**Old spellings are read on input and never written.** Snapshots already published keep their keys,
+and a republish writes the canonical one rather than anyone editing a published file:
+
+| Old key | Read as |
+|---|---|
+| `licence` (CIViC) | `license` |
+| `rows` holding an int (AlphaGenome AVI) | `row_count` |
+| `rows` holding a per-file map (MANE, MITOMAP) | `row_counts` (CPIC's spelling) |
+| no `dataset`, `clinvar_file_date` present (ClinVar before 0.8) | `dataset` = `clinvar_release_label(clinvar_file_date, source_sha256)` |
+
+The canonical key wins when a file states both. The ClinVar row is the one lane-shaped rule: ClinVar's
+builder wrote its release as `clinvar_file_date` and no `dataset`, so `cache status` printed a blank
+label for it, and the repair was a per-lane reader in the enricher. The builder now writes `dataset`
+through the same `clinvar_release_label` the model uses to read an older snapshot, so the label is one
+formula on both sides and the per-lane reader is gone. `builder` (ACMG's, a module path) is not a
+version and is not an alias of `builder_version`; it rides in extra.
+
+**`read_release(dir) -> SnapshotRelease | None`** answers `None` for an absent file and for an
+unreadable one (does not parse, is not an object, or a typed key holds the wrong kind of value), with a
+warning for the second. **`write_release(dir, release)`** writes the record: atomic, sorted keys,
+newline-terminated.
+
+**A builder never calls it; it opens a write (RM369).** The order is **withdraw the record, move the
+bytes, describe them**. `begin_snapshot_write(dir)` removes `release.json` and returns a `SnapshotWrite`
+whose `commit(release)` is the only route a builder has to the writer, so describing a snapshot without
+having withdrawn the old description is not expressible. Every builder used to swap its payload in and
+write the record after, so a crash between the two left new bytes under the previous build's record,
+which every reader believed. Now the worst a crash leaves is a payload with no record, which reads as
+an unstated release and is withheld. The write is opened immediately before the first byte of the
+live payload moves, never at the top of a build: a download or a parse that fails earlier leaves the
+old snapshot whole and still described. A build that fails after it is not given its old record back,
+because that record would describe bytes the failed build may have changed. A second half that owns
+one **block** of another build's record (ClinVar's `citations`) uses `begin_block_write(dir, name)`
+instead: it withdraws that block only, and its `commit(block)` merges the new one back, leaving an
+unreadable record alone (`False`).
+
+Two guards hold it. An AST walk over the enricher's `*_build.py` asserts that the builders opening a
+write are exactly the builders, that none names `write_release`, and that none spells `release.json`
+outside an import or an `.unlink` (`enricher/tests/test_release_json_through_the_model.py`). And every
+builder is run offline against a directory that already holds a described snapshot, with the describe
+step made to fail: nothing a reader globs may have moved when the record is withdrawn, and no
+`release.json` may be left (`enricher/tests/test_a_build_withdraws_its_description_first.py`).
+**`holds_snapshot_payload(dir, *, payload_filename=None)`** is the payload predicate: a directory holding
+only `release.json`, or nothing, is not a snapshot. **`release_label(dir)`** is the one reader of the
+label (`dataset`, stripped, `None` when blank or unstated), and **`release_is_unreadable(dir)`** tells a
+present-and-unreadable record from an absent one, for the caller that reports or must not overwrite it.
+
 ## The release record (0.7, RM126) — what a release changed about compiled output
 
 `just_dna_format.release_records`. Principle 3, as amended on 2026-08-21, lets a corrected derivation
@@ -2692,6 +3144,14 @@ split is the half **no diff can compute**: `stats.genes` was *wrong* and `curato
 and only the person who fixed the bug knows which. Both are closed sets with a marker and a validator
 on `DeclaredChange`, so `describe`-style surfaces and the separator canonicalisation reach them like
 any other vocabulary.
+
+**`toolchain` is the third kind (0.8, RM352)**: nothing was wrong and nothing was absent; the bytes
+moved with the content unchanged because the recorded toolchain (`compilation.toolchain`, RM342) did.
+polars 1 → 2 is the case, since from 2.0 every parquet footer names its polars release. A model
+validator refuses it on any axis but `parquet_bytes`, and the release gate accepts it only when a sweep
+with the compiler held fixed backs it ([COMPILER § The release-record sweep](COMPILER.md#the-release-record-sweep-rm126)).
+`RecompileAnswer.toolchain_moves` reads them beside `corrections` and `additions`; a toolchain move
+still sets `parquet_bytes`, so `output_differs` still says the bytes differ.
 
 `warnings` is a member and is **outside** `RECOMPILE_DRIVING_AXES`, derived by subtraction from
 `NON_RECOMPILE_AXES`. `compilation.warnings` is a published manifest field, so folding it into
@@ -2863,6 +3323,88 @@ module's own resolution and would make two modules holding the same records hash
 Catalog is *queried* by rsID and echoes it back inside `riskAlleleName` (`snp_effect_allele` on v2), so it is part of what the
 source said. `trait` is outside, on `gene_validity`'s rule: a label that churns between releases for an
 unchanged `trait_efo_id` describes the association rather than being it.
+
+**The fine-mapping pair (0.8, RM239): `posterior_probability` and `fine_mapping_method`.** A second
+writer fills them: `opentargets enrich` reads Open Targets' GWAS credible sets and sets both on a row
+when exactly one value answers for its `(variant_key, study_accession)`. The posterior means nothing
+without its method (SuSiE, SuSiE-inf and PICS stand behind one column, the method spelled as the source
+spells it), the rule a magnitude and its unit follow. There is **no credible-set level beside them**:
+the release publishes the 95% set only (`is95 = is99 = true` on all 40,967,780 GWAS member rows,
+`probes/LANES_0_8.md` § 0), so a level column would have no case. **Empty is never zero**: the study has
+no credible set in the release, the variant is not in the study's set, or it sits in several of the
+study's sets with different values; the pass counts each, and the manifest's `gwas_effects.with_posterior`
+counts the filled rows. Both are inside `GWAS_FACT_FIELDS` (a module without them hashes as before, since
+an unset cell is dropped). Their release is **not** the row's `dataset`, which names the Catalog's: it is
+the `(opentargets, gwas_effect)` row of `sources.csv`.
+
+## The Open Targets tables (0.8, RM333 + RM236)
+
+Three derived-fact sidecars filled by `opentargets enrich` from one release of the Open Targets Platform
+(CC0-marked; `sources.csv` records its terms with the third-party-rights clause in `notice`). They are
+the **inputs** to a causal or effector judgement, never the judgement: no C or E label is authored or
+computed by the format (RM323's cut), and a curator's correction to an input goes in `overrides.csv`.
+
+| table | model (`locus_genes`, `consequences`) | key | what one row says |
+|---|---|---|---|
+| `locus_to_gene.csv` | `LocusToGeneRow` | `(study_locus_id, gene_id, variant_key)` | the L2G score Open Targets gives one candidate gene of one credible set the module's variant is a member of |
+| `colocalisations.csv` | `ColocalisationRow` | `(study_locus_id, right_study_locus_id, variant_key)` | that credible set colocalises with a molecular-QTL credible set: `h4`, `clpp`, the right study's type, gene and tissue |
+| `consequences.csv` | `ConsequenceRow` | `(variant_key, transcript)` | VEP's consequence (Sequence Ontology accessions) and impact class on one transcript |
+
+**The study locus is the grain, and several per variant are kept.** A variant sits in one credible set per
+study that fine-mapped its region, each with its own candidate genes and scores. A row per variant would
+pick a study for the module (`@multiplicity-is-a-finding`).
+
+**Members, not lead-only.** A row exists for every set the module's variant is a **member** of, whether or
+not it leads it: HFE C282Y sits in 82 GWAS sets of the 26.09 release and leads none, so a lead-only table
+would be empty for it. `variant_key` is the module's own key for the member asked about and is part of both
+keys, because two module variants in one set each get its rows; the rows join the weights directly.
+`lead_variant_id` keeps the source's spelling of the set's lead, which names another variant when the
+module's is a member only. The member's own weight in the set is its posterior on `gwas_effects.csv`. A
+heavily fine-mapped variant makes coloc large: rs646776's 2,061 sets carry 309,634 coloc rows. An
+`overrides.csv` correction keys on `(study_locus_id, gene_id)` / `(study_locus_id, right_study_locus_id)` and
+reaches every member's row of the pair; it may not `update` `variant_key`, an `insert` matches on the
+`variant_key` it supplies, and a `suppress` removes every member's row.
+
+**Coloc is a sibling table, not columns on the L2G row**, because the probe found many right-hand study
+loci per `(study locus, gene)` pair (one per tissue and QTL kind): `h4` on the L2G row would have to pick a
+tissue. `right_gene_id` is what joins a colocalisation to an L2G row.
+
+**`consequences.csv` settles RM23's grain too.** One consequence per transcript is the shape RM236 chose
+over a MANE-only column (lossy, and a column cannot later be retyped into a table) and a most-severe
+column (a ranking policy). The transcript set is Open Targets' choice, one Ensembl-canonical transcript
+per nearby gene, which `canonical` records; `mane_select` names the MANE transcript where there is one.
+`consequence_so_ids` holds accessions (`SO_0001583`), verbatim; the name `consequence` stays free for a
+term label.
+
+## The LD-pair table (0.8, RM331)
+
+`ld_pairs.csv` → `ld_pairs.parquet` is the derived half of a study measured on an LD proxy. The author
+writes only `StudyRow.proxy_rsid`; r² means nothing without the population it was computed in, so r² and
+its population are a pair, and `just-dna-enricher ld-pairs` computes it from a reference panel (Ensembl's
+pairwise LD over the 1000 Genomes phase 3 superpopulations) instead of an author typing it.
+
+| key | what one row says |
+|---|---|
+| `(proxy_rsid, variant_key, ld_population)` | r² and \|D′\| between the proxy a study measured and the study row's lead, in one reference panel, or the reason they are withheld |
+
+**`ld_population` is the panel's own name** (`1000GENOMES:phase_3:EUR`), not the study's code (`EUR`): it
+says which reference the number came from, and another panel is another key rather than the same word
+meaning two things. It is null on a row whose study names several superpopulations or none.
+
+**Withheld is a `status`, never a zero** (`VALID_LD_PAIR_STATUS`). Only `resolved` carries `r2` and
+`d_prime`, and the model refuses a number on any other row and a resolved row without one. `not_reported`
+is Ensembl's `200 []`, which it serves both for a pair on two chromosomes and for a pair below an internal
+floor (the APOE pair in AFR): below the floor or not in LD, unknown which. `rsid_unknown` is the reference
+not knowing one of the two ids. `ancestry_mixed` and `ancestry_unstated` are a study naming several
+superpopulations or none: the pass never picks a panel for it. `lead_has_no_rsid` is a coordinate-authored
+lead with no rsID known, since the endpoint takes rsIDs.
+
+`answered_rsid` is the proxy as the reference named it (a merged id answers under its current one), kept
+beside the key the author wrote and outside `ld_pair_signature`; `dataset` (`ensembl_116`) is inside it,
+since r² is recomputed from each release's genotypes. `manifest.ld_pairs` summarises the table:
+`{signature, sources, datasets, populations, row_count, with_r2}`, the last two differing by the withheld
+rows. No compile check reads it, and the overlay does not cover it: an author has no correction to make to
+a reference panel's r², and a wrong `ancestry` is fixed on the study row.
 
 ## The expression-effect table (0.7, RM194 + RM200)
 

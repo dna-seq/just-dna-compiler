@@ -12,6 +12,7 @@ import pytest
 from just_dna_compiler.hints import REDUNDANCY_BEARING
 from just_dna_enricher import lookup as lookup_module
 from just_dna_enricher.eutils import NO_SUMMARY
+from just_dna_enricher.literature import CrossrefWork
 from just_dna_enricher.lookup import (
     CLIENT_FIELDS,
     LookupClients,
@@ -37,24 +38,34 @@ class _FakeEutils:
 
 
 class _FakeEuropePmc:
-    def __init__(self, records: dict | None = None) -> None:
+    def __init__(self, records: dict | None = None, dois: dict[str, list[str]] | None = None) -> None:
         self.records = records or {}
+        self.dois = dois or {}
+        self.doi_asked: list[str] = []
 
     def lookup(self, pmids: list[str]) -> dict:
         return {p: self.records[p] for p in pmids if p in self.records}
+
+    def pmids_for_doi(self, doi: str) -> list[str]:
+        self.doi_asked.append(doi)
+        return list(self.dois.get(doi, []))
 
     def close(self) -> None:  # pragma: no cover
         pass
 
 
 class _FakeCrossref:
-    def __init__(self, answer: bool | None) -> None:
+    def __init__(self, answer: bool | None, work: CrossrefWork | None = None) -> None:
         self.answer = answer
+        self.record = work or CrossrefWork(exists=answer)
         self.asked: list[str] = []
 
     def exists(self, doi: str) -> bool | None:
+        return self.work(doi).exists
+
+    def work(self, doi: str) -> CrossrefWork:
         self.asked.append(doi)
-        return self.answer
+        return self.record
 
     def close(self) -> None:  # pragma: no cover
         pass
@@ -427,10 +438,138 @@ def test_a_pmid_that_could_not_be_asked_stays_none() -> None:
 def test_crossref_tri_state_is_carried_through() -> None:
     for answer in (True, False, None):
         crossref = _FakeCrossref(answer)
-        hint = lookup_citation(doi="10.1234/abc", clients=LookupClients(crossref=crossref))
+        hint = lookup_citation(
+            doi="10.1234/abc", clients=LookupClients(crossref=crossref, europepmc=_FakeEuropePmc())
+        )
         assert hint.doi_exists is answer
         # the AUTHORED doi is what gets checked — a derived one exists by construction
         assert crossref.asked == ["10.1234/abc"]
+
+
+_ENATTAH = CrossrefWork(
+    exists=True,
+    title="Identification of a variant associated with adult-type hypolactasia",
+    journal="Nature Genetics",
+    year="2002",
+    first_author="Enattah NS",
+)
+
+
+def test_a_doi_alone_names_the_paper_it_found() -> None:
+    """S113: `doi_exists=True` with every identity field null and `findings: []` was the whole answer.
+
+    The fields fill from Crossref's record, and a finding names the paper in prose — the phrase is
+    pinned because a caller reading findings rather than fields greps for it (`@warning-text-is-api`).
+    """
+    crossref = _FakeCrossref(True, _ENATTAH)
+    hint = lookup_citation(
+        doi="10.1038/ng826", clients=LookupClients(crossref=crossref, europepmc=_FakeEuropePmc())
+    )
+    assert (hint.title, hint.journal, hint.year, hint.first_author) == (
+        _ENATTAH.title,
+        _ENATTAH.journal,
+        _ENATTAH.year,
+        _ENATTAH.first_author,
+    )
+    [named] = [f for f in hint.findings if f.column == "doi"]
+    assert named.level == "info"
+    assert named.message.startswith(f"DOI 10.1038/ng826 names: {_ENATTAH.title!r}")
+    assert "existence is not identity" in named.message
+    assert crossref.asked == ["10.1038/ng826"]
+
+
+def test_a_record_with_no_title_says_so_rather_than_returning_silent_nulls() -> None:
+    """A dataset or preprint may carry a Crossref record and no title — the S113 shape one case
+    narrower. The null must not read as "no such paper" or as "not asked"."""
+    crossref = _FakeCrossref(True, CrossrefWork(exists=True, year="2024"))
+    hint = lookup_citation(
+        doi="10.5061/dryad.x", clients=LookupClients(crossref=crossref, europepmc=_FakeEuropePmc())
+    )
+    assert hint.doi_exists is True and hint.title is None and hint.year == "2024"
+    assert any("names no title" in f.message and f.column == "doi" for f in hint.findings)
+
+
+def test_with_both_identifiers_pubmed_fills_and_the_doi_title_is_reported_beside_it() -> None:
+    """Two answers to one question go side by side: the PMID's record fills the fields (`StudyRow` is
+    keyed on it), and the DOI's title still arrives as its own finding, so a pair naming two different
+    papers shows two titles rather than one silently kept."""
+    eutils = _FakeEutils({"1": {"uid": "1", "articleids": [], "title": "A different paper."}})
+    crossref = _FakeCrossref(True, _ENATTAH)
+    hint = lookup_citation(
+        pmid="1",
+        doi="10.1038/ng826",
+        clients=LookupClients(eutils=eutils, europepmc=_FakeEuropePmc(), crossref=crossref),
+    )
+    assert hint.title == "A different paper."
+    assert hint.journal == _ENATTAH.journal  # PubMed left it unset, so Crossref's fills it
+    messages = [f.message for f in hint.findings]
+    assert any(m.startswith("PMID 1 names: 'A different paper.'") for m in messages)
+    assert any(m.startswith(f"DOI 10.1038/ng826 names: {_ENATTAH.title!r}") for m in messages)
+
+
+# ── RM263: a DOI's PMID, through Europe PMC ──────────────────────────────────────────────────────
+
+
+def test_a_doi_alone_gets_its_pmid_as_an_advisory_and_both_titles_side_by_side() -> None:
+    """`10.1038/ng826` is PMID 11788828 (Enattah 2002, not in PMC: the case NCBI's converter misses).
+    The PMID is offered, never written; PubMed is then asked which paper it is; and Crossref's title
+    and PubMed's arrive as two `info` findings that nothing compares."""
+    eutils = _FakeEutils(
+        {"11788828": {"uid": "11788828", "articleids": [], "title": "Identification of a variant."}}
+    )
+    europepmc = _FakeEuropePmc(dois={"10.1038/ng826": ["11788828"]})
+    hint = lookup_citation(
+        doi="10.1038/ng826",
+        clients=LookupClients(eutils=eutils, europepmc=europepmc, crossref=_FakeCrossref(True, _ENATTAH)),
+    )
+    [advisory] = [a for a in hint.alterations if a.column == "pmid"]
+    assert (advisory.after, advisory.applied, advisory.refusal, advisory.source) == (
+        "11788828",
+        False,
+        "redundancy_bearing",
+        "europepmc",
+    )
+    assert hint.pmid is None  # never filled
+    assert eutils.calls == [("pubmed", ("11788828",))]
+    titles = [f for f in hint.findings if " names: " in f.message]
+    assert {f.level for f in titles} == {"info"}
+    assert any(f.message.startswith("PMID 11788828 names: 'Identification of a variant.'") for f in titles)
+    assert any(f.message.startswith(f"DOI 10.1038/ng826 names: {_ENATTAH.title!r}") for f in titles)
+
+
+def test_several_pmids_for_one_doi_withhold_the_advisory_and_name_them_all() -> None:
+    europepmc = _FakeEuropePmc(dois={"10.1/x": ["111", "222"]})
+    eutils = _FakeEutils({})
+    hint = lookup_citation(
+        doi="10.1/x", clients=LookupClients(eutils=eutils, europepmc=europepmc, crossref=_FakeCrossref(True))
+    )
+    assert not [a for a in hint.alterations if a.column == "pmid"]
+    [warned] = [f for f in hint.findings if f.level == "warning" and f.column == "pmid"]
+    assert "111" in warned.message and "222" in warned.message
+    assert eutils.calls == []  # no PMID was picked, so PubMed is not asked about one
+
+
+def test_no_pmid_for_a_doi_is_europe_pmcs_answer_not_pubmeds() -> None:
+    hint = lookup_citation(
+        doi="10.5061/dryad.x", clients=LookupClients(europepmc=_FakeEuropePmc(), crossref=_FakeCrossref(True))
+    )
+    [said] = [f for f in hint.findings if f.column == "pmid"]
+    assert said.level == "info"
+    assert "Europe PMC holds no PubMed record" in said.message and "not PubMed's" in said.message
+
+
+def test_an_authored_pmid_is_not_second_guessed_by_the_doi_route() -> None:
+    europepmc = _FakeEuropePmc(dois={"10.1038/ng826": ["11788828"]})
+    lookup_citation(
+        pmid="1",
+        doi="10.1038/ng826",
+        clients=LookupClients(
+            eutils=_FakeEutils({"1": {"uid": "1", "articleids": []}}),
+            europepmc=europepmc,
+            crossref=_FakeCrossref(True, _ENATTAH),
+        ),
+    )
+    assert europepmc.doi_asked == []
 
 
 def test_the_injected_client_is_reused_rather_than_rebuilt() -> None:
@@ -787,3 +926,21 @@ def test_a_gnomad_outage_still_reports_rather_than_raises(tmp_path: Path) -> Non
     hint = _freq(tmp_path, _FakeGnomad({}, unreachable=True))
     assert any("frequencies unchecked" in f.message for f in hint.findings)
     assert hint.populations == []
+
+
+_NETWORK = pytest.mark.network
+
+
+@_NETWORK
+def test_live_a_paywalled_doi_resolves_to_its_pmid() -> None:
+    """Enattah 2002 is not in PMC, so NCBI's converter cannot answer; Europe PMC's search does."""
+    hint = lookup_citation(doi="10.1038/ng826")
+    assert [a.after for a in hint.alterations if a.column == "pmid"] == ["11788828"]
+
+
+@_NETWORK
+def test_live_a_non_english_doi_reports_two_titles_and_warns_on_neither() -> None:
+    """Crossref holds the German title and PubMed its bracketed translation; both are `info`."""
+    hint = lookup_citation(doi="10.1055/s-0041-111184")
+    titles = [f for f in hint.findings if " names: " in f.message]
+    assert len(titles) == 2 and {f.level for f in titles} == {"info"}

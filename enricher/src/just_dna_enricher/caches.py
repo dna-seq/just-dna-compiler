@@ -45,31 +45,37 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from just_dna_format.snapshot import release_is_unreadable
+from just_dna_format.snapshot import release_label as snapshot_release_label
+
 from just_dna_enricher import (
     acmg_build,
     civic_build,
     clinpgx_build,
     clinvar_build,
+    clinvar_gkm_build,
     constraint_build,
-    cpic,
     cpic_build,
     drug_labels_build,
     mane_build,
     mitomap,
     mitomap_build,
     mitomap_miss_build,
+    opentargets_build,
     pharmvar,
     pharmvar_build,
     pubmind_build,
     strchive_build,
 )
-from just_dna_enricher.clinvar import clinvar_dataset_label
+from just_dna_enricher.clinvar_gkm import ClinVarGkmClient, ClinVarGkmError
 from just_dna_enricher.download import (
     SNAPSHOT_FILE_GLOBS,
+    SNAPSHOT_REPO_PREFIXES,
     SnapshotNotPublished,
     ensure_alphagenome_avi_snapshot,
     ensure_civic_snapshot,
     ensure_clinpgx_snapshot,
+    ensure_clinvar_gkm_snapshot,
     ensure_clinvar_snapshot,
     ensure_constraint_snapshot,
     ensure_cpic_snapshot,
@@ -77,6 +83,7 @@ from just_dna_enricher.download import (
     ensure_mitomap_snapshot,
     ensure_snapshot,
     ensure_strchive_snapshot,
+    pulled_from_elsewhere,
 )
 from just_dna_enricher.licensing import (
     ALPHAGENOME_AVI_TERMS,
@@ -98,6 +105,8 @@ from just_dna_enricher.locations import (
     CLINPGX_CACHE_VAR,
     CLINPGX_SUBDIR,
     CLINVAR_CACHE_VAR,
+    CLINVAR_GKM_CACHE_VAR,
+    CLINVAR_GKM_SUBDIR,
     CLINVAR_SUBDIR,
     CONSTRAINT_CACHE_VAR,
     CONSTRAINT_SUBDIR,
@@ -113,11 +122,12 @@ from just_dna_enricher.locations import (
     MITOMAP_MISS_CACHE_VAR,
     MITOMAP_MISS_SUBDIR,
     MITOMAP_SUBDIR,
+    OPENTARGETS_CACHE_VAR,
+    OPENTARGETS_SUBDIR,
     PHARMVAR_CACHE_VAR,
     PHARMVAR_SUBDIR,
     PUBMIND_CACHE_VAR,
     PUBMIND_SUBDIR,
-    RELEASE_FILENAME,
     SNAPSHOT_DATA_DIRNAME,
     STRCHIVE_CACHE_VAR,
     STRCHIVE_SUBDIR,
@@ -126,6 +136,7 @@ from just_dna_enricher.locations import (
     default_civic_cache_dir,
     default_clinpgx_cache_dir,
     default_clinvar_cache_dir,
+    default_clinvar_gkm_cache_dir,
     default_constraint_cache_dir,
     default_cpic_cache_dir,
     default_drug_labels_cache_dir,
@@ -133,16 +144,18 @@ from just_dna_enricher.locations import (
     default_mane_cache_dir,
     default_mitomap_cache_dir,
     default_mitomap_miss_cache_dir,
+    default_opentargets_cache_dir,
     default_pharmvar_cache_dir,
     default_pubmind_cache_dir,
     default_strchive_cache_dir,
+    ensembl_release_label,
     env_value,
     missing_credential_reason,
-    read_release,
     resolve_acmg_reference,
     resolve_alphagenome_avi_reference,
     resolve_civic_reference,
     resolve_clinpgx_reference,
+    resolve_clinvar_gkm_reference,
     resolve_clinvar_reference,
     resolve_constraint_reference,
     resolve_cpic_reference,
@@ -151,6 +164,7 @@ from just_dna_enricher.locations import (
     resolve_mane_reference,
     resolve_mitomap_miss_reference,
     resolve_mitomap_reference,
+    resolve_opentargets_reference,
     resolve_pharmvar_reference,
     resolve_pubmind_reference,
     resolve_strchive_reference,
@@ -160,6 +174,7 @@ from just_dna_enricher.upload import (
     DEFAULT_ALPHAGENOME_AVI_REPO_ID,
     DEFAULT_CIVIC_REPO_ID,
     DEFAULT_CLINPGX_REPO_ID,
+    DEFAULT_CLINVAR_GKM_REPO_ID,
     DEFAULT_CLINVAR_REPO_ID,
     DEFAULT_CONSTRAINT_REPO_ID,
     DEFAULT_CPIC_REPO_ID,
@@ -229,16 +244,6 @@ class RebuildOutcome:
 RebuildAdapter = Callable[[RebuildRequest], RebuildOutcome]
 
 
-def _dataset_label(reference: Path) -> str | None:
-    """Which release a snapshot on disk holds, as `release.json`'s own `dataset` states it.
-
-    The default for every lane, and `None` when the snapshot does not say — never a placeholder, since
-    a caller must be able to tell a release from a snapshot that cannot name one.
-    """
-    release = read_release(reference)
-    return (release or {}).get("dataset") or None
-
-
 @dataclass(frozen=True)
 class CacheLane:
     """One snapshot, all three of its stages, and the reason for each stage it does not have."""
@@ -269,7 +274,7 @@ class CacheLane:
     rebuild: RebuildAdapter | None
     ensure: Callable[..., Path] | None
     #: The repo **this tier** publishes to. Ensembl's snapshot is on HuggingFace and this field is
-    #: still `None` for it, which is not the omission it looks like: just-dna-pipelines cuts and
+    #: still `None` for it, which is not the omission it looks like: prepare-annotations cuts and
     #: uploads that slice, so a publish command here would be this repository claiming another's
     #: artifact. Pullable-without-publishable is therefore a real state, and only for a lane whose
     #: `rebuild` is also `None`.
@@ -281,26 +286,24 @@ class CacheLane:
     unpublished: str | None = None
     #: Why there is no `rebuild` adapter. **Two members, for two different reasons**, and the pair is
     #: worth naming because they look alike and are not: `ensembl`'s snapshot is built by
-    #: just-dna-pipelines rather than here, so a rebuild command would be this repository claiming
+    #: prepare-annotations rather than here, so a rebuild command would be this repository claiming
     #: another's artifact; `alphagenome_avi` cannot be rebuilt by *anyone* without a file the tier is
     #: not allowed to fetch, so the adapter has no bytes to start from. The first is a division of
     #: labour, the second is an acquisition gate (`@acquisition-gate-is-not-a-read-gate`).
     unbuilt: str | None = None
-    #: How this lane's snapshot names the release it holds (RM180). The default reads `release.json`'s
-    #: `dataset`, which eleven lanes write; ClinVar does not, so `cache status` printed a blank label
-    #: for the one lane that moves weekly while naming the release of every lane that does not.
+    #: How this lane's snapshot names the release it holds (RM180). The default is the format
+    #: tier's `snapshot.release_label`, `release.json`'s `dataset`, and since RM303 every lane uses it:
+    #: ClinVar's builder used to write `clinvar_file_date` and no `dataset`, so `cache status` printed
+    #: a blank label for the one lane that moves weekly, and this field carried a ClinVar override.
+    #: The builder now writes `dataset`, and the snapshot model reads an older ClinVar release's
+    #: `clinvar_file_date` through the same formula, so the override is gone. The field stays for a
+    #: lane whose snapshot cannot state its label in `release.json` at all: since RM372 that is
+    #: `ensembl`, whose split release carries a `manifest.json` and no `release.json`.
     #:
     #: Named `release_label` and not `label` because `RebuildOutcome.label` next door is the
     #: built/failed/not-run word, and one file with two `label`s that mean different things is how a
     #: reader learns the wrong one first.
-    #:
-    #: A field rather than a `if lane.name == "clinvar"` in the reporter, for the reason
-    #: `build_command` is one: a convention that holds for eleven of twelve is not a convention, and
-    #: the exception belongs where the lane is declared. ClinVar's is `clinvar_dataset_label`, the
-    #: function `clinvar_draft` writes onto its licence row and `clinical.tautology_reason` recomputes
-    #: — shared rather than mirrored, because two spellings of one label do not fail, they simply
-    #: never match.
-    release_label: Callable[[Path], str | None] = _dataset_label
+    release_label: Callable[[Path], str | None] = snapshot_release_label
     #: This lane's own publish command, for a lane that **cannot be reached by
     #: `cache rebuild --publish`** (RM202). That loop walks lanes with a `rebuild` adapter, which is
     #: every publishable lane but one: `alphagenome_avi` has a `publish_repo` and no adapter, because
@@ -441,16 +444,21 @@ def _rebuild_clinpgx(request: RebuildRequest) -> RebuildOutcome:
     request.out_dir.mkdir(parents=True, exist_ok=True)
     try:
         sha: str | None = None
+        dates: clinpgx_build.ArchiveDates | None = None
         archive = request.source
         if archive is None:
             archive, sha = clinpgx_build.download_clinpgx_zip(
                 request.out_dir / clinpgx_build.CURRENT_ARCHIVE.archive
             )
+            # RM283: on the same fetch, how the archive's age compares with its siblings'. A build
+            # from a local archive asked nobody, so it records nothing.
+            dates = clinpgx_build.probe_archive_dates()
         result = clinpgx_build.build_snapshot(
             archive,
             request.out_dir,
             source_url=clinpgx_build.DEFAULT_CLINPGX_URL,
             source_sha256=sha,
+            archive_dates=dates,
         )
     except (clinpgx_build.ClinPgxArchiveError, ImportError, OSError) as exc:
         return RebuildOutcome("clinpgx", False, str(exc))
@@ -458,7 +466,7 @@ def _rebuild_clinpgx(request: RebuildRequest) -> RebuildOutcome:
         "clinpgx",
         True,
         f"{result.annotation_count} annotations over {len(result.genes)} genes, "
-        f"release {result.created_date}",
+        f"release {result.created_date}" + (f"; {result.staleness}" if result.staleness else ""),
         result.parquet_path.parent.parent,
     )
 
@@ -469,9 +477,8 @@ def _rebuild_cpic(request: RebuildRequest) -> RebuildOutcome:
         return refused
     try:
         result = cpic_build.build_snapshot(request.out_dir)
-    # `CpicError` is the client's transport/5xx type and `cpic_build` does not translate it, so it is
-    # named here as the CLI's `cpic build` names it (RM310). Which side should own this list is RM288.
-    except (cpic.CpicError, cpic_build.CpicBuildError, ImportError, OSError) as exc:
+    # The builder owns its error family (RM288); RM310 was this list, spelled here, missing one member.
+    except cpic_build.ERRORS as exc:
         return RebuildOutcome("cpic", False, str(exc))
     return RebuildOutcome(
         "cpic",
@@ -507,7 +514,7 @@ def _rebuild_pharmvar(request: RebuildRequest) -> RebuildOutcome:
         )
     try:
         result = pharmvar_build.build_snapshot(request.out_dir)
-    except (ImportError, OSError, pharmvar.PharmVarError) as exc:
+    except pharmvar_build.ERRORS as exc:
         return RebuildOutcome("pharmvar", False, str(exc))
     return RebuildOutcome(
         "pharmvar",
@@ -597,6 +604,35 @@ def _rebuild_pubmind(request: RebuildRequest) -> RebuildOutcome:
         True,
         f"{result.record_count} of {result.input_rows} rows kept, dataset {result.dataset}",
         result.parquet_file.parent.parent,
+    )
+
+
+def _rebuild_opentargets(request: RebuildRequest) -> RebuildOutcome:
+    """Mirror the pinned release (or read `--source`, a directory of `<dataset>/part-*.parquet`) and flatten it.
+
+    The pin is the Platform release directory; with none the lane's own pinned release is built, never
+    `latest/`, so two unattended rebuilds name the same bytes.
+    """
+    request.out_dir.mkdir(parents=True, exist_ok=True)
+    release = request.pin or opentargets_build.OPENTARGETS_RELEASE
+    try:
+        mirror = request.source
+        if mirror is None:
+            # Per release, so a new pin never reads the old one's parts; dropped after a good build,
+            # because the ~22 GB mirror would otherwise sit inside a lane of a few GB.
+            mirror = request.out_dir / "source" / release
+            opentargets_build.download_release(mirror, release=release)
+        result = opentargets_build.build_snapshot(mirror, request.out_dir, release=release)
+        if request.source is None:
+            shutil.rmtree(request.out_dir / "source")
+    except (opentargets_build.OpenTargetsBuildError, FileNotFoundError, ImportError, OSError) as exc:
+        return RebuildOutcome("opentargets", False, str(exc))
+    return RebuildOutcome(
+        "opentargets",
+        True,
+        f"dataset {opentargets_build.release_label(release)}, "
+        + ", ".join(f"{n} {c}" for n, c in result.row_counts.items()),
+        result.out_dir,
     )
 
 
@@ -840,6 +876,54 @@ def _rebuild_mitomap_miss(request: RebuildRequest) -> RebuildOutcome:
     )
 
 
+def _rebuild_clinvar_gkm(request: RebuildRequest) -> RebuildOutcome:
+    """Download ClinVar-GKM's two Parquet inputs whole, verify them, cut the indel witness (RM305).
+
+    **A pin cannot select a release here**: the source publishes one Parquet set and overwrites it
+    every week, so the only release on offer is the current one. A pin is therefore checked rather
+    than obeyed, and a pin the source no longer serves is could-not-run, never a build of something
+    else under the pinned name. `--source` names one file and this lane takes three (two Parquet files
+    and the manifest that verifies them), so a local build goes through `clinvar-gkm build`.
+    """
+    if request.source is not None:
+        return RebuildOutcome(
+            "clinvar_gkm",
+            None,
+            "takes three input files (allele.parquet, variation.parquet and the manifest.json that "
+            "verifies them) and --source can name one, so a local build goes through `clinvar-gkm "
+            "build --allele … --variation … --manifest …`",
+        )
+    request.out_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        client = ClinVarGkmClient()
+        pinned = None
+        if request.pin is not None:
+            pinned = client.parquet_manifest()
+            if pinned.source_release != request.pin:
+                return RebuildOutcome(
+                    "clinvar_gkm",
+                    None,
+                    f"pinned to {request.pin}, and ClinVar-GKM serves only its current Parquet set "
+                    f"({pinned.source_release}); no earlier set can be downloaded",
+                )
+        # The manifest the pin was checked against is the one verified and built, never a re-read.
+        result = clinvar_gkm_build.download_and_build(request.out_dir, client=client, manifest=pinned)
+    except (ClinVarGkmError, ImportError, OSError) as exc:
+        return RebuildOutcome("clinvar_gkm", False, str(exc))
+    lag = (
+        f"; the source's newest weekly release is {result.latest_release}, which has no Parquet yet"
+        if result.source_lags
+        else ""
+    )
+    return RebuildOutcome(
+        "clinvar_gkm",
+        True,
+        f"{result.row_count} indel rows from {result.counts.alleles} alleles "
+        f"({result.with_rsid} with an rsID), dataset {result.dataset}{lag}",
+        result.out_dir,
+    )
+
+
 # ── the registry ────────────────────────────────────────────────────────────────────────────────
 #
 # A list rather than a dict, because the order is what `cache status` prints and a deployment reads
@@ -862,15 +946,16 @@ CACHE_LANES: list[CacheLane] = [
         publish_repo=None,
         terms=None,
         unbuilt=(
-            "built by just-dna-pipelines, not here: the slice is cut from Ensembl's variation dumps "
+            "built by prepare-annotations, not here: the snapshot is cut from Ensembl's variation VCF "
             "by that repository's pipeline, and this tier only consumes it"
         ),
+        # The split release states its release only in `manifest.json` (RM372).
+        release_label=ensembl_release_label,
     ),
     CacheLane(
         name="clinvar",
         approx_mb=300,
         build_command="clinvar build",
-        release_label=clinvar_dataset_label,
         subdir=CLINVAR_SUBDIR,
         env_var=CLINVAR_CACHE_VAR,
         serves="clinical records (enrich, draft-panel)",
@@ -1087,6 +1172,26 @@ CACHE_LANES: list[CacheLane] = [
         ),
     ),
     CacheLane(
+        name="opentargets",
+        approx_mb=5500,
+        build_command="opentargets build",
+        subdir=OPENTARGETS_SUBDIR,
+        env_var=OPENTARGETS_CACHE_VAR,
+        serves="Open Targets Platform: L2G, coloc, consequences, fine-mapping posteriors (opentargets enrich)",
+        resolve=resolve_opentargets_reference,
+        default_dir=default_opentargets_cache_dir,
+        rebuild=_rebuild_opentargets,
+        ensure=None,
+        publish_repo=None,
+        # None, as for CIViC's CC0 lane: a CC0 mark gates no declared use, so there is nothing for
+        # `cache rebuild` to check. The terms a module records are written by the pass, per table.
+        terms=None,
+        unpublished=(
+            "not yet published: the release is marked CC0, so nothing bars a snapshot, but no "
+            "repository holds one. Build your own with `opentargets build` (about 22 GB downloaded)"
+        ),
+    ),
+    CacheLane(
         name="alphagenome_avi",
         approx_mb=30000,
         build_command="alphagenome build",
@@ -1121,6 +1226,22 @@ CACHE_LANES: list[CacheLane] = [
         # terms rather than an engineering question. The maintainer took that reading on 2026-09-10,
         # so `redistribution` is `True` and this lane publishes — with the reading recorded as a
         # reading in RM195's history entry, because `sources.csv` shows only a boolean.
+    ),
+    CacheLane(
+        name="clinvar_gkm",
+        approx_mb=18,
+        build_command="clinvar-gkm build",
+        subdir=CLINVAR_GKM_SUBDIR,
+        env_var=CLINVAR_GKM_CACHE_VAR,
+        serves="ClinVar-GKM indels, the placement witness (RM292's checks, RM267)",
+        resolve=resolve_clinvar_gkm_reference,
+        default_dir=default_clinvar_gkm_cache_dir,
+        rebuild=_rebuild_clinvar_gkm,
+        ensure=ensure_clinvar_gkm_snapshot,
+        publish_repo=DEFAULT_CLINVAR_GKM_REPO_ID,
+        # `terms=None` although `CLINVAR_GKM_TERMS` exists, for MITOMAP's reason: this field is the
+        # declared-use gate, and CC0 over public-domain ClinVar refuses no declaration.
+        terms=None,
     ),
 ]
 
@@ -1335,7 +1456,7 @@ def lane_status(lanes: list[CacheLane] | None = None) -> list[LaneStatus]:
         looked_in = Path(override).expanduser() if override else lane.default_dir()
         if path is not None:
             release = lane.release_label(path)
-            unreadable = release is None and (path / RELEASE_FILENAME).exists() and read_release(path) is None
+            unreadable = release is None and release_is_unreadable(path)
             out.append(
                 LaneStatus(lane, "present", looked_in, path, release, unreadable, snapshot_bytes(path))
             )
@@ -1387,12 +1508,17 @@ def _present_or_completed(lane: CacheLane, existing: Path, request: RebuildReque
     only where `ensure` writes (the default directory, not an override pointing elsewhere) and only
     when the terms would let it be pulled at all. A gated lane under `--use unstated` stays present as
     before rather than turning into skipped.
+
+    **A cache whose pull record names another repo goes the same way** (RM372). The Ensembl lane moved
+    to a new repo under the same file names, and such a cache resolves (it is a whole snapshot of the
+    old release), so without this `cache pull` would call it present forever.
     """
     present = PrepareOutcome(lane.name, True, "present", f"already provisioned at {existing}", existing)
+    elsewhere = pulled_from_elsewhere(lane.name, existing)
     if (
         lane.ensure is None
         or lane.name not in SNAPSHOT_FILE_GLOBS
-        or snapshot_record_missing(existing) is not None
+        or (snapshot_record_missing(existing) is not None and elsewhere is None)
         or existing.resolve() != lane.default_dir().resolve()
     ):
         return present
@@ -1406,12 +1532,22 @@ def _present_or_completed(lane: CacheLane, existing: Path, request: RebuildReque
     try:
         path = lane.ensure()
     except Exception as exc:
+        tried = (
+            f"re-pulling it from {SNAPSHOT_REPO_PREFIXES[lane.name]} (it was pulled from {elsewhere}) failed"
+            if elsewhere is not None
+            else "checking it against the published listing failed"
+        )
+        return PrepareOutcome(
+            lane.name, True, "present", f"already provisioned at {existing}; {tried}: {exc}", existing
+        )
+    if elsewhere is not None:
         return PrepareOutcome(
             lane.name,
             True,
-            "present",
-            f"already provisioned at {existing}; checking it against the published listing failed: {exc}",
-            existing,
+            "pulled",
+            f"re-pulled at {path}: the cache was pulled from {elsewhere}, and the lane now publishes at "
+            f"{SNAPSHOT_REPO_PREFIXES[lane.name]}",
+            path,
         )
     fetched = sorted(_payload_names(path) - before)
     if fetched:

@@ -26,12 +26,15 @@ from just_dna_format.binning import (
     RepeatAlleleRow,
 )
 from just_dna_format.concordance import ClinSigAuthorityCallRow, ClinSigConcordanceRow
+from just_dna_format.consequences import ConsequenceRow
 from just_dna_format.expression import ExpressionEffectRow
 from just_dna_format.frequency import FrequencyRow
 from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.gene_validity import GeneValidityRow
 from just_dna_format.gwas import GwasEffectRow
+from just_dna_format.ld_pairs import LdPairRow
 from just_dna_format.literature import LiteratureRow
+from just_dna_format.locus_genes import ColocalisationRow, LocusToGeneRow
 from just_dna_format.manifest import (
     RECOMMENDED_COLORS,
     RECOMMENDED_ICONS,
@@ -42,6 +45,8 @@ from just_dna_format.manifest import (
     VerificationRecord,
     Weighting,
 )
+from just_dna_format.meta import MetaRow
+from just_dna_format.model_organisms import ModelOrganismRow
 from just_dna_format.normalize import IDENTITY_AUTHORITY_KEYS, IDENTITY_AUTHORITY_REASONS
 from just_dna_format.overrides import OverrideRow
 from just_dna_format.pgs import (
@@ -63,6 +68,7 @@ from just_dna_format.spec import (
     VariantRow,
 )
 from just_dna_format.vocab import (
+    MISPLACED_COLUMN_REASONS,
     RESERVED_NAMES_0_4,
 )
 
@@ -157,21 +163,35 @@ _FACT_MODELS: dict[str, type[BaseModel]] = {
     # point worth recording — sharing `VALID_EFFECT_DIRECTIONS` rather than minting a parallel
     # increase/decrease set is what keeps the two tables' signs comparable.
     "ExpressionEffectRow": ExpressionEffectRow,
+    # The Open Targets lane's three tables (0.8, RM333/RM236), on the `ExpressionEffectRow` argument:
+    # nobody hand-writes one, and `ConsequenceRow.impact` binds a new closed vocabulary that only this
+    # registry's walk can find undeclared.
+    "LocusToGeneRow": LocusToGeneRow,
+    "ColocalisationRow": ColocalisationRow,
+    "ConsequenceRow": ConsequenceRow,
+    # RM331 (0.8): nobody hand-writes one either, and `status` binds a closed vocabulary only this walk
+    # can find undeclared.
+    "LdPairRow": LdPairRow,
     "VerificationRecord": VerificationRecord,
 }
 
-# `overrides.csv` is a **third** category and gets its own group rather than joining either
-# neighbour, because it belongs to neither and blurring the line is what the 0.5 rework spent a
-# release undoing. It is not an annotation table like `_VARIANT_MODELS`/`_PGX_MODELS`: it asserts
-# nothing about a genotype, it is not a *lead* table, and a directory carrying only this file is not
-# a module. It is not a `_FACT_MODELS` sidecar either: a human writes every row of it, so it carries
-# `AuthoredModel`'s reserved-namespace guard, it is inside `content_signature`, and it is byte-hashed
+# The authored tables that are **not** table kinds get one group of their own (RM357): the overlay
+# (`overrides.csv`), the meta-table (`meta.csv`, 0.8) and the model-organism table
+# (`model_organisms.csv`, 0.8, RM335). They belong to neither neighbour, and blurring the line is what the
+# 0.5 rework spent a release undoing. None is an annotation table like `_VARIANT_MODELS`/`_PGX_MODELS`:
+# none is a *lead* table, and a directory carrying only one of them is not a module (an overlay asserts
+# nothing about a genotype, a meta row names rows of the other tables, a model-organism row states what
+# happened to a mouse). None is a `_FACT_MODELS` sidecar either: a human writes every row, so each
+# carries `AuthoredModel`'s reserved-namespace guard, is inside `content_signature`, and is byte-hashed
 # into `manifest.inputs` rather than fact-hashed.
 #
-# What it *is* is the overlay that makes the covered derived tables pure build products (RM124), so a
-# reader of the authoring reference meets it beside them and not inside them. The count is
-# `OVERRIDABLE_TABLES`' to state and moved once already; it is not restated here.
-_OVERLAY_MODELS: dict[str, type[BaseModel]] = {"OverrideRow": OverrideRow}
+# The compiler's `tables.AUTHORED_NON_KIND_TABLES` is the registry these models come from; this tier
+# cannot import it, so the group is declared here and the compiler's tests assert the two are equal.
+_AUTHORED_NON_KIND_MODELS: dict[str, type[BaseModel]] = {
+    "OverrideRow": OverrideRow,
+    "MetaRow": MetaRow,
+    "ModelOrganismRow": ModelOrganismRow,
+}
 
 _ALL_MODELS: dict[str, type[BaseModel]] = {
     **_MODULE_MODELS,
@@ -180,7 +200,7 @@ _ALL_MODELS: dict[str, type[BaseModel]] = {
     **_PGX_MODELS,
     **_PGS_MODELS,
     **_FACT_MODELS,
-    **_OVERLAY_MODELS,
+    **_AUTHORED_NON_KIND_MODELS,
 }
 
 
@@ -314,6 +334,11 @@ def authoring_reference() -> dict[str, Any]:
             if getattr(model, "REQUIRED_ANY_OF", ())
         },
         "reserved_names": sorted(RESERVED_NAMES_0_4),
+        # Names real on a generated table (or, like `tradeoff`, only on a compiled parquet) that an
+        # authored table refuses with a reason (`vocab.reject_misplaced`). Beside `reserved_names` so a
+        # tool listing what an author may not write sees both kinds; a model that declares one of them
+        # (`FrequencyRow.source`) still accepts it.
+        "misplaced_columns": dict(sorted(MISPLACED_COLUMN_REASONS.items())),
         # Field-ownership boundary for the `module:` block (S2): keys the format knows about but that
         # a *publishing registry* stamps, so an author must omit them. Distinct from `reserved_names`
         # (future module columns) — these will never be authored. A consumer strips them before

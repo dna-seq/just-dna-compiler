@@ -74,8 +74,12 @@ def _spec(tmp_path: Path, **files: str) -> Path:
 
 
 def _both(spec: Path, out: Path) -> tuple[bool, bool]:
-    """(validate said valid, compile succeeded) — the pair that must never disagree."""
-    return validate_spec(spec).valid, compile_module(spec, out, resolve_with_ensembl=False).success
+    """(validate said valid, compile succeeded) — the pair that must never disagree.
+
+    In ONE mode. This compared a resolving `validate` with a `compile --no-resolve` until RM367, which is
+    how `--no-resolve` went on reading, verifying and refusing on the table it said it had not read: the
+    pair agreed only because the compile's off switch did not work."""
+    return validate_spec(spec).valid, compile_module(spec, out).success
 
 
 def test_the_licence_gate_refuses_at_validate_too(tmp_path: Path) -> None:
@@ -154,6 +158,43 @@ _INJECTED_ROW_CASES: tuple[tuple[str, str, str], ...] = (
         ),
         "status",
     ),
+    # The Open Targets lane's three (RM333/RM236): a score outside its bounds, a posterior outside
+    # [0, 1], and an impact class VEP does not define.
+    (
+        "locus_to_gene.csv",
+        (
+            "study_locus_id,gene_id,variant_key,study_accession,l2g_score,dataset,source\n"
+            "1011cca96efba523e1b64960a9faaab8,ENSG00000010704,rs1800562,GCST000001,1.5,"
+            "opentargets_26.09,opentargets\n"
+        ),
+        "l2g_score",
+    ),
+    (
+        "colocalisations.csv",
+        (
+            "study_locus_id,right_study_locus_id,variant_key,h4,clpp,dataset,source\n"
+            "1011cca96efba523e1b64960a9faaab8,00aba7c3fe6d9512d7618e292d8049a8,rs1800562,2,0.1,"
+            "opentargets_26.09,opentargets\n"
+        ),
+        "h4",
+    ),
+    (
+        "consequences.csv",
+        (
+            "variant_key,transcript,impact,dataset,source\n"
+            "rs1800562,ENST00000357618,SEVERE,opentargets_26.09,opentargets\n"
+        ),
+        "impact",
+    ),
+    # RM331: an r² outside [0, 1].
+    (
+        "ld_pairs.csv",
+        (
+            "proxy_rsid,variant_key,ld_population,status,r2,dataset,source\n"
+            "rs4970836,rs646776,1000GENOMES:phase_3:EUR,resolved,1.5,ensembl_116,ensembl\n"
+        ),
+        "r2",
+    ),
     (
         "sources.csv",
         # This case used to be spelled `non-commercial`, on the reasoning that the hyphen is wrong
@@ -212,9 +253,11 @@ def test_every_injected_table_has_a_parity_case() -> None:
 
     registry = {"resolution.csv", *(name for name, _parquet, _model in _FACT_TABLES)}
     covered = {filename for filename, _body, _expected in _INJECTED_ROW_CASES}
-    assert registry <= covered, (
+    # An equality (RM365): a case naming a file the registry no longer has is a case testing nothing.
+    assert registry == covered, (
         f"no validate/compile parity case for {sorted(registry - covered)} — add one to "
-        f"_INJECTED_ROW_CASES rather than deleting this assertion"
+        f"_INJECTED_ROW_CASES rather than deleting this assertion; cases for a table that is not "
+        f"injected: {sorted(covered - registry)}"
     )
 
 
@@ -302,7 +345,7 @@ def _agree(spec: Path, out: Path, *, strict: bool) -> tuple[bool, bool]:
     """(validate said valid, compile succeeded) at one mode — the pair that must never disagree."""
     return (
         validate_spec(spec, strict=strict).valid,
-        compile_module(spec, out, resolve_with_ensembl=False, strict=strict).success,
+        compile_module(spec, out, strict=strict).success,
     )
 
 
@@ -326,7 +369,7 @@ def test_a_corrupt_vrs_id_refuses_at_validate_too_in_both_modes(tmp_path: Path, 
     """
     spec = _spec(tmp_path, resolution__csv=_resolution(_MTHFR_677))
     result = validate_spec(spec, strict=strict)
-    compiled = compile_module(spec, tmp_path / f"out_{strict}", resolve_with_ensembl=False, strict=strict)
+    compiled = compile_module(spec, tmp_path / f"out_{strict}", strict=strict)
 
     assert not result.valid and not compiled.success
     assert any("does not match the id recomputed" in e for e in result.errors), result.errors

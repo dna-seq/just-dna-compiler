@@ -14,7 +14,7 @@ decision, and the entry says why each candidate repair is wrong.
 > from D1 onward was filed and has since been worked**: the rows below carry `(done)` where a fix
 > landed, and the mapping from finding to pull request is at the end of this file. The `surface` rows
 > became RM68–RM72 in `ROADMAP_0_7.md` ([now closed](../history/ROADMAP_0_7.md); RM68 is live in
-> [ROADMAP_0_8.md](../ROADMAP_0_8.md)). Two rows are deliberately not `(done)`: D4-3,
+> [ROADMAP_0_8.md](../history/ROADMAP_0_8.md)). Two rows are deliberately not `(done)`: D4-3,
 > which is a design decision, and D4-1, whose fix half is six of its twelve members with the rest
 > argued in RM72.
 

@@ -30,6 +30,4977 @@ up.
 
 
 
+# The 0.8 PT2 build round
+
+The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
+the `0.8` branch lane by lane. Newest first.
+
+## RM395 — commands the user guides run fail or misreport
+
+✅ **SHIPPED 2026-11-05 on `0.8`, uncut — a minor (the 0.8 docs pass).** Owner compiler + enricher,
+docs, severity low. *related* RM202, RM176
+
+**Residuals** none
+
+**The class.** A guide command whose behaviour the guide states and the code does not do. The 0.8 docs
+pass re-ran every command in the four user guides and found three, each there since 0.7.3. The guard is
+that the guides' commands are re-runnable: the docs pass re-runs them before a cut
+([RELEASE_CYCLE.md](RELEASE_CYCLE.md)), and each instance below has a test that went red first.
+
+**Instances, before → after.** All three fixed in code, each well inside the pm's thirty minutes, so no
+guide was rewritten to work around one.
+
+- **D1, `just-dna-compiler keygen --out ./keys/private.pem`** (COMPILING.md) raised a
+  `FileNotFoundError` traceback when `./keys` did not exist, where `compile` and `reverse` create their
+  missing parents. `keygen` now creates the parent after the overwrite refusal.
+  `test_keygen_creates_a_missing_parent_directory_as_compile_and_reverse_do`.
+- **D2, `just-dna-enricher draft-repeats ./my_module --gene FMR1`** (ENRICHING.md) skipped with *No
+  STRchive catalogue was provisioned* on a machine holding the lane, though its `--help` says the lane
+  is read and `check-repeat-bands` read it. `draft_repeat_loci` now resolves the lane with
+  `resolve_strchive_reference`, as `check_repeat_bands` does, before the nobody-asked skip.
+  `test_draft_repeats_reads_the_provisioned_strchive_lane_as_check_repeat_bands_does`, through the CLI.
+- **D3, `cache status` and `cache pull --only clinvar_gkm`** (ENRICHING.md) described the lane registry,
+  not the disk. `cache pull` closed with *caches available:* and every lane with a pull route, so a run
+  that found nothing published for `clinvar_gkm` named it available; it now names what the run left on
+  disk and which lanes had nothing published. A parquet lane's pull that found nothing left an empty `data/`,
+  which the next `cache status` called *occupied* and `cache prepare` refused to build over; it is now
+  made only once there is something to put in it. A root-file lane (STRchive) left an empty directory,
+  harmless to both checks, and now removes the one it made.
+  `cache status` said *provision with `cache pull`* for a lane whose repository is empty; it reads only
+  and cannot see publication, so a lane with a pull route and a builder names both.
+  `test_cache_pull_names_only_what_is_on_disk_as_available`,
+  `test_an_absent_lanes_line_names_every_route_that_can_provision_it`.
+
+**Found while building, outside the three and reported to the lead for a number:** a builder named on a
+status line writes to its own `--out` default (`data/repro/<lane>`), never the place the lane is read
+from, so *provision with `clinvar-gkm build`* (and every build-only lane's line, as before this item)
+leaves the lane absent unless the operator passes `--out`.
+
+## RM394 — the re-derivation's report had fewer arms than the cases it describes, so its words named what had not happened
+
+✅ **SHIPPED 2026-11-05 on `0.8`, uncut — a minor (the 0.8 audit, round 3)**, a cut blocker (audit 3 and the
+docs pass, D4, D5 and class 4's carry instance). Owner enricher (`enrich/outcome.py`, `enrich/orchestration.py`,
+`events.py`, `currency.py`), severity medium. *related* RM375, RM373, RM382, RM393
+
+**Residuals** none
+
+**The class.** A report with fewer arms than the cases it reports (`@answered-is-not-absent`: a verdict with
+several arms owes a reason with the same arms, pairwise distinct), on the `enrich --rederive` migration
+step 0.8 tells every consumer to run. Each sentence was true of one case and printed for all of them, so a
+migrating operator read a cause that had not happened and a remedy that did not apply.
+
+**The instances, on `64c835b9`.**
+
+- **D5**, `enrich/outcome.py:57–64` (`SubjectDrift.__str__`, three arms) and `:79–95` (`_same_events`, any
+  rsID difference → `False`): an allele the source added (`A` → `A,T`, or a row that had no ALT) and an rsID
+  newly named both printed "moved: the source names a different event". Measured by the examples' 0.8
+  regeneration: 94 subjects gained an allele, 10 gained an rsID. → seven arms, `rederive_words.DRIFT_CASES`:
+  `respelled`, `gained_allele`, `lost_allele`, `gained_rsid`, `renamed`, `moved`, `undecided`, carried as
+  `SubjectDrift.case`; the drift warning counts by arm. Re-measured on the pre-regeneration
+  `apoe_klvs_meta` and `hfe_compound_het` against the split snapshot (offline): all four drifts now read
+  "gained an allele", none "moved".
+- **D4**, `enrich/orchestration.py:2087–2092`: the derived-layer currency line always said "Re-derive with
+  `enrich --rederive`". When the release that is behind is the local snapshot, a re-derivation reads it and
+  prints the same line. → one line per `rederive_words.CURRENCY_CASES` member, read against the label of the
+  snapshot the run read (`clinvar`, `clinvar_gkm`): `table_behind_snapshot` → `--rederive`;
+  `snapshot_behind` → `cache pull --only <lane>` (or `cache rebuild`) first; `both_behind` (the snapshot is
+  neither release) → both; `snapshot_unread` (none read, or a label in the other form) → `cache status`,
+  naming no lane. One line per case and source, so two lanes behind are two pulls (the code review).
+  `test_source_release.py::test_a_source_publishing_past_the_snapshot_never_makes_strict_refuse` had pinned
+  the wrong remedy for the `snapshot_behind` case; it now asserts the pull.
+- **Class 4's carry instance**, `enrich/orchestration.py:1595–1602`: "kept the recorded rows for N subject(s)
+  no source could be asked about" was said about subjects a link answered and the hosting filter rejected
+  (RM382's carry) and about ones whose request failed. → each branch that writes no row declares why
+  (`no_row_reason`), and the warning groups the carried subjects by `rederive_words.CARRY_REASONS`:
+  `not_asked`, `off_build`, `no_reverse_map` (RM393's subjects), `unreachable`, `rejected`, and
+  `not_re_answered`, the default for a subject no branch declared, which claims no reason.
+
+The hunt over the other sentences the `--rederive` path prints found each true of every case it is printed
+for: `releases.run_label`'s "`enrich --rederive` re-answers them" (rows another release answered, which this
+run's snapshot does re-answer), the drafted-layer currency line, the undecided-drift line, and
+`unchecked_sentences` (one per skip reason already). Two neighbours stay out by the pm's sizing: the S85
+"recorded as unresolved" warning, and `net.py`'s "upgrade just-dna-enricher" for a hand-picked release, both
+parked by the pm on 2026-11-05 without a number (the audit findings list in `main`'s ROADMAP.md).
+
+**The mechanism.** One module, `enrich/rederive_words.py`, holds each report as a closed vocabulary
+(`frozenset`, P6) and a map from case to sentence, with the decision beside it (`drift_case`,
+`currency_case`); the run and `SubjectDrift` read nothing else. The drift reads the event judge in each
+direction through `events.covers` (`same_allele_sets` is now the two directions combined, unchanged in
+answer), so a gain is decided by the one judge and an unmatched indel stays undecided. `SubjectDrift.respelled`
+is read off the arm and keeps its meaning exactly: an rsID or build change whose events are not the same is
+`moved`, as before.
+
+**The guard**, `enricher/tests/test_the_rederive_report_names_each_case.py`: for each of the three
+registries, the map's keys equal the cases and the sentences are pairwise distinct (no one contained in
+another); every drift arm is what `_drift_case` answers for a real pair of rows; every currency case is
+reached by its labels, and each sentence names its remedy and not the other's (only `table_behind_snapshot`
+lacks the pull); every carry reason names its remedy, an AST walk over the run asserts the reasons the
+branches write equal the registry less `not_re_answered`, which is only the default, and the hfe run with no
+snapshot prints the `not_asked` and `no_reverse_map` groups apart. `test_source_release.py` adds the
+end-to-end other side: a table behind its snapshot is sent to `--rederive`, and after one the line is gone.
+`test_authored_event.py`'s judge registry now names `_drift_case` and `covers`. Mutated once each: the
+gained arm returned as `moved` (two tests red), the currency decision sending every non-recorded snapshot
+to `--rederive` (`both_behind` red), the positional carry declared `not_asked` (the AST walk and the hfe
+run red).
+
+## RM393 — a re-derivation that read no position→rsID map erased a back-filled rsID, and the artifact shipped it null
+
+✅ **SHIPPED 2026-11-05 on `0.8`, uncut — a minor (the 0.8 audit, round 3)**, class 1, a cut blocker. Owner
+enricher (`enrich/orchestration.py`), severity high. *related* RM98, RM382, RM375, RM394
+
+**Residuals** won't fix — a snapshot that was read but lacks the subject's chromosome (*Not fixed* below):
+no real snapshot is built that way, so it waits for a run that meets it. The same run's report called the
+erased rsID "moved: the source names a different event", which is RM394's.
+
+**The class.** Nobody-asked read as an answer (`@unreachable-not-absent`), on the one path `--rederive`
+re-opens: a re-derivation replaces only what was answered, and could-not-ask keeps its rows
+(`@rederive-never-shortens`). A positional subject's rsID is back-filled from a position→rsID map, and only
+the two snapshot links fill one (`rev_candidates`, from the Ensembl snapshot and the ClinVar snapshot); no
+live link answers a position. With neither snapshot read, an empty candidate list meant nobody asked, and
+the branch wrote `rsid=None, source=authored` all the same. `fresh_keys` then counted the subject answered,
+so the carry-forward never put the recorded row back.
+
+**The instance, on `64c835b9`.** `enrich/orchestration.py:1512–1513` (the positional branch): no
+candidates → `rsid=None, status=resolved, source=authored`, whatever the run read → under `--rederive`,
+with no map read and a recorded row for the subject, no fresh row; the carry-forward restores the
+recorded one. The only instance: every other branch that cannot ask already writes nothing (RM98, S20,
+RM382), and a first enrich keeps the authored row, since with nothing recorded the coordinate is the whole
+identity. Measured by the audit on a copy of `hfe_hemochromatosis` with every cache empty: both
+`ga4gh:VA.*` rows lost `rs773443949`, `source` and `source_release`, and the recompiled `weights.parquet`
+and `annotations.parquet` carried `rsid=null`. Since 0.7 (`main:enrich.py:1546`); the 0.8 migration step,
+`--rederive` after a 14.5 GB pull that may fail, is the realistic way in.
+
+**The mechanism.** `reverse_maps_read`, the set of position→rsID maps this run read, by the link name a
+back-filled row records in `source` (`cache` for the Ensembl snapshot, `clinvar`), filled where each
+snapshot's position lookup returns. Narrower than `rsid_links_consulted` on purpose: that one is true for
+any run allowed to go live, which back-fills nothing. Under `--rederive`, a positional subject with no
+candidate whose recorded rsID came from a map not in the set writes no row, and the carry-forward keeps
+it. Per link rather than per run: the pm sized the item narrow with a run-level predicate, and the code
+review found the realistic way in is per link, a failed 14.5 GB Ensembl pull beside a 300 MB ClinVar
+snapshot that pulled, where ClinVar's map is read and has nothing at an Ensembl back-fill's allele.
+
+**The guard**, `enricher/tests/test_a_rederive_with_no_reverse_map_keeps_the_backfill.py`, on the example
+itself under `no_ambient_caches` (an empty base): rederived with no snapshot, the positional rows keep
+`rsid`, `source`, `authority`, `status`, `source_release` and `rsid_alternates`, nothing is reported as
+drift, and the module compiles to the same `artifact.digest` as the untouched copy, with no null rsID in
+`weights.parquet`. Shown red before the change (the row came back `rsid=''`, `source=authored`). Its
+second test is the other half: with an Ensembl snapshot that holds chromosome 6 but not the locus, the
+map was read and said nothing is there, so the rows go out `authored` and the drift names them. Its third
+is the per-link case: a ClinVar snapshot read with nothing at the allele, and the Ensembl back-fill kept.
+Mutated: with the Ensembl link not marking its map read, the second test went red; with the predicate
+per run, the third did.
+
+**Not fixed.** A snapshot that was read but lacks the subject's chromosome (a hand-built or partial one)
+answers "no rsID here" for every subject on it. Telling "the chromosome has no rsID at the allele" from
+"the map holds no such chromosome" needs the snapshot's coverage, which `locations.manifest_coverage`
+reads for the split release; it waits for a run that meets it.
+
+## RM384 — the Ensembl lane's repository has no public name on 0.8, and every pulled lane spells its repository twice
+
+✅ **SHIPPED 2026-11-05 on `0.8`, uncut — a minor (S130, the tail of RM372).** Owner enricher (`download.py`,
+`upload.py`), severity low. *related* RM372, RM278, RM202
+
+**Residuals** none
+
+**The class.** A registry fact restated beside the place it is defined, with nothing asserting the two agree
+(`@registry-completeness`, *derive, never restate*). Here the fact is which HuggingFace repository a lane
+lives in: written as a repo id in `upload.py`, again inside an fsspec prefix in `download.py`, and a third
+time as `CacheLane.publish_repo`, which happened to read the first. RM372 renamed the Ensembl repository by
+hand, which is the edit a pair lets go wrong; and the Ensembl lane, pulled and never published here, had
+only the private prefix, so a consumer pinning `ManifestCompilation.ensembl_reference` (`org/repo@<rev>`)
+spelled the string or stripped `datasets/` and `/data` off `download._ENSEMBL_HF_PREFIX` (S130, the
+registry's 0.8 adoption).
+
+**The instances, on `5b1b73b8`.**
+
+- `download.py:64–66, 90–91, 101–102, 110, 118, 124` — ten `_*_HF_PREFIX = "datasets/just-dna-seq/<repo>/data"`
+  literals → removed; each `ensure_*` reads `SNAPSHOT_REPO_PREFIXES["<lane>"]`, as it already read
+  `SNAPSHOT_FILE_GLOBS["<lane>"]`.
+- `download.py:161–172` — `SNAPSHOT_REPO_PREFIXES`, a hand-kept dict of those ten → a comprehension over
+  `SNAPSHOT_FILE_GLOBS`, `datasets/<repo id>/<SNAPSHOT_DATA_DIRNAME>` (the format tier's name for `data`,
+  no longer a third literal).
+- `download.py:129` — `_STRCHIVE_HF_REPO = "datasets/just-dna-seq/strchive"` → derived as
+  `datasets/<repo id>`; STRchive's payload sits at the repo root, so it has a repo id and no prefix.
+- `upload.py:114–152` — ten `DEFAULT_*_REPO_ID` literals → working aliases (P3) of the map's entries.
+- `cli/clinvar_commands.py:79`, `cli/civic_commands.py:284`, `cli/gene_reference_commands.py:85`,
+  `cli/module_commands.py:84` — `--repo` help text writing `Default: just-dna-seq/<repo>.` by hand → an
+  f-string over the alias, as `cli/alphagenome_commands.py:458` already did. Found by the walk, not by
+  the entry. The fourth is the module repo (`DEFAULT_REPO_ID`), not a lane's, and is the same restatement.
+- `upload.py:219` — `LayoutShift.repo_id`'s comment said a lane→repo map "would be a second copy of
+  `CacheLane.publish_repo`" and could not live there → points at the map.
+
+`caches.py` and `locations.py` spell no repository: every `publish_repo` reads an alias, and the pull
+record's `repo` is the derived prefix, byte-identical to before, so no cache on any machine reads as
+pulled from elsewhere.
+
+**The mechanism.** One public map, `locations.SNAPSHOT_REPO_IDS` (lane → `org/repo`, eleven entries: every
+lane in `CACHE_LANES` with an `ensure`), the only place a repo id is written. In `locations.py`, not beside
+`SNAPSHOT_REPO_PREFIXES` in `download.py` where S130 asked for it: the publisher reads it too, and
+`locations` is the leaf both import, while `upload` importing `download` loaded the resolver, duckdb and
+httpx (about 330 ms measured) to name a repo. The module repo `just-dna-seq/annotators` stays the one other
+literal, `DEFAULT_REPO_ID`.
+
+**The guard**, `enricher/tests/test_snapshot_repo_ids.py`, equalities over the walked map with the
+expected side spelled in the test: the map's keys equal the pulled lanes; the prefix map's keys equal the
+map's minus the root-payload lane (STRchive, named with its reason) and each prefix equals
+`f"datasets/{id}/data"`; STRchive's root equals `f"datasets/{id}"`; every non-`None` `publish_repo` equals
+its lane's entry; each `DEFAULT_<LANE>_REPO_ID` equals its own lane's entry (per alias, since a subset
+check passes `DEFAULT_DRUG_LABELS_REPO_ID = SNAPSHOT_REPO_IDS["clinpgx"]`). And an AST walk over the three
+source trees refuses the organisation `just-dna-seq/` inside any string literal but a docstring, the map's
+own assignment and `DEFAULT_REPO_ID`'s, so a repo composed from pieces is refused as well as a whole one.
+Shown red before the change (7 of 7, no map); mutated once each after it: a literal `DEFAULT_CPIC_REPO_ID`
+failed the walk (`upload.py:126 spells just-dna-seq/cpic`); the CPIC lane's `publish_repo` pointed at the
+ClinPGx alias failed the publish-repo equality; the drug-labels alias pointed at ClinPGx's entry failed the
+alias equality; `"just-dna-seq/" + "cpic"` added to `download.py` failed the walk.
+`test_ensembl_split_release.py::test_every_provisioned_lane_states_its_repo` (prefix keys equal the globs'
+keys) is removed: the prefixes are now a comprehension over the globs, so it could not fail
+(`@tautology-zero`); the new test's key equality replaces it.
+
+**Observed, not fixed (outside the item).** `download.pulled_from_elsewhere` keys on
+`SNAPSHOT_REPO_PREFIXES`, which STRchive is not in, so a STRchive cache pulled from a renamed repo would
+never be re-pulled. STRchive's root-file provisioner writes no pull record, so there is nothing to compare
+yet; it matters only if that repo ever moves.
+
+**The reporter's other question.** A reproducibility pin wants the repository and a revision, the shape
+`ensembl_reference` documents; the release label (`locations.ensembl_release_label`) names which data,
+not which bytes. Recording both is a separate question this item did not open.
+
+## RM389 — a "reproduced, so withhold" comparison over a hand-kept subset of the columns its own registry says are rebuilt
+
+✅ **SHIPPED 2026-11-05 on `0.8`, uncut — a minor (the 0.8 audit, round 2)**, class 4. Owner compiler,
+severity medium (a P7 loss, introduced in 0.8 by RM364 and widened by RM380).
+
+**Residuals** none
+
+**The class.** A predicate that decides a stored value is "reproduced" by something else, and withholds
+it, while comparing a hand-kept subset of the columns a registry beside it names as reproduced. A column
+the registry lists and the comparison leaves out is neither compared nor kept, so a value only that
+column holds is withheld and lost.
+
+**The instance.** `parquets.withhold_reproduced_loci` nulls a key's `resolution_loci` wherever the row's
+own cells rebuild the table's rows exactly, and `reverse` then writes the table back from those cells.
+`_CELL_REBUILT` names the carried columns the cell rebuild writes, `vrs_id`/`vrs_spec` among them, and
+`_locus_holds_more_than_cells` keeps a locus holding any other carried column (RM380). The comparison
+over the rebuilt columns was `_locus_fact`, a hand-kept tuple of six (`rsid`, `chrom`, `start`, `ref`,
+`alts`, `locus_index`). A locus stating `vrs_spec=2.0` with no id, legal because `ResolutionRow` does
+not pair the two, matched on its coordinate and was withheld, and reverse wrote `vrs_spec` empty, since
+the cell lookup (`VrsIds`) copies a version only beside an id. The same held for an id on a table row
+with no `ref`, which the lookup skips. Re-verified on `5b1b73b8`: with provenance stripped so the
+withhold is reachable, every one of the 16 reference examples carrying a `resolution.csv` lost the
+`vrs_spec` of every withheld key (2 to 328 keys each), and `hfe_hemochromatosis` with `ref` blanked lost
+the id of all 10 keys it records one for. An enriched table carries provenance, so its loci were kept
+anyway; the loss needed a hand-filled, reversed-from-old or deprecated-path table.
+
+**Every instance hunted** (compiler, enricher, format):
+
+- `compiler/.../parquets.py:481` `_locus_fact(rsid, chrom, start, ref, alts, locus_index)` →
+  `cell_fact(cells)` (`:497`) over `CELL_FACT_FIELDS` (`:446`), which is `_CELL_REBUILT` in the carried
+  order. The comparison (`:544`) and both callers read through it: the weights builder from the record it
+  just built (`:236`, so the cell `vrs_id` list and `vrs_spec` are the parquet's), the positional builder
+  by `row.get` over the same columns with `locus_index` 0 (`:566`), which is how reverse's
+  `_resolution_record` reads them. `cell_fact` indexes rather than `.get`s, so a caller missing a
+  rebuilt column fails instead of comparing it as empty.
+- Checked, not an instance: `reverse.py:879` dedupes the weights cell rebuild on
+  `(key, rsid, chrom, start, ref, alts)`. `vrs_id`/`vrs_spec` were looked up by exactly that key,
+  coordinate and allele set, so two rows equal there hold the same pair, and `locus_index` is left out so
+  one locus is emitted once (`_reverse_locus_index`). A comment there now says so.
+- Checked, not an instance: `studies.parquet.proxy_loci` (`parquets.py` `_build_studies`) is never
+  withheld; the reverse positional pass dedupes by key alone, the documented one-row-per-key fallback
+  for a pre-0.6 parquet; `reverse._carries_a_filled_cell` compares `_FILLABLE_IDENTITY`, but is reached
+  only when no table was read, and a parquet holds `vrs_id` only when one was. The enricher and format
+  tiers carry no locus struct and no reproduction withhold.
+
+**The mechanism.** The compared columns are derived from the registry, `CELL_FACT_FIELDS`, and with
+`_LOCUS_ONLY` they partition every carried column, so each one is either compared or keeps the locus
+whenever it holds a value.
+
+**The guard** (`compiler/tests/test_reproduced_locus_compares_every_rebuilt_column.py`). The equality
+`set(CELL_FACT_FIELDS) == _CELL_REBUILT`, no exclusions, each a carried column. The walk: on a locus the
+cells reproduce, perturb each carried column alone, and the set that keeps the locus must equal
+`RESOLUTION_LOCUS_FIELDS`. The round trip: every reference example with a `resolution.csv`, provenance
+stripped and `vrs_spec=2.0` with no id on every positioned row, reverses to a table still saying `2.0`,
+and lap 2's `artifact.digest`, `content_signature` and `resolution_signature` equal lap 1's; plus the
+id-with-no-`ref` case on `hfe_hemochromatosis`. Red on `5b1b73b8` (all 17 round trips); mutating
+`CELL_FACT_FIELDS` to drop `vrs_spec` turns 18 of the 20 red.
+
+## RM386 — a publish plan was not tied to the bytes it sent or the revision it read
+
+✅ **SHIPPED 2026-11-05 on `0.8`, uncut — a minor (the 0.8 audit, round 2).** Owner enricher, severity
+medium. Class 1 of the second 0.8 audit (one run of four saw it; each instance re-verified on `0.8` at
+`5b1b73b8` and demonstrated against a fake hub before the fix).
+
+Ships as built, with no practice publish to a throwaway Hugging Face repo before the cut (the
+maintainer's decision). The next real snapshot publish, likely a year away, is its first live run; if it
+fails, suspect this code first; the fix is a patch then.
+
+**Residuals** won't fix — a payload the hash check or the history walk refuses has already landed, and the previous `release.json` stays over it until a re-run, which is what any failed second commit has always left · won't fix — the hub's pipelined uploader retries a commit whose response was lost with the same `parent_commit`, and the 412 that answers it is re-raised as the hub's own error rather than a refusal, because the walk finds only this write's commits; the re-run finds the hashes matching and completes
+
+**The class.** A publisher plans, checks and writes, and RM368 made the module send one reading of the
+disk. The other publish paths still acted on names: what the hub sent was whatever the paths held when
+the hub got round to reading them, and what was committed landed on whatever the repo had become since
+the plan read it. Each instance needs a concurrent writer (a rebuild of the snapshot directory, a second
+publisher, a prune run from another machine), which is why no test without a repository with a head saw
+one. RM368 had recorded the snapshot half as a residual (no attestation a re-read could defeat, and two
+reads of 32 GB); the audit's scenario is the attestation: `release.json` describes the payload, and the
+second upload read it off the disk after the first had sent the payload.
+
+**Instances** (file:line on `0.8` at `5b1b73b8` → after):
+
+1. `enricher/src/just_dna_enricher/upload.py:1562`, `:1585` — `publish_reference_snapshot`'s two
+   `upload_folder` calls each read the directory. A rebuild landing after the payload commit put the next
+   release's `release.json` over this release's rows (reproduced: R1's parquet under R2's description),
+   and one landing while the hub read the folder sent bytes nothing hashed → every planned file is hashed
+   once (`_read_once`: the `sha256:` and the git blob id, from one read) and stated on
+   `SnapshotPlan.sha256`; the payload stays one `upload_folder` (RM199's resumable uploader), then
+   `_check_on_the_hub` compares the tree at the payload commit with the plan (`lfs.sha256` for an LFS
+   entry, the blob id for any other) and withholds the description on a difference
+   (`PlanChangedError`); `release.json` is sent as the bytes read with the rest, through `create_commit`.
+2. `upload.py:1265`, `:1273` — `upload_module`'s two `create_commit`s passed no `parent_commit`, and the
+   versioned-path check read the remote with no revision (`:1066` `file_exists`, `:1068`
+   `hf_hub_download`), so a version another publisher landed after the check was overwritten without
+   `--force` → the head is read once (`_head`), the check reads at it, the flat commit is pinned on it
+   and the versioned commit on the flat one.
+3. `upload.py:1562` (again), `:1368`, `:1524` — the snapshot payload commit had no parent, and the orphan
+   check's and the retirement's listings read the head at their own moments → both listings read at the
+   pinned revision (`check_publish_orphans_no_sidecar(…, revision=)`), the payload commit is pinned on it
+   and the description commit on the payload commit.
+4. `upload.py:1450`, `:1489` — `plan_prune` listed the head and `prune_repo` deleted by pattern on
+   whatever the head had become, so a file republished under a listed name after the plan was shown was
+   deleted unseen → `PrunePlan.revision` is the commit the listing was read at; the deletion is one
+   `CommitOperationDelete` per listed path in one commit pinned on it (no pattern reaches the hub, so
+   RM353's escaping has nothing to escape there). A plan stating no revision refuses.
+5. `enricher/src/just_dna_enricher/cli/cache_commands.py:346` — `cache prune --yes` called `prune_repo`
+   outside any handler, and RM368's guard read only the `try` blocks that exist → the call sits in a
+   `try` naming `PublishRefused` and prints `PRUNE REFUSED`; `prune_repo` joined the guard's entry list,
+   and a second test asserts every publisher call in the CLI is inside such a `try`, the one allowlisted
+   bare plan aside.
+
+No hub write exists outside `upload.py`, in any tier; `schema/` and `compiler/` reach no hub.
+
+**The mechanism.** One helper, `_commit`, is the only way the tier writes to the hub, and it always
+passes the plan's revision as `parent_commit`. That alone does not hold, as the code review of the first
+cut found: the library skips a write that changes nothing and answers with the *current* head without
+sending the precondition (a byte-identical republish took another writer's head as its own and described
+over that writer's sidecar), and the multi-commit uploader pins its first part only. So every write
+carries a per-write token in its commit description, and after the write `_commit` walks
+`list_repo_commits` from the answered head back to the parent: a commit without the token is another
+writer's, and the write is a `RemoteMovedError` (a new `PublishRefused`) that counts both kinds and names
+what the publish already landed (the flat path, the payload). A hub error takes the same walk from the
+head, so the translation rests on the history rather than on the status code; an error with no foreign
+commit behind it is re-raised. Every remote read after the pin
+names the revision. A snapshot's payload is held to the hashes of the one local read on the hub itself,
+which costs one full read of the snapshot beside the hub's own and holds nothing in memory. The guards,
+in `enricher/tests/test_a_publish_is_pinned.py`: `test_every_hub_write_goes_through_the_one_pinned_helper`
+(an AST walk over the package: every call to an `HfApi` method that takes `parent_commit`, the roster
+read off the library's signatures, is inside `_commit` and passes it) and
+`test_every_remote_read_in_the_publisher_names_its_revision` (every call in `upload.py` to an `HfApi`
+method taking `revision`, writes aside, plus `hf_hub_download`, passes one, `_head` aside). Mutated once
+each (a `create_commit` without `parent_commit`, a stray `delete_files`, the versioned check's
+`file_exists` without a revision, the hub check removed): each went red. The tests run against
+`FakeHub` (enricher conftest, `fake_hub` fixture), a git-backed repo in memory with a head, parents, a
+tree per revision and a hub-side refusal of a stale `parent_commit`; the snapshot and prune tests that
+used a `MagicMock` moved onto it.
+
+**Decisions taken.** The payload stays on `upload_folder`, not a `create_commit` of paths: RM199 chose
+the hub's resumable multi-commit uploader for a 32 GB lane, and checking on the hub afterwards ties the
+bytes without giving that up. The hash runs in the real publish, not in the plan: a dry run reads no
+bytes, so `SnapshotPlan.sha256` is empty on a rehearsal. A rehearsal reads the head and pins nothing,
+since it commits nothing. `test_a_publish_never_reaches_for_the_deprecated_large_uploader` and
+`test_a_retirement_still_rides_the_payload_commit_at_any_size` no longer build a 6 GiB sparse snapshot,
+which the hash would read twice per run (measured: 12 s a read); the first asserts the deprecated
+uploader is named nowhere in the package instead, which holds at every size. The check assumes the hub
+states an LFS (or Xet-backed) file's `lfs.sha256` in its tree listing and a plain file's git blob id, as
+`huggingface_hub` 2.0 documents; a file stated by neither withholds the description rather than passing.
+The walk assumes `list_repo_commits` answers a commit's description as its `message`, as the library
+documents; were it not, every write would refuse rather than pass. `FakeHub` models the empty-write skip
+and a two-part `upload_folder`, and the module tests that kept a `MagicMock` give it a linear history
+(`_linear_hub`).
+
+## RM391 — the test network fence covered one client, so 31 tests asked remote services and passed on the refusal
+
+✅ **SHIPPED 2026-11-05 on `0.8`, uncut — a minor (the 0.8 audit, round 2).** Owner enricher (tests),
+severity medium.
+
+**Residuals** none
+
+**The class.** A rule of the suite (`@network-tests-optin`: network tests are opt-in with
+`JUST_DNA_NETWORK_TESTS=1`) enforced per client, by name, so the one client fenced was the only one
+held to it. RM372's `_fenced_hub` (`enricher/tests/conftest.py:147-153` at `5b1b73b8`) replaced
+`HfFileSystem` and `hf_hub_download`; nothing stood between any other test and the network.
+
+**Re-verified on `5b1b73b8`, with the fence below installed and before any test was changed: 31 tests in
+7 files reached a remote host** (the audit counted 8 files; the same 31 ids). Each refused at its first
+reach, so a test whose first host was refused could have had a second behind it; the fixes were re-run
+under the fence until none remained.
+
+| File (tests) | Host | Before → after |
+| --- | --- | --- |
+| `test_civic_draft.py` (15) | `reg.clinicalgenome.org` | the drafter's default ClinGen client asked live for the slice's CAID-only rows → the enricher conftest's `clingen_registry_down`, used through `pytestmark`, gives that client a 503 transport: the real client and its real `unchecked`, the state the tests had passed in offline |
+| `test_civic_draft_licence_row.py` (3) | `reg.clinicalgenome.org` | the same → the same fixture |
+| `test_answered_call_shift.py` (3) | `rest.ensembl.org` | `_run` said "every network-touching pass off" and turned off four passes, but the chain's live-Ensembl link has no flag of its own → `_run` passes `offline=True` |
+| `test_enrich.py` (7: six functions, one parametrized twice) | `services.genomicmedlab.org`, `eutils.ncbi.nlm.nih.gov` | `verify_ref` (seqrepo) and `verify_rsids` (eutils) are on by default and incidental to tests about the chain, the resolver and a dbSNP outage → turned off in each call, `verify_rsids` kept where the outage is the subject |
+| `test_dataset_currency.py` (1) | `services.genomicmedlab.org` | the CLI run's reference pass and VRS mint → the test's `enrich` wrapper turns both off beside its existing `download=False` |
+| `test_literature_terms.py` (1) | `eutils.ncbi.nlm.nih.gov` | the PMCID/PMID disagreement case left eutils and Europe PMC live → scripted, as its sibling test already does |
+| `test_meta_member_rsids.py` (1) | `services.genomicmedlab.org` | the reference pass → `verify_ref=False`; dbSNP's oracle is the subject |
+
+None was a test whose point is the live call, so none became network-only, and none lost its
+assertion. `compiler/tests` and `schema/tests` reached nothing, and their source trees import no transport.
+
+**After: 0** of the enricher, compiler and schema suites reach the network with the opt-in unset,
+outside `test_the_network_is_fenced.py`'s own deliberate `example.org` provocations, which it takes
+itself. Measured at the branch's final conftest for the enricher suite (four chunks); compiler and
+schema reached nothing at the first fence, and nothing since touches them.
+
+**The mechanism: one fence at the transport, in the root `conftest.py`.** `socket.getaddrinfo`,
+`socket.socket.connect`/`connect_ex` and gRPC's `secure_channel`/`insecure_channel`, sync and `grpc.aio`,
+over every target form gRPC names (its C core opens sockets no Python patch sees), refuse every host but this machine (loopback, unspecified, `localhost`,
+Unix sockets) unless `JUST_DNA_NETWORK_TESTS=1`, from import on, so collection is covered too. That
+covers httpx (sync and async), requests (`ga4gh.vrs`'s seqrepo proxy), `urllib`, `huggingface_hub`
+and gRPC in one place. Three choices, each with the alternative it refuses:
+
+- It raises `NetworkReachedInTests`, a `RuntimeError`, never an `OSError`: every client translates a
+  refused connection into its own *unreachable*, which is how all 31 passed under the audit's
+  `ConnectionRefusedError` probe.
+- It records the reach, and the autouse `_fenced_network` fails a test at teardown when the body passed
+  anyway: `SequenceProxy.proxy()` catches broadly, and seven of the 31 swallowed even the
+  `RuntimeError`. A test that already failed or xfailed is not failed twice (`pytest_runtest_makereport`
+  marks it). Each reach is filed under the test that made it, so a late one (a module fixture's
+  finalizer runs after its last test's teardown) fails the run at session end under its own name and
+  never the next, innocent test.
+- The error names the test (`PYTEST_CURRENT_TEST`) and the host, and says how to arrange the test.
+  `JUST_DNA_NETWORK_GUARD_LOG=<file>` appends one line per refusal, which is how the 31 were listed.
+
+`_fenced_hub` stays: it refuses before any socket with the hub's own remedy, and its real-cache-base half
+holds under the opt-in, where the transport fence steps aside.
+
+**The guard.** `enricher/tests/test_the_network_is_fenced.py` drives each transport into the fence and
+asserts the refusal names the test and the host; proves the teardown net in a child pytest carrying the
+real root conftest (a swallowed reach is a teardown error, a raised one fails once, an xfail stays
+an xfail, a late reach fails the run and not the next test); keeps loopback open and steps aside under
+the opt-in; and holds, by an import walk, the transports the enricher imports equal to the set it
+drives less two named with a reason (`requests`, a dependency's; `grpc.aio`, fenced ahead of use), and
+the format and compiler trees to none. Mutated five times, each red: `_is_local` answering `True` (9 of
+the then 13), no already-failed check, no xfail check, a teardown taking every test's reaches, and
+`grpc.aio` left unfenced.
+
+**Decided without a contract, the smaller choice:** the fence opens on `JUST_DNA_NETWORK_TESTS=1`
+exactly, as `_fenced_hub` and the rule do. Four live tests skip on any truthy value
+(`test_strchive_draft.py`, `test_strchive_bands.py`, `test_gnomad.py`, `test_drug_labels.py`), so
+`=true` runs them into the fence, which refuses them loudly and names `=1`. The CIViC fixture is one
+`clingen_registry_down` in the enricher conftest, used by both files through `pytestmark`.
+
+**Out of the class, observed:** `test_literature.py::test_a_regex_locator_matches_the_fulltext` failed
+once in the enumeration under load and passes alone (its regex timeout runs in a killable process).
+And the shape behind most of the 31: `enrich()` has no switch for its live-Ensembl link but `offline`,
+and `verify_ref`/`verify_rsids` default on, so an `enrich()` test meaning "no network" must remember
+them; the fence now says so the first time one forgets.
+
+## RM392 — a count in prose beside a registry or table drifted from it, in the docs and in code comments
+
+✅ **SHIPPED 2026-11-05 on `0.8`, uncut — a minor (the 0.8 audit, round 2)** · **Severity** low ·
+**Owner** compiler + format + enricher (comments), docs · *related* `@registry-completeness`, RM218,
+RM223, RM359, RM364, RM365, RM367, RM380
+
+**Residuals** won't fix — `CHANGELOG.md`'s "Ten online … Six offline" paragraph is left to the examples regeneration, which rewrites it when it regenerates the last two examples · won't fix — the code guard reads a registry's own comment block for its own noun, so a count in a docstring, a count of a different registry, or a number with no noun after it is out of its reach and those instances were repaired by hand
+
+**The class.** A number spelled in prose (a doc, a comment above a registry) beside the list or registry
+it counts, or a description of a behaviour beside the code that implements it, with nothing walking the
+two together. The registry grows, the sentence does not. The audit (round 2, class 8) found the
+instances below not marked "(hunt)"; the hunt across `docs/` root and the three packages' comments
+found the rest. Re-verified on `5b1b73b8`, every one held.
+
+**Instances, file:line on `5b1b73b8`, before → after:**
+
+- `schema/.../overrides.py:119` "**Nine, and the number is a decision rather than a count**" over
+  `OVERRIDABLE_TABLES` (12) → "**Membership is a decision rather than a count**", no number; `:158` "The
+  ninth" → dropped.
+- `enricher/.../clingen_allele.py:54` "**Three, and the third is not padding**" over `VALID_CAID_OUTCOME`
+  (5) → "**`unchecked` is not padding**". (hunt)
+- `enricher/.../grch37.py:69` "**Four, and the fourth is not padding**" over `VALID_RECOVERY_OUTCOME` (5)
+  → "**`unchecked` is not padding**", and `skipped_offline` named. (hunt)
+- `compiler/.../tables.py:423` "the ten that carry … the seven derived-fact tables" (`_FACT_TABLES` is 14)
+  → "`weights` plus one per table kind … every `_FACT_TABLES` parquet".
+- `compiler/.../pipeline.py:225` the two resolution ladders "are compile-only" → since RM367 both refuse
+  on both paths, save under the deprecated `ensembl_cache`, which the pre-flight is not handed.
+  `compiler/.../validate.py:410` ("what stays compile-only is a check that needs resolved rows") and
+  `:516` ("its three position-keyed cousins stay compile-only") said the same → the exemption is named
+  as retired. (review)
+- `compiler/.../binning_checks.py:24` "Today that is the four binning kinds plus `pharm_variants.csv`"
+  over seven (the two 0.8 non-kind tables) → names the kinds without a count. (hunt)
+- `compiler/.../fact_checks.py:235` "all five orphan checks … through five tables" (six emit the code) and
+  `schema/.../vocab.py:1658`, `COMPILER.md:2033` "the five orphan fact tables" → no count. (hunt)
+- `enricher/.../civic_vcf.py:264` "three exceptions in twenty members" over 28 → no count. (hunt)
+- `enricher/.../identifiers.py:776` "eleven authored tables carry the column" (ten carry `trait_efo_id`)
+  → "every table `_id_bearing_tables` names"; `:793` "while eleven carry the column" → "while many
+  carried". (hunt, review)
+- `schema/.../vocab.py:1149` "gnomAD v4's ten ancestry groups plus `global`": true, but read by the new
+  guard as a total of `RECOMMENDED_ANCESTRY_GROUPS` (11) → no count.
+- `SCHEMAS.md:1958` "for the seven where overriding is the intended feature" → "every table in
+  `overrides.OVERRIDABLE_TABLES`".
+- `SCHEMAS.md:1977-1989` the overlay key table, nine rows over twelve → adds `locus_to_gene.csv`,
+  `colocalisations.csv`, `consequences.csv`.
+- `SCHEMAS.md:1991` "**Two** derived sidecars sit outside the set … minus those two" (three do) → each
+  named, `ld_pairs.csv` added, no count.
+- `SCHEMAS.md:134-151` the authored roster had no `meta.csv` and carried `gwas_effects.csv`, a derived
+  sidecar the paragraph above it says the table leaves out → `meta.csv` in, `gwas_effects.csv` out.
+- `COMPILER.md:1286-1288` reverse "contributes at most one row per key" and "provenance is discarded"
+  → the RM364/RM380 behaviour: `resolution_loci` written back as stored, every column but
+  `RESOLUTION_LOCUS_EXCLUDED`, the cell rebuild only for a null locus.
+- `COMPILER.md:2037` "the eleven an author cannot clear" → names `CARRIED_WARNING_CODES`. (hunt, correct
+  but beside a table `test_warning_codes.py` already walks)
+- `ENRICHER.md:1502` "the fourteen names" (18) and `:5946` "four of the nine that carry `gene`" (ten) →
+  no count. (hunt)
+- `INTEGRATION_0_8.md:647`, `:756` "the eight `RESOLUTION_LOCUS_EXCLUDED` names" (seven); `:724` "0.8
+  adds eight parquets" over a list of seven; `:883` "the eight new parquets"; `:722` "30 entries at
+  `1007a26d`" → no count. (hunt)
+- Not instances: `CHANGELOG.md:66-68` (skipped, see Residuals); `reference_examples/longevity_studies/README.md:50-55`
+  sits in a historical section; `SCHEMAS.md:3214` "the seven `module_stats` facets" is correct (nine
+  `AUTHORED_ROW_DERIVED_FIELDS`, two unconditional).
+
+**The mechanism.** Drop the count where the list is beside it (name the registry or its rule), and
+compare the list to the registry as a set — the hash roster's shape (`test_counted_prose.py`).
+
+**The guards.** `test_source_counted_prose.py` walks every module-level sized registry in the three
+packages and reads the comment block directly above it; a total stated there must equal the registry's
+size (keys or distinct values for a mapping). A total is recognised in two shapes only: a number, bold
+or not, before the last word of the registry's name with only other words of its name between ("ten
+ancestry groups" over `RECOMMENDED_ANCESTRY_GROUPS`, "**two** parquets" over `SNP_CORE_PARQUETS`), and
+the headline idiom the stale instances used, a bold number and a comma opening a sentence (`**Nine,
+and`). Equality rather than absence, unlike RM223, because a comment on a literal often states a
+correct, load-bearing total and rewriting them all is a larger diff for no gain; a proximity draft
+flagged about fifty sub-counts. The walk's reach is an equality too: the AST walk must reach exactly
+the registries a plain line scan finds. Red on `5b1b73b8` with four hits (overrides, clingen_allele,
+grch37, vocab); reinserting "**Nine," or "**four** parquets" turns it red again. `test_counted_prose.py` adds
+three set equalities against the registries (the authored roster against `_INPUT_FILES` plus
+`resolution.csv`, the overlay key table against `OVERRIDABLE_TABLES` with each subject and member, the
+exclusions sentence against `_FACT_TABLES` minus `OVERRIDABLE_TABLES`), the reverse paragraph pinned to
+`resolution_loci`, and five more paragraphs on the rule-never-total list; all red on `5b1b73b8`'s docs,
+and reinserting "0.8 adds eight parquets" turns the list red again.
+
+## RM380 — a hand-kept struct mirrored `ResolutionRow` with nothing asserting the two agree, so reverse dropped every 0.8 provenance column
+
+✅ **SHIPPED 2026-11-05 on `0.8`, uncut — a minor (found building RM375).** Owner compiler, severity
+medium.
+
+**Residuals** won't fix — `rsid_alternates`, `rsid_current` and `rsid_status` stay out of the locus, statements about dbSNP at a moment that re-running the enricher recovers (`@rsid-alternates-closed`), so a reversed `ambiguous` row's lap-2 warning names no candidates · won't fix — reverse still stamps `source=reversed` and an empty `fetched_at`, its own provenance as the link that wrote the row
+
+**The class.** A column list or struct dtype written by hand beside the pydantic model it mirrors, with
+no test asserting the two hold the same names (`@fieldnames-from-model`, `@registry-completeness`). A
+column added to the model later reaches every reader of the model and silently misses the copy.
+
+**The instance that bit.** `parquets.RESOLUTION_LOCUS_DTYPE` is the struct a parquet carries a
+`resolution.csv` row in (`resolution_loci` on every variant parquet since RM364, `studies.parquet`
+`proxy_loci` since RM331), and `reverse_module` rebuilds the table from it. It named ten of
+`ResolutionRow`'s 24 columns, so each 0.8 column the enricher began to write — `placement_witness`/
+`placement_verdict` (RM267), `left_aligned` (RM270), `source_release` (RM373) — and the 0.5 `authority` and
+`caid` reached the table and were dropped by the first round trip. Measured on `9becd9ad` over the
+corpus: `shox_par1` lost all four 0.8 columns on 11 rows, `cpic_gene_pairs` the witness, verdict and
+`left_aligned` on one, and nine examples lost `authority` (56 rows in `cpic_gene_pairs`). It mattered past
+the bytes: the next compile reads several of them. `sources_in_use` derives the used-source set from
+`authority` and the witness, so lap 2 named a declared `ensembl` or `clinvar` source unused, and
+`placement_disagreements` withholds a `left_aligned` true/false pair, which lap 2 could no longer see.
+
+**The re-read of RM373's choice.** RM373 made reverse write no `source_release`, "the same way it treats
+`authority`", and RM33 gave `authority` the reason that a reversed row's facts came out of parquet. That
+conflates the link with the source: `source` names the link, and the link that wrote a reversed row is
+reverse, but the facts are still the snapshot's, answered by that release. Outside a signature
+(`@provenance-beside-a-claim-is-outside-content-identity`) is not dropped. Decided per column, the
+reasons in `RESOLUTION_LOCUS_EXCLUDED`:
+
+- **Carried (17):** the facts and `locus_index`; `vrs_id`/`vrs_spec` (RM270), `caid` (the same kind of
+  cross-reference); `authority`, `status`, `placement_witness`, `placement_verdict`, `left_aligned`,
+  `authored_event`, `judged_coordinate`, `source_release`. `status` because reverse wrote `resolved` for
+  every locus, so a best-effort `ambiguous` pick came back resolved: lap 2 dropped the warning, the
+  placement check stopped withholding the row, and `strict` built on lap 2 what it refused on lap 1.
+- **Excluded (7):** `variant_key` (the key the loci are filed under), `genome_build` (the module's);
+  `source`, `fetched_at` (reverse's own stamps); `rsid_alternates`, `rsid_current`, `rsid_status`
+  (time-varying statements about dbSNP, `RESOLUTION_LOCUS_NOT_WRITTEN`, which reverse does not write).
+
+**Every instance, file:line on `9becd9ad`, before → after:**
+
+- `compiler/.../parquets.py:386` `RESOLUTION_LOCUS_DTYPE`, ten names by hand → derived from
+  `ResolutionRow` minus `RESOLUTION_LOCUS_EXCLUDED` (`RESOLUTION_LOCUS_FIELDS`, model order; `start`
+  keeps `UInt32` through the one override).
+- `parquets.py:436` `resolution_loci`'s dict literal → one comprehension over `RESOLUTION_LOCUS_FIELDS`.
+- `parquets.py:481` `withhold_reproduced_loci` kept a key's loci only for an `authored_event` → for any
+  carried column no row cell rebuilds (`_LOCUS_ONLY`) holding a value other than what the cell rebuild
+  writes (`resolved` for `status`, empty otherwise), so `left_aligned=false` counts.
+  Without this the struct would have carried the columns and the withhold would have thrown them away on
+  every cleanly resolved module.
+- `compiler/.../reverse.py:839` `_write_resolution_csv`'s header, 15 names by hand →
+  `REVERSED_RESOLUTION_FIELDS`, derived (the model minus `RESOLUTION_LOCUS_NOT_WRITTEN`, in model order).
+- `reverse.py:1114` `_resolution_record`'s dict literal, `status` hardcoded `resolved` → every carried
+  column read off the locus (`status` falling back to `resolved` for the cell rebuild), the stamps beside.
+- `reverse.py:1159` `_write_variants_csv` and `reverse.py:1331` `_write_studies_csv` headers: agreed with
+  their models, unguarded → hoisted to `VARIANTS_CSV_FIELDS`/`STUDIES_CSV_FIELDS` (kept by hand for a
+  readable column order) and held to `authored_field_names` by a parametrized equality test.
+- `enricher/.../frequencies.py:52` and `gene_metrics.py:59` `_FIELDNAMES`: agreed with `FrequencyRow`/
+  `GeneMetricsRow`, unguarded → held to `model_fields` by `test_sidecar_writer_columns.py`.
+
+Not instances: `enrich._FIELDNAMES` (already held to `ResolutionRow` in `test_enrich_transaction`),
+`meta._MATCH_STRUCT` (mirrors no model), `clinvar_gkm_build`'s structs and the source builders' column
+tuples (they mirror a source's file, not ours).
+
+**The mechanism and the guard.** One exclusion map with a reason per name; everything else is derived.
+`test_resolution_locus_carries_the_row.py` asserts the model's fields equal carried ∪ excluded (disjoint,
+each reason five words or more), that the struct is the carried list, and that the reversed header is the
+model minus the not-written three and that the record reverse builds names exactly the header; that no
+carried column is list-typed (the scalar renderer would write a repr); it is red on `9becd9ad` (the struct lacked 14 names with no
+exclusion stated). Its behavioural half compiles and reverses every reference example with a
+`resolution.csv` and asserts each reversed key's rows equal the original's on every carried column, plus
+a stamped table exercising the columns no example records yet (`caid`, `source_release`), and an
+`ambiguous` row whose warning lap 2 must repeat and whose lap-2 `strict` must refuse. Mutated once each:
+restoring the `authored_event`-only withhold turned nine examples and the stamped table red; a stale
+exclusion name turned the walk red; restoring the `resolved` stamp turned the ambiguous test red. RM373's `test_source_release_moves_no_identity_and_reverse_writes_none`
+is now `…_and_survives_reverse`.
+
+**The refusal text.** `_verify`'s strict refusal for an authored rsID↔coordinate pair the table
+contradicts still said the table's position "does not survive a reverse", false since RM364 carried it.
+It now says the position is carried beside the authored value, so the next compile reaches the same
+finding, and that strict builds only on a pair the table agrees with. The new phrase is pinned in
+`features/compiler/mode_ladder.feature` and `test_one_channel_under_strict.py`; COMPILER.md § Resolution
+and three enricher comments that gave the old reason were corrected.
+
+**What it moves.** `artifact.digest` of 20 of 22 reference examples on lap 1 (every parquet carrying
+`resolution_loci` or `proxy_loci` widens its struct, null or not; `hla_alleles` and `htt_repeat_expansion`
+carry neither); nine of them also carry loci where they carried none. Lap 2 equals lap 1 on all 22.
+`content_signature` and `resolution_signature` move nowhere. A table that records a different
+`source_release` or `authority` now compiles to different bytes with the same identities.
+
+## RM381 — a reader regrouped a source's per-ALT rows under their shared padded ref, and no ALT was ever spelled alone
+
+✅ **SHIPPED 2026-11-05 on `0.8`, uncut — a minor (found regenerating the reference examples).** Owner
+enricher, severity high.
+
+**Residuals** won't fix — not in this item: a position→rsID reader joins snapshot rows at the probe's own `start`, so an
+allele whose trim moves it right of its row (9,954 of 44.5 M chr16 rows, mostly one base, a substitution
+or delins sharing the site's leading base) is matched only as the row spells it, and a ref-less authored
+coordinate at such a row's padded start reads as a different event from the trimmed substitution, which
+it is. The helper does not close it cheaply: the row sits `k` bases left of the probe, `k` being the
+shared leading bases, bounded only by the row's ref length (18 at most on chr16), so an exact answer
+needs a range join DuckDB runs as a per-contig scan or a `k`-fold equality probe under an invented bound ·
+won't fix — an rsID-only
+genotype that is both a ref/alt pair of the deletion and of the duplication (`C/CAAAG`) is written on both
+pieces, RM270's either-reading rule; `pathogenic_clinvar` also authors `11:5226762 C>CAAAG` positionally,
+so re-derived it has one `(variant, genotype)` twice, which is the examples-regen unit's data decision
+
+**The class.** A reader that turns a source's rows into loci grouped them by the source's own
+`(chrom, start, ref)`. The split Ensembl repo (`ensembl_variations_split`, RM372) pads every ALT of a site
+to one shared ref, so that group is a multi-ALT frame no caller writes: `rs1555461597` read as
+`16:23635706 GTT>G,GT,GTTT`, `rs267607291` as `11:5226773 TGG>T,TG`, SHOX's `rs1569493663` as
+`X:634689 CAG>C,CAGAG`. Nothing then spelled an ALT alone. Offline RM270's fill cannot left-align an indel,
+so the padded locus was written whole; online `_filled_pieces` split it but read the genotype in the padded
+frame, so `G/GT` was a compound het of two deletions (locus kept whole, `left_aligned` false) and SHOX's
+`C/CAG` named the deletion alone, dropping the duplication RM270 had written. The position→rsID readers
+compared an authored allele with the padded row, so a caller-spelled `16:23635706 GT>G` back-filled no
+rsID. Re-deriving `hboc_palb2` and `pathogenic_clinvar` cost `test_every_row_clinvar_carries_joins` six
+alleles, and `shox_par1` lost an ALT.
+
+**The mechanism.** One trim, `alleles.trim_allele` (drop the bases both sides end with, then those both
+start with, while each keeps one: `bcftools norm`'s trim, pure string work, so offline gets it), and one
+regroup, `sequences.per_alt_loci` (each ALT trimmed, loci keyed by the trimmed `(chrom, start, ref)`, alts
+and loci sorted, P7). `left_normalize`'s substitution branch now calls `trim_allele`, so there is one
+spelling-trim. `trim_allele` lives in the format tier (`just_dna_format.alleles`), because the genotype
+side needs it too (`@one-normalizer-two-spellings`): `just_dna_compiler.resolution.site_verdicts` reads an
+authored genotype in its site's frame by trimming each allele against each locus's ref with the same
+helper, so a genotype authored from an unnormalized multi-ALT record keeps behaving (P3). A padded
+genotype (`GTT/GTTT`, `AGA/AGAGA`) names the one piece its event is, and the site's other pieces do not
+host it; a compound het no single piece hosts (`G/GTTT`) names one piece per allele. Otherwise the
+per-locus `hosting_verdict` stands, so a caller-spelled `G/GT` keeps RM270's either reading and a
+homozygote keeps the one-to-many expansion. Both resolvers, the compiler's expansion
+(`_hostable_loci`) and its membership check (`_resolved_allele_verdict`) ask it. Left-alignment past the trim still reads the reference (`left_normalize`, RM270/RM375's
+judge), so each piece is decided apart: a substitution `left_aligned` true offline, an indel unknown offline
+and checked online. `events._trimmed` is a comparison key that strips to empty, not a VCF spelling, and is
+left as it is.
+
+**Instances (before → after), re-verified on `1007a26d`.**
+
+- `enricher/src/just_dna_enricher/resolver.py:483` `_lookup_positions_by_rsid` — SQL `string_agg(DISTINCT
+  alt) … GROUP BY id, chrom, start, ref` → raw rows, RM271's `_placeable_alleles` per row, then
+  `per_alt_loci` per rsID. Serves `enrich`, `lookup_loci`/`lookup_variant`, the deprecated DuckDB path and
+  its `_check_rsid_coord_consistency`.
+- `enricher/src/just_dna_enricher/clinvar.py:163` `_lookup_positions_by_rsid` — the same SQL group → raw
+  rows through `per_alt_loci`. ClinVar's VCF is one minimal ALT per record (0 of 16,568 multi-base records
+  of the 2026-06 snapshot move under the trim), so this closes the shape by mechanism, not a live miss. A
+  record with no ALT places nothing and is no longer reported "not in the injected ClinVar snapshot" (it
+  used to produce the locus `alts="None"`).
+- `enricher/src/just_dna_enricher/ensembl.py:339` `_loci_from_rest` — an anchored `allele_string`
+  (`TCTT/T/TCTTCTT`) passed through as one locus → `per_alt_loci` over every mapping's alleles at once, so
+  RM267's REST witness and the live fill compare the same per-ALT spellings the snapshot readers give, and
+  two mappings spelling one allele give one locus.
+- `enricher/src/just_dna_enricher/gnomad.py` `_loci_from_variant_ids` — its own copy of the regroup, by
+  the id's raw ref → `per_alt_loci`. gnomAD's ids are one minimal allele each, so this closes the copy,
+  not a live miss; the review found it, because it reads no SQL.
+- `enricher/src/just_dna_enricher/resolver.py:386` `_lookup_rsid_candidates` (also ClinVar's back-fill) —
+  `rref != ref` against the padded ref → each nucleotide ALT matched as spelled or as trimmed at the probe's
+  start (`_names_allele`).
+- `resolver.py:821` `_lookup_rsid_sets_by_position` and `:848` `_lookup_rsids_by_position` — `WHERE … ref =
+  ?` against the padded ref → rows fetched by `(chrom, start)`, each answering its own ref and every ALT's
+  trimmed ref at that start (`_refs_named`).
+- The genotype side of the same class: `orchestration` (enrich's hosting filter), `resolver.resolve_with_ensembl`
+  (the deprecated path), `resolution._hostable_loci` and `allele_checks._resolved_allele_verdict` each asked
+  `hosting_verdict` per locus → `site_verdicts` over the key's loci. Before RM381 the padded frame and the
+  padded genotype met by raw membership; after the readers trimmed, `G/GTTT` found no locus and
+  `AGA/AGAGA` was read as both pieces, until the genotype was trimmed by the same helper.
+- Not instances: `resolver._connect`'s view is `SELECT *`; `clinvar.lookup_clin_sig` and
+  `clinvar.select_by_gene` read one ClinVar record at a time in its own spelling; the ClinVar-GKM witness is
+  one gnomAD-spelled allele per row and regroups nothing (0 of the slice's 13 rows move under the trim).
+
+**The guard.** `enricher/tests/test_split_snapshot_per_alt.py`, on the real rows
+(`assets/ensembl_split_multialt/`, both repos' bytes at the three sites) with ClinVar's per-ALT records in
+the consumer-join slice as the oracle: `enrich` offline writes each ALT in ClinVar's spelling with
+`left_aligned` unknown; the position back-fill meets a caller-spelled coordinate; online the split rows and
+the old pipe-joined rows write the same caller spelling (the old one was right only online, being
+right-shifted); a registry of the seven readers, each held to ClinVar's records; an AST walk asserting the
+set of functions whose SQL reads a snapshot's `alt` equals that registry plus two named non-readers, that
+every reader reaches `trim_allele`/`per_alt_loci`, that no SQL aggregates `alt`, and that the only
+functions building a locus whose `alts` joins several alleles are `per_alt_loci` and `normalize_locus`
+(the walk that found gnomAD's copy). Red on `1007a26d` (23 of 25 at first writing). Dropping the trim's suffix loop turns 12 red; routing ClinVar's reader around the helper turns its
+two red. Genotype side, on both sides' raw tokens: a padded genotype against the split rows (offline and
+online) and against the old pipe-joined rows names its event alone (`GTT/GTTT` and `TT/TTT` → `G>GT`;
+`CAG/CAGAG` and `AGA/AGAGA` → `C>CAG`); the trimmed genotype names the same set on both snapshots; the
+compound `G/GTTT` is enriched and `compile --strict`ed on its two pieces. With the frame reading switched
+off, six of them go red. Three tests pinned the padded spelling and now read the per-ALT one: `test_enrich.py`'s RM31 SHOX
+row (`634690 AGA>A`), `test_ensembl_indel_anchor.py`'s REST strings, `test_ensembl_non_nucleotide.py`'s
+`rs33946775` (`11:5225643 T>A,C,G`, three substitutions padded with a leading base).
+
+**What it moves.** Re-derived offline against the split snapshot, `hboc_palb2`, `pathogenic_clinvar` and
+`shox_par1` pass `test_consumer_join` (the examples-regen unit's tables miss 6 alleles there); SHOX's
+`rs1569493663` is `X:634689 CAG>C` and `C>CAG` again. Several rsIDs gain the duplication beside their
+deletion where the genotype fits both (`rs587776418 T/TTA`), as ClinVar records both, and
+`pathogenic_clinvar`'s positional `11:5226762 C>CAAAG` back-fills `rs80356821`. A filled coordinate is
+outside `content_signature`, so no authored identity moves; `resolution_signature` and `artifact.digest`
+move where a fill did. No new column, code or vocabulary member.
+
+## RM387 — a check compares a hosting-narrowed answer as if it were the source's whole answer
+
+**SHIPPED 2026-11-05 on `0.8`, uncut — a minor (the 0.8 audit, round 2).** Owner format + enricher +
+compiler, severity medium. Blocked the 0.8 cut (the pm's sizing).
+
+**Residuals** won't fix — a table recorded before the column still reads a sibling as two placements, since
+an empty `source_loci` cannot tell "nothing was dropped" from "never recorded"; `--rederive` writes the
+column and clears it, which is the remedy the finding already names · won't fix — not in this item: the
+`left_aligned` true/false exemption in `placement_disagreements` assumes one release and does not compare
+the two rows' `source_release` (the audit's class 2, Sol alone, no demo)
+
+**The class.** A check comparing two sets where one was filtered before it was written and the other was
+not. The enricher writes the rows under an rsID's own key after the hosting filter (only the loci the
+authored genotype can sit on), after RM267's disputed placements are withheld, after the pseudoautosomal
+choice and after RM270's left-aligned respelling; it back-fills a positional row's rsID from the source's
+unfiltered reverse map. RM374's `placement_disagreements` read the rsID-keyed rows as the source's whole
+answer. For an rsID the source places at two loci, a positional row authored at the locus the rsID-keyed
+subject's genotype cannot host was a second placement: `rsid_placements_disagree`, `compile --strict`
+refused a valid module, and `enrich --rederive` wrote the same table again, so the remedy the finding
+names did not clear it. The audit's probe (`audit2-probe/sibling.py`) re-ran red on the base (`cad26510`),
+and so did the same shape written by the real enricher, rederive included.
+
+**Instances (re-verified on `cad26510`, before → after).**
+
+1. `compiler/src/just_dna_compiler/resolution.py:1299` `placement_disagreements` (was `:1292`): the full
+   answer was the rsID key's places → those places plus the `source_loci` its rows record, a Y
+   pseudoautosomal place read as its X partner (`_folded_place`, shared with `_place`). A row with no
+   `source_loci` is the whole answer, so RM374's stale case (`Q_mixed`'s `rs761191455`) still fires.
+2. `enricher/src/just_dna_enricher/enrich/orchestration.py:1193` the forward branch (was `:1155`), and the
+   authored fallback row at `:1371`: wrote only the hostable loci → also record, through `_wider_answer`,
+   every place the links offered this run (the link's answer before `placement.keeps`, plus every answer
+   RM382 set aside), on each row written under the rsID's key, only where it holds a place the rows stand
+   for nowhere: a respelled piece stands for its source locus (RM374 already reads a respelling apart, by
+   `left_aligned`) and a Y pseudoautosomal twin for its X partner, folded as the compiler folds it.
+3. `compiler/src/just_dna_compiler/resolution.py` `_answer_label`: the sentence named only the kept loci →
+   it also names the offered places, `(the source offered …)`, so the author sees what was compared.
+
+Checked and not in the class: `subjects.identity_placements` / `module_subjects` (RM362) ask where the
+*module* sits, which is the hostable set by definition, and a positional row contributes its own position;
+`subjects.row_positions` looks the row up under its own key too, so a sibling sees itself before the rsID's
+answer; `allele_checks._check_allele_membership` compares the genotype that was the filter's input;
+`resolution._verify` is a pair whose key is the rsID, one answer; `parquets.resolution_loci` (RM364) is a
+round-trip carrier keyed by the row's own key; RM382's `_rejected_by_every_subject` reads the link's whole
+answer; `resolver.check_rsid_coordinates` does a fresh unfiltered lookup.
+
+**The mechanism.** One recorded set and one pair of helpers: `ResolutionRow.source_loci` (0.8.0, outside
+`RESOLUTION_FACT_FIELDS`), spelled by `just_dna_format.resolution.source_loci_cell` and read by
+`split_source_loci`, which both tiers import and the field validator calls. It rides the parquets'
+`RESOLUTION_LOCUS_DTYPE` and `reverse`'s `resolution.csv`, and `withhold_reproduced_loci` keeps a key's loci
+whenever one records it, so the second lap reads the answer the first did. Written only where wider, so a
+cleanly resolved rsID carries nothing and `test_offline_enrich_then_compile_matches_duckdb_digest` holds.
+Guarded by an equality over `ResolutionRow.model_fields`: every column is a field of
+`RESOLUTION_LOCUS_DTYPE` (and so of `reverse`'s table) or in a declared not-carried set, so the next
+column a compile reads cannot be dropped by the round trip unnoticed (`@fieldnames-from-model`).
+
+**Decided here (the smaller choice where the contract is silent).** The offered set includes a locus RM267
+withheld as disputed and an answer RM382 set aside: a link did put the rsID there in this run, so a
+positional row there is not a stale answer, which is what RM374 exists to catch; the pm accepted silence
+for an rsID the source places at two or more loci as the floor. A subject carried by an ordinary run never
+gains the column, so adding a positional sibling to a module enriched before RM387 still refuses until
+`--rederive` (which, on the base, did not clear it).
+
+**The guards.** `enricher/tests/test_a_narrowed_answer_is_not_the_sources_whole_answer.py`: the probe's shape
+from the real enricher (`rs999` at `5:500 A>T` and `6:600 A>C`, `A/T` by rsID and `A/C` by position) compiles
+under `strict`, reverses with the column and recompiles to the same `artifact.digest` and `content_signature`;
+a table stripped of the column refuses, a plain re-run still refuses, and `--rederive` clears it; a
+property over every one-run table of a three-locus rsID (which locus the genotype keeps × which loci are
+authored by position, twelve tables) is silent under `validate --strict`; RM382's HBB `rs613985` records the
+rejected snapshot locus; a PAR twin and a respelled piece are not "wider". `compiler/tests/test_rsid_placements_disagree.py` gains the probe's rows with and
+without the column, a place outside the recorded set, and a Y place in it; its walk over every reference
+example stays silent. `schema/tests/test_source_loci.py`: one string per set, malformed cells refused.
+Mutated six times, each red: the enricher writing no column (both e2e tests, nine of the twelve property
+tables and the HBB case), the check ignoring it, the parquet withholding a locus that records it (the round
+trip), the rejected answers left out of the offered set (the HBB case), no PAR fold in the enricher, and
+the struct losing the field (the carrier equality).
+
+## RM383 — a re-derivation leaves a licence row for a source that no committed row names any more
+
+**SHIPPED 2026-11-05 on `0.8`, uncut — a minor (found regenerating the reference examples).** Owner
+enricher, severity low.
+
+**Residuals** won't fix — the nine merge passes (frequencies, gene metrics, gene validity, clinical
+assertions, ClinGen dosage, GWAS effects, expression effects, LD pairs, Open Targets) have no
+`--rederive`, so nothing declares that their table is the whole answer, and a licence row one of them
+stops earning stays until the table is deleted and the pass re-run · won't fix — a plain `enrich` that
+prunes a variant the author deleted can leave its source's row, since a merge never retires · won't fix
+— a concordance record deleted by hand and found uncontested writes no table (RM370), so no commit runs
+to retire its authorities' rows
+
+**The class.** A derived pass's licence row for a source that no row of the committed table names any
+more. `merge_sources_file` never clobbers and nothing removed a row, so once a pass stopped earning a
+source the row stayed, and the compile warned `source_row_unused` about a row the pass wrote itself.
+Measured regenerating `reference_examples/mt_common_deletion`: its two point variants were back-filled
+from ClinVar before and from the split Ensembl snapshot after, and `enrich --rederive` kept
+`clinvar,resolution` (its `dataset` blank).
+
+**The choice: remove, by declaration.** `@write-the-sourcerow`'s converse makes the row a false
+statement in a published artifact (*this module uses this source*). Keeping it with a reason was
+refused: `SourceRow` has no field a gate could read, and an exclusion stated in prose is
+`@one-side-only-has-two-causes`. `@licence-row-inside-the-commit` puts the removal inside the table's
+commit, and `@a-publish-may-not-orphan-the-bytes-it-stops-describing` wants deletion by declaration, never
+as a side effect: the declaration is `--rederive` (the operator saying every row is re-answered), or a
+record rewritten whole on every run that writes it. A routine merging run retires nothing: its
+committed table may name no row of a source just as truly, but merge-not-clobber is that run's contract,
+and a deletion it makes without being asked is the side effect the rule forbids.
+
+**Instances, before → after.** Every call of `licensing.record_table_sources` (RM373's one route):
+`enrich/orchestration.py` (the `resolution` layer: retired nothing → retires under `rederive`),
+`concordance.py` (the `clin_sig_authority_call` layer, rewritten whole: retired nothing, and recorded
+nothing when no authority was consulted → retires on every write; this closes RM379's second residual),
+and the nine merge passes in `assertions.py`, `clingen.py`, `expression.py`, `frequencies.py`,
+`gene_metrics.py`, `gene_validity.py`, `gwas.py`, `ld_pairs.py`, `opentargets.py` (unchanged, now stated
+`answered_every_row=False`).
+
+**The mechanism.** `record_table_sources` takes `answered_every_row`, keyword-only, default `False` so a
+host's existing call keeps its behaviour (P3), and every call in the package passes it. When
+true, a row with the pass's layer and a source in `TERMS_BY_SOURCE` that the committed table does not
+name is removed (the relabel's own ownership filter, so a curator's row for a source with no terms
+constant is never touched), the licence table is rewritten, and an info line names each `source,layer`.
+Keyed on the committed table, so a subject nobody could ask carries its rows forward and its source
+stays.
+
+**The guards.** `enricher/tests/test_a_rederive_retires_an_unused_licence_row.py`, on a copy of the
+example with an Ensembl cache holding its two loci as the split release does: `--rederive` retires
+`clinvar,resolution`, keeps `ensembl,resolution`, logs it, and the compile raises no `source_row_unused`;
+a plain enrich keeps both; an offline `--rederive` that could ask nothing keeps ClinVar's; a curator's
+row for an unknown source survives; and an AST walk asserts every `record_table_sources` call under
+`just_dna_enricher` passes `answered_every_row` by keyword. Red on b712a2fc (the retirement test, and
+the walk, which named every call); the filter forced empty turns the retirement test red, dropping the
+keyword from `gwas.py` turns the walk red, ignoring the declaration turns the plain-enrich test red, and
+dropping the terms-constant ownership check turns the curator test red.
+
+## RM382 — a resolution answer the hosting filter rejects ends the chain, and the row is written `not_found` about an rsID the sources have
+
+**SHIPPED 2026-11-05 on `0.8`, uncut — a minor (found regenerating the reference examples).** Owner
+enricher, severity medium.
+
+**Residuals** won't fix — an rsID one subject hosts and another rejects keeps the first link's answer, and
+the rejecting subject gets no row and an `AlleleMismatch` rather than a later link's placement: the
+placement comparison (RM267) takes one authority per rsID, and a per-subject fall-through would make the
+authority per row · won't fix — a pair (rsID and coordinate authored) is never a reason to ask on, because
+no link is asked live for a pair (S104); it keeps its authored row · won't fix — the deprecated DuckDB
+path (`resolver.resolve_variants`) has one link and no chain, and is removed at 1.0
+
+**The class.** Every place one link's rejected answer is written as the identity's absence. The resolver
+chain is first-hit-wins and every link asks only about rsIDs not yet in `rsid_to_loci`, while the
+allele-aware filter runs after all of them, in the assembly loop. So an answer whose every locus the
+authored genotype cannot host ended the chain, and the row-writer's last branch wrote it `not_found`
+(*this source has no record of the rsID*) beside the S85 warning that says the source HAS it. Measured
+regenerating `reference_examples/pathogenic_clinvar` against `ensembl-variation-2026_07_13-vep116.0`:
+HBB `rs613985`, authored `C/CATAACAGCATCAG`, has one snapshot locus, `3:159434329 T>G`; ClinVar 2026-06-27
+holds the authored 13 bp deletion at `11:5226724` (VCV 4074263) and was never asked.
+
+**The contract allowed the fall-through.** ENRICHER's chain says a snapshot miss falls through and gives
+one reason for the order, digest stability: a variant both caches know keeps the Ensembl `alts`. A
+variant none of whose Ensembl loci a subject can host never compiled with an Ensembl locus, so asking on
+moves no digest that was not already unresolved. RM267 already routed an all-withheld rsID as
+unresolved with no row, in the same loop.
+
+**Instances (all in `enricher/src/just_dna_enricher/enrich/orchestration.py`), before → after.**
+1. The ClinVar cache link's gate (`cv_rsids`, `rsid not in rsid_to_loci`): a rejected cache answer counted
+   as answered → set aside, so ClinVar is asked.
+2. The staged-answer seeding: same gate → same.
+3. The live Ensembl link's `missing`: same gate → same (and deduplicated per rsID, so one rsID costs one
+   request and records one rejection).
+4. The gnomAD link's `missing`: same gate → same.
+5. The row writer's `elif genome_build == "GRCh38"` branch: reached with every answered locus rejected and
+   wrote `status=not_found` → a new `elif all_loci` branch writes no row; the key is unresolved and named
+   in `hosting_unresolved` for `strict`'s refusal.
+
+The positional fill and the witnesses were hunted and are not instances: the compiler's `_hostable_loci`
+reports `rsid_no_hosting_locus` and leaves the subject unresolved without asserting an absence, and a
+placement witness's `unplaced` describes the witness's alleles, not the subject's identity.
+
+**The mechanism.** One predicate, `orchestration._hosting` (`hosting_verdict`, settled against the
+reference by RM274 where it withholds), read by the assembly loop and by `withdraw_rejected`, which runs
+on each link's answers as they arrive and sets aside an answer every subject of the rsID rejects, where
+one is rsID-only (`_rejected_by_every_subject`; a pair that hosts keeps the answer). The gates are untouched: withdrawing the answer reopens them. An
+rsID no link places gets its first answer back before the loop, so the loop sees what it saw before (its
+per-locus warnings, its finding), and the finding now names every link's answer (`AlleleMismatch.links`,
+`loci` in the same order). A later link's placement is recorded in `EnrichmentResult.superseded_answers`
+(`placed_by`) and logged at info. The sequence proxy and minter are built before the first link (both
+are lazy) so the predicate can settle an indel with the reference. Four consequences, each from the
+review: a withdrawn staged answer leaves `staged_rsids`, so a later link's row records its own release
+(RM373); a link whose staged answer was set aside is not asked again on resume; the rsid↔coordinate
+check is handed the snapshot's own answer, since it reports a snapshot comparison; and `--rederive`
+keeps a recorded placement when this run's links answered only at loci nothing can host (a link it did
+not reach placed it, `@rederive-never-shortens`) and drops a recorded `not_found`. A key whose live link
+could not be asked stays in the refusal's could-not-ask arm, not RM382's.
+
+**Departure recorded.** S85 kept the `not_found` row on two grounds; the new-status refusal still binds
+(`VALID_RESOLUTION_STATUS` is shared with `literature.csv` and `clinical_assertions.csv`), and the
+signature refusal was measured against a written table. The addendum is under `@answered-is-not-absent`
+in AGENT_NOTES, and the S85 test that pinned the byte-identical rows is inverted with that reasoning in
+its docstring.
+
+**The guards.** `enricher/tests/test_a_rejected_answer_is_not_the_chains_last_word.py`, real bytes of
+`rs613985` (the snapshot row, ClinVar's two records): ClinVar places it and the compile passes `strict`;
+the snapshot alone writes no row and names the mismatch; two rejecting links are both named; `strict`
+names the rejection, or asks for the link when live Ensembl was unreachable; `--rederive` keeps a
+recorded placement and drops a recorded `not_found`; a subject that can host keeps the answer; and a test
+parametrized over the
+three later links (ClinVar cache, live Ensembl, gnomAD) asserts each is reached past a rejected answer.
+Red on 1007a26d (the 8 written first all failed); with `_rejected_by_every_subject` forced `False` the parametrized guard and
+three more go red. `test_enrich.py::test_a_dbsnp_outage_does_not_sink_a_finished_enrichment` authored its
+genotype on the other strand of its fixture, so the fall-through reached live Ensembl; it now authors the
+fixture's strand. E2E: a copy of `pathogenic_clinvar`, `enrich --offline --rederive` against the split
+release, records `rs613985` from ClinVar and passes `validate --strict`.
+
+## RM376 — one rsID, three ALTs offline and one online on the same snapshot: not a misread, RM270's reference-dependent spelling rule
+
+✖ **CLOSED 2026-11-04 on `0.8` — not a defect, no code change (the 0.8 Ensembl migration probe).** Owner
+enricher, severity low.
+
+**Residuals** won't fix — offline cannot left-align without reference bases, and RM270 refuses half a respelling, so an offline fill stays whole with `left_aligned` unknown · won't fix — `resolution_signature` moving between an offline and an online fill of one snapshot is that same rule, and `enrich --rederive` online is the documented migration
+
+**What the probe saw.** On `ensembl_variations_split@ee964d71`, `rs746071566` (NUDT15, genotype
+`A/AGGAGTC`) was written `13:48037782 AGGAGTC>A,AGGAGTCGGAGTC,AGGAGTCGGAGTCGGAGTC` offline and
+`13:48037782 AGGAGTC>A` by `--rederive` online. `alts` is a `RESOLUTION_FACT_FIELDS` member, so the
+module's `resolution_signature` depended on how the run was made. The mechanism was not traced.
+
+**The three readings the probe offered, each checked against its source.**
+
+- *The offline reader merges ALTs from different positions or rows.* No. The snapshot holds three rows for
+  the rsID, all at one `(13, 48037782, AGGAGTC)` (`row_idx` 16692972–16692974: ALTs `A`,
+  `AGGAGTCGGAGTC`, `AGGAGTCGGAGTCGGAGTC`), and `resolver._lookup_positions_by_rsid` groups on
+  `id, chrom, start, ref`, so no group crosses a position.
+- *REST reports one allele.* No. Ensembl REST `/variation/human/rs746071566` (read by hand 2026-11-04)
+  gives `13:48037783-48037801` with allele string
+  `GGAGTCGGAGTCGGAGTCG/GGAGTCGGAGTCG/GGAGTCGGAGTCGGAGTCGGAGTCG/GGAGTCGGAGTCGGAGTCGGAGTCGGAGTCG`: three
+  ALTs. And REST never answered in the probe's run at all: the online row records `source=cache`.
+- *The snapshot carries alleles REST does not.* No. dbSNP 157 (`/variation/v0/refsnp/746071566`, build
+  157) places the same three on NC_000013.11: `g.48037784GAGTCG[2]`, `[4]` and `[5]` against the
+  reference's three copies, so one copy deleted, one inserted, two inserted.
+
+The snapshot, Ensembl REST and dbSNP agree: one site with three alleles. Both readers read it right.
+
+**The mechanism: RM270's fill, which needs reference bases.** The only thing that differs between the
+two runs is whether `SequenceProxy` can read GRCh38. `orchestration._filled_pieces` hands the locus to
+`sequences.normalize_locus`, which left-aligns each ALT on its own:
+
+- **Offline** the window reads `None`, so `normalize_locus` returns the locus unchanged with
+  `aligned=None`, as RM270's "whole or not at all" says. The row is the link's locus, whole, with
+  `left_aligned` blank.
+- **Online** the window reads `CGGGCGGCGGCCAGGAGTCGGAGTCGGAGTCGTGGTGACCA` (48037770–48037810). The
+  deletion stays `48037782 AGGAGTC>A`, and both insertions land on `48037782 A>…`: two references, so
+  two pieces, the split `bcftools norm -m -any` makes. The genotype `A/AGGAGTC`, in the source locus's
+  own frame, names only the deletion, so the deletion piece is written, `left_aligned=true`. A genotype
+  naming the insertions (`AGGAGTC/AGGAGTCGGAGTC`) gets the insertion piece; one naming both
+  (`A/AGGAGTCGGAGTC`) gets the source locus whole and `left_aligned=false`.
+
+So the two answers are the same snapshot read under two reach conditions, and both rows say which they
+are. The online row is the more precise one; the offline row is the honest unknown. The cost the probe
+found is real: `resolution_signature` moves between the two, because `alts` is a fact field while
+`left_aligned` is not. RM270 chose that when it refused a partial respelling, and the stamped column is
+what tells a reader which kind of row it holds. `enrich --rederive` online respells an offline-written
+row (`@sidecar-authoritative`).
+
+**Already pinned.** `enricher/tests/test_placement_witness.py`:
+`test_rm270_offline_a_fill_keeps_its_links_spelling_and_says_unknown` (the offline half) and
+`test_rm270_a_split_writes_the_piece_the_genotype_is_about` (the online half). This case adds no new
+shape, so no test was added.
+
+**Next to it, owned elsewhere.** The probe's `--rederive` online log lists this row as one that "now
+answer[s] differently from the recorded table", with no respelled marker. The offline row has no
+`vrs_id`, so `outcome._same_events` returns `False` for an unknown; that is the migration probe's
+class 4, already reserved as its own item.
+
+## RM374 — one identity answered twice in a merged sidecar, and nothing checks that the answers agree
+
+**SHIPPED 2026-11-04 on `0.8`, uncut — a minor (the 0.8 Ensembl migration probe).** Owner compiler, severity
+medium.
+
+**Residuals** RM275 · [RM390](ROADMAP.md#rm390--the-enricher-never-states-a-table-level-finding-the-compile-acts-on) (the enricher runs the placement check too; parked) · won't fix — one key repeating a `locus_index` and positional-only answers
+are withheld, because the table cannot tell them from a legitimate one-to-many rsID · RM387 — a
+positional row at a locus the rsID's own answer dropped for its genotype read as two placements; the
+dropped locus left no trace in the table · won't fix — not in this item: a merged rsID's own key
+(`rs_old`, `rsid_current` naming `rs_new`) is not joined with a positional row back-filled `rs_new`, so that
+pair is not compared · won't fix — not in this item: the check reads every row of the table, including a
+subject the spec no longer names, which the next ordinary enrich drops · won't fix — not in this item: one event in two spellings within one release (an old snapshot read online) is the
+sibling item on authored-versus-resolved spellings
+
+**The class.** A merge-not-clobber sidecar keeps every subject it already has and fills only the new ones, so
+after a source moves, one identity can be answered twice, by two runs against two releases, under two keys,
+and nothing compared the answers. The probe (`Q_mixed`): `rs761191455` placed at `13:48041104 G>GG` under its
+own key and at `13:48041103 T>TG` under a positional key; a consumer's positional join matched 2 of 4 records,
+4 of 4 after a fresh enrich; validate, compile and strict were silent. And a stale allele set (`rs646776`,
+`G,T`) made `--strict` refuse a correct `A/C` with a message blaming the author or ClinVar.
+
+**Instances (before → after).**
+
+- `compiler/src/just_dna_compiler/compiler/resolution_step.py` `read_resolution` — self-checked VRS ids and
+  coverage, never whether two subjects placed one rsID two ways → asks `placement_disagreements` over the
+  active rows and routes it as a ladder (`errors` under `strict`). Both `compile_module` and `_validate_spec`
+  call it, now with `genome_build` and `strict`, so `test_check_paths`'s roster did not move.
+- `compiler/src/just_dna_compiler/resolution.py` `placement_disagreements` (new) — one key is one answer
+  (`_KEY_RULE = "subject"`, a re-run replaces it whole); two keys carrying one rsID are two answers; the
+  finding is a positional answer whose `(chrom, start)` is outside the rsID-keyed answer, a Y PAR locus read
+  as its X partner, alleles not compared. Uses `_usable_loci` and `par_partner`.
+- `compiler/src/just_dna_compiler/compiler/allele_checks.py` `_check_allele_membership`, resolved branch — two
+  readings (the genotype, or the source's allele list) → a third, "resolved against an earlier snapshot
+  release", naming the release the row records (`row_release`, read by name so RM373's
+  `ResolutionRow.source_release` is picked up when it lands) or `release not recorded`, with `--rederive`.
+- `schema/src/just_dna_format/vocab.py` — `rsid_placements_disagree` in `VALID_WARNING_CODES`.
+
+**The mechanism and its guards.** One predicate (`placement_disagreements`) asked in the one reader both
+commands share, so validate and compile cannot disagree. `compiler/tests/test_rsid_placements_disagree.py`
+builds the red case from the probe's real `Q_mixed372/resolution.csv` (embedded verbatim): strict validate and
+compile refuse with the same errors, best-effort warns once (`warnings_summary` 1), the finding is lap-stable
+across compile → reverse → compile, a fresh table is silent, and it walks **every** reference example's table
+(an equality: the code is absent from each), pinning that the walk holds `shox_par1`'s split. Negatives: a
+positional answer inside the rsID's answer, a split's pieces, a PAR partner, positional-only answers, a
+repeated `locus_index`, another build, an ambiguous pick, a row with no `start`, and two spellings the
+enricher judged `left_aligned` true and false (one release, one event; a review of the first cut found it
+refused a correct module that `--rederive` could not clear). The stale reading is given only on rows an
+external source answered (`authority` set). `test_one_channel_under_strict.py` gained the case
+`test_every_ladder_code_has_a_case` demanded, and `features/compiler/resolution.feature` the `@ladder`
+scenario. Mutated twice: dropping the subset test sent four negatives red; routing with `strict=False` sent
+the two strict refusals red. The release-named tests skip until RM373's column exists; run against a
+simulated column they pass.
+
+**2026-11-05, RM387 (the 0.8 audit, round 2):** the residual above was a false refusal, not a limit. The
+rsID key's rows are what the hosting filter kept, so for a one-to-many rsID a positional row at the sibling
+locus refused a valid module under `strict`, and `--rederive` wrote the same table. The rsID-keyed rows now
+record the source's whole set of places (`source_loci`) where it is wider, and this check compares against
+the union; a table recorded before the column still fires, and `--rederive` clears it.
+
+## RM375 — two spellings of one indel were judged two events wherever a comparison held no reference
+
+**SHIPPED 2026-11-04 on `0.8`, uncut — a minor (the 0.8 Ensembl migration probe).** Owner enricher +
+compiler + format, severity medium.
+
+**Residuals** won't fix — an offline run never settles a respelled indel, because the reference is read
+through the seqrepo service and no local reference is wired into `SequenceProxy`; offline the verdict is
+`undecided`, never agreement · won't fix — an indel ALT one table keeps and the other does not reads
+undecided on `--rederive` rather than moved, because an offline table keeps ALTs an online hosting filter
+drops (`rs746071566`); that costs sharpness, never truth
+
+**The class.** An indel can be anchored anywhere inside its repeat, and two releases of one source, two
+sources, or an author and a source pick different anchors: NUDT15's `rs761191455` is `13:48041104 G>GG`
+in the old Ensembl snapshot (and in `reference_examples/cpic_gene_pairs/haplotypes.csv`) and
+`13:48041103 T>TG` in `ensembl_variations_split`. Every place that compared two spellings of a position
+for event identity answered on its own terms, and where it held no reference it answered "different"
+rather than "unknown": the house algebra's `None` read as `False`.
+
+**The instances (re-verified on the base, `65410522` + `0.8`).**
+
+1. `compiler/src/just_dna_compiler/resolution.py:468` `_authored_conflict` (now `:509`): compared `start`
+   and `ref` by string, so the cpic row drew `positional_identity_contradicted` and its fill was
+   withheld. Reproduced: re-enriched against the new snapshot, cpic compiled with the warning, and lap-1
+   `resolution_signature` moved on the bare RM372 tree (RM364's `resolution_loci`, merged in, holds the
+   signature; the false warning stayed). → reads the recorded verdict; `same_event` is agreement and
+   fills only `rsid`/`chrom`; `undecided` is left alone in non-accusing words.
+2. `compiler/src/just_dna_compiler/resolution.py:1128` `_verify` (now `:1187`): the SNP core's pair, by
+   `chrom:start:ref` key, refused under `strict`. → the same predicate, `recorded_verdicts`.
+3. `enricher/src/just_dna_enricher/resolver.py:587–630` `_is_substitution` / `coordinate_verdict`: a locus
+   whose `ref` is one base read as a substitution, which an insertion's anchor is, so the cpic pair was a
+   confident disagreement in `rsid_coordinate_agreement` (the probe's "0→1 finding"). → `_is_substitution`
+   removed; the verdict asks `events.names_event` against the reference.
+4. `enricher/src/just_dna_enricher/enrich/outcome.py:70` `_same_events`: `False` whenever an allele had no
+   `vrs_id`, so `--rederive` reported every offline respelling as the source moving (the probe's
+   rs761191455 and rs1457579126, and RM376's rs746071566). → three-valued; `SubjectDrift.respelled` is
+   `bool | None` and the undecided ones are warned apart.
+5. `enricher/src/just_dna_enricher/placement.py` `same_event` (RM267, ClinVar-GKM through it): already
+   three-valued, and the model the rest now share. → moved to `events.py`, unchanged.
+
+Checked and not in the class: the allele-membership union and `hosting_verdict` (allele sets, not
+positions; `parsimony_reduce` already reconciles `G/GG` with `T>TG`), RM270's `spelling_verdict` (a spelling
+against a convention, not two spellings against each other), and the exact-spelling archive joins
+(ClinVar `clin_sig`, PubMind, frequencies), which are join recall rather than an event-identity
+judgement. `module_subjects`' resolved placements are RM362's (merged, not redone).
+
+**The mechanism.** One judge, `enricher/src/just_dna_enricher/events.py`: `same_event` for two whole
+alleles, `names_event` for an authored coordinate that may be partial (its anchors are walked by
+`sequences.indel_spellings`, one implementation shared with RM274's `_indel_payloads`), `authored_event`
+for a written row, `same_allele_sets` for a drift. **The enricher judges, compile trusts**: the verdict is
+recorded per row as `resolution.csv` `authored_event` (`same_event` / `different_event` / `undecided`,
+outside `resolution_signature`), written where the authored `chrom`/`start`/`ref` differs from the
+locus, **bound** by `judged_coordinate` (the coordinate it judged, `authored_coordinate_key`): the key
+is the subject's, so a verdict outlives a later edit of the coordinate and is shared with every other
+table's row under the rsID, and the compiler applies it only to a row still authoring that coordinate
+(found by the review). Both ride `resolution_loci` through `reverse`, so lap two reads what lap one did.
+A per-row column rather than `verification.json` (rewritten per run over the subjects asked; the probe's
+Q2 shows that record read as a module fact) or `placement_verdict` (who else places the rsID: another
+axis, P5). A derived-sidecar column, half cost (P9); additive (P3).
+
+**The guards.** `enricher/tests/test_authored_event.py` registers every judge of two spellings
+(`authored_event`, `coordinate_verdict`, `_same_events`, `compare_placements`), runs each over one corpus
+(the cpic row, its half coordinate, offline, outside the footprint, another contig, a padded `ref`), and an
+AST walk asserts the registry equals every enricher function calling the judge. Mutating the judge to
+answer `False` with no reference turned 6 red; mutating the compiler's predicate to answer nothing
+turned 8 red.
+`compiler/tests/test_authored_event.py` runs both compiler comparers over every positional kind and
+`variants.csv` × the four cell states, and three rows joined `test_resolution_matrix`.
+
+**Not done here.** `reference_examples/cpic_gene_pairs/resolution.csv` is not regenerated (the
+maintainer's decision 3: a later unit regenerates every example against the new snapshot); online, its
+re-derived row will read `authored_event=same_event`.
+The same online re-derive judges the example's second respelled row, NUDT15 `*1` `rs1457579126`, authored
+at `13:48040982`: the event is a one-base deletion in `G AAAAA T` (977–983), whose VCF anchors are
+977–981, so 982 is the HGVS deleted-base position, inside the event and no VCF anchor. It reads
+`undecided` and compiles under the code without an accusation; the authored `start` is the row's to
+correct, by a later unit.
+
+## RM379 — `enrich` consults PubMind and ClinVar for the concordance record and writes no licence row for either
+
+**SHIPPED 2026-11-05 on `0.8`, uncut — a minor (the 0.8 Ensembl migration probe, RM373's review).**
+Owner enricher + format + compiler, severity low.
+
+**Residuals** won't fix — CIViC writes no licence row, correctly: its two checks compare authored cells
+and write no row of any table, so it contributes nothing (`@write-the-sourcerow`'s second half) · won't
+fix — the compiler does not corroborate this layer, so a stale row there warns nothing · RM383 (a
+licence row an authority stops earning is retired by the record's whole rewrite, 2026-11-05)
+
+**The class (RM373's, one rule over).** A pass that consults a source writes its `SourceRow`, and one
+that contributes nothing writes none. `enrich` read the `pubmind` lane (and ClinVar's) for the
+clinical-significance concordance, wrote `clin_sig_authority_calls.csv` naming each authority per row,
+and recorded no licence row for either at any layer. RM373's guard listed `("enrich", "pubmind")` as an
+exemption with that reason; this removes it.
+
+**What shipped.** `VALID_SOURCE_LAYERS` gains `clin_sig_authority_call` (P5 audit: named for the table
+whose rows the licence row describes, singular as every layer is; no collision; fact class, so it never
+taints). `concordance.write_concordance_tables` records one row per authority a written call row names
+with a status other than `unchecked`, inside the calls table's atomic commit (`before_commit`,
+`@licence-row-inside-the-commit`) and through `licensing.record_table_sources` (RM373), so `dataset` is
+the release every such row states, read through `net.stated_release`. A `manual` authority has no terms
+constant and gets no row. The compiler adds the layer to `_UNCORROBORABLE_LAYERS`: the table's
+`authority` column is open and admits `manual`, so a string match cannot tell a licensed authority from a
+hand's, and a PubMind row would otherwise read as `source_row_unused` on every module carrying one.
+
+**The guards.** `test_producers.py`'s lane walk is grouped by **command** (the checks walk beside it
+already was): `enrich` reads PubMind's lane in `enrich/` and writes its row in `concordance.py`, one
+run. The concordance producer declares `release_lanes` for ClinVar and PubMind, and the walk's equality
+holds with only CIViC exempt. `test_pubmind_concordance.py` asserts the two rows and their releases equal
+each lane's `release_label`, that a run with no PubMind snapshot writes no PubMind row, and that the
+compile raises no `source_row_unused` for them (watched red with the compiler line removed).
+`test_licence_row_inside_the_commit.py` names `concordance.py` among the passes that commit their row
+with their table.
+
+## RM373 — provenance names the link, never the release: a derived fact's answering release is missing, blank or the run's
+
+**SHIPPED 2026-11-04 on `0.8`, uncut — a minor (the 0.8 Ensembl migration probe).** Owner format +
+enricher, severity medium.
+
+**Residuals** won't fix — the hand-typed
+`--ensembl-reference` flag stays unchecked: it names the superseded DuckDB injection path, and the
+per-row column now carries the release · won't fix — an answer seeded from an interrupted run's journal
+records no release, because that run never wrote one down, and `--rederive` re-answers it · won't fix —
+the enricher never writes `fetched_at` on a resolution row: the cell says when a pass wrote a row, an
+axis apart from which release answered, which `source_release` now records, and no check reads the time · won't fix — the `ensembl` licence row of a table the snapshot and live REST both answered names
+no release: REST spells Ensembl's release `ensembl_116` and the snapshot `…vep116.0`, and no published
+mapping equates them · won't fix — `frequencies.csv` keeps the constant `gnomad_v4.1_joint`: the gnomAD
+API states no release, and the constant names the release its numbers describe
+
+**The class.** The record of which source release answered a derived fact was missing, blank, or the
+current run's, so an old-release answer and a new-release answer looked identical to every tier. The
+probe (`scratchpad/rm372_migration.md`, Q2/Q3 and error classes 1–2) measured it on `build/RM372`: a
+module whose `resolution.csv` was every row the Oct-11 snapshot's, re-enriched against
+`ensembl_variations_split` without deleting the file, kept every old row and stated the new release in
+`rsid_coordinate_agreement.release`. Two rules were broken at once: a pass that consults a source records
+which release it drew from (`@write-the-sourcerow`, `@currency-asks-the-source-not-the-cache`), and a
+record describes what it binds (`@a-record-written-in-two-passes-drifts-between-them`).
+
+**Every instance, re-verified on `65410522`** (before → after):
+
+- `schema/.../resolution.py` `ResolutionRow`: no release column → `source_release`, optional, `since
+  0.8.0`, outside `RESOLUTION_FACT_FIELDS`. P5 audit: named for what it records, the release of the
+  *source* that answered (the link is `source`, the licensed source `authority`); no collision with any
+  `ResolutionRow` field, the reserved namespace, or `SnapshotRelease.source_release` (ClinVar-GKM's
+  upstream release, the same meaning one tier over); a future per-witness release would be its own
+  column, never a member squeezed in here. P9: a derived sidecar column, half cost; no parquet.
+- `enrich/orchestration.py:1881` the `ensembl`/`clinvar`/`gnomad`/`clinvar_gkm` licence rows at
+  `resolution`: `record_source_terms(...)` with no `datasets=` → `record_table_sources`, labelled by the
+  committed rows (the ClinVar row was blank on every probe arm too).
+- `enrich/verification_records.py:440` `rsid_coordinate_agreement.release`: the run's snapshot label
+  over any table → the label only when every row the snapshot answered carries it, else null with a counted
+  reason in `detail` (`enrich.releases.run_label`).
+- `assertions.py:406`, `gene_metrics.py:458`, `frequencies.py:419`, `gene_validity.py:576`: licence rows
+  with a blank `dataset` although every row records its release → labelled from the rows' `dataset`.
+- `gwas.py:778`, `expression.py:542`, `clingen.py:305`, `ld_pairs.py:517`, `opentargets.py:871`: a
+  label written on the first run and never revisited (`merge_sources_file` and `record_source_terms`
+  never clobber), so a re-run against a newer release kept the old label over a mixed table → stamped
+  from the committed table. Open Targets' tables carry no per-row release, so a row this run answered
+  states this run's and a kept row states the label recorded before the run.
+- `ensembl_reference` (hand flag) and `fetched_at` (blank everywhere observed): re-verified, left, see
+  *Residuals*.
+
+**The mechanism.** One helper, `licensing.record_table_sources(releases, layer, spec_dir)`: `releases`
+maps each source to the release every committed row it answered states (`licensing.table_datasets` for
+a table with a `dataset` column, `enrich.releases.table_releases` for `resolution.csv`), the label is
+`table_release` — the one release they all state, else withheld — and the cell is **stamped**, re-labelled
+or withdrawn, because `merge_sources_file` never fills a row an earlier run wrote blank. That is
+`stamp_draft_digest`'s precedent rather than `withdraw_stale_dataset`'s: a drafted table holds rows from
+releases nobody recorded, while a derived table's rows each name theirs. On `resolution.csv`
+`enrich.releases.LinkReleases` stamps each row this run answers with its link's release, read the way
+the lane states it (`ensembl_release_label` for the cache, `snapshot.release_label` for ClinVar and
+ClinVar-GKM, the `CacheLane.release_label` each declares), REST's from `/info/data` asked once per run
+(`EnsemblResolver.data_release`; read by hand on 2026-11-04: `/info/data` → `{"releases":[116]}`,
+`/info/rest` → `{"release":"15.12"}`, the software's version, so the brief's `/info/rest` was not used),
+gnomAD's from the client's dataset id. Carried and pre-0.8 rows keep what they had, `--rederive` stamps
+every row it answers. A placement witness has no column, so a carried row speaks for it through the
+recorded label, which was computed over every row then in the table — without that, a no-op re-run
+withdrew a true label.
+
+**Inside or outside the signature: outside**, by `@provenance-beside-a-claim-is-outside-content-identity`.
+It says which release answered, beside the claim; two releases agreeing on a placement hash equal, and
+a release that moves a fact moves a fact column the signature already reads. Reverse writes none, for
+`authority`'s reason: a reversed table's facts came out of parquet, so no source answered them.
+
+**The guards.** `DerivedProducer.release_lanes` names, per pass, the lane whose release reaches its
+licence row; `test_producers.py` asserts, per command (per module until RM379), that the lanes its code
+reads (an AST walk over each `CacheLane.resolve`) **equal** that field plus `LANES_READ_WITHOUT_A_LICENCE_ROW`
+(CIViC's, with its reason; PubMind's was the second until RM379 gave it its row), and that no derived pass writes a licence row except through `record_table_sources`. Each
+declared lane has a behavioural test asserting the licence row equals `LANES_BY_NAME[lane].release_label`
+of the snapshot the pass read (`test_source_release.py`, `test_placement_witness.py`,
+`test_clinical_assertions.py`, `test_fact_passes.py`, `test_opentargets.py`). The probe's case is
+`test_reenriching_an_old_table_keeps_its_rows_unlabelled_and_withholds_the_runs_label`.
+
+**A derived table's release moving is not a strict matter.** A filled `clinvar`/`clinvar_gkm` licence
+row is a release `--verify-datasets` compares. A source publishing past it is the source working and no
+authored edit clears it (`@a-source-recuring-is-not-a-strict-matter`), so on every layer but `annotation`
+(`licensing.DRAFTED_LAYERS`) the finding warns in both modes and names `enrich --rederive` (or deleting
+the derived table); only a drafted layer refuses and says re-draft.
+
+**The review round (2026-11-05), each finding with a red test first** (`data/rm373/red_4.txt`):
+`run_label` counts only the rows the snapshot's link answered (a REST row beside a cache row no longer
+withholds the snapshot's label); ClinVar's label is `clinvar_dataset_label`, the one spelling every
+ClinVar reader computes (a digest-only snapshot was `None` here); `record_table_sources` stamps only rows
+of a source with a terms constant, so a curator's `manual` row is never touched; an Open Targets row this
+run kept states no release, because the recorded label may be a pre-0.8 first run's; a gnomAD answer
+records none (`gnomad_r4` names a release line); `data_release` is asked only of this tier's own
+`EnsemblResolver`, so a host's resolver cannot abort a finished run for a label. Two more instances of
+the class: `gwas` and `alphagenome expression` labelled their rows by the run's date, now by the source's
+own release (`GwasCatalogClient.release`, the Catalog's `/api/search/stats` `date`, read by hand on
+2026-11-05) or the bare lane when none is stated (`net.release_dataset`, RM361), and a licence row reads a
+row label through `net.stated_release`, so a bare lane is no release; `assertions.snapshot_dataset` was a
+second spelling of the ClinVar label and is now `clinvar_dataset_label` (unstated: `clinvar`, no longer
+`clinvar_unknown`); `gene-metrics` stamped the constant `gnomad_v4.1_constraint` on a snapshot row and now
+reads the snapshot's `release.json`. Mutated: the drafted/derived split collapsed and `stated_release`
+passing a bare lane through, each watched red.
+
+**2026-11-05, found merging block 3: the witness release map predated a witness.** `witness_release`
+was a hand-kept dict in `orchestration.py` naming `clinvar` and `clinvar_gkm`, written before RM267 made
+Ensembl REST the third placement witness, and the REST witness never asked `/info/data` either, so a run
+whose snapshot answered everything and whose REST witnessed a placement contributed no release for it.
+Both are fixed as a class (`@registry-completeness`): `placement.PLACEMENT_WITNESSES` is the roster, read
+off `_AUTHORITY_OF_WITNESS`, and `releases.witness_releases` refuses a map whose keys are not exactly
+that roster; the REST witness takes the release the live link already asked for, or asks once itself.
+The link map (`LinkReleases.by_link`) was the same shape and is now `releases.link_releases`, checked
+against `RESOLUTION_AUTHORITY_BY_LINK` with gnomAD and the retired GraphQL leg named in
+`LINKS_WITHOUT_A_RELEASE`, each with its reason. Two more witness-keyed tables are guarded by equality
+with the roster: `CHECK_WITNESSES["placement_agreement"].witness`, and `_NOT_INDEPENDENT`, whose one deliberate
+omission (REST, asked about its own authority's placements by design) is named with its reason in
+`_ASKED_OF_ITS_OWN_AUTHORITY`. Not the same class:
+`DerivedProducer.release_lanes` (REST is live, not a `CACHE_LANES` member, and Ensembl's lane is already
+named) and `CACHE_LANES` itself (the registry, already walked). The `ensembl` licence row in such a run
+stays withheld, now for a true reason: the row REST witnessed was answered by the snapshot, whose label
+never equals REST's `ensembl_116` string. Red on `1007a26d`:
+`test_rm373_a_rest_witness_contributes_the_release_rest_answered_from` (`/info/data` asked 0 times, the
+witness's contribution `None`). **Residuals**: none.
+
+## RM372 — the Ensembl snapshot moved to a new Hugging Face repo, and a warm cache never migrates
+
+**SHIPPED 2026-11-04 on `0.8`, uncut — a minor.** Owner enricher + format, severity medium.
+
+**Residuals** won't fix — `enrich` alone never migrates a cache pulled from the old repo: the resolver
+serves it as the whole older release it is, so an offline machine keeps its snapshot, and `cache pull`
+/ `cache prepare` re-pull it · won't fix — the read-time check compares the manifest's `bytes`, not its
+sha256, because hashing 14.5 GB per enrich is not a read; the sha256 is checked where the bytes are
+already paid for, by the provisioner · won't fix — the `groups/*` sidecars (consequence, clinical,
+predictors, CADD, frequencies, transcripts; 37 GB) are not pulled: nothing here reads them, and CADD's
+are non-commercial
+
+**What shipped.**
+
+- **The prefix.** `download._ENSEMBL_HF_PREFIX` is `datasets/just-dna-seq/ensembl_variations_split/data`,
+  and every provisioned lane's repo is a row of `download.SNAPSHOT_REPO_PREFIXES`, asserted equal in keys
+  to `SNAPSHOT_FILE_GLOBS`.
+- **Fix 1, a warm cache from another repo.** `_provision_snapshot` returns a cache untouched only when its
+  pull record names this repo (`locations.pull_record_repo`) and its manifest attests it. A record naming
+  another repo sends it down the pull route, where a file is kept only if the new manifest attests it by
+  size and sha256 (`locations.manifest_attests`); with no manifest after a switch, every file is
+  refetched. `caches._present_or_completed` sends a recorded cache from another repo to `ensure`, so
+  `cache pull` re-pulls the old-repo cache rather than calling it present. The same keep-rule closes the
+  case the entry did not name: a cache with **no** record (just-dna-lite's downloader writes none) holding
+  old bytes was compared with the listing by name and would have been recorded as the new release.
+- **Fix 2, a cache mixing releases.** `manifest.json` joins `SNAPSHOT_ROOT_FILENAMES`
+  (`snapshot.SNAPSHOT_MANIFEST_FILENAME`, before `release.json`) and is read by the enricher's
+  `SnapshotManifest` (typed `release_id`, `layout_version`, `built_at`, `files[path, group, chrom, rows,
+  bytes, sha256]`; every other key dropped, never carried). The provisioner fetches it **first** into a
+  staged `.part`, checks every kept and every downloaded file against it, refuses a published `data/`
+  file it does not name before downloading anything, and places it last. `manifest_coverage` is the
+  read-time check, in both directions: a `data/*.parquet` the manifest does not name or names at another
+  size (a mixed release), or a `data/` file it attests that is absent (an incomplete snapshot, found by
+  the lead's migration probe on `cc1fea4f`: 12 of 25 attested files and no pull record were served
+  silently), makes
+  `resolve_ensembl_reference` (before the prebuilt `.duckdb` is considered: this machine's is a view over
+  the same glob) and `_resolve_parquet_cache` return `None` for the whole directory, with a warning naming
+  the files and `cache pull`. Whole rather than per file, because a dropped chromosome would read as
+  asked-and-absent under `--offline`. An unreadable manifest attests nothing; no manifest is the unknown
+  arm, read as before.
+- **The label.** `locations.ensembl_release_label` (`release.json`'s `dataset`, else the manifest's
+  `release_id`) is the Ensembl lane's `CacheLane.release_label` and the `rsid_coordinate_agreement`
+  record's `release`.
+- **Fix 3, tests and docs.** `test_enrich.py`'s `multiallelic_cache` is parametrized over the pipe-joined
+  and the one-row-per-ALT spelling; `@snapshot-pipe-alt` names both; the builder is prepare-annotations
+  in `caches.py`, `download.py` and ENRICHER.md. `test_ensembl_split_release.py` pins the rest; each
+  check was broken once and its test went red.
+
+**Hand-run (2026-11-04).** `HfApi.list_repo_files`: the new repo holds 203 files (`.gitattributes`,
+`README.md`, `manifest.json`, 25 `data/homo_sapiens-chr*.parquet`, 175 `groups/<group>/…`), tag
+`ensembl-variation-2026_07_13-vep116.0`, sha `ee964d71b249197f9f943915b2d596286291a90e`; the old one 27
+(`.gitattributes`, `README.md`, 25 data files), no tag, sha `2205d5ed…`, last modified 2026-01-15. The
+manifest: `release_id` `ensembl-variation-2026_07_13-vep116.0`, `layout_version` 1, built
+2026-11-04T10:04:28Z, 200 files in 8 groups, 25 `core` files of 14,539.7 MB, core columns `chrom, start,
+ref, alt, id, row_idx`. Every core file differs in size from the old repo's. Two runs of
+`ensure_snapshot` against the live repo, on scratch caches: the 25 core files fetched beforehand with no
+pull record were hashed and all 25 kept as attested (214 s, nothing downloaded: the whole-genome check
+the entry left unverified, for the bytes rather than the claims about them); and a switch, 23 new files
+beside the old repo's chr21 and chrMT under the old repo's pull record, re-pulled exactly those two (112 s),
+dropped `replacing`, and resolved with the label `ensembl-variation-2026_07_13-vep116.0`.
+
+**The incident this build caused, and its fence.** On 2026-11-04 the neighbour suite on this branch ran
+`test_rebuild_caches_and_prepare_caches_are_the_cli_loops`, which called `prepare_caches` on the real
+Ensembl lane. The developer's cache was recorded from the old repo, so the new route re-pulled it into the
+shared base: six chromosomes were replaced with the new release before the run was stopped. Restored
+the same evening from the old repo (all 25 files match just-dna-lite's `.sha256` sidecars, the record
+names the old repo again). The fix is a class fence rather than one test: the autouse `_fenced_hub`
+(`@no-test-reaches-the-real-hub`) refuses the real `HfFileSystem` and `hf_hub_download` without
+`JUST_DNA_NETWORK_TESTS=1`, and any fetch into the real cache base with it; `test_the_hub_is_fenced.py`
+asserts it covers every fetching name the enricher imports. A suite run with
+`JUST_DNA_HUB_GUARD_LOG` listed every test that reached the hub, and each now arranges its own:
+`test_cache_lanes.py::test_rebuild_caches_and_prepare_caches_are_the_cli_loops` (the incident: it
+provisioned the real base; its lane's `resolve`/`ensure` are stubbed now),
+`test_enrich.py::test_gnomad_link_never_overrides_an_earlier_link` and
+`::test_gnomad_link_fills_only_what_nothing_else_could` (an online `enrich` with no ClinVar snapshot
+downloaded ClinVar from HuggingFace into `tmp_path` on every run; `download=False` now), and
+`test_upload.py::test_upload_module_calls_hf_api` and
+`::test_the_default_commit_messages_name_which_copy_they_are` (a bare `MagicMock` answered `file_exists`
+truthily, so the collision check called the real `hf_hub_download` with a fake token; `False` now). The
+fence also wraps the two provisioning bodies, so no real cache directory (the base, or a lane's own
+override) is provisioned under any setting: `_provision_snapshot` writes its pull record before its
+first fetch.
+
+**The placement verdicts on the new snapshot (measured 2026-11-04).** Every GRCh38 reference example
+that resolves anything (15) was enriched `--offline` twice from a copy with `resolution.csv` deleted,
+once against the old snapshot and once against the new, with the ClinVar snapshot (2026-06-27) as the
+only placement witness: ClinVar-GKM is not provisioned on this machine, and the run predates RM267-rest's
+REST witness on this branch. Of 490 resolution rows (subject × locus), **180 change** (the 113 + 48 + 19 below, disjoint): 129 in
+`pathogenic_clinvar`, 18 `cpic_gene_pairs`, 10 `cyp2c19_star_alleles`, 8 `hboc_palb2`, 6
+`hfe_hemochromatosis`, 4 `shox_par1`, 2 `apoe_klvs_meta`, one each in `hfe_compound_het`,
+`longevity_studies`, `model_organisms`. No row appears on one side only.
+
+- **113 move their spelling** (`start`/`ref`, with `alts` where the anchor base changed): the left-aligned
+  release respells indels, and RM267's class moves onto the other event.
+- **48 gain an allele** (`alts` alone; none loses one): dbSNP 157 and one row per ALT.
+- **19 change only `source`**: a position the new snapshot answers that an authored or ClinVar row filled before.
+- **2 of the 113 are rsIDs newly resolved**, `not_found` before: `rs1256311452` (`hfe_hemochromatosis`) and `rs281864532`
+  (`pathogenic_clinvar`).
+- **134 `placement_verdict`s change**: `undecided → same_event` 94 (the new spelling matches ClinVar's, so the
+  comparison settles), `same_event → unplaced` 24 (a gained allele ClinVar does not hold, so not every ALT is
+  placed), `undecided → unplaced` 2, and 14 rows gain a verdict where the old run wrote none (11 `same_event`,
+  2 `undecided`, 1 `unplaced`). No row is withheld as a disagreement in either run.
+
+RM267's own cases, through `lookup_loci` on both snapshots: `rs8176719` `9:133257520 G>GC` → `9:133257521
+T>TC`, `rs546596010` `2:26455248 C>CA` → `2:26455249 T>TA`, `rs1553364018` `1:224434031 G>GT` →
+`1:224434032 C>CT`. All three insertions of the −1 class now land on the event dbSNP and ClinVar name.
+`rs72613567`, `rs77944059` and `rs333` (CCR5-Δ32, RM270) move one base left, the same event respelled;
+`rs4988235` is unchanged.
+
+**The entry as filed.**
+
+**Taken into 0.8 on 2026-11-04 by the maintainer**: "check compatibility and take action to be compatible if
+needed", after prepare-annotations published a new Ensembl variation release overnight. Measured the same day
+by a read-only pm subagent on a detached `0.8` worktree, reading chr21 and chrMT bytes of both repos.
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** · **Owner** enricher (`download`, the Ensembl lane)
+\+ format (`locations`, `snapshot`) · **Motivating case** prepare-annotations 1019891 and 8044abf (2026-11-04) ·
+*related* RM303, RM267, RM270, RM304
+
+**What was published.** A **separate** dataset, `just-dna-seq/ensembl_variations_split` (tag
+`ensembl-variation-2026_07_13-vep116.0`), dbSNP 157 + VEP 116, written by DuckDB. The repo 0.8 reads,
+`just-dna-seq/ensembl_variations` (`download.py` `_ENSEMBL_HF_PREFIX`), has had no commit since 2026-01-15, so 0.8
+is not broken today. In the new release:
+
+- 25 flat files, `data/homo_sapiens-chr*.parquet` (the old glob still matches), plus `groups/*` sidecars outside
+  `data/`, a `manifest.json` (release id, per-file sha256) and no `release.json`.
+- The core columns are `chrom, start, ref, alt, id, row_idx`. `start` is still the 1-based POS, and chrom is
+  spelled as before.
+- **One row per ALT.** `alt` is never pipe-joined, which retires `@snapshot-pipe-alt` for this repo. `id` is
+  always an `rs…`.
+- Indels are left-aligned: 301 of 400 sampled indel loci move one base left, so RM267's class disappears from
+  the source.
+
+**What the 0.8 reader does with it.** It reads the new bytes correctly. `test_resolver_integration.py` passes
+against the real files, offline `enrich` gives byte-identical `resolution.csv` on two MT examples, and the
+compiler suite passes under polars 1.44.2.
+
+**The build (decided):** switch `_ENSEMBL_HF_PREFIX` to the new repo, plus three fixes.
+
+1. **A warm cache must not serve the old repo's bytes.** `snapshot_record_missing` (`locations.py`) checks only that
+   the files exist, never the pull record's `repo`. The file names are identical across the two repos, so a
+   switched prefix silently keeps the old bytes. A record naming another repo is not this snapshot.
+2. **A mixed-release cache must not serve without a word.** Old chrMT beside new chr21 answered 100 rsIDs and nothing
+   complained. just-dna-lite's downloader writes the same names into the same `<base>/ensembl_variations/data/`.
+   Read `manifest.json`'s release id (add it to `SNAPSHOT_ROOT_FILENAMES`) and its per-file sha256. A file the
+   manifest does not attest is withheld as a different release, never merged.
+3. **Tests and docs.** Every fixture uses the old pipe-joined `alt` and none pins one row per ALT: add one. `caches.py`
+   names just-dna-pipelines as the lane's builder, but prepare-annotations builds it. Rewrite `@snapshot-pipe-alt`
+   as two spellings, the old repo's and the new one's.
+
+**What moves for a module (INTEGRATION_0_8 owes a line).** Resolutions move as data, not as code. Indel loci change
+spelling, some rsIDs gain or lose an allele (which can flip a hosting verdict), and two chr21 rsIDs are absent.
+An existing `resolution.csv` keeps the old spelling until it is deleted (`@sidecar-authoritative`). The RM267/RM270
+placement verdicts against ClinVar were **not** re-run against the new snapshot, so the build re-runs them.
+
+**Not verified:** whole-genome claims, since only chr21 and chrMT were read. Also unknown: whether the two missing
+rsIDs moved in dbSNP or were dropped by the builder.
+
+## RM365 — registry guards that are floors or subsets, and registries that omit what they describe
+
+**SHIPPED 2026-11-04 on `0.8`, uncut — a minor (the 0.8 audit, round 1).** Owner format + compiler +
+enricher, severity low-medium.
+
+**Residuals** none
+
+**A question surfaced, not filed by this build** (a builder claims no number): whether
+`literature.csv`'s `doi_exists` / `doi_checked` belong inside `literature_signature`. Answering yes is
+a corrected derivation that moves every literature signature on disk, so a release has to declare it;
+until then the reason they are out is stated as unrecorded, beside the tuple in `literature.py`.
+
+**The class.** A registry, or the test guarding it, claims to be complete — *"every check this pass
+writes"*, *"everything but the provenance columns"*, *"the diagram is the tuple"* — while the
+assertion behind the claim is a floor (`>= 31`), a subset (`<=`), a count in prose, or a hand-kept
+roster nothing walks. Such a guard passes on exactly the tree that has drifted, so the registry falls
+behind the thing it describes and nobody is told (`@registry-completeness`). The rule applied: where
+the claim is *"these are the Xs"*, the assertion is an equality over a walked set, with a named
+exemption carrying its reason; where it is only *"every X is a Y"* (a value inside a vocabulary, a
+scope narrowing a map), a subset is the honest shape and stays.
+
+**Instances, re-verified on `0.8` at `0a5293b`** (file:line as found):
+
+1. `enricher/src/just_dna_enricher/producers.py:83-90` — `DERIVED_PRODUCERS["resolution.csv"]` claimed
+   six checks while `enrich/verification_records.py` writes nine (`published_refutation`,
+   `evidence_status_currency`, `placement_agreement` missing); `:169`, the literature producer,
+   omitted `provenance_quote`. The guard, `enricher/tests/test_producers.py:111`, was
+   `claimed <= VALID_VERIFICATION_CHECKS`. → each command's claimed checks **equal** the names its
+   modules pass to `ran`/`skipped`, read by one AST walker (`checks_written_in`, in
+   `enricher/tests/conftest.py`) that the vocabulary-wide emitter guard in
+   `test_verification_record.py` now calls too. It reads `ran`/`skipped` under any import alias or
+   module attribute and `VerificationRecord(check=…)` built directly; an unreadable check name is
+   refused, and a producer module that resolves to nothing fails.
+2. `schema/tests/test_first_seen.py:83-85` — `len(_ALL_MODELS) >= 31` and `>= 414` fields, while the
+   registry held 38 models and 538 fields. → every pydantic model the package defines is in the
+   registry, reachable from a document the tooling writes (`ModuleManifest`, `VerificationDoc`,
+   `ProvenanceDoc`, `SnapshotRelease`, `ReleaseRecord`), or one of two named abstract bases; exactly once.
+3. `schema/tests/test_first_seen.py:32` — `_RELEASES`, a hand list, lacked `0.7.1`–`0.7.3`. → equal to
+   the release tags plus the uncut version (the format package's own metadata version).
+4. First-release values: nothing checked a `since()` *value*, so `ResolutionRow.vrs_spec`'s `0.5.0` was
+   disputable. **Measured: it is right** — `vrs_spec` is in `resolution.py` at `v0.5.0`; the "0.8" in the
+   dispute is the parquet that began carrying it (RM270). → every field's declaration must equal the
+   first tag whose model carries it (the uncut release where no tag does), parsed from each tag's own
+   sources with inherited fields resolved; the same walk refuses a published field the model lost
+   (Principle 3) on a model still present under its name. All 538 hold. It skips, saying why, where
+   git is missing or the clone is shallow (CI's default), rather than measuring a partial history.
+5. `docs/COMPILER.md` — the `ARTIFACT_PARQUETS` diagram drew 26 of 30 names (no `locus_to_gene`,
+   `colocalisations`, `consequences`, `ld_pairs`) with `expression_effects` out of order, under a pinned
+   "Thirty names" (the audit's "Twenty-nine" had already been corrected; its six missing names were
+   four — `meta`, `meta_resolved`, `model_organisms` were drawn); the bullet below half-enumerated it
+   again, and the `_INPUT_FILES` bullet lacked `meta.csv` and `model_organisms.csv`. → the diagram is
+   compared to the tuple **in order** and the input list as a set (`compiler/tests/test_counted_prose.py`);
+   the half-inventory points at the tuple instead.
+6. Every `*_FACT_FIELDS` tuple (17, in 16 modules) — each introduced as *"everything but the provenance
+   columns"*, and only `CLINICAL_ASSERTION_FACT_FIELDS` had an equality. Fifteen columns sat outside
+   their signatures with no word about them (`resolution.csv`'s `authority`, `caid`, `vrs_id`,
+   `vrs_spec`, `rsid_alternates`, `rsid_current`, `rsid_status`, `placement_witness`,
+   `placement_verdict`, `left_aligned`; `literature.csv`'s `doi_exists`, `doi_checked`, `quote_source`;
+   `consequences.csv`'s `rsid`; `VerificationRecord.producer`), and seven provenance columns were never
+   named. → `schema/tests/test_fact_fields_partition.py`: each column is in the tuple or named in a
+   sentence of the comment above it that excludes (*out*, *outside*, *except*, …), which is where each
+   module already argued its exclusions, so the exemption list is that prose rather than a second copy,
+   and a column a sentence calls *inside* cannot be dropped from its tuple unseen; the tuples walked equal those `integrity`/`verification` hash.
+   Each column now carries the reason SCHEMAS.md or its tests give; `doi_exists`/`doi_checked` say none
+   was recorded. **No tuple changed and no signature moves.**
+7. `enricher/tests/test_sidecar_resolution_is_uniform.py:35-47` — `SIDECAR_OWNERS`, the roster the
+   no-hand-joined-path AST guard checks, was hand-kept and seven derived tables behind while its comment
+   said it came from the layout module; its own guard was a `>=`. → derived from `DERIVED_PRODUCERS` and
+   `WRITTEN_BY_EVERY_PASS`, held equal to the derived tables plus the licence spellings. The widened
+   walk found no hand-joined path.
+8. `compiler/tests/test_validate_agrees_with_compile.py:252` — `registry <= covered` → `==`.
+9. `schema/tests/test_closedness_is_measured_not_declared.py:40-75` — the closedness walk read
+   `json_schema_extra` and never measured a `SHARED_VOCABULARIES` field (25 published vocabulary fields,
+   `clin_sig`/`direction`/`source_element`/… on the binning, PGx and core models); its guard was
+   `>= 10`. → it reads `field_vocabularies`, and every published vocabulary field must be among the
+   measured. All agree with their validators.
+
+**Looked at and left, with the reason.** `enricher/tests/test_release_json_through_the_model.py:94`
+(`len(_BUILDERS) >= 2`) and `test_licence_row_inside_the_commit.py:286` are vacuity guards on a glob or
+a walk, not completeness claims — the equality each file states is elsewhere in it, and no registry
+names the builder modules to derive one from. The ~90 other `<=` in the suites are *"every value is a
+member"* claims, where a subset is the entailed direction. `compiler/tests/test_artifact_parquet_bindings.py`
+compares two views derived from the same registries (the audit's point): a compile of an all-surfaces
+fixture compared against the bindings would close it, and is not built here.
+
+**Mechanism.** Equalities over walked sets, each broken once on purpose and watched going red: the
+producer equality and the diagram/input guards red on `0.8` as found; the release list (drop `0.7.1`),
+the model registry (drop `LdPairRow`), the tag measurement (`vrs_spec` → `0.8.0`), a fact-field
+exclusion (unname `answered_rsid`) and the closedness walk (restore the narrow read) each red under
+mutation.
+
+## RM366 — a column meaningless without its companion validates half-stated, and the pairs that are checked are checked by eight hand-written validators
+
+**0.8, found by the four-model audit of 0.8, round 1 (2026-11-04).**
+
+**Severity** low · **Status** SHIPPED 2026-11-04 on `0.8`, uncut — a minor (the 0.8 audit, round 1) · **Owner** format
+(`base.py` and the row models) + compiler (`validate.py`) + enricher (`opentargets.py`) · **Motivating case** the
+audit's finding 7 (GPT-5.6 Sol), each instance constructed and validated · *related* RM330, RM325, RM267, RM239,
+RM304, RM329, RM54, RM160, `@weight-has-no-unit`
+
+**The class.** A value whose meaning is another column — a statistic and the method that computed it, a witness
+and its verdict, a magnitude and its instrument or measure, a qualifier and what it qualifies. Stated without its
+companion, the row reads as an answer and is not one. Before this item the rule existed as eight hand-written
+validators on six models, each with its own wording, and was missing wherever nobody had written one.
+
+**The instances, each re-verified on `0.8` before the fix (all still held).**
+
+| Where | Before | After |
+| --- | --- | --- |
+| `gwas.py:113` `GwasEffectRow` | `posterior_probability` without `fine_mapping_method`, or the reverse, loaded | refused (both or neither); both 0.8 |
+| `locus_genes.py:211` `ColocalisationRow` | `h4` or `clpp` without `method` loaded | refused (a statistic needs its method; a method alone stays legal); 0.8 |
+| `resolution.py:73` `ResolutionRow` | `placement_witness` without `placement_verdict`, or the reverse, loaded | refused (both or neither); 0.8 |
+| `spec.py:628` / `spec.py:1209` `VariantRow`, `StudyRow` | `effect_size` without `effect_measure` loaded silently | reported as `paired_field_half_stated` in both modes, never refused: both columns are 0.3, so a published module may hold the half (P3) |
+| `spec.py` `VariantRow._require_quality_pair` | hand-written | declared (`both_or_neither`), refused since 0.5 as before |
+| `spec.py` `StudyRow._refuse_a_magnitude_with_no_instrument`, `_refuse_half_a_stratum`, the unit half of `_refuse_a_count_with_no_unit…` | hand-written | declared; the `n_cases > sample_size` half stays a validator (`_refuse_more_cases_than_analysed`), being a comparison and not a pair |
+| `concordance.py` `ClinSigAuthorityCallRow.model_post_init` (its `confidence` half) | hand-written | declared |
+| `binning.py:509` `CopyNumberRow._validate_modifier` (its gene/dosage half) | hand-written | declared, one entry naming both dosage spellings; the both-spellings refusal stays a validator |
+| `meta.py:335` `MetaRow._validate_statement` (its `trait_role` half) | hand-written | declared |
+| `base.py` `AuthoredModel._validate_pointer_companions` | hand-written loop over `VCF_POINTER_COMPANIONS` | derived by `paired_fields` from the same map, for every model carrying the element column |
+| `opentargets.py:591`, `:676` (the two writers) | would have tracebacked on a release stating a statistic with no method | withhold the statistic and keep the row; a withheld posterior is counted as its own reason, `PosteriorCounts.method_missing`, never as "not in the set" (measured: 26.09 has no such row in 1,519,507 credible sets or 79,887,470 colocalisations) |
+
+**Not pairs, and why.** Two candidates the brief named were tried and withdrawn when the full suite refused them. `ResolutionRow.vrs_spec` without `vrs_id`: both columns are 0.5, and the shape is real — an expansion's second locus and the `vrs_version_differs` remedy both clear an id beside a stated version, and `compilation.vrs_version` already reads it as nothing to pin (`test_no_id_means_no_pin`); refusing it would break P3. `StudyRow.age_of` without a band: RM329 decided `age_of` stands with or without bounds (`test_no_refusal_ties_the_band_together`), and two longevity examples state it unbounded. `MetaRow.age_of_action_confidence` without `age_of_action`: both are per-locus facts the
+meta expansion resolves column by column across every row reaching a locus, so a row stating only the confidence
+combines with another's age, and it is one of `REQUIRED_ANY_OF`'s groups alone (the walking test of that
+declaration is what refused the first draft). A unit with no magnitude (`confidence_unit`, `sample_unit`,
+`effect_unit`): it names an instrument nothing was measured on, which is harmless, as RM160 and RM325 decided.
+`n_cases` without `sample_size`: its description allows it ("never more than `sample_size` when both are
+stated"). A value-dependent rule (`LdPairRow`'s `status`↔`r2`, `rsid_current` beside `rsid_status=merged`) is a
+different shape from a companion column and stays a validator.
+
+**The mechanism.** `base.Companion(field, needs, reason, refuse)` — *`field` stated ⇒ one of `needs` stated* —
+declared per model as `_PAIRED_FIELDS`, read by `base.paired_fields(model)` (which adds the element-rule pairs
+derived from `VCF_POINTER_COMPANIONS`), and enforced by the one validator on the `PairedFields` mixin.
+`AuthoredModel` inherits the mixin, and so do the four fact rows that carry a pair. A `refuse=False` entry is
+reported by `compiler.validate._check_half_stated_pairs` as `paired_field_half_stated`, one line per table and
+column. Every refusal reads `<field>=<value> is set and <companion> is empty — <why>`, keeping each rule's own
+explanation, so the phrases tests pinned survive.
+
+**The guards** (`schema/tests/test_paired_fields.py`). A parametrized walk over every `(model, rule)` of
+`_ALL_MODELS` constructs the half and the whole; the models declaring a pair and the columns any rule names are
+asserted equal to the test's base rows and sample values, so a new pair cannot go unwalked; every model declaring
+a pair must inherit `PairedFields`, or the declaration is inert. **The P3 guard** asserts, as an equality, the set
+of refusing rules on authored models naming a column first seen before 0.8 — exactly the rules that refused before
+this item; a second equality lists the refusals on machine-written rows naming an older column (`ClinSigAuthorityCallRow.confidence`, refused since 0.7), so a new one is a stated decision; and no machine-written model may carry a `refuse=False` rule, which the pre-flight would never report. Mutated twice: turning `StudyRow`'s `effect_size` rule into a refusal fails the P3 guard, and disabling
+the validator fails 32 of the walk's cases. The writers' withholding is pinned by
+`test_a_statistic_whose_method_the_release_left_empty_is_withheld_not_a_crash`, red (a `ValidationError`
+traceback) without it; the warning by `compiler/tests/test_paired_field_warning.py`, red with the check disabled.
+
+**Residuals** won't fix — `LiteratureRow.doi_exists` without `doi_checked` is a row written before 0.6 added the second column, and the table is a pin a re-run never refetches, so refusing it would refuse true data · won't fix — the older derived tables' plausible pairs (`quotes_found` beside `quote_source`, `review_stars` beside `review_status`) were not declared because every earlier writer of those tables was not audited for the half, and a refusal there stops an enrich run on a table it merges · won't fix — `GwasEffectRow.effect_size` without `effect_measure` (both 0.6) is not declared: the `gwas` pass always writes the two together, a refusal would break a published hand-edited table, and a `refuse=False` rule on a machine-written row would be reported nowhere because the pre-flight reads the authored tables only
+
+## RM363 — one value, several normalizers: a gene, a drug, a DOI, a PMID and a contig were each compared by more than one rule
+
+**Severity** medium · **Status** SHIPPED 2026-11-04 on `0.8`, uncut — a minor (the 0.8 audit, round 1) · **Owner**
+format (`spelling.py`) + compiler + enricher · **Motivating case** the 0.8 four-model audit, class B2 · *related*
+`@one-normalizer-two-spellings`, `@registry-completeness`, RM351, RM356
+
+**The class.** A value that people and sources write more than one way, compared or keyed in more than one
+place, where a second place compares by a different rule than the first (or by none). Each site is right
+alone; the module answers two ways. RM356 made gene comparison case-insensitive in the PGx duplicate
+checks, and the meta-table's expansion two files away still compared raw.
+
+**Instances, re-verified on `0.8` at `0a5293b`** (line numbers before → the site after):
+
+- **Gene.** `compiler/.../meta.py:320` `diplotype.gene == target.gene` → `gene_key` both sides (reproduced:
+  `apoe_klvs_meta` with the ε3/ε4 diplotype's gene `Apoe` compiled green and `meta_resolved.parquet` lost
+  that row's tier A / LATE); `meta.py:171` member conditions compared `str(stored) == value`, so
+  `diplotypes[gene=apoe]` matched nothing → `comparison_key`; `table_checks.py:227` grouped the phase check
+  by the raw gene two lines after `:220` normalized it → the key, named by first spelling;
+  `manifest.py:445/507/548/579/709` published `APOE` and `Apoe` as two genes → `distinct_spellings`;
+  `fact_checks.py:587-590/705-708` (`derived_row_orphan`) → `gene_key`; `tables.py:244` `_gene_key`, a
+  compiler-private copy → `spelling.gene_key`. Enricher: `pgx.py:229/232/294/596` (authored gene against
+  PharmVar's/CPIC's), `clingen.py:238/242`, `gene_validity.py:472/480`, `gene_metrics.py:284`,
+  `identifiers.py:1424/1434`, `drug_labels.py:353/368/555`, the CPIC snapshot client's SQL (`cpic.py:635/641/659/683/732/740/756`, `gene = ?` → `lower(gene) = ?` with `gene_key`, found by the review), and four drafters' `--gene` filters
+  re-typing `.strip().upper()` (`clinpgx_draft.py:183/198/344`, `mitomap_draft.py:259/263`,
+  `strchive_draft.py:234/235`, `civic_draft.py:461/465`) → `gene_key`.
+- **Contig.** `VariantRow` folded `chr12` → `12`; `StudyRow` (`spec.py:1198`), `HaplotypeRow` (`pgx.py:159`),
+  `PharmVariantRow` (`pgx.py:558`), `HeteroplasmyRow` (`binning.py:670`) and the four derived models kept
+  `chr12` (reproduced: a `chr12` coordinate study against a `chr12` coordinate variant warned
+  `['chr12:111446804:C']` as an orphan). → every `chrom` field is `spelling.ChromCell`, an input fold to the
+  member for a primary-assembly spelling and verbatim otherwise; the canonical spelling is the one
+  `variant_key` and `resolution.csv` already used (bare, `MT`).
+- **DOI.** `spec.doi_key` (`spec.py:236`) kept trailing punctuation and `literature._doi_token`
+  (`literature.py:2521`) stripped `.,;` (measured: `10.1101/2024.01.01.123456.` keyed two ways). The DOI-only
+  path (`literature.py:567-570/1663/1668`, Crossref's request) and `duplicate_study_citation`
+  (`table_checks.py:394`) used the first; the PubMed path (`:1764/:2484/:2489`) the second; schema
+  `literature.py:282` ran `DOI_PATTERN` itself; neither stripped a bracket or quote from prose around a DOI
+  (`(10.1101/…)`), found by the review. → one body, `spelling.doi_token`/`doi_key`, which also drops a trailing
+  quote and a closing bracket the DOI does not open (`10.1016/S0140-6736(17)30058-2` keeps its own); the
+  enricher's `doi_missing` dedup compares both sides by the key.
+- **PMID.** `duplicate_study_citation` keyed the raw `pmid` cell, so `[PMID: 30642433]` and `30642433` were
+  two citations while `cited_pmids` read them as one → `spec.citation_key` (PMIDs through `extract_pmids`, or
+  `NONE` + the DOI key).
+- **Drug.** No rule anywhere: `MetaRow.drug` scopes (`meta.py:_scope`) and member conditions compared raw, so
+  `Azathioprine` and `azathioprine` were two scopes; `clinpgx.py:356/370`, `cpic.py` (seven queries),
+  `clinpgx_draft.py:182/223` and `drug_labels.py:348/364/368` each re-typed `.strip().lower()` or
+  `.casefold()` → `drug_key`; `meta_resolved.parquet` names a folded scope by its first spelling. A meta
+  row's `drug` was never compared with its member rows' → `meta_member_drug_disagrees` (new code, warning in
+  both modes, nothing withheld; an allele row is checked against the diplotypes it reaches by containment too,
+  through the one `_contained` rule the resolver reads).
+
+**Hunted and not instances.** `trait_efo_id`, haplotype and allele names, `sex` (a closed vocabulary stored
+as its member), rsIDs (`^rs\d+$`, one spelling), ancestry and population labels (`normalize_population`,
+one rule): each is compared by one rule everywhere. Six enricher sites compare one source's records among
+themselves (the ACMG SF list, STRchive's loci) and stay raw, listed with that reason in the guard.
+
+**The mechanism.** `just_dna_format.spelling` holds one comparison per kind (`gene_key`, `drug_key`,
+`doi_key`/`doi_token`, and `fold_chrom` as `ChromCell`), `COMPARISON_KEYS` maps a column name to it, and
+`comparison_key(column, value)` is what generic code (meta selectors, `same_row`'s distinct-when-stated
+columns, meta scopes, and the duplicate key of a table new in 0.8) calls. Gene and drug cells are stored as written (`@verbatim-except-order`); `chrom`
+keeps the input fold `VariantRow` already had. The guards (`schema/tests/test_one_normalizer_per_kind.py`):
+the set of string fields named `gene`/`*_gene`/`drug`/`doi`/`chrom` over `_ALL_MODELS` equals the registry;
+the set of `chrom` fields equals the set declared `ChromCell`; an AST walk over `compiler/src` and
+`enricher/src` finds no comparison, set or dict key, or `setdefault`/`add`/`get` key over a compared
+attribute outside a key function, the six one-source sites excepted by equality; no tier types
+`.lower()`/`.upper()`/`.casefold()` onto a value named as a compared kind; `DOI_PATTERN` is matched only in
+`spelling.py` and `spec.py`. Each was mutated once (a reverted `meta.py:320`, a `chrom` field un-typed, a
+`partner_gene` field added) and went red. Behaviour on the real compile path:
+`compiler/tests/test_one_normalizer_per_kind.py`, with a round trip carrying two spellings of each kind.
+
+**Residuals** won't fix — within 0.x, the duplicate-row refusal of a table older than 0.8 still keys on stored cells, because folding gene or drug case there would refuse rows a published module may hold (Principle 3); a table new in 0.8 (`meta.csv`, `model_organisms.csv`) folds, derived from its fields' `first_seen` marks in `tables._key_compared` · won't fix — `trait_efo_id` written `EFO_n` and `EFO:n` stays two values, because unifying an ontology CURIE's two legal forms is a vocabulary decision and not a second normalizer · won't fix — a live query (the CPIC REST client's `eq.{gene}` filters in `cpic.py`, PharmVar's alleles for a gene, HGNC) still sends the authored spelling, because which case each remote accepts is that service's convention and upper-casing would break symbols such as `C4orf33`; the CPIC snapshot client compares `lower(gene)` with `gene_key` in SQL, where the AST guard cannot see it, so `test_gated_snapshots` pins it · won't fix — a `pmid` cell inside a key (`model_organisms.csv`) still compares verbatim, because its normalizer `extract_pmids` lives in `spec`, which imports `spelling`, so registering it would be an import cycle; `duplicate_study_citation` goes through `spec.citation_key`
+
+## RM367 — a check runs on one path and not the other, or after the first write
+
+**0.8, filed 2026-11-04 from the 0.8 audit, round 1 (class F).**
+
+**Severity** medium · **Status** SHIPPED 2026-11-04 on `0.8`, uncut — a minor (the 0.8 audit, round 1) ·
+**Owner** compiler (`pipeline.py`, `validate.py`, `resolution_step.py`, `check_paths.py`, `manifest.py`, `cli.py`)
+· *related* `@validate-refuses-all`, `@parity-by-check`, `@off-switch-needs-a-probe`, RM141, RM207, RM359
+
+**The class.** `validate_spec` is the author's pre-flight for `compile_module`: the two owe one verdict
+and one set of findings. A check that runs on one path and not the other breaks that, in either
+direction; so does a check that runs after a side effect — a compile refusing once it has written part
+of its artifact. And a switch whose callee does not hear it is the same defect one step earlier: the
+check runs where the caller asked for it not to.
+
+**Instances, re-verified on the `0.8` tip, and every one found in the hunt** (lines are `0.8`'s):
+
+1. *A refusal after the first write* — `pipeline.py:1080-1093`: a malformed `provenance.json`, an
+   unsupported logo or readme refused after `output_dir.mkdir()` (`:689`) and the parquets; a
+   `provenance.json` that is not UTF-8 escaped as `UnicodeDecodeError` with the directory half written.
+   The hunt added the fact-table loop's four refusals (`:973` spelling, `:979` load, `:992` overlay,
+   `:1005` check), also below the `mkdir`. → All seven sit above it: the sidecars are loaded, overlaid
+   and checked before `mkdir` and written after; `manifest.ancillary_errors` judges the three files
+   read-only, with the compile's words, and `validate_spec` asks it too (it never read them).
+2. *`--no-resolve` read the table its warning says was not read* — `pipeline.py:363-405` overlaid it,
+   verified its `vrs_id`s (a tampered one refused) and counted them into `vrs_alleles_identified`
+   while `:693` wrote no id; `:446`/`:458` judged allele membership against it; `validate.py:477-497`
+   did the same. → One reader, `resolution_step.read_resolution`, whose **active view** is empty under
+   the switch; every consumer reads the view. The file is parsed only for the count the
+   `resolution_disabled` warning publishes (its text is unchanged and now true), and that warning is
+   the pre-flight's too.
+3. *Two resolution ladders pinned compile-only* — `locus_cannot_host_genotype` and
+   `rsid_coordinate_disagrees` (`test_one_channel_under_strict.py`, `preflight=False`). The exemption
+   they sat under ("they read resolved rows") does not hold for an injected table: applying it is pure
+   computation over bytes the pre-flight holds. → The pre-flight runs the compile's resolution step
+   (`resolve_variants`, `identity_after_resolution`, `ploidy_after_resolution`, `unplaced_refusal`),
+   over the rows the compile keeps; both cases now refuse on both paths, and so does a post-resolution
+   duplicate `(variant_key, genotype)`, which was compile-only too.
+4. *The strict aggregate on two predicates* (found in the hunt) — the compile refused every row still
+   unplaced after resolution; the pre-flight asked `unresolved_subjects`, which is empty for a
+   non-GRCh38 module and was skipped under `--no-resolve`. So `validate --strict` passed a GRCh37
+   rsID-only module, and every reference example under `--no-resolve`, that `compile --strict`
+   refused, and `test_resolution_coverage_parity.py` pinned the second as valid. → One function,
+   `unplaced_refusal`, over the resolved rows, on both paths. RM359's decision that this aggregate is a
+   different finding from the per-subject `rsid_unresolved` warnings stands; it is not reopened here.
+5. *Warning-only checks the compile asked over resolved rows and the pre-flight never did* (found in
+   the hunt): `rsid_expanded_to_multiple_loci`, `rsid_without_resolution_label`,
+   `resolution_skipped_cross_build`, `resolution_not_injected` on a non-GRCh38 module, `contig_ploidy_*`
+   on an rsID-authored MT/Y row, `derived_row_orphan` from the frequency, clinical-assertion and
+   GWAS-effect orphan checks, `clin_sig_contradicts_frequency` (BA1), `source_row_unused`, and
+   `log_file_not_shipped`. Measured on the reference examples: `hboc_palb2`, `mt_common_deletion`,
+   `pathogenic_clinvar` and `shox_par1` compiled with a code their pre-flight never emitted, and every
+   example carrying a `resolution.csv` did under `--no-resolve`. → Each is asked by both commands, from
+   the shared step or from one shared helper (`sources_in_use`, `discover_logs`); `validate_spec` takes
+   `ba1_threshold`, and the compile forwards it with its explicit ancillary files.
+6. *A flag one entry point never forwarded* (found in the hunt) — the `validate` command had no
+   `--no-resolve` and no `--ba1-threshold`, so it could not pre-flight a compile that takes them; and
+   `test_validate_agrees_with_compile.py` compared a resolving `validate` with `compile --no-resolve`,
+   which is how instance 2 stayed green. → Both options on the command; the tests compare one mode.
+
+**The mechanism.** One resolution step both commands call (`compiler/resolution_step.py`); one roster of
+the checks only one path asks, with each one's reason (`compiler/check_paths.py`: `COMPILE_ONLY` holds
+`meta_scale_errors`, which the pre-flight asks inside `build_meta`; `PREFLIGHT_ONLY` holds the checks the
+compile inherits through the pre-flight); and these guards, each an equality:
+
+- `test_check_paths.py` walks `compile_module` and `_validate_spec` and asserts the checks each calls
+  minus the other's **equal** the roster; asserts every `CompilationResult(success=False, …)` lies above
+  `output_dir.mkdir()` and nothing is written before it; asserts the compile forwards exactly the
+  pre-flight options it takes, and the `validate` command exactly `validate_spec`'s parameters.
+- `test_one_verdict.py` runs both commands over every reference example and a bad fixture per instance, in
+  both modes and with the resolution switch both ways, and asserts equal verdicts, equal
+  `warnings_summary` code sets, and no output directory after a refusal; and, over every example
+  carrying a `resolution.csv` plus a tampered-id fixture, that `--no-resolve` compiles the parquets and
+  resolution facts the same spec compiles with the table deleted.
+
+Red on `0.8`: 110 of the 166 `test_one_verdict.py` cases and four of the five `test_check_paths.py`
+walks (the refusal walk named lines 973, 979, 992, 1005, 1083, 1089, 1093). Mutating the compile's reader
+to ignore the switch turns 43 cases red; dropping one moved check from the pre-flight turns the roster
+walk red.
+
+**What is withheld rather than changed.** A malformed `resolution.csv` still refuses under
+`--no-resolve` (its rows are parsed for the count), on both paths; a coordinate impossible in its build
+or a duplicate key in it no longer does, since those judge a table the switch does not read. On the
+deprecated `ensembl_cache` path the pre-flight skips every judgement over resolved rows (coverage, the
+strict aggregate, the four resolved-row cross-checks) rather than ask it over unresolved rows and publish
+a second, differently counted sentence (`@no-rerun-with-counts`). `close_module` runs the same pre-flight,
+so it now refuses a malformed `provenance.json`. Two review findings were declined: that
+`--no-resolve` should go on refusing a tampered `vrs_id` (it judges a table the switch does not read,
+which is the instance being fixed; the refusal returns with the switch off), and that the compile should
+take the pre-flight's resolution result instead of running the step again (a cost, not a defect; the
+compile's own returns stay defensive, and the `ensembl_cache` path needs them). A `sources.csv` row naming the
+resolution layer's authority is not reported unused under `--no-resolve`: a source row is about the
+module's files, so `sources_in_use` reads every row the file holds. The positional joinability
+report still names how many rows the unconsulted table would have placed (`InjectedResolution.named_table`).
+`resolution.unresolved_subjects` stays importable (the `compiler` re-export shell names it) and no
+caller in the repository uses it now.
+
+**Residuals** won't fix — the deprecated `ensembl_cache` path stays the compile's alone, because the pre-flight is not handed that reference; it is removed at 1.0 (Principle 3's two-step retirement), and `_validate_spec(legacy_reference=True)` leaves its coverage judgement to the compile
+
+## RM369 — a snapshot's description is written around its bytes by hand: every builder describes a payload it has already swapped in, and readers act on keys the model does not type
+
+**SHIPPED 2026-11-04 on `0.8`, uncut — a minor (the 0.8 audit, round 1).** Owner format + enricher,
+severity low. Found by the four-model audit of 0.8 (GPT-5.6 Sol's findings 5 and 8).
+
+**The class.** RM303 made `release.json` a model with one writer and one reader, and stopped there: the
+model fixed the record's spellings but neither the order a builder writes it in nor the type of the
+keys a reader acts on. Two shapes of one gap, a contract a party can bypass while the walk stays green:
+
+- **Write order.** Every builder moved its payload first and wrote `release.json` after. A build that
+  died between the two (a full disk, a killed process) left new bytes under the previous build's
+  record, and every reader believes the record: the label `cache status` prints, the `dataset` a pass
+  stamps onto `SourceRow`, a child's parent pin. The house `cache rebuild` builds into a fresh
+  `<base>/<lane>/`, so only a direct build onto an existing snapshot was exposed.
+- **Untyped reads.** `SnapshotRelease` is `extra="allow"`, so a key read out of `extra` (`getattr`, a
+  `model_dump()` and `.get`) is unchecked: a misspelt key reads as absent, and a value of the wrong kind
+  reaches logic. A `parts_total` of `"seven"` raised a `TypeError` in the Open Targets pass.
+
+**Instances (re-verified on `0.8` at `0a5293b`; file:line before → after).** Write order, one per
+builder, 16 modules, 18 write sites:
+
+| Builder | Before: payload, then `write_release` | After: `begin_snapshot_write` → payload → `commit` |
+|---|---|---|
+| `acmg_build.py` | `:292` after the CSV | `:268` → `:292` |
+| `alphagenome_avi_build.py` | `:775`, and **before** `LICENSE.txt` (`:779`), against `SNAPSHOT_ROOT_FILENAMES`' order | `:727` → `:791`, after the licence |
+| `civic_build.py` | `:746`, and **before** `LICENSE.txt` (`:747`) | `:709` → `:749`, after the licence |
+| `clinpgx_build.py` | `:422` | `:395` → `:423` |
+| `clinvar_build.py` (records) | `:546` | `:513` → `:578` |
+| `clinvar_build.py` (citations) | `_merge_release_block` `:396`, the old `citations` block standing over a new table | `begin_block_write` `:391` → `:400`: the block only is withdrawn, the records' provenance kept |
+| `clinvar_gkm_build.py` | `:361`, after parquet and licence (the listed instance) | `:339` → `:362` |
+| `constraint_build.py` | `:295` | `:291` → `:343` |
+| `cpic_build.py` | `:318` | `:299` → `:319`, after the network fetch, never before it |
+| `drug_labels_build.py` | `:229` | `:213` → `:296` |
+| `mane_build.py` | `:690` | `:669` → `:801` |
+| `mitomap_build.py` | `:370` | `:275` → `:426` |
+| `mitomap_miss_build.py` | `:391` | `:387` → `:477` |
+| `opentargets_build.py` (build) | `:460`, after `rmtree(live)` and the rename (the listed instance) | `:459`, immediately before `rmtree(live)` → `:463` |
+| `opentargets_build.py` (`subset_snapshot`) | `:557` | `:547` → `:560` |
+| `pharmvar_build.py` | `:192` | `:166` → `:193` |
+| `pubmind_build.py` | `:447` | `:419` → `:529` |
+| `strchive_build.py` | **not an instance**: it unlinked the record before the rename (`:143`), the one builder already right | the same order through `begin_snapshot_write` `:144` |
+
+Untyped reads, 3 modules, 6 sites: `opentargets.py:199-205` (`parts_read`/`parts_total` via
+`model_dump().get` and `int()`) and `:377` → typed attributes at `:198-210` and `:382`;
+`clinvar_gkm.py:438` (`getattr(release, "source_release", None)`) → `release.source_release`;
+`clinvar_gkm.py:520` (`getattr(self.release, "vrs_version", None)`, then `str()`) →
+`self.release.vrs_version`; `mitomap_miss_build.py:149` (`stated[key]`, a computed key into a dump) →
+`model_dump(include=set(PIN_KEYS))` at `:148`, with `PIN_KEYS ⊆` the typed fields asserted. The hunt
+found no reader in `schema/` or `compiler/`, and every other enricher reader already read typed fields.
+
+**The mechanism.** In `just_dna_format.snapshot`: `begin_snapshot_write(dir)` withdraws `release.json`
+and returns a `SnapshotWrite` whose `commit(release)` is a builder's only route to `write_release`, so
+describing a snapshot without having withdrawn the old description is not expressible. It is opened
+immediately before the first byte of the live payload moves, so a download, fetch or parse that fails
+earlier leaves the old snapshot whole and described; a build that fails after it is not given its old
+record back. `begin_block_write(dir, name)` is the same for a half that owns one block of another
+build's record. And four keys readers act on are typed optional fields on `SnapshotRelease`:
+`parts_read`, `parts_total` (`dict[str, int]`), `source_release`, `vrs_version` (`str`). An old value
+reads through the field's validator; one of the wrong kind costs that key and never the record.
+
+**The guards.** `enricher/tests/test_release_json_through_the_model.py`: the builders opening a write
+**equal** the `*_build.py` modules, no builder names `write_release` (planted shapes shown refused), and
+an AST walk over every source module of all three tiers refuses `getattr`/`hasattr`, `.get`,
+subscripts and `model_extra` on a release, any attribute that is not a typed field, and a non-field or
+computed key into its dump (six planted shapes refused, including the two 0.8 shipped).
+`enricher/tests/test_a_build_withdraws_its_description_first.py` runs **every** builder offline (the
+run table's keys equal the `*_build.py` modules, nothing exempted) against a directory already holding
+a described snapshot, with the describe step failing: nothing a reader globs may have moved when the
+record is withdrawn, and no `release.json` may be left. Red on `0.8` for all sixteen builders and
+`subset_snapshot` (STRchive red on the withdrawal check only); mutating `begin_snapshot_write` to skip
+the withdrawal turns 18 tests red, and moving CPIC's `begin_snapshot_write` after its payload write turns
+its run red on the withdrawal check.
+
+**Refused.** Staging the whole snapshot and swapping it once: a directory cannot be renamed over a
+non-empty one, so the swap is two renames with an absent snapshot between them, the same "no
+description" state the withdrawal reaches, for a rewrite of sixteen builders' path plumbing
+(AlphaGenome's `.knots` beside `data/`, ClinVar-GKM's `_downloads`). And restoring the old record when a
+build fails: it would describe bytes the failed build may have changed.
+
+**Residuals** won't fix — an in-place builder that dies mid-payload still leaves mixed old and new
+bytes, now under no record rather than a confident wrong one; the in-place write predates this item and
+`cache rebuild` builds into a fresh directory · won't fix — `write_release` stays public, so a builder
+outside this repository can still write without withdrawing; the guard walks this tree only, and
+INTEGRATION_0_8 tells such a builder what to call · won't fix — the provisioner's root-file path
+(`download.py` `_provision_root_file_snapshot`) fetches the payload, then `release.json`, and keeps a
+previous `release.json` when the second fetch fails; it is a different party from the builders this
+class covers, and it only runs when the payload is absent or unreadable.
+
+## RM370 — a pass that answered nothing still writes its table: a bare header is the claim *this module carries these facts* made about nothing
+
+**0.8, the 0.8 audit, round 1.** **Severity** low · **Status** SHIPPED 2026-11-04 on `0.8`, uncut — a minor (the
+0.8 audit, round 1) · **Owner** enricher · *related* `@write-the-sourcerow`, `@rederive-never-shortens`, RM142
+
+**The class.** `@write-the-sourcerow` says a pass that contributes nothing writes no licence row, because a row in
+`sources.csv` is the claim *this module uses this source*. A data table beside the spec makes the same claim one
+file over, and seven sidecar writers made it about nothing: whenever a run had no subject to ask about (no clin_sig
+cell, no gene, no on-build allele, no PMID), the writer still renamed a header-only table into the module. The 0.8 reference examples carried the most visible pair.
+
+**Instances, re-verified on the `0.8` tip** (each a parametrized case in the new test, red on `0.8`):
+
+| Table | Pass, and the run that answered nothing | Before → after |
+| --- | --- | --- |
+| `clin_sig_concordance.csv`, `clin_sig_authority_calls.csv` | `enrich` (`concordance.py` `_write_table`), a ClinVar snapshot to consult and no `clin_sig` cell | header-only pair → no file |
+| `frequencies.csv` | `frequencies` (`frequencies.py` `_write_frequencies_csv`), every resolved row off-build | header-only → no file |
+| `gene_metrics.csv` | `gene-metrics` and `dosage` (`gene_metrics.py` `_write_gene_metrics_csv`, which `clingen.py` shares), a module with no gene | header-only → no file |
+| `gene_validity.csv` | `gene-validity` (`gene_validity.py` `_write_gene_validity_csv`), no gene | header-only → no file |
+| `clinical_assertions.csv` | `assertions` (`assertions.py` `_write_assertions_csv`), every resolved row off-build | header-only → no file |
+| `literature.csv` | `literature` online (`literature.py` `_write_literature_csv`), every citation DOI-only (`pmid=NONE`) | header-only → no file |
+| `licensing.csv` | `licensing.write_sources_csv`, a merge adding no row to a module with none | header-only → no file (no caller reaches it today; the predicate covers it anyway) |
+
+Already clean, by an early return or a local guard, and now under the same predicate: `gwas` (no rsID),
+`opentargets enrich` and its four tables (`if not rows and not existing`), `alphagenome expression`
+(`result.written`), `ld-pairs` (no proxy pair), the drafting surface (`draft.append_rows` returns on
+`not to_write`). The listed `hla_alleles` instance does not hold on the `0.8` tip: that example carries
+neither file. The six files in `cpic_gene_pairs`, `longevity_studies` and `model_organisms` are removed
+(`git rm`); no closure binds a derived file, each still validates `--strict`, and compile → reverse →
+compile reproduces `artifact.digest` and `content_signature` with no `clin_sig_*` parquet in the artifact.
+
+**The mechanism: one predicate, `layout.nothing_to_write(path, rows)`**, called first by every enricher
+sidecar writer: zero rows and no file there already writes nothing, and since the licence row lands only
+inside the table's commit (`before_commit`, RM231) it is skipped with the table. It never suppresses a write
+over a file already there, and that is the smaller of the two readings the item named: zero rows over an
+existing table is a pass's answer, not a run that covered nothing. The concordance record clears a subject
+the authorities stopped contesting (a test pins it), and a merge pass prunes rows whose variant the author
+deleted; keeping those rows would publish a disagreement nobody has. A run that could not ask already keeps
+its file by never reaching the writer (`@rederive-never-shortens`). What the empty concordance pair used to
+say, *asked and found nothing contested*, is the `clinical_significance` record's denominator in
+`verification.json`; the compiler already read an empty record and an absent one alike (no manifest block),
+and `answered_call_shift` withholds an answered call as `no_prior_record` for both.
+
+**Two empty tables are still written, each for a stated reason.** `resolution.csv` is written header-only
+when `enrich` placed nothing (an rsID-only module `--offline` with no cache): every pass after it
+(`frequencies`, `assertions`, `opentargets enrich`, `vrs`) refuses without the file and tells the author to run
+`enrich` first, so its presence is the record that `enrich` ran. It names no source and lands no licence row,
+and the test asserts it *is* written. And an empty concordance record is written where the module's
+`overrides.csv` answers it: that is RM117's vindication signal, `overlay_answer_vindicated`, which a missing
+table would turn into `overlay_targets_missing_table` advising the author to run the pass that just ran (reached
+when an author deleted the sidecar to regenerate it).
+
+**Guards.** `enricher/tests/test_a_pass_that_answered_nothing_writes_nothing.py`: (1) one nothing-to-answer
+runner per `(table, command)` in `producers.DERIVED_PRODUCERS`, the runner set asserted **equal** to the
+registry, each asserting the table is absent and, where no other table answered, no licence row; (2) an AST
+walk asserting every enricher function that writes a CSV through `atomic_writer` returns on the predicate
+before it opens the writer (an `if …nothing_to_write(…): return`, not merely a call), with the exempt
+writers (`transaction._flush`'s journal, `acmg_build`'s lane, `_write_resolution_csv`) named with reasons and
+asserted equal. Mutating the predicate to `False` turned eleven cases red; deleting the call from
+`ld_pairs._write` turned the AST walk red. One existing test pinned the old behaviour and now pins the
+new one: `test_clingen.py`'s S77 test asserted *"the empty table is still written: an author must be
+able to see the pass ran"* (the author sees it in `ClinGenResult.missing`, which the same test already
+asserts).
+
+**Residuals** none
+
+## RM362 — one question, several answerers: the orphan checks read variants.csv alone while stats.genes and the enricher read every table
+
+**0.8, filed 2026-11-04 by the lead** from the 0.8 four-model audit, round 1.
+
+**Severity** medium · **Status** SHIPPED 2026-11-04 on `0.8`, uncut — a minor (the 0.8 audit, round 1) · **Owner**
+compiler (`subjects.py`, `fact_checks.py`, `table_checks.py`, `validate.py`, `pipeline.py`, `manifest.py`) + enricher
+(`gene_metrics.py`) · **Motivating case** the audit probe `apoe_klvs_meta` plus a `gene_metrics.csv` row for APOE ·
+*related* RM28, RM157, S57, `@roster-is-as-wide-as-the-tables-it-reads`, `@registry-completeness`
+
+**The class.** "Which genes, loci and variants is this module about" is one question, and each place that asked it
+read its own list of tables. `manifest.stats.genes` and the enricher's `module_genes` read `variants.csv` plus every
+gene-bearing table kind; the enricher's frequency, clinical-assertion and GWAS passes ask about every locus table; the
+study-orphan check read three tables and the rows a meta member reached; and the derived-row orphan checks read
+`variants.csv` alone and returned nothing without one. So `apoe_klvs_meta` warned "gene_metrics.csv names 1 gene(s)
+this module never mentions: ['APOE']" while its own manifest listed APOE in `stats.genes`, and a PGx-only module's
+fact tables were never checked at all.
+
+**Instances (re-verified on `0.8` at `0a5293b`; all held), before → after:**
+
+1. `fact_checks._cross_check_gene_metrics` — `{v.gene for v in variants}`, `[]` without `variants.csv` → `subjects.names_gene`.
+2. `fact_checks._cross_check_gene_validity` — the same line → the same predicate.
+3. `fact_checks._cross_check_frequencies` — positions of `variants` only → `subjects.sits_at`.
+4. `fact_checks._cross_check_clinical_assertions` — the same → `subjects.sits_at`.
+5. `fact_checks._cross_check_gwas_effects` — `variant_key`/`rsid` of `variants` only → `subjects.carries`.
+6. `table_checks._cross_validate_studies` — `variants` + `haplotypes.csv` + `pharm_variants.csv` + meta-reached rows,
+   with `heteroplasmy.csv` missing → the locus roster; the meta arm is gone because a member reaches rows of
+   `meta.LOCUS_TABLES` only, each already on the roster (a test asserts the inclusion).
+7. `fact_checks.resolution_target_survives` — the authored half placed `variants.csv` rows only, while `reverse` writes a
+   `resolution.csv` row for every placed positional row (RM43): an `overrides.csv` correction aimed at a positioned
+   `heteroplasmy.csv` row was "no artifact of this module can carry" on lap 1 and matched on lap 2 (reproduced on
+   `mt_heteroplasmy`) → `subjects.placed`.
+8. `manifest.module_stats` — its own loop over `_GENE_BEARING_TABLE_KINDS` → `module_subjects(...).genes` (no answer moves).
+9. `enricher.gene_metrics.module_genes` — its scope was every gene table minus the non-kind registry, stated beside the
+   compiler's → the difference from `MODULE_GENE_TABLES`, and the answer is `module_subjects(...).gene_symbols`.
+10. `enricher.enrich.subjects.SUBJECT_TABLES` — a hand list; left as it is (its order is precedence and each table has
+    its own subject shape) and pinned equal to `MODULE_LOCUS_TABLES` plus `studies.csv`.
+
+11. `positional._GENE_BEARING_TABLE_KINDS` / `_POSITIONAL_TABLE_KINDS` — the same predicates stated a second time →
+    read off the two rosters, so the predicate is written once.
+12. `meta.member_variant_rows` — the study check's meta arm, now unreachable → removed, with the test pinning its reach.
+
+**Checked and held:** `_cross_check_clin_sig_concordance` reads `variants.csv` because its pass
+(`clinical.compare_clin_sig`) compares only `variants.csv`'s `clin_sig`; `_check_ba1_lint` (a `variants.csv` claim);
+`pgx._module_genes` (whether the star-allele tables are present, not the module's genes); `litvar.module_loci` and
+`check_identifiers` (every id any authored table writes, `studies.csv` and `model_organisms.csv` included, on purpose).
+
+**The mechanism.** `just_dna_compiler.compiler.subjects`: `MODULE_GENE_TABLES` and `MODULE_LOCUS_TABLES`, derived from
+`_TABLE_KINDS`, and `module_subjects(rows_by_table)` returning `ModuleSubjects` (genes as written, `gene_symbols` split on
+`MULTI_SEP`, positions, identities, placed keys, and `genes_unknown`/`loci_unknown`, which withhold when a roster table is
+present and loaded no row). A table off the rosters is ignored, so `model_organisms.csv`'s gene stays out by
+construction. Each check keeps its join (gene, `chrom:start:ref`, `variant_key`/`rsid`) and every pinned sentence;
+the study warning's tail is now read off the roster. A row with no `start` contributes no position (a
+`19:None:None` key would have matched every unplaced row on 19). `validate_spec` asks with two views of the one function:
+the rows a compile keeps (symbolic drops applied) for the gene orphans and the overlay's reachability, so each sentence
+is the compile's, and every authored row for the study check, which counts a dropped row as carried (the lead,
+2026-11-04) and runs in that pass only.
+
+**The guard.** Equalities: the rosters against the registry walk; the enricher's gene tables against
+`MODULE_GENE_TABLES`; `SUBJECT_TABLES` less `studies.csv` against `MODULE_LOCUS_TABLES`; meta's `LOCUS_TABLES` within the
+locus roster. And per reference example (all 22): the gene rows `module_genes` asks about, the loci the frequency pass
+asks about and the rsIDs the GWAS pass asks about, plus one decoy each, are compiled, and the orphan findings name the
+decoy and nothing else; `stats.genes` split equals `module_genes`. Mutating the compile's subjects back to `variants.csv`
+turns 10 of these red; narrowing the enricher's gene scope turns the roster equality red.
+
+**Measured** (validate and compile over every reference example, before and after): no warning gained or lost, and
+`stats.genes` unchanged on all 22 — no shipped module carries a fact table about a gene or locus outside `variants.csv`.
+
+**2026-11-04, found merging RM364: a position is every spelling the module's own resolution gives a carried
+identity.** The class: *a "does the module sit at this locus" question answered from one spelling of a position, when
+the module's own `resolution.csv` says the identity sits at another.* An indel has several valid spellings. RM364
+restores NUDT15 `*1` `rs1457579126` in `cpic_gene_pairs`: `haplotypes.csv` spells it 13:48040982 `A` (CPIC,
+right-shifted), the re-enriched `resolution.csv` places the rsID at 13:48040978 `AA` (left-aligned), and the
+frequency pass, which asks gnomAD about the resolution row, wrote `frequencies.csv` at 13:48040978. `module_subjects`
+took a row's position from its own cells only, so the frequency orphan check named the pass's own row "a coordinate
+no variant in this module sits at", and `test_module_subjects_one_answer[cpic_gene_pairs]` went red. RM270 never
+rewrites an authored coordinate, so the row cannot be respelled. The lead's option (a), the `@membership-union` rule:
+every locus the injected table places a carried identity at, on the module's build, joins the row's own position.
+
+Instances (hunted across all three packages, at `84dbb2a`):
+
+1. `subjects.module_subjects` (`positions`), asked by `fact_checks._cross_check_frequencies`,
+   `fact_checks._cross_check_clinical_assertions` and `table_checks._cross_validate_studies` (`sits_at`), in both
+   `compile_module` and `validate_spec` (three views there: `subjects`, `kept`, `resolved_subjects`).
+2. `fact_checks._check_ba1_lint` — the pathogenic map was keyed by the variant's own `chrom:start:ref`, so a common
+   frequency at the table's spelling never met the variant and BA1 stayed silent. The entry above listed it as
+   "checked and held", which was right about the table it reads and wrong about the spelling.
+3. `parquets._StudyIndex.supporting` — the study join behind `weights.parquet`'s study facts (`effect_unit`,
+   `eur_only_evidence`, the outcome strip) matched a coordinate-only study by the variant's own spelling: a study at
+   the table's spelling fed nothing, while the orphan check (instance 1) now says it is about the module.
+4. A locus a 1:N rsID resolves to that cannot host the authored genotype: the compile expands onto the others and
+   re-keys them by coordinate, so the table's third row was reachable through no row's position and no row's key. The
+   frequency pass asks about it, and its row was an orphan. Reached now through the rows' `rsid`.
+
+**Checked and held.** `resolve_from_table._verify` and `resolve_positional_rows` compare an authored position with the
+table on purpose (that comparison is the contradiction report). `unresolved_subjects` already reads the table.
+`allele_checks._check_study_effect_alleles` keys rsID first and withholds on a missing key; `table_checks` haplotype
+signatures key rsID first, so two spellings of one rsID collapse. `fact_checks.resolution_target_survives` is keyed by
+identity and already unions the table. The enricher's `collect_subjects`, `gwas._module_subjects` and the frequency,
+assertion, clinical and Open Targets passes are the askers that read resolution rows, never an authored spelling. The
+RM364 `resolution_loci` path is not on `0.8`.
+
+**The mechanism.** `subjects.identity_placements(row, resolution, genome_build)`: every usable locus
+(`resolution.usable_loci`, the fill's predicate, public now) the injected table files under the row's `variant_key`
+**or** `rsid`, empty without a table, under `--no-resolve` (the callers pass `None`) and off GRCh38 (where the fills
+decline to join, RM15). Three-valued by that predicate: a `not_found` row, a row with no `chrom` and a row on another
+build place nothing. `module_subjects(..., resolution=, genome_build=)` unions it into `positions` and records it apart
+as `resolved_positions`. `subjects.row_positions` is the per-row answer for a check that attributes a finding to a row
+(BA1, the study join): a row the table places where it stands (same `chrom:start`, and `ref` where the row states one)
+sits at its own locus only, so one expansion copy is never handed a sibling's evidence; a row the table places at
+exactly one other position sits there too; with several other positions it keeps its own only, because which one it
+means is unknown and the house algebra withholds. BA1 reports a variant once per ALT, at its strongest evidence, when
+both spellings carry a frequency. `position_key` is the one `chrom:start:ref` key both sides of a position join use
+(`sits_at` and the module's rows). A PAR locus
+needs no branch: the table holds whichever contig the enricher kept (`@par-one-place`), and that is the placement.
+
+**The guard.** `compiler/tests/test_module_subjects_placement.py`: over all 22 reference examples, the GRCh38
+placements `resolution.csv` files under a carried identity, computed off the raw table, equal `resolved_positions`
+(dropping the union turns 16 of them red); a NUDT15-shape fixture (red on `84dbb2a`: the orphan fired, BA1 was silent,
+`effect_unit` was null); the `not_found`, other-build and `--no-resolve` arms, each still an orphan (mutating the
+predicate turns two red); `--no-resolve` keeping BA1 and the study join on the authored spelling; `strict` refusing the
+fixture (`rsid_coordinate_disagrees`), so no strict artifact's `weights.parquet` moves; BA1 once across two spellings;
+`row_positions`' four arms; `validate`/`compile` parity; and the expanded-rsID fixture, which alone goes red when the
+`rsid` lookup is dropped. Measured on all 22 reference examples, `84dbb2a` against this change: `artifact.digest`,
+`content_signature` and every compile and validate warning identical.
+
+**Lap 2.** On bare `0.8`, `reverse` writes the authored spelling back as the resolution fact (RM364's finding), so a
+module in this state is not a fixed point before or after this change: the second lap's orphan returns and a study
+fact joined through the table's spelling is lost. RM364's `resolution_loci` makes it one; nothing here depends on it.
+
+**Residuals** [RM388](ROADMAP.md#rm388--placement-readers-bypass-usable_loci) (the placement readers that bypass `usable_loci`; parked) · won't fix — gene symbols compare as written here; folding case and space is the gene-key class (the
+audit's class 3), not this one.
+
+## RM361 — an unknown or failed answer is recorded as a definite one: a retired endpoint as an outage, a throttle as "no copy", an unread part as "not in the release", a timed-out regex as a missed quote, an absent cell as the word `None`
+
+**SHIPPED 2026-11-04 on `0.8`, uncut — a minor (the 0.8 audit, round 1).** Owner enricher + format + compiler, severity high.
+
+**Residuals** none
+
+**The class.** The house algebra is three-valued, and a question that was not answered is the third value:
+withheld, never a negative. The audit found a request that failed, a part that was never read, a regex
+that timed out, a body that would not parse and a cell that was absent each written down as a definite
+answer: a 410 recorded as `unreachable` (an outage), a 429 or a maintenance page recorded as `absent`
+(permanent, never asked again), an unread snapshot part as `not_in_release`, an undecided regex as a quote
+missing from the paper, an absent `ref` formatted into a key as `None`. The hunt across all three packages
+found the same shape in the places listed below. It is fixed as a class, by one mechanism per kind of
+boundary, each with a guard that walks the members rather than pinning a site.
+
+**The mechanism.**
+
+- **Could-not-ask carries its reason** (`enricher/net.py`). Every client's `*Retired` error mixes in
+  `EndpointRetired`, and a handler records `could_not_ask_reason(exc)`: `retired` for a 410 (read through
+  `__cause__` too), `unreachable` otherwise; `aggregate_reason` leads with `retired` for a group. A
+  client whose contract is a withheld value rather than an exception mixes in `Withholding` and says
+  `retired` through a sticky `retired` message, read with `withheld_reason`, without raising. `retired`
+  joins `VALID_VERIFICATION_SKIPS` and `VALID_FULLTEXT_STATUS`.
+- **"No such thing" is one named status per client**, never "every 4xx": a fulltext route's 404 and
+  BioC's recorded `[Error] : No result can be found.` body (`_fulltext_absent_or_raise`), Ensembl REST's
+  400 (`_REST_NO_RECORD_STATUS`), GRCh37 REST's 400 (`GRCH37_NOTHING_THERE_STATUS`), the Hub's own
+  not-found errors (`_hub_says_absent`). The fulltext and Ensembl REST routes retry a 5xx and a 429.
+- **A body that is not the answer's shape is could-not-ask**: an esummary with no summary block, an OLS4
+  body with neither a terms block nor an empty page, an HGNC body with no `response.docs`, a ClinGen
+  Allele Registry body that is not an allele record, a 200 fulltext that is not JATS.
+- **A read is only as complete as its record says** (`opentargets.read_is_complete`, Kleene over the
+  datasets `READS` names per table): anything but `True` answers no key, so nothing is replaced and
+  nothing is `not_in_release`.
+- **An undecided member withholds the count**: `literature._quotes_found` is the one quote tally, and an
+  undecided regex withholds `quotes_found`, which `settled_quotes` then counts as nothing settled.
+- **An absent cell is an empty segment**: `base.coordinate_key` is the one place a coordinate becomes a
+  key; `net.release_dataset` the one place a release becomes a `dataset` label.
+
+**Every instance, before → after** (as of `0.8` at `0a5293b`):
+
+1. `opentargets.py` `enrich_opentargets`: a snapshot with no `parts_total` or a partial part answered
+   its unread keys as `not_in_release`, `_replace_answered` dropped their L2G, coloc and consequence rows,
+   and the posterior update nulled a filled value → no key is answered for a table whose datasets were
+   not read whole; unmatched keys are `not_read`; the posterior is left as it was (`posterior.not_read`);
+   `strict` refuses a record silent about any dataset; a malformed count no longer raises `TypeError`.
+2. `literature.py` `PmcBiocClient.fetch_fulltext`: any non-JSON 200 → `absent` → only the recorded "no
+   result" body; anything else `FulltextUnavailable`.
+3. `literature.py` `EuropePmcClient.fetch_fulltext`, `PmcBiocClient.fetch_fulltext`,
+   `fetch_preprint_fulltext`: every status below 500 → `absent` → only a 404; a 410 is `FulltextRetired`
+   (`fulltext_status="retired"`, asked again); a 429 is retried, then `unreachable`.
+4. `literature.py` `extract_text` / `fetch_fulltext`: XML that does not parse, or parses as a page that is
+   not a JATS `<article>`, returned `None` (absent) or was searched as the article → `FulltextUnavailable`.
+5. `literature.py` `_study_quote_found`: `regex_matches`' `None` → `False` at three tallies, and
+   `settled_quotes` counted it checked → `bool | None`, one count `_quotes_found`, `quotes_found=None`.
+6. `literature.py` `lookup`/`record_for_doi`: a missing `isOpenAccess`/`inEPMC` flag → `False` → `None`.
+7. `base.py` `derive_variant_key`: an absent `ref` → `13:48037749:None` (nine keys in
+   `reference_examples/cpic_gene_pairs/resolution.csv`, corrected) → `13:48037749`; the same f-string
+   in `fact_checks.py` (twice), `pharmvar.py`, `cli/civic_commands.py`, `clinvar_gkm.py` → `coordinate_key`.
+   `positional._table_row_key` keyed a gene-only row as `None:None:None` → `None`.
+8. RM354's `*Retired` handlers wrote `unreachable`: `identifiers.py` (PGS leg, `unreachable_records`),
+   `currency._ask`, `acmg.fetch_acmg_page`, `civic_citations` (twice, and the aggregate skip),
+   `pgx` (a leg), `alphagenome_check` (twice), `litvar` (`index_retired`, and the record),
+   `literature` (`fulltext_status`, the DOI route, Crossref's skip) → `could_not_ask_reason`.
+9. `enrich/orchestration.py` + `verification_records.py`: a dbSNP outage published
+   `rsid_currency: ran(subjects=N, findings=0)` → a skip with the reason.
+10. `eutils.esummary`: a 200 with no summary block made every uid "no such document" (`absent` rsIDs,
+    `not_found` PMIDs) → `EutilsError`.
+11. `ensembl.resolve_rsid`: every REST 4xx → `[]`, written `not_found` → only the 400; else `(None, None)`.
+12. `download.py` `_provision_snapshot` / `_provision_root_file_snapshot`: any Hub failure →
+    `SnapshotNotPublished`, so `cache pull` printed "not published yet" and exited 0 → only the Hub's
+    not-found errors; anything else the lane's error.
+13. `gnomad.py` per-alias errors (a timeout, an internal error) left a null node, written `not_found` by
+    `frequencies`, `gene_metrics` and the resolver chain → `GnomadClient.unanswered`; no row, named
+    (`FrequencyResult.unanswered`, `GeneMetricsResult.unconsulted`; in the resolver chain a warning,
+    because gnomAD is the last-resort link and its error may not overwrite another link's answer), and
+    `strict` refuses. An alias error saying "not found" stays gnomAD's absence.
+14. `grch37.py` `variants_at` / `reference_bases`: every 4xx → "nothing there" → only the 400; retries a
+    5xx and a 429.
+15. `civic_api` + `civic_citations`: a read short of CIViC's stated total made each recorded paper
+    missing from it "rejected or withdrawn" → `short_reads`, the absence arm withheld.
+16. `civic_citations.read_studies`: an unparsable `studies.csv` → `[]` → `nothing_to_check` → `None` →
+    `no_reference`, the detail naming the table.
+17. `clingen.parse_curation_list`, `gene_validity.parse_clingen_validity`, `parse_gencc`: no release line
+    → the literal `unknown` in the `dataset` merge key → `None`, and the label is the bare lane.
+18. `atlas_client._translate`: gRPC `UNIMPLEMENTED` → `AtlasNotScored` ("no score for this variant") on
+    every request → only on an indel; elsewhere `AtlasRetired`, never retried.
+19. `cpic_build._fetch_all`: no `Content-Range` count skipped the short-read guard → refuses.
+20. `sequences.verify_reference_alleles`: a failed read was skipped, so all failing was
+    `ran(subjects=0)` and a build record saying no ref disagreed → `unread`, and `unreachable` when every
+    read failed.
+21. `identifiers.OntologyClient`: an OLS4 or HGNC body of another shape → `absent`/`unknown` →
+    `IdentifierUnavailable`. `clingen_allele._parse`: a non-record body → `no_identity` → `unchecked`.
+22. The withholding clients (`CrossrefClient`, `PmcIdConverterClient`, `PmcBiocClient`, `Grch37Client`,
+    `EnsemblResolver`, `ClingenAlleleClient`) answered a 410 as an outage → `Withholding.retired`, logged
+    once per client; Crossref's `citation_existence` skip and Ensembl's unreachable-rsIDs warning read it.
+    The other four outcomes have no reason field (a GRCh37 diagnosis `unchecked`, a Registry outcome
+    `unchecked`, an id the converter left out), and none was added: the 410 reaches the run's log.
+23. The review's: an `esummaryresult` "Invalid uid" envelope is NCBI's answer, not an outage; a gated or
+    401/403 Hub repo is not "nothing published"; `lookup` says "frequencies unchecked" for an allele gnomAD
+    errored on.
+
+**Guards** (`enricher/tests/test_could_not_ask.py` unless named): the `*Retired` classes equal the
+`EndpointRetired`-marked ones, walked; an AST walk refuses any `except` arm writing an unreachable reason
+without `could_not_ask_reason`; every `CLIENTS` row's 410, 503 and transport failure read through it
+(`test_client_exception_contract.py`); every fulltext route × seven legs; every `Withholding` class,
+walked, names a 410 and not a 503; every quote tally goes through one count (AST); `READS` equals the
+owned tables and covers every dataset, and every dataset × {partial, unstated} keeps every earlier row
+(`test_opentargets.py`); an AST walk over all three packages refuses a colon-joined f-string key
+(`schema/tests/test_no_absent_value_in_a_key.py`). Each was run against `0.8` and fails there, and the
+mechanism was mutated once (`could_not_ask_reason` returning `unreachable` for a 410: 15 red; the
+completeness predicate forced `True`: 8 red).
+
+**The corrected derivation, measured.** `reference_examples/cpic_gene_pairs` compiled under `0.8` and under
+this branch: `content_signature` unchanged, `compilation.warnings` unchanged, `parquet_bytes` moved
+(`haplotypes.parquet`, the nine `variant_key` cells) and `manifest_fields` moved (`derived`'s
+`resolution.csv` hash, and `readme`). `compile → reverse → compile` keeps `artifact.digest` and
+`content_signature`. The 0.8.0 release record owes a `DeclaredChange` for it (`correction`, item RM361).
+
+**Decisions the contract did not make, taken withholding.** A partial Open Targets snapshot answers no
+key for the tables it did not read whole (rows it did yield are still merged); a posterior is not filled
+from one. An undecided regex withholds the row's whole `quotes_found`, not one member of it. A row naming
+no place keys as `""`. A `retired` fulltext row is asked again. An unparsable `studies.csv` skips as
+`no_reference`, no new vocabulary member. Atlas `UNIMPLEMENTED` on an SNV is read as a retired method
+(unprobed: the probe that classified the status used an indel).
+
+**2026-11-05, audit round 2: a retired endpoint was still recorded as an outage wherever a guard did
+not walk.** The 0.8 audit's second round (class 6, found by one model of four) named three new instances
+of this item's class on `0.8` at `5b1b73b8`; each held when re-verified there. It also named
+`acmg.py:434-443` and was judged wrong, because that handler's `skip` already reads the reason. Why
+the guards above missed the three:
+(1) the client roster walks *classes*, and every instance but one sat in a module-level function that
+calls `httpx` itself; (2) the handler walk compared `ast.Constant` for equality, and
+`f"unreachable ({exc})"` is a `JoinedStr` whose constant piece is `"unreachable ("`; (3) a check reading
+only `could_not_ask_reason` passes on a plain `*Unavailable` raised `from` a 410, because the helper reads
+`__cause__`, while the type and the message still say "could not fetch". Instances, before → after:
+
+1. `net.py:486-490` `stream_to_file` raised every 410 as the caller's `error_cls` ("could not download")
+   at all fourteen call sites in eleven lanes (CIViC, ClinPGx, ClinVar twice, ClinVar-GKM, constraint, drug
+   labels, MANE, MITOMAP, Open Targets three times, PubMind, STRchive) → a required `retired=` keyword;
+   a 410 raises it with `retired_message` (the body read and quoted, the host that answered named, after
+   any redirect), followed by the file and the lane's own `remedy`, which still applies when the
+   retired file is a release the operator picked. New: `CivicRetired`, `ClinPgxRetired`, `ClinVarRetired`, `ConstraintRetired`,
+   `DrugLabelRetired`, `ManeRetired`, `MitomapRetired`, `OpenTargetsRetired`, `PubMindRetired`,
+   `StrchiveRetired`, each beside its `*Unavailable`; ClinVar-GKM's download raises `ClinVarGkmRetired`.
+2. `clinvar_gkm.py:450-453` `lane_currency`: `ClinVarGkmRetired` caught as `ClinVarGkmUnavailable` and
+   written `unchecked="unreachable (…)"` → the reason from `could_not_ask_reason`, `retired (…)`.
+3. `clingen.py:161-168` `fetch_curation_list`: a 410 → `ClinGenUnavailable`, "could not fetch" →
+   `ClinGenRetired`.
+4. Found by the hunt: `gene_validity.py:388-401` `fetch_validity_export` → `GeneValidityRetired` (the
+   host names the submitter); `mane_build.py:592-604` `discover_current_release` → `ManeRetired`.
+5. Found by the hunt: the placement witness (`enrich/orchestration.py:860`; the reason is dropped at
+   `placement.py:416-432`). `EnsemblResolver` noted a REST 410 (`Withholding.retired`), and the
+   record's not-asked sentence still said "unreachable after retries…" → `REST_RETIRED_REASON`, a fixed
+   sentence: the source's body stays in the log, since the record is attested and must be lap-stable,
+   and it says "at least once" because the resolver's note is sticky across the run.
+6. `acmg.py:434-443` `fetch_acmg_page`, the instance the audit judged wrong: the recorded `skip` was
+   right, but the type and the message were the outage's, and the guard asserts the type →
+   `AcmgRetired` (its `skip` defaults to `retired`).
+
+Checked and not instances: `clinpgx_build.probe_archive_dates` answers `None` for every failed `HEAD`,
+a 410 included, because it gates nothing (pinned as a withhold). `atlas_protos.fetch_protos` reads a
+pinned commit through `urllib`, and the Hub routes in `download.py` go through `huggingface_hub`; both
+sit outside an `httpx` walk, and neither is a source that retires a path (a pinned commit's file 404s).
+
+**Guards** (`enricher/tests/test_could_not_ask.py`). An AST walk finds every module-level class and
+function that calls an `httpx` transport. A class withholds, or its module declares a `*Retired`. A
+function is a `FETCHERS` row (or the one withholding probe), asserted equal to the walk. Each row is
+driven three ways: a 410 must raise its lane's could-not-ask type marked `EndpointRetired`, with the
+body quoted and no partial left; a 503 and a refused connection must raise it unmarked, read as
+`unreachable`. A third walk checks every `stream_to_file` call: its `retired=` resolves, in the calling
+module, to a subclass of its `error_cls` and of `EndpointRetired`. The handler walk reads an f-string
+that opens with `unreachable`, and its not-vacuous test runs that one predicate over all four
+spellings. The placement case is `test_placement_witness.py`. Red on `5b1b73b8`: the five functions'
+410s, `stream_to_file`'s two outage legs (no `retired=`), the handler walk (`clinvar_gkm.py:452`),
+`lane_currency` and the placement sentence. Each mutation turns a guard red: dropping `raise_if_retired`
+from `stream_to_file` fails its row, and `retired=MitomapUnavailable` fails the call-site walk. The
+entry's `**Residuals**` line above stays `none`.
+
+## RM368 — what the module publisher plans, checks and sends are three readings of the disk
+
+**SHIPPED 2026-11-04 on `0.8`, uncut — a minor (the 0.8 audit, round 1).** Owner enricher, severity
+medium. Reported by four builders of the 0.8 round, each instance re-verified on `0.8` at `0a5293b`.
+
+**Residuals** won't fix — the reference-snapshot send stays an allowlist over the plan's names: a snapshot records no per-file hash (`SnapshotRelease` has none), so there is no attestation a re-read at send time could defeat, and byte-verifying a 32 GB lane at send would read it twice · RM386 took that back on 2026-11-05: `release.json` is the attestation a re-read defeated, so the snapshot payload is now hashed once and checked on the hub before it is described
+
+**The class.** A publisher states what it will send (the plan), checks it (the plan's refusals and the
+remote guard), and sends it. Each of the three read the disk, the manifest or the remote on its own,
+so they could disagree: a check ran over one reading and the send shipped another; a field read as
+absent dropped the check that field feeds; the dry run ran a different set of checks from the real
+run; a refusal came out as a type no caller could tell from an unrelated failure; and the prose
+describing the checks counted them wrong.
+
+**Instances** (file:line on `0.8` at `0a5293b` → after):
+
+1. `enricher/src/just_dna_enricher/upload.py:918`, `:928` — `upload_folder(folder_path=…)` re-read
+   the directory after the plan hashed the declared files and the guard compared the in-memory
+   manifest; `manifest.json` itself was re-read by the hub. A recompile between the two shipped bytes
+   nothing checked → the plan records every planned file's sha256 (`UploadPlan.sha256`, the
+   manifest's from the very bytes parsed), and the send reads each file once more, compares, and
+   commits those bytes through `create_commit` (`_verified_payload`); a change is `PlanChangedError`.
+2. `upload.py:452–457` (`_file_entries`) and `:644–646` — an `artifact.files` that was not a list
+   read as absent and fell back to the allowlist, dropping the attestation check; `:449`
+   (`_named_entry`) read a non-string `sha256` as unknown, dropping the hash check (`:740`);
+   `:502–512` (`_declared_files`) dropped a `logs`, `logo`, `readme` or `provenance` of the wrong
+   shape → `_declarations` walks `DECLARED_FILE_FIELDS` once and the plan refuses a present-but-
+   malformed field, quoting it (`ModuleNotPublishable`); absent or `null` is still the unknown arm.
+3. `upload.py:743–830` (`_versioned_conflict`) compared the digest and the declared files, never
+   `manifest.json`: the same data under a new title replaced the published manifest of a version
+   without `--force` → a third arm, `_manifest_differences`, names the dotted paths of every other
+   field that differs; a remote manifest whose bytes hash to the plan's is the same release.
+4. `cli/module_commands.py:141` — `upload --dry-run` called `plan_upload` alone and skipped the
+   versioned-path check the real run refuses on, while RM355's title read as parity → `rehearse_upload`
+   (the plan plus the read, read-only, no repo created). The same in the snapshot commands:
+   `civic_commands.py:318`, `gene_reference_commands.py:103`, `mitomap_commands.py:238`,
+   `pgx_commands.py:228`, `:262`, `:548`, `strchive_commands.py:110`, `alphagenome_commands.py:496`
+   skipped the orphan check that `clinvar_commands.py:97` and `cache_commands.py:483` ran →
+   `rehearse_reference_snapshot` for every one.
+5. `enricher/tests/test_upload.py:1389` — the RM355 dry-run test ran a real `upload` with no network
+   guard, offline only because the plan refused first → an autouse fixture blocks `HfApi` and
+   `hf_hub_download` for the whole file.
+6. `upload.py:446` — a whitespace-only `name` named a file → blank is no name. The attested-entry
+   refusal (`:460–473`) covers every entry that is not an object with a non-blank string `name`, wider
+   than the `""` RM355's CHANGELOG entry and ENRICHER bullet describe → ENRICHER states the whole
+   class (RM355's shipped CHANGELOG entry is left as written).
+7. `upload.py:650`, `:661`, `:684`, `:693`, `:700`, `:967`, `:980` raised `FileNotFoundError` for a
+   refusal → `PublishRefused` is the family: `ModuleNotPublishable`, `SnapshotNotPublishable` (both
+   keep `FileNotFoundError` as a second base within 0.8), `PlanChangedError`, and the existing
+   `PublishCollisionError`, `ToolchainDiffersError`, `OrphanedSidecarError` re-based under it. Every
+   CLI `try` around a publish catches the family; `pgx_commands.py:231` and `:265` (`cpic publish`,
+   `clinpgx publish`) caught nothing and tracebacked.
+8. `upload.py:299` "the three refusals `plan_upload` raises" and `cli/module_commands.py:158` "the
+   three `plan_upload` refusals" (there were five); ENRICHER.md "Three consequences" above four
+   bullets, "Four things about the gate" above five, "Three positive rules" → the counts are gone.
+
+**The mechanism.** One plan, read once, is what every check reads and what the send carries: paths
+and hashes, the manifest among them, verified again at send time with the verified bytes sent. One
+walker over a registry of declared fields decides absent (withhold) against malformed (refuse). One
+rehearsal per publisher is the dry run. One error family. The guards: `test_the_publisher_reads_every_field_that_names_a_file`
+(the `ModuleManifest` fields reaching a `FileEntry` or a `Provenance` equal `DECLARED_FILE_FIELDS` ∪
+`SPEC_SIDE_FILE_FIELDS`); `test_every_declared_field_has_a_malformed_case` (the parametrization walks
+that registry); `test_every_refusal_the_publisher_raises_is_in_its_family` (an AST walk: the names
+`upload.py` raises equal `PublishRefused`'s subclasses plus `PermissionError` and `ImportError`);
+`test_every_publish_command_catches_the_refusal_family` (every CLI `try` calling the publisher names
+`PublishRefused`); `test_every_dry_run_is_a_rehearsal` (the CLI's bare-plan callers equal one
+allowlisted reproduction check); and the file-wide network block. Each was mutated once and went red.
+
+**Decisions taken.** Two commits stay two (one `create_commit` carrying both paths is now a small
+change, not taken). The manifest arm leaves out the stamps of the act of compiling
+(`COMPILATION_STAMPS`: `compiled_at`, `compiled_by`, each with its reason), so a recompile of an
+unchanged spec republishes as a no-op, as it did before; `toolchain` stays compared, since RM342 reads
+it. A test holds those stamps and `COMPILATION_COMPARED` equal to `Compilation`'s fields. The two plan
+refusals keep `FileNotFoundError` as a second base within 0.8, so no existing handler stops
+catching them. RM355's decision that an optional entry naming no file (an empty or blank name) is
+dropped stands; a name present and not a string is malformed and refuses. The send holds the module's
+bytes in memory for the two commits, which a module affords; it is the reason the snapshot send is a
+residual rather than the same mechanism.
+
+## RM364 — reverse drops what compile carried: shipped files, the table's answer for a row the fill left alone, and a table the module never had
+
+**SHIPPED 2026-11-04 on `0.8`, uncut — a minor (the 0.8 audit, round 1)** · **Severity** medium ·
+**Owner** compiler · **Principle** 7 · **Found by** the 0.8 four-model audit (class C)
+
+**Residuals** won't fix — the second lap's warnings lose the resolution provenance reverse discards (`authority`, `placement_witness`), so eight examples gain `source_row_unused` on lap two; carrying provenance into a parquet reverses the documented reverse-discards-provenance decision and is the pm's call · won't fix — a `resolution.csv` row about a variant the module does not carry has no row in the artifact to ride on, and `resolution.csv` gets no parquet (SCHEMAS) · won't fix — a `not_found` sentinel carries no locus to ride `resolution_loci`, and `strict` refuses the module that holds one · won't fix — a coordinate-authored row the table files nothing under is still rebuilt from its own cells, so the second lap's table gains a row the first did not hold; telling that null apart from a reproduced one would cost the `ensembl_cache` digest parity, and the pm decides whether that path is worth keeping
+
+**The class.** Everything `compile_module` reads from a spec directory and carries into the artifact or
+the manifest is either reconstructed by `reverse_module`, so the next compile reproduces it, or excluded
+with a reason. Nothing said which was which: RM241 put the *spec* fields on a registry, and the files and
+facts beside them were each handled, or not, on their own. The round-trip gates compared what they had
+been told to compare, so a loss outside that list was green.
+
+**Instances, re-verified on `0.8` and found by walking every input, manifest block and resolution path:**
+
+1. `compiler/reverse.py:412-413` (on `0.8`): reverse copied back the README and logo only.
+   `provenance.json` (`manifest._collect_provenance`) and the logs (`manifest._collect_logs`) are copied
+   into the artifact and hashed into `manifest.provenance` / `manifest.logs` by every compile, and the
+   second lap had neither. → `reverse.shipped_files(manifest)` lists all four kinds; one helper,
+   `_copy_shipped_file`, copies each byte for byte after a hash check and refuses a name that leaves the
+   module directory, and `_discovered` asks each kind's own discovery rule (`_log_left_behind_reason`
+   for a log) before naming a file the next compile would not find.
+2. `compiler/reverse.py:659-678` (on `0.8`): the positional pass rebuilt `resolution.csv` from a
+   positional row's own cells. For a row the fill leaves alone (an authored coordinate the table
+   contradicts, a key naming several loci, every row of a module whose build the fill skips) those cells
+   hold the author's coordinate or nothing, so reverse lost the table's row and, for the first shape,
+   wrote the **authored** coordinate back as a resolution fact: the second lap's
+   `positional_identity_contradicted` went silent and `resolution_signature` moved, with `strict`
+   accepting the module throughout. `reference_examples/cpic_gene_pairs` had dropped NUDT15's
+   `rs1457579126` (CPIC 48040982, Ensembl `48040978 AA>A`) to stay green, and RM331's guard
+   (`SUBJECT_TABLES == RESOLUTION_SOURCE_TABLES`) could not see it, since the table is a subject source.
+3. `compiler/reverse.py:630-656` (on `0.8`): the weights pass had the same shape on the SNP core: a
+   locus dropped as unable to host the genotype, a one-to-many none of whose loci could host it, an
+   authored coordinate or `ref` the table contradicts, and every row of a non-GRCh38 module with a table.
+   `strict` refuses the first three, which is why the round-trip matrix filed them as unstable rather
+   than as defects; a cross-build module it accepts.
+   → for 2 and 3, `weights.parquet` and the three positional parquets carry `resolution_loci` (the
+   `proxy_loci` struct, one helper `parquets.resolution_loci` shared with it, keyed on the authored key
+   `vrs_columns.resolution_key` already computes), and reverse emits those loci. The column is null
+   where the row's own cells already rebuild the key's loci exactly (`withhold_reproduced_loci`), which
+   keeps every clean module's parquets equal to the deprecated `ensembl_cache` path's
+   (`test_digest_parity_and_offline_roundtrip` caught the first cut, which filled every row); reverse
+   rebuilds a null row from its cells, as before.
+4. `compiler/reverse.py:479` (on `0.8`): reverse wrote a `resolution.csv` for a module whose compile read
+   none, rebuilt from authored coordinates, so the second lap published a `resolution_signature`, VRS
+   coverage and expansion counts the first did not (`grch37_build`, `mt_heteroplasmy`,
+   `cyp2d6_structural`; recorded as "not a defect" in RM69 and in the corpus sweep). →
+   `_no_table_was_read`: no signature in the manifest, no `resolution.csv` in `manifest.derived` (a
+   header-only table comes back header-only), and no parquet cell its `authored_ident` does not name, so
+   an older compile or the deprecated `ensembl_cache` path, which fill without a signature, still gets
+   its table.
+5. `compiler/reverse.py` `_copy_shipped_file`, found by review of the first cut: a name check alone
+   follows a symlink, so a downloaded artifact's `logs/x.log` linked elsewhere would be copied into the
+   reversed spec. → `_leaves_through_a_link` refuses a link on either side, as compile never ships one.
+6. `compiler/tests/test_reference_examples_roundtrip.py`: the lap-1 `resolution_signature` comparison was
+   exempt on a non-GRCh38 build, which hid `cyp2c9_warfarin_grch37` (instance 2's third shape, RM69).
+   The exemption is gone.
+
+**The mechanism.** `reverse.REVERSE_MANIFEST_RECONSTRUCTED` / `REVERSE_MANIFEST_EXCLUDED` place every
+`ModuleManifest` field and every `Compilation` field (walked one level down), and
+`test_every_manifest_field_is_reconstructed_or_excluded` asserts the walk equals their union, disjoint,
+each exclusion with a reason. `reconstructed_projection(manifest)` is what every round-trip gate now
+compares lap against lap: the corpus sweep (all 22 examples, from the first lap, `resolution_signature`
+included) and a fixture carrying every shipped file kind (README, logo, `provenance.json`, a top-level
+log, three files under `logs/`), since the corpus carries no provenance and no logs. The corpus sweep also
+asserts every `manifest.inputs[]` and `manifest.derived[]` name comes back under a legal spelling.
+`test_every_file_the_manifest_names_beside_the_parquets_is_shipped_back` derives the file-bearing
+manifest fields from the model's annotations and asserts `shipped_files` reads exactly those, bar
+`inputs`/`derived` (files beside the spec). The round-trip matrix's two positional `table_says_more`
+cases are now plain fixed points, and five weights-side cases `strict` refuses are now stable as well
+(the matrix's contract, unstable implies refused, still holds; only `not_found` still moves).
+
+**Tests.** Red on `0.8` first: the two matrix cases (`expected a fixed point, but
+['resolution_signature'] moved`), the every-field fixture (lap two's `logs == []`, `provenance is None`).
+Each mechanism broken once: `with_resolution_loci` returning the table unchanged fails the two matrix
+cases, `cyp2c9_warfarin_grch37` and the contradicted-row test; `weights.parquet`'s column left null fails
+15 matrix cases; `_no_table_was_read` returning `False` fails `grch37_build`, `mt_heteroplasmy`,
+`cyp2d6_structural` and the no-table test; the link guard and the `derived` read each fail their test.
+`test_build_roundtrip.test_reversed_resolution_csv_carries_the_module_build` now injects a table, since
+the module it built read none.
+
+**Not this class, and why.** The verification attestation stays excluded (not in the artifact, bound to
+bytes reverse re-emits; reverse says so). RM69's own record refused a `resolution.parquet` and four
+other repairs; `resolution_loci` is none of them (nothing joined, the row's coordinate and key untouched,
+the loci on the module's build) and its addendum says so. The enricher's publisher enumerates the same
+four shipped kinds from raw JSON (`upload._declared_files`, RM353), deliberately tolerant of a manifest
+the model rejects, so it keeps its own reader.
+
+## RM270 — an indel's artifact key is its source's spelling: a left-aligned VCF misses a respelled row, and the spelling-independent id the enricher mints never reaches the artifact
+
+**0.8, decided 2026-11-03.** Taken into 0.8 by the maintainer, with the rest of the indel-placement fixes (RM304, RM267, RM270, RM292, RM305). The status line below predates that decision.
+
+**Residuals** won't fix — an authored coordinate is never rewritten, because it is the row's identity inside `content_signature` (PT2 §5 C5) · won't fix — a pair row's recorded reference locus keeps the snapshot's spelling, because re-anchoring the snapshot at build is `just-dna-pipelines`' builder, outside this repository, so a pair authored in the other spelling carries no `vrs_id` on its parquet row · won't fix — a consumer who cannot mint VRS still joins an authored respelling only by normalizing both sides, which CONSUMING.md says
+
+**What shipped (2026-11-04).** The build is 3 + 4 with 2's stamped verdict, as decided below, and it
+carries the residuals four closed items pointed here: RM241's and RM304's (no parquet carried a `vrs_id`
+or its version, so a round trip dropped both), RM267's (a respelling it judged `same_event` was still
+written in the snapshot's spelling) and RM291's (the two SHOX misses pinned to this item).
+
+- **(4) The per-ALT `vrs_id` and its `vrs_spec` on every variant parquet** (`compiler/vrs_columns.py`):
+  `weights.parquet` as a `List(Utf8)` parallel to `alts`, the three positional parquets
+  (`pharm_variants`, `haplotypes`, `heteroplasmy`) as `resolution.csv`'s comma-joined cell, and
+  `studies.parquet`'s `proxy_loci` struct. Copied from the row's own `resolution.csv` row (filed under
+  its authored key, `vrs_columns.resolution_key`, which reverse shares) by allele, never minted by the
+  compiler (P2) and never borrowed from another subject's row for the same spelling: either would reach
+  `resolution.csv` on reverse and move the second lap's count. An allele its key records with two ids is
+  withheld. `annotations.parquet` carries `variant_key` but no allele, and `frequencies.parquet`'s
+  id is gnomAD's, so neither gains one. **`reverse` writes both back**, so `compile → reverse → compile`
+  keeps every id and `vrs_alleles_identified`. Digest parity with the deprecated DuckDB path now holds
+  when the table records no id.
+- **(3) A coordinate `enrich` fills from an rsID is written left-aligned**, ALT by ALT
+  (`sequences.left_normalize`, `normalize_locus`), through RM267's own `_left_align`
+  (`@one-normalizer-two-spellings`): a substitution by trimming with no read, an indel against the
+  reference window. ALTs landing on two references become two loci, the split `bcftools norm -m -any`
+  makes, after the hosting filter; the piece the row's genotype names is written (a genotype naming ALTs
+  in both pieces keeps the source locus whole), and each keeps the RM267 verdict of the locus it came
+  from. Undecidable (offline, a non-nucleotide allele) means the locus is written as the link gave it,
+  whole. Under `--rederive` the drift canary names a respelling apart from a source that moved, by the
+  alleles' unchanged `vrs_id`s. **An authored coordinate is judged and never rewritten**: a
+  warning names its leftmost spelling (`EnrichmentResult.spelling`, `findings` over `checked`, `unknown`
+  apart), and so is a pair's recorded reference locus, which the compiler compares by spelling. A
+  recorded row is respelled only under `--rederive` (`@sidecar-authoritative`).
+- **(2) The stamped verdict**, `resolution.csv` `left_aligned` (tri-state, outside
+  `resolution_signature`). P5: named for the convention it checks, so a future 3′-shifted (HGVS)
+  verdict is its own column rather than a member squeezed in beside it; no collision with `vrs_*` or
+  `placement_*`, and no reserved name. Not a `verification.json` check: it compares a spelling with a
+  convention, not a claim with a witness.
+- **The proof**: `reference_examples/shox_par1` re-derived (`enrich --rederive --no-clinvar`), so
+  `rs1569493663` is `X:634689 CAG>C` and `X:634689 C>CAG`, and `compiler/tests/test_consumer_join.py`
+  passes with its pin removed and the miss set empty.
+
+Tests: `compiler/tests/test_vrs_on_parquets.py` (both spellings of `rs72613567` → one id on the parquet,
+`rs8176719`'s two placements → two, the hole kept, the contested allele withheld, the round trip) and the
+RM270 block of `enricher/tests/test_placement_witness.py` (the filled respelling written left-aligned and
+compiled to its id, the authored coordinates judged with cells byte-identical, offline unknown, respelled
+only on `--rederive`, the pair's locus kept, the SHOX split over the consumer-join fixture's real bases,
+the piece a genotype names, and a respelling on `--rederive` named apart from drift).
+Each was shown red on the branch before the change and each new rule was mutated once.
+
+**Severity** high · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** (a new optional
+`resolution.csv` column and four parquets' new columns; [PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md)
+§5 C5) · **Owner** enricher (resolution fill, `vrs.mint_resolution_rows`) + compiler (the parquet column) ·
+**Motivating case**
+[S120](CONSUMER_SUGGESTIONS_HISTORY.md#s120--the-format-declares-no-coordinate-normalization-convention-so-a-legal-respelling-of-an-indel-is-a-silent-position-join-miss-no-one-is-wrong-is-the-footgun)
+
+**What was confirmed.** The three cases S120 cites (`rs72613567`, `rs77944059`, `rs333` CCR5-Δ32) sit
+in our Ensembl snapshot one base right of ClinVar's left-aligned spelling, which is also what the
+callers emit. Against GRCh38 (UCSC `hg38`; Ensembl REST was down) each pair gives the same haplotype,
+so they are one event spelled two legal ways. That is RM267's harmless +1 class, not its wrong-event
+−1 class. Nothing in the contract names a normalization. The compiler cannot apply one either, because
+left-alignment reads flanking sequence and the compiler has no sequence (P2). So an indel's
+`variant_key` is `chrom:start:ref:alts` in whatever spelling its source used. Compiling
+`reference_examples/hboc_palb2` keys `rs1555461597` as `16:23635706:G:GT`.
+
+**The identity that would join them already exists and is dropped.** The enricher mints each indel's
+`vrs_id` over the *fully justified* allele. Probed: both spellings of `rs72613567` mint
+`ga4gh:VA.Jml7SNku3QQBCVIj78BGiFvR21bNkos7`, and both of `rs77944059` mint
+`ga4gh:VA.ks2GTWYOW0aKfGbJ2aeQUOZxOT_xC2ts`. S117's `rs8176719` pair mints **two different** ids, so the
+id also tells RM267's wrong event apart from a respelling instead of masking it. That id lives in
+`resolution.csv`, which has no parquet by design. Of the compiled parquets only `frequencies.parquet`
+carries a `vrs_id`, and that one is gnomAD's. `@dont-discard-computed`.
+
+**Candidate repairs, and why each is wrong or partial.**
+
+1. **Compiler left-normalizes and stamps a field** (the reporter's preferred option). Refused twice.
+   It needs reference sequence in the compile path, the line COMPILER.md § the VRS verify pass says
+   not to cross (P2). And on an *authored* coordinate it rewrites a value `reverse_module` then
+   re-emits, so lap 1 moves `content_signature` (P7).
+2. **An authored `coordinate_normalization` key.** It is a claim no offline tier can check. It costs
+   the full authored price (P9) and would be believed by exactly the consumer it misleads. As a
+   **verdict the enricher stamps** (tri-state: checked left-aligned / not / unknown), it is honest and
+   minor-legal, and it is part of the answer.
+3. **The enricher left-normalizes the coordinates it fills.** Legal: a resolution fill is outside
+   `content_signature` (`@rm43-positional-fill`). It fixes the +1 class for rsID-authored rows. It
+   does not reach an authored coordinate. For those the enricher reports the normalized spelling as a
+   finding and never rewrites the cell (`@enrichment-is-validation`). `@sidecar-authoritative`: it
+   reaches an existing table only on `--rederive`.
+4. **Carry the per-ALT `vrs_id` onto the variant parquets.** A parquet column is approximately free
+   (P9) and it is already computed. It gives a consumer who can mint VRS from its VCF a key that does
+   not depend on spelling. Alone it is not enough, because minting an indel needs sequence access the
+   consumer may not have. Hence it pairs with 3.
+
+The build is 3 + 4, plus the stamped verdict from 2. The part that ships without a decision, the
+consumer guide stating that no normalization is guaranteed, landed with the S120 reply.
+
+
+**Carries RM241's residual.** RM241 (shipped on `0.8`) left a round trip that drops every `vrs_id`, because no
+variant parquet carries one. Candidate 4 below, the per-ALT `vrs_id` on the variant parquets, is what closes it.
+
+**Pinned by RM291 (2026-09-27).** `compiler/tests/test_consumer_join.py` joins every reference example
+against a bcftools-normalized ClinVar slice, and the two SHOX rows Ensembl spells at `X:634690`
+(`AGAG>AG`, `AGAG>AGAGAG`; ClinVar and callers write `X:634689`) are its expected misses, pinned to
+this item. Shipping this empties that set, and the test fails until the pin is removed.
+
+## RM331 — a study measured on an LD proxy cannot say so, and filing it under the lead checks the proxy's allele against the lead's
+
+**Built on 0.8, 2026-11-04: `proxy_rsid` and the allele check.** `StudyRow.proxy_rsid` (refused on a row naming no variant, or equal to its own `rsid`) reaches `studies.parquet` and `reverse`; `_check_study_effect_alleles` reads the proxy's resolved alleles when one is stated and withholds when it has none; `enrich.collect_subjects` admits each proxy as a subject, last, and the GWAS pass leaves them out. The computed pair followed the same day (below).
+
+**Cut 2026-11-04 by the maintainer, after the final measuring run** (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §3): **authors write only `proxy_rsid`.** r² has no meaning without its population, so r² and its population are a pair, and the pair is **computed**: the enricher asks an LD reference for the r² between proxy and lead in the study's own `ancestry` and writes it to a machine-written table (half price). The allele check runs against the proxy's alleles.
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** (PROPOSAL_0_8_PT2 §5 D3) · **Owner** format + compiler (`_check_study_effect_alleles`) · **Motivating case** longevitymap v2 requirements §6.2 (`rsid`, `ld_proxy_of`), §6.4 (APOE proxies) · *for* longevitymap v2 · *related* RM91
+
+**What was confirmed.** The plan scores lead variants only and records proxies "on study rows". But
+`StudyRow` has no `flags`, so there is nowhere to write that. A study of a proxy then has two homes, and
+both are wrong:
+
+- **Under the lead's rsID**, `_check_study_effect_alleles` checks the proxy's `effect_allele` against
+  the lead's alleles. It refuses if they differ and passes silently, with the wrong meaning, if they
+  happen to match.
+- **Under the proxy's rsID**, it raises `study_variant_orphan`.
+
+The APOE region alone has five proxies (rs2075650, rs4420638, rs769449, rs405509, rs449647), and
+rs2075650 is the one genome-wide hit in the Sebastiani 2012 classifier.
+
+**Shape.** A proxy column pair on `StudyRow` (the measured variant and its r², plus the LD reference
+population), with `effect_allele` checked against the proxy's alleles rather than the lead's. Full ×2–3.
+
+**Built 2026-11-04 on `0.8` (build/RM331): the computed pair.** `just-dna-enricher ld-pairs <spec>` asks
+Ensembl REST's pairwise LD (PT2 §4 question 4) for r² and |D′| between each study row's `proxy_rsid` and its
+lead, in the 1000 Genomes phase 3 superpopulation the row's one `ancestry` code names, and writes the derived
+table `ld_pairs.csv` (`LdPairRow`, key `(proxy_rsid, variant_key, ld_population)`; `ld_population` is the
+panel's own name, `1000GENOMES:phase_3:EUR`). `status` (closed, `VALID_LD_PAIR_STATUS`) carries the reason
+whenever r² is withheld: `not_reported` for Ensembl's `200 []` (below its floor or not in LD, never r² = 0),
+`rsid_unknown` for its `400`, `ancestry_mixed` / `ancestry_unstated` for a study naming several
+superpopulations or none (the pm's setting: no panel is picked; the row is written, against PT2 D3's "no row
+and counted", per the build brief), and `lead_has_no_rsid` for a coordinate-authored lead with no rsID.
+`answered_rsid` records a merged proxy's current id; `dataset` is the release read in band (`ensembl_116`).
+The `(ensembl, ld_pair)` licence row commits inside the table's write, only on a run Ensembl answered. It
+compiles to `ld_pairs.parquet` with a `manifest.ld_pairs` block, and `reverse` writes it back (P7, tested on
+the real paths). The hand-run calls are `probes/LANES_0_8.md` § 6.
+
+**Fixed the same day: the author's half did not survive a reverse (P7).** The proxy's `resolution.csv` row
+reached no parquet, so `reverse_module` (which rebuilds that table from parquets) dropped it: lap 2's
+`resolution_signature` moved and the proxy allele check went silent (found by the examples builder,
+`test_reference_example_round_trips_to_a_fixed_point`). `studies.parquet` now carries the proxy's
+resolved loci (`proxy_loci`, compiler-filled) and reverse re-emits them, last. The class was checked, not
+only the instance: of the five tables `collect_subjects` draws subjects from (`variants`,
+`pharm_variants`, `haplotypes`, `heteroplasmy`, `studies`), `studies.csv` was the only one reverse did
+not rebuild from; `meta.csv` members are asked of dbSNP but never resolved, so they write no row. A test
+now holds `enrich.subjects.SUBJECT_TABLES` (walked from every `Subject(...)` origin) equal to
+`reverse.RESOLUTION_SOURCE_TABLES`.
+
+**Residuals** none
+
+## RM267 — the Ensembl snapshot anchors a class of insertions one base early, and `resolution.csv` serves them as a different event
+
+**0.8, decided 2026-11-03.** Taken into 0.8 by the maintainer, with the rest of the indel-placement fixes (RM304, RM267, RM270, RM292, RM305). The status line below predates that decision.
+
+**Residuals** RM270 · won't fix — re-anchoring the snapshot at build is `just-dna-pipelines`' builder, outside this repository (candidate 1 below) · won't fix — writing a corrected spelling was refused for 0.8 by PROPOSAL_0_8_PT2 §4 question 3
+
+**What shipped (2026-11-04).** Candidate 4 as S121's addendum generalised it, in `placement.py`, run by
+`enrich()` after every link and before the table is assembled:
+
+- **Every rsID the run placed fresh is compared** with the ClinVar snapshot and ClinVar-GKM where either
+  is located (`--clinvar-gkm-cache`; read locally, never downloaded by `enrich`). Per allele, the
+  witness's counterparts are its alleles for that rsID on the same contig, within the left-align window,
+  of the same kind (an indel of the same length, or a substitution to the same bases). A counterpart is
+  the same event when the spellings are identical, when two substitutions trim to one spelling, when both
+  mint one VRS id, or when both left-align to one spelling; otherwise **undecided**, counted. ClinVar-GKM's
+  ids are VRS 2.1.1 against our 2.0, so its VCF spelling is minted here rather than its id compared.
+- **A disagreement withholds the locus holding the disputed allele** and names both placements; an
+  undisputed locus of the same rsID is still written. An rsID left with none is unresolved, with no
+  `not_found` row, and the strict sentence names the disagreement; a pair row keeps its authored
+  coordinate; an `overrides.csv` answer on the subject clears the unresolved state. Nothing is rewritten.
+- **Every witness a written row names writes its `SourceRow`** at the `resolution` layer, and the
+  compiler's orphan check counts `placement_witness` members as used.
+- **A different allele is `unplaced`**, never a disagreement, and the rsIDs with no counterpart anywhere
+  are the published one-witness count (`@tautology-zero`). A ClinVar fill has no independent witness here.
+- **The witness is recorded on the row**: `placement_witness` (who was asked) and `placement_verdict`
+  (`same_event` only when every ALT was placed the same / `undecided` / `unplaced`), two columns because who and what are two axes (P5), both
+  outside `resolution_signature`. No `different_event` member: that row is never written.
+- **It attests as `placement_agreement`** (checked side `reporting_source`, witness `clinvar+clinvar_gkm`,
+  `undecided` counted, the one-witness count in `detail`).
+- **Merge-not-clobber holds**: a recorded row meets the comparison only under `--rederive`, where a
+  disputed subject counts as answered and its old placement is not carried forward.
+
+Tests (`enricher/tests/test_placement_witness.py`) run the real chain over recorded GRCh38 windows served
+to the run's own `SequenceProxy`, so every id is minted by `ga4gh.vrs` offline; the windows reproduce the
+ids RM270 and ClinVar-GKM recorded for `rs72613567` and `rs77944059`, and `rs8176719`'s pair mints two.
+
+**What the real witnesses hold (measured 2026-11-04).** Probed 2026-11-04 on real data: neither loaded witness holds `rs8176719` (ClinVar's 2026-06-27 VCF has no record at `9:133257510–529` and no `RS=8176719`; ClinVar-GKM lacks it, RM305), so against today's witnesses S117's own case is counted in the one-witness class and named in `detail`, not withheld. The spelling `9:133257521 T>TC` is dbSNP's and Ensembl REST's; the tests supply it as a ClinVar row to exercise the withhold. An `enrich` of a
+four-rsID module against this machine's real Ensembl and ClinVar snapshots wrote `rs72613567`,
+`rs77944059` and `rs4988235` as `same_event` and `rs8176719` as `unplaced`. A witness that holds it is
+the live REST rung (candidate 4's original "else REST"), which the 0.8 contract's "two loaded
+authorities" left out; it was built the same day (below).
+
+**2026-11-04: Ensembl REST is the third witness, online only** (the lead's call under the default offered
+to the maintainer that day; it replaces the won't-fix residual "a live Ensembl REST witness is outside
+PT2 §5 C4's two loaded authorities"). For an rsID the Ensembl snapshot placed, with an allele that is not
+a substitution, and that neither ClinVar nor ClinVar-GKM holds, an online run asks the live REST rung
+through the run's resolver (RM268's anchored path) and compares by the same ladder, so S117's own
+`rs8176719` is now **withheld** against the real witnesses: REST answered `-/C` at `start 133257522,
+end 133257521` by hand on 2026-11-04 (17:33Z, after 503s and timeouts from 17:26Z), which anchors to
+`9:133257521 T>TC` and mints a different id from the snapshot's `9:133257520 G>GC`. The witness is named
+`ensembl`, the licensed source `placement_witness` joins `sources.csv` on (an `ensembl_rest` key would
+have no terms row and warn as an unaccounted source on every module). REST and the snapshot are one
+authority, so by RM292's rule the comparison is **self-consistent, not independent**: the record names
+its checked side `ensembl` once REST answered (`verification.ran(reported_by=)`), so `independence`
+derives `self_consistent` for REST alone and withholds beside ClinVar, and an rsID only REST agreed with
+stays in the one-witness count with its own sentence in `detail`. That keeps the comparison's value for
+S117's class, the dump disagreeing with Ensembl's own REST mapping, while saying it cannot catch an error
+both surfaces share. Unanswered after retries (the REST leg now retries a 5xx and a 429) or unanchorable
+is *not asked*, counted in `detail`, never agreement; `--offline` asks nothing; answers are never
+journalled. Tests in `enricher/tests/test_placement_witness.py` (recorded REST answers for `rs8176719` and
+`rs77944059`, one live test under `JUST_DNA_NETWORK_TESTS=1`), each arm mutated once.
+
+**2026-11-04: an injected resolver without `resolve_rsid_rest` leaves REST not asked, never a crash.**
+The witness above called the new method on whatever resolver the host injected, so a resolver written
+against 0.7 (just-dna-marketplace's test fake is one) raised `AttributeError` at the first eligible
+indel. `enrich(resolver=)` now requires `ensembl.RsidResolver` (`resolve_rsid`) and asks the optional
+`ensembl.RestWitness` capability only where it exists; otherwise every eligible rsID is not asked,
+counted, with `PlacementCheck.not_asked_reason` in `detail` and one warning. Hunted across `enrich`'s
+other injected collaborators (gnomAD, GRCh37, the release probes): each calls only its parameter's
+original contract. Test red before, the reason's wiring mutated once.
+
+**2026-11-04: the retired beta GraphQL leg is no longer asked.** `resolve_rsid` POSTed to
+`beta.ensembl.org/api/graphql/variation` before every REST request. Probed by hand (19:19Z): 301 to
+`www.ensembl.org`, where the query no longer validates (HTTP 400) and a bare rsID is
+`VARIANT_ID_NOT_FOUND`. Removed with its settings and dead tests; `resolve_rsid` is REST alone.
+`ensembl-graphql` stays a readable `source` value. Every other client endpoint was probed once that day,
+redirects unfollowed: only GenCC's bulk download answered 301 (`search.thegencc.org` → `thegencc.org`),
+and its default now names the new host; ClinPGx's 303 to S3 and ClinVar-GKM's directory 302 are hops to
+files that answer 200.
+
+**2026-11-04: the REST rung is paced and honours `Retry-After`.** Neither existed on it (the review of
+the REST witness reported both). `EnsemblResolver` holds a `PacingGate` (0.1 s, Ensembl's 15 req/s)
+waited once per attempt; a retried 5xx or 429 waits at least the answer's `Retry-After`
+(`net.wait_retry_after`, the first in the tier), and one past `net.RETRY_AFTER_CEILING` is not retried
+and holds every later request until it passes. Tests on a fake clock, each arm mutated once.
+
+**Severity** high · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** (two optional
+`resolution.csv` columns and a new check; [PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §5 C4) ·
+**Owner** enricher (the resolver chain's snapshot link), with the upstream half in `just-dna-pipelines` · **Motivating case**
+[S117](CONSUMER_SUGGESTIONS_HISTORY.md#s117--the-ensembl-variation-cache-spells-indel-rsids-at-a-different-anchor-from-clinvar-for-every-insertion-and-for-some-it-names-a-different-event)
+
+**What was confirmed.** `lookup_loci` against the local snapshot returns `rs8176719` (ABO O1, MAF 0.34)
+as `9:133257520 G>GC`. GRCh38 reads `GGGG T ACC` at 517–524, so that spelling is the haplotype
+`GGGGCTACC` and ClinVar/dbSNP's `521 T>TC` is `GGGGTCACC`: two events, not one respelled. Both of the
+report's other −1 examples reproduce the same way against the reference (`rs546596010`: `CCATTCC`
+vs `CCTATCC`; `rs1553364018`: `GTCCCC` vs `GCTCCCC`).
+
+**The mechanism, and where it lives.** The snapshot is faithful: Ensembl's own current VCF dump
+(`homo_sapiens-chr9.vcf.gz`, read by remote `bcftools`) carries `133257520 rs8176719 G GC`. Ensembl's
+**REST** mapping for the same rsID disagrees with its VCF and agrees with ClinVar — `start 133257522,
+end 133257521, -/C`, an insertion between 521 and 522, which VCF-anchors at `521 T>TC`. Across seven
+insertions (the two cited plus five sampled from the −1 class on chr3/5/12/16) the dump's POS is REST
+`end` − 1 every time, and REST `end` is ClinVar's POS every time. So the dump anchors a class of
+insertions one base left of Ensembl's own interbase point: invisible inside a run of the anchor base,
+a different event outside one. `@two-surfaces-two-denominators` applies to Ensembl against itself.
+
+**Why no check here sees it.** The wrong anchor base is a real genome base, so
+`sequences.verify_reference_alleles` passes it by construction. `check_rsid_coordinates` calls every
+indel position difference *undecided* (RM31: an indel re-anchors legitimately). And for an rsID-only row
+`_verify` never runs. A module resolving `rs8176719` through the table therefore compiles green and
+matches no sample.
+
+**Why each candidate repair is wrong alone.**
+
+1. **Re-anchor at snapshot build.** Correct, and it is `just-dna-pipelines`' build, not this tier's
+   (`CACHE_LANES["ensembl"].unbuilt`). It also leaves every deployed snapshot wrong until rebuilt.
+2. **Left-normalize in `resolve_variants`** (the reporter's first candidate). It fixes the +1 class,
+   which is harmless respelling one base right of VCF left-normalization. It cannot fix the −1 class:
+   `G>GC` after `GGGG` has no left-shift room, so it normalizes to itself and stays the wrong event.
+3. **Re-derive insertions from REST.** Right values, but it turns a bulk snapshot into one request
+   per insertion rsID, and REST's rung has its own defect (RM268) to fix first.
+4. **A finding that withholds** (the reporter's second candidate): for each insertion the snapshot
+   resolves, compare against a second placement the enricher holds (the ClinVar snapshot on rsID,
+   else REST). Apply both spellings to the reference window, report a different haplotype, and
+   withhold the row rather than choosing. It reports without repairing (`@enrichment-is-validation`)
+   and is the part that fits here. What it does not settle is whether the enricher may then
+   **write** the corrected spelling. Under `@provenance-beside-a-claim-is-outside-content-identity` a
+   rewritten snapshot value should say so on its row, which is a new optional `resolution.csv`
+   column. That column is minor-legal, and it is why this item is sized as a minor, not a patch.
+
+`content_signature` is unaffected either way (a resolution fill is `authored_ident`, `@rm43-positional-fill`).
+`@sidecar-authoritative` applies: a corrected spelling reaches an existing `resolution.csv` only on
+`--rederive` or a deleted sidecar, so the release that ships it must say so.
+Measured scale (the reporter's join, not re-run here): 5,788 insertion and 2,111 deletion alleles in
+the −1 class, of which roughly three in four of the sampled insertions are a different event.
+
+**Addendum 2026-09-27, [S121](CONSUMER_SUGGESTIONS_HISTORY.md#s121--the-enricher-resolves-a-coordinate-from-one-authority-and-validates-it-against-that-same-authority-so-a-wrong-anchor-is-confirmed-rather-than-caught-a-cross-authority-discordance-should-warnwithhold-not-resolve-silently):
+candidate 4 is the general rule, not an Ensembl special case.** Confirmed in code: the ClinVar link
+(`enrich.py`, the "ClinVar cache link" block) fills only what the Ensembl cache missed. The same run
+already holds the ClinVar snapshot for the `clin_sig` cross-check, yet it never compares a placement.
+The comment gives the reason for that order as *"so no compiled module's artifact.digest moves"*, which
+is the one reason the house rules say is never enough on its own. So every
+coordinate in `resolution.csv` has one witness, and `authority=ensembl` reads the same whether a
+second authority agreed, disagreed, or was never asked. The build is therefore:
+
+- **Compare every placement two loaded authorities give for one rsID, and withhold on disagreement.**
+  Compare by minted `vrs_id` where both sides can be minted, because it needs no tolerance. Probed for
+  RM270: a respelling mints one id (`rs72613567`, `rs77944059`) and S117's wrong event mints two
+  (`rs8176719`). Elsewhere, use `parsimony_reduce` plus a reference window. A disagreement is a finding
+  naming both placements, and the row is not written. The count of rsIDs that had only one witness is
+  published beside it (`@tautology-zero`).
+- **Record the witness on the row.** A new optional `resolution.csv` column saying which second
+  authority was asked and what it answered, tri-state. This is the minor-legal addition this item was
+  already sized for.
+- **S121's third ask is inverted, not adopted.** The VRS id is the arbiter, not the hazard: the three
+  rows S121 cites mint the *same* id as ClinVar's spelling, so their ids are correct. A −1-class row
+  is withheld whole, id included, by the first bullet.
+
+This is the same failure `@start-1based` recorded on 2026-08-06 ("validate-by-redundancy assumes
+independence"), and the RM31 residual (0.5) that went unfiled. The postmortem of the 2026-09-27 round
+covers the procedure side.
+
+## RM359 — under `--strict`, `study_effect_allele_not_at_locus` arrives as both an error and a warning, and SCHEMAS.md states a count the code has outgrown
+
+**0.8, filed 2026-11-04 by the lead** as a second-pass item: found by a 0.8 builder.
+
+**Severity** low · **Status** SHIPPED 2026-11-04 on `0.8`, uncut — a minor · **Owner** compiler (`allele_checks.py`) + docs
+(`SCHEMAS.md`) · **Motivating case** a 0.8 builder's report, 2026-11-04 · *related* `@no-rerun-with-counts`,
+`@registry-completeness`
+
+**Two instances of one class: a fact stated where it can disagree with itself.**
+
+1. **A finding on two channels at once.** Under `--strict`, `study_effect_allele_not_at_locus` is escalated into
+   `errors` and still emitted into `warnings`, so a consumer counting findings counts it twice and one reading of
+   the result contradicts the other.
+2. **A count stated in prose.** SCHEMAS.md says `authoring_reference()["vocabularies"]` has "21 entries today".
+   It has 38 on `main` (measured) and the builder counted 43 on `0.8`.
+
+**The fix, as one rule.** A finding lives on exactly one channel, the one its severity under the mode picks, and a
+test asserts no code appears in both lists. The prose drops the number and states the rule that generates the
+list (`@registry-completeness`: never a count in prose).
+
+**Shipped 2026-11-04 on `0.8`.** Instance 1, the class: a mode-ladder finding under `strict` is in
+`errors` and nowhere else. Two routes put it in both, and both are closed. `compile_module` ran its
+pre-flight in `best_effort` whatever its own mode, so it seeded `warnings` with every ladder sentence;
+it now runs the pre-flight in its own mode, so a strict compile refuses with `validate --strict`'s
+accumulated errors for every check the pre-flight asks (the deprecated `ensembl_cache` path is told
+apart, because the pre-flight cannot see what that reference places). Unchanged by this item, and
+under the standing resolved-rows exemption: `validate --strict` still reports valid where `compile --strict` refuses on the two resolution
+ladders that read resolved rows (`locus_cannot_host_genotype`, `rsid_coordinate_disagrees`); the test
+pins them as compile-only so the day the pre-flight asks them it says so. `ResolutionOutcome.warnings` carried each
+resolution ladder's warning in both modes; `ResolutionOutcome.channels(strict=)` now routes them through
+`route`, and its docstring no longer says the refusal is published "beside" the warning.
+`compiler/tests/test_one_channel_under_strict.py` asserts the rule over every code the `LadderFinding`
+walk finds plus `symbolic_allele_unusable` (which the walk cannot see); all eight cases were red on
+`0.8` before the change. Kept out of the rule on purpose: the strict-only aggregates (`strict compile:
+N variant(s) …`, `build_disagreement_error`) are different findings from the per-subject warnings that
+fire in both modes, and the enricher escalates by raising. `@one-finding-one-channel`.
+
+Instance 2, the class: a count in prose with nothing re-deriving it. SCHEMAS.md's "21 entries today"
+(47 on the `0.8` tip) is gone, and so is every registry total the sweep found in the maintained
+references beside *entries / codes / tables / table kinds / lanes / parquets / kinds / checks*:
+`ladder.py`'s and `mode_ladder.feature`'s "seven" ladder codes, the nine table kinds (six sites), the
+four binning and PGx kinds (eight sites), COMPILER.md's "six fact tables" (thirteen), "all nine"
+overridable tables (twelve) and "seven merged tables" (ten), ENRICHER.md's "five lanes" not published
+(the enumeration also missed `opentargets`), the per-command check counts, `cpic_build`'s "five parquets", "eight finding kinds", "four
+other tables" with a `source` column (two sites), a parametrized test's "four checks", and SCHEMAS.md's
+"eight siblings" of `resolution.csv` (thirteen). `test_counted_prose.py` keeps the two generated-roster
+paragraphs free of a total; the counts it already pins (`ARTIFACT_PARQUETS`, `OVERRIDABLE_TABLES`,
+`_FACT_TABLES`, the hash family) stay pinned. Left as written, being dated or designed rather than
+registry totals: ROADMAP / INTEGRATION_0_7 / POSTMORTEM / AGENT_NOTES narratives, closed-vocabulary
+member counts (`state`'s six), measurements, and headings.
+
+**Residuals** none
+
+## RM357 — the authored tables that are not table kinds have no registry: three copies of one loader, and a refused `meta.csv` reports its citations as uncited
+
+**0.8, filed 2026-11-04 by the lead** as a second-pass item: found by a 0.8 builder.
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** · **Owner** compiler (`load_meta`, `load_model_organisms`,
+`load_overlay` and the lists that name them) · **Motivating case** a 0.8 builder's report, 2026-11-04 · *related*
+RM335, RM28, `@registry-completeness`, `@overlay-not-inside`
+
+**One class: a category of table with no registry.** `meta.csv` (RM28, `compiler/meta.py` on `0.8`),
+`model_organisms.csv` (RM335, `compiler/model_organisms.py` on `build/RM335`) and `overrides.csv`
+(`load_overlay`) are authored tables outside the table-kind registry. Each has its own copy of one loader body,
+and about ten hand-kept lists say which of them cites literature, names a gene or is a lead table. A fourth such
+table means another copy and ten more edits, and a list that misses one fails silently.
+
+**The instance that misleads an author.** `load_meta` drops all its rows on a duplicate-key error. In the same run,
+a `literature.csv` row cited only by `meta.csv` is then reported as uncited, which points the author at
+`literature.csv` when the defect is in `meta.csv`.
+
+**The fix, as one rule.** One registry of authored non-kind tables, each entry carrying its loader and its citing,
+gene and lead flags; every list is derived from it and a test asserts equality over the walked set. A loader that
+refuses still hands its parsed rows to the other checks, so one table's error never becomes another table's
+finding.
+
+
+**What shipped.** `tables.AUTHORED_NON_KIND_TABLES` (public, entries of `NonKindTable`) registers the three
+tables in `ARTIFACT_PARQUETS` order: CSV name, parquets (the first carries every authored cell and is what
+`reverse` reads), row model and `row_checks` (the overlay's `overlay_coherence_errors`). The entry asked for
+citing, gene and lead flags; none is declared. Whether an entry cites is read off its model (`pmid`). "Not a
+lead table" is membership itself, and so is "its `gene` is not the module's" (`manifest.stats.genes` reads
+`variants.csv` and the kinds only, and the enricher's scope follows it by excluding every registered table);
+a declared gene flag could only ever be `False`, since `module_stats` would not read a `True` one. Every
+entry is draftable. One loader, `load.load_authored_table(spec_dir, csv_name)`, replaces the three bodies:
+`compiler/model_organisms.py` is gone, `meta.load_meta` is gone, and `load_overlay` stays public (the
+enricher calls it) as that loader on `overrides.csv`. `validate_spec` and `compile_module` each load all
+three once, in one loop over the registry. A refused table keeps its rows for the citing view: all of them
+on a duplicate key or a `row_checks` error; on a parse error the rows that parsed, only for a table that
+cites (the overlay applied half-parsed would raise findings against the tables it corrects, which a review
+of this build reproduced). A refused `meta.csv` is not expanded, so its findings stay the refusal.
+
+The lists now derived from the registry: `tables._INPUT_FILES`, `tables.ARTIFACT_PARQUETS`,
+`tables.table_bindings()`, `tables._TABLE_DUPE_KEYS`, `load.spec_tables`' roster (so `content_signature`),
+`binning_checks._CITING_TABLE_KINDS` (so `load_citing_rows` and `table_citations`),
+`table_checks._KNOWN_SPEC_FILES`, the citing view in `validate_spec` (`citing_kinds`/`citing_survivors`) and
+in `compile_module` (`citing_rows`), `reverse_module`'s three write-backs (one loop), `draft.DRAFTABLE` (so
+the describe/template/requirements/stub/hint dispatch and the enricher's `identifiers._id_bearing_tables`
+and `litvar` rosters), and the enricher's `gene_metrics._NOT_THE_MODULES_GENES`. The format tier cannot
+import the compiler, so its three reference groups became one declared group,
+`reference._AUTHORED_NON_KIND_MODELS`, asserted equal to the registry's models. Left as they were: the
+compile's write sites (`meta.csv` builds two derived frames, the other two go through `_build_table`), and
+the enricher's `subjects.meta_member_rsids`, which reads `meta.csv` for the rsIDs its members name and
+refuses on a parse error only.
+
+Tests: `compiler/tests/test_authored_non_kind_tables.py` (the registry against the format tier's model walk,
+the input files, `DRAFTABLE`, the artifact listing, `LEAD_PARQUETS` and the gene facet; the one loader's
+absent and empty arms; a module carrying all three tables round-trips to the same digest and signature);
+a malformed overlay is not applied; `test_meta_compile.py`'s two RM357 tests (the duplicate-key case, red
+before; the parse-error case, red before). Broken
+once each, and a test went red: the loader's two arms, the reverse loop, `_INPUT_FILES`, `DRAFTABLE`,
+`table_bindings()`, `_TABLE_DUPE_KEYS`, `_CITING_TABLE_KINDS`, `_KNOWN_SPEC_FILES` and the reference group. The 16 reference examples and the meta, model-organism and
+overlay fixtures give identical validate and compile warnings and errors, digests, `artifact.files`,
+signatures and reversed files before and after.
+
+**Residuals** none
+
+## RM356 — a named-allele row's identity key omits `gene`, so two genes' `*2` defined by the same variant are one duplicate
+
+**0.8, filed 2026-11-04 by the lead** as a second-pass item: found by a 0.8 builder alongside RM351.
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** · **Owner** format (`pgx.py` `_KEY_FIELDS`) + compiler
+(the dedup sites that read it) · **Motivating case** a 0.8 builder's report, 2026-11-04: the UGT1A genes share
+their exons 2–5, so two genes' `*2` can be defined by the same variant and allele · *related* RM351,
+`@absent-is-not-different`
+
+**One class: an identity or dedup key that names an allele without its gene.** `HaplotypeRow._KEY_FIELDS` is
+`("haplotype_name", "variant_key", "allele")`. A UGT1A1 `*2` row and a UGT1A6 `*2` row on the same shared-exon
+variant and allele are then the same row, and the duplicate check refuses the second. RM351 found the same shape
+in the cross-table checks, which key a named allele on its bare name; `AlleleFunctionRow` already keys
+`(gene, allele)`. Grep for the class, not the instance: every `_KEY_FIELDS` and every dedup or merge key in the
+three tiers that carries an allele name and no gene.
+
+**The P3 question the fix answers first.** Adding `gene` to a key narrows what counts as a duplicate: a pair that is
+refused today becomes legal, nothing legal today is refused, so the change is additive. But `gene` is optional on
+`HaplotypeRow`, so two rows split on it only when **both state it and the values differ**
+(`@absent-is-not-different`); a row with no `gene` still collides with one that has it, and the check narrows
+rather than the key splitting on an absence. The merge identity drafting uses moves with the key, so a module
+drafted before the change must re-draft to the same rows (a lap test).
+
+**What shipped.** `gene` joins the identity as a declared split, not as a `_KEY_FIELDS` member. A tuple member
+would have read an absent gene as a distinct value, and the relation the entry asks for is not transitive (a
+gene-less `*2` collides with UGT1A1's and with UGT1A6's, which do not collide with each other), so no hashable key
+can carry it.
+
+- `HaplotypeRow._KEY_DISTINCT_WHEN_STATED = ("gene",)` (schema `pgx.py`): columns that split two rows sharing
+  `_KEY_FIELDS` only when both state them and the stated values differ. `_KEY_FIELDS` is unchanged.
+- `compiler.tables.same_row(row, earlier)`: the one predicate, comparing a stated gene through RM351's
+  `_gene_key` (moved here from `table_checks.py`, so both items compare a gene one way). Asked by the
+  compile/validate refusal (`_validate_table_kind`, bucketed by the key), by `draft.append_rows` (so a second
+  gene's drafted row is `added`, and a re-draft over its own rows reports every row `already_present`) and by
+  the hints lint (`_check_duplicate_keys`). The refusal text is byte-identical and still prints the
+  three-member key.
+- `hints.TableKey.distinct_when_stated` (and `describe_table(...)["key"]`) publishes the column beside
+  `columns`; a walking test over `reference._ALL_MODELS` pins that every declared column is an optional
+  authored field outside `_KEY_FIELDS`.
+- Recompile stability: the four reference examples with `haplotypes.csv` compile to the same `artifact.digest`
+  and `content_signature` with and without the declaration (a test, on one toolchain), and all six PGx examples
+  matched a pre-change compile byte for byte.
+
+The class survey found no second instance. `AlleleFunctionRow` keys `(gene, allele)`, `DiplotypeRow` keys on
+`gene`, the CPIC provider's `match_on` is `(gene, allele)`, the enricher's function cross-check keys
+`(row.gene, row.allele)`, `drug_labels` subjects carry the gene, RM351 re-keyed the cross-table checks, the
+meta-table's member tables do not include `haplotypes`, and `haplotypes.csv` is no overlay target. Read and left
+alone: `enrich/subjects.py` builds a resolution subject from a haplotype row's position (a variant-level fact,
+which the gene does not change), and `allele_checks.py` labels a symbolic-allele finding with the bare
+`haplotype_name` when a row has no `variant_key` (a message label, not a key). Tests:
+`compiler/tests/test_haplotype_key_gene.py` (six arrangements through validate, compile, drafting and the lint,
+the non-transitive case, the lap test, a round trip, the walking test, digest stability); one scenario in
+`features/compiler/licensing_closure_pgx.feature`.
+
+**Residuals** none
+
+## RM333 — the effector gene behind a GWAS locus has no source and no column
+
+**Placement settled 2026-11-04.** The effector-confidence label is never authored (RM323's cut). This lane's derived table is one of its inputs, beside coloc and the coding consequence.
+
+**Licence probed 2026-11-04 (all claims checked at the source); decided by the maintainer: build, under Open
+Targets' own terms plus its notice.**
+
+What the probe found:
+
+- L2G now lives in the Platform: release 26.09, dataset `l2g_prediction`, on EBI's FTP. There is no
+  Hugging Face copy.
+- The release is marked CC0 1.0 (the licence page, and the croissant's only `license` key).
+- The terms of use add "no additional restrictions … other than those provided by the original data
+  owners" and a third-party-rights disclaimer.
+
+The `SourceRow` therefore records `commercial_use=True`, `share_alike=False`, `redistribution=True`, and
+`notice` carries that disclaimer verbatim.
+
+**For a lawyer, named and not settled:**
+
+- "marked with" CC0 against "dedicates", for data Open Targets did not wholly author;
+- whether "all Open Targets users" reaches a module's buyer;
+- whether the CC BY-SA 3.0 of ChEMBL and HPA, as training inputs, reaches the scores;
+- whether a CC0 mark satisfies the CC BY 4.0 attribution owed to eQTL Catalogue and GTEx;
+- FinnGen's terms, unstated at its source;
+- the 26.09 inputs missing from Open Targets' licence table;
+- PanelApp's "commercial use for Open Targets".
+
+**For 0.9:** the host licence defers to the original owners, and an L2G row cannot name its owner
+(`@a-hosts-terms-are-not-its-contents-terms` assumes a record can override). That is a `SourceRow` axis
+gap, filed as [RM345](ROADMAP_0_9.md#rm345--sourcerow-cannot-state-five-licence-shapes-alphagenomes-four-and-a-host-licence-that-defers-to-owners-a-row-cannot-name) with AlphaGenome's four (`probes/ALPHAGENOME_ATLAS.md` §2.6).
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** (PROPOSAL_0_8_PT2 §5 D2) · **Owner** enricher (a new lane) + format (a derived table's columns) · **Motivating case** longevitymap v2 requirements §4.2 (causal and effector confidence, R-CAUSAL) · *for* longevitymap v2 · *related* RM239, RM238, RM236
+
+**Need.** v2 names a gene only at effector confidence E1/E2, using Open Targets locus-to-gene (L2G)
+scores and coloc. `VariantRow.gene` is a symbol with no provenance, so nothing tells a nearest gene from
+an effector call. RM239 covers the fine-mapping posterior on `gwas_effects.csv`, RM238 the per-tissue
+eQTL (parked), and RM236 the coding consequence that C1/E1 key on. No item covers L2G, and no lane reads
+Open Targets.
+
+**Shape.** An Open Targets snapshot lane, walked through [CACHE_SURFACE.md](CACHE_SURFACE.md)'s checklist,
+**licence probed first** (not verified here). Effector gene, score, method and release on a derived table
+(half cost). The C1–C4 / E1–E4 labels are the module's rubric over those inputs, so they are computed
+once the inputs exist, never authored.
+
+**Built 2026-11-04 on `0.8` (build/RM333).** The lane `opentargets` (`opentargets build`, `opentargets_build.py`) mirrors release 26.09 from EBI's FTP over https and flattens it; `opentargets enrich` (`opentargets.py`) fills `locus_to_gene.csv` at Open Targets' own grain, one row per (study locus, gene) a module variant **leads**, and `colocalisations.csv` at the source's (left, right) study-locus grain, the sibling the probe chose: one (study locus, gene) pair colocalises with up to 1,738 right-hand loci (2,308,572 of 10,326,986 pairs have more than one), so `h4`/`clpp` on the L2G row would have picked a tissue. Several study loci per variant are kept. The `SourceRow` is `OPENTARGETS_TERMS` (CC0-1.0, `commercial_use=True`, `share_alike=False`, `redistribution=True`, `notice` = Data Services items 2 and 4 of the terms of use, verbatim). No C or E label is computed. The hand-run build and its counts are [probes/LANES_0_8.md § 5](probes/LANES_0_8.md#5-built-2026-11-04-the-opentargets-lane). **The lead-only predicate is the contract's and it is narrow:** measured over the whole release, rs1800562 sits in 82 GWAS credible sets and leads none, rs646776 leads 205 of 2,061; a members-wide L2G table would need `variant_key` in its key, a decision left to the pm.
+
+**Addendum 2026-11-04 — grain widened to members (pm, on the lead's measurement, decided on `main` after this entry shipped).** `locus_to_gene.csv` covers every study locus a
+module variant is a **member** of, not only the ones it leads. Measured on the full 26.09 build: rs1800562
+(HFE C282Y) sits in 82 credible sets and leads none, and rs646776 leads 205 of the 2,061 it is in. A lead-only
+table is empty for an HFE module, so it fails the case the lane exists for. `variant_key` joins the key
+`(study_locus_id, gene_id, variant_key)` and means the module variant asked about. `lead_variant_id` still
+names the source's lead, and the member's weight is its posterior on `gwas_effects.csv` (RM239). The cost is
+one row per member variant and no new column, in a machine-written table. `colocalisations.csv` takes the
+same rule if it is lead-only too. Chosen over two alternatives: lead-only, which fails HFE, and a
+`study_locus_id` column on `gwas_effects.csv`, which adds a column.
+
+**Members, not lead-only: built 2026-11-04 on `0.8` (build/RM333-members), on the addendum above.** `opentargets enrich` now writes the L2G and coloc rows of every GWAS credible set a module variant is a member of, read off `credible_set_members`, which the snapshot already held for the posterior. `LocusToGeneRow` is keyed `(study_locus_id, gene_id, variant_key)` and `ColocalisationRow` `(study_locus_id, right_study_locus_id, variant_key)`, since coloc was lead-only too; both models are new in 0.8 and unreleased, so re-keying them breaks no reader. No new column: `lead_variant_id` still names the source's lead and now names another variant whenever the module's is a member only. Over the whole release no GWAS set's lead is missing from its own member list, so the member-wide table holds every lead-only row. On the HFE example C282Y now gets 121 L2G rows over its 82 sets and 13 coloc rows (it had none). Measured against the full snapshot, rs646776 gets 6,182 L2G rows over its 2,061 sets (615 over 205 lead-only) and 309,634 coloc rows (29,885 lead-only), so a module with a heavily fine-mapped variant now carries a coloc table in the hundreds of thousands of rows. The overlay stays keyed `(study_locus_id, gene_id)` / `(study_locus_id, right_study_locus_id)`: a score is the set's fact whichever member asked, so an `update` reaches every member's row of the pair. Because `variant_key` is now a key column the overlay does not key on, an `update` of it is refused (it would give several rows one key), and an `insert` matches on the `variant_key` it supplies, so it can add a second member's row to a pair; a `suppress` still removes every member's row of the pair and cannot withdraw one member's, and the overlay alone cannot insert two members of one pair, since two insert rows of one field share the overlay's own key `(table, subject, member, field)`. The arm that withholds two module keys on one release allele is kept, renamed `shared_allele_keys` (it was `lead_key_ambiguous`, unreleased) and computed over every allele rather than only those in a set; its old reason, a key collision, no longer holds under the wider key, and it now rests on one allele stated under two keys being a module defect to name. `subset_snapshot` cuts member loci, and the committed slice was recut from the full build with one more allele, `6_26072764_C_T`, a member of all 82 of C282Y's sets, so two module variants share study loci in a test.
+
+**A row with no ALT: built 2026-11-04 on `0.8` (build/RM333-noalt), on the maintainer's "build the recommendation".** `opentargets enrich` skipped a `resolution.csv` row whose `alts` is empty, silently, so `apoe_epsilon`'s rs429358 and rs7412 got no row in any table. It now reads every allele the release holds at the row's `(chrom, start)` and each one's `rsIds`, which the builder keeps as `variants.parquet`'s `rs_ids` (the snapshot grows from 5,419.5 to 5,457.3 MB, inside the lane's declared 5,500). One allele carrying the row's rsID (or its `rsid_current`) on the row's REF supplies the ALT for all four tables and the key is named in `allele_supplied`; several candidates, a carrier on another REF, or a row whose rsID is the back-fill's pick (`status="ambiguous"`) are withheld and named (`allele_unstated_withheld`); none is the ordinary not-in-release answer; a row with no rsID either is withheld (`allele_unstated_no_rsid`). **One departure from the decision's letter:** an allele whose `rsIds` is empty counts as a candidate, not as a no. At `6:26091590 G` the release puts rs773443949 on `G>T` only, while the HFE example, from ClinVar, carries it on `G>A` too; the literal rule would have supplied `G>T`, picking one of two. The cost, measured over 26.09: 101,945 of the 276,003 loci with several alleles at one `(chrom, position, ref)` have an rsID-less allele beside a labelled one, and a no-ALT row at any of them is withheld. The supplied ALT is never written back, and no derived row names it: the pass's lists and counts are the only record (a row-level column is a P5 question left open). A snapshot built before `rs_ids` answers such rows as not asked, and `--strict` refuses it; the shared cache at `/data/just-dna-cache/opentargets` is such a snapshot until rebuilt. `subset_snapshot` now keeps every allele at a wanted allele's position whole, and the slice was recut with rs35589214's two alleles at `8:78193100 C`. Against the full release `apoe_epsilon` gets 17,849 L2G rows, 147,760 coloc rows and 122 consequence rows, and compiles, reverses and recompiles to the same digest. The overlay reaches both sides: a supplied key's consequence row is suppressed or corrected by `(variant_key, transcript)`, and a withheld site's rows are inserted, with the two study-locus limits above unchanged.
+
+**Residuals** RM238 · RM345
+
+## RM239 — a fine-mapping posterior has no column, and `gwas_effects.csv` already has its key
+
+**Columns settled 2026-11-04 by the pm seat, on the lead's hand-run probe** (`probes/LANES_0_8.md` on `0.8`, 92eff12):
+`gwas_effects.csv` gains **`posterior_probability` and `fine_mapping_method`**, and no credible-set level.
+
+- Open Targets 26.09 publishes only the 95% set: `is95 = is99 = true` on all 40,967,780 GWAS member rows,
+  so a level column would have no case.
+- The posterior comes from three methods (SuSiE, SuSiE-inf, PICS), and the number means nothing without its
+  method, the same rule as a magnitude carrying its unit.
+
+The column count is the same, and every value has a case. It is a derived table, so half price.
+
+**0.8, decided 2026-11-03.** Kept in 0.8 as an input to longevitymap v2's causal and effector-gene confidence labels (RM333), while the rest of RM188's parity work moved to 0.9.
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** (PROPOSAL_0_8_PT2 §5 D2) ·
+**Owner** enricher · **Motivating case** [`probes/CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md) §
+*nine databases, and the two axes that come back with no home*
+
+**For longevitymap v2 (2026-11-03):** the fine-mapping posterior is the input to causal confidence C1–C4. See [the group](history/ROADMAP_0_8.md#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
+
+The same `gwas-lookup` report returns three fine-mapping credible sets for rs3798220 with a posterior
+probability and 95%/99% set membership per `(trait, study)` — PP 0.92 for Lipoprotein(a) in
+GCST005140, 0.45 for aortic valve stenosis in GCST90038614 with 95% `No` and 99% `Yes`.
+
+A posterior inclusion probability is the **same class of object as an allele frequency or a LOEUF**: a
+number a named dataset publishes, no measurement by us, no inference by us. Its key is
+`(variant, trait, study)`, which is `GwasEffectRow`'s key plus nothing — the row already carries
+`trait_efo_id`, `study_accession` and `p_value_num`. So the cheap shape is **two optional columns on
+the existing table**, `posterior_probability` and `credible_set`, minor-legal under P3/P8, and the
+GWAS Catalog now publishes credible sets for its harmonised studies.
+
+**Smallest item on the survey's list, and it should not be done on its own.** Do it the next time
+`enricher/gwas.py` is open for another reason. Two things a design owes: whether `credible_set` is a
+membership flag or the set's size/level (`95`/`99` are two answers to one question, and putting both
+in one column is the `@field-description-is-a-claim` failure), and a withhold for a study whose
+harmonised release carries no credible set, which is a nobody-asked third state and not a zero.
+
+**Related** RM188, RM90 (the table this lands on).
+
+**Built 2026-11-04 on `0.8` (build/RM333).** `GwasEffectRow.posterior_probability` and `fine_mapping_method`, filled by `opentargets enrich` on the rows the `gwas` pass wrote when exactly one value answers for `(variant_key, study_accession)`; left empty and counted when the study has no GWAS credible set in the release, when the variant is not in its 95% set, and when the variant sits in several of the study's sets with different values (2.8% of the release's (variant, study) pairs, 1,096,671 of 39,795,615). Manifest `gwas_effects.with_posterior` counts the filled rows.
+
+**Residuals** none
+
+## RM236 — `consequence` and `impact` are planned axes with no slot, and an ACMG engine reads both as primary inputs
+
+**0.8, decided 2026-11-03.** Kept in 0.8 as an input to longevitymap v2's causal and effector-gene confidence labels (RM333), while the rest of RM188's parity work moved to 0.9.
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** (PROPOSAL_0_8_PT2 §5 D2) ·
+**Owner** format (schema + compiler), then enricher · **Motivating case**
+[`probes/CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md) § *the two columns their engine reads that we
+cannot store*
+
+**For longevitymap v2 (2026-11-03):** causal confidence C1 and effector confidence E1 both key on a variant being coding. See [the group](history/ROADMAP_0_8.md#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
+
+[ROADMAP § Reserved namespace](ROADMAP.md#reserved-namespace) lists `consequence` (the VEP/Sequence
+Ontology term) and `impact` (`HIGH|MODERATE|LOW|MODIFIER`) as *planned future annotation axes*, with
+the rule that they "get a slot and a specific diagnosis only when a release actually commits to
+building them". Nobody had committed, because nobody had a case. **The case is now in hand**:
+ClawBio's `skills/clinical-variant-reporter/acmg_engine.py` is a running 653-line ACMG/AMP engine
+whose per-criterion evidence table prints `consequence=frameshift_variant` for PVS1, `impact=HIGH`
+for PM1, and `consequence=frameshift_variant, SpliceAI=N/A` for BP7 — three of its twelve implemented
+criteria read a column this format cannot store, and a fourth reads the transcript the term was
+called against.
+
+**Get the mechanism right before touching anything.** Neither name is in `RESERVED_NAMES_0_4`, so
+`reject_reserved` never claimed them and there is nothing to move out of a "built half": an author
+writing `consequence` today gets the generic `extra="forbid"` message. Committing means one of two
+things, and choosing is the first deliverable — **build the column**, or **add the reserved slot plus
+a `vocab.RESERVED_NAME_REASONS` entry** so an author hears what the name is held for instead of the
+stray-column message. The second is the honest outcome if the grain question below defers the build.
+
+**The blocker is grain, and it is [RM23](ROADMAP_0_9.md#rm23--computational-predictor-scores-as-a-table)'s blocker
+restated.** A variant has one consequence *per transcript*; `VariantRow` is one row per
+`(variant_key, genotype)`. Three options:
+
+1. **MANE Select only** — one value per variant, with `GeneMetricsRow.mane_select` naming the
+   transcript it was called against. Cheap, lossy, and defensible only if the column's description
+   says so in the field itself (`@field-description-is-a-claim`).
+2. **Most severe across transcripts** — a ranking policy. That is an interpretation, so it is out by
+   the same clause that keeps threshold-picking out of RM23.
+3. **A derived `consequences.csv` sidecar** keyed `(variant_key, transcript)` — half cost under
+   Principle 9, no authoring burden, and it is *the same shape RM23 needs*.
+
+**Recommend (3), and settle RM23's grain in the same pass.** They are one question asked twice, and
+answering it once is the whole saving; splitting them is how two sidecars end up with two different
+answers to "which transcript". Do not build (1) as a stepping stone — a column shipped under a major
+cannot be retyped into a table.
+
+**Related** RM23 (same grain blocker, and the pass that should settle both), RM188.
+
+**Built 2026-11-04 on `0.8` (build/RM333), option (3).** `consequences.csv` → `ConsequenceRow`, keyed `(variant_key, transcript)`, filled by `opentargets enrich` from Open Targets' VEP annotation: `consequence_so_ids` (Sequence Ontology accessions, verbatim; the name `consequence` stays reserved for a term label), `impact` (closed, `VALID_IMPACTS`), `gene_id`, `gene`, `mane_select`, `canonical`. The transcript set is the source's, one canonical transcript per nearby gene, and the field description says so. RM23 inherits the grain and its entry says so.
+
+**Residuals** RM23
+
+## RM305 — ClinVar-GKM's allele table is an offline, independent witness for where an indel sits, and nothing reads it
+
+**Decided 2026-11-04 by the maintainer: a witness, indels only.** ClinVar-GKM becomes the witness RM292's checks name (no check of its own), and the lane keeps the ~270k `ReferenceLengthExpression` alleles plus other indels, not the full 4.46 M rows.
+
+**0.8, decided 2026-11-03.** Taken into 0.8 by the maintainer, with the rest of the indel-placement fixes (RM304, RM267, RM270, RM292, RM305). The status line below predates that decision.
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** (a new cache lane; no check of its own, per the 2026-11-04 decision; [PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §5 C3)
+· **Owner** enricher (a lane beside the ClinVar VCF lane, and the check) · **Motivating case**
+[GKS_SURVEY.md](probes/GKS_SURVEY.md) §0 finding 4, 2026-09-28 · *related* RM267, RM270, RM292
+
+**Residuals** RM267 · won't fix — the source keeps no archived Parquet sets, so a past release cannot be rebuilt or pinned by URL, only detected as drift
+
+**What shipped (2026-11-04).** A cache lane, `clinvar_gkm` (`clinvar_gkm.py`, `clinvar_gkm_build.py`,
+`clinvar-gkm build|currency|lookup`), built through [CACHE_SURFACE.md](CACHE_SURFACE.md)'s checklist. The
+probe ([LANES_0_8.md](probes/LANES_0_8.md) §3) corrected two lines below: the source is on Cloudflare R2, not
+Google Cloud Storage, and its ids are minted under VRS 2.1.1, not 2.0.x. The lane decisions, in order:
+
+- **Indels only**, as decided: the GRCh38 alleles whose SPDI deletes and inserts a different number of
+  bases, whichever VRS state type carries them, so the reference-agreeing `ReferenceLengthExpression`
+  alleles are dropped too. 309,405 alleles from the 2026-10-24 set, 17.2 MB; every dropped class is
+  counted in `release.json` (LANES §3.7).
+- **The pin is `(source_release, sha256)`**, because the source overwrites its one Parquet set weekly.
+  Both inputs are downloaded whole, as the source asks, and a file whose size or digest differs from the
+  set's `manifest.json` is refused (`ClinVarGkmMismatch`). That is also the guard for the R2 range slip
+  §4 records: a partial body fails the size check whatever status came with it. A release landing
+  mid-build, and an overwrite in place under the same release, are each named.
+- **Its own `SourceRow`**, `CLINVAR_GKM_TERMS`, with the manifest's attribution and disclaimer verbatim.
+  CC0 permits publishing, so the lane has `ensure_*` and `just-dna-seq/clinvar_gkm` (not created yet).
+- **Keys**: the VRS id and the gnomAD-style VCF spelling on every row, the rsID secondary (71% of rows).
+  `ClinVarGkmWitness.lookup` returns every placement and never picks; `ids_comparable` allows a VRS-id
+  comparison only at the same VRS minor, so against today's 2.0 minter a check compares by the
+  left-normalized VCF spelling.
+- **No check of its own.** RM292's records and RM267's comparison name it as their witness.
+- **Currency, three questions apart**: a newer Parquet set exists, the set was overwritten under the same
+  release (both digests are compared), or the set itself lags the line's newest weekly release, which a
+  rebuild cannot fix. `clinvar_gkm` also joins `currency.default_probes`, so `--verify-datasets` asks it
+  for any module whose `sources.csv` names it.
+
+**What exists.** ClinGen's ClinVar-GKM pipeline republishes each ClinVar release in GA4GH form. Its
+`allele.parquet` is 1.09 GB, **CC0**, and holds 4.46 M alleles, each with a VRS 2.0 id beside
+`spdi`, `hgvs.g` and a gnomAD-style VCF expression. The survey found **exactly** the two insertion
+ids RM270 minted (`rs72613567`, `rs77944059`) in it, and our stdlib SNV ids matched it byte for byte
+on the two rows sampled.
+
+**Why it matters here.** Three open items need to know whether a placement is right, and each checks
+it today against a source that shares our failure: RM267's anchoring error comes from the Ensembl
+snapshot, RM270's respelling from the source's spelling, and RM292 asks that a check say what it
+checked against. A table built by a different pipeline, with a spelling-independent id on every row,
+is a witness none of them has. It **does not replace** the ClinVar VCF lane: clinical significance
+still comes from there, and this lane is used for placement only.
+
+**Things the survey recorded that the design must carry.**
+
+- **Maturity.** The dataset is at 1.0-rc3, and a breaking change landed mid-RC. The lane pins a
+  release and records it in `release.json` (RM303's model, if it has landed).
+- **Currency.** The latest weekly delta was dated 2026-08-22, about five weeks stale at survey time,
+  so the lane owes a currency finding (`@currency-asks-the-source-not-the-cache`).
+- **Distribution** is Google Cloud Storage, not FTP. The builder's download is a new transport and
+  owes the client contract (`@client-exception-contract`).
+- **VRS version.** Its ids are 2.0.x (`vrs_output_2_0_1.schema.json`). Comparing them against ours
+  is exactly where RM304's version record is needed.
+
+**Open questions.** Is it a new check, or the witness an existing check gains (RM292's shape)? Should
+the lane carry the full 4.46 M rows, or only the 270,161 `ReferenceLengthExpression` alleles and
+other indels, where placement is actually in doubt?
+
+## RM328 — no study row can name the ancestry it was measured in, so "European-only evidence" is a hand-set flag
+
+**Built on 0.8, 2026-11-04: the column.** `StudyRow.ancestry`, closed and multi-valued over `vocab.VALID_SUPERPOPULATIONS`, reaches `studies.parquet` and `reverse`; `pgs.VALID_TRAINING_ANCESTRY` is derived from the same constant plus `multi`. Still open: `eur_only_evidence` on `weights.parquet`, the last commit of the same `StudyRow` batch.
+
+**Decided 2026-11-04 by the maintainer: the 1000G superpopulation codes** (AFR, AMR, EAS, EUR, SAS), the binding `PgsRow.training_ancestry` already uses.
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** ([PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §5 A5), taken into 0.8 on 2026-11-03 as a priority · **Owner** format + compiler (derived) · **Motivating case** longevitymap v2 requirements §5.4 (R-ANC-1, R-ANC-2) · *for* longevitymap v2 · *related* RM188 (axis 2)
+
+**What shipped.** `StudyRow` gains `ancestry`, optional, multi-valued and closed over
+`vocab.VALID_SUPERPOPULATIONS` (`AFR`, `AMR`, `EAS`, `EUR`, `SAS`), first release 0.8.0; a trans-ethnic
+study lists its codes, and `population` stays free text. `pgs.VALID_TRAINING_ANCESTRY` is now derived
+as that constant plus `multi`, so the codes are one vocabulary; the gnomAD list stays apart. The column
+reaches `studies.parquet` as a list and `reverse` writes it back `|`-joined. `eur_only_evidence` is
+derived on `weights.parquet`, Kleene over the supporting study rows: false when one states a code other
+than `EUR`, null when any states none or there are none, otherwise true. The ancestry banner (R-ANC-3)
+is just-dna-lite's. Tests: `compiler/tests/test_studyrow_0_8.py` (the round trip, the closed list, the
+PGS set equality, and `eur_only_evidence` over a fixture meeting all three arms, including unknown AND
+false = false).
+
+**Residuals** none
+
+**What was confirmed.** `StudyRow.population` is free text. `GwasEffectRow.ancestry` and
+`PgsRow.training_ancestry` exist but each is scoped to its own table. RM188 sighted this axis three times
+in other projects (dna-engine's `transferability`, kaiseki, OmniGenis). This is the first in-house
+module that needs it.
+
+**Shape.** A multi-valued `ancestry` on `StudyRow` bound to a vocabulary. **Which one is the decision**:
+the 1000G superpopulation codes behind `training_ancestry`, or the gnomAD population list, and
+`vocab.py` forbids merging the two. Full ×1. Then `eur_only_evidence` is **derived** (near-zero): every
+supporting row says EUR. Kleene again: a row with no ancestry makes the answer unknown, never false.
+The ancestry banner (R-ANC-3) is just-dna-lite's half.
+
+## RM326 — a study row cannot say which outcome it measured, so the definition of "pro-longevity" lives in a `study_design` prefix
+
+**Built on 0.8, 2026-11-04: the narrowing by class.** `duplicate_study_citation` treats two rows for one `(variant_key, pmid)` as two claims when both state `phenotype_class` and the values differ. Still open: the outcome strip.
+
+**Built on 0.8, 2026-11-04: the column and its warning.** `StudyRow.phenotype_class`, open over `RECOMMENDED_PHENOTYPE_CLASSES` (v2's twelve), reaches `studies.parquet` and `reverse`; a token outside the twelve draws `phenotype_class_unrecognized`, once per module. Still open: the duplicate-citation narrowing by class and the outcome strip on `weights.parquet`, both later in the same `StudyRow` batch.
+
+**Measured 2026-11-04, then decided by the maintainer.**
+
+The measurement was run by a subagent against both ported longevitymap `studies.csv` files, v2's
+`evidence/K_definitions_comparison.csv`, and OLS4. The trait term separates **0 of the 12 classes in
+real rows**. Neither ported file fills `trait_efo_id`. The one longevity term in real use, OBA_VT0005372
+(EFO_0004300 "longevity" is obsolete and points to it), covers at least four classes. In principle a
+term separates only PARENTAL_LIFESPAN (EFO_0007796) and HEALTHSPAN (EFO_0009762). Other findings:
+
+- `study_design` is free text and does not separate the classes either.
+- 15 of the K file's 63 PMIDs carry two or three classes.
+- v2 spells three class names two ways (FAMILIAL/FAMILIAL_LONGEVITY, MR/MR_MEDIATOR,
+  BIOMARKER/BIOMARKER_CLOCK).
+- Three real studies fit none of the twelve.
+
+Decided:
+
+- **The column is built:** `phenotype_class` on `StudyRow`, **open, with v2's twelve as the recommended
+  members**. A token outside them draws a warning, which catches spelling drift without refusing a
+  study that fits no class.
+- **One paper, several classes: RM140's rule.** Two rows for one `(variant_key, pmid)` are not duplicate
+  citations when both state `phenotype_class` and the values differ. The key stays as it is, and the
+  duplicate check narrows (`@absent-is-not-different`).
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** ([PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §5 A5), taken into 0.8 on 2026-11-03 as a priority · **Owner** format + compiler (derived columns) · **Motivating case** longevitymap v2 requirements §4.5, R-DEF-1 · *for* longevitymap v2 · *related* RM323, RM325
+
+**What shipped.** `StudyRow` gains `phenotype_class`, optional and open, first release 0.8.0,
+with v2's twelve classes as `RECOMMENDED_PHENOTYPE_CLASSES` spelled as this entry lists them; a token
+outside them is kept and draws the new warning `phenotype_class_unrecognized`, once per module, naming
+each token with its row count, in both modes. It reaches `studies.parquet` and `reverse`. Two rows for
+one `(variant_key, pmid)` stating different classes are not a duplicate citation (RM140's rule). The
+outcome strip is derived on `weights.parquet`: `outcome_healthspan`, `outcome_lifespan`,
+`outcome_exceptional`, true when a supporting study row's class maps to the cell in
+`vocab.OUTCOME_STRIP_CELLS` (`HEALTHSPAN`; `PARENTAL_LIFESPAN`, `OWN_SURVIVAL`; `EXTREME_SURVIVAL_CC`,
+`FAMILIAL`) and null otherwise, never false. v2's requirements §5.1 name the three cells and state no
+class map, so the map is PT2 §3 item 10's; every other class maps to no cell. The evidence role stays
+the module's README policy, as decided. Tests: `compiler/tests/test_studyrow_0_8.py` (the round trip,
+the warning in both modes with v2's own long spellings, the narrowing, and each strip cell over a fixture
+whose loci meet studied, unstudied and unmapped classes).
+
+**Residuals** none
+
+**Need.** v2 sorts every study into one of twelve phenotype classes (`EXTREME_SURVIVAL_CC`,
+`PARENTAL_LIFESPAN`, `OWN_SURVIVAL`, `VIABILITY_AF`, `HEALTHSPAN`, `MULTIVARIATE_AGEING`, `FAMILIAL`,
+`DISEASE_DEPLETION`, `RARE_BURDEN`, `EVOLUTIONARY`, `MR`, `BIOMARKER`), and the class decides what a row
+may do. The plan writes it as a prefix in `study_design`. But `study_design` describes the study
+(case-control, GWAS, meta-analysis) and the class describes the outcome, so a prefix puts two axes in
+one cell (P5).
+
+**Ask first whether it is derivable.** `StudyRow.trait_efo_id` already distinguishes some classes
+(OBA life span against EFO parental longevity). Measure how many of the twelve an ontology term
+separates before adding a column.
+
+**Shape.** One optional column with a vocabulary (closed or recommended-open is a decision). Full ×1.
+Two things become **derived, near-zero**, once it exists:
+
+- *evidence role* (score or annotate). This is the module's own policy over classes, so it belongs in
+  the module's README, never a column.
+- *the outcome strip* per locus (healthspan / lifespan / exceptional survival). Kleene, never
+  two-valued: a locus with no study row of a class is **untested** and withheld, never "no effect".
+
+## RM330 — an effect measured in one sex, one smoking stratum or one genotype has no row
+
+**Built on 0.8, 2026-11-04: the narrowing by stratum.** `duplicate_study_citation` treats two rows for one `(variant_key, pmid)` as two claims when both state the stratum pair and it differs.
+
+**Built on 0.8, 2026-11-04: the study stratum.** `StudyRow.stratum` and `stratum_level`, free text and both or neither, reach `studies.parquet` and `reverse`. Still open: the duplicate-citation narrowing by stratum, later in the same `StudyRow` batch.
+
+**Built on 0.8, 2026-11-04: `sex`.** `meta.csv` gains the closed `sex` condition (`male`, `female`), part of the row key; a sex-scoped row outranks the same key without one, for that sex, and `meta_resolved.parquet` carries one row per scope. Still open: the study's stratum, `StudyRow`'s half (the `StudyRow` batch).
+
+**Narrowing extended 2026-11-04** (the final run's gap 12). Two rows that differ only by stratum do not count as a duplicate citation, RM140's pattern.
+
+**Decided 2026-11-04 by the maintainer: the study's stratum and a sex condition.** `StudyRow` gains the stratum an estimate was measured in, a modifier and its level (full ×2). Conclusion rows gain one closed `sex` condition (male/female), which the consumer matches against karyotype. This is RM28's "plain column on demand" rule, with sex as its first class. A modifier that is another locus's genotype stays RM28's (0.9).
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** ([PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §5 A5), taken into 0.8 on 2026-11-03 as a priority · **Owner** format · **Motivating case** longevitymap v2 requirements §4.2 (context), §10 (`effect_modifiers`) · *for* longevitymap v2 · *related* RM188 (axis 3), RM28
+
+**What shipped.** Both halves are on 0.8. The conclusion half shipped with the meta-table:
+`meta.csv`'s closed `sex` condition (`male`, `female`), part of its row key. The study half is
+`StudyRow.stratum` and `stratum_level`, free text with first release 0.8.0, written both or neither (one
+without the other is refused), through `studies.parquet` and `reverse`; and `duplicate_study_citation`
+treats two rows for one `(variant_key, pmid)` as two claims when both state the stratum pair and it
+differs. One pair holds one modifier, so a second ("hypertensive men") stays in `statistical_test`; a
+modifier that is another locus's genotype is RM28's. Tests: `compiler/tests/test_studyrow_0_8.py` (the
+round trip with Pilling's parent-sex strata and CHAMP's sex stratum, the both-or-neither refusal, and
+the narrowing).
+
+**Residuals** none
+
+**Need.** FOXO3 rs2802292 is positive in men only, HLA-DRB1\*15:01 is anti-longevity in men, and some
+estimates exist only in smoking strata. The plan writes these as `flags: sex_specific:m` and in the
+conclusion prose. RM188 sighted this axis three times (open-genome-atlas, a nutrigenomics project,
+genomi's caveat). `CopyNumberRow.modifier_gene` / `modifier_cn` is the only precedent, and it is genetic.
+
+**Two different things, kept apart.**
+
+- **The stratum a study measured in**: a fact about the estimate, so optional `StudyRow` columns (the
+  modifier and its level). Full ×2.
+- **A conclusion that depends on the modifier**: the consumer supplies it at query time (sex from
+  karyotype, smoking from nothing). That is the injected cofactor RM28 dropped in 2026-08 with the rule
+  "each class gets a plain column on demand". This is the demand, and sex is the candidate first class.
+
+A modifier that is **another locus's genotype** (KL-VS in APOE4 carriers) is not this item. It is RM28's (in 0.8 since 2026-11-04)
+corpus entry.
+
+## RM329 — an age-stratified estimate has no age band, so age of action is reconstructed from `statistical_test` prose
+
+**Built on 0.8, 2026-11-04: the narrowing by band.** `duplicate_study_citation` treats two rows for one `(variant_key, pmid)` as two claims when `age_min`, `age_max` or `age_of` is stated on both and differs, cell by cell; an unstated cell is unknown and still warns.
+
+**Built on 0.8, 2026-11-04: the band.** `StudyRow.age_min`, `age_max` and `age_of` (`VALID_AGE_OF`) reach `studies.parquet` and `reverse`. Still open: the duplicate-citation narrowing by band, later in the same `StudyRow` batch.
+
+**Cut 2026-11-04 by the maintainer, after the final measuring run** (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §3): `age_event` (0 v2 rows with an event other than death). The band is `age_min`, `age_max` and whose age (`age_of`); names still get the P5 audit. Rows that differ only by band narrow the duplicate-citation check, RM140's pattern, extended to bands.
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** ([PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §5 A5), taken into 0.8 on 2026-11-03 as a priority · **Owner** format · **Motivating case** longevitymap v2 requirements §4.2 (age of action), Timmers 2019 age bands · *for* longevitymap v2 · *related* RM323, RM140
+
+**What shipped.** `StudyRow` gains `age_min` and `age_max` (years, finite and ≥ 0; either
+may be empty for an open band) and `age_of` (closed, `VALID_AGE_OF`: `participant`, `parent`), optional
+with first release 0.8.0 and declared after every 0.7 column; no refusal ties the three together, and
+`age_event` was cut before the build. They reach `studies.parquet` and `reverse` writes them back.
+`duplicate_study_citation` reads the band by RM140's rule, cell by cell: two rows for one
+`(variant_key, pmid)` are two claims when a band cell is stated on both and differs, and an unstated
+cell is unknown and still warns. The age-of-action class and its confidence stay on `meta.csv`
+(RM323's home). Tests: `compiler/tests/test_studyrow_0_8.py` (the round trip with Timmers 2019's three
+parental bands, the closed `age_of`, finite ages, and the narrowing per cell, including `80–` against
+`80–90` still warning).
+
+**Residuals** none
+
+**Interim that works.** One study row per age band, each with a stated and different
+`statistical_test`. RM140's rule silences `duplicate_study_citation` for exactly that case. Otherwise
+it warns, in both modes, and never refuses.
+
+**Shape.** Band bounds plus whose age they are: participant or parent, at which event (death,
+recruitment). Full ×2–3. The names need the P5 audit before they are fixed. The age-of-action *class*
+(LIFELONG, MIDLIFE, LATE…) is a per-locus judgement and lands in RM323's home. Its confidence grade
+(DIRECT, DIRECT_WEAK) is partly derivable from the bands once they are data.
+
+## RM332 — a `beta` has no unit on authored rows, while `gwas_effects.csv` has carried one since 0.6
+
+**Cut 2026-11-04 by the maintainer, after the final measuring run** (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §3): the `VariantRow` half, which reverses the morning's "both tables". `effect_unit` is on `StudyRow` only, and the parquet joins it onto a variant's effect from the matching study row.
+
+**Decided 2026-11-04 by the maintainer: both tables.** `effect_unit` goes on `StudyRow` and on `VariantRow`, free text and verbatim, mirroring `gwas_effects.csv`: wherever an effect size is authored, its unit sits beside it.
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** ([PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §5 A5), taken into 0.8 on 2026-11-03 as a priority · **Owner** format · **Motivating case** longevitymap v2 requirements §6.2 (`effect_measure`), §9 step 3 (sign conventions) · *for* longevitymap v2 · *related* `@weight-has-no-unit`
+
+**What shipped.** `StudyRow` gains `effect_unit`, optional free text kept verbatim, first release 0.8.0,
+the annotation `GwasEffectRow.effect_unit` has; it reaches `studies.parquet` and `reverse` writes it back.
+The `VariantRow` half was cut by the maintainer before the build. `weights.parquet` gains a derived
+`effect_unit` per variant, repeated on each genotype row: the unit every supporting study row (same rsid
+or same `chrom:start:ref`, the orphan check's rule) that states one agrees on, and null when none states
+one or two disagree — PT2 §3 item 17's unanimity default for the undefined "matching study row",
+accepted by the pm. It is appended after every 0.7 column and `reverse` never reads it back, so
+`content_signature` does not move and every module with `variants.csv` gets a new `artifact.digest` on a
+0.8 recompile. Tests: `compiler/tests/test_studyrow_0_8.py` (the column's round trip, the join over a
+variant whose rows agree, one whose rows disagree, one where one row of three states a unit, and the
+variants with none; `variants.csv` after `reverse` carries no `effect_unit`).
+
+**Residuals** none
+
+**What was confirmed.** `GwasEffectRow.effect_unit` (0.6) records the unit of a `beta` verbatim.
+`VariantRow` and `StudyRow` have only `effect_measure`. v2's betas come in years per allele (sometimes
+doubled from a parental estimate), in Martingale residuals (Pilling) and in healthspan hazards (Zenin),
+so the plan writes the unit into `statistical_test` prose.
+
+**Shape.** `effect_unit` on `StudyRow` (and on `VariantRow`, which is a decision), free text and verbatim,
+mirroring the derived table. Full ×1–2. A sign convention ("positive = shorter life") is not a unit:
+`effect_allele` with `direction` already says it.
+
+## RM325 — `studies.csv` has no sample size, and v2's tier A rule is stated in N
+
+**Decided 2026-11-04 by the maintainer: `sample_size`, a closed `sample_unit` beside it (individuals / lives), and `n_cases`.** A magnitude carries its unit beside it (`@weight-has-no-unit`), so v2's "N ≥ 100k lives" is checkable from the artifact. The names still get the P5 audit in the proposal.
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** ([PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §5 A5), taken into 0.8 on 2026-11-03 as a priority · **Owner** format (+ enricher, if a derived N is filled) · **Motivating case** longevitymap v2 requirements §4.1 · *for* longevitymap v2 · *related* RM324, RM326
+
+**What shipped.** `StudyRow` gains `sample_size` (an integer ≥ 0, the total analysed with the cases
+included), `sample_unit` (closed, `VALID_SAMPLE_UNITS`: `individuals`, `lives`) and `n_cases` (an
+integer ≥ 0), all optional with first release 0.8.0 and declared after every 0.7 column. A
+`sample_size` without its unit is refused (`@weight-has-no-unit`: a parental-lifespan study counts two
+lives per participant), and so is an `n_cases` larger than the `sample_size` beside it; a unit or a case
+count alone is legal. The three reach `studies.parquet` (the counts as `Int64`, since a consumer sums
+them), `reverse` writes them back, and a stated cell is inside `content_signature`. The derived N on
+`gwas_effects.csv` the entry priced as a separate half-cost option was not built: nothing asked for it.
+Tests: `compiler/tests/test_studyrow_0_8.py` (a copy of `reference_examples/hfe_hemochromatosis` with the
+columns filled, compile → reverse → compile to a fixed point on both identities, and the two refusals).
+
+**Residuals** none
+
+**What was confirmed.** Tier A requires "N ≥ 100k lives, or ≥ 3k cases above the 90th percentile".
+No table in the format carries a sample size. A grep for `sample_size` or `n_cases` over the schema
+finds nothing, on `StudyRow` or on `GwasEffectRow`. So the rubric cannot be checked from the artifact.
+
+**Shape.** `sample_size` (and `n_cases` for case-control designs) on `StudyRow`. Full ×1–2. **The
+name needs the P5 audit**: parental-lifespan studies count *lives* (two parents per participant),
+which is not the number of people genotyped. A derived N on `gwas_effects.csv` is a separate half-cost
+option. The GWAS Catalog publishes its sample description as text, so probe the real field before
+modelling it (`@probe-the-real-file`).
+
+## RM349 — a `pmid=NONE` row's DOI is never checked to exist, and its quote is never matched against the paper
+
+**0.8, filed 2026-11-04 by the lead** as a second-pass item: RM336's residual.
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** · **Owner** enricher (`literature`, `lookup`) · **Motivating case** the RM336 builder's report · *related* RM336, RM263
+
+RM336 lets a study cite a DOI-only preprint through `pmid=NONE` + `doi`. The literature pass then has nothing to look
+up: a `NONE` row's quote or citation is recorded as an `unsupported` skip, so a fabricated DOI and a real one read the
+same, and `provenance_quote` is never matched against the preprint's text. The DOI is the only identifier the row
+carries, so it is the one the pass must check: existence through Crossref (`CrossrefClient.exists`, which already
+answers three-valued) and, where a full text is reachable (bioRxiv/medRxiv), the quote. `@existence-not-identity`
+applies: the check names the title it found.
+
+**Residuals** won't fix — a DOI-only citation's answers are not pinned in `literature.csv`, so the compiler's quote-counter, licence and title-as-quote checks never see them; reported to the lead to file · won't fix — bioRxiv's own API publishes a `jatsxml` link for every preprint, a wider route than Europe PMC's subset, and is a new source rather than an existing client; reported to the lead to file
+
+**What shipped.**
+
+- **One question set per distinct DOI** (`spec.doi_key`, so a bare DOI and a doi.org URL in another case
+  are one citation), put by `literature._check_doi_citation` and returned as `LiteratureResult.doi_citations`,
+  one `DoiCitation` each: Crossref's tri-state `exists`, whether it was asked, the `title` and `agency`
+  Crossref returned, and the quote half with `LiteratureRow`'s meanings (`quotes_authored`,
+  `quotes_found`, `quote_source`, `fulltext_status`, and `quotes_checked()` through the new
+  `just_dna_format.literature.settled_quotes`, which `LiteratureRow.quotes_checked` now calls, so the
+  two cannot disagree about what an abstract settled).
+- **Existence names its work.** No citing table carries a stated title, so the contract's comparison
+  branch has nothing to compare: the title is recorded and named in the `citation_existence` detail
+  (`Crossref names <doi> as '<title>'`, a bounded few) and on the CLI (`NONE doi <doi>: names '…'`). A
+  DOI no agency knows joins `doi_missing`, so `--strict` refuses it and the CLI names it in red.
+- **A Crossref 404 is not the registries' answer.** Probed 2026-11-04: `/works` answers 404 for a real
+  DataCite DOI (`10.5281/zenodo.3360392`), the kind of work a `NONE` row cites. `CrossrefWork` gained
+  `agency`, and after a 404 `CrossrefClient.work` asks `/works/{doi}/agency`: another agency is
+  `exists=True` with no title, a 404 there is `False`, and a failed or contradicting answer withholds.
+  This reaches every caller of `work`/`exists`: an authored DOI on a PubMed row, and `hint citation
+  --doi`, whose finding now says who registered the DOI rather than "Crossref has a record".
+- **The text by DOI.** `EuropePmcClient.record_for_doi` searches `DOI:"…"` over every source and takes
+  only a record whose own `doi` matches. A record with a PMC id goes the RM257 rungs; a preprint goes to
+  `fetch_preprint_fulltext` (`europepmc.org/api/fulltextRepo`: the file list, then the JATS file it
+  names), and only when its search record lists a full text. Probed by hand first: the documented
+  `/{id}/fullTextXML` answered 500 for all four `PPR` ids tried, with and without a full text; the
+  repository served `PPR1129025`'s JATS, and answers 500 too for a preprint with none (`PPR1146237`),
+  which is why the search record gates the request. The abstract is the fallback (a hit settles, a miss
+  does not), and `fulltext_status` is `retrieved | absent | unreachable` with RM258's meaning.
+- **The records.** Settled DOI-only quotes join `provenance_quote`'s denominator and DOI verdicts join
+  `citation_existence`'s, each gap named in its own clause. A module citing only by DOI records
+  `citation_existence` with `source="crossref"`, or skips it as `not_requested` or `unreachable`. Offline
+  nothing is asked (`@unreachable-not-absent`) and both records say `offline`; the quote record used to
+  say `unsupported`, which after this item would claim no run could ask. `unsupported` is left for a row
+  whose `doi` carries no DOI token, which `check_citation_pair` keeps out of any loaded module.
+- **Not persisted.** `literature.csv` is keyed on a PubMed id and feeds `literature.parquet`, which the
+  compiler reads by PMID (`split_cited_literature`, the RM275 duplicate rule, `manifest.literature`), so
+  a `NONE` row there would widen a published column's grammar, a decision this item was not given.
+  `verification.json` is the durable half, and RM72's merge keeps an online `ran` over a later offline
+  skip while the authored bytes stand still. Every online run asks again. Never writes a PMID anywhere
+  (RM263 reports; it never fills).
+
+**Tests.** `enricher/tests/test_literature_doi_only.py`, off responses recorded 2026-11-04 (a CC BY bioRxiv
+preprint's Crossref record, Europe PMC search, repository file list and trimmed JATS, in `assets/`): an
+existing DOI checked and its title named; a fabricated DOI a finding, refused under `strict`; an unreachable
+Crossref `unreachable`, never absent; `--no-doi` asking nothing; a DataCite DOI not absent, and every failure
+leg of the agency, DOI-search and repository requests; a quote found in, and missing from, the preprint body;
+a preprint with no text asking no repository and settling on the abstract; an unanswered repository
+`unreachable`; one preprint in two spellings asked once; a preprint beside a PMID adding to both
+denominators; offline asking nothing; the `hint` finding; and one live test under `JUST_DNA_NETWORK_TESTS=1`
+against that preprint. `test_literature_doi_cells.py`'s two RM336 expectations moved with the behaviour
+(offline quote → `offline`; a DOI-only pharm module asks Crossref once and records `ran`). Each new arm was
+broken once and its test went red.
+
+## RM292 — a verification check does not say what it checked against, so a check that witnesses itself reads as verified
+
+**0.8, decided 2026-11-03.** Taken into 0.8 by the maintainer, with the rest of the indel-placement fixes (RM304, RM267, RM270, RM292, RM305). The status line below predates that decision.
+
+**Severity** high · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor**
+([PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §5 C2) · **Owner** format (`VerificationRecord`) +
+enricher (the check roster) · **Motivating case** the 2026-09-27 postmortem, blindspot B2 and
+mitigation M3, decided with the maintainer that day · *related* RM267, RM270, RM274, RM305,
+`@start-1based`, `@registry-completeness`
+
+**Residuals** RM305 — ClinVar-GKM's allele table is the independent witness for indel placement that
+no check reads yet; it gets a roster entry when a check reads it · RM267 — comparing two placement
+authorities is the check that would turn `rsid_coordinate_agreement`'s counted `undecided` indels into
+verdicts · won't fix — a CIViC-drafted module's `published_refutation` reads its checked side as
+withheld rather than `self_consistent`, because CIViC's drafter is a judgement drafter and records no
+digest that could establish which cells it supplied
+
+Every check that could have seen the indel anchor error either compared a source with itself or was
+tolerant by design. The reference-allele check passes a wrong anchor because the anchor base is a real
+genome base. `check_rsid_coordinates` abstains on every indel position difference and counts none of
+them. The ClinVar snapshot was loaded in the same run and used only as a fallback. `@start-1based`
+wrote the lesson down on 2026-08-06 (*validate-by-redundancy assumes independence*), but only as a
+sentence.
+
+**The change.** Each check declares two things: the source of what it checks, and the source it checks
+against. When those are the same source, the record reads *self-consistent*, never *verified*. A
+tolerance that makes a class undecided counts that class and publishes the count (`@tautology-zero`).
+It is carried as a field on the check registry and asserted by an equality over the roster, so a new
+check cannot ship without stating its witness.
+
+**Why a minor.** The field on `VerificationRecord` is a new member of a published document, and
+*self-consistent* is a new verdict vocabulary member. Both are additive and minor-legal (P3, P8).
+Price: the record is machine-written, so half cost (P9). Not on `main`.
+
+**What shipped (2026-11-04).** Four optional fields on `VerificationRecord`, all `since 0.8.0`:
+`checked_source`, `witness_source`, `undecided`, and `independence` over a new closed vocabulary
+`VALID_VERIFICATION_INDEPENDENCE` = {`independent`, `self_consistent`}. The field is named for its axis
+rather than `verdict` (P5: an outcome verdict is a likely later field on the same record), and the
+member opposite `self_consistent` is `independent` rather than `verified`, because a record with
+findings was not "verified". `independence` is derived on the model from the two sources and refused
+when it contradicts them; the other three join `VERIFICATION_FACT_FIELDS`, and since `fact_signature`
+drops `None` no published signature moved. `witness_source` is not `source`: `source` is a single
+licence join key (null on a two-authority check), the witness names them all, `+`-joined.
+
+The roster is `just_dna_enricher.verification.CHECK_WITNESSES`, one `CheckWitness` per emitting check
+(`checked`, `witness`, `reason`, the `columns` a drafter digest could cover, and a `tolerance`). `ran()`
+and `skipped()` fill every record from it: a check with no entry raises, a `source` outside the
+declared witness is refused, a tolerant check's run without `undecided` is refused, and a non-tolerant
+check carrying one is refused. `record_verification` then settles `authored` against the licence
+table, over carried records too (the table is outside the binding), three-valued: one source whose
+drafter digest still covers the cells → that source (so a ClinVar-drafted, unedited `clin_sig` reads
+`clinvar` against `clinvar`, `self_consistent`), unless the witness is also named at the `annotation`
+layer and is another source; the witness named with nothing establishing which cells → withheld;
+nothing recorded → `authored`; an unreadable table (`licensing.load_sources_file`, the tri-state core
+`read_sources_file` now folds) → withheld. A checked side that is one of several witnesses withholds
+`independence`; `citation_existence` names Crossref only when a DOI verdict is among its subjects. The currency checks (`evidence_status_currency`,
+`dataset_currency`) are `self_consistent` by construction. `rsid_coordinate_agreement` publishes the
+indel pairs it abstains on as `undecided`, on the ran record and on the `no_reference` skip whose
+snapshot settled nothing. Tests: `enricher/tests/test_check_witness.py` (the equality over the roster,
+red with one entry dropped), `test_enricher_doc_registries.py` (ENRICHER.md's new `Reads`/`Against`
+columns equal the roster, red with one cell changed), and the record tests in `test_verification.py`,
+`test_rsid_coordinate_agreement.py` and `test_clinical.py`.
+
+## RM335 — model-organism evidence has nowhere to go, and a study row naming the rsID claims the mouse study was about the human variant
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** ([PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §5 A6, §3 item 23), taken into 0.8 on 2026-11-03 as a priority · **Owner** format · **Motivating case** longevitymap v2 requirements §4.3 (R-ANIMAL-1…5), §10 · *for* longevitymap v2 · *related* RM327
+
+**What was confirmed.** The plan's interim is a `studies.csv` row with `study_design: model_organism`.
+That row is false either way:
+
+- **With the rsID**, it says a mouse lifespan study was about the human SNP.
+- **Without one**, it attaches to the whole module, because `StudyRow` has no `gene` column (RM47 made the
+  variant optional, not a gene the row could name instead).
+
+**What shipped.** `model_organisms.csv`, one row per model-organism lifespan finding about a human gene:
+`ModelOrganismRow` (`just_dna_format.model_organisms`, on `AuthoredModel` and `CitationPair`) with
+`gene` required and `orthologue`, `species`, `model_type`, `sex`, `diet`, `lifespan_effect`,
+`concordance`, `pmid`, `doi` optional. `concordance` is closed (`concordant`, `discordant`,
+`nonmonotone`) and empty is unstated, which is what v2's 55 "unclear" rows become. The key is every
+column but `lifespan_effect` and `concordance`, refused on a duplicate through `_TABLE_DUPE_KEYS`. An
+uncited row draws no warning; a cited one follows the pair's rules and is a citation site
+(`_CITING_TABLE_KINDS`). `sex` is the animals', free text, and deliberately not bound to `meta.csv`'s
+`VALID_SEXES` (a karyotype condition, another axis). `gene` has no model-level grammar, like
+`VariantRow.gene`; `check-identifiers` reads it because the table is in `DRAFTABLE`.
+
+**Registered on the meta-table's terms, not as a `_TABLE_KINDS` entry**, departing from §5 A6's wording
+on purpose (the reason is at `tables.MODEL_ORGANISMS_CSV`): a table kind satisfies "a module must carry at
+least one recognized table", is a `LEAD_PARQUETS` member the publish gate and discovery key on, and feeds
+`manifest.stats.genes`, and a mouse lifespan finding is none of those. So the CSV is authored input
+(`_INPUT_FILES`, `content_signature`), compiles verbatim to `model_organisms.parquet` (last in
+`ARTIFACT_PARQUETS`, not lead), and comes back through `reverse`. Tests:
+`schema/tests/test_model_organisms.py` and `compiler/tests/test_model_organisms_compile.py` (the audit's
+two rows through compile → reverse → compile with equal digest and `content_signature`, the signature
+moving on an edited cell, the duplicate refusal, the vocabulary refusal, no warning from an uncited row,
+the module-alone refusal, a literature row cited only here); the duplicate key, the signature roster, the
+citing roster and the reverse were each broken once and their test went red. The enricher's gene scope
+(`gene_metrics.module_genes`, which the constraint, gene-validity and dosage passes read) leaves the table
+out, as `manifest.stats.genes` does; `check-identifiers` still reads it.
+
+**Residuals** none
+
+**Shape.** A separate table, one concern per table: the human gene with an orthologue id (symbol
+matching found 20 of the 22 genes NCBI orthologues found), species, model type, sex, diet, the lifespan
+effect, and the direction concordance with the human allele (`concordant`, `discordant`,
+`nonmonotone`), with a citation. Annotation only: it never reaches an effect column or a tier
+(R-ANIMAL-1). Full, a new table kind. *(As built, a new authored table at full price, registered beside
+the meta-table rather than as a `_TABLE_KINDS` entry: see What shipped.)*
+
+## RM351 — a PGx check keys a named allele on its bare name, so `star_allele_undefined` fires on every HLA allele
+
+**0.8, filed 2026-11-04 by the lead** as a second-pass item: found while building RM334.
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** · **Owner** compiler (`table_checks._cross_validate_haplotype_definitions` and its siblings) · **Motivating case** the RM322/RM334 builder's e2e: `['*15:01', '*57:01:01']` reported as used but not defined · *related* RM334, RM28
+
+**One class.** The cross-table PGx checks collect allele names into sets keyed on the bare `allele` string, not on
+`(gene, allele)`. A typed allele that has no defining variants by design (an HLA allele, called by a typer, not a
+SNP) is then reported as "can never match", which is false, and two genes sharing an allele name (`*2`) are
+conflated. The meta-table's `allele_function` members (RM28) make this the v2 shape. The fix keys every such set
+on `(gene, allele)` and exempts a gene whose alleles are typed rather than defined (the HLA grammar's genes). Grep
+for the class, not the instance: every `used.setdefault(row.allele` and set of bare allele names in the compiler.
+
+**What shipped.** The class had two instances, both in `compiler/.../table_checks.py`:
+
+- `_cross_validate_haplotype_definitions` (`star_allele_undefined`): `defined` and `used` were sets of
+  bare names. They are `(gene, allele)` now. A `haplotypes.csv` row with no `gene` (the column is
+  optional there and required on the other two tables) is the unknown arm: it defines its name for every
+  gene, which is what the bare-name key did, so a module that leaves `gene` out of `haplotypes.csv` is
+  warned about the same alleles as before. Genes compare through `_gene_key` (case and surrounding
+  space ignored), because the bare-name key never read the gene and a stricter comparison would have
+  turned a spelling into a finding. An HLA gene (`pgx.is_hla_gene`) that `haplotypes.csv` defines
+  nothing for is exempt, since its alleles are typed; one the module defines by variants (a tag SNP)
+  is checked like any other. The predicate is new, it states the `HLA-` prefix once, and RM334's
+  `hla_allele_refusal` now reads it too. The message keeps its wording and appends
+  `By gene: <gene> <allele>, …; <gene> …`, then, when an HLA allele was skipped, the HLA genes it did
+  not check. When every undefined allele is an HLA allele, nothing fires.
+- `_cross_validate_phase_ambiguity` (`diplotype_definitions_identical`, `diplotype_phase_ambiguous`):
+  `definitions` was keyed on the haplotype name, so a second gene's `*2` merged its defining variants
+  into the first gene's `*2`, and a real finding about the first went silent. Definitions are keyed
+  `(gene, name)` now, through the same `_gene_key`. A diplotype reads its gene's own rows laid over
+  any gene-less ones (`_defined_for`), resolved once per `(gene, name)` rather than once per row.
+
+Not instances, read and left alone: `compiler/meta.py`'s allele-to-diplotype reach (gated on
+`diplotype.gene == target.gene`), and in the enricher `pgx.py`'s function cross-check (keyed
+`(row.gene, row.allele)`), `drug_labels.authored_subjects` (passes `row.gene`), and `pgx_draft` (one gene
+per draft, so its allele sets are already per gene). Tests: `compiler/tests/test_pgx_allele_identity.py`
+(the HLA case and the shared-`*2` case, both failing before the change; the phase leak; both gene-less
+cases; a gene spelled in another case; an HLA gene defined by a tag SNP; the per-gene grouping; and the
+six PGx reference examples, checked against the bare-name rule restated in the test, and for the phase
+check against a run with `haplotypes.csv`'s genes blanked); one scenario in
+`features/compiler/licensing_closure_pgx.feature`.
+
+**2026-11-04, RM356.** The same class reached `haplotypes.csv`'s own duplicate rule, which keyed a row on
+`(haplotype_name, variant_key, allele)` with no gene, so two genes' `*2` on one variant were one row. RM356
+splits it on a stated `gene` and moved `_gene_key` beside the shared predicate, `compiler.tables.same_row`.
+
+**Residuals** none
+
+## RM327 — pleiotropy has no per-trait row, so a trade-off can only be prose, and `tradeoff` is computed rather than authored
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut** — a minor, taken into 0.8 on 2026-11-03 as a priority; the per-trait rows shipped with the meta-table (RM28), `tradeoff` with [PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §3 item 9, §5 B2 · **Owner** format + compiler · **Motivating case** longevitymap v2 requirements §4.2 (pleiotropy, mediator), §10 · *for* longevitymap v2 · *related* RM28, RM321, RM323, USE_CASES § 6a
+
+**Residuals** won't fix — `false` stays unreachable in 0.8, because a module states no closed list of the traits an allele touches, and the reason is in this entry
+
+**What shipped (B2, 2026-11-04).** `tradeoff` is a nullable boolean column of `meta_resolved.parquet`,
+computed and never authored. A per-trait judgement is a one-member `meta.csv` row with `trait_efo_id` and a
+`direction`. The verdict is taken **per member** (its `members_key`): `true` when the member has a
+`protective` row on one trait and a `risk` row on another, and it lands on every row the member reaches (each
+genotype row of a bare locus, the reference homozygote included, and each diplotype carrying a named
+`allele_function` allele). A row two members reach is `true` when either is. Two alleles are never pooled:
+ε2 protective on one trait and ε4 risk on another leave the ε2/ε4 row null, since neither allele has a
+trade-off. On one trait at one row the fact columns' precedence runs first, so a narrower judgement on
+that trait (a sex-scoped row, a diplotype over the allele it contains, a genotype over its locus) drops
+the broader one there; that came out of the code review, whose case was ε3/ε4 stated `neutral` on the
+trait ε4 is `risk` on. **Defaults
+taken:** a `mediator` row counts, because its direction is still a benefit or a harm; `neutral`, `unknown` and
+`contested` are not signs; a direction the compile withheld (`meta_member_allele_ambiguous`) is unknown and
+adds no sign; a `direction` with no `trait_efo_id` is not a per-trait row. The name left
+`RESERVED_NAMES_0_4` for `MISPLACED_COLUMN_REASONS` in the same commit, so a `tradeoff` column on any
+authored table is refused with the reason that the compiler computes it. Tests:
+`compiler/tests/test_meta_compile.py` (the audit's example 4, a parametrized Kleene table, per-member versus
+pooled, sex precedence, the round trip and byte determinism) and `schema/tests/test_v04.py` (the refusal,
+walked over every authored model).
+
+**Why `false` is never written.** RM327's Kleene rule makes `false` mean that every trait's judgement is
+present and none opposes another. A module cannot say it has listed every trait an allele touches: there is no
+closed trait list in the format, and the absence of a `risk` row is not a judgement that there is no harm. So
+one sign alone is null. Reaching `false` would need a declared closure (for example a module-level statement
+that its per-trait rows for a member are complete), which no consumer has asked for; it is not filed.
+
+The dated lines below are the record as it stood, newest first. The oldest of them, the
+`(subject_kind, subject, trait_efo_id)` key, was superseded by the re-derivation above it once RM323
+dropped subject kinds: what shipped is the meta-table's key, `(members_key, trait_efo_id, sex)`, with
+APOE ε4's per-trait rows written as `allele_function` members. The **Shape** below is the pre-design
+sketch; its authored per-trait table was not built, and the reservation it describes has moved.
+
+**Built on 0.8, 2026-11-04: the meta rows.** A per-trait judgement is a one-member `meta.csv` row with `trait_efo_id`, `direction` and an allele-bearing member (a bare locus bears one when its rows share an `effect_allele`, else `meta_member_allele_ambiguous` and the direction is withheld), `trait_role` (`mediator`) beside it. Still open: `tradeoff` and the resolved facts' Kleene table (B2), computed at `meta_resolved.parquet`'s grain; the name stays reserved until then.
+
+**Default under the 2026-11-04 reduction rule (the pm seat's reading; the maintainer may veto):** a per-trait judgement is a row of RM28's meta-table: one member, `trait_efo_id`, and `direction` (`protective`/`risk`). `tradeoff` is computed over those rows, and no new table kind is built for this item.
+
+**Key to re-derive, 2026-11-04.** RM323 no longer has subject kinds, so "align on RM323's subject" now means: a per-trait row is keyed on an item of a single-statement table plus `trait_efo_id`, using the same item references as the meta-table's members. The proposal settles the exact spelling.
+
+**Decided 2026-11-04 by the maintainer: the key aligns on RM323's subject.** It is `(subject_kind, subject, trait_efo_id)`, and `effect_allele` is kept for `variant` subjects only; a haplotype or gene subject is its own allele. RM323, this table and later RM28 then share one identity, so APOE ε4's per-trait rows are `haplotype` rows.
+
+**What was confirmed.** `VariantRow` keys on `(variant_key, genotype)`, so a genotype row states one
+claim about one trait. Re-keying a shipped authored table is major-only (P3; RM140's text). `DiplotypeRow`
+already keys on `trait_efo_id`, so the two tables disagree on whether pleiotropy is a row. The per-trait
+*facts* already arrive in `gwas_effects.csv` (derived, with `effect_direction` increase/decrease). What
+has no home is the curator's per-trait *judgement*: whether this allele's effect on that trait is a
+benefit or a harm, which `VALID_EFFECT_DIRECTIONS` deliberately does not say.
+
+**`direction: contested` is not the interim.** Its description says the sources disagree about the sign.
+At a trade-off nobody disagrees: two known effects point opposite ways. SH2B3 and CDKN2B-AS1 are
+genome-wide-significant lifespan hits, so their lifespan sign is established, and the trade-off belongs
+in `negatives` until this table exists.
+
+**Shape.**
+
+- **An authored per-trait table** keyed on `(variant_key, effect_allele, trait_efo_id)`, carrying the
+  existing `direction` vocabulary, a role (`outcome` or `mediator`), and a citation. The mediator EFO the
+  plan parks in `flags: mediator:` folds in here, so `trait_efo_id` stays role-free. Full, a new table
+  kind.
+- **`tradeoff`, computed, never authored** (decided). True when an allele has a `protective` and a `risk`
+  row across traits. Kleene: false only when every trait's judgement is present and none of them is
+  opposite, and unknown otherwise, unless both signs are already present. A derived column, near-zero.
+- **Reserve the name `tradeoff`** in `RESERVED_NAMES_0_4` with a reason, so nobody authors it before
+  the computed one lands. **Done 2026-11-03, on `main`** as a patch: every authored model now refuses
+  the column with that reason rather than the generic stray-column message. When the derived column
+  ships, the name moves from the reserved set to `MISPLACED_COLUMN_REASONS`, since it will then be real
+  on a generated table and still never authored.
+
+## RM352 — release records have no change kind for a toolchain-only byte move, so the 0.8 cut cannot declare polars 2
+
+**0.8, filed 2026-11-04 by the lead** as a second-pass item: RM342's residual, and a cut gate.
+
+**Severity** high · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** (a new member of a
+closed published vocabulary, and a Goals amendment) · **Owner** format (`release_records.VALID_RELEASE_CHANGE_KINDS`)
++ compiler (`sweep.py`) · **Motivating case** the RM342 builder's report · *related* RM342, RM341
+
+**Residuals** none
+
+**Why it was filed.** `VALID_RELEASE_CHANGE_KINDS` was `{correction, addition}`, and the sweep's gate
+(`UNDECLARED_KIND_PHRASE`) needs one of them for every moved axis. polars 1 → 2 moves `parquet_bytes` on
+every module with no value wrong and nothing added, so the 0.8.0 record could not be written. A third
+member, `toolchain` (bytes moved, content unchanged, the toolchain record says why), is additive and
+minor-legal. The 0.8.0 record then declares the polars move with it. The Constitution's Goals sentence on
+reproducibility ("anyone holding the inputs and the pinned compiler version") gains "and the recorded
+toolchain", matching RM342's Principle 4 amendment, with a line in the amendments history.
+
+**Decided 2026-11-04 by the lead with the maintainer, during the build.** Content unchanged is not enough
+to accept a `toolchain` declaration: a compiler bug moves bytes without moving content, and at the 0.8 cut
+the compiler version changes together with polars, so RM342's `toolchain_differs` co-occurs with every move
+in the release sweep and separates nothing. The only clean separation is a second sweep with the compiler
+held fixed and only the toolchain varied, and the gate reads that sweep's fields, never a sentence in
+`evidence` (`@one-side-only-has-two-causes`).
+
+**What shipped.**
+
+- `VALID_RELEASE_CHANGE_KINDS` gains `toolchain`. `DeclaredChange` refuses it on any axis but
+  `parquet_bytes` (a model validator), since only a byte measurement can back it.
+  `RecompileAnswer.toolchain_moves` sits beside `corrections` and `additions`, and the three cover
+  `declared` (asserted over a synthetic record holding one of each).
+- `SweepMeasurement.before_toolchain` / `after_toolchain` (the one toolchain each side recorded, `None`
+  when a module recorded none or the side mixes two) and `before_digests` / `after_digests` (each
+  module's `artifact.digest`). `measurement_json` carries all four.
+- `gate_findings(..., toolchain_measurement=)` and `sweep --toolchain-before DIR` (the release's compiler
+  under the previous toolchain; the release sweep's AFTER tree is the other side, nested under
+  `toolchain_sweep` in `--json`). A `toolchain` declaration on a moved `parquet_bytes` passes only when
+  that sweep was passed, its two sides carry one `compiler_version` and it is the release gated, both
+  sides record a toolchain and they differ (unrecorded is unknown and never satisfies), its AFTER side
+  is the release's AFTER tree digest for digest, and `content_signature` did not move on the modules it
+  speaks for. **Which modules the toolchain explains is per module and a digest equality**: the previous
+  compiler and this one wrote the same bytes under the previous toolchain (the release BEFORE digest
+  equals the fixed-compiler BEFORE digest). The code review caught the first build accepting a module
+  merely because it also moved under the toolchain, which polars 2 does to every module, so a compiler
+  byte change would have shipped labelled `toolchain`. When `toolchain` is the axis's only kind every
+  moved module must be explained; beside another kind it must explain at least one. Nine `TOOLCHAIN_*`
+  phrases (one a note). `UNDECLARED_KIND_PHRASE` keeps its wording and appends `(or, on this axis, a
+  toolchain move)` on `parquet_bytes`.
+- The Goals bullet *Make integrity the identity* now ends "holding the inputs, the pinned compiler version
+  and the recorded toolchain." The why is in CONSTITUTION_AMENDMENTS_HISTORY.md.
+
+**Measured, not assumed (2026-11-04, the `0.8` branch at this item).** Three real trees of the sixteen
+`reference_examples/`: published `just-dna-compiler` 0.7.2 under polars 1.44.2, this branch's compiler
+under polars 1.44.2 (`uv run --with`), and this branch's compiler under the locked polars 2.1.0. Under
+the toolchain alone `parquet_bytes` moves on 16 of 16 and nothing else moves. With polars held at 1.44.2,
+the compiler alone moves `parquet_bytes` on 3 of 16 (`fmr1_cgg_repeat`, `hboc_palb2`,
+`pathogenic_clinvar`, the three whose `parquet_schema` moved too) and `manifest_fields` on all 16. So a
+`toolchain`-only declaration over the real interval is refused for exactly those three, and `toolchain`
+beside an `addition` passes with a note naming them: the review's case, measured. The 0.8.0 record
+itself is the cut's to write, after measuring. Tests: `compiler/tests/test_release_kind_toolchain.py`, the kind tests
+in `schema/tests/test_release_records.py`.
+
+## RM303 — the snapshot layout is a contract with six parties and no model, so it belongs in `just-dna-format`
+
+**0.8, confirmed 2026-11-03** by the maintainer when scoping 0.8.
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut** — filed 2026-09-28 at the
+maintainer's request, **taken into 0.8** ([PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §3 item 21,
+§5 D1) · **Owner** format (the model) + enricher (the writers and readers) · **Motivating case** the
+builders' `release.json` keys have drifted, and one drift already reached `cache status`
+
+**Residuals** won't fix — snapshots already published on HuggingFace keep their old keys until a republish, because a published file is never edited in place and the model reads them · won't fix — the acmg and mitomap_miss lanes write no `dataset`, so `cache status` prints no label for either; that predates this item, changes no spelling, and was reported to the lead for a number of its own
+
+**The problem.** A reference snapshot is `data/*.parquet`, optional sidecars, `LICENSE.txt` and
+`release.json`, and `locations.py`'s own header says that at least four parties (builder, publisher,
+provisioner, reader) have to agree on those names. The names are constants in the enricher, so any
+other repo that wants the layout has to import the network tier to get them. `release.json` has no
+model at all. `read_release` returns a `dict`, and the 14 builders write it by hand at 15 sites. The
+keys have drifted:
+
+| Key | Writers |
+|---|---|
+| `built_at` | all 15 sites |
+| `builder_version` | 13 |
+| `source_url`, `source_sha256`, `dataset` | 11 each |
+| `rows` | alphagenome_avi, mane, mitomap |
+| `row_count` | clinvar, clinpgx, acmg |
+| `license` / `licence` | strchive / civic |
+| `builder`, `release`, `parents` | acmg; civic; mitomap_miss |
+
+ClinVar writes no `dataset`, so `cache status` printed a blank release label for it. The repair was a
+per-lane exception (`clinvar_dataset_label`, see `caches.py` near `_dataset_label`). That is the drift
+surfacing as an incident, and it was repaired at the reader rather than at the contract.
+
+**The split.** The two files mix two kinds of thing, and they are separated by what each is tied to:
+
+- **Contract → `just_dna_format.snapshot`**, pydantic + stdlib only, no environment, no network: the
+  layout names (`data/`, `release.json`, `LICENSE.txt`, the sidecar and root-filename tuples), a
+  `SnapshotRelease` model, `read_release(dir) -> SnapshotRelease | None`, and a payload predicate
+  ("this directory holds a snapshot") that reads no environment.
+- **Deployment → stays in the enricher**: `CACHE_BASE_VAR` and the per-lane variables, `.env` loading,
+  platformdirs and `APPNAME`, the per-lane resolvers, `CACHE_LANES`, prepare, rebuild and publish. It
+  provisions and fetches, and it is tied to specific lanes. The enricher's `locations` names become
+  imports from format.
+
+**Charter checks.**
+
+- **Goals: an amendment is owed.** Goal 1 scopes format to "annotation modules", and a snapshot is not
+  a module. No principle forbids the move (no network, no new dependency), but it widens what the
+  package is for, so it lands as a deliberate one-bullet Goals amendment, with the reasoning in
+  CONSTITUTION_AMENDMENTS_HISTORY.md.
+- **P3 from then on.** Once the model is published, `release.json` keys are additive-only within the
+  major. That makes the drift above a decision to take **before** the first publish: which spelling
+  of each drifted pair becomes the field, and whether the other is read as an alias.
+- **P9.** A derived file that no human authors: half price at most, and no authored schema moves.
+- **The tri-state rule.** `read_release` keeps `None` for both absent and unreadable, as it does
+  today. A key the model makes optional stays `None` when it is unstated, never a default, because
+  the ClinVar label bug above is exactly a missing key being read as a blank answer.
+
+**Open questions.**
+
+1. **Core plus extension.** `parents` (the derived lane) and lane-specific keys either get typed
+   optional fields or ride in `extra="allow"`. Typed fields are safer; extra keys keep the model small.
+   Decide by listing what each reader actually reads.
+2. **The drifted pairs.** `rows`/`row_count` and `license`/`licence` pick one spelling each; the old
+   spelling is read on input and never written again. `builder` against `builder_version` needs a look
+   at what acmg means by it.
+3. **A guard.** Every builder writes through the model rather than through `json.dumps`. An AST walk
+   over `*_build.py` refusing a hand-built `release.json` dict is the usual shape
+   (`@registry-completeness`).
+4. **Published snapshots.** Snapshots already on HuggingFace keep their old keys. The model reads
+   them, and a republish writes the canonical spelling, never an in-place edit.
+
+**Considered and refused on the same day.**
+
+- **Renaming `just-dna-format`** (e.g. to `just-dna-schema`, the workspace directory's name). With the
+  snapshot contract added, "format" becomes *more* accurate: the package defines two on-disk formats.
+  A rename would touch about 130 importing files across five repos and keep two distribution names
+  alive for a major. Refused by the maintainer.
+- **A `just-dna-datasets` / `just-dna-builders` package.** First offered on 2026-09-25 (the RM261
+  round) as the recommended way to take the builders out of the wheel, and declined then without being
+  recorded. Weighed again now, it forms a cycle: builders need the layout from the enricher, and
+  `cache rebuild` needs the builders. Breaking the cycle means moving the layout below both, which is
+  this item, and after that the separate package buys nothing. Its dependencies are the enricher's
+  own, and the columns it writes are read by enricher passes, so every snapshot change would become
+  a release of two packages. It would also need a Goal 2 / Principle 2 amendment, since builders fetch
+  and the enricher is named as the only tier that may. Builders and readers stay beside the pass that
+  reads their columns. just-prs's parquet lanes stay in just-prs (`PRS_CACHE_DIR`), and the v1 port is
+  a consumer (pipelines → enricher), not a dataset.
+- **A nano-library holding only the convention.** Too small to be its own package. Format already
+  depends on pydantic and already owns the module's provenance record (`manifest.json`), and
+  `release.json` is that record's snapshot twin.
+
+**What shipped (2026-11-04).** `just_dna_format.snapshot`: the layout names, `SnapshotRelease`,
+`read_release` (`None` for absent and unreadable, as before), `write_release` (`exclude_unset`, sorted,
+atomic), `release_label`, `release_is_unreadable`, `holds_snapshot_payload`, and `clinvar_release_label`.
+The open questions, answered by §3 item 21 and by reading every reader first (the reader×key table is
+in the commit message):
+
+1. **Core plus extension.** Every key some reader reads is a typed optional field (`dataset`,
+   `source_url`, `source_sha256`, `built_at`, `builder_version`, `license`, `license_sha256`,
+   `row_count`, `row_counts`, `record_count`, `genome_build`, `parents`, `clinvar_file_date`,
+   `status_basis`, `sf_version`); everything else rides in `extra="allow"`. Reading the real MANE
+   snapshot showed `source_url` and `source_sha256` per input there, so both are `str` or a per-input map.
+2. **The drifted pairs.** `license` is the field and `licence` is read. `rows` was two things: a total
+   (AlphaGenome AVI) reads into `row_count`, a per-file map (MANE, MITOMAP) into `row_counts`, CPIC's
+   spelling, rather than one field holding two kinds of value. acmg's `builder` is the module path
+   `just_dna_enricher.acmg_build`, not a version, so it is no alias of `builder_version` and rides in
+   extra. ClinVar's builder now writes `dataset` through `clinvar_release_label`, and a release written
+   before has `clinvar_file_date` and no `dataset`, which the model reads into `dataset` through the
+   same formula. So `CacheLane.release_label`'s ClinVar override is gone and the lane set overriding it
+   is empty; `cache status` prints the same labels before and after.
+3. **The guard.** `enricher/tests/test_release_json_through_the_model.py` walks every `*_build.py`: no
+   builder may name `release.json` (constant or literal) outside an import or an `.unlink`, and the
+   builders calling `write_release` equal the builders. It was red on all fourteen before the
+   conversion. `mitomap_miss`'s parent pins compare both sides in canonical spelling, so a parent
+   rebuilt with `row_counts` is not reported as moved from a pin that says `rows`.
+4. **Published snapshots** read through the model, and a republish writes the canonical spellings.
+
+Every reader of `release.json` in the enricher now goes through `read_release` or `release_label`,
+including the eight that parsed it by hand. The Goals amendment is in CONSTITUTION.md, with its reasoning
+in CONSTITUTION_AMENDMENTS_HISTORY.md.
+
+## RM253 — a repeat-count star allele (UGT1A1 `*28` = TA(8)) has no home a diplotype can name, and the CPIC drafter translates none of CPIC's notation
+
+**What shipped (2026-11-04).** All three seams, as decided, in the enricher alone: no model, column or
+pattern changed.
+
+- **Seam 1 and seam 2, spelled.** `cpic_notation.spell` turns `DEL<bases>`, `INS<bases>` and `UNIT(n)`
+  into the VCF-anchored, left-normalized indel a caller writes, reading the anchor and the run from the
+  GRCh38 reference through the enricher's `SequenceProxy` and the CIViC drafter's `_left_align`. Read
+  by hand first (seqrepo REST, 2026-11-04): `2:233760233` is `C` and `233760234–233760247` is seven
+  `AT`, so `*28` is `C>CAT`, `*36` `CAT>C`, `*37` `C>CATAT`, matching the decision line exactly; the
+  reference count `TA(7)` is `*1`'s, and it is written `C>C` at that anchor, the reference state. CPIC's
+  position convention was measured, not assumed: a `DEL` position is the first deleted base, an `INS`
+  position the base the insertion follows, a repeat's the first base of the run. Two traps the decision
+  did not name, both found on the snapshot: RYR1 writes a delins as `DEL<bases>` on `Reference` beside
+  `INS<bases>` on the variant, read by locus as `TC>CT` (Ensembl's own reading of rs193922862), and a
+  repeat row carries no rsID (the `rs3064744` trap), while a `DEL`/`INS` row keeps CPIC's.
+- **Seam 3, written.** `pgx_draft._draft_name` drops the spaces and writes CPIC's comma as `&`, only when
+  every part is HGVS; `HAPLOTYPE_NAME_PATTERN` accepted the result on all three PGx models and was not
+  widened. DPYD, RYR1, CACNA1S and MT-RNR1 draft and compile `--strict`; G6PD's alias lists stay skipped,
+  because an `&` there would claim a compound.
+- **What still does not spell, by reason:** a bare `DEL` (by decision), alternatives (`GAGTCG(3) OR
+  GAGTCG(4)`, MT-RNR1's `;` list), a reference that does not bear the notation out, and one that could
+  not be read (every row under `--offline`).
+
+Measured on the provisioned snapshot (`cpic_snapshot_b0ffd4c6f010`): it holds 46 distinct notation
+spellings, 27 of them on star-named alleles, the only ones the old drafter could reach (the filing said
+25); `test_the_closure_counts_of_notation_spellings_on_the_snapshot_it_names` re-derives both. After,
+the reachable spellings still skipped are the bare `DEL` and `GAGTCG(3) OR GAGTCG(4)`; the rest of the
+skipped `DEL<bases>` spellings sit on G6PD and CFTR alleles whose *names* the drafter does not write.
+(Measured once over every gene with the live reference on 2026-11-04, not re-derived by a test: 35 of
+the 46 spelled at least once.) The tests are `enricher/tests/test_cpic_notation.py`, against the
+snapshot and a recorded slice of the reference (`assets/grch38_cpic_notation_windows.json`).
+
+**Residuals** none
+
+NUDT15 `*2` is still undefined, and it is not a residual of this item: the snapshot has no defining row
+for it at all, so there is nothing for a translation to spell. Whether the live API defines it was never
+probed, and no open item carries it.
+
+**Seam 1 decided 2026-11-04 by the pm seat, on the evidence, as the maintainer asked: spelled, VCF-anchored
+and left-normalized.**
+
+A subagent read the site in about 120 PGP-HMS VCFs plus local runs. The evidence, all measured:
+
+- DeepVariant, DRAGEN, GATK, Clair3, Isaac, Helix, the imputation servers and CGI vcfBeta all write `*28`
+  as the ordinary indel `C>CAT` at the anchor (GRCh38 `2:233760233`, GRCh37 `2:234668879`), left-normalized.
+- No file holds a symbolic allele at the site, and no caller gives a repeat count in place of sequence.
+- freeBayes and `bcftools mpileup` write the whole 16-base run unnormalized. They match only once the
+  consumer normalizes, which the consumer guide already says no format guarantees.
+
+So `*1` is the reference, `*28` is `C>CAT`, `*36` is `CAT>C` and `*37` is `C>CATAT`. Seam 2 follows the
+same rule: CPIC's `DEL<bases>`/`INS<bases>` are spelled the same way, and the bare `DEL` with no length
+stays skipped.
+
+**One trap to carry into the build.** `rs3064744` appears in no VCF's ID column. Arrays (23andMe,
+AncestryDNA) and dbSNP-annotated VCFs carry `rs34983651` for the `+TA` allele, and one imputation server
+stamps `rs606231201`, which dbSNP places as a different allele. So an rsID-keyed row must not rely on
+`rs3064744`.
+
+**Decided 2026-11-04, in part.** DPYD (seam 3): the drafter writes CPIC's full name with the spaces dropped, as the maintainer chose. The comma between variants is replaced, because a comma inside a name would split any multi-valued cell (MULTI_SEP is `,;|`). The maintainer suggested `:`, tentatively ("maybe?"). **The pm seat picked `&` instead**, and the maintainer may still veto it before the drafter ships. `&` was picked because every other candidate already means something in an allele name. `:` is HGVS's reference separator. `+` is an intronic offset (`c.1905+1G>A`, DPYD `*2A`). `_` is an HGVS range. `/` separates the two halves of a diplotype. So HapB3 is `c.1129-5923C>G&c.1236G>A(HapB3)`. Seam 1, how a repeat count is spelled: open, decided after checking precedent in real VCFs (PGP-HMS, and just-vcf's seats).
+
+**0.8, confirmed 2026-11-03** by the maintainer when scoping 0.8.
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut** — **a minor, taken into 0.8 on 2026-09-21** ([PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) § 5, A8) · **Owner** enricher (`pgx_draft`, `cpic_notation`); no schema change · **Motivating case**
+[S106](CONSUMER_SUGGESTIONS_HISTORY.md#s106--a-repeat-count-star-allele-ugt1a1-28--ta8-has-no-home-repeat_allelescsv-bins-a-count-and-haplotypescsv-names-an-allele-and-nothing-joins-the-two)
+— the most common UGT1A1 allele, the one atazanavir and the irinotecan labels key on, ships undefined
+
+**Reproduced on the snapshot, and the reporter's reading holds with one correction.** CPIC defines
+`UGT1A1*1` as `TA(7)`, `*28` as `TA(8)`, `*36` as `TA(6)` and `*37` as `TA(9)`, all at **rs3064744**
+(the report said rs8175347, the promoter's other name in the literature), plus `*80+*28` and `*80+*37`
+as two-variant haplotypes. `draft_gene` skips all six repeat rows, so `haplotypes.csv` defines `*28` by
+nothing while `allele_function.csv` and `diplotypes.csv` name it, and `validate` warns *"Star allele(s)
+used but not defined"* — correctly, and unfixably by the author. Across the whole snapshot the notation
+the drafter skips is 25 distinct spellings: `DEL<bases>` (the bulk, e.g. `DELTCT`), a bare `DEL` (4
+rows, lengthless), `INSCGGG`, and `UNIT(n)` repeats (`TA(8)`, `AAAGGGGCG(2)`, `GGA(1)`, `TCAG(2)`).
+NUDT15 `*2` has **no** defining row in the snapshot at all, so that half of the report is scoped to the
+live API, which was not probed.
+
+**Three seams, and they are not one item's worth of the same thing.**
+
+1. **A repeat count as a defining allele.** The format holds `<CNV:TR:n>` since RM5 — but `n` is a
+   *length in bases*, so `TA(8)` would be `<CNV:TR:16>`: legal, distinguishable from `*36`/`*37`/`*1`
+   by length, and lossy about the unit. Whether that is the right spelling, or whether the sequence
+   should be spelled out (sixteen bases, the standard's own preference when the sequence is known —
+   but VCF-anchored, which needs the preceding base the drafter does not have and the Ensembl row
+   RM251 now records does), or whether `repeat_alleles.csv` should gain a join to a haplotype name, is
+   the design question. The reporter's framing is exact: today it is a bin **or** a name, never both,
+   and the diplotype table needs the name. `@hosting-tri-state` says a symbolic allele compares as
+   *undecided* against a spelled call, so the first option moves the join to the consumer's caller
+   (`requires_callable`) — which may be the honest answer for a VNTR, and is still a decision.
+2. **`DEL<bases>` / `INS<bases>` → `<DEL:n>` / `<INS:n>`.** A drafter translation, not a schema gap:
+   the length is the notation's own, and the symbolic spelling is exactly what RM5 built for a variant
+   "whose sequence is deliberately unspelled". The bare `DEL` stays skipped (no length). The open
+   question is whether a spelled deletion should be spelled — CPIC gives the deleted bases and the
+   position, and the anchor base is one reference read away.
+3. **HGVS-named alleles (DPYD).** `HAPLOTYPE_NAME_PATTERN` refuses whitespace, and CPIC's names are
+   `c.1003G>T (*11)` and `c.1129-5923C>G, c.1236G>A (HapB3)`. The report's claim that
+   `haplotype_name` accepts them is **wrong as spelled** — probed, all three PGx models refuse on the
+   space — so this is a naming *policy* for the drafter (the legacy star in the parenthesis? the HGVS
+   string with the space removed? both, one as `suballele`?) before it is anything else. 167 defining
+   rows and 3,570 diplotypes wait on it.
+
+**What shipped with the filing (message only, in the uncut 0.7 line):** the RM5 notation warning now
+names the three symbolic spellings the format holds and says the *drafter* does not translate into
+them, pointing here; and the unparsable-diplotype sentence is bucketed by reason, so DPYD's HGVS names
+are no longer reported as CYP2D6's copy-number notation.
+
+**Parking-condition gate audit:** none of the three needs a consumer to act first — the corpus is the
+snapshot, already provisioned, and the probe module is a `draft_gene("UGT1A1")` away. This is a design
+decision, not a wait.
+
+## RM334 — an HLA allele has no table, and tag SNPs cannot stand in for one
+
+**Cut 2026-11-04 by the maintainer, after the final measuring run** (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §3): **the new HLA table.** `allele_function.csv` (keyed `(gene, allele)`) holds the 8 v2 alleles, and meta-table rows hold their facts and findings. The nomenclature grammar check applies to HLA genes on `allele_function.csv`.
+
+**Decided 2026-11-04 by the maintainer: grammar now, the list in 0.9.** The format checks the nomenclature's grammar (`gene*field:field` at a stated resolution). Checking that an allele exists in IPD-IMGT/HLA's list is an enricher lane whose licence is unprobed, and it waits for 0.9.
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** ([PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §5 A4, §3 item 22), taken into 0.8 on 2026-11-03 as a priority · **Owner** format · **Motivating case** longevitymap v2 requirements §2 (R-HLA), §10 · *for* longevitymap v2 · *related* RM331
+
+**What shipped.** No new table, as the maintainer cut it: an HLA allele is an `allele_function.csv`
+row. Where `AlleleFunctionRow.gene` starts with `HLA-`, `allele` must match `pgx.HLA_ALLELE_PATTERN` in
+full: `*`, two to four colon-separated numeric fields of at least two digits each, and an optional
+expression suffix from `N`, `L`, `S`, `C`, `A`, `Q`. The field count is the stated resolution, so a
+one-field name is refused, and so is the colon-less `*1501`. A malformed name is a refusal at the model
+(`validate_hla_allele`), so `validate` and `compile` refuse it alike in both modes, naming the row, the
+shape and an example. Every other gene keeps the permissive haplotype-name rule. The rule has one
+statement, `pgx.hla_allele_refusal` (a reason or `None`): the model raises it, and the CPIC drafter
+(`pgx_draft`) skips an HLA allele it refuses with the same reason instead of failing the draft.
+
+**The published-module scan (2026-11-04), which the refusal was gated on.** The reference examples:
+two `allele_function.csv` files (`cyp2c19_star_alleles`, `cyp2c9_warfarin_grch37`), no `HLA-` row. The
+registry's prod catalogue: 24 modules and 46 versions, read through each version's manifest; one module
+carries `allele_function.csv` (`antonkulaga/fut2_secretor` 1.0.0 and 1.1.0, three `FUT2` rows each,
+downloaded and read), no `HLA-` row. The HLA genes in `big_five_personality_snps` and `pathogenic`
+are `variants.csv` genes, outside the check. The `test` group on prod lists nothing. So the refusal
+breaks no published module.
+
+Not in this item: checking that an allele exists in IPD-IMGT/HLA's list, which the maintainer put in
+0.9 as an enricher lane with an unprobed licence; no `RMn` carries it yet. Tests:
+`schema/tests/test_rm334_hla_grammar.py` (the accepted and refused names, mutation-checked on the field
+count and on the gene test) and `compiler/tests/test_rm334_hla_refusal.py` (validate/compile parity, and
+a well-formed HLA row through compile → reverse → compile).
+
+**Residuals** none
+
+**2026-11-04, RM351.** Building this item turned up a defect in a neighbouring check: `star_allele_undefined` reported every HLA allele as one that "can never match" (its e2e reported `['*15:01', '*57:01:01']`), because the PGx cross-table checks keyed an allele on its bare name. RM351 keys them on `(gene, allele)` and exempts an HLA gene through `pgx.is_hla_gene`, which `hla_allele_refusal` now reads as well.
+
+**Need.** HLA-DRB1\*15:01 and B\*57:01 are v2's most consistent non-APOE signals, and the plan defers
+them to tag SNPs flagged with r².
+
+**Why no existing brick fits.** `HaplotypeRow` is a *definition*: the variants that are on one strand.
+An HLA tag SNP is a probabilistic proxy whose r² depends on ancestry, so writing it as a definition would
+be a false claim. `AlleleFunctionRow` has the nearest key, `(gene, allele)`, but its columns are PGx
+activity and function.
+
+**Shape.** A per-allele carrier table keyed on `(gene, allele)` at a stated field resolution (two-field),
+with `direction`, `trait_efo_id`, `conclusion` and a citation. The consumer joins it against an HLA
+typing call, which is a measurement a SNP VCF does not contain. The tag-SNP fallback reuses RM331's proxy
+shape. Full, a new table kind. Validating the nomenclature (IPD-IMGT/HLA) is an open question.
+
+## RM322 — `diplotypes.csv` carries none of the axes a scored finding needs, so APOE, the module's headline result, cannot state its tier, mechanism or trade-off
+
+**Cut 2026-11-04 by the maintainer, after the final measuring run** (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §3): `priority` (it restates the tier; v2 says it is "derived from tier") and `actionability` (v2's policy "late-acting ⇒ descriptive" belongs in its README). `DiplotypeRow` gains only **`negatives` and `category`**.
+
+**Decided 2026-11-04 by the maintainer: four columns, no `flags`.** `DiplotypeRow` gains `negatives`, `category`, `priority` and `actionability`, each full price, with RM70 as the precedent. `flags` stays off: no tier acts on its tags (RM321), and v2's flag tokens are what RM323–RM330's typed columns replace. Per-locus facts go on RM323's table, with APOE ε2 and ε4 as `haplotype` subjects.
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** ([PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §5 A3), taken into 0.8 on 2026-11-03 as a priority · **Owner** format (`DiplotypeRow`) + compiler (the diplotype parquet and `reverse`) · **Motivating case** longevitymap v2 requirements §6.4, decision D2 · *for* longevitymap v2 · *related* RM323, RM28
+
+**What shipped.** `DiplotypeRow` gains `negatives` and `category`, both optional free text with
+first release 0.8.0. Each is `VariantRow`'s column of the same name, description included, and
+`category` binds no vocabulary on either table. They reach `diplotypes.parquet` as nullable strings
+through the generic table materializer, `reverse` writes them back, and both are inside
+`content_signature` when stated; a module that leaves them out or empty keeps its signature. Every
+module carrying `diplotypes.csv` gets a new `artifact.digest` on a 0.8 recompile, because the parquet
+gains two columns; they are declared last, so no 0.7 column changes position. `priority`, `actionability` and `flags` were cut by the maintainer on 2026-11-04 and
+are not deferred: `priority` restates the tier, `actionability` is v2's README policy, and per-locus
+facts live on the meta-table (RM323). Tests: `compiler/tests/test_rm322_diplotype_axes.py` (a copy of
+`reference_examples/apoe_epsilon` with both columns filled, compile → reverse → compile to a fixed
+point on both identities).
+
+**Residuals** none
+
+**What was confirmed.** `DiplotypeRow` has `gene`, `haplotype_a`, `haplotype_b`, `trait_efo_id`,
+`direction`, `clin_sig`, `phenotype`, `conclusion` and the PharmGKB drug block (`drug`, `response`,
+`evidence_level`, `recommendation_strength`, `clinical_context`). It has no `negatives`, `category`,
+`priority`, `flags`, `actionability`, `stat_significance` or `effect_*`. v2 scores APOE once, as an ε
+diplotype (R-APOE-1), so its tier A locus is the one locus that can say none of the things the report
+groups and orders by.
+
+**What already fits.** The key includes `trait_efo_id`, so one row per (diplotype, trait) is legal: an
+Alzheimer's row and a lifespan row per ε pair, which is how the plan's two framings coexist.
+
+**Shapes, priced.**
+
+- **Widen `DiplotypeRow`** with the general annotation columns: `negatives`, `category`, `priority`,
+  `flags`, and possibly `actionability`. Full price each, minor-legal; RM70 is the precedent for
+  carrying a `VariantRow` column to a PGx table. `VariantRow` itself calls these axes general ("any
+  variant finding may carry them"), so this is not a foreign domain's columns on a PGx table. Each
+  is three touch points, plus the diplotype parquet and `reverse`.
+- **Author APOE as rs429358/rs7412 genotype rows in `variants.csv`.** Refused: a per-SNP row cannot
+  say ε2/ε4, and the plan's own rule is to score APOE once.
+- **README prose.** Drops the axes out of the data entirely.
+
+**To design.** Which columns, and whether the home RM323 decides for locus-level facts also reaches a
+gene-pair subject (it does not if that home is keyed on `variant_key`).
+
+## RM336 — a DOI written into `pmid` parses as five or six PubMed ids, and the literature pass looks each one up
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** ([PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §3 items 18 and 23, §5 A2) · **Owner** format (`spec.validate_pmid_cell`) · **Motivating case** longevitymap v2 requirements §6.3 ("`pmid`, or `doi` for preprints") · *for* longevitymap v2 · *related* RM50, RM263, [ROADMAP § `StudyRow.pmid` required + PMID-shaped](ROADMAP.md#studyrowpmid-required--pmid-shaped)
+
+**Widened 2026-11-04 by the maintainer, after the second measuring run: "fix the error class on all tables".**
+The pmid/doi pair applies to **every table where a row cites**, not only `studies.csv`:
+
+- a DOI is never written into `pmid`;
+- `pmid` accepts the `NONE` sentinel, which makes `doi` mandatory and validated.
+
+Tables that cite with a `pmid` and no `doi` today gain `doi`:
+
+- `pharm_variants.csv` (RM132's `pmid`);
+- the binning kinds (RM47's `pmid`);
+- the derived `gwas_effects.csv` (half price);
+- the two new citing tables: the meta-table and RM335's model-organism table.
+
+The run measured 6 preprint-only HLA alleles and 17 PMID-less model-organism rows. The roster of citing
+tables is derived (the compiler's `_CITING_TABLE_KINDS`), never hand-kept.
+
+**Preprints, decided 2026-11-04 by the maintainer after the final run (17 v2 studies are DOI-only).** DOIs stay in `doi` and never in `pmid`. `pmid` accepts a typed sentinel (`NONE` or similar; the exact spelling gets its P5 audit). That sentinel makes `doi` the **mandatory substitute**, and the validator then checks the DOI instead. A DOI written into `pmid` is still refused. `pmid` stays required, because the cell is present, so this is minor-legal (P8). RM263's DOI-to-PMID lookup still fills a real PMID wherever PubMed indexes the paper.
+
+**Decided 2026-11-04 by the maintainer: a refusal, like RM50's PMCID arm.** `validate_pmid_cell` refuses a cell whose only token is a DOI, and names it. Principle 3 says a module that validated keeps validating, so before the build, check the published modules (the registry's catalogue and the reference examples) for a DOI in `pmid`. None found: the refusal breaks no published module. Any found: they go back to the maintainer before the arm ships.
+
+**Reproduced 2026-11-03.** `StudyRow(rsid="rs429358", pmid="10.1101/2025.03.01.640000")` validates.
+`extract_pmids` returns `['10', '1101', '2025', '03', '01', '640000']`, and `doi:10.1038/s41586-019-1234-5`
+gives five. `enricher/src/just_dna_enricher/literature.py` iterates `extract_pmids(study.pmid)`, so the
+literature pass checks PubMed records 10, 1101 and so on as the row's citations. A preprint-only row is
+exactly where an author writes this, because `pmid` is required and the paper has only a DOI.
+
+**Same class as RM50.** RM50 gave `validate_pmid_cell` a PMCID arm, refusing a cell whose only id is a
+PubMed Central number and naming it. A DOI is the next registry whose digits read as PMIDs.
+
+**The decision.** A refusal arm like RM50's makes cells that shipped modules may already hold invalid
+(P3/P8), while a new warning code is minor-class (RM308's rule). The real fix for preprints stays the 1.0
+doi-first demotion. RM263 is the route from a DOI to its PMID.
+
+**Residuals** RM349
+
+**The published-module scan, run before the refusal was built (2026-11-04).** The prod registry, all
+24 modules and every one of their 47 versions (inputs, parquets and derived sidecars, fetched read-only
+from `module-registry.just-dna.life`): 138 files carry a `pmid` column, 1,792,856 cells, **no DOI and no
+`NA`/`n/a`/`-`/`none`/`null` spelling** anywhere. `reference_examples/`: 18 files, 667 cells, none. So
+the refusal breaks no published module, and the decision's gate was met.
+
+**What shipped.**
+
+- `spec.validate_pmid_cell` gained a DOI arm between the PMID success and the PMCID arm: a cell whose
+  only identifier is a DOI is refused, naming it and pointing at `doi`, `NONE` and
+  `just-dna-enricher hint citation --doi`. `extract_pmids` skips digit runs inside a `DOI_PATTERN`
+  span, as it skips a PMC id's, so `21551363; 10.1101/…` still yields the PMID and a DOI yields
+  nothing. The generic refusal keeps its leading phrase and appends a pointer to `NONE`.
+- `pmid` accepts `spec.PMID_NONE` = `NONE`, exactly. The rule that it makes `doi` mandatory is
+  `spec.check_citation_pair`, applied through the mixin `spec.CitationPair`, which also carries the
+  `doi` cell check (`spec.validate_doi_cell`, `StudyRow`'s old message, moved). The `pmid` grammar stays
+  on each model, because `required` differs.
+- `CitationPair` on `StudyRow`, `MeasureBinRow` (all four binning kinds), `PharmVariantRow` and
+  `GwasEffectRow`; `doi?` (since 0.8.0) on the last three. `GwasEffectRow.pmid` now runs
+  `validate_pmid_cell`, which its description had always promised; `doi` joined `GWAS_FACT_FIELDS`, and
+  an unset one moves no fact signature (`None` is dropped from the hash). Compile, parquet and
+  `reverse` needed no edit: all four tables go through the model-driven writers.
+- The duplicate-citation check keys a `NONE` row on its DOI token, lower-cased (`spec.doi_key`), so
+  two preprints on one variant are two citations and the same preprint twice, in either spelling, still
+  warns, naming the DOI (`spec.cited_as`, which the two other study findings printing a `pmid` use too).
+- **Found in review, and the same item:** a quote on a `NONE` row sat in none of the literature pass's
+  counts, so `verification.json` said "no provenance quote or regex on any citation" about a module
+  carrying one. `LiteratureResult.quotes_without_pmid` counts them; alone they make the record an
+  `unsupported` skip, beside others they are a clause in its detail. The same held for existence: a
+  module citing only by DOI was refused as "no citations", and past that would have recorded
+  `citation_existence` as `ran(0, 0)`; `citations_without_pmid` counts DOI-only citations on every
+  citing table, and the record is `unsupported` when they are all there is.
+
+**P5 audit.** `doi` is `StudyRow.doi`'s name for the same fact on a finer-grained row; it collides with
+nothing on those models and is not in `RESERVED_NAMES_0_4`; `LiteratureRow.doi` is the registry's answer
+about an article, a different table. `NONE` is upper case so it is not Python's `None` (the unknown arm
+everywhere else) or a word of a free-form reference, and it is the one spelling: `NA`/`n/a`/`-`/`none`
+stay refused. The meta-table and RM335's model-organism table (other builders) reuse `CitationPair`.
+
+**Tests.** `schema/tests/test_pmid_doi_pair.py` (the reproduction refused naming the DOI on every
+citing model; `NONE` with and without `doi`; the other spellings' pointer; `extract_pmids` on both);
+`compiler/tests/test_citation_pair.py` (an equality over `reference._ALL_MODELS` between models with a
+`pmid` and models carrying `CitationPair` and `doi`, `LiteratureRow` the one named exemption, with
+`_CITING_TABLE_KINDS` inside it; round trips with `NONE`+`doi` on `studies.csv`, `repeat_alleles.csv`
+and `pharm_variants.csv`, and a `gwas_effects.csv` `doi` reaching its parquet; the duplicate key);
+`enricher/tests/test_literature_doi_cells.py` (the pass's lookup list holds only the PMID beside a DOI,
+and nothing for `NONE` or a DOI-only cell; a `NONE` row's quote is reported, never read as no quote). Each new arm was broken once and its test went red.
+
+## RM304 — a `vrs_id` does not say which VRS minted it, and VRS 2.1 moves some insertion ids
+
+**Decided 2026-11-04 by the maintainer: both, a module-wide pin and a per-row version.** The manifest pins the VRS version the module's ids are meant to be minted under, and each `vrs_id` carries the version that minted it, beside it. A row whose version differs from the pin is the one to invalidate against, with its own reason, never the mismatch error (question 2). A per-row column alone cannot say which version is intended; a pin alone cannot survive a merge-not-clobber table mixing runs.
+
+**0.8, decided 2026-11-03.** Taken into 0.8 by the maintainer, with the rest of the indel-placement fixes (RM304, RM267, RM270, RM292, RM305). The status line below predates that decision.
+
+**Severity** high · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut** — **a minor** ([PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §3 item 20, §5 C1), landed before RM270 · **Owner**
+format (where the version is recorded) + enricher (the minting) · **Motivating case** [GKS_SURVEY.md](probes/GKS_SURVEY.md) §0 findings 2 and 3,
+2026-09-28
+
+**Residuals** RM270
+
+RM270 carries the minted per-ALT `vrs_id` onto the variant parquets, and with it this item's per-row
+version (PROPOSAL_0_8_PT2 §5 C5, *"with C1's version"*). Until then no compiled parquet carries an id
+we minted, so neither does any parquet carry the version, and `reverse_module` (which rebuilds
+`resolution.csv` from the parquets) drops both: RM241's residual, which RM270 already names. Lifting
+the `ga4gh.vrs<2.4` cap is the liaison's, once vrs-python releases `rle_subunit_mode`; it is not a
+remainder of this item, which keeps the cap by design.
+
+**What shipped (2026-11-04).** The premise of fact 1 was half wrong, and the build starts from the
+correction. *"Nothing in the repo records the version"* came from grepping `vrs_version`. The per-row
+half had shipped in 0.5 as `ResolutionRow.vrs_spec`: every row `mint_resolution_rows` mints has been
+stamped `"2.0"` since then. Nothing read it, and its description said the allele id does not drift,
+which VRS 2.1 refutes. So the per-row column is `vrs_spec`, re-described, and **no `vrs_version`
+column was added to `resolution.csv`**: two columns for one axis is the P5 failure, and P3 would have
+kept both for the rest of the major. The name `vrs_version` went to the pin, as the proposal named it.
+
+- **The pin**, `manifest.compilation.vrs_version: str | None`. No `manifest.resolution` block exists;
+  the resolution-table facts live in `Compilation` (`resolution_signature`, `vrs_alleles`,
+  `vrs_alleles_identified`), so the pin sits beside the VA coverage counts. Its value is
+  `vrs.VRS_SPEC_VERSION` (`"2.0"`), the rule the compiler's stdlib implements and verifies against,
+  when at least one allele in `resolution.csv` carries an id, and `None` otherwise. The compiler cannot
+  import `ga4gh.vrs` (P2, Goal 2), so the pin is the rule it can check, and the verify pass compares
+  every row against the same constant.
+- **One grammar for both sides**, `just_dna_format.vrs.vrs_spec_release`. The library spells its
+  version `"2.0.1"` and every table carries `"2.0"`; a raw compare would have reported every row of
+  every enriched module. The id rule changes at a VRS minor, so a version is compared at
+  `major.minor`. Unstated (`None`, blank) answers `None`, the unknown arm; an unreadable value comes
+  back untouched, equal to no pin and quoted whole in the warning. No validator was added to
+  `vrs_spec`: that would refuse a cell a 0.5 module may hold, and the comparison already reports it.
+- **The minting call** reads `ga4gh.vrs.VRS_VERSION`, the attribute vrs-python publishes for the VRS
+  spec it implements (`"2.0.1"` under `ga4gh.vrs` 2.3.3; its `__version__`, `"2.3.3"`, is the library's
+  own release and says nothing about the rule). `vrs.MINTER_VRS_VERSION = vrs_spec_release(VRS_VERSION)`
+  = `"2.0"` is stamped on every row the pass mints. An already-recorded id keeps its `vrs_spec`, an
+  empty one included: that run did not mint the id, so it may not claim its version
+  (`@currency-cannot-be-a-column`). A recorded version other than the minter's is counted in
+  `MintResult.version_differs` and printed as `vrs_version_differs: …` by `enrich` and `vrs mint`.
+- **The verify pass.** RM304 question 2 named *"the enricher's VRS verify pass"*. There is no such
+  pass: the enricher never recomputes a stored id, and the pass that does is the compiler's
+  `_verify_vrs_ids` (run by `validate` and `compile`). The reason is reported at both places that see
+  a stored id: there as warning code `vrs_version_differs`, and at the enricher's `already_present`
+  branch as a `CodedWarning` with the same code and words. In `_verify_vrs_ids` the version is a fact
+  about the row, reported beside each allele's own verdict, never instead of it. The first build put it
+  instead, skipping the recompute, and the code review caught what that did: a substitution needs no
+  normalization and this tier never recomputes an insertion, so the skip removed no false mismatch, and
+  writing `2.1` (or garbage) into `vrs_spec` silenced the corruption error on a substitution. Now:
+  within the pin's major a substitution that recomputes differently is still the corruption error. Only
+  under another major (`1.3`, where the digest serialization differs) is the difference counted in the
+  version line instead. An unreadable version is quoted, and the row is verified as unstated. An indel
+  under another version stays in `vrs_id_unverifiable` too. A warning in both modes, actionable because
+  re-minting clears it.
+- **Stamped by route.** An all-substitution row is stamped with the format tier's `VRS_SPEC_VERSION`,
+  the rule its stdlib minted under. A row with any normalized allele gets the library's version. They are
+  one minor today, so nothing written changes; stamping by route keeps the stamp true if they split.
+- **Tests.** `compiler/tests/test_vrs_version.py`: the reason beside a verified id; a same-major
+  corrupt substitution still refused; a cross-major one counted, against a same-version control that
+  stays a mismatch error; an indel counted in both lines; rows sharing a key counted as rows; patch
+  spellings and whitespace that are not a difference; the unreadable arm, which still refuses a corrupt
+  id; a table with no `vrs_spec` column that still verifies and still refuses a tampered id; both
+  modes through `compile_module`, with `validate_spec` agreeing; the pin present, and absent with no
+  table or no id; a compile → reverse → compile fixed point. `enricher/tests/test_vrs_version.py`: the
+  minter's version read off the library; the library's minor equal to `VRS_SPEC_VERSION` (red the
+  day an upgrade implements another minor); a minted row stamped; a recorded row with another version
+  reported and left alone; one with none left unstated; and the pinned insertion `rs72613567`
+  (`4-87310240-T-TA` → `ga4gh:VA.Jml7SNku3QQBCVIj78BGiFvR21bNkos7`) behind `JUST_DNA_NETWORK_TESTS=1`,
+  run once against the live proxy and green. Mutation runs (the version arm off, the pin unconditional,
+  the enricher's count off) each turned their tests red. A `features/` scenario grounds the code.
+
+**Two facts, both measured in the survey.**
+
+1. **The id carries no version.** For BRAF V600E (`chr7:140753336 A>T`) three `ga4gh:VA.` ids exist:
+   ours under VRS 2.0 (`…Otc5ovrw…`), vrs-python's VRS 1.3 computation (`…fZiBjQEo…`), and the ClinGen
+   Allele Registry's (`…HaPTmn-r…`, a VRS 1.x shape). All three are well-formed and none says which
+   spec produced it. Nothing in the repo records the version: `grep -rni 'vrs_version'` over
+   `schema/`, `enricher/` and SCHEMAS.md finds nothing.
+2. **VRS 2.1.0 (2026-09-01) changes ambiguous-insertion normalization**: it now picks the smallest
+   repeat-unit factor where 2.0 picked the greatest, and that moves the digest of affected alleles.
+   vrs-python has not implemented it. Both 2.3.3 (ours) and 2.4.0a4 still iterate the factors
+   descending, and the change is open as vrs-python issue #637. Today everyone we compare against
+   mints 2.0.x ids: our enricher, ClinVar-GKM and gnomAD. The first vrs-python release that ships the
+   2.1 rule will make a fresh `enrich` mint a different id for some insertions than the one stored
+   in `resolution.csv` and the one gnomAD publishes, with nothing to say why.
+
+**Why it is filed before RM270.** RM270's candidate repair carries the enricher's `vrs_id` onto the
+parquets as the spelling-independent join key. A key whose derivation silently changes under a
+dependency upgrade is the failure RM270 exists to remove, moved one layer down.
+
+**Mitigation shipped separately, the same day.** `ga4gh.vrs` is capped `<2.4` in the enricher, so no
+upgrade can change the rule unannounced. The cap is a stopgap. It is lifted by this item, never
+quietly: once the version is recorded, an upgrade becomes a declared re-id instead of a silent one.
+
+**Open questions.**
+
+1. **Where the version lives.** It could be one run-level fact on `resolution.csv`'s provenance or in
+   the manifest (every id in a run is minted by one library), or a column beside `vrs_id`. Both
+   spellings of one allele can coexist only in the column form. The run-level form is cheaper, and a
+   merge-not-clobber sidecar mixing runs is the case that breaks it (`@currency-cannot-be-a-column`
+   asks which run writes it).
+2. **What the verify pass does on a version mismatch.** Recomputing a stored 2.0 id under 2.1 gives a
+   mismatch that is neither corruption nor a wrong event. It needs its own reason, never the
+   existing mismatch error (`@vrs-three-outcomes`).
+3. **A pinned insertion.** The ground-truth tests pin substitutions against gnomAD. `rs72613567`
+   (`4-87310240-T-TA` → `ga4gh:VA.Jml7SNku3QQBCVIj78BGiFvR21bNkos7`, present in ClinVar-GKM) is the
+   insertion to pin, behind `JUST_DNA_NETWORK_TESTS=1` since indel minting reads the SeqRepo proxy.
+   The test is what turns a future rule change red.
+
+**Addendum, 2026-11-04 (the liaison, `docs/UPSTREAM_GA4GH_VRS.md`).** vrs-python PR #665, still open, adds
+`normalize(rle_subunit_mode=...)` with a default of `LARGEST`, the VRS 2.0 rule. Its text says the `vrs/2.1` branch
+will default to `SMALLEST`. Through 2.4.0-a6, no digest we compute moves (the liaison diffed and measured it). Once
+the keyword is released, the cap can be lifted with the id rule chosen on purpose: our call passes the mode
+explicitly, and question 1's recorded version says which rule minted each id.
+
+## RM342 — the manifest does not record the toolchain that wrote the bytes, so a digest that moves cannot say why
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** (a new optional
+manifest field, a new exception subclass, and a Principle 4 amendment), [PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md)
+§3 item 19, §4 question 7, §5 block A1 · **Owner** format + compiler + enricher · **Motivating case** RM341 ·
+*related* RM304, RM341
+
+**Residuals** RM352
+
+**What shipped.** `Compilation.toolchain: dict[str, str] | None`, stamped at compile as
+`{"polars": pl.__version__, "python": platform.python_version()}` of the running process, outside
+`artifact.digest` like `compiler_version` (the manifest is not one of the Merkle root's files). `None` on
+a manifest compiled before 0.8. The format tier owns the one comparison, `manifest.toolchains_differ`,
+three-valued (Kleene: a shared library at two releases is `True` whatever else is unknown; a library only
+one side names is absent, never different), and the reason constant `TOOLCHAIN_DIFFERS`. The two places a
+fresh compile meets a recorded digest use it: the publish collision check raises `ToolchainDiffersError`,
+a subclass of `PublishCollisionError` with `reason`, `published_toolchain`, `local_toolchain` and the
+tri-state `content_unchanged` (the reason names a co-occurring difference, not a proven cause), and the
+CLI prints `TOOLCHAIN DIFFERS` from a branch ahead of the collision's; the release sweep's `ModuleDelta`
+carries `toolchain_differs` and `bytes_reason`, and `SweepMeasurement.moved_under_other_toolchain` lists
+the modules.
+Either toolchain unrecorded, or the same toolchain with a different digest, keeps the old outcome. The
+publish still refuses unless `--force`: the reason changes what the refusal says, not whether the
+versioned path's bytes are protected. `compilation.toolchain` joins `EXCLUDED_MANIFEST_FIELDS`, since it
+moves whenever the install does. `verify_manifest` and `needs_recompile` are unchanged: the first
+re-hashes files on disk and the second compares two version strings, and neither holds a second
+toolchain. Principle 4's last sentence and Principle 7's closing parenthesis were amended together
+(the why is in [CONSTITUTION_AMENDMENTS_HISTORY.md](CONSTITUTION_AMENDMENTS_HISTORY.md)). Tests:
+`schema/tests/test_toolchain.py`, `compiler/tests/test_toolchain.py`, and the RM342 block in
+`enricher/tests/test_upload.py`.
+
+**Where the toolchain reason fires, corrected 2026-11-04 (the lead's PT2 §4 question 7, accepted by the pm seat).** `verify_manifest` re-hashes files and never recompiles, so it cannot see a toolchain. The reason `toolchain_differs` therefore fires where a fresh compile is compared with a recorded digest: the publish collision check and the release sweeps. This keeps the maintainer's intent: an explainable difference is never reported as corruption.
+
+**Decided 2026-11-04 by the maintainer.**
+
+- **One toolchain block:** a single optional field in `manifest.compilation` holding a small map (e.g. `{polars: 2.1.0, python: 3.13.1}`). A library added later is a new key, not a new field.
+- **`verify` gives a toolchain difference its own reason.** "Bytes differ, toolchain differs" is distinct from corruption and never the plain mismatch error (`@vrs-three-outcomes`).
+- **Principle 4 is amended.** Reproducibility is pinned via `compiler_version`, the recorded toolchain and the resolved reference. The why goes in `CONSTITUTION_AMENDMENTS_HISTORY.md`, and the lead lands the amendment with the item.
+
+Ready to build; the polars 2 lock moves into 0.8 with it.
+
+**0.8, decided 2026-11-04**, on the lead's list, "not ready": its open questions (one field or a toolchain block; whether `verify` reports a toolchain mismatch as its own reason; whether Principle 4 needs an amendment) are settled in the 0.8 interview. The polars 2 lock moves into 0.8 with it.
+
+**Why it is filed.** polars stays uncapped (RM341, the maintainer, 2026-11-04). From 2.0 the parquet bytes name
+the polars release that wrote them, so two installs of one `compiler_version` mint different digests for equal
+content, and nothing in the manifest says which polars wrote which. The liaison's adoption map, item 3: record
+the polars version beside `compiler_version` in `manifest.compilation`, as an optional field. That is additive
+and minor-legal. The alternative, deciding in P4 that the digest names the toolchain, would be a charter
+amendment.
+
+**Open questions.** Whether the record is one manifest field or a toolchain block (polars, arrow if it ever
+appears, Python); whether `verify` reports a digest mismatch whose recorded toolchain differs from the running
+one as its own reason (`@vrs-three-outcomes` asks for that); and whether P4's sentence on reproducibility needs
+an amendment once the toolchain is recorded.
+
+# The 0.8 PT1 build round
+
+The bugfix round [PROPOSAL_0_8_PT1.md](proposals/PROPOSAL_0_8_PT1.md) decided on 2026-09-29, built on
+the `0.8` branch in the proposal's order. Newest first.
+
+## RM28 — the combination half: the meta-table
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut** — the combination half, taken into
+0.8 on 2026-11-04 ([PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §3 items 1–8, §5 B1 steps 1–5; step 4, the study-orphan widening, in wave 3) ·
+**Owner** format (`just_dna_format.meta`) + compiler (`compiler/meta.py`) + enricher (the rsID currency pass) ·
+**Motivating case** KL-VS buffering in APOE ε4 carriers (longevitymap v2), CPIC's six gene pairs, Lewis ·
+*related* RM323, RM324, RM327, RM330
+
+**Residuals** RM327 · RM330
+
+**What shipped.** `meta.csv`, one authored table: a row maps a member set to a finding and/or the per-locus
+facts. One grammar for every member, `table[column=value, …]` over `variants`, `diplotypes`,
+`pharm_variants` and `allele_function`, members joined by `&` at bracket depth 0; conditions AND-ed, `=` on a
+list column meaning contains, and a member existential inside a combination. The key is the sorted members
+plus `trait_efo_id` plus `sex` plus `drug` (2026-11-04: `drug` added at the maintainer's default; see below),
+so `A & B` and `B & A` are one key, refused as a duplicate. Negation, OR,
+ranges, joins across tables and selectors over `studies.csv` are refused, each by its own message; there is no
+bare-rsID shorthand. The compiler expands every member into the rows it matches and writes `meta.parquet`
+(the selectors verbatim for `reverse`, the matches, `replaces`) and `meta_resolved.parquet` (each row a
+one-member meta row reaches, with its facts after precedence), so a consumer evaluates no rule (P1). A
+matching combination replaces the findings of exactly the rows it lists. The manifest records every
+member's match count (`meta_selectors`), and a member matching nothing warns
+(`meta_selector_matches_nothing`). The enricher's rsID currency pass asks dbSNP about every rsID a member
+names, so one variant under two keys (IL6R's rs8192284) is caught where NCBI is the oracle.
+
+**The study-orphan widening (B1 step 4), shipped 2026-11-04 in wave 3, after the `StudyRow` batch.** A
+study's variant is carried, so not `study_variant_orphan`, when it is a `variants.csv` row's, a defining
+variant in `haplotypes.csv`, or the variant of a `variants.csv` / `pharm_variants.csv` row a meta member
+reached (`compiler/meta.py` `member_variant_rows`, read off `build_meta`'s matches, so a selector covers
+exactly what it matched). APOE scored only as diplotypes, longevitymap v2's R-APOE-1, draws no orphan for
+its 14 study links on rs429358/rs7412 (`compiler/tests/test_study_orphan_widening.py`). The check still
+runs only beside a `variants.csv`, as before (until the decision below); the message keeps its pinned
+prefix.
+
+**2026-11-04, the lead's decision (reversible until the cut; keeping the gate was the rejected
+alternative).** `pharm_variants.csv` is a fourth arm: a study on a `pharm_variants.csv` row's variant is
+not an orphan whether or not a meta member reaches it. The `if variants:` gate is gone, so a
+diplotype-only or PGx-only module is checked too, and `duplicate_study_citation`, computed in the same
+pass, runs there with it (`@roster-is-as-wide-as-the-tables-it-reads`). An arm whose file is present
+but loaded no row withholds the orphan half, since what the module carries is then unknown; the gate
+had withheld that case for `variants.csv` by accident. Measured on the 16
+`reference_examples/` before and after: none gains or loses a warning (`fmr1_cgg_repeat`, the one with
+`studies.csv` and no `variants.csv`, names no variant on any study row). The meta arm now reaches only
+rows the two table arms already carry; it is kept, not removed, so a future member table that is not an
+arm stays covered.
+
+**What stays open, and where.** RM28's open section in ROADMAP_0_8.md keeps only the predicate half's
+remainder: open-world negation, OR and *trans* phase, all out of bounds by the maintainer's decision. RM327 computes `tradeoff` over the per-trait rows this table now holds.
+RM330's study stratum is the `StudyRow` half; its `sex` condition shipped here.
+
+**2026-11-04, the lead, under the default offered to the maintainer (recommended, no objection): `drug`
+joins the key.** `reference_examples/cpic_gene_pairs` found that CPIC answers one TPMT × NUDT15 phenotype
+pair once per thiopurine, and the key `(members_key, trait_efo_id, sex)` refused the second drug's row as a
+duplicate, so the example carried azathioprine only. `MetaRow.drug` (optional, free text as
+`DiplotypeRow.drug`, the drug the statement is about) is now the key's fourth column and a second scope
+axis beside `sex`: a drug-scoped row outranks the same key without one, for that drug, and
+`meta_resolved.parquet`'s grain is (row reached, sex, drug), every combination of the stated values. The
+example now carries all three thiopurines.
+
+## RM323 — a fact about a locus has no authored home, so every per-locus axis is copied onto each genotype row and nothing checks the copies agree
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut** — **a minor, taken into 0.8 on 2026-11-03 as a priority**, built as the meta-table ([PROPOSAL_0_8_PT2](proposals/PROPOSAL_0_8_PT2.md) §3 items 1–8, §5 B1) · **Owner** format (`just_dna_format.meta`) + compiler (`compiler/meta.py`) · **Motivating case** longevitymap v2 requirements §4.2 · *for* longevitymap v2 · *related* RM28, RM322, RM324
+
+**Residuals** RM333 · RM346 · RM327
+
+**Built 2026-11-04 on `0.8`, under "go with C".** The per-locus facts are columns of `meta.csv` only: `tier`, `age_of_action`, `age_of_action_confidence` and `flags`. A single locus's facts are a one-member row (`variants[variant_key=…]`), a named allele's are `allele_function[gene=…, allele=…]`, and nothing is copied onto a genotype row, so no two copies can drift. The compiler resolves them per row reached into `meta_resolved.parquet` (most specific wins; incomparable disagreeing rows withhold the column), which is what makes APOE's ε2/ε4 break a withheld cell rather than a silent pick. What stays elsewhere: causal and effector confidence are not authored (cut 2026-11-04), their inputs arrive through RM333's Open Targets lane; the normalized machine shape is RM346's (1.0); `tradeoff` over the per-trait rows is RM327's.
+
+**Cut 2026-11-04 by the maintainer, after the final measuring run** (`probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md` §3): causal and effector confidence are **not authored**. The parquet carries their raw inputs: the fine-mapping posterior, the coding consequence, the L2G score and coloc. The C1–C4 / E1–E4 labels are v2's rubric, i.e. policy, so they live in v2's README and are computed by the consumer, as "evidence role" is. The run computed them on 67 of 75 rows. The 8 hand-curated inputs go in `overrides.csv` as corrections to the derived inputs. The meta-table keeps `tier`, `age_of_action` and its confidence, and gains **`flags`**: the maintainer chose it for parity, so every kind of member can carry tags the way `variants.csv` rows do, such as `ap:<strength>` and `hallmark:…`. `also_in:<module>` stays prose.
+
+**Final, 2026-11-04, the maintainer: "go with C".** This supersedes both decisions below. The per-locus facts
+(tier, causal and effector confidence, age of action and its confidence) are columns of **the meta-table only**.
+They are never repeated on `variants.csv` or `diplotypes.csv`.
+
+- A single locus's facts are a meta-table row with **one member** and no finding.
+- A member is an item of a single-statement table. It may be a locus-level reference (a `variant_key` alone),
+  for a fact that does not depend on the genotype, or a full row's key.
+- APOE ε2 and ε4 are each a one-member row naming their allele.
+
+One new table holds facts and combinations. Priced at about 20 (a new table at about 10, plus five fact columns
+and the finding's columns), against about 30 for a separate fact table or for facts repeated on the
+existing tables. The maintainer's standing rule from this decision is in [RM28](ROADMAP_0_9.md#rm28--meta-conclusions-the-predicate-half):
+weight toward fewer entities.
+
+**Re-decided 2026-11-04 by the maintainer: no new fact table, and no subject kinds.** This supersedes the
+`(subject_kind, subject)` key below.
+
+The per-locus facts become **columns on the single-statement tables** that already exist, such as
+`variants.csv` and `diplotypes.csv`, and on the meta-table's rows. The maintainer: "Authoring surface is
+human centered. If it were a db it'd be 10x more tables, because many columns are duplicated across
+individual-loci-type tables and properly normalized db resolves this by pairing adapters. Humans have trouble
+reading such." So the authored layer stays denormalized on purpose. Compilation may normalize it, which is
+[RM346](ROADMAP_1_0.md#rm346--the-authored-tables-are-denormalized-for-people-and-the-parquets-copy-that-shape-so-a-machine-reader-gets-it-too) (1.0).
+
+**What this means for a value that differs between rows.** A fact sits on a statement (one genotype row,
+one diplotype row), so it is a property of that statement. Two rows of one locus may legitimately differ:
+APOE's ε2/ε4 and ε3/ε4 rows each carry their own age-of-action confidence, which dissolves the ε2 versus
+ε4 break the archive check found. So no agreement warning is built. When a locus's facts are meant to be
+identical on every row, that is the author's to keep, and the 1.0 normalized shape will show any
+disagreement as two values. (Superseded by C the same day: facts are not repeated on rows, and the key rule under RM28 decides
+what counts as a disagreement.)
+
+**Reopened 2026-11-04 by the maintainer**: "why can't each part of the combination live in its respective table, and the combination plus its finding in the meta-table? A new table is the most expensive thing." The decisions below stand until the analysis is answered.
+
+**Decided 2026-11-04 by the maintainer: a per-locus fact table keyed `(subject_kind, subject)`.** It has three
+kinds:
+
+- `variant`: a `variant_key`;
+- `gene`: a symbol, for gene-level facts such as LoF burden;
+- `haplotype`: `(gene, allele name)`, resolved against `haplotypes.csv` or RM334's HLA allele table.
+
+It deliberately has no region or locus kind. A combination of several subjects, each in a stated genotype
+state, is defined by RM28's meta-table. Since 2026-11-04 that is also in 0.8, and each combination becomes a
+fourth subject kind here. Facts about a combination therefore live on this table too, never on a second one.
+
+**What the shape was tested against.** A subagent checked it against v2's full research archive
+(`data/input/4bf03886-….zip`, the seed's 161 loci): **121 fit, 37 strain, 3 break**. All three breaks are
+named alleles, and the `haplotype` kind holds them:
+
+- APOE ε2 and ε4 carry different age-of-action confidence;
+- HLA-B\*57:01 and HLA-DRB1\*15:01 carry facts that belong to the allele, not its tag SNP.
+
+**The strains need no new key, but they do need three authoring rules, stated in the proposal:**
+
+1. Which study's fine-mapping posterior sets a causal-confidence level (the seed uses the maximum).
+2. A fact measured on a proxy is marked as such (RM331's columns).
+3. A European-only tier is scoped by ancestry (RM328's derived flag), never transferred.
+
+
+**What was confirmed.** `VariantRow` keys on `(variant_key, genotype)`. v2's tier, causal confidence,
+effector confidence, age of action, outcome profile and animal support describe the **locus**, not a
+genotype, so the plan writes each as a `flags` token on all three genotype rows. Nothing compares the
+copies, so an edit to one row leaves the locus saying two things. `annotations.parquet` is the
+per-variant table, but it is derived (keyed on the variant-effect pair) and an author cannot write it.
+
+**Shapes, priced, neither picked.**
+
+- **Typed optional columns on `VariantRow`**, repeated per genotype, plus a new warning code when the
+  rows of one variant disagree. Full price per column; the code is minor-class (RM308's rule).
+- **A locus table keyed on `variant_key`** that the per-locus columns live on. Full price, a new table
+  kind. It joins the frozen identity, so nothing is restated. It does not reach a diplotype subject
+  (RM322), and APOE is the module's lead locus.
+
+The decision is where the per-locus axes live. RM324's tier, RM326's derived outcome profile and
+RM329's age-of-action class all land wherever this decides.
+
+## RM324 — there is no evidence-tier column, so the axis that gates visibility is a `flags: tier:A` token
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut** — **a minor, taken into 0.8 on 2026-11-03 as a priority** · **Owner** format · **Motivating case** longevitymap v2 requirements §4.1 · *for* longevitymap v2 · *related* RM323, RM188 (axis 5), RM294
+
+**Residuals** RM294
+
+**Built 2026-11-04 on `0.8`.** One `tier` column on `meta.csv` (open text) and one `tier_scale:` in `module_spec.yaml` (free text, the `weighting:` pattern), copied into the manifest and listed in `REVERSE_RECONSTRUCTED`. A `tier` cell in a module with no `tier_scale` is refused in `validate` and `compile` (`@weight-has-no-unit`); values are not checked against the scale. A source's own grade beside the module's tier stays RM294's (0.9).
+
+**Placement updated 2026-11-04.** The one `tier` column goes on the meta-table only (RM323's final decision, "go with C"). The scale is still declared once per module.
+
+**Decided 2026-11-04 by the maintainer: one `tier` column, with the scale declared once per module.** The tier column goes on RM323's fact table. The module names the scale it grades on once in `module_spec.yaml`, as `weighting:` names its scale. A module therefore holds one scale, and a source's own grade cannot sit beside the module's tier in this column. RM294 (STRchive's grade) moved to 0.9 for that reason.
+
+
+**Need.** v2's tier A–D decides what is scored and what a reader sees by default. The plan carries it
+as `flags: tier:A` and derives `priority` from it. That makes `priority` (described only as "priority
+level override") a second spelling of the tier.
+
+**What not to reuse.** `evidence_level` is PharmGKB's closed `1A`–`4` on the PGx tables. Writing a
+module's own A–D scale into it puts two instruments under one name (P5).
+
+**Shape.** A value plus the scheme it is measured on, refused without the scheme: the 0.7
+`StudyRow.confidence` / `confidence_unit` pair is the precedent, and `@weight-has-no-unit` is why.
+Full ×2. Where it lives is RM323's decision. Design it with RM188's axis 5 (a salience separate from
+clinical severity; dna-engine carries a `tier`) and RM294 (whether a source's evidence grade travels
+into a module), since all three are one column family.
+
+## RM288 — two snapshot builders and the PGx drafter make every caller enumerate their exception family, a question RM101 named and left in a test's exemption block
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-09-30 on `0.8`, uncut** — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) (a public exception base) ·
+**Owner** enricher (`cpic_build`, `pharmvar_build`, `pgx_draft`) · **Motivating case** RM101's
+exemption block in `enricher/tests/test_pass_exception_contract.py`, *"a real question and a wider one
+than this item"*, found unhomed by the 2026-09-27 postmortem sweep (P14) · *related* RM101, RM96,
+`@client-exception-contract`
+
+**Residuals** none
+
+RM101 made every enrichment pass raise one documented type. It exempted `cpic_build.build_snapshot`,
+`pharmvar_build.build_snapshot` and `pgx_draft.draft_gene` by name. Their callers spell the family out
+(`except (CpicError, CpicBuildError)`, `except (CpicError, *_DRAFT_PRECONDITION_ERRORS)`). That works,
+but it is the *list* shape: a caller has to know which types to name, which is the drift RM96 was the
+lesson for. The only record of the question is the comment in the test's `exempt` set.
+
+**Confirmed on 2026-09-27.** The three entries are still exempt, and no ROADMAP file names the
+question.
+
+**What to decide.** Whether each surface gets one catchable base (a subclass relation over the existing
+types, which makes a caller's `except` order load-bearing: `@client-exception-contract`'s AST guard
+applies), or whether the list shape is kept on purpose and the exemption comment is rewritten as a
+decision rather than a deferral. A new public exception base is new surface, so building it is a minor.
+
+**The first incident, 2026-09-29: RM310.** `caches._rebuild_cpic` named one of CPIC's two error types
+and a 503 escaped `cache rebuild`. RM310 patched that one list and left the mechanism here.
+
+**What shipped.** The entry's second option, decided by PT1: a callee-owned tuple. `cpic_build.ERRORS`
+= `(CpicError, CpicBuildError, ImportError, OSError)`, `pharmvar_build.ERRORS` = `(PharmVarError,
+ImportError, OSError)`, `pgx_draft.ERRORS` = `(CpicError, DraftError, EnrichmentError, LicenseRefusal,
+OSError)`, each beside a comment saying why it is a tuple. Every caller now catches the module's tuple:
+`caches._rebuild_cpic`/`_rebuild_pharmvar`, the `cpic build`/`pharmvar build` commands and `draft`. The
+CLI's shared `_DRAFT_PRECONDITION_ERRORS` stays, since the CIViC drafter uses it too, and
+`pgx_draft.ERRORS` names those two members itself.
+
+**Found while building, and the same item:** `draft_gene` raises `LicenseRefusal` on a commercial
+declaration, and the `draft` command's list did not name it, so `draft --use commercial` escaped as a
+traceback. The tuple includes it because the surface raises it, which is what the stub test asserts.
+
+**Tests.** `test_builder_error_families.py`: an AST walk finds every `try` whose body calls one of the
+three surfaces (by module attribute or imported alias) and asserts a handler catches that module's
+`ERRORS`; a second walk refuses `CpicBuildError` named bare anywhere but its own module. A mutation run
+(the cache adapter's handler put back to a spelled list) fails both. Each surface is then driven through
+its real code with stubs, and everything it raised is a member of its tuple: CPIC's 503, PharmVar with no
+key, and the drafter's licence refusal, unreadable build declaration and client outage. The three stay
+in `test_pass_exception_contract.py`'s exempt set, with the comment rewritten as this decision.
+RM310's `CACHE_LANES` walk stays green.
+
+## RM283 — nothing notices the ClinPGx archive the lane builds from going quiet, which is how it served a fourteen-month-old snapshot
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-30 on `0.8`, uncut** — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) · **Owner** enricher
+(`clinpgx_build`, its `release.json`) · **Motivating case** RM175's *"that gap is the honest
+remainder"*, left unfiled, found by the 2026-09-27 postmortem sweep (P10) · *related* RM175, RM173,
+`@currency-asks-the-source-not-the-cache`
+
+**Residuals** won't fix — the URL audit needs a browser, because every ClinPGx HTML route is a JavaScript shell, so it stays a manual rebuild step
+
+RM175 found the lane building from `clinicalAnnotations.zip`, retired upstream and frozen on S3 for
+fourteen months while still answering 200. It shipped a narrow guard, refusing the retired member
+names, and listed three wider ones it did not build: audit each default URL against the source's
+listing, record the S3 `Last-Modified` beside `CREATED_*.txt` in `release.json`, and fire when one
+archive of a multi-archive source is much older than its siblings. It closed with *"Nothing built
+here would notice `summaryAnnotations.zip` itself going quiet, and that gap is the honest
+remainder"*, and gave that remainder no number.
+
+**Confirmed on 2026-09-27.** `clinpgx_build` records `CREATED_*.txt` only. It reads no
+`Last-Modified` and compares nothing across archives.
+
+**What to build, cheapest first.** Record `Last-Modified` in `release.json`. That is a new field in a
+published snapshot's description, so it is minor-class. Then a finding that compares it with the
+sibling archives' dates on the same fetch, reporting and never refusing (a source going quiet is not a
+`strict` matter, `@a-source-recuring-is-not-a-strict-matter`). The URL audit needs a browser (RM175's
+trap: every ClinPGx HTML route is a JS shell), so it stays a manual step written into the lane's
+rebuild runbook, not machinery.
+
+**What shipped.** `clinpgx_build.probe_archive_dates` (`HEAD` the lane's archive and
+`SIBLING_ARCHIVES`, following the 303, reading `Last-Modified`; every failure leg leaves that archive
+`None`, since the probe gates nothing) and `staleness_finding` (a sentence at `STALE_AFTER_DAYS` = 180 or
+more behind the newest known sibling, naming any sibling not asked; withheld when there is nothing to
+compare). `build_snapshot(archive_dates=…)` writes one key, `archive_last_modified`, beside `dataset`
+and never as it, and returns the dates and the sentence on the result. The two download paths
+(`cache rebuild` and `clinpgx build`) probe after downloading; a build from a local archive writes no
+key. Tests with stubbed `HEAD`s: fresh, 181 days behind, a sibling missing its header, a sibling that
+fails, a build that asked nobody, and RM175's incident as the named fixture — the dates S3 served on
+2026-09-30, `clinicalAnnotations.zip` 2025-07-05 against `variantAnnotations.zip` 2026-09-05, 427 days.
+
+## RM263 — a DOI has no route to its PMID, although `StudyRow.pmid` is the required half
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-09-30 on `0.8`, uncut** — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) · **Owner** enricher (`lookup`,
+`literature`) · **Motivating case** [S113](CONSUMER_SUGGESTIONS_HISTORY.md#s113--lookup_citationdoi-settles-existence-and-never-identity-title-journal-year-and-author-are-always-null), the reporter's second candidate fix
+
+**Residuals** none
+
+**What was confirmed.** A curator holding only a DOI (what a paper's landing page gives you) can now
+learn which paper it is (RM262), but not its PMID, and `StudyRow.pmid` is the column the schema
+requires. RM50 built the same route for a PMC id through NCBI's converter; a DOI has none. Europe PMC's
+search answers it: `DOI:"10.1038/ng826"` returns PMID `11788828`, measured 2026-09-25, and covers all
+of PubMed. NCBI's converter also takes DOIs but only answers for articles in PMC, and Enattah 2002 is
+not in PMC, so it would miss exactly the paywalled case.
+
+**The shape is RM50's, and the open question is the second title.** The resolved PMID comes back as an
+advisory (`applied=False`, `refusal="redundancy_bearing"`), never a fill, since `pmid` is
+redundancy-bearing. Then PubMed is asked which paper that PMID is, as `_check_pmcid` does. That gives a
+DOI-only lookup two titles, Crossref's and PubMed's, and whether a disagreement between them is a
+`warning` or only two `info` findings side by side is the decision still to make. `EuropePmcClient`
+has no DOI search today; one method.
+
+**What shipped.** `EuropePmcClient.pmids_for_doi(doi)` searches `DOI:"<doi>" AND SRC:MED` and returns
+the sorted PMIDs, translating every failure leg to `LiteratureUnavailable` as `lookup` does.
+`lookup_citation` takes the route only for a DOI with no authored PMID and no PMC-id resolution:
+`_check_doi_pmid` offers one PMID as an advisory (`applied=False`, `refusal="redundancy_bearing"`,
+`source="europepmc"`) and hands it to `_check_pmid`, so PubMed's title arrives as its own `info` finding
+beside Crossref's; nothing compares the two strings. Two or more PMIDs withhold the advisory and are all
+named in a warning, and PubMed is not asked about any of them. Zero is said as Europe PMC's answer, not
+PubMed's. Offline tests cover the four arms (one, several, none, an authored PMID skipping the route) and
+the existing DOI-only tests now inject a Europe PMC double, since they would otherwise reach the network.
+Two live tests sit behind `JUST_DNA_NETWORK_TESTS=1` (`10.1038/ng826` → `11788828`, and the Thieme DOI's
+two titles both `info`); they passed on 2026-09-30, the first attempt after one transient Europe PMC miss
+that the lookup reported as "could not be asked".
+
+## RM258 — an outage during the literature fetch writes a row that merge-not-clobber never asks again
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-30 on `0.8`, uncut** — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) — found while building RM257 ·
+**Owner** enricher (`literature`) · **Motivating case**
+[S110](CONSUMER_SUGGESTIONS_HISTORY.md#s110--the-literature-pass-leaves-an-author-manuscript-abstract-only-when-pmcs-bioc-service-serves-it-whole-tables-included)
+— Europe PMC answered HTTP 500 for `PMC6463297` on 2026-09-24
+
+**Residuals** none
+
+**What was confirmed.** `EuropePmcClient.fulltext` and the new `PmcBiocClient.fulltext` both return
+`None` for a 404 (no copy) and for a 5xx or a transport failure (never answered). The pass then falls
+back to the abstract and writes `quote_source=abstract` with the abstract's count. The row is keyed by
+PMID and `literature.csv` is merge-not-clobber, so `wanted` skips it on every later run: **a transient
+outage becomes a permanent abstract-only pin.** Pinned by
+`test_every_way_bioc_has_no_text_reads_as_not_retrieved`, whose 500 arm writes exactly that row. That
+test asserts today's behaviour, not a decision. `@unreachable-not-absent` at the row level. The
+reporter named the conflation in `fulltext()`, and the pin is what it costs.
+
+**Rows pinned before RM257 have the same problem without any outage.** The BioC rung only runs for a
+citation the pass fetches, so a module enriched before it keeps its abstract-only rows until
+`literature.csv` is deleted. Since 0.7 that delete costs nothing (RM124), and that is the
+workaround the S110 reply gives. It is still a step nobody will know to take.
+
+**Candidate repairs, none chosen:**
+
+1. **Write no row when the fulltext could not be asked.** Refused in advance: existence, identifiers
+   and the licence were all answered, and answered is per field
+   (`@answered-is-not-absent`). Dropping those answers to get a retry is the wrong trade.
+2. **Re-ask fulltext on every run for any row whose `quote_source` is not `fulltext`.** No schema
+   change, and it picks up rows pinned before RM257. It costs one paced request per paywalled citation
+   per run, forever, for articles that will never have a copy. Changing the pass's merge from per row
+   to per field is the precedent this would set, and `--rederive` already has rules for that
+   (`@rederive-never-shortens`).
+3. **Record how the fulltext question ended, as a derived column** (`fulltext_status`, roughly
+   `retrieved | absent | unreachable`), and re-ask only `unreachable`, plus null on rows written
+   before the column existed. An optional column on a derived CSV is minor-legal and half-cost
+   (P9). It needs the two clients to stop returning one `None` for two answers, which is the
+   `@client-exception-contract` shape. The question for review is whether null on old rows should
+   mean "ask once" or "leave alone".
+
+**What shipped, and one departure recorded rather than silent.** Candidate 3, with null meaning *ask
+once*. Both clients gained `fetch_fulltext`, which returns text, returns `None` for a service that holds
+no copy, and raises the new `FulltextUnavailable` (a `LiteratureUnavailable` subclass) for a 5xx or a
+transport failure. **The departure:** PT1 said `fulltext()` itself should stop returning one `None`. The
+handler grep found a consumer relying on exactly that: `just-module-creator`'s `fetch_fulltext` tool
+calls `EuropePmcClient.fulltext` and treats `None` as "try BioC" for Europe PMC's 500s (its F108). A
+retype would turn a handled outage into a crash there on 0.8. So `fulltext()` keeps its contract as a
+wrapper over the three-way method, and the pass uses the new one. The second departure: PT1 listed a
+non-JSON 200 as the fourth leg to raise on, but BioC's recorded "no copy" reply *is* a plain-text 200, so
+it stays `absent`.
+
+`literature.csv` gains `fulltext_status` (`VALID_FULLTEXT_STATUS`, in `just_dna_format.vocab`, bound on
+the field, first seen 0.8.0), outside `LITERATURE_FACT_FIELDS` so a heal moves no signature. The pass
+records the status on every row it asks about, and re-asks only the fulltext question for a pinned row
+that is `unreachable`, or null and not already matched against a fulltext. An answer rewrites
+`quote_source`, `quotes_found`, the status and `fetched_at`; a second failure leaves the row unchanged.
+`test_every_way_bioc_has_no_text_reads_as_not_retrieved` now asserts `absent`/`absent`/`unreachable`
+across its arms. New tests: an outage heals on the next run with exactly one request and every answered
+field unchanged; a second failure leaves `literature.csv` byte-identical; `absent` and `retrieved` rows
+are never asked again; a row stripped of the column is asked once and the run after changes nothing. The
+heal sequence run against the pre-RM258 code in a disposable worktree made **no** second request
+(`requested == []`), which is the defect.
+
+## RM272 — an answered-but-unplaceable rsID has no structured name in `EnrichmentResult`
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-09-30 on `0.8`, uncut** — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) · **Owner** enricher
+(`EnrichmentResult`) · **Motivating case** RM268 and RM271, 2026-09-27
+
+**Residuals** none
+
+RM268 withholds a live REST locus whose anchor base cannot be read, and RM271 withholds loci whose
+alleles are not bases; RM274 keeps an indel the reference could not settle, and drops one it showed is
+a different event. On `main` all of these are reported by a log warning only, because a new
+`EnrichmentResult` field is minor-class (the first RM268 commit added `unanchored_rsids` there and was
+fixed forward). A caller reading the result sees these rsIDs only in `unresolved`, which is silent about
+why, the gap `unreachable_rsids`, `unconsulted_rsids` and `allele_mismatches` each closed for their
+state. Add the field (or fields) on `0.8`, beside those, and decide whether "anchor base unreadable"
+(transient, re-run) and "not a base" (permanent) are one list or two. · *related* RM268, RM271, S20, S85
+
+**What shipped.** Three `EnrichmentResult` fields beside `unreachable_rsids`, `unconsulted_rsids` and
+`allele_mismatches`, each documented with its remedy: `unanchored_rsids` (the set the pass already
+kept), `non_nucleotide_rsids`, and `reference_rejected_loci` (the stated assumption held: per locus, a
+field of its own, and it has a reader in the same place the log line had one). The non-nucleotide rsIDs
+are collected from **both** Ensembl rungs, since RM271 filters in both: the snapshot through a new
+optional `non_nucleotide=` collector on `resolver.lookup_loci` (additive, the return shape unchanged),
+and live REST through `EnsemblResolver.non_nucleotide_rsids`, read by attribute so an injected resolver
+without it contributes none. The result keeps the lists disjoint by construction: a non-nucleotide rsID
+some other link placed, or that also failed or went unanchored, is not listed. Tested with one enrich
+run holding one rsID in each state (the strings live REST served), each named in exactly one list and
+all in `unresolved`; the RM274 test now asserts its locus on the result; and both collectors are pinned
+directly.
+
+## RM278 — the `compile` command cannot pass `ensembl_reference` or `ba1_threshold`, so every CLI-compiled manifest has a null `ensembl_reference`
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-09-30 on `0.8`, uncut** — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) · **Owner** compiler (`cli.py`
+`compile`) · **Motivating case** RM218's *surfaced, not fixed* (§13.8), which left the question open
+and tracked nowhere, found by the 2026-09-27 postmortem sweep (P6) · *related* RM218
+
+**Residuals** none
+
+**Confirmed on 2026-09-27.** `compile_module` takes `ensembl_reference` and `ba1_threshold`, and
+`just-dna-compiler compile --help` offers neither. So
+`manifest.compilation.ensembl_reference` cannot be stamped by the shipped command, and a module
+compiled through the CLI records no reference, whatever it was resolved against. `ba1_threshold` is
+the ACMG BA1 cutoff its own docstring says a carrier-allele module would want to move. COMPILER.md
+states the gap and `test_cli_parity.py` does not assert compile-flag parity, so nothing will move it.
+
+**Why a minor, not a patch.** Two new CLI options are new public surface, and `main` takes none
+(the RM268 fix-forward). The decision is small: add both, or say in COMPILER.md why the CLI
+deliberately stays narrower than the API. Either way, extend `test_cli_parity.py` to assert the
+decided set, so the next parameter cannot drift in unweighed.
+
+**What shipped.** Both options, passed straight through: `--ensembl-reference` (a string, as
+`compile_module` takes it) and `--ba1-threshold` (a float defaulting to the API's
+`BA1_ALLELE_FREQUENCY_THRESHOLD`). `test_cli_parity.py` asserts the `compile` command's options, with
+three renames mapped (`resolve`, `strip_identity`, `authority_key`), equal `compile_module`'s
+parameters minus `log_files`, `provenance_file`, `logo_file` and `readme_file`, each declared with its
+reason: they are auto-discovered beside the spec, so an explicit path is an API-only override. A CLI
+compile with `--ensembl-reference ensembl-115` stamps it into the manifest, and a non-numeric threshold
+is refused. COMPILER.md's gap paragraph, which sat in the middle of the command table, is replaced by
+the decision below the table, and the COMPILING guide lists both flags.
+
+## RM300 — the manifest cannot say how many rows are pathogenic, only how many carry the folded flag
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-09-30 on `0.8`, uncut** — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) (new optional manifest fields) ·
+**Owner** format (`manifest.Stats`) + compiler (`_variant_stats`) · **Motivating case** S123 in
+CONSUMER_SUGGESTIONS_HISTORY.md, via RM299 · *related* RM299, S43
+
+**Residuals** none
+
+**What is missing.** `stats.pathogenic_count` and `stats.benign_count` sum the legacy booleans, and
+each boolean folds a tier pair. A catalog facets on the listing without reading the artifact, so it
+cannot split `pathogenic` from `likely_pathogenic`. just-dna-lite's card had to fall back to a tooltip.
+The reporter's own measurement for `just-dna-seq/pathogenic`: 403,534 `pathogenic` rows and 215,095
+`likely_pathogenic`.
+
+**The shape.** Per-tier counts derived from `clin_sig` (the effective value, so a boolean-only row
+still counts through `clin_sig_from_booleans` where it can), beside the existing fields. The existing
+fields keep their meaning. Whether it is a count per tier or a mapping keyed on `VALID_CLIN_SIG` is
+the one design question: a mapping takes a new tier without a new field. Decide whether distinct
+variants per tier are wanted too, since the existing counts are per genotype row.
+
+**Legality and price.** A new optional manifest field is additive and minor-legal (P3). It is not in
+`artifact.digest`, and the compiler writes it, so it costs nearly nothing (P9). Not on `main`.
+
+**What shipped.** `manifest.Stats` gains `clin_sig_counts` and `clin_sig_variant_counts`, both
+`dict[str, int]` validated against `VALID_CLIN_SIG`, computed by `compiler.manifest.clin_sig_tier_counts`
+from each row's effective `clin_sig` and emitted with every member present in sorted order, zeros
+included. A row with no derivable tier is counted nowhere, and the field descriptions say how to read
+that count off the totals. The existing folded counts are unchanged. `Stats` has no `extra="forbid"`, so
+a 0.7 reader parses a 0.8 manifest and drops the two fields (no old-reader break). Tested over every
+reference example: keys and order always; and on the seven whose weights were neither expanded nor
+dropped, the per-tier row and variant counts equal the ones grouped out of `weights.parquet` at runtime.
+A synthetic HFE module shows the two tiers summing to `pathogenic_count`.
+
+## RM313 — RM57's `quality_floor_inverted` warning reads VCF QUAL backwards, and tells authors so on every compile
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-30 on `0.8`, uncut** — **a minor, taken into 0.8 on 2026-09-30** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)): the retirement alone would be a patch, and the replacement finding's new code makes the pair a minor · **Owner** compiler (`_check_quality_inversion`) + format (the `quality_from` description) · **Motivating case** relayed 2026-09-30 by the just-vcf session, which found it checking its own frame schema against VCFv4.5 · *related* RM57, RM6, [VCF_4_4_AUDIT § 5](probes/VCF_4_4_AUDIT.md#5-a-min_quality-floor-against-qual-inverts-on-exactly-the-rows-it-exists-for)
+
+**Residuals** RM314 — the neighbouring callable_from text, which reads INFO END where VCF 4.5 made it a cross-sample maximum
+
+**The misreading.** VCF §1.6.1 item 6 (identical in 4.4 and 4.5): QUAL is *"Phred-scaled quality score
+for the assertion made in ALT. i.e. −10log10 prob(call in ALT is wrong). If ALT is '.' (no variant)
+then this is −10log10 prob(variant), and if ALT is not '.' this is −10log10 prob(no variant)."* On a
+monomorphic record the assertion is *no variant*, so QUAL 60 means P(variant) = 10⁻⁶: a confident
+reference call. QUAL is the confidence in whatever ALT asserts on both kinds of record, and an
+inclusive floor moves the same way on both. The 4.4 audit's § 5 read it as *"almost certainly
+variant"*, and RM57 built that into code.
+
+**What ships the false claim today.** `compiler._check_quality_inversion` emits
+`quality_floor_inverted` in both modes on any `requires_callable` row with `quality_from` naming QUAL,
+saying *"a HIGH QUAL says the position is probably variant"* (`QUAL_INVERSION_PHRASE`). The
+`VariantRow.quality_from` description says the same, and so do the COMPILER.md catalogue,
+`test_vcf_conformance_warnings.py` and the `features/` scenario. Its remedy recommends GQ, which Table 2
+defines as *conditioned on the site's being variant*, so it is not a reference-call confidence either.
+
+**What survives from § 5.** Its second half: reference evidence is an interval (a `<*>` block;
+FORMAT `LEN` in 4.5, with INFO `END` deprecated), found by containment, with `MIN_DP` as the right
+depth. And a narrower true finding: a `<*>` block usually carries QUAL `.`, so a QUAL floor on a
+`requires_callable` row is a check that **cannot run**, not an inverted one
+(`@unreachable-not-absent`).
+
+**The decision.** `quality_floor_inverted` is a permanent key naming a finding that is false
+(`@warning-code-names-the-finding`). The patch stops emitting it and corrects the description, the
+catalogue and the scenario. The code stays in `VALID_WARNING_CODES`, because removing it is major, and
+the registry tests have to accept a retired, unemitted member. The honest replacement, a floor on a
+field the reference record usually leaves missing, is a new code and therefore a minor on `0.8`.
+Whether to build that at all, or only document it, is the call.
+
+**What shipped.** `vcf_checks._check_quality_inversion` is replaced by
+`_check_qual_floor_on_reference_evidence`, same trigger (`requires_callable=true` with `quality_from`
+naming QUAL, matched as before), new code **`qual_floor_on_reference_evidence`**, a warning in both
+modes, aggregated. Its sentence says the floor cannot be read on the reference record the row is
+decided from (a block usually leaves QUAL missing, and on a joint-called site QUAL is not this
+sample's), and it recommends no field. `quality_floor_inverted` is emitted nowhere and stays in
+`VALID_WARNING_CODES`; the new `vocab.RETIRED_WARNING_CODES` declares it with its reason, and the
+emission-site walk and the scenario corpus both subtract that set by declaration. `QUAL_INVERSION_PHRASE`
+is gone (`QUAL_REFERENCE_EVIDENCE_PHRASE` replaces it in the re-export shell), and COMPILER.md keeps the
+old text under *Retired phrases* for grepping old manifests.
+
+**The false claim, shown before it was changed:**
+`test_a_requires_callable_row_floored_against_qual_is_reported` asserted that the warning contained
+`GQ` and `MIN_DP`, which pinned RM57's remedy, and its docstring restated the inversion. It now asserts
+the replacement phrase and that neither the inversion wording nor the GQ advice appears. A new test
+compiles the synthetic row and every reference example and asserts the retired code never appears.
+
+**Corrected everywhere the claim was stated:** `VariantRow.quality_from`'s description, SCHEMAS.md's
+consumer-contract paragraph, COMPILER.md's schema-limit paragraph and catalogue, the `features/`
+scenario, and INTEGRATION_0_8.md (the new code, and § 1.1 on the retirement). The 4.4 audit keeps its
+body as evidence under its dated correction.
+
+## RM308 — the conclusion-genotype finding runs only on the authoring surface, so a module nobody linted compiles green with a swapped pair
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-09-30 on `0.8`, uncut** — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) (a new warning code) · **Owner** format
+(`VALID_WARNING_CODES`) + compiler (`validate_spec`, `compile_module`) · **Motivating case** RM279's
+residual, 2026-09-28 · *related* RM279, RM309
+
+**Residuals** RM309 — the negation half of RM279's rule, still unmeasured, whose compile half would join this code
+
+RM279 shipped the rule as a hint because the compile half needs a member of `VALID_WARNING_CODES`, and a
+new member is minor-class: a reader pinned to an older `just-dna-format` refuses a manifest carrying it.
+So an author who never runs `hint` or `lint_rows` still gets a green `--strict` compile on a swapped
+pair. The rule is `just_dna_compiler.conclusion.conclusion_genotype_mismatches`, already separate from
+`hints` so the compile path can call it. What the minor owes: one code named for the finding (for
+example `conclusion_names_other_genotype`), emission at both `validate` and `compile`
+(`@parity-by-check`), aggregated by reason, a `features/` scenario, and the phrase pinned in the
+COMPILER.md warning catalogue. It stays a warning in both modes: 10 of 10 is a measurement over one
+corpus, not a licence to refuse.
+
+**What shipped.** `variant_checks._check_conclusion_genotypes` runs RM279's rule
+(`conclusion.conclusion_genotype_mismatches`, unchanged) in the shared pre-flight, beside the genotype
+coverage check, so `validate` and `compile` carry the finding once each. New code
+`conclusion_names_other_genotype`, actionable, a warning in both modes, aggregated by **two reasons**
+because the repair differs: rows that name each other ("look swapped", exchange two conclusions), and a
+row naming a neighbour that does not name it back ("as if copied", rewrite one). Tested with RM279's
+real fixtures through a positioned spec and a green `--strict` compile; a correct module naming its
+neighbour stays quiet. No reference example fires. The hint keeps its per-row, line-numbered form.
+
+**Found while building, and fixed in the same round:** the RM275 tests filtered result warnings by
+`.code`, but a result's `warnings` are plain strings (the code is lost at the pydantic field,
+`@finding-loses-its-code-at-a-boundary`), so two negative tests there could not fail. Both files now
+match the pinned phrase and read the code from `warnings_summary`, and a mutation run (the "both
+stated" filter removed) shows the empty-cell test failing.
+
+## RM275 — seven derived fact tables have no duplicate rule, so two contradicting rows under one key compile green under `--strict`
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-30 on `0.8`, uncut** — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) (re-sized 2026-09-27, see the last paragraph), with
+refusal at **1.0** · **Owner** compiler (`_TABLE_DUPE_KEYS`) · **Motivating case** RM107's residual (0.6), *"it wants its own item"*,
+found unfiled by the 2026-09-27 postmortem sweep (P3) · *related* RM107, RM109, RM124, RM130
+
+**Residuals** won't fix — refusing inside a minor would break modules that compile today, so the refusal waits in ROADMAP § The 1.0 cleanup
+
+RM107 widened the duplicate check to `sources.csv` and wrote down what it left: *"The remaining gap is
+the other fact tables, which have no duplicate rule at all; RM109's own defect produced exactly such a
+pair and nothing reported it."* Walked on 2026-09-27, `_FACT_TABLES` minus `_TABLE_DUPE_KEYS` is
+`frequencies`, `gene_metrics`, `literature`, `gene_validity`, `clinical_assertions`, `gwas_effects`
+and `expression_effects`. RM124 and RM130 registered their own tables, and none of these.
+
+**Reproduced.** `reference_examples/hboc_palb2` with its first `gene_validity.csv` row duplicated and
+the copy's `classification` changed from `definitive` to `refuted`. `compile --strict` exits 0, and
+`gene_validity.parquet` carries both rows for `PALB2 / MONDO:0012565 / autosomal_recessive`. A consumer
+reads one or the other depending on row order.
+
+**Two constraints on the build.**
+
+- **Derive each key from the merge key the enricher already writes the table by**
+  (`base.merge_key`, `@suppression-from-merge-key`), never a second hand-kept tuple. `gene_validity`
+  keeps two rows on purpose when the source's classification drifts (the comment at
+  `gene_validity.py:288-311`). So "duplicate" means **both stated and different** under the merge key
+  (`@absent-is-not-different`), not merely a repeated key.
+- **Refusing is a tightening.** A published module carrying such a pair compiles today, and P3 says
+  existing modules keep validating inside a major. So the check lands as a warning in both modes on
+  `main`, and becomes a refusal at 1.0 (a 1.0-tracker line when this is built).
+
+
+**Re-sized to a minor, 2026-09-27, before building.** The warning needs its own code, and a new member
+of `VALID_WARNING_CODES` is not legibility-only: `ModuleManifest.warnings_summary` validates every key
+against that closed set, so a just-dna-format 0.7.2 reader **refuses** a manifest carrying the new
+code. That is an old-reader break (the INTEGRATION_0_7 shape), which `main` cannot take. Reusing an
+existing code would name the wrong finding (`@warning-code-names-the-finding`), and a log line alone
+is invisible to every consumer reading findings. Build it on the `0.8` branch, with the INTEGRATION
+note that says a reader must be at 0.8 to read such a manifest.
+
+**What shipped.** A new check, `fact_checks._check_fact_rows_contradict`, beside `_TABLE_DUPE_KEYS`
+and not in it. It groups each of the seven tables' rows by `base.merge_key` and reports a key under
+which two rows state **different, stated** values in one of the table's fact fields (the set its
+signature already hashes, so a differing `fetched_at` is not a contradiction). New code
+`fact_rows_contradict`, actionable, a warning in both modes, aggregated per table with a count and
+three example keys naming the differing columns. It runs in the shared pre-flight and reaches the
+compile through it, once. `FACT_CONTRADICTION_FIELDS` plus the refusing registry are asserted to cover
+`_FACT_TABLES` exactly. The entry's reproduction (`hboc_palb2`, a duplicated `gene_validity` row with
+`refuted`) now warns under a green `--strict`; an identical duplicate and a copy leaving the cell empty
+do not. Shown failing with the call disabled. No reference example fires.
+
+**The drift case, measured before settling the rule.** `gene_validity.csv`'s deliberate second row on
+a re-curation never meets this check: ClinGen's `assertion_id` embeds the curation timestamp, so a
+re-curation has a new primary key, and the grain fallback includes `dataset`. The currency checks keep
+that case.
+
+**The old-reader break** is recorded in the new [INTEGRATION_0_8.md](INTEGRATION_0_8.md) § 1, which
+this item opened, and refusal at 1.0 is a line in ROADMAP § The 1.0 cleanup.
+
+**2026-11-05, RM374:** the cross-key form of this gap. One variant's facts under two keys (`variant_key` vs
+`rsid` or coordinate) are compared by `fact_rows_contradict` (`compiler/.../fact_checks.py:75`) only within one
+merge key. Instances: schema `frequency.py:78`, `assertions.py:91`, `consequences.py:53`, `expression.py:126`,
+`gwas.py:110/131/135`. Refusal stays at 1.0 with the rest of this item; a warning is minor-legal.
+
+## RM241 — `weighting` does not survive `reverse`, so a reversed module has no scale to read
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-09-30 on `0.8`, uncut — a minor**, taken into 0.8 on 2026-09-29 ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md), widened there to every authored field `reverse` drops, and decided) · **filed 2026-09-13 from [RM188](ROADMAP_0_9.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)'s
+ClawBio half** · **Owner** format · **Motivating case**
+[`probes/CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md) § *The translation, run*, last paragraph
+
+**Residuals** RM270 — a round trip still drops every `vrs_id`, because no variant parquet carries it · won't fix — `provenance` and the verification attestation are not in the artifact, so there is nothing to read back
+
+`weight` is the one magnitude in this format with no unit beside it (`@weight-has-no-unit`), and RM92
+built `module_spec.weighting` — `scale`, `method`, `note` — to be the place a module says what its
+weights mean. It is **advisory, copied into the manifest, and not reconstructed by `reverse_module`**,
+in the same class as `panel` / `authorship` / `license`. All of that is documented and, taken one field
+at a time, defensible: it is not content, so it is correctly outside `content_signature`.
+
+**The survey hit the consequence.** Translating ClawBio's nutrition panel forced an honest `weighting`
+block to be written — their weights are hand-assigned importances *within* a nutrient domain, and
+their scorer normalises by the weight of the SNPs it happened to find, so a domain score is comparable
+only inside one domain of one run. That block is the single most useful sentence in the translated
+module. `reverse` then drops it. So a consumer holding two **reversed** modules has two `weight`
+columns and no way to learn that they are on different scales — which is the exact failure RM92 was
+built to prevent, surviving in the one path RM92 does not cover.
+
+**Three candidate dispositions, and this entry does not pick one.** (a) Nothing — write it in the
+[FAQ](FAQ.md) as a known lossy field and let a consumer read the *original* spec, which is what
+`reverse`'s own contract already says. (b) Carry `weighting` through `reverse` from the manifest,
+which is where it already lives — cheap, and it changes what `reverse` claims to be. (c) Decide the
+lossy set is right and that the real defect is that nothing *warns*, the way the dropped verification
+attestation warns. **(c) is the most likely right answer** and is the cheapest to test: `reverse`
+already emits one warning for a dropped attestation, so a second for a dropped `weighting` costs one
+line and tells the author the thing they need to know at the moment it stops being true.
+
+**Do not fix this by putting `weighting` inside `content_signature`.** It is prose about a column, not
+the column; hashing it would make a reworded note move the digest, which is the defect
+[FAQ](FAQ.md) already answers twice.
+
+**Decided 2026-09-29, and wider than this entry.** Probing (c) found `weighting` is one of several
+authored fields `reverse` drops while the round-trip gate stays green, because the gate compares two
+digests that both exclude the manifest. [PROPOSAL_0_8_PT1 § RM241](proposals/PROPOSAL_0_8_PT1.md)
+carries the measurement and the build: `reverse` rebuilds every authored field the artifact carries,
+and the gate compares the manifest's authored projection. (a) and (c) are both superseded.
+
+**What shipped.** `reverse_module` reads the artifact's `manifest.json` once and writes back every spec
+field it carries: the `module:` block's `title`/`description`/`report_title`/`icon`/`icon_set`/`color`
+from `manifest.display`, `version` (RM103's rule), `genome_build`, `license`, `weighting`,
+`authorship`, `authority_precedence`, `panel`, and the defaults' `curator`/`method`. The README and logo
+are copied back byte for byte after a hash check against `manifest.readme`/`manifest.logo`; a file that
+disagrees with its record is not copied. The order is an explicit argument, then the manifest, then the
+bare-directory fallback, and `icon`/`color` default to `None` (API and CLI) so "not passed" is visible.
+`REVERSE_RECONSTRUCTED` and `REVERSE_EXCLUDED` (`defaults.priority`, with its reason) are asserted equal
+to the walked `ModuleSpecConfig`/`ModuleInfo`/`Defaults` fields. The reference-example round trip now
+compares the manifest's authored projection across laps, and `test_reverse_reconstructs_the_spec.py`
+sets every field on a copy of `hfe_hemochromatosis` and asserts two laps. Run against the old `reverse`,
+the projection check failed on every example.
+
+**One departure from the proposal, recorded rather than silent.** PT1 said the manifest carries no
+`defaults` and left `curator`/`method` to the row-mode guess. It does carry them, as
+`manifest.curator`/`method`, and the guess was worse than lossy on a table-only module: with no
+`weights.parquet` there is no mode to take, so every PGx example came back with `unknown` defaults and
+its recompiled manifest said so. Both are now read from the manifest, with the mode as the fallback.
+`defaults.priority` is the one spec field not written back, because the manifest has no default
+priority and every row carries its own.
+
 # The 0.7 build round
 
 The items [PROPOSAL_0_7.md](proposals/PROPOSAL_0_7.md) decided on 2026-08-27/28 and the 0.7 batch then
@@ -42,7 +5013,7 @@ forward-only files they had been sitting in with a `SHIPPED` banner on them: RM1
 describes what is *not* built reads as late rather than done, which is the state this move ends. The
 deferral round those two came from closed at the same time —
 [history/ROADMAP_0_7.md](history/ROADMAP_0_7.md) keeps it, and everything still waiting moved to
-[ROADMAP_0_8.md](ROADMAP_0_8.md). RM83 is in this file as **closed, not shipped**, and RM139 was filed
+[ROADMAP_0_8.md](history/ROADMAP_0_8.md). RM83 is in this file as **closed, not shipped**, and RM139 was filed
 by the cut itself rather than by the proposal.
 
 **RM140 joined them on 2026-08-31 from a consumer report, after the round had closed.** It is not one
@@ -242,11 +5213,11 @@ marketplace all accept 9.2.1, and dagster does not depend on tenacity. prepare-a
 `<9.3` cap, which would trade a future import failure for a future resolve conflict with every consumer
 that moves on, and would still leave the warning.
 
-**Residuals** none
+**The `0.8` branch** carried 21 such calls, 3 more than `main` (`clinvar_gkm.py`, `ld_pairs.py` and
+`literature.py`'s PMC client). The guard went red there when `main` merged in, as intended, and the merge
+converted the three to `multiplier=` (2026-11-04).
 
-**On the `0.8` branch.** It carries 21 such calls, 3 more than `main` (one of them in `ld_pairs.py`).
-The guard below goes red there when `main` merges in, which is the guard working: the merge renames
-them, and the lead was told.
+**Residuals** none
 
 **What shipped.** All 18 calls pass `multiplier=`, including `cpic.py` and `pharmvar.py`, whose
 `initial=1` never warned but would break the same way. In 9.2.1 `initial` is only copied into
@@ -292,6 +5263,176 @@ Rebuilt from the local parents: photocopy 663 → **686**, rated_miss 1 → **2*
 The count is a log line, not a `MissBuildResult` field (minor-class). The three texts citing
 Principle 2 (the lane docstring, the `mitomap miss` CLI note, the drafter note) and ENRICHER.md's
 bucket table now say what happens instead.
+
+## RM348 — `logs/` discovery trusts the filesystem: a symlink ships what it points at, and a large or unreadable file reaches the compile
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** (it narrows what a
+`*.log` ships, and joins 0.8 as filed) · **Owner** compiler (`_collect_logs`) · **Motivating case** the
+RM337 builder's report, 2026-11-04 · *related* RM337, RM338, RM347
+
+**Residuals** won't fix — a hard link reaches outside the module with no symlink at any level, and `st_nlink` cannot tell an author's own link from a reach outside, so it is reported to the lead rather than guessed at here · won't fix — the copy into the output reads the file again after the check, so a file still being appended can ship past the ceiling; closing it means copying the checked bytes, which is reported to the lead as its own question
+
+**0.8, filed 2026-11-04 by the lead** as a second-pass item (RELEASE_CYCLE § Minors step 4): found while building
+RM337, in behaviour RM338 shipped.
+
+**One class, four instances.** Discovery under `logs/` reads whatever the filesystem hands it, and a published file is
+permanent:
+
+1. a symlinked `*.log` ships, even when it points outside the module;
+2. a `logs/` directory that is itself a symlink is walked, and everything under it ships;
+3. a text file under `logs/` has no size ceiling and is read whole into memory;
+4. an unreadable file (a `PermissionError`) raises out of the compile instead of staying behind.
+
+**The fix, as one rule.** Every path discovery considers is resolved and must stay inside the spec directory; a symlink,
+at any level including `logs/` itself, stays behind with `log_file_not_shipped`'s symlink reason (an explicit
+`log_files` list is unaffected); text gets the same ceiling as images (`LOG_IMAGE_MAX_BYTES` becomes one
+`LOG_MAX_BYTES`, read from `stat` before any byte); a file that cannot be read stays behind with a new reason,
+never an exception. `*.log` keeps shipping unchecked for content, but not past the symlink and size rules. That last
+point narrows what a `*.log` did before RM338, so its CHANGELOG line says so.
+
+**What shipped.** `_reached_through_a_link(path, spec_dir)` is the containment rule: a path is a symlink,
+or its resolved form is not exactly the spec directory's resolved form joined with the path's own
+relative part. The resolved spec directory is the reference, so a spec directory that is itself reached
+through a link still ships its own files. `_log_left_behind_reason(path, logs_dir, spec_dir)` asks it
+first, for every kind, `*.log` included; then, for anything but an exact `.log`, the name-only arms as
+before (hidden path, SVG, an extension that does not ship); then one `try` around the `stat` and the
+open: over `LOG_MAX_BYTES` is `oversize` with both sizes, any `OSError` is the new `unreadable` arm, *"the
+compile could not read it"*. A `.log` is opened and nothing read, an image reads its magic, text reads
+whole, now bounded. `_collect_logs` judges the top-level `*.log` through the same function, and treats
+`logs/` as a candidate like any path under it: a link is judged and never walked, so one finding names
+`logs`. The ceiling is `LOG_MAX_BYTES`, and `LOG_IMAGE_MAX_BYTES` stays as a working alias of it: no
+tag carries the old name yet, but `main` does, and the next 0.7 patch publishes it, so removing it in
+0.8 would be a removal inside the major line (Principle 3). Two sentences moved with
+the rule, legal because RM337 is uncut: the symlink reason now reads *"it is a symlink or lies under one,
+and a link can reach outside the module"*, and the oversize reason *"it is larger than the ceiling for a
+file discovery ships"*. Three choices the contract left open:
+
+- **A link that stays inside the module is refused too.** The rule as filed is "a symlink at any
+  level", and a link's target can change after the compile is checked; so `logs/again.log` pointing at
+  `logs/authoring.log` stays behind.
+- **A directory the compile cannot list is named.** Found while building: a walk skips a directory it
+  cannot list or search without a word, so the files under it stayed behind unnamed, the RM337 class
+  again. `_listable` asks for read and search (`os.access`, `R_OK | X_OK`), since a directory with one
+  and not the other hides its files just the same, and an unlistable directory, `logs/` included, draws
+  the `unreadable` reason in place of its files. It ships nothing new and adds no arm.
+- **A directory that resolves elsewhere without being a link is judged as one.** A Windows junction
+  is a directory to `is_symlink()`; the walk asks `_reached_through_a_link` of every directory it
+  meets, so one draws the symlink reason rather than being walked or passed over. No test here can
+  make a junction. A top-level `*.log` that is a directory is not a log and stays silent, readable
+  or not, as it was before.
+- **The intermediate-level half of the rule is driven directly.** Python 3.13's `rglob` does not descend
+  into a linked directory (it yields the link, which draws the symlink reason), so no compile reaches a
+  file under one. The resolved-path comparison is still the rule as filed, and a test drives the real
+  function on such a path, where an `is_symlink()` on the leaf alone would ship it.
+
+Tests: `compiler/tests/test_logs_containment.py`, one per instance, red before the code: a symlinked
+`*.log` under `logs/` pointing outside and one pointing inside; a symlinked top-level `*.log`; a `logs/`
+that is a link to a directory of valid files (one finding, `logs`, and nothing shipped); a path under a
+linked directory, judged directly; sparse `.log` and `.txt` files one byte over the ceiling beside a
+top-level one, and two exactly at it that ship; four files made unreadable (`.log`, `.json`, `.png`, and a
+top-level `.log`) plus a directory with no permission and one listed but not searched, in both modes;
+an unreadable `logs/`; and an explicit `log_files` list that still ships a link. The permission tests skip
+as root, and skip when the chmod does not take (an NTFS mount ignores the mode). RM337's fixture gained an
+unreadable `.json`, so its walk over the arms reaches the new one, with the same carve-out. Each mutation turned a
+test red before the code was kept: no link check, the leaf `is_symlink()` alone, `logs/` walked through a
+link, the top level not judged, the ceiling on images only, `>=` at the ceiling, `OSError` uncaught, a
+`.log` stat-ed but not opened, the `unreadable` arm given `not_utf8`'s sentence, every directory listable,
+read asked without search, an unlistable directory skipped, and an unreadable top-level directory
+named `*.log` judged. A test that refuses the open itself for chosen paths reaches the `unreadable` arm
+on a runner that is root, where the mode-based tests skip. One did not, and its guard was removed
+rather than kept: `_listable(logs_dir)` before the walk, which `rglob` on an unreadable directory already
+makes a no-op.
+
+## RM337 — a file under `logs/` that is not `*.log` is dropped from the compile, and nothing says so
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** (corrected
+2026-11-04 from "a patch"; taken into 0.8 the same day, PROPOSAL_0_8_PT2 §5 A7) · **Owner** compiler
+(`_collect_logs`) · **Motivating case** S125 in CONSUMER_SUGGESTIONS_HISTORY.md (just-module-creator
+`F116`, 2026-10-05) · *related* RM338, RM147, RM308
+
+**Residuals** none
+
+**0.8, decided 2026-11-04.** The maintainer told the lead to push its ready-to-build minors into 0.8's
+scope, and the lead listed this one as ready. It also carries the half of RM338 that needs the new
+warning code.
+
+**Reproduced 2026-11-03** on a copy of `reference_examples/apoe_epsilon` with six files under `logs/`
+(`authoring.log`, `trace/session-a.jsonl`, `run.json`, `notes.md`, `notes.txt`, `fig.png`):
+`compile_module` succeeds, no warning mentions a log, and both `manifest.logs` and the output's `logs/`
+hold `logs/authoring.log` alone. Discovery globs `*.log` at the top level and `logs/**/*.log` below it,
+and skips everything else under `logs/` without a word. The registry's server-side compile leaves
+discovery to the compiler, so an upload carries the file and the published version does not. After
+RM338 synced into `0.8` the set that ships was wider, and the rest still went unmentioned: an SVG, a
+`.bin` and a `.json` that does not parse, beside `authoring.log` in an apoe copy, compiled green with
+`warnings_summary` holding `vrs_coverage_incomplete` alone.
+
+**The patch, as filed.** A coded warning, in both modes, naming each file under `logs/` that discovery
+left behind. It changes no verdict and ships nothing new, so it is legal whatever RM338 decides; once
+RM338 widens the set, the warning names whatever is still left out. An explicit `log_files` list is
+unaffected, since it already ships any path it names. The new code owes a `features/` scenario.
+
+**Sized wrong at filing; a minor (2026-11-04).** No existing member of `VALID_WARNING_CODES` names this
+finding, and every compile warning must carry one (`compiler/tests/test_warning_codes.py`), so the item
+adds a member. A new member is minor-class: `Compilation.warnings_summary` validates its keys, so a reader
+pinned to an older `just-dna-format` refuses a manifest that carries the new code. RM308 is the shipped
+precedent ("a new warning code, so minor-class"). A `logger` line would be patch-legal and is not taken:
+it is not the warnings channel, so the registry's server-side compile, where S125's file goes missing,
+would still say nothing to the uploader. Borrowing a code that names another finding is refused too
+(`@warning-code-names-the-finding`).
+
+**What shipped.** `log_file_not_shipped` (actionable), one warning per path under `logs/` that
+discovery leaves behind, in both modes and never a refusal: `<path> does not ship with the module:
+<reason>.` (`LOG_NOT_SHIPPED_PHRASE` is the pinned fragment). RM338's `_log_content_agrees` returned a
+bool; it became `_log_left_behind_reason(path, logs_dir) -> str | None`, which holds every arm of the
+verdict, the `.log` short-circuit, hidden paths and symlinks included, and returns the reason or `None`.
+One function decides and explains, so the two cannot drift (`@answered-is-not-absent`). Its fixed
+sentences, one per arm, are `LOG_NOT_SHIPPED_REASONS`: a hidden path; a symlink; an image over
+`LOG_IMAGE_MAX_BYTES`, with both sizes; an image whose first bytes are not its format's signature, naming
+the extension; an SVG, *"XML that can carry script"*; any other extension, naming it and the ones that
+ship; text that is not UTF-8, with the file offset of the first bad byte (a byte-order mark counted, so
+the decode strips the mark itself rather than through `utf-8-sig`, whose offsets start after it); a
+`.json` that does not parse; and a `.jsonl` line that
+does not parse, numbered with blank lines counted, as an editor counts them. A `.json` nested past the
+recursion limit takes the same `.json` sentence. The reason carries nothing from an interpreter's error
+message, because the line reaches `manifest.json` and the release sweep compares it. `_collect_logs`
+returns its warnings beside the entries, and `compile_module` extends the channel with them, so they
+reach `CompilationResult.warnings`, `manifest.compilation.warnings_summary` and the `compile` output.
+Three choices the contract left open:
+
+- **A symlink is judged whatever it points at.** A link to a directory, or to nothing, was skipped
+  silently by RM338's `is_file()` filter; now it draws the symlink reason, since discovery never follows
+  it. A dangling link named `.log` is a symlink too. A link to a file named `.log` still ships, as before.
+- **One line per file, with no cap.** The decision was to name each file, so there is no `_examples`
+  truncation; `warnings_summary` counts them, and `@warning-code-names-the-finding` refuses a cap because
+  it hides findings from the author who has the most.
+- **`validate` does not emit it.** The pre-flight reads no side-car asset, and a warning owes no
+  validate/compile parity (`@validate-refuses-all` is about refusals).
+
+Out of scope, as RM338 left it: the top level, where only `*.log` is discovered and any other file is the
+spec directory's ordinary tolerance of unknown files; and an explicit `log_files` list, which ships what
+it names and draws no warning.
+
+Tests: `compiler/tests/test_logs_not_shipped.py`. A copy of `apoe_epsilon` carries files that ship and
+paths that stay behind, every arm reached (two `.json`, one of them nested past the recursion limit; a
+`.jsonl` whose third line is bad after a blank; latin-1 text, and a `.md` with a byte-order mark, a bad
+byte at file offset 5 and a space in its name; a GIF named `.png` and a PNG named `.jpg`; a png one byte
+over the ceiling; a hidden `.md` and a hidden `.svg`; a link to a file, a dangling `.log` link and a link
+to a directory). In both modes it asserts exactly one finding per left-behind path, each holding its own
+arm's sentence and no other's, the line number, both offsets and both sizes, the count in
+`warnings_summary`, the rest of the channel equal to the pristine apoe compile's, nothing in `carried`,
+and both identities unchanged. A second test asserts the sentences pairwise distinct, none containing
+another, and drives the real function over one file per arm, the arms walked as the registry's keys;
+others cover lap stability, the explicit list, the top level and the CLI in both modes. Paths are read
+off a finding by splitting at the pinned phrase, never at the first space. `test_logs.py`'s RM338 "adds
+no warning" test became "warns only about what stays behind". Each mutation turned a test red before the
+code was kept: every arm switched off or given another arm's sentence, latin-1 accepted as UTF-8, the
+offset counted after the byte-order mark, the `.jsonl` numbering skipping blanks, `.log` checked, the
+warning not appended, the channel not extended, and an explicit list running discovery.
+
+Found by review and left as RM338 shipped them, since each changes what ships, not what is said (reported
+to the lead, unfiled): a symlinked `*.log` ships, and so does everything under a `logs/` that is itself a
+symlink; text has no size ceiling; and an unreadable file under `logs/` raises out of the compile rather
+than staying behind.
 
 ## RM347 — the HuggingFace module publisher uploads no logs, although `manifest.logs` lists them
 
@@ -1646,7 +6787,7 @@ an `EnsemblResolver.read_base` constructor field and a public `sequences.grch38_
 field, parameter and public function, each minor-class under the triage runbook's release table, and
 [RELEASE_CYCLE](RELEASE_CYCLE.md) keeps `main` patch-only. Fixed forward: the reader is private, the
 field is gone, and the warning carries the naming. The structured list is
-[RM272](ROADMAP.md#rm272--an-answered-but-unplaceable-rsid-has-no-structured-name-in-enrichmentresult),
+[RM272](#rm272--an-answered-but-unplaceable-rsid-has-no-structured-name-in-enrichmentresult),
 for `0.8`.
 
 ## RM264 — the 0.7.x manifest read an abstract-only miss as a checked quote, and the patch line re-describes it
@@ -1676,6 +6817,13 @@ output wait for a version unmitigated, so this patch carries what adds, removes 
 redefine). **Merge note for `0.8`:** its descriptions already name `quotes_checked`; at the first
 merge of `main` into `0.8`, take `0.8`'s text for these two fields and keep this test only if its
 description assertion still holds there.
+
+**Merged into `0.8` on 2026-09-29.** `0.8`'s text was taken for both fields, and `quotes_checked`'s
+description gained one clause naming `abstract_only_count` as the only sign on a manifest compiled
+before that field existed. The test stays, with its description assertion moved to `quotes_checked`
+(neither 0.8 description of the two counters names `abstract_only_count`); its behavioural assertion,
+that the two modules differ on `abstract_only_count`, is the only test pinning that counter's value. The docstring paragraph was not ported, since on `0.8` it would be false:
+`abstract_only_count` is no longer the only counter that separates the two.
 
 ## RM262 — a DOI answered existence and never identity, although the body naming the paper was already in hand
 
@@ -1724,7 +6872,7 @@ story rather than about what the class promises.
 - **Rewriting title markup.** Crossref passes JATS tags (`<i>`) through. The field is for a person to
   compare against the paper they meant; cleaning it would be a second opinion about the title.
 - **The reporter's second candidate, DOI → PMID, in the same change.** It is a separate request, a
-  separate client method, and an advisory rather than a fill. Filed as [RM263](ROADMAP.md#rm263--a-doi-has-no-route-to-its-pmid-although-studyrowpmid-is-the-required-half).
+  separate client method, and an advisory rather than a fill. Filed as [RM263](#rm263--a-doi-has-no-route-to-its-pmid-although-studyrowpmid-is-the-required-half).
 
 ## RM259 — a position has no gene to ask the Atlas about, so the reverse span lookup ships
 
@@ -9294,7 +14442,7 @@ else RM127 used to ask now belongs to RM126.
 every one of them was a *decision* rather than a missing line of code, and none had been made. All six
 were answered in a single pass on 2026-08-21. Four stayed open with their shape settled or narrowed and
 are still in the active file (RM103's manifest half, RM108, RM110, RM117); **RM122** parked on demand
-and moved to the minor-deferral file ([ROADMAP_0_8.md](ROADMAP_0_8.md) since the 0.7 cut); **RM103's refusal half** moved to
+and moved to the minor-deferral file ([ROADMAP_0_8.md](history/ROADMAP_0_8.md) since the 0.7 cut); **RM103's refusal half** moved to
 [ROADMAP § The 1.0 cleanup](ROADMAP.md#the-10-cleanup-candidate-tracker); and **RM102** closed
 outright, which is why it is here.
 

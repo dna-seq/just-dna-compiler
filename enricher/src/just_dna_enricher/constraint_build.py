@@ -33,18 +33,17 @@ polars-free (Goal 2).
 
 import csv
 import hashlib
-import json
 import logging
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
+from just_dna_format.snapshot import SnapshotRelease, SnapshotWrite, begin_snapshot_write
 
 from just_dna_enricher.gnomad import normalize_constraint_flags
-from just_dna_enricher.net import stream_to_file
+from just_dna_enricher.net import EndpointRetired, stream_to_file
 
 try:  # the one guarded optional import (CLAUDE.md): polars is builder-only ([dev] extra)
     import polars as pl
@@ -232,6 +231,15 @@ class ConstraintUnavailable(ConstraintBuildError):
     """The gnomAD download did not answer — the fetch failed, not the file."""
 
 
+class ConstraintRetired(ConstraintUnavailable, EndpointRetired):
+    """The source answered HTTP 410: it retired the gnomAD constraint file (RM361, audit round 2).
+
+    Its lane's `ConstraintUnavailable`, so every handler still catches it; marked `EndpointRetired`, so
+    the reason is `retired` and the message says the file moved and to upgrade, never that the
+    host was down.
+    """
+
+
 def download_constraint_tsv(dest: Path, url: str = DEFAULT_CONSTRAINT_URL) -> Path:
     """Stream the gnomAD constraint TSV to ``dest`` (atomic ``.part`` rename), returning the path.
 
@@ -243,6 +251,7 @@ def download_constraint_tsv(dest: Path, url: str = DEFAULT_CONSTRAINT_URL) -> Pa
         dest,
         url,
         error_cls=ConstraintUnavailable,
+        retired=ConstraintRetired,
         what="the gnomAD constraint TSV",
         remedy="Pass --source constraint=<tsv> to build from a copy you already hold.",
     ).path
@@ -267,7 +276,6 @@ def build_snapshot(
         raise FileNotFoundError(f"gnomAD constraint TSV not found at {tsv}")
     out_dir = Path(out_dir)
     data_dir = out_dir / "data"
-    data_dir.mkdir(parents=True, exist_ok=True)
 
     by_gene: dict[str, list[dict]] = {}
     source_rows = 0
@@ -290,11 +298,13 @@ def build_snapshot(
     schema = _empty_schema()
     frame = pl.DataFrame(records, schema=schema).sort("gene")
     parquet_path = data_dir / "gnomad_constraint.parquet"
+    snapshot = begin_snapshot_write(out_dir)
+    data_dir.mkdir(parents=True, exist_ok=True)
     frame.write_parquet(parquet_path)
 
     source_sha256 = _sha256_file(tsv)
     _write_release_json(
-        out_dir,
+        snapshot,
         source_url=source_url,
         source_sha256=source_sha256,
         gene_count=frame.height,
@@ -320,7 +330,7 @@ def build_snapshot(
 
 
 def _write_release_json(
-    out_dir: Path,
+    snapshot: SnapshotWrite,
     *,
     source_url: str,
     source_sha256: str,
@@ -330,16 +340,14 @@ def _write_release_json(
 ) -> Path:
     """Write ``release.json`` — the provenance beside the parquet. `built_at` is deliberately outside
     the parquet so the parquet itself stays byte-reproducible."""
-    release = {
-        "source_url": source_url,
-        "source_sha256": source_sha256,
-        "gene_count": gene_count,
-        "source_rows": source_rows,
-        "unresolved_count": unresolved_count,
-        "dataset": "gnomad_v4.1_constraint",
-        "built_at": now_utc_iso(),
-        "builder_version": _builder_version(),
-    }
-    path = out_dir / "release.json"
-    atomic_write_text(path, json.dumps(release, indent=2, sort_keys=True) + "\n")
-    return path
+    release = SnapshotRelease(
+        source_url=source_url,
+        source_sha256=source_sha256,
+        gene_count=gene_count,
+        source_rows=source_rows,
+        unresolved_count=unresolved_count,
+        dataset="gnomad_v4.1_constraint",
+        built_at=now_utc_iso(),
+        builder_version=_builder_version(),
+    )
+    return snapshot.commit(release)

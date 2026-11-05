@@ -8,6 +8,7 @@ The stale path is exercised by **editing a module after attesting it** rather th
 the document, because that is the failure that actually happens and the one the item is about.
 """
 
+import csv
 import json
 import shutil
 from pathlib import Path
@@ -371,6 +372,26 @@ _UNPLACED_DETAIL = (
 )
 
 
+def _apoe_with_no_alt(tmp_path: Path) -> Path:
+    """`apoe_epsilon` as it was enriched before 0.8: two rsID-only resolution rows with no ALT.
+
+    The 0.8 regeneration against the split snapshot filled both ALTs (and their VRS ids), so the
+    committed example no longer has the shape this warning is about; it is put back on the copy.
+    """
+    spec = _module(tmp_path, "apoe_epsilon")
+    path = spec / "resolution.csv"
+    with path.open(newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        fields = list(reader.fieldnames or [])
+        rows = [{**row, "alts": "", "vrs_id": "", "vrs_spec": ""} for row in reader]
+    assert len(rows) == 2
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields, lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(rows)
+    return spec
+
+
 def _no_alt_lines(warnings: list[str]) -> list[str]:
     return [w for w in warnings if "no ALT recorded" in w]
 
@@ -383,7 +404,7 @@ def test_the_no_alt_line_names_the_record_when_it_says_the_snapshot_left_rsids_u
     Both sides reach the same sentence, so validate's line and compile's collapse into one, and the
     existing phrase still leads it (`@warning-text-is-api`).
     """
-    spec = _module(tmp_path, "apoe_epsilon")
+    spec = _apoe_with_no_alt(tmp_path)
     _attest(spec, records=[_unplaced_record(_UNPLACED_DETAIL)])
     validated = validate_spec(spec)
     compiled = _compile(spec, tmp_path / "out")
@@ -396,7 +417,7 @@ def test_the_no_alt_line_names_the_record_when_it_says_the_snapshot_left_rsids_u
 
 def test_the_no_alt_line_stays_bare_without_such_a_record_or_against_a_stale_one(tmp_path: Path) -> None:
     """No pointer where the record does not say it, and none to a record these bytes no longer match."""
-    spec = _module(tmp_path, "apoe_epsilon")
+    spec = _apoe_with_no_alt(tmp_path)
     _attest(spec, records=[_unplaced_record("every authored pair was compared")])
     [line] = _no_alt_lines(_compile(spec, tmp_path / "a").warnings)
     assert "verification.json" not in line

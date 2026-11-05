@@ -58,7 +58,7 @@ import httpx
 from just_dna_compiler.compiler import load_csv_rows, load_spec_variants
 from just_dna_format.base import merge_key
 from just_dna_format.gwas import GwasEffectRow
-from just_dna_format.layout import atomic_writer
+from just_dna_format.layout import atomic_writer, nothing_to_write
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.sources import SourceRow
 from pydantic import ValidationError
@@ -71,15 +71,29 @@ from just_dna_enricher.enrich import (
 )
 from just_dna_enricher.licensing import (
     GWAS_CATALOG_TERMS,
-    merge_sources_file,
+    record_table_sources,
     require_sources_file,
     sidecar_path,
+    table_datasets,
 )
-from just_dna_enricher.net import PacingGate, attempt_floor, raise_if_retired, retry_if_transient
+from just_dna_enricher.net import (
+    EndpointRetired,
+    PacingGate,
+    attempt_floor,
+    raise_if_retired,
+    release_dataset,
+    retry_if_transient,
+    stated_release,
+)
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_GWAS_ENDPOINT = "https://www.ebi.ac.uk/gwas/rest/api/v2"
+#: Where the Catalog states its release (`{"date": "2026-10-29", "ensemblbuild": "116", …}`, read by hand
+#: on 2026-11-05). The v2 API states none, so a row's `dataset` is read from here (RM373).
+DEFAULT_GWAS_STATS_URL = "https://www.ebi.ac.uk/gwas/api/search/stats"
+#: The bare lane a row's `dataset` carries when the Catalog stated no release (`release_dataset`).
+GWAS_LANE = "gwas_catalog"
 GWAS_SOURCE = GWAS_CATALOG_TERMS.source
 
 #: Derived from the model, never hand-kept — a parallel list is how `SOURCES_FIELDNAMES` lost a column.
@@ -134,7 +148,7 @@ class GwasNotFound(GwasError):
     """
 
 
-class GwasRetired(GwasError):
+class GwasRetired(GwasError, EndpointRetired):
     """The Catalog answered HTTP 410 Gone: it retired the endpoint this client asked (RM354).
 
     **A fact about the source, not an outage.** The legacy REST API began answering 410 on every path
@@ -206,6 +220,7 @@ class GwasCatalogClient:
     """
 
     endpoint: str = DEFAULT_GWAS_ENDPOINT
+    stats_url: str = DEFAULT_GWAS_STATS_URL
     timeout: float = 30.0
     gate: PacingGate = field(default_factory=lambda: PacingGate(DEFAULT_REQUEST_INTERVAL))
     _client: httpx.Client | None = None
@@ -261,6 +276,21 @@ class GwasCatalogClient:
             raise GwasError(f"GWAS Catalog request failed for {url}: {exc}") from exc
         except ValueError as exc:
             raise GwasError(f"GWAS Catalog returned unparseable JSON for {url}: {exc}") from exc
+
+    def release(self) -> str | None:
+        """The release date the Catalog states, or `None` when it could not be read or states none (RM373).
+
+        Asked once per run. A failure is the unknown arm, logged, never an error: the associations are
+        the run's work, and a release that could not be read is withheld from their label, never
+        replaced by the day the run happened.
+        """
+        try:
+            payload = self._get(self.stats_url)
+        except GwasError as exc:
+            logger.warning("GWAS Catalog did not state its release (%s); the rows name none.", exc)
+            return None
+        date = payload.get("date") if isinstance(payload, dict) else None
+        return date.strip() if isinstance(date, str) and date.strip() else None
 
     def association_pages(self, rsid: str) -> list[list[dict]]:
         """Every page of the Catalog's associations for one rsID, one list per request made.
@@ -553,6 +583,8 @@ def _write_gwas_csv(
     are not in here to lose. The re-run itself is unchanged, and still gap-fills rather than re-asking
     every subject; what changed is that leaving a recorded row alone now risks nothing.
     """
+    if nothing_to_write(output_path, rows):
+        return  # RM370: a pass that answered nothing leaves no table
     with atomic_writer(output_path, newline="", before_commit=before_commit) as handle:
         writer = csv.DictWriter(handle, fieldnames=_FIELDNAMES)
         writer.writeheader()
@@ -579,13 +611,17 @@ def _module_subjects(spec_dir: Path) -> list[tuple[str, str]]:
 
     `studies.csv` carries `rsid` too and is deliberately not a subject: a study row *references* the
     variant it grounds, which the module already carries as a row of its own, so admitting it would
-    add no rsID and change which table an identity came from.
+    add no rsID and change which table an identity came from. Its `proxy_rsid` (RM331) is a resolution
+    subject but not one of these: an association for an LD proxy is not an association for the module's
+    variant, so this pass asks without proxies.
     """
     variants, errors, _ = load_spec_variants(spec_dir)
     if errors and (spec_dir / "variants.csv").exists():
         raise GwasError(f"variants.csv is invalid: {errors[0]}")
     try:
-        subjects = collect_subjects(spec_dir, variants, spec_genome_build(spec_dir))
+        subjects = collect_subjects(
+            spec_dir, variants, spec_genome_build(spec_dir), include_study_proxies=False
+        )
     except EnrichmentError as exc:
         # A pass owes its caller its own exception type — the same re-raise `gene_validity` performs
         # around `module_genes`, and for the same reason: nothing up this stack catches the other
@@ -664,7 +700,8 @@ def enrich_gwas(
     try:
         catalog = client or GwasCatalogClient()
         cache = _LinkCache(fetch=catalog.follow)
-        release = dataset or f"gwas_catalog_{now_utc_iso()[:10]}"
+        # The Catalog's own release (RM373), never the day this run happened to ask.
+        release = dataset or release_dataset(GWAS_LANE, catalog.release())
         fetched_at = now_utc_iso()
 
         seen = {_merge_key(row) for row in existing_rows}
@@ -763,10 +800,15 @@ def enrich_gwas(
             _write_gwas_csv(
                 out,
                 output_path,
-                before_commit=lambda: merge_sources_file(
-                    [GWAS_CATALOG_TERMS.row("gwas_effect", declared_use=declared_use, dataset=release)],
+                # Labelled by the release every committed row states, not by this run's alone (RM373).
+                before_commit=lambda: record_table_sources(
+                    table_datasets(out, release=lambda row: stated_release(row.dataset, GWAS_LANE)),
+                    "gwas_effect",
                     spec_dir,
                     error=GwasError,
+                    # A routine merge declares nothing, so it retires no licence row (RM383).
+                    answered_every_row=False,
+                    declared_use=declared_use,
                 ),
             )
     finally:

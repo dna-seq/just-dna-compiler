@@ -22,6 +22,9 @@ from just_dna_format.vocab import validate_trait_ids
 SLICE = Path(__file__).resolve().parents[2] / "assets" / "civic_slice"
 
 
+pytestmark = pytest.mark.usefixtures("clingen_registry_down")
+
+
 @pytest.fixture
 def snapshot(tmp_path):
     return build_snapshot(

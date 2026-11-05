@@ -30,6 +30,9 @@ SLICE = Path(__file__).resolve().parents[2] / "assets" / "civic_slice"
 _RELEASE = "01-Aug-2026"
 
 
+pytestmark = pytest.mark.usefixtures("clingen_registry_down")
+
+
 @pytest.fixture
 def snapshot(tmp_path):
     return build_snapshot(

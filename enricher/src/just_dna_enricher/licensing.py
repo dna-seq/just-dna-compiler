@@ -27,21 +27,28 @@ import csv
 import hashlib
 import logging
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
 from just_dna_compiler.compiler import load_csv_rows, load_overlay
 from just_dna_format.layout import (
     SOURCES_CSV,
     SidecarCollision,
     atomic_writer,
+    nothing_to_write,
     sidecar_write_path,
 )
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.overrides import VALID_OVERRIDE_TABLES, apply_overrides
 from just_dna_format.sources import SourceRow
 from just_dna_format.vocab import VALID_DECLARED_USE, check_vocab
+
+
+class _HasSource(Protocol):
+    source: str | None
+
 
 logger = logging.getLogger(__name__)
 
@@ -228,6 +235,33 @@ CLINVAR_TERMS = SourceTerms(
     redistribution=True,
 )
 
+# ClinGen's ClinVar-GKM (RM305), read off its Parquet `manifest.json` on 2026-11-04 (quoted verbatim in
+# docs/probes/LANES_0_8.md §3.3). Its own source name, not `clinvar`: the transformation is ClinGen's,
+# and a module that names this witness has to be able to credit the party that built it. All three
+# permission axes are **documented**: CC0 covers ClinGen's contribution, ClinVar underneath is NCBI
+# public domain (`CLINVAR_TERMS`), and CC0 neither bars sale nor imposes share-alike. The attribution
+# and the disclaimer are the manifest's own words; CC0 cannot grant rights ClinVar's submitters hold,
+# which is what the scope sentence in `notice` says.
+CLINVAR_GKM_TERMS = SourceTerms(
+    source="clinvar_gkm",
+    license="CC0-1.0",
+    license_url="https://dataexchange.clinicalgenome.org/clinvar-gkm/data-use/",
+    attribution=(
+        "Derived from NCBI's ClinVar. If you use or redistribute these data, attribute ClinVar as the "
+        "data source and cite it; cite ClinVar-GKM (doi:10.5281/zenodo.18343663) if you used these files."
+    ),
+    notice=(
+        "CC0 covers ClinGen's contribution (the code and this published transformation) only. It adds "
+        "no restriction, and it cannot grant rights that NCBI or ClinVar's submitters hold. ClinVar's "
+        "disclaimer applies: the information is not intended for direct diagnostic use or medical "
+        "decision-making without review by a genetics professional. ClinVar-GKM is not an NCBI, NLM or "
+        "NIH product and is not endorsed by them."
+    ),
+    share_alike=False,
+    commercial_use=True,
+    redistribution=True,
+)
+
 # Already in the chain and unrestricted — recorded so a module's licence picture is complete rather
 # than only listing the sources that constrain it.
 ENSEMBL_TERMS = SourceTerms(
@@ -283,6 +317,8 @@ RESOLUTION_AUTHORITY_BY_LINK: dict[str, str] = {
     "cache": "ensembl",  # the Ensembl snapshot — same data, offline
     "ensembl": "ensembl",
     "ensembl-rest": "ensembl",
+    # No longer written (the beta GraphQL leg was retired on 2026-11-04); a row written before 0.8 may
+    # still carry it, and its authority does not change because the link stopped being asked.
     "ensembl-graphql": "ensembl",
     "clinvar": "clinvar",
     "gnomad": "gnomad",
@@ -374,6 +410,38 @@ GWAS_CATALOG_TERMS = SourceTerms(
         "thousands of underlying publications it summarizes are not established here. Data is "
         "provided 'AS IS' without warranties of any kind."
     ),
+    redistribution=True,
+)
+
+
+# Open Targets Platform (RM333), decided by the maintainer 2026-11-04: build under Open Targets' own
+# terms plus its notice. The release is **marked** CC0 1.0 (the licence page and the croissant's only
+# `license` key, both read 2026-11-04), so the three permission axes are each a documented `True`. The
+# `notice` carries Data Services items 2 and 4 of the Platform's terms of use verbatim, because the
+# mark is the host's and the terms defer to the original data owners: a row cannot yet name its owner,
+# which is RM345's `SourceRow` axis gap for 0.9 (`@a-hosts-terms-are-not-its-contents-terms`). The
+# questions RM333 leaves for a lawyer are listed in its ROADMAP_HISTORY entry, not settled here.
+OPENTARGETS_TERMS = SourceTerms(
+    source="opentargets",
+    license="CC0-1.0",
+    license_url="https://platform-docs.opentargets.org/licence",
+    attribution=(
+        "Open Targets Platform (https://platform.opentargets.org); Buniello et al., Nucleic Acids Res "
+        "2025, PMID 39657122"
+    ),
+    notice=(
+        "Open Targets Platform terms of use (updated June 2021, "
+        "https://platform-docs.opentargets.org/licence/terms-of-use), Data Services: "
+        '"2. Open Targets itself places no additional restrictions on the use or redistribution of the '
+        'data available via its online services other than those provided by the original data owners." '
+        '"4. The original data may be subject to rights claimed by third parties, including but not '
+        "limited to, patent, copyright, other intellectual property rights, biodiversity-related access "
+        "and benefit-sharing rights. It is the responsibility of users of the Open Targets Platform to "
+        "ensure that their exploitation of the data does not infringe any of the rights of such third "
+        'parties."'
+    ),
+    share_alike=False,
+    commercial_use=True,
     redistribution=True,
 )
 
@@ -881,6 +949,7 @@ TERMS_BY_SOURCE: dict[str, SourceTerms] = {
         CLINGEN_TERMS,
         GENCC_TERMS,
         CLINVAR_TERMS,
+        CLINVAR_GKM_TERMS,
         ENSEMBL_TERMS,
         GNOMAD_TERMS,
         GWAS_CATALOG_TERMS,
@@ -893,6 +962,7 @@ TERMS_BY_SOURCE: dict[str, SourceTerms] = {
         MITOMAP_TERMS,
         ALPHAGENOME_AVI_TERMS,
         ALPHAGENOME_ATLAS_TERMS,
+        OPENTARGETS_TERMS,
     )
 }
 
@@ -967,6 +1037,119 @@ def record_source_terms(
         spec_dir,
         error=error,
     )
+
+
+#: The layers a drafting provider writes, and so the only ones a re-draft moves (RM373). Every other layer
+#: is a derived table's, labelled by `record_table_sources` from its own rows: its release moving is the
+#: source working, which warns and never makes `strict` refuse (`@a-source-recuring-is-not-a-strict-matter`).
+DRAFTED_LAYERS: frozenset[str] = frozenset({"annotation"})
+
+
+def table_release(labels: Iterable[str | None]) -> str | None:
+    """The one release every row of a table states, or `None` when that is not one release (RM373).
+
+    `None` for rows naming two releases, for any row naming none, and for no rows at all: one cell
+    cannot name two releases, and a row whose release was never recorded may be any release, so the
+    table's label is unknown and unknown is withheld (`withdraw_stale_dataset`'s rule, one table over).
+    """
+    stated = {(label or "").strip() for label in labels}
+    if len(stated) != 1:
+        return None
+    (only,) = stated
+    return only or None
+
+
+def table_datasets[R: _HasSource](
+    rows: Iterable[R], *, release: Callable[[R], str | None]
+) -> dict[str, list[str | None]]:
+    """`source -> the release each row naming it states`, for a derived table whose rows carry `source`.
+
+    What `record_table_sources` reads, from a fact table that records each row's release in a column of
+    its own (`dataset` on `frequencies.csv`, `gene_metrics.csv`, `gene_validity.csv` and
+    `clinical_assertions.csv`). A row with no `source` names no licensed source and contributes nothing.
+    """
+    releases: dict[str, list[str | None]] = {}
+    for row in rows:
+        if row.source:
+            releases.setdefault(row.source, []).append(release(row))
+    return releases
+
+
+def record_table_sources(
+    releases: Mapping[str, Iterable[str | None]],
+    layer: str,
+    spec_dir: Path,
+    *,
+    error: type[Exception],
+    answered_every_row: bool = False,
+    declared_use: str = "unstated",
+) -> list[SourceRow]:
+    """Record the terms of every source a derived table's rows came from, `dataset` labelled by the table.
+
+    **The one route a derived pass writes its licence rows through (RM373).** `releases` maps each
+    source to the release every committed row it answered states (`None` for a row that states none),
+    so the label describes the table being committed, never only this run's answers: under
+    merge-not-clobber a table answered by two releases is the normal case, and labelling it with the
+    run's snapshot would be the false label the 0.8 Ensembl migration probe measured.
+
+    `dataset` is then **stamped** on the `(source, layer)` row, re-labelled or withheld, rather than
+    left to `merge_sources_file`, which never clobbers and so never fills a row an earlier run wrote
+    blank. That is `stamp_draft_digest`'s precedent and not `withdraw_stale_dataset`'s: a drafted table
+    holds rows from releases nobody recorded, so its label can only be kept or withdrawn, while a derived
+    table's rows each name their release, so recomputing the label from them is always the honest answer.
+    The row is the pass's own (a derived layer is machine-written), so no curator's cell is overwritten.
+
+    **`answered_every_row` is the caller's declaration that this commit is the pass's whole answer**
+    (RM383): an `enrich --rederive`, or a table rewritten whole on every run. Then a row of the pass's own
+    — this layer, a source with a terms constant — that no committed row names is a false *this module
+    uses this source* (`@write-the-sourcerow`), and it is retired here, inside the table's commit, and
+    named in the log. Never as a side effect: a routine merging run passes `False` and retires nothing,
+    because merge-not-clobber is its contract and a deletion needs a declaration
+    (`@a-publish-may-not-orphan-the-bytes-it-stops-describing`). The default is `False`, so a host's
+    existing call keeps its behaviour; every call in this package states it by keyword, which
+    `test_a_rederive_retires_an_unused_licence_row.py` walks. Returns the licence table as written, or
+    `[]` when nothing was written.
+    """
+    labels = {source: table_release(rows) for source, rows in releases.items()}
+    recorded = record_source_terms(
+        labels,
+        layer,
+        spec_dir,
+        error=error,
+        declared_use=declared_use,
+        datasets={source: label for source, label in labels.items() if label},
+    )
+
+    def owned(row: SourceRow) -> bool:
+        # Only the rows this call writes: a source with no terms constant (`manual`) gets no row from
+        # it, so a curator's hand-written row for one is never touched, relabelled or retired.
+        return row.layer == layer and row.source in TERMS_BY_SOURCE
+
+    stale = [
+        r for r in recorded if owned(r) and r.source in labels and (r.dataset or None) != labels[r.source]
+    ]
+    # A source the committed table no longer names at all (RM383), under the caller's declaration only.
+    # Read from the file when this call recorded nothing: a table naming no licensed source writes no
+    # row, and its stale ones are exactly what is left to retire.
+    pool = recorded or (require_sources_file(spec_dir, error=error) if answered_every_row else [])
+    kept: list[SourceRow] = []
+    retired: list[SourceRow] = []
+    for row in pool:
+        (retired if answered_every_row and owned(row) and row.source not in labels else kept).append(row)
+    if not stale and not retired:
+        return recorded
+    for row in stale:
+        row.dataset = labels[row.source]
+    if retired:
+        logger.info(
+            "Retired %d licence row(s) at the %r layer for a source no committed row names, since this "
+            "run answered every row (RM383): %s.",
+            len(retired),
+            layer,
+            ", ".join(f"{r.source},{r.layer}" for r in retired),
+        )
+    write_sources_csv(kept, sources_path(spec_dir, error=error))
+    return kept
 
 
 def check_declared_use(terms: SourceTerms, declared_use: str) -> str | None:
@@ -1078,7 +1261,13 @@ def _cell(value: object) -> str:
 
 
 def write_sources_csv(rows: list[SourceRow], path: Path) -> None:
-    """Write `sources.csv` in a fixed column order (normalized, like every reverse writer)."""
+    """Write `sources.csv` in a fixed column order (normalized, like every reverse writer).
+
+    A merge that adds no row to a module with no licence table writes none (RM370): the same predicate
+    as every data table's, so a pass that recorded nothing leaves no header-only `sources.csv` either.
+    """
+    if nothing_to_write(path, rows):
+        return
     with atomic_writer(Path(path), newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=SOURCES_FIELDNAMES)
         writer.writeheader()
@@ -1209,17 +1398,31 @@ def read_sources_file(spec_dir: Path) -> list[SourceRow]:
     *writes* must still fail loudly on an unreadable table — merging into one that did not load would
     drop rows already recorded — and `merge_sources_file` does.
     """
+    rows = load_sources_file(spec_dir)
+    if rows is None:
+        logger.warning("This module's licence table could not be read; treating it as unrecorded.")
+        return []
+    return rows
+
+
+def load_sources_file(spec_dir: Path) -> list[SourceRow] | None:
+    """The module's licence rows, **three-valued**: `[]` when it has none, `None` when unreadable.
+
+    The core `read_sources_file` folds to `[]`, published for the reader for whom the fold is the false
+    half: RM292's witness resolution, where `[]` means *nothing was drafted from any source* and an
+    unreadable table has established no such thing. Logs why it could not read, and nothing else.
+    """
     try:
         path = sidecar_write_path(spec_dir, SOURCES_CSV)
     except SidecarCollision as exc:
-        logger.warning("Cannot read this module's licence table (%s); treating it as unrecorded.", exc)
-        return []
+        logger.warning("Cannot read this module's licence table: %s", exc)
+        return None
     if not path.exists():
         return []
     rows, errors, _ = load_csv_rows(path, SourceRow, path.name)
     if errors:
-        logger.warning("%s is invalid (%s); treating it as unrecorded.", path.name, errors[0])
-        return []
+        logger.warning("%s is invalid: %s", path.name, errors[0])
+        return None
     return rows
 
 

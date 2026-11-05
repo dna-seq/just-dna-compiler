@@ -2,7 +2,7 @@
 
 **What this file is.** Items that need a **major**, plus the one item that is release-blocking for it.
 Split out of [ROADMAP.md](ROADMAP.md) on 2026-08-13, alongside the minor-deferral file — then
-`ROADMAP_0_7.md`, now [ROADMAP_0_8.md](ROADMAP_0_8.md), with the closed round in
+`ROADMAP_0_7.md`, now [ROADMAP_0_8.md](history/ROADMAP_0_8.md), with the closed round in
 [history/](history/ROADMAP_0_7.md) — so the
 active roadmap describes the line being built.
 
@@ -296,7 +296,7 @@ documented limit of P7 on non-GRCh38 modules*, not a breach.
   function of the *artifact*, and takes an artifact directory. The original `resolution.csv` is not one
   of its inputs. Making it one would turn reverse into a function of the spec directory as well, which
   is a different transform — and it would re-emit provenance reverse discards on purpose (`source`
-  becomes `reversed`, `status` becomes `resolved`, `fetched_at` empties).
+  becomes `reversed`, `fetched_at` empties; since RM380 every other column comes back off the parquets).
 - **Write the injected coordinate into the positional parquet without joining.** The join spelled
   differently. Writing the coordinate is what the gate forbids, and doing it without re-deriving the key
   yields a parquet row whose coordinate and whose `variant_key` were computed on two different
@@ -327,6 +327,20 @@ is filed would say the wrong thing — RM67 is **not work**, a limit nobody inte
 is scheduled. (Neither is *closed*: RM_TOC's ✖ section holds two items and neither of these is one.)
 The other half of the argument is the candidate-repair list above, which is the record of five refusals.
 Closing the entry retires that record just as the release most likely to re-propose all five arrives.
+
+### Addendum 2026-11-04 — RM364 made the signature a fixed point; the fill is still skipped
+
+RM364 (0.8) put a `resolution_loci` column on every variant parquet: the rows the table files under
+each row's key, on the module's own build, wherever the row's own cells do not already rebuild them
+(here, every row, since the fill is skipped). `reverse` rebuilds the
+table from it, so `cyp2c9_warfarin_grch37`'s three `source=manual` rows come back and its
+`resolution_signature` is equal on both laps; the corpus sweep's build-derived exemption was removed.
+It is none of the five refused repairs above: nothing is joined, no coordinate is written into the row,
+its `variant_key` is untouched, the loci are on the module's build (so no two assemblies meet in one
+row), there is no `resolution.parquet`, and the comparison is kept. The fifth refusal's objection, a
+stable hash over unplaced rows, does not reach it either: the rows stay unplaced and the manifest says so
+on both laps, in `positional_rows_placed` and the joinability warning. What is left of this entry is the
+fill itself, which is RM15's. Whether that is still an item or is now RM15 alone is the pm's to decide.
 
 ---
 

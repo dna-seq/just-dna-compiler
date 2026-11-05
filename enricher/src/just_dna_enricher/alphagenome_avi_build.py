@@ -43,7 +43,6 @@ Collapsing the two would be `@unreachable-not-absent` at nine-billion-row scale.
 """
 
 import hashlib
-import json
 import logging
 import re
 import shutil
@@ -57,10 +56,10 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from just_dna_format.layout import atomic_write_text
+from just_dna_format.snapshot import SnapshotRelease, SnapshotWrite, begin_snapshot_write
 
 from just_dna_enricher.locations import (
     ALPHAGENOME_KNOTS_FILENAME,
-    RELEASE_FILENAME,
     SNAPSHOT_DATA_DIRNAME,
     SNAPSHOT_LICENSE_FILENAME,
 )
@@ -661,31 +660,31 @@ def use_restrictions_text(terms_file: Path) -> str:
     return section + "\n"
 
 
-def _write_release_json(out_dir: Path, result: AviBuildResult, *, artifact_stamp: str | None) -> Path:
+def _write_release_json(
+    snapshot: SnapshotWrite, result: AviBuildResult, *, artifact_stamp: str | None
+) -> Path:
     """The snapshot's provenance — and one field of it is legally load-bearing.
 
     The Output Terms pin the applicable version to **the date the relevant Output was generated**
     (§ 2.7c), so `artifact_mtime` is not provenance hygiene: it fixes which terms govern these bytes,
     permanently. Recorded beside `license_sha256` for the same reason `licensing.py` records both.
     """
-    release = {
-        "dataset": result.dataset,
-        "source_name": result.source_path.name,
-        "source_sha256": result.source_sha256,
-        "artifact_mtime": artifact_stamp,
-        "contigs": list(result.contig_names),
-        "rows": result.rows,
-        "knots": result.knots,
-        "negative_rows": result.negative_rows,
-        "zero_rows": result.zero_rows,
-        "raw_score_scale": RAW_SCORE_SCALE,
-        "phred_stored": False,
-        "built_at": datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z"),
-        "builder_version": _builder_version(),
-    }
-    path = out_dir / RELEASE_FILENAME
-    atomic_write_text(path, json.dumps(release, indent=2, sort_keys=True) + "\n")
-    return path
+    release = SnapshotRelease(
+        dataset=result.dataset,
+        source_name=result.source_path.name,
+        source_sha256=result.source_sha256,
+        artifact_mtime=artifact_stamp,
+        contigs=list(result.contig_names),
+        row_count=result.rows,
+        knots=result.knots,
+        negative_rows=result.negative_rows,
+        zero_rows=result.zero_rows,
+        raw_score_scale=RAW_SCORE_SCALE,
+        phred_stored=False,
+        built_at=datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z"),
+        builder_version=_builder_version(),
+    )
+    return snapshot.commit(release)
 
 
 def build_snapshot(
@@ -715,7 +714,6 @@ def build_snapshot(
 
     _require_polars()
     data_dir = out_dir / SNAPSHOT_DATA_DIRNAME
-    data_dir.mkdir(parents=True, exist_ok=True)
 
     wanted = tuple(contigs) if contigs is not None else list_contigs(source)
     if contigs is not None:
@@ -726,6 +724,8 @@ def build_snapshot(
                 f"{', '.join(unknown)} not in {source.name}'s index. It knows: {', '.join(sorted(known))}"
             )
 
+    snapshot = begin_snapshot_write(out_dir)
+    data_dir.mkdir(parents=True, exist_ok=True)
     results: list[ContigResult] = []
     knot_frames = []
     with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
@@ -775,8 +775,6 @@ def build_snapshot(
         source_mtime=stamp,
         dataset=stamp[:10] if stamp else None,
     )
-    _write_release_json(out_dir, result, artifact_stamp=stamp)
-
     terms = terms_file or _default_terms_file()
     if terms is not None and terms.is_file():
         atomic_write_text(out_dir / SNAPSHOT_LICENSE_FILENAME, use_restrictions_text(terms))
@@ -788,6 +786,9 @@ def build_snapshot(
             SNAPSHOT_LICENSE_FILENAME,
             terms,
         )
+    # Last: the description is the last file a snapshot gains (`SNAPSHOT_ROOT_FILENAMES`), so it never
+    # states a licence the directory does not yet carry.
+    _write_release_json(snapshot, result, artifact_stamp=stamp)
     return result
 
 

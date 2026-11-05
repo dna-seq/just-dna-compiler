@@ -26,7 +26,6 @@ It does **not** check the annotation text, and it does not write `pharm_variants
 are authored `_TABLE_KINDS`; a network pass filling them would blur the authored/derived line.
 """
 
-import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -34,7 +33,9 @@ from pathlib import Path
 import duckdb
 from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.pgx import PharmVariantRow
+from just_dna_format.snapshot import SnapshotRelease, read_release
 from just_dna_format.sources import SourceRow
+from just_dna_format.spelling import drug_key
 from just_dna_format.vocab import MULTI_SEP, validate_phenotype_categories
 
 from just_dna_enricher.download import ensure_clinpgx_snapshot
@@ -47,7 +48,6 @@ from just_dna_enricher.licensing import (
     read_sources_file,
 )
 from just_dna_enricher.locations import (
-    RELEASE_FILENAME,
     SNAPSHOT_DATA_DIRNAME,
     resolve_clinpgx_reference,
 )
@@ -185,7 +185,7 @@ def _normalize_category(value: str | None) -> str | None:
         return None
 
 
-def load_snapshot(reference: Path) -> tuple[list[dict], dict]:
+def load_snapshot(reference: Path) -> tuple[list[dict], SnapshotRelease]:
     """Read the snapshot parquet + its `release.json`. Returns `(rows, release)`.
 
     Read with **duckdb**, not polars: the convention is builder in polars, runtime pass in duckdb,
@@ -208,8 +208,8 @@ def load_snapshot(reference: Path) -> tuple[list[dict], dict]:
     parquet = reference / SNAPSHOT_DATA_DIRNAME / "annotations.parquet"
     if not parquet.is_file():
         raise ClinPgxEnrichmentError(f"no ClinPGx snapshot at {parquet}")
-    release_path = reference / RELEASE_FILENAME
-    release = json.loads(release_path.read_text()) if release_path.is_file() else {}
+    # An absent or unreadable `release.json` states nothing: every field of the record is unstated.
+    release = read_release(reference) or SnapshotRelease()
     # Single-quote-escape defensively; the path comes from our own cache resolution, not user input.
     pattern = str(parquet).replace("'", "''")
     con = duckdb.connect(":memory:")
@@ -301,7 +301,7 @@ def enrich_clinpgx(
         return _attest(result, spec_dir, write=write)
 
     snapshot_rows, release = load_snapshot(reference)
-    result.dataset = release.get("dataset")
+    result.dataset = release.dataset
 
     # **The third instance of RM4's tautology, and the one whose marker was already being written**
     # (RM73). `clinpgx_draft` copies `evidence_level` straight out of this snapshot and stamps the
@@ -354,7 +354,7 @@ def enrich_clinpgx(
         by_annotation.setdefault((row["annotation_id"], genotype), level)
         known_annotations.add(str(row["annotation_id"]))
         for drug in MULTI_SEP.split(row["drugs"] or ""):
-            drug = drug.strip().lower()
+            drug = drug_key(drug)
             if not drug:
                 continue
             by_category.setdefault((rsid, drug, genotype, category), level)
@@ -368,7 +368,7 @@ def enrich_clinpgx(
         # *after* this increment on purpose — that row was looked up and the answer was "cannot tell",
         # which is a comparison that ran and settled nothing, not one that never happened.
         result.compared += 1
-        drug, genotype = row.drug.strip().lower(), _normalize_genotype(row.genotype)
+        drug, genotype = drug_key(row.drug), _normalize_genotype(row.genotype)
         category = _normalize_category(row.phenotype_category)
         reported: str | None = None
         if row.annotation_id and row.annotation_id not in known_annotations:
@@ -452,7 +452,7 @@ def enrich_clinpgx(
     # The licence hash comes from the snapshot's release.json, which the builder took from the
     # LICENSE.txt inside the very archive the data came from.
     row = CLINPGX_TERMS.row("annotation", declared_use=declared_use, dataset=result.dataset)
-    recorded_hash = release.get("license_sha256")
+    recorded_hash = release.license_sha256
     if recorded_hash:
         row = row.model_copy(update={"license_sha256": recorded_hash})
     result.rows = [row]

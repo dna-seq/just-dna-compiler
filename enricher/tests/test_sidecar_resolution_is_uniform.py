@@ -23,27 +23,27 @@ import ast
 from pathlib import Path
 
 import pytest
-from just_dna_format.layout import sidecar_write_path
+from just_dna_compiler.compiler import _FACT_TABLES
+from just_dna_enricher.producers import DERIVED_PRODUCERS, WRITTEN_BY_EVERY_PASS
+from just_dna_format.layout import sidecar_spellings, sidecar_write_path
 
 _YAML = (
     "schema_version: '1.0'\nmodule:\n  name: split\n  title: Split\n  description: d\n  report_title: Split\n"
 )
 
-#: Every machine-written sidecar a pass may create, and the pass that owns it. Names come from the
-#: schema's own layout module rather than a list kept here, so a new sidecar shows up as a KeyError in
-#: `test_the_roster_covers_every_writable_sidecar` rather than as silence.
-SIDECAR_OWNERS = {
-    "resolution.csv": "enrich",
-    "frequencies.csv": "enrich_frequencies",
-    "gene_metrics.csv": "enrich_gene_metrics + enrich_clingen_dosage",
-    "literature.csv": "enrich_literature",
-    "gene_validity.csv": "enrich_gene_validity",
-    "clinical_assertions.csv": "enrich_clinical_assertions",
-    "gwas_effects.csv": "enrich_gwas",
-    "sources.csv": "every pass that consults a source",
-    # RM51's second accepted spelling of the same file. Both are listed because a module may carry
-    # either, and a pass reaching for the literal would be as wrong with the new name as the old.
-    "licensing.csv": "every pass that consults a source",
+#: Every machine-written sidecar a pass may create, and the pass(es) that own it — **derived** from
+#: `DERIVED_PRODUCERS` and `WRITTEN_BY_EVERY_PASS` (RM365). This was a hand-kept dict that had fallen
+#: seven derived tables behind (the concordance pair, `expression_effects`, the Open Targets three and
+#: `ld_pairs`) while its comment said it came from the layout module: the AST guard below checks only
+#: the names in it, so a hand-joined `spec_dir / "ld_pairs.csv"` was invisible to the rule this file
+#: exists to enforce.
+SIDECAR_OWNERS: dict[str, str] = {
+    **{csv: " + ".join(p.command for p in group) for csv, group in DERIVED_PRODUCERS.items()},
+    **{
+        spelling: "every pass that consults a source"
+        for name in WRITTEN_BY_EVERY_PASS
+        for spelling in sidecar_spellings(name)
+    },
 }
 
 
@@ -83,7 +83,8 @@ def test_no_pass_joins_a_sidecar_filename_onto_spec_dir_by_hand() -> None:
 
     src = Path(__file__).resolve().parents[1] / "src" / "just_dna_enricher"
     offenders: list[str] = []
-    for module in sorted(src.glob("*.py")):
+    # Recursive since RM260 split `cli.py` into a package; `generated/` is protoc output, not ours.
+    for module in sorted(p for p in src.rglob("*.py") if "generated" not in p.relative_to(src).parts):
         if module.name in read_only_fallbacks:
             continue
         source = ast.parse(module.read_text(encoding="utf-8"))
@@ -104,16 +105,12 @@ def test_no_pass_joins_a_sidecar_filename_onto_spec_dir_by_hand() -> None:
 
 
 def test_the_roster_covers_every_writable_sidecar() -> None:
-    """Guard the premise: the roster above must not fall behind the schema's own list."""
-    from just_dna_format.layout import SIDECAR_SPELLINGS
-
-    known = {name for spellings in SIDECAR_SPELLINGS.values() for name in spellings}
-    known |= set(SIDECAR_SPELLINGS)
-    csvs = {name for name in known if name.endswith(".csv")}
-    assert set(SIDECAR_OWNERS) >= csvs, (
-        f"a sidecar the schema knows about is missing from SIDECAR_OWNERS: "
-        f"{sorted(csvs - set(SIDECAR_OWNERS))}"
-    )
+    """Guard the premise: the roster above is exactly the derived tables and the licence table's
+    spellings — an equality (RM365), where a `>=` against the layout's spelled sidecars alone held
+    while seven derived tables were missing from it."""
+    derived = {csv for csv, _parquet, _model in _FACT_TABLES} | {"resolution.csv"}
+    licence = {spelling for name in WRITTEN_BY_EVERY_PASS for spelling in sidecar_spellings(name)}
+    assert set(SIDECAR_OWNERS) == derived | licence, sorted(set(SIDECAR_OWNERS) ^ (derived | licence))
 
 
 @pytest.mark.parametrize("name", sorted(SIDECAR_OWNERS), ids=sorted(SIDECAR_OWNERS))

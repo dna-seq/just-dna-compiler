@@ -37,11 +37,11 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
-from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
+from just_dna_format.snapshot import SnapshotRelease, begin_snapshot_write
 
-from just_dna_enricher.cpic import DEFAULT_CPIC_ENDPOINT, CpicClient, normalize_chrom
-from just_dna_enricher.locations import RELEASE_FILENAME, SNAPSHOT_DATA_DIRNAME
+from just_dna_enricher.cpic import DEFAULT_CPIC_ENDPOINT, CpicClient, CpicError, normalize_chrom
+from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME
 
 try:  # the one guarded optional import (CLAUDE.md): polars is builder-only ([dev] extra)
     import polars as pl
@@ -61,6 +61,17 @@ RECOMMENDATIONS_PARQUET = "recommendations.parquet"
 
 class CpicBuildError(RuntimeError):
     """The CPIC snapshot could not be built."""
+
+
+#: **A callee-owned tuple, not a base class and not a list at each call site (RM288).** A base class
+#: makes a caller's `except` order load-bearing (`@client-exception-contract`), and a list spelled at
+#: every call site drifts: `caches._rebuild_cpic` named `CpicBuildError` and forgot `CpicError`, so a
+#: CPIC outage escaped `cache rebuild` (RM310). The surface owns the list here, and a caller writes
+#: `except <module>.ERRORS`, so the order of the members does not matter and a new one reaches every
+#: caller. A test drives the surface and asserts everything it raises is a member.
+#: `CpicError` is the client's transport/5xx type, which this builder does not translate; `ImportError`
+#: is the missing `[dev]` polars; `OSError` is writing the snapshot.
+ERRORS: tuple[type[Exception], ...] = (CpicError, CpicBuildError, ImportError, OSError)
 
 
 @dataclass
@@ -138,7 +149,16 @@ def _fetch_all(client: CpicClient, table: str, select: str) -> list[dict[str, An
     """
     rows = client.fetch_table(table, select)
     expected = client.row_count(table)
-    if expected is not None and len(rows) != expected:
+    if expected is None:
+        # The guard cannot run, so whether the read is whole is unknown: refuse rather than write a
+        # snapshot that may be short as if it were complete (RM361). A proxy stripping
+        # `Content-Range` is the realistic way here.
+        raise CpicBuildError(
+            f"CPIC {table}: fetched {len(rows)} row(s) and the service stated no count (no "
+            f"Content-Range), so whether the read is whole cannot be checked. Refusing rather than "
+            f"writing a snapshot that may be silently incomplete."
+        )
+    if len(rows) != expected:
         raise CpicBuildError(
             f"CPIC {table}: fetched {len(rows)} row(s) but the service reports {expected}. The "
             f"endpoint has started paginating; the snapshot would be silently incomplete."
@@ -161,7 +181,6 @@ def build_snapshot(
         )
     out_dir = Path(out_dir)
     data_dir = out_dir / SNAPSHOT_DATA_DIRNAME
-    data_dir.mkdir(parents=True, exist_ok=True)
 
     owned = client is None
     cpic = client or CpicClient(endpoint)
@@ -286,25 +305,27 @@ def build_snapshot(
         RECOMMENDATIONS_PARQUET: recommendation_records,
     }
     counts: dict[str, int] = {}
+    snapshot = begin_snapshot_write(out_dir)
+    data_dir.mkdir(parents=True, exist_ok=True)
     for name, records in by_file.items():
         pl.DataFrame(records, schema=schemas[name]).write_parquet(data_dir / name, compression="zstd")
         counts[name] = len(records)
 
     digest = _content_digest(by_file)
     dataset = _dataset_label(digest)
-    release = {
-        "source_url": endpoint,
+    release = SnapshotRelease(
+        source_url=endpoint,
         # CPIC publishes no release id, so the snapshot is identified by *content*: a digest over the
         # rows it holds. Deterministic (the records are sorted), and unlike a build date it changes
         # exactly when the data does — which is what makes `dataset` a fact a module can be compared on.
-        "content_sha256": digest,
-        "dataset": dataset,
-        "row_counts": counts,
-        "gene_count": len(gene_records),
-        "built_at": now_utc_iso(),
-        "builder_version": _builder_version(),
-    }
-    atomic_write_text((out_dir / RELEASE_FILENAME), json.dumps(release, indent=2, sort_keys=True) + "\n")
+        content_sha256=digest,
+        dataset=dataset,
+        row_counts=counts,
+        gene_count=len(gene_records),
+        built_at=now_utc_iso(),
+        builder_version=_builder_version(),
+    )
+    snapshot.commit(release)
     logger.info(
         "CPIC snapshot: %d genes, %d alleles, %d diplotypes, %d defining variants, %d recommendations → %s",
         len(gene_records),

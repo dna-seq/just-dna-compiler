@@ -7,6 +7,7 @@ Mirrors test_v03.py's inline-dict + `model_validate` style and its guard-the-voc
 """
 
 import pytest
+from just_dna_format.base import AuthoredModel
 from just_dna_format.binning import (
     VALID_MEASURE_KINDS,
     ActivityPhenotypeRow,
@@ -29,6 +30,7 @@ from just_dna_format.pgx import (
     HaplotypeRow,
     PharmVariantRow,
 )
+from just_dna_format.reference import _ALL_MODELS
 from just_dna_format.spec import StudyRow, VariantRow
 from just_dna_format.vocab import (
     MISPLACED_COLUMN_REASONS,
@@ -261,11 +263,10 @@ def test_reserved_set_is_the_expected_shape() -> None:
     # `caller`/`caller_version` were DROPPED for the opposite reason — they name a consumer-side
     # measurement (which tool made a call), so there is no future module axis to reserve, and barring
     # them by name would be arbitrary; `extra="forbid"` rejects them generically. `tradeoff` (RM327)
-    # is the one reserved name that will never become an authored column: the verdict is computed, so
-    # it is held here until the derived column ships and then moves to `MISPLACED_COLUMN_REASONS`.
-    assert (
-        frozenset({"reference_db", "callable_element", "quality_element", "tradeoff"}) == RESERVED_NAMES_0_4
-    )
+    # was reserved from 2026-11-03 until 0.8 computed it on `meta_resolved.parquet`; it never becomes
+    # an authored column, so it moved to `MISPLACED_COLUMN_REASONS` rather than leaving for a model.
+    assert frozenset({"reference_db", "callable_element", "quality_element"}) == RESERVED_NAMES_0_4
+    assert "tradeoff" in MISPLACED_COLUMN_REASONS
     assert set(RESERVED_NAME_REASONS) == RESERVED_NAMES_0_4  # every reserved name has a reason
 
 
@@ -300,11 +301,30 @@ def test_a_column_real_on_a_generated_table_gets_its_own_diagnosis(model, valid)
     goes. Distinct from the reserved diagnosis: `source` is not held against a future release, it is a
     real column in the wrong place."""
     for name in MISPLACED_COLUMN_REASONS:
+        if name in model.model_fields:
+            continue  # a model that declares the column is untouched (the test below)
         msg = _validation_message(model, **valid, **{name: "v"})
         assert "not authored on a" in msg, (model.__name__, name, msg)
         assert MISPLACED_COLUMN_REASONS[name] in msg, (model.__name__, name, msg)
         assert "reserved column name" not in msg, "a misplaced column is not a reserved one"
-        assert "sources.csv" in msg, "the message must name where the source does go"
+    msg = _validation_message(model, **valid, source="v")
+    assert "sources.csv" in msg, "the message must name where the source does go"
+
+
+def test_tradeoff_is_refused_on_every_authored_table_with_the_misplaced_reason() -> None:
+    """RM327: `tradeoff` is computed on `meta_resolved.parquet`, so no authored table may carry it.
+
+    Walked over `reference._ALL_MODELS` (every authored model, the meta-table included) rather than a
+    hand-kept list, so a table added later inherits the refusal or fails here. The guard runs on the
+    raw dict before any field check, so an otherwise-empty row is enough to reach it."""
+    authored = {name: m for name, m in _ALL_MODELS.items() if issubclass(m, AuthoredModel)}
+    assert "MetaRow" in authored
+    for name, model in authored.items():
+        assert "tradeoff" not in model.model_fields, name
+        msg = _validation_message(model, tradeoff="true")
+        assert f"not authored on a {name} row" in msg, (name, msg)
+        assert MISPLACED_COLUMN_REASONS["tradeoff"] in msg, (name, msg)
+        assert "reserved column name" not in msg, (name, msg)
 
 
 def test_a_model_that_declares_the_column_is_untouched() -> None:
@@ -324,8 +344,10 @@ def test_a_model_that_declares_the_column_is_untouched() -> None:
         dataset="gnomad_v4.1",
     )
     assert row.source == "gnomad"
-    for name in MISPLACED_COLUMN_REASONS:
-        assert name in FrequencyRow.model_fields, name
+    # Every misplaced name a generated table declares is accepted by it. `tradeoff` is declared by no
+    # authored model at all: its generated table is a parquet (`meta_resolved.parquet`).
+    declaring = {name for name in MISPLACED_COLUMN_REASONS if name in FrequencyRow.model_fields}
+    assert declaring == set(MISPLACED_COLUMN_REASONS) - {"tradeoff"}
 
 
 # ── adoption pass: 3 general axes on VariantRow ─────────────────────────────────────────────────

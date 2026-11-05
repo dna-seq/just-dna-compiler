@@ -63,31 +63,54 @@ from pathlib import Path
 import httpx
 from just_dna_compiler.compiler import load_citing_rows, load_csv_rows, table_citations
 from just_dna_format.base import merge_key
-from just_dna_format.layout import atomic_writer
-from just_dna_format.literature import LiteratureRow
+from just_dna_format.layout import atomic_writer, nothing_to_write
+from just_dna_format.literature import LiteratureRow, settled_quotes
 from just_dna_format.manifest import VerificationRecord
 from just_dna_format.normalize import now_utc_iso
-from just_dna_format.spec import DOI_PATTERN, StudyRow, extract_pmcids, extract_pmids
+from just_dna_format.spec import StudyRow, extract_pmcids, extract_pmids
+from just_dna_format.spelling import doi_key, doi_token
 from tenacity import (
     retry,
-    retry_if_exception_type,
     wait_exponential_jitter,
 )
 
 from just_dna_enricher.eutils import EutilsClient, EutilsError, is_missing
 from just_dna_enricher.licensing import article_terms, sidecar_path
 from just_dna_enricher.locations import env_value
-from just_dna_enricher.net import PacingGate, attempt_floor, batched, dedupe, raise_if_retired
-from just_dna_enricher.verification import ran, record_verification, skipped
+from just_dna_enricher.net import (
+    GONE,
+    RETIRED,
+    UNREACHABLE,
+    EndpointRetired,
+    PacingGate,
+    Withholding,
+    aggregate_reason,
+    attempt_floor,
+    batched,
+    could_not_ask_reason,
+    dedupe,
+    raise_if_retired,
+    retired_message,
+    retry_if_transient,
+    withheld_reason,
+)
+from just_dna_enricher.verification import examples, ran, record_verification, skipped
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_EUROPEPMC_BASE = "https://www.ebi.ac.uk/europepmc/webservices/rest"
+#: Europe PMC's preprint full-text repository (RM349). Not the documented REST service: its
+#: `/{id}/fullTextXML` answered 500 for every `PPR` id probed on 2026-11-04 (four of four, with and
+#: without a full text), while this route, which the europepmc.org reader itself calls, served the
+#: JATS. Named on its own because it is a different host, so a test double can route on it.
+DEFAULT_EUROPEPMC_REPO_URL = "https://europepmc.org/api/fulltextRepo"
 DEFAULT_CROSSREF_BASE = "https://api.crossref.org"
 #: The current address of NCBI's PMC ID converter. The long-published
 #: `www.ncbi.nlm.nih.gov/pmc/utils/idconv/v1.0/` 301-redirects here (probed 2026-08-13); named rather
 #: than relied on as a redirect so a client that follows none still lands in the right place.
 DEFAULT_PMC_IDCONV_URL = "https://pmc.ncbi.nlm.nih.gov/tools/idconv/api/v1/articles/"
+#: PMC's BioC service, JSON flavour; the pmcid and the `unicode` encoding are appended per request.
+DEFAULT_PMC_BIOC_URL = "https://www.ncbi.nlm.nih.gov/research/bionlp/RESTful/pmcoa.cgi/BioC_json"
 
 #: Derived from the model, never hand-kept. `SOURCES_FIELDNAMES` was a literal and quietly omitted
 #: `redistribution`, so every `sources.csv` ever written recorded *unknown* for an axis the constants
@@ -106,6 +129,13 @@ DEFAULT_REGEX_TIMEOUT = 5.0
 _REGISTRY_SOURCE = "pubmed"
 
 _WHITESPACE = re.compile(r"\s+")
+
+#: The one status a fulltext service answers "no copy" with: an embargoed or author-manuscript-only
+#: record is a 404 on Europe PMC. Every other 4xx, a 429 and a 5xx never answered the question (RM361).
+FULLTEXT_ABSENT_STATUS = 404
+#: How PMC's BioC service opens its 200 "no copy" body, recorded in `assets/pmc_bioc_no_result.txt`.
+#: Only this body is an answer; any other 200 that is not JSON (a maintenance page) is not (RM361).
+BIOC_NO_RESULT_PREFIX = "[Error] : No result can be found."
 
 
 class LiteratureEnrichmentError(RuntimeError):
@@ -131,13 +161,59 @@ class LiteratureUnavailable(LiteratureEnrichmentError):
     """
 
 
-class LiteratureRetired(LiteratureUnavailable):
+class FulltextUnavailable(LiteratureUnavailable):
+    """A fulltext request never got an answer: a 5xx or a transport failure, after retries (RM258).
+
+    Raised by `EuropePmcClient.fetch_fulltext` and `PmcBiocClient.fetch_fulltext`, the three-way form
+    of the question. It is the *unreachable* arm, kept apart from a `None` return, which is *absent*
+    (the service holds no copy). The two used to be one `None`, and the pass pinned an outage as an
+    abstract-only row that merge-not-clobber never asked about again. A subclass, so an existing
+    `except LiteratureUnavailable` still catches it.
+    """
+
+
+class LiteratureRetired(LiteratureUnavailable, EndpointRetired):
     """Europe PMC answered HTTP 410: it retired the endpoint asked (RM354).
 
     A fact about the source, not an outage, and not retried; a `LiteratureUnavailable` so every
-    existing handler still catches it. Raised by `EuropePmcClient.lookup` only: `fulltext` keeps its
-    withhold, since a missing fulltext there is already `None` whatever the cause.
+    existing handler still catches it. Raised by `EuropePmcClient.lookup` only: the fulltext routes
+    raise `FulltextRetired`, which their callers already catch as `FulltextUnavailable`.
     """
+
+
+class FulltextRetired(FulltextUnavailable, EndpointRetired):
+    """A fulltext service answered HTTP 410 for the route asked (RM361).
+
+    Before RM361 every status below 500 read as *absent*, so a retired route wrote a permanent
+    `fulltext_status="absent"` about every article it was asked for. A `FulltextUnavailable`, so the
+    pass's handler still catches it; the pass records `retired` and asks again on the next run.
+    """
+
+
+def _yes_no(flag: object) -> bool | None:
+    """Europe PMC's `'Y'`/`'N'` flag as a tri-state: `None` when the record does not carry it (RM361).
+
+    `str(flag or "").upper() == "Y"` read a missing flag as `N`, so a record silent about open access
+    was written to `literature.csv` as closed, and the pass skipped Europe PMC's fulltext for it.
+    """
+    said = str(flag).strip().upper() if flag is not None else ""
+    return {"Y": True, "N": False}.get(said)
+
+
+def _fulltext_absent_or_raise(exc: httpx.HTTPStatusError, service: str, subject: str) -> None:
+    """Return when `exc` is a service's "no copy" answer (a 404); raise the right error otherwise (RM361).
+
+    The one status mapping every fulltext route goes through: a 410 is `FulltextRetired`, and a 429,
+    any other 4xx and a 5xx are `FulltextUnavailable`, a question that was never answered. A 429 and a
+    5xx reach here only after the transient retries.
+    """
+    status = exc.response.status_code
+    if status == FULLTEXT_ABSENT_STATUS:
+        logger.info("No retrievable fulltext for %s from %s (HTTP %s)", subject, service, status)
+        return
+    if status == GONE:
+        raise FulltextRetired(retired_message(service, exc.response)) from exc
+    raise FulltextUnavailable(f"{service} answered {status} for {subject}'s fulltext") from exc
 
 
 @dataclass
@@ -178,6 +254,41 @@ class PmcidConflict:
         )
 
 
+@dataclass(frozen=True)
+class DoiCitation:
+    """What one run learned about a work cited by DOI alone, through `pmid=NONE` (RM349).
+
+    One per distinct DOI (`spelling.doi_key`), however many rows cite it and in whatever spelling.
+    **Not written to `literature.csv`**, whose rows are keyed on a PubMed id and feed a published
+    parquet the compiler reads by PMID; so it is not pinned either, and every online run asks again.
+    What it records goes into `verification.json`, which is the durable half.
+
+    * `exists` is Crossref's tri-state (`None`: not asked under `--no-doi`, or never answered —
+      `crossref_asked` tells the two apart), and `title` the work Crossref names for it
+      (`@existence-not-identity`). No citing table carries a stated title to compare it with, so it
+      is recorded and reported, never compared. `agency` is who registered the DOI when Crossref did
+      not (`CrossrefWork.agency`).
+    * The quote half has `LiteratureRow`'s columns and meanings: `fulltext_status` is `retrieved`,
+      `absent` or `unreachable` (`None` when no quote asked the question), `quote_source` says which
+      text was searched, and `quotes_checked()` is the same rule (`settled_quotes`).
+    """
+
+    doi: str
+    exists: bool | None = None
+    crossref_asked: bool = False
+    title: str | None = None
+    agency: str | None = None
+    quotes_authored: int = 0
+    quotes_found: int | None = None
+    quote_source: str | None = None
+    fulltext_status: str | None = None
+    europepmc_id: str | None = None
+    license: str | None = None
+
+    def quotes_checked(self) -> int:
+        return settled_quotes(self.quotes_authored, self.quotes_found, self.quote_source)
+
+
 @dataclass
 class LiteratureResult:
     """What the pass found, and — through `subject_rows` — what it found it *about*.
@@ -204,6 +315,8 @@ class LiteratureResult:
 
     rows: list[LiteratureRow]
     missing: list[str] = field(default_factory=list)  # PMIDs PubMed has no record of
+    #: Why Crossref never answered, when it did not: `retired` once it answered 410 (RM361).
+    crossref_unanswered: str = UNREACHABLE
     doi_conflicts: list[DoiConflict] = field(default_factory=list)
     pmcid_conflicts: list[PmcidConflict] = field(default_factory=list)
     cited: list[str] = field(default_factory=list)  # the PMIDs the module cites right now
@@ -219,6 +332,9 @@ class LiteratureResult:
     quotes_checked: int = 0  # quotes a retrieved text settled
     quotes_unchecked: int = 0  # unretrievable + never examined
     quotes_unexamined: int = 0  # authored after the sidecar pinned the row
+    quotes_without_pmid: int = 0  # quotes on `pmid=NONE` study rows, which no PMID reaches (RM336)
+    citations_without_pmid: int = 0  # `pmid=NONE` rows on any citing table: cited by DOI alone (RM336)
+    doi_citations: list[DoiCitation] = field(default_factory=list)  # what this run asked about them (RM349)
     fulltext_checked: list[str] = field(default_factory=list)  # PMIDs whose fulltext was read
     abstract_checked: list[str] = field(default_factory=list)  # PMIDs matched against the abstract only
     doi_missing: list[str] = field(default_factory=list)  # DOIs Crossref has no record of
@@ -262,11 +378,22 @@ class LiteratureResult:
         once, so a citation-granular sentence has to put it in one bucket and be wrong about the
         other.
         """
+        if self.quotes_authored == 0 and self.quotes_without_pmid:
+            return _doi_quote_coverage(self)
         if self.quotes_authored == 0:
             return (
                 f"no provenance quotes authored across {len(self.cited)} citation(s) — nothing to "
                 f"check against fulltext"
             )
+        if self.quotes_without_pmid:
+            # The quotes on `pmid=NONE` rows (RM349) are a second clause rather than a share of the
+            # first: they reach their text by DOI, through Europe PMC, and a reader acts on the two
+            # gaps differently.
+            return f"{self._pmid_coverage()}; {_doi_quote_coverage(self)}"
+        return self._pmid_coverage()
+
+    def _pmid_coverage(self) -> str:
+        """The coverage sentence for the quotes a PubMed id reaches, as it read before RM349."""
         if not self.fulltext_requested:
             # `--no-fulltext` leaves every quote unchecked, and the generic wording below would call
             # that "nothing retrievable" — a claim about articles nobody tried to fetch, and one the
@@ -301,6 +428,7 @@ class EuropePmcClient:
     """Open-access lookup and fulltext retrieval. Paced like every other client in this tier."""
 
     base_url: str = DEFAULT_EUROPEPMC_BASE
+    repo_url: str = DEFAULT_EUROPEPMC_REPO_URL
     batch_size: int = 25
     min_request_interval: float = 0.5
     timeout: float = 30.0
@@ -330,15 +458,19 @@ class EuropePmcClient:
     @retry(
         stop=attempt_floor(3),
         wait=wait_exponential_jitter(multiplier=1.0, max=10.0),
-        retry=retry_if_exception_type((httpx.TransportError, httpx.TimeoutException)),
+        retry=retry_if_transient(),
         reraise=True,
     )
-    def _get(self, path: str, params: dict | None = None) -> httpx.Response:
+    def _fetch(self, url: str, params: dict | None = None) -> httpx.Response:
+        """One paced request to any Europe PMC host, retried on a transport failure, a 5xx or a 429."""
         assert self.gate is not None
         self.gate.wait()
-        response = self._http().get(f"{self.base_url.rstrip('/')}/{path}", params=params)
+        response = self._http().get(url, params=params)
         response.raise_for_status()
         return response
+
+    def _get(self, path: str, params: dict | None = None) -> httpx.Response:
+        return self._fetch(f"{self.base_url.rstrip('/')}/{path}", params)
 
     def lookup(self, pmids: list[str]) -> dict[str, dict]:
         """`pmid -> {pmcid, doi, is_open_access, license, abstract}` for the ids Europe PMC knows.
@@ -397,10 +529,10 @@ class EuropePmcClient:
                     "pmcid": record.get("pmcid"),
                     "doi": record.get("doi"),
                     # The API answers with the strings 'Y'/'N', not booleans.
-                    "is_open_access": str(record.get("isOpenAccess") or "").upper() == "Y",
+                    "is_open_access": _yes_no(record.get("isOpenAccess")),
                     # `inEPMC` is NOT a fulltext signal: a record can be in Europe PMC with
                     # `isOpenAccess=N`, and `fullTextXML` then answers 404. Probed on PMID 23788249.
-                    "in_epmc": str(record.get("inEPMC") or "").upper() == "Y",
+                    "in_epmc": _yes_no(record.get("inEPMC")),
                     # Verbatim, and `None` when the field is absent — an article whose terms Europe
                     # PMC does not state is unknown, not unlicensed.
                     "license": (record.get("license") or None),
@@ -408,25 +540,233 @@ class EuropePmcClient:
                 }
         return out
 
-    def fulltext(self, pmcid: str) -> str | None:
-        """Whitespace-normalized article text, or `None` when it cannot be retrieved.
+    def pmids_for_doi(self, doi: str) -> list[str]:
+        """The PubMed ids Europe PMC holds for one DOI, sorted, from its MEDLINE source (RM263).
 
-        `None` is a normal outcome, not an error: an embargoed or author-manuscript-only record answers
-        404, and the caller must record that as *unchecked* rather than as a failed match.
+        Europe PMC's search covers all of PubMed, where NCBI's id converter answers only for articles
+        in PMC, so this reaches the paywalled case the converter misses (`10.1038/ng826` is
+        `11788828`, Enattah 2002, not in PMC). An empty list is **Europe PMC's** answer that it holds
+        no MEDLINE record for the DOI, never a statement about PubMed. More than one id is returned as
+        it came, so a caller can report the multiplicity rather than pick. Failures translate to
+        `LiteratureUnavailable` on every leg, as `lookup` does (`@client-exception-contract`).
+        """
+        try:
+            response = self._get(
+                "search", {"query": f'DOI:"{doi}" AND SRC:MED', "resultType": "lite", "format": "json"}
+            )
+            payload = response.json()
+        except httpx.HTTPError as exc:
+            raise LiteratureUnavailable(f"Europe PMC could not be asked about DOI {doi}: {exc}") from exc
+        except ValueError as exc:
+            raise LiteratureUnavailable(
+                f"Europe PMC answered {response.status_code} with a body that is not JSON: {exc}"
+            ) from exc
+        records = (payload.get("resultList") or {}).get("result") or []
+        return sorted({str(r["pmid"]) for r in records if r.get("pmid")}, key=int)
+
+    def fetch_fulltext(self, pmcid: str) -> str | None:
+        """Whitespace-normalized article text; `None` when Europe PMC holds no copy; raises
+        `FulltextUnavailable` when the request never got an answer (RM258, RM361).
+
+        A 404 is an answer: an embargoed or author-manuscript-only record answers it, which is
+        *absent*. A 410 raises `FulltextRetired`. A 429, any other 4xx, a 5xx, a transport failure
+        and a 200 whose body does not parse as XML are *unreachable*, and the caller asks again on a
+        later run.
         """
         try:
             response = self._get(f"{pmcid}/fullTextXML")
         except httpx.HTTPStatusError as exc:
-            logger.info("No retrievable fulltext for %s (HTTP %s)", pmcid, exc.response.status_code)
+            _fulltext_absent_or_raise(exc, "Europe PMC", pmcid)
             return None
         except httpx.HTTPError as exc:
+            raise FulltextUnavailable(
+                f"Europe PMC could not be reached for {pmcid}'s fulltext: {exc}"
+            ) from exc
+        text = extract_text(response.text)
+        if text is None:
+            # A 200 that is not JATS (a maintenance page) is the fourth leg: withheld, never `absent`.
+            raise FulltextUnavailable(
+                f"Europe PMC answered 200 for {pmcid}'s fulltext with a body that does not parse"
+            )
+        return text
+
+    def fulltext(self, pmcid: str) -> str | None:
+        """`fetch_fulltext` with its two negative answers folded into one `None`, as before 0.8.
+
+        Kept for callers that already treat `None` as "no text either way" (the authoring plugin's
+        `fetch_fulltext` tool relies on it for Europe PMC's 500s). A caller that needs to tell an
+        outage from an absent copy uses `fetch_fulltext`.
+        """
+        try:
+            return self.fetch_fulltext(pmcid)
+        except FulltextUnavailable as exc:
             logger.warning("Fulltext fetch failed for %s (%s)", pmcid, exc)
             return None
-        return extract_text(response.text)
+
+    def record_for_doi(self, doi: str) -> dict | None:
+        """Europe PMC's record for one DOI, from any of its sources, or `None` when it holds none (RM349).
+
+        The route to a `pmid=NONE` citation's text. Europe PMC indexes bioRxiv and medRxiv preprints
+        (source `PPR`) by DOI, so the same `search` that `pmids_for_doi` restricts to MEDLINE reaches
+        them here unrestricted. Only a record whose own `doi` is the one asked about is taken: the
+        search is a query, and a query's first hit need not be the work (`@existence-not-identity`).
+
+        Returns `{id, source, pmcid, is_open_access, license, abstract, title, preprint_id}`.
+        `preprint_id` is the `PPR` id when the record says Europe PMC holds the preprint's full text
+        (its `fullTextIdList`), and `None` otherwise, so a caller asks the repository only where there
+        is something to fetch: probed 2026-11-04, the repository's answer for a preprint with no text
+        (`PPR1146237`) is a 500, the same status as an outage. Failures translate to
+        `LiteratureUnavailable` on every leg, as `pmids_for_doi` does (`@client-exception-contract`).
+        """
+        try:
+            response = self._get("search", {"query": f'DOI:"{doi}"', "resultType": "core", "format": "json"})
+            payload = response.json()
+        except httpx.HTTPError as exc:
+            raise LiteratureUnavailable(f"Europe PMC could not be asked about DOI {doi}: {exc}") from exc
+        except ValueError as exc:
+            raise LiteratureUnavailable(
+                f"Europe PMC answered {response.status_code} with a body that is not JSON: {exc}"
+            ) from exc
+        wanted = doi_key(doi)
+        matching: list[dict] = []
+        for record in (payload.get("resultList") or {}).get("result") or []:
+            if not record.get("doi") or doi_key(str(record["doi"])) != wanted:
+                continue
+            record_id = str(record.get("id") or "")
+            fulltext_ids = (record.get("fullTextIdList") or {}).get("fullTextId") or []
+            preprint = record.get("source") == "PPR" and record_id in fulltext_ids
+            matching.append(
+                {
+                    "id": record_id or None,
+                    "source": record.get("source"),
+                    "pmcid": record.get("pmcid"),
+                    "is_open_access": _yes_no(record.get("isOpenAccess")),
+                    # Verbatim, and `None` when absent: unknown terms are unknown, never unlicensed.
+                    "license": record.get("license") or None,
+                    "abstract": record.get("abstractText"),
+                    "title": record.get("title"),
+                    "preprint_id": record_id if preprint else None,
+                }
+            )
+        # One DOI can have several records (a MEDLINE or AGRICOLA one beside the preprint's), and only
+        # some carry a route to the text: the first one that does wins, else the first match, so an
+        # earlier text-less hit never makes the answer `absent` while a later one holds the text.
+        return next(
+            (r for r in matching if r["pmcid"] or r["preprint_id"]), matching[0] if matching else None
+        )
+
+    def fetch_preprint_fulltext(self, preprint_id: str) -> str | None:
+        """A preprint's JATS body as normalized text; `None` when the repository lists no XML file for
+        it; raises `FulltextUnavailable` when a request never got an answer (RM349, the RM258 shape).
+
+        Two requests: the record's file list (`type=METADATA`), then the JATS file it names
+        (`type=FILE`). The file name (`EMS…nxml`) is never guessed, and the PDF the list also names is
+        never used: its link is session-bound (it answered 403 "expired" on 2026-11-04). Ask only for a
+        preprint whose search record lists a full text (`record_for_doi`'s `preprint_id`), because a
+        5xx here then means an outage rather than the repository's "no such copy", which shares it.
+        A 200 that is not the list is the fourth leg and withholds too (`@client-exception-contract`).
+        """
+        try:
+            listing = self._fetch(self.repo_url, {"pprId": preprint_id, "type": "METADATA"})
+            files = listing.json().get("files") or []
+            xml = next(
+                (f for f in files if isinstance(f, dict) and f.get("type") == "xml" and f.get("filename")),
+                None,
+            )
+            if xml is None:
+                logger.info("Europe PMC lists no XML full text for %s", preprint_id)
+                return None
+            response = self._fetch(
+                self.repo_url,
+                {
+                    "pprId": preprint_id,
+                    "type": "FILE",
+                    "fileName": xml["filename"],
+                    "mimeType": xml.get("mimeType") or "application/xml",
+                },
+            )
+        except httpx.HTTPStatusError as exc:
+            _fulltext_absent_or_raise(exc, "Europe PMC's preprint repository", preprint_id)
+            return None
+        except httpx.HTTPError as exc:
+            raise FulltextUnavailable(
+                f"Europe PMC's preprint repository could not be reached for {preprint_id}: {exc}"
+            ) from exc
+        except (ValueError, AttributeError) as exc:
+            raise FulltextUnavailable(
+                f"Europe PMC's preprint repository answered for {preprint_id} with no readable file list: {exc}"
+            ) from exc
+        text = extract_text(response.text)
+        if text is None:
+            # A 200 that is not JATS (a maintenance page) is the fourth leg: withheld, never `absent`.
+            raise FulltextUnavailable(
+                f"Europe PMC's preprint repository answered 200 for {preprint_id}'s JATS with a body that "
+                f"does not parse"
+            )
+        return text
+
+
+@dataclass(frozen=True)
+class CrossrefWork:
+    """What Crossref said about one DOI: whether it exists, and *which work* it names (RM262, S113).
+
+    `exists` is the tri-state `CrossrefClient.exists` has always answered. The four bibliographic
+    fields are the same four `bibliographic` pulls out of a PubMed record, so a DOI-only citation can
+    be checked for identity and not merely existence. Each is `None` when the record does not carry
+    it, never `""`, and all four are `None` whenever `exists` is not `True`.
+    """
+
+    exists: bool | None
+    title: str | None = None
+    journal: str | None = None
+    year: str | None = None
+    first_author: str | None = None
+    #: The registration agency (`crossref`, `datacite`, …) when one answered (RM349). A DOI another
+    #: agency minted exists with no Crossref record, so it has no title here: `exists=True`, the four
+    #: fields `None`, and this field says why.
+    agency: str | None = None
+
+
+def crossref_bibliographic(message: dict) -> dict[str, str | None]:
+    """The four identity fields out of a Crossref `/works/{doi}` `message`, shaped like `bibliographic`.
+
+    The shapes differ from PubMed's and each difference is a place to go wrong. `title` and
+    `container-title` are **lists**, empty for much `posted-content`. The year is the leading int of
+    `issued.date-parts[0]`, Crossref's earliest-publication date. The first author is the entry marked
+    `sequence: "first"`, which need not be at index 0, and is rendered `Family GI` so it reads the same
+    as PubMed's `sortfirstauthor`; an organisational author has only a `name`. Title markup (Crossref
+    passes JATS tags such as `<i>` through) is kept verbatim: the field is for a person to compare
+    against the paper they meant, and rewriting it would be a second opinion about the title.
+    """
+    out: dict[str, str | None] = {"title": None, "journal": None, "year": None, "first_author": None}
+    for key, target in (("title", "title"), ("container-title", "journal")):
+        values = message.get(key)
+        if isinstance(values, list) and values and isinstance(values[0], str) and values[0].strip():
+            out[target] = " ".join(values[0].split())
+    parts = (message.get("issued") or {}).get("date-parts")
+    if (
+        isinstance(parts, list)
+        and parts
+        and isinstance(parts[0], list)
+        and parts[0]
+        and isinstance(parts[0][0], int)
+    ):
+        out["year"] = str(parts[0][0])
+    authors = [a for a in message.get("author") or [] if isinstance(a, dict)]
+    first = next((a for a in authors if a.get("sequence") == "first"), authors[0] if authors else None)
+    if first is not None:
+        family = first.get("family")
+        if isinstance(family, str) and family.strip():
+            given = first.get("given") if isinstance(first.get("given"), str) else ""
+            initials = "".join(part[0] for part in given.replace("-", " ").split() if part[:1].isalpha())
+            out["first_author"] = f"{family.strip()} {initials}".strip()
+        elif isinstance(first.get("name"), str) and first["name"].strip():
+            out["first_author"] = first["name"].strip()
+    return out
 
 
 @dataclass
-class CrossrefClient:
+class CrossrefClient(Withholding):
     """DOI existence, for the citations PubMed does not index.
 
     PubMed answers "does this article exist" for anything it indexes — **including paywalled work**;
@@ -485,7 +825,7 @@ class CrossrefClient:
     @retry(
         stop=attempt_floor(3),
         wait=wait_exponential_jitter(multiplier=1.0, max=10.0),
-        retry=retry_if_exception_type((httpx.TransportError, httpx.TimeoutException)),
+        retry=retry_if_transient(),
         reraise=True,
     )
     def _request(self, doi: str) -> httpx.Response:
@@ -506,25 +846,72 @@ class CrossrefClient:
         return self._http().get(f"{self.base_url.rstrip('/')}/works/{doi}")
 
     def exists(self, doi: str) -> bool | None:
-        """`True`/`False`, or `None` when Crossref could not be asked.
+        """`True`/`False`, or `None` when Crossref could not be asked. `work(doi).exists`."""
+        return self.work(doi).exists
 
-        `None` rather than `False` on a transport failure or an unexpected status: "we could not
+    def work(self, doi: str) -> CrossrefWork:
+        """Existence **and** identity, from the one request `exists` always made (RM262, S113).
+
+        `exists` used to read the status and throw the body away, so a DOI got an existence answer and
+        never the title that says which paper it is — the answer `existence is not identity` exists to
+        refuse. The body was already in hand; parsing it costs no request.
+
+        `exists=None` rather than `False` on a transport failure or an unexpected status: "we could not
         check" and "this DOI does not exist" are different claims, and only the second is a finding
         against the module. The translation stays here and the retrying stays in `_request` above —
         `reraise=True` means the last failure arrives back at this `except` after the attempts are
-        spent, so the three-valued contract is unchanged and only the number of tries moved.
+        spent. **A 200 whose body is not a Crossref record withholds too** (`@client-exception-contract`,
+        the fourth leg): a maintenance page or a CDN interstitial is not Crossref saying the DOI exists,
+        and `exists` used to answer `True` for one because it read only the status.
         """
         try:
             response = self._request(doi)
         except httpx.HTTPError as exc:
             logger.warning("Crossref lookup failed for %s (%s); not checked", doi, exc)
-            return None
+            return CrossrefWork(exists=None)
         if response.status_code == 404:
-            return False
+            return self._registered_elsewhere(doi)
         if response.status_code != 200:
+            self.note_retired("Crossref", response)
             logger.warning("Crossref answered HTTP %s for %s; not checked", response.status_code, doi)
-            return None
-        return True
+            return CrossrefWork(exists=None)
+        try:
+            message = response.json().get("message")
+        except (ValueError, AttributeError):
+            message = None
+        if not isinstance(message, dict):
+            logger.warning("Crossref answered 200 for %s with no readable record; not checked", doi)
+            return CrossrefWork(exists=None)
+        return CrossrefWork(exists=True, agency="crossref", **crossref_bibliographic(message))
+
+    def _registered_elsewhere(self, doi: str) -> CrossrefWork:
+        """After a `/works` 404: whether **any** agency registered the DOI (RM349).
+
+        `/works` answers 404 for every DOI Crossref did not mint, and a `pmid=NONE` row cites exactly
+        the works that are often minted elsewhere: a Zenodo dataset (`10.5281/zenodo.3360392`, DataCite)
+        404s there and is real. Reading that 404 as "does not exist" made a real dataset a finding.
+        Crossref's own `/works/{doi}/agency` route answers for every agency's DOIs (probed 2026-11-04:
+        `datacite` for the Zenodo DOI, 404 for a fabricated one and for an unregistered Zenodo number),
+        so the negative is now the registries' and not one registry's. An agency other than Crossref
+        means the DOI exists and Crossref names no work for it. Any other answer withholds.
+        """
+        try:
+            response = self._request(f"{doi}/agency")
+        except httpx.HTTPError as exc:
+            logger.warning("Crossref agency lookup failed for %s (%s); not checked", doi, exc)
+            return CrossrefWork(exists=None)
+        if response.status_code == 404:
+            return CrossrefWork(exists=False)
+        self.note_retired("Crossref", response)
+        try:
+            agency = response.json()["message"]["agency"]["id"] if response.status_code == 200 else None
+        except (ValueError, KeyError, TypeError):
+            agency = None
+        if not isinstance(agency, str) or not agency or agency == "crossref":
+            # `crossref` here contradicts the `/works` 404 one request earlier: withhold, never pick.
+            logger.warning("Crossref answered %s on %s's agency; not checked", response.status_code, doi)
+            return CrossrefWork(exists=None)
+        return CrossrefWork(exists=True, agency=agency)
 
 
 @dataclass(frozen=True)
@@ -539,7 +926,7 @@ class PmcIdRecord:
 
 
 @dataclass
-class PmcIdConverterClient:
+class PmcIdConverterClient(Withholding):
     """PMCID → PMID, for a curator holding the wrong half of the pair (RM50).
 
     **It reports; it never fills.** The PMID it returns is handed back as an advisory the author types
@@ -598,7 +985,7 @@ class PmcIdConverterClient:
     @retry(
         stop=attempt_floor(3),
         wait=wait_exponential_jitter(multiplier=1.0, max=10.0),
-        retry=retry_if_exception_type((httpx.TransportError, httpx.TimeoutException)),
+        retry=retry_if_transient(),
         reraise=True,
     )
     def _get(self, params: dict) -> httpx.Response:
@@ -626,6 +1013,7 @@ class PmcIdConverterClient:
             try:
                 payload = self._get(params).json()
             except httpx.HTTPError as exc:
+                self.note_retired("The PMC id converter", exc)
                 logger.warning("PMC id converter could not be asked for %s (%s)", batch, exc)
                 continue
             for record in payload.get("records") or []:
@@ -642,17 +1030,149 @@ class PmcIdConverterClient:
         return out
 
 
+@dataclass
+class PmcBiocClient(Withholding):
+    """PMC's BioC text-mining service: the body text of an article Europe PMC will not serve (RM257, S110).
+
+    **The records this reaches are the ones the Europe PMC rung cannot.** An NIH author manuscript is
+    `isOpenAccess: N` in Europe PMC, so the pass never asked it for fulltext, and asking anyway
+    answered HTTP 500 for `PMC6463297` on 2026-09-24. PMC serves the same manuscript here for text
+    mining — 294 passages, both body tables among them as tab-separated `table` passages, and for a
+    GWAS paper the tables are where the per-locus rows live. Probed the same day: an article outside
+    the service's set answers **200** with the body `[Error] : No result can be found.`, which is an
+    answer (no copy) rather than an outage, so it reads as absent like a 404 does.
+
+    **Retrieval here says nothing about the article's licence.** The service's own infon reads *"This
+    file is available for text mining. It may also be used consistent with the principles of fair
+    use"*, which names no licence, so the row keeps Europe PMC's `is_open_access` and `license`
+    untouched (`@no-named-licence`). It changes how far the quote search reached, which is what
+    `quote_source` records, and nothing else.
+
+    `REF` passages are dropped: they are the reference list, most of the document by count (186 of
+    294 on the probed article), and a quote located in someone else's title is not located in this
+    paper. An NCBI host, so the pass hands it the E-utilities gate rather than giving it a budget of
+    its own (`@shared-pacing-gate`).
+    """
+
+    base_url: str = DEFAULT_PMC_BIOC_URL
+    min_request_interval: float = 0.5
+    timeout: float = 60.0
+    gate: PacingGate | None = None
+    _client: httpx.Client | None = None
+
+    def __post_init__(self) -> None:
+        if self.gate is None:
+            self.gate = PacingGate(self.min_request_interval)
+
+    def _http(self) -> httpx.Client:
+        if self._client is None:
+            self._client = httpx.Client(timeout=self.timeout, follow_redirects=True)
+        return self._client
+
+    def close(self) -> None:
+        if self._client is not None:
+            self._client.close()
+            self._client = None
+
+    def __enter__(self) -> "PmcBiocClient":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
+    @retry(
+        stop=attempt_floor(3),
+        wait=wait_exponential_jitter(multiplier=1.0, max=10.0),
+        retry=retry_if_transient(),
+        reraise=True,
+    )
+    def _get(self, pmcid: str) -> httpx.Response:
+        assert self.gate is not None
+        self.gate.wait()
+        response = self._http().get(f"{self.base_url.rstrip('/')}/{pmcid}/unicode")
+        response.raise_for_status()
+        return response
+
+    def fetch_fulltext(self, pmcid: str) -> str | None:
+        """Body text with the reference list removed; `None` when the service holds no copy; raises
+        `FulltextUnavailable` when the request never got an answer (RM258).
+
+        **Only the recorded "no copy" 200 is an answer** (RM361). The service's reply for an article
+        outside its set is a 200 with a plain-text body opening `BIOC_NO_RESULT_PREFIX`
+        (`assets/pmc_bioc_no_result.txt`), so it reads as *absent*, as a 404 does. Any other 200 that
+        is not JSON (a maintenance page) is the fourth leg and *unreachable*; a 410 raises
+        `FulltextRetired`; a 429, any other 4xx, a 5xx or a transport failure, after the retries, is
+        *unreachable*.
+        """
+        try:
+            response = self._get(pmcid)
+        except httpx.HTTPStatusError as exc:
+            _fulltext_absent_or_raise(exc, "PMC BioC", pmcid)
+            return None
+        except httpx.HTTPError as exc:
+            raise FulltextUnavailable(f"PMC BioC could not be reached for {pmcid}: {exc}") from exc
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            if response.text.lstrip().startswith(BIOC_NO_RESULT_PREFIX):
+                logger.info("No BioC text for %s (the service's 'no result' answer)", pmcid)
+                return None
+            raise FulltextUnavailable(
+                f"PMC BioC answered 200 for {pmcid} with a body that is neither JSON nor its 'no result' "
+                f"answer: {' '.join(response.text.split())[:80]!r}"
+            ) from exc
+        return extract_bioc_text(payload)
+
+    def fulltext(self, pmcid: str) -> str | None:
+        """`fetch_fulltext` with its two negative answers folded into one `None`, as before 0.8."""
+        try:
+            return self.fetch_fulltext(pmcid)
+        except FulltextUnavailable as exc:
+            if isinstance(exc, FulltextRetired) and isinstance(exc.__cause__, httpx.HTTPStatusError):
+                self.note_retired("PMC BioC", exc.__cause__)
+            logger.warning("BioC fetch failed for %s (%s)", pmcid, exc)
+            return None
+
+
+def extract_bioc_text(payload: object) -> str | None:
+    """BioC JSON → one normalized string of every non-reference passage, or `None` if it holds none.
+
+    The service wraps its collection in a one-element list; a bare collection is accepted too, since
+    the BioC format itself does not require the wrapper.
+    """
+    collections = payload if isinstance(payload, list) else [payload]
+    texts: list[str] = []
+    for collection in collections:
+        if not isinstance(collection, dict):
+            continue
+        for document in collection.get("documents") or []:
+            for passage in document.get("passages") or []:
+                if (passage.get("infons") or {}).get("section_type") == "REF":
+                    continue
+                if passage.get("text"):
+                    texts.append(passage["text"])
+    joined = _WHITESPACE.sub(" ", " ".join(texts)).strip()
+    return joined or None
+
+
 def extract_text(xml: str) -> str | None:
-    """JATS XML → one normalized string, or `None` if it does not parse.
+    """JATS XML → one normalized string, or `None` if it is not a JATS article.
 
     `itertext()` rather than a tag-stripping regex: real JATS carries nested inline markup inside
     sentences (`<italic>`, `<xref>`, `<sup>`), and a regex that removes tags without joining their
     text would silently glue words together and break matches that should succeed.
+
+    **A document that parses is not yet an article** (RM361): a maintenance page served as XHTML is
+    well-formed XML, and reading its text as the article's would make every quote a miss against a
+    fulltext, which settles it. Only a root element named `article` is JATS.
     """
     try:
         root = ET.fromstring(xml)
     except ET.ParseError as exc:
         logger.warning("Fulltext did not parse as XML (%s)", exc)
+        return None
+    if root.tag.rsplit("}", 1)[-1] != "article":
+        logger.warning("Fulltext parsed as XML with a <%s> root, not a JATS <article>", root.tag)
         return None
     return _WHITESPACE.sub(" ", " ".join(root.itertext())).strip()
 
@@ -751,6 +1271,53 @@ def _citations(studies: list[StudyRow], table_pmids: list[str] | None = None) ->
     return out
 
 
+def _ask_fulltext(
+    epmc: "EuropePmcClient", bioc: "PmcBiocClient", pmcid: str | None, is_open: bool | None
+) -> tuple[str | None, str]:
+    """The fulltext question for one article, and how it ended: `(text, fulltext_status)` (RM258).
+
+    Europe PMC first when it calls the article open, then PMC's BioC service, which serves author
+    manuscripts Europe PMC calls closed (RM257). `retrieved` when either answered with text;
+    `retired` or `unreachable` when neither did and at least one request never got an answer
+    (`aggregate_reason`: a 410 leads), because that one may answer next time; `absent` otherwise,
+    including an article with no PMCID, which neither service can hold.
+    """
+    if not pmcid:
+        return None, "absent"
+    unanswered: list[str] = []
+    if is_open:
+        try:
+            text = epmc.fetch_fulltext(pmcid)
+        except FulltextUnavailable as exc:
+            logger.warning("Europe PMC fulltext for %s was not answered (%s)", pmcid, exc)
+            unanswered.append(could_not_ask_reason(exc))
+        else:
+            if text is not None:
+                return text, "retrieved"
+    try:
+        text = bioc.fetch_fulltext(pmcid)
+    except FulltextUnavailable as exc:
+        logger.warning("BioC text for %s was not answered (%s)", pmcid, exc)
+        unanswered.append(could_not_ask_reason(exc))
+    else:
+        if text is not None:
+            return text, "retrieved"
+    return None, aggregate_reason(unanswered) if unanswered else "absent"
+
+
+def _needs_reask(row: LiteratureRow) -> bool:
+    """A pinned row whose fulltext question is still open (RM258).
+
+    `unreachable` and `retired` were asked and never answered (RM361). A null status on a row that did
+    not match against a fulltext was written before the column existed, and is asked once; a null row
+    whose quotes were matched against a fulltext already has its answer. `absent` and `retrieved` are
+    settled.
+    """
+    if row.fulltext_status in (UNREACHABLE, RETIRED):
+        return True
+    return row.fulltext_status is None and row.quote_source != "fulltext"
+
+
 def enrich_literature(
     spec_dir: Path,
     *,
@@ -763,6 +1330,7 @@ def enrich_literature(
     eutils: EutilsClient | None = None,
     europepmc: EuropePmcClient | None = None,
     crossref: CrossrefClient | None = None,
+    bioc: PmcBiocClient | None = None,
 ) -> LiteratureResult:
     """Fill `literature.csv` from the citations a module makes.
 
@@ -814,7 +1382,14 @@ def enrich_literature(
     except ValueError as exc:
         raise LiteratureEnrichmentError(f"a citing table is invalid: {exc}") from exc
     table_pmids = table_citations(citing_rows)
-    if not studies and not table_pmids:
+    # A `pmid=NONE` row cites by DOI alone (RM336): a citation, so the module is not citation-free, and
+    # one no PubMed lookup below can reach, so it is counted apart and said in the records.
+    cited_by_doi_only = sum(
+        1
+        for row in [*studies, *(r for rows in citing_rows.values() for r in rows)]
+        if row.pmid and not extract_pmids(row.pmid)
+    )
+    if not studies and not table_pmids and not cited_by_doi_only:
         raise LiteratureEnrichmentError(
             f"no citations in {spec_dir} — the literature pass checks the citations a module makes, "
             f"and this one has neither studies.csv rows nor a `pmid` on any binning or "
@@ -833,6 +1408,13 @@ def enrich_literature(
     authored_total = sum(
         1 for rows in citations.values() for s in rows if s.provenance_quote or s.provenance_regex
     )
+    # A `pmid=NONE` row cites by DOI alone (RM336), so `_citations` has no key for it and its quote is
+    # in none of the counts above. Counted apart so the record never says "no quote on any citation"
+    # about a module carrying one. Online, the DOI is the key it is asked about instead (RM349).
+    without_pmid = sum(
+        1 for s in studies if not extract_pmids(s.pmid) and (s.provenance_quote or s.provenance_regex)
+    )
+    doi_cited = _doi_only_citations(studies, citing_rows)
 
     if offline:
         logger.warning(
@@ -850,6 +1432,8 @@ def enrich_literature(
                 sources=sorted({r.source for r in out if r.source}),
                 cited=sorted(citations, key=int),
                 quotes_authored=authored_total,
+                quotes_without_pmid=without_pmid,
+                citations_without_pmid=cited_by_doi_only,
                 fulltext_requested=check_fulltext,
             ),
             spec_dir,
@@ -880,12 +1464,32 @@ def enrich_literature(
     # Against the rows rather than the dict's keys, which are merge-key tuples and not bare PMIDs.
     have = {row.pmid for row in existing.values()} - stale_pins
     wanted = [pmid for pmid in citations if pmid not in have]
+    # **Pinned rows whose fulltext question never got an answer are asked that one question again
+    # (RM258).** Everything else on the row stays merged, since answered is per field
+    # (`@answered-is-not-absent`): existence, identifiers and the licence were answered, and dropping
+    # them to get a retry is the refused repair. Only rows with a quote to check, and only when this run
+    # checks fulltext at all.
+    reask = (
+        [
+            row
+            for row in sorted(existing.values(), key=lambda r: int(r.pmid))
+            if row.pmid in have
+            and row.pmid in citations
+            and _has_quote(citations[row.pmid])
+            and _needs_reask(row)
+        ]
+        if check_fulltext
+        else []
+    )
     fetched_at = now_utc_iso()
     result = LiteratureResult(
         rows=[row for row in existing.values() if row.pmid not in stale_pins],
         mode=mode,
         cited=sorted(citations, key=int),
         quotes_authored=authored_total,
+        # Set here, before the coverage line is logged, so the log carries the DOI-only clause (RM349).
+        quotes_without_pmid=without_pmid,
+        citations_without_pmid=cited_by_doi_only,
         fulltext_requested=check_fulltext,
     )
 
@@ -896,11 +1500,21 @@ def enrich_literature(
     # adding the already-pinned PMIDs that carry a quote costs no extra round trip in the common
     # case and nothing at all when there are none.
     titled = [pmid for pmid in citations if pmid not in wanted and _has_quote(citations[pmid])]
-    if wanted or titled:
+    # The citations by DOI alone (RM349): Crossref for existence, Europe PMC for the text. Nothing about
+    # them is pinned (see `DoiCitation`), so an online run asks again whenever it has a question.
+    ask_dois = bool(doi_cited) and (
+        check_doi or (check_fulltext and any(_has_quote(rows) for rows in doi_cited.values()))
+    )
+    result.doi_citations = [
+        DoiCitation(doi=key, quotes_authored=_quote_count(doi_cited[key])) for key in sorted(doi_cited)
+    ]
+    if wanted or titled or reask or ask_dois:
         owned_eutils = eutils is None
         client = eutils or EutilsClient()
+        summaries: dict = {}
         try:
-            summaries = client.esummary("pubmed", wanted + titled)
+            if wanted or titled or reask:
+                summaries = client.esummary("pubmed", wanted + titled)
         except EutilsError as exc:
             raise LiteratureUnavailable(f"PubMed could not be reached: {exc}") from exc
         finally:
@@ -911,8 +1525,12 @@ def enrich_literature(
         epmc = europepmc or EuropePmcClient()
         owned_crossref = crossref is None
         crossref = crossref or CrossrefClient()
+        # On the E-utilities gate, which outlives the esummary client above: one NCBI budget.
+        owned_bioc = bioc is None
+        bioc = bioc or PmcBiocClient(gate=client.gate)
         try:
-            indexed = epmc.lookup(wanted)
+            # Guarded: a run whose only questions are about DOI-only citations has no PMID to look up.
+            indexed = epmc.lookup(wanted) if wanted else {}
             for pmid in wanted:
                 summary = summaries.get(pmid, {})
                 exists = not is_missing(summary)
@@ -947,8 +1565,13 @@ def enrich_literature(
                 quotes = [s for s in citations[pmid] if s.provenance_quote or s.provenance_regex]
                 found: int | None = None
                 quote_source: str | None = None
+                fulltext_status: str | None = None
                 if check_fulltext and quotes:
-                    text = epmc.fulltext(pmcid) if (is_open and pmcid) else None
+                    # PMC serves an author manuscript for text mining where Europe PMC calls it
+                    # closed or fails on it (RM257, S110). Any PMCID qualifies: an article outside
+                    # the service's set costs one paced request answering "no copy". How the question
+                    # ended is recorded, so an outage is asked again rather than pinned (RM258).
+                    text, fulltext_status = _ask_fulltext(epmc, bioc, pmcid, is_open)
                     if text is not None:
                         result.fulltext_checked.append(pmid)
                         quote_source = "fulltext"
@@ -962,9 +1585,7 @@ def enrich_literature(
                             result.abstract_checked.append(pmid)
                             quote_source = "abstract"
                     if text:
-                        found = sum(
-                            1 for s in quotes if _study_quote_found(s, text, regex_timeout=regex_timeout)
-                        )
+                        found = _quotes_found(quotes, text, regex_timeout=regex_timeout)
                 # Costs no request: the title arrived in the same `esummary` response that answered
                 # existence. Outside the `check_fulltext` guard deliberately — this compares the quote
                 # against metadata already held, so it answers even for a paywalled article whose
@@ -989,6 +1610,7 @@ def enrich_literature(
                         quotes_authored=len(quotes),
                         quotes_found=found,
                         quote_source=quote_source,
+                        fulltext_status=fulltext_status,
                         doi_exists=doi_exists,
                         # Which DOI that verdict is about. Without it the pin cannot say, and a
                         # re-run pairs the stored answer with whatever the author writes next.
@@ -1002,6 +1624,24 @@ def enrich_literature(
                         fetched_at=fetched_at,
                     )
                 )
+            # The pinned rows whose fulltext question is still open (RM258): that one question, and a
+            # row rewritten only where the answer changed it. An answer overwrites the quote counts,
+            # `quote_source` and the status; a request that fails again leaves the row as it was,
+            # marked `unreachable`, so the next run asks again.
+            for row in reask:
+                text, status = _ask_fulltext(epmc, bioc, row.pmcid, row.is_open_access)
+                update: dict[str, object] = {"fulltext_status": status}
+                if text is not None:
+                    quotes = [s for s in citations[row.pmid] if s.provenance_quote or s.provenance_regex]
+                    update |= {
+                        "quote_source": "fulltext",
+                        "quotes_found": _quotes_found(quotes, text, regex_timeout=regex_timeout),
+                    }
+                    result.fulltext_checked.append(row.pmid)
+                if all(getattr(row, name) == value for name, value in update.items()):
+                    continue
+                healed = row.model_copy(update={**update, "fetched_at": fetched_at})
+                result.rows = [healed if r.pmid == row.pmid else r for r in result.rows]
             # The pinned rows: no row is written for them (the sidecar is authoritative) and the
             # fulltext is never fetched, but the title comparison needs only the summary — so it
             # answers here where `quotes_found` cannot.
@@ -1011,11 +1651,28 @@ def enrich_literature(
                     summaries.get(pmid, {}),
                 ):
                     result.titles_as_quotes.append(pmid)
+            if ask_dois:
+                result.doi_citations = [
+                    _check_doi_citation(
+                        key,
+                        doi_cited[key],
+                        crossref=crossref,
+                        epmc=epmc,
+                        bioc=bioc,
+                        check_doi=check_doi,
+                        check_fulltext=check_fulltext,
+                        regex_timeout=regex_timeout,
+                    )
+                    for key in sorted(doi_cited)
+                ]
+            result.crossref_unanswered = withheld_reason(crossref)
         finally:
             if owned_epmc:
                 epmc.close()
             if owned_crossref:
                 crossref.close()
+            if owned_bioc:
+                bioc.close()
 
     result.titles_as_quotes = sorted(set(result.titles_as_quotes), key=int)
     result.rows.sort(key=lambda r: int(r.pmid))
@@ -1025,6 +1682,13 @@ def enrich_literature(
     # rather than by whatever order the fetch took, and the gates below refuse on exactly what the
     # attestation records.
     _tally_existence(result, citations)
+    # A DOI no registration agency knows is a cited DOI that does not resolve, whichever kind of row
+    # cites it (RM349), so the `strict` gate and the report below name it with the others.
+    # Both sides by `doi_key` (RM363): the PubMed path records the registry's DOI as the registry spells it.
+    missing = {doi_key(doi) for doi in result.doi_missing}
+    result.doi_missing += [
+        c.doi for c in result.doi_citations if c.exists is False and doi_key(c.doi) not in missing
+    ]
     _tally_quotes(result, citations)
     _compare_identifiers(result, citations)
     logger.info("Literature: %s", result.coverage)
@@ -1059,6 +1723,108 @@ def enrich_literature(
     return _attest(result, spec_dir, write=write, check_fulltext=check_fulltext, check_doi=check_doi)
 
 
+def _doi_only_citations(studies: list[StudyRow], citing_rows: dict[str, list]) -> dict[str, list[StudyRow]]:
+    """`doi_key -> [study rows citing it]` for the rows citing by DOI alone (`pmid=NONE`, RM336, RM349).
+
+    `_citations`' shape, keyed on the DOI because that is the only identifier such a row carries: two
+    spellings of one DOI (bare, or a doi.org URL in another case) are one citation (`spelling.doi_key`,
+    RM336's duplicate key). A citing-table row maps to an empty list, as there: it is a citation to
+    check for existence, with no quote. The predicate is the one `cited_by_doi_only` counts with.
+    """
+    out: dict[str, list[StudyRow]] = {}
+    for study in studies:
+        if study.pmid and not extract_pmids(study.pmid) and study.doi:
+            out.setdefault(doi_key(study.doi), []).append(study)
+    for rows in citing_rows.values():
+        for row in rows:
+            doi = getattr(row, "doi", None)
+            if row.pmid and not extract_pmids(row.pmid) and doi:
+                out.setdefault(doi_key(doi), [])
+    return out
+
+
+def _quote_count(studies: list[StudyRow]) -> int:
+    return sum(1 for s in studies if s.provenance_quote or s.provenance_regex)
+
+
+def _check_doi_citation(
+    doi: str,
+    studies: list[StudyRow],
+    *,
+    crossref: "CrossrefClient",
+    epmc: "EuropePmcClient",
+    bioc: "PmcBiocClient",
+    check_doi: bool,
+    check_fulltext: bool,
+    regex_timeout: float,
+) -> DoiCitation:
+    """The two questions for one DOI-only citation (RM349): does the DOI exist, and is the quote there.
+
+    Existence is Crossref's `work`, so the answer names the work it found (`@existence-not-identity`).
+    The quote is matched as a PMID's is: against the full text when one is retrieved, else against the
+    abstract, where a hit settles and a miss does not. Never writes a PubMed id anywhere, even where
+    Europe PMC's record carries one (RM263 reports; it never fills).
+    """
+    work = crossref.work(doi) if check_doi else CrossrefWork(exists=None)
+    quotes = [s for s in studies if s.provenance_quote or s.provenance_regex]
+    found: int | None = None
+    quote_source: str | None = None
+    status: str | None = None
+    record: dict | None = None
+    if check_fulltext and quotes:
+        text, status, record = _ask_doi_fulltext(epmc, bioc, doi)
+        if text:
+            quote_source = "fulltext"
+        elif record and record.get("abstract"):
+            text = record["abstract"]
+            quote_source = "abstract"
+        if text:
+            found = _quotes_found(quotes, text, regex_timeout=regex_timeout)
+    return DoiCitation(
+        doi=doi,
+        exists=work.exists,
+        crossref_asked=check_doi,
+        title=work.title,
+        agency=work.agency,
+        quotes_authored=len(quotes),
+        quotes_found=found,
+        quote_source=quote_source,
+        fulltext_status=status,
+        europepmc_id=record.get("id") if record else None,
+        license=record.get("license") if record else None,
+    )
+
+
+def _ask_doi_fulltext(
+    epmc: "EuropePmcClient", bioc: "PmcBiocClient", doi: str
+) -> tuple[str | None, str, dict | None]:
+    """The fulltext question for a DOI-only citation: `(text, fulltext_status, Europe PMC record)`.
+
+    `fulltext_status` means what it means on a `LiteratureRow` (RM258): `retrieved`, `absent` (Europe
+    PMC holds no record, or a record with no text) or `unreachable` (a request never got an answer).
+    A record carrying a PMC id goes the PMID route (`_ask_fulltext`: Europe PMC, then BioC); a
+    preprint goes to Europe PMC's preprint repository, and only when its record lists a full text.
+    """
+    try:
+        record = epmc.record_for_doi(doi)
+    except LiteratureUnavailable as exc:
+        logger.warning("Europe PMC could not be asked for DOI %s (%s)", doi, exc)
+        return None, could_not_ask_reason(exc), None
+    if record is None:
+        return None, "absent", None
+    if record.get("pmcid"):
+        text, status = _ask_fulltext(epmc, bioc, record["pmcid"], record.get("is_open_access"))
+        return text, status, record
+    if not record.get("preprint_id"):
+        return None, "absent", record
+    try:
+        text = epmc.fetch_preprint_fulltext(record["preprint_id"])
+    except FulltextUnavailable as exc:
+        logger.warning("Preprint text for %s was not answered (%s)", doi, exc)
+        return None, could_not_ask_reason(exc), record
+    return text, "retrieved" if text is not None else "absent", record
+
+
 def _doi_to_check(studies: list[StudyRow], registry_doi: str | None) -> str | None:
     """The DOI Crossref is asked about: the **authored** one, else the registry's.
 
@@ -1069,7 +1835,7 @@ def _doi_to_check(studies: list[StudyRow], registry_doi: str | None) -> str | No
     dataset) has only the authored one, which is the case the Crossref client is here for.
     """
     authored = next((s.doi for s in studies if s.doi), None)
-    return _doi_token(authored) if authored else (registry_doi or None)
+    return doi_token(authored) if authored else (registry_doi or None)
 
 
 def _tally_existence(result: LiteratureResult, citations: dict[str, list[StudyRow]]) -> None:
@@ -1175,15 +1941,12 @@ def _tally_quotes(result: LiteratureResult, citations: dict[str, list[StudyRow]]
         if pinned != authored_now:
             unexamined += authored_now
             continue
-        if row.quotes_found is None:
-            unchecked += pinned
-            continue
-        found += row.quotes_found
-        if row.quote_source == "fulltext":
-            checked += pinned
-        else:
-            checked += row.quotes_found
-            unchecked += pinned - row.quotes_found
+        # The per-row arithmetic is `LiteratureRow.quotes_checked`, shared with the manifest block so
+        # the pass report and the published counters cannot disagree about what an abstract settled.
+        settled = row.quotes_checked()
+        found += row.quotes_found or 0
+        checked += settled
+        unchecked += pinned - settled
     result.noncommercial_quoted = sorted(noncommercial, key=int)
     result.quotes_found = found
     result.quotes_checked = checked
@@ -1313,6 +2076,9 @@ def _verification_records(
 
     records: list[VerificationRecord] = []
     unanswered = len(result.cited) - result.existence_checked
+    # The DOI-only citations' existence verdicts (RM349), one per distinct DOI: what Crossref answered.
+    doi_checked = [c for c in result.doi_citations if c.exists is not None]
+    doi_absent = [c for c in doi_checked if c.exists is False]
 
     # ── does the citation exist ─────────────────────────────────────────────────────────────────
     if offline:
@@ -1326,12 +2092,51 @@ def _verification_records(
                     # now, which is the same "nothing to protect" state and a different sentence.
                     "PubMed and Crossref have no offline snapshot, and no citation this module "
                     "makes carries a pinned answer in literature.csv"
+                    + (f"; {_doi_only_clause(result)}" if result.citations_without_pmid else "")
                 ),
                 source="pubmed",
             )
         )
+    elif not result.cited and result.citations_without_pmid:
+        # Every citation is DOI-only (RM349): Crossref is the registry that answered, so the record is
+        # its, and never `ran(0, 0)`, for the reason the identifier branch below gives. Which way no
+        # answer came is the skip: the caller's `--no-doi`, or Crossref never answering. `unsupported`
+        # is left for a row whose `doi` carries no DOI token, which no route can ask about (a loaded
+        # `NONE` row cannot be one, since `check_citation_pair` requires the token).
+        doi_parts = _doi_existence_parts(result)
+        if doi_checked:
+            if result.doi_missing:
+                doi_parts.append(f"{len(result.doi_missing)} cited DOI(s) do not resolve in Crossref")
+            records.append(
+                ran(
+                    "citation_existence",
+                    subjects=len(doi_checked),
+                    findings=len(doi_absent),
+                    source="crossref",
+                    detail="; ".join(doi_parts),
+                )
+            )
+        elif result.doi_citations and not any(c.crossref_asked for c in result.doi_citations):
+            records.append(
+                skipped("citation_existence", "not_requested", detail="; ".join(doi_parts), source="crossref")
+            )
+        elif result.doi_citations:
+            records.append(
+                skipped(
+                    "citation_existence",
+                    result.crossref_unanswered,
+                    detail="; ".join(doi_parts),
+                    source="crossref",
+                )
+            )
+        else:
+            records.append(
+                skipped(
+                    "citation_existence", "unsupported", detail=_doi_only_clause(result), source="crossref"
+                )
+            )
     else:
-        parts = []
+        parts = _doi_existence_parts(result)
         if result.missing:
             parts.append(f"{len(result.missing)} cited PMID(s) have no PubMed record")
         if result.doi_missing:
@@ -1364,10 +2169,17 @@ def _verification_records(
         records.append(
             ran(
                 "citation_existence",
-                subjects=result.existence_checked,
-                findings=result.unresolved_citations,
+                subjects=result.existence_checked + len(doi_checked),
+                findings=result.unresolved_citations + len(doi_absent),
                 source="pubmed",
                 detail="; ".join(parts) or None,
+                # RM292: Crossref is a witness only when a DOI verdict it gave is among the subjects;
+                # a PMID-only module was put to PubMed alone, and the record says so.
+                witness_source=(
+                    "crossref+pubmed"
+                    if any(row.doi_exists is not None for row in result.subject_rows)
+                    else "pubmed"
+                ),
             )
         )
 
@@ -1469,7 +2281,7 @@ def _verification_records(
                 source="europepmc",
             )
         )
-    elif result.quotes_authored == 0:
+    elif result.quotes_authored == 0 and result.quotes_without_pmid == 0:
         records.append(
             skipped(
                 "provenance_quote",
@@ -1479,18 +2291,34 @@ def _verification_records(
             )
         )
     elif offline:
+        # A quote on a `pmid=NONE` row is matched by DOI on an online run (RM349), so offline is the
+        # honest reason for it too, never `unsupported`, which would say no run could ask.
         records.append(
             skipped(
                 "provenance_quote",
                 "offline",
-                detail=(
+                detail=_with_without_pmid(
                     f"{result.quotes_authored} authored quote(s); an article's text can only come "
                     f"over the network, and there is no offline fulltext archive"
+                    if result.quotes_authored
+                    else None,
+                    result,
                 ),
                 source="europepmc",
             )
         )
-    elif result.quotes_checked == 0:
+    elif result.quotes_authored == 0 and not result.doi_citations:
+        # The residual `unsupported`: quotes on rows whose `doi` carries no DOI token, which no route
+        # reaches. A loaded `NONE` row cannot be one (`check_citation_pair`).
+        records.append(
+            skipped(
+                "provenance_quote",
+                "unsupported",
+                detail=_without_pmid_clause(result),
+                source="europepmc",
+            )
+        )
+    elif result.quotes_checked + _doi_quotes_checked(result) == 0:
         # Not `ran(subjects=0)`: with quotes authored and no verdict on any of them, "the check ran
         # and had nothing in scope" would be the false half of the answered-absence/unasked-question
         # collapse. Which of the two ways of having read nothing applies is spelled out rather than
@@ -1501,28 +2329,156 @@ def _verification_records(
                 "provenance_quote",
                 "no_reference",
                 detail=(
-                    f"{result.quotes_authored} authored quote(s), none of them settled: "
-                    + _quote_gap_detail(result)
+                    f"{result.quotes_authored + result.quotes_without_pmid} authored quote(s), none of "
+                    f"them settled: " + _all_quote_gaps(result)
                 ),
                 source="europepmc",
             )
         )
     else:
+        # The DOI-only quotes join the denominator (RM349): each was put to a text found by its DOI,
+        # under the same rule a PMID's is (`settled_quotes`).
+        checked = result.quotes_checked + _doi_quotes_checked(result)
+        found = result.quotes_found + sum(c.quotes_found or 0 for c in result.doi_citations)
+        unchecked = result.quotes_unchecked + _doi_quotes_unsettled(result)
         records.append(
             ran(
                 "provenance_quote",
-                subjects=result.quotes_checked,
-                findings=result.quotes_checked - result.quotes_found,
+                subjects=checked,
+                findings=checked - found,
                 source="europepmc",
                 detail=(
-                    f"{result.quotes_unchecked} further authored quote(s) outside this denominator: "
-                    + _quote_gap_detail(result)
-                    if result.quotes_unchecked
+                    f"{unchecked} further authored quote(s) outside this denominator: "
+                    + _all_quote_gaps(result)
+                    if unchecked
                     else None
                 ),
             )
         )
     return records
+
+
+def _doi_quotes_checked(result: LiteratureResult) -> int:
+    """Quotes on DOI-only citations that a retrieved text settled, found or missed (RM349)."""
+    return sum(c.quotes_checked() for c in result.doi_citations)
+
+
+def _doi_quotes_unsettled(result: LiteratureResult) -> int:
+    """Quotes on DOI-only citations no retrieved text settled (RM349)."""
+    return sum(c.quotes_authored - c.quotes_checked() for c in result.doi_citations)
+
+
+def _all_quote_gaps(result: LiteratureResult) -> str:
+    """The PMID quotes' gaps and the DOI-only quotes' gaps, each named in its own clause."""
+    parts = [_quote_gap_detail(result) if result.quotes_unchecked else "", _doi_quote_gap(result)]
+    return "; ".join(part for part in parts if part)
+
+
+def _doi_quote_gap(result: LiteratureResult) -> str:
+    """How the unsettled quotes on DOI-only citations ended, by `fulltext_status` (RM349).
+
+    The three ways are named apart, for the reason `_quote_gap_detail` gives: an outage is cleared by
+    running again, an absent copy is not, and an abstract miss is no verdict at all.
+    """
+    unreachable = absent = abstract = 0
+    for c in result.doi_citations:
+        unsettled = c.quotes_authored - c.quotes_checked()
+        if not unsettled:
+            continue
+        # Unreachable first, whatever the abstract said: it is the one a re-run clears. A retired
+        # route is asked again too (RM361), so it is counted with it rather than as absent.
+        if c.fulltext_status in (UNREACHABLE, RETIRED):
+            unreachable += unsettled
+        elif c.quote_source == "abstract":
+            abstract += unsettled
+        else:
+            absent += unsettled
+    parts = []
+    if unreachable:
+        parts.append(
+            f"{unreachable} on pmid NONE citation(s) whose text Europe PMC never answered for "
+            f"(unreachable, so only an abstract could be searched, if any; asked again on the next "
+            f"online run)"
+        )
+    if abstract:
+        parts.append(
+            f"{abstract} on pmid NONE citation(s) searched in the abstract only, where a miss is not "
+            f"a verdict"
+        )
+    if absent:
+        parts.append(f"{absent} on pmid NONE citation(s) whose DOI Europe PMC holds no text for")
+    return "; ".join(parts)
+
+
+def _doi_only_clause(result: LiteratureResult) -> str:
+    """The citations no PMID reaches, when no DOI was asked about either (RM336, RM349)."""
+    return (
+        f"{result.citations_without_pmid} citation(s) have pmid NONE and cite by DOI alone; they are "
+        f"asked of Crossref by DOI on an online run, and none was asked this run"
+    )
+
+
+def _doi_existence_parts(result: LiteratureResult) -> list[str]:
+    """What this run learned about the DOI-only citations' existence, clause by clause (RM349).
+
+    The titles are named (`@existence-not-identity`: a DOI that resolves may still be the wrong work,
+    and only the title says which), a bounded few with a count (`verification.examples`). A DOI that
+    resolves with no title in hand is said apart, and so is each way of not having an answer, since
+    neither is in the denominator.
+    """
+    if not result.doi_citations:
+        return [_doi_only_clause(result)] if result.citations_without_pmid else []
+    cites = result.doi_citations
+    asked = any(c.crossref_asked for c in cites)
+    parts = [
+        f"{result.citations_without_pmid} citation(s) have pmid NONE and cite {len(cites)} DOI(s) "
+        f"alone" + (", asked of Crossref by DOI" if asked else "")
+    ]
+    named = [f"{c.doi} as {c.title!r}" for c in cites if c.exists and c.title]
+    if named:
+        parts.append(f"Crossref names {examples(named)}")
+    untitled = [f"{c.doi} ({c.agency or 'no agency'})" for c in cites if c.exists and not c.title]
+    if untitled:
+        parts.append(
+            f"{len(untitled)} DOI(s) resolve with no title in hand (registered with another agency, "
+            f"or a record naming none), so which work they name is unconfirmed: {examples(untitled)}"
+        )
+    unanswered = [c.doi for c in cites if c.crossref_asked and c.exists is None]
+    if unanswered:
+        parts.append(
+            f"Crossref did not answer for {len(unanswered)} DOI(s), outside this denominator: "
+            f"{examples(unanswered)}"
+        )
+    not_asked = [c.doi for c in cites if not c.crossref_asked]
+    if not_asked:
+        parts.append(f"{len(not_asked)} DOI(s) were not looked up: --no-doi")
+    return parts
+
+
+def _without_pmid_clause(result: LiteratureResult) -> str:
+    """The quotes on `pmid=NONE` rows when none was matched this run (RM336, RM349)."""
+    return (
+        f"{result.quotes_without_pmid} authored quote(s) sit on citation(s) whose pmid is NONE; they "
+        f"are matched against the text Europe PMC holds for their DOI on an online run, and none was "
+        f"matched this run"
+    )
+
+
+def _doi_quote_coverage(result: LiteratureResult) -> str:
+    """The coverage clause for quotes on `pmid=NONE` rows (RM349)."""
+    if not any(c.fulltext_status is not None for c in result.doi_citations):
+        return _without_pmid_clause(result)
+    return (
+        f"checked {_doi_quotes_checked(result)} of {result.quotes_without_pmid} quote(s) on pmid NONE "
+        f"citation(s) against text Europe PMC holds for their DOI"
+    )
+
+
+def _with_without_pmid(detail: str | None, result: LiteratureResult) -> str | None:
+    """`detail`, with the quotes no PMID reaches appended when there are any."""
+    if not result.quotes_without_pmid:
+        return detail
+    return "; ".join(part for part in (detail, _without_pmid_clause(result)) if part)
 
 
 def _quote_gap_detail(result: LiteratureResult) -> str:
@@ -1537,7 +2493,7 @@ def _quote_gap_detail(result: LiteratureResult) -> str:
     if unretrievable:
         parts.append(
             f"{unretrievable} in articles whose fulltext could not be read (or only an abstract "
-            f"could, where a miss is not a verdict)"
+            f"could, where a miss is not a verdict, or a provenance_regex could not be evaluated)"
         )
     if result.quotes_unexamined:
         parts.append(
@@ -1605,12 +2561,12 @@ def _doi_conflicts(pmid: str, studies: list[StudyRow], registry_doi: str | None)
     """
     if not registry_doi:
         return []
-    expected = _doi_token(registry_doi)
+    expected = doi_token(registry_doi)
     if expected is None:
         return []
     conflicts: list[DoiConflict] = []
     for authored in dedupe(s.doi for s in studies if s.doi):
-        token = _doi_token(authored)
+        token = doi_token(authored)
         if token is not None and token != expected:
             conflicts.append(DoiConflict(pmid=pmid, authored=authored, registry=registry_doi))
     return conflicts
@@ -1638,12 +2594,6 @@ def _pmcid_conflicts(pmid: str, studies: list[StudyRow], registry_pmcid: str | N
         if authored != expected:
             conflicts.append(PmcidConflict(pmid=pmid, authored=authored, registry=expected))
     return conflicts
-
-
-def _doi_token(raw: str) -> str | None:
-    """The bare `10.x/y` token inside a free-form DOI cell, lowercased (DOIs are case-insensitive)."""
-    match = DOI_PATTERN.search(raw)
-    return match.group(0).rstrip(".,;").casefold() if match else None
 
 
 def _normalized_title(text: str) -> str:
@@ -1690,18 +2640,35 @@ def _quote_is_the_title(quotes: list[StudyRow], summary: dict) -> bool:
     return all(_normalized_title(q) == target for q in located)
 
 
-def _study_quote_found(study: StudyRow, fulltext: str, *, regex_timeout: float) -> bool:
-    """Whether this study's locator appears in the article. A quote and a regex both count.
+def _study_quote_found(study: StudyRow, fulltext: str, *, regex_timeout: float) -> bool | None:
+    """Whether this study's locator appears in the article: `True`, `False`, or `None` when the regex
+    could not be evaluated (a timeout, or a pattern that does not compile). A quote and a regex both
+    count, and a literal hit settles it without the regex.
 
-    An unbounded/uncheckable regex returns `None` from `regex_matches` and is treated here as
-    not-found *for this row's tally only* when a literal quote also failed — the row-level count stays
-    conservative, while the run-level `quotes_unchecked` records the coverage gap.
+    `None` is never folded into `False` (RM361). It used to be, with a docstring promising that the
+    run-level unchecked count would record the gap; it did not, because a quote matched against a
+    fulltext counts as settled, so an undecided regex was published as a quote absent from the paper.
     """
     if study.provenance_quote and quote_matches(study.provenance_quote, fulltext):
         return True
     if study.provenance_regex:
-        return regex_matches(study.provenance_regex, fulltext, timeout=regex_timeout) is True
+        return regex_matches(study.provenance_regex, fulltext, timeout=regex_timeout)
     return False
+
+
+def _quotes_found(quotes: list[StudyRow], text: str, *, regex_timeout: float) -> int | None:
+    """How many of `quotes` the text contains, or `None` when any one of them could not be decided.
+
+    The one count every quote tally writes (`quotes_found` on a row, a re-ask's heal, a DOI-only
+    citation's). `None` withholds the whole count rather than one member of it: `quotes_found` is one
+    cell, and a count missing one undecided quote would be read against fulltext as that quote
+    checked and missed (`settled_quotes`). With the count withheld nothing on the row is settled, and
+    every quote on it is reported unchecked, which is what an undecided regex is (RM361).
+    """
+    verdicts = [_study_quote_found(s, text, regex_timeout=regex_timeout) for s in quotes]
+    if any(verdict is None for verdict in verdicts):
+        return None
+    return sum(1 for verdict in verdicts if verdict)
 
 
 def _write_literature_csv(rows: list[LiteratureRow], output_path: Path) -> None:
@@ -1718,6 +2685,8 @@ def _write_literature_csv(rows: list[LiteratureRow], output_path: Path) -> None:
     value. The re-run itself is unchanged, and still gap-fills rather than re-asking every subject;
     what changed is that leaving a recorded row alone now risks nothing.
     """
+    if nothing_to_write(output_path, rows):
+        return  # RM370: a pass that answered nothing leaves no table
     with atomic_writer(output_path, newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=_FIELDNAMES)
         writer.writeheader()

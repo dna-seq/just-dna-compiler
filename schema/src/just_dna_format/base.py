@@ -28,7 +28,8 @@ imports it back, so it introduces no cycle.
 """
 
 import re
-from typing import Any, ClassVar, get_args
+from functools import cache
+from typing import Any, ClassVar, NamedTuple, get_args
 
 from pydantic import (
     BaseModel,
@@ -349,6 +350,105 @@ def field_first_seen(model: type[BaseModel]) -> dict[str, str]:
     return found
 
 
+# ── Paired fields: a column meaningless without its companion (RM366) ──────────────────────────
+class Companion(NamedTuple):
+    """`field` stated ⇒ at least one of `needs` stated. One entry of a model's `_PAIRED_FIELDS`.
+
+    The one shape the rule takes. *Both or neither* is two entries (`both_or_neither`); *a statistic
+    needs its method* is one; *an age owner needs an age band* is one entry whose `needs` names both
+    bounds, either of which is a band. The converse of an entry is deliberately not implied: a unit
+    with no magnitude names an instrument nothing was measured on, and refusing it would refuse a
+    harmless cell, so a pair is symmetric only where both entries are declared.
+
+    `refuse=False` marks a pair whose columns a published module may already hold half-stated. It is
+    never refused at load — that would stop a module that validated under an earlier release of this
+    line from validating (P3/P8) — and is reported instead, by `half_stated`'s caller in the compiler,
+    as `paired_field_half_stated`.
+    """
+
+    field: str
+    needs: tuple[str, ...]
+    reason: str
+    refuse: bool = True
+
+
+def both_or_neither(a: str, b: str, reason: str, *, refuse: bool = True) -> tuple[Companion, Companion]:
+    """The symmetric pair: each of `a` and `b` needs the other."""
+    return (Companion(a, (b,), reason, refuse), Companion(b, (a,), reason, refuse))
+
+
+def _stated(value: object) -> bool:
+    """A cell carries a value: not `None`, and not a blank string a reader would take as one."""
+    return value is not None and not (isinstance(value, str) and not value.strip())
+
+
+@cache
+def paired_fields(model: type[BaseModel]) -> tuple[Companion, ...]:
+    """Every companion rule `model` obeys: its declared `_PAIRED_FIELDS`, then the element-rule pairs.
+
+    The element-rule pairs (RM54: `source_element` qualifies `source_field`) are **derived** from
+    `VCF_POINTER_COMPANIONS`, never restated in a model's declaration — that map is already the one
+    relation the vocabulary, the warning and the reference read, and a second copy of it here is the
+    drift it exists to prevent. Each is declared only for a model that carries the element column.
+
+    Cached per class: the answer is a property of the class, and the validator asks it once per row.
+    """
+    declared: tuple[Companion, ...] = getattr(model, "_PAIRED_FIELDS", ())
+    derived = tuple(
+        Companion(
+            element,
+            (pointer,),
+            f"{element} says which element of a multi-valued VCF field to read, so with {pointer} "
+            f"empty there is no field for it to select from. Set {pointer} to the field this rule "
+            f"applies to, or clear {element}",
+        )
+        for element, pointer in VCF_POINTER_COMPANIONS.items()
+        if element in model.model_fields
+    )
+    return declared + derived
+
+
+def half_stated(row: BaseModel) -> list[Companion]:
+    """The companion rules `row` breaks: `field` stated and every one of `needs` empty.
+
+    Refusing rules never reach a caller holding a constructed row (the model refused it); what a
+    caller sees here are the `refuse=False` ones, which the compiler reports."""
+    return [
+        rule
+        for rule in paired_fields(type(row))
+        if _stated(getattr(row, rule.field, None))
+        and not any(_stated(getattr(row, n, None)) for n in rule.needs)
+    ]
+
+
+def half_stated_message(rule: Companion, value: object) -> str:
+    """The refusal (or warning) sentence for one broken rule — field, value, the empty companion, why."""
+    needs = " or ".join(rule.needs)
+    return f"{rule.field}={value!r} is set and {needs} is empty — {rule.reason}"
+
+
+class PairedFields(BaseModel):
+    """The one validator behind every model's `_PAIRED_FIELDS` (RM366).
+
+    A mixin rather than a method on `AuthoredModel`, because the class reaches both layers: the
+    authored rows (`AuthoredModel` inherits this) and the machine-written fact rows, which are plain
+    `BaseModel`s by design and inherit it directly. A declaration is data on the model, so a tool can
+    read which columns travel together (`paired_fields`) instead of finding out from a refusal, and a
+    test walks every model's declaration rather than the instances somebody happened to construct.
+    """
+
+    #: The model's companion rules — see `Companion`. Empty by default: a model with no pair is silent
+    #: by declaration rather than by omission.
+    _PAIRED_FIELDS: ClassVar[tuple[Companion, ...]] = ()
+
+    @model_validator(mode="after")
+    def _refuse_half_stated_pairs(self) -> "PairedFields":
+        for rule in half_stated(self):
+            if rule.refuse:
+                raise ValueError(half_stated_message(rule, getattr(self, rule.field)))
+        return self
+
+
 def field_vocabularies(model: type[BaseModel]) -> dict[str, dict]:
     """`{field_name: {name, options, closed[, notes]}}` for every vocabulary-bound field of `model`.
 
@@ -391,7 +491,7 @@ def derive_variant_key(
        identity could be reconsidered. Byte-identical to the ids gnomAD and ClinGen serve, so it joins
        against them directly instead of needing a translation table.
     3. **Everything else** — the coordinate key `chrom:start:ref`, or `chrom:start:ref:alts` when an
-       alt is given, so two distinct alleles at one locus (an insertion `C>CAAAG` beside a deletion
+       alt is given (`coordinate_key`: an absent cell is an empty segment, RM361), so two distinct alleles at one locus (an insertion `C>CAAAG` beside a deletion
        `C>CA`, a benign `C>G` beside a pathogenic `C>A`) do not collide. `alts` is normalized (its
        comma-separated alleles sorted) so the key is stable regardless of authored order.
 
@@ -419,9 +519,25 @@ def derive_variant_key(
         vrs_id = _mint_vrs_key(chrom, start, ref, alts.strip(), build)
         if vrs_id is not None:
             return vrs_id
-    base = f"{chrom}:{start}:{ref}"
-    alts_norm = ",".join(sorted(a.strip() for a in alts.split(",") if a.strip())) if alts else ""
-    return f"{base}:{alts_norm}" if alts_norm else base
+    alts_norm = ",".join(sorted(a.strip() for a in alts.split(",") if a.strip())) if alts else None
+    return coordinate_key(chrom, start, ref, alts_norm or None)
+
+
+def coordinate_key(chrom: str | None, start: int | None, ref: str | None, alts: str | None = None) -> str:
+    """`chrom:start:ref[:alts]`, with an absent cell as an **empty** segment, never the word `None`.
+
+    The one place a coordinate becomes a key (RM361). An f-string over the four cells wrote an absent
+    `ref` as the Python literal (`13:48037749:None`, nine keys in `reference_examples/cpic_gene_pairs`),
+    an identifier that names a reference base called "None". An absent segment is empty, and trailing
+    empty segments are dropped: a row with no `ref` keys as `13:48037749`, and one with no `ref` and an
+    ALT as `13:48037749::A`, which cannot collide with the `13:48037749:A` of a row whose `ref` is `A`.
+    A row naming nothing at all keys as the empty string, never `"None:None:None"`; a caller that
+    must tell such a row apart checks for an identity first, as `StudyRow.variant_key` does.
+    """
+    cells = ["" if value is None else str(value) for value in (chrom, start, ref, alts)]
+    while cells and cells[-1] == "":
+        cells.pop()
+    return ":".join(cells)
 
 
 # ── Stamped positional identity (RM43) ──────────────────────────────────────────────────────────
@@ -679,7 +795,7 @@ _PLOIDY_DIVERGENCE: str = (
 )
 
 
-class AuthoredModel(BaseModel):
+class AuthoredModel(PairedFields):
     """Base for authored-DSL rows: reserved-namespace guard + shared-vocabulary field validators."""
 
     model_config = ConfigDict(extra="forbid")
@@ -828,25 +944,12 @@ class AuthoredModel(BaseModel):
         # `quality_from` (which confidence field the row's `min_quality` floor is stated against).
         return validate_field_token(v, info.field_name or "source_field")
 
-    @model_validator(mode="after")
-    def _validate_pointer_companions(self) -> "AuthoredModel":
-        # An element rule qualifies a pointer (RM54): it says *which* of a multi-valued field's
-        # values the pointer means. With no pointer beside it there is nothing to qualify, so the
-        # cell names nothing at all — the row would state a selection over an unstated field. The
-        # converse is not an error: a pointer with no element rule is the ordinary case (a scalar
-        # field needs no selection), and demanding one would break every module carrying a pointer
-        # today (P3). Reachable only by a module authored after this release, since neither column
-        # existed before it.
-        for element_field, pointer_field in VCF_POINTER_COMPANIONS.items():
-            if element_field not in type(self).model_fields:
-                continue
-            if getattr(self, element_field, None) is not None and getattr(self, pointer_field, None) is None:
-                raise ValueError(
-                    f"{element_field} says which element of a multi-valued VCF field to read, and "
-                    f"{pointer_field} is empty — there is no field for it to select from. Set "
-                    f"{pointer_field} to the field this rule applies to, or clear {element_field}."
-                )
-        return self
+    # An element rule qualifies a pointer (RM54): it says *which* of a multi-valued field's values the
+    # pointer means, so with no pointer beside it the cell names a selection over an unstated field.
+    # That pair is refused by `PairedFields`, which derives it from `VCF_POINTER_COMPANIONS` for every
+    # model carrying the element column (`paired_fields`). The converse is not an error: a pointer
+    # with no element rule is the ordinary case (a scalar field needs no selection), and demanding one
+    # would break every module carrying a pointer today (P3).
 
     @field_validator("genotype", check_fields=False)
     @classmethod

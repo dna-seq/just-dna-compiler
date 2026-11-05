@@ -20,12 +20,15 @@ import pytest
 from just_dna_format.assertions import ClinicalAssertionRow
 from just_dna_format.base import field_vocabularies
 from just_dna_format.concordance import ClinSigAuthorityCallRow, ClinSigConcordanceRow
+from just_dna_format.consequences import ConsequenceRow
 from just_dna_format.expression import ExpressionEffectRow
 from just_dna_format.frequency import FrequencyRow
 from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.gene_validity import GeneValidityRow
 from just_dna_format.gwas import GwasEffectRow
+from just_dna_format.ld_pairs import LdPairRow
 from just_dna_format.literature import LiteratureRow
+from just_dna_format.locus_genes import ColocalisationRow, LocusToGeneRow
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.vocab import VALID_RESOLUTION_STATUS
 
@@ -58,6 +61,32 @@ _MINIMAL: dict[type, dict] = {
         "variant_key": "rs1800562",
         "gene": "HFE",
         "dataset": "alphagenome_atlas_2026-09-11",
+    },
+    LocusToGeneRow: {
+        "study_locus_id": "1011cca96efba523e1b64960a9faaab8",
+        "gene_id": "ENSG00000010704",
+        "variant_key": "rs1800562",
+        "dataset": "opentargets_26.09",
+    },
+    ColocalisationRow: {
+        "study_locus_id": "1011cca96efba523e1b64960a9faaab8",
+        "right_study_locus_id": "00aba7c3fe6d9512d7618e292d8049a8",
+        "variant_key": "rs1800562",
+        "dataset": "opentargets_26.09",
+    },
+    ConsequenceRow: {
+        "variant_key": "rs1800562",
+        "transcript": "ENST00000357618",
+        "dataset": "opentargets_26.09",
+    },
+    # RM331. A resolved row carries its r² (the model refuses one without), so the guard's `resolved`
+    # member needs the number beside it.
+    LdPairRow: {
+        "proxy_rsid": "rs4970836",
+        "variant_key": "rs646776",
+        "ld_population": "1000GENOMES:phase_3:EUR",
+        "r2": 0.924767,
+        "dataset": "ensembl_116",
     },
 }
 

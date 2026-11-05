@@ -104,7 +104,7 @@ Feature: The author's overlay and what a correction reaching nothing means
       | literature.csv             | cannot ask     | overlay_update_unmatched, all three readings |
       | clin_sig_concordance.csv   | no             | overlay_answer_vindicated                 |
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/validate.py
   # anchor: _overlay_targets_missing
   @code:overlay_targets_missing_table @actionable @both_modes
   Scenario: an overlay against a table the module does not carry

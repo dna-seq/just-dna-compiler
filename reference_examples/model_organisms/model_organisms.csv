@@ -1,0 +1,4 @@
+gene,orthologue,species,model_type,sex,diet,lifespan_effect,concordance,pmid
+PPARG,Pparg,Mus musculus,knock-in Pro12Ala (Ala/Ala),,chow,Ala/Ala mice lived longer; the abstract gives no figure,,19117549
+IGF1R,Igf1r,Mus musculus,heterozygous knockout (Igf1r+/-),female,,+33% against wild-type females (P < 0.001),concordant,12483226
+IGF1R,Igf1r,Mus musculus,heterozygous knockout (Igf1r+/-),male,,+16% against wild-type males (not significant),,12483226

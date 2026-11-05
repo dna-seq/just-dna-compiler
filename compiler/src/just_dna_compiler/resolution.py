@@ -11,10 +11,12 @@ Digest parity with the DuckDB path is deliberate and load-bearing: given the sam
 produces byte-identical `weights.parquet` (hence `artifact.digest`) as `resolver.resolve_variants`.
 The one place row order could drift — a one-to-many expansion — is pinned by sorting the expanded
 rows on `(locus_index, chrom, start, ref)`, matching the resolver's `ORDER BY id, chrom, start, ref`.
+Since 0.8 the parity holds when the table records no `vrs_id`: the ids it does record reach the parquets
+(RM270, `compiler/vrs_columns.py`), and the DuckDB path has no table to read them from.
 """
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
 from just_dna_format.alleles import (
@@ -24,14 +26,15 @@ from just_dna_format.alleles import (
     parsimony_reduce,
     split_genotype,
     strand_flip_explains,
+    trim_allele,
 )
 from just_dna_format.base import derive_variant_key
 from just_dna_format.findings import CodedWarning
-from just_dna_format.resolution import ResolutionRow
+from just_dna_format.resolution import ResolutionRow, authored_coordinate_key, split_source_loci
 from just_dna_format.spec import VariantRow
 from just_dna_format.vrs import par_partner
 
-from just_dna_compiler.ladder import LadderFinding
+from just_dna_compiler.ladder import LadderFinding, route
 from just_dna_compiler.resolution_findings import (
     ambiguous_pick,
     coordinate_disagrees,
@@ -87,12 +90,22 @@ class ResolutionOutcome:
     def warnings(self) -> list[str]:
         """Everything `best_effort` reports: the findings that never escalate, then each ladder's own.
 
-        Both halves, because a ladder member IS a warning under `best_effort` — and under `strict` too,
-        where the refusal is published beside it rather than instead of it. Derived rather than stored
-        for the same reason `strict_errors` is: the pair is the unit, and a stored list could carry one
-        half of it.
+        `best_effort`'s view only. Under `strict` a ladder's refusal is published **instead of** its
+        warning, never beside it (RM359: a finding lives on the one channel its severity under the mode
+        picks), so a caller that knows its mode reads `channels`. Derived rather than stored for the
+        same reason `strict_errors` is: the pair is the unit, and a stored list could carry one half.
         """
         return self.plain_warnings + [finding.warning for finding in self.ladders]
+
+    def channels(self, *, strict: bool) -> tuple[list[str], list[str]]:
+        """`(strict refusals, warnings)` in one mode — each ladder through `route`, so on one channel.
+
+        The plain warnings are reported in both modes; a ladder is a warning under `best_effort` and a
+        refusal under `strict`, never both. `errors` (fatal in both modes) is not here: it is not a
+        ladder and its caller refuses on it before reading either list.
+        """
+        refusals, ladder_warnings = route(self.ladders, strict=strict)
+        return refusals, self.plain_warnings + ladder_warnings
 
     @property
     def strict_errors(self) -> list[str]:
@@ -153,7 +166,7 @@ def resolve_from_table(
     expansions: dict[str, list[list[ResolutionRow]]] = {}
     for v in variants:
         rows = resolution.get(v.variant_key or "")
-        loci = _usable_loci(rows, genome_build)
+        loci = usable_loci(rows, genome_build)
 
         if v.rsid is not None and v.chrom is None:
             # need position: fill from the table, or expand a one-to-many rsid
@@ -349,6 +362,36 @@ def resolve_from_table(
     )
 
 
+#: `ResolutionRow.authored_event`'s two members the compiler acts on (`vocab.VALID_AUTHORED_EVENT_VERDICTS`).
+#: The third, `different_event`, reads exactly like an empty cell: the accusation stands.
+SAME_EVENT = "same_event"
+UNDECIDED_EVENT = "undecided"
+
+
+def recorded_verdicts(
+    chrom: str | None, start: int | None, ref: str | None, loci: Sequence[ResolutionRow]
+) -> set[str]:
+    """The `authored_event` verdicts these loci record about THIS authored coordinate (RM375).
+
+    **The compiler trusts the record and never judges it** (`@a-recorded-judgement-is-a-fact`). Two
+    spellings of one indel (NUDT15's `13:48041104 G>GG` and `13:48041103 T>TG`) differ in `start` and
+    `ref`, and only a reference read can tell them from two events; P2 keeps that read out of this
+    tier, so the enricher's verdict on the locus's row is the whole answer. One predicate for both
+    comparers — `_verify` on the SNP core and `_authored_conflict` on the positional tables — so the
+    two cannot read the cell two ways.
+
+    **Only a verdict about the coordinate the row holds now.** The key is the subject's, so a verdict
+    survives an edit of the coordinate (merge-not-clobber does not re-ask a covered subject) and is
+    shared with every other table's row under the same rsID. A verdict whose `judged_coordinate` is not
+    this row's (`authored_coordinate_key`, a string compare and no judgement) is no verdict here: the row
+    reads as never judged, and today's contradiction stands.
+    """
+    judged = authored_coordinate_key(chrom, start, ref)
+    return {
+        locus.authored_event for locus in loci if locus.authored_event and locus.judged_coordinate == judged
+    }
+
+
 @dataclass
 class PositionalFill:
     """What the positional fill did, per table. Counts, never a line per row.
@@ -363,6 +406,9 @@ class PositionalFill:
     unplaced_ambiguous: int = 0
     unplaced_absent: int = 0
     contradicted: list[str] = field(default_factory=list)
+    #: Rows whose authored coordinate differs from the table's and whose verdict the enricher recorded
+    #: as `undecided` (RM375): left alone like a contradiction, and said without accusing.
+    undecided: list[str] = field(default_factory=list)
 
 
 def resolve_positional_rows(
@@ -405,7 +451,7 @@ def resolve_positional_rows(
     """
     report = PositionalFill()
     for row in rows:
-        loci = _usable_loci(resolution.get(getattr(row, "variant_key", None) or ""), genome_build)
+        loci = usable_loci(resolution.get(getattr(row, "variant_key", None) or ""), genome_build)
         fillable = [
             name
             for name in ("rsid", "chrom", "start", "ref", "alts")
@@ -430,8 +476,14 @@ def resolve_positional_rows(
         locus = candidates[0]
         conflict = _authored_conflict(row, locus)
         if conflict is not None:
-            report.contradicted.append(conflict)
+            sentence, undecided = conflict
+            (report.undecided if undecided else report.contradicted).append(sentence)
             continue
+        if _respelled(row, locus):
+            # Another spelling of the same event (RM375): its anchor, `ref` and `alts` belong to the
+            # locus's spelling, so worn at the author's `start` they would spell an allele no source
+            # stated. Only what no spelling changes is filled.
+            fillable = [name for name in fillable if name in _SPELLING_FREE]
         if not fillable:
             continue
         for name in fillable:
@@ -447,14 +499,33 @@ def _stated_allele(row: object) -> str | None:
 
     A `PharmVariantRow` states a `genotype` (optional, so it really can be absent), a `HaplotypeRow`
     states its defining `allele`, and a `HeteroplasmyRow` states neither. Reading the two field names
-    rather than branching on the model keeps this agreeing with `enrich._collect_subjects`, which
+    rather than branching on the model keeps this agreeing with `enrich.collect_subjects`, which
     feeds the identical pair into the identical predicate.
     """
     return getattr(row, "genotype", None) or getattr(row, "allele", None)
 
 
-def _authored_conflict(row: object, locus: ResolutionRow) -> str | None:
-    """A sentence naming the authored identity cell the locus disagrees with, or `None`.
+#: The identity cells two spellings of one event always share: a respelled fill takes these and no other.
+_SPELLING_FREE: frozenset[str] = frozenset({"rsid", "chrom"})
+
+
+def _verdicts_of(row: object, locus: ResolutionRow) -> set[str]:
+    """`recorded_verdicts` for one positional row against one locus."""
+    return recorded_verdicts(
+        getattr(row, "chrom", None), getattr(row, "start", None), getattr(row, "ref", None), [locus]
+    )
+
+
+def _respelled(row: object, locus: ResolutionRow) -> bool:
+    """Whether the row authored another spelling of the locus's event, by the enricher's record (RM375)."""
+    if SAME_EVENT not in _verdicts_of(row, locus):
+        return False
+    start, ref = getattr(row, "start", None), getattr(row, "ref", None)
+    return (start is not None and start != locus.start) or (ref is not None and str(ref) != str(locus.ref))
+
+
+def _authored_conflict(row: object, locus: ResolutionRow) -> tuple[str, bool] | None:
+    """`(sentence, undecided)` naming the authored identity cell the locus disagrees with, or `None`.
 
     Only cells the author actually wrote are compared — a filled cell is by construction the locus's
     own value. A half-coordinate (`start` with no `chrom`, the shape CPIC drafting produces) is the
@@ -466,15 +537,31 @@ def _authored_conflict(row: object, locus: ResolutionRow) -> str | None:
     so string equality would manufacture a finding about correct data. Whether the row's allele can
     sit at the locus is a different question with its own three-valued predicate, and
     `_hostable_loci`/`hosting_verdict` has already asked it by the time this runs.
+
+    **`start` and `ref` are spelling, and the enricher's record decides them (RM375).** A recorded
+    `same_event` drops them from the comparison; a recorded `undecided` keeps the row alone but the
+    sentence names the two spellings without calling either wrong. A `different_event` or an empty cell
+    (never judged) is today's sentence.
     """
-    for name in ("rsid", "chrom", "start", "ref"):
+    verdicts = _verdicts_of(row, locus)
+    for name in ("rsid", "chrom") if SAME_EVENT in verdicts else ("rsid", "chrom", "start", "ref"):
         authored = getattr(row, name, None)
         against = getattr(locus, name, None)
         if authored is not None and against is not None and str(authored) != str(against):
+            # Undecided is a verdict about the spelling only: a wrong rsID or contig is still accused.
+            if UNDECIDED_EVENT in verdicts and name in ("start", "ref"):
+                return (
+                    f"{getattr(row, 'variant_key', None)}: authored {name}={authored!r} and the resolution "
+                    f"table's {name}={against!r} may be two spellings of one event, which the enricher "
+                    f"recorded as undecided (`authored_event=undecided`), so the rest of that row's "
+                    f"coordinate is left unfilled rather than completed from that locus",
+                    True,
+                )
             return (
                 f"{getattr(row, 'variant_key', None)}: authored {name}={authored!r} contradicts the "
                 f"resolution table's {name}={against!r}, so the rest of that row's coordinate is left "
-                f"unfilled rather than completed from a locus the row disagrees with"
+                f"unfilled rather than completed from a locus the row disagrees with",
+                False,
             )
     return None
 
@@ -498,8 +585,13 @@ def _examples(labels: list[str], limit: int = 3) -> str:
     return shown if len(labels) <= limit else f"{shown} … and {len(labels) - limit} more"
 
 
-def _usable_loci(rows: list[ResolutionRow] | None, genome_build: str) -> list[ResolutionRow]:
-    """Rows that are for this build and record an actual locus (not a `not_found` sentinel)."""
+def usable_loci(rows: Sequence[ResolutionRow] | None, genome_build: str) -> list[ResolutionRow]:
+    """Rows that are for this build and record an actual locus (not a `not_found` sentinel).
+
+    The one placement predicate: the SNP-core fill, the positional fill, `unresolved_subjects` and
+    `subjects.identity_placements` (RM362's "does the module sit here") all read a table through it, so
+    a row that places nothing places nothing for every one of them. Public since that fourth caller.
+    """
     if not rows:
         return []
     return [
@@ -613,7 +705,7 @@ def unresolved_subjects(
     The predicate `resolve_from_table` will apply, factored out so the pre-flight can ask it **before**
     resolution runs and reach the same answer the compile does (S76). A row is unplaceable when it
     authors no coordinate of its own and the table holds no usable locus for its key — the same
-    `_usable_loci` filter the fill uses, so a `not_found` sentinel and a row recorded under another
+    `usable_loci` filter the fill uses, so a `not_found` sentinel and a row recorded under another
     build count as no locus here exactly as they do there.
 
     Deliberately **not** a re-derivation of the compile's check: `compile_module` runs its refusal over
@@ -630,7 +722,7 @@ def unresolved_subjects(
     return sorted(
         v.rsid or v.variant_key or ""
         for v in variants
-        if v.chrom is None and not _usable_loci(resolution.get(v.variant_key or ""), genome_build)
+        if v.chrom is None and not usable_loci(resolution.get(v.variant_key or ""), genome_build)
     )
 
 
@@ -895,6 +987,111 @@ def genotype_fits(genotype: str, ref: str | None, alts: str | None) -> bool:
     return hosting_verdict(genotype, ref, alts) is not False
 
 
+#: One locus as `site_verdicts` reads it: `(chrom, start, ref, alts)`, `alts` comma-joined.
+LocusSpelling = tuple[str | None, int | None, str | None, str | None]
+
+
+def frame_reading(genotype: str, loci: Sequence[LocusSpelling]) -> frozenset[int] | None:
+    """Which of a key's loci a genotype names, read in the frame of one of their refs (RM381), or `None`.
+
+    A source can spell every ALT of a site against one shared padded ref (the split Ensembl repo's
+    `16:23635706 GTT>G / GT / GTTT`), and a genotype authored from such a record keeps that frame
+    (`G/GTTT`, the 2 bp deletion and the 1 bp insertion). The readers hand each ALT on in its own
+    spelling (`G>GT`, `GT>G`, `GTT>G`), so a genotype must be read the same way: each allele is trimmed
+    against a candidate frame with `alleles.trim_allele`, the one trim the readers use, and the frame
+    names the loci whose own spelling each allele trims to. Pure string work, so it is offline too, and
+    the padded and the trimmed spelling of one event name the same locus (`@one-normalizer-two-spellings`).
+
+    The candidate frames are the loci's own refs (the padded site ref is one of them when the site has
+    the ALT that pads it; `GTT>G` does here). A frame the genotype's own allele equals is a ref/ALT
+    reading (`G/GT` in `G` is the insertion, in `GT` the deletion: both are kept, RM270's either-reading
+    rule); a frame in which every allele is an ALT is a compound het, and is read only when no ref/ALT
+    reading exists, so `G/GT` is never the two deletions of the frame `GTT`. `None` when no frame names
+    every allele: the caller asks `hosting_verdict` per locus, as before.
+    """
+    called = sorted(
+        {a.strip().upper() for a in split_genotype(genotype) if a.strip() and not is_unobservable_allele(a)}
+    )
+    if not called:
+        return None
+    spelled: list[tuple[str, int, str, frozenset[str]] | None] = []
+    for chrom, start, ref, alts in loci:
+        if chrom is None or start is None or not ref or not alts:
+            spelled.append(None)
+            continue
+        spelled.append(
+            (
+                str(chrom),
+                int(start),
+                ref.strip().upper(),
+                frozenset(a.strip().upper() for a in alts.split(",")),
+            )
+        )
+    readings: dict[bool, set[int]] = {True: set(), False: set()}
+    for frame in spelled:
+        if frame is None:
+            continue
+        chrom, start, ref, _ = frame
+        named: set[int] = set()
+        for allele in called:
+            if allele == ref:
+                continue
+            spelling = trim_allele(start, ref, allele)
+            hit = {
+                k
+                for k, locus in enumerate(spelled)
+                if locus is not None
+                and (locus[0], locus[1], locus[2]) == (chrom, *spelling[:2])
+                and spelling[2] in locus[3]
+            }
+            if not hit:
+                break
+            named |= hit
+        else:
+            if named:
+                readings[ref in called] |= named
+    for kind in (True, False):
+        if readings[kind]:
+            return frozenset(readings[kind])
+    return None
+
+
+def site_verdicts(genotype: str, loci: Sequence[LocusSpelling]) -> list[bool | None]:
+    """`hosting_verdict` for each of a key's loci, the genotype read in its site's frame where it needs one (RM381).
+
+    Per locus first, as always. `frame_reading` then decides two cases the per-locus strings cannot:
+
+    * **A padded genotype** (its two alleles share a flank past the anchor, `GTT/GTTT`, `AGA/AGAGA`):
+      it names one record's ALT in that record's frame, so the loci the reading names host it and the
+      other loci **at the same site** (`chrom`, `start`) do not. Per locus, the direction-blind string
+      algebra would also accept the sibling it does not name (`AGA/AGAGA` reduces like the deletion).
+    * **No locus hosts it alone** (a compound het spelled in a padded frame, `G/GTTT` on
+      `GTT>G,GT,GTTT`): the loci the reading names host it, one allele each.
+
+    Otherwise nothing moves: a caller-spelled `G/GT` keeps RM270's either reading, and a homozygote keeps
+    the one-to-many expansion (`@membership-union`, COMPILER.md § Resolution). A locus at another site
+    (a paralog, a PAR partner) always keeps its own verdict. Both resolvers and the compiler's expansion
+    and membership ask this, so the tiers read one genotype one way.
+    """
+    per_locus = [hosting_verdict(genotype, ref, alts) for _, _, ref, alts in loci]
+    named = frame_reading(genotype, loci)
+    if named is None:
+        return per_locus
+    called = sorted(
+        {a.strip().upper() for a in split_genotype(genotype) if a.strip() and not is_unobservable_allele(a)}
+    )
+    padded = len(called) == 2 and trim_allele(0, called[0], called[1])[1:] != (called[0], called[1])
+    if padded:
+        sites = {(loci[k][0], loci[k][1]) for k in named}
+        return [
+            True if k in named else False if (chrom, start) in sites else verdict
+            for k, ((chrom, start, _, _), verdict) in enumerate(zip(loci, per_locus, strict=True))
+        ]
+    if all(verdict is False for verdict in per_locus):
+        return [True if k in named else verdict for k, verdict in enumerate(per_locus)]
+    return per_locus
+
+
 def _hostable_loci(
     loci: list[ResolutionRow], genotype: str
 ) -> tuple[list[ResolutionRow], list[ResolutionRow], list[ResolutionRow]]:
@@ -917,8 +1114,9 @@ def _hostable_loci(
     usable: list[ResolutionRow] = []
     rejected: list[ResolutionRow] = []
     undecided: list[ResolutionRow] = []
-    for locus in loci:
-        verdict = hosting_verdict(genotype, locus.ref, locus.alts)
+    # RM381: read in its site's frame, so a padded genotype and the per-ALT pieces meet (`site_verdicts`).
+    verdicts = site_verdicts(genotype, [(lo.chrom, lo.start, lo.ref, lo.alts) for lo in loci])
+    for locus, verdict in zip(loci, verdicts, strict=True):
         if verdict is False:
             rejected.append(locus)
             continue
@@ -1118,25 +1316,186 @@ def _verify(v: VariantRow, loci: list[ResolutionRow], ladders: list[LadderFindin
 
     Warning in `best_effort`, refusal in `strict`, and the refusal says more than the warning does —
     which is why it is one `LadderFinding` rather than an append to each of two lists. The authored
-    value wins either way: the row keeps what its author wrote, which is precisely why the round-trip
-    cannot reproduce the injected table, since the artifact carries the authored coordinate and the
-    table's is lost. Contradiction is therefore an instability, not merely a difference of opinion.
+    value wins either way: the row keeps what its author wrote, and since RM364 the table's locus rides
+    `resolution_loci` beside it, so a reverse gives both back and the next compile reaches the same
+    finding. Strict refuses for the contradiction itself: an all-or-nothing artifact builds only on an
+    authored pair the table agrees with.
     """
     coordkey = derive_variant_key(None, v.chrom, v.start, v.ref)
     keys = {derive_variant_key(None, lo.chrom, lo.start, lo.ref) for lo in loci}
     if keys and coordkey not in keys:
-        message = coordinate_disagrees(
-            subject=v.rsid or coordkey,
-            authored=coordkey,
-            reported=f"the resolution table maps it to {sorted(keys)}",
-        )
-        ladders.append(
-            LadderFinding(
-                CodedWarning("rsid_coordinate_disagrees", message),
-                refusal=(
-                    message + " The authored value is kept, so the table's position does not survive a "
-                    "reverse — the compile is not reproducible from it. Fix one of the two, or compile "
-                    "without strict."
-                ),
+        verdicts = recorded_verdicts(v.chrom, v.start, v.ref, loci)
+        if SAME_EVENT in verdicts:
+            # The enricher read the reference and recorded the authored pair as another spelling of the
+            # locus's event (RM375): agreement, and the table's spelling rides `resolution_loci` back.
+            return
+        if UNDECIDED_EVENT in verdicts:
+            message = (
+                f"{v.rsid or coordkey} authored as {coordkey}, while the resolution table spells it "
+                f"{sorted(keys)}: whether the two are one event in two spellings is undecided (the "
+                f"enricher recorded `authored_event=undecided`)."
             )
+            # Why strict declines here is an unsettled spelling, not an irreproducible artifact, and
+            # neither side is the one to fix until it is settled (RM375).
+            refusal = (
+                message + " strict builds only on an authored pair the table agrees with, and this one is "
+                "unsettled: re-derive online (`just-dna-enricher enrich --rederive`) so the enricher reads "
+                "the reference, or author the VCF POS if the start is another convention's position; or "
+                "compile without strict."
+            )
+        else:
+            message = coordinate_disagrees(
+                subject=v.rsid or coordkey,
+                authored=coordkey,
+                reported=f"the resolution table maps it to {sorted(keys)}",
+            )
+            # Since RM364 the table's locus rides `resolution_loci` through a reverse, so the old reason
+            # (the position is lost, the compile irreproducible) is false; strict refuses for the
+            # contradiction itself, which the next lap reaches again (RM380).
+            refusal = (
+                message + " The authored value is kept and the table's position is carried beside it, so "
+                "the next compile reaches this same finding: strict builds only on an authored pair the "
+                "table agrees with. Fix one of the two, or compile without strict."
+            )
+        ladders.append(LadderFinding(CodedWarning("rsid_coordinate_disagrees", message), refusal=refusal))
+
+
+#: The phrase `rsid_placements_disagree`'s sentence carries, pinned for a consumer that greps the manifest
+#: (`@warning-text-is-api`; COMPILER.md § Warning texts).
+PLACEMENTS_DISAGREE_PHRASE = "two placement sets for this one rsID"
+
+
+def row_release(row: ResolutionRow) -> str | None:
+    """The snapshot release a resolution row records as having answered it, or `None` when it records none.
+
+    Read by name rather than as a field: the column (`source_release`, RM373) is an optional derived one,
+    and a row written before it existed answers `None`, which is "not recorded", never "no release".
+    """
+    value = getattr(row, "source_release", None)
+    return str(value) if value else None
+
+
+def _place(row: ResolutionRow, genome_build: str) -> tuple[str, int]:
+    """Where a locus is, with a pseudoautosomal Y spelling read as its X partner (one place, two contigs)."""
+    return _folded_place(str(row.chrom), int(row.start), genome_build)  # callers pass rows with a start only
+
+
+def _folded_place(chrom: str, start: int, genome_build: str) -> tuple[str, int]:
+    if chrom == "Y":
+        partner = par_partner(chrom, start, build=genome_build)
+        if partner is not None:
+            return partner
+    return chrom, start
+
+
+def _answer_label(key: str, loci: list[ResolutionRow], recorded: bool) -> str:
+    shown = ", ".join(f"{lo.chrom}:{lo.start} {lo.ref}>{lo.alts}" for lo in _sorted_loci(loci))
+    # The places the source offered beside the ones kept (RM387), which the comparison read too.
+    offered = sorted({place for lo in loci for place in split_source_loci(lo.source_loci)})
+    if offered:
+        shown += f" (the source offered {', '.join(f'{c}:{p}' for c, p in offered)})"
+    if not recorded:
+        return f"under {key} at {shown}"
+    releases = sorted({release for lo in loci if (release := row_release(lo))})
+    stated = f"release {', '.join(releases)}" if releases else "release not recorded"
+    return f"under {key} at {shown} [{stated}]"
+
+
+def _spellings_judged_apart(full: list[ResolutionRow], other: list[ResolutionRow]) -> bool:
+    """The enricher judged one answer's spelling left-aligned and the other's not (RM270's verdict)."""
+    verdicts = {lo.left_aligned for lo in (*full, *other) if lo.left_aligned is not None}
+    return verdicts == {True, False}
+
+
+def placement_disagreements(rows: list[ResolutionRow], genome_build: str) -> list[LadderFinding]:
+    """One rsID placed in two ways that do not agree, within one `resolution.csv` (RM374).
+
+    **What one answer is.** A `variant_key` is one subject, and a re-run of the enricher replaces a
+    subject's rows whole (`ResolutionRow._KEY_RULE = "subject"`), so the rows under one key are one answer
+    and `locus_index` only orders the loci inside it. An rsID mapping to several loci within that one
+    answer is the ordinary one-to-many case (`@membership-union`), never this finding. Two answers about
+    one rsID are two KEYS whose rows carry it: the rsID's own key, which is the full answer (every locus
+    the source placed it at that the authored allele can sit on), and a positional key whose rsID was
+    back-filled, which answers for the one locus its row was authored at. The rsID's own key holds the
+    loci the authored genotype can sit on, while the back-fill reads the source's unfiltered answer, so the
+    full answer is those loci plus the `source_loci` its rows record: every place the links offered in the
+    run that wrote them (RM387). Read without it, a positional row at a sibling locus the hosting filter
+    left out was a second placement, and `--rederive` wrote the same table again.
+
+    **The finding.** A positional answer whose locus is not among the full answer's loci: the table then
+    holds one identity at two placements, which is what merge-not-clobber leaves behind when the source
+    moved between runs (the 0.8 migration probe's `rs761191455`, `13:48041104 G>GG` from the old Ensembl
+    release beside `13:48041103 T>TG` from the new). A pseudoautosomal Y locus is compared as its X
+    partner, since the enricher keeps one contig of a PAR locus by default.
+
+    **Where the table cannot tell, it withholds** rather than refuse:
+
+    * no answer is keyed by the rsID itself — two positional rows labelled with one rsID may be two loci
+      of a one-to-many rsID or one event spelled twice, and nothing here says which;
+    * one key is never reported against itself, even holding two rows at one `locus_index` — a
+      hand-filled table leaves `locus_index` at 0 for every locus of a one-to-many rsID, which looks
+      exactly like two answers merged under one key; such a key is still the full answer the other keys
+      are compared with;
+    * an `ambiguous` row, whose rsID is a deterministic pick among candidates rather than a fact, and a
+      row with no `start`, which places nothing;
+    * two answers whose spellings the enricher judged, one `left_aligned=true` and the other `false`:
+      within 0.8 a filled coordinate is written left-aligned, so a stale answer re-filled now would agree
+      with the fresh one, and a true/false pair is one event spelled two ways in one release (an
+      authored or snapshot spelling beside the respelled fill). `--rederive` would rewrite the same
+      table, so that is the spelling question, not this one.
+
+    Compared on `(chrom, start)`, not alleles: a stale allele SET under one key is the membership check's
+    axis (`_check_allele_membership`), not a placement. GRCh38-bound like the rest of resolution (RM15).
+    A ladder: a warning in `best_effort`, a refusal under `strict`.
+    """
+    if genome_build != "GRCh38":
+        return []
+    answers: dict[str, dict[str, list[ResolutionRow]]] = {}
+    for row in usable_loci(rows, genome_build):
+        if row.rsid is None or row.status == "ambiguous" or row.start is None:
+            continue
+        answers.setdefault(row.rsid, {}).setdefault(row.variant_key, []).append(row)
+    findings: list[LadderFinding] = []
+    for rsid in sorted(answers):
+        by_key = answers[rsid]
+        full = by_key.get(rsid)
+        if full is None:
+            continue
+        # The source's whole answer, never the narrowed one (RM387): the rows under the rsID's key are the
+        # loci its authored genotype can sit on, and `source_loci` records what the links offered beside
+        # them, so a positional row at a sibling locus the filter left out is one answer, not two. A row
+        # with no `source_loci` (none was dropped, or it predates the column) is read as the whole answer.
+        places = {_place(lo, genome_build) for lo in full} | {
+            _folded_place(chrom, start, genome_build)
+            for lo in full
+            for chrom, start in split_source_loci(lo.source_loci)
+        }
+        disagreeing = {
+            key: loci
+            for key, loci in sorted(by_key.items())
+            if key != rsid
+            and not {_place(lo, genome_build) for lo in loci} <= places
+            and not _spellings_judged_apart(full, loci)
+        }
+        if not disagreeing:
+            continue
+        involved = [lo for loci in (full, *disagreeing.values()) for lo in loci]
+        recorded = any(row_release(lo) for lo in involved)
+        labels = [_answer_label(rsid, full, recorded)] + [
+            _answer_label(key, loci, recorded) for key, loci in disagreeing.items()
+        ]
+        warning = (
+            f"{rsid}: resolution.csv holds {PLACEMENTS_DISAGREE_PHRASE}, "
+            f"{'; and '.join(labels)}{'' if recorded else ' (releases not recorded)'}. The answers do "
+            f"not agree, which is what an earlier enrich's rows kept beside a later one's look like "
+            f"(a re-run fills subjects it has no row for and never re-asks the rest), so a consumer "
+            f"joining by position finds this variant at one placement and misses it at the other. "
+            f"Re-derive the table (`just-dna-enricher enrich <spec-dir> --rederive`) or delete "
+            f"resolution.csv and enrich again."
         )
+        refusal = (
+            f"{warning} Strict refuses until the table places each rsID one way: an artifact compiled "
+            f"from it can publish one identity at two places."
+        )
+        findings.append(LadderFinding(CodedWarning("rsid_placements_disagree", warning), refusal=refusal))
+    return findings

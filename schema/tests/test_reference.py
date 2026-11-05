@@ -8,6 +8,7 @@ from just_dna_format.frequency import FrequencyRow
 from just_dna_format.manifest import COLOR_PATTERN, RECOMMENDED_COLORS, RECOMMENDED_ICONS
 from just_dna_format.reference import authoring_reference, json_schemas
 from just_dna_format.spec import VariantRow
+from just_dna_format.vocab import MISPLACED_COLUMN_REASONS
 
 
 def test_authoring_reference_is_json_serializable_with_expected_shape() -> None:
@@ -36,6 +37,9 @@ def test_authoring_reference_is_generated_not_hardcoded() -> None:
     # the vocab is the live frozenset, not a copy that could drift
     assert ref["vocabularies"]["measure_kind"] == sorted(VALID_MEASURE_KINDS)
     assert "reference_db" in ref["reserved_names"]
+    # RM327: `tradeoff` left the reserved set for the misplaced map; an authoring tool sees it there.
+    assert ref["misplaced_columns"] == dict(sorted(MISPLACED_COLUMN_REASONS.items()))
+    assert "tradeoff" in ref["misplaced_columns"] and "tradeoff" not in ref["reserved_names"]
     # `actionability` is reported under `vocabularies`, not `open_recommended`: `VariantRow` rejects
     # a non-member, so it is closed however `ACTIONABILITY_SEED` is named. This assertion used to
     # pin the opposite and was pinning the drift.
@@ -301,8 +305,22 @@ def test_required_any_of_agrees_with_each_models_own_validator() -> None:
         "StudyRow": {"pmid": "12345678"},
         "HaplotypeRow": {"haplotype_name": "*4", "allele": "A"},
         "PharmVariantRow": {"drug": "warfarin", "conclusion": "c"},
+        # The meta-table's groups are its statement columns rather than identity ones (0.8): a row
+        # must state at least one finding or fact.
+        "MetaRow": {"members": "variants[variant_key=rs1]"},
     }
-    identity_values = {"rsid": "rs1801133", "chrom": "1", "start": 100}
+    identity_values = {
+        "rsid": "rs1801133",
+        "chrom": "1",
+        "start": 100,
+        "conclusion": "c",
+        "direction": "risk",
+        "negatives": "n",
+        "tier": "A",
+        "age_of_action": "LATE",
+        "age_of_action_confidence": "DIRECT",
+        "flags": "tag",
+    }
     checked = 0
     for name, model in _ALL_MODELS.items():
         groups = getattr(model, "REQUIRED_ANY_OF", ())

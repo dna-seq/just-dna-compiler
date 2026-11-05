@@ -20,12 +20,14 @@ in the same period. So the licence travels as data, read by the enricher from th
 downloaded (ClinPGx ships a `LICENSE.txt` inside each archive) and pinned by `license_sha256`, which
 makes the recorded terms provably contemporaneous with the recorded data.
 
-**Why a fact table rather than a column on `ResolutionRow`.** `_write_resolution_csv` rebuilds that
-table from `weights.parquet`, which by design carries no provenance at all, with a hardcoded field
-list and `source` reset to `"reversed"`. A licence column there would be wiped on every
-`compile → reverse → compile` cycle and could never be recovered — the same structural reason
-`rsid_alternates` is unrecoverable. As its own fact table it round-trips for free, because
-`_write_table_csv` derives its columns from `model_fields`.
+**Why a fact table rather than a column on `ResolutionRow`.** Licence terms are per source, not per
+resolved locus: a column on every resolution row would repeat one source's terms on each row it
+answered, and cover none of the sources no resolution row names. When this was decided,
+`_write_resolution_csv` also rebuilt that table from parquets carrying no provenance, through a
+hardcoded field list, so a column there was wiped on every round trip; since RM380 the parquets carry
+every `ResolutionRow` column but a reasoned few, so that reason is gone and the first one stands. As
+its own fact table it round-trips for free, because `_write_table_csv` derives its columns from
+`model_fields`.
 
 **Tri-state booleans are load-bearing.** `share_alike` and `commercial_use` are `Optional[bool]`, and
 `None` means *unknown*, never *false*. A source whose terms could not be established has not been

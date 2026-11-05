@@ -49,7 +49,6 @@ Builder-only: `polars` is a guarded `[dev]` import, exactly as in the sibling bu
 
 import collections
 import csv
-import json
 import logging
 import re
 from dataclasses import dataclass, field
@@ -58,6 +57,7 @@ from pathlib import Path
 
 from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
+from just_dna_format.snapshot import SnapshotRelease, SnapshotWrite, begin_snapshot_write
 
 from just_dna_enricher.civic_identities import (
     CIVIC_CURATION_STATES,
@@ -73,11 +73,10 @@ from just_dna_enricher.civic_vcf import (
     summarize,
 )
 from just_dna_enricher.locations import (
-    RELEASE_FILENAME,
     SNAPSHOT_DATA_DIRNAME,
     SNAPSHOT_LICENSE_FILENAME,
 )
-from just_dna_enricher.net import stream_to_file
+from just_dna_enricher.net import EndpointRetired, stream_to_file
 
 try:  # the one guarded optional import (CLAUDE.md): polars is builder-only ([dev] extra)
     import polars as pl
@@ -199,7 +198,7 @@ _G37_ACCESSIONS: dict[str, str] = {
         strict=True,
     )
 }
-_G38_ACCESSIONS: dict[str, str] = {
+GRCH38_REFSEQ_ACCESSIONS: dict[str, str] = {
     f"NC_{i:06d}.{v}": c
     for i, v, c in zip(
         range(1, 25),
@@ -208,7 +207,7 @@ _G38_ACCESSIONS: dict[str, str] = {
         strict=True,
     )
 }
-assert not (_G37_ACCESSIONS.keys() & _G38_ACCESSIONS.keys()), (
+assert not (_G37_ACCESSIONS.keys() & GRCH38_REFSEQ_ACCESSIONS.keys()), (
     "an accession cannot name both builds; the per-chromosome map is wrong"
 )
 
@@ -234,6 +233,15 @@ class CivicUnavailable(CivicBuildError):
     wants to distinguish "the source did not answer" from "the source answered something we cannot
     build" can (`@client-exception-contract`). The subclassing makes a caller's `except` order
     load-bearing, which is why it is stated here rather than left to be discovered.
+    """
+
+
+class CivicRetired(CivicUnavailable, EndpointRetired):
+    """The source answered HTTP 410: it retired a CIViC nightly TSV (RM361, audit round 2).
+
+    Its lane's `CivicUnavailable`, so every handler still catches it; marked `EndpointRetired`, so
+    the reason is `retired` and the message says the file moved and to upgrade, never that the
+    host was down.
     """
 
 
@@ -327,6 +335,7 @@ def download_civic_file(dest: Path, url: str) -> CivicDownload:
         dest,
         url,
         error_cls=CivicUnavailable,
+        retired=CivicRetired,
         what=f"the CIViC file {Path(url).name}",
         timeout=120.0,
     )
@@ -382,7 +391,7 @@ def parse_grch38_substitution(hgvs: str | None) -> tuple[str, int, str, str] | N
         if match is None:
             continue
         accession, position, ref, alt = match.groups()
-        chrom = _G38_ACCESSIONS.get(accession)
+        chrom = GRCH38_REFSEQ_ACCESSIONS.get(accession)
         if chrom is not None:
             return chrom, int(position), ref, alt
     return None
@@ -393,7 +402,7 @@ def has_unparsable_grch38(hgvs: str | None) -> bool:
     if parse_grch38_substitution(hgvs) is not None:
         return False
     return any(
-        token.split(":")[0] in _G38_ACCESSIONS
+        token.split(":")[0] in GRCH38_REFSEQ_ACCESSIONS
         for token in re.split(r"[,\s]+", (hgvs or "").strip())
         if ":" in token
     )
@@ -707,6 +716,7 @@ def build_snapshot(
     records.sort(key=_sort_key)
     out_dir = Path(out_dir)
     data_dir = out_dir / SNAPSHOT_DATA_DIRNAME
+    snapshot = begin_snapshot_write(out_dir)
     data_dir.mkdir(parents=True, exist_ok=True)
     parquet_file = data_dir / CIVIC_PARQUET
     frame = (
@@ -744,8 +754,9 @@ def build_snapshot(
         profile_sha256=profile_sha256,
         dataset=f"civic_{release}" if release else None,
     )
-    _write_release_json(out_dir, result, release=release)
+    # The licence first: the description is the last file a snapshot gains (`SNAPSHOT_ROOT_FILENAMES`).
     _write_license(out_dir)
+    _write_release_json(snapshot, result, release=release)
     return result
 
 
@@ -1080,34 +1091,34 @@ def _status_notice(result: CivicBuildResult) -> str:
     )
 
 
-def _write_release_json(out_dir: Path, result: CivicBuildResult, *, release: str | None) -> Path:
+def _write_release_json(snapshot: SnapshotWrite, result: CivicBuildResult, *, release: str | None) -> Path:
     """Write `release.json` — the provenance, the status basis, and every count the build made."""
-    payload = {
-        "source": "civic",
-        "release": release,
-        "dataset": result.dataset,
-        "evidence_sha256": result.evidence_sha256,
-        "variant_sha256": result.variant_sha256,
-        "profile_sha256": result.profile_sha256,
-        "genome_build": CIVIC_GENOME_BUILD,
-        "status_basis": result.status_basis,
-        "status_counts": result.status_counts,
-        "unjoinable_submitted": result.unjoinable_submitted,
-        "composite_profile_rows": result.composite_profile_rows,
-        "vcf_evidence": result.vcf_evidence,
-        "input_rows": result.input_rows,
-        "record_count": result.record_count,
-        "dropped": result.dropped,
-        "identity_derivations": result.identity_derivations,
-        "curated_identities": result.curated_identities,
-        "variants": result.variants,
-        "withheld_direction": result.withheld_direction,
-        "contested_variants": result.contested_variants,
-        "unresolvable_with_caid": result.unresolvable_with_caid,
-        "unparsable_hgvs": result.unparsable_hgvs,
-        "redistributable": True,
-        "licence": "CC0-1.0",
-        "notice": (
+    payload = SnapshotRelease(
+        source="civic",
+        release=release,
+        dataset=result.dataset,
+        evidence_sha256=result.evidence_sha256,
+        variant_sha256=result.variant_sha256,
+        profile_sha256=result.profile_sha256,
+        genome_build=CIVIC_GENOME_BUILD,
+        status_basis=result.status_basis,
+        status_counts=result.status_counts,
+        unjoinable_submitted=result.unjoinable_submitted,
+        composite_profile_rows=result.composite_profile_rows,
+        vcf_evidence=result.vcf_evidence,
+        input_rows=result.input_rows,
+        record_count=result.record_count,
+        dropped=result.dropped,
+        identity_derivations=result.identity_derivations,
+        curated_identities=result.curated_identities,
+        variants=result.variants,
+        withheld_direction=result.withheld_direction,
+        contested_variants=result.contested_variants,
+        unresolvable_with_caid=result.unresolvable_with_caid,
+        unparsable_hgvs=result.unparsable_hgvs,
+        redistributable=True,
+        license="CC0-1.0",
+        notice=(
             "CIViC content is CC0 1.0 Universal, so this snapshot may be redistributed. "
             + _status_notice(result)
             + " Coordinates are GRCh38, "
@@ -1118,12 +1129,10 @@ def _write_release_json(out_dir: Path, result: CivicBuildResult, *, release: str
             "CIVIC_IDENTITY_PROTOCOL.md and the per-variant evidence docs/probes/"
             "CIVIC_UNRESOLVED.md. Nothing here may enter resolution.csv."
         ),
-        "built_at": now_utc_iso(),
-        "builder_version": _builder_version(),
-    }
-    path = out_dir / RELEASE_FILENAME
-    atomic_write_text(path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
-    return path
+        built_at=now_utc_iso(),
+        builder_version=_builder_version(),
+    )
+    return snapshot.commit(payload)
 
 
 def _builder_version() -> str:

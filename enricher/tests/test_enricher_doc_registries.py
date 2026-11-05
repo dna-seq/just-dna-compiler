@@ -25,7 +25,7 @@ The check table only gets **containment**, and forcing equality there would be t
 direction is entailed makes the test demand false claims. Real rows attest nothing: `Declared use` is
 an acquisition gate, `Source coverage` and `Article licence` are recording passes, `Drafted vs
 authored rows` runs outside `enrich()` entirely. So the invariant is: every emitting member of
-`VALID_VERIFICATION_CHECKS` appears in the fourth column, every `code`-shaped entry in that column is
+`VALID_VERIFICATION_CHECKS` appears in the last column, every `code`-shaped entry in that column is
 a member, and the two members the vocabulary marks RESERVED appear nowhere — parsed from `vocab.py`'s
 own comments rather than restated here, so retiring a reservation moves one thing.
 
@@ -42,6 +42,7 @@ from pathlib import Path
 
 import just_dna_enricher
 from just_dna_enricher import licensing
+from just_dna_enricher.verification import CHECK_WITNESSES
 from just_dna_format import vocab
 
 _PACKAGE = Path(just_dna_enricher.__file__).resolve().parent
@@ -60,13 +61,19 @@ def _mapped_modules() -> list[str]:
 
 
 def _package_modules() -> set[str]:
-    """Top-level modules only. Subpackages are excluded by the glob, so adding one is a decision."""
-    return {p.stem for p in _PACKAGE.glob("*.py")} - {"__init__"}
+    """Top-level modules only. Subpackages are excluded by the glob, so adding one is a decision.
+
+    `cli` is the one taken (RM260 turned `cli.py` into a package with the same import path, so its map
+    row still describes one module); `generated/` is protoc output and stays out.
+    """
+    return ({p.stem for p in _PACKAGE.glob("*.py")} - {"__init__"}) | (
+        {p.parent.name for p in _PACKAGE.glob("*/__init__.py")} - {"generated"}
+    )
 
 
 def _attested_in_the_check_table() -> set[str]:
     """The vocabulary members named in the check table's `Attests as` column."""
-    header = "| Check | Compares | Where | Attests as |"
+    header = "| Check | Compares | Where | Reads | Against | Attests as |"
     doc = _doc()
     assert header in doc, f"the check table's header moved or lost a column; looked for {header!r}"
     section = doc.split(header)[1].split("\n\n")[0]
@@ -81,7 +88,7 @@ def _attested_in_the_check_table() -> set[str]:
 
 def _table_rows() -> list[str]:
     """Every data row of the check table, so a row can be read as a whole rather than one cell."""
-    header = "| Check | Compares | Where | Attests as |"
+    header = "| Check | Compares | Where | Reads | Against | Attests as |"
     doc = _doc()
     assert header in doc, f"the check table's header moved or lost a column; looked for {header!r}"
     section = doc.split(header)[1].split("\n\n")[0]
@@ -195,7 +202,15 @@ def _error_classes() -> dict[str, type]:
     import pkgutil
 
     out: dict[str, type] = {}
-    for info in pkgutil.iter_modules(list(just_dna_enricher.__path__)):
+    # `cli` and `enrich` are packages since RM260: their submodules hold the definitions each `__init__`
+    # only re-exports, and `obj.__module__ == module.__name__` would skip every one of them there.
+    for info in [
+        *pkgutil.iter_modules(list(just_dna_enricher.__path__)),
+        *pkgutil.iter_modules(list(importlib.import_module("just_dna_enricher.cli").__path__), prefix="cli."),
+        *pkgutil.iter_modules(
+            list(importlib.import_module("just_dna_enricher.enrich").__path__), prefix="enrich."
+        ),
+    ]:
         module = importlib.import_module(f"just_dna_enricher.{info.name}")
         for name, obj in vars(module).items():
             if inspect.isclass(obj) and issubclass(obj, Exception) and obj.__module__ == module.__name__:
@@ -211,7 +226,7 @@ def _rostered_errors() -> set[str]:
     named = set(
         re.findall(
             r"`([A-Z]\w*(?:Error|Unavailable|Refused|NotScored|NotFound|Refusal|Mismatch"
-            r"|Collision|NotPublished|Retired))`",
+            r"|Collision|NotPublished|NotPublishable|Retired))`",
             section,
         )
     )
@@ -308,3 +323,32 @@ def test_the_prose_states_no_per_command_total(this_file: None = None) -> None:
         rf"`?(?:enrich|enrich_literature|check-identifiers|pgx|clinpgx)\S*`?\s+attests\s+({words})", _doc()
     )
     assert not claims, f"a per-command attestation count is back in ENRICHER.md: {claims}"
+
+
+def test_the_reads_and_against_columns_are_the_roster(this_file: None = None) -> None:
+    """RM292's two columns are the check roster, cell for cell — an equality per attesting row.
+
+    The roster is the data (`verification.CHECK_WITNESSES`, which `ran()`/`skipped()` read), and this
+    table is where a reader of `verification.json` looks it up; a hand-kept copy beside a registry is
+    the drift `@registry-completeness` names, so every row that attests a member must show exactly its
+    entry's `checked` and `witness`, and a row that attests nothing shows neither.
+    """
+    problems: list[str] = []
+    for row in _table_rows():
+        cells = row.rstrip().rstrip("|").split("|")
+        member_cell, reads, against = cells[-1], cells[-3], cells[-2]
+        members = set(re.findall(r"`(\w+)`", member_cell.split("*(")[0])) & set(CHECK_WITNESSES)
+        if not members:
+            if reads.strip() != "—" or against.strip() != "—":
+                problems.append(f"{cells[1].strip()}: attests nothing, so it states no witness")
+            continue
+        [member] = members
+        entry = CHECK_WITNESSES[member]
+        stated_reads = re.findall(r"`(\w+)`", reads)[:1]
+        if stated_reads != [entry.checked]:
+            problems.append(f"{member}: Reads {stated_reads} != {entry.checked!r}")
+        if set(re.findall(r"`([\w-]+)`", against)) != set(entry.witness):
+            problems.append(f"{member}: Against {against.strip()!r} != {entry.witness}")
+        if bool(entry.tolerance) != ("undecided" in reads):
+            problems.append(f"{member}: the Reads cell and the roster disagree about a tolerance")
+    assert not problems, "\n".join(problems)

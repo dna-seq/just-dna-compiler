@@ -1,6 +1,6 @@
 # The spec directory: which files the compiler reads, which it tolerates, and what a cell may spell.
 #
-# Source of truth: compiler/src/just_dna_compiler/compiler.py, schema/src/just_dna_format/layout.py,
+# Source of truth: compiler/src/just_dna_compiler/compiler/, schema/src/just_dna_format/layout.py,
 # docs/COMPILER.md § "The compile pipeline", docs/SCHEMAS.md's CSV families.
 #
 # Standing contract (S16): unknown files in a spec directory are IGNORED on purpose. A module may carry
@@ -12,7 +12,7 @@ Feature: The spec directory and the cells inside it
   A near-miss table name is the one case where "ignored" is the wrong answer, because the author's rows
   are silently dropped and the compile is green.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/table_checks.py
   # anchor: _check_misspelled_tables
   @code:table_file_near_miss @actionable @both_modes
   Scenario: a mistyped table name, one small edit from a real one
@@ -22,7 +22,7 @@ Feature: The spec directory and the cells inside it
     And it says "if that is a typo, every row in it is being silently ignored"
     And it restates that "Unknown files are otherwise tolerated"
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/table_checks.py
   # anchor: _check_misspelled_tables
   Scenario: an unrelated filename stays quiet
     Given a spec directory containing "curation-notes.csv"
@@ -33,7 +33,7 @@ Feature: The spec directory and the cells inside it
     # it undoes the tolerance. `difflib` at a 0.8 cutoff catches a transposition, a doubled or dropped
     # letter, and a singular/plural slip.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/table_checks.py
   # anchor: _check_misspelled_tables
   Scenario: the derived/ tree is scanned too
     Given a spec directory containing "derived/varaints.csv"
@@ -43,7 +43,7 @@ Feature: The spec directory and the cells inside it
     # table exactly where the guard cannot see it, re-opening the hole S16 closed as the price of a
     # convenience.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/table_checks.py
   # anchor: _check_misspelled_tables
   @code:table_file_misplaced @actionable @both_modes
   Scenario: an authored table sitting where only sidecars live
@@ -53,7 +53,7 @@ Feature: The spec directory and the cells inside it
     And it says "every row in it is being silently ignored" and to move it to the spec root
     And it states that only resolution.csv and the fact tables have a second legal home
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/tables.py
   # anchor: _locate_sidecar
   # text: schema/src/just_dna_format/layout.py
   @code:sidecar_spelling_deprecated @actionable @both_modes
@@ -67,7 +67,7 @@ Feature: The spec directory and the cells inside it
     # minor: the replacement exists, the old name is not mandatory, and the migration is `git mv`.
     # On a split tree the notice names WHICH copy rather than a bare filename that could be either.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/tables.py
   # anchor: _locate_sidecar
   # text: schema/src/just_dna_format/layout.py
   @refusal @both_modes
@@ -80,7 +80,7 @@ Feature: The spec directory and the cells inside it
     # edits a row the enricher wrote and that edit is the point — so two copies are two legitimate
     # claims and picking one discards somebody's work without saying so (`@sidecar-name-and-place`).
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/manifest.py
   # anchor: _read_verification_block
   # text: schema/src/just_dna_format/layout.py
   @code:verification_two_copies @actionable @both_modes
@@ -93,7 +93,26 @@ Feature: The spec directory and the cells inside it
     # already the weak one, and refusing would add nothing. The message is built by `layout` as a refusal
     # and coded at the point where it becomes a warning, which is the only place that knows it is one.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/manifest.py
+  # anchor: discover_logs
+  @code:log_file_not_shipped @actionable @both_modes
+  Scenario: a file under logs/ that discovery leaves behind
+    Given a spec directory whose logs/ holds "notes.svg", "data.bin", a "ledger.jsonl" with one bad line, and "authoring.log"
+    When the module is compiled
+    Then one warning per file left behind says it "does not ship with the module", naming the path
+    And for the SVG the reason is that "an SVG is XML that can carry script, so it never ships"
+    And for the ledger it names the first bad line, since "every non-blank line of a .jsonl must parse as JSON"
+    And authoring.log ships and draws no warning
+    And the same warnings fire under strict, and the compile succeeds in both modes
+    # RM337. One reason per arm of `_log_left_behind_reason`, which also decides the verdict, so the two
+    # cannot drift: a hidden path, a symlink or a path under one, a file over the ceiling (both sizes
+    # named), a file the compile could not read, an image with the wrong signature, SVG, any other
+    # extension, text that is not UTF-8, a `.json` that does not parse, a `.jsonl` line that does not
+    # parse. RM348 holds every discovered path to the link, size and read rules, a top-level `*.log` and
+    # `logs/` itself included. An explicit `log_files` list ships what it names and draws none; a
+    # non-`.log` file beside the spec is the ordinary tolerance of unknown files, not a log.
+
+  # source: compiler/src/just_dna_compiler/compiler/validate.py
   # anchor: _validate_spec
   @code:module_version_coerced @actionable @both_modes
   Scenario: a module version that is not SemVer
@@ -105,7 +124,7 @@ Feature: The spec directory and the cells inside it
     # A `mode="after"` validator cannot rescue a value the field's type rejects first
     # (`@yaml-version-int`), which is why the coercion is where it is.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/validate.py
   # anchor: _check_composite_gene_cells
   @code:composite_gene_cell @actionable @both_modes
   Scenario: a gene cell that looks like a list
@@ -119,7 +138,21 @@ Feature: The spec directory and the cells inside it
     # out of an upstream export, so refusing it would refuse a faithful transcription. `stats.genes` is
     # what a registry's gene index reads, which is what makes a composite cell a third gene.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/validate.py
+  # anchor: _check_half_stated_pairs
+  @code:paired_field_half_stated @actionable @both_modes
+  Scenario: a published column stated without its companion
+    Given 11 studies.csv rows stating an effect_size with no effect_measure
+    When the module is compiled
+    Then one warning fires, not 11, and it counts the rows
+    And it says "Reported rather than refused"
+    And the module compiles
+    # The pairs are declared on the models (`_PAIRED_FIELDS`, RM366). A pair whose columns are new in 0.8
+    # refuses the row at load and never reaches this check; one a published module may already hold
+    # half-stated is reported, because refusing it would stop that module validating (P3). Nothing is
+    # filled: which measure a number is, is a claim.
+
+  # source: compiler/src/just_dna_compiler/compiler/vcf_checks.py
   # anchor: _check_vcf_pointers
   @code:vcf_pointer_key_collision @actionable @both_modes
   Scenario: a pointer naming a key INFO and FORMAT both define
@@ -135,7 +168,7 @@ Feature: The spec directory and the cells inside it
     # same ALT — one of those tells a carrier they are asymptomatic on the strength of how rare the
     # variant is in a reference panel.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/vcf_checks.py
   # anchor: _check_vcf_pointers
   @code:vcf_pointer_unselected_element @actionable @both_modes
   Scenario: a pointer at a multi-valued field with no element rule
@@ -147,7 +180,7 @@ Feature: The spec directory and the cells inside it
     # Which is why each ranging rule comes in a pair: `largest` counts the reference and `largest_alt`
     # does not.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/vcf_checks.py
   # anchor: _check_vcf_pointers
   @tri_state
   Scenario: a key the spec does not define has no cardinality this tier may assert
@@ -158,22 +191,22 @@ Feature: The spec directory and the cells inside it
     # `None` for anything outside them. Asserting a cardinality would be a source convention wearing a
     # fact (P2). Unknown withholds.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
-  # anchor: _check_quality_inversion
-  @code:quality_floor_inverted @actionable @both_modes
-  Scenario: a quality floor stated against QUAL on a row where absence is the informative call
+  # source: compiler/src/just_dna_compiler/compiler/vcf_checks.py
+  # anchor: _check_qual_floor_on_reference_evidence
+  @code:qual_floor_on_reference_evidence @actionable @both_modes
+  Scenario: a quality floor stated against QUAL on a row decided from a reference record
     Given variants.csv rows with requires_callable true, quality_from "QUAL" and min_quality 30
     When the module is compiled
-    Then a warning fires quoting VCF §1.6.1.6's two definitions of QUAL
-    And it says "the higher the floor, the more confidently wrong"
+    Then a warning says "a QUAL floor cannot be read on the evidence this row is decided from"
+    And it says the spec "reserves no per-sample reference-confidence key"
     And it is aggregated to one line with examples
-    # The sign of the assertion FLIPS with the record: QUAL 60 on a variant record means the variant is
-    # almost certainly real, and the same 60 on a monomorphic reference record means the position is
-    # almost certainly variant. Refusing was considered and rejected — it would encode one reading of a
-    # field whose meaning depends on a record this tier will never see, and would refuse the legitimate
-    # case of the same row read against a variant record elsewhere in the same file.
+    # QUAL is the confidence in whatever ALT asserts (VCF §1.6.1 item 6), so it never inverts, and a
+    # high QUAL where ALT is '.' is a confident reference call. RM57 read it the other way round and
+    # told authors so on every compile; RM313 retired that code (`quality_floor_inverted` stays in the
+    # vocabulary, emitted by nothing, because published manifests carry it). What is actually wrong
+    # with the combination is that a reference block usually leaves QUAL missing, so the check cannot run.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/validate.py
   # anchor: _validate_spec
   @code:panel_block_deprecated @actionable @both_modes
   Scenario: a deprecated panel block whose one reader has been replaced
@@ -183,7 +216,7 @@ Feature: The spec directory and the cells inside it
     Then a warning says the block "is deprecated in 0.6 and removed at 1.0"
     And it names the licence row's `dataset` column as what replaced its one reader
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/validate.py
   # anchor: _validate_spec
   Scenario: the same block where nothing has replaced it yet says the opposite
     Given a module_spec.yaml declaring a `panel:` block
@@ -196,7 +229,7 @@ Feature: The spec directory and the cells inside it
     # which advice is safe. A deprecation belongs in a minor only where its audience can ACT on it, and
     # here whether they can is a property of their own module.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/binning_checks.py
   # anchor: _check_binning_grounding
   @code:bins_ungrounded @actionable @both_modes
   Scenario: a binning table stating thresholds with no evidence anywhere in the module
@@ -211,7 +244,7 @@ Feature: The spec directory and the cells inside it
     # is exactly the number a reader would want to check. `reference_examples/htt_repeat_expansion`
     # compiled green under `--strict` stating four thresholds with no citation anywhere.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/binning_checks.py
   # anchor: _check_binning_grounding
   Scenario: a bin carrying its own pmid is grounded and is not counted
     Given a repeat_alleles.csv whose threshold rows each carry a pmid

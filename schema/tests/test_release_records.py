@@ -17,6 +17,7 @@ to make impossible.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import get_origin
 
 import pytest
 from just_dna_format.base import field_vocabularies
@@ -305,14 +306,64 @@ def test_the_declared_split_is_exhaustive_over_the_kind_vocabulary() -> None:
     # What the docstring actually promises, and what nothing asserted: every member is reachable
     # through an accessor. A third kind added with no property beside it leaves its declarations
     # readable through neither, and the containment above cannot see that.
-    reachable = {"correction", "addition"}
+    reachable = {"correction", "addition", "toolchain"}
     assert reachable == set(VALID_RELEASE_CHANGE_KINDS), (
-        "a change kind gained or lost a member; `corrections`/`additions` must still cover all of them"
+        "a change kind gained or lost a member; `corrections`/`additions`/`toolchain_moves` must "
+        "still cover all of them"
     )
     for version in RELEASE_RECORDS:
         answer = needs_recompile(RELEASE_RECORDS[version].previous, version)
-        split = sorted(answer.corrections + answer.additions, key=lambda c: (c.axis, c.target))
+        split = sorted(
+            answer.corrections + answer.additions + answer.toolchain_moves, key=lambda c: (c.axis, c.target)
+        )
         assert split == sorted(answer.declared, key=lambda c: (c.axis, c.target)), version
+
+
+def test_a_toolchain_move_is_its_own_kind_and_its_own_accessor() -> None:
+    """RM352: bytes moved, content unchanged, and the recorded toolchain says why.
+
+    The shipped records hold no `toolchain` declaration yet (the 0.8.0 cut writes the first), so the
+    split above walks none; a synthetic record with one of each kind is what shows every member is
+    reachable through exactly one accessor.
+    """
+    assert "toolchain" in VALID_RELEASE_CHANGE_KINDS
+    declared = [
+        DeclaredChange(axis="manifest_fields", target="stats.genes", kind="correction", detail="d"),
+        DeclaredChange(axis="parquet_schema", target="studies.parquet", kind="addition", detail="d"),
+        DeclaredChange(axis="parquet_bytes", target="parquet_bytes", kind="toolchain", detail="polars 2"),
+    ]
+    record = ReleaseRecord(
+        version="1.1.0",
+        previous="1.0.0",
+        axes={
+            **dict.fromkeys(VALID_RELEASE_OUTPUT_AXES, False),
+            "manifest_fields": True,
+            "parquet_schema": True,
+            "parquet_bytes": True,
+        },
+        manifest_fields=["stats.genes"],
+        declared=declared,
+        evidence="synthetic",
+    )
+    answer = needs_recompile("1.0.0", "1.1.0", {"1.1.0": record})
+
+    assert [c.kind for c in answer.toolchain_moves] == ["toolchain"]
+    assert [c.kind for c in answer.corrections] == ["correction"]
+    assert [c.kind for c in answer.additions] == ["addition"]
+    # The bytes still differ: a toolchain move is a reason, never a claim that nothing moved.
+    assert answer.output_differs is True
+
+
+def test_a_toolchain_kind_is_refused_on_any_axis_but_parquet_bytes() -> None:
+    """A toolchain explains bytes, and only bytes: the gate's evidence for it is a byte measurement.
+
+    On any other axis the claim would have no measurement able to back it, so the model refuses it
+    rather than leaving the gate to find a declaration it could never accept.
+    """
+    for axis in sorted(VALID_RELEASE_OUTPUT_AXES - {"parquet_bytes"}):
+        with pytest.raises(ValidationError, match="parquet_bytes"):
+            DeclaredChange(axis=axis, target=axis, kind="toolchain", detail="d")
+    assert DeclaredChange(axis="parquet_bytes", target="parquet_bytes", kind="toolchain", detail="d")
 
 
 def test_every_recorded_manifest_field_is_a_path_the_manifest_really_has() -> None:
@@ -357,7 +408,14 @@ def test_a_declared_field_ADDITION_is_also_listed_as_one_that_moved() -> None:
             for change in record.declared
             if change.axis == "manifest_fields" and change.kind == "addition"
         }
-        assert additions <= listed, f"{version}: declared as added but not listed: {additions - listed}"
+        # A mapping-valued block is measured as its keys (see `_manifest_path_exists`), so a block
+        # whose keys are listed is listed.
+        unlisted = {
+            target
+            for target in additions
+            if target not in listed and not any(path.startswith(f"{target}.") for path in listed)
+        }
+        assert not unlisted, f"{version}: declared as added but not listed: {unlisted}"
 
 
 def test_a_declared_change_names_an_axis_the_record_says_moved() -> None:
@@ -409,13 +467,20 @@ def test_every_shipped_record_chains_to_a_lower_release() -> None:
 
 
 def _manifest_path_exists(path: str) -> bool:
-    """Whether a dotted path resolves through the manifest models, block by block."""
+    """Whether a dotted path resolves through the manifest models, block by block.
+
+    A segment after a `dict`-typed field is a key of that mapping, which is how the sweep spells it:
+    `_flatten` walks every dict, so RM300's `stats.clin_sig_counts` moves as one path per tier
+    (`stats.clin_sig_counts.pathogenic`), and the record must list exactly what the sweep measured.
+    """
     model = ModuleManifest
     *blocks, leaf = path.split(".")
     for block in blocks:
         field = model.model_fields.get(block)
         if field is None:
             return False
+        if get_origin(field.annotation) is dict:
+            return True
         model = next(
             (
                 arg
@@ -603,12 +668,20 @@ def test_every_required_path_resolves_through_the_manifest_models() -> None:
                 assert _manifest_path_exists(path), f"{version}: {change.target} requires {path}"
 
 
-def test_the_corrections_with_an_unstated_reach_are_exactly_the_two_presence_cannot_spell() -> None:
+def test_the_corrections_with_an_unstated_reach_are_exactly_the_ones_presence_cannot_spell() -> None:
     """An EQUALITY, so a correction added without deciding its reach fails here rather than
-    defaulting to unstated. RM121's pair is the one shape the grammar cannot express: every module
-    carries `stats.genes`, and the wrong value sat on the modules whose lead table named no gene."""
+    defaulting to unstated. RM121's pair was the first shape the grammar cannot express: every module
+    carries `stats.genes`, and the wrong value sat on the modules whose lead table named no gene.
+    0.8.0 adds two more, each decided at the cut: RM363's contig spelling sat on modules that wrote
+    `chr` on four tables, and RM361's `:None` key on positional rows with no `ref`."""
     unstated = {key for key, change in _shipped_corrections().items() if change.requires is None}
-    assert unstated == {("0.6.6", "stats.genes"), ("0.6.6", "stats.gene_count")}
+    assert unstated == {
+        ("0.6.6", "stats.genes"),
+        ("0.6.6", "stats.gene_count"),
+        ("0.8.0", "studies.csv,haplotypes.csv,pharm_variants.csv,heteroplasmy.csv:chrom"),
+        ("0.8.0", "studies.parquet,haplotypes.parquet,pharm_variants.parquet,heteroplasmy.parquet"),
+        ("0.8.0", "haplotypes.parquet"),
+    }
 
 
 def test_a_scoped_correction_is_excluded_by_a_manifest_without_its_block_and_kept_by_one_with_it(

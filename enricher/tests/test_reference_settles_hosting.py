@@ -12,7 +12,6 @@ from pathlib import Path
 import polars as pl
 import pytest
 from just_dna_compiler.resolution import hosting_verdict
-from just_dna_enricher import enrich as enrich_module
 from just_dna_enricher.enrich import _settle_by_reference, enrich
 from just_dna_enricher.sequences import SequenceProxy, _indel_payloads
 
@@ -88,10 +87,16 @@ def test_enrich_keeps_the_same_event_and_drops_the_different_one(
         def subsequence(self, accession: str, start: int, end: int) -> str | None:
             return _read("2", start + 1, end)
 
-    monkeypatch.setattr(enrich_module, "SequenceProxy", _Proxy)
+    # `enrich/orchestration.py` owns the name since RM260 split `enrich.py`; the shell only re-exports it.
+    monkeypatch.setattr("just_dna_enricher.enrich.orchestration.SequenceProxy", _Proxy)
     result = enrich(
         spec, offline=True, ensembl_cache=tmp_path / "cache", clinvar_cache=tmp_path, mint_vrs=False
     )
     placed = {r.rsid: (r.chrom, r.start) for r in result.rows if r.chrom}
-    assert placed == {"rs77944059": ("2", 166204477)}
+    # Kept, and written in its left-aligned spelling since RM270: the window reads `GAAAC` seven bases
+    # left of the snapshot's `ACAAA`, ClinVar's and a caller's spelling of the same deletion.
+    assert placed == {"rs77944059": ("2", 166204470)}
     assert "rs1" in result.unresolved
+    # RM272: the dropped locus is named on the result, per locus, not only in the log.
+    assert result.reference_rejected_loci == ["rs1 2:166204477"]
+    assert result.non_nucleotide_rsids == [] and result.unanchored_rsids == []

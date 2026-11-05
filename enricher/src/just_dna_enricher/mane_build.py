@@ -64,7 +64,6 @@ Builder-only: `polars` is a guarded `[dev]` import, exactly as in the sibling bu
 import csv
 import gzip
 import hashlib
-import json
 import logging
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
@@ -72,11 +71,11 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 import httpx
-from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
+from just_dna_format.snapshot import SnapshotRelease, SnapshotWrite, begin_snapshot_write
 
-from just_dna_enricher.locations import RELEASE_FILENAME, SNAPSHOT_DATA_DIRNAME
-from just_dna_enricher.net import stream_to_file
+from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME
+from just_dna_enricher.net import EndpointRetired, raise_if_retired, stream_to_file
 
 try:  # the one guarded optional import (CLAUDE.md): polars is builder-only ([dev] extra)
     import polars as pl
@@ -150,6 +149,15 @@ class ManeUnavailable(ManeBuildError):
     distinction is carried by the type rather than by a message, because a reword must not be able to
     flip a caller's verdict (`@client-exception-contract`) — and the subclassing makes a caller's
     `except` **order** load-bearing: list this arm before its parent or it is dead code.
+    """
+
+
+class ManeRetired(ManeUnavailable, EndpointRetired):
+    """The source answered HTTP 410: it retired a MANE release file (RM361, audit round 2).
+
+    Its lane's `ManeUnavailable`, so every handler still catches it; marked `EndpointRetired`, so
+    the reason is `retired` and the message says the file moved and to upgrade, never that the
+    host was down.
     """
 
 
@@ -577,6 +585,7 @@ def download_mane_file(dest: Path, url: str) -> ManeDownload:
         dest,
         url,
         error_cls=ManeUnavailable,
+        retired=ManeRetired,
         what=f"the MANE file {Path(url).name}",
         timeout=120.0,
         remedy="Pass the local file instead of --download if you already hold a copy.",
@@ -602,6 +611,7 @@ def discover_current_release() -> str:
         response = httpx.get(url, timeout=60.0, follow_redirects=True)
         response.raise_for_status()
     except httpx.HTTPError as exc:
+        raise_if_retired(exc, ManeRetired, "NCBI (MANE)")
         raise ManeUnavailable(f"could not read {url}: {exc}") from exc
     release = parse_versions(response.text).get(MANE_VERSION_LABEL)
     if not release:
@@ -658,7 +668,6 @@ def build_snapshot(
 
     out_dir = Path(out_dir)
     data_dir = out_dir / SNAPSHOT_DATA_DIRNAME
-    data_dir.mkdir(parents=True, exist_ok=True)
 
     result = ManeBuildResult(
         out_dir=out_dir,
@@ -668,6 +677,8 @@ def build_snapshot(
     result.release = result.versions.get(MANE_VERSION_LABEL) or release
     result.dataset = None if result.release is None else f"mane_grch38_v{result.release}"
 
+    snapshot = begin_snapshot_write(out_dir)
+    data_dir.mkdir(parents=True, exist_ok=True)
     for table in MANE_TABLES:
         read, schema = _READERS[table.name]
         records = read(paths[table.name], result)
@@ -688,7 +699,7 @@ def build_snapshot(
         None if versions_file is None else _sha256_file(Path(versions_file))
     )
 
-    _write_release_json(out_dir, result, downloads=given)
+    _write_release_json(snapshot, result, downloads=given)
     logger.info(
         "Built the MANE snapshot (%s): %s → %s. %d gene(s) excluded over %d reason(s); %d changed "
         "MANE Select accession(s).",
@@ -750,7 +761,7 @@ def _per_input(downloads: Mapping[str, ManeDownload], attribute: str) -> dict[st
 
 
 def _write_release_json(
-    out_dir: Path, result: ManeBuildResult, *, downloads: Mapping[str, ManeDownload]
+    snapshot: SnapshotWrite, result: ManeBuildResult, *, downloads: Mapping[str, ManeDownload]
 ) -> Path:
     """Write `release.json` — the provenance MANE hands over, plus what this build measured.
 
@@ -767,26 +778,26 @@ def _write_release_json(
     snapshot built from local bytes would assert a provenance this build never saw. `release_url`
     likewise names the directory that was actually fetched from, not the one a release number implies.
     """
-    release = {
-        "dataset": result.dataset,
-        "mane_release": result.release,
-        "versions": result.versions,
-        "genome_build": MANE_GENOME_BUILD,
-        "release_url": (
+    release = SnapshotRelease(
+        dataset=result.dataset,
+        mane_release=result.release,
+        versions=result.versions,
+        genome_build=MANE_GENOME_BUILD,
+        release_url=(
             mane_release_dir_url(result.release) if downloads and result.release is not None else None
         ),
-        "source_url": _per_input(downloads, "url"),
-        "source_sha256": result.source_sha256,
-        "source_etag": _per_input(downloads, "etag"),
-        "source_last_modified": _per_input(downloads, "last_modified"),
-        "rows": result.rows,
-        "mane_status_counts": result.mane_status_counts,
-        "update_affects_cds_counts": result.update_affects_cds_counts,
-        "excluded_reasons": result.excluded_reasons,
-        "unparsable_gene_id": result.unparsable_gene_id,
-        "unparsable_update_affects_cds": result.unparsable_update_affects_cds,
-        "unparsable_coordinate": result.unparsable_coordinate,
-        "notice": (
+        source_url=_per_input(downloads, "url"),
+        source_sha256=result.source_sha256,
+        source_etag=_per_input(downloads, "etag"),
+        source_last_modified=_per_input(downloads, "last_modified"),
+        row_counts=result.rows,
+        mane_status_counts=result.mane_status_counts,
+        update_affects_cds_counts=result.update_affects_cds_counts,
+        excluded_reasons=result.excluded_reasons,
+        unparsable_gene_id=result.unparsable_gene_id,
+        unparsable_update_affects_cds=result.unparsable_update_affects_cds,
+        unparsable_coordinate=result.unparsable_coordinate,
+        notice=(
             "MANE is the default transcript, not the answer. A gene with two rows (MANE Select "
             "beside MANE Plus Clinical) has two CDS numbering frames and the column says which; a "
             "gene with one row says nothing about isoforms MANE does not carry, and a pass that "
@@ -795,12 +806,10 @@ def _write_release_json(
             "distribution and also declines to grant unrestricted permission, so every licence axis "
             "is unknown. Only NCBI's side of this joint NCBI/EMBL-EBI product was read."
         ),
-        "built_at": now_utc_iso(),
-        "builder_version": _builder_version(),
-    }
-    path = out_dir / RELEASE_FILENAME
-    atomic_write_text(path, json.dumps(release, indent=2, sort_keys=True) + "\n")
-    return path
+        built_at=now_utc_iso(),
+        builder_version=_builder_version(),
+    )
+    return snapshot.commit(release)
 
 
 def _builder_version() -> str:

@@ -20,7 +20,6 @@ shipped examples.
 import ast
 import inspect
 import json
-import os
 import shutil
 from pathlib import Path
 
@@ -680,9 +679,7 @@ def test_the_finding_renders_a_whole_number_as_one() -> None:
 # ── live ────────────────────────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.skipif(
-    not os.getenv("JUST_DNA_NETWORK_TESTS"), reason="set JUST_DNA_NETWORK_TESTS=1 to hit the network"
-)
+@pytest.mark.network
 def test_the_fixture_still_describes_the_published_catalogue(tmp_path: Path) -> None:
     """The slice is cut from the real file, so the live catalogue is what says whether it still is.
 

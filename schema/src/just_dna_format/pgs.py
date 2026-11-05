@@ -30,11 +30,13 @@ from typing import ClassVar
 from pydantic import Field, field_validator
 
 from just_dna_format.base import AuthoredModel, since, vocabulary
-from just_dna_format.vocab import MULTI_SEP, check_vocab, validate_finite
+from just_dna_format.vocab import MULTI_SEP, VALID_SUPERPOPULATIONS, check_vocab, validate_finite
 
 PGS_ID_PATTERN: re.Pattern[str] = re.compile(r"^PGS\d+$")
-# 1000G superpopulation codes + `multi` for multi-ancestry scores (closed-validated, additive).
-VALID_TRAINING_ANCESTRY: frozenset[str] = frozenset({"EUR", "EAS", "AFR", "AMR", "SAS", "multi"})
+# 1000G superpopulation codes + `multi` for multi-ancestry scores (closed-validated, additive). Derived
+# from `vocab.VALID_SUPERPOPULATIONS` since 0.8 (RM328), which `StudyRow.ancestry` binds: one list of five
+# codes, so a sixth superpopulation reaches both tables at once.
+VALID_TRAINING_ANCESTRY: frozenset[str] = VALID_SUPERPOPULATIONS | {"multi"}
 # Whether the score is usable only as a research-frame Z/percentile or is ancestry-calibrated.
 VALID_RESEARCH_TIERS: frozenset[str] = frozenset({"research_only", "calibrated"})
 

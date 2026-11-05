@@ -50,6 +50,7 @@ from just_dna_format.pgs import PGS_ID_PATTERN
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.sources import SourceRow
 from just_dna_format.spec import VariantRow
+from just_dna_format.spelling import gene_key
 from just_dna_format.vocab import MULTI_SEP
 from pydantic import BaseModel
 from tenacity import (
@@ -66,7 +67,15 @@ from just_dna_enricher.licensing import (
     pgs_score_terms,
     withdraw_stale_dataset,
 )
-from just_dna_enricher.net import PacingGate, attempt_floor, dedupe, raise_if_retired
+from just_dna_enricher.net import (
+    UNREACHABLE,
+    EndpointRetired,
+    PacingGate,
+    attempt_floor,
+    could_not_ask_reason,
+    dedupe,
+    raise_if_retired,
+)
 from just_dna_enricher.pgs import (
     PGS_SOURCE,
     CatalogRelease,
@@ -127,7 +136,7 @@ class IdentifierUnavailable(IdentifierCheckError):
     """
 
 
-class IdentifierRetired(IdentifierUnavailable):
+class IdentifierRetired(IdentifierUnavailable, EndpointRetired):
     """OLS4 or HGNC answered HTTP 410: it retired the endpoint asked (RM354).
 
     A fact about the source, not an outage, and not retried; an `IdentifierUnavailable` so every
@@ -665,7 +674,18 @@ class OntologyClient:
         )
         if response.status_code == 404:
             return TraitStatus(curie=curie, state="absent")
-        terms = (_json(response).get("_embedded") or {}).get("terms") or []
+        payload = _json(response)
+        embedded = payload.get("_embedded")
+        terms = embedded.get("terms") if isinstance(embedded, dict) else None
+        if not isinstance(terms, list):
+            # HAL omits `_embedded` for an empty page, and then the page's own count says so; a body
+            # with neither is a shape this client cannot read, never "no such term" (RM361).
+            page = payload.get("page")
+            if not (isinstance(page, dict) and page.get("totalElements") == 0):
+                raise IdentifierUnavailable(
+                    f"OLS4 answered for {curie} with no terms block and no page count"
+                )
+            terms = []
         if not terms:
             return TraitStatus(curie=curie, state="absent")
         term = terms[0]
@@ -709,7 +729,13 @@ class OntologyClient:
         response = self._get(f"{self.hgnc_base.rstrip('/')}/fetch/{path}")
         if response.status_code == 404:
             return []
-        return (_json(response).get("response") or {}).get("docs") or []
+        body = _json(response).get("response")
+        docs = body.get("docs") if isinstance(body, dict) else None
+        if not isinstance(docs, list):
+            # HGNC's answer is `response.docs`, empty for a symbol it does not hold; a body without it
+            # answered nothing, so it is never the empty answer (RM361).
+            raise IdentifierUnavailable(f"HGNC answered fetch/{path} with no response.docs block")
+        return docs
 
 
 def _json(response: httpx.Response) -> dict:
@@ -747,9 +773,10 @@ def module_trait_ids(variants: list[VariantRow]) -> list[str]:
     `trait_efo_id` is a multi-valued cell (comma/semicolon/pipe-separated), so one row can name
     several traits.
 
-    **This is the roster of one table, and eleven authored tables carry the column.** Kept as-is
-    because a caller holding rows is the only thing it can serve, and widened where the tables are
-    actually reachable: `authored_identifiers` below takes a spec directory and reads all of them.
+    **This is the roster of one table, and every table `_id_bearing_tables` names carries the
+    column.** Kept as-is because a caller holding rows is the only thing it can serve, and widened
+    where the tables are actually reachable: `authored_identifiers` below takes a spec directory and
+    reads all of them.
     A caller passing `variants=` gets this narrow roster and is told so (S86).
     """
     out: list[str] = []
@@ -764,7 +791,7 @@ def _id_bearing_tables(column: str) -> dict[str, type[BaseModel]]:
     """`{filename: model}` for every **authored** table whose model declares `column`.
 
     **Derived from `DRAFTABLE`, never restated** (`@registry-completeness`). The defect this repairs
-    is a roster that named one table while eleven carry the column, so a hand-kept list here would be
+    is a roster that named one table while many carried the column, so a hand-kept list here would be
     the same bug with a longer literal in it: a table kind added later must join this set by existing,
     not by someone remembering. `DRAFTABLE` is the filename→model map the authoring surfaces already
     share, and it is built from `_TABLE_KINDS`, so it carries every optional kind by construction.
@@ -832,7 +859,9 @@ ROWS_PASSED_IN = "rows were passed in, so only variants.csv was available"
 BENIGN_NOT_READ: frozenset[str] = frozenset({NOT_PRESENT, ROWS_PASSED_IN})
 
 
-def authored_identifiers(spec_dir: Path, column: str) -> IdentifierRoster:
+def authored_identifiers(
+    spec_dir: Path, column: str, *, exclude: frozenset[str] = frozenset()
+) -> IdentifierRoster:
     """Every value of `column` across every authored table that declares it, and what was read.
 
     The roster `check_identifiers` runs on when it is given a spec directory. Rows are loaded with the
@@ -841,11 +870,16 @@ def authored_identifiers(spec_dir: Path, column: str) -> IdentifierRoster:
 
     Multi-valued cells are split on `MULTI_SEP` for **both** columns. A `gene` cell is single-valued in
     practice, and splitting it costs nothing and cannot mis-read one: a symbol contains no separator.
+
+    `exclude` names tables to leave out of this roster altogether (neither read nor counted as unread):
+    for a caller whose question is narrower than "every authored id", such as `module_genes`.
     """
-    return authored_rows(spec_dir, column)[1]
+    return authored_rows(spec_dir, column, exclude=exclude)[1]
 
 
-def authored_rows(spec_dir: Path, column: str) -> tuple[list[BaseModel], IdentifierRoster]:
+def authored_rows(
+    spec_dir: Path, column: str, *, exclude: frozenset[str] = frozenset()
+) -> tuple[list[BaseModel], IdentifierRoster]:
     """The rows behind that roster, in table-then-file order, beside the roster itself.
 
     One loader for both shapes. RM163's drift check needs the **rows** rather than the ids — an
@@ -856,6 +890,8 @@ def authored_rows(spec_dir: Path, column: str) -> tuple[list[BaseModel], Identif
     roster = IdentifierRoster()
     kept: list[BaseModel] = []
     for name, model in sorted(_id_bearing_tables(column).items()):
+        if name in exclude:
+            continue
         try:
             table = resolve_sidecar(spec_dir, name) or spec_dir / name
         except SidecarCollision as exc:
@@ -1148,7 +1184,7 @@ def _check_pgs(
                 payload = catalog.score(accession)
             except PgsCatalogUnavailable as exc:
                 report.pgs_not_checked = (
-                    "unreachable",
+                    could_not_ask_reason(exc),
                     f"the PGS Catalog could not be reached ({exc}); {len(report.pgs)} of "
                     f"{len(roster.ids)} authored accession(s) had been answered when it stopped",
                 )
@@ -1412,7 +1448,7 @@ def _gene_locus_conflicts(
         # was never asked, and reporting it as an unhelpful answer would be the same "the source did
         # not say" / "there was nothing to ask" conflation this tier separates everywhere else.
         return [], 0, "no row names a gene, so there was nothing to place on a chromosome"
-    chrom_of_gene = {g.symbol: g.chromosome for g in genes if g.chromosome}
+    chrom_of_gene = {gene_key(g.symbol): g.chromosome for g in genes if g.chromosome}
     if not chrom_of_gene:
         return [], 0, "HGNC returned no usable chromosome for any authored gene"
     chrom_of_variant, reason = _variant_chromosomes(variants, spec_dir)
@@ -1422,7 +1458,7 @@ def _gene_locus_conflicts(
     conflicts: list[GeneLocusConflict] = []
     compared = 0
     for row in variants:
-        gene_chrom = chrom_of_gene.get(row.gene or "")
+        gene_chrom = chrom_of_gene.get(gene_key(row.gene or ""))
         row_chrom = chrom_of_variant.get(row.variant_key)
         if not gene_chrom or not row_chrom:
             continue
@@ -1488,7 +1524,7 @@ def verification_records(
 
 
 def unreachable_records(
-    *, check_traits: bool, check_genes: bool, check_pgs: bool = True, detail: str
+    *, check_traits: bool, check_genes: bool, check_pgs: bool = True, detail: str, reason: str = UNREACHABLE
 ) -> list[VerificationRecord]:
     """The same five checks, for a run whose registry never answered.
 
@@ -1504,7 +1540,7 @@ def unreachable_records(
     return [
         record
         if record.skipped == "not_requested"
-        else skipped(record.check, "unreachable", detail=detail, source=record.source)
+        else skipped(record.check, reason, detail=detail, source=record.source)
         for record in verification_records(
             IdentifierReport(),
             check_traits=check_traits,

@@ -34,7 +34,7 @@ def _findings(variants: list[VariantRow], table: dict[str, list[ResolutionRow]] 
 def test_a_site_with_one_genotype_is_a_rule_not_a_gap() -> None:
     """The scope decision the whole check rests on.
 
-    `pathogenic_clinvar` authors exactly one genotype at 326 of its 327 sites — the ordinary shape of a
+    `pathogenic_clinvar` authors exactly one genotype at 325 of its 326 sites — the ordinary shape of a
     drafted-then-curated module, and a legitimate one: a rule that fires on the risk genotype and says
     nothing otherwise is a rule. Reporting those would put a line on almost every module in existence.
     """

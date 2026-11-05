@@ -28,6 +28,7 @@ from just_dna_enricher.enrich import _verification_records, enrich
 from just_dna_enricher.identifiers import OntologyClient
 from just_dna_enricher.literature import enrich_literature
 from just_dna_enricher.net import PacingGate
+from just_dna_enricher.placement import PlacementCheck
 from just_dna_enricher.resolver import PairCheck
 from just_dna_enricher.verification import producer_label, ran, record_verification, skipped
 from just_dna_format import verification as verification_module
@@ -53,9 +54,14 @@ def _cheap_proof_of_work(monkeypatch):
     monkeypatch.setattr(verification_module, "VERIFICATION_DIFFICULTY_BITS", _EASY)
 
 
-def _module(tmp_path: Path, name: str = "hfe_hemochromatosis") -> Path:
+def _module(tmp_path: Path, name: str = "hfe_hemochromatosis", *, records: bool = True) -> Path:
+    """A writable copy of a reference example. `records=False` drops its attestation, for a test whose
+    claim is about the records this pass writes rather than the ones the corpus already carries: since
+    the 0.8 regeneration every re-derived example ships `enrich`'s records, so the copy is not empty."""
     spec = tmp_path / name
     shutil.copytree(_EXAMPLES / name, spec)
+    if not records:
+        (spec / VERIFICATION_JSON).unlink(missing_ok=True)
     return spec
 
 
@@ -119,7 +125,7 @@ def test_a_second_pass_adds_its_check_without_erasing_the_first(tmp_path: Path) 
     Synthetic on purpose — it pins `ran` beside `skipped` in one document, which no pair of real
     commands is guaranteed to produce. The real two-command case is the test below it.
     """
-    spec = _module(tmp_path)
+    spec = _module(tmp_path, records=False)
     record_verification([ran("rsid_currency", subjects=12, findings=1)], spec, error=_Boom)
     record_verification(
         [skipped("gene_symbol_currency", "offline", detail="HGNC needs egress")], spec, error=_Boom
@@ -167,7 +173,7 @@ def test_enrich_then_literature_land_in_one_document(tmp_path: Path) -> None:
 
 
 def test_re_running_one_check_replaces_its_own_record(tmp_path: Path) -> None:
-    spec = _module(tmp_path)
+    spec = _module(tmp_path, records=False)
     record_verification([ran("rsid_currency", subjects=12, findings=1)], spec, error=_Boom)
     record_verification([ran("rsid_currency", subjects=12, findings=0)], spec, error=_Boom)
 
@@ -177,7 +183,7 @@ def test_re_running_one_check_replaces_its_own_record(tmp_path: Path) -> None:
 
 def test_the_pass_writes_to_the_file_it_reads(tmp_path: Path) -> None:
     """A split module must not gain a second copy at the root — that is the refusal, self-inflicted."""
-    spec = _module(tmp_path)
+    spec = _module(tmp_path, records=False)
     (spec / DERIVED_SUBDIR).mkdir()
     record_verification([ran("rsid_currency", subjects=1, findings=0)], spec, error=_Boom)
     shutil.move(spec / VERIFICATION_JSON, spec / DERIVED_SUBDIR / VERIFICATION_JSON)
@@ -207,7 +213,7 @@ def test_an_unreadable_document_is_replaced_rather_than_fatal(tmp_path: Path) ->
 
 def test_the_record_written_is_the_one_the_compiler_accepts(tmp_path: Path) -> None:
     """The end-to-end seam, inside this workspace: enricher writes, compiler stamps."""
-    spec = _module(tmp_path)
+    spec = _module(tmp_path, records=False)
     record_verification(
         [ran("clinical_significance", subjects=7, findings=1, source="clinvar", release="2026-06-27")],
         spec,
@@ -314,7 +320,8 @@ def _records_for(ref_check, build, **over):
         "rsid_subjects": 0,
         "stale_rsids": [],
         "pairs": PairCheck(not_checked="nothing_to_check"),
-        "ensembl_ref": None,
+        "pair_release": (None, None),
+        "placement": PlacementCheck(not_checked="nothing_to_check"),
         "currency": None,
         "refutation_findings": [],
         "refutation_subjects": None,
@@ -750,7 +757,7 @@ def test_a_merge_does_not_restamp_the_record_it_carried_across(tmp_path: Path) -
     to have one: what is being pinned is that `record_verification` carries a foreign `producer`
     through untouched, not that any particular version string is produced.
     """
-    spec = _module(tmp_path)
+    spec = _module(tmp_path, records=False)
     old = ran("clinical_significance", subjects=141_616, findings=20, source="clinvar").model_copy(
         update={"producer": "just-dna-enricher 0.6.4", "checked_at": "2026-08-10T00:00:00Z"}
     )
@@ -779,7 +786,7 @@ def test_producer_is_outside_the_fact_set_so_adding_it_moved_no_signature() -> N
     from just_dna_format.verification import VERIFICATION_FACT_FIELDS, verification_signature
 
     assert "producer" not in VERIFICATION_FACT_FIELDS
-    record = ran("reference_allele", subjects=30, findings=0, source="ensembl", release="113")
+    record = ran("reference_allele", subjects=30, findings=0, source="seqrepo", release="113")
     assert verification_signature([record]) == verification_signature(
         [record.model_copy(update={"producer": None})]
     )
@@ -855,7 +862,7 @@ def test_the_detail_aggregates_rather_than_listing_every_row() -> None:
     assert detail.count("vs benign") == DETAIL_LIMIT
 
 
-def test_every_check_member_has_an_emitter_or_says_it_is_reserved() -> None:
+def test_every_check_member_has_an_emitter_or_says_it_is_reserved(checks_written_in) -> None:
     """The claim `verification.py`'s docstring makes, as a walked set rather than a sentence.
 
     That paragraph has now been wrong three times — once naming a writer that did not exist, once
@@ -868,8 +875,6 @@ def test_every_check_member_has_an_emitter_or_says_it_is_reserved() -> None:
     An EQUALITY, not a floor: a floor cannot see a member that lost its only emitter in a refactor,
     which is the direction the last three defects all ran.
     """
-    import ast
-
     import just_dna_enricher
     from just_dna_format.vocab import VALID_VERIFICATION_CHECKS
 
@@ -885,38 +890,18 @@ def test_every_check_member_has_an_emitter_or_says_it_is_reserved() -> None:
     generated_tree = "generated"
 
     root = Path(just_dna_enricher.__path__[0])
-    emitted: set[str] = set()
-    for path in sorted(root.rglob("*.py")):
-        if generated_tree in path.relative_to(root).parts:
-            continue
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-
-        # A module-level `CHECK = "..."` counts as a literal, and resolving it is the difference
-        # between this walk seeing an emitter and not. A pass that names its check once and uses the
-        # constant eight times is better code than one that repeats the string, so a walk that only
-        # reads inline literals would quietly stop covering the better-written module — a registry
-        # blind to the idiom it should encourage. Module level only, and only a plain string: a
-        # constant built at runtime is not something a static walk should pretend to know.
-        constants = {
-            node.targets[0].id: node.value.value
-            for node in tree.body
-            if isinstance(node, ast.Assign)
-            and len(node.targets) == 1
-            and isinstance(node.targets[0], ast.Name)
-            and isinstance(node.value, ast.Constant)
-            and isinstance(node.value.value, str)
-        }
-
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
-                continue
-            if node.func.id not in {"ran", "skipped"} or not node.args:
-                continue
-            first = node.args[0]
-            if isinstance(first, ast.Constant) and isinstance(first.value, str):
-                emitted.add(first.value)
-            elif isinstance(first, ast.Name) and first.id in constants:
-                emitted.add(constants[first.id])
+    # The shared walker (RM365), so this guard and `DERIVED_PRODUCERS`' read one definition of what
+    # "a pass writes check X" means. Its `unresolved` sites are not refused here, as they never were:
+    # `identifiers.py` re-labels a record by `record.check`, a name the literal sites already cover.
+    emitted = set(
+        checks_written_in(
+            [
+                path
+                for path in sorted(root.rglob("*.py"))
+                if generated_tree not in path.relative_to(root).parts
+            ]
+        ).names
+    )
 
     #: Named rather than silently subtracted, so each one is a decision a reader can dispute — and
     #: each says RESERVED beside itself in `VALID_VERIFICATION_CHECKS`, with the reason.
@@ -948,7 +933,8 @@ def test_the_wired_block_in_vocab_names_exactly_what_enrich_writes() -> None:
     actually passes to `ran`/`skipped`, and the names commented `— \\`enrich\\`` in `vocab.py` — and
     asserts they are the same set. A number is not re-counted anywhere (`@registry-completeness`).
     """
-    enrich_source = Path(inspect.getfile(enrich)).read_text(encoding="utf-8")
+    # The file that defines `_verification_records` (a submodule since RM260), not the one defining `enrich`.
+    enrich_source = Path(inspect.getfile(_verification_records)).read_text(encoding="utf-8")
     written: set[str] = set()
     for node in ast.walk(ast.parse(enrich_source)):
         if isinstance(node, ast.FunctionDef) and node.name == "_verification_records":

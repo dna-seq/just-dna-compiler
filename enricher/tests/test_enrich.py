@@ -3,7 +3,7 @@
 The cache side uses a tiny synthetic `ensembl_variations` parquet (the injectable shape the compiler
 resolver reads); the live-Ensembl side uses an `httpx.MockTransport`, so nothing here opens a socket.
 Coverage: offline enrich → resolution.csv → the compiler consumes it and reproduces the DuckDB
-digest; `--offline` never calls the network; the V2→V1 fallback on 503; tenacity retrying a transient
+facts (every artifact file but the `resolution_loci` the table adds, RM380); `--offline` never calls the network; the live link asking REST alone; tenacity retrying a transient
 error; strict failing on an unresolved variant; one-to-many expansion written as N rows.
 """
 
@@ -20,9 +20,10 @@ from just_dna_enricher.ensembl import EnsemblResolver
 from just_dna_enricher.eutils import EutilsClient
 from just_dna_enricher.gnomad import GnomadClient
 from just_dna_enricher.net import PacingGate
-from just_dna_format.layout import SOURCES_CSV, preferred_spelling
+from just_dna_format.layout import SOURCES_CSV, VERIFICATION_JSON, preferred_spelling
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.sources import SourceRow, taints_commercial_use
+from just_dna_format.verification import read_verification
 from just_dna_format.vrs import derive_vrs_allele_id
 
 #: The licence sidecar's current filename, derived rather than named: it gained a second
@@ -93,8 +94,11 @@ def test_offline_enrich_then_compile_matches_duckdb_digest(cache: Path, tmp_path
         "rs999,,,,A/T,risk,c3,X\n"
     )
     # Enrich offline against the synthetic cache → resolution.csv, then compile path 1 (no cache).
+    # Without minting: since RM270 every variant parquet carries the `vrs_id`s `resolution.csv`
+    # records, which the DuckDB path has no table to read, so parity is a claim about the facts and
+    # holds exactly when the table records no id. The minting run is compared below, column by column.
     spec1 = _spec(tmp_path / "spec1", variants)
-    result = enrich(spec1, offline=True, ensembl_cache=cache)
+    result = enrich(spec1, offline=True, ensembl_cache=cache, mint_vrs=False)
     assert result.fully_resolved
     assert (spec1 / "resolution.csv").is_file()
 
@@ -111,12 +115,35 @@ def test_offline_enrich_then_compile_matches_duckdb_digest(cache: Path, tmp_path
     for produced in sorted(spec1.iterdir()):
         if produced.is_file() and produced.name != "resolution.csv":
             shutil.copy(produced, spec2 / produced.name)
-    d2 = compile_module(spec2, tmp_path / "o2", ensembl_cache=cache).manifest.artifact.digest
+    r2 = compile_module(spec2, tmp_path / "o2", ensembl_cache=cache)
     r1 = compile_module(spec1, tmp_path / "o1", ensembl_cache=None)
     assert r1.success, r1.errors
-    assert r1.manifest.artifact.digest == d2
+    # Since RM380 a key whose locus holds a value no row cell rebuilds keeps its `resolution_loci`, and
+    # the table records `authority` on every row, so path 1 carries the loci the DuckDB path has no table
+    # to fill. Parity is still a claim about the facts: every other artifact file is byte-identical, and
+    # `weights.parquet` differs in that one column, which holds the table's own rows.
+    files1, files2 = ({f.name: f for f in r.manifest.artifact.files} for r in (r1, r2))
+    assert files1.keys() == files2.keys()
+    assert {p for p in files1 if files1[p] != files2[p]} == {"weights.parquet"}
+    via_table, duck = (pl.read_parquet(tmp_path / o / "weights.parquet") for o in ("o1", "o2"))
+    assert via_table.drop("resolution_loci").equals(duck.drop("resolution_loci"))
+    assert duck["resolution_loci"].null_count() == duck.height
+    authorities = {
+        locus["authority"] for loci in via_table["resolution_loci"].to_list() if loci for locus in loci
+    }
+    with (spec1 / "resolution.csv").open(encoding="utf-8", newline="") as fh:
+        assert authorities == {row["authority"] for row in csv.DictReader(fh)}
     # every variant needed resolution, so the cache filled all of them
     assert r1.manifest.compilation.resolution_sources == ["cache"]
+    # With the ids minted, the two `weights.parquet` differ in the two RM270 columns and the RM380 loci,
+    # and nowhere else.
+    spec3 = _spec(tmp_path / "spec3", variants)
+    enrich(spec3, offline=True, ensembl_cache=cache)
+    assert compile_module(spec3, tmp_path / "o3").success
+    minted, duck = (pl.read_parquet(tmp_path / o / "weights.parquet") for o in ("o3", "o2"))
+    carried = ("vrs_id", "vrs_spec", "resolution_loci")
+    assert minted.drop(carried).equals(duck.drop(carried))
+    assert minted["vrs_id"].null_count() < minted.height and duck["vrs_id"].null_count() == duck.height
 
 
 def test_each_link_records_the_authority_it_speaks_for(cache: Path, tmp_path: Path) -> None:
@@ -189,7 +216,9 @@ def test_one_indel_spelled_two_ways_now_resolves(tmp_path: Path) -> None:
     result = enrich(spec, offline=True, ensembl_cache=cache)
     assert result.fully_resolved, result.unresolved
     row = _rows_by_key(spec)[_SHOX_RSID][0]
-    assert (row.chrom, row.start, row.ref, row.alts) == ("X", 634690, "AGAG", "AG")
+    # Ensembl's ALT in its own spelling (RM381: the reader trims the shared flank, which reads no
+    # reference); left-aligning it to ClinVar's `634689 CAG>C` needs the bases, and this run is offline.
+    assert (row.chrom, row.start, row.ref, row.alts) == ("X", 634690, "AGA", "A")
     assert row.status == "resolved"
 
 
@@ -237,7 +266,7 @@ def test_offline_never_calls_network(cache: Path, tmp_path: Path) -> None:
     assert result.unresolved == ["rs55555555"]  # recorded, not fetched
 
 
-# ── live Ensembl: V2 GraphQL 503 → V1 REST fallback; tenacity retries a transient error ────────
+# ── live Ensembl: REST alone (the beta GraphQL surface is retired); tenacity retries a transient error ──
 
 
 def _rest_variation_response() -> httpx.Response:
@@ -263,51 +292,42 @@ def _rest_variation_response() -> httpx.Response:
     )
 
 
-def test_v2_graphql_503_falls_back_to_v1_rest() -> None:
+def test_resolve_rsid_asks_rest_alone_never_the_retired_graphql_surface() -> None:
+    """The beta GraphQL endpoint answers 301 to `www.ensembl.org`, where the query's shape no longer
+    validates and a bare rsID is `VARIANT_ID_NOT_FOUND` (probed 2026-11-04). Asking it first cost a
+    request per rsID and never answered one, so `resolve_rsid` asks REST and nothing else."""
+    requested: list[str] = []
+
     def handler(request: httpx.Request) -> httpx.Response:
-        if "graphql" in str(request.url):
-            return httpx.Response(503, text="beta down")
+        requested.append(f"{request.method} {request.url.host}{request.url.path}")
+        if request.url.host != "rest.ensembl.org":
+            return httpx.Response(301, headers={"Location": "https://www.ensembl.org/api/graphql/variation"})
         return _rest_variation_response()
 
     resolver = EnsemblResolver()
     resolver._client = httpx.Client(transport=httpx.MockTransport(handler))
     loci, source = resolver.resolve_rsid("rs1801133")
+    assert requested == ["GET rest.ensembl.org/variation/human/rs1801133"]
     assert source == "ensembl-rest"
     assert loci == [{"chrom": "1", "start": 11856377, "ref": "G", "alts": "A"}]  # GRCh38 only
 
 
-def test_tenacity_retries_transient_then_succeeds() -> None:
-    calls = {"graphql": 0}
+def test_tenacity_retries_a_transient_rest_error_then_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("time.sleep", lambda _seconds: None)  # tenacity's backoff
+    calls = {"rest": 0}
 
     def handler(request: httpx.Request) -> httpx.Response:
-        if "graphql" in str(request.url):
-            calls["graphql"] += 1
-            if calls["graphql"] == 1:
-                raise httpx.ConnectError("transient", request=request)
-            # second attempt: valid GraphQL variant node
-            return httpx.Response(
-                200,
-                json={
-                    "data": {
-                        "variant": {
-                            "name": "rs1801133",
-                            "alleles": [
-                                {"allele_type": {"value": "reference"}, "reference_sequence": "G"},
-                                {"allele_type": {"value": "alt"}, "reference_sequence": "A"},
-                            ],
-                            "slice": {"location": {"region_name": "1", "start": 11856377}},
-                        }
-                    }
-                },
-            )
+        calls["rest"] += 1
+        if calls["rest"] == 1:
+            raise httpx.ConnectError("transient", request=request)
         return _rest_variation_response()
 
     resolver = EnsemblResolver()
     resolver._client = httpx.Client(transport=httpx.MockTransport(handler))
     loci, source = resolver.resolve_rsid("rs1801133")
-    assert calls["graphql"] == 2  # retried the transient error
-    assert source == "ensembl-graphql"
-    assert loci[0]["chrom"] == "1" and loci[0]["ref"] == "G"
+    assert calls["rest"] == 2  # retried the transient error
+    assert source == "ensembl-rest"
+    assert loci == [{"chrom": "1", "start": 11856377, "ref": "G", "alts": "A"}]
 
 
 # ── S20: an unreachable Ensembl is unchecked, never absent ────────────────────────────────────
@@ -328,8 +348,6 @@ def test_a_transport_failure_returns_none_where_an_empty_answer_returns_a_list()
     loci, source = unreachable.resolve_rsid("rs6567160")
 
     def empty(request: httpx.Request) -> httpx.Response:
-        if "graphql" in str(request.url):
-            return httpx.Response(200, json={"data": {"variant": None}})
         return httpx.Response(200, json={"name": "rs2000000000", "mappings": []})
 
     answered = EnsemblResolver()
@@ -351,7 +369,9 @@ def test_a_4xx_is_an_answer_and_a_5xx_is_a_failure() -> None:
         return resolver
 
     assert status(400).resolve_rsid("rs3216883") == ([], "ensembl-rest")
-    assert status(404).resolve_rsid("rs2000000000") == ([], "ensembl-rest")
+    # RM361: only the documented 400 is Ensembl's "no such variation". A 404 (a path that moved), a 429
+    # or a 410 answered nothing about the rsID, and reading it as `[]` wrote `not_found` for a live one.
+    assert status(404).resolve_rsid("rs2000000000") == (None, None)
     assert status(503).resolve_rsid("rs1801133") == (None, None)
 
 
@@ -376,6 +396,9 @@ def test_an_unreachable_rsid_writes_no_not_found_row(cache: Path, tmp_path: Path
         resolver=resolver,
         use_gnomad=False,
         download=False,
+        # RM391: the reference and dbSNP passes ask seqrepo and eutils, and this test is about neither.
+        verify_ref=False,
+        verify_rsids=False,
     )
 
     assert result.unreachable_rsids == ["rs6567160"]  # named, not merely absent from a set
@@ -392,8 +415,6 @@ def test_an_unanchorable_ensembl_answer_writes_no_row_and_is_named_apart(
     named by its own warning — not in `unreachable_rsids`, because the request did not fail."""
 
     def rest_insertion(request: httpx.Request) -> httpx.Response:
-        if "graphql" in str(request.url):
-            return httpx.Response(200, json={"data": {"variant": None}})
         mapping = {
             "assembly_name": "GRCh38",
             "seq_region_name": "9",
@@ -414,6 +435,8 @@ def test_an_unanchorable_ensembl_answer_writes_no_row_and_is_named_apart(
         resolver=resolver,
         use_gnomad=False,
         download=False,
+        verify_ref=False,  # RM391: seqrepo and eutils are not what this asks about
+        verify_rsids=False,
     )
 
     unanchored = [r.getMessage() for r in caplog.records if "could not be anchored" in r.getMessage()]
@@ -423,8 +446,67 @@ def test_an_unanchorable_ensembl_answer_writes_no_row_and_is_named_apart(
     assert [row for row in result.rows if row.rsid == "rs8176719"] == []
 
 
+def test_three_answered_or_failed_states_are_named_apart_and_stay_unresolved(
+    cache: Path, tmp_path: Path
+) -> None:
+    """RM272. One run, one rsID in each state, each named in exactly one result list and still in
+    `unresolved`: a failed request (rs6567160, transient), a one-sided indel whose anchor base cannot be
+    read (rs8176719, RM268, transient), and a mapping whose only allele is an `N` run (rs2101156061,
+    RM271, permanent). The strings are what live REST served for these ids."""
+
+    mappings = {
+        "rs8176719": {"start": 133257522, "end": 133257521, "seq_region_name": "9", "allele_string": "-/C"},
+        "rs2101156061": {
+            "start": 94108691,
+            "end": 94108691,
+            "seq_region_name": "1",
+            "allele_string": "G/TTTTTTTTTTTNNNNNNNNNNN",
+        },
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        rsid = str(request.url).rstrip("/").split("/")[-1].split("?")[0]
+        if rsid not in mappings:
+            raise httpx.ConnectError("egress down", request=request)
+        return httpx.Response(200, json={"mappings": [{"assembly_name": "GRCh38", **mappings[rsid]}]})
+
+    resolver = EnsemblResolver()
+    resolver._read_base = lambda _chrom, _pos: None
+    resolver._client = httpx.Client(transport=httpx.MockTransport(handler))
+    spec = _spec(
+        tmp_path / "spec",
+        "rsid,genotype,state,conclusion\nrs6567160,C/T,risk,c\nrs8176719,T/TC,risk,c\nrs2101156061,G/G,risk,c\n",
+    )
+    result = enrich(
+        spec,
+        ensembl_cache=cache,
+        clinvar_cache=tmp_path,
+        resolver=resolver,
+        use_gnomad=False,
+        download=False,
+        verify_ref=False,  # RM391: seqrepo and eutils are not what this asks about
+        verify_rsids=False,
+    )
+
+    lists = {
+        "unreachable": result.unreachable_rsids,
+        "unanchored": result.unanchored_rsids,
+        "non_nucleotide": result.non_nucleotide_rsids,
+    }
+    assert lists == {
+        "unreachable": ["rs6567160"],
+        "unanchored": ["rs8176719"],
+        "non_nucleotide": ["rs2101156061"],
+    }
+    named = [rsid for members in lists.values() for rsid in members]
+    assert len(named) == len(set(named))  # disjoint
+    assert set(named) <= set(result.unresolved)
+    assert result.reference_rejected_loci == []
+
+
+@pytest.mark.parametrize("status, reason", [(503, "unreachable"), (410, "retired")])
 def test_a_dbsnp_outage_does_not_sink_a_finished_enrichment(
-    cache: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    cache: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, status: int, reason: str
 ) -> None:
     """The rsID check runs last and had no handler at all (RM97).
 
@@ -444,15 +526,18 @@ def test_a_dbsnp_outage_does_not_sink_a_finished_enrichment(
     monkeypatch.setattr(time, "sleep", lambda _seconds: None)  # tenacity's backoff, not the gate's
 
     def unwell(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(503, json={"error": "service unavailable"})
+        return httpx.Response(status, json={"error": "service unavailable"})
 
     def failing_check(rsids: list[str], **_kwargs: object) -> list:
         client = EutilsClient(gate=PacingGate(interval=0.0, clock=lambda: 0.0, sleeper=lambda _s: None))
         client._client = httpx.Client(transport=httpx.MockTransport(unwell))
         return identifiers.check_rsids(rsids, client=client)
 
-    monkeypatch.setattr("just_dna_enricher.enrich.check_rsids", failing_check)
-    spec = _spec(tmp_path / "spec", "rsid,genotype,state,conclusion\nrs1801133,C/T,risk,c\n")
+    # The name `enrich()` looks up lives in the submodule that runs it (RM260), not the re-export shell.
+    monkeypatch.setattr("just_dna_enricher.enrich.orchestration.check_rsids", failing_check)
+    # `A/G`, the alleles the cache's `G>A` holds: authored on the other strand, the cache's answer is
+    # rejected and the chain asks live Ensembl next (RM382), which this test never meant to reach.
+    spec = _spec(tmp_path / "spec", "rsid,genotype,state,conclusion\nrs1801133,A/G,risk,c\n")
 
     result = enrich(
         spec,
@@ -461,6 +546,7 @@ def test_a_dbsnp_outage_does_not_sink_a_finished_enrichment(
         verify_rsids=True,
         use_gnomad=False,
         download=False,
+        verify_ref=False,  # RM391: the reference pass asks seqrepo, and the outage under test is dbSNP's
     )
 
     assert result.rows, "the resolution the run had already done must survive the outage"
@@ -468,6 +554,10 @@ def test_a_dbsnp_outage_does_not_sink_a_finished_enrichment(
         "nobody asked dbSNP, so no row may carry a verdict"
     )
     assert (spec / "resolution.csv").exists() or (spec / "derived" / "resolution.csv").exists()
+    # RM361: the record says nobody was asked, and why — never `ran` with zero findings, which published
+    # the outage as a clean currency check, and never `unreachable` for a retired endpoint.
+    [record] = [r for r in read_verification(spec / VERIFICATION_JSON).records if r.check == "rsid_currency"]
+    assert record.skipped == reason
 
 
 def test_offline_with_no_cache_at_all_writes_no_not_found_row(tmp_path: Path) -> None:
@@ -563,6 +653,12 @@ def test_gnomad_link_never_overrides_an_earlier_link(cache: Path, tmp_path: Path
         ensembl_cache=cache,
         clinvar_cache=tmp_path / "no_clinvar",
         gnomad_client=_gnomad_client(transport),
+        # An online run with no ClinVar snapshot provisions one, and this test means none: before the
+        # hub fence (RM372) it downloaded ClinVar from HuggingFace into `tmp_path` on every run.
+        download=False,
+        # RM391: the reference and dbSNP passes ask seqrepo and eutils; the chain is the subject here.
+        verify_ref=False,
+        verify_rsids=False,
     )
 
     row = next(r for r in result.rows if r.rsid == "rs1801133")
@@ -583,6 +679,9 @@ def test_gnomad_link_fills_only_what_nothing_else_could(cache: Path, tmp_path: P
         clinvar_cache=tmp_path / "no_clinvar",
         resolver=stub,
         gnomad_client=_gnomad_client(transport),
+        download=False,  # no ClinVar provisioning: see `test_gnomad_link_never_overrides_an_earlier_link`
+        verify_ref=False,  # RM391: as there
+        verify_rsids=False,
     )
 
     row = next(r for r in result.rows if r.rsid == "rs88888888")
@@ -676,27 +775,44 @@ def test_unqueryable_clinvar_cache_degrades_instead_of_crashing(
     assert any("not queryable" in message for message in caplog.messages)
 
 
-# ── multi-allelic snapshot rows: pipe-joined `alt` cells ─────────────────────────────────────────
-@pytest.fixture
-def multiallelic_cache(tmp_path: Path) -> Path:
-    """A cache whose multi-allelic site is stored the way the real snapshot stores it.
+# ── multi-allelic snapshot rows: two spellings of one site ───────────────────────────────────────
+#: The old repo (`just-dna-seq/ensembl_variations`) stores a multi-allelic site as ONE row whose `alt`
+#: is pipe-joined; the split repo (`ensembl_variations_split`, RM372) stores one row per ALT, with a
+#: `row_idx`. Both are real published shapes, and every test below must read them the same way.
+_MULTIALLELIC_SITES = (
+    ("rs4244285", 94781859, "G", ("A", "C", "T")),
+    ("rs12248560", 94761900, "C", ("A", "T")),
+)
 
-    The shipped Ensembl snapshot records a multi-allelic locus as ONE row whose `alt` is
-    **pipe-joined** (`rs4244285` is `10:94781859 G>A|C|T`), not one row per alt. Every other link in
-    the chain emits commas, so this shape only ever appears via the cache — which is why the whole
-    unit suite missed it.
+
+@pytest.fixture(params=["pipe_joined", "one_row_per_alt"])
+def multiallelic_cache(request, tmp_path: Path) -> Path:
+    """A cache whose multi-allelic site is stored the way a real snapshot stores it.
+
+    The old Ensembl snapshot records a multi-allelic locus as ONE row whose `alt` is **pipe-joined**
+    (`rs4244285` is `10:94781859 G>A|C|T`); every other link in the chain emits commas, so that shape
+    only ever appears via the cache — which is why the whole unit suite missed it. The split repo
+    writes one row per ALT instead, which the resolver's `string_agg` groups back into one locus.
     """
     data = tmp_path / "mcache" / "data"
     data.mkdir(parents=True)
-    pl.DataFrame(
+    if request.param == "pipe_joined":
+        rows = [(rsid, start, ref, "|".join(alts)) for rsid, start, ref, alts in _MULTIALLELIC_SITES]
+    else:
+        rows = [(rsid, start, ref, alt) for rsid, start, ref, alts in _MULTIALLELIC_SITES for alt in alts]
+    frame = pl.DataFrame(
         {
-            "id": ["rs4244285", "rs12248560"],
-            "chrom": ["10", "10"],
-            "start": [94781859, 94761900],
-            "ref": ["G", "C"],
-            "alt": ["A|C|T", "A|T"],
+            "id": [r[0] for r in rows],
+            "chrom": ["10"] * len(rows),
+            "start": [r[1] for r in rows],
+            "ref": [r[2] for r in rows],
+            "alt": [r[3] for r in rows],
         }
-    ).write_parquet(data / "chr.parquet")
+    )
+    if request.param == "one_row_per_alt":
+        assert frame.height > len(_MULTIALLELIC_SITES), "the fixture must hold several rows for one site"
+        frame = frame.with_row_index("row_idx")
+    frame.write_parquet(data / "chr.parquet")
     return tmp_path / "mcache"
 
 

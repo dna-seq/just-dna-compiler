@@ -412,15 +412,11 @@ RESERVED_NAMES_0_4: frozenset[str] = frozenset(
         # name is held for, not the generic stray-column message.
         "callable_element",
         "quality_element",
-        # The trade-off verdict RM327 decided to COMPUTE (2026-11-03): true when an allele carries a
-        # `protective` and a `risk` judgement across traits, read off a per-trait benefit/harm table
-        # that does not exist yet. Unlike the names above it will never be an authored column, so when
-        # the derived column ships the name does not simply leave this set: it moves to
-        # `MISPLACED_COLUMN_REASONS`, which names a column real on a generated table. Reserved now
-        # because longevitymap v2 has trade-off loci to write and an obvious word for them.
-        "tradeoff",
     }
 )
+# NOTE: `tradeoff` was reserved here from 2026-11-03 (RM327) until 0.8 computed it on
+# `meta_resolved.parquet`. It never becomes an authored column, so it did not simply leave this set: it
+# moved to `MISPLACED_COLUMN_REASONS`, the map for a column real on a generated table.
 # NOTE: `requires_callable`, `acmg_sf`, `actionability` were reserved here and are now BUILT as
 # optional `VariantRow` columns — and `callable_from` joined them in 0.5 (RM6's second half: a
 # declarative pointer at the VCF field a consumer establishes callability from). A built column must
@@ -450,13 +446,6 @@ RESERVED_NAME_REASONS: dict[str, str] = {
     "quality_element": (
         "would say which element of a multi-valued `quality_from` the `min_quality` floor is stated "
         "against — reserved on the same grounds as `callable_element`"
-    ),
-    "tradeoff": (
-        "is a verdict a release will compute from per-trait benefit/harm rows (an allele with a "
-        "`protective` judgement on one trait and a `risk` judgement on another), never an authored "
-        "cell — a hand-set one could disagree with the rows it summarises. Until that table exists, "
-        "describe a trade-off in `negatives`; `direction: contested` means the sources disagree about "
-        "the sign, which a trade-off is not"
     ),
 }
 
@@ -660,9 +649,53 @@ VALID_SOURCE_LAYERS: frozenset[str] = frozenset(
         # predicted direction is a value the service publishes identically to everyone. Written by
         # `alphagenome expression`, which is the half that matters.
         "expression_effect",
+        # 0.8 (RM333/RM236) — the Open Targets lane's three tables, same fact class: a locus-to-gene
+        # score, a colocalisation and a VEP consequence are values the release publishes identically to
+        # everyone. Each is written by `opentargets enrich`, which also writes the lane's `gwas_effect`
+        # row when it fills RM239's posterior on `gwas_effects.csv`.
+        "locus_to_gene",
+        "colocalisation",
+        "consequence",
+        # 0.8 (RM331) — the computed LD pair behind a proxy-measured study, same fact class: an r² from
+        # a public reference panel is a value the reference computes identically for everyone. Written by
+        # `ld-pairs`, from Ensembl's pairwise LD.
+        "ld_pair",
+        # 0.8 (RM379) — the clinical-significance calls `clin_sig_authority_calls.csv` records per
+        # authority, same fact class: a ClinVar or PubMind call is a value the source publishes
+        # identically to everyone. Written by `enrich` with the concordance record, for each authority
+        # a call row names that was consulted.
+        "clin_sig_authority_call",
         "annotation",
     }
 )
+
+# What `ld_pairs.csv.status` says about a (proxy, lead, panel) pair (RM331). Closed: each member is an arm
+# the `ld-pairs` pass reaches, and only `resolved` carries a number. The CONSTANT carries the lane's name
+# (`@a-lane-local-vocabulary-may-not-shadow-a-schema-one`), so it cannot be imported in place of
+# `VALID_RESOLUTION_STATUS`. One member is shared with it, `resolved`, in the same sense (the source
+# answered with the fact); `not_found` is deliberately not reused, because Ensembl's `200 []` is not
+# "absent" but below its floor or not in LD, unknown which (`not_reported`), and its 400 is about an id
+# (`rsid_unknown`). Read a `status` together with the table it sits in.
+VALID_LD_PAIR_STATUS: frozenset[str] = frozenset(
+    {
+        "resolved",
+        "not_reported",
+        "rsid_unknown",
+        "ancestry_mixed",
+        "ancestry_unstated",
+        "lead_has_no_rsid",
+    }
+)
+
+# VEP's impact classes (RM236), the closed set `consequences.csv.impact` carries. Closed (Principle 6)
+# because VEP's own documentation defines exactly these four and every annotator that reports an impact
+# reports one of them; a fifth would be a different scale, not a new member.
+VALID_IMPACTS: frozenset[str] = frozenset({"HIGH", "MODERATE", "LOW", "MODIFIER"})
+
+# What the right-hand study of a colocalisation measured (RM333), as Open Targets 26.09 spells it.
+# Recommended, not closed: a source may add QTL kinds between releases, and a
+# closed set would make the next release unloadable.
+RECOMMENDED_QTL_STUDY_TYPES: frozenset[str] = frozenset({"eqtl", "sqtl", "pqtl", "tuqtl", "sceqtl", "gwas"})
 
 # `effect_measure` is intentionally NOT a closed vocabulary (kept permissive so PGS-Catalog
 # `weight_type` additions survive). These are the recommended values, for documentation only.
@@ -674,6 +707,63 @@ VALID_SOURCE_LAYERS: frozenset[str] = frozenset(
 RECOMMENDED_EFFECT_MEASURES: frozenset[str] = frozenset(
     {"OR", "HR", "RR", "beta", "log(OR)", "log(HR)", "NR"}
 )
+
+# ── The 0.8 `StudyRow` batch (PROPOSAL_0_8_PT2 §3 items 11–15) ──────────────────────────────────
+# What `StudyRow.sample_size` counts (RM325). A parental-lifespan study counts LIVES, two parents per
+# genotyped participant, so "N = 1,012,240" is not the number of people genotyped, and a sample size
+# with no unit beside it is refused (`@weight-has-no-unit`). Closed: a third unit is a new member.
+VALID_SAMPLE_UNITS: frozenset[str] = frozenset({"individuals", "lives"})
+
+# Which outcome a study measured (RM326): longevitymap v2's twelve phenotype classes, spelled as v2's
+# requirements spell them (`FAMILIAL`, `MR`, `BIOMARKER`, never the long forms v2 also uses). OPEN,
+# because three real studies fit none of them: a token outside the set is kept and draws
+# `phenotype_class_unrecognized`, which catches a second spelling without refusing a new class. The
+# trait term cannot stand in for it: measured on 2026-11-04, it separates 0 of the 12 classes in real
+# rows, and OBA_VT0005372 alone covers at least four.
+RECOMMENDED_PHENOTYPE_CLASSES: frozenset[str] = frozenset(
+    {
+        "EXTREME_SURVIVAL_CC",
+        "PARENTAL_LIFESPAN",
+        "OWN_SURVIVAL",
+        "VIABILITY_AF",
+        "HEALTHSPAN",
+        "MULTIVARIATE_AGEING",
+        "FAMILIAL",
+        "DISEASE_DEPLETION",
+        "RARE_BURDEN",
+        "EVOLUTIONARY",
+        "MR",
+        "BIOMARKER",
+    }
+)
+
+# The outcome strip (PT2 §3 item 10, RM326): which recommended phenotype class marks a locus's outcome
+# cell as STUDIED on `weights.parquet` (`outcome_healthspan`, `outcome_lifespan`, `outcome_exceptional`).
+# A format constant over the recommended classes. v2's requirements §5.1 names the three cells (healthy
+# years / length of life / reaching very old age) and states no class map, so this is PT2's: every class
+# not listed — MULTIVARIATE_AGEING, the annotation-only classes, any token outside the twelve — maps to
+# no cell. A cell is true when a supporting study row of a mapped class exists and null otherwise, never
+# false: a locus with no study of an outcome is untested, not "no effect".
+OUTCOME_STRIP_CELLS: dict[str, str] = {
+    "HEALTHSPAN": "healthspan",
+    "PARENTAL_LIFESPAN": "lifespan",
+    "OWN_SURVIVAL": "lifespan",
+    "EXTREME_SURVIVAL_CC": "exceptional",
+    "FAMILIAL": "exceptional",
+}
+
+# The 1000 Genomes superpopulation codes (RM328): the ancestry a study was measured in, and — with
+# `multi` added — the ancestry a PGS was trained in (`pgs.VALID_TRAINING_ANCESTRY` is derived from this,
+# so the five codes are one vocabulary, not two). Closed. A multi-ancestry study lists its codes rather
+# than writing `multi`. NOT `RECOMMENDED_ANCESTRY_GROUPS` below, which is gnomAD's population list and a
+# different axis (see the note beside it); a sub-superpopulation cohort (Ashkenazi, Finnish) stays in the
+# free-text `population` beside the code.
+VALID_SUPERPOPULATIONS: frozenset[str] = frozenset({"AFR", "AMR", "EAS", "EUR", "SAS"})
+
+# Whose age a study row's band (`age_min`/`age_max`) is (RM329): the participant's own, or a parent's,
+# which is how a parental-lifespan study bands its estimates (Timmers 2019's 40–60, 60–80, 80+). Closed.
+# The event the age is taken at was cut on 2026-11-04 (no v2 row bands on anything but death).
+VALID_AGE_OF: frozenset[str] = frozenset({"participant", "parent"})
 
 # Which way the effect allele moves the MEASURED TRAIT — the GWAS Catalog's `betaDirection` (RM90).
 #
@@ -698,6 +788,34 @@ VALID_DECLARED_USE: frozenset[str] = frozenset({"unstated", "non_commercial", "c
 # `ambiguous` marks a query that resolved to something the resolver could not disambiguate to a single
 # locus (rare — a one-to-many rsid is expanded to distinct rows instead, so it is not `ambiguous`).
 VALID_RESOLUTION_STATUS: frozenset[str] = frozenset({"resolved", "not_found", "ambiguous"})
+
+# ── Placement verdict (0.8, RM267) ───────────────────────────────────────────────────────────────
+# What a second authority answered about a `ResolutionRow`'s placement, beside `placement_witness`
+# naming which one was asked. Three answers; an empty cell is the fourth state, nobody was asked.
+# There is no `different_event` member on purpose: a placement two authorities disagree about is
+# withheld, so that answer never reaches a written row.
+#
+# * `same_event`  — the witness places the same event (one VRS id, or one left-aligned spelling).
+# * `undecided`   — the witness placed it in another spelling and nothing this run held could settle
+#                   whether the two are one event (no sequence: an offline run). Never agreement.
+# * `unplaced`    — the witness was asked and holds no placement of this allele: one witness only.
+VALID_PLACEMENT_VERDICTS: frozenset[str] = frozenset({"same_event", "undecided", "unplaced"})
+
+# ── Authored-event verdict (0.8, RM375) ──────────────────────────────────────────────────────────
+# Whether the coordinate a module authored for a subject spells the same event as the locus a link
+# resolved it to, judged by the enricher against the reference genome and written on the locus's row.
+# A separate axis from `placement_verdict` (who else places the rsID): this one compares the module's
+# own cells with the answer. Written only where the two spellings differ; an empty cell is either
+# "identical, nothing to judge" or "never judged" (a table written before 0.8), which the compiler
+# tells apart by comparing the cells.
+#
+# * `same_event`      — the authored coordinate is another spelling of the locus's event (an indel
+#                       anchored elsewhere inside its repeat, a padded substitution).
+# * `different_event` — the reference was read, or the event is a substitution, and the authored
+#                       coordinate lies outside every spelling of the event.
+# * `undecided`       — nothing this run held could settle it: no reference read (an offline run), a
+#                       symbolic allele, a repeat longer than the read window. Never agreement.
+VALID_AUTHORED_EVENT_VERDICTS: frozenset[str] = frozenset({"same_event", "different_event", "undecided"})
 
 # ── Frequency status (0.5.1) ────────────────────────────────────────────────────────────────────
 # Closed vocabulary (Principle 6) for a `FrequencyRow`'s outcome. It borrows two members from the
@@ -746,6 +864,18 @@ VALID_RSID_STATUS: frozenset[str] = frozenset({"live", "merged", "absent", "with
 # conclusive against fulltext — an abstract that does not contain the phrase says nothing about the
 # body. Collapsing the two would let "not in the 200-word abstract" read as "not in the paper".
 VALID_QUOTE_SOURCE: frozenset[str] = frozenset({"fulltext", "abstract"})
+
+# How the literature pass's fulltext question ended for one article (RM258). Three answers the two
+# clients used to fold into one `None`: the text was **retrieved**; the article has no copy either
+# service will serve (**absent**: a 404, BioC's "no result" body, or no PMCID at all), which is
+# permanent; or the request never got an answer (**unreachable**: a 5xx or a transport failure),
+# which is transient and is asked again on the next run. A null cell on a row is the fourth reading,
+# *not asked*: a row with no quote to check, or one written before the column existed. **retired**
+# (RM361) is a request answered HTTP 410: the service retired the route, so nothing was learned about
+# the article; it is asked again, and it answers once the enricher reads the service's new route.
+# Only a 404 and BioC's recorded "no result" body are `absent`: a 429, any other 4xx, and a 200 that
+# does not parse are `unreachable`.
+VALID_FULLTEXT_STATUS: frozenset[str] = frozenset({"retrieved", "absent", "unreachable", "retired"})
 
 # ── The clinical-significance concordance record (0.7, RM130) ───────────────────────────────────
 #
@@ -872,6 +1002,9 @@ VALID_VERIFICATION_CHECKS: frozenset[str] = frozenset(
         "rsid_currency",  # authored rsID vs dbSNP (live / merged / absent) — `enrich`
         "clinical_significance",  # authored `clin_sig` vs ClinVar's own, allele-exactly — `enrich`
         "rsid_coordinate_agreement",  # an authored rsID+coordinate PAIR vs the reference — `enrich`
+        "placement_agreement",  # the placement one authority gives an rsID vs a second loaded
+        #   authority's (ClinVar, ClinVar-GKM) — `enrich` (RM267). A
+        #   disagreement withholds the rsID's rows.
         "genome_build_agreement",  # authored coordinates vs the declared assembly — `enrich`
         "dataset_currency",  # a recorded `SourceRow.dataset` vs the release that source
         #   publishes NOW — `enrich`. The subject is the module's own
@@ -977,12 +1110,32 @@ VALID_VERIFICATION_SKIPS: frozenset[str] = frozenset(
         "offline",  # the check needs egress and the run had none
         "no_reference",  # no snapshot / sequence / list was provisioned to compare against
         "unreachable",  # the source was asked and never answered (a failed request, not a no)
+        "retired",  # the source answered HTTP 410: it retired the endpoint asked, cleared by an upgrade
         "nothing_to_check",  # the module carries no row this check applies to
         "tautology",  # the module was drafted from the very source the check reads (S4)
         "unsupported",  # this tier cannot put the question for these rows (e.g. an unbuilt assembly)
         "not_permitted",  # a source's terms bar the fetch under the declared use (`check_declared_use`)
     }
 )
+
+# Whether a check's witness was independent of what it checked (RM292, 0.8). Derived on
+# `VerificationRecord` from its `checked_source` and `witness_source`, never typed: the same source on
+# both sides is `self_consistent`, two different ones are `independent`, and either side unstated
+# withholds the value (`None`). Named for its axis rather than `verdict`, which stays free for an
+# outcome (passed / failed) a later release may want on the same record. `tautology` above is the
+# skip a check takes when it would be self-consistent AND cannot fail; this is what a check that ran
+# says about its witness.
+VALID_VERIFICATION_INDEPENDENCE: frozenset[str] = frozenset(
+    {
+        "independent",  # the witness is a different source from the one the checked values came from
+        "self_consistent",  # the checked values came from the witness itself — agreement proves nothing
+    }
+)
+
+# The `checked_source` spelling for values the module's author wrote, as opposed to values a run
+# established are a copy of some named source. A reserved spelling in an open field, like `global`
+# among the ancestry groups: a source key is a licence-table name and none is spelled this way.
+AUTHORED_SOURCE: str = "authored"
 
 # ── Ancestry groups for the frequency table (0.5) ───────────────────────────────────────────────
 # An OPEN, seeded vocabulary in the `RECOMMENDED_AUTHOR_KINDS` idiom — deliberately NOT a closed
@@ -993,7 +1146,7 @@ VALID_VERIFICATION_SKIPS: frozenset[str] = frozenset(
 # source swap into a schema change. What makes a label interpretable is not membership here but the
 # row's `dataset` column, which names the release the label belongs to.
 #
-# Seeded with gnomAD v4's ten ancestry groups plus `global` (the whole-dataset row, which gnomAD
+# Seeded with gnomAD v4's ancestry groups plus `global` (the whole-dataset row, which gnomAD
 # reports under a bare empty id). Unknown labels are normalized and kept, not rejected.
 RECOMMENDED_ANCESTRY_GROUPS: frozenset[str] = frozenset(
     {
@@ -1124,8 +1277,9 @@ def _placeholder_paths(data: object, *, prefix: str) -> list[str]:
     return found
 
 
-#: Columns that are real *somewhere* in the authored DSL, and so are a plausible confusion rather than
-#: a typo, keyed to what to do instead. A name in here earns a specific diagnosis on a model that does
+#: Columns that are real *somewhere* — on a generated table of the DSL, or (`tradeoff`) only on a
+#: parquet the compiler writes — and so are a plausible confusion rather than a typo, keyed to what to
+#: do instead. A name in here earns a specific diagnosis on a model that does
 #: not declare it, exactly as a reserved name does — `extra="forbid"`'s generic "extra inputs are not
 #: permitted" is a dead end for a column an author reached for *because* they had seen it elsewhere
 #: (S17: a plausible name, rejected, with the reason discoverable only by reading the models).
@@ -1141,6 +1295,16 @@ MISPLACED_COLUMN_REASONS: dict[str, str] = {
         "such column by design: a curated annotation's provenance is the module's, not a per-row link. "
         "To declare a source you read by hand, add a ROW to sources.csv (whose own `source` column is "
         "the subject of the row, and is what the licence gate and manifest.sources join on)"
+    ),
+    # RM327 (0.8): reserved from 2026-11-03 until the compile computed it, then moved here, because it
+    # is real on a generated table and still never authored.
+    "tradeoff": (
+        "is a verdict the compiler computes, a column of meta_resolved.parquet: true when one "
+        "allele-bearing meta.csv member has a `protective` per-trait row and a `risk` per-trait row "
+        "(each a one-member meta.csv row with `trait_efo_id` and `direction`). A hand-set cell could "
+        "disagree with the rows it summarises, so no table authors it. Write each trait's judgement as "
+        "its own meta.csv row instead; `direction: contested` means the sources disagree about the "
+        "sign, which a trade-off is not"
     ),
 }
 
@@ -1463,7 +1627,11 @@ VALID_RELEASE_OUTPUT_AXES: frozenset[str] = frozenset(
 # `stats.genes` was wrong (a star-allele module published `[]` while 1,332 of its rows named a gene);
 # `curator` was absent (RM120 added the column, and no earlier artifact could have carried it). The
 # two look identical to a differ, and only the person who fixed the bug knows which it was.
-VALID_RELEASE_CHANGE_KINDS: frozenset[str] = frozenset({"correction", "addition"})
+# `toolchain` (RM352, 0.8) is the third answer: nothing was wrong and nothing was absent — the bytes
+# moved because the recorded toolchain (`manifest.compilation.toolchain`, RM342) did, content unchanged.
+# polars 1 → 2 is the case: the parquet footer names the polars that wrote it. Legal on `parquet_bytes`
+# only, and the release gate accepts it only when a sweep with the compiler held fixed backs it.
+VALID_RELEASE_CHANGE_KINDS: frozenset[str] = frozenset({"correction", "addition", "toolchain"})
 
 
 # ── What a warning IS, and whether an author can clear it (RM131) ────────────────────────────────
@@ -1487,7 +1655,7 @@ VALID_RELEASE_CHANGE_KINDS: frozenset[str] = frozenset({"correction", "addition"
 #     authored edit at all".
 #
 # One code carries one remediation. Where two sentences are cleared by the same edit they share a
-# code and the sentence says which cell (the weight-sign pair, the five orphan fact tables); where
+# code and the sentence says which cell (the weight-sign pair, the orphan fact tables); where
 # the edit differs they do not (a VCF pointer collision is qualified, an unselected element is given
 # a rule).
 #
@@ -1517,6 +1685,7 @@ VALID_WARNING_CODES: frozenset[str] = frozenset(
         "sidecar_spelling_deprecated",  # a machine-written sidecar under a superseded filename
         "module_version_coerced",  # `module.version` was read as SemVer from another spelling
         "panel_block_deprecated",  # `panel:` is deprecated in 0.6 and removed at 1.0
+        "log_file_not_shipped",  # a file under `logs/` that discovery leaves behind, with why (RM337)
         # ── coordinates and the genome build ──
         "non_grch38_variant_keys",  # VRS identity is GRCh38-only, so rows are coordinate-keyed
         "contig_ploidy_undecidable",  # chrom=Y on a build with no pseudoautosomal table here
@@ -1532,18 +1701,22 @@ VALID_WARNING_CODES: frozenset[str] = frozenset(
         "rsid_expanded_to_multiple_loci",  # one authored row became several, because the source says so
         "rsid_ambiguous",  # the table marks the rsID ambiguous; the pick is a pick
         "rsid_coordinate_disagrees",  # an authored rsID+coordinate pair the table contradicts
+        "rsid_placements_disagree",  # one rsID placed two ways by two subjects of one table (RM374)
         "locus_hosting_undecidable",  # whether a locus can host the genotype could not be decided
         "locus_cannot_host_genotype",  # a locus contradicts the authored genotype and was dropped
         "rsid_no_hosting_locus",  # every candidate locus contradicts the authored genotype
         # ── VRS ──
         "vrs_id_unverifiable",  # a recorded `ga4gh:VA.` this tier cannot recompute
         "vrs_coverage_incomplete",  # alleles in resolution.csv that carry no VA at all
+        "vrs_version_differs",  # a VA minted under a VRS minor other than the pinned one (RM304)
         # ── variants.csv coherence ──
         "weight_sign_disagrees_with_effect",  # `weight`'s sign contradicts `state` or `direction`
         "genotype_allele_not_at_locus",  # a genotype names an allele the locus does not carry
         "effect_allele_not_at_locus",  # `effect_allele` is not among the locus's alleles
         "genotype_coverage_gap",  # a site states two or more genotypes and misses one
-        "quality_floor_inverted",  # a QUAL floor read against the reference record
+        "conclusion_names_other_genotype",  # a conclusion naming another genotype and never its own (RM308)
+        "quality_floor_inverted",  # RETIRED in 0.8 (RM313): stated the spec backwards; see below
+        "qual_floor_on_reference_evidence",  # a QUAL floor on a row decided from a reference record (RM313)
         "missing_allele_marker_in_alts",  # `.` in `alts` — VCF's no-alternate marker, not an allele
         "vcf_pointer_key_collision",  # a pointer key INFO and FORMAT both define
         "vcf_pointer_unselected_element",  # a pointer at a multi-valued field with no element rule
@@ -1567,6 +1740,8 @@ VALID_WARNING_CODES: frozenset[str] = frozenset(
         "duplicate_study_citation",  # two study rows on one (variant, pmid)
         "p_value_encodings_disagree",  # `p_value` and `p_value_num` are two readings of one number
         "study_effect_allele_not_at_locus",  # a study's `effect_allele` is not among the resolved alleles
+        "phenotype_class_unrecognized",  # a study's `phenotype_class` outside the recommended set (RM326)
+        "paired_field_half_stated",  # a column whose companion is empty, on a published pair (RM366)
         "citation_not_in_pubmed",  # a `pmid` PubMed has no record of
         "literature_row_uncited",  # a literature row nothing in the module cites — kept in the CSV
         "quote_counter_stale",  # `quotes_authored` disagrees with the quotes that cite it
@@ -1577,6 +1752,7 @@ VALID_WARNING_CODES: frozenset[str] = frozenset(
         "declared_license_disagrees",  # the module's licence and its sources report differently
         # ── the injected fact tables ──
         "derived_row_orphan",  # a fact row about something no variant in the module names
+        "fact_rows_contradict",  # two rows under one merge key stating different values (RM275)
         "faf95_exceeds_frequency",  # a 95% CI lower bound above its own point estimate
         "oe_lof_outside_interval",  # a point estimate outside the interval published beside it
         "oe_lof_disagrees_with_counts",  # obs/exp and `oe_lof` are one quantity and they differ
@@ -1591,6 +1767,10 @@ VALID_WARNING_CODES: frozenset[str] = frozenset(
         "overlay_answer_vindicated",  # a contested subject the authorities have since agreed on
         "overlay_targets_missing_table",  # an overlay correcting a table this module does not carry
         "overlay_rows_suppressed",  # rows removed by a `suppress`, invisible in the build product
+        # ── the meta-table (meta.csv, 0.8) ──
+        "meta_selector_matches_nothing",  # a meta member that matches no row of its table — a typo
+        "meta_member_allele_ambiguous",  # a bare-locus member on a direction row whose rows disagree on effect_allele
+        "meta_member_drug_disagrees",  # a drug-scoped meta row whose member reaches rows about another drug
         # ── verification and closure ──
         "verification_two_copies",  # an attestation under two legal spellings; neither is preferred
         "verification_unreadable",  # a `verification.json` that could not be read
@@ -1600,6 +1780,19 @@ VALID_WARNING_CODES: frozenset[str] = frozenset(
         "closure_discarded_unreadable_record",  # `close` replaced a record it could not read
     }
 )
+
+#: Members of `VALID_WARNING_CODES` that nothing emits any more, each with the reason (RM313). A code
+#: stays in the vocabulary after it is retired, because removing a member is a major change and
+#: published manifests carry it; a reader pinned to any 0.x version keeps validating them. Declared
+#: rather than exempted, so "in the vocabulary but emitted nowhere" is a stated state that the
+#: emission-site walk and the scenario corpus both subtract, never an oversight either can hide.
+RETIRED_WARNING_CODES: dict[str, str] = {
+    "quality_floor_inverted": (
+        "RM57 stated VCF QUAL backwards: it said a high QUAL on a reference record means probably "
+        "variant, and QUAL there is the confidence in the reference call. Replaced in 0.8 by "
+        "qual_floor_on_reference_evidence (RM313)."
+    ),
+}
 
 # The subset an author cannot clear. Membership is a claim about REMEDIATION, not about severity:
 # every member here is a warning in both modes, and so are most of the codes that are not here.

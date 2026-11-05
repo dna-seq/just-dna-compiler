@@ -305,6 +305,23 @@ def test_defining_variants_from_a_snapshot_carry_the_chromosome(tmp_path: Path) 
     assert warnings == []
 
 
+def test_the_cpic_snapshot_answers_a_gene_written_in_another_case(tmp_path: Path) -> None:
+    """RM363: the snapshot client compares in SQL, out of the AST guard's sight, so it is pinned here: every
+    gene-keyed question answers `Cyp2c9` as it answers `CYP2C9`."""
+    client = CpicSnapshotClient(_cpic_snapshot(tmp_path / "cpic"))
+    for asked in ("CYP2C9", "cyp2c9", " Cyp2c9 "):
+        assert client.chrom_for_gene(asked) == client.chrom_for_gene("CYP2C9") is not None
+        assert client.defining_variants(asked) == client.defining_variants("CYP2C9")
+        assert client.partner_genes(asked, "fluvastatin") == ["SLCO1B1"]
+    assert (
+        client.recommendations("cyp2c19", "clopidogrel")
+        == client.recommendations("CYP2C19", "clopidogrel")
+        != []
+    )
+    assert client.alleles_for_gene("cyp2c19") == client.alleles_for_gene("CYP2C19") != []
+    assert client.diplotypes_for_gene("cyp2c19") == client.diplotypes_for_gene("CYP2C19") != []
+
+
 def test_a_snapshot_built_by_an_older_builder_says_which_table_is_missing(tmp_path: Path) -> None:
     """Silence would read as "CPIC has nothing for this gene", which is a claim about the data."""
     root = _cpic_snapshot(tmp_path / "cpic")
@@ -532,7 +549,24 @@ def test_every_live_client_reads_the_floor_rather_than_a_frozen_constant(
     # whole modules, so the guard was blind on both axes at once. `@registry-completeness`: a registry
     # nothing iterates is a number somebody has to remember.
     found: dict[str, BaseRetrying] = {}
-    for info in sorted(pkgutil.iter_modules(just_dna_enricher.__path__), key=lambda m: m.name):
+    # `cli` and `enrich` are packages since RM260: their submodules define what an `__init__` only
+    # re-exports, and the `__module__ == here` filter below would skip every one of them there. Every
+    # subpackage is walked rather than a named two, so the next split cannot fall out of the walk the
+    # way `cli` did at 8910a59. `generated` holds protoc output, not clients.
+    top = list(pkgutil.iter_modules(just_dna_enricher.__path__))
+    walked = [
+        *top,
+        *(
+            sub
+            for package in top
+            if package.ispkg and package.name != "generated"
+            for sub in pkgutil.iter_modules(
+                importlib.import_module(f"just_dna_enricher.{package.name}").__path__,
+                prefix=f"{package.name}.",
+            )
+        ),
+    ]
+    for info in sorted(walked, key=lambda m: m.name):
         module = importlib.import_module(f"just_dna_enricher.{info.name}")
         # `@retry` hangs the policy off the wrapped function, so the walk is: module attributes, and
         # for a class its own `vars` (the methods). This is the same walk the consumer had to write.
@@ -566,14 +600,22 @@ def test_every_live_client_reads_the_floor_rather_than_a_frozen_constant(
         # a payload it cannot read into the parent type. The only client here that POSTs.
         "civic_api.CivicApiClient._request",
         "clingen_allele.ClingenAlleleClient._fetch",
+        # RM305. ClinVar-GKM's manifest and release index: the retried inner GETs, the outer
+        # (`_fetch`) translates every `httpx` failure into `ClinVarGkmUnavailable`.
+        "clinvar_gkm.ClinVarGkmClient._get_text",
         "cpic.CpicClient._request",
         # RM85's release probe: the retried inner reads the header, the outer translates both legs.
         "currency.ClinVarReleaseClient._header_bytes",
-        "ensembl.EnsemblResolver._graphql_rsid",
         "ensembl.EnsemblResolver._rest_rsid",
+        # RM373. The data release REST answered from (`/info/data`), asked once per run; the outer
+        # (`data_release`) translates every failure into an unknown release, never an error.
+        "ensembl.EnsemblResolver._rest_info_data",
         "eutils.EutilsClient._request",
         "gnomad.GnomadClient._request",
         "grch37.Grch37Client._get",
+        # RM331. Ensembl's pairwise LD: the retried inner GETs (5xx/429/transport only; a 400 is the
+        # service answering), the outer (`_request`) translates every `httpx` failure into `LdUnavailable`.
+        "ld_pairs.LdClient._get",
         # `_request`, not `_get`, since RM208 — the last client whose transport leg had no
         # translation outside the retry, so `reraise=True` handed a caller raw `httpx`.
         "gwas.GwasCatalogClient._request",
@@ -589,8 +631,11 @@ def test_every_live_client_reads_the_floor_rather_than_a_frozen_constant(
         # body caught `httpx.HTTPError`, an ancestor of both retried types, so the retry was
         # unreachable and this roster recorded a budget nothing spent.
         "literature.CrossrefClient._request",
-        "literature.EuropePmcClient._get",
+        # `_fetch`, not `_get`, since RM349: the preprint repository is a second Europe PMC host, so
+        # the retried inner takes a URL and `_get` builds the REST one on top of it.
+        "literature.EuropePmcClient._fetch",
         "literature.PmcIdConverterClient._get",
+        "literature.PmcBiocClient._get",
         # RM163's fourth registry. Same split as `identifiers.OntologyClient` above — the
         # retried inner paces and returns the response, the outer translates both legs into
         # `PgsCatalogUnavailable`.

@@ -1,32 +1,20 @@
-"""`enrich` — fill the source-independent resolution table for a module spec, then hand off to compile.
+"""The run itself: `enrich()` takes the spec lock and `_run_enrichment` walks the resolver chain,
+the verification passes and the commit (RM260 split this out of the former single-file `enrich.py`).
 
-The resolver chain, first-hit-wins: an existing/human-authored row (authoritative, never clobbered) →
-the local cache (a downloaded snapshot, offline) → live Ensembl (V2 GraphQL → V1 REST). It writes
-`resolution.csv` beside the spec; the compiler then consumes it with no source knowledge and no
-network. Two modes: `best_effort` fills what it can and records the rest as `not_found`; `strict`
-fails unless every in-scope variant resolves to a position (the network analogue of the compiler's
-`strict=True`). `--offline` clamps the chain to the cache alone (guaranteed zero egress).
+`_run_enrichment` is one function, so this module is larger than its siblings; splitting it would be a
+logic edit, not a move.
 """
 
-import csv
 import logging
-from collections.abc import Callable, Collection, Mapping, Sequence
-from collections.abc import Set as AbstractSet
-from dataclasses import dataclass, field
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import Optional
 
-import yaml
-from just_dna_compiler.compiler import (
-    SNAPSHOT_UNPLACED_PHRASE,
-    SpecError,
-    _restamp_for_build,
-    load_csv_rows,
-    load_spec,
-)
+from just_dna_compiler.compiler import _restamp_for_build, load_csv_rows
 from just_dna_compiler.resolution import (
     contradiction_reason,
     hosting_verdict,
+    site_verdicts,
     undecided_reason,
 )
 from just_dna_format.alleles import (
@@ -35,30 +23,17 @@ from just_dna_format.alleles import (
     split_genotype,
     strand_flip_explains,
 )
-from just_dna_format.base import derive_variant_key, merge_key
-from just_dna_format.binning import HeteroplasmyRow
-from just_dna_format.layout import atomic_writer
-from just_dna_format.manifest import VerificationRecord
+from just_dna_format.base import merge_key
 from just_dna_format.normalize import now_utc_iso
-from just_dna_format.pgx import HaplotypeRow, PharmVariantRow
-from just_dna_format.resolution import RESOLUTION_FACT_FIELDS, ResolutionRow
-from just_dna_format.spec import ModuleSpecConfig, VariantRow
-from just_dna_format.vocab import ALLELE_PATTERN, TEMPLATE_PLACEHOLDER
+from just_dna_format.resolution import ResolutionRow, source_loci_cell
+from just_dna_format.snapshot import release_label as snapshot_release_label
+from just_dna_format.spec import VariantRow
+from just_dna_format.vocab import ALLELE_PATTERN
 from just_dna_format.vrs import normalize_chrom, par_partner, refget_accession
-from pydantic import ValidationError
 
 from just_dna_enricher import clinvar
-from just_dna_enricher.civic_citations import (
-    EvidenceStatusCheck,
-    check_evidence_status_currency,
-    read_studies,
-)
-from just_dna_enricher.civic_refutation import (
-    REFUTATION_BESIDE_CLAIM,
-    REFUTATION_WITHOUT_CLAIM,
-    RefutationFinding,
-    compare_refutations,
-)
+from just_dna_enricher.civic_citations import check_evidence_status_currency, read_studies
+from just_dna_enricher.civic_refutation import RefutationFinding, compare_refutations
 from just_dna_enricher.clinical import (
     ClinSigComparison,
     ClinSigConflict,
@@ -70,7 +45,7 @@ from just_dna_enricher.clinical import (
     concordance_sentences,
     tautology_reason,
 )
-from just_dna_enricher.clinvar import clinvar_dataset_label
+from just_dna_enricher.clinvar_gkm import CLINVAR_GKM_SOURCE
 from just_dna_enricher.concordance import (
     AnsweredCallReport,
     answered_call_notes,
@@ -79,671 +54,140 @@ from just_dna_enricher.concordance import (
 )
 from just_dna_enricher.currency import (
     CurrencyCheck,
+    DatasetCurrency,
     ReleaseProbe,
     check_dataset_currency,
-    summarize_currency,
+    comparable_labels,
     unchecked_sentences,
 )
 from just_dna_enricher.download import ensure_clinvar_snapshot, ensure_snapshot
-from just_dna_enricher.ensembl import EnsemblResolver
-from just_dna_enricher.gnomad import GnomadClient, GnomadError
-from just_dna_enricher.grch37 import (
-    BuildDiagnosis,
-    BuildDiagnosisResult,
-    Grch37Client,
-    diagnose_wrong_build,
-    summarize_build_diagnoses,
+from just_dna_enricher.enrich.build_declaration import spec_genome_build
+from just_dna_enricher.enrich.outcome import (
+    EnrichmentError,
+    EnrichmentResult,
+    SubjectDrift,
+    _rederived_drift,
+    _subject_key,
 )
+from just_dna_enricher.enrich.rederive_words import (
+    by_case,
+    carry_sentence,
+    currency_case,
+    currency_remedy,
+)
+from just_dna_enricher.enrich.releases import (
+    LinkReleases,
+    link_releases,
+    run_label,
+    table_releases,
+    witness_releases,
+)
+from just_dna_enricher.enrich.resolution_csv import _write_resolution_csv
+from just_dna_enricher.enrich.subjects import (
+    Subject,
+    _authored_alt,
+    _check_authored_pairs,
+    collect_subjects,
+    meta_member_rsids,
+    select_par_representative,
+)
+from just_dna_enricher.enrich.verification_records import _verification_records
+from just_dna_enricher.ensembl import EnsemblResolver, RestWitness, RsidResolver
+from just_dna_enricher.events import authored_event
+from just_dna_enricher.gnomad import GnomadClient, GnomadError
+from just_dna_enricher.grch37 import Grch37Client, diagnose_wrong_build, summarize_build_diagnoses
 from just_dna_enricher.identifiers import IdentifierUnavailable, RsidStatus, check_rsids
 from just_dna_enricher.licensing import (
+    DRAFTED_LAYERS,
     overlay_answers,
     read_sources_file,
-    record_source_terms,
+    record_table_sources,
     require_sources_file,
     resolution_authority,
     sidecar_path,
 )
 from just_dna_enricher.locations import (
-    read_release,
+    ensembl_release_label,
     resolve_civic_reference,
+    resolve_clinvar_gkm_reference,
     resolve_clinvar_reference,
     resolve_ensembl_reference,
     resolve_pubmind_reference,
 )
-from just_dna_enricher.resolver import (
-    AlleleMismatch,
-    PairCheck,
-    check_rsid_coordinates,
-    lookup_loci,
+from just_dna_enricher.net import RETIRED, could_not_ask_reason, withheld_reason
+from just_dna_enricher.placement import (
+    CLINVAR_GKM_WITNESS,
+    CLINVAR_WITNESS,
+    ENSEMBL_WITNESS,
+    Loci,
+    PlacementCheck,
+    answered_placements,
+    ask_live_witness,
+    compare_placements,
+    live_witness_subjects,
+    load_witnesses,
+    locus_key,
 )
+from just_dna_enricher.resolver import AlleleMismatch, lookup_loci
 from just_dna_enricher.sequences import (
     RefCheck,
-    RefMismatch,
     SequenceProxy,
+    SpellingCheck,
+    SpellingVerdict,
     _indel_payloads,
+    _spelled,
+    normalize_locus,
+    spelling_verdict,
     summarize_ref_mismatches,
     verify_reference_alleles,
 )
 from just_dna_enricher.transaction import ResolutionJournal, SubjectProgress, spec_lock
-from just_dna_enricher.verification import (
-    DETAIL_LIMIT,
-    examples,
-    ran,
-    record_verification,
-    skipped,
-)
+from just_dna_enricher.verification import examples, record_verification
 from just_dna_enricher.vrs import MintResult, VrsMinter, mint_resolution_rows
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("just_dna_enricher.enrich")
 
-#: Derived from the model, never restated beside it (`@fieldnames-from-model`). This was a hand-kept
-#: literal in sync with `ResolutionRow` by coincidence, paired with a per-column dict literal in the
-#: writer below — the shape `SOURCES_FIELDNAMES` had when it lost `redistribution`. Here the loss
-#: would have been quieter: `DictWriter` raises nothing for a model field the dict simply omits, so
-#: the next optional column on `ResolutionRow` would have been dropped by every enrich run, and a
-#: fact column among them would have made `resolution_signature` disagree between a hand-filled
-#: table and an enricher-filled one. `ResolutionRow` carries no compiler-stamped fields, so
-#: `model_fields` is exactly the written surface.
-_FIELDNAMES: list[str] = list(ResolutionRow.model_fields)
+#: The placement record's not-asked reason when Ensembl REST answered a 410 (RM361, audit round 2).
+REST_RETIRED_REASON = (
+    "Ensembl REST answered HTTP 410 at least once in this run: it retired a route this enricher asks, "
+    "so upgrade just-dna-enricher (the source's own words are in the run's log)"
+)
 
 
-@dataclass(frozen=True)
-class Subject:
-    """One row asking for a coordinate, normalized across the tables allowed to ask.
-
-    Resolution used to read `variants.csv` alone, so a PGx module — which by design carries **no**
-    `variants.csv` (one CSV = one concern) — enriched to an empty `resolution.csv` and shipped with no
-    coordinates at all. The chain itself was never variant-specific; only its input was. Normalizing
-    to a subject lets `pharm_variants.csv` and `haplotypes.csv` through the *unchanged* resolver,
-    caches, ordering and back-fill.
-
-    `constraint` is whatever the row knows about which alleles must be present at the locus, fed to
-    the shared `hosting_verdict` predicate so a one-to-many rsID drops the loci the row cannot be
-    about (and reports, rather than drops, the ones it cannot decide):
-
-    - a `VariantRow`/`PharmVariantRow` supplies its **genotype** (`C/T`);
-    - a `HaplotypeRow` supplies its single defining **allele** (`G`) — the same membership question
-      asked of one allele instead of two, which is why it reuses the same predicate rather than a
-      parallel one;
-    - `None` (a `PharmVariantRow` with no authored genotype) constrains nothing and keeps every locus.
-    """
-
-    variant_key: str
-    rsid: str | None
-    chrom: str | None
-    start: int | None
-    ref: str | None
-    alts: str | None
-    constraint: str | None
-    origin: str
-
-
-def _subject_of_variant(v: VariantRow, genome_build: str = "GRCh38") -> Subject:
-    """The subject a `variants.csv` row asks about, keyed on the identity it already carries.
-
-    `variant_key` is always set (`_freeze_identity` is a model validator) and `enrich` re-stamps it for
-    the module's build before this runs, so the fallback is belt-and-braces — and it takes `genome_build`
-    anyway, because a fallback that mints a GRCh38 id on a GRCh37 module would be wrong in exactly the
-    way this whole path was.
-    """
-    key = v.variant_key or derive_variant_key(v.rsid, v.chrom, v.start, v.ref, v.alts, build=genome_build)
-    return Subject(key, v.rsid, v.chrom, v.start, v.ref, v.alts, v.genotype, "variants.csv")
-
-
-def collect_subjects(
-    spec_dir: Path, variants: list[VariantRow], genome_build: str = "GRCh38"
-) -> list[Subject]:
-    """Every row in the spec that needs a coordinate, `variants.csv` first, deduped by `variant_key`.
-
-    Order and precedence are load-bearing. `variants.csv` goes first so that when the same variant is
-    named by two tables, the SNP row wins — it is the only one carrying `alts`, which is a resolution
-    *fact* and therefore decides the compiled bytes. Letting a PGx row win would move an already
-    compiled module's `artifact.digest`, the same hazard the link ordering in the chain below exists
-    to avoid. Within that, first occurrence wins, so the emitted order is the authored order.
-
-    The PGx tables key **without** `alts`: a pharm annotation or a haplotype junction matches a
-    variant at `chrom:start:ref` regardless of allele. Mixing that up would mint a VRS allele id for a
-    row that never named an allele. `heteroplasmy.csv` is the exception and keys *with* `alts`,
-    because its own `variant_key` does — see the block below.
-
-    All three tables carry `variant_key` as a **stamped field** since 0.6 (RM43) — it was a property
-    on two of them and absent from `HaplotypeRow` entirely, which is why the block below derives one
-    inline. The stamped value is the same expression, frozen at load from the authored columns, so
-    nothing here changes; and `PharmVariantRow.alts`, added by the same item, is deliberately not read
-    here because it is compiler-filled data rather than an authored fact.
-    """
-    subjects: list[Subject] = [_subject_of_variant(v, genome_build) for v in variants]
-
-    pharm_path = spec_dir / "pharm_variants.csv"
-    if pharm_path.exists():
-        rows, errors, _ = load_csv_rows(pharm_path, PharmVariantRow, "pharm_variants.csv")
-        if errors:
-            raise EnrichmentError(f"pharm_variants.csv is invalid: {errors[0]}")
-        subjects.extend(
-            Subject(r.variant_key, r.rsid, r.chrom, r.start, r.ref, None, r.genotype, "pharm_variants.csv")
-            for r in rows
-        )
-
-    hap_path = spec_dir / "haplotypes.csv"
-    if hap_path.exists():
-        rows, errors, _ = load_csv_rows(hap_path, HaplotypeRow, "haplotypes.csv")
-        if errors:
-            raise EnrichmentError(f"haplotypes.csv is invalid: {errors[0]}")
-        subjects.extend(
-            Subject(
-                derive_variant_key(r.rsid, r.chrom, r.start, r.ref),
-                r.rsid,
-                r.chrom,
-                r.start,
-                r.ref,
-                None,
-                r.allele,
-                "haplotypes.csv",
-            )
-            for r in rows
-        )
-
-    # `heteroplasmy.csv` is the third table that can ask, and it was left out of the 0.5 round for no
-    # reason anyone recorded: its coordinates are optional exactly like the PGx ones, so an
-    # rsid-authored heteroplasmy module resolved to nothing and the compiler's positional-joinability
-    # warning would have named a gap no tool could close.
-    #
-    # Two differences from the blocks above, both load-bearing. It **passes `alts`**, because
-    # `HeteroplasmyRow.variant_key` mints one the same way `VariantRow` does (verified equal for both
-    # the rsid and the coordinate shape), and a subject whose key carries an allele must carry the
-    # allele. That makes the key **build-dependent**, so the load takes `genome_build` — the RM36
-    # trap, and the reason the two blocks above rightly do not. Its `constraint` is `None`: a
-    # heteroplasmy row is a measurement band over a locus, not a claim about a genotype, so it
-    # constrains no locus out of a one-to-many expansion.
-    het_path = spec_dir / "heteroplasmy.csv"
-    if het_path.exists():
-        rows, errors, _ = load_csv_rows(
-            het_path, HeteroplasmyRow, "heteroplasmy.csv", genome_build=genome_build
-        )
-        if errors:
-            raise EnrichmentError(f"heteroplasmy.csv is invalid: {errors[0]}")
-        subjects.extend(
-            Subject(
-                r.variant_key
-                or derive_variant_key(r.rsid, r.chrom, r.start, r.ref, r.alts, build=genome_build),
-                r.rsid,
-                r.chrom,
-                r.start,
-                r.ref,
-                r.alts,
-                None,
-                "heteroplasmy.csv",
-            )
-            for r in rows
-        )
-
-    deduped: dict[str, Subject] = {}
-    for s in subjects:
-        deduped.setdefault(s.variant_key, s)
-    return list(deduped.values())
-
-
-def _authored_alt(v: Subject) -> str | None:
-    """The single authored ALT for allele-aware reverse resolution, or None when absent or
-    multi-allelic (fall back to position/ref-level matching, which may resolve as ambiguous)."""
-    if v.alts and "," not in v.alts:
-        return v.alts
-    return None
-
-
-# The aggregation rule for a record's `detail` — `verification.DETAIL_LIMIT` / `verification.examples`.
-# It moved there when `identifiers` became the second attesting pass that wanted it (RM72): a
-# formatting rule with two copies has one that is about to be wrong.
-
-
-def _check_authored_pairs(
-    pairs: Sequence[tuple[str, str | None, int | None, str | None]],
-    rsid_loci: Mapping[str, Sequence[dict]],
-    *,
-    genome_build: str,
-    reference: Path | None,
-    offline: bool,
-    unusable: bool = False,
-    answered: AbstractSet[tuple[str, str]] = frozenset(),
-) -> PairCheck:
-    """The rsid↔coordinate pass, with the reason it did not run when it did not (RM45).
-
-    The comparison itself is `resolver.check_rsid_coordinates`; what lives here is the ladder that
-    decides whether it could be put at all, because only the caller knows the module's build and
-    whether a snapshot was ever opened. Five ways it does not run, and each is a different sentence:
-
-    * **`nothing_to_check`** — the module authors no pair, which is exactly what that member means: no
-      row this check applies to. **Tested first**, ahead of the build, because a module with no pair
-      has no assembly question to answer either, and answering `unsupported` there would describe a
-      claim the module never made.
-    * **`unsupported`** — coordinate resolution is GRCh38-bound (RM15), so every link was gated off
-      and there is nothing this tier could compare the pair against. A permanent limit, not a
-      connectivity one, which is why it outranks the two below: a GRCh37 module run offline satisfies
-      both, and reporting `offline` would promise that a re-run with egress answers it.
-    * **`offline` / `no_reference`** — no snapshot was opened. Offline that is cleared by egress (the
-      run would have provisioned one); online it is a provisioning failure, which egress will not fix.
-      A snapshot that is present and will not answer (`unusable`) is `no_reference` too — it is not a
-      connectivity problem, and the log names the file.
-    * **`no_reference` again, for a snapshot that carries none of the pairs, or can settle none.** Zero
-      comparisons is not `ran(0, 0)`: a record saying a check ran over nothing reads as a clean bill,
-      which is F4 in this same batch. What it could not place, and what it could not decide, are named
-      in the record's detail either way.
-    """
-    if not pairs:
-        return PairCheck(not_checked="nothing_to_check")
-    if genome_build != "GRCh38":
-        return PairCheck(not_checked="unsupported")
-    if reference is None or unusable:
-        no_snapshot = "offline" if offline and not unusable else "no_reference"
-        return PairCheck(not_checked=no_snapshot)
-    check = check_rsid_coordinates(pairs, rsid_loci, answered)
-    if check.subjects == 0:
-        return PairCheck(unknown=check.unknown, undecided=check.undecided, not_checked="no_reference")
-    return check
-
-
-def _locus_alleles(locus: dict) -> tuple[str, frozenset[str]]:
-    """A locus's alleles in a comparable form: `(ref, {alts})`, order- and whitespace-insensitive."""
-    alts = str(locus.get("alts") or "")
-    return str(locus.get("ref") or ""), frozenset(a.strip() for a in alts.split(",") if a.strip())
-
-
-def select_par_representative(loci: list[dict], *, build: str = "GRCh38") -> tuple[list[dict], list[dict]]:
-    """Split a one-to-many expansion into `(kept, y_par_twins)`, preferring the X spelling.
-
-    A pseudoautosomal locus is **one place on two contigs** — PAR1 and PAR2 are the stretches X and Y
-    share, so dbSNP maps one rsID to both and the expansion emits two rows for one finding. Probed
-    2026-08-04, every annotation source places PAR annotation on **X** and only the coordinate resolver
-    disagrees: ClinVar has zero records in either PAR on Y (all 677 of its Y records lie outside the
-    PARs), gnomAD v4 excludes the Y PAR from its callset outright (X PAR1 640000-641500 serves 880
-    variants, the same interval on Y serves none), and the ClinGen Allele Registry does mint a Y allele
-    id but leaves the record a stub — a dbSNP cross-reference and nothing else, no ClinVar, no gnomAD,
-    and a title that degrades to the bare genomic HGVS. Standard GRCh38 analysis sets then hard-mask the
-    Y PAR, so the Y row cannot match a call either.
-
-    So keeping it records **the sources' own convention**, not the consumer's analysis set — which is
-    the distinction that makes this the enricher's decision to take (Principle 2: this is the only tier
-    permitted to hold a source convention). The caller keeps both with `keep_par_twin`.
-
-    This **selects; it does not repair** — the same contract as the allele-aware `hosting_verdict`
-    filter beside it. Every authored value is untouched, and the caller reports what was left out.
-
-    Two things it deliberately will not do:
-
-    * **Fuse on geometry alone.** A Y locus is dropped only when its `par_partner` X position is present
-      *and* carries the same `ref`/`alts`. Partner coordinates say "same place"; they do not say "same
-      variant", and a same-place different-allele pair is a real finding rather than a duplicate — so it
-      is kept, and both rows survive.
-    * **Judge a gene.** The verdict is per locus, because a real gene can straddle a PAR boundary: **XG**
-      runs out of PAR1 (X:2,751,798-2,816,500 crosses the boundary at 2,781,479) and **SPRY3** runs into
-      PAR2 (X:155,612,298-155,782,459 crosses 155,701,383). Any module- or gene-scoped policy would be
-      wrong for half of either one.
-    """
-    by_place: dict[tuple[str, int, str, frozenset[str]], dict] = {}
-    for locus in loci:
-        chrom, start = normalize_chrom(locus.get("chrom")), locus.get("start")
-        if chrom is None or start is None:
-            continue
-        ref, alts = _locus_alleles(locus)
-        by_place[(chrom, int(start), ref, alts)] = locus
-
-    kept: list[dict] = []
-    twins: list[dict] = []
-    for locus in loci:
-        chrom, start = normalize_chrom(locus.get("chrom")), locus.get("start")
-        partner = par_partner(chrom, int(start), build=build) if chrom == "Y" and start is not None else None
-        ref, alts = _locus_alleles(locus)
-        if partner is not None and (partner[0], partner[1], ref, alts) in by_place:
-            twins.append(locus)
-        else:
-            kept.append(locus)
-    return kept, twins
-
-
-class EnrichmentError(RuntimeError):
-    """Raised in strict mode when the chain cannot fully resolve the module."""
-
-
-@dataclass(frozen=True)
-class SubjectDrift:
-    """One subject whose recorded facts and freshly derived facts disagree, under `rederive=True`.
-
-    The canary MODULE_LIFECYCLE describes, finally performed. Merge-not-clobber means an ordinary
-    re-run never re-asks about a recorded row, so a source that silently *revised* an answer moves no
-    `fetched_at`, no fact signature and no digest — and the only way to notice was to delete the table
-    and re-derive, which used to discard the curator's rows with it. With corrections living in the
-    overlay a full re-derivation costs nothing, and because the fresh table is staged beside the
-    current one both sides exist at the commit boundary, so the comparison is free.
-
-    `before`/`after` render the **fact** columns only (`RESOLUTION_FACT_FIELDS`), read off the
-    registry rather than restated here: the provenance columns move on every run by design, and a
-    report that called a new `fetched_at` a drift would cry wolf on every subject.
-    """
-
-    variant_key: str
-    before: str
-    after: str
-
-    def __str__(self) -> str:
-        return f"{self.variant_key}: {self.before} → {self.after}"
-
-
-def _render_facts(rows: Sequence[ResolutionRow]) -> str:
-    """A subject's resolved facts as one comparable string, in `locus_index` order."""
-    return " + ".join(
-        "|".join(
-            "" if getattr(row, name) is None else str(getattr(row, name)) for name in RESOLUTION_FACT_FIELDS
-        )
-        for row in sorted(rows, key=lambda r: r.locus_index)
-    )
-
-
-def _rederived_drift(
-    before: Mapping[tuple, Sequence[ResolutionRow]],
-    after: Sequence[ResolutionRow],
-    *,
-    skip: Collection[tuple] = (),
-) -> tuple[list[SubjectDrift], int]:
-    """`(what moved, how many subjects were re-asked)` between a recorded table and a fresh one.
-
-    Compared **only** over subjects present on both sides and not in `skip`. A recorded subject the run
-    could not ask about this time produces no fresh row at all — the three branches that deliberately
-    write nothing for an unanswerable subject — and calling that a drift would report the run's own
-    reach as a change in the source.
-
-    `skip` is what the carry-forward put back, and it is not optional bookkeeping: the carried rows are
-    in `after` by the time this runs, so without it every un-asked subject would still land in the
-    denominator and the warning would publish "N of M **re-asked**" over an M that includes subjects
-    nothing asked. A count that travels with a finding has to be the count the sentence names.
-    """
-    skipped = set(skip)
-    fresh: dict[tuple, list[ResolutionRow]] = {}
-    for row in after:
-        fresh.setdefault(merge_key(row), []).append(row)
-    drift: list[SubjectDrift] = []
-    compared = 0
-    for key, old_rows in before.items():
-        new_rows = fresh.get(key)
-        if new_rows is None or key in skipped:
-            continue
-        compared += 1
-        was, now = _render_facts(old_rows), _render_facts(new_rows)
-        if was != now:
-            drift.append(SubjectDrift(old_rows[0].variant_key, was, now))
-    return sorted(drift, key=lambda d: d.variant_key), compared
-
-
-def spec_genome_build(spec_dir: Path) -> str:
-    """The build the module itself declares, which is the only build enrichment may resolve against.
-
-    `enrich()` took `genome_build` as a plain parameter defaulting to `"GRCh38"` and **nothing ever
-    passed it** — no CLI flag, no caller — so the GRCh38 gate on every link below was unreachable and a
-    `genome_build: GRCh37` module was resolved against GRCh38 Ensembl, its GRCh38 coordinates written
-    into `resolution.csv` labelled `GRCh38`, and GRCh38 VRS ids minted for them. The compiler then
-    (correctly) refused to use any of it. The guard existed; the value never arrived — the same shape as
-    the `VariantRow` re-stamp bug, where a `build` parameter and its fall-through both existed and were
-    never reached.
-
-    A spec with no `module_spec.yaml` gets the format's own default. That is not a guess: `enrich` is
-    routinely pointed at a bare table directory in tests and by hand, and `ModuleSpecConfig.genome_build`
-    defaults to `"GRCh38"`, so this returns what compiling that directory would assume. A spec whose
-    yaml is *present but unreadable* is a different case and raises — enrichment writes facts into that
-    directory, and picking a build for a module whose declaration cannot be read is exactly the
-    invention this function exists to remove.
-    """
-    path = spec_dir / "module_spec.yaml"
-    if not path.exists():
-        return "GRCh38"
-    # Through the public loader since S74 — this call site is what made the case that one was needed,
-    # since the workspace's own network tier was reaching into `_load_yaml`. It already raised on the
-    # `None` half of the tuple, which is `load_spec`'s contract, so the translation is the only thing
-    # left here: a pass owes its caller its own exception type.
-    try:
-        return load_spec(path).genome_build
-    except SpecError as exc:
-        # **Guard at the answerer (S103).** The question is the build, and a scaffold's unfilled
-        # `title:` says nothing about it — yet `load_spec` validates the whole file, so `scaffold`
-        # followed by `draft`, the reference README's own recipe, refused on `<<REPLACE>>` in three
-        # fields the draft never reads. Only that one defect is looked past, and only outside the
-        # build cell: a typo'd key, a wrong type, or a placeholder *in* `genome_build` still refuses,
-        # because reading the default past those would reopen the `genome_bild:` hole the model's
-        # `extra="forbid"` closed.
-        declared, residual = _declared_build_behind_placeholders(path)
-        if declared is not None:
-            return declared
-        # No `pass genome_build=` remedy in this sentence: that parameter belongs to `enrich()` alone,
-        # and the drafters that share this reader have no such flag to offer. `residual` is the
-        # diagnosis that remains once the stubs are looked past — the placeholder guard runs first
-        # and would otherwise hide a `genome_bild:` behind "fill in the title".
-        raise EnrichmentError(
-            f"cannot read the module's genome_build: {residual or exc}. Enrichment resolves against "
-            f"one assembly and records the answer under the module's declared build, so it will not "
-            f"choose one for you — fix module_spec.yaml."
-        ) from exc
-
-
-def _declared_build_behind_placeholders(path: Path) -> tuple[str | None, str | None]:
-    """The build a scaffolded, not-yet-filled `module_spec.yaml` declares, and the residual diagnosis.
-
-    `(build, None)` when the file validates once its template stubs are filled. `(None, reason)`
-    when a problem *other* than unfilled cells remains — a key the model refuses, a wrong type, a
-    placeholder in `genome_build` itself — with `reason` naming it, since the placeholder guard runs
-    first and its sentence would otherwise hide the real one. `(None, None)` when the file has no
-    stubs at all (nothing to look past), is unparsable, or is not a mapping: the caller's own
-    diagnosis already says so. The test is exact rather than a reading of the error text: every
-    placeholder outside the build cell is replaced by a filler and the model is asked again, so what
-    is tolerated is precisely "this file validates once the scaffold's stubs are filled".
-    """
-    try:
-        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except yaml.YAMLError:
-        return None, None
-    if not isinstance(raw, dict):
-        return None, None
-    filled, replaced = _fill_placeholders({k: v for k, v in raw.items() if k != "genome_build"})
-    if not replaced:
-        return None, None
-    if "genome_build" in raw:
-        filled["genome_build"] = raw["genome_build"]
-    try:
-        return ModuleSpecConfig.model_validate(filled).genome_build, None
-    except ValidationError as exc:
-        residual = "; ".join(
-            f"module_spec.yaml [{' → '.join(str(x) for x in err['loc'])}]: {err['msg']}"
-            for err in exc.errors()
-        )
-        return None, residual
-
-
-def _fill_placeholders(value: object) -> tuple[object, bool]:
-    """A copy of `value` with every `TEMPLATE_PLACEHOLDER` string leaf replaced, and whether any was."""
-    if isinstance(value, dict):
-        out: dict[str, object] = {}
-        hit = False
-        for key, item in value.items():
-            out[key], one = _fill_placeholders(item)
-            hit = hit or one
-        return out, hit
-    if isinstance(value, list):
-        items = [_fill_placeholders(item) for item in value]
-        return [item for item, _ in items], any(one for _, one in items)
-    if value == TEMPLATE_PLACEHOLDER:
-        return "filled", True
-    return value, False
-
-
-def source_build_mismatch(spec_dir: Path, source: str, source_build: str = "GRCh38") -> str | None:
-    """A warning when a drafting provider is about to write `source_build` coordinates into a module
-    that declares a different one — or `None` when the builds agree.
-
-    **The gap this closes is that `spec_genome_build` had exactly one caller.** It was written for the
-    bug where "the guard existed; the value never arrived", and then `draft`, `draft-panel` and
-    `draft-clinpgx` all shipped without asking it. Every source these providers read serves GRCh38 —
-    CPIC's `allele_definitions`, the ClinVar snapshot, the ClinPGx annotations — so drafting into a
-    `genome_build: GRCh37` module writes `10,94942290` for `rs1799853`, whose GRCh37 position is
-    `96702047`, and nothing anywhere says a word. The compiler cannot catch it: a coordinate is legal
-    on either build, it is simply a different place. The whole point of `reference_examples/grch37_build`
-    is that this family of defect is *silent by construction*, and this is its ninth instance.
-
-    **Reported, not repaired, and not refused.** The provider still writes the row: refusing would
-    make the three drafting commands unusable on a non-GRCh38 module rather than merely
-    unhelpful, and stripping the coordinate to leave an rsid-only row is a *different* row than the
-    author asked for — both are design decisions with real trade-offs, and the enricher's standing
-    rule is that a pass which finds a disagreement says so and changes nothing. Which of the two the
-    providers should eventually do is filed rather than decided here.
-
-    Returns `None` for the agreeing case, which is nearly every call — the house tri-state applies to
-    the *answer*, and "the builds agree" is not a finding.
-    """
-    declared = spec_genome_build(spec_dir)
-    if declared == source_build:
-        return None
+def _split_by_layer(behind: list[DatasetCurrency]) -> tuple[list[DatasetCurrency], list[DatasetCurrency]]:
+    """`(drafted, derived)`: superseded legs a re-draft moves, and those only a re-derivation moves (RM373)."""
     return (
-        f"{source} publishes {source_build} coordinates and this module declares "
-        f"genome_build={declared!r}: every chrom/start drafted below names a {source_build} position, "
-        f"recorded as though it were {declared}. Nothing downstream can detect this — a coordinate is "
-        f"valid on either assembly, it is simply a different base — so either re-declare the module as "
-        f"{source_build}, or delete the drafted coordinates and keep the rsIDs, which name a variant "
-        f"without naming an assembly (`just-dna-enricher hint recover` converts in that direction)."
+        [leg for leg in behind if leg.layer in DRAFTED_LAYERS],
+        [leg for leg in behind if leg.layer not in DRAFTED_LAYERS],
     )
 
 
-@dataclass
-class EnrichmentResult:
-    rows: list[ResolutionRow]
-    unresolved: list[str] = field(default_factory=list)  # variant_keys with no resolved position
-    sources: list[str] = field(default_factory=list)
-    mode: str = "best_effort"
-    # Authored data that disagrees with the reference genome. Reported, never repaired — see
-    # `sequences.verify_reference_alleles`. Empty when the check could not run (offline).
-    ref_mismatches: list[RefMismatch] = field(default_factory=list)
-    # Which of those mismatched rows read as GRCh37 coordinates in a GRCh38 module (RM48). Computed
-    # only over `ref_mismatches`, so a module whose refs agree costs no request at all, and grouped by
-    # evidence class rather than by row.
-    build_diagnoses: list[BuildDiagnosis] = field(default_factory=list)
-    # Why the diagnosis above did not run, or `None` when it did. Same rule as `clin_sig_not_checked`:
-    # an empty list otherwise means both "asked, and nothing points at another build" and "never
-    # asked", and only one of those is a clean bill. `no_ref_mismatches` (nothing to diagnose) and
-    # `skipped_offline` are the two ways it does not run.
-    build_not_diagnosed: str | None = None
-    # Authored `clin_sig` values ClinVar's own records do not support. Warnings in BOTH modes on
-    # purpose — see `clinical.verify_clin_sig`. Empty when no snapshot was provisioned.
-    clin_sig_conflicts: list[ClinSigConflict] = field(default_factory=list)
-    # Why the cross-check above did not run, or `None` when it did. An empty `clin_sig_conflicts` says
-    # two opposite things on its own — "compared everything, nothing disagreed" and "never compared" —
-    # and a consumer reading the first when the second happened is being told a check passed that was
-    # never put. So the skip carries its reason (S4): `not_requested`, `no_snapshot`, or the
-    # drafted-from-this-release tautology, which is the one that used to report a confident zero, and
-    # `unusable_snapshot` for a reference that is present but not queryable.
-    clin_sig_not_checked: str | None = None
-    # RM170. Authored `direction` values a CIViC snapshot publishes a refutation of — the source
-    # asserting and rebutting one claim, or having only ever rebutted what the module asserts. Warnings
-    # in BOTH modes and escalated in neither (`@a-source-recuring-is-not-a-strict-matter`): a source
-    # disagreeing with itself is a fact about the field, not an authoring error. Empty when no CIViC
-    # snapshot was provisioned, which is what `refutation_not_checked` says.
-    refutation_findings: list[RefutationFinding] = field(default_factory=list)
-    # Why the check above did not run, or `None` when it did. An empty `refutation_findings` says
-    # nothing on its own, exactly as an empty `clin_sig_conflicts` does not.
-    refutation_not_checked: str | None = None
-    # RM160. The canary over citations `civic citations` recovered from CIViC's API: what the module
-    # recorded as CIViC's curation status, re-asked. Warnings in BOTH modes and escalated in neither,
-    # for the reason above it — and a **different** question from `dataset_currency`, which asks which
-    # release a table came from rather than whether one judgement has moved. `None` when this run put
-    # no such question, which its own `skip` names.
-    evidence_status: EvidenceStatusCheck | None = None
-    # The per-row split behind that tautology, and **only** there: `strict` over a module whose licence
-    # row says it was drafted from this very snapshot looks every value up and reports how many are
-    # still copies, how many a human wrote, and how many conflict (RM4). `None` — never an audit of
-    # zeros — on every other run: `best_effort` deliberately does not pay for it (the reason is in
-    # `clin_sig_not_checked`), and for a module that never claimed a draft the copied/authored split
-    # would assert a provenance nobody established.
-    clin_sig_comparison: ClinSigComparison | None = None
-    # The N-authority concordance record this run built, or `None` when no authority could be
-    # consulted at all — which is never "nothing was contested". Carried rather than recomputed: the
-    # counts on it are the run's own, and a caller re-deriving them would be a second implementation
-    # of the selection rule.
-    clin_sig_record: ConcordanceRecord | None = None
-    # What this run could say about the answers the module's overlay already carries (RM151): which
-    # of them rest on an authority call that has moved since the answer was written. `None` when the
-    # comparison was not made at all — the clin_sig check is off — which is never "nothing moved".
-    answered_calls: AnsweredCallReport | None = None
-    # Authored rsIDs dbSNP has merged away or has no record of. Recorded onto the rows' provenance
-    # columns and reported; never substituted — see `identifiers.check_rsids`.
-    stale_rsids: list[RsidStatus] = field(default_factory=list)
-    # `(rsid, chrom, start)` of each Y pseudoautosomal locus left out in favour of its X spelling.
-    # Surfaced rather than only logged: the table is half the size an author might expect, and a
-    # selection nobody can see is indistinguishable from a silent repair. See
-    # `select_par_representative`. Empty with `keep_par_twin`, and on every non-PAR module.
-    par_twins_dropped: list[tuple[str, str, int]] = field(default_factory=list)
-    # What the VRS minting pass did (RM40) — the same `MintResult` whose two counters `compile_module`
-    # later stamps into `manifest.compilation.vrs_alleles` / `vrs_alleles_identified`, plus
-    # `unmintable_reasons`, the grouped breakdown that is the actionable half.
-    #
-    # It was computed here and thrown away, so a consumer wanting to read coverage **before** a compile
-    # — which is what a publish dry run is — had to re-implement the counting, and had to get two
-    # non-obvious rules right to agree with the manifest a publish would produce: count per **ALT slot**
-    # (`vrs_id` is a parallel array of `alts`), and treat an *absent* cell as `len(alts)` unnamed slots
-    # rather than zero, or a table where nothing minted reports flawless coverage out of a denominator
-    # of nothing. A number this workspace computed and discarded gets recomputed by every consumer, and
-    # a recomputation is a place to drift.
-    #
-    # `None` — never a coverage of zero — when the pass did not run (`mint_vrs=False`). The house rule.
-    vrs: MintResult | None = None
-    # rsIDs the live Ensembl link could not be asked about — a failed request, never an empty answer
-    # (S20). Separate from `unresolved`, which says a key has no position and is silent about why: a
-    # row that failed to resolve because egress broke and one with genuinely no locus to find are the
-    # same entry there, and only one of them is worth re-running. Same reason `clin_sig_not_checked`
-    # exists beside an empty conflict list. Empty offline, since nothing was asked in the first place.
-    unreachable_rsids: list[str] = field(default_factory=list)
-    # rsIDs **no link was consulted about at all** — the `--offline` run on a machine with no Ensembl
-    # and no ClinVar cache, where every link is gated off and there is nothing to ask (RM98). A third
-    # state, deliberately not folded into either neighbour: `unreachable_rsids` means the request was
-    # made and failed, and `unresolved` says a key has no position while staying silent about why.
-    # This one says nobody looked, which is the only one of the three a `not_found` row would be a
-    # plain fabrication of — the row used to be written, naming a cache that was never opened.
-    unconsulted_rsids: list[str] = field(default_factory=list)
-    # rsIDs the source HAS, whose every locus the allele-aware filter rejected (S85). The fourth state
-    # in this family and the only one whose row is written anyway: `unreachable_rsids` means the
-    # request failed, `unconsulted_rsids` that nobody looked, `unresolved` that a key has no position
-    # and stays silent about why — and this one that the asking *succeeded* and the answer did not
-    # match. The row is honestly unresolved, so it stays; what was wrong was the reason it gave.
-    # Empty is a clean bill only because every branch that writes one appends here.
-    allele_mismatches: list[AlleleMismatch] = field(default_factory=list)
-    # What the rsid↔coordinate pass did (`resolver.check_rsid_coordinates`): the pairs it compared,
-    # the ones the reference could not place, and the disagreements. Surfaced for the RM40/RM41 reason
-    # — the run computes it and a consumer would otherwise recompute it from the log — and because the
-    # denominator is the half a bare list of disagreements cannot state. `None` only for a caller that
-    # built the result by hand; `enrich()` always sets it, carrying `not_checked` when the pass could
-    # not run rather than an empty finding list that reads as a clean bill.
-    rsid_coordinates: PairCheck | None = None
-    # What a full re-derivation found had moved since the recorded table was written — `rederive=True`
-    # only. **`None` is not `[]`**: `None` says nobody re-derived, and an empty list says every
-    # recorded subject was re-asked and every one still answers the same. Only the second of those is
-    # a clean bill, and only the second is worth printing (an empty one prints nothing at all — a
-    # comparison that found nothing must not report a zero as though it were a finding).
-    rederived: list[SubjectDrift] | None = None
-    # Whether each release this module records having been drafted from is still the one its source
-    # publishes (RM85). `--rederive`'s cheap neighbour: that one re-asks every source about every
-    # subject and reports the rows that moved, this one asks about the release **label** alone, so it
-    # is what tells an author whether the expensive question is worth putting. `None` only for a
-    # caller that built the result by hand; `enrich()` always sets it, carrying `not_checked` when the
-    # pass could not run rather than an empty finding list that would read as a clean bill.
-    dataset_currency: CurrencyCheck | None = None
+def _derived_by_case(
+    legs: list[DatasetCurrency], local_releases: Mapping[str, str | None]
+) -> dict[tuple[str, str], list[DatasetCurrency]]:
+    """Superseded derived legs grouped by `(CURRENCY_CASES member, source)`, sorted.
 
-    @property
-    def fully_resolved(self) -> bool:
-        return not self.unresolved
-
-
-def _subject_key(subject: object) -> tuple:
-    """The `existing` key for a subject awaiting resolution, over the columns `ResolutionRow` declares.
-
-    The dict is built with `base.merge_key` over real rows; a subject is a different type and cannot go
-    through it, so the columns are read off the same `_KEY_FIELDS` rather than restated as
-    `(v.variant_key,)`. A test asserts the two sides agree on a row built from a subject, which is what
-    keeps a future member added to the key from silently splitting the two halves of this lookup (S51).
+    Per source as well as per case, because the remedy names the source's lane and its snapshot's label:
+    ClinVar and ClinVar-GKM both behind are two pulls. A source this run holds no snapshot label for
+    (`local_releases` lacks it, or the label is `None`) is `snapshot_unread`: which side is behind is
+    unknown, and the sentence names `cache status` and both remedies.
     """
-    return tuple(getattr(subject, name) for name in ResolutionRow._KEY_FIELDS)
+    grouped: dict[tuple[str, str], list[DatasetCurrency]] = {}
+    for leg in legs:
+        local = local_releases.get(leg.source)
+        current = leg.current or ""
+        case = currency_case(
+            leg.recorded, current, local, local is not None and comparable_labels(local, current)
+        )
+        grouped.setdefault((case, leg.source), []).append(leg)
+    return {key: grouped[key] for key in sorted(grouped)}
+
+
+def _superseded(legs: list[DatasetCurrency]) -> str:
+    """One aggregated sentence: how many recorded releases were superseded, with examples."""
+    return f"{len(legs)} recorded release(s) have been superseded: " + examples(
+        [f"{c.source} ({c.layer}) {c.recorded} → {c.current}" for c in legs]
+    )
 
 
 def enrich(
@@ -755,6 +199,7 @@ def enrich(
     clinvar_cache: Path | None = None,
     pubmind_cache: Path | None = None,
     civic_cache: Path | None = None,
+    clinvar_gkm_cache: Path | None = None,
     use_clinvar: bool = True,
     use_gnomad: bool = True,
     download: bool = True,
@@ -769,7 +214,7 @@ def enrich(
     rederive: bool = False,
     keep_staging: bool = False,
     progress: Callable[[int, int], None] | None = None,
-    resolver: EnsemblResolver | None = None,
+    resolver: RsidResolver | None = None,
     gnomad_client: Optional["GnomadClient"] = None,
     grch37_client: Grch37Client | None = None,
     release_probes: Mapping[str, ReleaseProbe] | None = None,
@@ -814,6 +259,14 @@ def enrich(
     the mode. `--offline` makes it `unchecked`, never *up to date*, and an unreachable source is never
     escalated by `strict` — nothing an author can edit clears a failed request. `release_probes`
     injects the registry the way `resolver`/`gnomad_client` inject theirs.
+
+    **Every placement is compared with a second authority before it is written (RM267).** Whichever
+    link placed an rsID, the ClinVar snapshot and the ClinVar-GKM snapshot (`clinvar_gkm_cache`, local
+    only, never downloaded here) are asked where they place it, and a disagreement withholds the
+    disputed locus — see `placement.compare_placements`. Each written row records the witness
+    asked and its answer (`placement_witness`, `placement_verdict`). Subjects already recorded in
+    `resolution.csv` are not re-asked (merge-not-clobber); `rederive` is how a recorded placement meets
+    the comparison.
 
     `keep_par_twin` keeps both spellings of a pseudoautosomal locus. By default only the X one is
     recorded, because every annotation source uses X and a standard GRCh38 analysis set hard-masks the
@@ -866,6 +319,7 @@ def enrich(
             clinvar_cache=clinvar_cache,
             pubmind_cache=pubmind_cache,
             civic_cache=civic_cache,
+            clinvar_gkm_cache=clinvar_gkm_cache,
             use_clinvar=use_clinvar,
             use_gnomad=use_gnomad,
             download=download,
@@ -936,6 +390,163 @@ def _settle_by_reference(
     return False if same_size else None
 
 
+ReadWindow = Callable[[str, int, int], str | None]
+
+#: The `source` values the live Ensembl link writes (and journals): REST, the retired GraphQL leg, and
+#: the fallback a host's resolver gets when it names none.
+_LIVE_ENSEMBL_LINKS: frozenset[str] = frozenset({"ensembl-rest", "ensembl-graphql", "ensembl"})
+
+
+def _hostings(
+    constraint: str | None, loci: list[dict], read_window: ReadWindow | None
+) -> list[tuple[bool | None, bool | None]]:
+    """`(verdict, settled)` per locus: can it host the authored genotype, and did the reference decide it.
+
+    The allele-aware filter's one predicate, read by the assembly loop and by the chain's fall-through
+    (RM382), so the two cannot disagree about which answer was rejected (`@parity-by-check`). The
+    genotype is read in its site's frame first (`site_verdicts`, RM381), so a padded `GTT/GTTT` names
+    one piece of the site and its siblings do not host it; a `None` left there is settled against the
+    GRCh38 reference where one is readable (RM274), and `settled` says so, since the loop logs that arm
+    apart. A subject with no constraint hosts every locus: nothing is known about which allele it is
+    about. The verdicts are per list, not per locus, because the frame is read over a site's loci.
+    """
+    if constraint is None:
+        return [(True, None)] * len(loci)
+    framed = site_verdicts(
+        constraint, [(lo.get("chrom"), lo.get("start"), lo.get("ref"), lo.get("alts")) for lo in loci]
+    )
+    out: list[tuple[bool | None, bool | None]] = []
+    for lo, verdict in zip(loci, framed, strict=True):
+        settled = (
+            _settle_by_reference(constraint, lo, read_window)
+            if verdict is None and read_window is not None
+            else None
+        )
+        out.append((settled if settled is not None else verdict, settled))
+    return out
+
+
+def _rejected_by_every_subject(
+    constraints: list[str | None], loci: list[dict], read_window: ReadWindow | None
+) -> bool:
+    """Whether every subject of one rsID rejects every locus a link gave for it (RM382).
+
+    That answer is a miss for the chain: the next link is asked. `False` with no subject to judge (an
+    rsID only a pair names, which no link is asked live for) and for any subject that hosts a locus or
+    leaves one undecided, so an answer somebody can use is never replaced.
+    """
+    return bool(constraints) and all(
+        all(verdict is False for verdict, _ in _hostings(c, loci, read_window)) for c in constraints
+    )
+
+
+def _allele_mismatch(
+    rsid: str, constraint: str | None, answers: list[tuple[str, list[dict]]], placed_by: str | None = None
+) -> AlleleMismatch:
+    """The finding for one subject whose links' answers were rejected, naming every link and locus."""
+    loci = [lo for _, given in answers for lo in given]
+    return AlleleMismatch(
+        rsid=rsid,
+        genotype=constraint or "",
+        loci=tuple(f"{lo.get('chrom')}:{lo.get('start')} {lo.get('ref')}>{lo.get('alts')}" for lo in loci),
+        offered=tuple(f"{lo.get('ref')}>{lo.get('alts')}" for lo in loci),
+        strand_flip=constraint is not None
+        and any(strand_flip_explains(constraint, lo.get("ref"), lo.get("alts")) for lo in loci),
+        links=tuple(link for link, _ in answers),
+        placed_by=placed_by,
+    )
+
+
+def _spelling_of(locus: Mapping[str, object], read_window: ReadWindow | None) -> SpellingVerdict:
+    """`spelling_verdict` over a locus dict as a link gives it."""
+    return spelling_verdict(
+        str(locus.get("chrom")),
+        locus.get("start"),  # type: ignore[arg-type]
+        locus.get("ref"),  # type: ignore[arg-type]
+        locus.get("alts"),  # type: ignore[arg-type]
+        read_window,
+    )
+
+
+def _authored_verdict(judged: Mapping[str, SpellingVerdict], v: Subject) -> bool | None:
+    """`left_aligned` for a row recorded with the subject's own coordinate, judged once per subject."""
+    verdict = judged.get(v.variant_key)
+    return None if verdict is None else verdict.verdict
+
+
+def _wider_answer(
+    offered: Iterable[Mapping[str, object]], placed: Iterable[Mapping[str, object]], genome_build: str
+) -> str | None:
+    """`source_loci` for the rows written under an rsID's key: every place offered, where that is wider.
+
+    `offered` is every locus the links answered the rsID with this run, before the hosting filter, a
+    disputed placement (RM267) and the pseudoautosomal choice; `placed` is the loci the rows written for it
+    stand for, each respelled piece's source locus included (RM270's respelling moves a start, it drops
+    nothing, and RM374 already reads a respelling apart). Compared as places with a pseudoautosomal Y read
+    as its X partner, the compiler's own fold, so a PAR twin or a respelled indel is not "wider". `None`
+    where nothing offered is missing, so a cleanly resolved rsID carries nothing new (RM387).
+    """
+    offered_places = {p for lo in offered if (p := _place_of(lo)) is not None}
+    placed_places = {p for lo in placed if (p := _place_of(lo)) is not None}
+    folded = {_par_folded(p, genome_build) for p in placed_places}
+    if not {p for p in offered_places if _par_folded(p, genome_build) not in folded}:
+        return None
+    return source_loci_cell(offered_places)
+
+
+def _place_of(locus: Mapping[str, object]) -> tuple[str, int] | None:
+    chrom, start = normalize_chrom(_text(locus.get("chrom"))), locus.get("start")
+    return None if chrom is None or start is None else (chrom, int(start))  # type: ignore[call-overload]
+
+
+def _text(value: object) -> str | None:
+    return None if value is None else str(value)
+
+
+def _par_folded(place: tuple[str, int], genome_build: str) -> tuple[str, int]:
+    """A Y pseudoautosomal place as its X partner, as `resolution._place` folds it in the compiler."""
+    if place[0] == "Y":
+        partner = par_partner(place[0], place[1], build=genome_build)
+        if partner is not None:
+            return partner
+    return place
+
+
+def _filled_pieces(
+    constraint: str | None, locus: Mapping[str, object], read_window: ReadWindow | None
+) -> list[tuple[dict[str, object], bool | None]]:
+    """The loci a filled locus is written as, each with its `left_aligned` verdict (RM270).
+
+    One locus whose ALTs share a leftmost `(start, ref)` is written once in that spelling. One whose
+    ALTs land on two references splits (`normalize_locus`), and the hosting filter that kept the
+    source locus is asked again of each piece, because the row is about the alleles its genotype names:
+
+    * a genotype spelled in the source locus's own frame names its ALTs exactly, so the piece holding
+      them is written — `AGAG/AG` on Ensembl's SHOX site is the deletion, never the duplication;
+    * a genotype naming ALTs that landed in two pieces (`AG/AGAGAG`, the deletion and the duplication)
+      has no one left-aligned locus to sit on, so the source locus is written whole, as the link gave
+      it, and judged;
+    * otherwise each piece that can host the genotype is written (`C/CAG` fits either reading, as it
+      fitted the source locus), and when none can, the source locus is written whole.
+    """
+    normalized = normalize_locus(locus, read_window)
+    whole = [(dict(locus), _spelling_of(locus, read_window).verdict)]
+    if normalized.aligned is None or len(normalized.loci) == 1 or constraint is None:
+        return [(piece, normalized.aligned) for piece in normalized.loci]
+    ref = str(locus.get("ref") or "").upper()
+    alts = [alt.strip().upper() for alt in str(locus.get("alts") or "").split(",")]
+    called = {a.upper() for a in split_genotype(constraint) if not is_unobservable_allele(a)}
+    named = {normalized.piece_of[alts.index(a)] for a in called if a != ref and a in alts}
+    if called and called <= {ref, *alts} and named:
+        return [(normalized.loci[named.pop()], True)] if len(named) == 1 else whole
+    hosting = [
+        (piece, True)
+        for piece in normalized.loci
+        if hosting_verdict(constraint, piece.get("ref"), piece.get("alts")) is not False  # type: ignore[arg-type]
+    ]
+    return hosting or whole
+
+
 def _run_enrichment(
     spec_dir: Path,
     *,
@@ -945,6 +556,7 @@ def _run_enrichment(
     clinvar_cache: Path | None,
     pubmind_cache: Path | None,
     civic_cache: Path | None,
+    clinvar_gkm_cache: Path | None,
     use_clinvar: bool,
     use_gnomad: bool,
     download: bool,
@@ -959,7 +571,7 @@ def _run_enrichment(
     rederive: bool,
     keep_staging: bool,
     progress: Callable[[int, int], None] | None,
-    resolver: EnsemblResolver | None,
+    resolver: RsidResolver | None,
     gnomad_client: Optional["GnomadClient"],
     grch37_client: Grch37Client | None,
     release_probes: Mapping[str, ReleaseProbe] | None,
@@ -971,6 +583,10 @@ def _run_enrichment(
     """
     if genome_build is None:
         genome_build = spec_genome_build(spec_dir)
+    # The meta-table's member rsIDs (0.8), read here at the start of the run and never inside the late
+    # rsID pass: an invalid meta.csv must refuse before any network pass has done work it would discard
+    # (`@incidental-call-isolated`).
+    member_rsids = meta_member_rsids(spec_dir)
     variants: list[VariantRow] = []
     variants_path = spec_dir / "variants.csv"
     if variants_path.exists():
@@ -1077,12 +693,17 @@ def _run_enrichment(
     # rsIDs the live link could not put a question to at all — a failed request, not an empty answer.
     unreachable_rsids: set[str] = set()
     # Live Ensembl answered with one-sided indels whose anchor base could not be read (RM268). Warned
-    # apart from `unreachable_rsids`; a result field naming them is minor-scope, so it waits for 0.8.
+    # apart from `unreachable_rsids`, and named on the result since RM272.
     unanchored_rsids: set[str] = set()
+    # rsIDs a rung answered with no nucleotide allele at any locus (RM271), from the snapshot and from
+    # the live resolver. Reduced to the ones left with no locus at all when the result is built (RM272).
+    non_nucleotide_rsids: set[str] = set()
     unconsulted_rsids: set[str] = set()  # nobody looked (RM98) — see the EnrichResult field
     # The source answered and every locus it gave was rejected by the allele-aware filter (S85). A
     # list rather than a set: it carries a finding per subject, not a bare id.
     allele_mismatches: list[AlleleMismatch] = []
+    # Rejected answers a later link superseded by placing the rsID (RM382), per subject.
+    superseded_answers: list[AlleleMismatch] = []
     # Reverse (position→rsid) back-fill is allele-aware and keeps ALL candidates per authored allele,
     # so we can take a deterministic pick and flag a genuine multi-rsid allele as ambiguous rather than
     # guessing an allele-blind label (which was the mis-attribution / reverse-round-trip drift).
@@ -1091,7 +712,79 @@ def _run_enrichment(
     pos_candidates: dict[tuple, list[str]] = {}
     rev_candidates: dict[tuple, list[str]] = {}  # (chrom,start,ref,alt) -> sorted candidate rsids
     rev_source: dict[tuple, str] = {}  # which link produced the candidates
+    # **Which position→rsID maps were read this run (RM393)**, by the link name a back-filled row records
+    # in `source` (`cache` for the Ensembl snapshot, `clinvar`). Only those two snapshot links fill
+    # `rev_candidates` — no live link answers a position — so an empty candidate list is an answer only
+    # from a map that was read: a recorded back-fill whose link's map was not read this run (no snapshot,
+    # or a failed pull of one while the other is present) was not re-asked. Narrower than
+    # `rsid_links_consulted` below on purpose: that one is also true for a run that may go live, which
+    # back-fills nothing.
+    reverse_maps_read: set[str] = set()
     positions = [(v.chrom, v.start, v.ref, _authored_alt(v)) for v in need_rsid]
+
+    # One proxy, one read cache for the run: the hosting filter settles an undecided indel with it
+    # (RM274), at each link's answer (RM382) and again in the assembly loop, and minting and the
+    # reference check reuse it after the table is assembled. Lazy, so nothing is read until asked.
+    sequences = SequenceProxy(offline=offline)
+    read_window = _grch38_window(sequences) if genome_build == "GRCh38" else None
+    # One minter for the run too: the placement comparison below and the stamping after the table
+    # both mint, and sharing it shares the proxy's read cache.
+    minter = VrsMinter(offline=offline, sequences=sequences)
+
+    def mint(chrom: str, start: int, ref: str, alt: str) -> str | None:
+        """One allele's VRS id, or `None`: what the shared spelling judge (`events`) mints with."""
+        return minter.mint(chrom, start, ref, alt)[0]
+
+    # **A rejected answer is a miss for the chain (RM382).** Every link below asks only about rsIDs
+    # not yet in `rsid_to_loci`, and the hosting filter runs after all of them, so an answer whose
+    # every locus the authored genotype cannot host ended the chain: the next link, which may place
+    # the identity, was never asked, and the row went out `not_found` about an rsID the source has.
+    # `pathogenic_clinvar`'s `rs613985` is the measured case — the split Ensembl snapshot's only
+    # locus is `3:159434329 T>G`, ClinVar's is the authored 13 bp deletion at `11:5226724`. So each
+    # link's answers pass through the filter's own predicate as they arrive, and one every subject of
+    # the rsID rejects is set aside, which leaves the rsID open for the next link. Per rsID, never per
+    # subject: a link answers an rsID, and the placement comparison (RM267) takes one authority per
+    # rsID. Only an rsID-only subject is a reason to ask on (no link is asked live for a pair, S104),
+    # but a pair that can host the answer keeps it, since the forward branch records it for the pair
+    # too. The links' gates are untouched; withdrawing the answer is what reopens them.
+    asks_on = {v.rsid for v in need_pos if v.rsid}
+    judges: dict[str, list[str | None]] = {}
+    for v in subjects:
+        if v.rsid and _subject_key(v) not in covered:
+            judges.setdefault(v.rsid, []).append(v.constraint)
+    # rsID → every rejected `(link, loci)`, in chain order.
+    rejected_answers: dict[str, list[tuple[str, list[dict]]]] = {}
+    # The rsIDs no link placed, whose first answer is put back for the assembly loop below.
+    restored_rsids: set[str] = set()
+    # rsIDs seeded from an interrupted run's journal (RM373); defined here because a withdrawal drops
+    # one, so a later link's answer this run is stamped with its own release.
+    staged_rsids: set[str] = set()
+
+    def withdraw_rejected(rsids: Iterable[str]) -> None:
+        """Set aside each answer no subject of its rsID can host, so the next link is asked."""
+        for rsid in list(rsids):
+            loci = rsid_to_loci.get(rsid)
+            if (
+                rsid in asks_on
+                and loci
+                and _rejected_by_every_subject(judges.get(rsid, []), loci, read_window)
+            ):
+                link = source_of_rsid.pop(rsid, "cache")
+                rejected_answers.setdefault(rsid, []).append((link, rsid_to_loci.pop(rsid)))
+                staged_rsids.discard(rsid)
+                logger.info(
+                    "%s: %s answered %s, which no authored genotype for it can sit on; the next link is "
+                    "asked (RM382).",
+                    rsid,
+                    link,
+                    ", ".join(
+                        f"{lo.get('chrom')}:{lo.get('start')} {lo.get('ref')}>{lo.get('alts')}" for lo in loci
+                    ),
+                )
+
+    def rejected_from(rsid: str, links: frozenset[str]) -> bool:
+        """Whether one of `links` already answered `rsid` this run and was set aside (a resumed run)."""
+        return any(link in links for link, _ in rejected_answers.get(rsid, ()))
 
     # ── Ensembl cache link (offline, first) ────────────────────────────────────────────────────
     reference = resolve_ensembl_reference(ensembl_cache)
@@ -1108,7 +801,10 @@ def _run_enrichment(
         # check would silently never run on exactly the modules it exists for.
         rsids = [v.rsid for v in need_pos if v.rsid] + [rsid for rsid, _, _, _ in verify_pairs]
         try:
-            rsid_to_loci, pos_candidates, _ = lookup_loci(reference, rsids, positions)
+            rsid_to_loci, pos_candidates, _ = lookup_loci(
+                reference, rsids, positions, non_nucleotide=non_nucleotide_rsids
+            )
+            reverse_maps_read.add("cache")
         except Exception as exc:
             # A *located* cache can still be unusable — a stale snapshot, or a parquet a different
             # tool wrote — and the query then raises rather than returning nothing. That was fatal
@@ -1134,6 +830,7 @@ def _run_enrichment(
                 rev_candidates[pt] = cands
                 rev_source[pt] = "cache"
         tracker.settle(k for rsid in rsid_to_loci for k in subjects_of_rsid.get(rsid, ()))
+        withdraw_rejected(rsid_to_loci)
 
     # ── ClinVar cache link (offline, after Ensembl cache, before live) ─────────────────────────
     # Fills only what the Ensembl cache missed, stamping source="clinvar". Placing it after the
@@ -1180,6 +877,7 @@ def _run_enrichment(
                     cv_rsid_to_loci, cv_pos_candidates, _ = clinvar.lookup_loci(
                         clinvar_ref, cv_rsids, cv_positions
                     )
+                    reverse_maps_read.add("clinvar")
                 except Exception as exc:
                     logger.warning(
                         "ClinVar reference at %s is present but not queryable (%s); continuing "
@@ -1197,6 +895,7 @@ def _run_enrichment(
                         rev_candidates[pt] = cands
                         rev_source[pt] = "clinvar"
                 tracker.settle(k for rsid in cv_rsid_to_loci for k in subjects_of_rsid.get(rsid, ()))
+                withdraw_rejected(cv_rsid_to_loci)
 
     # ── staged answers from an interrupted run, between the caches and the live links ──────────
     # Placed exactly here, and the position is the whole reason a resumed run reproduces an
@@ -1215,6 +914,8 @@ def _run_enrichment(
     live_ensembl_runs = not offline and genome_build == "GRCh38"
     gnomad_runs = use_gnomad and not offline and genome_build == "GRCh38"
     dropped_link: list[str] = []
+    # A seeded answer's release was never written down by the run that asked, so it is recorded as
+    # unknown rather than as this run's (RM373): `staged_rsids`, defined with the fall-through above.
     for rsid, (staged_source, staged_loci) in staged.items():
         if not (gnomad_runs if staged_source == "gnomad" else live_ensembl_runs):
             dropped_link.append(staged_source)
@@ -1222,6 +923,8 @@ def _run_enrichment(
         if rsid not in rsid_to_loci:
             rsid_to_loci[rsid] = staged_loci
             source_of_rsid[rsid] = staged_source
+            staged_rsids.add(rsid)
+            withdraw_rejected((rsid,))
         tracker.settle(subjects_of_rsid.get(rsid, ()))
     if dropped_link:
         logger.info(
@@ -1232,15 +935,38 @@ def _run_enrichment(
             ", ".join(sorted(set(dropped_link))),
         )
 
-    # ── live Ensembl link (V2→V1), for cache misses, unless offline ────────────────────────────
+    # ── live Ensembl link (REST), for cache misses, unless offline ─────────────────────────────
+    ensembl_link: object | None = None
+    # The data release live REST answered from, asked once and only when it answered (RM373). Read by
+    # `EnsemblResolver` only: a host may inject a resolver that cannot say, and that one records none.
+    rest_release: str | None = None
+    # Whether `/info/data` was asked this run, so the REST witness below reuses the answer, a `None` too.
+    rest_release_asked = False
     if live_ensembl_runs:
-        missing = [v.rsid for v in need_pos if v.rsid and v.rsid not in rsid_to_loci]
+        # Once per rsID: a second request for an answer just set aside would record the same rejection twice.
+        # Never an rsID whose live answer, staged by an interrupted run, was just set aside: asking again
+        # would get the same answer and journal it twice.
+        missing = list(
+            dict.fromkeys(
+                v.rsid
+                for v in need_pos
+                if v.rsid and v.rsid not in rsid_to_loci and not rejected_from(v.rsid, _LIVE_ENSEMBL_LINKS)
+            )
+        )
         if missing:
             owned = resolver is None
             client = resolver or EnsemblResolver()
+            ensembl_link = client
+            rest_answered = False
             try:
                 for rsid in missing:
                     loci, src = client.resolve_rsid(rsid)
+                    rest_answered = rest_answered or (loci is not None and src == "ensembl-rest")
+                    # RM272: the resolver names an rsID whose every mapping carried no nucleotide
+                    # allele. Read by attribute because a host may inject its own resolver, and one
+                    # that does not collect them simply contributes none.
+                    if loci == [] and rsid in getattr(client, "non_nucleotide_rsids", ()):
+                        non_nucleotide_rsids.add(rsid)
                     if loci is None and src is not None:
                         # Ensembl answered, with one-sided indels whose anchor base could not be read
                         # (RM268). Unchecked like a failed request, and no row for the same reason,
@@ -1261,6 +987,12 @@ def _run_enrichment(
                         # a transient outage into a permanent negative on every future run.
                         journal.record(rsid, src or "ensembl", loci)
                         tracker.settle(subjects_of_rsid.get(rsid, ()))
+                        withdraw_rejected((rsid,))
+                # Only our own client: its `data_release` withholds rather than raises, and a host's
+                # resolver makes no such promise, so an optional provenance label could abort the run.
+                if rest_answered and isinstance(client, EnsemblResolver):
+                    rest_release = client.data_release()
+                    rest_release_asked = True
             finally:
                 if owned:
                     client.close()
@@ -1273,7 +1005,11 @@ def _run_enrichment(
     # compiled module's alts and move its artifact.digest. Going last means it can only ever add
     # variants nothing else had — a strictly additive link.
     if gnomad_runs:
-        missing = [v.rsid for v in need_pos if v.rsid and v.rsid not in rsid_to_loci]
+        missing = [
+            v.rsid
+            for v in need_pos
+            if v.rsid and v.rsid not in rsid_to_loci and not rejected_from(v.rsid, frozenset({"gnomad"}))
+        ]
         if missing:
             owned = gnomad_client is None
             client = gnomad_client or GnomadClient()
@@ -1284,16 +1020,160 @@ def _run_enrichment(
                         source_of_rsid[rsid] = "gnomad"
                         journal.record(rsid, "gnomad", loci)
                         tracker.settle(subjects_of_rsid.get(rsid, ()))
+                        withdraw_rejected((rsid,))
+                # An rsID gnomAD answered with an error is named, and its row stays whatever an earlier
+                # link answered: the last-resort link's outage may not overwrite another registry's
+                # answer (`@one-registrys-outage-may-not-speak-for-another`, RM361).
+                errored = sorted(set(getattr(client, "unanswered", {})) & set(missing))
+                if errored:
+                    logger.warning(
+                        "gnomAD answered %d rsID(s) with an error rather than a record: %s; their rows "
+                        "keep the earlier links' answer.",
+                        len(errored),
+                        ", ".join(errored),
+                    )
             except GnomadError as exc:  # a last-resort link must not sink the whole enrichment
                 logger.warning("gnomAD link failed (%s); continuing without it.", exc)
             finally:
                 if owned:
                     client.close()
 
-    # One proxy, one read cache for the run: the hosting filter below settles an undecided indel with
-    # it (RM274), and minting and the reference check reuse it after the table is assembled.
-    sequences = SequenceProxy(offline=offline)
-    read_window = _grch38_window(sequences) if genome_build == "GRCh38" else None
+    # ── an answer no subject can host was never an answer (RM382) ──────────────────────────────
+    # Every rsID whose links were all rejected gets its first answer back, so the assembly loop below
+    # sees exactly what it saw before the fall-through existed: the loci it rejects, its per-locus
+    # warnings, and a finding naming every link's answer. A later link's placement replaces nothing a
+    # subject could use, since an answer is withdrawn only when no subject can host any of its loci.
+    for rsid, answers in rejected_answers.items():
+        if rsid not in rsid_to_loci:
+            rsid_to_loci[rsid] = answers[0][1]
+            source_of_rsid[rsid] = answers[0][0]
+            restored_rsids.add(rsid)
+
+    # ── the placement's second witness (RM267) ─────────────────────────────────────────────────
+    # Every link above keeps the first answer and none compares it with another. The ClinVar snapshot
+    # (located above for the link and the `clin_sig` check) and ClinVar-GKM are asked where they place
+    # every rsID this run placed fresh, and a locus two authorities place as two events is withheld; an
+    # rsID left with no locus is routed like an unreachable one. Covered subjects are not re-asked
+    # (merge-not-clobber); `--rederive` is how a recorded placement meets this.
+    fresh_rsids = sorted(
+        {v.rsid for v in subjects if v.rsid and _subject_key(v) not in covered} & set(rsid_to_loci)
+    )
+    clinvar_gkm_ref = resolve_clinvar_gkm_reference(clinvar_gkm_cache) if genome_build == "GRCh38" else None
+    # The release REST answered the witness from (RM373), `None` when it was not asked. A run whose
+    # snapshot answered everything never used REST as a link, so the witness asks for itself, once.
+    rest_witness_release: str | None = None
+    if genome_build != "GRCh38":
+        placement = PlacementCheck(not_checked="unsupported")
+    else:
+        witnesses = load_witnesses(clinvar_ref, clinvar_gkm_ref, fresh_rsids)
+        fresh_loci = {rsid: rsid_to_loci[rsid] for rsid in fresh_rsids}
+        # The third witness, online only: Ensembl REST, asked about a snapshot indel no loaded witness
+        # holds (S117's own `rs8176719`). Through the run's live client, so an injected resolver is
+        # honoured; its answers are never journalled, since a witness's answer is not a placement this
+        # run writes. Self-consistent with the snapshot by RM292's rule — see `placement`.
+        asked_about: dict[str, set[str]] = {}
+        rest_not_asked: list[str] = []
+        rest_not_asked_reason: str | None = None
+        rest_subjects = (
+            live_witness_subjects(fresh_loci, source_of_rsid, witnesses) if live_ensembl_runs else []
+        )
+        if rest_subjects:
+            owned = resolver is None
+            client = resolver or EnsemblResolver()
+            rest_answers: Loci = {}
+            try:
+                # An optional capability of an injected resolver, asked only where it exists: a host's
+                # resolver written before 0.8 has `resolve_rsid` alone, and calling the method blindly
+                # raised `AttributeError` at the first eligible indel.
+                if isinstance(client, RestWitness):
+                    logger.info(
+                        "Placement witness — asking Ensembl REST about %d snapshot indel(s) no loaded "
+                        "witness holds, one request at a time (RM267).",
+                        len(rest_subjects),
+                    )
+                    rest_answers, rest_not_asked = ask_live_witness(client.resolve_rsid_rest, rest_subjects)
+                    # A 410 is a fact the resolver noted (`Withholding`, RM361): the not-asked sentence
+                    # says so, never the outage default it fell back to (audit round 2). A fixed
+                    # sentence rather than the source's body, which the log already carries: the record
+                    # is attested and lap-stable, and the note is sticky, so it claims "at least once".
+                    if rest_not_asked and withheld_reason(client) == RETIRED:
+                        rest_not_asked_reason = REST_RETIRED_REASON
+                    # Our own client only, as for the link: a host's resolver makes no withholding promise.
+                    if rest_answers and isinstance(client, EnsemblResolver):
+                        rest_witness_release = rest_release if rest_release_asked else client.data_release()
+                else:
+                    rest_not_asked = list(rest_subjects)
+                    rest_not_asked_reason = (
+                        f"the injected resolver ({type(client).__name__}) has no `resolve_rsid_rest`, so "
+                        "this run could not ask Ensembl REST"
+                    )
+                    logger.warning(
+                        "Placement witness — Ensembl REST not asked about %d snapshot indel(s): %s; pass an "
+                        "`EnsemblResolver`, or give yours the method, to have them compared (RM267).",
+                        len(rest_subjects),
+                        rest_not_asked_reason,
+                    )
+            finally:
+                if owned:
+                    client.close()
+            if rest_answers:
+                witnesses[ENSEMBL_WITNESS] = rest_answers
+                asked_about[ENSEMBL_WITNESS] = set(rest_answers)
+        placement = compare_placements(
+            fresh_loci,
+            {rsid: resolution_authority(source_of_rsid.get(rsid)) for rsid in fresh_rsids},
+            witnesses,
+            mint=mint,
+            read_window=read_window,
+            asked_about=asked_about,
+        )
+        placement.not_asked = rest_not_asked
+        placement.not_asked_reason = rest_not_asked_reason
+        if not fresh_rsids:
+            placement.not_checked = "nothing_to_check"
+        elif not witnesses:
+            placement.not_checked = "no_reference"
+        elif placement.subjects == 0:
+            # Witnesses were loaded and held no counterpart for anything placed: a comparison over zero
+            # subjects is a skip with the one-witness count as its sentence, never a `ran` 0 of 0.
+            placement.not_checked = "nothing_to_check"
+    disputed = set(placement.withheld)
+    # A disputed subject whose overlay states a whole placement is not unresolved any more: the compile
+    # applies the author's answer. Read-only (RM136); the finding is still counted in the record.
+    answered = answered_placements(spec_dir)
+    if placement.disagreements:
+        # One line for the run, naming both placements per rsID: the finding is the pair, and which
+        # half is wrong is not knowable here (`@enrichment-is-validation`).
+        logger.warning(
+            "Placement disagreement — %d rsID(s) are placed as different events by two authorities, so "
+            "the disputed placement is not written (RM267): %s. Neither is rewritten; check the "
+            "spelling against the reference and record the one you stand behind in overrides.csv as "
+            "an `insert`.",
+            len(placement.contested),
+            "; ".join(str(d) for d in placement.disagreements),
+        )
+    for line in placement.sentences():
+        logger.info("Placement witness — %s.", line)
+
+    # ── an authored coordinate's spelling (RM270): judged, reported, never rewritten ─────────────
+    # Every subject that authored a whole coordinate, every run, whether or not a recorded row covers it:
+    # the check is about the module's own cells, not about the sidecar (the pair check's reasoning).
+    # The cell is the row's identity, so a respelling is the finding and the row's `vrs_id` is what
+    # joins it to a caller's spelling (`@enrichment-is-validation`). Judged once per subject, here, and
+    # the same verdict is stamped on the row the assembly below writes for it.
+    spelling = SpellingCheck()
+    authored_spelling: dict[str, SpellingVerdict] = {}
+    for v in subjects:
+        if (
+            v.chrom is None
+            or v.start is None
+            or not v.ref
+            or not v.alts
+            or v.variant_key in authored_spelling
+        ):
+            continue
+        authored_spelling[v.variant_key] = spelling_verdict(v.chrom, v.start, v.ref, v.alts, read_window)
+        spelling.judge(v.variant_key, v.chrom, v.start, v.ref, v.alts, authored_spelling[v.variant_key])
 
     # ── assemble the table (a row for every subject; expansion → N rows) ───────────────────────
     # **Was any rsID link consulted at all?** (RM98.) Every one of them is gated: the two caches on
@@ -1303,6 +1183,38 @@ def _run_enrichment(
     # deliberately a *run*-level question, not a per-rsID one: the branch it guards is reached only for
     # a subject no link produced a locus for, and if no link ran there is no per-rsID answer to have.
     rsid_links_consulted = reference is not None or clinvar_ref is not None or not offline
+    # The release each link answered from this run (RM373), by the lane's own label for a snapshot
+    # (`CacheLane.release_label`: the manifest's `release_id` for Ensembl, `release.json`'s `dataset`
+    # for ClinVar). Stamped on the rows this run writes and on nothing else.
+    cache_release = ensembl_release_label(reference) if reference is not None else None
+    # ClinVar's through `clinvar_dataset_label`, the one function the currency check, the tautology skip
+    # and `assertions` read too, so the writer and its readers cannot spell one release two ways.
+    clinvar_release = clinvar.clinvar_dataset_label(clinvar_ref)
+    releases = LinkReleases(
+        # Checked against the link registry; gnomAD and the retired GraphQL leg are named, with their
+        # reasons, in `LINKS_WITHOUT_A_RELEASE`.
+        by_link=link_releases(
+            {
+                "cache": cache_release,
+                "clinvar": clinvar_release,
+                # The live link's empty answer is written `source="ensembl"`; REST is what gave it.
+                "ensembl": rest_release,
+                "ensembl-rest": rest_release,
+            }
+        ),
+        staged=frozenset(staged_rsids),
+    )
+    clinvar_gkm_release = snapshot_release_label(clinvar_gkm_ref) if clinvar_gkm_ref is not None else None
+    # Checked against `PLACEMENT_WITNESSES`, so a witness added there cannot go unlabelled here.
+    witness_release = witness_releases(
+        {
+            CLINVAR_WITNESS: clinvar_release,
+            CLINVAR_GKM_WITNESS: clinvar_gkm_release,
+            ENSEMBL_WITNESS: rest_witness_release,
+        }
+    )
+    # Rows put back as recorded, by identity: what this run did not answer (`table_releases`).
+    carried_rows: set[int] = set()
     out: list[ResolutionRow] = []
     unresolved: list[str] = []
     # Collected across the loop and reported once. A per-row line here would be one line per variant —
@@ -1310,6 +1222,16 @@ def _run_enrichment(
     par_twins_dropped: list[tuple[str, str, int]] = []
     # Loci the reference showed cannot host the authored genotype (RM274), named once after the loop.
     reference_rejected: list[str] = []
+    # The unresolved keys that are so because two authorities disagree (RM267), named in the refusal.
+    placement_unresolved: list[str] = []
+    # The unresolved keys every link answered at a locus the authored genotype cannot host (RM382),
+    # named in the refusal, and their subjects, which `--rederive` counts as answered.
+    hosting_unresolved: list[str] = []
+    hosting_rejected_subjects: set[tuple] = set()
+    # Why each subject the loop wrote no fresh row for has none, declared by the branch that wrote nothing
+    # (RM394): the carry-forward's report names the reason per group, so a subject a link answered is
+    # never described as one nobody could ask. A `rederive_words.CARRY_REASONS` member.
+    no_row_reason: dict[tuple, str] = {}
     for v in subjects:
         key = v.variant_key
         subject = _subject_key(v)
@@ -1319,10 +1241,20 @@ def _run_enrichment(
         tracker.settle((key,))
         if subject in covered:
             out.extend(covered[subject])
+            carried_rows.update(id(row) for row in covered[subject])
             if not any(r.chrom is not None for r in covered[subject]):
                 unresolved.append(key)
             continue
-        if v.rsid is not None and (v.chrom is None or v.rsid in rsid_to_loci):
+        if v.rsid in disputed and v.chrom is None:
+            # Two authorities placed this rsID as two events (RM267). Like an unreachable rsID: no row,
+            # and the key stays unresolved — never `not_found`, which would say the source lacks it. A
+            # pair row falls through to the verbatim branch and keeps its own authored coordinate. An
+            # author who answered it in `overrides.csv` has supplied the placement the compile uses.
+            if key not in answered:
+                unresolved.append(key)
+                placement_unresolved.append(key)
+            continue
+        if v.rsid is not None and v.rsid not in disputed and (v.chrom is None or v.rsid in rsid_to_loci):
             # **A row that authored both halves takes this branch too, once the reference has
             # answered for its rsID (S104).** The pair check above already looked the rsID up — the
             # verify rsIDs ride in the cache batch — and then the verbatim branch at the bottom
@@ -1347,24 +1279,44 @@ def _run_enrichment(
             # A subject with no constraint (a pharm annotation that named no genotype) keeps every
             # locus: nothing is known about which allele it is about, and dropping loci for lack of
             # evidence would invent a selection the row never made.
-            all_loci = rsid_to_loci.get(v.rsid, [])
+            # A locus holding an allele two authorities place as different events is not written
+            # (RM267); the rest of the rsID's loci are, and `disputed` above caught the all-withheld case.
+            all_loci = [lo for lo in rsid_to_loci.get(v.rsid, []) if placement.keeps(v.rsid, lo)]
+            # Everything the links offered for the rsID this run, before any of the filters below narrow
+            # it: what the rows written here record as `source_loci` when they place less (RM387).
+            offered = [
+                *rsid_to_loci.get(v.rsid, []),
+                *(lo for _, answer in rejected_answers.get(v.rsid, ()) for lo in answer),
+            ]
             loci = []
             subject = "allele" if v.origin == "haplotypes.csv" else "genotype"
-            for lo in all_loci:
-                verdict = (
-                    True
-                    if v.constraint is None
-                    else hosting_verdict(v.constraint, lo.get("ref"), lo.get("alts"))
-                )
-                settled = (
-                    _settle_by_reference(v.constraint, lo, read_window)
-                    if verdict is None and v.constraint is not None and read_window is not None
-                    else None
-                )
+            # RM381: the genotype read in its site's frame, so a padded `G/GTTT` and the per-ALT pieces the
+            # readers hand on meet (`site_verdicts`, inside `_hostings`); a piece of the site it does not
+            # name is not hosted.
+            for lo, (verdict, settled) in zip(
+                all_loci, _hostings(v.constraint, all_loci, read_window), strict=True
+            ):
+                if (
+                    verdict is False
+                    and settled is None
+                    and v.constraint is not None
+                    and hosting_verdict(v.constraint, lo.get("ref"), lo.get("alts")) is not False
+                ):  # type: ignore[arg-type]
+                    logger.info(
+                        "%s: %s:%s %s>%s is left out: read in its site's frame, the authored %s %s names "
+                        "another ALT of the site (RM381).",
+                        v.rsid,
+                        lo.get("chrom"),
+                        lo.get("start"),
+                        lo.get("ref"),
+                        lo.get("alts"),
+                        subject,
+                        v.constraint,
+                    )
+                    continue
                 if settled is not None:
                     # RM274: the reference decided what the allele strings could not. Logged apart
                     # from both arms below, whose reasons are about the strings.
-                    verdict = settled
                     logger.info(
                         "%s: %s:%s %s>%s %s the authored %s %s: read against the GRCh38 reference, "
                         "the locus's event %s the authored one inside its repeat (RM274).",
@@ -1435,21 +1387,20 @@ def _run_enrichment(
                 # recorded where `all_loci` is non-empty: with nothing returned there was no answer to
                 # reject, and that row is a genuine `not_found` the branches below handle. Built here,
                 # beside the per-locus warnings above, so the finding and the log cannot disagree about
-                # which loci were compared.
-                allele_mismatches.append(
-                    AlleleMismatch(
-                        rsid=v.rsid,
-                        genotype=v.constraint or "",
-                        loci=tuple(
-                            f"{lo.get('chrom')}:{lo.get('start')} {lo.get('ref')}>{lo.get('alts')}"
-                            for lo in all_loci
-                        ),
-                        offered=tuple(f"{lo.get('ref')}>{lo.get('alts')}" for lo in all_loci),
-                        strand_flip=v.constraint is not None
-                        and any(
-                            strand_flip_explains(v.constraint, lo.get("ref"), lo.get("alts"))
-                            for lo in all_loci
-                        ),
+                # which loci were compared. An rsID no link placed names every link's rejected answer
+                # (RM382); one only this subject rejected names the answer it was given.
+                answers = (
+                    rejected_answers[v.rsid]
+                    if v.rsid in restored_rsids
+                    else [*rejected_answers.get(v.rsid, []), (source_of_rsid.get(v.rsid, "cache"), all_loci)]
+                )
+                allele_mismatches.append(_allele_mismatch(v.rsid, v.constraint, answers))
+            elif loci and v.chrom is None and v.rsid in rejected_answers and v.rsid not in restored_rsids:
+                # A later link placed what every earlier answer could not host (RM382): the row is that
+                # link's, and the earlier answers are recorded as superseded, never as an absence.
+                superseded_answers.append(
+                    _allele_mismatch(
+                        v.rsid, v.constraint, rejected_answers[v.rsid], source_of_rsid.get(v.rsid, "cache")
                     )
                 )
             if loci and not keep_par_twin:
@@ -1461,7 +1412,40 @@ def _run_enrichment(
                 )
             if loci:
                 src = source_of_rsid.get(v.rsid, "cache")
-                for i, locus in enumerate(loci):
+                # **A coordinate this run fills is written left-aligned (RM270)** — the spelling a
+                # caller's `bcftools norm -m -any` writes, so an exact join meets it. Only for an
+                # rsID-only subject: a pair's coordinate is its author's, and the compiler compares the
+                # recorded locus with it by spelling (`_verify`), so respelling that locus would turn
+                # agreement into a disagreement; it is judged instead. After the hosting filter and the
+                # PAR choice, which read the link's spelling as before; RM267's verdict is keyed on it
+                # too, so each piece keeps its source locus beside it.
+                written: list[tuple[dict[str, object], Mapping[str, object], bool | None]] = []
+                for locus in loci:
+                    if v.chrom is None:
+                        pieces = _filled_pieces(v.constraint, locus, read_window)
+                        if [locus_key(p) for p, _ in pieces] != [locus_key(locus)]:
+                            spelling.respelled.append(
+                                f"{v.rsid} {_spelled(*locus_key(locus))} → "
+                                + " + ".join(_spelled(*locus_key(p)) for p, _ in pieces)
+                            )
+                    else:
+                        pieces = [(dict(locus), _spelling_of(locus, read_window).verdict)]
+                    written.extend(
+                        (piece, locus, aligned)
+                        for piece, aligned in pieces
+                        if locus_key(piece) not in {locus_key(w) for w, _, _ in written}
+                    )
+                wider = _wider_answer(
+                    offered, [lo for piece, source, _ in written for lo in (piece, source)], genome_build
+                )
+                for i, (locus, source_locus, aligned) in enumerate(written):
+                    witness, verdict = placement.row_columns(v.rsid, source_locus)
+                    # RM375: whether the coordinate the module authored (whole, or CPIC's half) spells
+                    # this locus's event, judged against the reference, and the coordinate judged, so
+                    # the compile reads a respelling as agreement instead of a contradiction.
+                    judged = authored_event(
+                        (v.chrom, v.start, v.ref, v.alts), locus, mint=mint, read_window=read_window
+                    )
                     out.append(
                         ResolutionRow(
                             variant_key=key,
@@ -1469,7 +1453,14 @@ def _run_enrichment(
                             genome_build=genome_build,
                             locus_index=i,
                             source=src,
+                            source_release=releases.of(src, v.rsid),
                             status="resolved",
+                            placement_witness=witness,
+                            placement_verdict=verdict,
+                            left_aligned=aligned,
+                            authored_event=judged[0] if judged else None,
+                            judged_coordinate=judged[1] if judged else None,
+                            source_loci=wider,
                             **locus,
                         )
                     )
@@ -1489,8 +1480,26 @@ def _run_enrichment(
                         genome_build=genome_build,
                         source="authored",
                         status="resolved",
+                        left_aligned=_authored_verdict(authored_spelling, v),
+                        source_loci=_wider_answer(
+                            offered, [{"chrom": v.chrom, "start": v.start}], genome_build
+                        ),
                     )
                 )
+            elif all_loci:
+                # **Answered, and every answer rejected (RM382).** The S85 row was written here as
+                # `not_found` — *this source has no record of the rsID* — about an rsID every link that
+                # answered has; the finding above said so and the row contradicted it. So no row, like a
+                # disputed placement one branch up (RM267) and for the same reason: the sources do have
+                # it. The key stays unresolved, so `strict` still refuses, now with the rejection named;
+                # `--rederive` counts it answered, so a recorded placement is not carried past it.
+                unresolved.append(key)
+                hosting_rejected_subjects.add(_subject_key(v))
+                no_row_reason[_subject_key(v)] = "rejected"
+                if v.rsid not in unreachable_rsids | unanchored_rsids:
+                    # A link that could not answer leaves the chain incomplete, so the refusal asks for
+                    # the link rather than the genotype (`@unreachable-not-absent`).
+                    hosting_unresolved.append(key)
             elif genome_build == "GRCh38" and v.rsid in unreachable_rsids | unanchored_rsids:
                 # The live link was asked and never answered (S20), so this row has the same shape as
                 # the non-GRCh38 case below and gets the same treatment: no row at all. Writing
@@ -1499,6 +1508,7 @@ def _run_enrichment(
                 # fabricated identifier. The key stays `unresolved`, so `strict` still refuses and
                 # `best_effort` still warns; what changes is that neither claims a source said no.
                 unresolved.append(key)
+                no_row_reason[_subject_key(v)] = "unreachable"
             elif genome_build == "GRCh38" and not rsid_links_consulted:
                 # **No link ran, so there is no answer to record** (RM98). This branch used to write
                 # `status="not_found", source="cache"` unconditionally, which under `--offline` on a
@@ -1517,6 +1527,7 @@ def _run_enrichment(
                 # world, and collapsing them would replace one small untruth with another.
                 unconsulted_rsids.add(v.rsid)
                 unresolved.append(key)
+                no_row_reason[_subject_key(v)] = "not_asked"
             elif genome_build == "GRCh38":
                 out.append(
                     ResolutionRow(
@@ -1524,6 +1535,7 @@ def _run_enrichment(
                         rsid=v.rsid,
                         genome_build=genome_build,
                         source="ensembl" if not offline else "cache",
+                        source_release=releases.of("ensembl" if not offline else "cache", v.rsid),
                         status="not_found",
                     )
                 )
@@ -1536,12 +1548,30 @@ def _run_enrichment(
                 # no fact is worse than writing no row: the position is simply still unset, which the
                 # unresolved list already says and the compiler already warns about.
                 unresolved.append(key)
+                no_row_reason[_subject_key(v)] = "off_build"
         elif v.rsid is None and v.chrom is not None:
             # Allele-aware back-fill (Tier 0/1/3): 0 candidates → leave rsid null (coordinate is the
             # identity, don't guess); 1 → attach it; ≥2 (genuine dbSNP merge at the exact allele) →
             # deterministic pick + status="ambiguous" + the full candidate list, never a silent guess.
             pt = (v.chrom, v.start, v.ref, _authored_alt(v))
             cands = rev_candidates.get(pt, [])
+            if (
+                rederive
+                and not cands
+                and any(
+                    r.rsid is not None and r.source not in reverse_maps_read
+                    for r in existing.get(_subject_key(v), ())
+                )
+            ):
+                # **Nobody asked, so nothing replaces the recorded row (RM393).** The recorded rsID came
+                # from a map this run did not read, so an empty `cands` is not an answer about it, and
+                # writing `rsid=None, source=authored` here erased a back-filled rsID that the recompiled
+                # artifact then shipped as null. No row, like every other could-not-ask branch: the
+                # carry-forward below puts the recorded rows back unchanged (`@rederive-never-shortens`).
+                # A map that was read and has no rsID at the allele is an answer, and replaces. A first
+                # enrich keeps the authored row: with nothing recorded, the coordinate is the identity.
+                no_row_reason[_subject_key(v)] = "no_reverse_map" if genome_build == "GRCh38" else "off_build"
+                continue
             if not cands:
                 rsid, status, alternates, src = None, "resolved", None, "authored"
             elif len(cands) == 1:
@@ -1558,8 +1588,10 @@ def _run_enrichment(
                     alts=v.alts,
                     genome_build=genome_build,
                     source=src,
+                    source_release=releases.of(src),
                     status=status,
                     rsid_alternates=alternates,
+                    left_aligned=_authored_verdict(authored_spelling, v),
                 )
             )
         else:
@@ -1578,6 +1610,7 @@ def _run_enrichment(
                     genome_build=genome_build,
                     source="authored",
                     status="resolved",
+                    left_aligned=_authored_verdict(authored_spelling, v),
                 )
             )
 
@@ -1593,31 +1626,47 @@ def _run_enrichment(
         # exists for wearing a new flag. Such a subject keeps exactly the rows it had; only an
         # *answered* one (including answered-and-absent, which does write a `not_found` row) replaces.
         fresh_keys = {merge_key(row) for row in out}
+        # A disputed subject WAS asked, and the answer is "two authorities disagree" (RM267): carrying
+        # its recorded placement forward would keep exactly the row the comparison withheld.
+        fresh_keys |= {_subject_key(v) for v in subjects if v.rsid in disputed}
+        # So is a subject every link answered and no answer could host (RM382) — when what it recorded
+        # places nothing (a pre-0.8 `not_found` row, the false absence itself). A recorded placement is
+        # kept: it came from a link this run may not have reached, and rejecting another link's answer
+        # refutes nothing about it (`@rederive-never-shortens`).
+        fresh_keys |= {
+            k for k in hosting_rejected_subjects if not any(r.chrom is not None for r in existing.get(k, []))
+        }
         # Only subjects the spec still names. A recorded row for a variant the author has since
         # deleted is dropped by an ordinary run — the assembly loop iterates `subjects` and nothing
         # else — so carrying it forward here would make `--rederive` resurrect rows a plain re-run
         # prunes, which is a second behaviour nobody asked this flag for.
         in_scope = {_subject_key(v) for v in subjects}
-        carried: list[str] = []
+        carried: dict[str, str] = {}
         still_resolved: set[str] = set()
         for subject_key, recorded in existing.items():
             if subject_key in fresh_keys or subject_key not in in_scope:
                 continue
             out.extend(recorded)
+            carried_rows.update(id(row) for row in recorded)
             carried_keys.add(subject_key)
-            carried.append(recorded[0].variant_key)
+            # A subject no branch declared a reason for is said without claiming one (RM394).
+            carried[recorded[0].variant_key] = no_row_reason.get(subject_key, "not_re_answered")
             if any(r.chrom is not None for r in recorded):
                 still_resolved.add(recorded[0].variant_key)
         unresolved = [k for k in unresolved if k not in still_resolved]
         if carried:
+            # One line, grouped by reason (RM394): a subject a link answered and one nobody asked are
+            # different facts with different remedies, and the old sentence said "no source could be
+            # asked" about both.
             logger.warning(
-                "Re-derivation kept the recorded rows for %d subject(s) no source could be asked "
-                "about this run (%s): a re-derivation that dropped them would replace a longer table "
-                "with a shorter one, which nothing downstream can tell from a module whose author "
-                "resolved less. They are unchanged rather than re-derived, so the report below says "
-                "nothing about them.",
+                "Re-derivation kept the recorded rows for %d subject(s), unchanged rather than re-derived, "
+                "so the report below says nothing about them (a re-derivation that dropped them would "
+                "replace a longer table with a shorter one): %s.",
                 len(carried),
-                examples(sorted(carried)),
+                "; ".join(
+                    carry_sentence(reason, len(keys), examples(sorted(keys)))
+                    for reason, keys in by_case(carried).items()
+                ),
             )
 
     # One line for the whole run, grouped by reason and counted. These are not findings about the
@@ -1646,12 +1695,35 @@ def _run_enrichment(
             ", ".join(f"{rsid} {chrom}:{start}" for rsid, chrom, start in par_twins_dropped),
         )
 
+    if spelling.respelled:
+        logger.info(
+            "Left-aligned %d filled locus/loci (RM270): the coordinate a link gave is written in the "
+            "spelling a caller's normalized VCF uses, so an exact join meets it (%s).",
+            len(spelling.respelled),
+            examples(spelling.respelled),
+        )
+    if spelling.findings:
+        logger.warning(
+            "Authored spelling — %d of %d authored coordinate(s) checked are not in their left-aligned "
+            "spelling, so a caller's normalized VCF misses them on an exact (chrom, pos, ref, alt) join; "
+            "they are left as authored, and their vrs_id joins either spelling (RM270): %s",
+            len(spelling.findings),
+            spelling.checked,
+            examples(spelling.findings),
+        )
+    if spelling.unknown:
+        logger.info(
+            "Authored spelling — %d authored coordinate(s) could not be judged (an indel with no "
+            "reference read this run, or a non-nucleotide allele).",
+            spelling.unknown,
+        )
+
     # Content-addressed allele identity, stamped after the chain has settled the coordinates (there is
     # nothing to mint from before that). Existing ids are never overwritten. `sequences` is the run's
     # one proxy, built above the table so the hosting filter shares its cache.
     mint_result: MintResult | None = None
     if mint_vrs:
-        mint_result = mint_resolution_rows(out, minter=VrsMinter(offline=offline, sequences=sequences))
+        mint_result = mint_resolution_rows(out, minter=minter)
         logger.info(
             "VRS: minted %d id(s) (%d stdlib, %d normalized), %d unmintable, %d already present",
             mint_result.minted,
@@ -1666,6 +1738,8 @@ def _run_enrichment(
         # indel offline or a build with no refget table, are fixable by no authored edit.
         for line in mint_result.coverage_warnings():
             logger.warning("VRS coverage — %s", line)
+        for line in mint_result.version_warnings():
+            logger.warning("VRS version — %s", line)
 
     # Validation pass: does the authored data agree with the genome? (Reported, never repaired.)
     ref_check = (
@@ -1871,8 +1945,15 @@ def _run_enrichment(
     # because doing so would migrate `variant_key` by network lookup. See `identifiers.check_rsids`.
     stale_rsids: list[RsidStatus] = []
     rsid_subjects = 0
+    # Why dbSNP never answered, when it did not (RM361): the record is then a skip, never `ran` over
+    # subjects nobody asked about with zero findings.
+    rsid_unanswered: tuple[str, str] | None = None
     if verify_rsids and not offline:
-        asked = sorted({r.rsid for r in out if r.rsid})
+        # The rows the table carries, and every rsID a meta.csv member names (0.8): one variant under
+        # two keys is a meta-table disagreement hidden as a difference, and NCBI is the merge oracle.
+        # The members' ids are asked and reported, never resolved — a verdict is stamped only on a row
+        # `resolution.csv` already carries.
+        asked = sorted({r.rsid for r in out if r.rsid} | set(member_rsids))
         rsid_subjects = len(asked)
         try:
             statuses = check_rsids(asked)
@@ -1894,6 +1975,10 @@ def _run_enrichment(
             # run never established — `@unreachable-not-absent`, one column over.
             logger.warning("dbSNP rsID check failed (%s); continuing without rsID verdicts.", exc)
             statuses = []
+            rsid_unanswered = (
+                could_not_ask_reason(exc),
+                f"dbSNP could not be asked about {rsid_subjects} rsID(s): {exc}",
+            )
         by_rsid = {s.rsid: s for s in statuses}
         for row in out:
             status = by_rsid.get(row.rsid or "")
@@ -1912,8 +1997,8 @@ def _run_enrichment(
     # chain already opened — so there is one question, two tiers and one attestation name.
     #
     # A warning in BOTH modes, and the difference from the compiler's half is not an oversight. There,
-    # the authored value wins and the table's position is lost on a reverse, so a contradiction is an
-    # instability in the artifact; here nothing is dropped or rewritten and the likely causes — a dbSNP
+    # the authored value wins over the table in the artifact, so strict builds only on a pair the table
+    # agrees with; here nothing is dropped or rewritten and the likely causes — a dbSNP
     # merge, a coordinate from another build — are not cleared by any authored edit this run can name
     # (P5, the `not_covered` class).
     #
@@ -1925,7 +2010,12 @@ def _run_enrichment(
     # `verification.json` does not describe.
     pair_check = _check_authored_pairs(
         verify_pairs,
-        rsid_to_loci,
+        # The snapshot's own answer for an rsID a later link placed after it was set aside (RM382): the
+        # pair check reports a snapshot comparison, so it compares against the snapshot.
+        {
+            **rsid_to_loci,
+            **{rsid: answers[0][1] for rsid, answers in rejected_answers.items() if answers[0][0] == "cache"},
+        },
         genome_build=genome_build,
         reference=reference,
         offline=offline,
@@ -1934,6 +2024,8 @@ def _run_enrichment(
         # any check reads a row; this is the enricher doing the same for the one finding an overlay
         # row can actually answer, so a correction stops coming back on every run.
         answered=overlay_answers(spec_dir, "resolution.csv"),
+        mint=mint,
+        read_window=read_window,
     )
     if pair_check.disagreements:
         # One line for the run, naming them, on the `unreachable_rsids` model: a line per row would be
@@ -1992,25 +2084,65 @@ def _run_enrichment(
     # different statement and the only one of the two that is a clean bill.
     rederived: list[SubjectDrift] | None = None
     if rederive:
-        rederived, compared = _rederived_drift(existing, out, skip=carried_keys)
-        if rederived:
+        rederived, compared = _rederived_drift(
+            existing, out, skip=carried_keys, mint=mint, read_window=read_window
+        )
+        moved = [d for d in rederived if d.respelled is False]
+        respelled = [d for d in rederived if d.respelled is True]
+        # RM375: no id and no reference read to tell a respelling from a move. Said apart, in neither
+        # register: calling it a move blames a source that may not have moved.
+        unsettled = [d for d in rederived if d.respelled is None]
+        if moved:
             # The denominator travels with the finding: "3 subjects moved" is unreadable without the
             # number re-asked. Nothing is printed when nothing moved — a comparison whose empty result
             # is the normal case must not announce a zero as though it were evidence.
+            # Counted by case (RM394): an allele the source added is not a move, and the split is what
+            # tells an operator migrating 0.8 whether anything needs reading.
             logger.warning(
                 "Re-derivation: %d of %d re-asked subject(s) now answer differently from the "
-                "recorded table — %s. The fresh answer is committed and the old one is not kept; a "
+                "recorded table (%s) — %s. The fresh answer is committed and the old one is not kept; a "
                 "value you decided rather than derived belongs in overrides.csv, where re-deriving "
                 "cannot reach it.",
-                len(rederived),
+                len(moved),
                 compared,
-                "; ".join(str(d) for d in rederived),
+                ", ".join(
+                    f"{len(keys)} {case}"
+                    for case, keys in by_case({d.variant_key: d.case for d in moved}).items()
+                ),
+                "; ".join(str(d) for d in moved),
+            )
+        if respelled:
+            # Apart from the drift above: the source did not move, this release's spelling did (RM270),
+            # and a canary that blamed the source for it would cry wolf on every pre-0.8 indel.
+            logger.info(
+                "Re-derivation: %d of %d re-asked subject(s) are the same events respelled (RM270's "
+                "left-aligned fill, or another release's anchor) — %s.",
+                len(respelled),
+                compared,
+                "; ".join(str(d) for d in respelled),
+            )
+        if unsettled:
+            logger.warning(
+                "Re-derivation: %d of %d re-asked subject(s) changed and this run could not tell a "
+                "respelling from a move — %s. Undecided means an allele with no VRS id and no reference "
+                "read, or an indel ALT one table keeps and the other does not, which the hosting filter "
+                "keeps offline and settles online; re-derive online to settle the first.",
+                len(unsettled),
+                compared,
+                "; ".join(str(d) for d in unsettled),
             )
 
+    # The release of each snapshot this run read, keyed by the `SourceRow.source` (and cache lane) it
+    # stands for: what the derived-layer currency line compares a superseded label against (RM394).
+    local_releases: dict[str, str | None] = {
+        "clinvar": clinvar_release,
+        CLINVAR_GKM_SOURCE: clinvar_gkm_release,
+    }
+
     # Fifth validation pass, and the only one whose subject is a claim the module makes about its own
-    # provenance rather than about a variant (RM85). Read off `sources.csv` **as it stands** — the
-    # licence rows this run writes are at the resolution layer and carry no `dataset`, so nothing here
-    # is comparing the module against something this same run just derived. That is the trap next
+    # provenance rather than about a variant (RM85). Read off `sources.csv` **as it stands**, before the
+    # commit writes this run's labels (RM373), so nothing here is comparing the module against something
+    # this same run just derived. That is the trap next
     # door: a check satisfied by the value it is checking agrees with itself, which is how a
     # re-derivation once reported a clean bill for exactly the subjects it had rewritten.
     dataset_currency: CurrencyCheck | None = None
@@ -2018,14 +2150,28 @@ def _run_enrichment(
         dataset_currency = check_dataset_currency(
             read_sources_file(spec_dir), probes=release_probes, offline=offline
         )
-        if dataset_currency.behind:
+        drafted_behind, derived_behind = _split_by_layer(dataset_currency.behind)
+        if drafted_behind:
             # One sentence for the run, aggregated by reason; warned in BOTH modes, with `strict`'s
             # refusal below over the same set. It comes first so the sentence an author reads is the
             # same one either way.
             logger.warning(
                 "Dataset currency: %s. Re-draft from the current release to move the label, and "
                 "consider --rederive to see whether any answer actually changed.",
-                summarize_currency(dataset_currency)[0],
+                _superseded(drafted_behind),
+            )
+        # A derived table's source publishing past the release that answered it is the source working,
+        # and no authored edit clears it, so it warns in BOTH modes and escalates in neither
+        # (`@a-source-recuring-is-not-a-strict-matter`, RM373). Never a re-draft: nothing in a derived
+        # table was drafted. **Which release is behind decides the remedy (RM394)**: a re-derivation
+        # reads the local snapshot, so when the snapshot is the old release it repeats this line, and
+        # the remedy is the lane's pull. One line per case, each naming its own.
+        for (case, source), legs in _derived_by_case(derived_behind, local_releases).items():
+            logger.warning(
+                "Dataset currency (derived tables): %s. Not a strict matter: a source publishing past "
+                "the release that answered is the source working. %s.",
+                _superseded(legs),
+                currency_remedy(case, lane=source, local=local_releases.get(source)),
             )
         for line in unchecked_sentences(dataset_currency):
             # INFO, not WARNING, and the level is the judgement: this is not a finding about the
@@ -2061,14 +2207,34 @@ def _run_enrichment(
         unreachable_rsids=sorted(unreachable_rsids),
         unconsulted_rsids=sorted(unconsulted_rsids),
         allele_mismatches=allele_mismatches,
+        superseded_answers=superseded_answers,
+        # RM272. Reduced to the rsIDs left with no locus from ANY link, and apart from the transient
+        # states, so the lists stay disjoint: a snapshot row with no bases that live Ensembl then placed,
+        # or that another link placed, is not a permanent absence.
+        unanchored_rsids=sorted(unanchored_rsids - set(rsid_to_loci)),
+        non_nucleotide_rsids=sorted(
+            non_nucleotide_rsids - set(rsid_to_loci) - unreachable_rsids - unanchored_rsids
+        ),
+        reference_rejected_loci=list(reference_rejected),
         rsid_coordinates=pair_check,
+        placement=placement,
+        spelling=spelling,
         rederived=rederived,
         dataset_currency=dataset_currency,
         clin_sig_record=clin_sig_record,
         answered_calls=answered_calls,
     )
 
-    if unreachable_rsids:
+    if unreachable_rsids and getattr(ensembl_link, "retired", None):
+        # A 410 is not an outage (RM361): a re-run asks a route the source no longer serves.
+        logger.warning(
+            "%d rsID(s) could not be asked of live Ensembl because it retired the route (%s): %s. "
+            "Upgrade just-dna-enricher; re-running will not answer them.",
+            len(unreachable_rsids),
+            ensembl_link.retired,
+            ", ".join(sorted(unreachable_rsids)),
+        )
+    elif unreachable_rsids:
         # Warned in BOTH modes, and not escalated by `strict`: nothing an author can edit clears a
         # failed request, and `strict` means "reproducible artifact" (P5). What it does change is the
         # reading of the run — an unresolved key here may well resolve on the next one.
@@ -2114,6 +2280,21 @@ def _run_enrichment(
             )
             if flipped
             else "",
+        )
+
+    if superseded_answers:
+        # Info, not a warning: the variant is placed, by the next link that could host it (RM382). The
+        # line says which answer was set aside, so a reader of `source` knows why the snapshot did not win.
+        logger.info(
+            "%d rsID(s) were answered at loci the authored genotype cannot host and placed by a later "
+            "link (RM382): %s.",
+            len(superseded_answers),
+            "; ".join(
+                sorted(
+                    f"{m.rsid}: {', '.join(m.links)} gave {', '.join(m.loci)}; {m.placed_by} placed it"
+                    for m in superseded_answers
+                )
+            ),
         )
 
     if unconsulted_rsids:
@@ -2169,19 +2350,48 @@ def _run_enrichment(
         raise EnrichmentError(
             f"strict enrichment: {len(result.stale_rsids)} authored rsID(s) are no longer current in "
             f"dbSNP: {[str(s) for s in result.stale_rsids]}. An all-or-nothing artifact should not be "
-            f"built on an identifier its own source has retired — fix the identifier in variants.csv, "
+            f"built on an identifier its own source has retired — fix the identifier in variants.csv (or, "
+            f"for an id only a meta.csv member names, in that member), "
             f"or author the coordinate instead (a VRS allele id cannot drift). Use "
             f"mode='best_effort' to record these as warnings."
         )
 
     if mode == "strict" and result.unresolved:
+        # Two remedies, so two sentences: a placement two authorities disagree about is answered, and
+        # more cache or egress will not change it (RM267, `@unreachable-not-absent`).
+        contested = sorted(set(placement_unresolved) & set(result.unresolved))
+        # And a third (RM382): every link answered, at loci the authored genotype cannot host, so the
+        # remedy is the genotype, never a cache.
+        rejected = sorted(set(hosting_unresolved) & set(result.unresolved))
+        unplaced = [k for k in result.unresolved if k not in set(contested) | set(rejected)]
         raise EnrichmentError(
             f"strict enrichment: {len(result.unresolved)} variant(s) unresolved after the chain "
-            f"(cache/Ensembl): {result.unresolved}. Provide a complete cache/online access, add the "
-            f"loci by hand to resolution.csv, or enrich with mode='best_effort'."
+            f"(cache/Ensembl): {result.unresolved}."
+            + (
+                f" {len(contested)} of them ({contested}) are placed as different events by two "
+                f"authorities (placement disagreement, RM267): record the placement you stand behind in "
+                f"overrides.csv as an `insert` on resolution.csv."
+                if contested
+                else ""
+            )
+            + (
+                f" {len(rejected)} of them ({rejected}) were answered only at loci the authored genotype "
+                f"cannot host, by every link this run could ask (RM382): the sources have these rsIDs, so check "
+                f"the genotype's alleles and strand against the loci the warning names, or record the "
+                f"placement you stand behind in overrides.csv as an `insert` on resolution.csv."
+                if rejected
+                else ""
+            )
+            + (
+                " Provide a complete cache/online access, add the loci by hand to resolution.csv, or "
+                "enrich with mode='best_effort'."
+                if unplaced
+                else " Or enrich with mode='best_effort'."
+            )
         )
 
-    if mode == "strict" and dataset_currency is not None and dataset_currency.behind:
+    drafted_superseded = _split_by_layer(dataset_currency.behind)[0] if dataset_currency is not None else []
+    if mode == "strict" and drafted_superseded:
         # Last of the gates, because it is the mildest diagnosis of the five: nothing here contradicts
         # the genome or leaves a variant unplaced, it says the module is describing an older release
         # than the one its source serves today.
@@ -2189,8 +2399,9 @@ def _run_enrichment(
         # **Over `behind` alone**, never over the unchecked legs. An unreachable source and an
         # `--offline` run both leave every leg unchecked, and refusing on those would make `--offline
         # --strict` impossible forever over something no author can edit — the `unreachable_rsids`
-        # rule, which warns in both modes and escalates in neither.
-        superseded = dataset_currency.behind
+        # rule, which warns in both modes and escalates in neither. **Over drafted layers alone** (RM373):
+        # a derived layer's release moving is `@a-source-recuring-is-not-a-strict-matter`.
+        superseded = drafted_superseded
         raise EnrichmentError(
             f"strict enrichment: {len(superseded)} of {dataset_currency.subjects} recorded "
             f"release(s) have been superseded — "
@@ -2214,11 +2425,23 @@ def _run_enrichment(
         _write_resolution_csv(
             out,
             resolution_path,
-            before_commit=lambda: record_source_terms(
-                {row.authority for row in out if row.authority},
+            before_commit=lambda: record_table_sources(
+                # The link's authority, and every placement witness a written row names (RM267):
+                # a pass that consults a source writes its row (`@write-the-sourcerow`), and one that
+                # contributes nothing — a witness no written row names — writes none. Each labelled by
+                # the release every committed row it answered states, or withheld (RM373).
+                table_releases(
+                    out,
+                    carried=carried_rows,
+                    witness_release=witness_release,
+                    recorded={r.source: r.dataset for r in recorded_sources if r.layer == "resolution"},
+                ),
                 "resolution",
                 spec_dir,
                 error=EnrichmentError,
+                # `--rederive` re-answers every row, so the committed table is this pass's whole answer
+                # and a licence row no row names is retired with it (RM383). A merging run keeps them.
+                answered_every_row=rederive,
             ),
         )
         if clin_sig_record is not None:
@@ -2227,7 +2450,9 @@ def _run_enrichment(
             # the archive caught up with them. A run where nobody could be consulted returns `None`
             # above and writes nothing, so a previous run's record survives a run that could not
             # replace it.
-            write_concordance_tables(spec_dir, clin_sig_record.parents, clin_sig_record.calls)
+            write_concordance_tables(
+                spec_dir, clin_sig_record.parents, clin_sig_record.calls, error=EnrichmentError
+            )
         # The attestation (RM45), written once for the whole run — the proof-of-work binds the
         # document, so recording per check would pay it once per check for one guarantee. It goes after
         # `resolution.csv` and before the licence rows for no reason but reading order; the binding is
@@ -2254,8 +2479,10 @@ def _run_enrichment(
                 verify_rsids=verify_rsids,
                 rsid_subjects=rsid_subjects,
                 stale_rsids=stale_rsids,
+                rsid_unanswered=rsid_unanswered,
                 pairs=pair_check,
-                ensembl_ref=reference,
+                pair_release=run_label(cache_release, out, "cache"),
+                placement=placement,
                 currency=dataset_currency,
             ),
             spec_dir,
@@ -2272,490 +2499,3 @@ def _run_enrichment(
         else:
             journal.discard()
     return result
-
-
-def _clin_sig_detail(conflicts: Sequence[ClinSigConflict]) -> str | None:
-    """Which rows disagreed, grouped by whether the two calls are *opposed* or merely different.
-
-    The check counted its findings and kept none of them (S70). Every conflict reached the logger and
-    nothing else, so a record reading `findings: 20, detail: null` left an author able neither to
-    defend the twenty nor to correct them — and re-running to see the log again costs the full ClinVar
-    comparison. Of the five checks `enrich()` records this was the only one whose findings survived
-    nowhere: `reference_allele` and `rsid_coordinate_agreement` carry a `detail`, and `rsid_currency`
-    stamps its verdict onto the resolution rows themselves.
-
-    Grouped on `opposed` because that is the distinction the conflict already draws and the one that
-    decides what to do: an opposed pair (pathogenic-class against benign-class) is the finding worth
-    acting on, a difference is worth knowing. `verification.examples` is the shared aggregation rule,
-    so this cannot become the per-row list the CPIC lesson is about.
-    """
-    if not conflicts:
-        return None
-    parts = []
-    for label, group in (
-        ("opposed", [c for c in conflicts if c.opposed]),
-        ("differing", [c for c in conflicts if not c.opposed]),
-    ):
-        if group:
-            named = examples([f"{c.variant_key} ({c.authored} vs {c.clinvar})" for c in group])
-            parts.append(f"{len(group)} {label}: {named}")
-    return "; ".join(parts)
-
-
-def _civic_release(reference: Path | None) -> str | None:
-    """The CIViC snapshot's own release label, or `None` when it names none. Same rule as the rest."""
-    return _snapshot_release(reference)
-
-
-def _refutation_detail(findings: Sequence[RefutationFinding], basis: str | None) -> str | None:
-    """What the refutation check found, and **on which basis** — the basis on every run.
-
-    The basis is not decoration here the way a release label is elsewhere. On the `accepted` basis
-    this class is empty by construction: every refutation in CIViC that stands against a claim is
-    submitted content, and both accepted refutations in the database stand against nothing
-    (`docs/probes/CONTRADICTION_CORPORA.md`). So `findings: 0` with no basis beside it says "clear
-    water" when what happened was "looked in the half where it cannot appear". A run that found
-    nothing still writes the sentence.
-
-    Grouped by code, because the two are different sentences: a source contradicting itself, and a
-    module asserting what the source only ever denied.
-    """
-    stated = f"basis {basis}" if basis else "basis unstated by the snapshot"
-    if not findings:
-        return f"no authored direction sits beside a published refutation ({stated})"
-    parts = []
-    for code in (REFUTATION_BESIDE_CLAIM, REFUTATION_WITHOUT_CLAIM):
-        group = [f for f in findings if f.code == code]
-        if group:
-            named = examples([subject.variant_key for finding in group for subject in finding.subjects])
-            parts.append(f"{len(group)} {code}: {named}")
-    return "; ".join(parts) + f" ({stated})"
-
-
-def _verification_records(
-    *,
-    offline: bool,
-    verify_ref: bool,
-    ref_check: RefCheck,
-    build: BuildDiagnosisResult,
-    verify_clinsig: bool,
-    clin_sig_compared: int | None,
-    clin_sig_conflicts: list[ClinSigConflict],
-    clin_sig_skip: str | None,
-    clin_sig_detail: str | None,
-    clinvar_ref: Path | None,
-    refutation_findings: list[RefutationFinding],
-    refutation_subjects: int | None,
-    refutation_skip: str | None,
-    refutation_detail: str | None,
-    refutation_basis: str | None,
-    evidence_status: EvidenceStatusCheck,
-    civic_ref: Path | None,
-    verify_rsids: bool,
-    rsid_subjects: int,
-    stale_rsids: list[RsidStatus],
-    pairs: PairCheck,
-    ensembl_ref: Path | None,
-    currency: CurrencyCheck | None,
-) -> list[VerificationRecord]:
-    """The checks this pass puts, as records `verification.json` can carry (RM45).
-
-    **No count, deliberately (RM243).** This sentence used to open with one, and it was wrong: two
-    members were added to the function — `published_refutation` (RM170) and `evidence_status_currency`
-    (RM160) — each correctly, and neither moved a figure one line up. ENRICHER.md carried the same stale
-    number for the same reason. Neither figure is repeated here even as history, because RM218 found
-    that a stale number in quotation marks beside the rule reads, to a skimming reader, exactly like the
-    rule; naming the shape is the repair. That shape is `@registry-completeness` — a number beside a
-    registry nothing iterates — and this is the third place in the workspace it has been found, after
-    `SCHEMAS.md`'s sidecar count and `compiler.py`'s own docstrings. The roster is the `records.append`
-    calls below, and `test_enricher_doc_registries.py` walks it against the reference.
-
-    Every count comes from the check that produced it — never re-derived here. That is the whole
-    reason `verify_reference_alleles` and `verify_clin_sig` now return what they compared: a
-    denominator recomputed beside a check is a denominator that can disagree with it, and a manifest
-    field whose two halves disagree is worse than no field.
-
-    `not_requested` is recorded rather than omitted, and the difference matters: an omitted check is
-    one nobody has said anything about, while a recorded `not_requested` says this run deliberately
-    did not put it. Only the first is what a re-run with the flag on would fill in.
-    """
-    records: list[VerificationRecord] = []
-
-    # Reference allele. The reason comes off the check, which is the only thing that knows whether the
-    # sequence service answered — `offline` is the caller's request, not the outcome.
-    if not verify_ref:
-        records.append(skipped("reference_allele", "not_requested"))
-    elif ref_check.not_checked is not None:
-        # The detail follows the reason rather than assuming one: `unsupported` is not a sequence
-        # failure at all — the service was fine and the *assembly* has no refget table, so saying
-        # "no sequence access" would send an author looking for a network problem they do not have.
-        records.append(
-            skipped(
-                "reference_allele",
-                ref_check.not_checked,
-                detail=(
-                    "this tier has a refget table for GRCh38 only, so an authored ref on another "
-                    "assembly has nothing to be compared against (RM15)"
-                    if ref_check.not_checked == "unsupported"
-                    else "no sequence access this run, so no authored ref was compared"
-                ),
-                source="seqrepo",
-            )
-        )
-    else:
-        records.append(
-            ran(
-                "reference_allele",
-                subjects=ref_check.subjects,
-                findings=len(ref_check.mismatches),
-                source="seqrepo",
-                detail="; ".join(summarize_ref_mismatches(ref_check.mismatches)) or None,
-            )
-        )
-
-    # Wrong build (RM48). Its subject set is the ref-mismatched rows and nothing else — the pass is
-    # *bounded* on purpose (`DEFAULT_DIAGNOSIS_LIMIT`), so `examined` is the honest denominator and
-    # `total` is not: recording the larger number would claim rows the pass deliberately did not ask
-    # about. `sampled` is why that distinction has to be kept rather than smoothed over, and the detail
-    # line says so where it applies.
-    #
-    # It rides on the reference-allele check having run at all: with no mismatches there is nothing to
-    # diagnose, which the pass itself reports as `no_ref_mismatches` — recorded as `nothing_to_check`,
-    # because "no row was in scope" is exactly what that member means, and it is emphatically not a
-    # finding of zero wrong builds.
-    if build.not_checked is not None:
-        # **`no_ref_mismatches` alone does not mean the refs agreed.** `diagnose_wrong_build([])`
-        # answers it for an empty list whatever emptied the list — a ref check that ran and found
-        # nothing, *or* one that never ran at all. Reading it as the first would publish "no authored
-        # ref disagreed with the reference" beside a `reference_allele` record saying nothing was
-        # compared: one document contradicting itself, with the false half being exactly the
-        # answered-absence-versus-unasked-question collapse S20 exists to prevent. So whatever stopped
-        # the ref check propagates here, and `nothing_to_check` is reachable only when it really ran.
-        # **A permanent limit outranks a transient one, so `unsupported` is tested first.** Offline,
-        # a `genome_build: GRCh37` module satisfies both branches — the GRCh37 service was not asked
-        # *and* the ref check could not run on an assembly with no refget table — and reporting
-        # `offline` there says a re-run with a network would answer it. It would not: the ref check
-        # produces no mismatched rows on that build whatever the connectivity, so this pass has no
-        # subjects either way. Same ordering rule RM48 applies to its own two readings — the one that
-        # does not rest on a transient condition supersedes.
-        if ref_check.not_checked == "unsupported":
-            reason, detail = (
-                "unsupported",
-                (
-                    "the reference-allele check cannot run on this module's assembly, so no row was ever "
-                    "a candidate for a build diagnosis — this is not a connectivity problem and a re-run "
-                    "online reports the same thing"
-                ),
-            )
-        elif build.not_checked == "skipped_offline":
-            reason, detail = (
-                "offline",
-                (
-                    "the GRCh37 service is the only thing that can tell an old-assembly coordinate from "
-                    "a wrong ref, and there is no local GRCh37 data"
-                ),
-            )
-        elif ref_check.not_checked is not None:
-            reason, detail = (
-                ref_check.not_checked,
-                (
-                    "the reference-allele check did not run, so there was no mismatched row to diagnose "
-                    "— this says nothing about whether the coordinates are on the declared assembly"
-                ),
-            )
-        else:
-            reason, detail = (
-                "nothing_to_check",
-                ("no authored ref disagreed with the reference, so no row needed a build diagnosis"),
-            )
-        records.append(skipped("genome_build_agreement", reason, detail=detail, source="ensembl-grch37"))
-    else:
-        records.append(
-            ran(
-                "genome_build_agreement",
-                subjects=build.examined,
-                findings=len(build.diagnoses),
-                source="ensembl-grch37",
-                detail=(
-                    f"bounded sample: {build.examined} of {build.total} mismatched row(s) asked about"
-                    if build.sampled
-                    else None
-                ),
-            )
-        )
-
-    # Clinical significance. `release` is the snapshot's own `release.json` answer, which is what a
-    # consumer needs to know *which* ClinVar the calls were weighed against — the same reason a
-    # frequency row carries its `dataset`. `None` when the snapshot cannot state one, never a guess.
-    clinvar_release = _clinvar_release(clinvar_ref)
-    if clin_sig_compared is None:
-        # The look-up did not run, and `clin_sig_skip` says which of the closed reasons applies. Keyed
-        # on the *count being absent* rather than on re-testing the flags, so the record cannot claim a
-        # comparison the pass did not make: there is no path where a look-up ran and left it `None`.
-        records.append(
-            skipped(
-                "clinical_significance",
-                clin_sig_skip or "not_requested",
-                # The prose reason beside the machine key, never instead of it: `tautology_reason`
-                # writes a good sentence and this is where it survives the run.
-                detail=clin_sig_detail,
-                source="clinvar",
-            )
-        )
-    else:
-        records.append(
-            ran(
-                "clinical_significance",
-                subjects=clin_sig_compared,
-                findings=len(clin_sig_conflicts),
-                source="clinvar",
-                release=clinvar_release,
-                detail=_clin_sig_detail(clin_sig_conflicts),
-            )
-        )
-
-    # RM170 — the CIViC refutation leg. No `not_requested` arm: there is no flag, because the check
-    # fetches nothing and costs a local read. A missing snapshot is `no_reference` and stays visibly
-    # different from a run that looked and found nothing.
-    if refutation_skip is not None:
-        records.append(
-            skipped(
-                "published_refutation",
-                refutation_skip,
-                detail=(
-                    "no CIViC snapshot was provisioned this run, so no authored direction was "
-                    "compared against a published refutation. Build one with `civic build "
-                    "--release <date> --submitted`"
-                    if refutation_detail == "no_snapshot"
-                    else "a CIViC snapshot was located but could not be read"
-                ),
-                source="civic",
-            )
-        )
-    else:
-        # The basis is in `detail` on every run including the empty one, and that is the point: on the
-        # `accepted` basis this class is empty **by construction** — every refutation standing against
-        # a claim in CIViC is submitted content — so a bare `findings=0` would read as clear water.
-        records.append(
-            ran(
-                "published_refutation",
-                subjects=refutation_subjects,
-                findings=len(refutation_findings),
-                source="civic",
-                release=_civic_release(civic_ref),
-                detail=_refutation_detail(refutation_findings, refutation_basis),
-            )
-        )
-
-    # RM160 — the CIViC citation canary. Four skip reasons rather than one, because they are cleared
-    # by four different things: nothing recorded, no egress, nothing this run could map back to a
-    # variant id, and a source that did not answer. `findings` counts both codes under one record
-    # because they share a subject *set* — the citations this module holds from CIViC — the same
-    # reason the refutation leg above puts two codes under one record.
-    if evidence_status.skip is not None:
-        records.append(
-            skipped(
-                "evidence_status_currency",
-                evidence_status.skip,
-                detail=evidence_status.detail(),
-                source="civic",
-            )
-        )
-    else:
-        records.append(
-            ran(
-                "evidence_status_currency",
-                subjects=evidence_status.subjects,
-                findings=len(evidence_status.findings),
-                source="civic",
-                detail=evidence_status.detail(),
-            )
-        )
-
-    # rsID currency. dbSNP publishes a build number per record rather than a release for the service,
-    # so there is nothing true to put in `release` — the same call `LiteratureRow` made about `dataset`.
-    if not verify_rsids:
-        records.append(skipped("rsid_currency", "not_requested", source="dbsnp"))
-    elif offline:
-        records.append(
-            skipped(
-                "rsid_currency",
-                "offline",
-                detail="dbSNP has no offline merge table, so currency cannot be established locally",
-                source="dbsnp",
-            )
-        )
-    else:
-        records.append(
-            ran(
-                "rsid_currency",
-                subjects=rsid_subjects,
-                findings=len(stale_rsids),
-                source="dbsnp",
-            )
-        )
-    # rsID ↔ coordinate. This tier's half of a question the compiler asks too (`resolution._verify`
-    # over the injected table), so one name covers both and this record covers **this** half: the
-    # authored pair against the Ensembl snapshot the chain opened. `source` is the authority the
-    # licence table joins on, not the link that answered — the `gene_metrics.csv` rule from RM33.
-    unplaced = examples(sorted(set(pairs.unknown)))
-    unsettled = examples(sorted(set(pairs.undecided)))
-    # What was not compared, and why, in one sentence per reason — never one per row.
-    not_compared = [
-        note
-        for note in (
-            f"the injected Ensembl snapshot carries no record for {len(pairs.unknown)} of them "
-            f"({unplaced}), and {SNAPSHOT_UNPLACED_PHRASE}"
-            if pairs.unknown
-            else "",
-            f"{len(pairs.undecided)} name an indel ({unsettled}), whose spelling can move the "
-            f"coordinate legitimately, so no verdict was reached"
-            if pairs.undecided
-            else "",
-        )
-        if note
-    ]
-    if pairs.not_checked is not None:
-        if pairs.not_checked == "unsupported":
-            detail = (
-                "coordinate resolution is GRCh38-bound, so an authored rsID+coordinate pair on "
-                "another assembly has nothing to be compared against (RM15)"
-            )
-        elif pairs.not_checked == "nothing_to_check":
-            detail = (
-                "no row authors both an rsID and a coordinate, so the module makes no pair claim to "
-                "compare — this is not a comparison that found nothing"
-            )
-        elif not_compared:
-            # A snapshot was read and settled nothing. Distinct from having no snapshot at all, and the
-            # pairs are named because *which* ones went unchecked is what a re-run against a fuller
-            # snapshot — or an online run that can normalize an indel — would change.
-            detail = "no authored pair could be compared: " + "; ".join(not_compared)
-        else:
-            detail = "no Ensembl snapshot was opened this run, so no authored pair was compared" + (
-                " — a run with egress provisions one" if pairs.not_checked == "offline" else ""
-            )
-        records.append(
-            skipped("rsid_coordinate_agreement", pairs.not_checked, detail=detail, source="ensembl")
-        )
-    else:
-        # What was NOT compared travels with what was: coverage of an unstated fraction is the defect
-        # `_vrs_coverage` exists for, one check over.
-        notes = list(pairs.disagreements[:DETAIL_LIMIT])
-        if len(pairs.disagreements) > DETAIL_LIMIT:
-            notes.append(
-                f"({len(pairs.disagreements) - DETAIL_LIMIT} further disagreement(s) not listed "
-                f"here; the run's log names every one.)"
-            )
-        if not_compared:
-            notes.append("Further authored pairs were not compared: " + "; ".join(not_compared) + ".")
-        records.append(
-            ran(
-                "rsid_coordinate_agreement",
-                subjects=pairs.subjects,
-                findings=len(pairs.disagreements),
-                source="ensembl",
-                release=_snapshot_release(ensembl_ref),
-                detail=" ".join(notes) or None,
-            )
-        )
-
-    # Dataset currency (RM85). `source` is left empty on purpose and is the one place this record
-    # departs from its neighbours: it is a single join key into the licence table, and this check is
-    # multi-leg by construction — a module recording ClinVar and CPIC has two sources implicated, so
-    # naming one would hide the other and a comma-joined value would break the join the column exists
-    # for. The same call `allele_function` makes for its two authorities. `release` is left empty for
-    # the same reason: there is no one release this check was put *against*.
-    # `None` **is** the not-requested case and is not tested beside a flag: `_run_enrichment` sets
-    # one from the other, so taking both would let this function disagree with itself — a
-    # `verify_datasets=True, currency=None` call would record `not_requested` about a check that was.
-    if currency is None:
-        records.append(skipped("dataset_currency", "not_requested"))
-    elif currency.not_checked is not None:
-        records.append(
-            skipped(
-                "dataset_currency",
-                currency.not_checked,
-                detail=(
-                    "; ".join(summarize_currency(currency))
-                    or "the module records no release, so it makes no claim about where its rows came from"
-                ),
-            )
-        )
-    else:
-        # `subjects` is the legs asked **and answered comparably**, never every recorded release: a
-        # source nobody could reach is named in `detail` instead, because counting it would publish
-        # coverage of a fraction the record does not state — the defect the reference-allele pass
-        # shipped once and `_vrs_coverage` exists for.
-        records.append(
-            ran(
-                "dataset_currency",
-                subjects=currency.subjects,
-                findings=len(currency.behind),
-                detail="; ".join(summarize_currency(currency)) or None,
-            )
-        )
-
-    # Deliberately takes neither `variants` nor `rows`: nothing here may count anything itself, and a
-    # function that cannot see the tables cannot be tempted to. The denominators come in already
-    # computed, from the checks that computed them.
-    return records
-
-
-def _snapshot_release(reference: Path | None) -> str | None:
-    """The label a snapshot's own `release.json` states, or `None` when it states none.
-
-    The `dataset` key, which is the one every builder writes and `cache status` prints, so a reader of
-    the attestation and a reader of the cache see the same string. No fallback and no guess: a
-    snapshot that cannot name its release is an unknown, and an unknown is withheld rather than
-    written as a label something could match — the same call `clinvar_dataset_label` makes for its own
-    (richer) source. ClinVar has its own function because its release is a *file date* with a digest
-    fallback; nothing equivalent is published for the Ensembl variation snapshot.
-    """
-    if reference is None:
-        return None
-    release = read_release(Path(reference))
-    if not release:
-        return None
-    return str(release.get("dataset") or "").strip() or None
-
-
-def _clinvar_release(reference: Path | None) -> str | None:
-    """The ClinVar release a snapshot states, or `None` when it states none.
-
-    Delegates to `clinvar.clinvar_dataset_label` rather than re-reading `clinvar_file_date`, because a
-    second spelling of one label is the drift that function's own docstring exists to prevent — and it
-    had already started: this hand-read dropped the `clinvar_` prefix, so `verification.checks[].release`
-    and `sources[].dataset` named the same snapshot two ways, and it dropped the digest fallback, so a
-    snapshot built from a VCF with no header date recorded "the source publishes none" when it could
-    name its release exactly. `None` stays the honest answer for a snapshot that genuinely cannot say.
-    """
-    return clinvar_dataset_label(reference)
-
-
-def _write_resolution_csv(
-    rows: list[ResolutionRow], output_path: Path, *, before_commit: Callable[[], None] | None = None
-) -> None:
-    """Write `resolution.csv` with a fixed column order and canonical cells.
-
-    **This file is a pure build product since 0.7 (RM124).** Hand-editing it is not expected and
-    nothing preserves such an edit — a correction to a derived row belongs in `overrides.csv` beside
-    the spec, where the compiler applies it on every build and it travels with the reason it was
-    made. That is what makes deleting this file and re-running cost nothing: the author's judgements
-    are not in here to lose. The re-run itself is unchanged, and still gap-fills rather than re-asking
-    every subject; what changed is that leaving a recorded row alone now risks nothing.
-    """
-    with atomic_writer(output_path, newline="", before_commit=before_commit) as f:
-        writer = csv.DictWriter(f, fieldnames=_FIELDNAMES)
-        writer.writeheader()
-        for r in rows:
-            # Generic over the fields for the reason `_FIELDNAMES` gives: a per-column dict literal is
-            # a hand-kept column list one edit later. `None` is the empty cell; every other value is
-            # written as the model holds it (`start`/`locus_index` are ints and render as such).
-            writer.writerow({name: _resolution_cell(getattr(r, name)) for name in _FIELDNAMES})
-
-
-def _resolution_cell(value: object) -> str:
-    """`None` is the empty cell, everything else its `str`. `ResolutionRow` has no boolean field, so
-    there is no tri-state spelling to agree with the compiler about here."""
-    return "" if value is None else str(value)

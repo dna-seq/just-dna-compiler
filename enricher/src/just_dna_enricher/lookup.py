@@ -202,8 +202,9 @@ class CitationHint:
     densely allocated, so a recalled or invented 8-digit number is very likely to be a real record —
     for a different paper — and `pmid_exists=True` alone therefore cannot catch a fabricated citation.
     Fabrication is a failure of *identity*, so the answer has to name the paper it found and let the
-    caller compare it against the one they meant. `title`/`journal`/`year`/`first_author` all arrive in
-    the same `esummary` response that answers existence, so this costs no extra request.
+    caller compare it against the one they meant. `title`/`journal`/`year`/`first_author` arrive in the
+    response that answers existence — PubMed's `esummary` for a PMID, Crossref's `/works` record for a
+    DOI (RM262) — so neither costs an extra request. With both identifiers, PubMed's fill the fields.
     """
 
     pmid: str | None = None
@@ -390,7 +391,7 @@ def _lookup_from_cache(
 
 
 def _lookup_live_loci(hint: VariantHint, rsid: str | None, clients: LookupClients) -> None:
-    """Live Ensembl (V2 GraphQL → V1 REST) for an rsID no local snapshot resolved.
+    """Live Ensembl (REST) for an rsID no local snapshot resolved.
 
     Runs **only** on a cache miss, so a provisioned snapshot still answers without egress and the
     order matches `enrich()`'s. Reports the source it came from, because a locus from the network and
@@ -529,6 +530,10 @@ def _lookup_frequencies(hint: VariantHint, clients: LookupClients, alts: str | N
     answered: list[str] = []
     for variant_id, (_locus, alt) in asked.items():
         record = found.get(variant_id)
+        if record is None and variant_id in getattr(client, "unanswered", {}):
+            # gnomAD answered this allele with an error, not an absence (RM361).
+            hint.findings.append(Finding(None, None, "info", f"frequencies unchecked for {variant_id}"))
+            continue
         if record is None:
             # Per allele, and the id carries the allele — so a `G>C,T` locus whose `C` is known and
             # whose `T` is not says exactly that, rather than one sentence about the pair.
@@ -844,7 +849,8 @@ def lookup_citation(
     """Answer "does this citation exist, and what is its other identifier?".
 
     A paywall hides the *fulltext*, never the PubMed record, so existence is answerable for
-    paywalled work. Crossref covers what PubMed does not index at all (preprints, books, datasets).
+    paywalled work. Crossref covers what PubMed does not index at all (preprints, books, datasets),
+    and a DOI's answer names the work it found as a PMID's does (RM262, S113).
 
     **`pmcid=` is the reverse direction, and it reports rather than fills** (RM50). PubMed and PubMed
     Central number articles independently, `StudyRow.pmid` requires the PubMed one, and a curator
@@ -866,6 +872,11 @@ def lookup_citation(
         resolved_pmid: str | None = None
         if pmcid:
             resolved_pmid = _check_pmcid(hint, hint.pmcid or pmcid, clients, authored_pmid=pmid)
+        # A DOI with no PMID beside it has a route to one through Europe PMC (RM263), the same
+        # advisory shape as the PMC id's. Only when nothing else supplied a PMID: an authored one wins,
+        # and a PMC id's resolution already named the paper.
+        if doi and not pmid and not resolved_pmid:
+            resolved_pmid = _check_doi_pmid(hint, doi, clients)
         # The resolved id is then put to PubMed, so the answer names the *paper* rather than only a
         # number: a converter reply a curator cannot check against the article they meant is
         # exactly the existence-is-not-identity failure (S12). The authored `pmid` still wins when
@@ -875,15 +886,135 @@ def lookup_citation(
         if doi:
             # The **authored** DOI, never a derived one: a DOI the registry just handed over exists
             # by construction, so checking it would answer a question nobody asked.
-            hint.doi_exists = clients.ensure("crossref", CrossrefClient).exists(doi)
-            if hint.doi_exists is False:
-                hint.findings.append(Finding(None, "doi", "warning", f"Crossref has no record of {doi}"))
-            elif hint.doi_exists is None:
-                hint.findings.append(Finding(None, "doi", "info", "Crossref could not be asked"))
+            _check_doi(hint, doi, clients)
     finally:
         if owned:
             clients.close()
     return hint
+
+
+def _check_doi(hint: CitationHint, doi: str, clients: LookupClients) -> None:
+    """Crossref existence, plus which work the DOI names (RM262, S113).
+
+    The DOI branch used to stop at existence, so a DOI-only citation came back with every identity
+    field null and no finding saying the title had not been asked for — and four of four authoring
+    runs in one consumer round then pasted the DOI into a free-text search to learn what it was.
+
+    The fields fill only where the PMID branch left them `None`. With both identifiers given, the
+    PMID's record is the one `StudyRow` is keyed on, and the DOI's title is still *reported*, in its
+    own finding beside the PMID's, so a pair naming two different papers shows up as two titles side
+    by side rather than as one silently kept.
+    """
+    work = clients.ensure("crossref", CrossrefClient).work(doi)
+    hint.doi_exists = work.exists
+    if work.exists is False:
+        hint.findings.append(Finding(None, "doi", "warning", f"Crossref has no record of {doi}"))
+        return
+    if work.exists is None:
+        hint.findings.append(Finding(None, "doi", "info", "Crossref could not be asked"))
+        return
+    for name in ("title", "journal", "year", "first_author"):
+        if getattr(hint, name) is None:
+            setattr(hint, name, getattr(work, name))
+    if work.title is None and work.agency not in (None, "crossref"):
+        # Registered with another agency (a DataCite dataset, RM349): it exists, and Crossref holds no
+        # record that could name it, so "Crossref has a record" below would be false.
+        hint.findings.append(
+            Finding(
+                None,
+                "doi",
+                "info",
+                f"DOI {doi} is registered with {work.agency}, not Crossref, so no title is in hand — "
+                f"existence is not identity, so confirm this is the work you meant from the DOI's "
+                f"landing page.",
+            )
+        )
+        return
+    if work.title is None:
+        # Datasets and some preprints carry a record and no title. Said, so a null title is not read
+        # as "no such paper" or as "nobody asked" — the S113 shape, one case narrower.
+        hint.findings.append(
+            Finding(
+                None,
+                "doi",
+                "info",
+                f"Crossref has a record for DOI {doi} but it names no title — existence is not "
+                f"identity, so confirm this is the work you meant from the DOI's landing page.",
+            )
+        )
+        return
+    named = ", ".join(part for part in (work.first_author, work.journal, work.year) if part)
+    hint.findings.append(
+        Finding(
+            None,
+            "doi",
+            "info",
+            f"DOI {doi} names: {work.title!r}"
+            + (f" ({named})" if named else "")
+            + " — existence is not identity, so confirm this is the paper you meant.",
+        )
+    )
+
+
+def _check_doi_pmid(hint: CitationHint, doi: str, clients: LookupClients) -> str | None:
+    """DOI → PMID through Europe PMC's search (RM263). Reports; never fills.
+
+    One PMID becomes an **advisory** the author types (`pmid` is redundancy-bearing, as for a PMC
+    id), and the caller then asks PubMed which paper it is, so a DOI-only lookup ends with two titles,
+    Crossref's and PubMed's. **They are reported side by side as two `info` findings and never
+    compared**: a DOI names one paper, yet its two title records can differ while naming it, because
+    PubMed bracket-translates a non-English title (`10.1055/s-0041-111184` is *Agitation und
+    Aggression in der Psychiatrie* at Crossref and *[Agitation and Agression in Psychiatric
+    Patients].* at PubMed), and a string comparison would warn on every such paper.
+
+    Several PMIDs for one DOI withhold the advisory and name them all (`@multiplicity-is-a-finding`).
+    None is Europe PMC saying it holds no MEDLINE record, which is not PubMed saying it has none
+    (`@absence-is-weighted-by-the-base-rate`). A request that failed leaves everything `None`.
+    """
+    europepmc = clients.ensure("europepmc", EuropePmcClient)
+    try:
+        pmids = europepmc.pmids_for_doi(doi)
+    except Exception as exc:
+        hint.findings.append(
+            Finding(None, "pmid", "info", f"Europe PMC could not be asked for DOI {doi}'s PMID: {exc}")
+        )
+        return None
+    if not pmids:
+        hint.findings.append(
+            Finding(
+                None,
+                "pmid",
+                "info",
+                f"Europe PMC holds no PubMed record for DOI {doi}. That is Europe PMC's answer, not "
+                f"PubMed's; a work PubMed does not index (a preprint, book or dataset) is cited by `doi` "
+                f"alone, which studies.csv accepts",
+            )
+        )
+        return None
+    if len(pmids) > 1:
+        hint.findings.append(
+            Finding(
+                None,
+                "pmid",
+                "warning",
+                f"Europe PMC holds {len(pmids)} PubMed records for DOI {doi}: {', '.join(pmids)}. None "
+                f"is offered as the PMID, because picking one would be a guess; check which paper you "
+                f"meant against each",
+            )
+        )
+        return None
+    [pmid] = pmids
+    hint.alterations.append(
+        _advisory(
+            "pmid",
+            pmid,
+            "europepmc",
+            f"the PubMed id Europe PMC holds for DOI {doi}. Not written, because the citation check "
+            f"compares the pmid you wrote against PubMed's record — filling it from a registry would "
+            f"compare the registry with itself",
+        )
+    )
+    return pmid
 
 
 def _check_pmid(hint: CitationHint, pmid: str, clients: LookupClients) -> None:

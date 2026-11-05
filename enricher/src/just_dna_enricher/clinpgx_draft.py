@@ -46,6 +46,7 @@ from pathlib import Path
 
 from just_dna_compiler.draft import DraftReport, append_rows
 from just_dna_format.pgx import PharmVariantRow
+from just_dna_format.spelling import drug_key, gene_key
 
 from just_dna_enricher.clinpgx import ClinPgxEnrichmentError, _normalize_category, load_snapshot
 from just_dna_enricher.drafting import DRAFT_PROVIDERS, licence_commit, record_draft_provenance
@@ -179,8 +180,8 @@ def _rows_from_snapshot(
     min_evidence_level: str | None,
 ) -> tuple[list[PharmVariantRow], list[str]]:
     """Snapshot records → `PharmVariantRow`s, reporting everything the grammar cannot hold."""
-    wanted_drugs = {d.strip().lower() for d in drugs if d.strip()}
-    wanted_genes = {g.strip().upper() for g in genes if g.strip()}
+    wanted_drugs = {drug_key(d) for d in drugs if d.strip()}
+    wanted_genes = {gene_key(g) for g in genes if g.strip()}
     rows: list[PharmVariantRow] = []
     warnings: list[str] = []
     skipped_haplotype = skipped_symbolic = skipped_unidentified = 0
@@ -195,7 +196,7 @@ def _rows_from_snapshot(
         # which destroys the one thing that number is for: judging whether the source's coverage of
         # *your* gene is poor. Every skip counter below now counts within the requested scope.
         gene_members = _split_cell(record.get("gene"))
-        if wanted_genes and not any(m.upper() in wanted_genes for m in gene_members):
+        if wanted_genes and not any(gene_key(m) in wanted_genes for m in gene_members):
             skipped_gene += 1
             continue
         rsid = (record.get("rsid") or "").strip()
@@ -220,7 +221,7 @@ def _rows_from_snapshot(
         category = _normalize_category(record.get("phenotype_category"))
         annotation_id = (record.get("annotation_id") or "").strip() or None
         for drug in _split_cell(record.get("drugs")):
-            if wanted_drugs and drug.lower() not in wanted_drugs:
+            if wanted_drugs and drug_key(drug) not in wanted_drugs:
                 continue
             rows.append(
                 PharmVariantRow(
@@ -341,7 +342,7 @@ def _authored_gene(members: Sequence[str], wanted_genes: set[str]) -> str | None
         return members[0]
     if not members:
         return None
-    selected = [m for m in members if m.upper() in wanted_genes]
+    selected = [m for m in members if gene_key(m) in wanted_genes]
     return selected[0] if len(selected) == 1 else None
 
 
@@ -400,7 +401,7 @@ def draft_pharm_variants(
     commit_licence = licence_commit(
         sources=[CLINPGX_TERMS.source],
         spec_dir=spec_dir,
-        dataset=release.get("dataset"),
+        dataset=release.dataset,
         declared_use=declared_use,
         error=ClinPgxEnrichmentError,
         license_texts={CLINPGX_TERMS.source: license_text} if license_text else None,
@@ -448,7 +449,7 @@ def draft_pharm_variants(
                 provider=_PROVIDER,
                 sources=[CLINPGX_TERMS.source],
                 spec_dir=spec_dir,
-                dataset=release.get("dataset"),
+                dataset=release.dataset,
                 covered=True,
                 drafted=any(report.added for report in reports),
                 declared_use=declared_use,

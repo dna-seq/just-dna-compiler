@@ -245,6 +245,7 @@ nav:
   # the partition guard refuses a page that is both navigated and excluded. It caught exactly that on
   # the first attempt, where this comment had claimed otherwise.
   - Upgrading:
+      - "0.7 → 0.8 (in progress)": INTEGRATION_0_8.md
       - "0.6.6 → 0.7": INTEGRATION_0_7.md
       - "0.5.4 → 0.6 (archived)": history/INTEGRATION_0_6.md
   # **The roadmap ledgers are in the sidebar, and they are the one group here written for a maintainer.**
@@ -257,7 +258,6 @@ nav:
       - Changelog: CHANGELOG.md
       - Shipped items, with their rationale: ROADMAP_HISTORY.md
       - Open items: ROADMAP.md
-      - The 0.8 scope: ROADMAP_0_8.md
       - Deferred to 0.9: ROADMAP_0_9.md
       - Deferred to 1.0: ROADMAP_1_0.md
       - Index of every item: RM_TOC.md

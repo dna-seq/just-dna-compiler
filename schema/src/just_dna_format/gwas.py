@@ -31,10 +31,11 @@ collapsing them would pick a trait on the author's behalf.
 
 from typing import ClassVar
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import ConfigDict, Field, field_validator
 
-from just_dna_format.base import since, vocabulary
+from just_dna_format.base import Companion, PairedFields, both_or_neither, since, vocabulary
 from just_dna_format.normalize import normalize_utc_timestamp
+from just_dna_format.spec import CitationPair, validate_pmid_cell
 from just_dna_format.vocab import (
     RECOMMENDED_EFFECT_MEASURES,
     VALID_EFFECT_DIRECTIONS,
@@ -77,13 +78,20 @@ GWAS_FACT_FIELDS: tuple[str, ...] = (
     "p_value_num",
     "trait_efo_id",
     "pmid",
+    "doi",
     "study_accession",
     "ancestry",
     "dataset",
+    # RM239 (0.8): what fine-mapping says about this (variant, study) pair. Inside, because the posterior
+    # is WHAT a source said rather than who wrote it down or when; a module without them hashes as before
+    # because an unset cell is dropped. Their release is NOT `dataset` (that names the Catalog's): it is
+    # the `(opentargets, gwas_effect)` row in `sources.csv` the filling pass writes.
+    "posterior_probability",
+    "fine_mapping_method",
 )
 
 
-class GwasEffectRow(BaseModel):
+class GwasEffectRow(CitationPair, PairedFields):
     """One published GWAS association: the magnitude, its unit, and the allele it is relative to.
 
     Standalone (not an `AuthoredModel`) for the same reason every fact row is — machine-produced
@@ -100,6 +108,14 @@ class GwasEffectRow(BaseModel):
     #: **Per record, not per variant** — a variant gains associations as papers publish, so keying on
     #: the variant would pin a module to whatever the Catalog held the first time (S51).
     _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("association_id",)
+    #: Columns meaningless without a companion (RM366, `base.Companion`). Both columns are new in 0.8
+    #: and one pass writes them together; it withholds a posterior whose method the release left empty.
+    _PAIRED_FIELDS: ClassVar[tuple[Companion, ...]] = both_or_neither(
+        "posterior_probability",
+        "fine_mapping_method",
+        "a posterior inclusion probability means nothing without the fine-mapping method that produced "
+        "it, so the two are filled together or left empty together",
+    )
 
     model_config = ConfigDict(extra="forbid")
 
@@ -245,6 +261,17 @@ class GwasEffectRow(BaseModel):
         default=None,
         description="PubMed id of the publication, free-form under the same grammar as `StudyRow.pmid`.",
     )
+    doi: str | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description=(
+            "Digital Object Identifier of the publication, kept verbatim. Mandatory when `pmid` is "
+            "`NONE` (a work PubMed does not index, RM336) — the pmid/doi pair rule every citing table "
+            "obeys. The Catalog pass fills `pmid` from the study's `publicationInfo.pubmedId` and does "
+            "not fill this column. Inside `GWAS_FACT_FIELDS`, as `pmid` is: "
+            "which paper is part of what the source said, and an unset cell is dropped from the hash."
+        ),
+    )
     study_accession: str | None = Field(
         json_schema_extra=since("0.6.0"),
         default=None,
@@ -266,6 +293,33 @@ class GwasEffectRow(BaseModel):
         description=(
             "Which Catalog release this row came from, e.g. 'gwas_catalog_2026-08-01'. A FACT: the "
             "Catalog re-curates, and an association whose effect size moved is a different fact."
+        ),
+    )
+
+    # ── fine-mapping (RM239, filled by `opentargets enrich`, a second writer of this table) ──
+    posterior_probability: float | None = Field(
+        default=None,
+        ge=0,
+        le=1,
+        json_schema_extra=since("0.8.0"),
+        description=(
+            "The variant's posterior inclusion probability in this study's fine-mapped credible set, "
+            "verbatim from Open Targets' `credible_set.locus[].posteriorProbability`. Means nothing "
+            "without `fine_mapping_method`, which is why the two are filled together. **Null is never "
+            "zero**: it is left empty when the study has no credible set in the release, when the "
+            "variant is not in the study's 95% set, and when the variant sits in several of the "
+            "study's sets with different posteriors; the filling pass counts each case. The release "
+            "it came from is the `opentargets` row of `sources.csv`, not this row's `dataset`."
+        ),
+    )
+    fine_mapping_method: str | None = Field(
+        default=None,
+        json_schema_extra=since("0.8.0"),
+        description=(
+            "The method that produced `posterior_probability`, verbatim as the source spells it "
+            "(`SuSiE-inf`, `SuSie`, `PICS` in Open Targets 26.09, the second's casing the source's "
+            "own). Open, because the methods change between releases. No credible-set level beside "
+            "it: the source publishes the 95% set only, so a level column would have no case."
         ),
     )
 
@@ -304,6 +358,14 @@ class GwasEffectRow(BaseModel):
             raise ValueError("association_id must not be empty — it is this row's identity")
         return v
 
+    @field_validator("pmid")
+    @classmethod
+    def _validate_pmid(cls, v: str | None) -> str | None:
+        # The description always promised `StudyRow.pmid`'s grammar and nothing enforced it, so a DOI
+        # written here would have parsed as five or six PubMed ids like anywhere else (RM336). Optional,
+        # as on the other non-study citing rows.
+        return validate_pmid_cell(v, "pmid", required=False)
+
     @field_validator("variant_key")
     @classmethod
     def _check_variant_key(cls, v: str) -> str:
@@ -330,7 +392,7 @@ class GwasEffectRow(BaseModel):
     def _check_status(cls, v: str | None) -> str | None:
         return check_vocab(v, VALID_RESOLUTION_STATUS, "status")
 
-    @field_validator("effect_size", "standard_error")
+    @field_validator("effect_size", "standard_error", "posterior_probability")
     @classmethod
     def _check_finite(cls, v: float | None, info) -> float | None:
         # `info.field_name`, not a hardcoded name: registered for two fields, this reported

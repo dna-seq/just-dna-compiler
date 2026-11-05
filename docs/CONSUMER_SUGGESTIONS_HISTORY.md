@@ -4766,7 +4766,7 @@ declared* when one is on disk.
 
 ## S106 — a repeat-count star allele (UGT1A1 `*28` = TA(8)) has no home: `repeat_alleles.csv` bins a count and `haplotypes.csv` names an allele, and nothing joins the two
 
-**Status — accepted as a design item, filed as [RM253](ROADMAP_0_8.md#rm253--a-repeat-count-star-allele-ugt1a1-28--ta8-has-no-home-a-diplotype-can-name-and-the-cpic-drafter-translates-none-of-cpics-notation); the two message halves shipped in the uncut 0.7 line.**
+**Status — accepted as a design item, filed as [RM253](ROADMAP_HISTORY.md#rm253--a-repeat-count-star-allele-ugt1a1-28--ta8-has-no-home-a-diplotype-can-name-and-the-cpic-drafter-translates-none-of-cpics-notation); the two message halves shipped in the uncut 0.7 line.**
 Reproduced on the snapshot: six UGT1A1 rows skipped, `*28` defined by nothing, the warning right and
 unfixable. Two corrections to the report, both from the probe. CPIC keys the TA repeat on **rs3064744**,
 not rs8175347; and `haplotype_name` does **not** accept CPIC's DPYD names as spelled — all three PGx
@@ -5025,7 +5025,7 @@ manifest.
 
 ## S110 — the literature pass leaves an author manuscript abstract-only when PMC's BioC service serves it whole, tables included
 
-**Status — accepted; point 1 shipped in the tree as [RM257](ROADMAP_HISTORY.md#rm257--pmcs-bioc-service-is-the-fulltext-rung-for-records-europe-pmc-calls-closed), uncut; point 2 is taken; the 404/500 split is filed open as [RM258](ROADMAP.md#rm258--an-outage-during-the-literature-fetch-writes-a-row-that-merge-not-clobber-never-asks-again).**
+**Status — accepted; point 1 shipped in the tree as [RM257](ROADMAP_HISTORY.md#rm257--pmcs-bioc-service-is-the-fulltext-rung-for-records-europe-pmc-calls-closed), uncut; point 2 is taken; the 404/500 split is filed open as [RM258](ROADMAP_HISTORY.md#rm258--an-outage-during-the-literature-fetch-writes-a-row-that-merge-not-clobber-never-asks-again).**
 Reproduced live the same day with your ids: Europe PMC reports `PMC6463297` as `isOpenAccess: N,
 inPMC: Y` and answers 500 for `fullTextXML`, while BioC answers 200 with 294 passages, and
 `PMC1050584` answers 200 with the `[Error]` body.
@@ -5256,7 +5256,7 @@ consumer (us) order passes without hand-kept knowledge. Offered as an observatio
 
 ## S113 — `lookup_citation(doi=…)` settles existence and never identity: title, journal, year and author are always null
 
-**Status — accepted; your fix (1) shipped as [RM262](ROADMAP_HISTORY.md#rm262--a-doi-answered-existence-and-never-identity-although-the-body-naming-the-paper-was-already-in-hand) on the `0.8` branch, uncut (enricher), your (3) with it, and your (2) filed as [RM263](ROADMAP.md#rm263--a-doi-has-no-route-to-its-pmid-although-studyrowpmid-is-the-required-half).**
+**Status — accepted; your fix (1) shipped as [RM262](ROADMAP_HISTORY.md#rm262--a-doi-answered-existence-and-never-identity-although-the-body-naming-the-paper-was-already-in-hand) on the `0.8` branch, uncut (enricher), your (3) with it, and your (2) filed as [RM263](ROADMAP_HISTORY.md#rm263--a-doi-has-no-route-to-its-pmid-although-studyrowpmid-is-the-required-half).**
 Reproduced live on `10.1038/ng826`, exactly as you wrote it. `CrossrefClient.work(doi)` now parses
 the `/works` body the existence request already returned (no extra request), and `lookup_citation`
 fills `title`, `journal`, `year` and `first_author` from it, with an `info` finding
@@ -5381,7 +5381,7 @@ put that distinction in the artifact. Filed as an observation, not a blocker —
 
 ## S116 — RM28: the HFE compound-het-vs-cis case is a meta-conclusion a consumer can name but not resolve
 
-**Status — note 1 recorded on [RM28](ROADMAP_0_8.md#rm28--meta-conclusions-the-predicate-half) (it confirms the boundary); note 2 filed as [RM266](ROADMAP_0_9.md#rm266--the-phase-confusable-diplotype-pair-set-is-computed-at-compile-and-dropped-it-reaches-the-artifact-only-as-a-capped-warning-string), open, a minor.** Two distinct findings, and they route apart.
+**Status — note 1 recorded on [RM28](ROADMAP_0_9.md#rm28--meta-conclusions-the-predicate-half) (it confirms the boundary); note 2 filed as [RM266](ROADMAP_0_9.md#rm266--the-phase-confusable-diplotype-pair-set-is-computed-at-compile-and-dropped-it-reaches-the-artifact-only-as-a-capped-warning-string), open, a minor.** Two distinct findings, and they route apart.
 
 Note 1 — keep the enumerative property — is exactly RM28's boundary, and your building it confirms it from the caller side. Because the module defines the *cis* allele (`C282Y-H63D`) as its own haplotype with its own diplotype row, the enumeration let your caller **name** the ambiguity rather than guess or report `no_match`. RM28 is parked precisely because enumeration reaches the small-arity cases without a predicate, and `hfe_compound_het` was already its "cis/trans closed as a check, not a table" entry; S116 is now recorded there as the shipped-caller confirmation that the boundary holds. Nothing to add to the format for note 1.
 
@@ -5417,7 +5417,7 @@ needed.
 
 ## S117 — the Ensembl variation cache spells indel rsIDs at a different anchor from ClinVar for every insertion, and for some it names a different event
 
-**Status — accepted; filed as [RM267](ROADMAP.md#rm267--the-ensembl-snapshot-anchors-a-class-of-insertions-one-base-early-and-resolutioncsv-serves-them-as-a-different-event)
+**Status — accepted; filed as [RM267](ROADMAP_HISTORY.md#rm267--the-ensembl-snapshot-anchors-a-class-of-insertions-one-base-early-and-resolutioncsv-serves-them-as-a-different-event)
 (a minor, release undecided), with a second defect found while reproducing it filed as
 [RM268](ROADMAP_HISTORY.md#rm268--the-live-ensembl-rest-rung-writes-an-unanchored-insertion-into-resolutioncsv-ref--at-the-interbase-start)
 (a patch).** Nothing has shipped.
@@ -5548,7 +5548,7 @@ consumer cannot tell whether "`*1` = reference at every site" is the rule or a C
 
 **Status — note 1 accepted and filed for 1.0 as
 [RM269](ROADMAP_1_0.md#rm269--diplotyperowhaplotype_b-is-required-so-a-hemizygous-star-allele-call-has-no-row);
-note 2 recorded in [RM28's corpus](ROADMAP_0_8.md#rm28--meta-conclusions-the-predicate-half).** Nothing
+note 2 recorded in [RM28's corpus](ROADMAP_0_9.md#rm28--meta-conclusions-the-predicate-half).** Nothing
 shipped.
 
 **Note 1.** Confirmed: `haplotype_b` has been required since 0.4.0. Making it nullable is the right
@@ -5587,7 +5587,7 @@ So it argues for a two-subject key, not a predicate, and it is recorded as unbui
 ## S120 — the format declares no coordinate-normalization convention, so a legal respelling of an indel is a silent position-join miss ("no one is wrong" is the footgun)
 
 **Status — accepted; filed as
-[RM270](ROADMAP.md#rm270--an-indels-artifact-key-is-its-sources-spelling-a-left-aligned-vcf-misses-a-respelled-row-and-the-spelling-independent-id-the-enricher-mints-never-reaches-the-artifact)
+[RM270](ROADMAP_HISTORY.md#rm270--an-indels-artifact-key-is-its-sources-spelling-a-left-aligned-vcf-misses-a-respelled-row-and-the-spelling-independent-id-the-enricher-mints-never-reaches-the-artifact)
 (a minor, release undecided). The documentation half shipped: [CONSUMING.md § Identity](CONSUMING.md#identity)
 now says indel coordinates are not normalized and tells a consumer to normalize both sides.** No
 package change.
@@ -5682,7 +5682,7 @@ no schema change to the authored side. Not checked: whether `DiplotypeRow`/`Repe
 ## S121 — the enricher resolves a coordinate from one authority and validates it against that same authority, so a wrong anchor is confirmed rather than caught; a cross-authority discordance should warn/withhold, not resolve silently
 
 **Status — accepted, and folded into
-[RM267](ROADMAP.md#rm267--the-ensembl-snapshot-anchors-a-class-of-insertions-one-base-early-and-resolutioncsv-serves-them-as-a-different-event)
+[RM267](ROADMAP_HISTORY.md#rm267--the-ensembl-snapshot-anchors-a-class-of-insertions-one-base-early-and-resolutioncsv-serves-them-as-a-different-event)
 as a dated addendum rather than filed separately.** Your generalization is exactly RM267's candidate 4,
 so one item carries it and the remediation is not counted twice. Nothing has shipped.
 
@@ -5849,7 +5849,7 @@ at the draft-logic diff. Every other v1-port module's `resolution_signature` was
 **Status — accepted, as a documentation defect in the field. The description is fixed as
 [RM299](ROADMAP_HISTORY.md#rm299--statspathogenic_count-says-pathogenic-and-counts-both-pathogenic-tiers-per-genotype-row)
 (format, on `main`, uncut), and the split count is filed as
-[RM300](ROADMAP.md#rm300--the-manifest-cannot-say-how-many-rows-are-pathogenic-only-how-many-carry-the-folded-flag),
+[RM300](ROADMAP_HISTORY.md#rm300--the-manifest-cannot-say-how-many-rows-are-pathogenic-only-how-many-carry-the-folded-flag),
 a minor.** Reproduced from the code: `_variant_stats` sums `v.pathogenic` over authored `variants.csv`
 rows, and `derive.pathogenic_from_clin_sig` maps both `pathogenic` and `likely_pathogenic` to `True`.
 The count was behaving as SCHEMAS.md has described it since S43 (*"counts the boolean and therefore
@@ -5979,7 +5979,7 @@ location), and 0.27.1 changes it to `usecwd=True`. Our SDK imports no dotenv at 
 ## S125 — `logs/` ships only `*.log`, and a `.jsonl`, `.json`, `.md`, `.txt` or image beside it is dropped without a word
 
 **Status — accepted, filed as two items: the silent drop as
-[RM337](ROADMAP_0_8.md#rm337--a-file-under-logs-that-is-not-log-is-dropped-from-the-compile-and-nothing-says-so)
+[RM337](ROADMAP_HISTORY.md#rm337--a-file-under-logs-that-is-not-log-is-dropped-from-the-compile-and-nothing-says-so)
 (a patch), and which files ship as
 [RM338](ROADMAP_HISTORY.md#rm338--which-files-under-logs-ship-log-only-a-text-allowlist-content-checked-text-or-images-too)
 (undecided); the addendum's contradiction is fixed in `docs/TABLES.md`.** Reproduced on 2026-11-03 with

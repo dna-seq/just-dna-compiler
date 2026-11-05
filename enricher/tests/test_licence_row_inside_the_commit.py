@@ -29,13 +29,14 @@ from just_dna_enricher import licensing
 from just_dna_format.layout import atomic_writer
 
 _SRC = Path(licensing.__file__).parent
-_RECORDERS = {"merge_sources_file", "record_source_terms"}
+_RECORDERS = {"merge_sources_file", "record_source_terms", "record_table_sources"}
 _PREFLIGHT = "require_sources_file"
 
 #: Callers that record a licence row and write **no data table of their own** in that function, so
 #: there is nothing for the row to be committed with. Each names why. Equality below, not a subset.
 _NO_TABLE_OF_ITS_OWN = {
     ("licensing.py", "record_source_terms"): "the recorder itself",
+    ("licensing.py", "record_table_sources"): "the recorder every derived pass calls (RM373)",
     ("identifiers.py", "_check_pgs"): "records the PGS Catalog's terms for a CHECK; it writes no table",
     ("clinpgx.py", "enrich_clinpgx"): (
         "records the snapshot's terms for annotation rows that land through the compiler's draft "
@@ -51,6 +52,10 @@ _NO_TABLE_OF_ITS_OWN = {
 _IS_THE_CALLBACK = {
     ("drafting.py", "commit"): "the closure `licence_commit` returns, for every drafter",
     ("civic_citations.py", "_commit_licence"): "this pass's own `before_commit` closure",
+    (
+        "opentargets.py",
+        "_commit_licence",
+    ): "the `before_commit` closure `_licence` builds for each Open Targets table's `_write`",
 }
 
 #: Where a drafted row reaches disk. Both take `before_commit` since RM232.
@@ -113,7 +118,8 @@ def _effective_calls(func: ast.FunctionDef) -> list[ast.Call]:
 
 def _all_functions() -> dict[tuple[str, str], ast.FunctionDef]:
     found: dict[tuple[str, str], ast.FunctionDef] = {}
-    for path in sorted(_SRC.glob("*.py")):
+    # Recursive since RM260 split `cli.py` into a package; `generated/` is protoc output, not ours.
+    for path in sorted(p for p in _SRC.rglob("*.py") if "generated" not in p.relative_to(_SRC).parts):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef):
@@ -171,11 +177,11 @@ def test_every_pass_that_records_a_licence_row_does_so_inside_its_tables_commit(
     )
     named = set(_NO_TABLE_OF_ITS_OWN) | set(_IS_THE_CALLBACK)
     assert named <= set(recorders), f"exemptions naming no recorder: {named - set(recorders)}"
-    # The nine, by name, so the walk cannot silently shrink. RM231's eight, plus `civic_citations`
+    # The eleven, by name, so the walk cannot silently shrink. RM231's eight, plus `civic_citations`
     # — which was one of that round's two exemptions until the compiler's writer took the parameter
     # (RM232) and it could hand its merge to the append that lands `studies.csv`.
     assert {key[0] for key in committing} == {
-        "enrich.py",
+        "orchestration.py",  # `enrich/orchestration.py` since RM260 split `enrich.py`
         "assertions.py",
         "gene_metrics.py",
         "frequencies.py",
@@ -184,6 +190,8 @@ def test_every_pass_that_records_a_licence_row_does_so_inside_its_tables_commit(
         "clingen.py",
         "expression.py",
         "civic_citations.py",
+        "ld_pairs.py",  # RM331 (0.8): Ensembl's (ensembl, ld_pair) row commits with `ld_pairs.csv`
+        "concordance.py",  # RM379 (0.8): each consulted authority's row commits with its call rows
     }
     for key in committing:
         assert _preflight_precedes_the_write(recorders[key]), (

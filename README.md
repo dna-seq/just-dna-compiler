@@ -81,7 +81,7 @@ full map of `docs/` with a grep hint per file.
   non-goals, rules only. Wins over any plan; the reasoning behind each amendment is in
   [`CONSTITUTION_AMENDMENTS_HISTORY.md`](docs/CONSTITUTION_AMENDMENTS_HISTORY.md).
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — open items only, plus the idea-book and the reserved-namespace
-  and 1.0-cleanup trackers. Deferred items sit in [`ROADMAP_0_8.md`](docs/ROADMAP_0_8.md) and
+  and 1.0-cleanup trackers. Deferred items sit in [`ROADMAP_0_9.md`](docs/ROADMAP_0_9.md) and
   [`ROADMAP_1_0.md`](docs/ROADMAP_1_0.md), shipped ones with their rationale in
   [`ROADMAP_HISTORY.md`](docs/ROADMAP_HISTORY.md); [`RM_TOC.md`](docs/RM_TOC.md) indexes every item.
 - [`docs/CHANGELOG.md`](docs/CHANGELOG.md) — what shipped, newest first.

@@ -21,17 +21,15 @@ first.
 """
 
 import hashlib
-import json
 import logging
 from collections import Counter
 from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
+from just_dna_format.snapshot import SnapshotRelease, SnapshotWrite, begin_snapshot_write
 
-from just_dna_enricher.locations import RELEASE_FILENAME
 from just_dna_enricher.mitomap import (
     DUMP_TABLES,
     EDIT_DATE_NAMES,
@@ -40,6 +38,7 @@ from just_dna_enricher.mitomap import (
     REFERENCE_TABLE,
     VARIANT_TABLES,
     MitomapError,
+    MitomapRetired,
     MitomapUnavailable,
     allele_defect,
     nlmid_pmid,
@@ -159,6 +158,7 @@ def download_mitomap_dump(dest: Path, url: str = DEFAULT_MITOMAP_URL) -> Downloa
         dest,
         url,
         error_cls=MitomapUnavailable,
+        retired=MitomapRetired,
         what="the MITOMAP dump",
     )
     return DownloadedDump(
@@ -274,6 +274,7 @@ def build_snapshot(
         )
 
     data_dir = out_dir / "data"
+    snapshot = begin_snapshot_write(out_dir)
     data_dir.mkdir(parents=True, exist_ok=True)
     result = MitomapBuildResult(out_dir=out_dir, parquet_files=[])
 
@@ -369,7 +370,7 @@ def build_snapshot(
     result.source_sha256 = source_sha256 or _sha256_file(dump)
     result.source_last_modified = source_last_modified
     result.dataset = dataset_label(result.edit_dates)
-    _write_release_json(out_dir, result, source_url=source_url)
+    _write_release_json(snapshot, result, source_url=source_url)
     logger.info(
         "Built MITOMAP snapshot: %s → %s",
         ", ".join(f"{name} {count}" for name, count in result.rows.items()),
@@ -398,7 +399,7 @@ def _citation_schema() -> dict:
     return {"table": pl.Utf8, "record_id": pl.Utf8, "reference_id": pl.Utf8, "pmid": pl.Utf8}
 
 
-def _write_release_json(out_dir: Path, result: MitomapBuildResult, *, source_url: str) -> Path:
+def _write_release_json(snapshot: SnapshotWrite, result: MitomapBuildResult, *, source_url: str) -> Path:
     """The snapshot's provenance, including every count this build computed and would otherwise drop.
 
     `withheld_brackets` and `unmintable` are in here for the same reason as the row counts: they are
@@ -407,23 +408,21 @@ def _write_release_json(out_dir: Path, result: MitomapBuildResult, *, source_url
     figures are re-derived on every build, which is what stops a diff snapshot from becoming a
     hardcoded inventory.
     """
-    release = {
-        "dataset": result.dataset,
-        "source_url": source_url,
-        "source_sha256": result.source_sha256,
-        "source_last_modified": result.source_last_modified,
-        "rows": result.rows,
-        "table_edit_dates": result.edit_dates,
-        "reference_rows": result.reference_rows,
-        "references_with_pmid": result.references_with_pmid,
-        "references_without_nlmid": result.references_without_nlmid,
-        "references_not_a_pmid": result.references_not_a_pmid,
-        "citation_links": result.citation_links,
-        "unmintable": result.unmintable,
-        "withheld_brackets": result.withheld_brackets,
-        "built_at": now_utc_iso(),
-        "builder_version": _builder_version(),
-    }
-    path = out_dir / RELEASE_FILENAME
-    atomic_write_text(path, json.dumps(release, indent=2, sort_keys=True) + "\n")
-    return path
+    release = SnapshotRelease(
+        dataset=result.dataset,
+        source_url=source_url,
+        source_sha256=result.source_sha256,
+        source_last_modified=result.source_last_modified,
+        row_counts=result.rows,
+        table_edit_dates=result.edit_dates,
+        reference_rows=result.reference_rows,
+        references_with_pmid=result.references_with_pmid,
+        references_without_nlmid=result.references_without_nlmid,
+        references_not_a_pmid=result.references_not_a_pmid,
+        citation_links=result.citation_links,
+        unmintable=result.unmintable,
+        withheld_brackets=result.withheld_brackets,
+        built_at=now_utc_iso(),
+        builder_version=_builder_version(),
+    )
+    return snapshot.commit(release)

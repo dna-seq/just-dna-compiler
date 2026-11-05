@@ -452,29 +452,70 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
 - `@membership-union` — **The allele-membership check compares against the UNION of every locus a key resolves to**, on the
   authored rows before `resolve_from_table` — a per-expanded-row comparison flags the siblings the
   genotype was never about. Severity is the mode ladder, never an unconditional error. Pinned by tests.
+  **The same union answers "does the module sit here" (RM362, amended 2026-11-04).** `module_subjects` read a
+  row's own spelling only, and RM364's NUDT15 row (CPIC right-shifted, Ensembl left-aligned) had the frequency
+  pass's own row called an orphan. `subjects.identity_placements` is the one lookup — by `variant_key` **and**
+  `rsid`, because an expanded row is re-keyed by coordinate and only its rsID still reaches a locus the genotype
+  could not host — and `row_positions` is its per-row form for a check that attributes (BA1, the study join).
+  The rejected repair was respelling the row: an authored coordinate is identity (RM270).
 
-- `@snapshot-pipe-alt` — **The Ensembl snapshot's `alt` is PIPE-joined; every other link uses commas.** A multi-allelic site
-  is one snapshot row (`A|C|T`), not one row per alt. `resolver._snapshot_alleles` normalizes at that
-  boundary — don't remove it, and don't "fix" it by widening the hosting predicate instead (the locus-dict
-  contract is comma-separated, and the snapshot is the deviation). This silently broke *all*
-  cache-resolved genotyped variants until 0.5: the comma-only split made `A|C|T` one opaque allele, so
-  the allele-aware filter dropped every locus and `rs4244285` with genotype `A/G` came back
-  `not_found`. Unit fixtures were comma-separated, so only a real cache showed it — when adding a
-  resolver fixture, use the pipe shape for multi-allelic sites.
+- `@snapshot-pipe-alt` — **The Ensembl snapshot has two published spellings of a multi-allelic site, and neither is
+  the comma list every other link emits.** The old repo (`just-dna-seq/ensembl_variations`, read until 0.8)
+  writes one row with a PIPE-joined `alt` (`A|C|T`); the split repo (`ensembl_variations_split`, RM372) writes
+  one row per ALT, which the lookup's `string_agg(DISTINCT alt, ',')` groups back into one locus. Both reach
+  `resolver._snapshot_alleles`, which normalizes at that boundary — don't remove it while an old-repo cache
+  can still be served (the resolver serves one until somebody pulls), and don't "fix" either shape by
+  widening the hosting predicate (the locus-dict contract is comma-separated, and the snapshot is the
+  deviation). The pipe shape silently broke *all* cache-resolved genotyped variants until 0.5: the
+  comma-only split made `A|C|T` one opaque allele, so the allele-aware filter dropped every locus and
+  `rs4244285` with genotype `A/G` came back `not_found`. Unit fixtures were comma-separated, so only a real
+  cache showed it. A multi-allelic resolver fixture covers **both** spellings: `test_enrich.py`'s
+  `multiallelic_cache` is parametrized over `pipe_joined` and `one_row_per_alt`.
+  **And never group by the snapshot's `ref` (RM381, 0.8).** The split repo pads every ALT of a site to one
+  shared ref (`16:23635706 GTT>G / GTT>GT / GTT>GTTT`), so the old `GROUP BY id, chrom, start, ref` handed on
+  `GTT>G,GT,GTTT`, a frame no caller writes. Offline nothing trimmed it; online `_filled_pieces` read the
+  module's `G/GT` in it as a compound het of two deletions and wrote the locus whole, and SHOX's `C/CAG`
+  as the deletion alone, dropping the duplication RM270 had written. Every reader of a snapshot's `alt`
+  (both resolvers, ClinVar's, REST's `allele_string`, gnomAD's ids, the three position→rsID readers) spells each
+  ALT alone through `alleles.trim_allele` and regroups by that (`per_alt_loci`), offline too, since a
+  trim reads no reference; left-alignment past it is still `left_normalize`'s. The rejected repair was
+  trimming inside `normalize_locus` only: the frame rule still sees the padded set, and the miss
+  reproduces online. `test_split_snapshot_per_alt.py` walks the readers by AST against a registry.
+  **And the genotype is the other spelling of the same vocabulary**: a module authored from an
+  unnormalized multi-ALT record carries `G/GTTT` in the padded frame. `resolution.site_verdicts` trims its
+  alleles with the same `alleles.trim_allele` and tests both sides' raw tokens. Accepting "a padded
+  compound het finds no locus" as won't-fix was refused (P3): an existing module must keep behaving.
 
 - `@resolution-reads-pgx-tables` — **Resolution reads `pharm_variants.csv` and `haplotypes.csv` too, not just `variants.csv`** (0.5,
-  `enrich._collect_subjects`). PGx modules carry no `variants.csv`, so they used to enrich to an empty
+  `enrich.collect_subjects`). PGx modules carry no `variants.csv`, so they used to enrich to an empty
   `resolution.csv`. Subjects dedupe by `variant_key` with **`variants.csv` first** — it alone carries
   `alts`, a fact column, so a PGx row winning would move `artifact.digest`. PGx tables key **without**
   `alts`; a `HaplotypeRow` passes its defining `allele` to the shared `hosting_verdict`.
 
 - `@rsid-alternates-closed` — **Reverse dropping `rsid_alternates` is NOT a bug — closed, don't re-flag it.** This was filed as an
-  open loose end and is neither open nor fixable in the writer. `_write_resolution_csv` rebuilds the
-  table from `weights.parquet`, which by design carries **no provenance at all** (it already resets
-  `source="reversed"`, `status="resolved"`, blank `fetched_at`). `rsid_alternates`/`rsid_current`/
-  `rsid_status` are outside the fact set *precisely* so they never reach the artifact, so the data does
-  not exist for reverse to emit; adding the column names would produce a permanently empty header.
-  Recovering them after a round-trip means re-running the enricher.
+  open loose end and is neither open nor a writer defect. **RM380 changed the rationale, not the
+  decision:** every other `ResolutionRow` column now rides the parquets' resolution loci and comes back
+  (`parquets.RESOLUTION_LOCUS_EXCLUDED` is the walked list of what does not, each with its reason), so
+  "the artifact carries no provenance" is no longer true. `rsid_alternates`/`rsid_current`/`rsid_status`
+  stay excluded on purpose: each is a statement about dbSNP at a moment, not about the module, and
+  re-running the enricher is how it is recovered. `source`/`fetched_at` are reverse's own stamps; `status`
+  is carried, so an `ambiguous` pick is no longer laundered into `resolved` by a round trip.
+  Before RM380 the struct was a hand-kept list and silently dropped `authority`, the placement witness and
+  verdict, `left_aligned`, `source_release` and `caid` as well — the shape `@fieldnames-from-model` names.
+
+- `@a-digest-gate-cannot-see-the-manifest` — **A round-trip gate made of digests cannot see an authored value that lives only in
+  the manifest; compare the authored projection.** RM241, 0.8. `test_reference_examples_roundtrip.py`
+  compared `artifact.digest` and `content_signature` across `compile → reverse → compile`, and both
+  exclude `manifest.json` by design. So `reverse` could rebuild the whole `module:` display block from
+  the module name, drop `weighting`/`license`/`authorship`/`authority_precedence`/`panel`/the README,
+  and turn a table-only module's defaults into `unknown`, on every example, while the gate stayed
+  green. Each field reverse *did* recover had been added after its own incident (`version` by RM103,
+  `genome_build` by the 2026-08-06 audit), which is the list shape: nothing said which of the others
+  were missing. The repair has two halves and both are needed. The gate compares the manifest's
+  authored projection across laps, and `REVERSE_RECONSTRUCTED ∪ REVERSE_EXCLUDED` is asserted equal to
+  the walked spec model fields, so a new field fails until somebody places it. **The rejected rule was
+  "read the manifest only for what can move a digest"**: it sounded like P7 and was not. P7 asks
+  whether an authored value survives, and a digest is only one of the places an authored value lives.
 
 - `@sidecar-authoritative` — **`enrich()` treats an existing `resolution.csv` beside the spec as authoritative** (merged, never
   clobbered) — and so do the two new passes for `frequencies.csv` / `gene_metrics.csv`, and VRS minting
@@ -635,6 +676,22 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   submitted strand, so its `G/A` meets GRCh38's `C/T` routinely. `strand_flip_explains` tests
   `called <= locus` **first**, because a palindromic SNV (`A/T` at `T>A`) satisfies both readings and
   would otherwise be reported as a flip when it needed no explaining at all.
+
+  **Addendum, 2026-11-05 (RM382): the row no longer stays, and a rejected answer no longer ends the
+  chain.** Regenerating `pathogenic_clinvar` against the split Ensembl snapshot showed the cost of
+  keeping it. HBB `rs613985` (authored `C/CATAACAGCATCAG`) has one snapshot locus, `3:159434329 T>G`; the
+  filter rejected it, and because every link asks only about rsIDs not yet answered, ClinVar, which
+  holds the authored 13 bp deletion at `11:5226724`, was never asked. The row went out `not_found` under
+  the warning that says the source HAS it. Two changes, one predicate (`orchestration._hosting`, shared
+  by the loop and the chain): **an answer every subject of the rsID rejects, one of them rsID-only, is set
+  aside as it arrives, so the next link is asked** (per rsID, because the placement comparison takes one
+  authority per rsID; any subject, a pair included, that hosts or leaves a locus undecided keeps the
+  answer); and **an rsID-only
+  subject whose every answer was rejected gets no row**, like RM267's disputed subject, and is named in
+  `strict`'s refusal by its own arm. The new-status refusal above still binds — `VALID_RESOLUTION_STATUS`
+  is shared with `literature.csv` and `clinical_assertions.csv`. The signature refusal does not: it was
+  measured against a table already written, a fresh run has no prior, and RM267 had already dropped a
+  row for the reason that applies here. Do not restore the `not_found` row to keep a signature still.
 
 - `@roster-is-as-wide-as-the-tables-it-reads` — **A check is only as wide as the table it reads, and a
   narrow roster reports its blindness as a clean zero (S86, 0.7).** `check_identifiers` built its trait
@@ -802,9 +859,10 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   **authored** rows. It is a mode ladder, so `validate --strict` blessed modules `compile --strict`
   refused. The rule is unchanged and now applies to three checks: pure computation over injected or
   authored bytes with no `output_dir` belongs in `validate_spec` too. Two mechanics to copy when moving
-  one: `compile_module` runs `validate_spec` in **best_effort** whatever its own mode, so the compile
-  side must still re-run the check to reach the real severity, and its warnings need de-duplicating on
-  the message (`_check_contig_ploidy` is the existing model).
+  one: `compile_module` runs `validate_spec` first (in **best_effort** whatever its own mode until
+  RM359; in the compile's own mode since, see `@one-finding-one-channel`), so a check on both sides
+  emits its warning twice under `best_effort` and needs de-duplicating on the message
+  (`_check_contig_ploidy` is the existing model).
 
 - `@which-loop-calls-the-checker` — **"Keyed kind ⇒ dupe-checked" was never the dividing line — which
   LOOP calls the checker was.** `_validate_table_kind` holds the duplicate-row rule and `validate_spec`
@@ -915,6 +973,23 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `compile_module` runs the pre-flight whatever its own mode, so both passes emit the finding, measured
   at 24 warnings for 12 subjects before the message-dedup went in.
 
+  **And then the exemption itself went (RM367, 2026-11-04).** "Resolved rows are compile-only" never held
+  for an injected table: resolving it is computation over bytes the pre-flight has already loaded. Each
+  side kept its own copy — a coverage predicate, `withdrawn`/`ambiguous` helpers, the compile's
+  `resolve_from_table` — and the copies agreed only on GRCh38 with resolution switched on, so
+  `validate --strict` passed an rsID-only GRCh37 module, and every module under `--no-resolve`, that
+  `compile --strict` refused; two resolution ladders were pinned compile-only by a test. The repair was
+  to stop sharing predicates and share the **step**: `compiler/resolution_step.py` (`read_resolution`,
+  `resolve_variants`, `identity_after_resolution`, `ploidy_after_resolution`, `unplaced_refusal`) is
+  called by both commands. What stays compile-only is a *reference the pre-flight is not handed* (the
+  deprecated `ensembl_cache`), and `compiler/check_paths.py` names every other single-path check, held
+  as an equality against an AST walk of both function bodies. The second half of the class was a
+  refusal **after the first write**: seven `return CompilationResult(success=False, …)` sat below
+  `output_dir.mkdir()` (the fact-table loop's four, the ancillary files' three). They moved above it,
+  and an AST walk holds the line. **The trap that hid the off switch:** the parity tests compared a
+  resolving `validate` with a `compile --no-resolve`, so the pair agreed precisely because the switch
+  did not work. Compare the two commands in one mode, always.
+
 - `@ploidy-behind-resolution` — **A warning computed post-resolution is discarded — the second `_cross_validate_variants` call takes
   errors only.** That is right for a warning about authored cells and wrong for any whose input
   resolution fills. It made the non-diploid guardrail invisible to every rsID-authored row, i.e. to
@@ -945,6 +1020,26 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `manifest.compilation.warnings` — measured at 15 warnings, 14 distinct. When a check moves to
   `validate_spec` for parity, look at what still calls it on the compile side in the same commit, and
   assert `len(warnings) == len(set(warnings))` rather than grepping for the one phrase.
+
+- `@one-finding-one-channel` — **Under `strict` an escalated finding is an error and never also a warning
+  (RM359, 0.8).** `compile_module` ran its pre-flight in `best_effort` whatever its own mode, so the
+  pre-flight seeded `warnings` with every mode-ladder sentence, and the strict re-run then refused with
+  the same finding: `study_effect_allele_not_at_locus` arrived on both channels, and so did every other
+  ladder code, measured over all of them. The resolution ladders reached the same place by a second
+  route: `ResolutionOutcome.warnings` carried each ladder's warning in both modes, and its docstring
+  called the refusal "published beside it", while `mode_ladder.feature` said "refuses instead" — two of
+  our own texts disagreeing, and the code followed the wrong one. The repair is the pre-flight in the
+  compile's mode (a strict compile now refuses with `validate --strict`'s accumulated errors for every
+  check the pre-flight asks; the two resolution ladders reading resolved rows stay compile-only, and
+  `legacy_reference` keeps the pre-flight from judging coverage the deprecated `ensembl_cache` will
+  supply, which the first cut of this repair refused on) plus `ResolutionOutcome.channels(strict=)`, which goes through `route`. **The rejected repair** was
+  stripping escalated sentences out of `warnings` at each refusal: it leaves a later ladder, one the
+  compile returned before re-running, in `warnings` under `strict`, which is one channel and the
+  wrong one. Not in this rule, deliberately: the strict-only *aggregates* (`strict compile: N
+  variant(s) …`, `build_disagreement_error`) are different findings from the per-subject warnings that
+  fire in both modes, so they are added rather than promoted. The enricher escalates by raising, so no
+  result object carries both halves there. Asserted over the walked ladder roster by
+  `compiler/tests/test_one_channel_under_strict.py`.
 
 - `@clinsig-never-escalates` — **The ClinVar `clin_sig` cross-check is the one check where `strict` does NOT escalate** — it warns in
   both modes, deliberately, because failing would make the format arbitrate a clinical dispute. The
@@ -1172,6 +1267,12 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   reach**; comparing them only to each other passes when both land on `other`. `clin_sig.py` imports
   `VALID_CLIN_SIG` and nothing else, so a runtime pass reads it without the builders' `[dev]` extra —
   which is the argument for a shared module rather than one builder importing another.
+  **The same class, one level up (RM363):** a value *compared* in several places is the same hazard as a
+  vocabulary mapped in several. RM356 made gene comparison case-insensitive in the PGx checks and the
+  meta-table two files away still compared raw, so an `Apoe` diplotype silently lost its tier. One
+  comparison per kind lives in `just_dna_format.spelling` (`COMPARISON_KEYS`, `comparison_key`,
+  `ChromCell`), and the guard is an AST walk for the *site*, not a test of the function: the function
+  was right both times, and what drifted was a caller that never called it.
 
 - `@the-tier-is-a-property-of-the-subject` — **A join with two granularities needs two kinds of subject,
   or the coarse answer is reported once per fine claim (RM166).** ClinPGx's drug labels name a gene on
@@ -1727,6 +1828,24 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `not missing` inverts it — that would drop a real obligation from any module carrying one uncurated
   gene beside a curated one.
 
+  **The data table makes the same claim one file over, and seven writers made it about nothing
+  (RM370).** A header-only `clin_sig_concordance.csv` beside a module with no `clin_sig` cell says
+  *this module carries a concordance record*, and the 0.8 reference examples shipped three such pairs;
+  `frequencies.csv` and `clinical_assertions.csv` (every row off-build), `gene_metrics.csv` and `gene_validity.csv` (no gene) and `literature.csv` (DOI-only
+  citations) did the same. The rule lives in **one predicate in front of every writer**,
+  `layout.nothing_to_write(path, rows)`: zero rows and no file there writes nothing, and the licence
+  row, which lands only inside the table's commit, goes with it. The tempting stronger reading, *zero
+  rows never overwrites a file*, was refused: zero rows over an existing table is an answer — the
+  concordance record clearing a subject nobody contests any more, a merge pass pruning a deleted
+  variant's rows — and a run that could not ask already keeps its file by never reaching the writer
+  (`@rederive-never-shortens`). Two empty tables are still written, and each says why where it is
+  written: `resolution.csv`, because every pass after `enrich` refuses without it (so dropping it turned
+  *enrich placed nothing* into *run enrich first*, a code review caught it), and a concordance record an
+  overlay answers, because its emptiness is RM117's vindication signal. Two guards keep it a rule rather
+  than a habit: a run per
+  `DERIVED_PRODUCERS` entry on a module that gives it nothing to answer, and an AST walk over every
+  enricher CSV writer.
+
   **A second surface of an already-declared source may not claim the lane's row either (RM166).**
   `merge_sources_csv` keys on `(source, layer)` and takes the row already there, so `clinpgx`/`annotation`
   is one slot with one occupant. `clinpgx check` and `draft-clinpgx` own it, and its `dataset` is
@@ -1737,6 +1856,18 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `annotation` and `literature` are exempt from the compiler's orphan check, so any other spelling warns
   `source_row_unused` on every module that runs the pass. The check writes no row, which is also what the
   converse above already required of it, and the module docstring says so where a reader would look.
+
+  **A run that answered every row retires the row no committed row names (RM383, 2026-11-05).** The
+  converse above, at the other end of a module's life: `mt_common_deletion`'s point variants moved from
+  ClinVar's back-fill to the split Ensembl snapshot's under `--rederive`, and `clinvar,resolution` stayed
+  in the licence table, because `merge_sources_file` never clobbers and nothing ever removed a row. Two
+  repairs refused. *Keep it with a stated reason*: `SourceRow` has no field a gate could act on, and an
+  exclusion in prose is the `@one-side-only-has-two-causes` defect. *Retire on every run*: a routine
+  merge's contract is merge-not-clobber, and a deletion it was not asked for is exactly the side effect
+  `@a-publish-may-not-orphan-the-bytes-it-stops-describing` forbids, however true "no row names it" is.
+  So the caller declares it (`record_table_sources(answered_every_row=…)`, default `False` for a host's
+  call, stated by every call here and walked by an AST guard): `enrich` passes `rederive`, the concordance record (rewritten whole) passes `True`, every merge
+  pass `False`. Only the pass's own rows go: its layer, a source with a terms constant.
 
 - `@fieldnames-from-model` — **A column list written by hand will lose a column — derive it from the model.** `SOURCES_FIELDNAMES`
   was a literal and omitted `redistribution`, so every `sources.csv` ever written recorded *unknown* for
@@ -1991,6 +2122,14 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   code (`@warning-text-is-api`) — the change is behaviour, not text — and a test asserting exactly that
   over a spec with no such column at all is what proves no published module moved.
 
+  **When several surfaces must split alike, declare it on the model, still outside `_KEY_FIELDS`**
+  (RM356). `haplotypes.csv`'s `gene` had to split the compile refusal, the drafting merge and the hints
+  lint at once, or a drafter would append a row the compiler then refused. A restated tuple in one check
+  cannot reach the other two, so the model declares `_KEY_DISTINCT_WHEN_STATED` and every site asks
+  `compiler.tables.same_row`. The relation is **not transitive** — a gene-less `*2` collides with
+  UGT1A1's and UGT1A6's, which do not collide with each other — so it can never be a hashable key: bucket
+  by the unchanged key, compare pairwise within the bucket.
+
 - `@dedup-key-decides-rows` — **Which columns may become several rows is decided by the DEDUP KEY, not by the source's dialect
   (R2-1).** ClinPGx `;`-joins both `drugs` and `gene`. `drug` is *in* `PharmVariantRow`'s dedup key, so
   one record legitimately becomes one row per drug; `gene` is **outside** it, so the same move makes
@@ -2157,6 +2296,20 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   the legacy resource 404'd on a rare variant, the v2 search answers it with an empty 200 — so the
   `FOUR_OH_FOUR_IS_AN_ANSWER` row went. A status's meaning is a property of the endpoint, and a new
   endpoint re-asks it.
+
+  **Owning a transport is a function's property too, and a reason is not a type (2026-11-05, the 0.8
+  audit's second round).** RM361 shipped a guard over the clients and a walk over the handlers, and a
+  410 still reached three records as an outage. Each sat where a guard did not look. The bulk downloader
+  (`net.stream_to_file`, under every bulk-download lane), ClinGen's curation list, the gene-validity exports, MANE's
+  release discovery and ACMG's page are module-level *functions* that call `httpx` themselves, and the
+  roster walks classes. `clinvar_gkm.lane_currency` wrote `f"unreachable ({exc})"`, and the handler
+  walk compared `ast.Constant` for equality: an f-string's constant piece is `"unreachable ("`. And
+  a check that asks only `could_not_ask_reason` passes on all five functions, because the helper reads
+  the 410 through `__cause__` while the type and the message still say "could not fetch". The walk
+  now finds every module-level class and function by what it calls; a function is a roster row driven
+  with a 410, a 503 and a refused connection, and the 410 assertion is the *type* (`EndpointRetired`)
+  and the quoted body, not only the reason. `stream_to_file` takes the lane's `*Retired` as a required
+  keyword, so a new lane cannot leave it out, and a walk resolves each call's pair to one family.
 - `@draft-appends` — **Drafting appends, it never mutates — that word is the whole line.** `just_dna_compiler.draft`
   appends rows into an authored CSV at **row** granularity (a file-level "refuse if it exists" rule
   self-defuses after the first gene and makes a multi-gene module unbuildable). A row whose key exists
@@ -2594,7 +2747,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   column (that one is `reverse`'s problem — see RM43).
 
 - `@three-touch-points` — **Adding an authored column is exactly three touch points, and the third is the one that gets
-  missed.** The pydantic model; the compile-side row dict + polars schema in `compiler.py`; and the
+  missed.** The pydantic model; the compile-side row dict + polars schema in `compiler/parquets.py`; and the
   **reverse-side `fieldnames` list + `_scalar_cell` mapping**. A column missing from the reverse list
   round-trips as silent data loss, which is why every new column gets a round-trip test. Table kinds
   under `_TABLE_KINDS` are exempt — `_build_table`/`_write_table_csv` are generic over `model_fields`,
@@ -3147,6 +3300,30 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   it — the readers glob `data/*.parquet`. Absence is normal at both ends: only ClinVar has a sidecar, and
   only after `clinvar citations`.
 
+  **Since 0.8 the layout is the format tier's (RM303, 2026-11-04).** The names, `SnapshotRelease` (the
+  model of `release.json`) and its reader moved to `just_dna_format.snapshot`, because six parties had
+  to agree and the names lived in the network tier, and because fourteen hand-written `release.json`
+  dicts had drifted (`rows`/`row_count`, `licence`/`license`, a ClinVar release with no `dataset`).
+  `locations` imports the names. A builder writes the record with `write_release(out_dir,
+  SnapshotRelease(...))`; `test_release_json_through_the_model.py` refuses any builder that spells
+  `release.json` outside an import or an `.unlink`. Old spellings are read, never written.
+
+  **The model fixed the spellings and left the order (RM369, 2026-11-04).** Every builder still swapped
+  its payload in and wrote the record after, so a crash between the two left new bytes under the old
+  record, which every reader believed. STRchive alone unlinked first, with a comment saying why, and the
+  guard had a test blessing exactly that unlink: the right shape was in the tree, as one builder's local
+  habit. It is now the only shape: `begin_snapshot_write(out_dir)` withdraws the record and returns the
+  handle whose `commit` is a builder's only route to the writer. The repair refused was the strong one,
+  staging the whole snapshot and swapping it once: a directory cannot be renamed over a non-empty one,
+  so the swap is two renames with an absent snapshot between them, which is the same "no description"
+  state for a rewrite of sixteen builders' path plumbing. **Place the withdrawal immediately before
+  the payload moves, never at the top of a build:** CPIC's build fetches over the network first, and a
+  withdrawal at the top would strip a whole, valid snapshot of its record on every transport failure.
+  The order is checked by running the builder (`test_a_build_withdraws_its_description_first.py`), not
+  by the AST walk, which can say a builder opens a write but not where. The same round typed the four
+  keys readers acted on out of `extra` (`parts_read`, `parts_total`, `source_release`, `vrs_version`):
+  an extra key is read untyped, and `getattr(release, "x", None)` turns a typo into an absence.
+
 - `@release-json-provenance` — **Publishing a second artifact makes provenance a question — answer it in `release.json`.** ClinVar
   publishes `var_citations.txt` on its own cadence, so a snapshot can carry records and citations from
   different releases; `build_citations` merges its own block (read-modify-write, so the VCF's keys
@@ -3254,6 +3431,33 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
 
 - `@network-tests-optin` — **Network tests are opt-in:** `JUST_DNA_NETWORK_TESTS=1` runs the live gnomAD query, the seqrepo
   refget re-derivation, and indel-normalization round-trips. They pass; they just aren't run by default.
+
+  **And since RM391 the rest are refused, at the transport.** For a release nothing enforced the rule
+  but the habit of the test writer: the 0.8 audit (round 2) ran the suite with sockets and DNS refused
+  and found 31 tests in 7 files asking ClinGen, Ensembl REST, eutils and the seqrepo proxy, every one of
+  them still green. Each client is written to turn a refused connection into its own *unreachable*, and
+  each test was content with that, so a suite whose answers came from whatever a remote service said
+  that day passed offline too, which is exactly why nobody saw it. RM372 had fenced one client (the HF
+  hub) by name, which is the per-client shape the next client walks past. The root `conftest.py` now
+  fences `socket.getaddrinfo`, `socket.socket.connect`/`connect_ex` and gRPC's channel constructors
+  (its C core opens sockets no Python patch sees), for every host but this machine. Three choices are
+  the point, and each has a failed alternative behind it: it raises `NetworkReachedInTests`, a
+  `RuntimeError` no transport maps, because an `OSError` is translated into "unreachable" and the test
+  passes (the audit's own probe, `ConnectionRefusedError`, measured exactly that); it **records** the
+  reach and fails a test at teardown when the body passed anyway, because `SequenceProxy.proxy()`'s
+  broad `except` swallows even a `RuntimeError`, and so does a citation lookup (seven of the 31 passed
+  their body that way), and a reach no test's teardown can claim (a module fixture's finalizer) fails
+  the run at session end under the test that made it; and it
+  reports a reach that already failed the test once, not twice. `test_the_network_is_fenced.py` drives
+  every transport into it and holds the enricher's imported transports equal to the set it drives.
+  `JUST_DNA_NETWORK_GUARD_LOG=<file>` lists the reaching tests. What the 31 wanted was nearly always
+  an incidental pass: `verify_ref` (seqrepo) and `verify_rsids` (eutils) are on by default, and
+  `enrich()` has no flag for its live-Ensembl link, so a test meaning "no network" passes
+  `offline=True`, and a test about one pass turns the others off or injects their clients.
+  **A live test carries `@pytest.mark.network`** (the root conftest's marker), whose skip asks the
+  fence's own `network_opted_in`: exactly `1`. Most live tests had tested the variable for truth,
+  so `JUST_DNA_NETWORK_TESTS=0` ran them into a fence that refused them; a walk over the test trees
+  (`test_every_live_test_skips_on_the_fences_reading_of_the_opt_in`) now refuses a truthy read.
 
 - `@flag-means-same` — **A flag must mean the same thing in every function that takes one (RM39).** `enrich_dosage_sensitivity`
   was the only pass without `offline`, so a caller running the family under one switch had to know, out
@@ -3444,11 +3648,12 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   **Derive the default, then guard the derivation.** `locations.repro_out(name)` is the one place
   `data/repro/` is spelled; `CACHES_DIRNAME` sits beside it for `cache rebuild`, a different concept
   named in the same file so that neither is inline. The guard is `test_build_out_defaults.py`, an AST
-  walk over `cli.py` that finds every `typer.Option` bound to `--out` and refuses a literal default —
-  walked, never listed (`@registry-completeness`), because a floor of nine would pass while the tenth
-  builder wrote wherever it liked. Cross-check the walk against the file: sixteen `"--out"` strings,
-  sixteen options found. The one required `--out` left names an *input* (`clinvar citations` adds a
-  sidecar to a snapshot that exists) and is enumerated as an equality so the exemption cannot grow.
+  walk over every file of the `cli` package (one `cli.py` until RM260) that finds every `typer.Option`
+  bound to `--out` and refuses a literal default — walked, never listed (`@registry-completeness`),
+  because a floor of nine would pass while the tenth builder wrote wherever it liked. Cross-check the
+  walk against the file: seventeen `"--out"` strings, seventeen options found. The one required `--out`
+  left names an *input* (`clinvar citations` adds a sidecar to a snapshot that exists) and is
+  enumerated as an equality so the exemption cannot grow.
 
   **The refused repair is the one that was already tried.** A `.gitignore` line per lane is what
   `civic reproduce` first got, and it is a prose rule at a different address: every new builder owes a
@@ -3545,6 +3750,12 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   repairs nothing already on disk or already published — every existing snapshot still prints blank
   until rebuilt — and it makes a second writer of a label that function owns. Additive later; not the
   fix.
+
+  **Done later, by RM303 (2026-11-04), with both objections answered.** The builder writes `dataset`
+  through `snapshot.clinvar_release_label`, the same formula the snapshot model reads an older ClinVar
+  release's `clinvar_file_date` through, so a snapshot already on disk or published still prints its
+  label and the formula has one home. The override and the `{"clinvar"}` exception set are gone; the
+  set is asserted empty.
 
 - `@a-publish-may-not-orphan-the-bytes-it-stops-describing` — **What a publish may delete, and what it
   may stop describing (RM185, RM186, 2026-09-03; maintainer's policy).**
@@ -3721,6 +3932,25 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   miniature: **a written rule is not what catches a regression; a test is.** Worth the confirmation
   because it also validates the *reason* for the spelling: `load_dotenv` skips a variable that is
   merely present, so `setenv(VAR, "")` is the only thing that holds once anything loads `.env`.
+
+- `@no-test-reaches-the-real-hub` — **No test reaches the real HuggingFace hub unasked, and none fetches into the
+  real cache base under any setting** (RM372, 2026-11-04). `test_rebuild_caches_and_prepare_caches_are_the_cli_loops`
+  ran `prepare_caches` on the real Ensembl lane. For months that was harmless by accident: the developer's
+  cache was recorded, so `prepare` left it alone. The day the lane moved repos, the recorded cache became
+  another repo's snapshot, `prepare` re-pulled it, and six chromosomes of a base other sessions were
+  reading were replaced with another release before the run was stopped. The cure is a class fence, not a
+  fix to one test: the autouse `_fenced_hub` (enricher conftest) replaces `huggingface_hub.HfFileSystem` and
+  `hf_hub_download` with stand-ins that refuse without `JUST_DNA_NETWORK_TESTS=1`, and refuse a fetch into
+  the real base even with it. A test wanting a hub installs its own fake over the fence (later
+  `monkeypatch.setattr` wins). `test_the_hub_is_fenced.py` asserts the enricher imports no other fetching
+  name from `huggingface_hub` (an equality, with each unfenced name's reason), and
+  `JUST_DNA_HUB_GUARD_LOG=<file>` makes every refusal append its test id, which is how the reaching tests
+  were listed: besides the incident's, two `test_enrich.py` gnomAD tests downloaded ClinVar into
+  `tmp_path` on every run (an online `enrich` with no ClinVar snapshot provisions one), and two
+  `test_upload.py` tests called the real `hf_hub_download` because a bare `MagicMock` answers
+  `file_exists` truthily. The fence also wraps the two provisioning bodies by name (asserted as the
+  set of `download._provision*`), because `_provision_snapshot` writes its pull record before its first
+  fetch, and a lane's own override directory counts as real as the base does.
 
 - `@weight-has-no-unit` — **`VariantRow.weight` is the one magnitude in the format with no unit column, and
   filling it from a source is barred (RM90/RM92, S36).** `effect_size` has `effect_measure`; `weight` has

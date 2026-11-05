@@ -20,6 +20,25 @@ explicitly and is unaffected.
 **A second autouse fixture blanks `HF_TOKEN`** (RM301), for the same reason one layer over: the
 publisher's tests stub `get_token()`, and the repository's own `.env` must not outrank the stub.
 
+**A third autouse fixture fences the real HuggingFace hub** (RM372). `_provision_snapshot` is the
+one writer into a cache base, and it reaches the network through `huggingface_hub.HfFileSystem`
+(the upload half's read through `hf_hub_download`). On 2026-11-04 `test_rebuild_caches_and_prepare_
+caches_are_the_cli_loops` ran `prepare_caches` on the real Ensembl lane, the lane's new repo turned
+the developer's recorded cache into a re-pull, and six chromosomes of the shared base were replaced
+with another release while other sessions read it. So without `JUST_DNA_NETWORK_TESTS=1` both names
+refuse, and a test that wants a hub installs its own fake over this one. With the opt-in the real
+hub is reached, and a fetch whose local target is under the developer's real cache base still
+refuses: no test writes into the shared base under any setting. Set `JUST_DNA_HUB_GUARD_LOG` to a
+file to have every refusal append its test id there, which is how the reaching tests were listed.
+Since RM391 the root `conftest.py` fences every client at the transport; this one stays because it
+refuses before any socket, with the hub's own remedy in the message, and because its real-base half
+holds under the opt-in, where the transport fence steps aside.
+
+**`fake_hub` is the publisher's instrument (RM386)**: a git-backed repo in memory, with a head, a tree
+per revision and a hub-side refusal of a stale `parent_commit`, installed as the hub `HfApi(...)` and
+`hf_hub_download` reach. A `MagicMock` remembers calls; a publish whose defects are concurrent writers
+needs a repository that can be written to in between.
+
 **And one opt-in fixture, `no_ambient_caches`, for the test that means "no snapshot" about any lane.**
 The PubMind fixture is autouse because *every* lookup test wants it; the general one is not, because
 the integration tests (`test_resolver_integration`, the `_needs_snapshot` drafters) deliberately use
@@ -31,16 +50,144 @@ an absence. It blanks `CACHE_BASE_VAR` and every lane's `env_var`, walked off `C
 than listed, so a fifteenth lane is covered the day it is declared.
 """
 
+import ast
+import functools
 import gzip
+import hashlib
+import os
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
+import httpx
+import huggingface_hub
 import pytest
-from just_dna_enricher import clinvar_build, locations
+from huggingface_hub import CommitOperationDelete
+from huggingface_hub.errors import HfHubHTTPError, RemoteEntryNotFoundError
+from huggingface_hub.hf_api import RepoFile
+from huggingface_hub.utils import filter_repo_objects
+from just_dna_enricher import civic_draft, clinvar_build, download, locations
 from just_dna_enricher.caches import CACHE_LANES
+from just_dna_enricher.clingen_allele import ClingenAlleleClient
 from just_dna_enricher.mitomap_build import build_snapshot as build_mitomap_snapshot
 from just_dna_enricher.mitomap_miss_build import build_miss_snapshot
+
+#: The developer's real cache base, read before any test changes the environment and without exporting
+#: the `.env` (`env_value`): the configured base, else the platformdirs default.
+_REAL_CACHE_BASE: Path = Path(
+    locations.env_value(locations.CACHE_BASE_VAR) or locations.user_cache_dir(appname=locations.APPNAME)
+).resolve()
+#: Every real directory a provisioner could write into: the base, and each lane's own override where the
+#: developer set one outside it.
+_REAL_CACHE_ROOTS: tuple[Path, ...] = (_REAL_CACHE_BASE,) + tuple(
+    Path(value).resolve() for lane in CACHE_LANES if (value := locations.env_value(lane.env_var))
+)
+#: The two bodies every `ensure_*` provisions through; `test_the_hub_is_fenced.py` asserts the set.
+_PROVISIONERS: tuple[str, ...] = ("_provision_snapshot", "_provision_root_file_snapshot")
+_REAL_HF_FILESYSTEM = huggingface_hub.HfFileSystem
+_REAL_HF_HUB_DOWNLOAD = huggingface_hub.hf_hub_download
+
+
+class HubReachedInTests(RuntimeError):
+    """A test reached the real HuggingFace hub, or a fetch into the real cache base, without arranging it."""
+
+
+def _refuse(what: str) -> HubReachedInTests:
+    log = os.environ.get("JUST_DNA_HUB_GUARD_LOG")
+    test = os.environ.get("PYTEST_CURRENT_TEST", "<unknown test>")
+    if log:
+        with Path(log).open("a", encoding="utf-8") as fh:
+            fh.write(f"{test}\t{what}\n")
+    return HubReachedInTests(
+        f"{what} from {test}: install a fake hub (monkeypatch huggingface_hub.HfFileSystem), stub the "
+        f"lane's `ensure`, or point it at a tmp directory under JUST_DNA_NETWORK_TESTS=1 (RM372)."
+    )
+
+
+def _under_real_base(local: object) -> bool:
+    resolved = Path(str(local)).resolve()
+    return any(resolved.is_relative_to(root) for root in _REAL_CACHE_ROOTS)
+
+
+def _network_opted_in() -> bool:
+    return os.environ.get("JUST_DNA_NETWORK_TESTS") == "1"
+
+
+class _FencedHfFileSystem:
+    """`HfFileSystem` as the suite sees it: refused offline, and never writing into the real base."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        if not _network_opted_in():
+            raise _refuse("the real HfFileSystem")
+        self._fs = _REAL_HF_FILESYSTEM(*args, **kwargs)
+
+    def get(self, remote_path: str, local_path: str, *args, **kwargs):
+        if _under_real_base(local_path):
+            raise _refuse(f"a fetch of {remote_path} into the real cache base {_REAL_CACHE_BASE}")
+        return self._fs.get(remote_path, local_path, *args, **kwargs)
+
+    def __getattr__(self, name: str):
+        return getattr(self._fs, name)
+
+
+def _fenced_hf_hub_download(*args, **kwargs):
+    if not _network_opted_in():
+        raise _refuse("the real hf_hub_download")
+    target = kwargs.get("local_dir") or kwargs.get("cache_dir")
+    if target is not None and _under_real_base(target):
+        raise _refuse(f"hf_hub_download into the real cache base {_REAL_CACHE_BASE}")
+    return _REAL_HF_HUB_DOWNLOAD(*args, **kwargs)
+
+
+@pytest.fixture
+def real_cache_base() -> Path:
+    """The developer's real cache base, the one directory no test may fetch into."""
+    return _REAL_CACHE_BASE
+
+
+def _fenced_provisioner(real):
+    """`real` (a provisioner taking the cache directory first), refused for a real cache directory.
+
+    At the provisioner, not only at the fetch: `_provision_snapshot` writes its pull record and stages
+    the manifest before its first `get`, so a fence at `get` alone would let it rewrite a real record.
+    """
+
+    def fenced(cache_dir, *args, **kwargs):
+        if _under_real_base(cache_dir):
+            raise _refuse(f"a provisioning of the real cache directory {cache_dir}")
+        return real(cache_dir, *args, **kwargs)
+
+    return fenced
+
+
+@pytest.fixture(autouse=True)
+def _fenced_hub(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The real hub is unreachable unless opted in, and no real cache directory is ever provisioned."""
+    monkeypatch.setattr(huggingface_hub, "HfFileSystem", _FencedHfFileSystem)
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", _fenced_hf_hub_download)
+    for name in _PROVISIONERS:
+        monkeypatch.setattr(download, name, _fenced_provisioner(getattr(download, name)))
+
+
+@pytest.fixture
+def clingen_registry_down(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The CIViC drafter's default ClinGen client answers 503, so a CAID row is *unchecked* (RM391).
+
+    The CIViC slice's CAID-only rows ask the ClinGen Allele Registry whenever a test passes no
+    `registry=`, and most CIViC-draft tests are about the CIViC rows, not the registry. Until RM391 that
+    was a live request every run, and the tests passed on whatever came back. The scripted outage is
+    the state they had been passing in offline: the real client, its real translation of a failed
+    request into `unchecked`, and no egress. A file uses it with `pytestmark`; a test about the registry
+    passes its own (`registry=`, `offline=True`), which this does not touch.
+    """
+    down = httpx.Client(transport=httpx.MockTransport(lambda _request: httpx.Response(503)))
+    monkeypatch.setattr(
+        civic_draft, "ClingenAlleleClient", functools.partial(ClingenAlleleClient, client=down)
+    )
+
 
 #: A CSI escape sequence — what rich emits to colour a span. See `cli_text`.
 _ANSI = re.compile(r"\x1b\[[0-9;]*m")
@@ -195,6 +342,82 @@ def _cli_text(result) -> str:
     return " ".join(plain.split())
 
 
+@dataclass(frozen=True)
+class CheckWalk:
+    """What a static walk read off `ran(...)`/`skipped(...)` calls: the check names, and the sites it
+    could not read. Kept apart so a caller asserting an equality can also refuse a blind spot."""
+
+    #: Every check name passed as a string literal, or as a module-level `NAME = "..."` constant.
+    names: frozenset[str]
+    #: `file:line` of each call whose first argument the walk could not resolve to a string — a name
+    #: built at runtime, an attribute (`record.check`). A walk that skipped them silently would report
+    #: an equality over the calls it happened to understand.
+    unresolved: tuple[str, ...]
+
+
+def _checks_written_in(paths) -> CheckWalk:
+    """Walk `paths` (files, or packages walked recursively) for the checks their record calls name.
+
+    **RM365: the one walker every file-level check-roster guard calls.** The vocabulary-wide guard in
+    `test_verification_record.py` had its own copy, and `DERIVED_PRODUCERS` had none, so its `checks`
+    field was asserted only to be vocabulary members and fell three `enrich` checks and one
+    `literature` check behind what the passes write. A module-
+    level `CHECK = "..."` counts as a literal: a pass naming its check once is better code than one
+    repeating the string, and a walk blind to the idiom it should encourage would stop covering it.
+    """
+    names: set[str] = set()
+    unresolved: list[str] = []
+    files: list[Path] = []
+    for path in paths:
+        files.extend(sorted(path.rglob("*.py")) if path.is_dir() else [path])
+    for path in files:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        constants = {
+            node.targets[0].id: node.value.value
+            for node in tree.body
+            if isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and isinstance(node.value, ast.Constant)
+            and isinstance(node.value.value, str)
+        }
+        # The two constructors under any local name they were imported as (`ran as _ran`), called
+        # bare or through a module (`verification.ran(...)`), plus the model built directly with a
+        # `check=` — every spelling a record can be made with, so a new one cannot slip past unread.
+        constructors = {"ran", "skipped"} | {
+            alias.asname
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom) and (node.module or "").endswith("verification")
+            for alias in node.names
+            if alias.name in {"ran", "skipped"} and alias.asname
+        }
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            callee = node.func.id if isinstance(node.func, ast.Name) else getattr(node.func, "attr", None)
+            if callee in constructors and node.args:
+                first = node.args[0]
+            elif callee == "VerificationRecord":
+                first = next((kw.value for kw in node.keywords if kw.arg == "check"), None)
+                if first is None:
+                    continue
+            else:
+                continue
+            if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                names.add(first.value)
+            elif isinstance(first, ast.Name) and first.id in constants:
+                names.add(constants[first.id])
+            else:
+                unresolved.append(f"{path.name}:{node.lineno}")
+    return CheckWalk(names=frozenset(names), unresolved=tuple(unresolved))
+
+
+@pytest.fixture
+def checks_written_in():
+    """`_checks_written_in` as a fixture — the importlib-mode route, as `cli_text` explains."""
+    return _checks_written_in
+
+
 @pytest.fixture
 def cli_text():
     """`_cli_text` as a fixture, which is how a conftest helper reaches a test under importlib mode.
@@ -328,3 +551,282 @@ def mitomap_miss_snapshot(tmp_path: Path, mitomap_snapshot: Path, build_clinvar_
     """The derived increment, built from both parents through the real join."""
     build_miss_snapshot(mitomap_snapshot, build_clinvar_mt(), tmp_path / "miss")
     return tmp_path / "miss"
+
+
+# ── a fake hub that is a repository, not a recorder (RM386) ─────────────────────────────────────
+#
+# A `MagicMock` HfApi answers every call and remembers it; it cannot say what a repo *holds* after a
+# publish, and it has no head to move. The publisher's defects RM386 closed are each a concurrent
+# writer acting between a read and a write, so the instrument has to be a repository: commits with
+# parents, a head, a tree per revision, and a hub-side refusal of a commit whose `parent_commit` is
+# not the head. Each hook stands for the concurrent writer: `before_write[n]` runs as the n-th write
+# call arrives (a foreign commit landing first, or a rebuild of the local directory), and
+# `while_sending` runs inside `upload_folder` after its precondition and before it reads the folder
+# (a rebuild landing while the hub is reading).
+
+
+def git_blob_id(data: bytes) -> str:
+    """The id git (and the hub's tree listing) gives a non-LFS file: sha1 over `blob <len>\\0<bytes>`."""
+    return hashlib.sha1(b"blob %d\x00" % len(data) + data).hexdigest()
+
+
+class FakeHub:
+    """One git-backed dataset repo, answering the `HfApi` calls the publisher makes (RM386).
+
+    It behaves as `huggingface_hub` 2.0 does where the publisher depends on it: a write that changes
+    nothing is skipped and answered with the *current* head, its precondition never checked; and with
+    `parts` set, `upload_folder` commits in two parts, the precondition riding the first only, as the
+    library's pipelined uploader does. A commit's description is its `message` in `list_repo_commits`.
+    """
+
+    #: What the hub stores as LFS here, as a dataset repo's default `.gitattributes` makes it.
+    LFS_SUFFIXES = (".parquet",)
+
+    def __init__(self, repo_id: str, files: dict[str, bytes] | None, scratch: Path) -> None:
+        self.repo_id = repo_id
+        self.token = "hf_test_token"
+        self.scratch = scratch
+        self.trees: dict[str, dict[str, bytes]] = {}
+        self.history: list[str] = []
+        self.parents: dict[str, str | None] = {}
+        self.messages: dict[str, str] = {}
+        self.descriptions: dict[str, str] = {}
+        self.reads: list[tuple[str, str | None]] = []
+        #: Every write call as `(method, keyword arguments)`, in order — for what a test asserts about a
+        #: call's arguments rather than about what the repo holds afterwards.
+        self.calls: list[tuple[str, dict[str, Any]]] = []
+        self.writes = 0
+        self.before_write: dict[int, Callable[[], None]] = {}
+        self.while_sending: Callable[[], None] | None = None
+        #: When set, `upload_folder` commits its files in two parts and runs this between them.
+        self.between_parts: Callable[[], None] | None = None
+        self._record(
+            {".gitattributes": b"*.parquet filter=lfs diff=lfs merge=lfs -text\n", **(files or {})}, "init"
+        )
+
+    # ── the repository ────────────────────────────────────────────────────────────────────────────
+
+    @property
+    def head(self) -> str:
+        return self.history[-1]
+
+    def tree(self, revision: str | None = None) -> dict[str, bytes]:
+        return dict(self.trees[self._resolve(revision)])
+
+    def foreign_commit(self, changes: dict[str, bytes | None], message: str = "a concurrent writer") -> str:
+        """Another publisher's commit, on top of the head: bytes to add, `None` to delete."""
+        tree = self.tree()
+        for path, data in changes.items():
+            if data is None:
+                tree.pop(path, None)
+            else:
+                tree[path] = data
+        return self._record(tree, message)
+
+    def _record(self, tree: dict[str, bytes], message: str, description: str = "") -> str:
+        parent = self.history[-1] if self.history else None
+        oid = hashlib.sha1(f"{parent}:{message}:{len(self.history)}".encode()).hexdigest()
+        self.trees[oid] = dict(tree)
+        self.parents[oid] = parent
+        self.messages[oid] = message
+        self.descriptions[oid] = description
+        self.history.append(oid)
+        return oid
+
+    def _resolve(self, revision: str | None) -> str:
+        if revision in (None, "main"):
+            return self.head
+        if revision not in self.trees:
+            raise KeyError(f"no revision {revision} in {self.repo_id}")
+        return revision
+
+    def _arrive(self, method: str, arguments: dict[str, Any]) -> None:
+        """A write arriving: recorded, and the concurrent writer, if any, acts first."""
+        self.calls.append((method, arguments))
+        hook = self.before_write.get(self.writes)
+        self.writes += 1
+        if hook is not None:
+            hook()
+
+    def _land(self, tree: dict[str, bytes], message: str, description: str, parent_commit: str | None) -> str:
+        """Commit `tree` as the hub does: an unchanged tree is skipped and answered with the head (no
+        precondition checked), otherwise a stale `parent_commit` is refused."""
+        if tree == self.tree():
+            return self.head
+        if parent_commit is not None and parent_commit != self.head:
+            url = f"https://huggingface.co/api/datasets/{self.repo_id}/commit/main"
+            raise HfHubHTTPError(
+                f"412 Precondition Failed: parent {parent_commit} is not the head {self.head}",
+                response=httpx.Response(412, request=httpx.Request("POST", url)),
+            )
+        return self._record(tree, message, description)
+
+    # ── the `HfApi` surface ───────────────────────────────────────────────────────────────────────
+
+    def create_repo(self, repo_id: str, **kwargs: Any) -> None:
+        assert repo_id == self.repo_id
+
+    def repo_info(self, repo_id: str, *, revision: str | None = None, **kwargs: Any) -> SimpleNamespace:
+        self.reads.append(("repo_info", revision))
+        return SimpleNamespace(sha=self._resolve(revision))
+
+    def list_repo_files(self, repo_id: str, *, revision: str | None = None, **kwargs: Any) -> list[str]:
+        self.reads.append(("list_repo_files", revision))
+        return sorted(self.tree(revision))
+
+    def list_repo_tree(
+        self, repo_id: str, path_in_repo: str | None = None, *, revision: str | None = None, **kwargs: Any
+    ) -> list[RepoFile]:
+        self.reads.append(("list_repo_tree", revision))
+        entries = []
+        for path, data in sorted(self.tree(revision).items()):
+            lfs = None
+            if path.endswith(self.LFS_SUFFIXES):
+                lfs = {"size": len(data), "oid": hashlib.sha256(data).hexdigest(), "pointerSize": 134}
+            entries.append(RepoFile(path=path, size=len(data), oid=git_blob_id(data), lfs=lfs))
+        return entries
+
+    def list_repo_commits(
+        self, repo_id: str, *, revision: str | None = None, **kwargs: Any
+    ) -> list[SimpleNamespace]:
+        self.reads.append(("list_repo_commits", revision))
+        commits, oid = [], self._resolve(revision)
+        while oid is not None:
+            commits.append(
+                SimpleNamespace(commit_id=oid, title=self.messages[oid], message=self.descriptions[oid])
+            )
+            oid = self.parents[oid]
+        return commits
+
+    def file_exists(self, repo_id: str, filename: str, *, revision: str | None = None, **kwargs: Any) -> bool:
+        self.reads.append(("file_exists", revision))
+        return filename in self.tree(revision)
+
+    def download(self, repo_id: str, filename: str, *, revision: str | None = None, **kwargs: Any) -> str:
+        """`hf_hub_download`, from this repo at `revision`."""
+        self.reads.append(("hf_hub_download", revision))
+        target = self.scratch / self._resolve(revision) / filename
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(self.tree(revision)[filename])
+        return str(target)
+
+    def create_commit(
+        self,
+        repo_id: str,
+        operations: list[Any],
+        *,
+        commit_message: str,
+        commit_description: str | None = None,
+        parent_commit: str | None = None,
+        **kwargs: Any,
+    ) -> SimpleNamespace:
+        self._arrive(
+            "create_commit",
+            {
+                "operations": operations,
+                "commit_message": commit_message,
+                "parent_commit": parent_commit,
+                **kwargs,
+            },
+        )
+        tree = self.tree()
+        for op in operations:
+            if isinstance(op, CommitOperationDelete):
+                if op.path_in_repo not in tree:
+                    raise RemoteEntryNotFoundError(
+                        f"A file with this name doesn't exist: {op.path_in_repo}",
+                        response=httpx.Response(404, request=httpx.Request("POST", "https://hub")),
+                    )
+                del tree[op.path_in_repo]
+                continue
+            source = op.path_or_fileobj
+            tree[op.path_in_repo] = source if isinstance(source, bytes) else Path(source).read_bytes()
+        return SimpleNamespace(oid=self._land(tree, commit_message, commit_description or "", parent_commit))
+
+    def upload_folder(
+        self,
+        *,
+        repo_id: str,
+        folder_path: str,
+        path_in_repo: str = "",
+        allow_patterns: list[str] | None = None,
+        delete_patterns: list[str] | None = None,
+        commit_message: str | None = None,
+        commit_description: str | None = None,
+        parent_commit: str | None = None,
+        **kwargs: Any,
+    ) -> SimpleNamespace:
+        self._arrive(
+            "upload_folder",
+            {
+                "folder_path": folder_path,
+                "path_in_repo": path_in_repo,
+                "allow_patterns": allow_patterns,
+                "delete_patterns": delete_patterns,
+                "commit_message": commit_message,
+                "parent_commit": parent_commit,
+                **kwargs,
+            },
+        )
+        if self.while_sending is not None:
+            self.while_sending()
+        message, description = commit_message or "Upload folder", commit_description or ""
+        root = Path(folder_path)
+        on_disk = sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file())
+        names = list(filter_repo_objects(on_disk, allow_patterns=allow_patterns))
+        parts = [names[: len(names) // 2], names[len(names) // 2 :]] if self.between_parts else [names]
+        tree = self.tree()
+        if delete_patterns:
+            for path in filter_repo_objects(sorted(tree), allow_patterns=delete_patterns):
+                del tree[path]
+        oid = self.head
+        for number, part in enumerate(parts):
+            if number:
+                self.between_parts()
+                tree = self.tree()
+            for name in part:
+                tree[f"{path_in_repo}{name}"] = (root / name).read_bytes()
+            # The precondition rides the first part only, as the library's pipelined uploader does.
+            oid = self._land(
+                tree,
+                message if not number else f"{message} (part 2)",
+                description,
+                parent_commit if not number else None,
+            )
+        return SimpleNamespace(oid=oid)
+
+    def delete_files(
+        self,
+        repo_id: str,
+        delete_patterns: list[str],
+        *,
+        commit_message: str | None = None,
+        parent_commit: str | None = None,
+        **kwargs: Any,
+    ) -> SimpleNamespace:
+        self._arrive(
+            "delete_files",
+            {
+                "delete_patterns": delete_patterns,
+                "commit_message": commit_message,
+                "parent_commit": parent_commit,
+            },
+        )
+        tree = self.tree()
+        for path in filter_repo_objects(sorted(tree), allow_patterns=delete_patterns):
+            del tree[path]
+        return SimpleNamespace(oid=self._land(tree, commit_message or "Delete files", "", parent_commit))
+
+
+@pytest.fixture
+def fake_hub(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Callable[..., FakeHub]:
+    """Install a `FakeHub` as the hub every `HfApi(...)` and `hf_hub_download` in this test reaches."""
+
+    def install(repo_id: str, files: dict[str, bytes] | None = None) -> FakeHub:
+        hub = FakeHub(repo_id, files, tmp_path / "fake-hub-downloads")
+        monkeypatch.setattr(huggingface_hub, "HfApi", lambda *args, **kwargs: hub)
+        monkeypatch.setattr(huggingface_hub, "get_token", lambda: "hf_test_token")
+        monkeypatch.setattr(huggingface_hub, "hf_hub_download", hub.download)
+        return hub
+
+    return install

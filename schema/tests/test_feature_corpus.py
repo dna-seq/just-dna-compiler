@@ -42,6 +42,7 @@ from pathlib import Path
 from just_dna_format.vocab import (
     ACTIONABLE_WARNING_CODES,
     CARRIED_WARNING_CODES,
+    RETIRED_WARNING_CODES,
     VALID_VERIFICATION_CHECKS,
     VALID_VERIFICATION_SKIPS,
     VALID_WARNING_CODES,
@@ -289,10 +290,14 @@ def test_the_corpus_is_not_empty() -> None:
 
 
 def test_every_warning_code_has_a_scenario() -> None:
-    """The equality, reported as a symmetric difference so a failure names the code."""
+    """The equality, reported as a symmetric difference so a failure names the code.
+
+    Over the codes something still emits: a retired code (RM313) has no emission site for a scenario
+    to point at, so it is subtracted by its declaration, and a scenario tagging one is refused."""
     tagged = {code for s in _scenarios() for code in s.codes()}
-    missing = VALID_WARNING_CODES - tagged
-    unknown = tagged - VALID_WARNING_CODES
+    live = VALID_WARNING_CODES - set(RETIRED_WARNING_CODES)
+    missing = live - tagged
+    unknown = tagged - live
     assert not missing, f"warning codes with no scenario: {sorted(missing)}"
     assert not unknown, f"@code: tags naming no member of VALID_WARNING_CODES: {sorted(unknown)}"
 

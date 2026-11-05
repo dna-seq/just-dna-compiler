@@ -1,0 +1,43 @@
+variant_key,genotype,authority,status,clin_sig,clin_sig_raw,confidence,confidence_unit,dataset,checked_at
+rs281864525,G/T,clinvar,recorded,pathogenic,Pathogenic,0,review_stars,clinvar_2026-06-27,2026-11-05T05:47:29Z
+rs281864525,G/T,pubmind,recorded,conflicting,Conflicting|Uncertain significance,,,pubmind_ca224ebf5ef3,2026-11-05T05:47:29Z
+rs33950507,A/C,clinvar,recorded,pathogenic,Pathogenic,2,review_stars,clinvar_2026-06-27,2026-11-05T05:47:29Z
+rs33950507,A/C,pubmind,recorded,conflicting,Benign|Conflicting|Pathogenic,,,pubmind_ca224ebf5ef3,2026-11-05T05:47:29Z
+rs33972047,C/T,clinvar,recorded,pathogenic,Pathogenic,2,review_stars,clinvar_2026-06-27,2026-11-05T05:47:29Z
+rs33972047,C/T,pubmind,recorded,conflicting,Benign/Likely benign|Pathogenic|Uncertain significance,,,pubmind_ca224ebf5ef3,2026-11-05T05:47:29Z
+rs33915217,A/C,clinvar,recorded,pathogenic,Pathogenic,2,review_stars,clinvar_2026-06-27,2026-11-05T05:47:29Z
+rs33915217,A/C,pubmind,recorded,uncertain_significance,Uncertain significance,0,evidence_depth,pubmind_ca224ebf5ef3,2026-11-05T05:47:29Z
+rs281864581,C/G,clinvar,recorded,pathogenic,Pathogenic,0,review_stars,clinvar_2026-06-27,2026-11-05T05:47:29Z
+rs281864581,C/G,pubmind,recorded,benign,Benign,1,evidence_depth,pubmind_ca224ebf5ef3,2026-11-05T05:47:29Z
+rs33981098,C/T,clinvar,recorded,pathogenic,Pathogenic,2,review_stars,clinvar_2026-06-27,2026-11-05T05:47:29Z
+rs33981098,C/T,pubmind,recorded,conflicting,Conflicting|Uncertain significance,,,pubmind_ca224ebf5ef3,2026-11-05T05:47:29Z
+rs33918338,C/T,clinvar,recorded,pathogenic,Pathogenic/Likely_pathogenic,2,review_stars,clinvar_2026-06-27,2026-11-05T05:47:29Z
+rs33918338,C/T,pubmind,recorded,benign,Benign,1,evidence_depth,pubmind_ca224ebf5ef3,2026-11-05T05:47:29Z
+rs33941377,A/G,clinvar,recorded,pathogenic,Pathogenic/Likely_pathogenic,2,review_stars,clinvar_2026-06-27,2026-11-05T05:47:29Z
+rs33941377,A/G,pubmind,recorded,uncertain_significance,Uncertain significance,0,evidence_depth,pubmind_ca224ebf5ef3,2026-11-05T05:47:29Z
+rs35857380,C/T,clinvar,recorded,pathogenic,Pathogenic,0,review_stars,clinvar_2026-06-27,2026-11-05T05:47:29Z
+rs35857380,C/T,pubmind,recorded,conflicting,Benign/Likely benign|Pathogenic,,,pubmind_ca224ebf5ef3,2026-11-05T05:47:29Z
+rs33980857,A/C,clinvar,recorded,pathogenic,Pathogenic,0,review_stars,clinvar_2026-06-27,2026-11-05T05:47:29Z
+rs33980857,A/C,pubmind,recorded,conflicting,Conflicting|Uncertain significance,,,pubmind_ca224ebf5ef3,2026-11-05T05:47:29Z
+rs33991993,C/G,clinvar,recorded,likely_pathogenic,Likely_pathogenic,1,review_stars,clinvar_2026-06-27,2026-11-05T05:47:29Z
+rs33991993,C/G,pubmind,recorded,uncertain_significance,Uncertain significance,1,evidence_depth,pubmind_ca224ebf5ef3,2026-11-05T05:47:29Z
+rs33924146,A/C,clinvar,recorded,pathogenic,Pathogenic,0,review_stars,clinvar_2026-06-27,2026-11-05T05:47:29Z
+rs33924146,A/C,pubmind,recorded,benign,Benign,1,evidence_depth,pubmind_ca224ebf5ef3,2026-11-05T05:47:29Z
+rs33944208,A/G,clinvar,recorded,pathogenic,Pathogenic/Likely_pathogenic,2,review_stars,clinvar_2026-06-27,2026-11-05T05:47:29Z
+rs33944208,A/G,pubmind,recorded,uncertain_significance,Uncertain significance,0,evidence_depth,pubmind_ca224ebf5ef3,2026-11-05T05:47:29Z
+rs34378160,A/G,clinvar,recorded,pathogenic,Pathogenic,2,review_stars,clinvar_2026-06-27,2026-11-05T05:47:29Z
+rs34378160,A/G,pubmind,recorded,conflicting,Conflicting,2,evidence_depth,pubmind_ca224ebf5ef3,2026-11-05T05:47:29Z
+rs33954632,G/T,clinvar,recorded,pathogenic,Pathogenic,1,review_stars,clinvar_2026-06-27,2026-11-05T05:47:29Z
+rs33954632,G/T,pubmind,recorded,uncertain_significance,Uncertain significance,1,evidence_depth,pubmind_ca224ebf5ef3,2026-11-05T05:47:29Z
+rs33931746,C/T,clinvar,recorded,pathogenic,Pathogenic/Likely_pathogenic,2,review_stars,clinvar_2026-06-27,2026-11-05T05:47:29Z
+rs33931746,C/T,pubmind,recorded,conflicting,Conflicting|Uncertain significance,,,pubmind_ca224ebf5ef3,2026-11-05T05:47:29Z
+rs35209591,C/G,clinvar,recorded,pathogenic,Pathogenic|other,0,review_stars,clinvar_2026-06-27,2026-11-05T05:47:29Z
+rs35209591,C/G,pubmind,recorded,likely_benign,Benign/Likely benign,0,evidence_depth,pubmind_ca224ebf5ef3,2026-11-05T05:47:29Z
+rs34598529,C/T,clinvar,recorded,pathogenic,Pathogenic,2,review_stars,clinvar_2026-06-27,2026-11-05T05:47:29Z
+rs34598529,C/T,pubmind,recorded,conflicting,Conflicting|Uncertain significance,,,pubmind_ca224ebf5ef3,2026-11-05T05:47:29Z
+rs33945777,A/C,clinvar,recorded,pathogenic,Pathogenic,2,review_stars,clinvar_2026-06-27,2026-11-05T05:47:29Z
+rs33945777,A/C,pubmind,recorded,uncertain_significance,Uncertain significance,0,evidence_depth,pubmind_ca224ebf5ef3,2026-11-05T05:47:29Z
+ga4gh:VA.nRb9mbSo-PgVwMJfZCYSZeGxUsNOdu8D,A/C,clinvar,recorded,pathogenic,Pathogenic,1,review_stars,clinvar_2026-06-27,2026-11-05T05:47:29Z
+ga4gh:VA.nRb9mbSo-PgVwMJfZCYSZeGxUsNOdu8D,A/C,pubmind,recorded,uncertain_significance,Uncertain significance,1,evidence_depth,pubmind_ca224ebf5ef3,2026-11-05T05:47:29Z
+ga4gh:VA.pRZpOb4BgtjApqJ6D_n5p_F3LkwHpbWv,C/G,clinvar,recorded,likely_pathogenic,Likely_pathogenic,2,review_stars,clinvar_2026-06-27,2026-11-05T05:47:29Z
+ga4gh:VA.pRZpOb4BgtjApqJ6D_n5p_F3LkwHpbWv,C/G,pubmind,recorded,uncertain_significance,Uncertain significance,1,evidence_depth,pubmind_ca224ebf5ef3,2026-11-05T05:47:29Z

@@ -42,6 +42,12 @@ def _retried_types(decorator: ast.Call) -> list[type]:
     """The exception classes a `@retry(...)` decorator names in `retry_if_exception_type(...)`."""
     found: list[type] = []
     for node in ast.walk(decorator):
+        if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "retry_if_transient":
+            # `net.retry_if_transient` (RM354): the transport legs, a timeout, and a 5xx/429 status. Read
+            # here since RM361 moved the literature, Ensembl and GRCh37 routes onto it, which took them out
+            # of a walk that only knew `retry_if_exception_type`.
+            found += [httpx.TransportError, httpx.TimeoutException, httpx.HTTPStatusError]
+            continue
         if not (isinstance(node, ast.Call) and getattr(node.func, "id", None) == "retry_if_exception_type"):
             continue
         for arg in node.args:
@@ -80,7 +86,15 @@ def _caught_types(func: ast.FunctionDef) -> list[type]:
 def _retried_functions() -> list[tuple[str, ast.FunctionDef, list[type]]]:
     """Every `@retry`-decorated function in the package, with the httpx types it retries on."""
     out: list[tuple[str, ast.FunctionDef, list[type]]] = []
-    for info in pkgutil.iter_modules(list(just_dna_enricher.__path__)):
+    # `cli` and `enrich` are packages since RM260: their submodules hold the definitions each `__init__`
+    # only re-exports, and `obj.__module__ == module.__name__` would skip every one of them there.
+    for info in [
+        *pkgutil.iter_modules(list(just_dna_enricher.__path__)),
+        *pkgutil.iter_modules(list(importlib.import_module("just_dna_enricher.cli").__path__), prefix="cli."),
+        *pkgutil.iter_modules(
+            list(importlib.import_module("just_dna_enricher.enrich").__path__), prefix="enrich."
+        ),
+    ]:
         module = importlib.import_module(f"just_dna_enricher.{info.name}")
         source = Path(inspect.getfile(module)).read_text(encoding="utf-8")
         for node in ast.walk(ast.parse(source)):
@@ -149,11 +163,25 @@ def test_a_transport_failure_is_retried_and_then_withheld() -> None:
 
 
 def test_a_definite_answer_is_not_retried() -> None:
-    """404 is Crossref answering. Retrying it would spend the budget on a settled question."""
-    client, calls = _counting_client(lambda request: httpx.Response(404))
+    """404 is Crossref answering. Retrying it would spend the budget on a settled question.
+
+    Since RM349 a `/works` 404 is followed by one `/works/{doi}/agency` request, because `/works`
+    404s for every DOI another agency registered: two questions, each asked once and never retried.
+    """
+    asked: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        asked.append(str(request.url))
+        return httpx.Response(404)
+
+    client, calls = _counting_client(handler)
 
     assert client.exists("10.1000/no-such-doi") is False
-    assert calls["n"] == 1
+    assert asked == [
+        "https://api.crossref.org/works/10.1000/no-such-doi",
+        "https://api.crossref.org/works/10.1000/no-such-doi/agency",
+    ]
+    assert calls["n"] == len(asked)
 
 
 def test_an_unexpected_status_withholds_without_retrying() -> None:

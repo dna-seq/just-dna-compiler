@@ -26,9 +26,12 @@ from just_dna_enricher.clinvar_draft import draft_gene_panel
 from just_dna_enricher.enrich import enrich
 from just_dna_enricher.licensing import CLINVAR_TERMS, merge_sources_file
 from just_dna_enricher.locations import RELEASE_FILENAME
-from just_dna_format.layout import SOURCES_CSV, preferred_spelling
+from just_dna_format.layout import SOURCES_CSV, VERIFICATION_JSON, preferred_spelling
+from just_dna_format.manifest import VerificationRecord
 from just_dna_format.resolution import ResolutionRow
+from just_dna_format.snapshot import clinvar_release_label, release_label
 from just_dna_format.spec import VariantRow
+from just_dna_format.verification import read_verification
 
 FIXTURE = Path(__file__).parents[2] / "assets" / "clinvar_GRCh38_slice.vcf.gz"
 
@@ -278,6 +281,19 @@ def test_the_label_is_the_release_the_snapshot_states(snapshot: Path, tmp_path: 
     assert clinvar_dataset_label(None) is None
 
 
+def test_the_builder_writes_the_label_the_lane_reads(snapshot: Path) -> None:
+    """RM303: `clinvar build` states `dataset` itself, through the formula an older release is read by.
+
+    Before, the builder wrote only `clinvar_file_date` and `cache status` printed a blank label for
+    ClinVar until a per-lane reader was added. The label is now a key in the file, so every reader
+    of the generic label gets ClinVar's, and it is the one the drafter stamps.
+    """
+    release = _release(snapshot)
+    assert release["dataset"] == clinvar_release_label(release["clinvar_file_date"], release["source_sha256"])
+    assert release["dataset"] == clinvar_dataset_label(snapshot) == release_label(snapshot)
+    assert release["dataset"] == f"clinvar_{release['clinvar_file_date']}"
+
+
 def test_the_source_digest_names_the_release_when_the_file_date_does_not(
     snapshot: Path, tmp_path: Path
 ) -> None:
@@ -286,8 +302,11 @@ def test_the_source_digest_names_the_release_when_the_file_date_does_not(
     release = _release(snapshot)
     undated = tmp_path / "undated"
     shutil.copytree(snapshot, undated)
+    # A snapshot written before RM303, which states no `dataset`: the label is read from the date,
+    # and with no date from the digest. One written since states `dataset` itself.
+    legacy = {key: value for key, value in release.items() if key != "dataset"}
     (undated / RELEASE_FILENAME).write_text(
-        json.dumps({**release, "clinvar_file_date": None}), encoding="utf-8"
+        json.dumps({**legacy, "clinvar_file_date": None}), encoding="utf-8"
     )
     assert clinvar_dataset_label(undated) == f"clinvar_sha256:{release['source_sha256']}"
 
@@ -460,6 +479,36 @@ def test_drafting_records_which_release_the_rows_were_copied_out_of(snapshot: Pa
     assert result.clin_sig_comparison is None  # nothing was compared; the skip held
 
 
+def test_a_drafted_column_reads_self_consistent_and_an_edit_withholds_it(
+    snapshot: Path, tmp_path: Path
+) -> None:
+    """RM292 through the real writer: the drafter's digest establishes the `clin_sig` cells as
+    ClinVar's copy, so the record names ClinVar on both sides and reads `self_consistent`. One hand
+    edit moves the digest, and with a ClinVar annotation row still recorded nothing can say which
+    cells are copies — the side is withheld, never claimed `authored`."""
+    spec = _drafted_panel(tmp_path / "panel-witness", snapshot)
+    enrich(spec, offline=True, clinvar_cache=snapshot, use_gnomad=False)
+    record = _attested(spec, "clinical_significance")
+    assert record.skipped == "tautology"
+    assert (record.checked_source, record.witness_source) == ("clinvar", "clinvar")
+    assert record.independence == "self_consistent"
+
+    def disagree(rows: list[dict]) -> None:
+        rows[0].update({"clin_sig": "benign", "pathogenic": "", "benign": "true"})
+
+    _rewrite_variants(spec, disagree)
+    enrich(spec, offline=True, clinvar_cache=snapshot, use_gnomad=False)
+    record = _attested(spec, "clinical_significance")
+    assert record.skipped is None and record.findings >= 1
+    assert record.checked_source is None
+    assert record.independence is None
+
+
+def _attested(spec: Path, check: str) -> VerificationRecord:
+    by_check = {r.check: r for r in read_verification(spec / VERIFICATION_JSON).records}
+    return by_check[check]
+
+
 def test_widening_from_a_newer_release_withdraws_the_label_rather_than_re_labelling(
     snapshot: Path, tmp_path: Path
 ) -> None:
@@ -476,7 +525,8 @@ def test_widening_from_a_newer_release_withdraws_the_label_rather_than_re_labell
     shutil.copytree(snapshot, newer)
     release = _release(snapshot)
     (newer / RELEASE_FILENAME).write_text(
-        json.dumps({**release, "clinvar_file_date": "2026-08-01"}), encoding="utf-8"
+        json.dumps({**release, "clinvar_file_date": "2026-08-01", "dataset": "clinvar_2026-08-01"}),
+        encoding="utf-8",
     )
     # A lower review floor, so the newer snapshot really does contribute rows the first draft left out.
     second = draft_gene_panel(spec, ["HBB"], snapshot=newer, min_review_stars=1)

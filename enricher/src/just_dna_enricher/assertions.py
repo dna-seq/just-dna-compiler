@@ -36,21 +36,25 @@ from pathlib import Path
 from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.assertions import ClinicalAssertionRow
 from just_dna_format.base import derive_variant_key, merge_key
-from just_dna_format.layout import atomic_writer
+from just_dna_format.layout import atomic_writer, nothing_to_write
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.resolution import ResolutionRow
 from pydantic import ValidationError
 
-from just_dna_enricher.clinvar import lookup_clin_sig
+from just_dna_enricher.clinvar import clinvar_dataset_label, lookup_clin_sig
 from just_dna_enricher.download import ensure_clinvar_snapshot
+from just_dna_enricher.enrich.outcome import EnrichmentError
+from just_dna_enricher.enrich.subjects import study_proxy_rsids
 from just_dna_enricher.licensing import (
     CLINVAR_TERMS,
     overlaid_input_rows,
-    record_source_terms,
+    record_table_sources,
     require_sources_file,
     sidecar_path,
+    table_datasets,
 )
-from just_dna_enricher.locations import read_release, resolve_clinvar_reference
+from just_dna_enricher.locations import resolve_clinvar_reference
+from just_dna_enricher.net import release_dataset, stated_release
 
 logger = logging.getLogger(__name__)
 
@@ -141,16 +145,19 @@ def _alleles_from_resolution(
 
 
 def snapshot_dataset(reference: Path | None) -> str:
-    """The `dataset` label for records read from this snapshot.
+    """The `dataset` label for records read from this snapshot: `clinvar_dataset_label`, the one spelling.
 
-    Reads the snapshot's own `release.json` — the RM38 rule that a snapshot stamps its release into
-    the row, so a consumer can tell a pinned file from whatever happened to be current. A snapshot
-    that cannot state its release gets `clinvar_unknown` rather than a fabricated date: an unknown
-    written down as a plausible-looking value is worse than one written down as unknown.
+    The function `enrich`, the clinical cross-check and `--verify-datasets` read too (RM373: this read
+    `clinvar_file_date` by hand, and a digest-only snapshot was `clinvar_unknown` here and its digest
+    everywhere else). A snapshot that states no release gets the bare lane (`release_dataset`, RM361):
+    an unknown written down as unknown, never as a release of that name.
     """
-    release = read_release(reference) if reference is not None else None
-    stated = str((release or {}).get("clinvar_file_date") or "").strip()
-    return f"{_DATASET_PREFIX}_{stated or 'unknown'}"
+    return clinvar_dataset_label(reference) or release_dataset(_DATASET_PREFIX, None)
+
+
+def _row_release(row: ClinicalAssertionRow) -> str | None:
+    """The release a row states for its licence row's label: `None` for the bare lane (no release)."""
+    return stated_release(row.dataset, _DATASET_PREFIX)
 
 
 def enrich_clinical_assertions(
@@ -201,6 +208,13 @@ def enrich_clinical_assertions(
     resolution_rows = overlaid_input_rows(
         spec_dir, "resolution.csv", resolution_rows, error=ClinicalAssertionError
     )
+    # A study's LD proxy has a row only for the compiler's allele check (RM331); it is not one of the
+    # module's loci, so this pass does not ask about it or write a fact row the compile calls an orphan.
+    try:
+        proxies = study_proxy_rsids(spec_dir)
+    except EnrichmentError as exc:
+        raise ClinicalAssertionError(str(exc)) from exc
+    resolution_rows = [row for row in resolution_rows if row.variant_key not in proxies]
 
     existing_rows: list[ClinicalAssertionRow] = []
     if assertions_path.exists():
@@ -394,11 +408,15 @@ def enrich_clinical_assertions(
         _write_assertions_csv(
             out,
             assertions_path,
-            before_commit=lambda: record_source_terms(
-                {row.source for row in out if row.source},
+            # Each source's licence row labelled by the release every committed row it answered
+            # states, or withheld when they differ (RM373, `licensing.record_table_sources`).
+            before_commit=lambda: record_table_sources(
+                table_datasets(out, release=_row_release),
                 "clinical_assertion",
                 spec_dir,
                 error=ClinicalAssertionError,
+                # A routine merge declares nothing, so it retires no licence row (RM383).
+                answered_every_row=False,
             ),
         )
     return result
@@ -441,6 +459,8 @@ def _write_assertions_csv(
     are not in here to lose. The re-run itself is unchanged, and still gap-fills rather than re-asking
     every subject; what changed is that leaving a recorded row alone now risks nothing.
     """
+    if nothing_to_write(output_path, rows):
+        return  # RM370: a pass that answered nothing leaves no table
     with atomic_writer(output_path, newline="", before_commit=before_commit) as handle:
         writer = csv.DictWriter(handle, fieldnames=_FIELDNAMES)
         writer.writeheader()

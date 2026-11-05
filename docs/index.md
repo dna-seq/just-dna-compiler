@@ -49,6 +49,9 @@ offline.
 
 </div>
 
+Coming from 0.7? [Integrating 0.8](INTEGRATION_0_8.md) lists what changed, surface by surface, and
+the order to upgrade in.
+
 ## Authoring a module
 
 Writing a module from scratch is a separate tool: **`just-module-creator`**, whose `/create-module`
@@ -67,6 +70,7 @@ uv run just-dna-compiler compile reference_examples/apoe_epsilon /tmp/apoe
 uv run just-dna-compiler verify /tmp/apoe --no-require-marketplace
 ```
 
-That reads a four-file spec — a YAML header plus `haplotypes.csv`, `diplotypes.csv` and an injected
-`resolution.csv` — and writes two parquet files and a `manifest.json` carrying the digests. The
+That reads a five-file spec — a YAML header plus `haplotypes.csv`, `diplotypes.csv`, `licensing.csv`
+and an injected `resolution.csv` — and writes three parquet files (one per table, `sources.parquet` for
+the licence table) and a `manifest.json` carrying the digests. The
 [walkthrough](GETTING_STARTED.md) explains each line.

@@ -26,7 +26,8 @@ Add the tier you need. Each pulls the ones beneath it, so you never install more
 ## 2. Compile a module
 
 A spec is a directory: one `module_spec.yaml` header plus a CSV per table kind you use.
-`apoe_epsilon` uses three.
+`apoe_epsilon` authors three (`haplotypes.csv`, `diplotypes.csv` and the licence table
+`licensing.csv`) and carries the `resolution.csv` the enricher wrote for it.
 
 ```bash
 uv run just-dna-compiler compile reference_examples/apoe_epsilon /tmp/apoe
@@ -34,15 +35,20 @@ uv run just-dna-compiler compile reference_examples/apoe_epsilon /tmp/apoe
 
 ```text
 compiled: /tmp/apoe
-digest: sha256:7a4fb109256dae18ba274da44468442dbca290b51ff4f63ae7c62183bc9239f0
+digest: sha256:c868099845720b90b62336b8edd4348b72da24c2a80e97be49e1bf1b63d1feec
 content_signature: sha256:343333b67741bec0315d0d43d599be24647ee8162c5baeabf322c62df3190133
 resolution_mode: None  fully_resolved: True (over 0 variant row(s))
+resolution_signature: sha256:a364d9708fcab92b3f436e898ef5b034c70bb718f98bc8c3fc28a8d0b5b980aa
 ```
 
 Two digests, and they answer different questions. `digest` covers the emitted **bytes** — recompile
 with a different parquet codec and it moves. `content_signature` covers the **claims** — it survives a
 recompile, a column reordering and a compiler upgrade, and moves only when an authored value changes.
-[Why did my digest move?](FAQ.md) is the long answer.
+[Why did my digest move?](FAQ.md) is the long answer, and this module is a live case of it: in 0.8 the
+example gained its licence table and the parquets gained columns (`vrs_id`, `resolution_loci`), so
+`digest` is not the one 0.7 printed, while `content_signature` is unchanged. The third hash,
+`resolution_signature`, covers the injected `resolution.csv` and is printed whenever the compile read
+one.
 
 What landed:
 
@@ -50,12 +56,14 @@ What landed:
 /tmp/apoe/
 ├── haplotypes.parquet
 ├── diplotypes.parquet
+├── sources.parquet
 ├── manifest.json
 └── README.md
 ```
 
 One parquet per table kind the module actually uses — a module never carries a foreign domain's
-columns. `manifest.json` is the contract: identity, genome build, licence, stats, every file's
+columns. `sources.parquet` is the compiled `licensing.csv`, under the old name it keeps for the whole
+0.x line. `manifest.json` is the contract: identity, genome build, licence, stats, every file's
 `sha256`, and the compiler's own warnings.
 
 ## 3. Verify it
@@ -66,7 +74,7 @@ uv run just-dna-compiler verify /tmp/apoe --no-require-marketplace
 
 ```text
 verified: /tmp/apoe
-digest: sha256:7a4fb109256dae18ba274da44468442dbca290b51ff4f63ae7c62183bc9239f0  files: 2
+digest: sha256:c868099845720b90b62336b8edd4348b72da24c2a80e97be49e1bf1b63d1feec  files: 3
 signature: absent
 ```
 
@@ -91,14 +99,14 @@ uv run just-dna-compiler validate reference_examples/apoe_epsilon
 ```
 
 ```text
-  warning: VRS allele identity covers 0/2 allele(s) in resolution.csv (0%) — 2 carry no ga4gh:VA. id.
-  warning:   2 allele(s): no ALT recorded, and a VRS allele id names exactly one allele
 valid: reference_examples/apoe_epsilon
 ```
 
-A warning is a report, never a repair — the compiler tells you what it could not establish and carries
-the text into `manifest.json`'s `compilation.warnings` so a consumer sees the same sentence you did.
-`compile --strict` turns the ones about unresolved positions into a refusal instead.
+This module draws no warning. When one does, the warning is a report, never a repair: the compiler
+tells you what it could not establish and carries the text into `manifest.json`'s
+`compilation.warnings`, so a consumer sees the same sentence you did. The round trip below shows one.
+`validate --strict` and `compile --strict` turn the ones about unresolved positions into a refusal
+instead.
 
 ## Round-tripping
 
@@ -109,12 +117,27 @@ uv run just-dna-compiler reverse /tmp/apoe /tmp/apoe-spec
 ```
 
 ```text
+The source artifact carries a verification attestation (RM45) with a closure (RM73) and the reversed spec will carry neither: the checks were put by the enricher, against sources this tier does not reach, and the record is bound to authored bytes reverse is re-emitting. Re-run the enricher on /tmp/apoe-spec to re-attest, and close it yourself — reverse holds no authority to declare someone else's authoring finished. Recompiling as-is produces a manifest with no `verification` block.
 reversed: /tmp/apoe-spec
 ```
 
 The round trip is lossless and idempotent, and tests pin it. One thing does not survive it, on purpose:
 an authoring **closure** is an attestation about who finished the work, so `reverse` refuses to forge
-one and says so at the time.
+one and says so at the time, as above. Recompiling the reversed spec gives back the same `digest`, and
+the missing closure is the one warning:
+
+```bash
+uv run just-dna-compiler compile /tmp/apoe-spec /tmp/apoe-again
+```
+
+```text
+  warning: This module records no closure: nothing in it states that authoring is finished, so a consumer cannot tell a spec still being edited from one its author considers done. Run `just-dna-compiler close <spec-dir>` when the module is complete — closing is a deliberate act, it is never stamped by a passing check, and editing any authored file afterwards drops the closure again. Compiling without one is a warning today; requiring it is filed for 1.0 (RM73).
+compiled: /tmp/apoe-again
+digest: sha256:c868099845720b90b62336b8edd4348b72da24c2a80e97be49e1bf1b63d1feec
+content_signature: sha256:343333b67741bec0315d0d43d599be24647ee8162c5baeabf322c62df3190133
+resolution_mode: None  fully_resolved: True (over 0 variant row(s))
+resolution_signature: sha256:a364d9708fcab92b3f436e898ef5b034c70bb718f98bc8c3fc28a8d0b5b980aa
+```
 
 ## Where to go next
 

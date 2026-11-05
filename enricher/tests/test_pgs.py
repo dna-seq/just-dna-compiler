@@ -27,7 +27,6 @@ convert a live source into a permanently failing test.
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
 import httpx
@@ -1027,9 +1026,7 @@ def test_the_command_attests_both_records_end_to_end(tmp_path: Path, monkeypatch
 # ── live ─────────────────────────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.skipif(
-    not os.getenv("JUST_DNA_NETWORK_TESTS"), reason="set JUST_DNA_NETWORK_TESTS=1 to hit the network"
-)
+@pytest.mark.network
 def test_the_live_surface_still_answers_200_with_an_empty_body_for_every_negative() -> None:
     """The measurement the whole design rests on, re-taken rather than quoted.
 

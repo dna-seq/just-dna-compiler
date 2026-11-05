@@ -30,7 +30,6 @@ body for the same reason and this follows it rather than inventing a third answe
 import csv
 import hashlib
 import io
-import json
 import logging
 import zipfile
 from dataclasses import dataclass, field
@@ -39,6 +38,7 @@ from pathlib import Path
 
 from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
+from just_dna_format.snapshot import SnapshotRelease, SnapshotWrite, begin_snapshot_write
 
 from just_dna_enricher.clinpgx_build import read_created_date, read_license
 from just_dna_enricher.drug_labels import (
@@ -47,10 +47,10 @@ from just_dna_enricher.drug_labels import (
     LABELS_PARQUET,
     SOURCE_NAME,
     DrugLabelError,
+    DrugLabelRetired,
     DrugLabelUnavailable,
 )
 from just_dna_enricher.locations import (
-    RELEASE_FILENAME,
     SNAPSHOT_DATA_DIRNAME,
     SNAPSHOT_LICENSE_FILENAME,
 )
@@ -140,6 +140,7 @@ def download_drug_labels_zip(dest: Path, url: str = DEFAULT_DRUG_LABELS_URL) -> 
         dest,
         url,
         error_cls=DrugLabelUnavailable,
+        retired=DrugLabelRetired,
         what="the ClinPGx drug-label archive",
         remedy="Pass --zip <archive> to build from a copy you already hold.",
     )
@@ -210,8 +211,9 @@ def build_drug_label_snapshot(
         raise DrugLabelError(f"{source_url} parsed to zero labels; refusing to record it as a snapshot")
 
     data_dir = out_dir / SNAPSHOT_DATA_DIRNAME
-    data_dir.mkdir(parents=True, exist_ok=True)
     frame = pl.DataFrame(records, schema=_schema()).sort("label_id", nulls_last=True)
+    snapshot = begin_snapshot_write(out_dir)
+    data_dir.mkdir(parents=True, exist_ok=True)
     parquet_path = data_dir / LABELS_PARQUET
     frame.write_parquet(parquet_path, compression="zstd")
 
@@ -228,7 +230,7 @@ def build_drug_label_snapshot(
     digest = source_sha256 or _sha256_file(zip_path)
     dataset = f"{SOURCE_NAME}_drug_labels_{created}" if created else None
     release_file = _write_release_json(
-        out_dir,
+        snapshot,
         source_url=source_url,
         source_sha256=digest,
         created_date=created,
@@ -262,7 +264,7 @@ def build_drug_label_snapshot(
 
 
 def _write_release_json(
-    out_dir: Path,
+    snapshot: SnapshotWrite,
     *,
     source_url: str,
     source_sha256: str,
@@ -280,19 +282,17 @@ def _write_release_json(
     *which agencies this snapshot could answer for*, and a number computed and dropped is one every
     reader recomputes (`@dont-discard-computed`).
     """
-    release = {
-        "source": SOURCE_NAME,
-        "source_url": source_url,
-        "source_sha256": source_sha256,
-        "created_date": created_date,
-        "dataset": dataset,
-        "license_sha256": license_sha256,
-        "label_count": label_count,
-        "regulators": regulators,
-        "testing_levels": testing_levels,
-        "built_at": now_utc_iso(),
-        "builder_version": _builder_version(),
-    }
-    path = out_dir / RELEASE_FILENAME
-    atomic_write_text(path, json.dumps(release, indent=2, sort_keys=True) + "\n")
-    return path
+    release = SnapshotRelease(
+        source=SOURCE_NAME,
+        source_url=source_url,
+        source_sha256=source_sha256,
+        created_date=created_date,
+        dataset=dataset,
+        license_sha256=license_sha256,
+        label_count=label_count,
+        regulators=regulators,
+        testing_levels=testing_levels,
+        built_at=now_utc_iso(),
+        builder_version=_builder_version(),
+    )
+    return snapshot.commit(release)

@@ -276,6 +276,7 @@ def test_gene_constraint_batches_and_skips_genes_with_no_constraint() -> None:
 
 
 @pytest.mark.integration
+@pytest.mark.network
 def test_live_gnomad_agrees_with_the_recorded_fixtures(payload: dict, gene_payload: dict) -> None:
     """One live batched request, checked against the committed recordings.
 
@@ -284,10 +285,6 @@ def test_live_gnomad_agrees_with_the_recorded_fixtures(payload: dict, gene_paylo
     still describe reality. Deliberately ONE request (the client's own pacing gate applies), and
     opt-in so an ordinary offline run never touches the network.
     """
-    import os
-
-    if not os.getenv("JUST_DNA_NETWORK_TESTS"):
-        pytest.skip("live gnomAD query — set JUST_DNA_NETWORK_TESTS=1 to run")
 
     with GnomadClient() as client:
         live = client.fetch_frequencies(["11-5227002-T-A"])

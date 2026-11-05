@@ -22,6 +22,11 @@ and only where a rule turns on one.
   multi-parquet artifact (the three-parquet SNP core — weights/annotations/studies — plus one parquet
   per optional table kind a composed module adds), carrying per-input and per-artifact hashes and a
   Merkle `artifact.digest`.
+- Be the contract for the **reference-snapshot layout** as well: `just-dna-format` defines the on-disk
+  names of a reference snapshot (its data directory, sidecar directories, licence file and provenance
+  record) and the model of that provenance record (`release.json`), which every party that builds,
+  publishes, provisions or reads a snapshot uses rather than restating. It reads no environment and
+  fetches nothing; where a snapshot lives on a machine, and how it is fetched, stay in the network tier.
 - Stay **dependency-light, in tiers.** `just-dna-format` (schema + integrity) costs only `pydantic`
   plus `cryptography` (the latter solely for Ed25519 signature verify/sign, added in 0.2 — a small,
   pure-verify dependency, never a heavy transitive tree), so any verify-only client can depend on it;
@@ -32,8 +37,8 @@ and only where a rule turns on one.
   they need and pull nothing heavier. The bright line is the *heavyweight* deps in Non-goals below
   (Dagster / LLM SDKs / HuggingFace), which the **format and compiler tiers** may never pull.
 - Make **integrity the identity.** A version is identified by its artifact digest and its authored
-  content by `content_signature`, both reproducible by anyone holding the inputs and the pinned
-  compiler version.
+  content by `content_signature`, both reproducible by anyone holding the inputs, the pinned
+  compiler version and the recorded toolchain.
 
 ## Non-goals
 
@@ -126,8 +131,8 @@ and only where a rule turns on one.
    them and the module's name/display metadata, is its **content** identity — this data, however and
    wherever it was compiled. A published version's bytes are **never mutated**; withdrawal is a *yank*
    (drop from listings, keep fetchable), not an edit. Parquet is not byte-deterministic across
-   polars/arrow versions, so reproducibility is pinned via `compiler_version` and the resolved
-   reference.
+   polars/arrow versions, so reproducibility is pinned via `compiler_version`, the recorded toolchain
+   and the resolved reference.
 
 5. **Orthogonal axes, no overloaded fields.** Each concept gets its own column or table; a field must
    not pile up independent axes. (The legacy `state` field — conflating statistical significance,
@@ -153,7 +158,7 @@ and only where a rule turns on one.
 
    These are enforced by tests, not merely asserted here. (Cross-*version* byte-reproducibility is
    still bounded by Principle 4: parquet is not deterministic across polars/arrow versions, so the
-   digest guarantee is *within* a fixed `compiler_version`.)
+   digest guarantee is *within* a fixed `compiler_version` and recorded toolchain.)
 
 8. **Requiredness is monotonic within a major (field-optionality compatibility).** Whether a field is
    required is itself part of the contract and may only tighten, never loosen, inside an `N.x` line:

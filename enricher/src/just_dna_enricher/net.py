@@ -15,9 +15,12 @@ Two of these look trivial and are not:
 """
 
 import dataclasses
+import datetime
+import email.utils
 import hashlib
 import itertools
 import logging
+import math
 import os
 import threading
 import time
@@ -26,9 +29,16 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
-from tenacity import retry, retry_if_exception, retry_if_exception_type, wait_exponential_jitter
+from tenacity import (
+    RetryCallState,
+    retry,
+    retry_if_exception,
+    retry_if_exception_type,
+    wait_exponential_jitter,
+)
 from tenacity.retry import retry_base
 from tenacity.stop import stop_base
+from tenacity.wait import wait_base
 
 logger = logging.getLogger(__name__)
 
@@ -263,6 +273,106 @@ def raise_if_retired(exc: BaseException, error: type[Exception], source: str) ->
         raise error(retired_message(source, exc.response)) from exc
 
 
+# ── the reason a question went unanswered (RM361) ───────────────────────────────────────────────
+#
+# A `*Retired` error is a subclass of its client's could-not-ask type (RM354), so every handler that
+# records could-not-ask caught it — and wrote `unreachable`, the reason for an outage, about a source
+# that had moved. An outage clears on a re-run; a retired endpoint clears only on an upgrade, so the
+# two are different reasons and the record says which. The marker below is the one thing every
+# `*Retired` class shares, and `could_not_ask_reason` is the one place a handler turns the exception
+# it caught into the reason it records. `test_could_not_ask.py` walks the tier for both.
+
+#: The reason a record carries when the source answered 410: a `VALID_VERIFICATION_SKIPS` member, and
+#: a `VALID_FULLTEXT_STATUS` one. Never `unreachable`, which is the reason for an outage.
+RETIRED: str = "retired"
+#: The reason for a question asked and never answered: a failed request, not a no.
+UNREACHABLE: str = "unreachable"
+
+
+class EndpointRetired(Exception):
+    """Mixed into every client's `*Retired` error: the source answered HTTP 410 (RM361).
+
+    A marker, not a catchable family of its own: handlers keep catching their client's could-not-ask
+    type, and read the reason off the exception with `could_not_ask_reason`.
+    """
+
+
+def could_not_ask_reason(exc: BaseException) -> str:
+    """`retired` when `exc` says the source retired the endpoint, else `unreachable` (RM361).
+
+    For a handler that caught a client's could-not-ask type and is about to record why the question
+    went unanswered. A retired endpoint is a fact about the source and is cleared by an upgrade; an
+    outage is cleared by a re-run; writing the second about the first sends the reader to the wrong
+    remedy. The exception's causes are read too, so a client that translates a 410 into its plain
+    could-not-ask type (`raise XUnavailable(...) from exc`) is still read as retired.
+    """
+    seen: BaseException | None = exc
+    while seen is not None:
+        if isinstance(seen, EndpointRetired) or (
+            isinstance(seen, httpx.HTTPStatusError) and seen.response.status_code == GONE
+        ):
+            return RETIRED
+        seen = seen.__cause__
+    return UNREACHABLE
+
+
+def aggregate_reason(reasons: Iterable[str | None]) -> str:
+    """The reason a group of unanswered questions is recorded under: `retired` if any one was (RM361).
+
+    For a record that aggregates several requests: one retired endpoint means the run needs an upgrade
+    whatever else happened, which is the remedy the record must lead with. Otherwise `unreachable`.
+    """
+    return RETIRED if RETIRED in set(reasons) else UNREACHABLE
+
+
+class Withholding:
+    """Mixed into every client whose contract is a withheld value rather than an exception (RM361).
+
+    Such a client answers a failed request with `None` (or its outcome's could-not-ask arm), so a 410
+    reached its caller as an outage. `retired` is how it says otherwise without raising: the
+    `retired_message` of the first 410 the client met, `None` until then. Sticky for the client's
+    life, because a retired route is a fact about the source rather than about one request; a caller
+    recording why a question went unanswered reads it with `withheld_reason`.
+    """
+
+    retired: str | None = None
+
+    def note_retired(self, source: str, failure: BaseException | httpx.Response) -> bool:
+        """Record a 410 from `failure` (an exception or a response); `True` when it was one."""
+        response = failure.response if isinstance(failure, httpx.HTTPStatusError) else failure
+        if not isinstance(response, httpx.Response) or response.status_code != GONE:
+            return False
+        if self.retired is None:
+            self.retired = retired_message(source, response)
+            logger.warning("%s", self.retired)
+        return True
+
+
+def withheld_reason(withholder: object) -> str:
+    """`retired` when a withholding client met a 410, else `unreachable` (RM361)."""
+    return RETIRED if getattr(withholder, "retired", None) else UNREACHABLE
+
+
+def release_dataset(lane: str, released: str | None) -> str:
+    """A `dataset` label, `<lane>_<release>`, or the bare lane when the source stated no release (RM361).
+
+    The label is a merge-key member and a `sources.csv` cell; a release the file did not state is
+    withheld from it, never spelled `unknown` (a release of that name) or `None`.
+    """
+    return f"{lane}_{released}" if released else lane
+
+
+def stated_release(dataset: str | None, *lanes: str) -> str | None:
+    """The release a `dataset` label states, or `None` when it states none (RM373).
+
+    The inverse of `release_dataset` for a reader: a blank cell, and the bare lane that label writes when
+    the source stated no release, are both no release. What a licence row's `dataset` is computed from,
+    so a table whose rows say `gwas_catalog` names no release rather than one called `gwas_catalog`.
+    """
+    label = (dataset or "").strip()
+    return None if not label or label in lanes else label
+
+
 # ── bulk file downloads: one body, translated and retried (RM187) ───────────────────────────────
 #
 # Eleven builders stream one file from a source's FTP or bulk endpoint, and until RM187 each carried
@@ -315,6 +425,7 @@ def stream_to_file(
     url: str,
     *,
     error_cls: type[Exception],
+    retired: type[Exception],
     what: str,
     timeout: float | None = None,
     remedy: str = "",
@@ -346,6 +457,12 @@ def stream_to_file(
     digest is real and whose contents are nonsense, which no footer check and no `raise_for_status`
     would catch.
 
+    **A 410 is the lane's `retired`, never its `error_cls`** (RM361, audit round 2). A source that
+    retired the file moved it, and the remedy is an upgrade rather than a re-run; `retired` is the
+    lane's `*Retired` (a subclass of `error_cls` marked `EndpointRetired`), required so no lane can
+    forget it, and the message is `retired_message`'s (the host that answered, the source's own body
+    quoted), followed by `what` and the lane's `remedy`.
+
     `what` names the thing being fetched for the message ("the ClinVar VCF"); `remedy` is an optional
     sentence saying what the caller can do instead, for the lanes that accept a local file.
     """
@@ -362,6 +479,8 @@ def stream_to_file(
     def _attempt() -> StreamedFile:
         hasher = hashlib.sha256()
         with httpx.stream("GET", url, follow_redirects=True, timeout=timeout) as response:
+            if response.status_code == GONE:
+                response.read()  # a 410's body is the source's own word on where the file went
             response.raise_for_status()
             etag = response.headers.get("ETag")
             last_modified = response.headers.get("Last-Modified")
@@ -376,6 +495,13 @@ def stream_to_file(
         streamed = _attempt()
     except httpx.HTTPError as exc:
         tmp.unlink(missing_ok=True)
+        if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == GONE:
+            # The host that answered retired it (a redirect may have moved the request), and the lane's
+            # own remedy still applies: a release the operator picked, or a file they already hold.
+            gone = retired_message(exc.response.request.url.host, exc.response)
+            raise retired(
+                f"{gone} (fetching {what}). {remedy}" if remedy else f"{gone} (fetching {what})"
+            ) from exc
         message = f"could not download {what} from {url}: {exc}"
         raise error_cls(f"{message}. {remedy}" if remedy else message) from exc
     except BaseException:
@@ -388,3 +514,78 @@ def stream_to_file(
     tmp.replace(dest)
     logger.info("Downloaded %s (sha256 %s)", dest, streamed.sha256)
     return dataclasses.replace(streamed, path=dest)
+
+
+# ── a throttle that says when to come back (RM267) ──────────────────────────────────────────────
+#
+# A 429 (or a 503) may carry `Retry-After`: the server's own statement of when a request may be made
+# again, in seconds or as an HTTP-date. Every retried client here waited on tenacity's backoff instead,
+# which starts at half a second, so a throttled client asked again before it was allowed to. Ensembl
+# REST was the first client found doing it; it was also unpaced.
+
+#: The longest `Retry-After` a retry sleeps through: about the longest backoff a retry here already
+#: waits (8 s). Ensembl's per-second budget asks for a fraction of a second; its hourly one answers
+#: with the time to its reset, which can be most of an hour, and a maintenance 503 may ask for minutes.
+#: Past this the request is not retried, and a client that honours the header asks nothing until the
+#: time passes — so a long ask costs a batch one request, not two long sleeps per subject.
+RETRY_AFTER_CEILING: float = 10.0
+
+
+def retry_after_seconds(exc: BaseException | None, *, now: Callable[[], float] = time.time) -> float | None:
+    """How long a throttled answer asked the client to wait, or `None` when it did not say.
+
+    Read only off a status a retry can change (`is_transient_status`: a 5xx or a 429), in either of
+    RFC 9110's forms — delta-seconds (Ensembl sends a fraction, `40.0`) or an HTTP-date, measured
+    against `now` (wall clock, since the date is one). A date already past is `0.0`. No header, an
+    unreadable one, or any other exception is `None`: unknown, never a wait of zero.
+    """
+    if not isinstance(exc, httpx.HTTPStatusError) or not is_transient_status(exc):
+        return None
+    raw = (exc.response.headers.get("Retry-After") or "").strip()
+    if not raw:
+        return None
+    try:
+        seconds = float(raw)
+    except ValueError:
+        try:
+            when = email.utils.parsedate_to_datetime(raw)
+        except (TypeError, ValueError):
+            return None
+        if when.tzinfo is None:
+            # `-0000` parses naive; an HTTP-date is GMT by definition, never the host's local time.
+            when = when.replace(tzinfo=datetime.UTC)
+        seconds = when.timestamp() - now()
+    if not math.isfinite(seconds):
+        return None
+    return max(seconds, 0.0)
+
+
+def asks_past_ceiling(exc: BaseException | None, ceiling: float = RETRY_AFTER_CEILING) -> bool:
+    """Whether `exc` asked for a wait longer than `ceiling` — a request not to retry now."""
+    asked = retry_after_seconds(exc)
+    return asked is not None and asked > ceiling
+
+
+def retry_if_transient_within(*also: type[BaseException], ceiling: float = RETRY_AFTER_CEILING) -> retry_base:
+    """`retry_if_transient`, except a throttle whose `Retry-After` exceeds `ceiling` is not retried."""
+    return retry_if_transient(*also) & retry_if_exception(lambda exc: not asks_past_ceiling(exc, ceiling))
+
+
+class wait_retry_after(wait_base):
+    """A tenacity wait that is at least what the server's `Retry-After` asked for, else `fallback`'s.
+
+    Never shorter than the fallback, so a server asking for less than the backoff does not shorten it;
+    capped at `ceiling`, which `retry_if_transient_within` keeps a retry from ever reaching.
+    """
+
+    def __init__(self, fallback: wait_base, ceiling: float = RETRY_AFTER_CEILING) -> None:
+        self.fallback = fallback
+        self.ceiling = ceiling
+
+    def __call__(self, retry_state: RetryCallState) -> float:
+        backoff = self.fallback(retry_state)
+        outcome = retry_state.outcome
+        asked = retry_after_seconds(outcome.exception() if outcome is not None and outcome.failed else None)
+        if asked is None:
+            return backoff
+        return max(backoff, min(asked, self.ceiling))

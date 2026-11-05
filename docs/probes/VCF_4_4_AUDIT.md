@@ -264,7 +264,7 @@ motif-composition half is a separate and larger question and should not be bundl
 > **Corrected 2026-09-30: the first half of this section reads QUAL backwards.** Where ALT is `.` the
 > assertion is *no variant*, so QUAL = −10log10 P(variant), and a high QUAL is a confident reference
 > call, not "almost certainly variant". Nothing inverts. RM57 shipped this misreading as the
-> `quality_floor_inverted` warning, and [RM313](../ROADMAP.md#rm313--rm57s-quality_floor_inverted-warning-reads-vcf-qual-backwards-and-tells-authors-so-on-every-compile)
+> `quality_floor_inverted` warning, and [RM313](../ROADMAP_HISTORY.md#rm313--rm57s-quality_floor_inverted-warning-reads-vcf-qual-backwards-and-tells-authors-so-on-every-compile)
 > carries the repair. The second half (a block, not a position; `MIN_DP`) stands. The text below is
 > left as it was written, as evidence.
 

@@ -19,10 +19,26 @@ resolver skips with a warning. Provisioning the reference is the deployment's jo
 import json
 import logging
 import os
+from dataclasses import dataclass
 from pathlib import Path
 
 from dotenv import dotenv_values, find_dotenv, load_dotenv
+from just_dna_format.integrity import sha256_file
+from just_dna_format.snapshot import ACMG_SNAPSHOT_FILENAME as ACMG_SNAPSHOT_FILENAME
+from just_dna_format.snapshot import ALPHAGENOME_KNOTS_FILENAME as ALPHAGENOME_KNOTS_FILENAME
+from just_dna_format.snapshot import CITATIONS_DIRNAME as CITATIONS_DIRNAME
+from just_dna_format.snapshot import RELEASE_FILENAME as RELEASE_FILENAME
+from just_dna_format.snapshot import SNAPSHOT_DATA_DIRNAME as SNAPSHOT_DATA_DIRNAME
+from just_dna_format.snapshot import SNAPSHOT_LICENSE_FILENAME as SNAPSHOT_LICENSE_FILENAME
+from just_dna_format.snapshot import SNAPSHOT_MANIFEST_FILENAME as SNAPSHOT_MANIFEST_FILENAME
+from just_dna_format.snapshot import SNAPSHOT_ROOT_FILENAMES as SNAPSHOT_ROOT_FILENAMES
+from just_dna_format.snapshot import SNAPSHOT_SIDECAR_DIRNAMES as SNAPSHOT_SIDECAR_DIRNAMES
+from just_dna_format.snapshot import STRCHIVE_CATALOGUE_FILENAME as STRCHIVE_CATALOGUE_FILENAME
+from just_dna_format.snapshot import holds_snapshot_payload as holds_snapshot_payload
+from just_dna_format.snapshot import read_release as read_release
+from just_dna_format.snapshot import release_label as snapshot_release_label
 from platformdirs import user_cache_dir
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -30,16 +46,15 @@ APPNAME: str = "just-dna-pipelines"
 
 # ── the snapshot layout ─────────────────────────────────────────────────────────────────────────
 #
-# A reference snapshot is `data/*.parquet` + optional parquet **sidecars** beside it + `release.json`.
-# Four parties have to agree on those names — the builder writes them, the publisher uploads them, the
-# provisioner fetches them, the reader queries them — and every disagreement so far has been silent:
-# `release.json` was uploaded and never fetched (so a provisioned snapshot could not say which release
-# it was), and `citations/` was built and never published (so anyone who downloaded rather than built
-# had no PMIDs, and a drafted gene panel could not compile for them — `studies.csv` is mandatory).
-# One definition, imported by all four.
-
-#: The records: what the readers glob.
-SNAPSHOT_DATA_DIRNAME = "data"
+# A reference snapshot is `data/*.parquet` + optional parquet **sidecars** beside it + `LICENSE.txt` +
+# `release.json`. Six parties have to agree on those names — the builder writes them, the publisher
+# uploads them, the provisioner fetches them, the resolver judges the directory, the reporter prints
+# the label, a pass reads the release — and every disagreement so far has been silent: `release.json`
+# was uploaded and never fetched, `citations/` was built and never published. The names, the model of
+# `release.json` and its reader are the format tier's contract since 0.8 (RM303,
+# `just_dna_format.snapshot`); this module imports them, so `from just_dna_enricher.locations import
+# RELEASE_FILENAME` keeps working for every caller, and adds only what is deployment: where a snapshot
+# lives on this machine, and the pull record of one machine's copy.
 
 #: Where a build writes when the operator names nowhere. **Never the repository root**, which is the
 #: rule this constant exists to make impossible to forget: nine `--out` defaults were bare relative
@@ -66,65 +81,6 @@ def repro_out(name: str) -> Path:
     return Path(REPRO_DIRNAME) / name
 
 
-#: ClinVar's literature links. A **sibling of** `data/`, never inside it: the readers build their view
-#: from `data/*.parquet`, so a two-column citations file dropped in there unions with the 17-column
-#: variant parquet and every query breaks. (Learned the direct way — and again, from the other end, when
-#: a stale single-file `clinvar.parquet` in a published repo did the same thing.)
-CITATIONS_DIRNAME = "citations"
-
-#: Optional parquet sidecars a snapshot may carry. Shared by the publisher (which takes a directory and
-#: cannot know which snapshot kind it is) and the provisioner, so a sidecar cannot be publishable but
-#: unfetchable. Absent is normal: only ClinVar has one, and only when `clinvar citations` was run.
-SNAPSHOT_SIDECAR_DIRNAMES: tuple[str, ...] = (CITATIONS_DIRNAME,)
-
-#: The provenance beside the data. It describes **every** part of the snapshot, which is why the
-#: citations builder merges its own block in rather than leaving a mixed-vintage artifact whose
-#: `release.json` documents half of it: ClinVar publishes `var_citations.txt` on its own cadence, so the
-#: records and the citations in one snapshot need not come from the same release.
-RELEASE_FILENAME = "release.json"
-
-#: The terms a snapshot was taken under, kept beside the bytes they govern. ClinPGx bundles a
-#: `LICENSE.txt` inside `summaryAnnotations.zip`, and the builder extracts it precisely so a holder of
-#: the snapshot can read the terms without the archive — which only works if the publisher sends it and
-#: the provisioner fetches it. It was in neither: `upload`'s allow-patterns were `data/*.parquet`,
-#: `citations/*.parquet` and `release.json`, so publishing a share-alike snapshot silently dropped the
-#: one file the pinned-licence design exists for. Fifth party to the layout agreement, same as the rest.
-SNAPSHOT_LICENSE_FILENAME = "LICENSE.txt"
-
-#: The payload of a snapshot that holds no parquet. Two caches are shaped this way and both were
-#: named in the module that *reads* them, which is exactly the split `RELEASE_FILENAME` and
-#: `SNAPSHOT_LICENSE_FILENAME` were pulled up here to stop: a resolver, a builder and a reader each
-#: have to agree on the name, and a resolver living in this module cannot import the reader's copy
-#: without a cycle. One definition, in the module that already owns the layout.
-#: The AVI lane's reconstruction curve, a **root-level sibling of `data/`** rather than a sidecar
-#: directory (RM191). It is one small parquet, not a directory of them, and it is not optional: the
-#: artifact deliberately does not store `PHRED`, so without this file a puller holds scores they
-#: cannot rank and `alphagenome check` refuses outright. Named here rather than in the builder for
-#: the reason this whole section exists — the builder writes it, the publisher has to carry it, and
-#: the provisioner has to fetch it, so a name only one of the three knows is a name the other two
-#: will silently drop.
-ALPHAGENOME_KNOTS_FILENAME = "avi_knots.parquet"
-
-#: Every file a snapshot may carry **beside** `data/` and its sidecar directories, as the publisher
-#: and the provisioner must agree on it.
-#:
-#: **This is a registry because the alternative already failed twice.** `plan_reference_snapshot`
-#: iterated a hardcoded pair, `release.json` and `LICENSE.txt`, and the second of those is only in it
-#: because publishing a share-alike snapshot had silently dropped the terms it exists to carry
-#: (`@publisher-allowlist-derived`). The AVI knot table is the third such file and would have been
-#: the third such incident: a published snapshot missing it looks complete — every parquet present,
-#: `release.json` valid — and cannot answer the question the lane exists for.
-#: **The order is the publish order, and `RELEASE_FILENAME` is last on purpose** (RM199). It is the
-#: file a puller reads to learn which release it holds, so it must never arrive before the bytes it
-#: describes — a publish that lands the description and then fails leaves a snapshot that *reads as*
-#: provisioned and is not. Keeping the constraint in the tuple rather than in the publisher means the
-#: plan a `--dry-run` prints is already in the order the upload sends.
-SNAPSHOT_ROOT_FILENAMES: tuple[str, ...] = (
-    SNAPSHOT_LICENSE_FILENAME,
-    ALPHAGENOME_KNOTS_FILENAME,
-    RELEASE_FILENAME,
-)
-
 #: The provisioner's record of what a pull of this snapshot consists of (RM339): every file under
 #: `data/` and the sidecar directories the remote listing named, written **before** the first
 #: download rather than after the last. That order is the fix. Each file is staged through `.part` and
@@ -136,9 +92,6 @@ SNAPSHOT_ROOT_FILENAMES: tuple[str, ...] = (
 #: **Not in `SNAPSHOT_ROOT_FILENAMES`, on purpose.** That registry is what a publish uploads and a
 #: pull fetches. This file describes one machine's copy, never the published snapshot.
 PULL_RECORD_FILENAME = "pull-record.json"
-
-ACMG_SNAPSHOT_FILENAME = "acmg_sf.csv"
-STRCHIVE_CATALOGUE_FILENAME = "STRchive-loci.json"
 
 ENSEMBL_SUBDIR: str = "ensembl_variations"
 DUCKDB_NAME: str = "ensembl_variations.duckdb"
@@ -220,6 +173,14 @@ DRUG_LABELS_SUBDIR: str = "drug_labels"
 #: with `mane build --download`.
 MANE_SUBDIR: str = "mane"
 
+#: Open Targets' cache (0.8, RM333) is a **trimmed** cut of one Platform release (26.09): the GWAS
+#: credible sets and their members, the locus-to-gene scores, the GWAS-left × molecular-QTL-right
+#: colocalisations, and every variant's per-transcript consequences, flattened to parquet so the
+#: runtime pass reads it with duckdb. The release is marked CC0, so publishing it is not barred; what
+#: is missing is a repository, which is why there is no `download.ensure_opentargets_snapshot` yet.
+#: Build one with `opentargets build`.
+OPENTARGETS_SUBDIR: str = "opentargets"
+
 #: MITOMAP's cache is a **parquet** snapshot cut from the source's own `pg_dump` (RM171): the two
 #: curated variant tables, their citation links and the reference records, out of a 6.76 M-line file
 #: whose other hundred tables this tier has no use for. CC BY 3.0 with commercial use stated free, so
@@ -242,6 +203,13 @@ MITOMAP_MISS_SUBDIR: str = "mitomap_miss"
 #: it that is *unknown* rather than permissive — RM195 — so `commercial_use` is `None` and nothing
 #: publishes it.
 ALPHAGENOME_AVI_SUBDIR: str = "alphagenome_avi"
+
+#: ClinGen's ClinVar-GKM, cut to the indels (RM305): the alleles whose placement is in doubt, each with
+#: its VRS id, its SPDI and its gnomAD-style VCF spelling, joined to the ClinVar variation and rsID that
+#: name it. A **witness**, not a source of calls: clinical significance still comes from the `clinvar`
+#: lane, and this one is read only to ask where an indel sits. CC0 over ClinGen's transformation of
+#: public-domain ClinVar, so it may be published.
+CLINVAR_GKM_SUBDIR: str = "clinvar_gkm"
 
 
 # ── The override variables, one per lane, plus the shared base ──────────────────────────────────
@@ -268,26 +236,8 @@ MANE_CACHE_VAR: str = "JUST_DNA_MANE_CACHE"
 MITOMAP_CACHE_VAR: str = "JUST_DNA_MITOMAP_CACHE"
 MITOMAP_MISS_CACHE_VAR: str = "JUST_DNA_MITOMAP_MISS_CACHE"
 ALPHAGENOME_AVI_CACHE_VAR: str = "JUST_DNA_ALPHAGENOME_AVI_CACHE"
-
-
-def read_release(reference: Path) -> dict | None:
-    """A snapshot's `release.json` as a dict, or `None` when it is absent or unreadable.
-
-    Sixth party to the layout agreement above, and the first *reader* of it outside `cache status`:
-    the file was written by every builder and consulted by nothing, so a caller who needed to know
-    which release a local snapshot is could only guess. `None` is the honest answer for both absence
-    and corruption — a caller must not be able to mistake "this snapshot does not say" for a release
-    id, so callers branch on `None` rather than on a default (the tri-state rule).
-    """
-    path = Path(reference) / RELEASE_FILENAME
-    if not path.is_file():
-        return None
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        logger.warning("Could not read %s (%s); treating the release as unstated.", path, exc)
-        return None
-    return payload if isinstance(payload, dict) else None
+CLINVAR_GKM_CACHE_VAR: str = "JUST_DNA_CLINVAR_GKM_CACHE"
+OPENTARGETS_CACHE_VAR: str = "JUST_DNA_OPENTARGETS_CACHE"
 
 
 _PARQUET_MAGIC = b"PAR1"
@@ -334,6 +284,266 @@ def snapshot_record_missing(cache_dir: Path) -> list[str] | None:
         logger.warning("%s names no file list; treating the cache as unrecorded.", path)
         return None
     return [name for name in files if not parquet_footer_ok(Path(cache_dir) / name)]
+
+
+#: Every pulled lane's HuggingFace dataset repository, by lane name: the **one** place a repo id is
+#: spelled (RM384). Each lane's fsspec prefix (`download.SNAPSHOT_REPO_PREFIXES`), each publisher default
+#: (`upload.DEFAULT_*_REPO_ID`) and each lane's `CacheLane.publish_repo` is derived from it. Before
+#: RM384 every repo was written twice, as a repo id in `upload.py` and inside a prefix in `download.py`, with
+#: nothing tying the pair, and the Ensembl lane had only the private prefix, so a consumer pinning
+#: `manifest.compilation.ensembl_reference` (`org/repo@<rev>`) took the `org/repo` half by stripping
+#: `datasets/` and `/data` off it (S130). The keys equal the lanes in `caches.CACHE_LANES` with an
+#: `ensure`, asserted by test, and an AST walk refuses a repo id written as a literal anywhere else.
+#: Here rather than in `download` because both the provisioner and the publisher read it, and this is
+#: the leaf they both import: the publisher must not load the resolver stack to name a repo.
+#:
+#: Ensembl's is the split release since RM372: prepare-annotations publishes dbSNP 157 / VEP 116 as a
+#: **separate** repo, one row per ALT, left-aligned indels, with a `manifest.json` (release id,
+#: per-file sha256) and no `release.json`. The old repo, `just-dna-seq/ensembl_variations`, is no
+#: longer written and keeps the same file names, which is why a warm cache compares its pull record's
+#: repo with this one. This tier pulls it and never publishes it.
+SNAPSHOT_REPO_IDS: dict[str, str] = {
+    "ensembl": "just-dna-seq/ensembl_variations_split",
+    "clinvar": "just-dna-seq/clinvar",
+    "constraint": "just-dna-seq/gnomad_constraint",
+    "clinpgx": "just-dna-seq/clinpgx",
+    "cpic": "just-dna-seq/cpic",
+    "drug_labels": "just-dna-seq/clinpgx_drug_labels",
+    "civic": "just-dna-seq/civic",
+    "strchive": "just-dna-seq/strchive",
+    "mitomap": "just-dna-seq/mitomap",
+    "alphagenome_avi": "just-dna-seq/alphagenome_avi",
+    "clinvar_gkm": "just-dna-seq/clinvar_gkm",
+}
+
+
+#: The pull-record key a repo switch writes beside `repo` while it is under way (RM372): the repo the
+#: cache's bytes came from until the switch finishes. The provisioner drops it once every file is the
+#: new repo's, so a switch interrupted half-way still reads as a cache of the old repo.
+PULL_RECORD_REPLACING_KEY = "replacing"
+
+
+def pull_record_repo(cache_dir: Path) -> str | None:
+    """The repo `cache_dir`'s bytes were pulled from, by its pull record, or `None` when it says none.
+
+    During an unfinished repo switch that is the repo being replaced (`PULL_RECORD_REPLACING_KEY`),
+    not the one the record names: some files are still the old repo's, and nothing but the record can
+    say so when no `manifest.json` attests them. `None` covers no record, an unreadable one, and one
+    written before the repo was recorded: none of them states another repo, so none is taken for one.
+    Since the Ensembl lane moved to a new repo **under the same file names**, this is what tells a cache
+    of the old release from one of the new where no manifest is present.
+    """
+    path = Path(cache_dir) / PULL_RECORD_FILENAME
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    for key in (PULL_RECORD_REPLACING_KEY, "repo"):
+        repo = payload.get(key)
+        if isinstance(repo, str) and repo.strip():
+            return repo
+    return None
+
+
+def pulled_from(cache_dir: Path, repo: str) -> str | None:
+    """The repo `cache_dir` was pulled from when its pull record names one other than `repo`, else `None`.
+
+    The one answer to "is this cache another repo's snapshot", for the provisioner and for `cache pull`.
+    A cache that names no repo is not another repo's: only a record naming one is evidence.
+    """
+    recorded = pull_record_repo(cache_dir)
+    return recorded if recorded is not None and recorded != repo else None
+
+
+# ── a snapshot's per-file manifest (RM372) ──────────────────────────────────────────────────────
+
+
+class SnapshotManifestFile(BaseModel):
+    """One file `manifest.json` attests: its path under the snapshot root, its size and its sha256.
+
+    Unstated is `None`, and a `None` size or digest attests nothing. Keys this reader does not type are
+    dropped rather than carried (`extra="ignore"`), so nothing downstream can read one untyped.
+    """
+
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    path: str
+    group: str | None = None
+    chrom: str | None = None
+    rows: int | None = None
+    size: int | None = Field(default=None, alias="bytes")
+    sha256: str | None = None
+
+
+class SnapshotManifest(BaseModel):
+    """prepare-annotations' `manifest.json`, the record its Ensembl release carries instead of `release.json`.
+
+    Typed for the four things a reader here acts on: which release (`release_id`), when it was cut,
+    the layout version, and the files it attests. The rest of the file (the VEP header, the column
+    groups, per-chromosome counts) is the builder's own and is not read here.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    release_id: str | None = None
+    layout_version: int | None = None
+    built_at: str | None = None
+    files: list[SnapshotManifestFile] | None = None
+
+    def entry(self, relative: str) -> SnapshotManifestFile | None:
+        """The attestation for `relative` (`data/<name>`), or `None` when the manifest names no such file."""
+        return next((f for f in self.files or () if f.path == relative), None)
+
+
+def read_snapshot_manifest(path: Path) -> SnapshotManifest | None:
+    """The manifest at `path` (a file), or `None` when it is absent or cannot be read whole.
+
+    A caller that has to tell the two apart checks `path.is_file()`: present and unreadable is a
+    refusal (`manifest_coverage` attests nothing under it), absent is the unknown arm.
+    """
+    path = Path(path)
+    if not path.is_file():
+        return None
+    try:
+        return SnapshotManifest.model_validate_json(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, ValidationError) as exc:
+        logger.warning("Could not read %s (%s); it attests no file.", path, type(exc).__name__)
+        return None
+
+
+def manifest_attests(manifest: SnapshotManifest, relative: str, local: Path) -> bool:
+    """Whether `local` is the file `manifest` states for `relative`, by size and then by sha256.
+
+    The full check, for the provisioner, which already pays for the bytes. The size comparison comes
+    first so a file of another release costs a `stat`, not a hash.
+    """
+    entry = manifest.entry(relative)
+    if entry is None or entry.size is None or not entry.sha256 or not local.is_file():
+        return False
+    if local.stat().st_size != entry.size:
+        return False
+    return sha256_file(local).removeprefix("sha256:") == entry.sha256.removeprefix("sha256:").lower()
+
+
+#: Why a cache its manifest disagrees with is withheld, one sentence per direction (RM372). Pairwise
+#: distinct on purpose: a file of another release is removed or re-fetched, a missing one is fetched,
+#: and an operator told the wrong one does the wrong thing (`@answered-is-not-absent`).
+MANIFEST_MIXED_REASON = "it mixes releases or holds a file of another one"
+MANIFEST_INCOMPLETE_REASON = "the snapshot is incomplete"
+
+
+@dataclass(frozen=True)
+class ManifestCoverage:
+    """How a cache's `data/` meets its own `manifest.json`, in both directions (RM372).
+
+    `unattested`: payload files present that the manifest does not name, or names at another size,
+    so another release's. `absent`: files the manifest attests under `data/` that are not there, so
+    the snapshot is incomplete. Either one withholds the whole cache; neither is a guess about the
+    other. Files outside `data/` (prepare-annotations' `groups/*`) are the manifest's and not pulled,
+    so they are not counted as absent.
+    """
+
+    unattested: tuple[str, ...]
+    absent: tuple[str, ...]
+
+    @property
+    def whole(self) -> bool:
+        """Every payload file is attested and every attested `data/` file is present."""
+        return not self.unattested and not self.absent
+
+
+def manifest_coverage(cache_dir: Path) -> ManifestCoverage | None:
+    """How `cache_dir`'s `data/*.parquet` meets its `manifest.json`, or `None` with no manifest.
+
+    Three answers (RM372). `None`: no manifest, so nothing here can say which release each file is
+    (the old repo published none) and a reader treats the cache as it always did. `whole`: every
+    payload file is one the manifest names at the size it states, and every file it attests under
+    `data/` is present. Otherwise the cache is **withheld whole**, never merged and never read in
+    part: old chrMT beside new chr21 answered rsIDs and nothing complained, and 12 of 25 attested
+    files with no pull record were served as the release. A manifest present and unreadable attests
+    nothing, so every payload file is unattested and none is counted absent.
+
+    **Read time compares the manifest's `bytes`, never its sha256.** Hashing 14.5 GB on every enrich
+    is not a read; a size is a `stat`, and every core file of the two releases differs in size. The
+    sha256 is compared where the bytes are already being paid for, by the provisioner
+    (`manifest_attests`), which never keeps a file the manifest does not attest by digest.
+    """
+    cache_dir = Path(cache_dir)
+    path = cache_dir / SNAPSHOT_MANIFEST_FILENAME
+    if not path.is_file():
+        return None
+    manifest = read_snapshot_manifest(path)
+    data_dir = cache_dir / SNAPSHOT_DATA_DIRNAME
+    payload = sorted(data_dir.glob("*.parquet")) if data_dir.is_dir() else []
+    unattested = []
+    for local in payload:
+        relative = f"{SNAPSHOT_DATA_DIRNAME}/{local.name}"
+        entry = manifest.entry(relative) if manifest is not None else None
+        if entry is None or entry.size is None or local.stat().st_size != entry.size:
+            unattested.append(relative)
+    attested = (
+        sorted(f.path for f in (manifest.files or ()) if f.path.startswith(f"{SNAPSHOT_DATA_DIRNAME}/"))
+        if manifest is not None
+        else []
+    )
+    absent = [relative for relative in attested if not (cache_dir / relative).is_file()]
+    return ManifestCoverage(tuple(unattested), tuple(absent))
+
+
+def _named(files: tuple[str, ...]) -> str:
+    return ", ".join(files[:5]) + (", …" if len(files) > 5 else "")
+
+
+def _withheld_by_manifest(cache_dir: Path) -> bool:
+    """Whether `cache_dir`'s own manifest withholds it; logs each direction with its own reason and fix."""
+    coverage = manifest_coverage(cache_dir)
+    if coverage is None or coverage.whole:
+        return False
+    if coverage.unattested:
+        logger.warning(
+            "The snapshot at %s holds %d file(s) its %s does not attest (%s): %s. Withheld whole "
+            "rather than read: run `just-dna-enricher cache pull` to re-fetch what the manifest names.",
+            cache_dir,
+            len(coverage.unattested),
+            SNAPSHOT_MANIFEST_FILENAME,
+            _named(coverage.unattested),
+            MANIFEST_MIXED_REASON,
+        )
+    if coverage.absent:
+        logger.warning(
+            "The snapshot at %s lacks %d file(s) its %s attests (%s): %s. Withheld whole rather than "
+            "read in part, which would answer the missing files' rsIDs as absent: run `just-dna-enricher "
+            "cache pull` to fetch them.",
+            cache_dir,
+            len(coverage.absent),
+            SNAPSHOT_MANIFEST_FILENAME,
+            _named(coverage.absent),
+            MANIFEST_INCOMPLETE_REASON,
+        )
+    return True
+
+
+def ensembl_release_label(reference: Path) -> str | None:
+    """The release an Ensembl snapshot states: `release.json`'s `dataset`, else `manifest.json`'s `release_id`.
+
+    The lane's own label (`CacheLane.release_label`, `@the-reporter-cannot-compose-a-lanes-label`),
+    because the split repo states its release only in its manifest. `None` when the snapshot states
+    neither, which the old repo's never did: an unknown, withheld rather than guessed. A `.duckdb`
+    pointed at directly states nothing either.
+    """
+    reference = Path(reference)
+    if not reference.is_dir():
+        return None
+    stated = snapshot_release_label(reference)
+    if stated is not None:
+        return stated
+    manifest = read_snapshot_manifest(reference / SNAPSHOT_MANIFEST_FILENAME)
+    label = (manifest.release_id or "").strip() if manifest is not None else ""
+    return label or None
 
 
 def load_env(override: bool = False) -> str | None:
@@ -434,6 +644,10 @@ def resolve_ensembl_reference(
     # Otherwise return the cache directory if it holds a prebuilt db or parquet data; the
     # connection layer decides whether the db is usable and falls back to parquet if not.
     if search_dir.is_dir():
+        # A cache mixing releases is withheld whole (RM372), and before the prebuilt `.duckdb` is
+        # considered: just-dna-lite's db is a view over this same `data/*.parquet` glob.
+        if _withheld_by_manifest(search_dir):
+            return None
         data_dir = search_dir / "data"
         has_db = (search_dir / DUCKDB_NAME).is_file()
         has_parquet = (data_dir.is_dir() and any(data_dir.glob("*.parquet"))) or any(
@@ -509,14 +723,14 @@ def _resolve_parquet_cache(
 
     if accept_bare_file and search_dir.is_file() and search_dir.suffix == ".parquet":
         return search_dir
-    if search_dir.is_dir():
-        data_dir = search_dir / SNAPSHOT_DATA_DIRNAME
-        has_parquet = (data_dir.is_dir() and any(data_dir.glob("*.parquet"))) or any(
-            search_dir.glob("*.parquet")
-        )
-        # A pull that never finished is not a snapshot, however whole each of its files is (RM339).
-        if has_parquet and not snapshot_record_missing(search_dir):
-            return search_dir
+    # A pull that never finished is not a snapshot, however whole each of its files is (RM339); nor is
+    # one mixing releases its own manifest does not attest (RM372).
+    if (
+        holds_snapshot_payload(search_dir)
+        and not snapshot_record_missing(search_dir)
+        and not _withheld_by_manifest(search_dir)
+    ):
+        return search_dir
     return None
 
 
@@ -674,6 +888,28 @@ def default_mane_cache_dir(*, load_dotenv_file: bool = True) -> Path:
     return _cache_dir(MANE_SUBDIR, load_dotenv_file=load_dotenv_file)
 
 
+def default_opentargets_cache_dir(*, load_dotenv_file: bool = True) -> Path:
+    """The `<base>/opentargets` directory — see `OPENTARGETS_SUBDIR`."""
+    return _cache_dir(OPENTARGETS_SUBDIR, load_dotenv_file=load_dotenv_file)
+
+
+def resolve_opentargets_reference(
+    opentargets_cache: Path | None = None, *, load_dotenv_file: bool = True
+) -> Path | None:
+    """Locate a built Open Targets snapshot (`$JUST_DNA_OPENTARGETS_CACHE`), without downloading.
+
+    `None` is nobody-asked, never "Open Targets holds nothing for this variant": the pass that reads it
+    says it skipped rather than writing an empty table (`@unreachable-not-absent`). A bare `.parquet`
+    is not accepted: the snapshot is several tables read by name.
+    """
+    return _resolve_parquet_cache(
+        opentargets_cache,
+        OPENTARGETS_CACHE_VAR,
+        default_opentargets_cache_dir(load_dotenv_file=load_dotenv_file),
+        load_dotenv_file=load_dotenv_file,
+    )
+
+
 def resolve_mane_reference(mane_cache: Path | None = None, *, load_dotenv_file: bool = True) -> Path | None:
     """Locate an **operator-built** MANE snapshot (`$JUST_DNA_MANE_CACHE`).
 
@@ -724,7 +960,7 @@ def _resolve_named_cache(
 
     if search.is_file() and search.name == payload:
         return search
-    if search.is_dir() and (search / payload).is_file():
+    if holds_snapshot_payload(search, payload_filename=payload):
         return search
     return None
 
@@ -841,6 +1077,27 @@ def resolve_mitomap_miss_reference(
         mitomap_miss_cache,
         MITOMAP_MISS_CACHE_VAR,
         default_mitomap_miss_cache_dir(load_dotenv_file=load_dotenv_file),
+        load_dotenv_file=load_dotenv_file,
+    )
+
+
+def default_clinvar_gkm_cache_dir(*, load_dotenv_file: bool = True) -> Path:
+    """The `<base>/clinvar_gkm` directory — see `CLINVAR_GKM_SUBDIR`."""
+    return _cache_dir(CLINVAR_GKM_SUBDIR, load_dotenv_file=load_dotenv_file)
+
+
+def resolve_clinvar_gkm_reference(
+    clinvar_gkm_cache: Path | None = None, *, load_dotenv_file: bool = True
+) -> Path | None:
+    """Locate a built ClinVar-GKM indel snapshot (`$JUST_DNA_CLINVAR_GKM_CACHE`), without downloading.
+
+    Present says the slice is on disk, never that it is current: the source overwrites its one Parquet
+    set every week, so currency is `clinvar_gkm_build.lane_currency`, which asks the source.
+    """
+    return _resolve_parquet_cache(
+        clinvar_gkm_cache,
+        CLINVAR_GKM_CACHE_VAR,
+        default_clinvar_gkm_cache_dir(load_dotenv_file=load_dotenv_file),
         load_dotenv_file=load_dotenv_file,
     )
 

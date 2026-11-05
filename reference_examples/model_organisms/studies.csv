@@ -1,0 +1,2 @@
+rsid,pmid,trait_efo_id,effect_allele,effect_size,effect_measure,p_value,p_value_num,study_design,conclusion
+rs1801282,10973253,EFO_0001360,C,1.25,OR,0.002,0.002,family-based association study with replication samples,"The more common proline allele (85% frequency) carried a modest, 1.25-fold increase in type 2 diabetes risk (abstract)."

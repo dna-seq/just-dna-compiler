@@ -30,9 +30,9 @@ gotcha book: it is loaded into every session and has a size ceiling.
 edited as routine work (a sixth, `docs/seats/`, is live: the seats' primings and notes, in the table below):
 
 - **`docs/history/`** — the closed record: the retired halves of the three history files, the round-2
-  consumer thread, and `ROADMAP_0_7.md`. **Count the halves from `ls`, never from a sentence here** —
+  consumer thread, `ROADMAP_0_7.md` and `ROADMAP_0_8.md`. **Count the halves from `ls`, never from a sentence here** —
   each has been split more than once, at the release boundary of the day.
-- **`docs/proposals/`** — the `PROPOSAL_*` design threads, **nine concluded, none live**. A live one
+- **`docs/proposals/`** — the `PROPOSAL_*` design threads, **eleven concluded, none live**. A live one
   wins over the roadmap files until its items land; a closed one is closed against reopening its own
   decisions, never against recording a new one taken inside the same release. **Read a proposal beside
   its items' ROADMAP_HISTORY entries, never alone** — entries there say things their own probe or
@@ -76,9 +76,10 @@ edited as routine work (a sixth, `docs/seats/`, is live: the seats' primings and
 | [RM_TOC.md](docs/RM_TOC.md) | where any `RMn` lives, status included — the complete list, **paged by number** (`RM_TOC_000_099.md`, …) behind one entry page that holds the reservations. **Claim a new number with the seats kit's `item-next.py`** (`sh "$BLUEPRINTS_KIT/bin/py.sh" "$BLUEPRINTS_KIT/classes/triage/item-next.py" --note "…"`: scan + locked reservation, its paths from `.blueprints.toml` `[triage]`), never by reading the highest off the file — an index is not an allocator, and two sessions once filed the same RM159 | `grep -n 'RM47' docs/RM_TOC*.md` |
 | [ROADMAP.md](docs/ROADMAP.md) | open items, the idea-book, and **three** trackers: reserved-namespace, 1.0-cleanup, and the **parking-condition gate audit** (a deferral's gate is dishonest when nothing can satisfy it until the item ships — check a new parked item against it at filing) | `grep -n '^## RM' docs/ROADMAP.md` |
 | [ROADMAP_HISTORY.md](docs/ROADMAP_HISTORY.md) | shipped items with their rationale, **0.7 onward**. The 0.6 line is in [history/](docs/history/ROADMAP_HISTORY_0_6.md) and pre-0.6 in [history/](docs/history/ROADMAP_HISTORY_PRE_0_6.md) — three halves now, so **use RM_TOC rather than guessing one**. The boundary is a **tag** read off `git show v0.6.6:`, never a date: three rounds dated 2026-08-21 shipped in 0.7.0 | `grep -rn '^## RM' docs/ROADMAP_HISTORY.md docs/history/` |
-| [ROADMAP_0_8.md](docs/ROADMAP_0_8.md) / [ROADMAP_0_9.md](docs/ROADMAP_0_9.md) / [ROADMAP_1_0.md](docs/ROADMAP_1_0.md) | 0.8's scope (since 2026-11-03), then deferred items, with the reason for the deferral. **The minor file is named for the release that will decide its contents**, so a cut closes one and opens the next — 0_7 closed on 2026-08-31 into [history/](docs/history/ROADMAP_0_7.md) | `grep -n '^## RM' docs/ROADMAP_1_0.md` |
+| [ROADMAP_0_9.md](docs/ROADMAP_0_9.md) / [ROADMAP_1_0.md](docs/ROADMAP_1_0.md) | deferred items, with the reason for the deferral. **The minor file is named for the release that will decide its contents**, so a cut closes one and opens the next — 0_7 closed on 2026-08-31 and 0_8 (0.8's scope) at the 0.8.0 cut on 2026-11-05, both into [history/](docs/history/ROADMAP_0_8.md) | `grep -n '^## RM' docs/ROADMAP_1_0.md` |
 | [CHANGELOG.md](docs/CHANGELOG.md) | what shipped, newest first (shared across the ecosystem repos); **the 0.7 line onward**, with the 0.6 entries in [history/](docs/history/CHANGELOG_0_6.md) and pre-0.6 in [history/](docs/history/CHANGELOG_PRE_0_6.md). Both cuts are at a **tag**, never a date — grep across all three halves | `grep -rn '^## 2026-' docs/CHANGELOG.md docs/history/` |
-| [INTEGRATION_0_6.md](docs/history/INTEGRATION_0_6.md) | the 0.5.4→0.6 surface delta and the per-consumer check/change lists. **Archived to `docs/history/` at the 0.7.0 cut** — a superseded upgrade note is a closed record, and the live one is the row above | `grep -n '^## \|^### ' docs/history/INTEGRATION_0_6.md` |
+| [INTEGRATION_0_6.md](docs/history/INTEGRATION_0_6.md) | the 0.5.4→0.6 surface delta and the per-consumer check/change lists. **Archived to `docs/history/` at the 0.7.0 cut** — a superseded upgrade note is a closed record, and the live one is the row below | `grep -n '^## \|^### ' docs/history/INTEGRATION_0_6.md` |
+| [INTEGRATION_0_8.md](docs/INTEGRATION_0_8.md) | the 0.7→0.8 surface delta: the upgrade order, the changes by surface, the per-consumer lists and the **known issues** 0.8 ships with | `grep -n '^## \|^### ' docs/INTEGRATION_0_8.md` |
 | [INTEGRATION_0_7.md](docs/INTEGRATION_0_7.md) | the 0.6.6→0.7 surface delta, the same shape one release on — and the one **old-reader break** (`VerificationRecord.producer` vs `extra="forbid"`) | `grep -n '^## \|^### ' docs/INTEGRATION_0_7.md` |
 | [index.md](docs/index.md), [GETTING_STARTED.md](docs/GETTING_STARTED.md), [CONSUMING.md](docs/CONSUMING.md), [COMPILING.md](docs/COMPILING.md), [ENRICHING.md](docs/ENRICHING.md) | the **user-facing** front of the docs site: a landing page and one task guide per audience (consumer / compiler operator / enricher operator), sitting *in front of* the tier references and citing them. Every command in them was run before it was written. They add no rule — a rule they seem to state lives in the reference, and the guide is wrong if the two differ | `grep -rn '^## ' docs/GETTING_STARTED.md docs/CONSUMING.md docs/COMPILING.md docs/ENRICHING.md` |
 | [TABLES.md](docs/TABLES.md) | the **hand-written half** of the per-table reference — one `## <name>.csv` section per table: the grain of a row, which cells a person decides, why the artifact has its shape, the symptom when it is wrong. **A build input, not a page**: sections are spliced above the *generated* columns on each table's site page, so never restate a column here. Required for every lead table, optional for the rest, asserted asymmetrically | `grep -n '^## ' docs/TABLES.md` |
@@ -201,9 +202,11 @@ attached, and the rejected repair is usually the one that looks obvious from the
 
 - `compile → reverse → compile` reproduces the module or `strict` refuses; `authored_ident` is why. `@resolution-reversible`
 - Allele membership compares the union of every locus a key resolves to, before expansion. `@membership-union`
-- The Ensembl snapshot pipe-joins `alt`; every other link uses commas. `@snapshot-pipe-alt`
+- The Ensembl snapshot spells a multi-allelic site two ways (old repo pipe-joins `alt`, split repo one row per ALT); every other link uses commas. `@snapshot-pipe-alt`
+- A reader trims each ALT alone (`per_alt_loci`) and never groups by a source's padded `ref`; a genotype in that padded frame is read with the same trim (`site_verdicts`). `@snapshot-pipe-alt`
 - Resolution reads the PGx tables too; subjects dedupe with `variants.csv` first. `@resolution-reads-pgx-tables`
 - Reverse dropping `rsid_alternates` is closed, not a bug — don't re-flag it. `@rsid-alternates-closed`
+- A round-trip gate made of digests cannot see a value that lives only in the manifest; compare the authored projection. `@a-digest-gate-cannot-see-the-manifest`
 - A sidecar is merged, never clobbered — delete it to regenerate after a machinery change; since 0.7 that delete is free. `@sidecar-authoritative`
 - A correction to a derived table goes in `overrides.csv`, applied and never merged in; it is a third category in neither table registry. `@overlay-not-inside`
 - The enricher reads the overlay at input reads only, never at a merge baseline; answered is per field. `@overlay-read-at-inputs-never-at-baselines`
@@ -213,14 +216,15 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - Resolution reaches the positional tables too since 0.6; `authored_ident` is what keeps the fill out of `content_signature`. `@rm43-positional-fill`
 - Unreachable is not absent: write no row, name it separately, warn in both modes. `@unreachable-not-absent`
 - **Nobody-asked is a third state** beside asked-and-failed and asked-and-absent; `--offline` is where it bites. `@unreachable-not-absent`
-- Answered-and-rejected is a fourth: the row stays and the *reason* moves, never the status. `@answered-is-not-absent`
+- Answered-and-rejected is a fourth: never `not_found`, never a new status; the next link is asked, and no row if none hosts. `@answered-is-not-absent`
 - A verdict function with several arms owes a reason function with the same arms, pairwise distinct. `@answered-is-not-absent`
 
 ### Checks: placement and severity
 
 - Audit `validate`/`compile` parity by **check**, not by table. `@parity-by-check`
 - `validate_spec` must refuse everything `compile` refuses. `@validate-refuses-all`
-- The compile-only exemption is *resolved rows*, not the word resolution; share the predicate, copy the error. `@validate-refuses-all`
+- Nothing is compile-only but the deprecated `ensembl_cache` reference: the pre-flight runs the compile's resolution step, and `check_paths` rosters the rest. `@validate-refuses-all`
+- Every `compile_module` refusal sits above `output_dir.mkdir()`; an AST walk holds it. `@validate-refuses-all`
 - Know the validation ceiling first; a check needing a reference belongs in the enricher. `@validation-ceiling`
 - Enricher checks report, never repair; severity follows the mode. `@enrichment-is-validation`
 - A judgement another tier **recorded** is a fact `strict` may gate on — one check only, the one where two authored files contradict. `@a-recorded-judgement-is-a-fact`
@@ -235,6 +239,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - Ask whether the signal already fires with the wrong words; pin adjudicating words on a boundary. `@the-signal-may-already-be-firing-with-the-wrong-words`
 - A source re-curating is not a `strict` matter; the two currency findings stay apart, and both edges withhold. `@a-source-recuring-is-not-a-strict-matter`
 - A check running on both sides dedupes on the message; re-running is the normal case. `@no-rerun-with-counts`
+- Under `strict` an escalated finding is an error only, never also a warning; the pre-flight runs in the compile's mode. `@one-finding-one-channel`
 - The ClinVar `clin_sig` cross-check never escalates under `strict`, deliberately. `@clinsig-never-escalates`
 - Splitting a dedup key on a new optional column: **both stated and different**, and narrow the check rather than the key. `@absent-is-not-different`
 - A check that cannot fail must not report a zero. `@tautology-zero`
@@ -296,6 +301,8 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - Licensing lives as data in the licence table, never as a table in the compiler. `@licensing-as-data`
 - Every pass that consults a source **writes** its `SourceRow`. `@write-the-sourcerow`
 - And one that **contributes nothing writes none** — key on what this run covered, never on the table or on `not missing`. `@write-the-sourcerow`
+- A run that answered every row retires its own licence row no committed row names; a merge never does — the caller declares which. `@write-the-sourcerow`
+- Nor any **table**: every sidecar writer asks `layout.nothing_to_write` — zero rows and no file writes nothing; an existing file is still the pass's to empty; `resolution.csv` and an overlay-answered concordance record are the stated exceptions. `@write-the-sourcerow`
 - A second surface of an already-declared source may not claim the lane's `(source, layer)` row. `@write-the-sourcerow`
 - Derive a column list from the model; a hand-kept one loses a column. `@fieldnames-from-model`
 - `source` names the licensed source; only `resolution.csv` also records the link, via `authority`. `@source-vs-authority`
@@ -333,7 +340,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - A builder's bulk download owes the same contract; one body, retried on transport only. `@client-exception-contract`
 - A lane with no error type of its own cannot be caught as that lane — the type comes before the handler. `@client-exception-contract`
 - A subclass makes a caller's `except` **order** load-bearing; enumerate handler shapes, and guard with an AST walk. `@client-exception-contract`
-- A 200 that is not JSON is a fourth leg; a withholding client withholds it too, and the client guard keys on owning a transport, never on a name. `@client-exception-contract`
+- A 200 that is not JSON is a fourth leg; a withholding client withholds it too, and the client guard keys on owning a transport (a function's as much as a class's), never on a name. `@client-exception-contract`
 - Retry only what a second attempt can change (transport, 5xx, 429); a 410 is the client's `*Retired`, never its outage type. `@client-exception-contract`
 
 ### Drafting and the authoring surfaces
@@ -403,7 +410,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - A snapshot built in two halves is described by one `release.json`, and a publish of one half overwrites the other's provenance. `@a-lane-with-two-halves-publishes-the-provenance-of-one`
 - A lane's release label belongs on the lane; a reporter that composes one blanks the lane that spells it differently. `@the-reporter-cannot-compose-a-lanes-label`
 - The publisher's allowlist is derived from the artifact's file list; what it drops, the manifest still attests. `@publisher-allowlist-derived`
-- The snapshot layout lives in `locations`; a sidecar is a sibling of `data/`. `@snapshot-layout-locations`
+- The snapshot layout and `release.json`'s model live in `just_dna_format.snapshot` (`locations` imports them); a sidecar is a sibling of `data/`; a builder withdraws `release.json` right before its payload moves and writes it last, only through `begin_snapshot_write(...).commit`; a key a reader acts on is a typed field. `@snapshot-layout-locations`
 - A second published artifact makes provenance a question — answer it in `release.json`. `@release-json-provenance`
 - A `latest` pointer discovers a version; a versioned directory pins it, and a local file names neither URL. `@current-discovers-a-version-a-directory-pins`
 - Run a knob's **disabling** value; a flag the callee never sees is a flag that does nothing. `@off-switch-needs-a-probe`
@@ -416,7 +423,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - Take a snapshot's release label from the bytes, not from the transfer — or the off-switch build is incomparable. `@a-label-read-in-band-beats-one-read-off-the-transfer`
 - Every stage a lane lacks carries its reason as a **field**, and a rebuild's outcome is tri-state. `@a-cache-lane-has-three-stages-and-a-list-cannot-say-which-are-missing`
 - A rebuild writes to `<base>/<lane>/`, never in place: a short parquet still has a footer. `@a-cache-lane-has-three-stages-and-a-list-cannot-say-which-are-missing`
-- Network tests are opt-in: `JUST_DNA_NETWORK_TESTS=1`. `@network-tests-optin`
+- Network tests are opt-in: `JUST_DNA_NETWORK_TESTS=1`; without it the root conftest refuses every non-local host at the socket and fails the test. A live test carries `@pytest.mark.network`, never its own read of the variable. `@network-tests-optin`
 - Kill a background job by **pgid**, never `pkill -f`/`-x` on a name: two sessions share this tree. `@two-agents-in-one-tree-cannot-use-name-matched-process-cleanup`
 - A flag must mean the same thing in every function that takes one. `@flag-means-same`
 - Don't compute a number and discard it — every consumer then recomputes it. `@dont-discard-computed`
@@ -600,6 +607,7 @@ questions vs answers. A blocker is never a dead end: dissolved, closed additivel
   `.env` leaks into `os.environ` from any unrelated test, so neutralize with `setenv(VAR, "")`, never
   `delenv`. Suspect ordering whenever a test passes alone and fails in the suite. `@test-no-credential`
 - A test meaning "no snapshot" must arrange it: request `no_ambient_caches` (enricher conftest, walked off `CACHE_LANES`). Ten tests read a real answer the day the developer's base gained every snapshot. `@test-no-credential`
+- No test reaches the real hub or fetches into the real cache base: the autouse `_fenced_hub` refuses both; install a fake hub or stub the lane's `ensure`. `@no-test-reaches-the-real-hub`
 
 ## Documentation & prose style
 

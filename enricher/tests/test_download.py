@@ -14,8 +14,10 @@ from pathlib import Path
 
 import duckdb
 import httpx
+import huggingface_hub
 import pytest
 from just_dna_enricher import download as dl
+from just_dna_enricher.cli import app as enricher_app
 from just_dna_enricher.locations import (
     CITATIONS_DIRNAME,
     PULL_RECORD_FILENAME,
@@ -24,6 +26,7 @@ from just_dna_enricher.locations import (
     resolve_clinvar_reference,
     snapshot_record_missing,
 )
+from typer.testing import CliRunner
 
 
 def _write_parquet(path: Path, column: str) -> None:
@@ -290,6 +293,10 @@ def test_a_read_timeout_names_the_knob_and_leaves_no_part_file(fake_hub, tmp_pat
     fs = fake_hub(_THREE)
 
     def get(remote_path: str, local_path: str) -> None:
+        if not remote_path.endswith(".parquet"):
+            # The repo publishes no manifest. Asked before any parquet since RM372, and a timeout
+            # there is could-not-ask, refused before the record (pinned separately below).
+            raise FileNotFoundError(remote_path)
         Path(local_path).write_bytes(b"PAR1partial")
         raise httpx.ReadTimeout("The read operation timed out")
 
@@ -299,6 +306,28 @@ def test_a_read_timeout_names_the_knob_and_leaves_no_part_file(fake_hub, tmp_pat
         dl.ensure_clinvar_snapshot(cache)
     assert list((cache / "data").glob("*.part")) == []
     assert snapshot_record_missing(cache) == [f"data/{name}" for name in sorted(_THREE)]
+
+
+def test_a_manifest_that_could_not_be_fetched_is_not_a_manifest_that_is_absent(
+    fake_hub, tmp_path: Path, monkeypatch
+) -> None:
+    """RM372: a timeout on `manifest.json` is could-not-ask. Pulling on as if the repo published none
+    would accept every byte unverified, so nothing is downloaded and no record is written."""
+    monkeypatch.delenv("HF_HUB_DOWNLOAD_TIMEOUT", raising=False)
+    fs = fake_hub(_THREE)
+
+    def get(remote_path: str, local_path: str) -> None:
+        raise httpx.ReadTimeout("The read operation timed out")
+
+    fs.get = get
+    cache = tmp_path / "cv"
+    with pytest.raises(
+        dl.ClinVarReferenceError, match=r"manifest\.json could not be fetched.*HF_HUB_DOWNLOAD_TIMEOUT"
+    ):
+        dl.ensure_clinvar_snapshot(cache)
+    assert snapshot_record_missing(cache) is None
+    assert not list(cache.glob("*.part"))
+    assert not list(cache.glob("data/*.parquet"))
 
 
 def test_the_pull_record_is_never_published(tmp_path: Path) -> None:
@@ -422,8 +451,8 @@ def test_the_two_new_parquet_lanes_join_the_one_download_body(fake_hub, tmp_path
     test that only counted them.
     """
     for ensure, prefix in (
-        (dl.ensure_civic_snapshot, dl._CIVIC_HF_PREFIX),
-        (dl.ensure_drug_labels_snapshot, dl._DRUG_LABELS_HF_PREFIX),
+        (dl.ensure_civic_snapshot, dl.SNAPSHOT_REPO_PREFIXES["civic"]),
+        (dl.ensure_drug_labels_snapshot, dl.SNAPSHOT_REPO_PREFIXES["drug_labels"]),
     ):
         fs = fake_hub({"table.parquet": "variant_key"})
         cache = tmp_path / prefix.rsplit("/", 2)[-2]
@@ -506,6 +535,38 @@ def test_a_repo_nobody_has_created_is_absent_rather_than_failed(monkeypatch, tmp
         dl.ensure_strchive_snapshot(tmp_path / "strchive")
 
 
+@pytest.mark.parametrize(
+    "failure",
+    [TimeoutError("read timed out"), PermissionError("401 Unauthorized"), OSError("429 Too Many Requests")],
+    ids=["timeout", "401", "429"],
+)
+def test_a_hub_that_never_answered_is_a_failure_not_absent(
+    monkeypatch, tmp_path: Path, failure: Exception
+) -> None:
+    """The other side of the type above (RM361): only the Hub saying nothing is there is
+    `SnapshotNotPublished`. Before, every failure of `fs.ls` or `fs.get` was, so `cache pull` printed
+    "not published yet" and exited 0 through a timeout, a throttle or a refused token."""
+    import huggingface_hub
+
+    class _UnwellHub:
+        def ls(self, prefix: str, detail: bool = True):
+            raise failure
+
+        def get(self, remote: str, local: str) -> None:
+            raise failure
+
+    monkeypatch.setattr(huggingface_hub, "HfFileSystem", lambda token=None: _UnwellHub())
+    monkeypatch.setattr(huggingface_hub, "get_token", lambda: None)
+
+    for ensure, cache in ((dl.ensure_civic_snapshot, "civic"), (dl.ensure_strchive_snapshot, "strchive")):
+        with pytest.raises(Exception) as caught:
+            ensure(tmp_path / cache)
+        assert not isinstance(caught.value, dl.SnapshotNotPublished), (
+            f"{cache}: {type(caught.value).__name__}"
+        )
+        assert type(caught.value).__module__.startswith("just_dna_enricher")
+
+
 def test_cache_pull_reports_an_unpublished_lane_without_exiting_one(monkeypatch, tmp_path: Path) -> None:
     """The behaviour the type buys, at the command an operator actually runs first."""
     import huggingface_hub
@@ -530,3 +591,34 @@ def test_cache_pull_reports_an_unpublished_lane_without_exiting_one(monkeypatch,
     assert result.exit_code == 0, result.output
     assert result.output.count("not published yet") == 2
     assert "FAILED" not in result.output
+
+
+class _NothingPublishedHub:
+    """A hub where no repo exists: every listing and fetch is the 404 `SnapshotNotPublished` reads."""
+
+    def ls(self, prefix: str, detail: bool = True):
+        raise FileNotFoundError(prefix)
+
+    def get(self, remote: str, local: str) -> None:
+        raise FileNotFoundError(remote)
+
+
+def test_cache_pull_names_only_what_is_on_disk_as_available(monkeypatch, no_ambient_caches: Path) -> None:
+    """RM395 D3: the closing line listed every lane with a pull route, whatever the run found.
+
+    ENRICHING.md's `cache pull --only clinvar_gkm` printed "not published yet" and then "caches
+    available: alphagenome_avi, civic, …, clinvar_gkm" on a machine holding none of them. The summary
+    is what the run left on disk, and an unpublished lane is named as one, with no directory left.
+    """
+    monkeypatch.setattr(huggingface_hub, "HfFileSystem", lambda token=None: _NothingPublishedHub())
+    monkeypatch.setattr(huggingface_hub, "get_token", lambda: None)
+
+    result = CliRunner().invoke(enricher_app, ["cache", "pull", "--only", "civic", "--only", "strchive"])
+
+    assert result.exit_code == 0, result.output
+    assert "caches available" not in result.output
+    summary = result.output.strip().splitlines()[-1]
+    assert summary == "nothing pulled; nothing published for: civic, strchive", result.output
+    # Asked and absent leaves nothing behind: an empty `data/` made the next `cache status` call the
+    # place occupied and `cache prepare` refuse to build there.
+    assert not no_ambient_caches.exists() or list(no_ambient_caches.iterdir()) == []

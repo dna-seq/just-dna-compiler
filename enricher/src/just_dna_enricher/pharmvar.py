@@ -28,7 +28,6 @@ genomic coordinate, and it is **1-based**, which matches what this pipeline alre
 resolution table): the instinctive conversion to 0-based would introduce an off-by-one.
 """
 
-import json
 import logging
 import re
 from dataclasses import dataclass, field
@@ -37,13 +36,21 @@ from typing import Any
 
 import duckdb
 import httpx
+from just_dna_format.base import coordinate_key
+from just_dna_format.snapshot import SnapshotRelease, read_release
 from tenacity import (
     retry,
     wait_exponential_jitter,
 )
 
-from just_dna_enricher.locations import RELEASE_FILENAME, SNAPSHOT_DATA_DIRNAME, env_value
-from just_dna_enricher.net import PacingGate, attempt_floor, raise_if_retired, retry_if_transient
+from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME, env_value
+from just_dna_enricher.net import (
+    EndpointRetired,
+    PacingGate,
+    attempt_floor,
+    raise_if_retired,
+    retry_if_transient,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +96,7 @@ class PharmVarError(RuntimeError):
     """A PharmVar request failed in a way the caller must see (auth, or a broken query)."""
 
 
-class PharmVarRetired(PharmVarError):
+class PharmVarRetired(PharmVarError, EndpointRetired):
     """PharmVar answered HTTP 410: it retired the endpoint asked (RM354). A fact about the source, not
     an outage, and not retried; a `PharmVarError` so every existing handler still catches it."""
 
@@ -181,7 +188,7 @@ def _merge_variants(
         parsed = parse_genomic_variant(entry, build=build)
         if parsed.rsid is None and not parsed.usable:
             continue
-        key = parsed.rsid or f"{parsed.chrom}:{parsed.start}:{parsed.ref}"
+        key = parsed.rsid or coordinate_key(parsed.chrom, parsed.start, parsed.ref)
         existing = merged.get(key)
         if existing is None or (not existing.usable and parsed.usable):
             merged[key] = parsed
@@ -353,8 +360,7 @@ class PharmVarSnapshotClient:
                 f"snapshot is never published, see the terms §2 note)"
             )
         self._data_dir = data_dir
-        release_path = self.reference / RELEASE_FILENAME
-        self.release: dict[str, Any] = json.loads(release_path.read_text()) if release_path.is_file() else {}
+        self.release: SnapshotRelease = read_release(self.reference) or SnapshotRelease()
 
     @property
     def configured(self) -> bool:
@@ -364,12 +370,12 @@ class PharmVarSnapshotClient:
     @property
     def dataset(self) -> str | None:
         """Which snapshot answered, for `SourceRow.dataset`."""
-        return self.release.get("dataset")
+        return self.release.dataset
 
     @property
     def genome_build(self) -> str:
         """The assembly the stored coordinates are on. Recorded by the builder, never assumed."""
-        return self.release.get("genome_build") or PHARMVAR_GENOME_BUILD
+        return self.release.genome_build or PHARMVAR_GENOME_BUILD
 
     def close(self) -> None:
         """No-op, so a caller can `close()` this and a live client identically."""

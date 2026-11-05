@@ -29,6 +29,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from just_dna_format.base import since, vocabulary
 from just_dna_format.normalize import normalize_utc_timestamp
+from just_dna_format.spelling import ChromCell
 from just_dna_format.vocab import (
     VALID_FREQUENCY_STATUS,
     check_vocab,
@@ -92,7 +93,7 @@ class FrequencyRow(BaseModel):
     rsid: str | None = Field(
         json_schema_extra=since("0.5.0"), default=None, description="dbSNP identifier, when known"
     )
-    chrom: str | None = Field(
+    chrom: ChromCell = Field(
         json_schema_extra=since("0.5.0"), default=None, description="Chromosome without 'chr' prefix"
     )
     start: int | None = Field(

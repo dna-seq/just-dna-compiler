@@ -445,16 +445,13 @@ class TestPolitenessAndPacing:
 
 
 @pytest.mark.integration
+@pytest.mark.network
 def test_the_live_service_recovers_a_real_hg19_coordinate() -> None:
     """7:140453136 is BRAF V600E on hg19, and GRCh37 dbSNP records rs113488022 there.
 
     The end-to-end proof that no chain file is needed: one unauthenticated request against a permanent
     public service turns an old coordinate into the rs-number an author should write instead. Opt-in.
     """
-    import os
-
-    if not os.getenv("JUST_DNA_NETWORK_TESTS"):
-        pytest.skip("reads the live GRCh37 service — set JUST_DNA_NETWORK_TESTS=1 to run")
 
     recovery = recover_rsid("7", 140453136, ref="A", alts="T")
     assert recovery.outcome == "recovered"

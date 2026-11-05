@@ -436,7 +436,7 @@ def test_the_release_records_the_stamp_the_terms_resolve_against(built: Path) ->
     assert release["raw_score_scale"] == ab.RAW_SCORE_SCALE
     # `rows` counts the SNVs the source published, which is three per stored row (RM197).
     wide = pl.read_parquet(built / "data" / "alphagenome_avi-chr22.parquet")
-    assert release["rows"] == 3 * wide.height == ab.to_long(wide).height
+    assert release["row_count"] == 3 * wide.height == ab.to_long(wide).height
     assert release["contigs"] == ["chr22"]
 
 

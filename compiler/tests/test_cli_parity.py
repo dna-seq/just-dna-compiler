@@ -11,12 +11,15 @@ still Python-only, and the gaps were load-bearing rather than cosmetic:
   had no route at all, which is worst for the consumer that most needs it (an MCP surface).
 """
 
+import inspect
 import json
 from pathlib import Path
 
 import pytest
+import typer.main
 from just_dna_compiler import draft
 from just_dna_compiler.cli import app
+from just_dna_compiler.compiler import compile_module
 from just_dna_compiler.draft import DRAFTABLE, model_for
 from just_dna_compiler.hints import describe_table
 from just_dna_format.base import field_category
@@ -99,6 +102,19 @@ def test_keygen_refuses_to_overwrite_a_key(tmp_path: Path) -> None:
     result = runner.invoke(app, ["keygen", "--out", str(key)])
     assert result.exit_code == 1
     assert key.read_bytes() == before
+
+
+def test_keygen_creates_a_missing_parent_directory_as_compile_and_reverse_do(tmp_path: Path) -> None:
+    """RM395 D1: COMPILING.md runs `keygen --out ./keys/private.pem` in a fresh directory.
+
+    It raised a `FileNotFoundError` traceback there, while `compile` and `reverse` create their missing
+    parents. The guide's command is re-runnable only if `keygen` does the same.
+    """
+    key = tmp_path / "keys" / "nested" / "private.pem"
+    result = runner.invoke(app, ["keygen", "--out", str(key)])
+    assert result.exit_code == 0, result.output
+    assert key.read_bytes().startswith(b"-----BEGIN PRIVATE KEY-----")
+    assert key.stat().st_mode & 0o777 == 0o600
 
 
 def test_keygen_without_an_out_path_writes_no_file(tmp_path: Path) -> None:
@@ -224,3 +240,49 @@ def test_the_two_descriptions_of_a_column_agree(kind: str) -> None:
         assert _column_vocabulary_facts(entry) == _column_vocabulary_facts(mirror), entry["name"]
         assert entry["required"] == mirror["required"]
         assert entry["category"] == mirror["category"]
+
+
+# ── compile: every compile_module parameter is an option, or excluded with a reason (RM278) ────────
+
+#: CLI option names that reach a `compile_module` parameter under another name.
+_COMPILE_RENAMED = {
+    "resolve": "resolve_with_ensembl",
+    "strip_identity": "authority_keys",
+    "authority_key": "authority_keys",
+}
+
+#: `compile_module` parameters the CLI deliberately does not take, each with the reason.
+_COMPILE_NOT_ON_THE_CLI = {
+    "log_files": "auto-discovered beside the spec (`*.log`, `logs/`); an explicit list is an API override",
+    "provenance_file": "auto-discovered as `provenance.json` beside the spec; an explicit path is an API override",
+    "logo_file": "auto-discovered as `logo.{png,jpg,jpeg}` beside the spec; an explicit path is an API override",
+    "readme_file": "auto-discovered from `README_CANDIDATES` beside the spec; an explicit path is an API override",
+}
+
+
+def test_the_compile_command_takes_every_compile_module_parameter_but_a_declared_set() -> None:
+    """RM278. `ensembl_reference` and `ba1_threshold` drifted in as API-only without anyone deciding
+    it, and a CLI compile could not stamp `manifest.compilation.ensembl_reference` at all. The equality
+    makes the next parameter fail here until it is either an option or in the declared set."""
+    command = typer.main.get_command(app).commands["compile"]
+    options = {_COMPILE_RENAMED.get(param.name, param.name) for param in command.params}
+    parameters = set(inspect.signature(compile_module).parameters)
+    assert options == parameters - set(_COMPILE_NOT_ON_THE_CLI)
+    assert set(_COMPILE_NOT_ON_THE_CLI) <= parameters
+    assert all(len(reason.split()) >= 5 for reason in _COMPILE_NOT_ON_THE_CLI.values())
+
+
+def test_the_reference_option_is_stamped_and_the_threshold_is_typed(tmp_path: Path) -> None:
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    (spec / "module_spec.yaml").write_text(_YAML, encoding="utf-8")
+    (spec / "variants.csv").write_text(_VARIANTS, encoding="utf-8")
+    (spec / "studies.csv").write_text(_STUDIES, encoding="utf-8")
+    out = tmp_path / "out"
+    result = runner.invoke(
+        app, ["compile", str(spec), str(out), "--ensembl-reference", "ensembl-115", "--ba1-threshold", "0.2"]
+    )
+    assert result.exit_code == 0, result.output
+    assert read_manifest(out / "manifest.json").compilation.ensembl_reference == "ensembl-115"
+    refused = runner.invoke(app, ["compile", str(spec), str(tmp_path / "bad"), "--ba1-threshold", "high"])
+    assert refused.exit_code != 0

@@ -27,6 +27,7 @@ from just_dna_enricher.licensing import ARTICLE_TERMS_BY_LICENSE, ArticleTerms, 
 from just_dna_enricher.literature import (
     EuropePmcClient,
     LiteratureEnrichmentError,
+    PmcBiocClient,
     PmcIdConverterClient,
     _pmcid_conflicts,
     enrich_literature,
@@ -96,6 +97,14 @@ def _epmc(payload: dict) -> EuropePmcClient:
 
     client = EuropePmcClient()
     client._client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.gate = PacingGate(interval=0.0, clock=lambda: 0.0, sleeper=lambda _s: None)
+    return client
+
+
+def _bioc_without_copy() -> PmcBiocClient:
+    """PMC's BioC rung answering 404, so a quoted record with a PMCID stays on the abstract (RM257)."""
+    client = PmcBiocClient()
+    client._client = httpx.Client(transport=httpx.MockTransport(lambda _r: httpx.Response(404)))
     client.gate = PacingGate(interval=0.0, clock=lambda: 0.0, sleeper=lambda _s: None)
     return client
 
@@ -174,12 +183,16 @@ def test_a_dropped_citation_stops_being_named_as_quoted_publisher_text(tmp_path:
     it. Every later run therefore named it, clearable only by deleting the sidecar.
     """
     spec = _spec(tmp_path / "s", studies=f"rsid,pmid,provenance_quote\nrs334,{_NC_PMID},some passage\n")
-    quoted = enrich_literature(spec, eutils=_eutils(), europepmc=_epmc(_EPMC_LICENSED), check_doi=False)
+    quoted = enrich_literature(
+        spec, eutils=_eutils(), europepmc=_epmc(_EPMC_LICENSED), bioc=_bioc_without_copy(), check_doi=False
+    )
     assert quoted.rows[0].commercial_use is False
     assert quoted.noncommercial_quoted == [_NC_PMID]
 
     (spec / "studies.csv").write_text(f"rsid,pmid\nrs334,{_NC_PMID}\n", encoding="utf-8")
-    dropped = enrich_literature(spec, eutils=_eutils(), europepmc=_epmc(_EPMC_LICENSED), check_doi=False)
+    dropped = enrich_literature(
+        spec, eutils=_eutils(), europepmc=_epmc(_EPMC_LICENSED), bioc=_bioc_without_copy(), check_doi=False
+    )
     assert dropped.rows[0].commercial_use is False  # the row and its licence are unchanged
     assert dropped.noncommercial_quoted == []  # the quote that mattered is gone
 
@@ -343,6 +356,9 @@ def test_a_pmcid_and_a_pmid_that_disagree_are_compared_not_merged() -> None:
     """A caller supplying both has two identifiers in mind; silently replacing one hides the finding."""
     clients = LookupClients(
         pmc_idconv=_idconv([{"pmcid": _PMC, "requested-id": _PMC, "pmid": int(_PMC_PMID)}]),
+        # RM391: the PMID's existence check asks eutils and Europe PMC; scripted, as the sibling above.
+        eutils=_eutils(),
+        europepmc=_epmc(_EPMC_SEARCH),
     )
     hint = lookup_citation(pmid="9545397", pmcid=_PMC, clients=clients)
     assert any("name different articles" in f.message for f in hint.findings)

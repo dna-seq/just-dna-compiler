@@ -17,7 +17,9 @@ command wrote wherever it liked; the assertion is an equality over what the walk
 import ast
 from pathlib import Path
 
-CLI = Path(__file__).resolve().parents[1] / "src" / "just_dna_enricher" / "cli.py"
+#: The CLI package (RM260 split the single `cli.py` by command group). Every file of it is walked, since
+#: a guard over the `__init__` shell alone would see only re-exports and pass vacuously.
+CLI = Path(__file__).resolve().parents[1] / "src" / "just_dna_enricher" / "cli"
 
 #: `--out` on a command that names an **input** rather than a destination. One entry, and it carries
 #: its reason: `clinvar citations` is handed a snapshot that already exists and adds a sidecar to it,
@@ -27,9 +29,9 @@ INPUT_SHAPED_OUT: frozenset[str] = frozenset({"clinvar_citations_"})
 
 def _out_options() -> dict[str, ast.expr]:
     """`{function name: the default expression}` for every `--out` option the CLI declares."""
-    tree = ast.parse(CLI.read_text(encoding="utf-8"))
+    trees = [ast.parse(path.read_text(encoding="utf-8")) for path in sorted(CLI.glob("*.py"))]
     found: dict[str, ast.expr] = {}
-    for node in ast.walk(tree):
+    for node in (node for tree in trees for node in ast.walk(tree)):
         if not isinstance(node, ast.FunctionDef):
             continue
         for arg, default in zip(

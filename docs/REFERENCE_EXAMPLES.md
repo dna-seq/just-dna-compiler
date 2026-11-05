@@ -30,7 +30,7 @@ are resolved into a settled shape, becomes *how to do it now, with these bricks*
 
 **The 0.4 relational/quantitative tables in §2, §4–§8 are schema-validated** by
 `just_dna_format.{binning,pgx,pgs}` (see `schema/tests/test_v04.py`) **and materialized to parquet by
-the compiler** (all nine table kinds, with lossless idempotent round-trip — shipped in 0.4, see
+the compiler** (every table kind, with lossless idempotent round-trip — shipped in 0.4, see
 [CHANGELOG.md](CHANGELOG.md)). Every CSV row below round-trips through its Pydantic model.
 
 **Conventions the sample settled:**
@@ -572,3 +572,129 @@ cross-build annotatability unrecorded. What ships is the narrower and more basic
 **state which build they are working in and never quietly change it**. A coordinate key is
 build-relative, so a GRCh37 module's keys will not join against a GRCh38 module's; that is a true fact
 about coordinates, and the warning says it rather than hiding it behind an id that looks portable.
+
+## 12. Longevity GWAS evidence, per analysis — the 0.8 `StudyRow` columns
+
+Built for real as [`reference_examples/longevity_studies/`](../reference_examples/longevity_studies), from the
+longevitymap v2 shape audit's candidates 5–9, 11 and 13 (PROPOSAL_0_8_PT2 §6), rebuilt from the papers. Five
+loci and thirteen `studies.csv` rows. A row says which outcome it measured, how many were analysed and in which
+unit, over which age band and whose age, within which stratum, in which superpopulation, and on which variant:
+
+```csv
+rsid,pmid,doi,proxy_rsid,phenotype_class,effect_allele,effect_size,effect_measure,sample_size,sample_unit,n_cases,age_min,age_max,age_of,stratum,stratum_level,ancestry
+rs10455872,32678081,,,HEALTHSPAN,A,0.057,beta,300477,individuals,,,,,,,EUR
+rs10455872,32678081,,,PARENTAL_LIFESPAN,A,0.076,beta,1012240,lives,,,,,,,EUR
+rs10455872,30642433,,,PARENTAL_LIFESPAN,,0.0722,beta,272204,lives,,60,70,parent,parent_sex,father,EUR
+rs429358,31413261,,,EXTREME_SURVIVAL_CC,C,0.60,OR,36745,individuals,11262,,,,,,EUR
+rs646776,30642433,,rs4970836,PARENTAL_LIFESPAN,G,0.2234,beta,1012240,lives,,40,,parent,,,EUR
+rs75571981,NONE,10.21203/rs.3.rs-6869504/v1,,EXTREME_SURVIVAL_CC,,,,8270,individuals,964,,,,,,EAS
+```
+
+One paper's rows are told apart by `phenotype_class`, by the band or by the stratum, each only when both rows
+state it and the values differ. Deelen's ≥90th and ≥99th percentile analyses share a class, so only
+`statistical_test` separates them: a percentile threshold has no typed home. The README names what the build
+broke: reverse drops the LD proxy's `resolution.csv` row (RM331); Timmers 2019 states two different effect
+alleles for one estimate, so its band rows withhold `effect_allele`; the audit's age bands were v2's pooling,
+not the paper's; and an r² cannot say which lead allele a proxy allele tags.
+
+## 13. HLA alleles — `allele_function.csv` items on `meta.csv`, by sex and by DOI
+
+Built for real as [`reference_examples/hla_alleles/`](../reference_examples/hla_alleles) (audit candidate 10).
+An HLA allele is an `allele_function.csv` item under RM334's grammar, and its finding is a `meta.csv` row:
+
+```csv
+members,trait_efo_id,direction,sex,pmid,doi
+"allele_function[gene=HLA-DRB1, allele=*15:01]",OBA_VT0005372,risk,male,41116190,10.1186/s13073-025-01554-1
+"allele_function[gene=HLA-DRB1, allele=*15:01]",OBA_VT0005372,,female,41116190,10.1186/s13073-025-01554-1
+"allele_function[gene=HLA-A, allele=*02:01]",OBA_VT0005372,risk,,NONE,10.1101/2025.03.30.25324899
+```
+
+`sex` is part of the key, so a male finding and its female counterpart are two statements. A preprint allele
+cites by `pmid=NONE` plus `doi`, which closes the hole the audit's second run left open. Still open: an
+allele's odds ratio has no numeric home (a study row names a variant or nothing), and a tag SNP standing for
+an allele has no column (RM331's proxy points from variant to variant).
+
+## 14. Model-organism lifespan evidence — `model_organisms.csv` beside a lead table
+
+Built for real as [`reference_examples/model_organisms/`](../reference_examples/model_organisms) (audit
+candidate 12/13, RM335). The table is annotation only and is not a lead table, so the module also carries
+`variants.csv` (PPARG Pro12Ala for type 2 diabetes):
+
+```csv
+gene,orthologue,species,model_type,sex,diet,lifespan_effect,concordance,pmid
+PPARG,Pparg,Mus musculus,knock-in Pro12Ala (Ala/Ala),,chow,Ala/Ala mice lived longer; the abstract gives no figure,,19117549
+IGF1R,Igf1r,Mus musculus,heterozygous knockout (Igf1r+/-),female,,+33% against wild-type females (P < 0.001),concordant,12483226
+IGF1R,Igf1r,Mus musculus,heterozygous knockout (Igf1r+/-),male,,+16% against wild-type males (not significant),,12483226
+```
+
+One experiment in two sexes is two keys. `concordance` stays empty where no human lifespan direction exists to
+agree with. The README records that the audit's PPARG row read a metabolic result as a lifespan one, that the
+v2 "uncited" rows checked here have a primary reference GenAge loads by script, and that a database entry has
+no citation column.
+
+## The meta-table (0.8): APOE alleles, KL-VS × ε4 and the legacy tier
+
+Built for real as [`reference_examples/apoe_klvs_meta/`](../reference_examples/apoe_klvs_meta), from the
+longevitymap v2 shape audit's candidates 1, 2 and 3 and its legacy tag selector (PROPOSAL_0_8_PT2 §6). APOE is
+scored only as ε diplotypes, ε2 and ε4 are `allele_function.csv` items so a `meta.csv` row can name them, and
+the per-allele facts live once on the meta-table:
+
+```csv
+members,tier,age_of_action,age_of_action_confidence,flags,pmid
+variants[flags=legacy_longevitymap],D,,,,
+variants[variant_key=rs10455872],A,MIDLIFE,DIRECT_WEAK,,30642433
+"allele_function[gene=APOE, allele=ε4]",A,LATE,DIRECT,ap:weak,30642433
+"allele_function[gene=APOE, allele=ε2]",A,LATE,DIRECT_WEAK,protect:presence,31413261
+"diplotypes[gene=APOE, haplotype_a=ε2, haplotype_b=ε4]",,,INFERRED,,
+```
+
+The tag selector gives tier D to every tagged row a locus row does not beat (TOMM40 rs2075650 stays D, LPA
+goes to A). The ε2/ε4 diplotype carries both alleles, which disagree on confidence and on flags; the
+diplotype row outranks the alleles it contains and settles the confidence, and the flags it does not state
+stay withheld. The combination `diplotypes[gene=KL, haplotype_a=KL-VS, haplotype_b=ref] &
+diplotypes[gene=APOE, haplotype_b=ε4]` is one row whose `meta.parquet` entry lists the four diplotype rows
+it replaces. APOE's study links on rs429358 and rs7412 draw no orphan warning, because `haplotypes.csv`
+defines the alleles on them. `compiler/tests/test_reference_examples_meta.py` asserts each value off the
+compiled parquets.
+
+## The meta-table (0.8): per-trait judgements and the computed trade-off
+
+Built for real as [`reference_examples/pleiotropy_tradeoff/`](../reference_examples/pleiotropy_tradeoff),
+the audit's candidate 4. One row per trait on a bare locus member, which bears an allele because every
+`variants.csv` row of the locus states the same `effect_allele`:
+
+```csv
+members,trait_efo_id,trait_role,direction,pmid
+variants[variant_key=rs3184504],MONDO:0005130,,risk,20560212
+variants[variant_key=rs3184504],MONDO:0005113,,protective,20560212
+variants[variant_key=rs10455872],EFO:0006925,mediator,protective,20032323
+variants[variant_key=rs10455872],MONDO:0005010,,protective,20032323
+variants[variant_key=rs5882],OBA:VT0005372,,protective,14559957
+```
+
+`meta_resolved.parquet` computes `tradeoff`: true on every SH2B3 genotype row (a harm and a benefit for one
+allele), null on LPA (protective only; false needs every trait stated, and no module states a closed trait
+list), null on CETP. CETP rs5882 states no `effect_allele`, so its row draws `meta_member_allele_ambiguous`
+and its direction is withheld. That row is there on purpose, to show the warning; v2 writes no per-trait
+row for a locus whose allele is not determined.
+
+## The meta-table (0.8): CPIC's TPMT × NUDT15 phenotype pairs
+
+Built for real as [`reference_examples/cpic_gene_pairs/`](../reference_examples/cpic_gene_pairs). The two
+genes are drafted from the CPIC snapshot (`draft --gene TPMT --allele '*2' --allele '*3A' --offline`, then
+NUDT15 with `*3`), and each of CPIC's thiopurine recommendations is one row over two existential phenotype
+selectors, scoped to its drug:
+
+```csv
+members,conclusion,pmid,drug
+"diplotypes[gene=TPMT, phenotype=Poor Metabolizer] & diplotypes[gene=NUDT15, phenotype=Normal Metabolizer]",Consider alternative nonthiopurine immunosuppressant therapy.,30447069,azathioprine
+```
+
+27 rows (three phenotypes per gene, three drugs), each listing every drafted diplotype its two phenotypes
+match. `drug` is part of `meta.csv`'s key, so one pair's azathioprine, mercaptopurine and thioguanine rows
+are three statements rather than duplicates. The README records three findings: the CPIC snapshot keeps no
+recommendation id, so a pair cannot be reassembled from it and the rows came from a hand-run API call;
+`meta.csv` could not scope a row to a drug, so the module first carried azathioprine only, which is what
+added `drug` to the key; and CPIC's `classification` has no column on a pair row. It also names one compiler
+defect the build hit (a haplotype row whose indel placement disagrees with `resolution.csv` loses the
+injected fact on reverse) and the one `*1` row removed to keep the round trip.

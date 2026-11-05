@@ -7,7 +7,7 @@ not counts: the expected anchored rows follow from them by the VCF left-anchor r
 """
 
 import httpx
-from just_dna_enricher.ensembl import EnsemblResolver, _loci_from_graphql, _loci_from_rest
+from just_dna_enricher.ensembl import EnsemblResolver, _loci_from_rest
 from just_dna_enricher.sequences import _left_align
 from just_dna_format.vocab import ALLELE_PATTERN
 
@@ -66,7 +66,10 @@ def test_every_written_allele_is_in_the_allele_grammar() -> None:
 
 
 def test_an_already_anchored_string_passes_through_without_a_base_read() -> None:
-    """rs121908745 and rs113993960 answer two-sided strings; nothing to anchor, so nothing is read."""
+    """rs121908745 and rs113993960 answer two-sided strings; nothing to anchor, so nothing is read.
+
+    Each ALT is handed on in its own spelling (RM381): `TCTT/T/TCTTCTT` is one joint frame, a deletion
+    and an insertion padded to one ref, which a caller writes as two records."""
 
     def must_not_read(chrom: str, pos: int) -> str | None:
         raise AssertionError(f"read a base for an anchored allele string at {chrom}:{pos}")
@@ -79,8 +82,9 @@ def test_an_already_anchored_string_passes_through_without_a_base_read() -> None
     }
     loci, withheld, _ = _loci_from_rest(payload, must_not_read)
     assert loci == [
-        {"chrom": "7", "start": 117559587, "ref": "ATCATC", "alts": "ATC"},
-        {"chrom": "7", "start": 117559591, "ref": "TCTT", "alts": "T,TCTTCTT"},
+        {"chrom": "7", "start": 117559587, "ref": "ATCA", "alts": "A"},
+        {"chrom": "7", "start": 117559591, "ref": "T", "alts": "TCTT"},
+        {"chrom": "7", "start": 117559591, "ref": "TCTT", "alts": "T"},
     ]
     assert withheld == 0
 
@@ -95,8 +99,6 @@ def test_an_unreadable_anchor_withholds_the_locus_and_counts_it() -> None:
 
 def _rest_only(payload: dict) -> httpx.MockTransport:
     def handler(request: httpx.Request) -> httpx.Response:
-        if "graphql" in str(request.url):
-            return httpx.Response(200, json={"data": {"variant": None}})
         return httpx.Response(200, json=payload)
 
     return httpx.MockTransport(handler)
@@ -118,31 +120,6 @@ def test_an_answer_with_every_locus_withheld_is_unchecked_not_empty() -> None:
     resolver._read_base = _unreadable
     resolver._client = httpx.Client(transport=_rest_only({"mappings": [_INSERTION]}))
     assert resolver.resolve_rsid("rs8176719") == (None, "ensembl-rest")
-
-
-def test_a_one_sided_graphql_node_is_handed_to_rest() -> None:
-    """GraphQL's indel coordinate convention is unprobed, so its one-sided node is withheld as `[]`,
-    which `resolve_rsid` already treats as "try REST"."""
-    node = {
-        "name": "rs8176719",
-        "alleles": [
-            {"allele_type": {"value": "reference"}, "reference_sequence": "-"},
-            {"allele_type": {"value": "insertion"}, "reference_sequence": "C"},
-        ],
-        "slice": {"location": {"region_name": "9", "start": 133257522}},
-    }
-    assert _loci_from_graphql(node) == []
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        if "graphql" in str(request.url):
-            return httpx.Response(200, json={"data": {"variant": node}})
-        return httpx.Response(200, json={"mappings": [_INSERTION]})
-
-    resolver = EnsemblResolver()
-    resolver._read_base = _read_base
-    resolver._client = httpx.Client(transport=httpx.MockTransport(handler))
-    loci, source = resolver.resolve_rsid("rs8176719")
-    assert source == "ensembl-rest" and loci[0]["ref"] == "T"
 
 
 # ── RM273: the registry's anchor is HGVS's 3'-most point; a written row is left-aligned ───────────

@@ -1,10 +1,10 @@
 {
   "module_hash": "sha256:f07c9a19cad9cd02427720848066a6384adaaa36f3474e83d201cc614706e7dc",
-  "signature": "sha256:ab5d05702f421b8d11f6960116a1abc28d535979bc92c02aeb540ee1f1525790",
+  "signature": "sha256:5585e2162ae7093ddb4a1eb97afd8d8eb2ef005805ded000150db041a9e08d9d",
   "difficulty": 20,
-  "nonce": 850590,
-  "producer": "just-dna-enricher 0.6.0",
-  "produced_at": "2026-08-13T23:30:28Z",
+  "nonce": 1377073,
+  "producer": "just-dna-enricher 0.7.3",
+  "produced_at": "2026-11-05T06:38:02Z",
   "closure": {
     "closed_at": "2026-08-16T21:47:22Z",
     "closed_by": "just-dna-format reference corpus",
@@ -19,7 +19,42 @@
       "detail": null,
       "source": "clinvar",
       "release": "clinvar_2026-06-27",
-      "checked_at": "2026-08-13T23:30:28Z"
+      "checked_at": "2026-11-05T06:38:02Z",
+      "producer": "just-dna-enricher 0.7.3",
+      "checked_source": "authored",
+      "witness_source": "clinvar",
+      "independence": "independent",
+      "undecided": null
+    },
+    {
+      "check": "dataset_currency",
+      "subjects": 0,
+      "findings": 0,
+      "skipped": "offline",
+      "detail": "3 recorded release(s) unchecked (offline): clinvar clinvar_2026-06-27, ensembl ensembl-variation-2026_07_13-vep116.0, pubmind pubmind_ca224ebf5ef3",
+      "source": null,
+      "release": null,
+      "checked_at": "2026-11-05T06:38:02Z",
+      "producer": "just-dna-enricher 0.7.3",
+      "checked_source": "recorded_source",
+      "witness_source": "recorded_source",
+      "independence": "self_consistent",
+      "undecided": null
+    },
+    {
+      "check": "evidence_status_currency",
+      "subjects": 0,
+      "findings": 0,
+      "skipped": "nothing_to_check",
+      "detail": "this module records no citation drafted from CIViC's API, so there is no recorded curation status to re-ask about",
+      "source": "civic",
+      "release": null,
+      "checked_at": "2026-11-05T06:38:02Z",
+      "producer": "just-dna-enricher 0.7.3",
+      "checked_source": "civic",
+      "witness_source": "civic",
+      "independence": "self_consistent",
+      "undecided": null
     },
     {
       "check": "genome_build_agreement",
@@ -29,7 +64,42 @@
       "detail": "the GRCh37 service is the only thing that can tell an old-assembly coordinate from a wrong ref, and there is no local GRCh37 data",
       "source": "ensembl-grch37",
       "release": null,
-      "checked_at": "2026-08-13T23:30:28Z"
+      "checked_at": "2026-11-05T06:38:02Z",
+      "producer": "just-dna-enricher 0.7.3",
+      "checked_source": "authored",
+      "witness_source": "ensembl-grch37",
+      "independence": "independent",
+      "undecided": null
+    },
+    {
+      "check": "placement_agreement",
+      "subjects": 0,
+      "findings": 0,
+      "skipped": "nothing_to_check",
+      "detail": "no placement this run made was also placed by a witness asked about it, so none was compared — recorded rows are compared only under --rederive",
+      "source": null,
+      "release": null,
+      "checked_at": "2026-11-05T06:38:02Z",
+      "producer": "just-dna-enricher 0.7.3",
+      "checked_source": "reporting_source",
+      "witness_source": "clinvar+clinvar_gkm+ensembl",
+      "independence": "independent",
+      "undecided": null
+    },
+    {
+      "check": "published_refutation",
+      "subjects": 0,
+      "findings": 0,
+      "skipped": null,
+      "detail": "no authored direction sits beside a published refutation (basis accepted)",
+      "source": "civic",
+      "release": "civic_01-Sep-2026",
+      "checked_at": "2026-11-05T06:38:02Z",
+      "producer": "just-dna-enricher 0.7.3",
+      "checked_source": "authored",
+      "witness_source": "civic",
+      "independence": "independent",
+      "undecided": null
     },
     {
       "check": "reference_allele",
@@ -39,7 +109,27 @@
       "detail": "no sequence access this run, so no authored ref was compared",
       "source": "seqrepo",
       "release": null,
-      "checked_at": "2026-08-13T23:30:28Z"
+      "checked_at": "2026-11-05T06:38:02Z",
+      "producer": "just-dna-enricher 0.7.3",
+      "checked_source": "authored",
+      "witness_source": "seqrepo",
+      "independence": "independent",
+      "undecided": null
+    },
+    {
+      "check": "rsid_coordinate_agreement",
+      "subjects": 0,
+      "findings": 0,
+      "skipped": "nothing_to_check",
+      "detail": "no row authors both an rsID and a coordinate, so the module makes no pair claim to compare — this is not a comparison that found nothing",
+      "source": "ensembl",
+      "release": null,
+      "checked_at": "2026-11-05T06:38:02Z",
+      "producer": "just-dna-enricher 0.7.3",
+      "checked_source": "authored",
+      "witness_source": "ensembl",
+      "independence": "independent",
+      "undecided": null
     },
     {
       "check": "rsid_currency",
@@ -49,7 +139,12 @@
       "detail": "dbSNP has no offline merge table, so currency cannot be established locally",
       "source": "dbsnp",
       "release": null,
-      "checked_at": "2026-08-13T23:30:28Z"
+      "checked_at": "2026-11-05T06:38:02Z",
+      "producer": "just-dna-enricher 0.7.3",
+      "checked_source": "authored",
+      "witness_source": "dbsnp",
+      "independence": "independent",
+      "undecided": null
     }
   ]
 }

@@ -19,6 +19,7 @@ from pydantic import (
     ConfigDict,
     Field,
     PrivateAttr,
+    ValidationInfo,
     field_validator,
     model_validator,
 )
@@ -27,6 +28,8 @@ from just_dna_format.base import (
     CASE_INSENSITIVE_ALLELE,
     COMPILER_MANAGED,
     AuthoredModel,
+    Companion,
+    both_or_neither,
     derive_variant_key,
     since,
     stamped_identity_field,
@@ -49,13 +52,19 @@ from just_dna_format.manifest import (
     Weighting,
 )
 from just_dna_format.normalize import normalize_version, reject_authority_keys
+from just_dna_format.spelling import DOI_PATTERN, VALID_CHROMOSOMES, ChromCell, doi_key
 from just_dna_format.vocab import (
     ACTIONABILITY_SEED,
     ALLELE_PATTERN,  # noqa: F401 — re-exported for backward compat (genotype grammar moved to base)
     RECOMMENDED_EFFECT_MEASURES,
+    RECOMMENDED_PHENOTYPE_CLASSES,
+    RSID_PATTERN,
+    VALID_AGE_OF,
     VALID_CLIN_SIG,  # noqa: F401 — re-exported for backward compat (see note below)
     VALID_DIRECTIONS,  # noqa: F401 — re-exported for backward compat
+    VALID_SAMPLE_UNITS,
     VALID_SIGNIFICANCE,  # noqa: F401 — re-exported for backward compat
+    VALID_SUPERPOPULATIONS,
     check_vocab,
     reject_template_placeholders,
     validate_allele,
@@ -68,7 +77,6 @@ from just_dna_format.vrs import normalize_chrom, sole_build_naming_contig
 # authored models). `VALID_DIRECTIONS`/`VALID_SIGNIFICANCE`/`VALID_CLIN_SIG` (and `ALLELE_PATTERN`)
 # are re-exported here for backward compatibility. Spec-only vocabularies stay below.
 VALID_STATES: frozenset[str] = frozenset({"risk", "protective", "neutral", "significant", "alt", "ref"})
-VALID_CHROMOSOMES: frozenset[str] = frozenset({str(i) for i in range(1, 23)} | {"X", "Y", "MT"})
 # `flags` is an OPEN list. These are the reserved tags the tooling acts on; any other tag is
 # accepted and surfaced as INFO (not a warning) by the compiler. Never put direction / clinical
 # / consequence / drug words here — those have (or get) typed columns.
@@ -85,11 +93,12 @@ PMID_PATTERN: re.Pattern[str] = re.compile(r"\b(\d{1,8})\b")
 # `PMC-3110566`, `pmcid: 3110566`), so `extract_pmids` can decline the digits inside it and the
 # refusal can say which id it saw rather than which one it wanted.
 PMCID_PATTERN: re.Pattern[str] = re.compile(r"PMC(?:ID)?\s*[:\-]?\s*(\d{1,9})", re.IGNORECASE)
-# A DOI is `10.<registrant>/<suffix>` (Crockford/Handle grammar). Real sources present it bare
-# (`10.1234/abc.def`) or wrapped in a URL (`https://doi.org/10.1234/abc`); we accept any string that
-# carries one DOI token and keep it verbatim, mirroring the PMID contract. Wider than a PMID: it also
-# covers preprints/books/datasets with no PubMed id (docs/USE_CASES.md §4a, RM11).
-DOI_PATTERN: re.Pattern[str] = re.compile(r"10\.\d{4,9}/\S+")
+# The one sentinel `pmid` accepts in place of a PubMed id (RM336): the row cites a work PubMed does not
+# index (a preprint, a book, a dataset), so `doi` carries the citation instead and becomes mandatory —
+# `check_citation_pair` is that rule. Exactly `NONE`, case-sensitive: the spellings an author reaches for
+# (`NA`, `n/a`, `-`, `none`) stay refused, and the refusal points here. Upper case so it cannot be read
+# as a word of a free-form reference, and so it is not `None`, which is the unknown arm everywhere else.
+PMID_NONE: str = "NONE"
 
 
 def extract_pmcids(raw: str) -> list[str]:
@@ -118,8 +127,14 @@ def extract_pmids(raw: str) -> list[str]:
     confident citation of the wrong paper. A cell carrying both — `21551363; PMC3110566` — still
     yields the real PMID; only a cell whose sole numeric content is a PMC id comes back empty, which
     is what lets `validate_pmid_cell` name it.
+
+    **The same holds for a DOI** (RM336), whose digit runs (`10`, `1101`, …) are not PubMed ids, and for
+    the `NONE` sentinel, which carries no digits: both come back empty.
     """
     excluded = [match.span(1) for match in PMCID_PATTERN.finditer(raw)]
+    # A DOI's digits are not PubMed ids either (RM336): `10.1101/2025.03.01.640000` used to come back
+    # as six of them, and the literature pass looked each one up as the row's citation.
+    excluded += [match.span() for match in DOI_PATTERN.finditer(raw)]
     seen: dict[str, None] = {}
     for match in PMID_PATTERN.finditer(raw):
         start = match.start(1)
@@ -154,8 +169,18 @@ def validate_pmid_cell(value: str | None, field: str, *, required: bool) -> str 
         if required:
             raise ValueError(f"{field} must not be empty")
         return None
+    if value == PMID_NONE:
+        return value  # the sentinel (RM336); the model's `check_citation_pair` then requires `doi`
     if extract_pmids(value):
         return value  # kept verbatim; use extract_pmids(value) to recover digit-only ids
+    dois = [match.group(0) for match in DOI_PATTERN.finditer(value)]
+    if dois:
+        raise ValueError(
+            f"{field} names DOI(s) {dois} and no PubMed ID. A DOI's digits are not PubMed ids, so "
+            f"reading them as one would cite the wrong papers. Write the DOI in `doi`; if the work has "
+            f"a PubMed record, write its PMID here (`just-dna-enricher hint citation --doi {dois[0]}` "
+            f"looks it up), and if it has none, write '{PMID_NONE}' here. Got: {value!r}"
+        )
     pmcids = extract_pmcids(value)
     if pmcids:
         raise ValueError(
@@ -166,8 +191,94 @@ def validate_pmid_cell(value: str | None, field: str, *, required: bool) -> str 
         )
     raise ValueError(
         f"{field} must contain at least one PubMed ID (bare digits, or a bracketed/prefixed "
-        f"form like '[PMID: 9545397]'), got: {value!r}"
+        f"form like '[PMID: 9545397]'), got: {value!r}. A work with no PubMed record is cited as "
+        f"{field}='{PMID_NONE}' with its DOI in `doi`"
     )
+
+
+def check_citation_pair(pmid: str | None, doi: str | None) -> None:
+    """The pmid/doi pair rule every citing row obeys (RM336): `pmid='NONE'` makes `doi` mandatory.
+
+    The cell grammar of each half is checked where it lives — `validate_pmid_cell` on `pmid`, whose
+    requiredness differs per model (P8), and `CitationPair`'s `doi` validator — so this only ties them:
+    a row saying "this work has no PubMed id" must say which work it is. Raises `ValueError`; returns
+    nothing.
+    """
+    if pmid == PMID_NONE and doi is None:
+        raise ValueError(
+            f"pmid is '{PMID_NONE}', which says the cited work has no PubMed record, so `doi` must "
+            f"name it (10.<registrant>/<suffix>, bare or as a doi.org URL); doi is empty"
+        )
+
+
+def cited_as(pmid: str | None, doi: str | None) -> str | None:
+    """How a message names the work a row cites: its `pmid`, or `NONE doi <doi>` for a DOI-only row.
+
+    Every `NONE` row would otherwise print as `PMID NONE`, and two preprints on one variant would read
+    as one citation in the finding that names them (RM336). Verbatim, for a human; a key comparing two
+    rows normalizes the DOI first (`doi_key`).
+    """
+    if pmid == PMID_NONE:
+        return f"{PMID_NONE} doi {doi}"
+    return pmid
+
+
+def citation_key(pmid: str | None, doi: str | None) -> tuple[str, ...] | None:
+    """The work a row cites, as two rows compare it (RM363): one key however the cell is spelled.
+
+    A PubMed citation is its PMIDs (`extract_pmids`, sorted), so `30642433` and `[PMID: 30642433]` are one
+    paper; a `NONE` row is its DOI (`spelling.doi_key`), so a bare token and a doi.org URL with a trailing
+    `.` are one preprint. `None` for a row citing nothing (`pmid` is optional on some citing models)."""
+    if pmid is None:
+        return None
+    if pmid == PMID_NONE:
+        return (PMID_NONE, doi_key(doi)) if doi else (PMID_NONE,)
+    return tuple(sorted(extract_pmids(pmid))) or (pmid,)
+
+
+def validate_doi_cell(value: str | None) -> str | None:
+    """A `doi` cell: optional, kept verbatim, and carrying one DOI token when present."""
+    if value is None:
+        return value
+    if not DOI_PATTERN.search(value):
+        raise ValueError(
+            f"doi must contain a DOI token (10.<registrant>/<suffix>, bare or as a doi.org "
+            f"URL), got: {value!r}"
+        )
+    return value  # kept verbatim
+
+
+#: Why `effect_size` wants `effect_measure` beside it, on both tables that carry the pair (RM366).
+#: Reported, never refused: both columns date from 0.3.
+_MAGNITUDE_WITHOUT_MEASURE = (
+    "effect_measure is what the number means (OR, HR, beta), and an odds ratio of 1.3 and a beta of "
+    "1.3 are different claims, so a magnitude with no measure is a number nothing can read. Set "
+    "effect_measure, or clear effect_size"
+)
+
+
+class CitationPair(BaseModel):
+    """The shared pmid/doi rule, as a mixin every model that cites with a `pmid` inherits (RM336).
+
+    One rule on every citing table, so it cannot drift between them as citing tables are added:
+    `StudyRow`, the binning kinds (`MeasureBinRow`), `PharmVariantRow` and the derived `GwasEffectRow`
+    today, and every later model declaring a `pmid` — a test walks the model registry and asserts the
+    set of models with a `pmid` equals the set carrying this mixin and a `doi`.
+
+    It carries the `doi` cell check and the pair check, never the `pmid` grammar: that one is
+    `validate_pmid_cell` on each model, because `required` differs between them and a shared validator
+    the strictest model has to override is a requiredness change wearing a refactor's clothes.
+    """
+
+    @field_validator("doi", check_fields=False)
+    @classmethod
+    def _validate_doi(cls, v: str | None) -> str | None:
+        return validate_doi_cell(v)
+
+    @model_validator(mode="after")
+    def _check_citation_pair(self) -> "CitationPair":
+        check_citation_pair(getattr(self, "pmid", None), getattr(self, "doi", None))
+        return self
 
 
 class ModuleInfo(Display):
@@ -383,9 +494,9 @@ class ModuleSpecConfig(BaseModel):
             "**checks** it against the annotation-layer rows of the licensing table, warning in both "
             "modes when they disagree rather than replacing either. Advisory only in the sense that "
             "no gate reads it — unlike `module.version`, which a publishing registry really does "
-            "stamp. The authoritative per-source record is `sources.csv`, which round-trips; this "
-            "key is a human convenience and is NOT reconstructed by the lossy `reverse_module` "
-            "(same class as `panel`/`authorship`)."
+            "stamp. The authoritative per-source record is `sources.csv`; this key is the author's "
+            "statement about the module as a whole, and `reverse_module` writes it back from the "
+            "manifest (RM241)."
         ),
     )
     weighting: Weighting | None = Field(
@@ -395,8 +506,20 @@ class ModuleSpecConfig(BaseModel):
             "What this module's `weight` column means — `scale`, `method` and `note`, all free text "
             "(RM92). `weight` is the one magnitude in the format with no unit beside it, so without "
             "this a consumer combining two modules' weights cannot know they are on different "
-            "scales. Advisory, copied into the manifest, and NOT reconstructed by the lossy "
-            "`reverse_module` (same class as `panel`/`authorship`/`license`)."
+            "scales. Advisory, copied into the manifest, and written back by `reverse_module` from "
+            "there (RM241)."
+        ),
+    )
+
+    tier_scale: str | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description=(
+            "The name of the scale `meta.csv`'s `tier` column grades on, stated once per module, free "
+            "text (RM324) — the `weighting:` pattern. A `tier` cell in a module with no `tier_scale` is "
+            "refused: a grade with no scale beside it is a number nobody can read. Values are not "
+            "checked against the scale; the scale is the module's. Copied into the manifest and "
+            "written back by `reverse_module` from there."
         ),
     )
 
@@ -404,7 +527,7 @@ class ModuleSpecConfig(BaseModel):
         json_schema_extra=since("0.7.0"),
         default_factory=list,
         description=(
-            "Optional ordered list of the annotation authorities this module's curator weighted while deciding its clinical calls, most-trusted first — e.g. `[clinvar, pubmind]` (RM134). A **methodological stance, recorded and computed with by nothing**: no tier reads it to resolve anything, no check consults it, no verdict and no emitted row depends on it, and changing it moves neither identity half. It exists so a consumer can see the stance instead of inferring it by reading every contested row.\n\nIt resolves nothing because nothing can. With five authorities in a two-against-three disagreement, this order says one thing and a majority says another, and choosing between those rules is a judgement about how rank trades against agreement count — a weighting model this format does not have and has declined to invent three times. So the concordance record states the agreement state and each authority's own call, a consumer holding its own model computes what it likes, and a per-variant exception is an `overrides.csv` row rather than a second mechanism. Advisory like `weighting:`/`authorship:`/`license:`, copied into the manifest, and NOT reconstructed by the lossy `reverse_module`."
+            "Optional ordered list of the annotation authorities this module's curator weighted while deciding its clinical calls, most-trusted first — e.g. `[clinvar, pubmind]` (RM134). A **methodological stance, recorded and computed with by nothing**: no tier reads it to resolve anything, no check consults it, no verdict and no emitted row depends on it, and changing it moves neither identity half. It exists so a consumer can see the stance instead of inferring it by reading every contested row.\n\nIt resolves nothing because nothing can. With five authorities in a two-against-three disagreement, this order says one thing and a majority says another, and choosing between those rules is a judgement about how rank trades against agreement count — a weighting model this format does not have and has declined to invent three times. So the concordance record states the agreement state and each authority's own call, a consumer holding its own model computes what it likes, and a per-variant exception is an `overrides.csv` row rather than a second mechanism. Advisory like `weighting:`/`authorship:`/`license:`, copied into the manifest, and written back by `reverse_module` from there (RM241)."
         ),
     )
 
@@ -455,7 +578,7 @@ class VariantRow(AuthoredModel):
     rsid: str | None = Field(
         json_schema_extra=since("0.2.0"), default=None, description="dbSNP identifier, e.g. rs1801133"
     )
-    chrom: str | None = Field(
+    chrom: ChromCell = Field(
         default=None,
         json_schema_extra={**vocabulary("chromosome", VALID_CHROMOSOMES), **since("0.2.0")},
         description=(
@@ -495,6 +618,20 @@ class VariantRow(AuthoredModel):
     #: keyed kind answers `hints.key_fields` from one place (S48); the compiler checks these two
     #: inline (`_cross_validate_variants`) rather than through `_TABLE_DUPE_KEYS`.
     _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("variant_key", "genotype")
+    #: Columns meaningless without a companion (RM366, `base.Companion`). The quality floor is both or
+    #: neither, refused since 0.5: a bound with no field does not say what must clear it, and a field
+    #: with no bound states no threshold, so either half reads as a configured gate and is not one.
+    #: A magnitude with no measure is reported, never refused — both columns date from 0.3, so a
+    #: published module may hold the half (P3).
+    _PAIRED_FIELDS: ClassVar[tuple[Companion, ...]] = (
+        *both_or_neither(
+            "quality_from",
+            "min_quality",
+            "quality_from and min_quality are both-or-neither: a floor needs a field to be measured "
+            "against, and a field needs a floor to be a floor",
+        ),
+        Companion("effect_size", ("effect_measure",), _MAGNITUDE_WITHOUT_MEASURE, refuse=False),
+    )
     variant_key: str | None = Field(
         default=None,
         json_schema_extra={**COMPILER_MANAGED, **since("0.4.0")},
@@ -807,11 +944,11 @@ class VariantRow(AuthoredModel):
             "Optional VCF field the `min_quality` floor is stated against, best written with the "
             "namespace (e.g. FORMAT/GQ, QUAL, FORMAT/DP). Same pointer grammar as "
             "`source_field`/`callable_from`; a pointer, never an expression. A bare key means "
-            "unqualified, and INFO/MQ is a Float where FORMAT/MQ is an Integer. Prefer a per-sample "
-            "confidence field: QUAL changes sign with the record (VCF 1.6.1.6 — prob(no variant) on "
-            "a variant record, prob(variant) where ALT is '.'), so on a requires_callable row, whose "
-            "evidence is the reference record, a high QUAL says the position is probably variant and "
-            "the floor demands the opposite of what the row is about."
+            "unqualified, and INFO/MQ is a Float where FORMAT/MQ is an Integer. Avoid QUAL on a "
+            "requires_callable row: QUAL is the confidence in what ALT asserts (VCF 1.6.1 item 6), "
+            "and the reference block such a row is decided from usually leaves it missing, so the "
+            "floor cannot be read there; on a joint-called record it is a site-level number, not "
+            "this sample's."
         ),
     )
     # No `quality_element` either, and for the same reason as `callable_element` above: `min_quality`
@@ -830,23 +967,6 @@ class VariantRow(AuthoredModel):
     @classmethod
     def _validate_min_quality(cls, v: float | None) -> float | None:
         return validate_finite(v, "min_quality")
-
-    @model_validator(mode="after")
-    def _require_quality_pair(self) -> "VariantRow":
-        """Both or neither — half a floor states nothing a consumer can act on.
-
-        A bound with no field does not say *what* must clear it, and a field with no bound states no
-        threshold at all. Either half alone reads as a configured gate and is not one, which is worse
-        than an empty cell: a consumer would have to guess the missing half, and every guess is a
-        clinical policy the module did not write.
-        """
-        if (self.quality_from is None) != (self.min_quality is None):
-            missing = "min_quality" if self.min_quality is None else "quality_from"
-            raise ValueError(
-                f"quality_from and min_quality are both-or-neither; {missing} is empty. A floor "
-                f"needs a field to be measured against, and a field needs a floor to be a floor."
-            )
-        return self
 
     @model_validator(mode="after")
     def _freeze_identity(self) -> "VariantRow":
@@ -870,6 +990,9 @@ class VariantRow(AuthoredModel):
         `compile → reverse → compile` would stop being a fixed point. Accepted-and-overwritten is the
         same treatment `variant_key` gets one line up.
         """
+        if self.rsid is None and self.chrom is None and self.start is None:
+            # No identity to freeze: `_validate_identification` refuses the row with its own message.
+            return self
         self.variant_key = derive_variant_key(self.rsid, self.chrom, self.start, self.ref, self.alts)
         self.authored_ident = [
             name for name in ("rsid", "chrom", "start", "ref", "alts") if getattr(self, name) is not None
@@ -1067,7 +1190,7 @@ class VariantRow(AuthoredModel):
         return self
 
 
-class StudyRow(AuthoredModel):
+class StudyRow(CitationPair, AuthoredModel):
     """One row of studies.csv: an (rsid, pmid) evidence link. Grounding evidence is mandatory.
 
     Inherits `AuthoredModel` (reserved-namespace guard + shared `rsid`/`trait_efo_id`/
@@ -1075,13 +1198,45 @@ class StudyRow(AuthoredModel):
 
     #: What makes two rows the same row (see `VariantRow._KEY_FIELDS`).
     _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("variant_key", "pmid")
+    #: Columns meaningless without a companion (RM366, `base.Companion`). Each refusal below names
+    #: columns that were refused half-stated before this declaration existed (`confidence` since 0.7)
+    #: or that are new in 0.8, so no published row can hold the half; `effect_size` without its measure
+    #: dates from 0.3 and is reported instead (P3).
+    #:
+    #: A unit with no magnitude (`confidence_unit`, `sample_unit`) is harmless — it names an
+    #: instrument nothing was measured on — so only the magnitude's half is a rule. `age_of` and the
+    #: band are not a pair either way: RM329 decided `age_of` stands with or without bounds
+    #: (`test_no_refusal_ties_the_band_together`), and two longevity examples state it unbounded.
+    _PAIRED_FIELDS: ClassVar[tuple[Companion, ...]] = (
+        Companion(
+            "confidence",
+            ("confidence_unit",),
+            "it names a magnitude with no instrument beside it — set confidence_unit (e.g. "
+            "'civic_evidence_status'), because two sources publish values on scales that are not the "
+            "same quantity",
+        ),
+        Companion(
+            "sample_size",
+            ("sample_unit",),
+            f"it has no unit beside it — set sample_unit ({'|'.join(sorted(VALID_SAMPLE_UNITS))}), "
+            f"because a parental-lifespan study counts two lives per participant (RM325)",
+        ),
+        *both_or_neither(
+            "stratum",
+            "stratum_level",
+            "a stratum is written as both or neither (the modifier, and the level of it this estimate "
+            "was measured in) — a modifier with no level does not say which stratum, and a level with "
+            "no modifier cannot be told from another axis (RM330)",
+        ),
+        Companion("effect_size", ("effect_measure",), _MAGNITUDE_WITHOUT_MEASURE, refuse=False),
+    )
 
     rsid: str | None = Field(
         json_schema_extra=since("0.2.0"), default=None, description="dbSNP identifier or variant key"
     )
     # No `chromosome` marker: `StudyRow` runs no chrom validator (only `VariantRow` does), and a
     # marker must describe what actually rejects. Same call as the PGx tables — see `pgx.py`.
-    chrom: str | None = Field(
+    chrom: ChromCell = Field(
         json_schema_extra=since("0.2.0"), default=None, description="Chromosome (for position-only variants)"
     )
     start: int | None = Field(
@@ -1304,6 +1459,130 @@ class StudyRow(AuthoredModel):
         ),
     )
 
+    # ── The 0.8 batch (PROPOSAL_0_8_PT2 §3 items 11–17), declared after every 0.7 column so no column
+    # of a 0.7 `studies.parquet` changes position. ──
+    # RM325: how many were analysed, in what unit, and how many of them were cases. longevitymap v2's
+    # tier A is stated in N ("N ≥ 100k lives, or ≥ 3k cases"), and nothing in the format carried one.
+    # `sample_size` is the TOTAL analysed, cases included, so `n_cases` can never exceed it; the unit
+    # beside it is what keeps a parental study's lives apart from a cohort's people.
+    sample_size: int | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        ge=0,
+        description=(
+            "How many were analysed for this row's estimate, cases included, in the unit "
+            "`sample_unit` names (required beside it)."
+        ),
+    )
+    sample_unit: str | None = Field(
+        default=None,
+        json_schema_extra={**vocabulary("sample_unit", VALID_SAMPLE_UNITS), **since("0.8.0")},
+        description=(
+            "What `sample_size` counts: `individuals`, or `lives` where a study counts each "
+            "participant's parents (two lives per participant)."
+        ),
+    )
+    n_cases: int | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        ge=0,
+        description=(
+            "How many of the analysed were cases, for a case-control or extreme-phenotype design. "
+            "Never more than `sample_size` when both are stated."
+        ),
+    )
+    # RM326: which OUTCOME the study measured, a different axis from `study_design` (which describes
+    # the study) and one the trait term does not separate. Open, with v2's twelve as the recommended
+    # members; a token outside them warns (`phenotype_class_unrecognized`) and is kept.
+    phenotype_class: str | None = Field(
+        default=None,
+        json_schema_extra={
+            **vocabulary("phenotype_class", RECOMMENDED_PHENOTYPE_CLASSES, closed=False),
+            **since("0.8.0"),
+        },
+        description=(
+            "Which outcome this study measured, e.g. `PARENTAL_LIFESPAN`, `EXTREME_SURVIVAL_CC`, "
+            "`HEALTHSPAN` (recommended, open; another token warns and is kept). `study_design` "
+            "describes the study; this describes what it measured, and one paper may measure several."
+        ),
+    )
+    # RM328: the 1000G superpopulation(s) the estimate was measured in, closed and multi-valued. Beside
+    # `population`, which stays free text for what a code cannot say (an Ashkenazi cohort is `EUR` here
+    # and named there). `eur_only_evidence` on `weights.parquet` is derived from it.
+    ancestry: list[str] | None = Field(
+        default=None,
+        json_schema_extra={**vocabulary("superpopulation", VALID_SUPERPOPULATIONS), **since("0.8.0")},
+        description=(
+            "The 1000 Genomes superpopulation(s) this estimate was measured in (AFR, AMR, EAS, EUR, "
+            "SAS; multi-valued — a trans-ethnic study lists each code). `population` beside it stays "
+            "free text for the cohort. Absent means unstated, never 'any'."
+        ),
+    )
+    # RM329: the age band an age-stratified estimate covers, and whose age the band is. Either bound may
+    # be empty (an open band: Timmers 2019's top band is 80+), and no refusal ties the three together.
+    age_min: float | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        ge=0,
+        description="Lower bound of the age band this estimate covers, in years. Empty: open below.",
+    )
+    age_max: float | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        ge=0,
+        description="Upper bound of the age band this estimate covers, in years. Empty: open above.",
+    )
+    age_of: str | None = Field(
+        default=None,
+        json_schema_extra={**vocabulary("age_of", VALID_AGE_OF), **since("0.8.0")},
+        description=(
+            "Whose age the band is: `participant`, or `parent` for a parental-lifespan study banded "
+            "by the parent's age at death."
+        ),
+    )
+    # RM330, the study's half: the stratum an estimate was measured in — a modifier and its level, free
+    # text and written both or neither. A conclusion that DEPENDS on a modifier is a different thing and
+    # lives on `meta.csv` (`sex`); a modifier that is another locus's genotype is RM28's.
+    stratum: str | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description=(
+            "The modifier this estimate was measured within, e.g. `sex`, `parent_sex`, `smoking`. "
+            "Free text, and only with `stratum_level` beside it."
+        ),
+    )
+    stratum_level: str | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description="The level of `stratum` this estimate was measured in, e.g. `male`, `father`, `never`.",
+    )
+    # RM331, the author's half: the variant the study actually MEASURED, when it is an LD proxy of the
+    # row's own (lead) variant. The row stays filed under the lead; `effect_allele` is then the proxy's
+    # allele, and the compiler checks it against the proxy's alleles. Authors write only the rsID: r²
+    # means nothing without its population, so the pair is computed by the enricher, never typed.
+    proxy_rsid: str | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description=(
+            "The dbSNP id of the variant this study measured, when it is an LD proxy of the row's "
+            "variant. `effect_allele` is then an allele of the proxy. r² and its population are "
+            "computed, never authored."
+        ),
+    )
+    # RM332: the unit `effect_size` is in, verbatim — `gwas_effects.csv` has carried the same column
+    # since 0.6. `effect_measure` names the KIND of estimate (beta, OR); this names what one unit of it is
+    # (years of parental lifespan per allele, -ln HR per allele). On `StudyRow` only (the maintainer cut
+    # the `VariantRow` half); `weights.parquet` joins it onto a variant when its study rows agree.
+    effect_unit: str | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description=(
+            "The unit of `effect_size`, verbatim as the paper states it, e.g. `years of parental "
+            "lifespan per allele`, `-ln HR per allele`. Free text. A sign convention is not a unit: "
+            "`effect_allele` with `direction` already says which way."
+        ),
+    )
+
     @property
     def variant_key(self) -> str | None:
         """Stable key matching VariantRow.variant_key, or `None` when the row names no variant.
@@ -1343,18 +1622,6 @@ class StudyRow(AuthoredModel):
         assert checked is not None
         return checked
 
-    @field_validator("doi")
-    @classmethod
-    def _validate_doi(cls, v: str | None) -> str | None:
-        if v is None:
-            return v
-        if not DOI_PATTERN.search(v):
-            raise ValueError(
-                f"doi must contain a DOI token (10.<registrant>/<suffix>, bare or as a doi.org "
-                f"URL), got: {v!r}"
-            )
-        return v  # kept verbatim
-
     @field_validator("provenance_regex")
     @classmethod
     def _validate_provenance_regex(cls, v: str | None) -> str | None:
@@ -1376,18 +1643,72 @@ class StudyRow(AuthoredModel):
         # cannot reload as a `""` that the coherence rule below would then have to reason about.
         return (v or "").strip() or None
 
+    @field_validator("proxy_rsid")
+    @classmethod
+    def _validate_proxy_rsid(cls, v: str | None) -> str | None:
+        if v is not None and not RSID_PATTERN.match(v):
+            raise ValueError(f"proxy_rsid must match rs<digits>, got: {v!r}")
+        return v
+
     @model_validator(mode="after")
-    def _refuse_a_magnitude_with_no_instrument(self) -> "StudyRow":
-        # `@weight-has-no-unit`, restated on the one pair this model carries. A `confidence` of `3`
-        # is unreadable without being told it is a review-star count, and the sources this column
-        # exists for publish values on scales that are not the same quantity. A unit with no
-        # magnitude is harmless — it names an instrument nothing was measured on — so only the
-        # asymmetric case is refused, exactly as `ClinSigAuthorityCallRow` refuses it.
-        if self.confidence is not None and self.confidence_unit is None:
+    def _refuse_a_proxy_of_nothing_or_of_itself(self) -> "StudyRow":
+        # RM331. A proxy stands in for the row's own variant, so a row naming no variant has nothing it
+        # could be a proxy of, and a proxy equal to the row's rsID is the lead itself, written twice.
+        if self.proxy_rsid is None:
+            return self
+        if self.rsid is None and self.chrom is None:
             raise ValueError(
-                f"confidence={self.confidence!r} names a magnitude with no instrument beside it — "
-                f"set confidence_unit (e.g. 'civic_evidence_status'), because two sources publish "
-                f"values on scales that are not the same quantity"
+                f"proxy_rsid={self.proxy_rsid!r} on a row that names no variant — a proxy stands in "
+                f"for the row's own variant, so set rsid (or chrom/start/ref) to the lead it proxies"
+            )
+        if self.proxy_rsid == self.rsid:
+            raise ValueError(
+                f"proxy_rsid={self.proxy_rsid!r} is the row's own rsid — leave proxy_rsid empty when "
+                f"the study measured the lead itself"
+            )
+        return self
+
+    @field_validator("sample_unit")
+    @classmethod
+    def _validate_sample_unit(cls, v: str | None) -> str | None:
+        return check_vocab(v, VALID_SAMPLE_UNITS, "sample_unit")
+
+    @field_validator("age_min", "age_max")
+    @classmethod
+    def _validate_age(cls, v: float | None, info: ValidationInfo) -> float | None:
+        validate_finite(v, info.field_name or "age")
+        return v
+
+    @field_validator("age_of")
+    @classmethod
+    def _validate_age_of(cls, v: str | None) -> str | None:
+        return check_vocab(v, VALID_AGE_OF, "age_of")
+
+    @field_validator("ancestry", mode="before")
+    @classmethod
+    def _split_ancestry(cls, v: object) -> object:
+        # A CSV cell arrives as a string; split it as `PgsRow.training_ancestry` does.
+        if isinstance(v, str):
+            tokens = [t.strip() for t in _MULTI_SEP.split(v) if t.strip()]
+            return tokens or None
+        return v
+
+    @field_validator("ancestry")
+    @classmethod
+    def _validate_ancestry(cls, v: list[str] | None) -> list[str] | None:
+        # Rebuilt from `check_vocab`'s returns, never validated and discarded (RM95).
+        if v is None:
+            return v
+        return [check_vocab(tok, VALID_SUPERPOPULATIONS, "ancestry") or tok for tok in v]
+
+    @model_validator(mode="after")
+    def _refuse_more_cases_than_analysed(self) -> "StudyRow":
+        # RM325. The count-with-no-unit half of this rule is a declared pair (`_PAIRED_FIELDS`). Both
+        # columns are new, so no published row can hold the pair, and the two cannot both be true.
+        if self.sample_size is not None and self.n_cases is not None and self.n_cases > self.sample_size:
+            raise ValueError(
+                f"n_cases={self.n_cases} is more than sample_size={self.sample_size} — sample_size is the "
+                f"total analysed, cases included"
             )
         return self
 

@@ -60,6 +60,11 @@ only the enricher, holding a reference, can catch that.
 the haplotype. Many rows per haplotype, and a variant recurs across many: CYP2D6's rs1065852 is
 core-defining in 22 alleles. Nobody should expect one row to describe `*4`.
 
+**A row is its name, variant and allele, and its gene when the gene is stated (0.8).** Fill `gene`.
+The UGT1A genes share exons 2–5, so UGT1A1's `*2` and UGT1A6's `*2` can be defined by the same variant
+and allele; with both genes stated they are two rows, and with either left empty the compiler refuses
+the second as a duplicate, because an empty gene says nothing about which gene the row is not.
+
 **A haplotype carries the reference allele at every site of its gene that it does not list.** This
 is the PharmVar/CPIC reading, and the compiler's phase-ambiguity check already computes with it: an
 unlisted site and a row whose `allele` equals its own `ref` mean the same thing. So a sparse table is
@@ -93,6 +98,15 @@ truth**; the others exist so a consumer need not re-parse it.
 `suballele` is optional extra precision (Aldy's `Minor`, e.g. `1.001`) and never replaces the core
 star. A consumer keyed on the suballele silently misses every row that carries only the core.
 
+**An HLA allele lives here too, and its name is a grammar (0.8).** HLA-DRB1\*15:01 is a typed allele,
+not a set of defining variants, so it is an `allele_function.csv` row with `gene` `HLA-DRB1` and
+`allele` `*15:01`, never a `haplotypes.csv` definition: a tag SNP is an ancestry-dependent proxy, and
+writing it as a definition would be a false claim. Where `gene` starts with `HLA-`, the name must be
+IPD-IMGT/HLA's: `*`, then two to four colon-separated numeric fields, then an optional expression
+suffix. The field count is the resolution the name states, so `*15` and the old colon-less `*1501`
+are refused rather than guessed at. The symptom of the wrong spelling is a refusal naming the shape,
+never a row that silently joins nothing.
+
 ## diplotypes.csv
 
 **One row is one haplotype pair → one phenotype**, and the pair is canonicalised (`haplotype_a <=
@@ -104,6 +118,12 @@ names a *pair*, not a locus, so the column could only mean "the variants definin
 haplotypes were callable" — a fact about `haplotypes.csv` rows, restated one table over, free to drift
 the moment a definition is edited. One concept, one home. `extra="forbid"` is what enforces it, so
 adding the column by hand is a compile error rather than a silent second source of truth.
+
+**`negatives` and `category` are the `variants.csv` columns, carried over (0.8).** A scored diplotype is
+often the finding a module exists for (APOE ε is scored once, as a pair, never as two SNP rows), so it
+needs the trade-off and the report group a variant row can state. The symptom of the old shape was a
+headline row whose trade-off lived only in the README. `category` is free text here as there; the
+same word in both tables means the same group.
 
 ## pharm_variants.csv
 
@@ -206,6 +226,47 @@ is a claim about the world and an unsourced one is the kind this format refuses 
 on the claiming row and this table describes the study instead. The two are not alternatives; asking
 which one a citation belongs in is asking how specific the claim is.
 
+**A work PubMed does not index is cited as `pmid` = `NONE`, with its DOI in `doi`.** Never the DOI in
+`pmid`: its digits read as PubMed ids, so `10.1101/2025.03.01.640000` would cite six unrelated papers,
+and the cell is refused for it. `NONE` makes `doi` mandatory, and the rule is the same on every table
+that cites with a `pmid` (the binning kinds, `pharm_variants.csv`), each of which carries a `doi` beside
+it since 0.8. The symptom of skipping it is a refusal naming the DOI you wrote; the fix is moving it one
+column over. When the preprint is later published, write its PMID instead of `NONE`
+(`just-dna-enricher hint citation --doi` finds it where PubMed has one).
+
+**A sample size is a count of something, and the something is a cell** (0.8). `sample_size` is the
+total analysed, cases included, and `sample_unit` says whether it counts people or lives: a
+parental-lifespan study counts two lives per participant, so the same number means half as many
+genotyped people. A size without its unit is refused, and so is an `n_cases` larger than the size.
+
+**`phenotype_class` says what was measured; `study_design` says how.** A case-control GWAS of
+centenarians and a Cox model of parental lifespan are both "GWAS" in `study_design`, and the class is
+what separates them. The recommended twelve are v2's; a token outside them is kept and warned about
+once, because the commonest cause is a second spelling of one of them.
+
+**`ancestry` is a code, `population` is a description.** `ancestry` takes the 1000 Genomes
+superpopulation codes and nothing else, listing each one a trans-ethnic study pooled; the cohort's own
+name (an Ashkenazi study is `EUR` there) goes in `population`. An unstated `ancestry` is unknown, which
+is why a locus whose evidence is partly unstated is never reported as European-only.
+
+**An age-stratified estimate is one row per band.** `age_min`/`age_max` bound the band in years, an
+empty bound leaves it open (Timmers 2019's top parental band is 80 and over), and `age_of` says whose
+age it is: a parental-lifespan study bands by the parent's age at death, not the participant's.
+
+**A stratum is a pair.** `stratum` names the modifier an estimate was measured within and
+`stratum_level` the level (`sex`/`male`, `parent_sex`/`father`); one without the other is refused. One
+pair holds one modifier, so "hypertensive men" keeps its second modifier in `statistical_test`.
+
+**A study measured on an LD proxy is filed under the lead, with the proxy in `proxy_rsid`.** The
+`effect_allele` is then the proxy's allele, and that is what the compiler checks it against; filed
+under the proxy's own rsID instead, the row would be an orphan. Write only the rsID: r² means nothing
+without its population, so it is computed rather than typed.
+
+**`effect_measure` is the kind of estimate, `effect_unit` what one unit of it is.** A `beta` can be in
+years of parental lifespan per allele, Martingale residuals or a hazard; write the unit as the paper does.
+A variant's row in `weights.parquet` carries it only when every study row of that variant that states a
+unit states the same one, so two units for one variant leave it empty rather than picking one.
+
 **The symptom of confusing it with `literature.csv` is a dropped row.** `literature.csv` is
 machine-produced and keeps every article it found; the compiler **discards an uncited literature row**
 when nothing references it. `studies.csv` is the authored side and is never dropped. If a citation
@@ -243,6 +304,65 @@ they sit outside content identity and editing one does not move the digest.
 **Counting a correction counts the overlay, never the effect.** A report that counted what a correction
 *removed* disagreed with itself between two runs of the same module, because the second run had nothing
 left to remove.
+
+## meta.csv
+
+**One row is one composite statement and what it says.** The statement is a member set: one or more
+rows of the single-statement tables (`variants`, `diplotypes`, `pharm_variants`, `allele_function`),
+each picked by a `table[column=value, …]` member. What it says is a finding (a conclusion, a per-trait
+direction, its negatives) or the per-locus facts (tier, age of action and its confidence, tags), or
+both. A row with one member and only facts is how a single locus or a named allele gets its tier; a row
+with two members and a conclusion is a combination, such as KL-VS heterozygous with an APOE ε4 diplotype.
+
+**`sex` and `drug` scope the whole row, so each is part of what makes it one statement.** CPIC answers a
+TPMT × NUDT15 phenotype pair once per thiopurine, so that pair carries an azathioprine row, a
+mercaptopurine row and a thioguanine row. The row's `drug` says which drug the statement is about; a
+member's `drug=` condition is a different job, picking the diplotype or pharm rows that carry a drug.
+
+**A person decides every cell, and the compiler decides only what each member matched.** The member
+text is kept verbatim through `reverse`, so a selector the author wrote over a tag set
+(`variants[flags=legacy_longevitymap]`) stays a selector rather than becoming every row it matched. The compiler writes those rows beside it, so a consumer reads matches and never evaluates a
+rule.
+
+**Facts live here and nowhere else.** A tier is never repeated on the genotype rows of a locus, so no
+two copies of it can drift apart. Two rows can still state two values for one row they both reach; the
+more specific one wins, column by column (a concrete row key, then a locus, then more conditions, then
+fewer; a diplotype over the alleles it contains; a sex- or drug-scoped row over the same key without
+one, for that sex or drug). Where neither is more specific and they disagree, the column is withheld, which is the ε2/ε4
+case: two allele rows meet at one diplotype, and a third row keyed on that diplotype settles it.
+**Unstated is not different**: a specific row that leaves a fact empty takes the general row's value.
+
+**The symptom when it is wrong.** A member that matches nothing is almost always a value spelled other
+than the table stores it: a diplotype pair is stored with the smaller haplotype first, a genotype with
+its alleles sorted. A per-trait row on a bare locus whose genotype rows disagree on `effect_allele` has
+its direction withheld rather than guessed. A module carrying only this file is refused: it names rows,
+and there are none to name.
+
+## model_organisms.csv
+
+**One row is one experiment on a model organism and what it did to lifespan, about a human gene.** The
+human gene is the subject; the rest says which orthologue was altered, in which species, by which
+intervention, in which sex and on which diet, and what happened. A male and a female cohort, or a chow and
+a high-fat one, are two rows, because they are two experiments: everything but the outcome and its
+concordance is the key, so the same experiment written twice with two outcomes is refused.
+
+**A person decides every cell.** Nothing is derived and nothing is filled: the parquet is the CSV.
+`concordance` is the one judgement in the row, whether the animal's direction agrees with the human
+allele's, and empty is the honest answer when the paper does not let anyone say. A citation is welcome and
+not demanded: a GenAge-style entry often has no paper, and the table never reaches a score, so an uncited
+row draws no warning.
+
+**Why it is its own table.** The evidence has no other true home. A `studies.csv` row naming the rsID
+says the mouse study was about the human variant, and one naming no variant attaches to the whole module;
+a meta-table member cannot name a bare gene; and `Igf1r+/-` is a mouse genotype, not a human allele, so
+`allele_function.csv` cannot hold it either. Keying on the gene itself is what lets a gene-only finding be
+written at all.
+
+**Annotation only, and the symptom when that is forgotten.** Nothing here becomes a weight, an effect, a
+tier or a meta-table member, and the table is not a lead table: a module carrying only this file is
+refused as having no recognized table, and the genes it names are not counted among the genes the module
+is about. A model-organism finding that should move a person's result belongs in a finding table with a
+human study behind it, never here.
 
 ## licensing.csv
 

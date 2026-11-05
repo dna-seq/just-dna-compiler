@@ -366,6 +366,8 @@ def test_the_guard_matches_the_models_own_rule() -> None:
 
 
 def test_an_allele_the_format_cannot_hold_is_still_skipped() -> None:
+    # `DELTCT` is spelled since RM253 only with a reference to read; with none (the default reader) it
+    # is withheld rather than guessed. `test_cpic_notation` covers the spelling itself.
     for value, reason in (("R", "ambiguity"), ("DELTCT", "notation")):
         rows, _ = _haplotype_rows([_variant(rsid="rs1799853", variant_allele=value, unusable=reason)])
         assert rows == [], value
@@ -398,12 +400,12 @@ def test_the_unusable_alleles_are_reported_once_per_reason_with_a_count() -> Non
         "CYP2D6",
         {"ambiguity": [f"*{i}=R" for i in range(5)], "notation": ["*180=DELTCT"]},
     )
-    assert len(lines) == 2
+    assert len(lines) == 1
     ambiguity = next(line for line in lines if "IUPAC" in line)
     assert "5 defining allele(s) skipped" in ambiguity and "(+2 more)" in ambiguity
-    notation = next(line for line in lines if "RM5" in line)
-    assert "1 defining allele(s) skipped" in notation and "DELTCT" in notation
-    assert "IUPAC" not in notation  # the claim that was wrong
+    # A notation is the drafter's to spell since RM253, so the client reporting it "skipped" would be a
+    # false line for every row the drafter then writes; the drafter reports what it could not spell.
+    assert not [line for line in lines if "DELTCT" in line]
 
 
 def test_variants_with_no_locus_are_reported_once_with_the_count() -> None:
@@ -578,16 +580,25 @@ def test_an_unparsable_pair_is_bucketed_by_why_it_did_not_parse() -> None:
     from just_dna_enricher.pgx_draft import _unparsable_by_reason
 
     buckets = _unparsable_by_reason(
-        ["*4x≥3/*95", "c.1003G>T (*11)/Reference", "*1x2/*2", "Reference/Reference"]
+        ["*4x≥3/*95", "Mediterranean, Dallas/B (reference)", "*1x2/*2", "m.1555A>G", "A- 202A_376G/A"]
     )
     assert buckets == {
         "copy_number": ["*4x≥3/*95", "*1x2/*2"],
-        "not_star": ["c.1003G>T (*11)/Reference", "Reference/Reference"],
+        "not_star": ["Mediterranean, Dallas/B (reference)", "A- 202A_376G/A"],
+        # RM253: a haploid call names one allele, which the drafter can write; the pair table cannot hold it.
+        "single": ["m.1555A>G"],
     }
 
 
-def test_the_hgvs_named_gene_is_told_its_names_are_the_problem(tmp_path: Path) -> None:
-    """The DPYD shape end to end: the sentence names HGVS and RM253, not copy number."""
+def test_every_unparsable_bucket_has_a_sentence() -> None:
+    from just_dna_enricher.pgx_draft import _UNPARSABLE_EXPLANATION, _unparsable_by_reason
+
+    seen = set(_unparsable_by_reason(["*4x≥3/*95", "m.1555A>G", "A- 202A_376G/A"]))
+    assert seen == set(_UNPARSABLE_EXPLANATION)
+
+
+def test_an_hgvs_named_pair_is_drafted_under_its_written_names(tmp_path: Path) -> None:
+    """The DPYD shape end to end (RM253): drafted as `c.1003G>T(*11)`/`Reference`, never skipped."""
 
     def handler(request: httpx.Request) -> httpx.Response:
         path = request.url.path
@@ -606,9 +617,36 @@ def test_the_hgvs_named_gene_is_told_its_names_are_the_problem(tmp_path: Path) -
         return _dispatch(request)
 
     client = CpicClient(client=httpx.Client(transport=httpx.MockTransport(handler)))
+    spec = _spec(tmp_path)
+    result = draft_gene(spec, "CYP2C19", declared_use="non_commercial", client=client)
+    assert not [w for w in result.warnings if "diplotype(s)" in w and "skipped" in w]
+    # A pair is canonicalized on load, so compared unordered.
+    pairs = {frozenset((r.haplotype_a, r.haplotype_b)) for r in _rows(spec, "diplotypes.csv", DiplotypeRow)}
+    assert pairs == {frozenset(("c.1003G>T(*11)", "Reference"))}
+
+
+def test_a_name_that_is_not_hgvs_is_still_told_why_it_was_skipped(tmp_path: Path) -> None:
+    """G6PD's alias list is not HGVS: an `&` would claim a compound, so the pair stays skipped, named."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/diplotype"):
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "genesymbol": "CYP2C19",
+                        "diplotype": "Mediterranean, Dallas, Panama/B (reference)",
+                        "generesult": "Deficient",
+                        "totalactivityscore": None,
+                    }
+                ],
+            )
+        return _dispatch(request)
+
+    client = CpicClient(client=httpx.Client(transport=httpx.MockTransport(handler)))
     result = draft_gene(_spec(tmp_path), "CYP2C19", declared_use="non_commercial", client=client)
     [line] = [w for w in result.warnings if "diplotype(s)" in w and "skipped" in w]
-    assert "HGVS" in line and "RM253" in line
+    assert "neither star strings nor HGVS names" in line
     assert "copy-number" not in line
 
 
@@ -737,3 +775,35 @@ def test_an_unanswerable_knows_drug_keeps_the_draft_and_says_it_could_not_ask(tm
     # It must NOT reach for the snapshot wording — there is no snapshot here, and the two "could not
     # establish" readings have different remedies.
     assert "snapshot" not in could_not_ask
+
+
+def test_an_hla_allele_the_format_refuses_is_skipped_by_the_drafter_not_raised(tmp_path: Path) -> None:
+    """The drafter's allele guard follows the model's HLA rule (RM334), rather than a weaker one.
+
+    `STAR_ALLELE_PATTERN` accepts the colon-less pre-2010 spelling `*5701` and the one-field `*58`, and
+    since 0.8 `AlleleFunctionRow` refuses both for an `HLA-` gene. Guarded by the star pattern alone, a
+    CPIC allele table carrying either ended the whole draft on a pydantic traceback, the
+    `draft --gene CYP2C9` failure one rule over. Each row is skipped with the model's own reason.
+    """
+    hla_alleles = [
+        {"genesymbol": "HLA-B", "name": "*5701", "activityvalue": None, "clinicalfunctionalstatus": None},
+        {"genesymbol": "HLA-B", "name": "*58", "activityvalue": None, "clinicalfunctionalstatus": None},
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/gene"):
+            return httpx.Response(200, json=[{"symbol": "HLA-B", "chr": "chr6"}])
+        if path.endswith("/allele"):
+            return httpx.Response(200, json=hla_alleles)
+        if path.endswith(("/diplotype", "/allele_definition", "/allele_location_value")):
+            return httpx.Response(200, json=[])
+        return _dispatch(request)
+
+    client = CpicClient(client=httpx.Client(transport=httpx.MockTransport(handler)))
+    spec = _spec(tmp_path)
+    result = draft_gene(spec, "HLA-B", declared_use="non_commercial", client=client)
+
+    skipped = [w for w in result.warnings if "IPD-IMGT/HLA" in w]
+    assert {name for name in ("*5701", "*58") if any(repr(name) in w for w in skipped)} == {"*5701", "*58"}
+    assert not (spec / "allele_function.csv").exists()

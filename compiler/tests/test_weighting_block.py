@@ -7,12 +7,9 @@ different by the column and the artifact cannot say so (S36).
 
 Three free-text strings, advisory, manifest-only. The tests below pin the four properties that make
 that legal and useful: it reaches the manifest **verbatim**, it moves **neither** identity half, an
-unknown key is **refused** rather than silently ignored, and `reverse_module` **drops** it.
-
-That last one is the interesting test. `license`, `panel` and `authorship` behave identically and
-**nothing in the suite pins any of them** — the behaviour is documented in three field descriptions
-and asserted nowhere, so the round trip could start re-emitting one and no test would notice. Written
-here for the new block rather than left to the same gap.
+unknown key is **refused** rather than silently ignored, and `reverse_module` **writes it back** from
+the manifest (RM241; until 0.8 it dropped it, and this file pinned the drop). The same holds for every
+other spec field the manifest carries, pinned in `test_reverse_reconstructs_the_spec.py`.
 """
 
 from pathlib import Path
@@ -145,13 +142,12 @@ def test_adopting_the_block_changes_the_input_hash(tmp_path: Path) -> None:
 # ── the round trip ──────────────────────────────────────────────────────────────────────────────
 
 
-def test_reverse_drops_the_block_and_the_result_still_compiles(tmp_path: Path) -> None:
-    """Documented in the field description as "the same class as `panel`/`authorship`/`license`",
-    and pinned here because none of those three is pinned anywhere.
+def test_reverse_writes_the_block_back_and_the_result_still_compiles(tmp_path: Path) -> None:
+    """RM241: the block reaches no parquet, but it reaches the manifest, and reverse reads it there.
 
-    Dropping it is a real loss and the right one: `reverse_module` rebuilds the spec from the
-    parquets, and this block reaches no parquet, so there is nothing to rebuild it from. Inventing a
-    default would author a claim about the weights that no human made.
+    This test used to pin the opposite, that the block was dropped because "there is nothing to
+    rebuild it from". The manifest was always there to rebuild it from; the round trip lost the one
+    sentence that says what a module's weights are on, while both identity digests held.
     """
     spec = _spec(tmp_path / "spec", weighting=True)
     first = compile_module(spec, tmp_path / "a1")
@@ -159,19 +155,18 @@ def test_reverse_drops_the_block_and_the_result_still_compiles(tmp_path: Path) -
     assert first.manifest.weighting is not None
 
     reverse_module(tmp_path / "a1", tmp_path / "rev")
-    reversed_yaml = (tmp_path / "rev" / "module_spec.yaml").read_text()
-    assert "weighting" not in reversed_yaml
-
     check = validate_spec(tmp_path / "rev")
     assert check.valid, check.errors
+    second = compile_module(tmp_path / "rev", tmp_path / "a2")
+    assert second.success, second.errors
+    assert second.manifest.weighting == first.manifest.weighting
 
 
-def test_the_loss_does_not_break_the_fixed_point(tmp_path: Path) -> None:
+def test_the_block_does_not_break_the_fixed_point(tmp_path: Path) -> None:
     """compile → reverse → compile → reverse → compile. Stable from the second lap.
 
-    The corpus sweep compares *signatures*, not the reversed spec against the original, so a
-    manifest-only field going missing cannot break it — but that is a property worth asserting rather
-    than inferring, since it is the reason this block is safe to put in a reference example at all.
+    Worth asserting rather than inferring: the block is outside both identity halves, so carrying it
+    through reverse must leave every signature where it was.
     """
     spec = _spec(tmp_path / "spec", weighting=True)
     first = compile_module(spec, tmp_path / "a1")

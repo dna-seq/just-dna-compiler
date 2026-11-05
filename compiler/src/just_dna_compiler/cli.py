@@ -36,6 +36,7 @@ from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
 from pydantic import ValidationError
 
 from just_dna_compiler.compiler import (
+    BA1_ALLELE_FREQUENCY_THRESHOLD,
     close_module,
     compile_module,
     content_signature,
@@ -100,12 +101,26 @@ def validate(
         help="Pre-flight for a strict compile: escalate the mode-laddered findings to errors, as "
         "`compile --strict` does. Use it whenever the compile you intend to run is strict.",
     ),
+    resolve: bool = typer.Option(
+        True,
+        "--resolve/--no-resolve",
+        help="Pre-flight for `compile --no-resolve`: leave the injected resolution.csv unconsulted, as "
+        "that compile does. Pass the same switch the compile will get.",
+    ),
+    ba1_threshold: float = typer.Option(
+        BA1_ALLELE_FREQUENCY_THRESHOLD,
+        "--ba1-threshold",
+        help="As `compile --ba1-threshold`: the allele frequency above which a pathogenic variant draws "
+        "the ACMG BA1 warning. Warning-only.",
+    ),
 ) -> None:
     """Validate a spec directory without producing output. Exit 1 if invalid."""
     result = validate_spec(
         spec_dir,
         authority_keys=_authority_keys(strip_identity, authority_key),
         strict=strict,
+        resolve_with_ensembl=resolve,
+        ba1_threshold=ba1_threshold,
     )
     _echo_messages(result)
     if result.valid:
@@ -147,6 +162,18 @@ def compile(
     authority_key: list[str] = typer.Option(
         [], "--authority-key", help="Extra authority-owned module key to strip (repeatable)."
     ),
+    ensembl_reference: str | None = typer.Option(
+        None,
+        "--ensembl-reference",
+        help="Pinned reference id to record in manifest.compilation.ensembl_reference "
+        "(e.g. the Ensembl release the resolution table was built from).",
+    ),
+    ba1_threshold: float = typer.Option(
+        BA1_ALLELE_FREQUENCY_THRESHOLD,
+        "--ba1-threshold",
+        help="Allele frequency above which a pathogenic variant draws the ACMG BA1 warning. "
+        "Warning-only, so it tunes noise, never whether the compile succeeds.",
+    ),
 ) -> None:
     """Compile a spec directory into a parquet artifact + manifest.json. Exit 1 on failure."""
     result = compile_module(
@@ -158,6 +185,8 @@ def compile(
         compiled_by=compiled_by,
         authority_keys=_authority_keys(strip_identity, authority_key),
         strict=strict,
+        ensembl_reference=ensembl_reference,
+        ba1_threshold=ba1_threshold,
     )
     _echo_messages(result)
     if result.success:
@@ -398,6 +427,9 @@ def keygen(
             err=True,
         )
         raise typer.Exit(code=1)
+    # A missing parent is created, as `compile` and `reverse` create theirs (RM395): the guide's
+    # `--out ./keys/private.pem` runs in a fresh directory.
+    out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(private_key_pem)
     out.chmod(0o600)
     typer.secho(f"private key: {out} (mode 600)", fg=typer.colors.GREEN)
@@ -447,8 +479,12 @@ def reverse(
     title: str | None = typer.Option(None, "--title"),
     description: str | None = typer.Option(None, "--description"),
     report_title: str | None = typer.Option(None, "--report-title"),
-    icon: str = typer.Option("database", "--icon"),
-    color: str = typer.Option("#6435c9", "--color"),
+    icon: str | None = typer.Option(
+        None, "--icon", help="Override the icon. Read from the artifact's manifest.json by default."
+    ),
+    color: str | None = typer.Option(
+        None, "--color", help="Override the colour. Read from the artifact's manifest.json by default."
+    ),
     version: str | None = typer.Option(
         None, "--version", help="Advisory module.version to re-emit into the spec."
     ),
@@ -678,6 +714,17 @@ def sweep(
             "stamped `just-dna-compiler 0.7.0`). Exit 1 on a finding."
         ),
     ),
+    toolchain_before: Path | None = typer.Option(
+        None,
+        "--toolchain-before",
+        exists=True,
+        file_okay=False,
+        help=(
+            "Compiled output tree from THIS release's compiler under the previous toolchain (e.g. "
+            "`uv run --with polars==<old>`). Compared with AFTER as a second, fixed-compiler sweep "
+            "that backs a `kind: toolchain` declaration (RM352)."
+        ),
+    ),
     as_json: bool = typer.Option(False, "--json", help="Emit the measurement as JSON."),
 ) -> None:
     """Measure what this release changed about compiled output, against a previous release's (RM126).
@@ -685,6 +732,10 @@ def sweep(
     BEFORE must have been produced by the previous release — one `compile` per module spec, from the
     SAME spec root this run uses, so the compiler is the only variable. With `--release` the release
     gate runs and a measured movement that no `ReleaseRecord` declares exits 1.
+
+    `--toolchain-before` adds the sweep a `toolchain` declaration needs (RM352): this release's
+    compiler on both sides, only the toolchain varied, so a byte move it shows is the toolchain's and
+    not the compiler's. Under `--json` it is nested as `toolchain_sweep`.
 
     This is a release-sequence command, not an ordinary test: it needs the previous release actually
     installed. COMPILER.md carries the full sequence.
@@ -695,8 +746,24 @@ def sweep(
     else:
         after_outputs, build_failures = read_outputs(after), {}
     measurement = compare_outputs(before_outputs, after_outputs, build_failures)
+    # The fixed-compiler sweep's other side is AFTER itself: this release's compiler on the new
+    # toolchain is already built, so only the old-toolchain tree is passed in.
+    toolchain_measurement = None
+    if toolchain_before is not None:
+        # A half-built or mixed-stamp tree is an operator's error to report, never a traceback: under
+        # `--json` it would also leave stdout without its one JSON document.
+        try:
+            toolchain_measurement = compare_outputs(read_outputs(toolchain_before), after_outputs)
+        except ValueError as exc:
+            typer.secho(
+                f"  error: --toolchain-before {toolchain_before}: {exc}", fg=typer.colors.RED, err=True
+            )
+            raise typer.Exit(code=1) from exc
     if as_json:
-        typer.echo(json.dumps(measurement_json(measurement), indent=2))
+        payload = measurement_json(measurement)
+        if toolchain_measurement is not None:
+            payload["toolchain_sweep"] = measurement_json(toolchain_measurement)
+        typer.echo(json.dumps(payload, indent=2))
     else:
         typer.echo(f"{measurement.before} -> {measurement.after}: {measurement.evidence}")
         for axis, moved in sorted(measurement.axes.items()):
@@ -706,6 +773,12 @@ def sweep(
             )
         for field in measurement.manifest_fields:
             typer.echo(f"    manifest field moved: {field}")
+        if toolchain_measurement is not None:
+            typer.echo(
+                f"toolchain sweep, {toolchain_measurement.before} -> {toolchain_measurement.after}: "
+                f"{toolchain_measurement.before_toolchain} -> {toolchain_measurement.after_toolchain}; "
+                f"{toolchain_measurement.evidence}"
+            )
     if release is None:
         return
     # Under `--json` stdout is one JSON document and nothing else may join it: the caller of this
@@ -720,7 +793,7 @@ def sweep(
     except ValueError as exc:
         typer.secho(f"  error: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
-    findings, notes = gate_findings(measurement, gated)
+    findings, notes = gate_findings(measurement, gated, toolchain_measurement=toolchain_measurement)
     for note in notes:
         typer.secho(f"  note: {note}", fg=typer.colors.BLUE, err=gate_stream)
     for finding in findings:

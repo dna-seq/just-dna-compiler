@@ -140,7 +140,7 @@ class TestASubjectlessCitationRow:
 
     def test_naming_a_variant_still_works_unchanged(self) -> None:
         assert StudyRow(rsid="rs1800562", pmid="8458085").variant_key == "rs1800562"
-        assert StudyRow(chrom="4", pmid="8458085").variant_key == "4:None:None"
+        assert StudyRow(chrom="4", pmid="8458085").variant_key == "4"
 
     @pytest.mark.parametrize("partial", [{"start": 94781859}, {"ref": "G"}, {"start": 94781859, "ref": "G"}])
     def test_half_a_coordinate_is_still_refused(self, partial: dict) -> None:

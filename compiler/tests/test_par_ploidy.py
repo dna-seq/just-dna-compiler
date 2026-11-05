@@ -133,19 +133,23 @@ def test_a_hand_written_coordinate_is_still_caught_by_validate(tmp_path: Path) -
 
 
 def test_an_rsid_authored_row_is_caught_once_resolution_supplies_the_contig(tmp_path: Path) -> None:
-    """The false negative, on the real MELAS variant. `validate` cannot see it — there is no contig
-    yet — and that is honest; the compile, which resolves, must."""
+    """The false negative, on the real MELAS variant: the contig exists only once resolution supplies it.
+
+    Both commands see it since RM367, which gave the pre-flight the compile's resolution step; this used
+    to pin `validate` as blind here, under an exemption ("there is no contig yet") that an injected table
+    never justified."""
     spec = _spec(tmp_path, _MT_BY_RSID, _MT_STUDY)
     (spec / "resolution.csv").write_text(_RESOLUTION, encoding="utf-8")
 
-    assert not [w for w in validate_spec(spec).warnings if "not diploid" in w]
+    preflight = [w for w in validate_spec(spec).warnings if "not diploid" in w]
+    assert len(preflight) == 1 and "chrom=MT" in preflight[0]
 
     # `resolve_with_ensembl` gates the whole resolution step, including the offline
     # resolution.csv path — leaving it on costs no network here because the table is injected.
     result = compile_module(spec, tmp_path / "out")
     assert result.success, result.errors
     warnings = [w for w in result.warnings if "not diploid" in w]
-    assert len(warnings) == 1 and "chrom=MT" in warnings[0]
+    assert warnings == preflight
 
 
 def test_a_row_both_passes_can_see_is_warned_about_once(tmp_path: Path) -> None:

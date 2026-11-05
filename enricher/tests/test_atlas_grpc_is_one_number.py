@@ -90,7 +90,8 @@ def test_every_atlas_client_import_is_guarded_against_every_failure() -> None:
     scope or the lazy one inside `_atlas_client_or_none` — must name it.
     """
     problems: list[str] = []
-    for module in sorted(_SRC.glob("*.py")):
+    # Recursive since RM260 made `cli` and `enrich` packages; `generated/` is protoc output, not ours.
+    for module in sorted(p for p in _SRC.rglob("*.py") if "generated" not in p.relative_to(_SRC).parts):
         tree = ast.parse(module.read_text(encoding="utf-8"))
         guarded: set[int] = set()
         for node in ast.walk(tree):

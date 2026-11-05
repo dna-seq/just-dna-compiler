@@ -81,7 +81,7 @@ def test_strict_validate_refuses_a_partial_table_with_the_compile_s_own_error(tm
     Asserting the error strings are **equal** rather than that both are non-empty is the point — a
     pre-flight that refuses for its own differently-worded reason still sends the author hunting, and a
     second implementation of "which rows are unplaceable" would drift from the first at the next
-    change to `_usable_loci`.
+    change to `usable_loci`.
     """
     spec = _spec(tmp_path / "spec", resolution=_PARTIAL)
 
@@ -167,19 +167,28 @@ def test_no_table_at_all_is_reported_as_nobody_asked_rather_than_per_row(tmp_pat
     assert not validate_spec(spec, strict=True).valid
 
 
-def test_no_resolve_suppresses_the_check_the_way_it_suppresses_the_fill(tmp_path: Path) -> None:
+def test_no_resolve_suppresses_the_per_row_warnings_and_strict_still_refuses(tmp_path: Path) -> None:
     """The master switch means the same thing on both sides of the parity.
 
     `--no-resolve` turns resolution off entirely, so every variant compiles unpositioned **by
     request**. Reporting each one unplaceable there would restate that request once per row, and the
     existing `resolution_disabled` warning already says it once with the row count in it.
+
+    `strict` still refuses, on both sides: its promise is a reproducible artifact, and an unplaced row
+    breaks it whatever left it unplaced (`test_strict_compile.py` pins the compile's half). This test
+    used to pin the pre-flight as valid here, beside a compile that refused — the disagreement RM367
+    closed.
     """
     spec = _spec(tmp_path / "spec", resolution=_PARTIAL)
 
     validated = validate_spec(spec, strict=True, resolve_with_ensembl=False)
+    compiled = compile_module(spec, tmp_path / "out", strict=True, resolve_with_ensembl=False)
 
     assert _unplaced(validated) == []
-    assert validated.valid, validated.errors
+    assert not validated.valid and not compiled.success
+    assert validated.errors == compiled.errors
+    assert validated.warnings_summary["resolution_disabled"] == 1
+    assert validate_spec(spec, resolve_with_ensembl=False).valid
 
 
 # ── the shared predicate ────────────────────────────────────────────────────────────────────────
@@ -188,7 +197,7 @@ def test_no_resolve_suppresses_the_check_the_way_it_suppresses_the_fill(tmp_path
 def test_the_predicate_is_the_one_resolution_applies(tmp_path: Path) -> None:
     """Shared rather than restated, which is what keeps the two sides from drifting apart.
 
-    Three table states a naive membership test gets wrong and `_usable_loci` does not: a `not_found`
+    Three table states a naive membership test gets wrong and `usable_loci` does not: a `not_found`
     sentinel is a recorded answer of *no locus*, a row under another build is not this module's, and a
     row with no `chrom` places nothing. All three leave the subject unplaceable.
     """

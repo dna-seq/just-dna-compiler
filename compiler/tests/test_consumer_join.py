@@ -23,14 +23,38 @@ does. Whether it *does* match is the consumer's exact join. So the expected set 
 the normalization under test, and a miss is a row ClinVar carries under a spelling the module does
 not use.
 
-**It fails today, on purpose, and the failures are pinned.** `_MISSES_PINNED_TO_RM270` are the rows
-RM270 describes (the artifact keys an indel on its source's spelling). `_REF_DISAGREES` held the one
-row whose `ref` the reference does not have until RM295 corrected it. Each is an equality, so a row leaving either set, fixed or
-newly broken, fails the test, and the sets can only shrink as those items ship.
+**Every row ClinVar carries joins.** Until RM270 (0.8) two SHOX rows were pinned as expected misses:
+Ensembl spells the 2 bp AG deletion and its duplication at `X:634690` (`AGAG>AG`, `AGAG>AGAGAG`), ClinVar
+and every caller at `X:634689` (`CAG>C`, `C>CAG`). The enricher now writes a coordinate it fills from an
+rsID left-aligned, splitting that multi-allelic locus into the two spellings a caller writes, and
+`shox_par1`'s `resolution.csv` was re-derived with it, so the miss set is empty — the proof RM270 asked
+for. `_REF_DISAGREES` held the one row whose `ref` the reference does not have until RM295 corrected it.
+Both are equalities, so a row entering either set fails the test.
 
 **Regenerating.** A new reference example with rows outside the windows fails
 `test_every_joinable_row_is_inside_the_fixture` by name. Rebuild both files with the commands above
 over the new row set, and keep the ClinVar release in the filename.
+
+**Extended 2026-11-04 for `longevity_studies` and `model_organisms`** (six SNV windows: 1:109275908,
+3:12351626, 6:63910997, 6:108587315, 6:160589086, 19:44908684), without bcftools or a local FASTA. Each window
+is `[pos-100, pos+len(ref)+100]`, read from UCSC's hg38 sequence API (`api.genome.ucsc.edu/getData/sequence`),
+with the row's `ref` asserted at its offset. The records are the same 2026-06-27 ClinVar GRCh38 VCF cut to
+those windows, with INFO reduced to `CLNSIG`, `RS` and one ALT per record. They were not run through
+`bcftools norm`, which realigned none of the first 5,281. Existing lines are unchanged, and the new ones
+are merged in sort order.
+
+**Extended again 2026-11-04 for `apoe_klvs_meta`, `pleiotropy_tradeoff` and `cpic_gene_pairs`** (58 rows
+outside every window, 16 new windows after merging the overlapping ones on chr6 and chr13, 228 records),
+the same way and on top of the extension above: one `[pos-100, pos+len(ref)+100]` window per row from
+UCSC's hg38 API with its `ref` asserted, overlapping windows merged, and the provisioned ClinVar VCF
+(`clinvar_2026-06-27`) cut to them with INFO reduced to `CLNSIG`/`RS`. No existing line moves.
+
+**Extended again 2026-11-05 for `cpic_gene_pairs`' respelled NUDT15 `*1` `rs1457579126`** (now authored at
+`13:48040977 GA`, the split snapshot's left-aligned anchor, where it used to carry no `ref`). The chr13 window
+`48041004-48041214` grows left to `48040877` (`pos-100`): the 127 new bases are UCSC's hg38
+`chr13:48040876-48041003` (0-based), with `GA` asserted at 48040977, prepended to the old window's sequence.
+The provisioned `clinvar_2026-06-27` VCF adds two records in those bases (48040948, 48040966), INFO reduced
+to `CLNSIG`/`RS`, merged in sort order. No other line moves.
 """
 
 import gzip
@@ -44,16 +68,6 @@ from just_dna_compiler.compiler import compile_module
 _ROOT = Path(__file__).resolve().parents[2]
 _EXAMPLES = _ROOT / "reference_examples"
 _FIXTURE = _ROOT / "assets" / "consumer_join"
-
-#: `(example, table, chrom, start, ref, alt)` rows ClinVar carries at another spelling (RM270). The
-#: SHOX 2 bp AG deletion and duplication: Ensembl spells them at `X:634690` (`AGAG>AG`, `AGAG>AGAGAG`),
-#: ClinVar and every caller at `X:634689` (`CAG>C`, `C>CAG`).
-_MISSES_PINNED_TO_RM270: frozenset[tuple[str, str, str, int, str, str]] = frozenset(
-    {
-        ("shox_par1", "weights", "X", 634690, "AGAG", "AG"),
-        ("shox_par1", "weights", "X", 634690, "AGAG", "AGAGAG"),
-    }
-)
 
 #: Rows whose `ref` the GRCh38 reference does not have at their `start`. Empty since RM295 moved
 #: `cyp2d6_structural`'s CYP2D6*4 row from `22:42127941` (where GRCh38 has `G`) to `22:42128945`.
@@ -149,10 +163,10 @@ def test_every_joinable_row_is_inside_the_fixture(join: dict[str, set]) -> None:
     assert join["outside"] == set(), f"rebuild assets/consumer_join for: {sorted(join['outside'])}"
 
 
-def test_every_row_clinvar_carries_joins_except_the_pinned_rm270_set(join: dict[str, set]) -> None:
-    """The consumer's join. Equality with the pinned set: fixed or newly broken, either fails here."""
+def test_every_row_clinvar_carries_joins(join: dict[str, set]) -> None:
+    """The consumer's join: no row ClinVar carries is missed for its spelling (RM270)."""
     assert join["matched"], "the join matched nothing, so it is not testing a join"
-    assert join["missed"] == _MISSES_PINNED_TO_RM270
+    assert join["missed"] == set()
 
 
 def test_no_row_states_a_ref_the_reference_lacks(

@@ -272,13 +272,49 @@ def test_a_module_where_nothing_was_checked_does_not_publish_a_confident_zero(tm
     assert block.quotes_unchecked != other.quotes_unchecked
 
 
+def test_an_abstract_miss_is_not_published_as_a_checked_quote(tmp_path: Path) -> None:
+    """S109: the S56 reading one case over, where the row says 0 rather than null.
+
+    An abstract-only citation stores `quotes_found=0, quote_source=abstract` — searched, not found, and
+    not a verdict, because the body was never read. `quotes_unchecked` counts null rows, so it cannot
+    see it: two abstract misses and two fulltext misses publish the same three counters. The
+    quote-level denominator is what separates them.
+    """
+    header = "pmid,doi,pmcid,exists,is_open_access,quotes_authored,quotes_found,quote_source,source,status,fetched_at\n"
+    spec = _spec(tmp_path, literature=True)
+
+    def compile_with(first: str, second: str, out: str):
+        (spec / "literature.csv").write_text(
+            header
+            + f"12345678,10.1234/2013/999990,,true,false,1,{first},pubmed,resolved,\n"
+            + f"23456789,10.1000/example,,true,false,1,{second},pubmed,resolved,\n",
+            encoding="utf-8",
+        )
+        result = compile_module(spec, tmp_path / out, resolve_with_ensembl=False)
+        assert result.success, result.errors
+        return result.manifest.literature
+
+    abstract_only = compile_with("0,abstract", "0,abstract", "a")
+    fulltext = compile_with("0,fulltext", "0,fulltext", "b")
+    counters = ("quotes_authored", "quotes_found", "quotes_unchecked")
+    # The defect: identical on every counter that existed before.
+    assert [getattr(abstract_only, c) for c in counters] == [getattr(fulltext, c) for c in counters]
+    assert (abstract_only.quotes_checked, fulltext.quotes_checked) == (0, 2)
+
+    # A hit in an abstract settles that quote, and the other arms of the rule sit beside it.
+    mixed = compile_with("1,abstract", ",", "c")
+    assert (mixed.quotes_found, mixed.quotes_checked, mixed.quotes_unchecked) == (1, 1, 1)
+    for block in (abstract_only, fulltext, mixed):
+        assert block.quotes_found <= block.quotes_checked <= block.quotes_authored
+
+
 def test_an_abstract_only_miss_is_told_apart_by_abstract_only_count_alone(tmp_path: Path) -> None:
-    """RM264 (S109): the 0.7.x mitigation, which may add nothing.
+    """RM264 (S109): on a manifest compiled before `quotes_checked`, `abstract_only_count` is the tell.
 
     A 0 found against an abstract is unsettled, a 0 found against a fulltext is a miss, and the pair
-    a reader looks at (`quotes_found`, `quotes_unchecked`) is identical for the two. On this line the
-    only counter separating them is `abstract_only_count`, so the two field descriptions must send
-    the reader there. The field that settles it properly is a minor's (RM256, on the 0.8 branch).
+    a reader looks at (`quotes_found`, `quotes_unchecked`) is identical for the two. Before RM256 the
+    only counter separating them was `abstract_only_count`; on this line `quotes_checked` settles it,
+    and its description names `abstract_only_count` as the fallback for a manifest that predates it.
     """
     spec = _spec(tmp_path, literature=True)
     header = "pmid,doi,pmcid,exists,is_open_access,quotes_authored,quotes_found,quote_source,source,status,fetched_at\n"
@@ -300,9 +336,7 @@ def test_an_abstract_only_miss_is_told_apart_by_abstract_only_count_alone(tmp_pa
     assert (a.quotes_found, a.quotes_unchecked) == (f.quotes_found, f.quotes_unchecked)
     assert (a.abstract_only_count, f.abstract_only_count) == (a.row_count, 0)
 
-    fields = type(a).model_fields
-    for name in ("quotes_found", "quotes_unchecked"):
-        assert "abstract_only_count" in fields[name].description, name
+    assert "abstract_only_count" in type(a).model_fields["quotes_checked"].description
 
 
 def test_a_nonexistent_citation_recorded_by_the_enricher_surfaces_at_compile(tmp_path: Path) -> None:
@@ -1546,6 +1580,29 @@ def test_a_resolution_link_is_not_a_source_name(tmp_path: Path) -> None:
     assert not any("has no row for" in w for w in warnings)
 
 
+def test_a_placement_witness_is_a_source_the_resolution_table_uses(tmp_path: Path) -> None:
+    """RM267: the enricher asks a second authority where a row sits and writes that authority's terms.
+
+    A `clinvar` row the resolution layer declares for a witness the row names is used, not an orphan;
+    the same declaration with the witness cell blank is the orphan finding it always was.
+    """
+    hdr = _RESOLUTION_HDR.rstrip("\n") + ",placement_witness,placement_verdict\n"
+    declared = (
+        _SRC_HDR
+        + "ensembl,resolution,Apache-2.0,Ensembl,false,true,unstated\n"
+        + "clinvar,resolution,public-domain,NCBI ClinVar,false,true,unstated\n"
+    )
+    for witness, orphaned in (("clinvar,same_event", False), (",", True)):
+        spec = _spec(tmp_path / witness.replace(",", "_"), sources=declared, license="MIT")
+        (spec / "resolution.csv").write_text(
+            hdr + f"{_SICKLE},rs334,11,5227002,T,A,GRCh38,0,cache,ensembl,resolved,{witness}\n"
+        )
+        result = compile_module(spec, spec.parent / "o")
+        assert result.success, result.errors
+        warned = [w for w in result.manifest.compilation.warnings if "no table in this module uses" in w]
+        assert bool(warned) is orphaned and (not warned or "clinvar" in warned[0])
+
+
 def test_a_resolution_authority_with_no_terms_row_still_warns(tmp_path: Path) -> None:
     """The check keeps its teeth: an authority the module never declared is a real finding."""
     rows = f"{_SICKLE},rs334,11,5227002,T,A,GRCh38,0,gnomad,gnomad,resolved\n"
@@ -1582,14 +1639,23 @@ def test_authority_is_outside_the_resolution_fact_set(tmp_path: Path) -> None:
     assert a.manifest.compilation.resolution_signature == b.manifest.compilation.resolution_signature
 
 
-def test_reverse_does_not_re_emit_the_authority_column(tmp_path: Path) -> None:
-    """Reverse emits facts and discards provenance — a reversed table has no authority to name."""
+def test_reverse_keeps_the_authority_and_restamps_the_link(tmp_path: Path) -> None:
+    """A reversed row keeps the authority of the row it came from; only the link is reverse's (RM380).
+
+    RM33 once had reverse write no `authority`, reasoning that a reversed table's facts came out of
+    parquet. That is the link (`source`), which reverse does restamp; the facts are still Ensembl's, and
+    dropping the authority made the second lap name a declared `ensembl` source unused."""
     rows = f"{_SICKLE},rs334,11,5227002,T,A,GRCh38,0,ensembl-rest,ensembl,resolved\n"
     spec = _with_links(_spec(tmp_path, sources=None), rows)
     assert compile_module(spec, tmp_path / "orig").success
     reverse_module(tmp_path / "orig", tmp_path / "rev")
-    header = (tmp_path / "rev" / "resolution.csv").read_text().splitlines()[0]
-    assert "authority" not in header and "source" in header
+    with (tmp_path / "rev" / "resolution.csv").open(newline="", encoding="utf-8") as handle:
+        reversed_rows = list(csv.DictReader(handle))
+    # Only the table's row: another variant the table never answered is rebuilt from its own cells
+    # and has no authority to keep.
+    answered = [r for r in reversed_rows if r["variant_key"] == _SICKLE]
+    assert answered
+    assert {(r["source"], r["authority"]) for r in answered} == {("reversed", "ensembl")}
     assert ResolutionRow(variant_key="x").authority is None
 
 

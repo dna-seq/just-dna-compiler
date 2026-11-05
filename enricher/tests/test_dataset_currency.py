@@ -13,7 +13,6 @@ test in this tier.
 from __future__ import annotations
 
 import gzip
-import os
 from collections.abc import Callable
 
 import httpx
@@ -371,10 +370,7 @@ def test_the_unavailability_type_is_a_subclass_so_an_existing_handler_keeps_firi
     assert issubclass(ReleaseUnavailable, ReleaseProbeError)
 
 
-@pytest.mark.skipif(
-    os.environ.get("JUST_DNA_NETWORK_TESTS") != "1",
-    reason="network tests are opt-in (JUST_DNA_NETWORK_TESTS=1)",
-)
+@pytest.mark.network
 def test_ncbi_states_a_release_the_probe_can_read() -> None:
     """The one live leg: the header really is where NCBI states the date, and it is in reach."""
     client = ClinVarReleaseClient()
@@ -611,10 +607,14 @@ def test_the_cli_prints_the_gap_and_says_when_it_could_not_ask(tmp_path, monkeyp
         # provision a snapshot would make this case depend on whether the runner has egress.
         kwargs["release_probes"] = {"clinvar": _probe("clinvar_2026-08-25")}
         kwargs["download"] = False
+        # RM391: and the reference pass and the VRS mint ask seqrepo, which this case is not about.
+        kwargs["verify_ref"] = False
+        kwargs["mint_vrs"] = False
         return real(spec_dir, **kwargs)
 
     monkeypatch.setattr(enrich_module, "enrich", moved)
-    monkeypatch.setattr("just_dna_enricher.cli.enrich", moved)
+    # The name `enrich_` looks up lives in the submodule that defines it (RM260), not the re-export shell.
+    monkeypatch.setattr("just_dna_enricher.cli.pass_commands.enrich", moved)
     result = CliRunner().invoke(app, ["enrich", str(spec), "--no-verify-rsids"])
     assert result.exit_code == 0, result.output
     assert (

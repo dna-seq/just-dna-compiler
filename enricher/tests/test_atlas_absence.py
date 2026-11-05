@@ -143,7 +143,8 @@ def test_no_other_module_invents_its_own_version_of_this_sentence() -> None:
     """
     package = OUT_DIR.parent
     offenders = []
-    for path in sorted(package.glob("*.py")):
+    # Recursive since RM260 split `cli.py` into a package; `generated/` is protoc output, not ours.
+    for path in sorted(p for p in package.rglob("*.py") if "generated" not in p.relative_to(package).parts):
         if path.name in {"atlas_protos.py", "atlas_client.py"}:
             continue
         tree = ast.parse(path.read_text())

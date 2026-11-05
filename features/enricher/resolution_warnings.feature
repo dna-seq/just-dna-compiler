@@ -137,8 +137,8 @@ Feature: What the enricher's resolver says, in its own words
     And the second arm reports the other direction, saying "Ensembl reports"
     And it offers "may be a dbSNP merge/build difference" rather than calling either side wrong
     # Never fatal here, which is the whole difference from the compiler's twin: the same code is a
-    # `strict` refusal under `compile` because the authored value wins and the table's position is then
-    # lost to the round trip. In the enricher there is no artifact to be unreproducible.
+    # `strict` refusal under `compile` because the authored value wins over the table, and an artifact
+    # builds under strict only on a pair the table agrees with. In the enricher there is no artifact.
 
   # source: enricher/src/just_dna_enricher/resolver.py
   # anchor: _lookup_rsids_by_position
@@ -153,3 +153,18 @@ Feature: What the enricher's resolver says, in its own words
     # The `ORDER BY` fixes which id wins, so the answer is stable; stable is not the same as right, and
     # the warning is what keeps a deterministic pick from reading as a fact
     # (`@a-withhold-cannot-be-delegated-to-a-default-that-is-a-definite-answer`).
+
+  # source: enricher/src/just_dna_enricher/vrs.py
+  # anchor: MintResult
+  @code:vrs_version_differs @actionable
+  Scenario: an id already recorded under another VRS version, met by the mint pass
+    Given a resolution.csv row whose vrs_id is recorded with a vrs_spec other than the minter's version
+    When enrich or `vrs mint` runs over the table
+    Then a warning fires saying the rows carry a vrs_id "minted under VRS" that version
+    And it says the id was "left as recorded" and names the minter's own version
+    And the row's vrs_id and vrs_spec are not touched, and nothing calls it a mismatch
+    But a recorded id with an empty vrs_spec is left unstated, never stamped with this run's version
+    # RM304. The pass never reaches inside a cell it did not write (`@sidecar-authoritative`), so it may
+    # not claim a version for an id it did not mint (`@currency-cannot-be-a-column`). The minter's
+    # version is `ga4gh.vrs.VRS_VERSION` at its minor. The compiler emits the same code for the same
+    # rows at compile, against the manifest's pin.

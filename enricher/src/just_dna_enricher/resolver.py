@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import duckdb
-from just_dna_compiler.resolution import genotype_fits
+from just_dna_compiler.resolution import site_verdicts
 from just_dna_compiler.resolution_findings import (
     ambiguous_pick,
     coordinate_disagrees,
@@ -35,7 +35,9 @@ from just_dna_format.spec import VariantRow
 from just_dna_format.vrs import normalize_chrom
 
 from just_dna_enricher.ensembl import _placeable_alleles
+from just_dna_enricher.events import Mint, ReadWindow, alleles_of, kleene_any, names_event, no_mint
 from just_dna_enricher.locations import DUCKDB_NAME, resolve_ensembl_reference
+from just_dna_enricher.sequences import per_alt_loci, trim_allele
 
 logger = logging.getLogger(__name__)
 
@@ -187,7 +189,12 @@ def resolve_variants(
                 # injected-table path does. The shared predicate is imported rather than reimplemented
                 # because digest parity between the two paths is a documented guarantee, and a filter
                 # applied on one side only would silently break it.
-                usable = [lo for lo in loci if genotype_fits(v.genotype, lo.get("ref"), lo.get("alts"))]
+                # RM381: the genotype read in its site's frame, as the injected-table path reads it.
+                verdicts = site_verdicts(
+                    v.genotype,
+                    [(lo.get("chrom"), lo.get("start"), lo.get("ref"), lo.get("alts")) for lo in loci],
+                )
+                usable = [lo for lo, verdict in zip(loci, verdicts, strict=True) if verdict is not False]
                 for lo in loci:
                     if lo not in usable:
                         # Coded with the same members its injected-table twin in
@@ -292,6 +299,7 @@ def lookup_loci(
     reference: Path,
     rsids: list[str],
     positions: list[tuple[str | None, int | None, str | None, str | None]],
+    non_nucleotide: set[str] | None = None,
 ) -> tuple[dict[str, list[dict]], dict[tuple, list[str]], list[str]]:
     """Public cache lookup the enricher uses to *build* a resolution table (0.5).
 
@@ -299,11 +307,16 @@ def lookup_loci(
     Ensembl reference. The reverse map is **allele-aware** (matches the authored `alt` when given) and
     returns *all* candidate rsIDs at that exact allele — never a silent first-pick — so the caller can
     take a deterministic pick and flag a genuine multi-rsid allele as ambiguous. Inject-only.
+
+    `non_nucleotide`, when given, receives the rsIDs the snapshot holds with no nucleotide allele at
+    any locus (RM271), so a caller can name them rather than read them out of the log (RM272).
     """
     warnings: list[str] = []
     con = _connect(reference)
     try:
-        rsid_to_loci = _lookup_positions_by_rsid(con, sorted(set(rsids)), warnings) if rsids else {}
+        rsid_to_loci = (
+            _lookup_positions_by_rsid(con, sorted(set(rsids)), warnings, non_nucleotide) if rsids else {}
+        )
         pos_candidates = (
             _lookup_rsid_candidates(con, "ensembl_variations", "id", positions) if positions else {}
         )
@@ -407,13 +420,16 @@ def _lookup_rsid_candidates(
     for chrom, start, ref, alt in uniq:
         cands: list[str] = []
         for rref, ralt, rid in by_pos.get((str(chrom), int(start)) if chrom is not None else (), []):
-            if _placeable_alleles(rref, _snapshot_alleles(ralt)) is None:
+            placed = _placeable_alleles(rref, _snapshot_alleles(ralt))
+            if placed is None:
                 continue  # RM271: a row with no nucleotide allele names no variant to back-fill from
-            if ref is not None and rref != ref:
-                continue
             # Membership, not equality: a multi-allelic snapshot row names several alleles in one
-            # pipe-joined cell, and `!=` against the whole cell never matched any of them.
-            if alt is not None and alt not in _snapshot_alleles(ralt):
+            # pipe-joined cell, and `!=` against the whole cell never matched any of them. Each allele
+            # is matched as the row spells it and as `trim_allele` spells it alone (RM381): the split
+            # repo pads every ALT of a site to one ref, so `16:23635706 GTT>GT` is a caller's `GT>G`.
+            if not any(
+                _names_allele((int(start), ref, alt), (int(start), rref, ralt_one)) for ralt_one in placed[1]
+            ):
                 continue
             if rid not in cands:  # rows already ordered by ... id
                 cands.append(rid)
@@ -421,12 +437,42 @@ def _lookup_rsid_candidates(
     return result
 
 
+def _names_allele(wanted: tuple[int, str | None, str | None], row: tuple[int, str, str]) -> bool:
+    """Whether one snapshot allele `(start, ref, alt)` is the one a probe names, in either spelling (RM381).
+
+    The probe's `ref`/`alt` may be absent (a less specific authored variant), and an absent half matches
+    anything. The allele matches as the row spells it, or as `trim_allele` spells it alone, at the probe's
+    position, so every nucleotide allele that matched as spelled still matches. A trimmed spelling whose
+    start moved right of its row's (a substitution sharing the site's leading base, `TC>TTG` read as
+    `C>TG` one base on) is not met: the probe joins rows at its own start.
+    """
+    start, ref, alt = wanted
+    return any(
+        s == start and (ref is None or r == ref) and (alt is None or a == alt)
+        for s, r, a in {row, trim_allele(*row)}
+    )
+
+
+def _refs_named(start: int, ref: str, alt_cell: object) -> set[str]:
+    """Every `ref` a snapshot row answers to at its own `start`: as spelled, and per ALT trimmed (RM381).
+
+    For the two position→rsID readers below, which key on `chrom:start:ref`. A trimmed ALT whose spelling
+    moved right of the row's `start` is not counted here: those readers fetch by the row's position.
+    """
+    placed = _placeable_alleles(ref, _snapshot_alleles(alt_cell))
+    if placed is None:
+        return set()
+    return {ref} | {r for s, r, _ in (trim_allele(start, ref, a) for a in placed[1]) if s == start}
+
+
 def _snapshot_alleles(cell: object) -> list[str]:
     """The alleles named by one snapshot `alt` cell.
 
-    The Ensembl snapshot records a multi-allelic site as a **single row whose `alt` is pipe-joined**
-    (`A|C|T`), whereas every other link in the chain — live Ensembl (`_loci_from_rest`), ClinVar,
-    gnomAD — emits a comma-separated list, and that is the shape `ResolutionRow.alts` is written in.
+    The old Ensembl repo records a multi-allelic site as a **single row whose `alt` is pipe-joined**
+    (`A|C|T`); the split repo read since RM372 writes one row per ALT, every ALT of a site padded to one
+    shared ref. Each allele is then spelled alone and regrouped by that spelling (`per_alt_loci`, RM381).
+    Every other link in the chain — live Ensembl (`_loci_from_rest`), ClinVar, gnomAD — emits a
+    comma-separated list, and that is the shape `ResolutionRow.alts` is written in.
     Normalizing here, at the one boundary where the snapshot is read, keeps a locus dict's `alts` in
     exactly one canonical form no matter which link produced it.
 
@@ -441,42 +487,48 @@ def _snapshot_alleles(cell: object) -> list[str]:
 
 
 def _lookup_positions_by_rsid(
-    con: duckdb.DuckDBPyConnection, rsids: list[str], warnings: list[str]
+    con: duckdb.DuckDBPyConnection,
+    rsids: list[str],
+    warnings: list[str],
+    non_nucleotide: set[str] | None = None,
 ) -> dict[str, list[dict]]:
     """Batch lookup: rsid -> [{chrom, start, ref, alts}, ...] (ALL loci, deterministically ordered).
 
     An rsid can map to several loci (paralogs, patch/haplotype scaffolds, PAR). Every locus is
     returned — the caller expands a one-to-many rsid into one row per locus rather than picking one
-    (a silent "first-met" pick was non-deterministic and dropped real loci). `ORDER BY id, chrom,
-    start, ref` makes the emitted order stable across runs (idempotency, Principle 7)."""
+    (a silent "first-met" pick was non-deterministic and dropped real loci). A locus is one ALT
+    spelling's `(chrom, start, ref)`, never the snapshot's padded group (RM381), and `per_alt_loci`
+    sorts both the loci and their alts, so the emitted order is stable across runs (Principle 7)."""
     if not rsids:
         return {}
     placeholders = ", ".join("?" for _ in rsids)
     rows = con.execute(
         f"""
-        SELECT id, chrom, start, ref, string_agg(DISTINCT alt, ',' ORDER BY alt) AS alts
+        SELECT DISTINCT id, chrom, start, ref, alt
         FROM ensembl_variations
         WHERE id IN ({placeholders})
-        GROUP BY id, chrom, start, ref
-        ORDER BY id, chrom, start, ref
+        ORDER BY id, chrom, start, ref, alt
         """,
         rsids,
     ).fetchall()
-    result: dict[str, list[dict]] = defaultdict(list)
+    alleles: dict[str, list[tuple[str, int, str, str]]] = defaultdict(list)
     unplaceable: set[str] = set()
-    for row_id, chrom, start, ref, alts in rows:
-        # `string_agg` already joined the group with commas; `_snapshot_alleles` additionally splits
-        # any pipe-joined multi-allelic cell, then re-joins sorted+deduped so the order is stable (P7).
-        # RM271: an alt that is not bases (`<.>`, `<Y>`, an `N` run, empty) is dropped, and a locus
-        # whose `ref` is not bases or which keeps no alt is not a locus at all.
-        placed = _placeable_alleles(ref, sorted(set(_snapshot_alleles(alts))))
+    for row_id, chrom, start, ref, alt in rows:
+        # `_snapshot_alleles` splits the old repo's pipe-joined cell; the split repo's rows are one ALT
+        # each. RM271: an alt that is not bases (`<.>`, `<Y>`, an `N` run, empty) is dropped, and a row
+        # whose `ref` is not bases or which keeps no alt places nothing.
+        placed = _placeable_alleles(ref, _snapshot_alleles(alt))
         if placed is None:
             unplaceable.add(str(row_id))
             continue
-        result[row_id].append(
-            {"chrom": str(chrom), "start": int(start), "ref": placed[0], "alts": ",".join(placed[1])}
-        )
+        alleles[str(row_id)].extend((str(chrom), int(start), placed[0], a) for a in placed[1])
+    # RM381: never grouped by the snapshot's `ref` in SQL. The split repo pads every ALT of a site to one
+    # shared ref, so that group is a frame no caller writes (`GTT>G,GT,GTTT`); each ALT is trimmed to its
+    # own spelling and regrouped by it, in both repos' shapes (`@snapshot-pipe-alt`).
+    result: dict[str, list[dict]] = {rsid: per_alt_loci(found) for rsid, found in alleles.items()}
     only_unplaceable = sorted(unplaceable - set(result))
+    if non_nucleotide is not None:
+        non_nucleotide.update(only_unplaceable)
     if only_unplaceable:
         # In the snapshot, so "not in the injected snapshot" would be false; said once, not per rsID.
         logger.warning(
@@ -540,10 +592,11 @@ class AlleleMismatch:
     the asking succeeded and the *answer* did not match.
 
     Carried as a structured finding rather than spelled as a new `VALID_RESOLUTION_STATUS` member,
-    because that vocabulary is a wire contract every reader of a published `resolution.csv` shares,
-    and because the row itself is honestly unresolved either way — what was wrong was never the row's
-    existence, only the reason it gave. The row therefore stays exactly where it was, which also keeps
-    `resolution_signature` still (`variant_key` and `rsid` are fact fields; `status` is not).
+    because that vocabulary is a wire contract three tables share (`literature.csv` and
+    `clinical_assertions.csv` read it too). S85 kept the `not_found` row beside it; RM382 removed that
+    row for an rsID-only subject, since it asserted the absence this finding contradicts, and made a
+    rejected answer a miss for the chain, so a finding here means every link that answered was rejected
+    (`links`, in chain order). A later link's placement is recorded in `superseded_answers` instead.
 
     `strand_flip` is the one cause this tier can settle from the allele strings alone, and it is by
     far the most common: a paper's supplementary published against hg19 routinely spells the submitted
@@ -559,6 +612,12 @@ class AlleleMismatch:
     offered: tuple[str, ...] = ()
     #: Whether reading the genotype on the other strand is what makes it fit. See the class note.
     strand_flip: bool = False
+    #: The links whose answers were rejected, in chain order (RM382): `loci` is their loci in the
+    #: same order. Empty only for a finding built by hand.
+    links: tuple[str, ...] = ()
+    #: The later link that placed the rsID after every earlier answer was rejected (RM382), or `None`
+    #: when no link could. Only `EnrichmentResult.superseded_answers` carries a non-`None` one.
+    placed_by: str | None = None
 
 
 #: The `resolution.csv` columns this comparison actually reads. An overlay `update` on one of them is
@@ -572,16 +631,14 @@ def _place(chrom: str | None, start: int | None) -> str:
     return f"{normalize_chrom(chrom)}:{start}"
 
 
-def _is_substitution(ref: str | None) -> bool:
-    """Whether a `ref` names a single base, i.e. a locus with no flank an indel could be re-anchored on."""
-    return ref is not None and len(ref) == 1
-
-
 def coordinate_verdict(
     chrom: str | None,
     start: int | None,
     ref: str | None,
     loci: Sequence[dict],
+    *,
+    mint: Mint = no_mint,
+    read_window: ReadWindow | None = None,
 ) -> bool | None:
     """Does the reference place this rsID where the row says? **Three-valued**, `hosting_verdict`'s shape.
 
@@ -589,15 +646,21 @@ def coordinate_verdict(
     against the injected snapshot and the deprecated DuckDB path's `_check_rsid_coord_consistency`
     below — so the two cannot drift into two readings of one question.
 
-    * `True` — one of the rsID's loci sits at the authored coordinate.
-    * `False` — none does, **and** every locus the reference gives is a substitution (and the row's own
-      `ref`, where it states one, is too). A substitution has no shared flank, so its position is
-      unambiguous and a mismatch can only be a different place. Same reasoning that keeps
-      `hosting_verdict`'s confident negative sharp.
-    * `None` — none does, but an indel is involved. One deletion has several valid spellings and
-      re-anchoring moves the coordinate — ClinVar's `X:634689 CAG>C` and Ensembl's `X:634690 AGAG>AG`
-      are the same 2 bp deletion (RM31) — so a differing position is not by itself a contradiction, and
-      reporting one would be the false accusation that item exists to end.
+    * `True` — one of the rsID's loci sits at the authored coordinate, or the coordinate is another
+      spelling of one of its events (`events.names_event`, RM375: an indel anchored elsewhere inside
+      its repeat, settled against the reference).
+    * `False` — every allele the loci name is a different event: a substitution elsewhere (it cannot
+      slide, so no read is needed), or an indel whose every spelling the reference showed, all away
+      from the authored position.
+    * `None` — nothing here can tell: an indel with no reference read, a position inside an event's
+      footprint that is no anchor, a padded `ref`. ClinVar's `X:634689 CAG>C` and Ensembl's
+      `X:634690 AGAG>AG` are the same 2 bp deletion (RM31), and reporting one as a contradiction
+      would be the false accusation that item exists to end.
+
+    **One judge, not a rule of its own (RM375).** This used to answer `False` whenever every locus
+    had a one-base `ref`, read as "a substitution" — which an insertion's anchor (`T>TG`) satisfies,
+    so NUDT15's `rs761191455`, authored at the old snapshot's `48041104` and placed at `48041103` by the
+    new one, was called a disagreement. The kind of an event is `events`' to say.
 
     Compared at **`chrom:start`**, not `chrom:start:ref`. Two reasons, and the first is what a
     CPIC-drafted module runs into: `ref` is optional on `HaplotypeRow`/`PharmVariantRow`, and
@@ -615,9 +678,12 @@ def coordinate_verdict(
         return None
     if _place(chrom, start) in {_place(lo.get("chrom"), lo.get("start")) for lo in loci}:
         return True
-    if all(_is_substitution(lo.get("ref")) for lo in loci) and (ref is None or _is_substitution(ref)):
-        return False
-    return None
+    events = alleles_of(loci)
+    if start is None or not events:
+        return None
+    return kleene_any(
+        names_event(chrom, start, ref, None, e, mint=mint, read_window=read_window) for e in events
+    )
 
 
 def coordinate_disagreement(
@@ -650,6 +716,9 @@ def check_rsid_coordinates(
     pairs: Sequence[tuple[str, str | None, int | None, str | None]],
     rsid_loci: Mapping[str, Sequence[dict]],
     answered: AbstractSet[tuple[str, str]] = frozenset(),
+    *,
+    mint: Mint = no_mint,
+    read_window: ReadWindow | None = None,
 ) -> PairCheck:
     """Compare each authored `(rsid, chrom, start, ref)` pair against the loci that rsid resolves to.
 
@@ -695,7 +764,7 @@ def check_rsid_coordinates(
         if not loci:
             unknown.append(rsid)
             continue
-        verdict = coordinate_verdict(chrom, start, ref, loci)
+        verdict = coordinate_verdict(chrom, start, ref, loci, mint=mint, read_window=read_window)
         if verdict is None:
             # An indel spelling this tier cannot re-anchor. Outside `subjects` rather than inside it
             # with a clean bill — the rule `RefCheck` applies to a read that came back empty.
@@ -770,10 +839,12 @@ def _lookup_rsid_sets_by_position(
     concrete = [(c, s, ref) for c, s, ref in positions if c is not None and s is not None]
     if not concrete:
         return {}
-    conditions = " OR ".join("(chrom = ? AND start = ? AND ref = ?)" for _ in concrete)
+    # By position, the ref compared below: a padded snapshot ref is not the spelling a probe names (RM381).
+    places = list(dict.fromkeys((chrom, start) for chrom, start, _ in concrete))
+    conditions = " OR ".join("(chrom = ? AND start = ?)" for _ in places)
     params: list[object] = []
-    for chrom, start, ref in concrete:
-        params.extend([chrom, start, ref])
+    for chrom, start in places:
+        params.extend([chrom, start])
     rows = con.execute(
         f"SELECT DISTINCT chrom, start, ref, alt, id FROM ensembl_variations "
         f"WHERE ({conditions}) AND id LIKE 'rs%'",
@@ -781,9 +852,9 @@ def _lookup_rsid_sets_by_position(
     ).fetchall()
     result: dict[str, set[str]] = defaultdict(set)
     for chrom, start, ref, alt, row_id in rows:
-        if _placeable_alleles(ref, _snapshot_alleles(alt)) is None:
-            continue  # RM271
-        result[derive_variant_key(None, chrom, start, ref)].add(str(row_id))
+        # RM271 (no nucleotide allele, no ref answered) and RM381 (each ALT's own ref answers too).
+        for named in _refs_named(int(start), str(ref), alt):
+            result[derive_variant_key(None, chrom, start, named)].add(str(row_id))
     return dict(result)
 
 
@@ -795,15 +866,12 @@ def _lookup_rsids_by_position(
     """Batch lookup: (chrom, start, ref) -> rsid."""
     if not positions:
         return {}
+    # By position only: the ref is compared per ALT below, because the split repo pads it (RM381).
     conditions = []
     params: list[object] = []
-    for chrom, start, ref in positions:
-        if ref is not None:
-            conditions.append("(chrom = ? AND start = ? AND ref = ?)")
-            params.extend([chrom, start, ref])
-        else:
-            conditions.append("(chrom = ? AND start = ?)")
-            params.extend([chrom, start])
+    for chrom, start in dict.fromkeys((chrom, start) for chrom, start, _ in positions):
+        conditions.append("(chrom = ? AND start = ?)")
+        params.extend([chrom, start])
     where = " OR ".join(conditions)
     rows = con.execute(
         f"SELECT DISTINCT chrom, start, ref, alt, id FROM ensembl_variations "
@@ -820,10 +888,11 @@ def _lookup_rsids_by_position(
     result: dict[str, str] = {}
     refless_warned: set[tuple[str, int]] = set()
     for chrom, start, ref, alt, row_id in rows:
-        if _placeable_alleles(ref, _snapshot_alleles(alt)) is None:
+        named = _refs_named(int(start), str(ref), alt)
+        if not named:
             continue  # RM271
-        full = derive_variant_key(None, chrom, start, ref)
-        result.setdefault(full, str(row_id))
+        for one in sorted(named):  # RM381: each ALT's own ref answers too
+            result.setdefault(derive_variant_key(None, chrom, start, one), str(row_id))
         pos = (str(chrom), start)
         if pos in refless:
             refless_key = derive_variant_key(None, chrom, start, None)

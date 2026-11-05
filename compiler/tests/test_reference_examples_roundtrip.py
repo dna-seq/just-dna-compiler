@@ -25,11 +25,14 @@ from pathlib import Path
 
 import pytest
 from just_dna_compiler.compiler import (
+    _DERIVED_FILES,
     compile_module,
     content_signature,
     reverse_module,
     validate_spec,
 )
+from just_dna_compiler.compiler.reverse import REVERSE_MANIFEST_EXCLUDED, reconstructed_projection
+from just_dna_format.layout import VERIFICATION_JSON, resolve_sidecar, sidecar_relative_names
 
 _EXAMPLES = Path(__file__).resolve().parents[2] / "reference_examples"
 
@@ -44,6 +47,25 @@ def _signatures(result) -> tuple[str, str]:
     """The two that must hold from the very first lap. `resolution_signature` is handled apart."""
     manifest = result.manifest
     return (manifest.artifact.digest, manifest.content_signature)
+
+
+def _carried_files_come_back(manifest, reversed_dir: Path) -> None:
+    """Every file the compile hashed from the spec directory is in the reversed spec (RM364).
+
+    `manifest.inputs[]` names the authored files and `manifest.derived[]` the sidecars, each under the
+    spelling the module carried; a reversed sidecar is looked up under any legal spelling, since reverse
+    writes the preferred one. The attestation is the one exclusion, for the reason the registry gives.
+    """
+    assert "derived" in REVERSE_MANIFEST_EXCLUDED and "verification" in REVERSE_MANIFEST_EXCLUDED
+    for entry in manifest.inputs:
+        assert (reversed_dir / entry.name).is_file(), f"reverse lost the authored file {entry.name}"
+    for entry in manifest.derived:
+        tables = [csv for csv in _DERIVED_FILES if entry.name in sidecar_relative_names(csv)]
+        assert len(tables) == 1, f"manifest.derived names {entry.name}, which {len(tables)} sidecar(s) accept"
+        (table,) = tables
+        if table == VERIFICATION_JSON:
+            continue
+        assert resolve_sidecar(reversed_dir, table) is not None, f"reverse lost the sidecar {entry.name}"
 
 
 def _resolution_signature(result) -> str | None:
@@ -77,6 +99,11 @@ def test_reference_example_round_trips_to_a_fixed_point(spec: Path, tmp_path: Pa
     second = compile_module(tmp_path / "rev1", tmp_path / "a2")
     assert second.success, second.errors
     assert _signatures(first) == _signatures(second)
+    _carried_files_come_back(first.manifest, tmp_path / "rev1")
+    # Every manifest field the registry says a round trip gives back (RM364), `resolution_signature`
+    # among them, from the FIRST lap: see the note at the end of this test for why that is now
+    # unconditional.
+    assert reconstructed_projection(first.manifest) == reconstructed_projection(second.manifest)
 
     # A second lap, because "reverse produces something that recompiles" and "reverse is a fixed
     # point" are different claims — a transform can be stable from the second iteration onward while
@@ -85,27 +112,18 @@ def test_reference_example_round_trips_to_a_fixed_point(spec: Path, tmp_path: Pa
     third = compile_module(tmp_path / "rev2", tmp_path / "a3")
     assert third.success, third.errors
     assert _signatures(second) == _signatures(third)
+    assert reconstructed_projection(second.manifest) == reconstructed_projection(third.manifest)
     assert _resolution_signature(second) == _resolution_signature(third)
 
-    # `resolution_signature` on the FIRST lap is the one with a documented exception, and once the
-    # comparison above was actually made the corpus turned out to hold three shapes, not one:
-    #
-    #   * unchanged — the ordinary case, ten of twelve examples;
-    #   * `None` → a value — a module carrying no `resolution.csv` at all. Reverse always writes the
-    #     table, rebuilt from the parquets, so the spec it produces carries facts the authored one
-    #     left implicit. Nothing is lost and lap two is stable (`grch37_build`, `mt_heteroplasmy`);
-    #   * a value → a *different* value — a loss, and the only module that does it is the one that
-    #     cannot avoid it. `cyp2c9_warfarin_grch37` declares GRCh37, so `_apply_positional_resolution`
-    #     skips the fill (RM15), so its `pharm_variants.csv` coordinates never reach a parquet, so
-    #     reverse has nothing to rebuild the injected rows from.
-    #
-    # The exemption is derived from the declared build rather than kept as a list of module names:
-    # a hand-kept exemption is the thing that goes stale, and the *reason* this module loses rows is
-    # precisely that the compiler is GRCh38-bound. On the default build a changed non-null signature
-    # is a real regression and still fails here.
-    before, after = _resolution_signature(first), _resolution_signature(second)
-    if before is not None and first.manifest.genome_build == "GRCh38":
-        assert before == after, "reverse lost injected resolution facts on a module the fill was applied to"
+    # `resolution_signature` on the FIRST lap used to carry an exception, and the corpus held three
+    # shapes: unchanged; `None` → a value, where reverse rebuilt a `resolution.csv` the module never had
+    # from its authored cells (`grch37_build`, `mt_heteroplasmy`, `cyp2d6_structural`); and a value →
+    # a different value on `cyp2c9_warfarin_grch37`, whose `pharm_variants.csv` the GRCh37 fill skips, so
+    # no parquet held what the table said about those rows. RM364 closed both: reverse writes no table
+    # for a module that read none, and every positional parquet carries the loci its table filed under
+    # each row's key. So the exemption, derived from the declared build, is gone, and the projection
+    # above compares the signature from the first lap on every example.
+    assert _resolution_signature(first) == _resolution_signature(second)
 
 
 @pytest.mark.parametrize("spec", _specs(), ids=lambda p: p.name)

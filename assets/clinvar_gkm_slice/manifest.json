@@ -1,0 +1,136 @@
+{
+ "derived": true,
+ "build_date": "2026-10-27T19:50:32Z",
+ "source_release": "2026-10-24",
+ "dataset": "clinvar_2026_10_24_v2_6_1",
+ "builder": "BigQuery export",
+ "table_spec_version": null,
+ "schema_version": "1.1.0",
+ "note": "One Parquet set, rebuilt from the newest release and overwritten every release. It is derived from the JSON bundle; past states are rebuilt from the monthly bundles.",
+ "source": {
+  "name": "ClinVar",
+  "publisher": "National Center for Biotechnology Information (NCBI), U.S. National Library of Medicine",
+  "url": "https://www.ncbi.nlm.nih.gov/clinvar/",
+  "data_use_policy": "https://www.ncbi.nlm.nih.gov/clinvar/docs/maintenance_use/#disclaimer",
+  "citation": "Landrum MJ, et al. ClinVar: updates to support classifications of both germline and somatic variants. Nucleic Acids Res. 2025;53(D1):D1313-D1321. doi:10.1093/nar/gkae1090"
+ },
+ "attribution": "Derived from NCBI's ClinVar. If you use or redistribute these data, attribute ClinVar as the data source and cite it; cite ClinVar-GKM (doi:10.5281/zenodo.18343663) if you used these files.",
+ "disclaimer": "ClinVar's disclaimer applies: the information is not intended for direct diagnostic use or medical decision-making without review by a genetics professional. ClinVar-GKM is not an NCBI, NLM or NIH product and is not endorsed by them.",
+ "license": {
+  "id": "CC0-1.0",
+  "scope": "CC0 covers ClinGen's contribution (the code and this published transformation) only. It adds no restriction, and it cannot grant rights that NCBI or ClinVar's submitters hold."
+ },
+ "data_use": "https://dataexchange.clinicalgenome.org/clinvar-gkm/data-use/",
+ "files": [
+  {
+   "name": "allele.parquet",
+   "size": 1119974942,
+   "sha256": "cfd29e5464c9903c7645e7ca4359c6b0bc660e329ba0176635037f0ac45bc625"
+  },
+  {
+   "name": "condition.parquet",
+   "size": 4684278,
+   "sha256": "c43d99a684c056a3f13f6f5608f78b980f9d62110ab6e948d6720c614100cde4"
+  },
+  {
+   "name": "conditionSet.parquet",
+   "size": 10908417,
+   "sha256": "a8e54abf7d421fcc02bc71b9177105d4ba6ca46f645cbce9d8506c06728968e8"
+  },
+  {
+   "name": "copyNumberChange.parquet",
+   "size": 5822435,
+   "sha256": "a008678a3f935f0bfd4c91368317e320b3efdc6822e9a6d6a989799cf4561e32"
+  },
+  {
+   "name": "copyNumberCount.parquet",
+   "size": 8698659,
+   "sha256": "0bdd6763f011d0059d4cc5548e12c269b0da5bf9934954b529dfdcf646412871"
+  },
+  {
+   "name": "evidenceLine.parquet",
+   "size": 153221,
+   "sha256": "db7bc394d16a3119293fbf91d9e56df2c801a87a169aa3a0147d4d9514b5ee92"
+  },
+  {
+   "name": "gene.parquet",
+   "size": 5355976,
+   "sha256": "4d395d1a05f5272a4e32d04f8f4d36e9936eba1c682b3b2d103e83350afc7cd2"
+  },
+  {
+   "name": "location.parquet",
+   "size": 714136812,
+   "sha256": "84a6458cf972cb1f855aaf568eaed98e8e9a038ed5c35f0db1df80ec55fe6e9e"
+  },
+  {
+   "name": "propositionClinvarCustom.parquet",
+   "size": 10285877,
+   "sha256": "7b35406c48b376a01969d73e7d022581cf1bdcd8756179a18635143dc9b89467"
+  },
+  {
+   "name": "propositionOncogenicity.parquet",
+   "size": 573395,
+   "sha256": "92faabf64aa52f4d7202c1862c20f53f416c430fe229c336d1df42a02c86d404"
+  },
+  {
+   "name": "propositionPathogenicity.parquet",
+   "size": 1485029399,
+   "sha256": "76a0f7d992a764f3b3ddec2fb8483655c479b747846838168f74f88e7ce1b919"
+  },
+  {
+   "name": "propositionSomaticClinicalImpact.parquet",
+   "size": 733496,
+   "sha256": "6a7750269c3b2fd710ce97ee42a398479e32de439feb838008037f5d058a3094"
+  },
+  {
+   "name": "rcv.parquet",
+   "size": 862881514,
+   "sha256": "509242090f56907e304ae8f98920e9005135ab0d3614eeb340ba83e5d23fab1a"
+  },
+  {
+   "name": "rcv_evidenceLine.parquet",
+   "size": 645666584,
+   "sha256": "5615ccc186f3a8a661ce06020dcf02d61e025fd69ff6575fcc39be8b51a2828d"
+  },
+  {
+   "name": "scv.parquet",
+   "size": 3202110801,
+   "sha256": "ae315d45364a3849724fe0c9f55b698246d8e837daa6ea3c23fce9c405398934"
+  },
+  {
+   "name": "sequenceReference.parquet",
+   "size": 28947,
+   "sha256": "59791473332f64030689c047266c1326a74abe28496be1cb31b5dbd229ddc5ce"
+  },
+  {
+   "name": "submitter.parquet",
+   "size": 276356,
+   "sha256": "bd9a746727a1ebc0e226d5cf67ec8f7581545074d2ccef8566137dcbb11a7d46"
+  },
+  {
+   "name": "therapy.parquet",
+   "size": 4768,
+   "sha256": "1064eecf2d36c27b04e185816f2b64be95b51a3c818b1880a4b9ce03b6f77413"
+  },
+  {
+   "name": "therapyGroup.parquet",
+   "size": 8002,
+   "sha256": "3b733b57fb1967ee81415574bacee3ac1706f44d5dd855f294c518afa3eb0a84"
+  },
+  {
+   "name": "variation.parquet",
+   "size": 3914257911,
+   "sha256": "136b0db54d39fe74a570a3e59e00acc2aa7d24de1f937d8a441b0b52392740f1"
+  },
+  {
+   "name": "vcv.parquet",
+   "size": 664730263,
+   "sha256": "8aa2ebf54a25f88f0ef52fc5cf21d008a32853ad60d6c7692da0d8e62c58fa4a"
+  },
+  {
+   "name": "vcv_evidenceLine.parquet",
+   "size": 510994886,
+   "sha256": "ce1c071ec2291e5828db47f0cb91ba80716f4b32ed6d0880334438a86469343c"
+  }
+ ]
+}

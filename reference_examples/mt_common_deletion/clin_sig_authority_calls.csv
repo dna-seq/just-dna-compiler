@@ -1,0 +1,3 @@
+variant_key,genotype,authority,status,clin_sig,clin_sig_raw,confidence,confidence_unit,dataset,checked_at
+ga4gh:VA.J9tZBPJHObSDmLtUrywDERwHt2LXGIr-,G,clinvar,recorded,pathogenic,Pathogenic,3,review_stars,clinvar_2026-06-27,2026-11-05T06:38:02Z
+ga4gh:VA.J9tZBPJHObSDmLtUrywDERwHt2LXGIr-,G,pubmind,recorded,uncertain_significance,Uncertain significance,0,evidence_depth,pubmind_ca224ebf5ef3,2026-11-05T06:38:02Z

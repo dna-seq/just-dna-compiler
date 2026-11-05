@@ -261,7 +261,7 @@ def _parse_entry(raw: str, fields: list[str]) -> CivicVcfEntry | None:
 #: **Enumerated, not computed.** A `.title()`-shaped rule gets `RARE_GERMLINE` right and
 #: `SENSITIVITYRESPONSE` wrong — the TSV writes that one `Sensitivity/Response`, with a separator the
 #: VCF simply drops — and `NA` against `N/A`, and `GAIN_OF_FUNCTION` against `Gain of Function`, whose
-#: middle word the TSV leaves lowercase. Three exceptions in twenty members is a map, and a map with a
+#: middle word the TSV leaves lowercase. A handful of exceptions is a map, and a map with a
 #: guard beside it (`assert_vocabulary_covers`) is what turns a new upstream member into a raised
 #: error rather than a silently mis-spelled row.
 CIVIC_VCF_TO_TSV: dict[str, str] = {

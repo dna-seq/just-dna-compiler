@@ -64,12 +64,14 @@ from just_dna_format.binning import (
     resolve_tiling,
 )
 from just_dna_format.manifest import VerificationRecord
+from just_dna_format.snapshot import read_release
 
 from just_dna_enricher.locations import (
     RELEASE_FILENAME,
     STRCHIVE_CATALOGUE_FILENAME,
     resolve_strchive_reference,
 )
+from just_dna_enricher.net import EndpointRetired
 from just_dna_enricher.verification import examples, ran, record_verification, skipped
 
 logger = logging.getLogger(__name__)
@@ -97,6 +99,15 @@ class StrchiveError(RuntimeError):
 
 class StrchiveUnavailable(StrchiveError):
     """No catalogue was provisioned, so the comparison could not be put at all."""
+
+
+class StrchiveRetired(StrchiveUnavailable, EndpointRetired):
+    """The source answered HTTP 410: it retired the STRchive catalogue (RM361, audit round 2).
+
+    Its lane's `StrchiveUnavailable`, so every handler still catches it; marked `EndpointRetired`, so
+    the reason is `retired` and the message says the file moved and to upgrade, never that the
+    host was down.
+    """
 
 
 @dataclass(frozen=True)
@@ -314,16 +325,14 @@ def load_strchive_catalogue(path: Path) -> StrchiveCatalogue:
 
     dataset: str | None = None
     source_url: str | None = None
-    if release_path is not None and release_path.is_file():
-        try:
-            release = json.loads(release_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError) as exc:
-            # A snapshot whose provenance file is damaged still holds a readable catalogue; losing the
-            # label is a weaker outcome than refusing the comparison, and the record says `None`.
-            logger.warning("Could not read %s (%s); the release label is unknown.", release_path, exc)
-        else:
-            dataset = (release.get("dataset") or None) if isinstance(release, dict) else None
-            source_url = (release.get("source_url") or None) if isinstance(release, dict) else None
+    # A snapshot whose provenance file is damaged still holds a readable catalogue; losing the label
+    # is a weaker outcome than refusing the comparison, and the record says `None`.
+    release = read_release(release_path.parent) if release_path is not None else None
+    if release is not None:
+        dataset = release.dataset or None
+        source_url = (
+            release.source_url if isinstance(release.source_url, str) and release.source_url else None
+        )
     return StrchiveCatalogue(
         loci=tuple(parse_locus(record) for record in payload if isinstance(record, dict)),
         dataset=dataset,

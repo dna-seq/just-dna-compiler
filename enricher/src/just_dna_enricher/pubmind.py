@@ -25,8 +25,9 @@ from collections import defaultdict
 from pathlib import Path
 
 import duckdb
+from just_dna_format.snapshot import release_label
 
-from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME, read_release
+from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME
 from just_dna_enricher.resolver import probe_table
 
 logger = logging.getLogger(__name__)
@@ -68,11 +69,7 @@ def pubmind_dataset_label(reference: Path | None) -> str | None:
     """
     if reference is None:
         return None
-    release = read_release(Path(reference))
-    if not release:
-        return None
-    label = str(release.get("dataset") or "").strip()
-    return label or None
+    return release_label(Path(reference))
 
 
 def _connect(reference: Path) -> duckdb.DuckDBPyConnection:

@@ -499,10 +499,16 @@ def _enrich_spec(tmp_path: Path, *, with_answer: bool) -> Path:
 
 
 def _run(spec: Path, tmp_path: Path, **kwargs):
-    """`enrich` with every network-touching pass off and no cache to find."""
+    """`enrich` with every network-touching pass off and no cache to find.
+
+    `offline` is the switch that says so. The pass flags below turn off four passes, but the chain's
+    live-Ensembl link has no flag of its own, so until RM391 every run here asked `rest.ensembl.org`
+    and passed on whatever came back, or on the refusal.
+    """
     from just_dna_enricher.enrich import enrich
 
     defaults = {
+        "offline": True,
         "ensembl_cache": tmp_path / "no-ensembl-cache",
         "clinvar_cache": tmp_path / "no-clinvar-cache",
         "download": False,
@@ -560,7 +566,8 @@ def test_the_run_reads_the_baseline_before_the_commit_overwrites_it() -> None:
     import ast
     import inspect
 
-    from just_dna_enricher import enrich as enrich_module
+    # The submodule holding the run since RM260; the package `__init__` is only a re-export shell.
+    from just_dna_enricher.enrich import orchestration as enrich_module
 
     tree = ast.parse(inspect.getsource(enrich_module))
     # Found by the call it must precede rather than by the enclosing function's name: the pipeline

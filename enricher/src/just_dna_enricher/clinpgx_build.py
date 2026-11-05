@@ -38,18 +38,21 @@ per-archive creation date is the only honest `dataset` label.
 import csv
 import hashlib
 import io
-import json
 import logging
 import re
 import zipfile
 from dataclasses import dataclass, field
+from datetime import datetime
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 
+import httpx
 from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
+from just_dna_format.snapshot import SnapshotRelease, begin_snapshot_write
 
-from just_dna_enricher.locations import RELEASE_FILENAME, SNAPSHOT_LICENSE_FILENAME
-from just_dna_enricher.net import stream_to_file
+from just_dna_enricher.locations import SNAPSHOT_LICENSE_FILENAME
+from just_dna_enricher.net import EndpointRetired, stream_to_file
 
 try:  # polars is a `[dev]` dependency — the runtime pass reads parquet, only the builder writes it
     import polars as pl
@@ -94,6 +97,98 @@ RETIRED_ARCHIVE = ArchiveVintage(
 )
 
 DEFAULT_CLINPGX_URL = f"https://api.clinpgx.org/v1/download/file/data/{CURRENT_ARCHIVE.archive}"
+#: Where every ClinPGx bulk archive is served from; each name 303s to `s3.pgkb.org/data/<name>`.
+CLINPGX_DOWNLOAD_BASE = "https://api.clinpgx.org/v1/download/file/data/"
+
+#: The archives ClinPGx rebuilds alongside the lane's own, read off RM166's inventory
+#: (`docs/probes/CLINPGX_ARCHIVES.md` § the downloads page): both carried the same `CREATED_` date as
+#: `summaryAnnotations.zip` when probed. They are asked only for their `Last-Modified`, as the clock the
+#: lane's archive is compared with (RM283).
+SIBLING_ARCHIVES: tuple[str, ...] = ("variantAnnotations.zip", "clinicalVariants.zip")
+
+#: How far the lane's archive may trail the newest sibling before a build says so (RM283). RM175's
+#: incident was fourteen months; a rebuild cadence of weeks sits far inside this.
+STALE_AFTER_DAYS = 180
+
+
+@dataclass(frozen=True)
+class ArchiveDates:
+    """`Last-Modified` of the lane's archive and its siblings, from one round of `HEAD` requests (RM283).
+
+    Each date is an ISO-8601 UTC string, or `None` for an archive whose `HEAD` did not answer with one:
+    **could-not-ask, never old** (`@one-registrys-outage-may-not-speak-for-another`). A date read off the
+    transfer describes the S3 object, not the release, so it is recorded beside `dataset` and never as
+    it (`@a-label-read-in-band-beats-one-read-off-the-transfer`).
+    """
+
+    lane: str
+    dates: dict[str, str | None]
+
+    @property
+    def unanswered(self) -> list[str]:
+        return sorted(name for name, date in self.dates.items() if date is None)
+
+
+def probe_archive_dates(
+    client: httpx.Client | None = None,
+    *,
+    lane: str = CURRENT_ARCHIVE.archive,
+    siblings: tuple[str, ...] = SIBLING_ARCHIVES,
+    base: str = CLINPGX_DOWNLOAD_BASE,
+) -> ArchiveDates:
+    """`HEAD` the lane's archive and each sibling, following the 303 to S3, and read `Last-Modified`.
+
+    Never raises for a request: a transport failure, a non-2xx or a missing or unparsable header all
+    leave that archive `None`. The probe gates nothing, so it may not cost a build its snapshot.
+    """
+    owned = client is None
+    http = client or httpx.Client(timeout=30.0, follow_redirects=True)
+    dates: dict[str, str | None] = {}
+    try:
+        for name in (lane, *siblings):
+            try:
+                response = http.head(base + name, follow_redirects=True)
+                response.raise_for_status()
+                stamp = parsedate_to_datetime(response.headers["last-modified"])
+                dates[name] = stamp.strftime("%Y-%m-%dT%H:%M:%SZ")
+            except (httpx.HTTPError, KeyError, TypeError, ValueError) as exc:
+                logger.info("ClinPGx archive %s: no Last-Modified answered (%s)", name, exc)
+                dates[name] = None
+    finally:
+        if owned:
+            http.close()
+    return ArchiveDates(lane=lane, dates=dates)
+
+
+def _utc(value: str) -> datetime:
+    return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ")
+
+
+def staleness_finding(dates: ArchiveDates, *, stale_after_days: int = STALE_AFTER_DAYS) -> str | None:
+    """A sentence when the lane's archive trails its newest sibling by `stale_after_days` or more.
+
+    Reports and never refuses: a source going quiet is not a `strict` matter
+    (`@a-source-recuring-is-not-a-strict-matter`). `None` when the lane's own date or every sibling's
+    is unknown, since there is nothing to compare: withheld, not fresh.
+    """
+    lane_date = dates.dates.get(dates.lane)
+    known = {name: d for name, d in dates.dates.items() if name != dates.lane and d is not None}
+    if lane_date is None or not known:
+        return None
+    newest_name = max(known, key=lambda n: known[n])
+    behind = (_utc(known[newest_name]) - _utc(lane_date)).days
+    if behind < stale_after_days:
+        return None
+    unasked = dates.unanswered
+    return (
+        f"ClinPGx's {dates.lane} was last written {lane_date[:10]}, {behind} days before "
+        f"{newest_name} ({known[newest_name][:10]}) on the same host. An archive the source stopped "
+        f"rebuilding still answers 200 (RM175), so check the lane still builds from the file ClinPGx "
+        f"publishes today; the downloads page needs a browser."
+        + (f" Not asked: {', '.join(unasked)}." if unasked else "")
+    )
+
+
 #: The archive member the terms arrive in. A source-format detail, so it stays here — unlike the name
 #: the *snapshot* stores it under, which is `locations.SNAPSHOT_LICENSE_FILENAME` because four other
 #: parties have to agree on it. They are the same string today and are not the same fact.
@@ -114,6 +209,9 @@ class ClinPgxBuildResult:
     source_sha256: str
     license_sha256: str | None
     genes: list[str] = field(default_factory=list)
+    #: RM283: the `HEAD` dates this build recorded, and the staleness sentence when there is one.
+    archive_dates: "ArchiveDates | None" = None
+    staleness: str | None = None
 
 
 def _schema() -> dict:
@@ -142,6 +240,15 @@ class ClinPgxUnavailable(ClinPgxArchiveError):
     """
 
 
+class ClinPgxRetired(ClinPgxUnavailable, EndpointRetired):
+    """The source answered HTTP 410: it retired a ClinPGx archive (RM361, audit round 2).
+
+    Its lane's `ClinPgxUnavailable`, so every handler still catches it; marked `EndpointRetired`, so
+    the reason is `retired` and the message says the file moved and to upgrade, never that the
+    host was down.
+    """
+
+
 def download_clinpgx_zip(dest: Path, url: str = DEFAULT_CLINPGX_URL) -> tuple[Path, str]:
     """Stream the ClinPGx bulk archive to `dest`, returning `(path, sha256)`.
 
@@ -152,6 +259,7 @@ def download_clinpgx_zip(dest: Path, url: str = DEFAULT_CLINPGX_URL) -> tuple[Pa
         dest,
         url,
         error_cls=ClinPgxUnavailable,
+        retired=ClinPgxRetired,
         what="the ClinPGx bulk archive",
         remedy="Pass --zip <archive> to build from a copy you already hold.",
     )
@@ -236,6 +344,7 @@ def build_snapshot(
     *,
     source_url: str = DEFAULT_CLINPGX_URL,
     source_sha256: str | None = None,
+    archive_dates: ArchiveDates | None = None,
 ) -> ClinPgxBuildResult:
     """`summaryAnnotations.zip` → `clinpgx/data/annotations.parquet` + `release.json` + `LICENSE.txt`.
 
@@ -246,6 +355,10 @@ def build_snapshot(
 
     Raises `ClinPgxArchiveError` on the retired `clinicalAnnotations.zip`, which parses fine and is
     fourteen months stale (RM175) — see `require_current_archive`.
+
+    `archive_dates`, from `probe_archive_dates` on the same fetch, is recorded in `release.json` as
+    `archive_last_modified` and compared by `staleness_finding` (RM283). Omitted, the key is not written:
+    a build from a local archive asked nobody, which is not the same as every date being unknown.
     """
     if pl is None:  # pragma: no cover
         raise ImportError(
@@ -255,7 +368,6 @@ def build_snapshot(
     csv.field_size_limit(_CSV_FIELD_LIMIT)
     zip_path, out_dir = Path(zip_path), Path(out_dir)
     data_dir = out_dir / "data"
-    data_dir.mkdir(parents=True, exist_ok=True)
 
     with zipfile.ZipFile(zip_path) as archive:
         vintage = require_current_archive(archive)  # refuses the retired 2025 spelling by name
@@ -290,6 +402,8 @@ def build_snapshot(
         )
 
     frame = pl.DataFrame(records, schema=_schema()).sort(["annotation_id", "genotype"], nulls_last=True)
+    snapshot = begin_snapshot_write(out_dir)
+    data_dir.mkdir(parents=True, exist_ok=True)
     parquet_path = data_dir / "annotations.parquet"
     frame.write_parquet(parquet_path, compression="zstd")
 
@@ -303,17 +417,22 @@ def build_snapshot(
         atomic_write_text((out_dir / SNAPSHOT_LICENSE_FILENAME), license_text)
     genes = sorted({r["gene"] for r in records if r["gene"]})
     digest = source_sha256 or _sha256_file(zip_path)
-    release = {
-        "source_url": source_url,
-        "source_sha256": digest,
-        "created_date": created,
-        "dataset": f"clinpgx_{created}" if created else "clinpgx",
-        "license_sha256": license_sha,
-        "row_count": len(records),
-        "annotation_count": len(by_id),
-        "built_at": now_utc_iso(),
-    }
-    atomic_write_text((out_dir / RELEASE_FILENAME), json.dumps(release, indent=2) + "\n")
+    release = SnapshotRelease(
+        source_url=source_url,
+        source_sha256=digest,
+        created_date=created,
+        dataset=f"clinpgx_{created}" if created else "clinpgx",
+        license_sha256=license_sha,
+        row_count=len(records),
+        annotation_count=len(by_id),
+        built_at=now_utc_iso(),
+        # Stated only when the dates were probed: an unprobed archive date is not a null one.
+        **({"archive_last_modified": dict(archive_dates.dates)} if archive_dates is not None else {}),
+    )
+    staleness = staleness_finding(archive_dates) if archive_dates is not None else None
+    snapshot.commit(release)
+    if staleness:
+        logger.warning("%s", staleness)
     logger.info(
         "ClinPGx snapshot: %d rows across %d annotations (%s), %d genes → %s",
         len(records),
@@ -331,6 +450,8 @@ def build_snapshot(
         source_sha256=digest,
         license_sha256=license_sha,
         genes=genes,
+        archive_dates=archive_dates,
+        staleness=staleness,
     )
 
 

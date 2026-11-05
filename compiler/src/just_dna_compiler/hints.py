@@ -47,6 +47,7 @@ from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
 from pydantic import BaseModel
 
 from just_dna_compiler.compiler import _FACT_TABLES, _list_cell, _list_fields, _scalar_cell
+from just_dna_compiler.compiler.tables import same_row
 from just_dna_compiler.conclusion import conclusion_genotype_mismatches
 from just_dna_compiler.draft import (
     DRAFTABLE,
@@ -367,6 +368,12 @@ class TableKey:
     rule: str
     stamped: tuple[str, ...] = ()
     fallback: tuple[str, ...] = ()
+    #: Columns outside `columns` that tell two rows sharing them apart **only when both rows state the
+    #: column and the stated values differ** (RM356, 0.8): `haplotypes.csv`'s `gene`, since two genes'
+    #: `*2` can share a defining variant. Published beside the key rather than inside it because inside
+    #: would claim an absent gene is a distinct value, and it is unknown (`@absent-is-not-different`).
+    #: `()` for every other kind.
+    distinct_when_stated: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.rule not in KEY_RULES:
@@ -431,6 +438,9 @@ def key_fields(csv_name: str) -> TableKey | None:
         fallback=tuple(
             _authored_spelling(model, name) for name in getattr(model, "_KEY_FALLBACK_FIELDS", ())
         ),
+        distinct_when_stated=tuple(
+            _authored_spelling(model, name) for name in getattr(model, "_KEY_DISTINCT_WHEN_STATED", ())
+        ),
     )
 
 
@@ -491,6 +501,7 @@ def describe_table(csv_name: str) -> dict[str, Any]:
                 "rule": table_key.rule,
                 "stamped": list(table_key.stamped),
                 "fallback": list(table_key.fallback),
+                "distinct_when_stated": list(table_key.distinct_when_stated),
             }
             if (table_key := key_fields(csv_name)) is not None
             else None
@@ -787,20 +798,29 @@ def _flag_advisory_columns(rows: list[dict[str, str]], model: type[BaseModel], r
 
 
 def _check_duplicate_keys(parsed: list[BaseModel | None], report: HintReport) -> None:
-    """Two rows the compiler would reject as the same row. Uses the compiler's own key."""
-    seen: dict[tuple, int] = {}
+    """Two rows the compiler would reject as the same row. Uses the compiler's own key and its own
+    `same_row` predicate (RM356), so a column the model declares distinct-when-stated splits here
+    exactly where it splits at compile."""
+    seen: dict[tuple, tuple[list[BaseModel], list[int]]] = {}
     for index, instance in enumerate(parsed):
         if instance is None:
             continue
         key = natural_key(instance)
         if key is None:
             continue
-        if key in seen:
+        rows, indices = seen.setdefault(key, ([], []))
+        first = same_row(instance, rows)
+        if first is not None:
             report.findings.append(
-                Finding(index, None, "error", f"duplicate of row {seen[key]} — same key {key}")
+                Finding(
+                    index, None, "error", f"duplicate of row {indices[rows.index(first)]} — same key {key}"
+                )
             )
-            continue
-        seen[key] = index
+        # A refused row stays in its bucket, exactly as at compile: the relation is not transitive, so a
+        # gene-less row the lint has flagged still collides with a later gene's row, and the compiler
+        # refuses that one too. Skipping it here passed a row the compile then refused.
+        rows.append(instance)
+        indices.append(index)
 
 
 def _check_bins(parsed: list[BaseModel | None], model: type[BaseModel], report: HintReport) -> None:
@@ -843,9 +863,9 @@ def _check_conclusions(
 ) -> None:
     """A `variants.csv` conclusion that names another genotype at its locus and never its own (RM279).
 
-    **Authoring surface only, like the missing-sentinel finding above.** The compile half needs a
-    member of `VALID_WARNING_CODES`, and a new member is minor-class: a reader pinned to an older
-    `just-dna-format` refuses a manifest carrying it. That half is RM308, a minor."""
+    The same rule runs at `validate` and `compile` since 0.8 (RM308), as
+    `conclusion_names_other_genotype`; this is its per-row form, with line numbers, for the authoring
+    surface."""
     if model is not VariantRow:
         return
     rows = [r if isinstance(r, VariantRow) else None for r in parsed]

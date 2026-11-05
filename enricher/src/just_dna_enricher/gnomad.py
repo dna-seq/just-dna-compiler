@@ -44,6 +44,8 @@ from tenacity import (
 )
 
 from just_dna_enricher.net import (
+    UNREACHABLE,
+    EndpointRetired,
     PacingGate,
     attempt_floor,
     batched,
@@ -51,6 +53,7 @@ from just_dna_enricher.net import (
     raise_if_retired,
     retry_if_transient,
 )
+from just_dna_enricher.sequences import per_alt_loci
 
 logger = logging.getLogger(__name__)
 
@@ -139,7 +142,7 @@ class RateLimitedError(GnomadError):
     """gnomAD answered HTTP 429. Retried with backoff; the pacing gate should normally prevent it."""
 
 
-class GnomadRetired(GnomadError):
+class GnomadRetired(GnomadError, EndpointRetired):
     """gnomAD answered HTTP 410: it retired the endpoint asked (RM354). A fact about the source, not an
     outage, and not retried; a `GnomadError` so every existing handler still catches it."""
 
@@ -187,6 +190,9 @@ def _gql_string(value: str) -> str:
 #: Matched on the message because there is nothing else to match on: with no path, the error cannot
 #: be attributed to an alias, and it does not need to be — the null node is the per-row answer.
 _ABSENCE_MESSAGES: frozenset[str] = frozenset({"variant not found"})
+#: An alias error that is gnomAD's answer that the record is absent (RM361): "Variant not found",
+#: "Gene not found". Any other alias error is a question that went unanswered.
+_NOT_FOUND = re.compile(r"\bnot found\b", re.IGNORECASE)
 
 
 def _errors_by_alias(payload: dict) -> tuple[dict[str, str], list[str], list[str]]:
@@ -219,22 +225,19 @@ def _errors_by_alias(payload: dict) -> tuple[dict[str, str], list[str], list[str
 def _loci_from_variant_ids(variant_ids: Iterable[str]) -> list[dict]:
     """Fold `chrom-pos-ref-alt` ids into the resolver's locus shape, one entry per (chrom,pos,ref).
 
-    Alts at one locus are aggregated into a sorted comma-joined cell, matching what the Ensembl and
-    ClinVar links produce — so `enrich()` treats every link's output identically. Loci are sorted by
-    `(chrom, start, ref)`, the same explicit ordering the DuckDB links pin with `ORDER BY` (P7).
+    Through `sequences.per_alt_loci`, the one regroup every link uses (RM381): each ALT in its own
+    trimmed spelling, alts at one locus in a sorted comma-joined cell, loci sorted by
+    `(chrom, start, ref)` (P7). gnomAD's ids are already one minimal allele each, so the trim is the
+    shared mechanism rather than a repair here.
     """
-    grouped: dict[tuple[str, int, str], set[str]] = {}
+    alleles: list[tuple[str, int, str, str]] = []
     for variant_id in variant_ids:
         match = _VARIANT_ID_RE.match(variant_id.strip())
         if match is None:
             logger.warning("gnomAD returned an unparseable variant id %r; skipping", variant_id)
             continue
-        key = (match["chrom"], int(match["pos"]), match["ref"].upper())
-        grouped.setdefault(key, set()).add(match["alt"].upper())
-    return [
-        {"chrom": chrom, "start": start, "ref": ref, "alts": ",".join(sorted(alts))}
-        for (chrom, start, ref), alts in sorted(grouped.items())
-    ]
+        alleles.append((match["chrom"], int(match["pos"]), match["ref"].upper(), match["alt"].upper()))
+    return per_alt_loci(alleles)
 
 
 def _populations_from_joint(joint: dict) -> list[dict]:
@@ -290,10 +293,31 @@ class GnomadClient:
     settings: GnomadSettings = field(default_factory=GnomadSettings)
     gate: PacingGate | None = None
     _client: httpx.Client | None = None
+    #: `subject -> reason` for every subject a batch answered with an error rather than a record or an
+    #: absence (RM361): a per-alias timeout or internal error. Such a subject is missing from the
+    #: method's result exactly as an absent one is, so a caller that writes `not_found` for a missing
+    #: subject reads this first; the reason is `net.UNREACHABLE`. Accumulates over the client's life.
+    unanswered: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.gate is None:
             self.gate = PacingGate(self.settings.min_request_interval)
+
+    def _note_unanswered(
+        self, errors: dict[str, str], subjects: list[str], *, also_answers: tuple = ()
+    ) -> None:
+        """Record every subject whose alias carries an error that is neither an absence nor, for the
+        caller, an answer of its own (`also_answers`, e.g. "Multiple variants found")."""
+        for i, subject in enumerate(subjects):
+            # The latest answer for a subject wins: an error on an earlier call is not this one's.
+            self.unanswered.pop(subject, None)
+            message = errors.get(_alias(i))
+            if message is None or _NOT_FOUND.search(message):
+                # gnomAD's absence, pathless ("Variant not found") or on the alias ("Gene not found").
+                continue
+            if any(pattern.search(message) for pattern in also_answers):
+                continue
+            self.unanswered[subject] = UNREACHABLE
 
     def _http(self) -> httpx.Client:
         if self._client is None:
@@ -415,6 +439,7 @@ class GnomadClient:
                 for i, rsid in enumerate(batch)
             ]
             data, errors = self._post_batch(fields, what="rsid resolution")
+            self._note_unanswered(errors, batch, also_answers=(_MULTIPLE_VARIANTS_RE,))
             for i, rsid in enumerate(batch):
                 alias = _alias(i)
                 if _MULTIPLE_VARIANTS_RE.search(errors.get(alias, "")):
@@ -429,7 +454,8 @@ class GnomadClient:
                 f"dataset: {self.settings.dataset}) {{ variant_id }}"
                 for i, rsid in enumerate(batch)
             ]
-            data, _ = self._post_batch(fields, what="rsid search")
+            data, errors = self._post_batch(fields, what="rsid search")
+            self._note_unanswered(errors, batch)
             for i, rsid in enumerate(batch):
                 hits = data.get(_alias(i)) or []
                 ids = [h.get("variant_id") for h in hits if h.get("variant_id")]
@@ -459,7 +485,8 @@ class GnomadClient:
                 f"populations {{ id ac an homozygote_count hemizygote_count }} }} }}"
                 for i, vid in enumerate(batch)
             ]
-            data, _ = self._post_batch(fields, what="frequency")
+            data, errors = self._post_batch(fields, what="frequency")
+            self._note_unanswered(errors, batch)
             for i, vid in enumerate(batch):
                 node = data.get(_alias(i))
                 if not node:
@@ -497,7 +524,8 @@ class GnomadClient:
                 f"lof_z mis_z syn_z obs_lof exp_lof flags }} }}"
                 for i, symbol in enumerate(batch)
             ]
-            data, _ = self._post_batch(fields, what="gene constraint")
+            data, errors = self._post_batch(fields, what="gene constraint")
+            self._note_unanswered(errors, batch)
             for i, symbol in enumerate(batch):
                 node = data.get(_alias(i))
                 if not node:

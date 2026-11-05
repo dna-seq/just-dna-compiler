@@ -42,7 +42,6 @@ Builder-only: `polars` is a guarded `[dev]` import, exactly as in the sibling bu
 import csv
 import gzip
 import hashlib
-import json
 import logging
 import math
 import re
@@ -51,12 +50,12 @@ from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
+from just_dna_format.snapshot import SnapshotRelease, SnapshotWrite, begin_snapshot_write
 
 from just_dna_enricher.clin_sig import normalize_clin_sig
-from just_dna_enricher.locations import RELEASE_FILENAME, SNAPSHOT_DATA_DIRNAME
-from just_dna_enricher.net import stream_to_file
+from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME
+from just_dna_enricher.net import EndpointRetired, stream_to_file
 
 try:  # the one guarded optional import (CLAUDE.md): polars is builder-only ([dev] extra)
     import polars as pl
@@ -156,6 +155,15 @@ class PubMindUnavailable(PubMindBuildError):
     """
 
 
+class PubMindRetired(PubMindUnavailable, EndpointRetired):
+    """The source answered HTTP 410: it retired the PubMind release file (RM361, audit round 2).
+
+    Its lane's `PubMindUnavailable`, so every handler still catches it; marked `EndpointRetired`, so
+    the reason is `retired` and the message says the file moved and to upgrade, never that the
+    host was down.
+    """
+
+
 @dataclass(frozen=True)
 class PubMindDownload:
     """What a download established about the bytes — each half `None` when the server did not say.
@@ -217,6 +225,7 @@ def download_pubmind_table(dest: Path, url: str = DEFAULT_PUBMIND_URL) -> PubMin
         dest,
         url,
         error_cls=PubMindUnavailable,
+        retired=PubMindRetired,
         what="the PubMind table",
         remedy=(
             "It is a single dated bulk file on a third party's server, so a move or a rotation "
@@ -337,7 +346,6 @@ def build_snapshot(
         raise FileNotFoundError(f"PubMind table not found at {table}")
     out_dir = Path(out_dir)
     data_dir = out_dir / SNAPSHOT_DATA_DIRNAME
-    data_dir.mkdir(parents=True, exist_ok=True)
 
     dropped = dict.fromkeys(PUBMIND_DROP_REASONS, 0)
     input_rows = 0
@@ -418,6 +426,8 @@ def build_snapshot(
     unique.sort(key=lambda r: (_CHROM_INDEX[r["chrom"]], r["start"], r["ref"], r["alt"], r["pvid"]))
     frame = pl.DataFrame(unique, schema=_schema())
     parquet_file = data_dir / PUBMIND_PARQUET
+    snapshot = begin_snapshot_write(out_dir)
+    data_dir.mkdir(parents=True, exist_ok=True)
     frame.write_parquet(parquet_file, compression="zstd")
 
     derivations = dict.fromkeys(sorted(PUBMIND_DERIVATIONS), 0)
@@ -446,7 +456,7 @@ def build_snapshot(
     )
     result.dataset = None if result.source_sha256 is None else f"pubmind_{result.source_sha256[:12]}"
     _write_release_json(
-        out_dir,
+        snapshot,
         result,
         source_url=source_url,
         source_etag=source_etag,
@@ -480,7 +490,7 @@ def _sha256_file(path: Path) -> str | None:
 
 
 def _write_release_json(
-    out_dir: Path,
+    snapshot: SnapshotWrite,
     result: PubMindBuildResult,
     *,
     source_url: str | None,
@@ -489,7 +499,7 @@ def _write_release_json(
 ) -> Path:
     """Write `release.json` — the provenance, every drop count, and the multi-PVID finding.
 
-    A plain write rather than `clinvar_build._merge_release_block`: that shape exists so two blocks
+    A whole-record write rather than `snapshot.begin_block_write`: that shape exists so two blocks
     can cohabit one snapshot directory (ClinVar's citations beside its records), and this snapshot
     directory holds one thing.
 
@@ -497,25 +507,25 @@ def _write_release_json(
     off local disk — unknown rather than absent, which is why they are recorded as null instead of
     omitted, and why none of them takes a default the build did not establish.
     """
-    release = {
-        "source_url": source_url,
-        "source_sha256": result.source_sha256,
-        "dataset": result.dataset,
-        "source_etag": source_etag,
-        "source_last_modified": source_last_modified,
-        "genome_build": PUBMIND_GENOME_BUILD,
-        "input_rows": result.input_rows,
-        "record_count": result.record_count,
-        "dropped": result.dropped,
-        "derivations": result.derivations,
-        "allele_keys": result.allele_keys,
-        "multi_pvid_keys": result.multi_pvid_keys,
-        "max_pvids_per_key": result.max_pvids_per_key,
-        "contested_keys": result.contested_keys,
-        "unparsable_score": result.unparsable_score,
-        "unparsable_confidence": result.unparsable_confidence,
-        "redistributable": False,
-        "notice": (
+    release = SnapshotRelease(
+        source_url=source_url,
+        source_sha256=result.source_sha256,
+        dataset=result.dataset,
+        source_etag=source_etag,
+        source_last_modified=source_last_modified,
+        genome_build=PUBMIND_GENOME_BUILD,
+        input_rows=result.input_rows,
+        record_count=result.record_count,
+        dropped=result.dropped,
+        derivations=result.derivations,
+        allele_keys=result.allele_keys,
+        multi_pvid_keys=result.multi_pvid_keys,
+        max_pvids_per_key=result.max_pvids_per_key,
+        contested_keys=result.contested_keys,
+        unparsable_score=result.unparsable_score,
+        unparsable_confidence=result.unparsable_confidence,
+        redistributable=False,
+        notice=(
             "The ANNOVAR-distributed PubMind table is CC BY-NC-ND 4.0 (WGLab, in writing, "
             "2026-09-28). This snapshot decomposes and normalizes it, which makes it adapted material "
             "NoDerivatives forbids sharing, so it is operator-built and inject-only: do not publish or "
@@ -523,12 +533,10 @@ def _write_release_json(
             "verdict here is an LLM's reading of the literature, and a PVID is a record id keyed on "
             "extracted text rather than on a coordinate."
         ),
-        "built_at": now_utc_iso(),
-        "builder_version": _builder_version(),
-    }
-    path = out_dir / RELEASE_FILENAME
-    atomic_write_text(path, json.dumps(release, indent=2, sort_keys=True) + "\n")
-    return path
+        built_at=now_utc_iso(),
+        builder_version=_builder_version(),
+    )
+    return snapshot.commit(release)
 
 
 def _builder_version() -> str:

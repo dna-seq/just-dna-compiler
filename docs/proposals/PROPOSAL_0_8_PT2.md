@@ -1,6 +1,10 @@
 # 0.8 part 2: the build plan for the agreed scope
 
-**Status.** Written by the lead on 2026-11-04 from the pm's handout ("0.8 scope agreed: yours to plan and
+**Status: concluded 2026-11-05, at the 0.8.0 cut.** Every item it planned landed on the `0.8` branch; each
+record is in [ROADMAP_HISTORY](../ROADMAP_HISTORY.md) with its **Residuals**, and what 0.8 shipped unfixed is in
+[INTEGRATION_0_8 § 4](../INTEGRATION_0_8.md#4-known-issues). It no longer overrides the roadmap files.
+
+Written by the lead on 2026-11-04 from the pm's handout ("0.8 scope agreed: yours to plan and
 build") and its two addenda (the tag selector, then `column=value` selectors). This is RELEASE_CYCLE § Minors
 step 2: the plan the build runs from without asking. PT1 (the bugfix round) is concluded on the `0.8` branch.
 A fresh critic read it the same day against the decision lines and the code; its findings that held are
@@ -8,7 +12,7 @@ applied, and the ones that need the maintainer are §4 questions 5 to 7. The pm'
 shape agreed after the second measuring run) is folded in.
 
 **How to read it.** The decisions are the maintainer's and live as dated lines under each item in
-[ROADMAP_0_8.md](../ROADMAP_0_8.md); where an item has several, the latest wins. This file does not restate
+[ROADMAP_0_8.md](../history/ROADMAP_0_8.md); where an item has several, the latest wins. This file does not restate
 them. It fixes what the decisions left open (§3), names what goes back to the pm (§4), and gives each item the
 contract a builder works from (§5). A builder that finds a decided column with no case, or a needed one
 missing, stops and sends it to the pm; it never builds around it.
@@ -99,11 +103,14 @@ alternative is beside it. Names still get the P5 audit in §5, and the audit can
    `]`, `,` or `=`; such a selector is refused with a message naming the character. Rejected: `member_a` /
    `member_b` columns (no separator at all, but every corpus case is arity 2 only until it is not, and a
    third member would be a third column).
-4. **The table key is the normalized member set plus `trait_efo_id` plus `sex`.** Members are sorted for
+4. **The table key is the normalized member set plus `trait_efo_id` plus `sex` (plus `drug`, 2026-11-04).** Members are sorted for
    the key, so `A & B` and `B & A` are one key, refused as a duplicate. Within a member, conditions are
    sorted too. `sex` is in the key because it scopes the whole row, facts included: a `male` row and a
    `female` row for one member set are two statements, not a duplicate. A row with `sex` outranks the same
-   key without it, for that sex.
+   key without it, for that sex. **Addendum 2026-11-04: `drug` joins the key** (the member set plus
+   `trait_efo_id` plus `sex` plus `drug`), at the maintainer's default, after `cpic_gene_pairs` found CPIC
+   answering one phenotype pair once per thiopurine; a drug-scoped row outranks the same key without one,
+   for that drug.
 5. **Columns**, all optional except `members`: `trait_efo_id`, `trait_role` (closed: `mediator`; empty means
    the trait is an effect, the maintainer's third addendum),
    `direction` (the existing vocabulary), `conclusion`, `negatives`, `tier`, `age_of_action`,

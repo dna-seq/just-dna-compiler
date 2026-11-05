@@ -15,7 +15,9 @@ extends it) can share one definition without pulling heavy transitive dependenci
 """
 
 import re
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -28,7 +30,9 @@ from just_dna_format.identity import (
 from just_dna_format.vocab import (
     RECOMMENDED_AUTHOR_KINDS,
     VALID_AUTHOR_ROLES,
+    VALID_CLIN_SIG,
     VALID_VERIFICATION_CHECKS,
+    VALID_VERIFICATION_INDEPENDENCE,
     VALID_VERIFICATION_SKIPS,
     VALID_WARNING_CODES,
     check_vocab,
@@ -246,6 +250,37 @@ class Stats(BaseModel):
             "counts once per genotype row. Facet on `clin_sig` to split the tiers."
         ),
     )
+    # RM300 (S123): the tiers the two folded counts above cannot split. A mapping rather than a field per
+    # tier, so a tier added to the vocabulary is a new key rather than a new field.
+    clin_sig_counts: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "Authored variants.csv rows per ClinVar tier, keyed on every `VALID_CLIN_SIG` member in "
+            "sorted order, zeros included, so an absent key never has to be read as zero. The tier is "
+            "the row's effective `clin_sig` (a row with only the legacy booleans counts where they "
+            "imply one). Rows, not variants, the grain of `pathogenic_count`. A row with no derivable "
+            "tier is counted in no key: that count is `weights_rows` minus the sum, where no row was "
+            "dropped or expanded. Empty on a manifest compiled before 0.8, which means not counted."
+        ),
+    )
+    clin_sig_variant_counts: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "Distinct `variant_key`s per ClinVar tier, keyed like `clin_sig_counts`. A variant whose "
+            "genotype rows carry two tiers counts under both. Variants with no derivable tier are "
+            "counted in no key; `variant_count` is the total. Empty on a manifest compiled before 0.8."
+        ),
+    )
+
+    @field_validator("clin_sig_counts", "clin_sig_variant_counts")
+    @classmethod
+    def _check_tier_counts(cls, value: dict[str, int]) -> dict[str, int]:
+        unknown = sorted(set(value) - VALID_CLIN_SIG)
+        if unknown:
+            raise ValueError(f"tier counts are keyed on VALID_CLIN_SIG members, got: {unknown}")
+        if any(count < 0 for count in value.values()):
+            raise ValueError("a tier count is never negative")
+        return value
 
 
 class Compilation(BaseModel):
@@ -404,6 +439,20 @@ class Compilation(BaseModel):
     vrs_alleles_identified: int = Field(
         default=0, description="Of those, how many carry a ga4gh:VA. allele id"
     )
+    # RM304, the module-wide half of "which VRS minted this id"; the per-row half is
+    # `ResolutionRow.vrs_spec`. A pin alone cannot survive a merge-not-clobber table mixing runs, and a
+    # per-row column alone cannot say which version is intended — so both. The compiler cannot import
+    # `ga4gh.vrs` (P2, Goal 2), so the pin is the rule this tier itself implements and verifies against,
+    # and the verify pass compares each row against this same constant: consistent by construction.
+    vrs_version: str | None = Field(
+        default=None,
+        description=(
+            "The VRS spec version, at its minor ('2.0'), this module's `vrs_id`s are pinned to: the rule "
+            "this compiler verifies against. A `resolution.csv` row stating another version in "
+            "`vrs_spec` is reported as `vrs_version_differs`. None = no allele in "
+            "resolution.csv carries an id, so there is nothing to pin (RM304)."
+        ),
+    )
 
     # ── 0.6: how much of the 0.4 families a consumer can join by position (S31) ──
     # The counterpart of `resolution_subjects` for the three positional table kinds
@@ -443,6 +492,20 @@ class Compilation(BaseModel):
         default=None,
         description="Of those, how many carry chrom+start, hence join to a VCF by position",
     )
+    # ── RM342: the environment that wrote the bytes. From polars 2 the parquet footer names the
+    # polars release that wrote it, so one `compiler_version` installed beside two polars releases
+    # mints two `artifact.digest`s for equal content. Outside the digest like `compiler_version`
+    # (the manifest is not one of the Merkle root's files); `toolchains_differ` below is how a
+    # comparison reads it. One map rather than a field per library, so a library added later is a
+    # new key, never a new field.
+    toolchain: dict[str, str] | None = Field(
+        default=None,
+        description=(
+            "The library releases that wrote this artifact's bytes, keyed by name: `python` and "
+            "`polars` today, a new key for a library added later. None = compiled before 0.8, which "
+            "recorded nothing — an unknown, never an empty toolchain."
+        ),
+    )
 
     @field_validator("warnings_summary")
     @classmethod
@@ -464,6 +527,47 @@ class Compilation(BaseModel):
                 raise ValueError(f"warnings_summary[{checked}] is a count and may not be negative")
             rebuilt[checked] = rebuilt.get(checked, 0) + count
         return {code: rebuilt[code] for code in sorted(rebuilt)}
+
+
+#: The reason a digest difference carries when both manifests recorded a toolchain and the two
+#: differ (RM342). Read by the publish collision check (`ToolchainDiffersError.reason`) and the release
+#: sweep (`ModuleDelta.bytes_reason`), the two places a fresh compile meets a recorded digest.
+#: `verify_manifest` never names it: it re-hashes files on disk, and no toolchain moves that answer.
+TOOLCHAIN_DIFFERS: str = "toolchain_differs"
+
+
+def recorded_toolchain(manifest: Mapping[str, Any] | None) -> dict[str, str] | None:
+    """`compilation.toolchain` read out of a manifest's JSON, or `None` when it records none.
+
+    Field by field rather than through `ModuleManifest`, for the reason the publisher's own readers
+    give: an unrelated defect elsewhere in a published manifest must not withhold a value that is
+    right there. Anything that is not a non-empty map of strings is *not recorded*, the unknown arm.
+    """
+    compilation = manifest.get("compilation") if isinstance(manifest, Mapping) else None
+    toolchain = compilation.get("toolchain") if isinstance(compilation, Mapping) else None
+    if not isinstance(toolchain, Mapping) or not toolchain:
+        return None
+    if not all(isinstance(k, str) and isinstance(v, str) for k, v in toolchain.items()):
+        return None
+    return dict(toolchain)
+
+
+def toolchains_differ(before: Mapping[str, Any] | None, after: Mapping[str, Any] | None) -> bool | None:
+    """Whether two manifests were written by different toolchains — `None` when it cannot be said.
+
+    Three-valued, combined the Kleene way: one library both sides name at different releases is
+    `True` whatever else is unknown; `False` needs both sides to name the same libraries at the same
+    releases; anything else — either side unrecorded, or a library only one side names with the
+    shared ones agreeing — is `None`. A key one side lacks is absent, never different
+    (`@absent-is-not-different`).
+    """
+    left = recorded_toolchain(before)
+    right = recorded_toolchain(after)
+    if left is None or right is None:
+        return None
+    if any(left[name] != right[name] for name in left.keys() & right.keys()):
+        return True
+    return False if left.keys() == right.keys() else None
 
 
 class Frequency(BaseModel):
@@ -654,6 +758,59 @@ class ClinicalAssertions(BaseModel):
     )
 
 
+class OpenTargetsTable(BaseModel):
+    """Summary of one of the Open Targets lane's three derived tables (0.8, RM333/RM236).
+
+    One shape for `locus_to_gene`, `colocalisations` and `consequences` because a consumer asks the same
+    two questions of each before reading the parquet: which release is this, and how many of my variants
+    does it reach. `variant_count` against the module's own variant count is the second answer; the
+    table holds rows only for variants the release covers, so a low count is a fact about the release,
+    not a defect.
+    """
+
+    signature: str | None = Field(
+        default=None,
+        description="Fact-hash of the table (integrity.<table>_signature); out of artifact.digest",
+    )
+    sources: list[str] = Field(default_factory=list, description="Sorted union of the rows' `source` values")
+    datasets: list[str] = Field(
+        default_factory=list,
+        description="Sorted union of the releases these rows are from, e.g. ['opentargets_26.09']",
+    )
+    row_count: int = Field(default=0, description="Rows in the table")
+    variant_count: int = Field(default=0, description="Distinct `variant_key`s the rows reach")
+
+
+class LdPairs(BaseModel):
+    """Summary of a module's computed LD-pair sidecar (0.8, RM331).
+
+    `with_r2` beside `row_count` is the one number a consumer needs before reading the parquet: a row
+    with no r² is a withheld pair carrying its reason, never a zero, so the two counts differ by design.
+    """
+
+    signature: str | None = Field(
+        default=None,
+        description="Fact-hash of the table (integrity.ld_pair_signature); out of artifact.digest",
+    )
+    sources: list[str] = Field(default_factory=list, description="Sorted union of the rows' `source` values")
+    datasets: list[str] = Field(
+        default_factory=list,
+        description="Sorted union of the reference releases that answered, e.g. ['ensembl_116']",
+    )
+    populations: list[str] = Field(
+        default_factory=list,
+        description="Sorted union of the reference panels r² was asked in, e.g. ['1000GENOMES:phase_3:EUR']",
+    )
+    row_count: int = Field(default=0, description="Rows in the table")
+    with_r2: int = Field(
+        default=0,
+        description=(
+            "Rows carrying an r² (`status` resolved). The rest are withheld with their reason: not "
+            "reported by the reference, an rsID it does not know, or a study naming no single population."
+        ),
+    )
+
+
 class ExpressionEffects(BaseModel):
     """Summary of a module's injected expression-effect sidecar (0.7, RM194/RM200).
 
@@ -800,6 +957,15 @@ class GwasEffects(BaseModel):
             "are on different scales and must not be pooled."
         ),
     )
+    with_posterior: int = Field(
+        default=0,
+        json_schema_extra=since("0.8.0"),
+        description=(
+            "Associations carrying a fine-mapping `posterior_probability` (RM239). The rest were left "
+            "empty, never zeroed: the study had no credible set, the variant was not in it, or it sat "
+            "in several with different posteriors."
+        ),
+    )
     traits: list[str] = Field(default_factory=list, description="Sorted union of the EFO trait ids present")
     not_found_count: int = Field(
         default=0,
@@ -861,24 +1027,33 @@ class Literature(BaseModel):
     quotes_found: int = Field(
         default=0,
         description=(
-            "Of those, how many were located, in a fulltext or in an abstract. Read it against "
-            "`quotes_authored`, `quotes_unchecked` AND `abstract_only_count`: a quote not found in an "
-            "abstract was never checked against the body, so it is unsettled, not missing. "
-            "`quotes_authored - quotes_found` is therefore NOT the number of quotes checked and "
-            "missed whenever `abstract_only_count > 0`; per citation, `quote_source` = `abstract` in "
-            "literature.csv beside `quotes_found` = 0 means unsettled (RM264)."
+            "Of those, how many were located — in a fulltext, or in an abstract where that was all "
+            "that could be read. Read it against `quotes_checked`, never against `quotes_authored` "
+            "alone: an unfound quote in a paywalled article was never checked, not checked and missing."
+        ),
+    )
+    quotes_checked: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Of `quotes_authored`, how many a retrieved text settled, found or missed — the "
+            "denominator `quotes_found` is read against, in the same unit (quotes). A fulltext settles "
+            "every quote; an abstract settles only its hits, since a quote missing from it may still "
+            "be in the body; nothing retrievable settles none. So `quotes_authored - quotes_checked` "
+            "is how many quotes nothing established either way (RM256, S109). Null on a manifest "
+            "compiled before this field existed — unknown, never zero; there, `abstract_only_count > "
+            "0` is the only sign that a `quotes_found` of 0 includes unsettled abstract misses (RM264)."
         ),
     )
     quotes_unchecked: int = Field(
         default=0,
         description=(
-            "Citations (not quotes) whose `quotes_found` is null — no text at all was retrievable, so "
-            "nothing was established either way. `quotes_found` is a sum over the rows that DID "
-            "answer, so without this number a module where nothing was checked is indistinguishable "
-            "from one where every quote was checked and missed: both report zero (S56). It does NOT "
-            "count abstract-only citations, whose misses are unsettled too: a manifest reading "
-            "`quotes_found: 0, quotes_unchecked: 0` beside `abstract_only_count > 0` checked nothing "
-            "against a body (RM264)."
+            "Citations whose `quotes_found` is null — the fulltext was never retrievable, so nothing "
+            "was established either way. `quotes_found` is a sum over the rows that DID answer, so "
+            "without this number a module where nothing was checked is indistinguishable from one "
+            "where every quote was checked and missed: both report zero (S56). **A count of "
+            "citations, not quotes**, and an abstract-only citation is not in it, since its "
+            "`quotes_found` is 0 rather than null; the quote-level answer is `quotes_checked`."
         ),
     )
 
@@ -1331,6 +1506,55 @@ class VerificationRecord(BaseModel):
         ),
     )
 
+    checked_source: str | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description=(
+            "Where the values this check read came from (RM292): `authored` for cells the module's "
+            "author wrote, or a source key when the run established they are a copy of that source "
+            "(a drafter's digest still matching, or a currency check reading a value the source "
+            "itself published). Null when nothing could establish it — a licence table naming the "
+            "witness without a matching digest, an unreadable one, or a record written before 0.8. "
+            f"{UNTRUSTED_NOTE}"
+        ),
+    )
+    witness_source: str | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description=(
+            "The source the values were compared against (RM292), stated even where `source` cannot "
+            "be: `source` is a single join key into the licence table and stays null on a check with "
+            "two authorities, while this names them all, `+`-joined in sorted order. Null on a "
+            f"record written before 0.8. {UNTRUSTED_NOTE}"
+        ),
+    )
+    independence: str | None = Field(
+        json_schema_extra={
+            **vocabulary("verification_independence", VALID_VERIFICATION_INDEPENDENCE),
+            **since("0.8.0"),
+        },
+        default=None,
+        description=(
+            "Derived from the two fields above, never typed (RM292): `self_consistent` when "
+            "`checked_source` is the witness — agreement with the source a value was copied from "
+            "proves nothing about the value, though a disagreement still says the source moved — "
+            "`independent` when it is not among the witnesses, null when either side is unstated or "
+            "the checked source is one of several witnesses. A record stating a value its two sources "
+            f"contradict is refused. Outside the fact set, since it restates two facts in it. {UNTRUSTED_NOTE}"
+        ),
+    )
+    undecided: int | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description=(
+            "Rows a tolerance left without a verdict (RM292, `@tautology-zero`) — outside `subjects`, "
+            "since no verdict was reached on them, and published so an abstention cannot read as "
+            "agreement. `rsid_coordinate_agreement` counts the indel pairs whose position differs, "
+            "which a re-anchoring can explain (RM31). Null for a check with no tolerance class; 0 "
+            f"when it has one and it was empty. {UNTRUSTED_NOTE}"
+        ),
+    )
+
     @field_validator("check")
     @classmethod
     def _check_name(cls, v: str) -> str:
@@ -1351,6 +1575,18 @@ class VerificationRecord(BaseModel):
             raise ValueError("a count must not be negative")
         return v
 
+    @field_validator("undecided")
+    @classmethod
+    def _check_undecided(cls, v: int | None) -> int | None:
+        if v is not None and v < 0:
+            raise ValueError("a count must not be negative")
+        return v
+
+    @field_validator("independence")
+    @classmethod
+    def _check_independence(cls, v: str | None) -> str | None:
+        return check_vocab(v, VALID_VERIFICATION_INDEPENDENCE, "independence")
+
     @model_validator(mode="after")
     def _check_consistent(self) -> "VerificationRecord":
         # A record that says both "this did not run" and "it looked at 12 rows" contradicts itself,
@@ -1368,7 +1604,35 @@ class VerificationRecord(BaseModel):
                 f"check {self.check!r} reports {self.findings} finding(s) out of {self.subjects} "
                 f"subject(s); a finding is one of the rows the check was evaluated over."
             )
+        # RM292. Derived, so it cannot disagree with the two facts it restates: filled when both sides
+        # are stated, refused when a stated value contradicts them, and refused where the derivation
+        # withholds — an independence with nothing under it is a claim, not a derivation.
+        derived = self.derived_independence()
+        if self.independence is None:
+            self.independence = derived
+        elif self.independence != derived:
+            raise ValueError(
+                f"check {self.check!r} reads its {self.checked_source!r} values against "
+                f"{self.witness_source!r}, which makes its independence {derived!r} (derived from "
+                f"`checked_source` and `witness_source`, withheld when either is unknown), not "
+                f"{self.independence!r}."
+            )
         return self
+
+    def derived_independence(self) -> str | None:
+        """`self_consistent`, `independent`, or `None` — the one place the rule is written (RM292).
+
+        The witness may name several authorities (`cpic+pharmvar`). The checked side being one of them
+        and the only one is `self_consistent`; being none of them is `independent`; being one of
+        several is **withheld**, because part of the comparison read the values against their own
+        source and part did not, and neither word is true of the whole record.
+        """
+        if self.checked_source is None or self.witness_source is None:
+            return None
+        witnesses = self.witness_source.split("+")
+        if self.checked_source not in witnesses:
+            return "independent"
+        return "self_consistent" if witnesses == [self.checked_source] else None
 
 
 class VerificationDoc(BaseModel):
@@ -1615,8 +1879,8 @@ class Weighting(BaseModel):
     are, and a consumer chooses a table wholesale rather than blending row by row.
 
     Advisory metadata, exactly like `license`: out of `artifact.digest` and out of `content_signature`
-    (the identity/display half of `module_spec.yaml` is excluded by design), and **not reconstructed
-    by the lossy `reverse_module`**, same class as `panel`/`authorship`/`license`.
+    (the identity/display half of `module_spec.yaml` is excluded by design). `reverse_module` writes it
+    back from the manifest, like every other spec field the artifact carries (RM241).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -1646,6 +1910,21 @@ class Weighting(BaseModel):
             "they are comparable with another module's, which by default they are not. Free text."
         ),
     )
+
+
+class MetaSelectorCount(BaseModel):
+    """How many rows one member of one `meta.csv` row matched at compile (0.8, RM28).
+
+    The compiler expands every selector into the rows it matches and would otherwise discard the count
+    (`@dont-discard-computed`); a consumer or a catalog reads it here without opening `meta.parquet`. A
+    zero is the `meta_selector_matches_nothing` finding, stated as a number.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    row: int = Field(description="0-based index of the authored row in `meta.csv` (and `meta.parquet`).")
+    selector: str = Field(description="The member, verbatim as authored in the row's `members` cell.")
+    matches: int = Field(ge=0, description="How many rows of the member's table it matched.")
 
 
 class ModuleManifest(BaseModel):
@@ -1689,6 +1968,21 @@ class ModuleManifest(BaseModel):
             "combining it (RM92). Author-declared via `module_spec.yaml`'s `weighting:` and copied "
             "through; absent means the module has not said, which is not the same as saying its "
             "weights are comparable. Out of `artifact.digest` and `content_signature`."
+        ),
+    )
+    tier_scale: str | None = Field(
+        default=None,
+        description=(
+            "The scale `meta.csv`'s `tier` column grades on (0.8, RM324), author-declared once via "
+            "`module_spec.yaml`'s `tier_scale:` and copied through. Absent on a module stating no "
+            "tier. Out of `artifact.digest` and `content_signature`."
+        ),
+    )
+    meta_selectors: list[MetaSelectorCount] | None = Field(
+        default=None,
+        description=(
+            "Every member of every `meta.csv` row with the number of rows it matched at compile, in "
+            "authored order (0.8, RM28). `None` when the module carries no meta.csv."
         ),
     )
 
@@ -1755,6 +2049,26 @@ class ModuleManifest(BaseModel):
             "direction, because both decide whether these effects can be thresholded at all — and "
             "neither is visible from a row count."
         ),
+    )
+    locus_to_gene: OpenTargetsTable | None = Field(
+        default=None,
+        json_schema_extra=since("0.8.0"),
+        description="Summary of the locus-to-gene sidecar (0.8, RM333), when the module carries one.",
+    )
+    colocalisations: OpenTargetsTable | None = Field(
+        default=None,
+        json_schema_extra=since("0.8.0"),
+        description="Summary of the colocalisation sidecar (0.8, RM333), when the module carries one.",
+    )
+    consequences: OpenTargetsTable | None = Field(
+        default=None,
+        json_schema_extra=since("0.8.0"),
+        description="Summary of the per-transcript consequence sidecar (0.8, RM236), when the module carries one.",
+    )
+    ld_pairs: LdPairs | None = Field(
+        default=None,
+        json_schema_extra=since("0.8.0"),
+        description="Summary of the computed LD-pair sidecar (0.8, RM331), when the module carries one.",
     )
     literature: Literature | None = Field(
         default=None,

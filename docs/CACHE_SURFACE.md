@@ -5,7 +5,7 @@ marked shipped with a `publish_repo` no command could reach (RM202): every field
 every test passed, and nothing an operator could type would publish it. The checklist at the end is
 the thing that would have caught it.
 
-`CACHE_LANES` in `caches.py` is the registry — **15 lanes** — and it is the single source for
+`CACHE_LANES` in `caches.py` is the registry (count it from the registry, never from this sentence) and it is the single source for
 `cache status`, `cache pull`, `cache prepare`, `cache rebuild` and the publisher. It replaced a
 hand-kept list that had drifted three lanes behind reality (RM176), so the standing rule is
 `@registry-completeness`: **assert an equality over a walked set, never a count and never a list
@@ -45,7 +45,7 @@ having said it.
 | `terms` | ✅ | the `SourceTerms`, or `None`. Drives the `declared_use` gate |
 | `publish_command` | — | needed **only** when the lane has a `publish_repo` and no `rebuild` (RM202) |
 | `unpublished` / `unbuilt` | — | stated iff the stage is absent |
-| `release_label` | — | override only if `release.json`'s `dataset` is not the label |
+| `release_label` | — | override only if `release.json`'s `dataset` is not the label. **No lane overrides it** since RM303: write `dataset` through `SnapshotRelease` instead |
 | `parents` | — | for a derived lane; an absent parent is *could not run*, never an empty result. Also a **cost** fact: `provisioning_closure` prices the lane by its parents |
 | `approx_mb` | ✅ | the provisioned size as an order of magnitude in whole MB, rounded up (`1` = at most a megabyte). Measured, never guessed; a test re-measures it against every snapshot the box holds (RM229) |
 
@@ -68,6 +68,13 @@ retirement rides the payload call as `delete_patterns`, so RM186's arrival-and-d
 operation. **A large upload is several commits either way**, which is upstream's business rather than
 this tier's — the one-commit guarantee holds for payloads that fit in one and is the Hub's to keep
 for those that do not.
+
+**And the description describes the bytes that were sent (RM386).** The publish hashes every planned
+file once, checks the tree the hub holds at the payload commit against those hashes, and only then
+sends `release.json` — the bytes it read with the rest, never read again — pinned on the payload
+commit, which is itself pinned on the revision the publish read. A rebuild while the hub reads the
+directory withholds the description (`PlanChangedError`); a concurrent commit refuses the write
+(`RemoteMovedError`).
 
 **A root-level file must be in the registry or it is silently dropped.** `SNAPSHOT_ROOT_FILENAMES`
 carries them in publish order. This has bitten twice: a share-alike snapshot published without the
@@ -107,10 +114,22 @@ the point of the list is to not need the suite to find out.
       `publish_command`, exactly one (`test_every_publishable_lane_can_actually_be_published`)
 - [ ] **run the publish command's `--dry-run` and read the file list.** A field being set is not a
       capability — that is the whole of RM202
+- [ ] if the lane has an `ensure`: its HF repository is an entry of `locations.SNAPSHOT_REPO_IDS`, the one
+      place a repo id is written, and its prefix, `DEFAULT_*_REPO_ID` alias and `publish_repo` read that
+      entry (`test_snapshot_repo_ids.py::test_the_map_holds_every_pulled_lane`,
+      `…::test_no_repository_is_spelled_outside_its_definition`, RM384)
 
 **Data and terms**
-- [ ] any root-level file the snapshot needs is in `SNAPSHOT_ROOT_FILENAMES`, with `release.json`
-      last (`test_a_publish_carries_the_knot_table_and_not_only_the_scores`)
+- [ ] any root-level file the snapshot needs is in `SNAPSHOT_ROOT_FILENAMES` (in `just_dna_format.snapshot`
+      since 0.8), with `release.json` last (`test_a_publish_carries_the_knot_table_and_not_only_the_scores`)
+- [ ] the builder opens its write with `snapshot = begin_snapshot_write(out_dir)` immediately before the
+      first byte of the live payload moves, and describes it last with
+      `snapshot.commit(SnapshotRelease(dataset=…, …))`, never `write_release` or a hand-built dict; it
+      names its release in `dataset`
+      (`test_release_json_through_the_model.py::test_every_builder_opens_a_write_and_none_writes_the_record_itself`,
+      and a run of it in `test_a_build_withdraws_its_description_first.py::_RUNS`, RM369)
+- [ ] any `release.json` key a reader acts on is a typed `SnapshotRelease` field
+      (`test_release_json_through_the_model.py::test_no_reader_acts_on_an_untyped_release_key`, RM369)
 - [ ] `terms` is a `SourceTerms` whose permission axes are each either **documented** or recorded as
       a **reading**, and the difference is written down somewhere — `sources.csv` shows only booleans
       (`test_the_three_permission_axes_each_rest_on_a_different_kind_of_ground`)

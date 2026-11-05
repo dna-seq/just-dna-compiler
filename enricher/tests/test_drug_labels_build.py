@@ -13,7 +13,6 @@ test. The one thing hardcoded is the source's own column names, which is a domai
 import csv
 import hashlib
 import json
-import os
 import zipfile
 from pathlib import Path
 
@@ -202,6 +201,7 @@ def test_a_transport_failure_reaches_the_caller_as_a_drug_label_error(
     assert not dest.with_name(dest.name + ".part").exists()
 
 
+@pytest.mark.network
 def test_the_live_archive_still_has_the_shape_this_builder_reads(tmp_path: Path) -> None:
     """Opt-in (`JUST_DNA_NETWORK_TESTS=1`): the real download, built end to end.
 
@@ -209,8 +209,6 @@ def test_the_live_archive_still_has_the_shape_this_builder_reads(tmp_path: Path)
     must be a superset of the fixture's regulators and states no testing level this release cannot
     place, which is what a re-curation would break.
     """
-    if not os.getenv("JUST_DNA_NETWORK_TESTS"):
-        pytest.skip("network test; set JUST_DNA_NETWORK_TESTS=1 to run")
 
     archive, digest = download_drug_labels_zip(tmp_path / "drugLabels.zip")
     result = build_drug_label_snapshot(archive, tmp_path / "snap", source_sha256=digest)

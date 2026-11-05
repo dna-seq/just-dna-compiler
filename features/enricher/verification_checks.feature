@@ -36,7 +36,7 @@ Feature: The verification checks and their three outcomes
       | ran and disagreed                     | ran, subjects=N, findings>0            |
       | could not be put at all               | skipped, with a vocabulary reason      |
 
-  # source: enricher/src/just_dna_enricher/enrich.py
+  # source: enricher/src/just_dna_enricher/enrich/verification_records.py
   # anchor: _verification_records
   @check:reference_allele
   Scenario: an authored ref against the actual reference sequence
@@ -49,7 +49,7 @@ Feature: The verification checks and their three outcomes
     # mismatch" has three causes and one window read cannot separate them, so an ambiguous case is
     # withheld and the findings group by reason (`@ref-mismatch-causes`).
 
-  # source: enricher/src/just_dna_enricher/enrich.py
+  # source: enricher/src/just_dna_enricher/enrich/verification_records.py
   # anchor: _verification_records
   @check:genome_build_agreement
   Scenario: authored coordinates against the declared assembly
@@ -61,7 +61,7 @@ Feature: The verification checks and their three outcomes
     # (`@a-recorded-judgement-is-a-fact`). The ±1 shift reading is wrong on an old-assembly coordinate,
     # and only two evidence tiers supersede it (`@old-assembly-vs-shift`).
 
-  # source: enricher/src/just_dna_enricher/enrich.py
+  # source: enricher/src/just_dna_enricher/enrich/verification_records.py
   # anchor: _verification_records
   @check:clinical_significance
   Scenario: an authored clin_sig against ClinVar's own, allele-exactly
@@ -76,7 +76,7 @@ Feature: The verification checks and their three outcomes
     # disagrees with a one-star submission is doing their job. Failing the compile would make the format
     # arbitrate a clinical dispute (`@clinsig-never-escalates`).
 
-  # source: enricher/src/just_dna_enricher/enrich.py
+  # source: enricher/src/just_dna_enricher/enrich/verification_records.py
   # anchor: _verification_records
   @check:rsid_coordinate_agreement
   Scenario: an authored rsID and coordinate PAIR against the reference
@@ -86,7 +86,20 @@ Feature: The verification checks and their three outcomes
     # The pair co-identifies one variant, so the redundancy is checkable. NCBI rather than Ensembl is the
     # oracle for merge status (`@ncbi-merge-oracle`).
 
-  # source: enricher/src/just_dna_enricher/enrich.py
+  # source: enricher/src/just_dna_enricher/enrich/verification_records.py
+  # anchor: _verification_records
+  @check:placement_agreement
+  Scenario: where the run's own link placed an rsID against where a second authority places it
+    Given a variants.csv row naming an rsID the Ensembl snapshot and the ClinVar snapshot place as two different events
+    When `enrich` runs
+    Then no row is written for that rsID and the record names both placements
+    And the record counts the rsIDs that had one witness only
+    # S117's `rs8176719` is the case: Ensembl's VCF dump anchors the ABO O1 insertion one base early, a
+    # different haplotype from ClinVar's. Compared by minted VRS id where both mint, else by the
+    # left-aligned spelling; a respelling nothing could settle is undecided, never agreement
+    # (`@tautology-zero`). Nothing is rewritten (`@enrichment-is-validation`).
+
+  # source: enricher/src/just_dna_enricher/enrich/verification_records.py
   # anchor: _verification_records
   @check:rsid_currency
   Scenario: an authored rsID against dbSNP's own status
@@ -98,7 +111,7 @@ Feature: The verification checks and their three outcomes
     # absence are not automatically equal (`@rsid-absent-two-readings`,
     # `@absence-is-weighted-by-the-base-rate`).
 
-  # source: enricher/src/just_dna_enricher/enrich.py
+  # source: enricher/src/just_dna_enricher/enrich/verification_records.py
   # anchor: _verification_records
   @check:dataset_currency
   Scenario: a recorded dataset against the release that source publishes now
@@ -109,7 +122,7 @@ Feature: The verification checks and their three outcomes
     # currency check asks the SOURCE, never the cache the rows were drafted from, and a digest label does
     # not compare against a dated one (`@currency-asks-the-source-not-the-cache`).
 
-  # source: enricher/src/just_dna_enricher/enrich.py
+  # source: enricher/src/just_dna_enricher/enrich/verification_records.py
   # anchor: _verification_records
   @check:evidence_status_currency
   Scenario: a recorded curation status against what the source says about that item now
@@ -122,7 +135,7 @@ Feature: The verification checks and their three outcomes
     # table came from, this one whether a per-ITEM judgement has moved, and the two currency findings stay
     # apart (`@a-source-recuring-is-not-a-strict-matter`). A source re-curating is not an authoring error.
 
-  # source: enricher/src/just_dna_enricher/enrich.py
+  # source: enricher/src/just_dna_enricher/enrich/verification_records.py
   # anchor: _verification_records
   @check:published_refutation
   Scenario: an authored direction against the refutations a source publishes
@@ -343,7 +356,7 @@ Feature: The verification checks and their three outcomes
     # question too: letting one registry's outage write a skip against another's check is exactly what
     # `@one-registrys-outage-may-not-speak-for-another` forbids.
 
-  # source: enricher/src/just_dna_enricher/cli.py
+  # source: enricher/src/just_dna_enricher/cli/authoring_commands.py
   # anchor: _mint_record
   @check:vrs_allele_id
   Scenario: the check whose every record is a skip, deliberately
@@ -409,3 +422,23 @@ Feature: The verification checks and their three outcomes
     Then the compiler drops the block with a warning
     # Correctly, because the checks were put against rows that no longer exist. Re-running the pass
     # re-attests. Currency of the SOURCE is a different question, read off each record's own `release`.
+
+  # source: enricher/src/just_dna_enricher/verification.py
+  # anchor: resolve_witnesses
+  @tri_state
+  Scenario Outline: a record names its witness, and one source on both sides reads self-consistent
+    Given a check whose values came from <checked> and are compared against <witness>
+    When the pass attests
+    Then the record's independence is <independence>
+    # RM292. Every emitting check states both sides in the enricher's roster, and the constructors fill
+    # every record from it, so a check with no roster entry cannot be recorded. Agreement with the
+    # source a value was copied from proves nothing about the value, so that record never reads
+    # independent. The authored side is settled against the licence table at the one writer every
+    # command goes through, and an unknown is withheld rather than guessed. A tolerance counts what it
+    # abstains on into the undecided field, outside the subjects.
+    Examples:
+      | checked                                         | witness  | independence    |
+      | cells the author wrote                          | ClinVar  | independent     |
+      | a ClinVar-drafted column nobody has edited      | ClinVar  | self_consistent |
+      | cells beside a licence row naming ClinVar alone | ClinVar  | withheld (null) |
+      | a release CIViC published at drafting           | CIViC    | self_consistent |

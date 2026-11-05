@@ -32,6 +32,8 @@ import httpx
 import just_dna_enricher.gene_metrics as gene_metrics_module
 import pytest
 from just_dna_enricher.clingen import ClinGenError, ClinGenUnavailable
+from just_dna_enricher.clinvar_gkm import ClinVarGkmClient, ClinVarGkmError, ClinVarGkmUnavailable
+from just_dna_enricher.clinvar_gkm_build import download_and_build
 from just_dna_enricher.eutils import EutilsError
 from just_dna_enricher.expression import (
     ExpressionError,
@@ -56,6 +58,7 @@ from just_dna_enricher.identifiers import (
     check_identifiers,
     check_rsids,
 )
+from just_dna_enricher.ld_pairs import LdClient, LdError, LdUnavailable, enrich_ld_pairs
 from just_dna_enricher.literature import (
     LiteratureEnrichmentError,
     LiteratureUnavailable,
@@ -120,6 +123,26 @@ class _StubOntology:
     def close(self) -> None: ...
 
 
+class _StubGkm(ClinVarGkmClient):
+    """ClinVar-GKM with R2 down: the manifest read is retried and translated inside the client."""
+
+    def parquet_manifest(self):  # type: ignore[override]
+        raise ClinVarGkmUnavailable("could not read ClinVar-GKM's Parquet manifest: 503")
+
+
+class _StubLd(LdClient):
+    """Ensembl down: the release probe is retried and translated inside the client."""
+
+    def release(self) -> int:  # type: ignore[override]
+        raise LdUnavailable("Ensembl could not be asked (info/data): 503 Service Unavailable")
+
+
+def _with_a_proxy(spec: Path) -> Path:
+    """`hboc_palb2` measures no study on a proxy, so without this row the pass never reaches its client."""
+    (spec / "studies.csv").write_text("rsid,pmid,proxy_rsid,ancestry\nrs646776,30642433,rs4970836,EUR\n")
+    return spec
+
+
 @dataclass(frozen=True)
 class Case:
     """One pass, and what a caller of it is entitled to.
@@ -149,6 +172,23 @@ def _no_constraint_snapshot(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 PASSES: list[Case] = [
+    Case(
+        # RM305. The client raises this module family's own `*Unavailable`, so the builder propagates
+        # it and owes no `__cause__` (`translates=False`), the `check_identifiers` shape.
+        "clinvar_gkm_build.download_and_build",
+        lambda spec: download_and_build(spec / "clinvar_gkm", client=_StubGkm()),
+        ClinVarGkmError,
+        ClinVarGkmUnavailable,
+        translates=False,
+    ),
+    Case(
+        # RM331. Client and pass share one module's family, so the pass propagates (`translates=False`).
+        "ld_pairs.enrich_ld_pairs",
+        lambda spec: enrich_ld_pairs(_with_a_proxy(spec), write=False, client=_StubLd()),
+        LdError,
+        LdUnavailable,
+        translates=False,
+    ),
     Case(
         "frequencies.enrich_frequencies",
         lambda spec: enrich_frequencies(spec, write=False, client=_StubGnomad()),
@@ -261,7 +301,15 @@ def test_every_pass_taking_an_injected_client_is_covered() -> None:
 
     clientish = {"client", "eutils", "europepmc", "crossref", "resolver", "gnomad_client"}
     discovered: set[str] = set()
-    for module_info in pkgutil.iter_modules(list(just_dna_enricher.__path__)):
+    # `cli` and `enrich` are packages since RM260: their submodules hold the definitions each `__init__`
+    # only re-exports, and `obj.__module__ == module.__name__` would skip every one of them there.
+    for module_info in [
+        *pkgutil.iter_modules(list(just_dna_enricher.__path__)),
+        *pkgutil.iter_modules(list(importlib.import_module("just_dna_enricher.cli").__path__), prefix="cli."),
+        *pkgutil.iter_modules(
+            list(importlib.import_module("just_dna_enricher.enrich").__path__), prefix="enrich."
+        ),
+    ]:
         module = importlib.import_module(f"just_dna_enricher.{module_info.name}")
         for name, obj in vars(module).items():
             if not (inspect.isfunction(obj) and obj.__module__ == module.__name__):
@@ -281,19 +329,18 @@ def test_every_pass_taking_an_injected_client_is_covered() -> None:
         # last-resort link must not sink the whole enrichment" and logs a warning, and the Ensembl
         # leg answers an unreachable rsID with `None` rather than an exception. Both are the
         # withhold, which is the correct shape and the opposite of the defect here.
-        "enrich.enrich",
+        "enrich.orchestration.enrich",
         # `Grch37Client` raises nothing at all: every httpx path returns `None` or `[]`. There is no
         # exception for these two to translate, and asserting a type would assert the wrong contract.
         "grch37.recover_rsid",
         "grch37.diagnose_wrong_build",
-        # Snapshot builders and the drafting surface rather than enrichment passes, and each caller
-        # already spells the several types out: `except (CpicError, CpicBuildError)`,
-        # `except PharmVarError`, `except (CpicError, *_DRAFT_PRECONDITION_ERRORS)`. Those work
-        # today, and they are the *list* shape rather than the type shape — a caller has to know
-        # which four to name, which is the drift the report argued against and RM96 is the lesson
-        # for. Left alone here on purpose: it is a real question and a wider one than this item,
-        # which is about passes whose documented type was silently wrong, not about callers who
-        # correctly enumerate a family. Filed as RM288 (2026-09-27).
+        # Snapshot builders and the drafting surface rather than enrichment passes, and **decided by
+        # RM288 (0.8) to raise a declared family rather than one type**. Each exports it as `ERRORS`, a
+        # callee-owned tuple, and every caller writes `except <module>.ERRORS`: no base class, which
+        # would make `except` order load-bearing, and no list at the call site, which drifted into
+        # RM310. That is a different contract from the one this test asserts, so the three stay
+        # exempt here and `test_builder_error_families.py` asserts theirs: every caller catches the
+        # tuple (an AST walk), and each surface raises only its members (driven with stubs).
         "cpic_build.build_snapshot",
         "pharmvar_build.build_snapshot",
         "pgx_draft.draft_gene",
@@ -312,6 +359,11 @@ def test_every_pass_taking_an_injected_client_is_covered() -> None:
         # `CivicApiClient` is covered in `test_client_exception_contract.py`, where the translation
         # really does happen.
         "civic_citations.draft_civic_citations",
+        # RM305, the withhold once more: `lane_currency` catches `ClinVarGkmUnavailable` and answers
+        # `unchecked="unreachable (…)"` (`retired (…)` for a 410, read by `could_not_ask_reason`), so a
+        # caller never sees the client's type. The client's own translation is asserted in
+        # `test_clinvar_gkm.py`.
+        "clinvar_gkm.lane_currency",
         "civic_citations.check_evidence_status_currency",
         # RM193, and the same shape a fifth time. `check_variant_impact` catches every `AtlasError`
         # arm per variant and records that variant's own reason — `unreachable` for a transport
@@ -323,6 +375,11 @@ def test_every_pass_taking_an_injected_client_is_covered() -> None:
         # status code — *not* in `test_client_exception_contract.py`, which this comment named for a
         # day and which has never held an Atlas case: that file walks the httpx clients.
         "alphagenome_check.check_variant_impact",
+        # RM283. Raises nothing by design, like the two `grch37` entries: every `HEAD` that fails, for
+        # any reason, leaves that archive's date `None`, which `staleness_finding` reads as
+        # could-not-ask rather than old. The probe gates nothing, so it may not cost a build its
+        # snapshot, and there is no failure for a caller to catch.
+        "clinpgx_build.probe_archive_dates",
     }
     uncovered = discovered - covered
     assert uncovered == exempt, sorted(uncovered.symmetric_difference(exempt))

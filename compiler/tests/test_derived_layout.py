@@ -26,6 +26,7 @@ import pytest
 from just_dna_compiler.compiler import (
     _DERIVED_FILES,
     _TABLE_KIND_CSVS,
+    META_CSV,
     compile_module,
     validate_spec,
 )
@@ -68,6 +69,10 @@ _MOVABLE = (
     "clin_sig_concordance.csv",
     "clin_sig_authority_calls.csv",
     "expression_effects.csv",
+    "locus_to_gene.csv",
+    "colocalisations.csv",
+    "consequences.csv",
+    "ld_pairs.csv",
     "sources.csv",
     LICENSING_CSV,
 )
@@ -86,6 +91,25 @@ def _flat(tmp_path: Path, name: str = "flat") -> Path:
             shutil.copytree(candidate, spec_dir)
             return spec_dir
     pytest.skip("no reference example carries both variants.csv and resolution.csv")
+
+
+def _variants_only(tmp_path: Path, name: str = "variants_only") -> Path:
+    """A real module whose only authored table is `variants.csv`, beside a resolution table.
+
+    `_flat` takes the first example carrying both files, and a reference example that also carries a
+    table kind or `meta.csv` sorts ahead of the variants-only ones by name (`apoe_klvs_meta`, 0.8). With
+    `variants.csv` moved away such a module still compiles, so a test needing the "no table at all"
+    refusal must choose its fixture by that property, read off the compiler's own registry.
+    """
+    for candidate in sorted(_EXAMPLES.iterdir()):
+        if not ((candidate / "resolution.csv").is_file() and (candidate / "variants.csv").is_file()):
+            continue
+        if any((candidate / kind).is_file() for kind in (*_TABLE_KIND_CSVS, META_CSV)):
+            continue
+        spec_dir = tmp_path / name
+        shutil.copytree(candidate, spec_dir)
+        return spec_dir
+    pytest.skip("no reference example carries variants.csv as its only authored table")
 
 
 def _multi_table(tmp_path: Path, name: str = "multi") -> Path:
@@ -214,7 +238,7 @@ def test_an_authored_table_does_not_get_a_second_home(tmp_path: Path) -> None:
     a module that keeps another table. The refusal is still worth pinning; what is added here is that
     the file is named either way.
     """
-    spec_dir = _flat(tmp_path)
+    spec_dir = _variants_only(tmp_path)
     derived = spec_dir / DERIVED_SUBDIR
     derived.mkdir()
     (spec_dir / "variants.csv").rename(derived / "variants.csv")

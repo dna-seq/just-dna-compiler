@@ -40,7 +40,7 @@ from pathlib import Path
 from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.base import derive_variant_key, merge_key
 from just_dna_format.expression import ExpressionEffectRow
-from just_dna_format.layout import atomic_writer
+from just_dna_format.layout import atomic_writer, nothing_to_write
 from just_dna_format.normalize import now_utc_iso
 
 from just_dna_enricher.atlas_protos import ATLAS_IMPORT_FAILURES, client_absence
@@ -56,11 +56,13 @@ from just_dna_enricher.licensing import (
     ALPHAGENOME_ATLAS_TERMS,
     check_declared_use,
     effective_declared_use,
-    merge_sources_file,
+    record_table_sources,
     require_sources_file,
     sidecar_path,
+    table_datasets,
 )
 from just_dna_enricher.locations import env_value, missing_credential_reason
+from just_dna_enricher.net import release_dataset, stated_release
 
 # Guarded at module scope rather than imported inside the function, which is the documented exception
 # to this workspace's no-inline-imports rule and the shape `alphagenome_check` uses. The fallback
@@ -96,6 +98,8 @@ logger = logging.getLogger(__name__)
 
 SIDECAR_NAME: str = "expression_effects.csv"
 SOURCE_NAME: str = ALPHAGENOME_ATLAS_TERMS.source
+#: The bare lane a row's `dataset` carries: the atlas states no release (RM373).
+ATLAS_LANE = "alphagenome_atlas"
 SOURCE_LAYER: str = "expression_effect"
 
 #: The one scorer RM200 adopted, and the value `effect_measure` records.
@@ -340,6 +344,8 @@ def _write_csv(
     A pure build product: a correction to a derived row belongs in `overrides.csv`, which is what
     makes deleting this file and re-running cost nothing (`@sidecar-authoritative`).
     """
+    if nothing_to_write(output_path, rows):
+        return  # RM370: a pass that answered nothing leaves no table
     with atomic_writer(output_path, newline="", before_commit=before_commit) as handle:
         writer = csv.DictWriter(handle, fieldnames=_FIELDNAMES)
         writer.writeheader()
@@ -438,7 +444,9 @@ def enrich_expression(
     if mismatch:
         result.warnings.append(mismatch)
 
-    release = dataset or f"alphagenome_atlas_{now_utc_iso()[:10]}"
+    # The atlas states no release, so a row names none unless the caller states one (RM373): the run's
+    # date was a release nobody published. The bare lane is `release_dataset`'s unstated spelling.
+    release = dataset or release_dataset(ATLAS_LANE, None)
     fetched_at = now_utc_iso()
     result.dataset = release
 
@@ -537,10 +545,15 @@ def enrich_expression(
         _write_csv(
             out,
             output_path,
-            before_commit=lambda: merge_sources_file(
-                [ALPHAGENOME_ATLAS_TERMS.row(SOURCE_LAYER, declared_use=declared_use, dataset=release)],
+            # Labelled by the release every committed row states, not by this run's alone (RM373).
+            before_commit=lambda: record_table_sources(
+                table_datasets(out, release=lambda row: stated_release(row.dataset, ATLAS_LANE)),
+                SOURCE_LAYER,
                 spec_dir,
                 error=ExpressionError,
+                # A routine merge declares nothing, so it retires no licence row (RM383).
+                answered_every_row=False,
+                declared_use=declared_use,
             ),
         )
     result.rows = out

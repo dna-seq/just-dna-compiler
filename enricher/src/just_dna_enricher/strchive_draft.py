@@ -41,6 +41,7 @@ from just_dna_compiler.draft import (
 )
 from just_dna_format.base import authored_field_names
 from just_dna_format.binning import RepeatAlleleRow
+from just_dna_format.spelling import gene_key
 
 from just_dna_enricher.drafting import (
     DRAFT_PROVIDERS,
@@ -49,6 +50,7 @@ from just_dna_enricher.drafting import (
     record_draft_provenance,
 )
 from just_dna_enricher.licensing import STRCHIVE_TERMS, check_declared_use, effective_declared_use
+from just_dna_enricher.locations import resolve_strchive_reference
 from just_dna_enricher.strchive import (
     REPEAT_ALLELES_CSV,
     StrchiveCatalogue,
@@ -211,6 +213,10 @@ def draft_repeat_loci(
     spec_dir = Path(spec_dir)
     result = StrchiveDraftResult(withheld=dict.fromkeys(WITHHELD_REASONS, 0))
 
+    # A provisioned catalogue is used without being named, as `check_repeat_bands` uses it (RM395):
+    # `draft-repeats --help` promised the lane and the drafter skipped on a machine holding one.
+    if catalogue is None:
+        catalogue = resolve_strchive_reference()
     if catalogue is None:
         result.skipped = True
         result.warnings.append(
@@ -231,8 +237,8 @@ def draft_repeat_loci(
     loaded = catalogue if isinstance(catalogue, StrchiveCatalogue) else load_strchive_catalogue(catalogue)
     result.dataset = loaded.dataset
 
-    wanted = {g.strip().upper() for g in genes if g.strip()}
-    admitted = [locus for locus in loaded.loci if not wanted or locus.gene.upper() in wanted]
+    wanted = {gene_key(g) for g in genes if g.strip()}
+    admitted = [locus for locus in loaded.loci if not wanted or gene_key(locus.gene) in wanted]
     result.candidates = len(admitted)
 
     # Over the admitted set, before any row is built.

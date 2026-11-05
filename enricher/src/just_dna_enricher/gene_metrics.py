@@ -28,11 +28,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import duckdb
-from just_dna_compiler.compiler import load_csv_rows
+from just_dna_compiler.compiler import MODULE_GENE_TABLES, load_csv_rows, module_subjects
 from just_dna_format.base import merge_key
 from just_dna_format.gene_metrics import GeneMetricsRow
-from just_dna_format.layout import atomic_writer
+from just_dna_format.layout import atomic_writer, nothing_to_write
 from just_dna_format.normalize import now_utc_iso
+from just_dna_format.snapshot import release_label as snapshot_release_label
+from just_dna_format.spelling import gene_key
 
 from just_dna_enricher.download import ensure_constraint_snapshot
 from just_dna_enricher.gnomad import (
@@ -42,9 +44,15 @@ from just_dna_enricher.gnomad import (
     GnomadError,
     normalize_constraint_flags,
 )
-from just_dna_enricher.identifiers import authored_identifiers
-from just_dna_enricher.licensing import record_source_terms, require_sources_file, sidecar_path
+from just_dna_enricher.identifiers import _id_bearing_tables, authored_rows
+from just_dna_enricher.licensing import (
+    record_table_sources,
+    require_sources_file,
+    sidecar_path,
+    table_datasets,
+)
 from just_dna_enricher.locations import resolve_constraint_reference
+from just_dna_enricher.net import release_dataset, stated_release
 
 logger = logging.getLogger(__name__)
 
@@ -120,10 +128,19 @@ class GeneMetricsResult:
     # which means gnomAD was asked and has no constraint: that is a real and common fact about small
     # or non-coding genes, and this is the absence of a question. These genes appear in `missing` too,
     # because `strict` must still refuse a run that established nothing, but no ROW is written for
-    # them -- a `not_found` row here would name a release nobody opened.
+    # them -- a `not_found` row here would name a release nobody opened. A gene the live route answered
+    # with an error rather than a record or an absence is here too (RM361): nothing was established.
     unconsulted: list[str] = field(default_factory=list)
     sources: list[str] = field(default_factory=list)
     mode: str = "best_effort"
+
+
+#: Authored tables whose `gene` is not a gene the module's findings are about, so it is outside the scope
+#: below while `check-identifiers` still reads it: every gene-bearing authored table off the compiler's
+#: `MODULE_GENE_TABLES` roster (RM362), the one `manifest.stats.genes` and the orphan checks read. The one
+#: such table today is `model_organisms.csv` (0.8, RM335), whose gene is the one a mouse experiment
+#: altered. Derived as a difference rather than named, so this scope cannot widen past the published set.
+_NOT_THE_MODULES_GENES: frozenset[str] = frozenset(_id_bearing_tables("gene")) - frozenset(MODULE_GENE_TABLES)
 
 
 def module_genes(spec_dir: Path) -> list[str]:
@@ -149,7 +166,7 @@ def module_genes(spec_dir: Path) -> list[str]:
     one table wider. `read_errors` carries the loader's own message so the sentence is unchanged for
     `variants.csv`, which is what `gene_validity` re-raises as its own error type.
     """
-    roster = authored_identifiers(Path(spec_dir), "gene")
+    rows, roster = authored_rows(Path(spec_dir), "gene", exclude=_NOT_THE_MODULES_GENES)
     for name, error in sorted(roster.read_errors.items()):
         raise GeneMetricsEnrichmentError(f"{name} is invalid: {error}")
     # `read_errors` is the PARSE failures alone. A `SidecarCollision` — the same table present both
@@ -161,7 +178,14 @@ def module_genes(spec_dir: Path) -> list[str]:
     for name, why in sorted(roster.unreadable.items()):
         if name not in roster.read_errors:
             raise GeneMetricsEnrichmentError(f"{name} could not be read: {why}")
-    return roster.ids
+    # The answer is `module_subjects`' (RM362), the function `stats.genes` and the orphan checks call, so
+    # a gene this scope asks about is never one the compile names an orphan. Grouped by table in the
+    # roster's reading order, which keeps first occurrence where it was.
+    table_of = {model: name for name, model in _id_bearing_tables("gene").items()}
+    by_table: dict[str, list] = {}
+    for row in rows:
+        by_table.setdefault(table_of[type(row)], []).append(row)
+    return list(module_subjects(by_table).gene_symbols)
 
 
 def lookup_snapshot(reference: Path, genes: list[str]) -> dict[str, dict]:
@@ -213,13 +237,22 @@ def _snapshot_parquet(reference: Path | None) -> str | None:
     return None
 
 
+#: The bare lane label a constraint row carries when its snapshot states no release (`release_dataset`).
+CONSTRAINT_LANE = "gnomad_constraint"
+
+
+def _snapshot_dataset(reference: Path | None) -> str | None:
+    """The release a constraint snapshot states (`release.json`'s `dataset`), or `None`."""
+    return snapshot_release_label(reference) if reference is not None and reference.is_dir() else None
+
+
 def enrich_gene_metrics(
     spec_dir: Path,
     *,
     mode: str = "best_effort",
     offline: bool = False,
     constraint_cache: Path | None = None,
-    dataset: str = CONSTRAINT_DATASET_LABEL,
+    dataset: str | None = None,
     download: bool = True,
     write: bool = True,
     client: GnomadClient | None = None,
@@ -271,9 +304,16 @@ def enrich_gene_metrics(
     # Scoping to the two labels is what keeps the fetch running for a *second authority's* row: a
     # ClinGen dosage row for the same gene carries a different `dataset`, so it is a different key and
     # not this pass's work. Keying on the gene alone is the older bug in the other direction.
-    pass_datasets = {dataset, API_CONSTRAINT_DATASET_LABEL}
-    done = {row.gene for row in existing.values() if row.dataset in pass_datasets}
-    wanted = [g for g in genes if g not in done]
+    # The snapshot route's label is the snapshot's own (RM373), read without provisioning here: until
+    # one is provisioned, the published release's label is the one a recorded row would carry.
+    located = resolve_constraint_reference(constraint_cache)
+    pass_datasets = {
+        dataset or _snapshot_dataset(located) or CONSTRAINT_DATASET_LABEL,
+        API_CONSTRAINT_DATASET_LABEL,
+    }
+    # By `gene_key` (RM363): a row written for `APOE` covers an authored `Apoe`.
+    done = {gene_key(row.gene) for row in existing.values() if row.dataset in pass_datasets}
+    wanted = [g for g in genes if gene_key(g) not in done]
     fetched_at = now_utc_iso()
     out: list[GeneMetricsRow] = list(existing.values())
     covered: list[str] = []
@@ -316,6 +356,7 @@ def enrich_gene_metrics(
 
     # ── live API link (for what the snapshot missed, unless offline) ───────────────────────────
     from_api: dict[str, dict] = {}
+    api_unanswered: set[str] = set()
     still_missing = [g for g in wanted if g not in from_snapshot]
     if still_missing and not offline:
         owned = client is None
@@ -327,9 +368,13 @@ def enrich_gene_metrics(
         finally:
             if owned:
                 gnomad.close()
+        api_unanswered = set(getattr(gnomad, "unanswered", {})) & set(still_missing)
 
     # Which release a `not_found` row is reporting absence *from*: the last route actually consulted.
-    absent_from = dataset if offline else API_CONSTRAINT_DATASET_LABEL
+    # The snapshot route's label: the caller's, else what the snapshot read states (RM373), never the
+    # label of the build this pass was written against; a snapshot stating none gives the bare lane.
+    snapshot_label = dataset or _snapshot_dataset(reference) or release_dataset(CONSTRAINT_LANE, None)
+    absent_from = snapshot_label if offline else API_CONSTRAINT_DATASET_LABEL
     # **Was either route consulted at all?** (RM98.) The snapshot link needs a resolved `reference`,
     # the API link needs `not offline` — so an offline run with no snapshot opens neither, and the
     # pass has already logged that gene metrics "will be empty". It then wrote a `not_found` row per
@@ -349,7 +394,7 @@ def enrich_gene_metrics(
         # (RM33, the same overloading found in `resolution.csv`). The route is not lost — it is what
         # `dataset` carries, which is where this file already says the release distinction lives, and
         # `dataset` is inside the fact set while `source` is provenance.
-        source, row_dataset = "gnomad", dataset
+        source, row_dataset = "gnomad", snapshot_label
         if payload is None:
             payload = from_api.get(gene)
             row_dataset = API_CONSTRAINT_DATASET_LABEL
@@ -358,7 +403,7 @@ def enrich_gene_metrics(
             # A `not_found` row is a fact — the gene was looked up and gnomAD has no constraint for
             # it, which is genuinely true for many small or non-coding genes — and is different from
             # a gene that was never queried (no row at all).
-            if not constraint_routes_consulted:
+            if not constraint_routes_consulted or gene in api_unanswered:
                 unconsulted.append(gene)
                 continue
             out.append(
@@ -435,11 +480,15 @@ def enrich_gene_metrics(
         _write_gene_metrics_csv(
             out,
             output_path,
-            before_commit=lambda: record_source_terms(
-                {row.source for row in out if row.source},
+            # Each source's licence row labelled by the release every committed row it answered
+            # states, or withheld when they differ (RM373, `licensing.record_table_sources`).
+            before_commit=lambda: record_table_sources(
+                table_datasets(out, release=lambda row: stated_release(row.dataset, CONSTRAINT_LANE)),
                 "gene_metrics",
                 spec_dir,
                 error=GeneMetricsEnrichmentError,
+                # A routine merge declares nothing, so it retires no licence row (RM383).
+                answered_every_row=False,
             ),
         )
     return result
@@ -462,6 +511,8 @@ def _write_gene_metrics_csv(
     rather than re-asking every subject; what changed is that leaving a recorded row alone now risks
     nothing.
     """
+    if nothing_to_write(output_path, rows):
+        return  # RM370: a pass that answered nothing leaves no table
     with atomic_writer(output_path, newline="", before_commit=before_commit) as handle:
         writer = csv.DictWriter(handle, fieldnames=_FIELDNAMES)
         writer.writeheader()

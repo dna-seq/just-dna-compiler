@@ -11,6 +11,7 @@ my_module/
 ├── module_spec.yaml     the header: title, name, genome_build, defaults
 ├── variants.csv         one CSV per table kind — only the kinds you use
 ├── weights.csv
+├── meta.csv             optional (since 0.8): statements about rows of the other tables
 ├── resolution.csv       injected by the enricher, not authored by hand
 └── licensing.csv        who the data came from and what you may do with it
 ```
@@ -19,7 +20,7 @@ my_module/
 
     Both are accepted and read identically, but `sources.csv` is deprecated and is **removed at 1.0**,
     so write `licensing.csv` in anything new. A module carrying *both* is refused. The old name
-    collided with the `source` *column* that means "which link answered" in four other tables, which is
+    collided with the `source` *column* that means "which link answered" in other tables, which is
     what the rename fixes.
 
     The compiled side keeps the old name for the whole 0.x line: `licensing.csv` becomes
@@ -34,7 +35,15 @@ header-only CSV generated from the live models, and `requirements <kind>` says w
 ```bash
 just-dna-compiler template repeat_alleles.csv > repeat_alleles.csv   # requirements go to stderr
 just-dna-compiler requirements variants.csv
-just-dna-compiler scaffold ./my_module      # the whole directory, stubs included; never overwrites
+just-dna-compiler scaffold ./my_module --kind variants.csv --kind studies.csv   # never overwrites
+```
+
+`scaffold` writes `module_spec.yaml` plus one stub CSV per `--kind`; with no `--kind` it writes the
+header file alone. Run it again with another `--kind` to add a table. The stubs carry a `<<REPLACE>>`
+placeholder wherever a person has to decide, so the directory cannot compile until they have:
+
+```text
+  error: variants.csv line 2 []: Value error, unreplaced template placeholder '<<REPLACE>>' in VariantRow row: conclusion, genotype, rsid, state. Replace the value, or delete the row if you do not need it.
 ```
 
 `describe <kind>` emits the full machine description — columns, options, requirements — and
@@ -53,6 +62,8 @@ page by construction; they are built rather than committed, so these are absolut
 | `licensing.csv` | [tables/licensing/](https://just-dna.life/just-dna-compiler/tables/licensing/) |
 | `overrides.csv` | [tables/overrides/](https://just-dna.life/just-dna-compiler/tables/overrides/) |
 | `resolution.csv` | [tables/resolution/](https://just-dna.life/just-dna-compiler/tables/resolution/) |
+| `meta.csv` (since 0.8) | [tables/meta/](https://just-dna.life/just-dna-compiler/tables/meta/) |
+| `model_organisms.csv` (since 0.8) | [tables/model_organisms/](https://just-dna.life/just-dna-compiler/tables/model_organisms/) |
 
 Each carries a `#columns` anchor for the column list alone. The pages are named for the **current**
 spelling, so `sources.csv`'s page is `tables/licensing/`.
@@ -66,12 +77,34 @@ just-dna-compiler validate ./my_module
 `validate` refuses everything `compile` refuses, except the checks that need resolved coordinates, and
 it writes nothing. Use it as the fast loop while authoring.
 
+Since 0.8 it takes the compile's switches, `--strict`, `--resolve/--no-resolve` and
+`--ba1-threshold`, so pass it what the compile will get. A green `validate --strict` then means
+`compile --strict` will not refuse:
+
+```bash
+just-dna-compiler validate reference_examples/longevity_studies --strict
+```
+
+```text
+valid: reference_examples/longevity_studies
+```
+
 `hint` is the other read-only tool and the more interesting one: it inspects your authored rows and
 reports what is wrong, what the model will rewrite, and **what is deliberately left to you**. It writes
 nothing — the corrected text goes to stdout for you to use or ignore.
 
 ```bash
-just-dna-compiler hint ./my_module
+just-dna-compiler hint variants.csv --file ./my_module/variants.csv
+```
+
+`hint` reads one table at a time: name its kind, then pass the file with `--file` or a row inline with
+`--row`. On `reference_examples/longevity_studies`' `variants.csv` it rewrites nothing and lists the
+cells it leaves to the author, each with the check that would be made vacuous if a tool filled it:
+
+```text
+  info: [chrom] chrom is left to the author on purpose: compiler.resolution._verify (rsid vs coordinate) compares it against a source, and filling it from that same source would make the check vacuous
+  …
+variants.csv: 5 row(s), 0 normalized, 0 advisory, 6 finding(s)
 ```
 
 A hint never fills a cell that a cross-examining check reads. That is not a limitation to work around;
@@ -90,6 +123,8 @@ just-dna-compiler compile ./my_module ./out
 | `--compression` | parquet codec, default `zstd`. Changes `artifact.digest`, never `content_signature` |
 | `--compiled-by` | the provenance tag `verify` checks by default (e.g. `marketplace-server`) |
 | `--strip-identity` / `--authority-key` | drop authority-owned identity keys on the way out |
+| `--ensembl-reference` | record which reference the resolution table came from, in `manifest.compilation.ensembl_reference` (since 0.8) |
+| `--ba1-threshold` | the allele frequency above which a pathogenic row draws the ACMG BA1 warning, default `0.05` (since 0.8) |
 
 The compiler **never reaches the network**. Every coordinate it did not get from you
 came out of the injected `resolution.csv`; with nothing injected it skips resolution and says so in a
@@ -105,19 +140,85 @@ its own call is not grounds to refuse someone else's build.
 Where the compiler cannot establish something, it withholds. It does not guess, and it does not write
 the opposite value.
 
+### The refusals new in 0.8
+
+A spec 0.7 accepted can be refused by 0.8 in these cases. Every one below was produced by editing a
+scratch copy of a reference example and running `validate`.
+
+**Under `--strict` only**, a `resolution.csv` that places one rsID two ways, under its own key and
+under a positional key at another coordinate (`rsid_placements_disagree`). It is what a table enriched
+before the Ensembl snapshot switch and again after it, without `--rederive`, looks like:
+
+```text
+  error: rs10455872: resolution.csv holds two placement sets for this one rsID, under rs10455872 at 6:160589086 A>G [release ensembl-variation-2026_07_13-vep116.0]; and under 6:160589099:A:G at 6:160589099 A>G [release ensembl-variation-2026_07_13-vep116.0]. … Re-derive the table (`just-dna-enricher enrich <spec-dir> --rederive`) or delete resolution.csv and enrich again. Strict refuses until the table places each rsID one way: an artifact compiled from it can publish one identity at two places.
+```
+
+The same text is a warning without `--strict`. An rsID left unresolved because two authorities place it
+as two different events is refused under `--strict` through the existing unresolved gate.
+
+**In both modes**, a `pmid` cell holding only a DOI, a half-stated pair among the 0.8 columns, and an
+HLA allele off IPD-IMGT/HLA's grammar on `allele_function.csv`:
+
+```text
+  error: studies.csv line 2 [pmid]: Value error, pmid names DOI(s) ['10.1101/2025.03.30.25324899'] and no PubMed ID. … Write the DOI in `doi`; if the work has a PubMed record, write its PMID here (`just-dna-enricher hint citation --doi 10.1101/2025.03.30.25324899` looks it up), and if it has none, write 'NONE' here. Got: '10.1101/2025.03.30.25324899'
+  error: studies.csv line 3 []: Value error, stratum='sex' is set and stratum_level is empty — a stratum is written as both or neither …
+  error: allele_function.csv line 2 [allele]: Value error, HLA-DRB1 is an HLA gene, so its allele must follow IPD-IMGT/HLA nomenclature: … Got: '*1501'
+```
+
+`pmid` = `NONE` with the work's DOI in `doi` is the accepted way to cite a work with no PubMed record,
+such as a preprint. `reference_examples/longevity_studies` cites one that way and validates.
+[INTEGRATION_0_8.md](INTEGRATION_0_8.md) § 2 step 13 is the complete list.
+
+## New tables in 0.8
+
+Two authored tables are new, and `studies.csv` gained columns. All of them are optional. A module
+carrying neither new table keeps those two out of its digest, but any module with a `studies.csv`
+gets a new `artifact.digest` on a 0.8 recompile, because the parquet gained the columns.
+
+- **`meta.csv`**: one row per statement about rows of the other tables, picked by a selector such as
+  `variants[variant_key=rs10455872]`. A one-member row grades its rows (`tier`, on the scale
+  `module_spec.yaml` names in `tier_scale:`, and `age_of_action`); a row joining members with `&` is a
+  finding about the combination, which can replace its members' own findings when all of them match
+  (`replaces` in the parquet). It compiles to `meta.parquet` and `meta_resolved.parquet`.
+- **`model_organisms.csv`**: model-organism lifespan findings about a human gene, compiled verbatim to
+  `model_organisms.parquet`. Annotation only: it reaches no weight, tier or meta row.
+- **`studies.csv`** gained `sample_size`, `sample_unit`, `n_cases`, `phenotype_class`, `ancestry`,
+  `age_min`/`age_max`/`age_of`, `stratum`/`stratum_level`, `proxy_rsid` and `effect_unit`.
+  `requirements studies.csv` lists them.
+
+Each has a reference example that compiles as it stands:
+
+```bash
+just-dna-compiler compile reference_examples/apoe_klvs_meta ./apoe_klvs_meta
+```
+
+```text
+compiled: apoe_klvs_meta
+digest: sha256:db38e8e209f6624a139a59009ab4600c6560246027321ed7fc2884313ab16847
+content_signature: sha256:79305ea43a8773e6325f73441b4c0858c3a7669565f8cdaf9f3e13a840a32663
+resolution_mode: best_effort  fully_resolved: True (over 6 variant row(s))
+resolution_signature: sha256:576b454c5050039c6c36f70cbfb1e5c2e91ffb38af5097167662a5636c283c00
+```
+
+Its output directory holds `meta.parquet` and `meta_resolved.parquet` beside the per-table parquets.
+`reference_examples/model_organisms` compiles to a `model_organisms.parquet`, and
+`reference_examples/longevity_studies` exercises the new `studies.csv` columns.
+[Use a compiled module](CONSUMING.md) shows what to read out of them.
+
 ## Read the manifest
 
 ```json
 {
   "artifact": {
-    "digest": "sha256:7a4fb1…",
-    "files": [{"name": "haplotypes.parquet", "sha256": "sha256:a9367c…", "size": 4086}]
+    "digest": "sha256:c86809…",
+    "files": [{"name": "haplotypes.parquet", "sha256": "sha256:2beb75…", "size": 12302}, "…"]
   },
   "content_signature": "sha256:343333…",
   "compilation": {
     "compile_success": true,
     "compiled_by": null,
-    "compiler_version": "just-dna-compiler 0.7.0",
+    "compiler_version": "just-dna-compiler 0.8.0",
+    "toolchain": {"polars": "2.1.0", "python": "3.14.8"},
     "warnings": ["…"]
   }
 }
@@ -136,8 +237,8 @@ just-dna-compiler keygen --out ./keys/private.pem
 ```
 
 ```text
-private key: ./keys/private.pem (mode 600)
-public key: 4yU9Anw/hawt0JrdKd2JoCwYmvxux4wISDH9+4d8kVg=
+private key: keys/private.pem (mode 600)
+public key: GGorZF2yf8gKfK1XlPoh1c4toqVZmsxoNm3iIasrhrQ=
 ```
 
 The key is unencrypted PKCS#8 and `keygen` refuses to overwrite. It bootstraps a key; it is not a
@@ -147,12 +248,12 @@ Sign the compiled artifact, then check it the way a consumer will:
 
 ```bash
 just-dna-compiler sign ./out --private-key ./keys/private.pem
-just-dna-compiler verify ./out --public-key '4yU9Anw/hawt0JrdKd2JoCwYmvxux4wISDH9+4d8kVg=' --no-require-marketplace
+just-dna-compiler verify ./out --public-key 'GGorZF2yf8gKfK1XlPoh1c4toqVZmsxoNm3iIasrhrQ=' --no-require-marketplace
 ```
 
 ```text
-verified: ./out
-digest: sha256:7a4fb109256dae18ba274da44468442dbca290b51ff4f63ae7c62183bc9239f0  files: 2
+verified: out
+digest: sha256:c868099845720b90b62336b8edd4348b72da24c2a80e97be49e1bf1b63d1feec  files: 3
 signature: verified against the pinned key
 ```
 

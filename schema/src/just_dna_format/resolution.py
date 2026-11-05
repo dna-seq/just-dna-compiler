@@ -17,24 +17,48 @@ are deliberately excluded from it (a human-filled and an Ensembl-filled table wi
 must hash equal — see `RESOLUTION_FACT_FIELDS`).
 """
 
+import re
+from collections.abc import Iterable
 from typing import ClassVar
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 
-from just_dna_format.base import since, vocabulary
+from just_dna_format.base import Companion, PairedFields, both_or_neither, coordinate_key, since, vocabulary
 from just_dna_format.normalize import normalize_utc_timestamp
+from just_dna_format.spelling import ChromCell
 from just_dna_format.vocab import (
+    VALID_AUTHORED_EVENT_VERDICTS,
+    VALID_PLACEMENT_VERDICTS,
     VALID_RESOLUTION_STATUS,
     VALID_RSID_STATUS,
     check_vocab,
     validate_rsid,
 )
-from just_dna_format.vrs import split_vrs_ids, validate_caid, validate_vrs_id_list
+from just_dna_format.vrs import normalize_chrom, split_vrs_ids, validate_caid, validate_vrs_id_list
 
 # The fact columns that feed `integrity.resolution_signature` — the reproducibility-relevant facts,
 # deliberately EXCLUDING the provenance columns (`source`/`status`/`fetched_at`) so a human-filled and
 # an Ensembl-filled table carrying identical facts hash equal. This is the structural reason the table
 # is hashed by its facts (a stable, producer-independent identity) rather than by its raw bytes.
+#
+# The rest of the columns are outside too, each for a reason SCHEMAS.md § resolution.csv states at
+# length (named here since RM365, which found them outside with no word about them on this tuple):
+# `authority` is out as provenance beside `source`: it names the licensed source the link spoke for
+# (RM33), which says who answered, not what; a reversed row keeps it (RM380). `rsid_alternates`, `rsid_current` and `rsid_status` are out because
+# they describe dbSNP's time-varying state about the rsID, not the placement, and stay out of the
+# artifact on purpose. `vrs_id`, `vrs_spec` and `caid` are out as cross-references to the allele the
+# coordinate already names; leaving them out meant adding them in 0.5 moved no signature.
+# `placement_witness`/`placement_verdict` (RM267), `left_aligned` (RM270) and `authored_event` (RM375)
+# are out as the enricher's verdicts about a placement or a spelling — a check's answer recorded on the
+# row, not the fact it was checking. `judged_coordinate` (RM375) is out with `authored_event`, its pair:
+# it names the authored coordinate that verdict judged, not a fact about the placement.
+# `source_release` (RM373) is out as provenance beside the claim
+# (`@provenance-beside-a-claim-is-outside-content-identity`): it says which release of the link's source
+# answered, so two releases agreeing on a placement hash equal, and a release that moves a fact moves
+# the fact columns, which is where the signature already sees it.
+# `source_loci` (RM387) is out as a record of the question beside the answer: it names every place the
+# links offered for an rsID, of which the fact columns hold the ones the authored genotype can sit on,
+# so a run that offered more and a run that offered exactly those hash equal on the placement they chose.
 RESOLUTION_FACT_FIELDS: tuple[str, ...] = (
     "variant_key",
     "rsid",
@@ -47,7 +71,58 @@ RESOLUTION_FACT_FIELDS: tuple[str, ...] = (
 )
 
 
-class ResolutionRow(BaseModel):
+def authored_coordinate_key(chrom: str | None, start: int | None, ref: str | None) -> str:
+    """The authored coordinate an `authored_event` verdict judged, as one comparable string (RM375).
+
+    Written by the enricher beside the verdict and recomputed by the compiler from the row it would
+    apply the verdict to, so the two sides cannot spell it two ways: the contig folded
+    (`normalize_chrom`), `ref` uppercased, an absent cell an empty segment (`coordinate_key`).
+    """
+    return coordinate_key(normalize_chrom(chrom), start, ref.upper() if ref else None)
+
+
+#: One `source_loci` member: a contig (no separator in it) and a 1-based position.
+_SOURCE_LOCUS = re.compile(r"([A-Za-z0-9_.]+):([0-9]+)")
+
+
+def source_loci_cell(places: Iterable[tuple[str | None, int | None]]) -> str | None:
+    """Places as `resolution.csv` `source_loci` spells them (RM387): `chrom:start`, comma-joined, sorted.
+
+    The one spelling both tiers use: the enricher writes the cell through it and the compiler reads it
+    back with `split_source_loci`. The contig is folded (`normalize_chrom`) and the order is the sort of
+    `(chrom, start)`, so one set of places is one string whatever order the links answered in. A place
+    with no contig or no start places nothing and is left out; nothing left is `None`.
+    """
+    folded = {
+        (chrom, int(start))
+        for raw, start in places
+        if start is not None and (chrom := normalize_chrom(raw)) is not None
+    }
+    return ",".join(f"{chrom}:{start}" for chrom, start in sorted(folded)) or None
+
+
+def split_source_loci(cell: str | None) -> frozenset[tuple[str, int]]:
+    """The `(chrom, start)` places a `source_loci` cell names, or an empty set for an empty cell (RM387).
+
+    Raises `ValueError` on a member that is not `chrom:start` with a non-negative integer start, which is
+    what the field validator reports at load, so a cell that loaded always parses here.
+    """
+    if not cell:
+        return frozenset()
+    out: set[tuple[str, int]] = set()
+    for member in cell.split(","):
+        match = _SOURCE_LOCUS.fullmatch(member.strip())
+        folded = normalize_chrom(match.group(1)) if match else None
+        if match is None or not folded:
+            raise ValueError(
+                f"source_loci member {member!r} is not `chrom:start` (a contig, a colon, a 1-based "
+                f"position); the cell is comma-joined places, e.g. `5:500,6:600`"
+            )
+        out.add((folded, int(match.group(2))))
+    return frozenset(out)
+
+
+class ResolutionRow(PairedFields):
     """One resolved (or attempted) locus for an authored variant, keyed by the frozen `variant_key`.
 
     Standalone (not an `AuthoredModel`/`VariantRow` subclass): a resolution fact is not an annotation
@@ -63,6 +138,23 @@ class ResolutionRow(BaseModel):
     #: this like an equality key would call a legal one-to-many file a duplicate (S51).
     _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("variant_key",)
     _KEY_RULE: ClassVar[str] = "subject"
+    #: Columns meaningless without a companion (RM366, `base.Companion`). A witness names who was asked
+    #: and a verdict what they answered, so one without the other is half a record (both new in 0.8).
+    #:
+    #: `vrs_spec` with no `vrs_id` is deliberately **not** a pair. Both columns are 0.5, and clearing an
+    #: id while keeping its row is the shape an expansion and the `vrs_version_differs` remedy leave
+    #: behind; the compiler already reads it as "nothing to pin" (`compilation.vrs_version` is null).
+    _PAIRED_FIELDS: ClassVar[tuple[Companion, ...]] = both_or_neither(
+        "placement_witness",
+        "placement_verdict",
+        "a placement witness and its verdict are written together: who was asked, and what they "
+        "answered (RM267)",
+    ) + both_or_neither(
+        "authored_event",
+        "judged_coordinate",
+        "a verdict on an authored spelling names the spelling it judged, or nothing can tell it from a "
+        "stale one (RM375)",
+    )
 
     model_config = ConfigDict(extra="forbid")
 
@@ -76,7 +168,7 @@ class ResolutionRow(BaseModel):
     rsid: str | None = Field(
         json_schema_extra=since("0.5.0"), default=None, description="Resolved dbSNP identifier"
     )
-    chrom: str | None = Field(
+    chrom: ChromCell = Field(
         json_schema_extra=since("0.5.0"), default=None, description="Chromosome without 'chr' prefix"
     )
     start: int | None = Field(
@@ -125,9 +217,13 @@ class ResolutionRow(BaseModel):
         json_schema_extra=since("0.5.0"),
         default=None,
         description=(
-            "VRS spec version the id was minted under ('2.0'). Recorded to disambiguate an embedded "
-            "location id, not because the allele id drifts — a substitution's VA is identical under "
-            "1.x and 2.0."
+            "VRS spec version the row's `vrs_id` was minted under, at the spec's minor ('2.0'). The "
+            "id rule can change at a minor (VRS 2.1 re-ids some ambiguous insertions), so this is "
+            "what tells an id minted under another rule from a corrupt one: a stated version that "
+            "differs from the module's pin (`manifest.compilation.vrs_version`) is reported as "
+            "`vrs_version_differs`; a substitution that recomputes differently under another VRS major is counted "
+            "there, never as a mismatch. Written only by the run that minted the id; "
+            "empty means unstated, never the current version (RM304)."
         ),
     )
     caid: str | None = Field(
@@ -161,7 +257,8 @@ class ResolutionRow(BaseModel):
             "The licensed data source the link speaks for — `ensembl` for `ensembl-rest`/"
             "`ensembl-graphql`/`cache`, `clinvar` for the snapshot, `gnomad` for the last-resort link. "
             "Joins `sources.csv.source`. Empty when there is no external authority to declare "
-            "(`authored`, `reversed`, `manual`: the module's own bytes or a human)."
+            "(`authored`, `manual`: the module's own bytes or a human). A `reversed` row keeps the "
+            "authority of the row it was reversed from, since its facts are still that source's (RM380)."
         ),
     )
     status: str | None = Field(
@@ -202,10 +299,116 @@ class ResolutionRow(BaseModel):
         ),
         json_schema_extra={**vocabulary("rsid_status", VALID_RSID_STATUS), **since("0.5.0")},
     )
+    # ── the placement's second witness (0.8, RM267; EXCLUDED from resolution_signature) ──
+    # Two columns, not one: which authority was asked and what it answered are two axes (P5), and a
+    # single `clinvar:same_event` cell would be a field piling them up. Both are provenance beside the
+    # placement — who else was asked, and what they said — so neither moves a fact signature.
+    placement_witness: str | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description=(
+            "Which second authority was asked where this row's placement sits: `clinvar`, "
+            "`clinvar_gkm`, and, on an online run, `ensembl` (Ensembl REST, asked about an indel the "
+            "Ensembl snapshot placed and neither of the others holds), `+`-joined in sorted order. "
+            "`ensembl` is the snapshot's own authority, so its answer is self-consistent, never "
+            "independent. Empty means nobody was asked (none was loaded, the row's own link is "
+            "ClinVar's, or REST could not be reached). A placement a witness contradicts is never "
+            "written (RM267)."
+        ),
+    )
+    placement_verdict: str | None = Field(
+        default=None,
+        description=(
+            "What `placement_witness` answered: same_event|undecided|unplaced. `undecided` is a "
+            "respelling nothing this run held could settle; `unplaced` means the witness holds no "
+            "placement of this allele, so the row has one witness only. Empty when nobody was asked."
+        ),
+        json_schema_extra={**vocabulary("placement_verdict", VALID_PLACEMENT_VERDICTS), **since("0.8.0")},
+    )
+    # ── the spelling verdict (0.8, RM270; EXCLUDED from resolution_signature) ──
+    # A verdict the enricher stamps, never an authored claim: an author-declared normalization would be
+    # a claim no offline tier can check, believed by exactly the consumer it misleads (RM270 candidate 2).
+    left_aligned: bool | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description=(
+            "Whether the enricher checked this row's spelling to be the leftmost parsimonious one, ALT "
+            "by ALT, against the reference: `true` checked left-aligned, `false` checked and not, empty "
+            "unknown (no reference read, a non-nucleotide allele, or a row written before 0.8). A "
+            "coordinate the enricher fills from an rsID is written left-aligned; a coordinate a module "
+            "authored is recorded as authored and only judged here (RM270). A caller's left-aligned "
+            "VCF joins a `false` row's indel only through `vrs_id`."
+        ),
+    )
+    # ── the authored spelling's verdict (0.8, RM375; EXCLUDED from resolution_signature) ──
+    # The enricher reads the reference; the compiler cannot (P2), so it trusts this record rather than
+    # judging two spellings itself (`@a-recorded-judgement-is-a-fact`).
+    authored_event: str | None = Field(
+        default=None,
+        description=(
+            "Whether the coordinate the module authored for this subject spells the same event as this "
+            "row's locus, judged by the enricher against the reference: same_event|different_event|"
+            "undecided. Written only where the two spellings differ (an indel anchored elsewhere in its "
+            "repeat, a coordinate from another release's spelling). The compiler reads `same_event` as "
+            "agreement and fills only the cells no spelling changes; `undecided` is no verdict, never "
+            "agreement. Empty when the spellings are identical, the subject authored no coordinate, or "
+            "the row predates 0.8 (RM375)."
+        ),
+        json_schema_extra={**vocabulary("authored_event", VALID_AUTHORED_EVENT_VERDICTS), **since("0.8.0")},
+    )
+    judged_coordinate: str | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description=(
+            "The authored coordinate `authored_event` judged, as `authored_coordinate_key` spells it "
+            "(`chrom:start[:ref]`, the contig empty for a half coordinate). The compiler trusts the "
+            "verdict only for a row whose authored coordinate is still this one: an edit made after the "
+            "enricher judged, or another table's row under the same key, reads as never judged (RM375)."
+        ),
+    )
     fetched_at: str | None = Field(
         json_schema_extra=since("0.5.0"),
         default=None,
         description="ISO-8601 UTC timestamp, second resolution (e.g. '2026-08-03T02:03:23Z'). Canonicalized on load; records when this row was last written by a pass, not when the source published anything",
+    )
+    # ── which release answered (0.8, RM373; EXCLUDED from resolution_signature) ──
+    # `source` names the link and `authority` the licensed source behind it; neither names the release,
+    # so an old-release answer and a new-release one read alike to every tier (the 0.8 Ensembl
+    # migration probe). Per row, because merge-not-clobber makes a table answered by two releases the
+    # normal case, and one cell for the table would be false for every module with old rows.
+    source_release: str | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description=(
+            "The release of the snapshot or service that answered this row, as it states its release: "
+            "an Ensembl snapshot's `manifest.json` `release_id` (`ensembl-variation-2026_07_13-vep116.0`) "
+            "or `release.json` `dataset`, a ClinVar snapshot's `clinvar_<date>`, live Ensembl REST's "
+            "data release (`ensembl_116`, from `/info/data`), gnomAD's dataset id. Written only by the "
+            "run that answered the row, and never back-filled onto a row it did not answer. Empty means "
+            "not recorded (a source that states no release, a row written before 0.8, an authored row), "
+            "never the current release. A `reversed` row keeps the release of the row it was reversed "
+            "from (RM380)."
+        ),
+    )
+
+    # ── the source's whole answer (0.8, RM387; EXCLUDED from resolution_signature) ──
+    # The rows under an rsID's own key are the loci its authored genotype can sit on (the hosting filter
+    # runs before they are written), never every locus the source placed it at; a positional row's rsID
+    # is back-filled from the unfiltered answer. A check comparing the two needs the whole set beside the
+    # narrowed one, or a sibling locus reads as a second placement (RM374's check, the 0.8 audit).
+    source_loci: str | None = Field(
+        json_schema_extra=since("0.8.0"),
+        default=None,
+        description=(
+            "Every place the links answered this rsID at in the run that wrote the row, as "
+            "`chrom:start` comma-joined and sorted (`5:500,6:600`), before the authored genotype chose "
+            "among them: the hosting filter, a disputed placement (RM267) and the pseudoautosomal choice "
+            "narrow what the rows place. Written on the rows under the rsID's own key, and only where "
+            "the set holds a place they stand for nowhere (a respelled piece stands for its source "
+            "locus, a Y pseudoautosomal twin for its X partner). Empty "
+            "means the rows place the whole answer, or the row predates the column (RM387); either way "
+            "the compiler reads the rows as the whole answer."
+        ),
     )
 
     @field_validator("rsid")
@@ -213,10 +416,26 @@ class ResolutionRow(BaseModel):
     def _validate_rsid(cls, v: str | None) -> str | None:
         return validate_rsid(v)
 
+    @field_validator("source_loci")
+    @classmethod
+    def _validate_source_loci(cls, v: str | None) -> str | None:
+        split_source_loci(v)
+        return v or None
+
     @field_validator("status")
     @classmethod
     def _validate_status(cls, v: str | None) -> str | None:
         return check_vocab(v, VALID_RESOLUTION_STATUS, "status")
+
+    @field_validator("placement_verdict")
+    @classmethod
+    def _validate_placement_verdict(cls, v: str | None) -> str | None:
+        return check_vocab(v, VALID_PLACEMENT_VERDICTS, "placement_verdict")
+
+    @field_validator("authored_event")
+    @classmethod
+    def _validate_authored_event(cls, v: str | None) -> str | None:
+        return check_vocab(v, VALID_AUTHORED_EVENT_VERDICTS, "authored_event")
 
     @field_validator("rsid_current")
     @classmethod

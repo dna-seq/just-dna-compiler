@@ -29,10 +29,11 @@ the VCF header, and `clinvar_sha256:…` for a snapshot built from a VCF whose h
 The two name the same release space and cannot be tested for equality across forms, so a recorded
 digest against a live date is *uncomparable*, not *behind*. Withheld, and named.
 
-**Two probes ship.** ClinVar is the source the whole item is about; the PGS Catalog joined it in
-RM163 because that source *publishes its own release record* — `/rest/info` states the date and the
-score count outright, so the label to compare against was already there and needed reading rather than
-building. Every source outside `PROBE_SOURCES` is honestly `unsupported` rather than quietly current,
+**The probes are `default_probes`, and this paragraph does not count them.** ClinVar is the source
+the whole item is about; the PGS Catalog joined it in RM163 because that source *publishes its own
+release record* — `/rest/info` states the date and the score count outright, so the label to compare
+against was already there and needed reading rather than building. ClinVar-GKM joined in RM305 for the
+same reason: its Parquet set's `manifest.json` states the release it holds. Every source outside `PROBE_SOURCES` is honestly `unsupported` rather than quietly current,
 and the registry is what a reader consults. Adding a probe is adding a member; nothing else here
 changes.
 """
@@ -48,7 +49,20 @@ from tenacity import retry, wait_exponential_jitter
 
 from just_dna_enricher.clinvar import CLINVAR_DATASET_PREFIX
 from just_dna_enricher.clinvar_build import DEFAULT_CLINVAR_URL, file_date_from_header
-from just_dna_enricher.net import PacingGate, attempt_floor, raise_if_retired, retry_if_transient
+from just_dna_enricher.clinvar_gkm import (
+    CLINVAR_GKM_SOURCE,
+    ClinVarGkmClient,
+    ClinVarGkmError,
+    ClinVarGkmUnavailable,
+)
+from just_dna_enricher.net import (
+    EndpointRetired,
+    PacingGate,
+    attempt_floor,
+    could_not_ask_reason,
+    raise_if_retired,
+    retry_if_transient,
+)
 from just_dna_enricher.pgs import (
     PGS_SOURCE,
     PgsCatalogClient,
@@ -73,7 +87,7 @@ class ReleaseUnavailable(ReleaseProbeError):
     """
 
 
-class ReleaseRetired(ReleaseUnavailable):
+class ReleaseRetired(ReleaseUnavailable, EndpointRetired):
     """The source answered HTTP 410: it retired the file the probe asks for (RM354).
 
     A fact about the source, not an outage, and not retried. A `ReleaseUnavailable` so every existing
@@ -101,6 +115,11 @@ _DIGEST_MARKER = "sha256:"
 def _label_kind(label: str) -> str:
     """`"digest"` or `"stated"` — which form a `dataset` label is written in."""
     return "digest" if _DIGEST_MARKER in label else "stated"
+
+
+def comparable_labels(first: str, second: str) -> bool:
+    """Whether two release labels are written in one form, so equality between them means anything."""
+    return _label_kind(first) == _label_kind(second)
 
 
 @dataclass
@@ -228,10 +247,27 @@ def _pgs_release(client: PgsCatalogClient) -> str | None:
         raise ReleaseUnavailable(f"the PGS Catalog could not be asked: {exc}") from exc
 
 
+def _clinvar_gkm_release(client: ClinVarGkmClient) -> str | None:
+    """ClinVar-GKM's current Parquet set, as a `ReleaseProbe` (RM305).
+
+    Read off the set's own `manifest.json` through `clinvar_gkm_release_label`, the formula its builder
+    writes `dataset` with. The **Parquet set's** release, not the line's newest weekly one: a module
+    drafted against the lane can only be as current as the set. The client's two types are translated
+    here for `_ask`, unreachable to `ReleaseUnavailable` and unreadable to its parent.
+    """
+    try:
+        return client.current_release()
+    except ClinVarGkmUnavailable as exc:
+        raise ReleaseUnavailable(f"ClinVar-GKM could not be asked: {exc}") from exc
+    except ClinVarGkmError as exc:
+        raise ReleaseProbeError(f"ClinVar-GKM answered with a manifest this tier cannot read: {exc}") from exc
+
+
 def default_probes(
     *,
     clinvar: ClinVarReleaseClient | None = None,
     pgs_catalog: PgsCatalogClient | None = None,
+    clinvar_gkm: ClinVarGkmClient | None = None,
 ) -> dict[str, ReleaseProbe]:
     """The probes this tier ships, keyed by the `SourceRow.source` they answer for.
 
@@ -240,16 +276,20 @@ def default_probes(
     """
     clinvar_client = clinvar if clinvar is not None else ClinVarReleaseClient()
     pgs_client = pgs_catalog if pgs_catalog is not None else PgsCatalogClient()
+    gkm_client = clinvar_gkm if clinvar_gkm is not None else ClinVarGkmClient()
     return {
         "clinvar": clinvar_client.current_release,
         PGS_SOURCE: lambda: _pgs_release(pgs_client),
+        CLINVAR_GKM_SOURCE: lambda: _clinvar_gkm_release(gkm_client),
     }
 
 
 #: The sources this tier can ask, derived from `default_probes` rather than restated beside it — a
 #: second list is a registry that goes stale the first time a probe is added (`@registry-completeness`).
 PROBE_SOURCES: frozenset[str] = frozenset(
-    default_probes(clinvar=ClinVarReleaseClient(), pgs_catalog=PgsCatalogClient())
+    default_probes(
+        clinvar=ClinVarReleaseClient(), pgs_catalog=PgsCatalogClient(), clinvar_gkm=ClinVarGkmClient()
+    )
 )
 
 
@@ -318,7 +358,7 @@ class CurrencyCheck:
 #: satisfied two conditions at once and reporting the transient one falsely promised that a re-run
 #: would answer it. Here the reasons belong to *different* sources and the record's `detail` names
 #: every one of them, so nothing is hidden by leading with the reason an author can act on.
-_SKIP_PRECEDENCE: tuple[str, ...] = ("offline", "unreachable", "no_reference", "unsupported")
+_SKIP_PRECEDENCE: tuple[str, ...] = ("offline", "retired", "unreachable", "no_reference", "unsupported")
 
 
 def check_dataset_currency(
@@ -414,7 +454,7 @@ def _ask(probes: Mapping[str, ReleaseProbe], source: str) -> tuple[str | None, s
         # what it said could not be used — opposite histories, and folding them into one reason is the
         # conflation `clingen`/`gene_validity` had to be repaired for. Catching only the subclass would
         # instead let a future probe's parent-typed failure abort the whole run.
-        reason = "unreachable" if isinstance(exc, ReleaseUnavailable) else "no_reference"
+        reason = could_not_ask_reason(exc) if isinstance(exc, ReleaseUnavailable) else "no_reference"
         logger.info(
             "Could not settle which release %s publishes (%s); its recorded dataset is unchecked "
             "(%s) rather than current.",

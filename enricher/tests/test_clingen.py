@@ -191,8 +191,9 @@ def test_a_pass_that_covers_nothing_records_no_licence_row(tmp_path: Path) -> No
     # The terms of what was consulted are still a fact and still returned — a different question from
     # what the module uses, and it keeps a caller able to render them.
     assert result.source_row is not None and result.source_row.source == "clingen"
-    # The empty table is still written: an author must be able to see the pass ran and found nothing.
-    assert (spec / "gene_metrics.csv").exists()
+    # No table either (RM370): a header-only `gene_metrics.csv` makes the same false claim one file
+    # over. The author sees the pass ran and found nothing in `result.missing`, above.
+    assert not (spec / "gene_metrics.csv").exists()
 
 
 def test_a_partly_covered_module_still_records_the_row(tmp_path: Path) -> None:

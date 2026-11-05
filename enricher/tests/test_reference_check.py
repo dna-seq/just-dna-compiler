@@ -280,7 +280,8 @@ def _grch37_with_nothing_to_say(calls: list[str] | None = None) -> Grch37Client:
 
 def _patched(monkeypatch: pytest.MonkeyPatch) -> None:
     """Route the enrichment's sequence reads at the fake proxy (no network in the unit suite)."""
-    monkeypatch.setattr("just_dna_enricher.enrich.SequenceProxy", lambda **_kw: _FakeProxy())
+    # The name the run looks up lives in the submodule that runs it (RM260), not the re-export shell.
+    monkeypatch.setattr("just_dna_enricher.enrich.orchestration.SequenceProxy", lambda **_kw: _FakeProxy())
 
 
 def test_best_effort_reports_the_mismatch_and_still_writes(
@@ -379,12 +380,9 @@ def test_verify_ref_can_be_turned_off(tmp_path: Path, cache: Path, monkeypatch: 
 
 
 @pytest.mark.integration
+@pytest.mark.network
 def test_against_the_real_reference_sequence() -> None:
     """The unit tests above trust `_TRUE_REF`; this one earns it from the live sequence service."""
-    import os
-
-    if not os.getenv("JUST_DNA_NETWORK_TESTS"):
-        pytest.skip("reads the live sequence service — set JUST_DNA_NETWORK_TESTS=1 to run")
 
     assert verify_reference_alleles([_row(_TRUE_REF)]).mismatches == []
     (finding,) = verify_reference_alleles([_row("C")]).mismatches

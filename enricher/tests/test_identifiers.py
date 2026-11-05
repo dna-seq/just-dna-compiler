@@ -199,7 +199,8 @@ def test_a_live_rsid_is_not_reported_as_merged() -> None:
 
 
 def test_enrich_stamps_the_status_without_substituting_the_rsid(tmp_path: Path, monkeypatch) -> None:
-    from just_dna_enricher import enrich as enrich_module
+    # The submodule that runs the enrichment (RM260): a patch on the re-export shell would not reach it.
+    from just_dna_enricher.enrich import orchestration as enrich_module
 
     spec = tmp_path / "spec"
     spec.mkdir()
@@ -437,10 +438,7 @@ def test_a_clean_module_reports_clean() -> None:
 # ── live probes (opt-in) ────────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.skipif(
-    not __import__("os").environ.get("JUST_DNA_NETWORK_TESTS"),
-    reason="set JUST_DNA_NETWORK_TESTS=1 to run live identifier probes",
-)
+@pytest.mark.network
 def test_live_registries_still_behave_as_recorded() -> None:
     """Guards the recordings — including the indistinguishability finding, which is the one most
     likely to be silently invalidated by a dbSNP release."""

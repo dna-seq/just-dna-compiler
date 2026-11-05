@@ -14,6 +14,108 @@ the disagreement is a defect in this file.
 
 Newest first.
 
+## 0.8 — the Goals' integrity sentence names the recorded toolchain (2026-11-04)
+
+Recorded in the Goals bullet *Make integrity the identity*, whose last sentence now says the two
+identities are reproducible by anyone holding the inputs, the pinned compiler version *and the recorded
+toolchain*. The added words are the maintainer's, vetted on 2026-11-04; only the comma that a list of
+three needs was adjusted.
+
+**What it fixes.** RM342 amended Principles 4 and 7 the same day (the entry below) and left this
+sentence as it was, naming it for the next amendment. After RM342 the charter contradicted itself:
+Principle 4 pinned reproducibility on `compiler_version` *and* the recorded toolchain, while the Goals
+still promised it to anyone holding the inputs and the compiler version alone, which polars 2 makes
+false (one compiler beside two polars releases mints two digests for equal content).
+
+**Why now.** [RM352](ROADMAP_HISTORY.md#rm352--release-records-have-no-change-kind-for-a-toolchain-only-byte-move-so-the-08-cut-cannot-declare-polars-2)
+gave the release records a third change kind, `toolchain`, so the 0.8.0 record can declare the polars
+1 → 2 byte move as what it is: bytes moved, content unchanged, the recorded toolchain says why. A
+release record that declares a move the Goals said could not happen to anyone holding the compiler
+version would have been one more place the charter and the shipped surface disagreed, so the sentence
+moved with the item.
+
+**What it does not change.** No principle moved, and nothing about legality: the `toolchain` kind is a
+new member of a closed vocabulary, additive and minor-legal under Principle 3.
+
+**Wording vetted.** The maintainer read the changed sentences old → new in chat on 2026-11-04 and accepted them as written ("Good, I accept"). Deciding that an amendment happens is not approving its sentences, so the acceptance is recorded here.
+
+## 0.8 — the format package also defines the reference-snapshot layout (2026-11-04)
+
+Recorded in Goals as the second bullet, *Be the contract for the reference-snapshot layout as well*.
+
+Goal 1 scoped `just-dna-format` to "annotation modules", and a reference snapshot is not a module. No
+principle forbade moving the snapshot layout down into this package: it brings no network and no new
+dependency (pydantic and the standard library, plus the package's own atomic writer). But it widens
+what the package is for, so it is recorded as a deliberate amendment rather than as a side effect of
+[RM303](ROADMAP_HISTORY.md#rm303--the-snapshot-layout-is-a-contract-with-six-parties-and-no-model-so-it-belongs-in-just-dna-format).
+
+**What broke.** A snapshot is `data/*.parquet`, optional sidecars, `LICENSE.txt` and `release.json`, and
+six parties have to agree on those names: the builder, the publisher, the provisioner, the resolver, the
+reporter (`cache status`) and every pass that reads a release. The names were constants in the
+enricher's `locations.py`, so another repository wanting the layout had to import the network tier,
+and `release.json` had no model at all: fourteen builders wrote it by hand at fifteen sites. The keys
+drifted (`rows` beside `row_count`, `licence` beside `license`, `builder` beside `builder_version`), and
+one drift reached a user. ClinVar's builder wrote its release as `clinvar_file_date` and no `dataset`,
+so `cache status` printed a blank label for the one snapshot that refreshes weekly (RM180/RM182). The
+repair then was a per-lane reader in the enricher, which fixed the reader and left the contract as it
+was. With the model in this package, the builder writes `dataset` through the same formula the model
+uses to read an older ClinVar snapshot, and the per-lane reader is gone.
+
+**Why here and not elsewhere.** `release.json` is the snapshot's twin of `manifest.json`, the module's
+provenance record this package already owns, and pydantic is already its one dependency.
+
+**Refused on the same day.**
+
+- **Renaming `just-dna-format`** (to `just-dna-schema`, the workspace directory's name). With the
+  snapshot contract added, "format" is *more* accurate: the package now defines two on-disk formats. A
+  rename would touch about 130 importing files across five repositories and keep two distribution
+  names alive for a major. Refused by the maintainer.
+- **A `just-dna-datasets` / `just-dna-builders` package.** First offered in the RM261 round on
+  2026-09-25 and declined then without being recorded. It forms a cycle (builders need the layout from
+  the enricher, and `cache rebuild` needs the builders), and breaking the cycle means moving the layout
+  below both, which is this amendment; after that a separate package buys nothing. Its dependencies
+  would be the enricher's own, every snapshot change would become a release of two packages, and since
+  builders fetch it would also need a Goal 2 / Principle 2 amendment naming a second tier that may.
+- **A nano-library holding only the convention.** Too small to be a package of its own, when this one
+  already depends on pydantic and already owns the module's provenance record.
+
+**Wording vetted.** The maintainer read the changed sentences old → new in chat on 2026-11-04 and accepted them as written ("Good, I accept"). Deciding that an amendment happens is not approving its sentences, so the acceptance is recorded here.
+
+## 0.8 — reproducibility is pinned by the recorded toolchain too (2026-11-04)
+
+Recorded in Principle 4's last sentence, which now pins reproducibility via `compiler_version`, *the
+recorded toolchain* and the resolved reference, and in Principle 7's closing parenthesis, which scopes
+the digest guarantee to a fixed `compiler_version` *and recorded toolchain*.
+
+**What broke the old wording.** Principle 4 already said parquet is not byte-deterministic across
+polars/arrow versions, and then pinned reproducibility on `compiler_version` alone, as if one compiler
+release implied one polars. It never did, since the compiler does not pin polars; but before polars 2 the
+gap was invisible in practice. From polars 2.0 the parquet footer names the polars release that wrote it,
+so one `compiler_version` installed beside two polars releases mints two `artifact.digest`s for equal
+content, and nothing in the manifest said which polars wrote which
+([RM341](ROADMAP_HISTORY.md#rm341--polars-2x-writes-its-version-into-every-parquet-footer-so-one-compiler_version-mints-a-digest-per-polars-release)).
+Principle 7's parenthesis made the same claim from the other side (the digest guarantee holds *within* a
+fixed `compiler_version`), and it became false under the same release, so it was amended with it.
+
+**What was rejected.** A `polars<2` cap with a footer test (RM341) was built and reverted the same night:
+the maintainer's decision is that polars stays uncapped, and that a pin is for a proven break, never for
+a byte difference that changes no content. Deciding instead that the digest *names* the toolchain would
+have left the version's byte identity unexplained to everyone holding only the manifest.
+
+**What replaced it** is RM342, decided by the maintainer on 2026-11-04: the manifest records the toolchain
+in one optional block, `compilation.toolchain` (`python` and `polars` today; a library added later is a
+new key), outside `artifact.digest` like `compiler_version`. Where a fresh compile is compared with a
+recorded digest, the publish collision check and the release sweep, a difference the two recorded
+toolchains explain is reported as `toolchain_differs`, never as the plain collision, because an
+explainable difference is not corruption. A manifest compiled before 0.8 records no toolchain, and the
+comparison then keeps its old answer: an unknown never explains anything.
+
+**Left as it was.** The Goals' sentence on integrity still says the two identities are reproducible by
+anyone holding the inputs and *the pinned compiler version*; it was outside this amendment's decision
+and is named for the next one. (That next one is the entry above, RM352, the same day.)
+
+**Wording vetted.** The maintainer read the changed sentences old → new in chat on 2026-11-04 and accepted them as written ("Good, I accept"). Deciding that an amendment happens is not approving its sentences, so the acceptance is recorded here.
+
 ## 0.6 — release class and artifact staleness are different axes
 
 Recorded in Principle 3 as *Release class and artifact staleness are different axes* and *Authored

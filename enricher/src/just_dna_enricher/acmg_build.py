@@ -38,15 +38,15 @@ why the headers are matched by prefix and resolved **by name to a column index**
 
 import csv
 import hashlib
-import json
 import logging
 import re
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from just_dna_format.layout import atomic_write_text, atomic_writer
+from just_dna_format.layout import atomic_writer
 from just_dna_format.normalize import now_utc_iso
+from just_dna_format.snapshot import SnapshotRelease, begin_snapshot_write
 
 from just_dna_enricher.acmg import (
     MIN_GENES,
@@ -55,7 +55,7 @@ from just_dna_enricher.acmg import (
     SecondaryFinding,
     parse_sf_version,
 )
-from just_dna_enricher.locations import ACMG_SNAPSHOT_FILENAME, RELEASE_FILENAME
+from just_dna_enricher.locations import ACMG_SNAPSHOT_FILENAME
 
 try:  # the one guarded optional import (CLAUDE.md): openpyxl is builder-only ([dev] extra)
     import openpyxl
@@ -265,7 +265,7 @@ def build_acmg_snapshot(
     about ACMG's list with nothing behind it, and this is the same pin `clinvar build` writes.
     """
     sf_list = parse_acmg_workbook(workbook)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    snapshot = begin_snapshot_write(out_dir)
 
     csv_path = out_dir / ACMG_SNAPSHOT_FILENAME
     with atomic_writer(csv_path, newline="") as handle:
@@ -278,23 +278,23 @@ def build_acmg_snapshot(
             record["medgen_ids"] = ",".join(finding.medgen_ids)
             writer.writerow({field: record.get(field) or "" for field in _SNAPSHOT_FIELDS})
 
-    release = {
-        "sf_version": sf_list.version,
-        "source_url": source_url or SF_V3_3_SUPPLEMENT_URL,
-        "source_file": workbook.name,
-        "source_sha256": "sha256:" + hashlib.sha256(workbook.read_bytes()).hexdigest(),
-        "doi": doi or SF_V3_3_DOI,
-        "gene_count": len(sf_list.genes),
-        "row_count": len(sf_list.findings),
-        "built_at": sf_list.retrieved_at,
-        "builder": "just_dna_enricher.acmg_build",
-    }
-    atomic_write_text((out_dir / RELEASE_FILENAME), json.dumps(release, indent=2) + "\n")
+    release = SnapshotRelease(
+        sf_version=sf_list.version,
+        source_url=source_url or SF_V3_3_SUPPLEMENT_URL,
+        source_file=workbook.name,
+        source_sha256="sha256:" + hashlib.sha256(workbook.read_bytes()).hexdigest(),
+        doi=doi or SF_V3_3_DOI,
+        gene_count=len(sf_list.genes),
+        row_count=len(sf_list.findings),
+        built_at=sf_list.retrieved_at,
+        builder="just_dna_enricher.acmg_build",
+    )
+    snapshot.commit(release)
     logger.info(
         "wrote ACMG SF v%s snapshot to %s (%d genes, %d rows)",
         sf_list.version,
         out_dir,
-        release["gene_count"],
-        release["row_count"],
+        len(sf_list.genes),
+        len(sf_list.findings),
     )
     return sf_list

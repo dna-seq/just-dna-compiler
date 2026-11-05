@@ -13,10 +13,13 @@ from pathlib import Path
 import pytest
 from just_dna_enricher.gene_spans import (
     ATTRIBUTION_HORIZON_BP,
+    NEARBY_REASONS,
     SPAN_REASONS,
     GeneSpanError,
+    NearbyGenes,
     SpanLookup,
     gene_span,
+    genes_covering,
 )
 
 pl = pytest.importorskip("polars", reason="writing the fixture snapshot needs the [dev] extra")
@@ -141,3 +144,63 @@ def test_a_lookup_that_answers_nothing_without_saying_why_is_refused() -> None:
         SpanLookup()
     with pytest.raises(GeneSpanError):
         SpanLookup(span=object(), reason="not_in_mane")
+
+
+# ── the reverse direction: a position to the genes worth asking about (RM259, S112) ─────────────
+
+#: SLC17A1 as the MANE lane placed it on 2026-09-24, about 255 kb upstream of HFE on 6p22 — so a
+#: position inside HFE is within both horizons, and the Atlas decides which gene it attributes.
+_SLC17A1 = {
+    "symbol": "SLC17A1",
+    "grch38_chr": "NC_000006.12",
+    "chr_start": 25782915,
+    "chr_end": 25832052,
+    "mane_status": "MANE Select",
+}
+
+
+def test_a_position_within_two_horizons_has_both_genes_as_candidates(tmp_path: Path) -> None:
+    """Every gene within reach, ordered by position — never narrowed to the nearest."""
+    snapshot = _snapshot(tmp_path, [_HFE, _SLC17A1])
+    found = genes_covering("6", 26090951, mane_cache=snapshot)  # HFE H63D
+    assert found.reason is None
+    assert [s.gene for s in found.spans] == ["SLC17A1", "HFE"]
+    for span in found.spans:
+        _chrom, lo, hi = span.widened()
+        assert lo <= 26090951 <= hi
+
+
+def test_the_horizon_edge_is_inclusive_and_one_base_past_it_is_not(tmp_path: Path) -> None:
+    snapshot = _snapshot(tmp_path, [_HFE])
+    edge = _HFE["chr_end"] + ATTRIBUTION_HORIZON_BP
+    assert [s.gene for s in genes_covering("6", edge, mane_cache=snapshot).spans] == ["HFE"]
+    beyond = genes_covering("6", edge + 1, mane_cache=snapshot)
+    assert beyond.spans is None and beyond.reason == "no_gene_within_horizon"
+
+
+def test_the_contig_is_compared_after_the_accession_is_read(tmp_path: Path) -> None:
+    """Position 26 Mb on chromosome 7 is not near a gene MANE places at 26 Mb on chromosome 6."""
+    found = genes_covering("7", 26090951, mane_cache=_snapshot(tmp_path, [_HFE]))
+    assert found.reason == "no_gene_within_horizon"
+
+
+def test_no_snapshot_is_nobody_asked_for_the_reverse_lookup_too(no_ambient_caches: Path) -> None:
+    absent = genes_covering("6", 26090951)
+    assert absent.reason == "no_snapshot"
+    assert NEARBY_REASONS["no_snapshot"] != NEARBY_REASONS["no_gene_within_horizon"]
+
+
+def test_every_reason_the_reverse_lookup_can_return_has_its_own_sentence() -> None:
+    import re
+
+    source = Path(__import__("just_dna_enricher.gene_spans", fromlist=["x"]).__file__).read_text()
+    produced = set(re.findall(r'NearbyGenes\(reason="(\w+)"\)', source))
+    assert produced == set(NEARBY_REASONS), f"reason map drifted: {produced ^ set(NEARBY_REASONS)}"
+    assert len(set(NEARBY_REASONS.values())) == len(NEARBY_REASONS), "two reasons share a sentence"
+
+
+def test_an_empty_answer_must_say_which_empty_it_is() -> None:
+    with pytest.raises(GeneSpanError):
+        NearbyGenes()
+    with pytest.raises(GeneSpanError):
+        NearbyGenes(spans=(), reason=None)

@@ -63,6 +63,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from just_dna_format.base import since, vocabulary
 from just_dna_format.normalize import normalize_utc_timestamp
+from just_dna_format.spelling import ChromCell
 from just_dna_format.vocab import (
     VALID_EFFECT_DIRECTIONS,
     VALID_RESOLUTION_STATUS,
@@ -145,7 +146,7 @@ class ExpressionEffectRow(BaseModel):
             "only where the module or its `resolution.csv` already knew one."
         ),
     )
-    chrom: str | None = Field(
+    chrom: ChromCell = Field(
         json_schema_extra=since("0.7.0"),
         default=None,
         description=(

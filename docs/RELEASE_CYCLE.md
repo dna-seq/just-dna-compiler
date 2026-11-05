@@ -10,7 +10,7 @@ Work runs in Claude Code sessions, each holding one seat for its whole run, on t
 2026-11-03. [seats/README.md](seats/README.md) lists the four with their primings. For a release:
 
 - the **pm** sizes each minor and major scope: what goes in, its plan and its proposals
-  ([ROADMAP_0_8.md](ROADMAP_0_8.md), [ROADMAP_1_0.md](ROADMAP_1_0.md), `proposals/`). It writes no code;
+  ([ROADMAP_0_9.md](ROADMAP_0_9.md), [ROADMAP_1_0.md](ROADMAP_1_0.md), `proposals/`). It writes no code;
 - the **lead** executes what the pm settled, working with the maintainer: each `RMn` in a worktree of its
   own, a minor's scope on that minor's branch, everything else on `main`. It merges, prepares a cut
   whole, and tags it once the maintainer has published (publishing stays theirs);

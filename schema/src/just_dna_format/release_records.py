@@ -43,7 +43,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from just_dna_format.base import vocabulary
 from just_dna_format.identity import parse_version
@@ -73,6 +73,11 @@ EXCLUDED_MANIFEST_FIELDS: dict[str, str] = {
     "compilation.compiled_at": "a wall-clock timestamp; it moves on every recompile of anything",
     "compilation.compiled_by": "who ran the compile — an environment fact, not an output fact",
     "compilation.compiler_version": "moves on every release by construction; it IS the interval key",
+    # RM342: the Python and polars that wrote the bytes. It moves whenever the install does, the
+    # `compiler_version` trap one field over; the sweep reads it as the reason a `parquet_bytes`
+    # movement carries (`ModuleDelta.bytes_reason`), never as a published field that changed.
+    "compilation.toolchain": "the environment that wrote the bytes, like `compiled_by`; it explains a "
+    "`parquet_bytes` movement as `toolchain_differs` rather than being one",
     "compilation.warnings": "routed to the `warnings` axis, which is outside the recompile drivers",
     # RM131 published two fields DERIVED from `compilation.warnings`, so they move exactly when it
     # does. Left in, they would report *a manifest field changed* on every module in a catalogue for
@@ -115,8 +120,11 @@ class DeclaredChange(BaseModel):
     kind: str = Field(
         json_schema_extra=vocabulary("release_change_kind", VALID_RELEASE_CHANGE_KINDS),
         description=(
-            "`correction` when the value we published was wrong, `addition` when it was absent. "
-            "The distinction is declared, never measured."
+            "`correction` when the value we published was wrong, `addition` when it was absent, "
+            "`toolchain` (0.8, `parquet_bytes` only) when the bytes moved with the content unchanged "
+            "because the recorded toolchain (`compilation.toolchain`) did. The distinction is "
+            "declared, never measured; the release gate accepts `toolchain` only when a sweep with "
+            "the compiler held fixed backs it."
         ),
     )
     detail: str = Field(description="The sentence a consumer reads: what moved, and why.")
@@ -175,6 +183,21 @@ class DeclaredChange(BaseModel):
     @classmethod
     def _check_kind(cls, value: str) -> str:
         return check_vocab(value, VALID_RELEASE_CHANGE_KINDS, "kind")
+
+    @model_validator(mode="after")
+    def _toolchain_explains_bytes_only(self) -> "DeclaredChange":
+        """A `toolchain` move is a byte move by definition (RM352).
+
+        The evidence that can back it is a byte measurement with the compiler held fixed, so on any
+        other axis the claim could never be backed; refused here rather than left for the release
+        gate to find a declaration it could never accept.
+        """
+        if self.kind == "toolchain" and self.axis != "parquet_bytes":
+            raise ValueError(
+                f"kind 'toolchain' declares bytes that moved with the content unchanged, so it belongs "
+                f"on axis 'parquet_bytes', got axis {self.axis!r}"
+            )
+        return self
 
 
 _MISSING = object()
@@ -254,7 +277,7 @@ class ReleaseRecord(BaseModel):
     )
     declared: list[DeclaredChange] = Field(
         default_factory=list,
-        description="The correction-versus-addition split — declared by the author, never measured.",
+        description="The correction / addition / toolchain split — declared by the author, never measured.",
     )
     unmeasured: list[str] = Field(
         default_factory=list,
@@ -382,6 +405,15 @@ class RecompileAnswer:
     @property
     def additions(self) -> tuple[DeclaredChange, ...]:
         return tuple(change for change in self.declared if change.kind == "addition")
+
+    @property
+    def toolchain_moves(self) -> tuple[DeclaredChange, ...]:
+        """The declared byte moves the recorded toolchain explains, content unchanged (RM352).
+
+        Nothing published was wrong and nothing was absent, so a registry that spends a PATCH only on
+        `corrections` skips these; the bytes still differ, so `output_differs` still says so.
+        """
+        return tuple(change for change in self.declared if change.kind == "toolchain")
 
     def declared_for(self, manifest: ModuleManifest | Mapping[str, Any]) -> tuple[DeclaredChange, ...]:
         """The declarations that can reach the module `manifest` describes (S90, RM201).
@@ -1011,6 +1043,439 @@ RELEASE_RECORDS: dict[str, ReleaseRecord] = {
             "`requires_callable` to its `pharm_variants.csv`, which 0.6.6 refuses under "
             '`extra="forbid"`, so its authored input is not byte-identical across the interval and '
             "no like-for-like comparison exists for it."
+        ),
+    ),
+    # Measured at the 0.8.0 cut (2026-11-05) with the two sweeps COMPILER.md § The release-record sweep
+    # describes: the release sweep (published 0.7.2 under polars 1.44.2 → this release under the locked
+    # polars 2.1.0) and the fixed-compiler sweep (this release under 1.44.2 → under 2.1.0). Sixteen of the
+    # 22 examples commit a 0.8-written `resolution.csv`, which 0.7.2 refuses, so they are `unmeasured`.
+    "0.8.0": ReleaseRecord(
+        version="0.8.0",
+        previous="0.7.2",
+        axes={
+            "parquet_schema": True,
+            "parquet_bytes": True,
+            "content_signature": True,
+            "manifest_fields": True,
+            "warnings": True,
+        },
+        manifest_fields=[
+            "colocalisations",
+            "compilation.vrs_version",
+            "consequences",
+            "inputs",
+            "ld_pairs",
+            "literature.quotes_checked",
+            "locus_to_gene",
+            "meta_selectors",
+            "stats.clin_sig_counts.affects",
+            "stats.clin_sig_counts.association",
+            "stats.clin_sig_counts.benign",
+            "stats.clin_sig_counts.conflicting",
+            "stats.clin_sig_counts.drug_response",
+            "stats.clin_sig_counts.likely_benign",
+            "stats.clin_sig_counts.likely_pathogenic",
+            "stats.clin_sig_counts.not_provided",
+            "stats.clin_sig_counts.other",
+            "stats.clin_sig_counts.pathogenic",
+            "stats.clin_sig_counts.protective",
+            "stats.clin_sig_counts.risk_factor",
+            "stats.clin_sig_counts.uncertain_significance",
+            "stats.clin_sig_variant_counts.affects",
+            "stats.clin_sig_variant_counts.association",
+            "stats.clin_sig_variant_counts.benign",
+            "stats.clin_sig_variant_counts.conflicting",
+            "stats.clin_sig_variant_counts.drug_response",
+            "stats.clin_sig_variant_counts.likely_benign",
+            "stats.clin_sig_variant_counts.likely_pathogenic",
+            "stats.clin_sig_variant_counts.not_provided",
+            "stats.clin_sig_variant_counts.other",
+            "stats.clin_sig_variant_counts.pathogenic",
+            "stats.clin_sig_variant_counts.protective",
+            "stats.clin_sig_variant_counts.risk_factor",
+            "stats.clin_sig_variant_counts.uncertain_significance",
+            "tier_scale",
+            "verification",
+            "verification.checks",
+            "verification.closure.closed_at",
+            "verification.closure.closed_by",
+            "verification.closure.signature",
+            "verification.module_hash",
+            "verification.produced_at",
+            "verification.producer",
+            "verification.signature",
+        ],
+        declared=[
+            DeclaredChange(
+                axis="manifest_fields",
+                target="stats.clin_sig_counts",
+                kind="addition",
+                detail=(
+                    "RM300: authored `variants.csv` rows per ClinVar tier, every `VALID_CLIN_SIG` member "
+                    "present with zeros included. The sweep walks a mapping, so it moves as one path per "
+                    "tier. Absent before, never wrong; empty on an older manifest means not counted."
+                ),
+                item="RM300",
+                requires=(),
+            ),
+            DeclaredChange(
+                axis="manifest_fields",
+                target="stats.clin_sig_variant_counts",
+                kind="addition",
+                detail="RM300: the same tiers counted as distinct `variant_key`s.",
+                item="RM300",
+                requires=(),
+            ),
+            DeclaredChange(
+                axis="manifest_fields",
+                target="compilation.vrs_version",
+                kind="addition",
+                detail=(
+                    "RM304: the VRS version the module's `vrs_id`s are pinned to, `null` where no allele "
+                    "carries an id. The key appears on every manifest."
+                ),
+                item="RM304",
+                requires=(),
+            ),
+            DeclaredChange(
+                axis="manifest_fields",
+                target="literature.quotes_checked",
+                kind="addition",
+                detail=(
+                    "RM256: how many quotes a retrieved text settled, the denominator `quotes_found` is "
+                    "read against. Null on an older manifest, which means not counted."
+                ),
+                item="RM256",
+                requires=("literature",),
+            ),
+            DeclaredChange(
+                axis="manifest_fields",
+                target="meta_selectors",
+                kind="addition",
+                detail=(
+                    "RM28: every `meta.csv` member with the rows it matched; `null` on a module with no "
+                    "`meta.csv`, so on most modules what moved is the key appearing."
+                ),
+                item="RM28",
+                requires=(),
+            ),
+            DeclaredChange(
+                axis="manifest_fields",
+                target="tier_scale",
+                kind="addition",
+                detail="RM324: the scale `meta.csv`'s `tier` grades on, copied from `module_spec.yaml`.",
+                item="RM324",
+                requires=(),
+            ),
+            DeclaredChange(
+                axis="manifest_fields",
+                target="locus_to_gene",
+                kind="addition",
+                detail=(
+                    "RM333's Open Targets lane: three new derived-table blocks, `null` on a module "
+                    "carrying none of the tables, so what moved is the key appearing."
+                ),
+                item="RM333",
+                requires=(),
+            ),
+            DeclaredChange(
+                axis="manifest_fields",
+                target="colocalisations",
+                kind="addition",
+                detail="RM333: the colocalisation block, beside `locus_to_gene`.",
+                item="RM333",
+                requires=(),
+            ),
+            DeclaredChange(
+                axis="manifest_fields",
+                target="consequences",
+                kind="addition",
+                detail="RM333: the consequence block, beside `locus_to_gene`.",
+                item="RM333",
+                requires=(),
+            ),
+            DeclaredChange(
+                axis="manifest_fields",
+                target="ld_pairs",
+                kind="addition",
+                detail="RM331: the computed LD-pair block, `null` on a module with no `ld_pairs.csv`.",
+                item="RM331",
+                requires=(),
+            ),
+            DeclaredChange(
+                axis="manifest_fields",
+                target="inputs",
+                kind="addition",
+                detail=(
+                    "RM28: `meta.csv` (and RM335's `model_organisms.csv`) are compile inputs from 0.8, so a "
+                    "module carrying one lists one more input. 0.7.2 tolerates the file as unknown and "
+                    "compiles the module without it (`hla_alleles` in the corpus)."
+                ),
+                item="RM28",
+            ),
+            DeclaredChange(
+                axis="manifest_fields",
+                target="verification",
+                kind="addition",
+                detail=(
+                    "RM292 and RM267: a verification record now names its witness (`checked_source`, "
+                    "`witness_source`, `independence`, `undecided`) and may carry `placement_agreement`. "
+                    "0.7.2 refuses such a `verification.json` and compiles with no verification block, so "
+                    "the block appears on a module whose record a 0.8 enricher wrote (`hla_alleles`)."
+                ),
+                item="RM292",
+                requires=("verification",),
+            ),
+            DeclaredChange(
+                axis="content_signature",
+                target="meta.csv",
+                kind="addition",
+                detail=(
+                    "RM28: a module carrying `meta.csv` hashes its rows from 0.8, where 0.7.2 skipped the "
+                    "file as unknown. New content, never a wrong value (`hla_alleles` in the corpus)."
+                ),
+                item="RM28",
+                requires=("meta_selectors",),
+            ),
+            DeclaredChange(
+                axis="content_signature",
+                target="studies.csv,haplotypes.csv,pharm_variants.csv,heteroplasmy.csv:chrom",
+                kind="correction",
+                detail=(
+                    "RM363: `studies`, `haplotypes`, `pharm_variants` and `heteroplasmy` store a "
+                    "primary-assembly contig as the member (`chr12` → `12`, `chrM` → `MT`), as `variants` "
+                    "has since 0.5, so a coordinate study meets its variant. A module that wrote "
+                    "`chr`-prefixed contigs on those tables gets a new `content_signature`; no reference "
+                    "example the sweep measured writes one."
+                ),
+                item="RM363",
+                # Unstated on purpose (S90): the wrong value sat on modules that wrote `chr` on those
+                # four tables, and presence of a manifest path cannot spell that.
+                requires=None,
+            ),
+            DeclaredChange(
+                axis="parquet_bytes",
+                target="studies.parquet,haplotypes.parquet,pharm_variants.parquet,heteroplasmy.parquet",
+                kind="correction",
+                detail=(
+                    "RM363's contig spelling, measured as bytes: the same modules' parquets carry `12` "
+                    "where they carried `chr12`."
+                ),
+                item="RM363",
+                requires=None,
+            ),
+            DeclaredChange(
+                axis="parquet_bytes",
+                target="haplotypes.parquet",
+                kind="correction",
+                detail=(
+                    "RM361: an absent cell is never formatted into a key, so a positional key with no "
+                    "`ref` reads `13:48037749`, where it read `13:48037749:None`. The value we published "
+                    "was wrong; `haplotypes.parquet` moves on a module keying such rows "
+                    "(`cpic_gene_pairs`, nine keys), with `content_signature` unchanged."
+                ),
+                item="RM361",
+                # Unstated on purpose: the reach is a positional row with no `ref`, which no manifest
+                # path spells.
+                requires=None,
+            ),
+            DeclaredChange(
+                axis="parquet_bytes",
+                target="artifact.digest",
+                kind="addition",
+                detail=(
+                    "The schema additions below land in every module carrying the parquets they reach, so "
+                    "all six measured modules move `artifact.digest`, under polars 1.44.2 as under 2.1.0."
+                ),
+                requires=(),
+            ),
+            DeclaredChange(
+                axis="parquet_bytes",
+                target="weights.parquet",
+                kind="addition",
+                detail=(
+                    "RM380: the superseded DuckDB compile path and the resolution-table path agree on "
+                    "facts, not bytes: their `weights.parquet` differ only in `resolution_loci`, which the "
+                    "DuckDB path does not fill. The DuckDB path is queued for removal at 1.0."
+                ),
+                item="RM380",
+                requires=(),
+            ),
+            DeclaredChange(
+                axis="parquet_schema",
+                target="weights.parquet,heteroplasmy.parquet:vrs_id,vrs_spec",
+                kind="addition",
+                detail=(
+                    "RM270: the minted VRS id and its version on the variant parquets, an indel's "
+                    "spelling-independent identity. Null where `resolution.csv` records no id."
+                ),
+                item="RM270",
+            ),
+            DeclaredChange(
+                axis="parquet_schema",
+                target="studies.parquet:proxy_rsid,proxy_loci",
+                kind="addition",
+                detail=(
+                    "RM331: a study measured on an LD proxy names it, and `proxy_loci` carries the proxy's "
+                    "resolved loci; `ld_pairs.parquet` is a new file for a module enriched with `ld-pairs`."
+                ),
+                item="RM331",
+            ),
+            DeclaredChange(
+                axis="parquet_schema",
+                target="weights.parquet,heteroplasmy.parquet:resolution_loci",
+                kind="addition",
+                detail=(
+                    "RM364: the positional parquets carry the resolution rows behind each key, so "
+                    "`reverse` gives back what the compile read."
+                ),
+                item="RM364",
+            ),
+            DeclaredChange(
+                axis="parquet_schema",
+                target="resolution_loci,proxy_loci",
+                kind="addition",
+                detail=(
+                    "RM380: the locus struct is derived from `ResolutionRow`, so it gains `authority`, "
+                    "`status`, `caid`, `placement_witness`, `placement_verdict`, `left_aligned`, "
+                    "`authored_event`, `judged_coordinate` and `source_release`."
+                ),
+                item="RM380",
+            ),
+            DeclaredChange(
+                axis="parquet_schema",
+                target="resolution_loci,proxy_loci:source_loci",
+                kind="addition",
+                detail="RM387: the struct gains `source_loci`, every place the links answered an rsID at.",
+                item="RM387",
+            ),
+            DeclaredChange(
+                axis="parquet_schema",
+                target="studies.parquet:sample_size,sample_unit,n_cases",
+                kind="addition",
+                detail="RM325: the study's size, what it counts, and its case count.",
+                item="RM325",
+            ),
+            DeclaredChange(
+                axis="parquet_schema",
+                target="studies.parquet:phenotype_class;weights.parquet:outcome_lifespan,outcome_healthspan,outcome_exceptional",
+                kind="addition",
+                detail="RM326: the outcome a study measured, and the per-outcome flags it derives.",
+                item="RM326",
+            ),
+            DeclaredChange(
+                axis="parquet_schema",
+                target="studies.parquet:ancestry;weights.parquet:eur_only_evidence",
+                kind="addition",
+                detail="RM328: the ancestry a study was measured in, and the flag for European-only evidence.",
+                item="RM328",
+            ),
+            DeclaredChange(
+                axis="parquet_schema",
+                target="studies.parquet:age_min,age_max,age_of",
+                kind="addition",
+                detail="RM329: an age-stratified estimate's band.",
+                item="RM329",
+            ),
+            DeclaredChange(
+                axis="parquet_schema",
+                target="studies.parquet:stratum,stratum_level",
+                kind="addition",
+                detail="RM330: an estimate measured in one stratum names it.",
+                item="RM330",
+            ),
+            DeclaredChange(
+                axis="parquet_schema",
+                target="studies.parquet,weights.parquet:effect_unit",
+                kind="addition",
+                detail="RM332: the unit a beta is stated in.",
+                item="RM332",
+            ),
+            DeclaredChange(
+                axis="parquet_schema",
+                target="the binning kinds' parquets,pharm_variants.parquet,gwas_effects.parquet:doi",
+                kind="addition",
+                detail="RM336: the citing tables carry a `doi` beside `pmid`.",
+                item="RM336",
+            ),
+            DeclaredChange(
+                axis="parquet_schema",
+                target="literature.parquet:fulltext_status",
+                kind="addition",
+                detail="RM258: how the fulltext question ended, null for not asked.",
+                item="RM258",
+            ),
+            DeclaredChange(
+                axis="parquet_schema",
+                target="meta.parquet,meta_resolved.parquet",
+                kind="addition",
+                detail="RM28: two new files for a module carrying `meta.csv`.",
+                item="RM28",
+            ),
+            DeclaredChange(
+                axis="parquet_schema",
+                target="model_organisms.parquet",
+                kind="addition",
+                detail="RM335: a new file for a module carrying `model_organisms.csv`.",
+                item="RM335",
+            ),
+            DeclaredChange(
+                axis="parquet_schema",
+                target="locus_to_gene.parquet,colocalisations.parquet,consequences.parquet",
+                kind="addition",
+                detail="RM333: three new files for a module the Open Targets pass enriched.",
+                item="RM333",
+            ),
+            DeclaredChange(
+                axis="warnings",
+                target="compilation.warnings",
+                kind="addition",
+                detail=(
+                    "`hla_alleles` loses two warnings 0.7.2 gave it: its 0.8-written verification record "
+                    "read as stale there (0.7.2 hashed the module without `meta.csv`), so no closure was "
+                    "read either. The warnings axis stays outside the recompile drivers."
+                ),
+                item="RM28",
+            ),
+        ],
+        unmeasured=[
+            "apoe_epsilon",
+            "apoe_klvs_meta",
+            "cpic_gene_pairs",
+            "cyp2c19_star_alleles",
+            "cyp2c9_warfarin_grch37",
+            "hboc_palb2",
+            "hfe_compound_het",
+            "hfe_hemochromatosis",
+            "longevity_studies",
+            "model_organisms",
+            "mt_common_deletion",
+            "par_boundary",
+            "pathogenic_clinvar",
+            "pgx_slco1b1_simvastatin",
+            "pleiotropy_tradeoff",
+            "shox_par1",
+        ],
+        evidence=(
+            "6 reference module(s) compiled under 0.7.2 and 0.8.0 from one spec root, both under polars "
+            "1.44.2 on the BEFORE side, so the compiler is the only variable; modules moved per axis: "
+            "content_signature 1/6, manifest_fields 6/6, parquet_bytes 6/6, parquet_schema 6/6, warnings 1/6. "
+            "With polars held at 1.44.2 the same six move on every axis they move on here, so every byte "
+            "move in this interval is the compiler's. The fixed-compiler sweep (0.8.0 under polars 1.44.2 "
+            "and 2.1.0, all 22 examples) moved parquet_bytes 22/22 and nothing else: content_signature "
+            "0/22. It explains no measured module on its own, so no `toolchain` change is declared; the "
+            "toolchain move is real and lands on every module. `toolchain_differs` is the NORMAL case "
+            "between this release and just-dna-lite, which stays on polars 1.x (polars-bio caps "
+            "`polars<2`): one compiler, two toolchains, two digests, one content. Unmeasured rather than "
+            "unchanged, because each commits a `resolution.csv` (or a `module_spec.yaml` key) written by "
+            "0.8, which 0.7.2 refuses: apoe_epsilon, apoe_klvs_meta, cpic_gene_pairs, "
+            "cyp2c19_star_alleles, cyp2c9_warfarin_grch37, hboc_palb2, hfe_compound_het, "
+            "hfe_hemochromatosis, longevity_studies, model_organisms, mt_common_deletion, par_boundary, "
+            "pathogenic_clinvar, pgx_slco1b1_simvastatin, pleiotropy_tradeoff, shox_par1. Example data "
+            "moved too, and is not a compiler change: the 16 examples' resolution.csv were regenerated "
+            "against ensembl-variation-2026_07_13-vep116.0, pathogenic_clinvar dropped a duplicate "
+            "coordinate-only row (11:5226762 C>CAAAG, also authored as rs80356821), and cpic_gene_pairs' "
+            "NUDT15 rs1457579126 row was re-anchored from 13:48040982 to 13:48040977."
         ),
     ),
 }

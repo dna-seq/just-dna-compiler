@@ -55,6 +55,7 @@ from pydantic import BaseModel, Field, ValidationError, ValidationInfo, field_va
 from just_dna_format.assertions import ClinicalAssertionRow
 from just_dna_format.base import OUTSIDE_CONTENT_IDENTITY, AuthoredModel, since, vocabulary
 from just_dna_format.concordance import ClinSigConcordanceRow
+from just_dna_format.consequences import ConsequenceRow
 from just_dna_format.expression import ExpressionEffectRow
 from just_dna_format.findings import CodedWarning
 from just_dna_format.frequency import FrequencyRow
@@ -62,6 +63,7 @@ from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.gene_validity import GeneValidityRow
 from just_dna_format.gwas import GwasEffectRow
 from just_dna_format.literature import LiteratureRow
+from just_dna_format.locus_genes import ColocalisationRow, LocusToGeneRow
 from just_dna_format.normalize import normalize_utc_timestamp
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.vocab import check_vocab
@@ -114,17 +116,16 @@ _MERGED = (
 
 #: The derived tables an overlay may correct, and how each one is keyed.
 #:
-#: **Nine, and the number is a decision rather than a count** — the seven merge-not-clobber derived
-#: sidecars settled on 2026-08-28, plus the concordance record RM130 added the same day. The proposal
-#: that carries RM124 says "the six covered derived tables" and never enumerates them; the roadmap
-#: entry it inherits the number from does not either. That miscount is pinned here rather than left to
-#: be re-counted, and the compiler's own test asserts an **equality** against its table tuples, so a
-#: new sidecar landing without a decision here fails rather than shipping as a table nobody can
-#: correct.
+#: **Membership is a decision rather than a count**: the merge-not-clobber derived sidecars settled on
+#: 2026-08-28, the concordance record RM130 added the same day, and each sidecar a later release added
+#: with its own entry below. The proposal that carries RM124 never enumerated its set, so the set is
+#: stated here rather than counted, and the compiler's own test asserts an **equality** against its
+#: table tuples, so a new sidecar landing without a decision here fails rather than shipping as a table
+#: nobody can correct. This sentence opened with a number once, and the number went stale (RM392).
 #:
-#: `clin_sig_concordance.csv` is in for a *different* reason from the seven, and the difference is
-#: worth keeping. It is not merge-not-clobber and never carried hand-curation to lose; it is here
-#: because **an overlay row is the answer to the question it asks.** An author who has read a
+#: `clin_sig_concordance.csv` is in for a *different* reason from the merge-not-clobber ones, and the
+#: difference is worth keeping. It is not merge-not-clobber and never carried hand-curation to lose;
+#: it is here because **an overlay row is the answer to the question it asks.** An author who has read a
 #: contested subject and decided records that decision as an overlay row against it, carrying the
 #: `reason` this table makes mandatory — which is what turns a finding into a record, and what makes
 #: the vindication signal work: when the archive later moves, that row stops changing anything.
@@ -153,9 +154,20 @@ _MERGED = (
 #:   module annotates and the subject alone does not reach one of them.
 #: * `expression_effects.csv` — `gene`. The record is per `(variant_key, gene)` because one variant is
 #:   attributed to every gene within the model's window and genuinely moves them in different
-#:   directions, so the subject alone reaches a group rather than a row. The ninth, and the one that
-#:   reaches rows naming variants the module does not author — an overlay here corrects a claim about
+#:   directions, so the subject alone reaches a group rather than a row. It reaches rows
+#:   naming variants the module does not author — an overlay here corrects a claim about
 #:   a locus, not about an annotation.
+#: * `locus_to_gene.csv` / `colocalisations.csv` — `gene_id` / `right_study_locus_id` under the subject
+#:   `study_locus_id`, the source's own grain (RM333). One variant is a member of several study loci, so
+#:   a correction names the credible set it corrects; the corrected value is an input to the module's
+#:   effector rubric, never a label (RM323's cut). Both tables also key on `variant_key` (members, not
+#:   lead-only, 2026-11-04), and the overlay deliberately does not: a score or a colocalisation is a
+#:   fact of the set and gene, whichever member asked, so an `update` reaches every member's row of
+#:   that pair and may not write `variant_key` itself (it is a key column). An `insert` matches on the
+#:   `variant_key` it supplies too, so it can add a second member's row to a pair. The limit is
+#:   `suppress`: it removes every member's row of the pair, and cannot withdraw one member's. And two
+#:   inserts of one pair for two members share the overlay's own key, so only one is accepted.
+#: * `consequences.csv` — `transcript`. One variant carries a row per transcript (RM236).
 #:
 #: **`clin_sig_authority_calls.csv` is deliberately outside, and it is the pair's second decision.**
 #: The author answers the question; they do not get to rewrite what an archive published. An overlay
@@ -195,6 +207,13 @@ OVERRIDABLE_TABLES: dict[str, OverlayTarget] = {
         "the disagreement ended (RM117)",
     ),
     "expression_effects.csv": OverlayTarget(ExpressionEffectRow, "variant_key", "gene", *_MERGED),
+    # The Open Targets lane (0.8, RM333/RM236): where longevitymap v2's hand-curated causal and
+    # effector inputs go, as corrections to a derived input rather than an authored label (RM323's cut).
+    "locus_to_gene.csv": OverlayTarget(LocusToGeneRow, "study_locus_id", "gene_id", *_MERGED),
+    "colocalisations.csv": OverlayTarget(
+        ColocalisationRow, "study_locus_id", "right_study_locus_id", *_MERGED
+    ),
+    "consequences.csv": OverlayTarget(ConsequenceRow, "variant_key", "transcript", *_MERGED),
 }
 
 
@@ -476,6 +495,14 @@ class OverrideRow(AuthoredModel):
                 f"a correction — writing it here would leave this overlay row matching nothing the "
                 f"moment it applied."
             )
+        # A key column the overlay does not key on (`variant_key` on the two study-locus tables, RM333)
+        # is re-keying too: an update reaching several members' rows would give them one key.
+        if self.operation == "update" and field in getattr(target.model, "_KEY_FIELDS", ()):
+            raise ValueError(
+                f"{field!r} is part of {self.table}'s row key, so writing it re-keys the rows the "
+                f"update reaches (every row under subject and member, possibly several) rather than "
+                f"correcting them. Re-keying a derived row is a suppress plus an insert."
+            )
         return self
 
 
@@ -740,6 +767,22 @@ def apply_overrides(
             for index in reversed(matched):
                 del result[index]
         else:  # insert
+            # A key column beyond subject and member (`variant_key` on the study-locus tables) narrows
+            # the match, so an insert of a second member's row of a pair is not taken for the first's.
+            extra_keys = {
+                row.field or "": row.value or ""
+                for row in group
+                if (row.field or "") in getattr(target.model, "_KEY_FIELDS", ())
+                and (row.field or "") not in {target.subject_field, target.member_field}
+            }
+            matched = [
+                index
+                for index in matched
+                if all(
+                    _cell(result[index], name) == _canonical_key_cell(sample, name, value)
+                    for name, value in extra_keys.items()
+                )
+            ]
             if matched:
                 continue  # already present — the idempotent no-op the round trip depends on
             data: dict[str, Any] = {target.subject_field: subject}

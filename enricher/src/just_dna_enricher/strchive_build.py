@@ -17,7 +17,6 @@ off-switch is passing the local file instead of `--download`, and `check_declare
 """
 
 import hashlib
-import json
 import logging
 from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
@@ -25,12 +24,14 @@ from pathlib import Path
 
 from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
+from just_dna_format.snapshot import SnapshotRelease, SnapshotWrite, begin_snapshot_write
 
-from just_dna_enricher.locations import RELEASE_FILENAME, STRCHIVE_CATALOGUE_FILENAME
+from just_dna_enricher.locations import STRCHIVE_CATALOGUE_FILENAME
 from just_dna_enricher.net import stream_to_file
 from just_dna_enricher.strchive import (
     SOURCE_NAME,
     StrchiveError,
+    StrchiveRetired,
     StrchiveUnavailable,
     load_strchive_catalogue,
 )
@@ -87,6 +88,7 @@ def download_catalogue(dest: Path, url: str = DEFAULT_STRCHIVE_URL) -> tuple[Pat
         dest,
         url,
         error_cls=StrchiveUnavailable,
+        retired=StrchiveRetired,
         what="the STRchive catalogue",
         remedy="Pass --catalogue <file> to build from a copy you already hold.",
     )
@@ -121,8 +123,9 @@ def build_strchive_snapshot(
     # the catalogue first and validating after would let a bad rebuild leave new bytes under the
     # previous run's `release.json`, whose `source_sha256`, `locus_count` and `dataset` then describe
     # a file that is gone — and `check-repeat-bands` would attest the new catalogue under the old
-    # release label. The stale `release.json` is removed before the rename, so the only window a
-    # reader can see is *catalogue with no provenance*, which reads honestly as an unlabelled release.
+    # release label. The stale `release.json` is withdrawn before the rename (`begin_snapshot_write`,
+    # RM369), so the only window a reader can see is *catalogue with no provenance*, which reads
+    # honestly as an unlabelled release.
     incoming = out_dir / (STRCHIVE_CATALOGUE_FILENAME + ".incoming")
 
     if catalogue is not None:
@@ -140,12 +143,12 @@ def build_strchive_snapshot(
     if not parsed.loci:
         incoming.unlink(missing_ok=True)
         raise StrchiveError(f"{source_url} parsed to zero loci; refusing to record it as a snapshot")
-    (out_dir / RELEASE_FILENAME).unlink(missing_ok=True)
+    snapshot = begin_snapshot_write(out_dir)
     incoming.replace(target)
 
     dataset = f"{SOURCE_NAME}_{release}" if release else None
     release_file = _write_release_json(
-        out_dir,
+        snapshot,
         source_url=source_url,
         source_sha256=source_sha256,
         locus_count=len(parsed.loci),
@@ -163,7 +166,7 @@ def build_strchive_snapshot(
 
 
 def _write_release_json(
-    out_dir: Path,
+    snapshot: SnapshotWrite,
     *,
     source_url: str,
     source_sha256: str,
@@ -176,16 +179,14 @@ def _write_release_json(
     fields that matter differ per source. `built_at` is the only per-run-varying byte and it lives
     here rather than in the catalogue, which stays identical to what upstream published.
     """
-    release = {
-        "source": SOURCE_NAME,
-        "source_url": source_url,
-        "source_sha256": source_sha256,
-        "locus_count": locus_count,
-        "dataset": dataset,
-        "license": "MIT",
-        "built_at": now_utc_iso(),
-        "builder_version": _builder_version(),
-    }
-    path = out_dir / RELEASE_FILENAME
-    atomic_write_text(path, json.dumps(release, indent=2, sort_keys=True) + "\n")
-    return path
+    release = SnapshotRelease(
+        source=SOURCE_NAME,
+        source_url=source_url,
+        source_sha256=source_sha256,
+        locus_count=locus_count,
+        dataset=dataset,
+        license="MIT",
+        built_at=now_utc_iso(),
+        builder_version=_builder_version(),
+    )
+    return snapshot.commit(release)

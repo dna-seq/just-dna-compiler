@@ -35,6 +35,7 @@ from just_dna_enricher.caches import (
 from just_dna_enricher.cli import app
 from just_dna_enricher.clinvar import clinvar_dataset_label
 from just_dna_enricher.licensing import CLINPGX_TERMS
+from just_dna_format.snapshot import release_label as snapshot_release_label
 from typer.testing import CliRunner
 
 _SRC = Path(caches.__file__).parent
@@ -43,7 +44,7 @@ _SRC = Path(caches.__file__).parent
 #: lane appearing has to be argued for here instead of slipping past an inequality.
 #: The lanes with **no `rebuild` adapter**, and the two are not the same kind of absence — which is
 #: why they are named individually rather than counted. `ensembl`'s snapshot is cut by
-#: just-dna-pipelines, so a rebuild here would be this repository claiming another's artifact.
+#: prepare-annotations, so a rebuild here would be this repository claiming another's artifact.
 #: `alphagenome_avi` has a builder and no adapter: its input is 88.5 GB behind a sign-in whose
 #: eligibility clause bars classes of holder, so there is nothing for an unattended rebuild to fetch
 #: and the operator supplies the file (RM191, `@acquisition-gate-is-not-a-read-gate`).
@@ -135,7 +136,7 @@ def test_an_absent_stage_states_its_reason_and_a_present_one_does_not() -> None:
         assert (lane.unbuilt is None) == (lane.rebuild is not None), lane.name
         if lane.name in _BUILT_ELSEWHERE:
             # Ensembl is pullable and has no `publish_repo`, and that is not the same defect: the
-            # snapshot on HuggingFace is real, and just-dna-pipelines is what uploads it. The field
+            # snapshot on HuggingFace is real, and prepare-annotations is what uploads it. The field
             # means "the repo THIS tier publishes to", so a lane this tier does not build cannot
             # have one — which is why the biconditional below is scoped to the lanes it builds.
             assert lane.publish_repo is None, lane.name
@@ -172,12 +173,14 @@ def test_the_lane_that_reads_its_release_differently_is_exactly_the_one_named() 
     """The exception is enumerated, so it cannot quietly grow — the shape `build_command` needed.
 
     A second lane that stops writing `dataset` should have to say so here rather than start printing
-    a blank label, which is how this one went unnoticed.
+    a blank label, which is how ClinVar's went unnoticed. Since RM303 the set is empty: ClinVar's
+    builder writes `dataset`, and the snapshot model reads an older ClinVar release's
+    `clinvar_file_date` through the same formula, so its override went. Since RM372 it is `ensembl`:
+    the split release states its release in `manifest.json`, built by prepare-annotations, and carries
+    no `release.json` (`test_ensembl_split_release.py` pins what its label reads).
     """
-    from just_dna_enricher.caches import _dataset_label
-
-    overridden = {lane.name for lane in CACHE_LANES if lane.release_label is not _dataset_label}
-    assert overridden == {"clinvar"}
+    overridden = {lane.name for lane in CACHE_LANES if lane.release_label is not snapshot_release_label}
+    assert overridden == {"ensembl"}
 
 
 def test_the_clinvar_label_is_the_one_the_drafter_writes(tmp_path: Path) -> None:
@@ -316,7 +319,7 @@ def test_a_lane_that_cannot_run_unattended_is_not_a_failure(
     assert result.exit_code == 0, result.output
     printed = result.output + (result.stderr if result.stderr_bytes else "")
     assert "rebuilt 0, failed 0, not run 4" in printed
-    for expected in ("workbook", "release date to pin", "forbids sale", "just-dna-pipelines"):
+    for expected in ("workbook", "release date to pin", "forbids sale", "prepare-annotations"):
         assert expected in printed, printed
 
 
@@ -847,12 +850,23 @@ def test_rebuild_caches_and_prepare_caches_are_the_cli_loops(tmp_path: Path) -> 
     Walked over the registry: the pairing that matters is one outcome per lane, in registry order, so
     a caller can zip the result against `CACHE_LANES` without matching on names.
     """
-    prepared = caches.prepare_caches([LANES_BY_NAME["ensembl"]])
+    # The lane's own `ensure` and `resolve` are stubbed: run as declared, `prepare_caches` provisions
+    # the developer's real base, and on 2026-11-04 it re-pulled six chromosomes of a shared cache from
+    # the lane's new repo (RM372). The autouse `_fenced_hub` refuses that now; this test never needed it.
+    pulled: list[str] = []
+    lane = dataclasses.replace(
+        LANES_BY_NAME["ensembl"],
+        resolve=lambda: None,
+        ensure=lambda: pulled.append("ensembl") or tmp_path,
+        default_dir=lambda: tmp_path,
+    )
+    prepared = caches.prepare_caches([lane])
     assert [o.lane for o in prepared] == ["ensembl"]
+    assert pulled == ["ensembl"]
 
     rebuilt = caches.rebuild_caches([LANES_BY_NAME["ensembl"]], out=tmp_path)
     assert [o.lane for o in rebuilt] == ["ensembl"]
-    assert rebuilt[0].built is None, "ensembl is built by just-dna-pipelines, not here"
+    assert rebuilt[0].built is None, "ensembl is built by prepare-annotations, not here"
 
 
 def test_a_builder_that_writes_nothing_is_a_failure_not_a_crash(
@@ -1030,7 +1044,7 @@ def test_a_present_lane_reports_its_release_or_that_the_release_is_unreadable(
 ) -> None:
     """Present-and-unreadable is a provenance failure, not a data failure, and the field says which."""
     # Two lanes that read `dataset`; ClinVar reads a different key and is pinned by its own test.
-    named, broken = [lane for lane in CACHE_LANES if lane.release_label is caches._dataset_label][:2]
+    named, broken = [lane for lane in CACHE_LANES if lane.release_label is snapshot_release_label][:2]
     for lane, release_text in ((named, json.dumps({"dataset": "probe_2026-09-11"})), (broken, "{not json")):
         directory = tmp_path / lane.name
         (directory / "data").mkdir(parents=True)
@@ -1106,7 +1120,7 @@ def test_provisioning_closure_is_parents_first_in_registry_order() -> None:
 def test_a_present_lane_reports_its_size_and_an_absent_one_reports_none(
     tmp_path: Path, monkeypatch, no_ambient_caches: Path
 ) -> None:
-    lane = next(member for member in CACHE_LANES if member.release_label is caches._dataset_label)
+    lane = next(member for member in CACHE_LANES if member.release_label is snapshot_release_label)
     directory = tmp_path / lane.name
     (directory / "data").mkdir(parents=True)
     (directory / "data" / "a.parquet").write_bytes(b"PAR1" * 100)
@@ -1120,3 +1134,20 @@ def test_a_present_lane_reports_its_size_and_an_absent_one_reports_none(
     result = CliRunner().invoke(app, ["cache", "status"])
     line = next(ln for ln in result.output.splitlines() if ln.strip().startswith(lane.name))
     assert line.rstrip().endswith("MB") and "present" in line
+
+
+def test_an_absent_lanes_line_names_every_route_that_can_provision_it(no_ambient_caches: Path) -> None:
+    """RM395 D3: `cache status` cannot see offline whether a lane's repo has anything published.
+
+    It printed "provision with `cache pull`" for `clinvar_gkm`, whose repo is empty, so the guide's
+    next command answered "not published yet". A lane with a pull route and a builder names both;
+    one with a single route names that one. Walked over the registry, per lane.
+    """
+    result = CliRunner().invoke(app, ["cache", "status"])
+    assert result.exit_code == 0, result.output
+    lines = {ln.split()[0]: ln for ln in result.output.splitlines() if ln.strip()}
+    for lane in CACHE_LANES:
+        line = lines[lane.name]
+        assert ("`cache pull`" in line) is (lane.ensure is not None), line
+        if lane.build_command is not None:
+            assert f"`{lane.build_command}`" in line, line

@@ -13,7 +13,7 @@ from pathlib import Path
 import httpx
 import polars as pl
 import pytest
-from just_dna_enricher.ensembl import EnsemblResolver, _loci_from_graphql, _loci_from_rest, _placeable_alleles
+from just_dna_enricher.ensembl import EnsemblResolver, _loci_from_rest, _placeable_alleles
 from just_dna_enricher.resolver import lookup_loci
 
 
@@ -60,8 +60,6 @@ def test_rest_withholds_novariation_and_counts_it_apart_from_an_unreadable_ancho
 
 def _rest_only(payload: dict) -> httpx.MockTransport:
     def handler(request: httpx.Request) -> httpx.Response:
-        if "graphql" in str(request.url):
-            return httpx.Response(200, json={"data": {"variant": None}})
         return httpx.Response(200, json=payload)
 
     return httpx.MockTransport(handler)
@@ -74,17 +72,6 @@ def test_an_rsid_with_no_placeable_mapping_is_an_answered_empty() -> None:
         transport=_rest_only({"mappings": [_mapping("1", 94108691, "G/TTTTTTTTTTTNNNNNNNNNNN")]})
     )
     assert resolver.resolve_rsid("rs2101156061") == ([], "ensembl-rest")
-
-
-def test_a_graphql_node_with_no_nucleotide_alt_is_handed_to_rest() -> None:
-    node = {
-        "alleles": [
-            {"allele_type": {"value": "reference"}, "reference_sequence": "G"},
-            {"allele_type": {"value": "alt"}, "reference_sequence": "TTTTTNNNN"},
-        ],
-        "slice": {"location": {"region_name": "1", "start": 94108691}},
-    }
-    assert _loci_from_graphql(node) == []
 
 
 @pytest.fixture
@@ -107,7 +94,8 @@ def test_the_snapshot_serves_only_nucleotide_loci(snapshot: Path, caplog: pytest
     rsids = ["rs2100212723", "rs1553186440", "rs33946775", "rs3838485", "rs1603142144"]
     loci, _, warnings = lookup_loci(snapshot, rsids, [])
     assert loci == {
-        "rs33946775": [{"chrom": "11", "start": 5225642, "ref": "CT", "alts": "CA,CC,CG"}],
+        # Three substitutions padded with a shared leading base, each spelled alone (RM381).
+        "rs33946775": [{"chrom": "11", "start": 5225643, "ref": "T", "alts": "A,C,G"}],
         "rs3838485": [{"chrom": "1", "start": 153985723, "ref": "G", "alts": "GGG"}],
         "rs1603142144": [{"chrom": "X", "start": 10277, "ref": "C", "alts": "CCC"}],
     }
@@ -120,3 +108,21 @@ def test_the_snapshot_serves_only_nucleotide_loci(snapshot: Path, caplog: pytest
 def test_a_position_backfill_never_takes_an_rsid_from_a_novariation_row(snapshot: Path) -> None:
     _, candidates, _ = lookup_loci(snapshot, [], [("1", 2651767, "T", None), ("11", 5225642, "CT", "CA")])
     assert candidates == {("1", 2651767, "T", None): [], ("11", 5225642, "CT", "CA"): ["rs33946775"]}
+
+
+def test_the_snapshot_names_the_rsids_it_holds_with_no_base_to_a_collector(snapshot: Path) -> None:
+    """RM272: the same two rsIDs the log names reach a caller's set, and only rsIDs left with no locus.
+    `rs1603142144` has an N-masked chrY row and a placeable chrX row, so it is not among them."""
+    rsids = ["rs2100212723", "rs1553186440", "rs33946775", "rs3838485", "rs1603142144"]
+    collected: set[str] = set()
+    lookup_loci(snapshot, rsids, [], non_nucleotide=collected)
+    assert collected == {"rs2100212723", "rs1553186440"}
+
+
+def test_the_live_resolver_names_an_rsid_with_no_placeable_mapping() -> None:
+    resolver = EnsemblResolver()
+    resolver._client = httpx.Client(
+        transport=_rest_only({"mappings": [_mapping("1", 94108691, "G/TTTTTTTTTTTNNNNNNNNNNN")]})
+    )
+    resolver.resolve_rsid("rs2101156061")
+    assert resolver.non_nucleotide_rsids == {"rs2101156061"}

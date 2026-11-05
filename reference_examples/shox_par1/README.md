@@ -65,12 +65,15 @@ so there was never an authored anchor to normalize against. What carries the fra
 while same-size different-content spellings — one indel rotated inside the repeat, or two variants — are
 **undecided**, and the locus is kept with a message that says so.
 
-**What is still true of this module, and worth knowing before copying it.** The compiled row carries the
-authored genotype `C/CAG` (ClinVar's frame) beside the resolved `ref=AGAG, alts=AG,AGAGAG` (Ensembl's). The
-variant is located and the module is coherent, but a consumer matching that genotype against a VCF call by
-string equality will still miss, because the VCF is in the reference's frame. `just_dna_format.alleles` is
-public and dependency-free so the consumer can apply the same reduction; having the enricher rewrite the
-authored cell is the parked co-authoring item, since it would make `content_signature` depend on a fetch.
+**Until 0.8 the compiled row still missed a caller's VCF.** It carried the authored genotype `C/CAG`
+(ClinVar's frame) beside the resolved `ref=AGAG, alts=AG,AGAGAG` (Ensembl's), so a consumer joining on
+`(chrom, pos, ref, alt)` against a normalized VCF missed both alleles (RM291 pinned the two misses).
+**Fixed by [RM270](../../docs/ROADMAP_HISTORY.md):** the enricher now writes a coordinate it fills
+left-aligned, ALT by ALT, and the two ALTs land on two references, so `resolution.csv` holds two loci,
+`X:634689 CAG>C` and `X:634689 C>CAG`, the spellings ClinVar and a caller's `bcftools norm -m -any` write.
+The compiler expands the rsID onto both (`rsid_expanded_to_multiple_loci`; the genotype `C/CAG` fits
+either reading), each `weights.parquet` row carries its allele's `vrs_id`, and the consumer join matches.
+The authored cell was never touched: the fill is outside `content_signature`.
 
 ## 4. Ten findings, twenty rows (fixed — [RM32](../../docs/ROADMAP_HISTORY.md))
 
@@ -133,6 +136,6 @@ just-dna-compiler compile reference_examples/shox_par1 out/shox_par1
 `--no-clinvar` pins the resolver to the Ensembl link, which is what produced the coordinates and `alts` this
 module's digest was computed from. It matters here beyond reproducibility: the chain is first-hit-wins, and
 the ClinVar link resolves several of these rsIDs to a *narrower* `alts` (`rs137852552` as `C>T` rather than
-Ensembl's `C>A,T`) and spells the `rs1569493663` deletion in ClinVar's own frame instead of the
-`X:634690 AGAG>AG` one section 3 is about. Both tables are correct; they are not the same bytes, and `alts`
-is a fact column.
+Ensembl's `C>A,T`). Both tables are correct; they are not the same bytes, and `alts` is a fact column. The
+table was last re-derived on 2026-11-04 with `enrich --rederive --no-clinvar` (RM270), which is why the
+`rs1569493663` deletion is spelled `X:634689 CAG>C` rather than the `X:634690 AGAG>AG` section 3 is about.

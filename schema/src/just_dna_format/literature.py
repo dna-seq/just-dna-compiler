@@ -44,8 +44,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from just_dna_format.base import since, vocabulary
 from just_dna_format.normalize import normalize_utc_timestamp
-from just_dna_format.spec import DOI_PATTERN
+from just_dna_format.spelling import doi_token
 from just_dna_format.vocab import (
+    VALID_FULLTEXT_STATUS,
     VALID_QUOTE_SOURCE,
     VALID_RESOLUTION_STATUS,
     check_vocab,
@@ -66,6 +67,20 @@ from just_dna_format.vocab import (
 # `quotes_authored` / `quotes_found` are **out** for two reasons: the first is derivable from
 # `studies.csv` (so storing it as a fact duplicates one fact in two files), and the second depends on
 # whether a fulltext happened to be retrievable on the day the pass ran.
+#
+# `fulltext_status` (0.8, RM258) is **out** for the same reason: it records how a fetch ended on the
+# day it ran, so a re-ask that turns `unreachable` into `retrieved` changes the run, not the article.
+#
+# `quote_source` is **out** with `quotes_found`, whose denominator it labels: which text was searched
+# (abstract or fulltext) is what was retrievable on the day. `source`/`status`/`fetched_at` are the
+# provenance columns, out as they are in every sibling.
+#
+# `doi_exists` / `doi_checked` are **out, and no reason was ever recorded** (RM365 found them so). They
+# are the DOI half of the existence verdict beside `exists`, which is inside: `doi_exists` since 0.5.0,
+# and `doi_checked`, which names the DOI it is a verdict about, since the 0.6 dogfood round. Neither
+# ever joined this tuple. Adding them now would move every literature
+# signature on disk — a correction a release has to declare — so the question is named here rather
+# than settled by a test fix.
 #
 # What remains is stable identity: which article this is, and whether the registry has it.
 LITERATURE_FACT_FIELDS: tuple[str, ...] = (
@@ -209,6 +224,19 @@ class LiteratureRow(BaseModel):
         ),
         json_schema_extra={**vocabulary("quote_source", VALID_QUOTE_SOURCE), **since("0.5.0")},
     )
+    fulltext_status: str | None = Field(
+        default=None,
+        description=(
+            "How the fulltext question ended: retrieved|absent|unreachable|retired (RM258, RM361). "
+            "`unreachable` means the request never got an answer, so the next run asks again; "
+            "`retired` means the service answered 410 for the route asked, which the next run asks "
+            "again too; `absent` means no service holds a copy, which is permanent. Null means the question was not asked: no "
+            "quote to check, or a row written before 0.8, which the next run asks once. Provenance "
+            "about the fetch rather than a fact about the article, so it is outside "
+            "`literature_signature` and a re-ask that heals a row moves no signature."
+        ),
+        json_schema_extra={**vocabulary("fulltext_status", VALID_FULLTEXT_STATUS), **since("0.8.0")},
+    )
     doi_exists: bool | None = Field(
         json_schema_extra=since("0.5.0"),
         default=None,
@@ -263,7 +291,7 @@ class LiteratureRow(BaseModel):
         if v is None or not v.strip():
             return None
         v = v.strip()
-        if not DOI_PATTERN.search(v):
+        if doi_token(v) is None:
             raise ValueError(f"doi must contain a DOI token (10.<registrant>/<suffix>), got: {v!r}")
         return v
 
@@ -287,8 +315,50 @@ class LiteratureRow(BaseModel):
     def _validate_quote_source(cls, v: str | None) -> str | None:
         return check_vocab(v, VALID_QUOTE_SOURCE, "quote_source")
 
+    @field_validator("fulltext_status")
+    @classmethod
+    def _validate_fulltext_status(cls, v: str | None) -> str | None:
+        return check_vocab(v, VALID_FULLTEXT_STATUS, "fulltext_status")
+
     @field_validator("fetched_at", mode="before")
     @classmethod
     def _canonical_fetched_at(cls, v: object) -> str | None:
         """One spelling, enforced on load — see `normalize.normalize_utc_timestamp`."""
         return normalize_utc_timestamp(v if v is None or isinstance(v, str) else str(v))
+
+    def quotes_checked(self) -> int:
+        """How many of this citation's quotes a retrieved text SETTLED, found or missed (RM256, S109).
+
+        The denominator `quotes_found` is read against, in the same unit — quotes, not citations. A
+        miss settles a quote only against fulltext: an abstract is not the body, so a quote absent
+        from it may still be in the article. Hence the three arms:
+
+        * `quotes_found` null — nothing was retrievable, or a `provenance_regex` could not be evaluated
+          (RM361), so nothing is settled: `0`.
+        * `quote_source == "fulltext"` — every quote was looked for in the whole text: all of them.
+        * anything else (`abstract`, or a count with no `quote_source`) — only the hits are settled.
+
+        **One rule for both tiers.** The enricher's pass report and the compiler's manifest block both
+        read it from here; the manifest once summed `quotes_found` over rows without it, so an
+        abstract-only citation with twenty-four misses published as twenty-four quotes checked and
+        missed while the enricher, one command earlier, had called all twenty-four unchecked.
+
+        It reads the row as written. Whether `quotes_authored` still matches the quotes `studies.csv`
+        carries is a staleness question answered elsewhere — the compiler's `quote_counter_stale`
+        warning, and the enricher's `unexamined` count — and a stale row settles what it recorded.
+        """
+        return settled_quotes(self.quotes_authored, self.quotes_found, self.quote_source)
+
+
+def settled_quotes(quotes_authored: int | None, quotes_found: int | None, quote_source: str | None) -> int:
+    """The arithmetic behind `LiteratureRow.quotes_checked`, for a citation that has no row (RM349).
+
+    A `pmid=NONE` citation is matched by the enricher against a preprint's text and never written to
+    `literature.csv` (its key is a PubMed id), so the pass needs the same three arms without a row.
+    One function, so the two cannot disagree about what an abstract settled.
+    """
+    if quotes_found is None:
+        return 0
+    if quote_source == "fulltext":
+        return quotes_authored or 0
+    return quotes_found
