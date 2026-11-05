@@ -3,7 +3,7 @@
 The cache side uses a tiny synthetic `ensembl_variations` parquet (the injectable shape the compiler
 resolver reads); the live-Ensembl side uses an `httpx.MockTransport`, so nothing here opens a socket.
 Coverage: offline enrich → resolution.csv → the compiler consumes it and reproduces the DuckDB
-digest; `--offline` never calls the network; the live link asking REST alone; tenacity retrying a transient
+facts (every artifact file but the `resolution_loci` the table adds, RM380); `--offline` never calls the network; the live link asking REST alone; tenacity retrying a transient
 error; strict failing on an unresolved variant; one-to-many expansion written as N rows.
 """
 
@@ -115,18 +115,34 @@ def test_offline_enrich_then_compile_matches_duckdb_digest(cache: Path, tmp_path
     for produced in sorted(spec1.iterdir()):
         if produced.is_file() and produced.name != "resolution.csv":
             shutil.copy(produced, spec2 / produced.name)
-    d2 = compile_module(spec2, tmp_path / "o2", ensembl_cache=cache).manifest.artifact.digest
+    r2 = compile_module(spec2, tmp_path / "o2", ensembl_cache=cache)
     r1 = compile_module(spec1, tmp_path / "o1", ensembl_cache=None)
     assert r1.success, r1.errors
-    assert r1.manifest.artifact.digest == d2
+    # Since RM380 a key whose locus holds a value no row cell rebuilds keeps its `resolution_loci`, and
+    # the table records `authority` on every row, so path 1 carries the loci the DuckDB path has no table
+    # to fill. Parity is still a claim about the facts: every other artifact file is byte-identical, and
+    # `weights.parquet` differs in that one column, which holds the table's own rows.
+    files1, files2 = ({f.name: f for f in r.manifest.artifact.files} for r in (r1, r2))
+    assert files1.keys() == files2.keys()
+    assert {p for p in files1 if files1[p] != files2[p]} == {"weights.parquet"}
+    via_table, duck = (pl.read_parquet(tmp_path / o / "weights.parquet") for o in ("o1", "o2"))
+    assert via_table.drop("resolution_loci").equals(duck.drop("resolution_loci"))
+    assert duck["resolution_loci"].null_count() == duck.height
+    authorities = {
+        locus["authority"] for loci in via_table["resolution_loci"].to_list() if loci for locus in loci
+    }
+    with (spec1 / "resolution.csv").open(encoding="utf-8", newline="") as fh:
+        assert authorities == {row["authority"] for row in csv.DictReader(fh)}
     # every variant needed resolution, so the cache filled all of them
     assert r1.manifest.compilation.resolution_sources == ["cache"]
-    # With the ids minted, the two `weights.parquet` differ in the two RM270 columns and nowhere else.
+    # With the ids minted, the two `weights.parquet` differ in the two RM270 columns and the RM380 loci,
+    # and nowhere else.
     spec3 = _spec(tmp_path / "spec3", variants)
     enrich(spec3, offline=True, ensembl_cache=cache)
     assert compile_module(spec3, tmp_path / "o3").success
     minted, duck = (pl.read_parquet(tmp_path / o / "weights.parquet") for o in ("o3", "o2"))
-    assert minted.drop("vrs_id", "vrs_spec").equals(duck.drop("vrs_id", "vrs_spec"))
+    carried = ("vrs_id", "vrs_spec", "resolution_loci")
+    assert minted.drop(carried).equals(duck.drop(carried))
     assert minted["vrs_id"].null_count() < minted.height and duck["vrs_id"].null_count() == duck.height
 
 
