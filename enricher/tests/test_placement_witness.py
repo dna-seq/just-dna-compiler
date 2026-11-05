@@ -32,6 +32,7 @@ from just_dna_enricher.clinvar_gkm import ALLELE_FILE, VARIATION_FILE, WITNESS_P
 from just_dna_enricher.clinvar_gkm_build import build_snapshot
 from just_dna_enricher.enrich import EnrichmentError, enrich
 from just_dna_enricher.enrich.orchestration import _filled_pieces
+from just_dna_enricher.enrich.releases import table_releases as orchestration_table_releases
 from just_dna_enricher.enrich.resolution_csv import _write_resolution_csv
 from just_dna_enricher.ensembl import EnsemblResolver
 from just_dna_enricher.events import Allele, same_event
@@ -591,10 +592,16 @@ class _Rest:
     def __init__(self, status: int = 200) -> None:
         self.requested: list[str] = []
         self.status = status
+        #: How many times the run asked REST which data release it answers from (RM373).
+        self.release_asked = 0
 
     def resolver(self) -> EnsemblResolver:
         def handler(request: httpx.Request) -> httpx.Response:
             assert request.url.host == "rest.ensembl.org", f"asked {request.url}, not Ensembl REST"
+            if request.url.path == "/info/data":
+                # What `/info/data` answered by hand on 2026-11-04 (`test_source_release.py`).
+                self.release_asked += 1
+                return httpx.Response(200, json={"releases": [116]})
             rsid = request.url.path.rsplit("/", 1)[-1]
             self.requested.append(rsid)
             if self.status != 200:
@@ -1078,3 +1085,56 @@ def test_rm373_the_witness_licence_rows_carry_each_lanes_release_and_a_rerun_kee
     assert datasets() == expected
     _enrich(spec, tmp_path, monkeypatch, clinvar_cache=clinvar, clinvar_gkm_cache=gkm)
     assert datasets() == expected
+
+
+def test_rm373_a_rest_witness_contributes_the_release_rest_answered_from(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_ambient_caches: Path
+) -> None:
+    """2026-11-05, found merging block 3: the witness map was written before REST became a witness.
+
+    A run whose snapshot answered every rsID asks REST nothing as a link, so the release REST answered
+    the witness from has to be asked by the witness, once. The licence row stays withheld here, and
+    honestly: the row REST witnessed was answered by the snapshot, whose label (none, for this fixture's
+    old-repo shape; `…vep116.0` for a split one) is never the same string as REST's `ensembl_116`. What
+    moves is the reason — two releases, not an unrecorded one.
+    """
+    captured: dict[str, list[str | None]] = {}
+
+    def spy(*args, **kwargs):
+        captured.update(orchestration_table_releases(*args, **kwargs))
+        return captured
+
+    monkeypatch.setattr("just_dna_enricher.enrich.orchestration.table_releases", spy)
+    snapshot = _ensembl_snapshot(tmp_path)
+    spec = _spec(tmp_path, {"rs77944059": "G/GAAAC"})
+    rest = _Rest()
+    result = _enrich(spec, tmp_path, monkeypatch, ensembl_cache=snapshot, resolver=rest.resolver())
+    (row,) = result.rows
+    assert row.placement_witness == "ensembl" and row.source == "cache"
+    assert rest.release_asked == 1
+    # The snapshot's label as the row's authority, and REST's as its witness: neither is unrecorded.
+    assert captured["ensembl"] == [LANES_BY_NAME["ensembl"].release_label(snapshot), "ensembl_116"]
+    rows, errors, _ = load_csv_rows(sources_path(spec, error=EnrichmentError), SourceRow, "sources")
+    assert errors == []
+    assert {r.source: r.dataset for r in rows if r.layer == "resolution"} == {"ensembl": None}
+
+
+def test_rm373_a_run_using_rest_as_link_and_witness_asks_its_release_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_ambient_caches: Path
+) -> None:
+    """The live link asked `/info/data` already, so the witness reuses that answer rather than asking again."""
+    captured: dict[str, list[str | None]] = {}
+
+    def spy(*args, **kwargs):
+        captured.update(orchestration_table_releases(*args, **kwargs))
+        return captured
+
+    monkeypatch.setattr("just_dna_enricher.enrich.orchestration.table_releases", spy)
+    # `rs1` is in no snapshot, so the live link asks REST about it, which holds no mapping for it.
+    spec = _spec(tmp_path, {"rs77944059": "G/GAAAC", "rs1": "A/G"})
+    rest = _Rest()
+    result = _enrich(spec, tmp_path, monkeypatch, resolver=rest.resolver())
+    assert rest.requested == ["rs1", "rs77944059"] and rest.release_asked == 1
+    witnessed = [r for r in result.rows if r.placement_witness == "ensembl"]
+    assert [r.rsid for r in witnessed] == ["rs77944059"]
+    assert "ensembl_116" in captured["ensembl"]

@@ -85,6 +85,15 @@ _NOT_INDEPENDENT: dict[str, frozenset[str]] = {
     CLINVAR_WITNESS: frozenset({CLINVAR_WITNESS, CLINVAR_GKM_WITNESS}),
     CLINVAR_GKM_WITNESS: frozenset({CLINVAR_WITNESS, CLINVAR_GKM_WITNESS}),
 }
+#: The witnesses `_NOT_INDEPENDENT` leaves out on purpose, each with its reason: it is read with a
+#: default, so a witness absent from it is asked about its own authority's placements. The two maps
+#: partition `PLACEMENT_WITNESSES` under a test, so a new witness has to choose one.
+_ASKED_OF_ITS_OWN_AUTHORITY: dict[str, str] = {
+    ENSEMBL_WITNESS: (
+        "REST is asked about the snapshot's placements by design (RM292): its disagreement withholds, "
+        "and its agreement is counted self-consistent, never independent"
+    ),
+}
 #: The authority each witness belongs to. A witness compared against a placement of its own authority
 #: (REST against the snapshot) is asked — its disagreement is a finding — but it is never an independent
 #: witness, so its agreement leaves the rsID in the one-witness count. One map, so a witness whose name
@@ -94,6 +103,10 @@ _AUTHORITY_OF_WITNESS: dict[str, str] = {
     CLINVAR_GKM_WITNESS: CLINVAR_WITNESS,
     ENSEMBL_WITNESS: ENSEMBL_WITNESS,
 }
+#: Every placement witness this tier can name on a row (`ResolutionRow.placement_witness`), read off the
+#: one map that must know each of them. A map keyed by witness elsewhere is checked against this roster,
+#: never hand-listed beside it: RM373's release map named the two snapshot witnesses and missed REST.
+PLACEMENT_WITNESSES: frozenset[str] = frozenset(_AUTHORITY_OF_WITNESS)
 
 #: The row verdicts (`ResolutionRow.placement_verdict`, `vocab.VALID_PLACEMENT_VERDICTS`).
 SAME_EVENT = "same_event"

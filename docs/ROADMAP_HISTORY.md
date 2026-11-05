@@ -362,6 +362,26 @@ second spelling of the ClinVar label and is now `clinvar_dataset_label` (unstate
 reads the snapshot's `release.json`. Mutated: the drafted/derived split collapsed and `stated_release`
 passing a bare lane through, each watched red.
 
+**2026-11-05, found merging block 3: the witness release map predated a witness.** `witness_release`
+was a hand-kept dict in `orchestration.py` naming `clinvar` and `clinvar_gkm`, written before RM267 made
+Ensembl REST the third placement witness, and the REST witness never asked `/info/data` either, so a run
+whose snapshot answered everything and whose REST witnessed a placement contributed no release for it.
+Both are fixed as a class (`@registry-completeness`): `placement.PLACEMENT_WITNESSES` is the roster, read
+off `_AUTHORITY_OF_WITNESS`, and `releases.witness_releases` refuses a map whose keys are not exactly
+that roster; the REST witness takes the release the live link already asked for, or asks once itself.
+The link map (`LinkReleases.by_link`) was the same shape and is now `releases.link_releases`, checked
+against `RESOLUTION_AUTHORITY_BY_LINK` with gnomAD and the retired GraphQL leg named in
+`LINKS_WITHOUT_A_RELEASE`, each with its reason. Two more witness-keyed tables are guarded by equality
+with the roster: `CHECK_WITNESSES["placement_agreement"].witness`, and `_NOT_INDEPENDENT`, whose one deliberate
+omission (REST, asked about its own authority's placements by design) is named with its reason in
+`_ASKED_OF_ITS_OWN_AUTHORITY`. Not the same class:
+`DerivedProducer.release_lanes` (REST is live, not a `CACHE_LANES` member, and Ensembl's lane is already
+named) and `CACHE_LANES` itself (the registry, already walked). The `ensembl` licence row in such a run
+stays withheld, now for a true reason: the row REST witnessed was answered by the snapshot, whose label
+never equals REST's `ensembl_116` string. Red on `1007a26d`:
+`test_rm373_a_rest_witness_contributes_the_release_rest_answered_from` (`/info/data` asked 0 times, the
+witness's contribution `None`). **Residuals**: none.
+
 ## RM372 — the Ensembl snapshot moved to a new Hugging Face repo, and a warm cache never migrates
 
 **SHIPPED 2026-11-04 on `0.8`, uncut — a minor.** Owner enricher + format, severity medium.
