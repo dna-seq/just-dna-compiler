@@ -420,7 +420,7 @@ def _check_genotype_coverage(
 
     **Scoped to sites authoring two or more genotypes, and that is the whole of the design.** A site
     with exactly one is the ordinary shape of a drafted-then-curated module — `pathogenic_clinvar`
-    authors one genotype at 326 of its 327 sites — and it is a legitimate one: a rule that fires on the
+    authors one genotype at 325 of its 326 sites — and it is a legitimate one: a rule that fires on the
     risk genotype and says nothing otherwise is a rule, not a gap. Reporting those would put a warning
     on almost every module in existence, which is the failure mode where warnings stop being read.
     Two or more genotypes is the author demonstrating that this site's genotype *space* is what they

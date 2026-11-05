@@ -54,7 +54,7 @@ Variants are authored **by identity, not by baked coordinate** — the 0.5 way:
 - **rsid variants** (301 here): carry only `rsid` + `genotype`/`state`/`conclusion`/`clin_sig`/`gene`. The
   enricher fills `chrom/start/ref/alts` into `resolution.csv` from the ClinVar snapshot
   (`source=clinvar`). Coordinates are *never* baked into `variants.csv`.
-- **coordinate-only variants** (27 here): the ~10% of ClinVar pathogenic variants that carry **no
+- **coordinate-only variants** (26 here, 27 until 2026-11-05; see the last section): the ~10% of ClinVar pathogenic variants that carry **no
   rsID** cannot be authored by rsid, so they are authored `chrom/start/ref/alts` directly (a
   first-class `VariantRow` shape). The enricher passes them through (`source=authored`) unless a
   co-located ClinVar record lends an rsID (see finding 4).
@@ -62,7 +62,7 @@ Variants are authored **by identity, not by baked coordinate** — the 0.5 way:
 Every row also carries **`clin_sig`** — the typed ClinVar call, in the closed `VALID_CLIN_SIG`
 vocabulary — alongside the free-text `conclusion`. That is not decoration: it is what the enricher's
 ClinVar cross-check reads, so the module is checkable against the source it was built from. It agrees on
-all 328 rows, which is the expected result and therefore a real regression guard: a future change to
+every row (328 when this was written, 327 since 2026-11-05), which is the expected result and therefore a real regression guard: a future change to
 allele matching or `clin_sig` normalization that starts producing conflicts here is producing them
 wrongly.
 
@@ -161,3 +161,26 @@ rsID* is coordinate-faithful but never conclusion-faithful. (b) The enricher agg
 allele-aware and records genuine ambiguity (finding 4) instead of guessing. (d) `variant_key` now
 carries `alt` (finding 6), so distinct alleles at one locus are distinct identities and the reverse
 round-trip is a full fixpoint.
+
+## Regenerated against the split Ensembl snapshot (0.8, 2026-11-05)
+
+`resolution.csv` was re-derived online (`enrich --rederive`) against `just-dna-seq/ensembl_variations_split`,
+release `ensembl-variation-2026_07_13-vep116.0`, after RM381 (per-ALT trim), RM382 (a hosting-rejected
+answer asks the next link) and RM387 (`source_loci`). The snapshot now answers most rows (`source=cache`,
+`authority=ensembl`) where ClinVar answered them before.
+
+**One authored edit: the coordinate-only row `11:5226762 C>CAAAG` (genotype `C/CAAAG`) was removed, with
+its `studies.csv` row.** Finding 7 above records it as an insertion dbSNP had not linked to an rsID. dbSNP
+157 now files it under `rs80356821`, beside the 4 bp deletion `CAAAG>C` the module already authors by that
+rsID with the same genotype string. After the per-ALT trim the snapshot answers `rs80356821` with both loci,
+the rsID row expands onto the insertion's key, and `--strict` refused `Duplicate (variant, genotype):
+(11:5226762:C:CAAAG, C/CAAAG)`. The two authored rows say the same thing (`risk`, `pathogenic`, HBB,
+`clin_sig=pathogenic`, the same citation), so the positional row was dropped and the rsID row now carries
+both events. Had they differed, the rsID row would have been given the deletion's coordinate instead. This
+moves `content_signature`, and the module was closed again.
+
+**`rs613985` resolves again.** Both Ensembl snapshots place that rsID only at `3:159434329 T>G`, which
+cannot host the authored `C/CATAACAGCATCAG`. Since RM382 a hosting-rejected answer asks the next link,
+and ClinVar has two records under it (finding 0): `11:5226724 CATAACAGCATCAG>C`, kept (`source=clinvar`),
+and `11:5226978 AG>A`, left out because it cannot host the genotype either. The row's `source_loci` names
+all three placements the chain saw.

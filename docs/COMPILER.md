@@ -639,8 +639,8 @@ silently unreported.
 
 `_check_genotype_coverage` fires **only at a site the module already annotates for two or more
 genotypes**, and that scope is the design rather than a tuning choice. One genotype at a site is the
-ordinary shape of a drafted-then-curated module — `pathogenic_clinvar` authors exactly one at 326 of its
-327 sites — and it is a legitimate rule, not a gap; reporting those would put a line on almost every
+ordinary shape of a drafted-then-curated module — `pathogenic_clinvar` authors exactly one at 325 of its
+326 sites — and it is a legitimate rule, not a gap; reporting those would put a line on almost every
 module in existence, which is how a warning stops being read. Two or more is the author demonstrating
 that the genotype *space* at that site is what they are describing, and the missing member is then a
 hole in something they started. It expects the reference homozygote, one heterozygote per alternate and
