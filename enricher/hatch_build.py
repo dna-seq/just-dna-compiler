@@ -44,9 +44,14 @@ class AtlasProtoHook(BuildHookInterface):
         # every file twice and the build fails with "a second file is being added at the same path".
         # `artifacts` is the mechanism for exactly this shape: build-time output that lives in the
         # package tree and is deliberately absent from version control.
-        build_data.setdefault("artifacts", []).extend(
-            [
-                f"/src/just_dna_enricher/{atlas_protos.PROTO_DIRNAME}/",
-                "/src/just_dna_enricher/generated/",
-            ]
-        )
+        #
+        # The fetched sources go into the **sdist only** (RM397). They are build input: an sdist
+        # carries them so a build from it needs no network, while the wheel needs only what
+        # `generate` writes into `generated/` (the bindings, the service config and upstream's
+        # notice). Shipping both trees put every `.proto` and the notice in the wheel twice. The
+        # wheel target's `exclude` in pyproject.toml keeps them out of a wheel built from an
+        # unpacked sdist too, where no `.gitignore` hides them.
+        artifacts = ["/src/just_dna_enricher/generated/"]
+        if self.target_name == "sdist":
+            artifacts.append(f"/src/just_dna_enricher/{atlas_protos.PROTO_DIRNAME}/")
+        build_data.setdefault("artifacts", []).extend(artifacts)

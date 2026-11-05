@@ -30,6 +30,41 @@ up.
 
 
 
+# The 0.8.x patch line
+
+Patches on `main` after the 0.8.0 cut (2026-11-05), newest first.
+
+## RM397 — the enricher wheel shipped its Atlas build input beside the generated tree
+
+**SHIPPED 2026-11-05 on `main`, uncut — a patch (found by the lead while scripting the dist build).** Owner
+enricher, packaging, severity low.
+
+**The class: a build tree that is input to a later step was shipped beside that step's output.** The
+build hook passed two trees to hatchling as `artifacts`: `_atlas_protos/`, the fetched pinned sources,
+and `generated/`, which `atlas_protos.generate` writes from them (the bindings, a staged copy of each
+`.proto` with its imports rewritten, the service config and upstream's Apache-2.0 notice). The wheel
+needs only `generated/`, so 0.8.0's wheel carried the service config, the notice and `tensor.proto`
+byte for byte twice, and `atlas_service.proto`/`dna_model.proto` twice in two spellings (about 50 KB).
+The sdist does need the sources: a build from it then needs no network.
+
+**Instances (one):** `enricher/hatch_build.py` (`AtlasProtoHook.initialize`): both trees for every
+target → `generated/` for every target, `_atlas_protos/` for the sdist only. `enricher/pyproject.toml`
+`[tool.hatch.build.targets.wheel]` gains `exclude = ["src/just_dna_enricher/_atlas_protos"]`, because a
+wheel built from an unpacked sdist (what `uv build` does) has no `.gitignore` to hide the tree. The
+format and compiler wheels build with `uv_build` from tracked files only, and carry no build input.
+
+**The mechanism:** `scripts/build-dists.sh` now refuses (exit 3) any wheel holding the same bytes under
+two names, beside its non-`.py` share alarm; reverting the hook fix makes it list the three identical
+pairs. `enricher/tests/test_wheel_contents.py` builds the wheel and sdist through the real backend and
+asserts the wheel has no source tree, has every file the runtime reads, and that the sdist has every
+fetched source; reverting the fix fails its first test. A clean venv with the fixed wheel plus
+`[atlas]` imports `atlas_client` and the bindings, and `client_absence()` is `None`.
+
+**Residuals** won't fix — two remainders, both by design: the wheel test is `network`-marked (a fresh checkout fetches the sources and resolves the
+build backend), so the default suite and CI skip it; `build-dists.sh` at each cut is the always-on half.
+The staged `.proto` copies inside `generated/` still ship; they differ from the sources by their import
+lines and are kept as the readable form of what the bindings were generated from.
+
 # The 0.8 PT2 build round
 
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on

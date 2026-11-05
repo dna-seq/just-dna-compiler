@@ -122,6 +122,10 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/just_dna_enricher"]
+# The fetched Atlas sources are the sdist's build input, not the wheel's runtime (RM397): the wheel
+# carries `generated/` alone. Excluded here as well as left out of the hook's wheel artifacts, because
+# a wheel built from an unpacked sdist has no `.gitignore` to hide them.
+exclude = ["src/just_dna_enricher/_atlas_protos"]
 
 # The fetched sources are git-ignored and deliberately NOT build-ignored: the repository carries a
 # pin, the distribution carries the files. `hatch_build.py` force-includes them and the generated

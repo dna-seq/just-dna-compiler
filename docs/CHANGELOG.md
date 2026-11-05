@@ -41,6 +41,16 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-05 — the enricher wheel shipped its Atlas build input beside the generated tree (patch, uncut)
+
+- **The enricher wheel no longer carries `_atlas_protos/`** (RM397), the fetched AlphaGenome `.proto`
+  sources the build generates the bindings from. Everything the runtime reads is under `generated/`, as
+  before; the sdist still carries the sources, so a build from it needs no network. 0.8.0's wheel shipped
+  five files a second time (about 50 KB). Nothing a consumer imports moves.
+- **`scripts/build-dists.sh`** builds every workspace package into a fresh `dist/` and exits 3 when a
+  wheel's non-`.py` files pass 3% of its bytes or a wheel holds the same bytes under two names.
+- `just-dna-format` and `just-dna-compiler` bound `uv-build<0.13` in `[build-system]`.
+
 ## 2026-11-05 — 0.8.0: the cut
 
 **Cut as 0.8.0 on 2026-11-05**, all three packages at one number: `just-dna-format`, `just-dna-compiler`

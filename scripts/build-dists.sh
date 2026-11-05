@@ -17,8 +17,11 @@
 # exits 3, so a `build-dists.sh && uv publish` chain stops before the upload. If the list is all
 # intended, raise the line for that run (`WHEEL_NONPY_ALARM_PCT=5 scripts/build-dists.sh`) or here.
 #
-# Exit codes: 0 built, nothing over the line; 3 built, at least one wheel over the line; anything
-# else, a build failed.
+# A second alarm needs no knob: a wheel holding the same bytes under two names (RM397: 0.8.0 shipped
+# the Atlas protos and their notice twice) is listed and exits 3 too.
+#
+# Exit codes: 0 built, no alarm; 3 built, at least one wheel over the line or holding duplicates;
+# anything else, a build failed.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -48,12 +51,14 @@ done
 echo
 echo "== dist/ (alarm line: non-.py files over $ALARM% of a wheel's bytes)"
 python3 - "$ALARM" <<'PY'
+import hashlib
 import sys
 import zipfile
 from pathlib import Path
 
 alarm = float(sys.argv[1])
 over = []
+twice = []
 for path in sorted(Path("dist").iterdir()):
     if path.name.startswith("."):
         continue
@@ -68,6 +73,15 @@ for path in sorted(Path("dist").iterdir()):
         if pct > alarm:
             note += "  <-- OVER THE LINE"
             over.append((path, pct, non_py))
+        with zipfile.ZipFile(path) as wheel:
+            by_bytes = {}
+            for info in members:
+                if info.file_size and not info.is_dir():
+                    by_bytes.setdefault(hashlib.sha256(wheel.read(info)).hexdigest(), []).append(info.filename)
+        same = [names for names in by_bytes.values() if len(names) > 1]
+        if same:
+            note += "  <-- SAME BYTES TWICE"
+            twice.append((path, same))
     print(f"{path.stat().st_size:>12,}  {path.name}{note}")
 
 for path, pct, non_py in over:
@@ -75,10 +89,15 @@ for path, pct, non_py in over:
     for info in sorted(non_py, key=lambda info: -info.file_size)[:12]:
         print(f"   {info.file_size:>10,}  {info.filename}")
 
-if over:
+for path, same in twice:
+    print(f"\n!! {path.name} holds the same bytes under more than one name (RM397):")
+    for names in same:
+        print("   " + "  ==  ".join(names))
+
+if over or twice:
     print(
-        f"\n!! {len(over)} wheel(s) over {alarm}% non-.py bytes: check the build exclusions "
-        "before publishing (WHEEL_NONPY_ALARM_PCT raises the line).",
+        f"\n!! {len(over)} wheel(s) over {alarm}% non-.py bytes, {len(twice)} holding duplicate "
+        "files: check the build exclusions before publishing (WHEEL_NONPY_ALARM_PCT raises the line).",
         file=sys.stderr,
     )
     sys.exit(3)
