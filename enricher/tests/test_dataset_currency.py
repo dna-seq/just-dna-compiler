@@ -611,6 +611,9 @@ def test_the_cli_prints_the_gap_and_says_when_it_could_not_ask(tmp_path, monkeyp
         # provision a snapshot would make this case depend on whether the runner has egress.
         kwargs["release_probes"] = {"clinvar": _probe("clinvar_2026-08-25")}
         kwargs["download"] = False
+        # RM391: and the reference pass and the VRS mint ask seqrepo, which this case is not about.
+        kwargs["verify_ref"] = False
+        kwargs["mint_vrs"] = False
         return real(spec_dir, **kwargs)
 
     monkeypatch.setattr(enrich_module, "enrich", moved)
