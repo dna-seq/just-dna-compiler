@@ -76,6 +76,124 @@ status line writes to its own `--out` default (`data/repro/<lane>`), never the p
 from, so *provision with `clinvar-gkm build`* (and every build-only lane's line, as before this item)
 leaves the lane absent unless the operator passes `--out`.
 
+## RM394 — the re-derivation's report had fewer arms than the cases it describes, so its words named what had not happened
+
+✅ **SHIPPED 2026-11-05 on `0.8`, uncut — a minor (the 0.8 audit, round 3)**, a cut blocker (audit 3 and the
+docs pass, D4, D5 and class 4's carry instance). Owner enricher (`enrich/outcome.py`, `enrich/orchestration.py`,
+`events.py`, `currency.py`), severity medium. *related* RM375, RM373, RM382, RM393
+
+**Residuals** none
+
+**The class.** A report with fewer arms than the cases it reports (`@answered-is-not-absent`: a verdict with
+several arms owes a reason with the same arms, pairwise distinct), on the `enrich --rederive` migration
+step 0.8 tells every consumer to run. Each sentence was true of one case and printed for all of them, so a
+migrating operator read a cause that had not happened and a remedy that did not apply.
+
+**The instances, on `64c835b9`.**
+
+- **D5**, `enrich/outcome.py:57–64` (`SubjectDrift.__str__`, three arms) and `:79–95` (`_same_events`, any
+  rsID difference → `False`): an allele the source added (`A` → `A,T`, or a row that had no ALT) and an rsID
+  newly named both printed "moved: the source names a different event". Measured by the examples' 0.8
+  regeneration: 94 subjects gained an allele, 10 gained an rsID. → seven arms, `rederive_words.DRIFT_CASES`:
+  `respelled`, `gained_allele`, `lost_allele`, `gained_rsid`, `renamed`, `moved`, `undecided`, carried as
+  `SubjectDrift.case`; the drift warning counts by arm. Re-measured on the pre-regeneration
+  `apoe_klvs_meta` and `hfe_compound_het` against the split snapshot (offline): all four drifts now read
+  "gained an allele", none "moved".
+- **D4**, `enrich/orchestration.py:2087–2092`: the derived-layer currency line always said "Re-derive with
+  `enrich --rederive`". When the release that is behind is the local snapshot, a re-derivation reads it and
+  prints the same line. → one line per `rederive_words.CURRENCY_CASES` member, read against the label of the
+  snapshot the run read (`clinvar`, `clinvar_gkm`): `table_behind_snapshot` → `--rederive`;
+  `snapshot_behind` → `cache pull --only <lane>` (or `cache rebuild`) first; `both_behind` (the snapshot is
+  neither release) → both; `snapshot_unread` (none read, or a label in the other form) → `cache status`,
+  naming no lane. One line per case and source, so two lanes behind are two pulls (the code review).
+  `test_source_release.py::test_a_source_publishing_past_the_snapshot_never_makes_strict_refuse` had pinned
+  the wrong remedy for the `snapshot_behind` case; it now asserts the pull.
+- **Class 4's carry instance**, `enrich/orchestration.py:1595–1602`: "kept the recorded rows for N subject(s)
+  no source could be asked about" was said about subjects a link answered and the hosting filter rejected
+  (RM382's carry) and about ones whose request failed. → each branch that writes no row declares why
+  (`no_row_reason`), and the warning groups the carried subjects by `rederive_words.CARRY_REASONS`:
+  `not_asked`, `off_build`, `no_reverse_map` (RM393's subjects), `unreachable`, `rejected`, and
+  `not_re_answered`, the default for a subject no branch declared, which claims no reason.
+
+The hunt over the other sentences the `--rederive` path prints found each true of every case it is printed
+for: `releases.run_label`'s "`enrich --rederive` re-answers them" (rows another release answered, which this
+run's snapshot does re-answer), the drafted-layer currency line, the undecided-drift line, and
+`unchecked_sentences` (one per skip reason already). Two neighbours stay out by the pm's sizing: the S85
+"recorded as unresolved" warning, and `net.py`'s "upgrade just-dna-enricher" for a hand-picked release, both
+parked by the pm on 2026-11-05 without a number (the audit findings list in `main`'s ROADMAP.md).
+
+**The mechanism.** One module, `enrich/rederive_words.py`, holds each report as a closed vocabulary
+(`frozenset`, P6) and a map from case to sentence, with the decision beside it (`drift_case`,
+`currency_case`); the run and `SubjectDrift` read nothing else. The drift reads the event judge in each
+direction through `events.covers` (`same_allele_sets` is now the two directions combined, unchanged in
+answer), so a gain is decided by the one judge and an unmatched indel stays undecided. `SubjectDrift.respelled`
+is read off the arm and keeps its meaning exactly: an rsID or build change whose events are not the same is
+`moved`, as before.
+
+**The guard**, `enricher/tests/test_the_rederive_report_names_each_case.py`: for each of the three
+registries, the map's keys equal the cases and the sentences are pairwise distinct (no one contained in
+another); every drift arm is what `_drift_case` answers for a real pair of rows; every currency case is
+reached by its labels, and each sentence names its remedy and not the other's (only `table_behind_snapshot`
+lacks the pull); every carry reason names its remedy, an AST walk over the run asserts the reasons the
+branches write equal the registry less `not_re_answered`, which is only the default, and the hfe run with no
+snapshot prints the `not_asked` and `no_reverse_map` groups apart. `test_source_release.py` adds the
+end-to-end other side: a table behind its snapshot is sent to `--rederive`, and after one the line is gone.
+`test_authored_event.py`'s judge registry now names `_drift_case` and `covers`. Mutated once each: the
+gained arm returned as `moved` (two tests red), the currency decision sending every non-recorded snapshot
+to `--rederive` (`both_behind` red), the positional carry declared `not_asked` (the AST walk and the hfe
+run red).
+
+## RM393 — a re-derivation that read no position→rsID map erased a back-filled rsID, and the artifact shipped it null
+
+✅ **SHIPPED 2026-11-05 on `0.8`, uncut — a minor (the 0.8 audit, round 3)**, class 1, a cut blocker. Owner
+enricher (`enrich/orchestration.py`), severity high. *related* RM98, RM382, RM375, RM394
+
+**Residuals** won't fix — a snapshot that was read but lacks the subject's chromosome (*Not fixed* below):
+no real snapshot is built that way, so it waits for a run that meets it. The same run's report called the
+erased rsID "moved: the source names a different event", which is RM394's.
+
+**The class.** Nobody-asked read as an answer (`@unreachable-not-absent`), on the one path `--rederive`
+re-opens: a re-derivation replaces only what was answered, and could-not-ask keeps its rows
+(`@rederive-never-shortens`). A positional subject's rsID is back-filled from a position→rsID map, and only
+the two snapshot links fill one (`rev_candidates`, from the Ensembl snapshot and the ClinVar snapshot); no
+live link answers a position. With neither snapshot read, an empty candidate list meant nobody asked, and
+the branch wrote `rsid=None, source=authored` all the same. `fresh_keys` then counted the subject answered,
+so the carry-forward never put the recorded row back.
+
+**The instance, on `64c835b9`.** `enrich/orchestration.py:1512–1513` (the positional branch): no
+candidates → `rsid=None, status=resolved, source=authored`, whatever the run read → under `--rederive`,
+with no map read and a recorded row for the subject, no fresh row; the carry-forward restores the
+recorded one. The only instance: every other branch that cannot ask already writes nothing (RM98, S20,
+RM382), and a first enrich keeps the authored row, since with nothing recorded the coordinate is the whole
+identity. Measured by the audit on a copy of `hfe_hemochromatosis` with every cache empty: both
+`ga4gh:VA.*` rows lost `rs773443949`, `source` and `source_release`, and the recompiled `weights.parquet`
+and `annotations.parquet` carried `rsid=null`. Since 0.7 (`main:enrich.py:1546`); the 0.8 migration step,
+`--rederive` after a 14.5 GB pull that may fail, is the realistic way in.
+
+**The mechanism.** `reverse_maps_read`, the set of position→rsID maps this run read, by the link name a
+back-filled row records in `source` (`cache` for the Ensembl snapshot, `clinvar`), filled where each
+snapshot's position lookup returns. Narrower than `rsid_links_consulted` on purpose: that one is true for
+any run allowed to go live, which back-fills nothing. Under `--rederive`, a positional subject with no
+candidate whose recorded rsID came from a map not in the set writes no row, and the carry-forward keeps
+it. Per link rather than per run: the pm sized the item narrow with a run-level predicate, and the code
+review found the realistic way in is per link, a failed 14.5 GB Ensembl pull beside a 300 MB ClinVar
+snapshot that pulled, where ClinVar's map is read and has nothing at an Ensembl back-fill's allele.
+
+**The guard**, `enricher/tests/test_a_rederive_with_no_reverse_map_keeps_the_backfill.py`, on the example
+itself under `no_ambient_caches` (an empty base): rederived with no snapshot, the positional rows keep
+`rsid`, `source`, `authority`, `status`, `source_release` and `rsid_alternates`, nothing is reported as
+drift, and the module compiles to the same `artifact.digest` as the untouched copy, with no null rsID in
+`weights.parquet`. Shown red before the change (the row came back `rsid=''`, `source=authored`). Its
+second test is the other half: with an Ensembl snapshot that holds chromosome 6 but not the locus, the
+map was read and said nothing is there, so the rows go out `authored` and the drift names them. Its third
+is the per-link case: a ClinVar snapshot read with nothing at the allele, and the Ensembl back-fill kept.
+Mutated: with the Ensembl link not marking its map read, the second test went red; with the predicate
+per run, the third did.
+
+**Not fixed.** A snapshot that was read but lacks the subject's chromosome (a hand-built or partial one)
+answers "no rsID here" for every subject on it. Telling "the chromosome has no rsID at the allele" from
+"the map holds no such chromosome" needs the snapshot's coverage, which `locations.manifest_coverage`
+reads for the split release; it waits for a run that meets it.
 
 ## RM384 — the Ensembl lane's repository has no public name on 0.8, and every pulled lane spells its repository twice
 

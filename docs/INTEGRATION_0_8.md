@@ -629,7 +629,7 @@ reads the record and no longer calls such a row a contradiction.
 | The parquets' `resolution_loci` and `studies.parquet` `proxy_loci` | The struct gains `authored_event` and `judged_coordinate` (`Utf8`); a key whose locus carries a verdict always keeps its loci, so `reverse` writes the verdict back and lap two reads what lap one read. Another schema change on these parquets: **`artifact.digest` moves on a 0.8 recompile** of a module carrying them; `content_signature` does not. | None. |
 | `reverse`'s `resolution.csv` | Gains the `authored_event` and `judged_coordinate` columns (empty where no verdict rode a `resolution_loci` locus). | None. |
 | The `rsid_coordinate_agreement` record | An insertion's one-base `ref` is no longer read as a substitution: the pair is judged by `events.names_event`, so a respelled indel counts as agreement online and as undecided offline, never as a finding. | A module whose record carried such a finding loses it on the next online `enrich`. |
-| `SubjectDrift.respelled` | `bool \| None`. `True` respelled, `False` moved (the drift warning), `None` undecided (no id and no reference read), warned apart from the drift. An unmatched indel ALT is undecided, since an offline run keeps ALTs an online one splits off or filters. | A caller testing `if drift.respelled` reads `None` as not respelled; test `is True` / `is False`. |
+| `SubjectDrift.respelled` | `bool \| None`. `True` respelled, `False` the source's answer changed (the drift warning; since RM394 `SubjectDrift.case` says how, § 1.43), `None` undecided (no id and no reference read), warned apart from the drift. An unmatched indel ALT is undecided, since an offline run keeps ALTs an online one splits off or filters. | A caller testing `if drift.respelled` reads `None` as not respelled; test `is True` / `is False`. |
 | `just_dna_enricher.events` | New module: `Allele`, `same_event` (moved from `placement`), `names_event`, `authored_event` (returns `(verdict, judged_coordinate)`), `same_allele_sets`, `counterparts`, `kleene_any`, `no_mint`; `just_dna_format.resolution.authored_coordinate_key`; `just_dna_compiler.resolution.recorded_verdicts`. `sequences.indel_spellings` walks an indel's anchors. `resolver.coordinate_verdict` and `check_rsid_coordinates` take keyword `mint`/`read_window`. | Import `Allele` and `same_event` from `events`. |
 
 ### 1.32 Every resolution row names the release that answered it; licence rows are labelled by the table (RM373, no new code)
@@ -740,6 +740,22 @@ A table written before 0.8 keeps its `not_found` rows until `enrich --rederive`,
 | `cache pull` closing line | Was ``caches available: <every lane with a pull route>. Run `cache status` to confirm.``; is now `on disk: <lanes this run pulled or found present>`, or `nothing pulled`, followed by `; nothing published for: <lanes>` when a repo was empty. A pull that found nothing published leaves no directory behind. | A script grepping `caches available` reads `on disk:`. |
 | `cache status`, an absent lane | A lane with both a pull route and a builder names both: ``provision with `cache pull` or `<build command>` ``. | None. |
 
+### 1.42 A re-derivation with no position→rsID map keeps the recorded back-fill (RM393, no new code)
+
+| Surface | What changed | What to do |
+| --- | --- | --- |
+| `resolution.csv` after `enrich --rederive` | A coordinate-only row whose rsID was back-filled keeps its recorded row (`rsid`, `source`, `source_release`) when the run did not read the map that back-filled it (the Ensembl snapshot for `source=cache`, the ClinVar one for `clinvar`); it used to be rewritten `rsid` empty, `source=authored`, and the recompiled parquets carried `rsid=null`. It is carried, so the drift report leaves it out. A snapshot that was read and has no rsID at the allele still replaces it. | None. A module re-derived on 0.8 before this fix with no snapshot: re-derive it again with the snapshots pulled. |
+
+### 1.43 The re-derivation's report names what happened, and the remedy that case needs (RM394, no new code)
+
+| Surface | What changed | What to do |
+| --- | --- | --- |
+| `SubjectDrift.case`, `rederive_words.DRIFT_CASES` | New field with a default: which of seven arms a re-asked subject's change is. `respelled`, `gained_allele` (every recorded event still answered and the source names one more: `A` → `A,T`, which printed "moved: the source names a different event" on 94 subjects of the examples' regeneration), `lost_allele`, `gained_rsid`, `renamed` (the same events under another rsID or none), `moved`, `undecided`. `str(drift)` ends with the arm's phrase. `respelled` reads it exactly as before (`True` respelled, `None` undecided, `False` otherwise). A constructor call without `case` takes the arm `respelled` names; one that contradicts it raises `ValueError`. | A caller grouping drift by `respelled is False` can group by `case`. A log reader matching `moved:` matches the `moved` arm only. |
+| The drift warning | `Re-derivation: N of M re-asked subject(s) now answer differently from the recorded table (<count> <arm>, …) — …`: counted by arm. | None. |
+| The carry-forward warning | `Re-derivation kept the recorded rows for N subject(s), unchanged rather than re-derived, …: <count> subject(s) <reason>; …`, one group per `rederive_words.CARRY_REASONS` member, each with its remedy. It said "no source could be asked" about every subject, including ones a link answered. | A log reader matching `no source could be asked` matches the `not_asked` group only. |
+| The derived-layer `Dataset currency (derived tables)` warning | One line per `rederive_words.CURRENCY_CASES` member and source, read against the label of the snapshot the run read: the snapshot current and the table behind it says `enrich --rederive`; the snapshot the release the table recorded says `cache pull --only <lane>` (or `cache rebuild`) first, since a re-derivation reads that snapshot and repeats the line; a snapshot that is neither says both; no comparable snapshot read names `cache status`. It always said `enrich --rederive`. | Follow the remedy the line names. |
+| `events.covers`, `currency.comparable_labels` | New public names: one direction of the event judge (every allele of one side is an event of the other), and whether two release labels are in one form. | None. |
+
 ## 2. What to change
 
 ### Upgrade order
@@ -768,7 +784,14 @@ A table written before 0.8 keeps its `not_found` rows until `enrich --rederive`,
    0.8's resolution work reaches it. `--rederive` asks every source again against the new release: it
    compares placements (§ 1.18), writes fills left-aligned (§ 1.19), judges an authored spelling
    (§ 1.31) and stamps `source_release` (§ 1.32). Run it online: offline, every indel verdict is
-   `undecided` and Ensembl REST is not asked. Read the diff, because resolutions move as data (§ 1.29). A
+   `undecided` and Ensembl REST is not asked. Read the diff, because resolutions move as data (§ 1.29).
+   Each changed subject is labelled by what happened (§ 1.43): `respelled` (the same events, the new
+   release's spelling: nothing to do), `gained_allele` (the source names one more allele: nothing to do
+   unless a genotype row depended on its absence), `gained_rsid`, and the three that want reading:
+   `moved`, `lost_allele`, `renamed`. `undecided` asks for an online re-run. Subjects it could not ask are
+   carried unchanged, grouped by why; a coordinate-only row whose back-filling snapshot was not read keeps
+   its rsID (§ 1.42). If the dataset-currency line says the local snapshot is the old
+   release, pull the lane first (`cache pull --only <lane>`): re-deriving against it repeats the line. A
    module enriched once before the switch and again after it without `--rederive` holds two placement
    sets for one rsID and may stop compiling under `--strict` (`rsid_placements_disagree`, § 1.30).
 6. **Validate with the compile's switches, then compile.** `just-dna-compiler validate` takes
@@ -1098,7 +1121,8 @@ and its module seat authors and compiles with the just-module-creator plugin v0.
      half-stated pair among the 0.8 columns (§ 1.21) and, if the module carries `allele_function.csv`, an
      HLA allele off IPD-IMGT/HLA's grammar (§ 1.7).
    - **After the snapshot switch:** `just-dna-enricher enrich <spec-dir> --rederive`, online, and read the
-     diff (§ 1.29, § 1.31).
+     diff (§ 1.29, § 1.31); each changed subject names its arm, and the currency line names which release
+     is behind (§ 1.43).
    - **`source_release`** on every `resolution.csv` row the run answered names the release that answered
      it; empty means not recorded, never current (§ 1.32).
 3. **A first 0.8 module also waits on the registry deploy.** The module-creator plugin caps the trio below

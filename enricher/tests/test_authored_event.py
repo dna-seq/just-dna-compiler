@@ -26,7 +26,8 @@ import pytest
 from ga4gh.vrs.dataproxy import _DataProxy
 from just_dna_compiler.compiler import compile_module, reverse_module
 from just_dna_enricher.enrich import enrich
-from just_dna_enricher.enrich.outcome import SubjectDrift, _same_events
+from just_dna_enricher.enrich.outcome import SubjectDrift, _drift_case
+from just_dna_enricher.enrich.rederive_words import RESPELLED_BY_CASE
 from just_dna_enricher.events import (
     AUTHORED_EVENT_VERDICT,
     Allele,
@@ -177,6 +178,11 @@ def _via_coordinate_verdict(authored: tuple, window) -> bool | None:
     return coordinate_verdict(chrom or NEW[0], start, ref, [_locus(NEW)], mint=OFFLINE, read_window=window)
 
 
+def _same_events(before, after, *, mint, read_window) -> bool | None:
+    """The drift's tri-state, read off its case (RM394): `True` respelled, `None` undecided, else `False`."""
+    return RESPELLED_BY_CASE[_drift_case(before, after, mint=mint, read_window=read_window)]
+
+
 def _via_same_events(authored: tuple, window) -> bool | None:
     if authored[2] is None or authored[3] is None:
         pytest.skip("a recorded row is a whole spelling")
@@ -201,7 +207,7 @@ def _via_compare_placements(authored: tuple, window) -> bool | None:
 JUDGES = {
     ("events", "authored_event"): _via_authored_event,
     ("resolver", "coordinate_verdict"): _via_coordinate_verdict,
-    ("enrich.outcome", "_same_events"): _via_same_events,
+    ("enrich.outcome", "_drift_case"): _via_same_events,
     ("placement", "compare_placements"): _via_compare_placements,
 }
 
@@ -220,10 +226,11 @@ def test_every_judge_answers_the_corpus_as_the_one_judge_does(
 
 #: The judge's entry points, and the functions allowed to call them: the registry above plus the judge's
 #: own internals and the run that stamps the verdict on a row.
-_ENTRY_POINTS = {"same_event", "names_event", "authored_event", "same_allele_sets"}
+_ENTRY_POINTS = {"same_event", "names_event", "authored_event", "same_allele_sets", "covers"}
 _INTERNAL = {
     ("events", "names_event"),
     ("events", "same_allele_sets"),
+    ("events", "covers"),
     ("enrich.orchestration", "_run_enrichment"),
 }
 

@@ -401,7 +401,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `enrich` | A package since RM260 — `__init__` re-exports every name `enrich.py` carried; the code is in `subjects`, `outcome`, `build_declaration`, `orchestration`, `verification_records` and `resolution_csv`. Orchestration: `enrich()` runs the resolver chain, writes `resolution.csv` | compiler `_load_csv_rows`, format `ResolutionRow` |
 | `transaction` | **0.7** (RM128): the run's durability — staged answers beside the target, the advisory `flock` over the read-modify-write window, and the `(done, total)` progress unit | format `atomic_writer`, stdlib `fcntl` |
 | `resolver` | the DuckDB rsid↔coord resolver (moved from the compiler in 0.5) | `duckdb`, format |
-| `events` | **0.8** (RM375): the one tri-state judge of whether two spellings of a position name one event (`same_event`, `names_event`), asked by the placement check, the rsid↔coordinate check, `--rederive`'s respelling test and the `authored_event` stamp | `sequences`, format |
+| `events` | **0.8** (RM375): the one tri-state judge of whether two spellings of a position name one event (`same_event`, `names_event`; `covers`, one direction, since RM394), asked by the placement check, the rsid↔coordinate check, `--rederive`'s respelling test and the `authored_event` stamp | `sequences`, format |
 | `clinvar` | the DuckDB ClinVar resolver link (`lookup_loci`) + the annotation reader (`lookup_clin_sig`) | `duckdb`, format |
 | `clinical` | the `clin_sig` cross-check over the ClinVar snapshot (offline, reports only) | format |
 | `concordance` | **0.7** (RM130): the other half of that check — the two verdicts, the per-authority calls behind them, and the writer that puts `clin_sig_concordance.csv` + `clin_sig_authority_calls.csv` beside the spec | format `concordance`, compiler `load_csv_rows` |
@@ -891,7 +891,19 @@ restated — because the provenance columns move on every run by design.
   would be a way to *shorten* the table, which is the reported incident wearing a new flag; an offline
   `--rederive` would replace a full table with an empty one. Answered-and-absent is an answer and does
   replace (it writes a `not_found` row); could-not-ask is not. The carry-forward warns, naming the
-  subjects it kept.
+  subjects it kept, grouped by the reason each has no fresh row (RM394,
+  `rederive_words.CARRY_REASONS`): nobody could be asked (`--offline` with no snapshot), a build no link
+  serves, no position→rsID map read for a coordinate-only subject (RM393: the map that back-filled its
+  rsID, Ensembl's or ClinVar's, was not read, so the rsID is carried rather than erased), a link asked and no usable answer,
+  or every answer rejected by the hosting filter with a recorded placement standing (RM382). Each reason
+  names its own remedy.
+* **The drift label has seven arms (RM394, `rederive_words.DRIFT_CASES`)**: `respelled`, `gained_allele`
+  (every recorded event still answered and the source names one more: `A` → `A,T`, 94 subjects across the
+  examples' 0.8 regeneration), `lost_allele`, `gained_rsid` (a coordinate-only subject's rsID newly
+  named), `renamed` (the same events under another rsID or none), `moved` (an event on each side the other
+  does not name, or another build) and `undecided`. `SubjectDrift.case` carries the arm and
+  `SubjectDrift.respelled` reads it as before: `True` respelled, `None` undecided, `False` every arm where
+  the source's answer changed. One drift warning counts the changed subjects by arm.
 * **A re-derivation resumes only another re-derivation.** After a gap-filling run commits, its staged
   answers are exactly what produced the recorded table — so a later `--rederive` seeded from them
   would compare that table against its own provenance and report a clean bill for precisely the
@@ -1310,7 +1322,8 @@ misses the row, though nobody is wrong (S120).
   unknown. Outside `resolution_signature`.
 - **Recorded rows are not respelled.** Merge-not-clobber holds (`@sidecar-authoritative`): a
   `resolution.csv` written before 0.8 is respelled only under `--rederive` or after the file is deleted.
-  The drift canary names a respelled subject apart (`SubjectDrift.respelled`, logged at INFO): when every
+  The drift canary names a respelled subject apart (`SubjectDrift.respelled`, logged at INFO; its other
+  arms since RM394 are under `rederive` above): when every
   allele on both sides carries a `vrs_id` and the ids are the same, the source did not move, this
   release's spelling did. **Three-valued since RM375**: with an id missing on either side the alleles go
   to the one spelling judge (`events.same_allele_sets`, against the reference when the run has one), so a
@@ -1434,9 +1447,14 @@ consulted authority its call rows name, at the `clin_sig_authority_call` layer.
 licence row is a release `--verify-datasets` compares, and both have a currency probe. A source
 publishing past the release that answered is the source working and no authored edit clears it
 (`@a-source-recuring-is-not-a-strict-matter`), so on every layer but `annotation`
-(`licensing.DRAFTED_LAYERS`) the finding warns in both modes, escalates in neither, and names its remedy:
-`enrich --rederive`, or delete the derived table and re-run. Only a drafted layer's superseded release
-refuses under `strict` and says re-draft.
+(`licensing.DRAFTED_LAYERS`) the finding warns in both modes, escalates in neither, and names its remedy.
+**The remedy depends on which release is behind (RM394, `rederive_words.CURRENCY_CASES`)**, read against
+the label of the snapshot this run read for the source: the snapshot current and the table behind it is
+`enrich --rederive`; the snapshot the release the table recorded is `cache pull --only <lane>` (or `cache
+rebuild`) first, because a re-derivation reads that same snapshot and prints the same line; a snapshot
+that is neither is both; and no comparable snapshot read names `cache status` and both. One line per
+source, since each names its own lane. Only a drafted
+layer's superseded release refuses under `strict` and says re-draft.
 
 ### Reverse (position→rsid) back-fill is allele-aware
 

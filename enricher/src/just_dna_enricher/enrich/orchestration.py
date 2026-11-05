@@ -45,6 +45,7 @@ from just_dna_enricher.clinical import (
     concordance_sentences,
     tautology_reason,
 )
+from just_dna_enricher.clinvar_gkm import CLINVAR_GKM_SOURCE
 from just_dna_enricher.concordance import (
     AnsweredCallReport,
     answered_call_notes,
@@ -56,6 +57,7 @@ from just_dna_enricher.currency import (
     DatasetCurrency,
     ReleaseProbe,
     check_dataset_currency,
+    comparable_labels,
     unchecked_sentences,
 )
 from just_dna_enricher.download import ensure_clinvar_snapshot, ensure_snapshot
@@ -66,6 +68,12 @@ from just_dna_enricher.enrich.outcome import (
     SubjectDrift,
     _rederived_drift,
     _subject_key,
+)
+from just_dna_enricher.enrich.rederive_words import (
+    by_case,
+    carry_sentence,
+    currency_case,
+    currency_remedy,
 )
 from just_dna_enricher.enrich.releases import (
     LinkReleases,
@@ -152,6 +160,27 @@ def _split_by_layer(behind: list[DatasetCurrency]) -> tuple[list[DatasetCurrency
         [leg for leg in behind if leg.layer in DRAFTED_LAYERS],
         [leg for leg in behind if leg.layer not in DRAFTED_LAYERS],
     )
+
+
+def _derived_by_case(
+    legs: list[DatasetCurrency], local_releases: Mapping[str, str | None]
+) -> dict[tuple[str, str], list[DatasetCurrency]]:
+    """Superseded derived legs grouped by `(CURRENCY_CASES member, source)`, sorted.
+
+    Per source as well as per case, because the remedy names the source's lane and its snapshot's label:
+    ClinVar and ClinVar-GKM both behind are two pulls. A source this run holds no snapshot label for
+    (`local_releases` lacks it, or the label is `None`) is `snapshot_unread`: which side is behind is
+    unknown, and the sentence names `cache status` and both remedies.
+    """
+    grouped: dict[tuple[str, str], list[DatasetCurrency]] = {}
+    for leg in legs:
+        local = local_releases.get(leg.source)
+        current = leg.current or ""
+        case = currency_case(
+            leg.recorded, current, local, local is not None and comparable_labels(local, current)
+        )
+        grouped.setdefault((case, leg.source), []).append(leg)
+    return {key: grouped[key] for key in sorted(grouped)}
 
 
 def _superseded(legs: list[DatasetCurrency]) -> str:
@@ -683,6 +712,14 @@ def _run_enrichment(
     pos_candidates: dict[tuple, list[str]] = {}
     rev_candidates: dict[tuple, list[str]] = {}  # (chrom,start,ref,alt) -> sorted candidate rsids
     rev_source: dict[tuple, str] = {}  # which link produced the candidates
+    # **Which position→rsID maps were read this run (RM393)**, by the link name a back-filled row records
+    # in `source` (`cache` for the Ensembl snapshot, `clinvar`). Only those two snapshot links fill
+    # `rev_candidates` — no live link answers a position — so an empty candidate list is an answer only
+    # from a map that was read: a recorded back-fill whose link's map was not read this run (no snapshot,
+    # or a failed pull of one while the other is present) was not re-asked. Narrower than
+    # `rsid_links_consulted` below on purpose: that one is also true for a run that may go live, which
+    # back-fills nothing.
+    reverse_maps_read: set[str] = set()
     positions = [(v.chrom, v.start, v.ref, _authored_alt(v)) for v in need_rsid]
 
     # One proxy, one read cache for the run: the hosting filter settles an undecided indel with it
@@ -767,6 +804,7 @@ def _run_enrichment(
             rsid_to_loci, pos_candidates, _ = lookup_loci(
                 reference, rsids, positions, non_nucleotide=non_nucleotide_rsids
             )
+            reverse_maps_read.add("cache")
         except Exception as exc:
             # A *located* cache can still be unusable — a stale snapshot, or a parquet a different
             # tool wrote — and the query then raises rather than returning nothing. That was fatal
@@ -839,6 +877,7 @@ def _run_enrichment(
                     cv_rsid_to_loci, cv_pos_candidates, _ = clinvar.lookup_loci(
                         clinvar_ref, cv_rsids, cv_positions
                     )
+                    reverse_maps_read.add("clinvar")
                 except Exception as exc:
                     logger.warning(
                         "ClinVar reference at %s is present but not queryable (%s); continuing "
@@ -1165,13 +1204,12 @@ def _run_enrichment(
         ),
         staged=frozenset(staged_rsids),
     )
+    clinvar_gkm_release = snapshot_release_label(clinvar_gkm_ref) if clinvar_gkm_ref is not None else None
     # Checked against `PLACEMENT_WITNESSES`, so a witness added there cannot go unlabelled here.
     witness_release = witness_releases(
         {
             CLINVAR_WITNESS: clinvar_release,
-            CLINVAR_GKM_WITNESS: snapshot_release_label(clinvar_gkm_ref)
-            if clinvar_gkm_ref is not None
-            else None,
+            CLINVAR_GKM_WITNESS: clinvar_gkm_release,
             ENSEMBL_WITNESS: rest_witness_release,
         }
     )
@@ -1190,6 +1228,10 @@ def _run_enrichment(
     # named in the refusal, and their subjects, which `--rederive` counts as answered.
     hosting_unresolved: list[str] = []
     hosting_rejected_subjects: set[tuple] = set()
+    # Why each subject the loop wrote no fresh row for has none, declared by the branch that wrote nothing
+    # (RM394): the carry-forward's report names the reason per group, so a subject a link answered is
+    # never described as one nobody could ask. A `rederive_words.CARRY_REASONS` member.
+    no_row_reason: dict[tuple, str] = {}
     for v in subjects:
         key = v.variant_key
         subject = _subject_key(v)
@@ -1453,6 +1495,7 @@ def _run_enrichment(
                 # `--rederive` counts it answered, so a recorded placement is not carried past it.
                 unresolved.append(key)
                 hosting_rejected_subjects.add(_subject_key(v))
+                no_row_reason[_subject_key(v)] = "rejected"
                 if v.rsid not in unreachable_rsids | unanchored_rsids:
                     # A link that could not answer leaves the chain incomplete, so the refusal asks for
                     # the link rather than the genotype (`@unreachable-not-absent`).
@@ -1465,6 +1508,7 @@ def _run_enrichment(
                 # fabricated identifier. The key stays `unresolved`, so `strict` still refuses and
                 # `best_effort` still warns; what changes is that neither claims a source said no.
                 unresolved.append(key)
+                no_row_reason[_subject_key(v)] = "unreachable"
             elif genome_build == "GRCh38" and not rsid_links_consulted:
                 # **No link ran, so there is no answer to record** (RM98). This branch used to write
                 # `status="not_found", source="cache"` unconditionally, which under `--offline` on a
@@ -1483,6 +1527,7 @@ def _run_enrichment(
                 # world, and collapsing them would replace one small untruth with another.
                 unconsulted_rsids.add(v.rsid)
                 unresolved.append(key)
+                no_row_reason[_subject_key(v)] = "not_asked"
             elif genome_build == "GRCh38":
                 out.append(
                     ResolutionRow(
@@ -1503,12 +1548,30 @@ def _run_enrichment(
                 # no fact is worse than writing no row: the position is simply still unset, which the
                 # unresolved list already says and the compiler already warns about.
                 unresolved.append(key)
+                no_row_reason[_subject_key(v)] = "off_build"
         elif v.rsid is None and v.chrom is not None:
             # Allele-aware back-fill (Tier 0/1/3): 0 candidates → leave rsid null (coordinate is the
             # identity, don't guess); 1 → attach it; ≥2 (genuine dbSNP merge at the exact allele) →
             # deterministic pick + status="ambiguous" + the full candidate list, never a silent guess.
             pt = (v.chrom, v.start, v.ref, _authored_alt(v))
             cands = rev_candidates.get(pt, [])
+            if (
+                rederive
+                and not cands
+                and any(
+                    r.rsid is not None and r.source not in reverse_maps_read
+                    for r in existing.get(_subject_key(v), ())
+                )
+            ):
+                # **Nobody asked, so nothing replaces the recorded row (RM393).** The recorded rsID came
+                # from a map this run did not read, so an empty `cands` is not an answer about it, and
+                # writing `rsid=None, source=authored` here erased a back-filled rsID that the recompiled
+                # artifact then shipped as null. No row, like every other could-not-ask branch: the
+                # carry-forward below puts the recorded rows back unchanged (`@rederive-never-shortens`).
+                # A map that was read and has no rsID at the allele is an answer, and replaces. A first
+                # enrich keeps the authored row: with nothing recorded, the coordinate is the identity.
+                no_row_reason[_subject_key(v)] = "no_reverse_map" if genome_build == "GRCh38" else "off_build"
+                continue
             if not cands:
                 rsid, status, alternates, src = None, "resolved", None, "authored"
             elif len(cands) == 1:
@@ -1578,7 +1641,7 @@ def _run_enrichment(
         # else — so carrying it forward here would make `--rederive` resurrect rows a plain re-run
         # prunes, which is a second behaviour nobody asked this flag for.
         in_scope = {_subject_key(v) for v in subjects}
-        carried: list[str] = []
+        carried: dict[str, str] = {}
         still_resolved: set[str] = set()
         for subject_key, recorded in existing.items():
             if subject_key in fresh_keys or subject_key not in in_scope:
@@ -1586,19 +1649,24 @@ def _run_enrichment(
             out.extend(recorded)
             carried_rows.update(id(row) for row in recorded)
             carried_keys.add(subject_key)
-            carried.append(recorded[0].variant_key)
+            # A subject no branch declared a reason for is said without claiming one (RM394).
+            carried[recorded[0].variant_key] = no_row_reason.get(subject_key, "not_re_answered")
             if any(r.chrom is not None for r in recorded):
                 still_resolved.add(recorded[0].variant_key)
         unresolved = [k for k in unresolved if k not in still_resolved]
         if carried:
+            # One line, grouped by reason (RM394): a subject a link answered and one nobody asked are
+            # different facts with different remedies, and the old sentence said "no source could be
+            # asked" about both.
             logger.warning(
-                "Re-derivation kept the recorded rows for %d subject(s) no source could be asked "
-                "about this run (%s): a re-derivation that dropped them would replace a longer table "
-                "with a shorter one, which nothing downstream can tell from a module whose author "
-                "resolved less. They are unchanged rather than re-derived, so the report below says "
-                "nothing about them.",
+                "Re-derivation kept the recorded rows for %d subject(s), unchanged rather than re-derived, "
+                "so the report below says nothing about them (a re-derivation that dropped them would "
+                "replace a longer table with a shorter one): %s.",
                 len(carried),
-                examples(sorted(carried)),
+                "; ".join(
+                    carry_sentence(reason, len(keys), examples(sorted(keys)))
+                    for reason, keys in by_case(carried).items()
+                ),
             )
 
     # One line for the whole run, grouped by reason and counted. These are not findings about the
@@ -2028,13 +2096,19 @@ def _run_enrichment(
             # The denominator travels with the finding: "3 subjects moved" is unreadable without the
             # number re-asked. Nothing is printed when nothing moved — a comparison whose empty result
             # is the normal case must not announce a zero as though it were evidence.
+            # Counted by case (RM394): an allele the source added is not a move, and the split is what
+            # tells an operator migrating 0.8 whether anything needs reading.
             logger.warning(
                 "Re-derivation: %d of %d re-asked subject(s) now answer differently from the "
-                "recorded table — %s. The fresh answer is committed and the old one is not kept; a "
+                "recorded table (%s) — %s. The fresh answer is committed and the old one is not kept; a "
                 "value you decided rather than derived belongs in overrides.csv, where re-deriving "
                 "cannot reach it.",
                 len(moved),
                 compared,
+                ", ".join(
+                    f"{len(keys)} {case}"
+                    for case, keys in by_case({d.variant_key: d.case for d in moved}).items()
+                ),
                 "; ".join(str(d) for d in moved),
             )
         if respelled:
@@ -2058,6 +2132,13 @@ def _run_enrichment(
                 "; ".join(str(d) for d in unsettled),
             )
 
+    # The release of each snapshot this run read, keyed by the `SourceRow.source` (and cache lane) it
+    # stands for: what the derived-layer currency line compares a superseded label against (RM394).
+    local_releases: dict[str, str | None] = {
+        "clinvar": clinvar_release,
+        CLINVAR_GKM_SOURCE: clinvar_gkm_release,
+    }
+
     # Fifth validation pass, and the only one whose subject is a claim the module makes about its own
     # provenance rather than about a variant (RM85). Read off `sources.csv` **as it stands**, before the
     # commit writes this run's labels (RM373), so nothing here is comparing the module against something
@@ -2079,16 +2160,18 @@ def _run_enrichment(
                 "consider --rederive to see whether any answer actually changed.",
                 _superseded(drafted_behind),
             )
-        if derived_behind:
-            # A derived table's source publishing past the release that answered it is the source
-            # working, and no authored edit clears it, so it warns in BOTH modes and escalates in
-            # neither (`@a-source-recuring-is-not-a-strict-matter`, RM373). Its remedy is a re-derivation,
-            # never a re-draft: nothing in a derived table was drafted.
+        # A derived table's source publishing past the release that answered it is the source working,
+        # and no authored edit clears it, so it warns in BOTH modes and escalates in neither
+        # (`@a-source-recuring-is-not-a-strict-matter`, RM373). Never a re-draft: nothing in a derived
+        # table was drafted. **Which release is behind decides the remedy (RM394)**: a re-derivation
+        # reads the local snapshot, so when the snapshot is the old release it repeats this line, and
+        # the remedy is the lane's pull. One line per case, each naming its own.
+        for (case, source), legs in _derived_by_case(derived_behind, local_releases).items():
             logger.warning(
                 "Dataset currency (derived tables): %s. Not a strict matter: a source publishing past "
-                "the release that answered is the source working. Re-derive with `enrich --rederive`, "
-                "or delete the derived table and re-run, to move the label.",
-                _superseded(derived_behind),
+                "the release that answered is the source working. %s.",
+                _superseded(legs),
+                currency_remedy(case, lane=source, local=local_releases.get(source)),
             )
         for line in unchecked_sentences(dataset_currency):
             # INFO, not WARNING, and the level is the judgement: this is not a finding about the

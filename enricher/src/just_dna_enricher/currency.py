@@ -117,6 +117,11 @@ def _label_kind(label: str) -> str:
     return "digest" if _DIGEST_MARKER in label else "stated"
 
 
+def comparable_labels(first: str, second: str) -> bool:
+    """Whether two release labels are written in one form, so equality between them means anything."""
+    return _label_kind(first) == _label_kind(second)
+
+
 @dataclass
 class ClinVarReleaseClient:
     """What release ClinVar publishes *now*, read from the live VCF's own header.

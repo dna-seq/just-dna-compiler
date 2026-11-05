@@ -41,6 +41,30 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-05 — RM394: the re-derivation's report says what happened, and the remedy each case needs (0.8, uncut)
+
+- **The drift label has seven arms.** An allele the source added (`A` → `A,T`) reads "gained an allele"
+  where it read "moved: the source names a different event" (94 subjects of the examples' regeneration);
+  an rsID newly named reads "gained an rsID". `SubjectDrift.case` carries the arm (`respelled`,
+  `gained_allele`, `lost_allele`, `gained_rsid`, `renamed`, `moved`, `undecided`); `respelled` reads as
+  before. The drift warning counts by arm.
+- **The derived-layer currency line names the release that is behind**, one line per source. When the local
+  snapshot is the release the table recorded, it says `cache pull --only <lane>` first: a re-derivation reads
+  the same snapshot and would repeat the line. When the snapshot is current, it says `enrich --rederive`.
+- **The carry-forward groups the subjects it kept by why**, each with its remedy; "no source could be asked"
+  is said only of subjects nobody could ask.
+- One module, `enrich/rederive_words.py`, maps each case to its sentence; a test walks every case.
+
+## 2026-11-05 — RM393: a re-derivation with no snapshot keeps a positional row's back-filled rsID (0.8, uncut)
+
+- **`enrich --rederive` no longer erases what it could not ask.** A coordinate-only row's rsID comes from a
+  position→rsID map, which only the Ensembl and ClinVar snapshots supply. With neither read (a bare machine
+  under `--offline`, or a failed pull), the re-derivation wrote the row `rsid` empty and `source=authored`,
+  and the recompiled `weights.parquet`/`annotations.parquet` carried `rsid=null`. A recorded back-fill whose
+  map was not read this run (per link: a failed Ensembl pull beside a ClinVar snapshot counts) is now carried
+  forward unchanged, so the module recompiles to the same `artifact.digest`. A map that was read and has no
+  rsID at the allele still replaces it. Measured on `hfe_hemochromatosis` (audit round 3).
+
 ## 2026-11-05 — RM395: the commands the user guides run do what the guides say (0.8, uncut)
 
 - `just-dna-compiler keygen --out <path>` creates a missing parent directory, as `compile` and `reverse`
