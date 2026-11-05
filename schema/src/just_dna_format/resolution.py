@@ -41,8 +41,8 @@ from just_dna_format.vrs import normalize_chrom, split_vrs_ids, validate_caid, v
 #
 # The rest of the columns are outside too, each for a reason SCHEMAS.md § resolution.csv states at
 # length (named here since RM365, which found them outside with no word about them on this tuple):
-# `authority` is out as provenance beside `source`: it names the link that answered (RM33), and a
-# reversed table has none to name. `rsid_alternates`, `rsid_current` and `rsid_status` are out because
+# `authority` is out as provenance beside `source`: it names the licensed source the link spoke for
+# (RM33), which says who answered, not what; a reversed row keeps it (RM380). `rsid_alternates`, `rsid_current` and `rsid_status` are out because
 # they describe dbSNP's time-varying state about the rsID, not the placement, and stay out of the
 # artifact on purpose. `vrs_id`, `vrs_spec` and `caid` are out as cross-references to the allele the
 # coordinate already names; leaving them out meant adding them in 0.5 moved no signature.
@@ -211,7 +211,8 @@ class ResolutionRow(PairedFields):
             "The licensed data source the link speaks for — `ensembl` for `ensembl-rest`/"
             "`ensembl-graphql`/`cache`, `clinvar` for the snapshot, `gnomad` for the last-resort link. "
             "Joins `sources.csv.source`. Empty when there is no external authority to declare "
-            "(`authored`, `reversed`, `manual`: the module's own bytes or a human)."
+            "(`authored`, `manual`: the module's own bytes or a human). A `reversed` row keeps the "
+            "authority of the row it was reversed from, since its facts are still that source's (RM380)."
         ),
     )
     status: str | None = Field(
@@ -338,8 +339,9 @@ class ResolutionRow(PairedFields):
             "or `release.json` `dataset`, a ClinVar snapshot's `clinvar_<date>`, live Ensembl REST's "
             "data release (`ensembl_116`, from `/info/data`), gnomAD's dataset id. Written only by the "
             "run that answered the row, and never back-filled onto a row it did not answer. Empty means "
-            "not recorded (a source that states no release, a row written before 0.8, an authored or "
-            "reversed row), never the current release."
+            "not recorded (a source that states no release, a row written before 0.8, an authored row), "
+            "never the current release. A `reversed` row keeps the release of the row it was reversed "
+            "from (RM380)."
         ),
     )
 

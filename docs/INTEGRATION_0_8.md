@@ -583,6 +583,14 @@ reads the record and no longer calls such a row a contradiction.
 | `licensing.csv`, `manifest.sources` | New rows at the new `clin_sig_authority_call` layer (`VALID_SOURCE_LAYERS`, 14 members) for ClinVar and PubMind when a run writes `clin_sig_authority_calls.csv` naming them, consulted. `sources.signature` and `artifact.digest` move on the next enrich and compile of a module with a concordance record. Fact class: never taints. | A reader closed over the 13 layers accepts the new member. |
 | `concordance.write_concordance_tables` | Takes `error=` (the caller's type for a licence table that will not merge), and reads the licence table before it writes. | None. |
 
+## 1.34 `reverse` gives back every `resolution.csv` column a parquet carries (RM380, no new code)
+
+| Surface | What changed | What to do |
+| --- | --- | --- |
+| The parquets' `resolution_loci` and `studies.parquet` `proxy_loci` | The struct is every `ResolutionRow` column but the eight `just_dna_compiler.compiler.parquets.RESOLUTION_LOCUS_EXCLUDED` names, in the model's order: it gains `caid`, `authority`, `status`, `placement_witness`, `placement_verdict`, `left_aligned` (`Boolean`) and `source_release`, and `authored_event`/`judged_coordinate` move after them. A key whose locus holds any value no row cell rebuilds (anything but an empty cell, or `status=resolved`) keeps its loci, so an enriched module carries loci where it carried none. Every parquet with either column gets a new `artifact.digest`; `content_signature` and `resolution_signature` do not move. | Read struct fields by name. A reader that indexed them by position re-reads the order. |
+| `reverse`'s `resolution.csv` | Gains `caid`, `authority`, `placement_witness`, `placement_verdict`, `left_aligned` and `source_release`, in the model's column order, written back from the locus; a reversed row keeps the authority and release of the row it came from, and an `ambiguous` row stays `ambiguous` (it came back `resolved` before, so lap 2 dropped the warning and `strict` built). `source=reversed` and an empty `fetched_at` are unchanged; `rsid_alternates`/`rsid_current`/`rsid_status` are still not written. A second-lap compile now reads the same `authority` and witness the first did, so it no longer names a declared source unused. | None. A consumer that read an empty `authority` as "reversed" reads `source`. |
+| `rsid_coordinate_disagrees` strict refusal | The `strict`-only continuation now reads "The authored value is kept and the table's position is carried beside it, so the next compile reaches this same finding: strict builds only on an authored pair the table agrees with." The warning text and the closing "Fix one of the two, or compile without strict." are unchanged. | A consumer grepping "does not survive a reverse" greps the new phrase. |
+
 ## 2. What to change
 
 1. If you parse `manifest.json` with `just-dna-format`, move your pin to 0.8 when you start reading

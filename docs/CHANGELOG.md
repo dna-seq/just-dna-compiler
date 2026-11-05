@@ -41,6 +41,21 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-05 — RM380: reverse gives back every resolution.csv column a parquet carries (0.8, uncut)
+
+`compile → reverse → compile` now keeps `authority`, `placement_witness`/`placement_verdict`,
+`left_aligned`, `source_release`, `caid` and `status` on every `resolution.csv` row a parquet carries,
+so a best-effort `ambiguous` pick is no longer laundered into `resolved` by a round trip. The locus
+struct (`resolution_loci`, `proxy_loci`) is derived from `ResolutionRow` minus
+`parquets.RESOLUTION_LOCUS_EXCLUDED`, a map naming each left-out column with its reason, and a test walks
+the model against the two. A key whose locus holds any of those columns keeps its loci, so a cleanly
+resolved module carries them too. Reverse's `resolution.csv` header is derived from the same list; its
+`variants.csv`/`studies.csv` headers and the enricher's `frequencies.csv`/`gene_metrics.csv` headers are
+held to their models by equality tests. `compile --strict`'s refusal for an authored rsID↔coordinate pair
+the table contradicts now says the table's position is carried and the next compile reaches the same
+finding, instead of saying it is lost. 20 of 22 reference examples get a new `artifact.digest`; no
+`content_signature` or `resolution_signature` moves. → [ROADMAP_HISTORY § RM380](ROADMAP_HISTORY.md#rm380--a-hand-kept-struct-mirrored-resolutionrow-with-nothing-asserting-the-two-agree-so-reverse-dropped-every-08-provenance-column)
+
 ## 2026-11-05 — RM373 amendment: a row Ensembl REST witnessed contributes REST's release (0.8, uncut)
 
 - **The placement witness's release map covers every witness.** It named ClinVar and ClinVar-GKM and

@@ -20,9 +20,11 @@ from just_dna_format.manifest import (
     Verification,
     read_manifest,
 )
+from just_dna_format.resolution import ResolutionRow
 from just_dna_format.vrs import join_vrs_ids
 
 from just_dna_compiler.compiler.manifest import _log_left_behind_reason
+from just_dna_compiler.compiler.parquets import RESOLUTION_LOCUS_FIELDS, RESOLUTION_LOCUS_NOT_WRITTEN
 from just_dna_compiler.compiler.positional import _POSITIONAL_TABLE_CSVS, _POSITIONAL_TABLE_KINDS
 from just_dna_compiler.compiler.tables import (
     _FACT_TABLES,
@@ -203,7 +205,8 @@ REVERSE_MANIFEST_EXCLUDED: dict[str, str] = {
     "compilation.compiled_at": "the wall-clock time of the compile, which a second compile cannot repeat",
     "compilation.warnings": (
         "the first lap's findings include the attestation and closure reverse drops, and those about "
-        "resolution provenance (`authority`, `placement_witness`) that reverse discards with `source`"
+        "the resolution provenance reverse stamps itself (`source`) or leaves to the enricher "
+        "(`rsid_status`, `rsid_alternates`, `parquets.RESOLUTION_LOCUS_EXCLUDED`)"
     ),
     "compilation.carried": "derived from `compilation.warnings`, which is excluded for the reason it gives",
     "compilation.warnings_summary": "derived from `compilation.warnings`, which is excluded for the reason it gives",
@@ -763,6 +766,14 @@ RESOLUTION_SOURCE_TABLES: tuple[str, ...] = (
 )
 
 
+#: The reversed `resolution.csv` header, in the model's column order: every column but the three reverse
+#: does not write, derived rather than hand-kept so a carried column reaches the file (RM380). The ones a
+#: locus does not carry (the key, the module's build, `source`, `fetched_at`) `_resolution_record` stamps.
+REVERSED_RESOLUTION_FIELDS: tuple[str, ...] = tuple(
+    name for name in ResolutionRow.model_fields if name not in RESOLUTION_LOCUS_NOT_WRITTEN
+)
+
+
 def _write_resolution_csv(
     weights_df: pl.DataFrame | None,
     positional: list[tuple[str, pl.DataFrame]],
@@ -808,27 +819,21 @@ def _write_resolution_csv(
       table contributes **one row per key**: those tables are never expanded, so a second row rebuilt
       from cells would invent a one-to-many the table never stated.
 
-    **Reverse emits facts and discards provenance, deliberately and completely — with one exception.**
-    `source` becomes `reversed`, `status` becomes `resolved`, `fetched_at` empties — and the
-    provenance-only columns (`rsid_alternates`, `rsid_current`, `rsid_status`, `caid`) are simply not
-    written. This was once filed as a bug about `rsid_alternates` specifically; it is not one, and it is
-    not fixable here. Those columns are **outside** the fact set precisely so they stay out of
-    `weights.parquet`, so the information does not exist in the artifact this function reads — emitting
-    the column names would produce a header with permanently empty cells and change nothing.
-
-    The exception is `vrs_id` with its `vrs_spec` (RM270, 0.8): every variant parquet carries the id
-    `resolution.csv` recorded for each allele, because it is the spelling-independent key a consumer
-    joins an indel on, so the artifact holds it and this writes it back, holes kept. Without that, a
-    round trip dropped every id (RM241's residual) and the second lap's manifest counted none.
-
-    Recovering an ambiguous candidate list after a round-trip means re-running the enricher, which is
-    the correct place for it: the candidate list is a statement about a reference at a moment, not a
-    property of the module.
-
-    `authority` (RM33) joins that list for the same reason and one of its own: `source` is `reversed`
-    here, and a reversed table's facts came out of parquet rather than from any licensed source, so
-    there is no authority to name. The column is absent, loads as `None`, and contributes nothing to the
-    compiler's `sources.csv` coherence check — which is the accurate statement.
+    **Reverse writes back every column a parquet's locus carries (RM380)**, which is every
+    `ResolutionRow` column but the ones `parquets.RESOLUTION_LOCUS_EXCLUDED` names with a reason, and
+    the header is derived from the same list (`REVERSED_RESOLUTION_FIELDS`). Outside a signature is not
+    the same as dropped: `authority`, `placement_witness`/`placement_verdict`, `left_aligned`,
+    `source_release`, `caid`, `authored_event`/`judged_coordinate` and the `vrs_id`/`vrs_spec` pair
+    all come back, because the next compile reads several of them (`sources_in_use`, the placement
+    check's withholds, the release reading) and a second lap reading a table that says less than the
+    first reached different findings. `status` is carried too, so an `ambiguous` pick stays one on the
+    second lap (the cell rebuild writes `resolved`, which every positioned locus it rebuilds is). Four
+    columns reverse stamps itself: the key, the module's `genome_build`, `source` (`reversed`, the link
+    that wrote this row) and an empty `fetched_at` (no clock is read, so the emit is deterministic). Three it leaves out:
+    `rsid_alternates`, `rsid_current` and `rsid_status`, statements about a reference at a moment that
+    re-running the enricher recovers (`@rsid-alternates-closed`). A row the cell rebuild writes (a
+    parquet compiled before the carried column existed, or one whose loci the row's cells reproduce and
+    which held no provenance) writes those columns empty, as before.
 
     `genome_build` is the module's, and it reaches **both** the column and `derive_variant_key`. Getting
     only the column right is not enough and was the first shape of this fix: the key is minted from
@@ -836,23 +841,7 @@ def _write_resolution_csv(
     GRCh38 allele identity — on a row whose own `genome_build` cell said `GRCh37`. The row contradicted
     itself, and since `resolve_from_table` joins on `variant_key`, it also silently matched nothing on
     recompile."""
-    fieldnames = [
-        "variant_key",
-        "rsid",
-        "chrom",
-        "start",
-        "ref",
-        "alts",
-        "genome_build",
-        "locus_index",
-        "vrs_id",
-        "vrs_spec",
-        "authored_event",
-        "judged_coordinate",
-        "source",
-        "status",
-        "fetched_at",
-    ]
+    fieldnames = list(REVERSED_RESOLUTION_FIELDS)
     # A one-to-many rsid contributes N rows under ONE authored key, so `locus_index` counts within
     # that key — matching what the enricher writes and what `resolve_from_table` expects to read back.
     # Keying these on the per-locus `variant_key` instead (as this writer used to) left the re-emitted
@@ -1089,32 +1078,33 @@ def _resolution_record(
 ) -> dict[str, object]:
     """One re-emitted `resolution.csv` row. Shared by the weights and positional passes so the two
     sources cannot render the same fact two ways."""
-    return {
-        "variant_key": resolution_key,
-        "rsid": _scalar_cell(row.get("rsid")),
-        "chrom": _scalar_cell(chrom),
-        "start": _scalar_cell(start),
-        "ref": _scalar_cell(row.get("ref")),
-        "alts": alts_cell or "",
-        # The module's own declared build, not a constant. A GRCh37 module's facts were being
-        # written out labelled GRCh38 — a coordinate relabelled onto an assembly where it names a
-        # different base. `resolve_from_table` filters rows on this column, so the wrong label also
-        # made a reversed table unjoinable.
-        "genome_build": genome_build,
-        "locus_index": locus_index,
-        # RM270: the ids every variant parquet carries since 0.8 — a list parallel to `alts` on
-        # `weights.parquet`, the `resolution.csv` cell itself on a positional table and a proxy locus.
-        # An older artifact has neither column and writes empty cells, as before.
-        "vrs_id": _vrs_cell(row.get("vrs_id")),
-        "vrs_spec": _scalar_cell(row.get("vrs_spec")),
-        # RM375: the enricher's verdict on the authored spelling, carried on a `resolution_loci` locus;
-        # a row's own cells hold none, so the cell rebuild writes it empty, as before.
-        "authored_event": _scalar_cell(row.get("authored_event")),
-        "judged_coordinate": _scalar_cell(row.get("judged_coordinate")),
-        "source": "reversed",
-        "status": "resolved",
-        "fetched_at": "",
-    }
+    # Every carried column as the locus (or, in the cell rebuild, the row) holds it (RM380). A row's own
+    # cells hold no provenance, so the cell rebuild writes those empty, as before.
+    record: dict[str, object] = {name: _scalar_cell(row.get(name)) for name in RESOLUTION_LOCUS_FIELDS}
+    record.update(
+        {
+            "variant_key": resolution_key,
+            "chrom": _scalar_cell(chrom),
+            "start": _scalar_cell(start),
+            "alts": alts_cell or "",
+            # The module's own declared build, not a constant. A GRCh37 module's facts were being
+            # written out labelled GRCh38 — a coordinate relabelled onto an assembly where it names a
+            # different base. `resolve_from_table` filters rows on this column, so the wrong label also
+            # made a reversed table unjoinable.
+            "genome_build": genome_build,
+            "locus_index": locus_index,
+            # RM270: the ids every variant parquet carries since 0.8 — a list parallel to `alts` on
+            # `weights.parquet`, the `resolution.csv` cell itself on a positional table and a locus.
+            # An older artifact has neither column and writes empty cells, as before.
+            "vrs_id": _vrs_cell(row.get("vrs_id")),
+            "source": "reversed",
+            # The locus's own status where it carries one (an `ambiguous` pick stays one, RM380); the cell
+            # rebuild and an older parquet hold none, and every positioned locus they rebuild resolved.
+            "status": _scalar_cell(row.get("status")) or "resolved",
+            "fetched_at": "",
+        }
+    )
+    return record
 
 
 def _vrs_cell(value: object) -> str:
@@ -1139,6 +1129,49 @@ def _most_common(df: pl.DataFrame, col: str) -> str | None:
     return min(non_null.mode().to_list())
 
 
+#: The reversed `variants.csv` header: `VariantRow`'s authored columns, in this order. A hand-kept list,
+#: so `test_resolution_locus_carries_the_row` asserts it equals `authored_field_names(VariantRow)` (RM380).
+VARIANTS_CSV_FIELDS: tuple[str, ...] = (
+    "rsid",
+    "chrom",
+    "start",
+    "ref",
+    "alts",
+    "genotype",
+    "weight",
+    "state",
+    "conclusion",
+    "negatives",
+    "priority",
+    "gene",
+    "phenotype",
+    "category",
+    "clinvar",
+    "pathogenic",
+    "benign",
+    "curator",
+    "method",
+    # 0.3 additive columns
+    "direction",
+    "stat_significance",
+    "effect_size",
+    "effect_measure",
+    "effect_allele",
+    "flags",
+    "trait_efo_id",
+    "clin_sig",
+    # 0.4 general annotation axes
+    "requires_callable",
+    "acmg_sf",
+    "actionability",
+    # 0.5 general annotation axis
+    "callable_from",
+    # 0.5.1 general annotation axes (RM29a)
+    "quality_from",
+    "min_quality",
+)
+
+
 def _write_variants_csv(
     weights_df: pl.DataFrame,
     ann_lookup: dict[tuple, dict[str, str]],
@@ -1156,45 +1189,7 @@ def _write_variants_csv(
     `ga4gh:VA.…` for a row on another assembly. Here it decides only which artifact rows collapse into
     one authored row, so a wrong build mis-groups rather than mislabels — still wrong, and wrong in a
     way that shows up as a lost or duplicated row rather than as a bad cell."""
-    fieldnames = [
-        "rsid",
-        "chrom",
-        "start",
-        "ref",
-        "alts",
-        "genotype",
-        "weight",
-        "state",
-        "conclusion",
-        "negatives",
-        "priority",
-        "gene",
-        "phenotype",
-        "category",
-        "clinvar",
-        "pathogenic",
-        "benign",
-        "curator",
-        "method",
-        # 0.3 additive columns
-        "direction",
-        "stat_significance",
-        "effect_size",
-        "effect_measure",
-        "effect_allele",
-        "flags",
-        "trait_efo_id",
-        "clin_sig",
-        # 0.4 general annotation axes
-        "requires_callable",
-        "acmg_sf",
-        "actionability",
-        # 0.5 general annotation axis
-        "callable_from",
-        # 0.5.1 general annotation axes (RM29a)
-        "quality_from",
-        "min_quality",
-    ]
+    fieldnames = list(VARIANTS_CSV_FIELDS)
     with open(output_path, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
@@ -1326,59 +1321,64 @@ def _write_variants_csv(
             )
 
 
+#: The reversed `studies.csv` header: `StudyRow`'s authored columns, in this order. A hand-kept list,
+#: so `test_resolution_locus_carries_the_row` asserts it equals `authored_field_names(StudyRow)` (RM380).
+STUDIES_CSV_FIELDS: tuple[str, ...] = (
+    "rsid",
+    "chrom",
+    "start",
+    "ref",
+    "pmid",
+    "population",
+    "p_value",
+    "conclusion",
+    "study_design",
+    # 0.3 additive columns, plus `effect_allele` (RM91, 0.6) beside the magnitude it qualifies.
+    # This list is the third of `@three-touch-points` and the one that gets missed: a column
+    # absent here reaches the parquet and then vanishes on reverse, which fails P7 silently.
+    # **This writer has a FOURTH, and it is worse than the third** (found adding `curator`, S55):
+    # the row dict below. Naming a column here and not there writes the *header* with an empty
+    # cell on every row — `DictWriter` fills a missing key silently — so the reversed spec looks
+    # right, re-validates, and loses the value. The digest fixed-point assertion is what catches
+    # it; a column-presence check does not.
+    "stat_significance",
+    "effect_size",
+    "effect_measure",
+    "effect_allele",
+    "trait_efo_id",
+    # 0.7: which analysis produced `p_value`/`effect_size` (RM140, S75)
+    "statistical_test",
+    # 0.7: the citing source's own confidence in this link, and the instrument it is on (RM160)
+    "confidence",
+    "confidence_unit",
+    # 0.4 provenance columns (RM11/RM12, from the 0.5 scope), and 0.6's locator beside them (S55)
+    "doi",
+    "provenance_quote",
+    "provenance_regex",
+    "curator",
+    # 0.5: the authored numeric p-value. `neg_log10_p` is deliberately absent — it is derived on
+    # write, so re-emitting it would author a value the next compile recomputes anyway.
+    "p_value_num",
+    # 0.8: the StudyRow batch (PROPOSAL_0_8_PT2 §3 items 11–17). Each is named twice, here and in
+    # the row dict below, and the behavioural guard in test_roundtrip_regressions fills them all.
+    "sample_size",
+    "sample_unit",
+    "n_cases",
+    "phenotype_class",
+    "ancestry",
+    "age_min",
+    "age_max",
+    "age_of",
+    "stratum",
+    "stratum_level",
+    "proxy_rsid",
+    "effect_unit",
+)
+
+
 def _write_studies_csv(studies_df: pl.DataFrame, output_path: Path) -> None:
     """Write studies.csv from studies parquet."""
-    fieldnames = [
-        "rsid",
-        "chrom",
-        "start",
-        "ref",
-        "pmid",
-        "population",
-        "p_value",
-        "conclusion",
-        "study_design",
-        # 0.3 additive columns, plus `effect_allele` (RM91, 0.6) beside the magnitude it qualifies.
-        # This list is the third of `@three-touch-points` and the one that gets missed: a column
-        # absent here reaches the parquet and then vanishes on reverse, which fails P7 silently.
-        # **This writer has a FOURTH, and it is worse than the third** (found adding `curator`, S55):
-        # the row dict below. Naming a column here and not there writes the *header* with an empty
-        # cell on every row — `DictWriter` fills a missing key silently — so the reversed spec looks
-        # right, re-validates, and loses the value. The digest fixed-point assertion is what catches
-        # it; a column-presence check does not.
-        "stat_significance",
-        "effect_size",
-        "effect_measure",
-        "effect_allele",
-        "trait_efo_id",
-        # 0.7: which analysis produced `p_value`/`effect_size` (RM140, S75)
-        "statistical_test",
-        # 0.7: the citing source's own confidence in this link, and the instrument it is on (RM160)
-        "confidence",
-        "confidence_unit",
-        # 0.4 provenance columns (RM11/RM12, from the 0.5 scope), and 0.6's locator beside them (S55)
-        "doi",
-        "provenance_quote",
-        "provenance_regex",
-        "curator",
-        # 0.5: the authored numeric p-value. `neg_log10_p` is deliberately absent — it is derived on
-        # write, so re-emitting it would author a value the next compile recomputes anyway.
-        "p_value_num",
-        # 0.8: the StudyRow batch (PROPOSAL_0_8_PT2 §3 items 11–17). Each is named twice, here and in
-        # the row dict below, and the behavioural guard in test_roundtrip_regressions fills them all.
-        "sample_size",
-        "sample_unit",
-        "n_cases",
-        "phenotype_class",
-        "ancestry",
-        "age_min",
-        "age_max",
-        "age_of",
-        "stratum",
-        "stratum_level",
-        "proxy_rsid",
-        "effect_unit",
-    ]
+    fieldnames = list(STUDIES_CSV_FIELDS)
     with open(output_path, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()

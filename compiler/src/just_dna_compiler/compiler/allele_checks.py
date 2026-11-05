@@ -312,7 +312,8 @@ def _stale_reading(rows: list[ResolutionRow]) -> str:
     never a verdict. Empty where no external source answered the rows (`authority` empty).
     """
     if not any(row.authority for row in rows):
-        # No external source answered (authored, manual, reversed): no snapshot, so no stale reading.
+        # No external source answered (authored, manual): no snapshot, so no stale reading. A reversed row
+        # keeps the authority of the row it came from (RM380), so the second lap reads what the first did.
         return ""
     releases = sorted({release for row in rows if (release := row_release(row))})
     recorded = f"the row records release {', '.join(releases)}" if releases else "release not recorded"

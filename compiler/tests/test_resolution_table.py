@@ -394,15 +394,15 @@ def test_no_table_no_lecture(tmp_path: Path) -> None:
     assert not [w for w in result.warnings if "master switch" in w]
 
 
-# ── RM373: `source_release` is provenance — it moves no identity and does not survive reverse ──
+# ── RM373: `source_release` is provenance — it moves no identity, and since RM380 it survives reverse ──
 
 
-def test_source_release_moves_no_identity_and_reverse_writes_none(tmp_path: Path) -> None:
-    """The release that answered a row is said beside the fact (`authority`'s treatment, RM33).
+def test_source_release_moves_no_identity_and_survives_reverse(tmp_path: Path) -> None:
+    """The release that answered a row is said beside the fact, outside every signature (RM373).
 
-    A table carrying it compiles to the artifact the same table without it does, because no parquet
-    carries a resolution row's provenance; `reverse` therefore has none to write, and a reversed table
-    names no link, so it names no release. The round trip still reproduces both identities.
+    Outside a signature is not dropped (RM380): the parquet's locus carries the column, so the bytes of
+    a table carrying it differ from the same table without it while both identities stay put, `reverse`
+    writes the release back on each row it answered, and the second lap reproduces the first.
     """
     example = Path(__file__).resolve().parents[2] / "reference_examples" / "hfe_hemochromatosis"
     plain, stamped = tmp_path / "plain", tmp_path / "stamped"
@@ -416,11 +416,14 @@ def test_source_release_moves_no_identity_and_reverse_writes_none(tmp_path: Path
         writer.writeheader()
         for row in rows:
             writer.writerow({**row, "source_release": f"{row['source']}_release_a"})
+    stamped_releases = {
+        (row["variant_key"], row["locus_index"]): f"{row['source']}_release_a" for row in rows if row["start"]
+    }
 
     first = compile_module(plain, tmp_path / "o_plain")
     lap1 = compile_module(stamped, tmp_path / "o1")
     assert first.success and lap1.success, (first.errors, lap1.errors)
-    assert lap1.manifest.artifact.digest == first.manifest.artifact.digest
+    assert lap1.manifest.artifact.digest != first.manifest.artifact.digest
     assert lap1.manifest.content_signature == first.manifest.content_signature
     assert lap1.manifest.compilation.resolution_signature == first.manifest.compilation.resolution_signature
 
@@ -429,7 +432,8 @@ def test_source_release_moves_no_identity_and_reverse_writes_none(tmp_path: Path
         reversed_rows = [
             ResolutionRow(**{k: v or None for k, v in r.items()}) for r in csv.DictReader(handle)
         ]
-    assert reversed_rows and {r.source_release for r in reversed_rows} == {None}
+    assert reversed_rows
+    assert {(r.variant_key, str(r.locus_index)): r.source_release for r in reversed_rows} == stamped_releases
     lap2 = compile_module(tmp_path / "reversed", tmp_path / "o2")
     assert lap2.success, lap2.errors
     assert lap2.manifest.artifact.digest == lap1.manifest.artifact.digest

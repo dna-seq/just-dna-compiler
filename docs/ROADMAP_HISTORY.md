@@ -35,6 +35,96 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM380 — a hand-kept struct mirrored `ResolutionRow` with nothing asserting the two agree, so reverse dropped every 0.8 provenance column
+
+✅ **SHIPPED 2026-11-05 on `0.8`, uncut — a minor (found building RM375).** Owner compiler, severity
+medium.
+
+**Residuals** won't fix — `rsid_alternates`, `rsid_current` and `rsid_status` stay out of the locus, statements about dbSNP at a moment that re-running the enricher recovers (`@rsid-alternates-closed`), so a reversed `ambiguous` row's lap-2 warning names no candidates · won't fix — reverse still stamps `source=reversed` and an empty `fetched_at`, its own provenance as the link that wrote the row
+
+**The class.** A column list or struct dtype written by hand beside the pydantic model it mirrors, with
+no test asserting the two hold the same names (`@fieldnames-from-model`, `@registry-completeness`). A
+column added to the model later reaches every reader of the model and silently misses the copy.
+
+**The instance that bit.** `parquets.RESOLUTION_LOCUS_DTYPE` is the struct a parquet carries a
+`resolution.csv` row in (`resolution_loci` on every variant parquet since RM364, `studies.parquet`
+`proxy_loci` since RM331), and `reverse_module` rebuilds the table from it. It named ten of
+`ResolutionRow`'s 24 columns, so each 0.8 column the enricher began to write — `placement_witness`/
+`placement_verdict` (RM267), `left_aligned` (RM270), `source_release` (RM373) — and the 0.5 `authority` and
+`caid` reached the table and were dropped by the first round trip. Measured on `9becd9ad` over the
+corpus: `shox_par1` lost all four 0.8 columns on 11 rows, `cpic_gene_pairs` the witness, verdict and
+`left_aligned` on one, and nine examples lost `authority` (56 rows in `cpic_gene_pairs`). It mattered past
+the bytes: the next compile reads several of them. `sources_in_use` derives the used-source set from
+`authority` and the witness, so lap 2 named a declared `ensembl` or `clinvar` source unused, and
+`placement_disagreements` withholds a `left_aligned` true/false pair, which lap 2 could no longer see.
+
+**The re-read of RM373's choice.** RM373 made reverse write no `source_release`, "the same way it treats
+`authority`", and RM33 gave `authority` the reason that a reversed row's facts came out of parquet. That
+conflates the link with the source: `source` names the link, and the link that wrote a reversed row is
+reverse, but the facts are still the snapshot's, answered by that release. Outside a signature
+(`@provenance-beside-a-claim-is-outside-content-identity`) is not dropped. Decided per column, the
+reasons in `RESOLUTION_LOCUS_EXCLUDED`:
+
+- **Carried (17):** the facts and `locus_index`; `vrs_id`/`vrs_spec` (RM270), `caid` (the same kind of
+  cross-reference); `authority`, `status`, `placement_witness`, `placement_verdict`, `left_aligned`,
+  `authored_event`, `judged_coordinate`, `source_release`. `status` because reverse wrote `resolved` for
+  every locus, so a best-effort `ambiguous` pick came back resolved: lap 2 dropped the warning, the
+  placement check stopped withholding the row, and `strict` built on lap 2 what it refused on lap 1.
+- **Excluded (7):** `variant_key` (the key the loci are filed under), `genome_build` (the module's);
+  `source`, `fetched_at` (reverse's own stamps); `rsid_alternates`, `rsid_current`, `rsid_status`
+  (time-varying statements about dbSNP, `RESOLUTION_LOCUS_NOT_WRITTEN`, which reverse does not write).
+
+**Every instance, file:line on `9becd9ad`, before → after:**
+
+- `compiler/.../parquets.py:386` `RESOLUTION_LOCUS_DTYPE`, ten names by hand → derived from
+  `ResolutionRow` minus `RESOLUTION_LOCUS_EXCLUDED` (`RESOLUTION_LOCUS_FIELDS`, model order; `start`
+  keeps `UInt32` through the one override).
+- `parquets.py:436` `resolution_loci`'s dict literal → one comprehension over `RESOLUTION_LOCUS_FIELDS`.
+- `parquets.py:481` `withhold_reproduced_loci` kept a key's loci only for an `authored_event` → for any
+  carried column no row cell rebuilds (`_LOCUS_ONLY`) holding a value other than what the cell rebuild
+  writes (`resolved` for `status`, empty otherwise), so `left_aligned=false` counts.
+  Without this the struct would have carried the columns and the withhold would have thrown them away on
+  every cleanly resolved module.
+- `compiler/.../reverse.py:839` `_write_resolution_csv`'s header, 15 names by hand →
+  `REVERSED_RESOLUTION_FIELDS`, derived (the model minus `RESOLUTION_LOCUS_NOT_WRITTEN`, in model order).
+- `reverse.py:1114` `_resolution_record`'s dict literal, `status` hardcoded `resolved` → every carried
+  column read off the locus (`status` falling back to `resolved` for the cell rebuild), the stamps beside.
+- `reverse.py:1159` `_write_variants_csv` and `reverse.py:1331` `_write_studies_csv` headers: agreed with
+  their models, unguarded → hoisted to `VARIANTS_CSV_FIELDS`/`STUDIES_CSV_FIELDS` (kept by hand for a
+  readable column order) and held to `authored_field_names` by a parametrized equality test.
+- `enricher/.../frequencies.py:52` and `gene_metrics.py:59` `_FIELDNAMES`: agreed with `FrequencyRow`/
+  `GeneMetricsRow`, unguarded → held to `model_fields` by `test_sidecar_writer_columns.py`.
+
+Not instances: `enrich._FIELDNAMES` (already held to `ResolutionRow` in `test_enrich_transaction`),
+`meta._MATCH_STRUCT` (mirrors no model), `clinvar_gkm_build`'s structs and the source builders' column
+tuples (they mirror a source's file, not ours).
+
+**The mechanism and the guard.** One exclusion map with a reason per name; everything else is derived.
+`test_resolution_locus_carries_the_row.py` asserts the model's fields equal carried ∪ excluded (disjoint,
+each reason five words or more), that the struct is the carried list, and that the reversed header is the
+model minus the not-written three and that the record reverse builds names exactly the header; that no
+carried column is list-typed (the scalar renderer would write a repr); it is red on `9becd9ad` (the struct lacked 14 names with no
+exclusion stated). Its behavioural half compiles and reverses every reference example with a
+`resolution.csv` and asserts each reversed key's rows equal the original's on every carried column, plus
+a stamped table exercising the columns no example records yet (`caid`, `source_release`), and an
+`ambiguous` row whose warning lap 2 must repeat and whose lap-2 `strict` must refuse. Mutated once each:
+restoring the `authored_event`-only withhold turned nine examples and the stamped table red; a stale
+exclusion name turned the walk red; restoring the `resolved` stamp turned the ambiguous test red. RM373's `test_source_release_moves_no_identity_and_reverse_writes_none`
+is now `…_and_survives_reverse`.
+
+**The refusal text.** `_verify`'s strict refusal for an authored rsID↔coordinate pair the table
+contradicts still said the table's position "does not survive a reverse", false since RM364 carried it.
+It now says the position is carried beside the authored value, so the next compile reaches the same
+finding, and that strict builds only on a pair the table agrees with. The new phrase is pinned in
+`features/compiler/mode_ladder.feature` and `test_one_channel_under_strict.py`; COMPILER.md § Resolution
+and three enricher comments that gave the old reason were corrected.
+
+**What it moves.** `artifact.digest` of 20 of 22 reference examples on lap 1 (every parquet carrying
+`resolution_loci` or `proxy_loci` widens its struct, null or not; `hla_alleles` and `htt_repeat_expansion`
+carry neither); nine of them also carry loci where they carried none. Lap 2 equals lap 1 on all 22.
+`content_signature` and `resolution_signature` move nowhere. A table that records a different
+`source_release` or `authority` now compiles to different bytes with the same identities.
+
 ## RM376 — one rsID, three ALTs offline and one online on the same snapshot: not a misread, RM270's reference-dependent spelling rule
 
 ✖ **CLOSED 2026-11-04 on `0.8` — not a defect, no code change (the 0.8 Ensembl migration probe).** Owner

@@ -161,7 +161,7 @@ CASES = [
             "studies.csv": "rsid,pmid\nrs777,29165669\n",
             "resolution.csv": _RES_HEADER + _res("rs777", "rs777", 9, 900, "C", "G"),
         },
-        refusal="The authored value is kept, so the table's position does not survive a",
+        refusal="The authored value is kept and the table's position is carried beside it",
     ),
     Case(
         # The 0.8 migration probe's two answers for one rsID (RM374): the old release's spelling under

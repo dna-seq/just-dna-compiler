@@ -1209,9 +1209,10 @@ def _verify(v: VariantRow, loci: list[ResolutionRow], ladders: list[LadderFindin
 
     Warning in `best_effort`, refusal in `strict`, and the refusal says more than the warning does —
     which is why it is one `LadderFinding` rather than an append to each of two lists. The authored
-    value wins either way: the row keeps what its author wrote, which is precisely why the round-trip
-    cannot reproduce the injected table, since the artifact carries the authored coordinate and the
-    table's is lost. Contradiction is therefore an instability, not merely a difference of opinion.
+    value wins either way: the row keeps what its author wrote, and since RM364 the table's locus rides
+    `resolution_loci` beside it, so a reverse gives both back and the next compile reaches the same
+    finding. Strict refuses for the contradiction itself: an all-or-nothing artifact builds only on an
+    authored pair the table agrees with.
     """
     coordkey = derive_variant_key(None, v.chrom, v.start, v.ref)
     keys = {derive_variant_key(None, lo.chrom, lo.start, lo.ref) for lo in loci}
@@ -1241,10 +1242,13 @@ def _verify(v: VariantRow, loci: list[ResolutionRow], ladders: list[LadderFindin
                 authored=coordkey,
                 reported=f"the resolution table maps it to {sorted(keys)}",
             )
+            # Since RM364 the table's locus rides `resolution_loci` through a reverse, so the old reason
+            # (the position is lost, the compile irreproducible) is false; strict refuses for the
+            # contradiction itself, which the next lap reaches again (RM380).
             refusal = (
-                message + " The authored value is kept, so the table's position does not survive a "
-                "reverse — the compile is not reproducible from it. Fix one of the two, or compile "
-                "without strict."
+                message + " The authored value is kept and the table's position is carried beside it, so "
+                "the next compile reaches this same finding: strict builds only on an authored pair the "
+                "table agrees with. Fix one of the two, or compile without strict."
             )
         ladders.append(LadderFinding(CodedWarning("rsid_coordinate_disagrees", message), refusal=refusal))
 

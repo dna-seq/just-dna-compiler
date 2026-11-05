@@ -224,11 +224,12 @@ Feature: The mode ladder and validate/compile parity
     When the module is compiled in best_effort mode
     Then the warning ends at "(reference disagreement"
     When the module is compiled in strict mode
-    Then the refusal continues "The authored value is kept, so the table's position does not survive a"
+    Then the refusal continues "The authored value is kept and the table's position is carried beside it"
     And it offers "Fix one of the two, or compile without strict."
-    # The authored value wins in BOTH modes — the row keeps what its author wrote — which is exactly why
-    # the round trip cannot reproduce the injected table. A contradiction is an instability, not a
-    # difference of opinion.
+    # The authored value wins in BOTH modes — the row keeps what its author wrote — and since RM364 the
+    # table's locus rides `resolution_loci` beside it, so the round trip gives both back and the next
+    # compile reaches the same finding (RM380 corrected a refusal that still said the position was lost).
+    # strict refuses for the contradiction itself.
     #
     # The validate-by-redundancy table gave this check the severity "warning" with no qualifier while
     # the mishap matrix gave it "⚠️ warning / ❌ refuses" — two of our own tables disagreeing about

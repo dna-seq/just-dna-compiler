@@ -137,8 +137,8 @@ Feature: What the enricher's resolver says, in its own words
     And the second arm reports the other direction, saying "Ensembl reports"
     And it offers "may be a dbSNP merge/build difference" rather than calling either side wrong
     # Never fatal here, which is the whole difference from the compiler's twin: the same code is a
-    # `strict` refusal under `compile` because the authored value wins and the table's position is then
-    # lost to the round trip. In the enricher there is no artifact to be unreproducible.
+    # `strict` refusal under `compile` because the authored value wins over the table, and an artifact
+    # builds under strict only on a pair the table agrees with. In the enricher there is no artifact.
 
   # source: enricher/src/just_dna_enricher/resolver.py
   # anchor: _lookup_rsids_by_position

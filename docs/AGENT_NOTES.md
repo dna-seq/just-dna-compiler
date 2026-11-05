@@ -479,12 +479,15 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `alts`; a `HaplotypeRow` passes its defining `allele` to the shared `hosting_verdict`.
 
 - `@rsid-alternates-closed` — **Reverse dropping `rsid_alternates` is NOT a bug — closed, don't re-flag it.** This was filed as an
-  open loose end and is neither open nor fixable in the writer. `_write_resolution_csv` rebuilds the
-  table from `weights.parquet`, which by design carries **no provenance at all** (it already resets
-  `source="reversed"`, `status="resolved"`, blank `fetched_at`). `rsid_alternates`/`rsid_current`/
-  `rsid_status` are outside the fact set *precisely* so they never reach the artifact, so the data does
-  not exist for reverse to emit; adding the column names would produce a permanently empty header.
-  Recovering them after a round-trip means re-running the enricher.
+  open loose end and is neither open nor a writer defect. **RM380 changed the rationale, not the
+  decision:** every other `ResolutionRow` column now rides the parquets' resolution loci and comes back
+  (`parquets.RESOLUTION_LOCUS_EXCLUDED` is the walked list of what does not, each with its reason), so
+  "the artifact carries no provenance" is no longer true. `rsid_alternates`/`rsid_current`/`rsid_status`
+  stay excluded on purpose: each is a statement about dbSNP at a moment, not about the module, and
+  re-running the enricher is how it is recovered. `source`/`fetched_at` are reverse's own stamps; `status`
+  is carried, so an `ambiguous` pick is no longer laundered into `resolved` by a round trip.
+  Before RM380 the struct was a hand-kept list and silently dropped `authority`, the placement witness and
+  verdict, `left_aligned`, `source_release` and `caid` as well — the shape `@fieldnames-from-model` names.
 
 - `@a-digest-gate-cannot-see-the-manifest` — **A round-trip gate made of digests cannot see an authored value that lives only in
   the manifest; compare the authored projection.** RM241, 0.8. `test_reference_examples_roundtrip.py`
