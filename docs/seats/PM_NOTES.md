@@ -72,8 +72,9 @@ patches right after real use started, so the pm reads an audit sceptically: the 
     the 22 say "parked" but still sit under their old 0.9-era headings; a later TOC pass may move them.
   - **The §4 counter lamp now counts parked items.** `grep -c 'Status** open — **a minor'` reads 25, past the 20 lamp, and
     most of that is parked. The lamp asks nothing (RELEASE_CYCLE), so this is information for triage, not a change I make.
-- **Owed, a priming edit through change-priming:** `docs/seats/PM.md:14` (and `LEAD.md:17`) still name `docs/ROADMAP_0_8.md`, which
-  the cut moved to `docs/history/`. The lead flagged it in LEAD_NOTES at the cut. `unattended`.
+- **Priming edit through change-priming, done (2026-11-05):** `docs/seats/PM.md` and `LEAD.md` named `docs/ROADMAP_0_8.md`,
+  which the cut moved to `docs/history/`; both now name the open minor's file (0.9). LEAD.md's "`0.8` today" branch line
+  now says none is open between cuts, as RELEASE_CYCLE does. No CHANGELOG line: no behaviour moved, and it is not my file.
 
 ## Open questions and owed work
 
