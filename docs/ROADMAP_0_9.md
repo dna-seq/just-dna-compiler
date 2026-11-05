@@ -1916,3 +1916,32 @@ has a warning code, which is dropped on the error path today, so part of this is
    codes, each consumer draws its own line.
 
 **Residuals** none yet.
+
+## RM385 — offline enrich cannot left-align an indel, because `--offline` turns off the reference as well as the network
+
+**0.9, by the maintainer's word (2026-11-05)**, relayed by the lead; entry written by the pm.
+
+**Severity** low · **Status** open — **a minor, 0.9** · **Owner** enricher (`sequences.py`) · **Motivating
+case** the registry's catalog sweep enriches offline by default, so on 0.8 its indels must be enriched online
+(the lead's advice for the registry's M12, 2026-11-05) · *related* RM273, RM270, RM381, RM382
+
+**The gap.** Every reference base the enricher reads goes through `SequenceProxy`: left-aligning an indel
+(`_left_align`, RM273), minting an indel's VRS id, and the reference-allele check. Its default is the public
+seqrepo REST service, and `offline=True` makes every read return `None`. So an offline run has no reference
+at all, and an indel's caller spelling is withheld rather than produced. Two things are joined here that need
+not be: *no network* and *no reference*. `create_dataproxy` already accepts a local seqrepo
+(`seqrepo+file:///…`), and `SequenceProxy.uri` is a setting, but `offline` short-circuits before the URI is
+looked at, so a local reference cannot serve an offline run today.
+
+**What it would be.** An offline run reads a local reference when one is configured, and only withholds when
+none is. "No reference configured" stays a named could-not-ask, never an absence (`@unreachable-not-absent`).
+
+**Open questions, for 0.9's interview.**
+
+1. **Which local reference.** A local seqrepo is what `create_dataproxy` already reads, but it is large and
+   needs its own tool to build. A GRCh38 FASTA is the form deployments already hold, and would need a small
+   reader of our own. Measure both before choosing (`@probe-the-real-file`).
+2. **Where it is configured.** A setting beside the other cache lanes, with the three stages a lane owes
+   (`CACHE_SURFACE.md`), or a URI the operator passes. The fewer-entities rule weighs toward the URI.
+
+**Residuals** none yet.
