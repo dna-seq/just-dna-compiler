@@ -63,7 +63,11 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 - **Withheld: `hboc_palb2` and `pathogenic_clinvar`** keep their 0.7-era tables. Re-derived, they spell six
   multi-ALT indel alleles with the snapshot's shared padded `ref` (`16:23635706 GTT>GT`, `11:5226773
   TGG>TG`, …), which a `bcftools norm`ed VCF never meets, and `test_consumer_join` refuses it. That is RM381,
-  and the two examples are regenerated once it lands.
+  and `hboc_palb2` is regenerated once it lands. `pathogenic_clinvar` has a second blocker that RM381 does
+  not touch, and it needs a decision. Its rsID-only HBB row `rs613985` comes back unresolved, so `--strict`
+  refuses. Both snapshots place that rsID at `3:159434329 T>G`. The hosting filter rejects that locus for
+  the authored genotype `C/CATAACAGCATCAG`, and the chain never asks ClinVar, which still has the row at
+  `11:5226724 CATAACAGCATCAG>C`. So this is how the chain behaves, not a snapshot move.
 - **Seven test files read a shape off an example that the regeneration changed.** Each now builds that
   shape on its copy, so the test still checks what it was written to check. `apoe_epsilon` had no ALT
   (`test_verification_block`'s no-ALT line, `test_opentargets`' whole-release case). `hfe_hemochromatosis`

@@ -548,7 +548,10 @@ moved, except `cyp2c9_warfarin_grch37`'s: it is GRCh37, so nothing was re-asked.
 only the link that answered them. `sources.signature` moved on every recompiled example, because licence
 rows are now labelled by the release their rows state (RM373). `hboc_palb2` and `pathogenic_clinvar` are
 withheld until RM381: re-derived, they spell six multi-ALT indel alleles with the snapshot's padded `ref`,
-which an exact `(chrom, pos, ref, alt)` join against a normalized VCF misses. The per-example table is in
+which an exact `(chrom, pos, ref, alt)` join against a normalized VCF misses. `pathogenic_clinvar` has a
+second blocker that RM381 does not touch: `rs613985` comes back unresolved, so `--strict` refuses. Both
+snapshots place it at `3:159434329 T>G`, the hosting filter rejects that locus, and the chain never asks
+ClinVar. The per-example table is in
 the CHANGELOG entry of 2026-11-05.
 
 ## 1.30 One rsID, one placement set in `resolution.csv` (RM374, one new code)

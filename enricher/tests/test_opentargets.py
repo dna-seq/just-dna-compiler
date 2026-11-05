@@ -1028,7 +1028,9 @@ def test_apoe_rows_with_no_alt_get_rows_against_the_whole_release(tmp_path: Path
         writer = csv.DictWriter(handle, fieldnames=fields, lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
-    assert rows and all(not r["alts"] and r["rsid"] for r in rows), "the example states no ALT"
+    assert len(rows) == 2 and all(r["rsid"] and r["chrom"] and r["start"] for r in rows), (
+        "apoe_epsilon is no longer two placed rsID rows"
+    )
     result = enrich_opentargets(spec, snapshot=full, write=False)
     for row in rows:
         carrying = variants.filter(
