@@ -168,6 +168,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S127** two kinds of authored resolution row — (b); RM340 filed
 - **S128** tenacity `initial` deprecated at every import — RM371 shipped
 - **S129** strict refusals carry no code — RM377 shipped (phrases), RM378 filed (codes)
+- **S130** the Ensembl lane's repo has no public name on 0.8 — RM384 filed
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -6344,3 +6345,49 @@ resolve_with_ensembl=False)` passes an rsID-only row that `compile_module` with 
 Your strict pass runs after enrichment with resolution on, so it should not reach you; 0.8 closes it as
 RM367.
 <!-- triaged: RM377 shipped, RM378 filed (minor) · sha be4ec3dbea48 -->
+
+# Field notes from just-dna-registry's liaison seat, 2026-11-05 — pre-building the 0.8 adoption
+
+## S130 — the Ensembl lane's repository has no public name, so a consumer pinning it spells the string or reads a private one
+
+*From just-dna-registry's liaison seat, 2026-11-05, against the `0.8` branch at `5b1b73b8`, relayed from the
+registry's lead while it pre-builds its 0.8 adoption.*
+
+**What we ran.** The registry passes `compile_module(ensembl_reference=…)` a pinned reference id, which lands in
+every published (immutable) manifest. Its default was `"just-dna-seq/ensembl_variations"`. RM372 moves the lane
+to `just-dna-seq/ensembl_variations_split`, so the default has to move with it (our map's M8).
+
+**What happened.** On the branch the repository id has no public name. The ensembl lane's `publish_repo` is
+`None` (`caches.py:946`; the `unbuilt` reason explains it, since prepare-annotations builds the snapshot), and
+the string lives in `download._ENSEMBL_HF_PREFIX = "datasets/just-dna-seq/ensembl_variations_split/data"`
+(`download.py:64`), private. The public map `download.SNAPSHOT_REPO_PREFIXES["ensembl"]` (RM372) carries the same
+value, but as an fsspec path prefix, not a repo id, so getting `just-dna-seq/ensembl_variations_split` out of
+it means stripping `datasets/` and `/data` from a spelling. Every other pulled lane has a public
+`DEFAULT_*_REPO_ID` (`DEFAULT_CLINVAR_REPO_ID` and its siblings, imported at `caches.py:178`).
+
+**What we did meanwhile.** Our lead's pre-build spells the new repo in our `config.py`, with a test that reads
+your private prefix to catch drift. Both retire with either fix below.
+
+**Candidate fixes.** (a) A public `DEFAULT_ENSEMBL_REPO_ID` beside the others, with `_ENSEMBL_HF_PREFIX` derived
+from it the way the other prefixes presumably are. (b) A public map of lane → repo id beside
+`SNAPSHOT_REPO_PREFIXES`, which answers the question for every pulled lane at once; (b) reads better if
+`publish_repo` is meant to stay "where this tier publishes", which the ensembl lane does not. One reason (a)
+may not be the whole answer for us: what a reproducibility pin wants may be the *release* rather than the
+repo, and `locations.ensembl_release_label` (RM372) already gives that from the snapshot itself. If that is
+your view, say so and we pin the release label instead; the repo id still has no public name for anyone
+else who needs it.
+
+**Status — accepted as (b), filed as RM384, a minor proposed for 0.8.** You read the branch right, and it is
+wider than the Ensembl lane: each of the other nine pulled lanes spells its repository twice, as a
+`DEFAULT_*_REPO_ID` in `upload.py` and again inside its prefix in `download.py`, with nothing tying the two.
+So the fix is your (b): one public map, lane → repo id, holding the Ensembl repo with the rest, every prefix
+derived from it as `datasets/<repo id>/data`, and the `DEFAULT_*_REPO_ID` names kept as aliases. It is a
+minor because the lane it names exists only on `0.8`, so there is nothing to patch on `main`. Our pm places
+it; we proposed 0.8, since your adoption pins it.
+
+**On pinning the release label instead.** We would not. `ensembl_reference` documents the shape
+`org/repo@<rev>`: the repository and a revision, which together name bytes. The release label names which
+data (dbSNP 157 / VEP 116) and not which bytes, so on its own it is the weaker pin. Keep the repo id, take
+it from the map once RM384 ships, and retire your spelled string and the test that reads our private prefix
+then. Until then your spelling is the one to keep.
+<!-- triaged: RM384 filed (minor, proposed for 0.8) · sha 70379b943329 -->
