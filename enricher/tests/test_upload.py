@@ -101,6 +101,28 @@ def _no_hub(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(huggingface_hub, "hf_hub_download", _unreachable_download)
 
 
+def _linear_hub() -> MagicMock:
+    """A `MagicMock` HfApi whose commits form one linear history, each carrying the description it was
+    sent with, so the publisher's walk back to the revision it read finds only its own (RM386). The
+    calls are still recorded as a `MagicMock` records them."""
+    api = MagicMock()
+    root = "0" * 40
+    commits: list[tuple[str, str]] = [(root, "")]
+    api.repo_info.return_value.sha = root
+
+    def commit(**kwargs: Any) -> SimpleNamespace:
+        commits.append((f"{len(commits):040x}", kwargs.get("commit_description") or ""))
+        return SimpleNamespace(oid=commits[-1][0])
+
+    def history(**kwargs: Any) -> list[SimpleNamespace]:
+        upto = next(i for i, (oid, _) in enumerate(commits) if oid == kwargs["revision"])
+        return [SimpleNamespace(commit_id=oid, message=text) for oid, text in reversed(commits[: upto + 1])]
+
+    api.create_commit.side_effect = commit
+    api.list_repo_commits.side_effect = history
+    return api
+
+
 def _manifest(name: str, version: str | None) -> ModuleManifest:
     """The smallest manifest that validates — identity, display, artifact."""
     return ModuleManifest(
@@ -432,7 +454,7 @@ def test_an_unrelated_manifest_defect_does_not_withhold_a_legible_version(tmp_pa
 
 def test_upload_module_calls_hf_api(tmp_path: Path) -> None:
     module_dir = _compiled_module(tmp_path / "lipidmetabolism", version="0.4.0")
-    mock_api = MagicMock()
+    mock_api = _linear_hub()
     # Nothing is published at the versioned path. A bare MagicMock answers `file_exists` truthily, and
     # the collision check then called the real `hf_hub_download` with this fake token (RM372's fence).
     mock_api.file_exists.return_value = False
@@ -473,7 +495,7 @@ def test_upload_module_calls_hf_api(tmp_path: Path) -> None:
 def test_upload_module_writes_one_path_when_the_version_is_unknown(tmp_path: Path) -> None:
     """The dual write is the fix; a `vNone` directory would be the defect wearing a version."""
     module_dir = _compiled_module(tmp_path / "superhuman", version=None)
-    mock_api = MagicMock()
+    mock_api = _linear_hub()
     with (
         patch("huggingface_hub.HfApi", return_value=mock_api),
         patch("huggingface_hub.get_token", return_value="hf_test_token"),
@@ -487,7 +509,7 @@ def test_the_default_commit_messages_name_which_copy_they_are(tmp_path: Path) ->
     """Two commits land in one repo history; identical default messages would make the versioned copy
     unreadable as a separate act."""
     module_dir = _compiled_module(tmp_path / "coronary", version="1.0.0")
-    mock_api = MagicMock()
+    mock_api = _linear_hub()
     mock_api.file_exists.return_value = False  # see `test_upload_module_calls_hf_api`
     with (
         patch("huggingface_hub.HfApi", return_value=mock_api),
@@ -654,7 +676,7 @@ def _published_as(module_dir: Path, *, digest: str | None = None) -> dict:
 def _remote(tmp_path: Path, document: dict | None) -> tuple[MagicMock, Path | None]:
     """A mock api whose versioned path holds `document` as its manifest, or nothing when it is None.
     Returns the api and the file `hf_hub_download` should hand back."""
-    api = MagicMock()
+    api = _linear_hub()
     api.token = "hf_test_token"
     if document is None:
         api.file_exists.return_value = False
@@ -790,7 +812,7 @@ def test_an_unreadable_published_manifest_proceeds_with_a_warning(tmp_path: Path
     error path.
     """
     module_dir = _compiled_module(tmp_path / "m", version="1.2.3")
-    api = MagicMock()
+    api = _linear_hub()
     api.token = "hf_test_token"
     api.file_exists.side_effect = OSError("the hub is unwell")
 
@@ -838,7 +860,7 @@ def _published_like(
         document["compilation"]["toolchain"] = toolchain
     published = tmp_path / "published_manifest.json"
     published.write_text(json.dumps(document), encoding="utf-8")
-    api = MagicMock()
+    api = _linear_hub()
     api.token = "hf_test_token"
     api.file_exists.return_value = True
     return api, published
@@ -1121,7 +1143,7 @@ def test_the_module_upload_sends_exactly_what_the_plan_promises(tmp_path: Path) 
     (out / "logs" / "scratch.log").write_text("not attested\n", encoding="utf-8")
     (out / "logs" / "fig1.png").write_bytes(_PNG_BYTES)
     promised = plan_upload(out, _LOGS_EXAMPLE).files
-    api = MagicMock()
+    api = _linear_hub()
     with (
         patch("huggingface_hub.HfApi", return_value=api),
         patch("huggingface_hub.get_token", return_value="hf_test_token"),
@@ -1229,7 +1251,7 @@ def test_every_file_the_manifest_declares_is_planned(tmp_path: Path) -> None:
     assert set(plan.files) == {*declared, "manifest.json"}
 
     # What the commit carries is the plan, provenance included.
-    api = MagicMock()
+    api = _linear_hub()
     with (
         patch("huggingface_hub.HfApi", return_value=api),
         patch("huggingface_hub.get_token", return_value="hf_test_token"),

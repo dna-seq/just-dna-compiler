@@ -653,8 +653,8 @@ reads the record and no longer calls such a row a contradiction.
 | Surface | What changed | What to do |
 | --- | --- | --- |
 | `upload.RemoteMovedError` | New `PublishRefused` subclass: the repo moved after the plan read it, or a prune plan stated no revision. Nothing of the refused write landed. | A caller catching `PublishRefused` already catches it; re-run to read the repo again. |
-| `upload_module`, `publish_reference_snapshot`, `prune_repo` | Each commit carries `parent_commit` (the revision the plan read, or the previous commit of the pair), so a concurrent commit refuses the write. The snapshot description goes up through `create_commit` as the bytes the publish read, after the payload is checked on the hub; a payload that is not the bytes hashed withholds it (`PlanChangedError`). `prune_repo` sends one delete per listed path. | None, unless you drove these with a stub `HfApi`: it now needs `repo_info(...).sha`, and the snapshot publish reads `list_repo_tree` at the payload commit. |
-| `SnapshotPlan.sha256`, `SnapshotPlan.revision`, `PrunePlan.revision` | New fields with defaults: the publish's hashes and pinned revision (empty and `None` on a rehearsal), and the commit a prune listing was read at. | A `PrunePlan` built by hand needs `revision` or `prune_repo` refuses it. |
+| `upload_module`, `publish_reference_snapshot`, `prune_repo` | Each commit carries `parent_commit` (the revision the plan read, or the previous commit of the pair), so a concurrent commit refuses the write. The snapshot description goes up through `create_commit` as the bytes the publish read, after the payload is checked on the hub; a payload that is not the bytes hashed withholds it (`PlanChangedError`). `prune_repo` sends one delete per listed path. | None, unless you drove these with a stub `HfApi`: it now needs `repo_info(...).sha`, a `list_repo_commits` whose history carries each write's `commit_description`, and (for a snapshot) `list_repo_tree` at the payload commit. |
+| `SnapshotPlan.sha256`, `SnapshotPlan.revision`, `PrunePlan.revision` | New fields with defaults: the publish's hashes and pinned revision (empty and `None` on a rehearsal), and the commit a prune listing was read at. **A tightening:** `prune_repo` refuses a plan whose `revision` is `None`, which only a hand-built plan has. | Build prune plans with `plan_prune`, or set `revision`. |
 | `check_publish_orphans_no_sidecar` | New keyword `revision=` (default: the head). | None. |
 | `cache prune --yes` | A refused deletion prints `PRUNE REFUSED — …` and goes on to the next lane. | None. |
 
@@ -740,7 +740,7 @@ reads the record and no longer calls such a row a contradiction.
     `FileNotFoundError`: the two plan refusals keep `FileNotFoundError` as a second base only until 1.0.
     A `--dry-run` of `upload` or a snapshot `publish` now reads the hub (§ 1.27). A publish or a prune
     that another writer races now refuses as `upload.RemoteMovedError`, and a stub `HfApi` needs
-    `repo_info(...).sha` (§ 1.35).
+    `repo_info(...).sha` and `list_repo_commits` (§ 1.35).
 12. **Match a finding by its code or a pinned phrase, never by its whole sentence.** Sentences grew in 0.8:
     `star_allele_undefined` appends a per-gene list (§ 1.12); `study_variant_orphan` appends a clause and
     now runs in a module with no `variants.csv` (§ 1.15); every paired-column refusal has one message

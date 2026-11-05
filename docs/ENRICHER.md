@@ -2897,10 +2897,14 @@ because the table carrying them was dropped at upload.
     remote read after it names that revision: the versioned-path manifest (`file_exists`,
     `hf_hub_download`), the orphan check's and the retirement's listings, the prune listing. Every
     write goes through one helper, `_commit`, which passes that revision as `parent_commit`; the
-    second commit of a pair is pinned on the first. A commit landing in between makes the hub refuse,
-    and the refusal is a `RemoteMovedError` (a `PublishRefused`), decided by reading the head again
-    rather than by the status code the hub answers with. Nothing of the refused write landed. A dry run
-    reads the head and commits nothing, so it pins nothing.
+    second commit of a pair is pinned on the first. The precondition alone does not hold: the library
+    skips a write that changes nothing and answers with the current head unchecked, and its multi-commit
+    uploader pins the first part only. So each write carries a token in its commit description, and
+    `_commit` walks the history from the answered head back to the parent: a commit without the token is
+    another writer's, and the write refuses as a `RemoteMovedError` (a `PublishRefused`) that counts both
+    kinds and names what this publish already landed (the flat path of a module, a snapshot's payload).
+    A hub error takes the same walk, not the status code. A dry run reads the head and commits nothing,
+    so it pins nothing.
   - **A snapshot is hashed once and held to those hashes.** The publish reads every planned file once
     (`SnapshotPlan.sha256`, the `sha256:` of each, plus the git blob id the hub states for a non-LFS
     file). The payload goes up through `upload_folder`, which reads the directory after the plan did
@@ -2915,9 +2919,10 @@ because the table carrying them was dropped at upload.
     the listing was read at; `prune_repo` commits one delete per listed path on top of exactly it, so a
     file republished under a listed name after the plan was shown refuses the prune. A plan stating no
     revision read nothing and refuses.
-  - **What is the hub's.** In an `upload_folder` the hub splits into several commits, `parent_commit`
-    pins the first only; a write by someone else between two of the hub's own parts to a path this
-    publish does not carry goes unseen (one to a path it carries fails the hash check).
+  - **What is left.** A refused description leaves the payload landed under the previous
+    `release.json` until a re-run, as any failed second commit does. The walk reads a commit's
+    description as `list_repo_commits` answers it (`message`); were that ever empty, every write would
+    refuse, never pass.
 
 ### A module is published twice, and the second path is the one that can name a release (RM84)
 

@@ -54,8 +54,10 @@ at the payload commit against those hashes, and only then sends `release.json` a
 rebuild during a publish can no longer put the next release's description over this one's rows; a
 mismatch withholds the description (`PlanChangedError`). `prune_repo` deletes exactly the listed paths at
 `PrunePlan.revision`, and refuses a plan with none; `cache prune --yes` prints `PRUNE REFUSED` instead of a
-traceback. An AST walk holds every hub write to the one helper and every read to a revision; the tests run
-on a new `fake_hub` fixture, a repository with a head. → [ROADMAP_HISTORY § RM386](ROADMAP_HISTORY.md#rm386--a-publish-plan-was-not-tied-to-the-bytes-it-sent-or-the-revision-it-read)
+traceback. Because the library skips an unchanged write without checking the precondition and pins only the
+first part of a multi-commit upload, each write also walks the history back to its parent and refuses
+when a commit there is not its own. An AST walk holds every hub write to the one helper and every read
+to a revision; the tests run on a new `fake_hub` fixture, a repository with a head. → [ROADMAP_HISTORY § RM386](ROADMAP_HISTORY.md#rm386--a-publish-plan-was-not-tied-to-the-bytes-it-sent-or-the-revision-it-read)
 
 ## 2026-11-05 — INTEGRATION_0_8 is finished for downstream to integrate against the branch (0.8, uncut)
 

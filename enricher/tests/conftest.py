@@ -549,7 +549,13 @@ def git_blob_id(data: bytes) -> str:
 
 
 class FakeHub:
-    """One git-backed dataset repo, answering the `HfApi` calls the publisher makes (RM386)."""
+    """One git-backed dataset repo, answering the `HfApi` calls the publisher makes (RM386).
+
+    It behaves as `huggingface_hub` 2.0 does where the publisher depends on it: a write that changes
+    nothing is skipped and answered with the *current* head, its precondition never checked; and with
+    `parts` set, `upload_folder` commits in two parts, the precondition riding the first only, as the
+    library's pipelined uploader does. A commit's description is its `message` in `list_repo_commits`.
+    """
 
     #: What the hub stores as LFS here, as a dataset repo's default `.gitattributes` makes it.
     LFS_SUFFIXES = (".parquet",)
@@ -562,6 +568,7 @@ class FakeHub:
         self.history: list[str] = []
         self.parents: dict[str, str | None] = {}
         self.messages: dict[str, str] = {}
+        self.descriptions: dict[str, str] = {}
         self.reads: list[tuple[str, str | None]] = []
         #: Every write call as `(method, keyword arguments)`, in order — for what a test asserts about a
         #: call's arguments rather than about what the repo holds afterwards.
@@ -569,6 +576,8 @@ class FakeHub:
         self.writes = 0
         self.before_write: dict[int, Callable[[], None]] = {}
         self.while_sending: Callable[[], None] | None = None
+        #: When set, `upload_folder` commits its files in two parts and runs this between them.
+        self.between_parts: Callable[[], None] | None = None
         self._record(
             {".gitattributes": b"*.parquet filter=lfs diff=lfs merge=lfs -text\n", **(files or {})}, "init"
         )
@@ -592,12 +601,13 @@ class FakeHub:
                 tree[path] = data
         return self._record(tree, message)
 
-    def _record(self, tree: dict[str, bytes], message: str) -> str:
+    def _record(self, tree: dict[str, bytes], message: str, description: str = "") -> str:
         parent = self.history[-1] if self.history else None
         oid = hashlib.sha1(f"{parent}:{message}:{len(self.history)}".encode()).hexdigest()
         self.trees[oid] = dict(tree)
         self.parents[oid] = parent
         self.messages[oid] = message
+        self.descriptions[oid] = description
         self.history.append(oid)
         return oid
 
@@ -609,19 +619,25 @@ class FakeHub:
         return revision
 
     def _arrive(self, method: str, arguments: dict[str, Any]) -> None:
-        """A write arriving: the concurrent writer acts first, then the hub checks the precondition."""
+        """A write arriving: recorded, and the concurrent writer, if any, acts first."""
         self.calls.append((method, arguments))
-        parent_commit = arguments.get("parent_commit")
         hook = self.before_write.get(self.writes)
         self.writes += 1
         if hook is not None:
             hook()
+
+    def _land(self, tree: dict[str, bytes], message: str, description: str, parent_commit: str | None) -> str:
+        """Commit `tree` as the hub does: an unchanged tree is skipped and answered with the head (no
+        precondition checked), otherwise a stale `parent_commit` is refused."""
+        if tree == self.tree():
+            return self.head
         if parent_commit is not None and parent_commit != self.head:
             url = f"https://huggingface.co/api/datasets/{self.repo_id}/commit/main"
             raise HfHubHTTPError(
                 f"412 Precondition Failed: parent {parent_commit} is not the head {self.head}",
                 response=httpx.Response(412, request=httpx.Request("POST", url)),
             )
+        return self._record(tree, message, description)
 
     # ── the `HfApi` surface ───────────────────────────────────────────────────────────────────────
 
@@ -648,6 +664,18 @@ class FakeHub:
             entries.append(RepoFile(path=path, size=len(data), oid=git_blob_id(data), lfs=lfs))
         return entries
 
+    def list_repo_commits(
+        self, repo_id: str, *, revision: str | None = None, **kwargs: Any
+    ) -> list[SimpleNamespace]:
+        self.reads.append(("list_repo_commits", revision))
+        commits, oid = [], self._resolve(revision)
+        while oid is not None:
+            commits.append(
+                SimpleNamespace(commit_id=oid, title=self.messages[oid], message=self.descriptions[oid])
+            )
+            oid = self.parents[oid]
+        return commits
+
     def file_exists(self, repo_id: str, filename: str, *, revision: str | None = None, **kwargs: Any) -> bool:
         self.reads.append(("file_exists", revision))
         return filename in self.tree(revision)
@@ -666,6 +694,7 @@ class FakeHub:
         operations: list[Any],
         *,
         commit_message: str,
+        commit_description: str | None = None,
         parent_commit: str | None = None,
         **kwargs: Any,
     ) -> SimpleNamespace:
@@ -690,7 +719,7 @@ class FakeHub:
                 continue
             source = op.path_or_fileobj
             tree[op.path_in_repo] = source if isinstance(source, bytes) else Path(source).read_bytes()
-        return SimpleNamespace(oid=self._record(tree, commit_message))
+        return SimpleNamespace(oid=self._land(tree, commit_message, commit_description or "", parent_commit))
 
     def upload_folder(
         self,
@@ -701,6 +730,7 @@ class FakeHub:
         allow_patterns: list[str] | None = None,
         delete_patterns: list[str] | None = None,
         commit_message: str | None = None,
+        commit_description: str | None = None,
         parent_commit: str | None = None,
         **kwargs: Any,
     ) -> SimpleNamespace:
@@ -718,15 +748,30 @@ class FakeHub:
         )
         if self.while_sending is not None:
             self.while_sending()
+        message, description = commit_message or "Upload folder", commit_description or ""
         root = Path(folder_path)
         on_disk = sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file())
+        names = list(filter_repo_objects(on_disk, allow_patterns=allow_patterns))
+        parts = [names[: len(names) // 2], names[len(names) // 2 :]] if self.between_parts else [names]
         tree = self.tree()
         if delete_patterns:
             for path in filter_repo_objects(sorted(tree), allow_patterns=delete_patterns):
                 del tree[path]
-        for name in filter_repo_objects(on_disk, allow_patterns=allow_patterns):
-            tree[f"{path_in_repo}{name}"] = (root / name).read_bytes()
-        return SimpleNamespace(oid=self._record(tree, commit_message or "Upload folder"))
+        oid = self.head
+        for number, part in enumerate(parts):
+            if number:
+                self.between_parts()
+                tree = self.tree()
+            for name in part:
+                tree[f"{path_in_repo}{name}"] = (root / name).read_bytes()
+            # The precondition rides the first part only, as the library's pipelined uploader does.
+            oid = self._land(
+                tree,
+                message if not number else f"{message} (part 2)",
+                description,
+                parent_commit if not number else None,
+            )
+        return SimpleNamespace(oid=oid)
 
     def delete_files(
         self,
@@ -748,7 +793,7 @@ class FakeHub:
         tree = self.tree()
         for path in filter_repo_objects(sorted(tree), allow_patterns=delete_patterns):
             del tree[path]
-        return SimpleNamespace(oid=self._record(tree, commit_message or "Delete files"))
+        return SimpleNamespace(oid=self._land(tree, commit_message or "Delete files", "", parent_commit))
 
 
 @pytest.fixture

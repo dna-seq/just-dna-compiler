@@ -137,9 +137,43 @@ def test_every_read_a_snapshot_publish_makes_is_at_the_revision_it_commits_on(
     assert hub.parents[payload] == read_at
     assert hub.parents[description] == payload
     # One read of the head (the pin itself); every other read names a revision: the plan's, or the
-    # payload commit's when the payload is checked on the hub.
+    # payload commit's when the payload is checked on the hub; and each write's history walk starts at
+    # the commit it made.
     assert hub.reads[0] == ("repo_info", None)
-    assert {revision for _, revision in hub.reads[1:]} == {read_at, payload}
+    assert {revision for method, revision in hub.reads[1:] if method != "list_repo_commits"} == {
+        read_at,
+        payload,
+    }
+    assert [revision for method, revision in hub.reads if method == "list_repo_commits"] == [
+        payload,
+        description,
+    ]
+
+
+def test_an_unchanged_payload_does_not_hide_a_commit_that_landed_first(tmp_path: Path, fake_hub) -> None:
+    """The hub skips a write that changes nothing and answers with the current head, checking no
+    precondition: a republish whose payload is byte-identical got another writer's head back as its
+    own, and the description, pinned on it, went over a sidecar that writer had just added."""
+    snapshot = tmp_path / "snap"
+    r1 = _build(snapshot, "2026-10")
+    hub = fake_hub(_REPO, {name: data for name, data in r1.items() if name != RELEASE_FILENAME})
+    hub.before_write[0] = lambda: hub.foreign_commit({"citations/citations.parquet": b"PAR1 cites PAR1"})
+    with pytest.raises(upload.RemoteMovedError, match="1 commit"):
+        publish_reference_snapshot(snapshot, _REPO)
+    assert RELEASE_FILENAME not in hub.tree()
+
+
+def test_a_commit_between_the_uploaders_own_parts_withholds_the_description(tmp_path: Path, fake_hub) -> None:
+    """The hub's multi-commit uploader pins its first part only, so a commit landing between two parts
+    was built on silently, and the description went over it."""
+    snapshot = tmp_path / "snap"
+    _build(snapshot, "2026-10")
+    theirs = b'{"theirs": true}'
+    hub = fake_hub(_REPO)
+    hub.between_parts = lambda: hub.foreign_commit({RELEASE_FILENAME: theirs})
+    with pytest.raises(upload.RemoteMovedError, match="beside 2 of this write's own"):
+        publish_reference_snapshot(snapshot, _REPO)
+    assert hub.tree()[RELEASE_FILENAME] == theirs
 
 
 # ── prune ─────────────────────────────────────────────────────────────────────────────────────────
@@ -209,6 +243,16 @@ def test_a_version_published_after_the_collision_check_is_not_overwritten(tmp_pa
     assert hub.tree()["data/test_module/v1.2.3/manifest.json"] == theirs
 
 
+def test_a_refused_versioned_copy_says_the_flat_path_already_landed(tmp_path: Path, fake_hub) -> None:
+    module_dir = _module(tmp_path / "m")
+    hub = fake_hub(_MODULE_REPO)
+    hub.before_write[1] = lambda: hub.foreign_commit({"README.md": b"someone else"})
+    with pytest.raises(upload.RemoteMovedError, match="the flat path data/test_module/ at"):
+        upload_module(module_dir, "test_module")
+    assert "data/test_module/manifest.json" in hub.tree()
+    assert "data/test_module/v1.2.3/manifest.json" not in hub.tree()
+
+
 def test_every_read_a_module_publish_makes_is_at_the_revision_it_commits_on(tmp_path: Path, fake_hub) -> None:
     module_dir = _module(tmp_path / "m")
     hub = fake_hub(
@@ -219,7 +263,8 @@ def test_every_read_a_module_publish_makes_is_at_the_revision_it_commits_on(tmp_
     flat, versioned = hub.history[-2:]
     assert (hub.parents[flat], hub.parents[versioned]) == (read_at, flat)
     assert hub.reads[0] == ("repo_info", None)
-    assert {revision for _, revision in hub.reads[1:]} == {read_at}
+    assert {revision for method, revision in hub.reads[1:] if method != "list_repo_commits"} == {read_at}
+    assert [revision for method, revision in hub.reads if method == "list_repo_commits"] == [flat, versioned]
 
 
 # ── the guards ────────────────────────────────────────────────────────────────────────────────────

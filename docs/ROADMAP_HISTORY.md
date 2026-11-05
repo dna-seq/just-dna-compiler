@@ -41,7 +41,7 @@ the `0.8` branch lane by lane. Newest first.
 medium. Class 1 of the second 0.8 audit (one run of four saw it; each instance re-verified on `0.8` at
 `5b1b73b8` and demonstrated against a fake hub before the fix).
 
-**Residuals** won't fix — in an `upload_folder` the hub splits into several commits, `parent_commit` pins the first part only, so another writer's commit between two of the hub's own parts to a path this publish does not carry goes unseen (one to a path it carries fails the hash check) · won't fix — a payload the hash check refuses has already landed, and the previous `release.json` stays over it until a re-run, which is what any failed second commit has always left
+**Residuals** won't fix — a payload the hash check or the history walk refuses has already landed, and the previous `release.json` stays over it until a re-run, which is what any failed second commit has always left · won't fix — the hub's pipelined uploader retries a commit whose response was lost with the same `parent_commit`, and the 412 that answers it is re-raised as the hub's own error rather than a refusal, because the walk finds only this write's commits; the re-run finds the hashes matching and completes
 
 **The class.** A publisher plans, checks and writes, and RM368 made the module send one reading of the
 disk. The other publish paths still acted on names: what the hub sent was whatever the paths held when
@@ -86,9 +86,16 @@ second upload read it off the disk after the first had sent the payload.
 No hub write exists outside `upload.py`, in any tier; `schema/` and `compiler/` reach no hub.
 
 **The mechanism.** One helper, `_commit`, is the only way the tier writes to the hub, and it always
-passes the plan's revision as `parent_commit`. A refusal is a `RemoteMovedError` (a new `PublishRefused`)
-when the head, read again, is not the parent, so the translation rests on the fact rather than on the
-status code the hub answers with; any other hub error is re-raised. Every remote read after the pin
+passes the plan's revision as `parent_commit`. That alone does not hold, as the code review of the first
+cut found: the library skips a write that changes nothing and answers with the *current* head without
+sending the precondition (a byte-identical republish took another writer's head as its own and described
+over that writer's sidecar), and the multi-commit uploader pins its first part only. So every write
+carries a per-write token in its commit description, and after the write `_commit` walks
+`list_repo_commits` from the answered head back to the parent: a commit without the token is another
+writer's, and the write is a `RemoteMovedError` (a new `PublishRefused`) that counts both kinds and names
+what the publish already landed (the flat path, the payload). A hub error takes the same walk from the
+head, so the translation rests on the history rather than on the status code; an error with no foreign
+commit behind it is re-raised. Every remote read after the pin
 names the revision. A snapshot's payload is held to the hashes of the one local read on the hub itself,
 which costs one full read of the snapshot beside the hub's own and holds nothing in memory. The guards,
 in `enricher/tests/test_a_publish_is_pinned.py`: `test_every_hub_write_goes_through_the_one_pinned_helper`
@@ -112,6 +119,10 @@ which the hash would read twice per run (measured: 12 s a read); the first asser
 uploader is named nowhere in the package instead, which holds at every size. The check assumes the hub
 states an LFS (or Xet-backed) file's `lfs.sha256` in its tree listing and a plain file's git blob id, as
 `huggingface_hub` 2.0 documents; a file stated by neither withholds the description rather than passing.
+The walk assumes `list_repo_commits` answers a commit's description as its `message`, as the library
+documents; were it not, every write would refuse rather than pass. `FakeHub` models the empty-write skip
+and a two-part `upload_folder`, and the module tests that kept a `MagicMock` give it a linear history
+(`_linear_hub`).
 
 ## RM380 — a hand-kept struct mirrored `ResolutionRow` with nothing asserting the two agree, so reverse dropped every 0.8 provenance column
 

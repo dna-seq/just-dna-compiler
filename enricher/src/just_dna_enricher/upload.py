@@ -24,6 +24,8 @@ Extracted from ``just_dna_pipelines.v1_port.publish`` (just-dna-lite); ``create_
 import hashlib
 import json
 import logging
+import os
+import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
 from fnmatch import fnmatch, fnmatchcase
@@ -35,7 +37,7 @@ from huggingface_hub import CommitOperationAdd, CommitOperationDelete
 from huggingface_hub.errors import HfHubHTTPError
 from just_dna_compiler.compiler import ARTIFACT_PARQUETS, LEAD_PARQUETS
 from just_dna_format.identity import is_valid_version
-from just_dna_format.integrity import sha256_bytes, sha256_file
+from just_dna_format.integrity import SHA256_PREFIX, sha256_bytes, sha256_file
 from just_dna_format.manifest import (
     LOGO_EXTENSIONS,
     README_CANDIDATES,
@@ -523,6 +525,43 @@ def _head(api, repo_id: str) -> str:
     return api.repo_info(repo_id=repo_id, repo_type="dataset").sha
 
 
+#: What every write's commit description carries, with a token minted per write: how a write tells its
+#: own commits from another writer's when it walks the history back to the revision it was pinned on.
+_WRITE_MARK = "just-dna-enricher write"
+
+
+def _lineage(api, repo_id: str, parent: str, head: str, token: str) -> tuple[int, int] | None:
+    """`(ours, theirs)`: the commits between `parent` and `head`, told apart by the write's token (RM386).
+
+    `None` when `parent` is not an ancestor of `head` at all (history rewritten under the write).
+    """
+    ours = theirs = 0
+    for commit in api.list_repo_commits(repo_id=repo_id, repo_type="dataset", revision=head):
+        if commit.commit_id == parent:
+            return ours, theirs
+        if token in (commit.message or ""):
+            ours += 1
+        else:
+            theirs += 1
+    return None
+
+
+def _moved(repo_id: str, parent: str, head: str, lineage: tuple[int, int] | None, landed: str | None) -> str:
+    """The `RemoteMovedError` sentence: what moved the repo, and what of this publish is already on it."""
+    if lineage is None:
+        what = f"{parent[:12]} is no longer in its history"
+    else:
+        ours, theirs = lineage
+        what = f"{theirs} commit(s) by another writer landed after it" + (
+            f", beside {ours} of this write's own" if ours else ", and none of this write's landed"
+        )
+    before = f" Already on the hub from this publish: {landed}." if landed else ""
+    return (
+        f"{repo_id} moved after the plan read it (read at {parent[:12]}, now at {head[:12]}): {what}, so "
+        f"this write would act on a repo nobody checked.{before} Re-run to read the repo again."
+    )
+
+
 def _commit(
     api,
     repo_id: str,
@@ -533,19 +572,27 @@ def _commit(
     folder: Path | None = None,
     allow_patterns: list[str] | None = None,
     delete_patterns: list[str] | None = None,
+    landed: str | None = None,
 ) -> str:
     """Every write this tier makes to the hub, pinned to `parent`; returns the new head (RM386).
 
     One commit of `operations`, or an `upload_folder` of `folder` filtered by `allow_patterns` (the
     snapshot payload, kept on the hub's resumable, multi-commit uploader for RM199's reason). Either way
-    `parent_commit` is the revision the plan read, so a commit landing in between makes the hub refuse
-    this one; the refusal is a `RemoteMovedError`, decided by reading the head again rather than by the
-    status code the hub answers with. Any other hub error is re-raised as it came. An AST walk holds
-    every hub write in the package to this function (`test_every_hub_write_goes_through_the_one_pinned_helper`).
+    `parent_commit` is the revision the plan read, so a commit landing first makes the hub refuse this
+    one. An AST walk holds every hub write in the package to this function
+    (`test_every_hub_write_goes_through_the_one_pinned_helper`).
 
-    In an `upload_folder` the hub splits into several commits, `parent_commit` pins the first; what the
-    later parts landed is checked against the plan's hashes afterwards (`_check_on_the_hub`).
+    **`parent_commit` alone does not hold, so the history is walked after the write.** The library
+    skips a write that changes nothing and answers with the *current* head, sending no precondition at
+    all; and the multi-commit uploader pins its first part only. So every write carries a token in its
+    commit description, and the commits from the answered head back to `parent` must all carry it: one
+    that does not is another writer's, and the write refuses (`RemoteMovedError`) before anything is
+    built on top of it. A hub error is a `RemoteMovedError` on the same test, read from the head again
+    rather than from the status code; one with no foreign commit behind it is re-raised as it came.
+    `landed` names what this publish has already committed, for the refusal to say so.
     """
+    token = uuid.uuid4().hex
+    description = f"{_WRITE_MARK} {token}"
     try:
         if folder is None:
             info = api.create_commit(
@@ -553,6 +600,7 @@ def _commit(
                 repo_type="dataset",
                 operations=operations or [],
                 commit_message=message,
+                commit_description=description,
                 parent_commit=parent,
             )
         else:
@@ -564,17 +612,18 @@ def _commit(
                 allow_patterns=allow_patterns,
                 delete_patterns=delete_patterns,
                 commit_message=message,
+                commit_description=description,
                 parent_commit=parent,
             )
     except HfHubHTTPError as exc:
         head = _head(api, repo_id)
-        if head != parent:
-            raise RemoteMovedError(
-                f"{repo_id} moved after the plan read it (read at {parent[:12]}, now at {head[:12]}): "
-                f"another writer committed in between, so this write would act on a repo nobody "
-                f"checked. Nothing of it was committed; re-run to read the repo again."
-            ) from exc
+        lineage = _lineage(api, repo_id, parent, head, token) if head != parent else (0, 0)
+        if lineage is None or lineage[1]:
+            raise RemoteMovedError(_moved(repo_id, parent, head, lineage, landed)) from exc
         raise
+    lineage = _lineage(api, repo_id, parent, info.oid, token) if info.oid != parent else (0, 0)
+    if lineage is None or lineage[1]:
+        raise RemoteMovedError(_moved(repo_id, parent, info.oid, lineage, landed))
     return info.oid
 
 
@@ -1371,6 +1420,7 @@ def upload_module(
             flat,
             commit_message or f"Add {name} module {segment}",
             operations=_commit_operations(plan.versioned_path_in_repo, payload),
+            landed=f"the flat path {plan.path_in_repo}/ at {flat[:12]}, without its versioned copy",
         )
     return plan
 
@@ -1639,6 +1689,12 @@ class _ReadOnce:
     sha256: str
     blob_id: str
 
+    @classmethod
+    def of_bytes(cls, data: bytes) -> "_ReadOnce":
+        return cls(
+            sha256=sha256_bytes(data), blob_id=hashlib.sha1(b"blob %d\x00" % len(data) + data).hexdigest()
+        )
+
 
 _CHUNK = 1 << 20
 
@@ -1653,7 +1709,8 @@ def _read_once(path: Path) -> _ReadOnce:
     """
     sha256, sha1 = hashlib.sha256(), hashlib.sha1()
     with path.open("rb") as handle:
-        size = path.stat().st_size
+        # The open handle's size, never the path's: a rename-over after `open` is another file.
+        size = os.fstat(handle.fileno()).st_size
         sha1.update(b"blob %d\x00" % size)
         read = 0
         for chunk in iter(lambda: handle.read(_CHUNK), b""):
@@ -1662,7 +1719,7 @@ def _read_once(path: Path) -> _ReadOnce:
             read += len(chunk)
     if read != size:
         raise PlanChangedError(f"{path} changed size while the publish read it ({size} → {read} bytes)")
-    return _ReadOnce(sha256=f"sha256:{sha256.hexdigest()}", blob_id=sha1.hexdigest())
+    return _ReadOnce(sha256=SHA256_PREFIX + sha256.hexdigest(), blob_id=sha1.hexdigest())
 
 
 def _check_on_the_hub(api, repo_id: str, revision: str, planned: dict[str, _ReadOnce]) -> None:
@@ -1687,7 +1744,7 @@ def _check_on_the_hub(api, repo_id: str, revision: str, planned: dict[str, _Read
             continue
         lfs = getattr(entry, "lfs", None)
         held, expected = (
-            (f"sha256:{lfs.sha256}", read.sha256) if lfs is not None else (entry.blob_id, read.blob_id)
+            (SHA256_PREFIX + lfs.sha256, read.sha256) if lfs is not None else (entry.blob_id, read.blob_id)
         )
         if held != expected:
             differ.append(name)
@@ -1775,10 +1832,7 @@ def publish_reference_snapshot(
         try:
             if name == RELEASE_FILENAME:
                 description = (snapshot_dir / name).read_bytes()
-                planned[name] = _ReadOnce(
-                    sha256=sha256_bytes(description),
-                    blob_id=hashlib.sha1(b"blob %d\x00" % len(description) + description).hexdigest(),
-                )
+                planned[name] = _ReadOnce.of_bytes(description)
             else:
                 planned[name] = _read_once(snapshot_dir / name)
         except OSError as exc:
@@ -1816,5 +1870,6 @@ def publish_reference_snapshot(
             sent,
             f"Describe the snapshot ({RELEASE_FILENAME})",
             operations=[CommitOperationAdd(path_in_repo=RELEASE_FILENAME, path_or_fileobj=description)],
+            landed=f"the payload at {sent[:12]}, which the previous {RELEASE_FILENAME} still describes",
         )
     return plan
