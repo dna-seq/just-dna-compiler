@@ -683,6 +683,12 @@ def _run_enrichment(
     pos_candidates: dict[tuple, list[str]] = {}
     rev_candidates: dict[tuple, list[str]] = {}  # (chrom,start,ref,alt) -> sorted candidate rsids
     rev_source: dict[tuple, str] = {}  # which link produced the candidates
+    # **Whether a position→rsID map was read at all this run (RM393).** Only the two snapshot links fill
+    # `rev_candidates` — no live link answers a position — so a run with neither snapshot queryable has
+    # no answer about any positional subject's rsID, and an empty `rev_candidates` then means nobody
+    # asked, never that the source names no rsID there. Narrower than `rsid_links_consulted` below on
+    # purpose: that one is also true for a run that may go live, which back-fills nothing.
+    reverse_map_read = False
     positions = [(v.chrom, v.start, v.ref, _authored_alt(v)) for v in need_rsid]
 
     # One proxy, one read cache for the run: the hosting filter settles an undecided indel with it
@@ -767,6 +773,7 @@ def _run_enrichment(
             rsid_to_loci, pos_candidates, _ = lookup_loci(
                 reference, rsids, positions, non_nucleotide=non_nucleotide_rsids
             )
+            reverse_map_read = True
         except Exception as exc:
             # A *located* cache can still be unusable — a stale snapshot, or a parquet a different
             # tool wrote — and the query then raises rather than returning nothing. That was fatal
@@ -839,6 +846,7 @@ def _run_enrichment(
                     cv_rsid_to_loci, cv_pos_candidates, _ = clinvar.lookup_loci(
                         clinvar_ref, cv_rsids, cv_positions
                     )
+                    reverse_map_read = True
                 except Exception as exc:
                     logger.warning(
                         "ClinVar reference at %s is present but not queryable (%s); continuing "
@@ -1509,6 +1517,14 @@ def _run_enrichment(
             # deterministic pick + status="ambiguous" + the full candidate list, never a silent guess.
             pt = (v.chrom, v.start, v.ref, _authored_alt(v))
             cands = rev_candidates.get(pt, [])
+            if rederive and not reverse_map_read and _subject_key(v) in existing:
+                # **Nobody asked, so nothing replaces the recorded row (RM393).** With no reverse map
+                # read, an empty `cands` is not an answer, and writing `rsid=None, source=authored`
+                # here erased a back-filled rsID that the recompiled artifact then shipped as null.
+                # No row, like every other could-not-ask branch: the carry-forward below puts the
+                # recorded rows back unchanged (`@rederive-never-shortens`). A first enrich keeps the
+                # authored row: with nothing recorded, the coordinate is the whole identity.
+                continue
             if not cands:
                 rsid, status, alternates, src = None, "resolved", None, "authored"
             elif len(cands) == 1:

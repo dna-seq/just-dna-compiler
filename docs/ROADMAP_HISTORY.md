@@ -35,6 +35,52 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM393 — a re-derivation that read no position→rsID map erased a back-filled rsID, and the artifact shipped it null
+
+✅ **SHIPPED 2026-11-05 on `0.8`, uncut — a minor (the 0.8 audit, round 3)**, class 1, a cut blocker. Owner
+enricher (`enrich/orchestration.py`), severity high. *related* RM98, RM382, RM375, RM394
+
+**Residuals** won't fix — the per-link case under *Not fixed* below: the pm sized this item narrow, and a
+per-link predicate waits for a run that meets it. The same run's report called the erased rsID "moved: the
+source names a different event", which is RM394's.
+
+**The class.** Nobody-asked read as an answer (`@unreachable-not-absent`), on the one path `--rederive`
+re-opens: a re-derivation replaces only what was answered, and could-not-ask keeps its rows
+(`@rederive-never-shortens`). A positional subject's rsID is back-filled from a position→rsID map, and only
+the two snapshot links fill one (`rev_candidates`, from the Ensembl snapshot and the ClinVar snapshot); no
+live link answers a position. With neither snapshot read, an empty candidate list meant nobody asked, and
+the branch wrote `rsid=None, source=authored` all the same. `fresh_keys` then counted the subject answered,
+so the carry-forward never put the recorded row back.
+
+**The instance, on `64c835b9`.** `enrich/orchestration.py:1512–1513` (the positional branch): no
+candidates → `rsid=None, status=resolved, source=authored`, whatever the run read → under `--rederive`,
+with no map read and a recorded row for the subject, no fresh row; the carry-forward restores the
+recorded one. The only instance: every other branch that cannot ask already writes nothing (RM98, S20,
+RM382), and a first enrich keeps the authored row, since with nothing recorded the coordinate is the whole
+identity. Measured by the audit on a copy of `hfe_hemochromatosis` with every cache empty: both
+`ga4gh:VA.*` rows lost `rs773443949`, `source` and `source_release`, and the recompiled `weights.parquet`
+and `annotations.parquet` carried `rsid=null`. Since 0.7 (`main:enrich.py:1546`); the 0.8 migration step,
+`--rederive` after a 14.5 GB pull that may fail, is the realistic way in.
+
+**The mechanism.** One run-level predicate, `reverse_map_read`, set where a snapshot's position lookup
+returns (the Ensembl link's `lookup_loci`, the ClinVar link's `clinvar.lookup_loci`), narrower than
+`rsid_links_consulted` on purpose: that one is true for any run allowed to go live, which back-fills
+nothing. The positional branch reads it, and nothing else changed.
+
+**The guard**, `enricher/tests/test_a_rederive_with_no_reverse_map_keeps_the_backfill.py`, on the example
+itself under `no_ambient_caches` (an empty base): rederived with no snapshot, the positional rows keep
+`rsid`, `source`, `authority`, `status`, `source_release` and `rsid_alternates`, nothing is reported as
+drift, and the module compiles to the same `artifact.digest` as the untouched copy, with no null rsID in
+`weights.parquet`. Shown red before the change (the row came back `rsid=''`, `source=authored`). Its
+second test is the other half: with an Ensembl snapshot that holds chromosome 6 but not the locus, the
+map was read and said nothing is there, so the rows go out `authored` and the drift names them. Mutated
+once: with the Ensembl link not setting the predicate, the second test went red.
+
+**Not fixed (the pm sized it narrow).** The predicate is per run, not per link. With the Ensembl snapshot
+read and the ClinVar snapshot absent, a recorded rsID ClinVar back-filled is still replaced when Ensembl
+has no candidate at the allele. A per-link predicate (carry when the link that answered the recorded row
+was not read) is the honest version; it waits for a run that meets it.
+
 ## RM384 — the Ensembl lane's repository has no public name on 0.8, and every pulled lane spells its repository twice
 
 ✅ **SHIPPED 2026-11-05 on `0.8`, uncut — a minor (S130, the tail of RM372).** Owner enricher (`download.py`,

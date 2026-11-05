@@ -41,6 +41,15 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-05 — RM393: a re-derivation with no snapshot keeps a positional row's back-filled rsID (0.8, uncut)
+
+- **`enrich --rederive` no longer erases what it could not ask.** A coordinate-only row's rsID comes from a
+  position→rsID map, which only the Ensembl and ClinVar snapshots supply. With neither read (a bare machine
+  under `--offline`, or a failed pull), the re-derivation wrote the row `rsid` empty and `source=authored`,
+  and the recompiled `weights.parquet`/`annotations.parquet` carried `rsid=null`. The recorded row is now
+  carried forward unchanged, so the module recompiles to the same `artifact.digest`. A snapshot that was
+  read and has no rsID at the allele still replaces it. Measured on `hfe_hemochromatosis` (audit round 3).
+
 ## 2026-11-05 — `hboc_palb2` and `pathogenic_clinvar` regenerated against the split snapshot (0.8, uncut)
 
 - The two examples the first regeneration withheld are re-derived online now that RM381, RM382 and RM387

@@ -731,6 +731,12 @@ A table written before 0.8 keeps its `not_found` rows until `enrich --rederive`,
 | `check_publish_orphans_no_sidecar` | New keyword `revision=` (default: the head). | None. |
 | `cache prune --yes` | A refused deletion prints `PRUNE REFUSED — …` and goes on to the next lane. | None. |
 
+### 1.41 A re-derivation with no position→rsID map keeps the recorded back-fill (RM393, no new code)
+
+| Surface | What changed | What to do |
+| --- | --- | --- |
+| `resolution.csv` after `enrich --rederive` | A coordinate-only row whose rsID was back-filled keeps its recorded row (`rsid`, `source`, `source_release`) when the run read no Ensembl and no ClinVar snapshot; it used to be rewritten `rsid` empty, `source=authored`, and the recompiled parquets carried `rsid=null`. It is carried, so the drift report leaves it out. A snapshot that was read and has no rsID at the allele still replaces it. | None. A module re-derived on 0.8 before this fix with no snapshot: re-derive it again with the snapshots pulled. |
+
 ## 2. What to change
 
 ### Upgrade order
