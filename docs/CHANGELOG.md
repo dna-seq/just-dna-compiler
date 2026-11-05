@@ -41,6 +41,67 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-05 — The reference examples' `resolution.csv` regenerated against the split snapshot (0.8, uncut)
+
+- **14 of the 16 examples that commit a `resolution.csv` were re-derived** (`enrich --rederive`) against
+  `just-dna-seq/ensembl_variations_split`, release `ensembl-variation-2026_07_13-vep116.0` (the maintainer's
+  decision of 2026-11-04). Every rewritten row now records `source_release`, and RM267's, RM270's and RM375's
+  columns. Ten ran online, because their committed tables held what only an online run produces (an indel
+  `vrs_id`, an `rsid_status`, a REST-answered row, or online checks in `verification.json`). Six ran
+  offline (marked *off* below), because their tables held nothing an offline run would lose.
+- **`content_signature` did not move on any example but `cpic_gene_pairs`**, where an authored row was
+  corrected (below). `compile → reverse → compile` is a fixed point for `artifact.digest` and every signature
+  on all 14 (`verification` is outside the round trip by `REVERSE_MANIFEST_EXCLUDED`). Every example passes
+  `validate --strict`, no example raises `rsid_placements_disagree` or `positional_identity_contradicted`,
+  and the only `authored_event` verdict in the corpus is `rs761191455`'s `same_event` (cpic). Every closure
+  survived except cpic's, which was closed again.
+- **`cpic_gene_pairs`: NUDT15 `*1` `rs1457579126` is authored at `13:48040977 GA`, no longer at
+  48040982.** 48040982 is the HGVS deleted-base position of a one-base deletion in `G AAAAA T`
+  (977–983), inside the event and not a VCF anchor. The row now uses the snapshot's left-aligned anchor
+  and the `*1` (reference) allele. The README records the edit, since the example keeps no `logs/`.
+  `assets/consumer_join` grew its chr13 window to cover the row.
+- **Withheld: `hboc_palb2` and `pathogenic_clinvar`** keep their 0.7-era tables. Re-derived, they spell six
+  multi-ALT indel alleles with the snapshot's shared padded `ref` (`16:23635706 GTT>GT`, `11:5226773
+  TGG>TG`, …), which a `bcftools norm`ed VCF never meets, and `test_consumer_join` refuses it. That is RM381,
+  and the two examples are regenerated once it lands.
+- **Seven test files read a shape off an example that the regeneration changed.** Each now builds that
+  shape on its copy, so the test still checks what it was written to check. `apoe_epsilon` had no ALT
+  (`test_verification_block`'s no-ALT line, `test_opentargets`' whole-release case). `hfe_hemochromatosis`
+  had no verification records and no concordance record (`test_verification_record`,
+  `test_clin_sig_concordance`). `rs111033563` lacked `G` (`test_studyrow_0_8`'s wrong proxy allele is now
+  `T`, the lead's own). `shox_par1` carried a split locus (`test_rsid_placements_disagree` puts the old
+  pair back on a copy). And `assets/consumer_join` did not cover cpic's corrected row.
+
+| Example | Subjects | Respelled | Allele gained | rsID filled | Source only | Other derived files rewritten | Digests that moved |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `apoe_epsilon` *(off)* | 2 | 0 | 2 | 0 | 0 | new `licensing.csv` | artifact, resolution, sources |
+| `apoe_klvs_meta` | 6 | 0 | 2 | 0 | 0 | `licensing.csv` | artifact, resolution, sources |
+| `cpic_gene_pairs` | 62 | 2 | 14 | 3 | 0 | `licensing.csv` | artifact, resolution, sources, **content** |
+| `cyp2c19_star_alleles` *(off)* | 35 | 0 | 10 | 0 | 0 | `licensing.csv` | artifact, resolution, sources |
+| `cyp2c9_warfarin_grch37` | 5 | 0 | 0 | 0 | 0 | none | none (GRCh37: nothing re-asked) |
+| `hfe_compound_het` | 2 | 0 | 2 | 0 | 0 | new `licensing.csv` | artifact, resolution, sources |
+| `hfe_hemochromatosis` | 12 | 0 | 4 | 0 | 8 | `sources.csv`, new concordance pair | artifact, resolution, sources, concordance |
+| `longevity_studies` *(off)* | 6 | 0 | 1 | 0 | 0 | `licensing.csv` | artifact, resolution, sources |
+| `model_organisms` *(off)* | 1 | 0 | 1 | 0 | 0 | `licensing.csv` | artifact, resolution, sources |
+| `mt_common_deletion` *(off)* | 3 | 0 | 0 | 0 | 2 | `licensing.csv`, new concordance pair | artifact, sources, concordance |
+| `par_boundary` | 3 | 0 | 0 | 0 | 3 | `licensing.csv` | artifact, sources |
+| `pgx_slco1b1_simvastatin` *(off)* | 1 | 0 | 0 | 0 | 0 | `licensing.csv` | artifact, sources |
+| `pleiotropy_tradeoff` | 3 | 0 | 0 | 0 | 0 | `licensing.csv` | artifact, sources |
+| `shox_par1` | 10 | 1 | 2 | 0 | 1 | new concordance pair | artifact, resolution, sources, concordance |
+| `hboc_palb2`, `pathogenic_clinvar` | | | | | | withheld (RM381) | none |
+
+*Respelled*: a subject's locus moved (cpic's two NUDT15 indels; shox's split `rs1569493663` is now the one
+locus `X:634689 CAG>C`, which hosts its authored `C/CAG`). *Allele gained*: the snapshot lists ALTs the old
+table did not, or the row had none (`apoe_epsilon`, `hfe_compound_het`). *rsID filled*: a coordinate-keyed
+subject gained its rsID. *Source only*: the facts are unchanged and the answering link moved (`clinvar` or
+`ensembl-rest` to the snapshot). The *sources* signature moved everywhere because each licence row is now
+labelled by the release its rows state (RM373). The concordance pair (`clin_sig_concordance.csv`,
+`clin_sig_authority_calls.csv`) is a 0.8 `enrich` output, first written into these three examples by
+this run. `verification.json` was rewritten on all 14. The new warnings:
+`clin_sig_concordance_contested` (three examples, one subject each, between the two authorities themselves),
+and on `mt_common_deletion` `source_row_unused`, for the `clinvar,resolution` licence row that no
+resolution row uses any longer.
+
 ## 2026-11-05 — RM379: every authority the concordance record names has its licence row (0.8, uncut)
 
 - **`enrich` records ClinVar's and PubMind's terms at the new `clin_sig_authority_call` layer** for each

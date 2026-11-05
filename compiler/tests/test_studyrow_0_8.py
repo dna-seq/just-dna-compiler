@@ -442,8 +442,10 @@ def test_a_stratum_and_its_level_are_written_both_or_neither() -> None:
 def _one_study(tmp_path: Path, name: str, cells: dict[str, str]) -> Path:
     """The HFE example with one extra study row on rs1800562, carrying `cells`.
 
-    rs1800562 resolves to G/A in the example's own `resolution.csv` and rs111033563 to A/C, so an
-    effect allele of `C` is the proxy's and not the lead's, and `G` is the lead's and not the proxy's.
+    In the example's own `resolution.csv` (regenerated against the split snapshot in 0.8) rs1800562
+    resolves to G/A/T and rs111033563 to A/C/G, so an effect allele of `C` is the proxy's and not the
+    lead's, and `T` is the lead's and not the proxy's. Before 0.8 they were G/A and A/C, and `G` played
+    the second part; the snapshot added G to rs111033563.
     """
     columns = tuple(c for c in sorted(cells) if c != "effect_allele")
 
@@ -456,6 +458,13 @@ def _one_study(tmp_path: Path, name: str, cells: dict[str, str]) -> Path:
     extra.update({"rsid": "rs1800562", "pmid": "29227965", **cells})
     _write_rows(spec / "studies.csv", header, [*rows, extra])
     return spec
+
+
+def _alleles_of(spec: Path, rsid: str) -> str:
+    """`ref/alt/...` as the module's own `resolution.csv` places `rsid`, read at run time."""
+    header, rows = _read_rows(spec / "resolution.csv")
+    (row,) = [r for r in rows if r["variant_key"] == rsid]
+    return "/".join([row["ref"], *row["alts"].split(",")])
 
 
 def _proxy_findings(tmp_path: Path, spec: Path, *, strict: bool) -> tuple[bool, list[str]]:
@@ -480,10 +489,10 @@ def test_the_allele_check_reads_the_proxys_alleles_when_one_is_stated(tmp_path: 
 
 
 def test_a_wrong_allele_for_the_proxy_is_refused_and_names_the_proxy(tmp_path: Path) -> None:
-    spec = _one_study(tmp_path, "wrong", {"effect_allele": "G", "proxy_rsid": "rs111033563"})
+    spec = _one_study(tmp_path, "wrong", {"effect_allele": "T", "proxy_rsid": "rs111033563"})
     ok, found = _proxy_findings(tmp_path, spec, strict=True)
     assert not ok and len(found) == 1
-    assert "proxy rs111033563" in found[0] and "A/C" in found[0]
+    assert "proxy rs111033563" in found[0] and _alleles_of(spec, "rs111033563") in found[0]
     ok, found = _proxy_findings(tmp_path, spec, strict=False)
     assert ok and len(found) == 1
 

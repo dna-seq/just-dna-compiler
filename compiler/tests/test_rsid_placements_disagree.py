@@ -18,6 +18,7 @@ and a `locus_index` are NOT read as two answers: a hand-filled table leaves `loc
 for every locus of a one-to-many rsID, so the table cannot tell that from two answers, and withholds.
 """
 
+import shutil
 from pathlib import Path
 
 import pytest
@@ -295,17 +296,37 @@ _EXAMPLES = Path(__file__).resolve().parents[2] / "reference_examples"
     sorted(p.parent.name for p in _EXAMPLES.glob("*/resolution.csv")),
 )
 def test_no_reference_example_is_read_as_two_placements(example: str) -> None:
-    """Every committed table, `shox_par1`'s split `rs1569493663` (X:634689 CAG>C and C>CAG) among them:
-    the check is silent, so it neither warns nor refuses a strict compile of any example."""
+    """Every committed table: the check is silent, so it neither warns nor refuses a strict compile of
+    any example. The split it must stay silent on is pinned on a copy of `shox_par1` below."""
     validated = validate_spec(_EXAMPLES / example)
     assert CODE not in validated.warnings_summary, [w for w in validated.warnings if _PHRASE in w]
 
 
-def test_the_corpus_walk_reaches_a_split() -> None:
-    """The walk above is only as good as its corpus: pin that it holds a split it must stay silent on."""
-    rows = (_EXAMPLES / "shox_par1" / "resolution.csv").read_text(encoding="utf-8")
-    assert "rs1569493663,rs1569493663,X,634689,CAG,C," in rows
-    assert "rs1569493663,rs1569493663,X,634689,C,CAG," in rows
+#: `shox_par1`'s `rs1569493663` as the old Ensembl snapshot answered it: one multi-ALT locus split into
+#: two pieces (RM270). The split snapshot answers it with one row (`CAG>C`), so since the 0.8
+#: regeneration no committed example carries a split, and the walk above can no longer reach one.
+_SHOX_SPLIT = (
+    "rs1569493663,rs1569493663,X,634689,CAG,C,GRCh38,0,,,,cache,ensembl,resolved\n",
+    "rs1569493663,rs1569493663,X,634689,C,CAG,GRCh38,1,,,,cache,ensembl,resolved\n",
+)
+
+
+def test_a_real_module_carrying_a_split_is_silent(tmp_path: Path) -> None:
+    """The walk above is only as good as its corpus, and the corpus lost its split when the examples
+    were regenerated against the split snapshot. So the split is put back into a copy of the real
+    `shox_par1`, and the same check must stay silent on it."""
+    spec = tmp_path / "shox_par1"
+    shutil.copytree(_EXAMPLES / "shox_par1", spec)
+    path = spec / "resolution.csv"
+    header, *rows = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    kept = [row for row in rows if not row.startswith("rs1569493663,")]
+    assert len(kept) == len(rows) - 1, "shox_par1 no longer carries rs1569493663"
+    fields = header.rstrip("\n").split(",")
+    pad = "," * (len(fields) - _SHOX_SPLIT[0].count(",") - 1)
+    path.write_text(header + "".join(kept) + "".join(r.rstrip("\n") + pad + "\n" for r in _SHOX_SPLIT))
+    validated = validate_spec(spec)
+    assert validated.valid, validated.errors
+    assert CODE not in validated.warnings_summary, [w for w in validated.warnings if _PHRASE in w]
 
 
 # ── the releases, when the rows record them (RM373's column) ──────────────────────────────────────

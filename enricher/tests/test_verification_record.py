@@ -54,9 +54,14 @@ def _cheap_proof_of_work(monkeypatch):
     monkeypatch.setattr(verification_module, "VERIFICATION_DIFFICULTY_BITS", _EASY)
 
 
-def _module(tmp_path: Path, name: str = "hfe_hemochromatosis") -> Path:
+def _module(tmp_path: Path, name: str = "hfe_hemochromatosis", *, records: bool = True) -> Path:
+    """A writable copy of a reference example. `records=False` drops its attestation, for a test whose
+    claim is about the records this pass writes rather than the ones the corpus already carries: since
+    the 0.8 regeneration every re-derived example ships `enrich`'s records, so the copy is not empty."""
     spec = tmp_path / name
     shutil.copytree(_EXAMPLES / name, spec)
+    if not records:
+        (spec / VERIFICATION_JSON).unlink(missing_ok=True)
     return spec
 
 
@@ -120,7 +125,7 @@ def test_a_second_pass_adds_its_check_without_erasing_the_first(tmp_path: Path) 
     Synthetic on purpose — it pins `ran` beside `skipped` in one document, which no pair of real
     commands is guaranteed to produce. The real two-command case is the test below it.
     """
-    spec = _module(tmp_path)
+    spec = _module(tmp_path, records=False)
     record_verification([ran("rsid_currency", subjects=12, findings=1)], spec, error=_Boom)
     record_verification(
         [skipped("gene_symbol_currency", "offline", detail="HGNC needs egress")], spec, error=_Boom
@@ -168,7 +173,7 @@ def test_enrich_then_literature_land_in_one_document(tmp_path: Path) -> None:
 
 
 def test_re_running_one_check_replaces_its_own_record(tmp_path: Path) -> None:
-    spec = _module(tmp_path)
+    spec = _module(tmp_path, records=False)
     record_verification([ran("rsid_currency", subjects=12, findings=1)], spec, error=_Boom)
     record_verification([ran("rsid_currency", subjects=12, findings=0)], spec, error=_Boom)
 
@@ -178,7 +183,7 @@ def test_re_running_one_check_replaces_its_own_record(tmp_path: Path) -> None:
 
 def test_the_pass_writes_to_the_file_it_reads(tmp_path: Path) -> None:
     """A split module must not gain a second copy at the root — that is the refusal, self-inflicted."""
-    spec = _module(tmp_path)
+    spec = _module(tmp_path, records=False)
     (spec / DERIVED_SUBDIR).mkdir()
     record_verification([ran("rsid_currency", subjects=1, findings=0)], spec, error=_Boom)
     shutil.move(spec / VERIFICATION_JSON, spec / DERIVED_SUBDIR / VERIFICATION_JSON)
@@ -208,7 +213,7 @@ def test_an_unreadable_document_is_replaced_rather_than_fatal(tmp_path: Path) ->
 
 def test_the_record_written_is_the_one_the_compiler_accepts(tmp_path: Path) -> None:
     """The end-to-end seam, inside this workspace: enricher writes, compiler stamps."""
-    spec = _module(tmp_path)
+    spec = _module(tmp_path, records=False)
     record_verification(
         [ran("clinical_significance", subjects=7, findings=1, source="clinvar", release="2026-06-27")],
         spec,
@@ -752,7 +757,7 @@ def test_a_merge_does_not_restamp_the_record_it_carried_across(tmp_path: Path) -
     to have one: what is being pinned is that `record_verification` carries a foreign `producer`
     through untouched, not that any particular version string is produced.
     """
-    spec = _module(tmp_path)
+    spec = _module(tmp_path, records=False)
     old = ran("clinical_significance", subjects=141_616, findings=20, source="clinvar").model_copy(
         update={"producer": "just-dna-enricher 0.6.4", "checked_at": "2026-08-10T00:00:00Z"}
     )

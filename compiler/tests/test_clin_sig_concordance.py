@@ -222,8 +222,13 @@ def test_the_manifest_publishes_the_two_hashes_and_the_two_counts(tmp_path: Path
 
 def test_a_module_with_no_record_publishes_no_block(tmp_path: Path) -> None:
     """`None`, never a block of zeros. A module the comparison never ran on is not a module where
-    nothing is contested, and an all-zero summary reads as the second."""
+    nothing is contested, and an all-zero summary reads as the second.
+
+    `hfe_hemochromatosis` carries a concordance record since the 0.8 regeneration ran `enrich` over
+    it, so the copy has the record removed: the claim is about a module that never had one."""
     spec = _example(tmp_path)
+    for name in ("clin_sig_concordance.csv", "clin_sig_authority_calls.csv"):
+        (spec / name).unlink(missing_ok=True)
     result = compile_module(spec, tmp_path / "out", resolve_with_ensembl=False)
     assert result.success, result.errors
     assert read_manifest(tmp_path / "out" / "manifest.json").clin_sig_concordance is None
