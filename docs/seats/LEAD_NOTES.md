@@ -44,42 +44,16 @@ None open.
 
 ## Plan
 
-- **In flight, 2026-11-04 night (the person asleep, "build unattended"):** the /batch run building all of 0.8
-  (plan `~/.claude/plans/glimmering-greeting-sketch.md`, contracts in PT2). Integration worktree
-  `/tmp/claude-1000/-data-sources-just-dna-format/cb39872f-9ac8-49ad-96ce-7354acea34da/scratchpad/wt-08sync` (0.8).
-  Merged on 0.8: wave 0 (sync, polars 2.1.0), RM337, RM342, probes; a merge agent is landing RM304, RM336,
-  RM322+RM334, RM253, RM303, meta-core, RM348. Building: RM352 (blocks the cut). On main: RM338, RM347 merged.
-  Filed: RM348–RM353. Next: wave 2 (StudyRow batch, RM335, RM292, Open Targets lane, B2, RM349, RM351), wave 3–5,
-  four-leaf audit, cut subagent (its brief items in the scratchpad's `cut_brief_notes.md`). Charter wording
-  vetted by the person. Never `git branch -D` (classifier).
-  Wave 1 all merged on 0.8 (9bfc87d, 5195 passed); a merge agent is syncing main into 0.8. Wave 2 running, each
-  builder in its own `.claude/worktrees/lead-<unit>` on `build/<unit>`: studyrow, RM335, RM292, RM333 (Open Targets
-  lane + RM239 + RM236), meta-derived (RM327 tradeoff), RM349, RM351, RM305 (ClinVar-GKM), RM353 (on main); RM352
-  still building. Quota ran past 85% at 05:15 CET: a builder that died on quota is respawned after the 07:29 CET
-  reset with "continue from build/<unit>'s last commit" (shared brief: scratchpad `worker_common_w2.md`).
-  Wave 3 after the StudyRow batch: study-orphan widening, RM331's computed LD pair; wave 4: RM267, examples;
-  wave 5: RM270, release-gate sweep.
-  Pre-cut order (the person, 2026-11-04): audit rounds + class fixes, gate sweep, a DOCS subagent (user guides
-  re-run against 0.8, doc map, nav), then the cut subagent (packaging only). Brief items: scratchpad `cut_brief_notes.md`.
-  Audit round 1 (four-leaf, 17 findings) → ten classes RM361–RM370, each building on `build/RM3xx` (shared brief
-  scratchpad `audit_fix_common.md`). RM267's REST witness building. Then the merge, audit round 2, gate sweep, docs, cut.
-
-- **0.8's build** (the pm's handout, 2026-11-04): the plan is `docs/proposals/PROPOSAL_0_8_PT2.md`
-  (3d5adcd), critic-read. Seven pm questions in its §4, each with a default the build takes. Wave 0 is
-  the lead's: push `0.8` (150 unpushed commits; auto mode refused the push, the person must unblock),
-  merge `main` into it in `wt-08sync` (13 conflicts, rules in §1), the polars 2 lock, RM338's patch on
-  `main`. Then four lanes (A schema adds, B meta-table, C indel, D derived inputs), one builder each.
-
-- **RM338**: decided 2026-11-03 (content-checked text plus png/jpg, no SVG). `unattended`, a patch on `main`,
-  no longer after RM337: triage re-sized RM337 to a minor on 2026-11-04 (172a215), because its warning needs a
-  new `VALID_WARNING_CODES` member. Split, told to triage the same day: the patch ships only what needs no
-  new code (the content checks, and each newly shipped non-`.log` file named by a `logger` line and in
-  `manifest.logs`). The left-behind warning, a failed check's reason included, goes with RM337 in its minor.
-  Write that split into RM338's entry when building it.
-- **RM344**: `unattended`, a patch (a duckdb-2-written `.duckdb` cache falls back to parquet).
-- **RM342**: a minor, the pm's to place (0.9). Polars version in `manifest.compilation`.
-- **Lock moves, the liaison's schedule (2026-11-04):** duckdb 2.x into `uv.lock` once RM344 lands, so RM344
-  unblocks it. polars 2.x into `uv.lock` in the release that ships RM342 (0.9), with a RELEASE_RECORDS line
-  (parquet bytes move, content unchanged). Nothing breaks on 2.x meanwhile.
-
-The lead's own, none yet. The plan's states have not been read against what exists; that is the next start's first step.
+- **0.8.0 cut, 2026-11-05** (the /batch run, plan `~/.claude/plans/glimmering-greeting-sketch.md`): `main` at
+  e97339a3 = `cut-0.8.0` (merge cb6be8a4, which has no Co-Authored-By trailer: amending is gated), `0.8` at
+  edf2661c; both pushed. Dists in the scratchpad's `wt-dist/dist/`, twine-checked. **Left for the person:** PyPI
+  publish, then the `v0.8.0` tags; the just-dna-lite side told that the Ensembl cache moved (its `.sha256`
+  sidecars describe the old release).
+- **Cache swap done:** `/data/just-dna-cache/ensembl_variations` is the split release
+  `ensembl-variation-2026_07_13-vep116.0`; the old one is `ensembl_variations.pre-0.8`, to drop on the person's word.
+- **Not done, the person's:** the worktree `.claude/worktrees/lead-RM372/data/rm372/fence_check` (registered, uncommitted
+  probe edits) and every `build/*` branch and `lead-*` worktree of the run (deletion is gated).
+- **Priming edits owed** (change-priming, not the lead's alone): `docs/seats/LEAD.md:17` and `PM.md:14` still name
+  `docs/ROADMAP_0_8.md`, now in `docs/history/`.
+- **Records gap:** no release records for 0.7.1 or 0.7.2, so the chain jumps from 0.7.0 to 0.8.0.
+- Parked: RM388, RM390, RM396 and round-3 findings without a number (ROADMAP.md). 0.9: RM385.
