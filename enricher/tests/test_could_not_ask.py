@@ -16,23 +16,29 @@ import importlib
 import inspect
 import json
 import pkgutil
+import re
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import httpx
 import just_dna_enricher
 import pytest
 from just_dna_enricher import cpic_build, literature
+from just_dna_enricher.acmg import AcmgListUnavailable, fetch_acmg_page
 from just_dna_enricher.civic_api import CivicApiClient
 from just_dna_enricher.civic_citations import check_evidence_status_currency, read_studies
-from just_dna_enricher.clingen import parse_curation_list
+from just_dna_enricher.clingen import ClinGenUnavailable, fetch_curation_list, parse_curation_list
 from just_dna_enricher.clingen_allele import ClingenAlleleClient
 from just_dna_enricher.clingen_allele import _parse as _car_parse
+from just_dna_enricher.clinpgx_build import probe_archive_dates
+from just_dna_enricher.clinvar_gkm import ClinVarGkmClient, lane_currency
 from just_dna_enricher.cpic import CpicClient
 from just_dna_enricher.cpic_build import CpicBuildError
 from just_dna_enricher.ensembl import EnsemblResolver, EnsemblSettings
 from just_dna_enricher.eutils import EutilsClient, EutilsError, EutilsSettings, is_missing
 from just_dna_enricher.frequencies import FrequencyUnavailable, enrich_frequencies
+from just_dna_enricher.gene_validity import GeneValidityUnavailable, fetch_validity_export
 from just_dna_enricher.gnomad import GnomadClient, GnomadSettings
 from just_dna_enricher.grch37 import Grch37Client
 from just_dna_enricher.identifiers import IdentifierUnavailable, OntologyClient
@@ -45,6 +51,7 @@ from just_dna_enricher.literature import (
     PmcIdConverterClient,
     enrich_literature,
 )
+from just_dna_enricher.mane_build import ManeUnavailable, discover_current_release
 from just_dna_enricher.net import (
     RETIRED,
     UNREACHABLE,
@@ -52,7 +59,9 @@ from just_dna_enricher.net import (
     PacingGate,
     Withholding,
     aggregate_reason,
+    could_not_ask_reason,
     release_dataset,
+    stream_to_file,
     withheld_reason,
 )
 from just_dna_enricher.sequences import SequenceProxy, verify_reference_alleles
@@ -113,24 +122,43 @@ def test_every_retired_error_carries_the_marker() -> None:
     assert named == marked, sorted(named ^ marked)
 
 
+def _writes_unreachable(node: ast.AST) -> bool:
+    """`node` spells the outage reason: the literal, a `*_unreachable` name, the constant, or an
+    f-string that opens with the word.
+
+    The f-string arm is the 2026-11-05 widening (audit round 2): `clinvar_gkm.lane_currency` wrote
+    `f"unreachable ({exc})"`, a `JoinedStr` whose constant piece is `"unreachable ("`, which an
+    equality on `ast.Constant` never matched, so the walk passed over a handler recording a 410 as an
+    outage.
+    """
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value == UNREACHABLE or node.value.endswith("_unreachable")
+    if isinstance(node, ast.Name):
+        return node.id == "UNREACHABLE"
+    if isinstance(node, ast.JoinedStr) and node.values:
+        lead = node.values[0]
+        return (
+            isinstance(lead, ast.Constant)
+            and isinstance(lead.value, str)
+            and re.match(rf"{UNREACHABLE}\b", lead.value) is not None
+        )
+    return False
+
+
 def _handler_violations() -> list[str]:
     """Every `except` arm that writes an `unreachable` reason without asking `could_not_ask_reason`.
 
     A handler holds the exception, so it is the one place the reason can be read off it; a literal
-    `"unreachable"` (or a `*_unreachable` spelling, or the `UNREACHABLE` constant) written there
-    without the helper records a 410 as an outage — the RM354 shape eight handlers had.
+    `"unreachable"` (or a `*_unreachable` spelling, or the `UNREACHABLE` constant, or an f-string
+    opening with the word) written there without the helper records a 410 as an outage — the RM354
+    shape eight handlers had.
     """
     found: list[str] = []
     for path in sorted(_SRC.rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for handler in (n for n in ast.walk(tree) if isinstance(n, ast.ExceptHandler)):
             nodes = [n for stmt in handler.body for n in ast.walk(stmt)]
-            writes = any(
-                (isinstance(n, ast.Constant) and isinstance(n.value, str))
-                and (n.value == UNREACHABLE or n.value.endswith("_unreachable"))
-                or (isinstance(n, ast.Name) and n.id == "UNREACHABLE")
-                for n in nodes
-            )
+            writes = any(_writes_unreachable(n) for n in nodes)
             asks = any(
                 isinstance(n, ast.Call)
                 and getattr(n.func, "id", getattr(n.func, "attr", None)) == "could_not_ask_reason"
@@ -145,25 +173,268 @@ def test_no_handler_records_unreachable_without_reading_the_exception() -> None:
     assert _handler_violations() == []
 
 
-def test_the_handler_walk_sees_a_handler_that_ignores_the_exception(tmp_path: Path) -> None:
-    """The walk is not vacuous: the shape every pre-RM361 handler had is caught."""
+@pytest.mark.parametrize(
+    "written",
+    ["'unreachable'", "f'unreachable ({exc})'", "UNREACHABLE", "'pgs_unreachable'"],
+    ids=["literal", "f-string", "constant", "suffix"],
+)
+def test_the_handler_walk_sees_a_handler_that_ignores_the_exception(written: str) -> None:
+    """The walk is not vacuous: every spelling a pre-RM361 handler used is caught, through the same
+    predicate the walk applies — the f-string is the one `clinvar_gkm` slipped through on."""
     source = (
         "def f(client):\n"
         "    try:\n"
         "        client.ask()\n"
-        "    except RuntimeError:\n"
-        "        return 'unreachable'\n"
+        "    except RuntimeError as exc:\n"
+        f"        return {written}\n"
     )
     handler = next(n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.ExceptHandler))
-    assert any(
-        isinstance(n, ast.Constant) and n.value == UNREACHABLE for s in handler.body for n in ast.walk(s)
-    )
+    assert any(_writes_unreachable(n) for s in handler.body for n in ast.walk(s))
+
+
+def test_an_f_string_that_only_mentions_the_word_is_not_a_reason() -> None:
+    """The f-string arm keys on the reason opening the string, so a sentence naming an outage in its
+    middle (a log line) is not read as a recorded reason."""
+    node = ast.parse("f'the host was unreachable ({exc})'", mode="eval").body
+    assert not _writes_unreachable(node)
 
 
 def test_a_group_of_unanswered_requests_leads_with_the_retired_one() -> None:
     assert aggregate_reason([UNREACHABLE, RETIRED, UNREACHABLE]) == RETIRED
     assert aggregate_reason([UNREACHABLE]) == UNREACHABLE
     assert aggregate_reason([]) == UNREACHABLE
+
+
+# ── every owner of a transport names its 410, a function as much as a class (audit round 2) ──────────
+#
+# RM361's guards reached a 410 through the client roster, and that roster walks *classes*. Every
+# instance the 0.8 audit's second round found sat in a module-level function that calls `httpx` itself:
+# the shared bulk downloader (`net.stream_to_file`, behind every bulk-download lane), ClinGen's curation list,
+# the gene-validity exports, MANE's release discovery, ACMG's page. Each raised its lane's outage type
+# for a 410, so the message said "could not fetch" about a source that had moved. The walk below finds
+# the owners by what they call, never by a name (`@client-exception-contract`).
+
+#: The `httpx` entry points that open a connection: owning one of these is the criterion.
+_TRANSPORT_CALLS = frozenset(
+    {"get", "post", "put", "patch", "delete", "head", "request", "stream", "Client", "AsyncClient"}
+)
+
+
+def _opens_a_transport(node: ast.AST) -> bool:
+    return any(
+        isinstance(n, ast.Call)
+        and isinstance(n.func, ast.Attribute)
+        and n.func.attr in _TRANSPORT_CALLS
+        and isinstance(n.func.value, ast.Name)
+        and n.func.value.id == "httpx"
+        for n in ast.walk(node)
+    )
+
+
+def _package_trees() -> list[tuple[str, ast.Module]]:
+    """`(dotted module name, parsed tree)` for every source file; `generated/` is protoc output."""
+    out = []
+    for path in sorted(p for p in _SRC.rglob("*.py") if "generated" not in p.relative_to(_SRC).parts):
+        parts = path.relative_to(_SRC).with_suffix("").parts
+        name = ".".join(parts[:-1] if parts[-1] == "__init__" else parts)
+        out.append((name, ast.parse(path.read_text(encoding="utf-8"))))
+    return out
+
+
+def _import(module_name: str):
+    """The module a `_package_trees` name is, the package root's `__init__` (named `""`) included."""
+    return importlib.import_module(f"just_dna_enricher.{module_name}" if module_name else "just_dna_enricher")
+
+
+def _transport_owners() -> tuple[set[str], set[str]]:
+    """Every module-level class and every module-level function that calls an `httpx` transport."""
+    classes: set[str] = set()
+    functions: set[str] = set()
+    for module, tree in _package_trees():
+        for node in tree.body:
+            if isinstance(node, ast.ClassDef) and _opens_a_transport(node):
+                classes.add(f"{module}.{node.name}")
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and _opens_a_transport(node):
+                functions.add(f"{module}.{node.name}")
+    return classes, functions
+
+
+def test_every_class_owning_a_transport_names_its_410() -> None:
+    """A class that opens a connection either withholds (and says `retired` through `Withholding`) or
+    raises, and then its module declares the `*Retired` it raises. The behaviour of each raising client
+    is `test_client_exception_contract.py`'s; this is the half that walks by transport, not by roster."""
+    classes, _ = _transport_owners()
+    assert classes, "the walk found no class owning a transport"
+    unnamed = []
+    for label in sorted(classes):
+        module_name, name = label.rsplit(".", 1)
+        module = _import(module_name)
+        if issubclass(getattr(module, name), Withholding):
+            continue
+        if not any(
+            inspect.isclass(obj) and issubclass(obj, EndpointRetired) and obj.__module__ == module.__name__
+            for obj in vars(module).values()
+        ):
+            unnamed.append(label)
+    assert unnamed == []
+
+
+_GONE_BODY = "This file moved; see the v2 guide."
+_URL = "https://example.invalid/list.txt"
+
+
+class _LaneUnavailable(RuntimeError):
+    """A lane's could-not-ask type, standing in for every `stream_to_file` caller's."""
+
+
+class _LaneRetired(_LaneUnavailable, EndpointRetired):
+    """Its `*Retired`, as each lane declares one beside its `*Unavailable`."""
+
+
+def _download(tmp_path: Path) -> object:
+    return stream_to_file(
+        tmp_path / "f.bin", _URL, error_cls=_LaneUnavailable, retired=_LaneRetired, what="a file"
+    )
+
+
+#: `label -> (the call, the could-not-ask type its callers catch)`: every module-level function that
+#: opens a transport and raises. Asserted equal to the walk, so a new one cannot ship without a row.
+FETCHERS: dict[str, tuple[Callable[[Path], object], type[Exception]]] = {
+    "net.stream_to_file": (_download, _LaneUnavailable),
+    "clingen.fetch_curation_list": (lambda _tmp: fetch_curation_list(_URL), ClinGenUnavailable),
+    "gene_validity.fetch_validity_export": (
+        lambda _tmp: fetch_validity_export(_URL),
+        GeneValidityUnavailable,
+    ),
+    "mane_build.discover_current_release": (lambda _tmp: discover_current_release(), ManeUnavailable),
+    "acmg.fetch_acmg_page": (lambda _tmp: fetch_acmg_page(_URL), AcmgListUnavailable),
+}
+
+#: The one module-level owner whose contract is a withheld value: the ClinPGx archive probe answers
+#: `None` for an archive it could not date, whatever the failure, because it gates nothing (RM283).
+#: A 410 there is one more could-not-date; pinned below as the value.
+FETCHERS_THAT_WITHHOLD = {"clinpgx_build.probe_archive_dates"}
+
+
+def test_every_function_owning_a_transport_is_walked() -> None:
+    _, functions = _transport_owners()
+    assert functions == set(FETCHERS) | FETCHERS_THAT_WITHHOLD, sorted(
+        functions ^ (set(FETCHERS) | FETCHERS_THAT_WITHHOLD)
+    )
+
+
+def _serve(monkeypatch: pytest.MonkeyPatch, handler: Callable[[httpx.Request], httpx.Response]) -> None:
+    """Route the module-level `httpx.get` and `httpx.stream` through a mock transport."""
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    monkeypatch.setattr(httpx, "get", lambda url, **kw: client.get(url, **kw))
+    monkeypatch.setattr(httpx, "stream", lambda method, url, **kw: client.stream(method, url, **kw))
+
+
+def _refuse_connection(request: httpx.Request) -> httpx.Response:
+    raise httpx.ConnectError("connection refused", request=request)
+
+
+@pytest.mark.parametrize("label", sorted(FETCHERS))
+def test_a_410_from_a_function_owning_a_transport_is_its_lanes_retired(
+    label: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The type, not only the reason: `could_not_ask_reason` reads a bare 410 through `__cause__`, so
+    a reason-only check passed on every one of these while the message said "could not fetch"."""
+    call, unavailable = FETCHERS[label]
+    _serve(monkeypatch, lambda request: httpx.Response(410, text=_GONE_BODY))
+    with pytest.raises(unavailable) as caught:
+        call(tmp_path)
+    assert isinstance(caught.value, EndpointRetired), f"{label}: {type(caught.value).__name__}"
+    assert could_not_ask_reason(caught.value) == RETIRED
+    assert "HTTP 410" in str(caught.value) and "v2 guide" in str(caught.value), str(caught.value)
+    assert list(tmp_path.iterdir()) == [], "a retired download left a partial behind"
+
+
+@pytest.mark.parametrize("leg", ["503", "transport"])
+@pytest.mark.parametrize("label", sorted(FETCHERS))
+def test_an_outage_from_a_function_owning_a_transport_stays_its_lanes_could_not_ask(
+    label: str, leg: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    call, unavailable = FETCHERS[label]
+    handler = _refuse_connection if leg == "transport" else (lambda request: httpx.Response(503))
+    _serve(monkeypatch, handler)
+    with pytest.raises(unavailable) as caught:
+        call(tmp_path)
+    assert not isinstance(caught.value, EndpointRetired), f"{label} named a {leg} retired"
+    assert could_not_ask_reason(caught.value) == UNREACHABLE
+
+
+def test_a_retired_download_keeps_the_lanes_remedy_and_names_the_host_that_answered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A 410 may be the operator's pick (a release, a URL) rather than the enricher's, so the lane's own
+    remedy stays in the message; and after a redirect the host that answered is the one named."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "example.invalid":
+            return httpx.Response(303, headers={"Location": "https://bucket.example.test/f"})
+        return httpx.Response(410, text=_GONE_BODY)
+
+    _serve(monkeypatch, handler)
+    with pytest.raises(_LaneRetired) as caught:
+        stream_to_file(
+            tmp_path / "f.bin",
+            _URL,
+            error_cls=_LaneUnavailable,
+            retired=_LaneRetired,
+            what="the release file",
+            remedy="Pass --source with a copy you already hold.",
+        )
+    message = str(caught.value)
+    assert message.startswith("bucket.example.test retired"), message
+    assert "the release file" in message and "--source" in message, message
+
+
+def test_the_archive_probe_withholds_a_410_like_any_failed_head() -> None:
+    client = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(410, text=_GONE_BODY)))
+    dates = probe_archive_dates(client)
+    assert dates.dates and all(stamp is None for stamp in dates.dates.values())
+
+
+def test_every_bulk_download_names_its_lanes_retired_type() -> None:
+    """Each `stream_to_file` call passes a `retired=` that is its `error_cls`'s `*Retired`.
+
+    Resolved from the calling module's own names, so a lane cannot pass a type of another family (a
+    caller's `except` would then miss it) or one without the marker (`could_not_ask_reason` would still
+    read the cause, but the message and the type would say outage).
+    """
+    calls = 0
+    wrong: list[str] = []
+    for module_name, tree in _package_trees():
+        module = _import(module_name)
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call) and getattr(node.func, "id", None) == "stream_to_file"):
+                continue
+            calls += 1
+            keywords = {k.arg: k.value for k in node.keywords}
+            error, retired = keywords.get("error_cls"), keywords.get("retired")
+            if not (isinstance(error, ast.Name) and isinstance(retired, ast.Name)):
+                wrong.append(f"{module_name}:{node.lineno} names no retired type")
+                continue
+            error_cls, retired_cls = getattr(module, error.id), getattr(module, retired.id)
+            if not (issubclass(retired_cls, error_cls) and issubclass(retired_cls, EndpointRetired)):
+                wrong.append(f"{module_name}:{node.lineno} {retired.id} is not {error.id}'s *Retired")
+    assert calls, "the walk found no bulk download"
+    assert wrong == []
+
+
+def test_a_retired_clinvar_gkm_manifest_leaves_currency_unchecked_as_retired(tmp_path: Path) -> None:
+    """`lane_currency` wrote `unreachable (…)` for every `ClinVarGkmUnavailable`, its `*Retired` too."""
+
+    def serve(status: int) -> ClinVarGkmClient:
+        transport = httpx.MockTransport(lambda request: httpx.Response(status, text=_GONE_BODY))
+        return ClinVarGkmClient(client=httpx.Client(transport=transport), gate=_gate())
+
+    retired = lane_currency(tmp_path, client=serve(410))
+    assert retired.unchecked is not None and retired.unchecked.startswith(f"{RETIRED} ("), retired.unchecked
+    assert retired.behind is None
+    outage = lane_currency(tmp_path, client=serve(503))
+    assert outage.unchecked is not None and outage.unchecked.startswith(f"{UNREACHABLE} ("), outage.unchecked
 
 
 # ── the fulltext routes: only a 404 and BioC's recorded body are "no copy" ──────────────────────────

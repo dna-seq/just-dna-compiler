@@ -55,7 +55,7 @@ from just_dna_format.snapshot import SnapshotRelease, SnapshotWrite, begin_snaps
 
 from just_dna_enricher.clin_sig import normalize_clin_sig
 from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME
-from just_dna_enricher.net import stream_to_file
+from just_dna_enricher.net import EndpointRetired, stream_to_file
 
 try:  # the one guarded optional import (CLAUDE.md): polars is builder-only ([dev] extra)
     import polars as pl
@@ -155,6 +155,15 @@ class PubMindUnavailable(PubMindBuildError):
     """
 
 
+class PubMindRetired(PubMindUnavailable, EndpointRetired):
+    """The source answered HTTP 410: it retired the PubMind release file (RM361, audit round 2).
+
+    Its lane's `PubMindUnavailable`, so every handler still catches it; marked `EndpointRetired`, so
+    the reason is `retired` and the message says the file moved and to upgrade, never that the
+    host was down.
+    """
+
+
 @dataclass(frozen=True)
 class PubMindDownload:
     """What a download established about the bytes — each half `None` when the server did not say.
@@ -216,6 +225,7 @@ def download_pubmind_table(dest: Path, url: str = DEFAULT_PUBMIND_URL) -> PubMin
         dest,
         url,
         error_cls=PubMindUnavailable,
+        retired=PubMindRetired,
         what="the PubMind table",
         remedy=(
             "It is a single dated bulk file on a third party's server, so a move or a rotation "

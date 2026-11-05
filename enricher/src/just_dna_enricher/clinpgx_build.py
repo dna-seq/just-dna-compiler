@@ -52,7 +52,7 @@ from just_dna_format.normalize import now_utc_iso
 from just_dna_format.snapshot import SnapshotRelease, begin_snapshot_write
 
 from just_dna_enricher.locations import SNAPSHOT_LICENSE_FILENAME
-from just_dna_enricher.net import stream_to_file
+from just_dna_enricher.net import EndpointRetired, stream_to_file
 
 try:  # polars is a `[dev]` dependency — the runtime pass reads parquet, only the builder writes it
     import polars as pl
@@ -240,6 +240,15 @@ class ClinPgxUnavailable(ClinPgxArchiveError):
     """
 
 
+class ClinPgxRetired(ClinPgxUnavailable, EndpointRetired):
+    """The source answered HTTP 410: it retired a ClinPGx archive (RM361, audit round 2).
+
+    Its lane's `ClinPgxUnavailable`, so every handler still catches it; marked `EndpointRetired`, so
+    the reason is `retired` and the message says the file moved and to upgrade, never that the
+    host was down.
+    """
+
+
 def download_clinpgx_zip(dest: Path, url: str = DEFAULT_CLINPGX_URL) -> tuple[Path, str]:
     """Stream the ClinPGx bulk archive to `dest`, returning `(path, sha256)`.
 
@@ -250,6 +259,7 @@ def download_clinpgx_zip(dest: Path, url: str = DEFAULT_CLINPGX_URL) -> tuple[Pa
         dest,
         url,
         error_cls=ClinPgxUnavailable,
+        retired=ClinPgxRetired,
         what="the ClinPGx bulk archive",
         remedy="Pass --zip <archive> to build from a copy you already hold.",
     )

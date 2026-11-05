@@ -71,6 +71,7 @@ from just_dna_enricher.locations import (
     STRCHIVE_CATALOGUE_FILENAME,
     resolve_strchive_reference,
 )
+from just_dna_enricher.net import EndpointRetired
 from just_dna_enricher.verification import examples, ran, record_verification, skipped
 
 logger = logging.getLogger(__name__)
@@ -98,6 +99,15 @@ class StrchiveError(RuntimeError):
 
 class StrchiveUnavailable(StrchiveError):
     """No catalogue was provisioned, so the comparison could not be put at all."""
+
+
+class StrchiveRetired(StrchiveUnavailable, EndpointRetired):
+    """The source answered HTTP 410: it retired the STRchive catalogue (RM361, audit round 2).
+
+    Its lane's `StrchiveUnavailable`, so every handler still catches it; marked `EndpointRetired`, so
+    the reason is `retired` and the message says the file moved and to upgrade, never that the
+    host was down.
+    """
 
 
 @dataclass(frozen=True)

@@ -1858,7 +1858,9 @@ published, build if not.
 builder streams its source's file through `net.stream_to_file`, which is atomic (`.part`, renamed only
 on success), retries a **transport** failure — a connection cut mid-body, the failure that produced
 this item — and translates everything else into the lane's own error type. A status error is not
-retried, because a 404 from a mistyped release tag is the same 404 four times over.
+retried, because a 404 from a mistyped release tag is the same 404 four times over. A 410 is the lane's
+own `*Retired`, which every caller passes as `retired=` (required, so no lane can leave it out; RM361's
+audit round 2): the source moved the file, and the message says so and to upgrade, quoting the body.
 
 That last part is what a caller notices. Before RM187 four of the eleven downloads raised `httpx`'s
 own exception, and each lane adapter catches its own builder's type — so a truncated download was a
@@ -5644,7 +5646,10 @@ three or four times first. Since RM354:
   the message is built. **A handler records the reason with `net.could_not_ask_reason(exc)`**
   (RM361): `retired` for a 410 (every `*Retired` carries `net.EndpointRetired`), `unreachable` for an
   outage, because the two are cleared by different things (an upgrade, a re-run). An AST walk refuses
-  an `except` arm that writes an unreachable reason without it. A client whose contract is a withheld
+  an `except` arm that writes an unreachable reason without it, an f-string opening with the word
+  included. **The owners are walked by what they call**: every module-level class *and function* that
+  opens an `httpx` transport names its 410 (a function-style fetcher such as `clingen.fetch_curation_list`
+  raises its lane's `*Retired` too; audit round 2). A client whose contract is a withheld
   value rather than an exception mixes in `net.Withholding`, keeps the withhold, and says `retired`
   through its sticky `retired` message (`net.withheld_reason`).
 - **What a 404 means stayed per client**, and it is not the same everywhere:
@@ -5747,29 +5752,29 @@ and `EnsemblResolver` are the latter, and are exempt from the contract suite for
 
 | module | base type | narrowed by |
 |---|---|---|
-| `acmg` | `AcmgSfError` | `AcmgListUnavailable` |
+| `acmg` | `AcmgSfError` | `AcmgListUnavailable`, `AcmgRetired` (under the one before it; a 410, RM361) |
 | `alphagenome_check` | `VariantImpactError` | — |
 | `assertions` | `ClinicalAssertionError` | — |
 | `civic_citations` | `CivicCitationsError` | — |
-| `clingen` | `ClinGenError` | `ClinGenUnavailable` |
+| `clingen` | `ClinGenError` | `ClinGenUnavailable`, `ClinGenRetired` (under the one before it; a 410, RM361) |
 | `clinpgx` | `ClinPgxEnrichmentError` | — |
 | `clinvar_gkm` | `ClinVarGkmError` | `ClinVarGkmUnavailable` (could not be asked), `ClinVarGkmRetired` (under the one before it; RM354), `ClinVarGkmMismatch` (bytes that are not the file the manifest states; RM305) |
 | `currency` | `ReleaseProbeError` | `ReleaseUnavailable`, `ReleaseRetired` (under the one before it) |
-| `drug_labels` | `DrugLabelError` | `DrugLabelUnavailable` |
+| `drug_labels` | `DrugLabelError` | `DrugLabelUnavailable`, `DrugLabelRetired` (under the one before it; a 410, RM361) |
 | `enrich` | `EnrichmentError` | — |
 | `expression` | `ExpressionError` | `ExpressionUnavailable` |
 | `frequencies` | `FrequencyEnrichmentError` | `FrequencyUnavailable` |
 | `gene_metrics` | `GeneMetricsEnrichmentError` | `GeneMetricsUnavailable` |
-| `gene_validity` | `GeneValidityError` | `GeneValidityUnavailable` |
+| `gene_validity` | `GeneValidityError` | `GeneValidityUnavailable`, `GeneValidityRetired` (under the one before it; a 410, RM361) |
 | `gwas` | `GwasError` | `GwasNotFound`, `GwasRetired` |
 | `identifiers` | `IdentifierCheckError` | `IdentifierUnavailable`, `IdentifierRetired` (under the one before it) |
 | `ld_pairs` | `LdError` | `LdUnavailable`, `LdRetired` (under the one before it) |
 | `literature` | `LiteratureEnrichmentError` | `LiteratureUnavailable`, `FulltextUnavailable` (RM258: the fulltext clients' unanswered request), `FulltextRetired` (under the one before it; a fulltext route's 410, RM361), `LiteratureRetired` (under `LiteratureUnavailable`) |
 | `opentargets` | `OpenTargetsError` | — (it never fetches) |
 | `litvar` | `LitvarError` | `LitvarUnavailable`, `LitvarRetired` (under the one before it) |
-| `mitomap` | `MitomapError` | `MitomapUnavailable` |
+| `mitomap` | `MitomapError` | `MitomapUnavailable`, `MitomapRetired` (under the one before it; a 410, RM361) |
 | `pgx` | `PgxEnrichmentError` | — |
-| `strchive` | `StrchiveError` | `StrchiveUnavailable` |
+| `strchive` | `StrchiveError` | `StrchiveUnavailable`, `StrchiveRetired` (under the one before it; a 410, RM361) |
 
 **Three surfaces raise a declared family instead of one type (RM288, 0.8).** `cpic_build.ERRORS`,
 `pharmvar_build.ERRORS` and `pgx_draft.ERRORS` are tuples the surface owns, and a caller writes
@@ -5800,15 +5805,15 @@ caller and `except` order never matters. RM310 was the list shape failing: `cach
 |---|---|---|
 | `alphagenome_avi_build` | `AlphaGenomeBuildError` | — |
 | `atlas_protos` | `ProtoFetchError` | — |
-| `civic_build` | `CivicBuildError` | `CivicUnavailable` |
+| `civic_build` | `CivicBuildError` | `CivicUnavailable`, `CivicRetired` (under the one before it; a 410, RM361) |
 | `civic_vcf` | `CivicVcfError` | — |
-| `clinpgx_build` | `ClinPgxArchiveError` | `ClinPgxUnavailable` |
-| `clinvar_build` | `ClinVarBuildError` | `ClinVarUnavailable` |
-| `constraint_build` | `ConstraintBuildError` | `ConstraintUnavailable` |
+| `clinpgx_build` | `ClinPgxArchiveError` | `ClinPgxUnavailable`, `ClinPgxRetired` (under the one before it; a 410, RM361) |
+| `clinvar_build` | `ClinVarBuildError` | `ClinVarUnavailable`, `ClinVarRetired` (under the one before it; a 410, RM361) |
+| `constraint_build` | `ConstraintBuildError` | `ConstraintUnavailable`, `ConstraintRetired` (under the one before it; a 410, RM361) |
 | `cpic_build` | `CpicBuildError` | — |
-| `mane_build` | `ManeBuildError` | `ManeUnavailable` |
-| `opentargets_build` | `OpenTargetsBuildError` | `OpenTargetsUnavailable` |
-| `pubmind_build` | `PubMindBuildError` | `PubMindUnavailable` |
+| `mane_build` | `ManeBuildError` | `ManeUnavailable`, `ManeRetired` (under the one before it; a 410, RM361) |
+| `opentargets_build` | `OpenTargetsBuildError` | `OpenTargetsUnavailable`, `OpenTargetsRetired` (under the one before it; a 410, RM361) |
+| `pubmind_build` | `PubMindBuildError` | `PubMindUnavailable`, `PubMindRetired` (under the one before it; a 410, RM361) |
 | `upload` | `PublishRefused` (RM368: every refusal a publish raises) | `ModuleNotPublishable`, `SnapshotNotPublishable` (both still a `FileNotFoundError` within 0.8), `PlanChangedError`, `OrphanedSidecarError`, `RemoteMovedError` (RM386: the repo moved after the plan read it), `PublishCollisionError` → `ToolchainDiffersError` (RM342: the two recorded toolchains differ) |
 
 **Snapshot readers — an absent or unreadable cache, deliberately a `FileNotFoundError`**

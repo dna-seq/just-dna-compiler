@@ -38,7 +38,7 @@ from just_dna_format.spec import extract_pmids
 
 from just_dna_enricher.clin_sig import normalize_clin_sig
 from just_dna_enricher.locations import CITATIONS_DIRNAME
-from just_dna_enricher.net import stream_to_file
+from just_dna_enricher.net import EndpointRetired, stream_to_file
 
 try:  # the one guarded optional import (CLAUDE.md): polars is builder-only ([dev] extra)
     import polars as pl
@@ -245,6 +245,15 @@ class ClinVarUnavailable(ClinVarBuildError):
     """
 
 
+class ClinVarRetired(ClinVarUnavailable, EndpointRetired):
+    """The source answered HTTP 410: it retired a ClinVar release file (RM361, audit round 2).
+
+    Its lane's `ClinVarUnavailable`, so every handler still catches it; marked `EndpointRetired`, so
+    the reason is `retired` and the message says the file moved and to upgrade, never that the
+    host was down.
+    """
+
+
 @dataclass
 class BuildResult:
     """Outcome of a snapshot build (paths + provenance + skip stats)."""
@@ -277,6 +286,7 @@ def download_clinvar_vcf(dest: Path, url: str = DEFAULT_CLINVAR_URL) -> Path:
         dest,
         url,
         error_cls=ClinVarUnavailable,
+        retired=ClinVarRetired,
         what="the ClinVar VCF",
         remedy="Pass --source clinvar=<vcf> to build from a copy you already hold.",
     ).path
@@ -297,6 +307,7 @@ def download_var_citations(dest: Path, url: str = DEFAULT_CITATIONS_URL) -> tupl
         dest,
         url,
         error_cls=ClinVarUnavailable,
+        retired=ClinVarRetired,
         what="the ClinVar citations table",
     )
     return streamed.path, streamed.sha256

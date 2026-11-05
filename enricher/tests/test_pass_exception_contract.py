@@ -360,8 +360,9 @@ def test_every_pass_taking_an_injected_client_is_covered() -> None:
         # really does happen.
         "civic_citations.draft_civic_citations",
         # RM305, the withhold once more: `lane_currency` catches `ClinVarGkmUnavailable` and answers
-        # `unchecked="unreachable (…)"`, so a caller never sees the client's type. The client's own
-        # translation is asserted in `test_clinvar_gkm.py`.
+        # `unchecked="unreachable (…)"` (`retired (…)` for a 410, read by `could_not_ask_reason`), so a
+        # caller never sees the client's type. The client's own translation is asserted in
+        # `test_clinvar_gkm.py`.
         "clinvar_gkm.lane_currency",
         "civic_citations.check_evidence_status_currency",
         # RM193, and the same shape a fifth time. `check_variant_impact` catches every `AtlasError`

@@ -41,6 +41,28 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-05 — RM361, audit round 2: a 410 from a bulk download or a function-style fetch is its lane's `*Retired` (0.8, uncut)
+
+- **A source that retired a file now says so in every lane, not only in the clients.** `net.stream_to_file`
+  takes the lane's `*Retired` as a required `retired=` keyword. A 410 raises it with the body quoted and
+  "upgrade just-dna-enricher", followed by the file and the lane's own remedy (a release the operator
+  picked can be the thing that went), where it raised the lane's outage type ("could not download").
+  That covers every bulk-download lane. `clingen.fetch_curation_list`, `gene_validity.fetch_validity_export`,
+  `mane_build.discover_current_release` and `acmg.fetch_acmg_page` raise theirs too. The new types are
+  `AcmgRetired`, `CivicRetired`, `ClinGenRetired`, `ClinPgxRetired`, `ClinVarRetired`, `ConstraintRetired`,
+  `DrugLabelRetired`, `GeneValidityRetired`, `ManeRetired`, `MitomapRetired`, `OpenTargetsRetired`,
+  `PubMindRetired` and `StrchiveRetired`, each a subclass of its lane's `*Unavailable`, so every existing
+  handler still catches it.
+- **`clinvar_gkm.lane_currency` records `retired (…)`** for a 410, where it wrote `unreachable (…)`. The
+  placement witness's not-asked sentence says Ensembl REST answered HTTP 410 (a fixed sentence; the
+  source's body stays in the log, out of the attested record) instead of "unreachable after retries".
+- **Why RM361's guards missed these:** the client roster walks classes, and these were functions; the
+  handler walk compared constants, and missed an f-string. Now a walk finds every module-level class and
+  function that calls an `httpx` transport, drives each function with a 410, a 503 and a refused
+  connection, and asserts the 410's *type*. A second walk checks each `stream_to_file` call's
+  `retired=` against its `error_cls`. Record:
+  [ROADMAP_HISTORY § RM361](ROADMAP_HISTORY.md), [INTEGRATION_0_8 § 1.26](INTEGRATION_0_8.md).
+
 ## 2026-11-05 — RM386: a publish refuses a concurrent writer, and a snapshot's description describes the bytes that were sent (0.8, uncut)
 
 Every write the enricher makes to Hugging Face now goes through one helper that commits on top of the

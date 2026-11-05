@@ -50,7 +50,7 @@ from just_dna_enricher.licensing import (
     require_sources_file,
     sidecar_path,
 )
-from just_dna_enricher.net import release_dataset, stated_release
+from just_dna_enricher.net import EndpointRetired, raise_if_retired, release_dataset, stated_release
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +79,15 @@ class ClinGenUnavailable(ClinGenError):
     depend on, and the alternative of matching the message is worse: neither string is pinned as an
     API, so a reword would silently flip a consumer's verdict from "unchecked" to "your table is
     broken".
+    """
+
+
+class ClinGenRetired(ClinGenUnavailable, EndpointRetired):
+    """The source answered HTTP 410: it retired the gene-curation list (RM361, audit round 2).
+
+    Its lane's `ClinGenUnavailable`, so every handler still catches it; marked `EndpointRetired`, so
+    the reason is `retired` and the message says the file moved and to upgrade, never that the
+    host was down.
     """
 
 
@@ -165,6 +174,7 @@ def fetch_curation_list(url: str = DEFAULT_CLINGEN_URL, *, timeout: float = 60.0
         response = httpx.get(url, timeout=timeout, follow_redirects=True)
         response.raise_for_status()
     except httpx.HTTPError as exc:
+        raise_if_retired(exc, ClinGenRetired, "ClinGen")
         raise ClinGenUnavailable(f"could not fetch the ClinGen curation list from {url}: {exc}") from exc
     return response.text
 

@@ -49,7 +49,7 @@ from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.snapshot import SnapshotRelease, begin_snapshot_write, read_release
 
-from just_dna_enricher.net import stream_to_file
+from just_dna_enricher.net import EndpointRetired, stream_to_file
 
 try:  # the one guarded optional import (CLAUDE.md): polars is builder-only ([dev] extra)
     import polars as pl
@@ -96,6 +96,15 @@ class OpenTargetsBuildError(RuntimeError):
 
 class OpenTargetsUnavailable(OpenTargetsBuildError):
     """The FTP did not answer: the fetch failed, not the data."""
+
+
+class OpenTargetsRetired(OpenTargetsUnavailable, EndpointRetired):
+    """The source answered HTTP 410: it retired an Open Targets release file (RM361, audit round 2).
+
+    Its lane's `OpenTargetsUnavailable`, so every handler still catches it; marked `EndpointRetired`, so
+    the reason is `retired` and the message says the file moved and to upgrade, never that the
+    host was down.
+    """
 
 
 @dataclass
@@ -146,6 +155,7 @@ def list_parts(
         listing_dir / f"{dataset}.listing.html",
         dataset_url(dataset, release=release, base_url=base_url),
         error_cls=OpenTargetsUnavailable,
+        retired=OpenTargetsRetired,
         what=f"the Open Targets {release} `{dataset}` listing",
     ).path
     names = sorted(set(_PART_PATTERN.findall(listing.read_text(encoding="utf-8", errors="replace"))))
@@ -177,6 +187,7 @@ def download_release(
         dest / "croissant.json",
         f"{base_url.rstrip('/')}/{release}/croissant.json",
         error_cls=OpenTargetsUnavailable,
+        retired=OpenTargetsRetired,
         what=f"the Open Targets {release} croissant",
     )
     totals: dict[str, int] = {}
@@ -196,7 +207,11 @@ def download_release(
     def _fetch(job: tuple[Path, str, str]) -> None:
         target, url, dataset = job
         stream_to_file(
-            target, url, error_cls=OpenTargetsUnavailable, what=f"Open Targets `{dataset}` part {target.name}"
+            target,
+            url,
+            error_cls=OpenTargetsUnavailable,
+            retired=OpenTargetsRetired,
+            what=f"Open Targets `{dataset}` part {target.name}",
         )
 
     with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:

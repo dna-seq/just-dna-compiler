@@ -339,7 +339,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - A builder's bulk download owes the same contract; one body, retried on transport only. `@client-exception-contract`
 - A lane with no error type of its own cannot be caught as that lane — the type comes before the handler. `@client-exception-contract`
 - A subclass makes a caller's `except` **order** load-bearing; enumerate handler shapes, and guard with an AST walk. `@client-exception-contract`
-- A 200 that is not JSON is a fourth leg; a withholding client withholds it too, and the client guard keys on owning a transport, never on a name. `@client-exception-contract`
+- A 200 that is not JSON is a fourth leg; a withholding client withholds it too, and the client guard keys on owning a transport (a function's as much as a class's), never on a name. `@client-exception-contract`
 - Retry only what a second attempt can change (transport, 5xx, 429); a 410 is the client's `*Retired`, never its outage type. `@client-exception-contract`
 
 ### Drafting and the authoring surfaces

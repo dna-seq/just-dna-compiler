@@ -31,6 +31,7 @@ from just_dna_enricher.net import stream_to_file
 from just_dna_enricher.strchive import (
     SOURCE_NAME,
     StrchiveError,
+    StrchiveRetired,
     StrchiveUnavailable,
     load_strchive_catalogue,
 )
@@ -87,6 +88,7 @@ def download_catalogue(dest: Path, url: str = DEFAULT_STRCHIVE_URL) -> tuple[Pat
         dest,
         url,
         error_cls=StrchiveUnavailable,
+        retired=StrchiveRetired,
         what="the STRchive catalogue",
         remedy="Pass --catalogue <file> to build from a copy you already hold.",
     )

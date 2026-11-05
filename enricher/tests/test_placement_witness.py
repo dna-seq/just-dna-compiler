@@ -31,7 +31,7 @@ from just_dna_enricher.caches import LANES_BY_NAME
 from just_dna_enricher.clinvar_gkm import ALLELE_FILE, VARIATION_FILE, WITNESS_PARQUET, parse_manifest
 from just_dna_enricher.clinvar_gkm_build import build_snapshot
 from just_dna_enricher.enrich import EnrichmentError, enrich
-from just_dna_enricher.enrich.orchestration import _filled_pieces
+from just_dna_enricher.enrich.orchestration import REST_RETIRED_REASON, _filled_pieces
 from just_dna_enricher.enrich.releases import table_releases as orchestration_table_releases
 from just_dna_enricher.enrich.resolution_csv import _write_resolution_csv
 from just_dna_enricher.ensembl import EnsemblResolver
@@ -696,6 +696,29 @@ def test_rest_unreachable_is_not_asked_and_counted_never_agreement(
     record = _record(spec)
     assert record["skipped"] == "nothing_to_check"
     assert "1 rsID(s) Ensembl REST could not be asked about" in record["detail"]
+
+
+def test_rest_retired_is_not_asked_and_says_retired_never_unreachable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_ambient_caches: Path
+) -> None:
+    """A 410 from REST's `/variation` route is a retired endpoint (audit round 2): the resolver notes it
+    (`Withholding`), and the record's not-asked sentence carries that note, never the outage default."""
+    spec = _spec(tmp_path, {"rs8176719": "T/TC"})
+    rest = _Rest(status=410)
+    result = _enrich(
+        spec,
+        tmp_path,
+        monkeypatch,
+        clinvar_cache=_clinvar_snapshot(tmp_path, _without("rs8176719")),
+        resolver=rest.resolver(),
+    )
+    assert rest.requested == ["rs8176719"], "a 410 is asked once"
+    assert result.placement is not None and result.placement.not_asked == ["rs8176719"]
+    detail = _record(spec)["detail"]
+    assert "1 rsID(s) Ensembl REST could not be asked about" in detail
+    assert REST_RETIRED_REASON in detail, detail
+    assert "No server is available" not in detail, "the source's body belongs in the log, not the record"
+    assert "unreachable after retries" not in detail
 
 
 class _ResolverBeforeTheRestWitness:

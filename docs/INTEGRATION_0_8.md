@@ -546,6 +546,7 @@ names, `sex` and rsIDs compare as written; each already has one rule.
 | Enricher results | `OpenTargetsResult.not_read`, `PosteriorCounts.not_read`, `FrequencyResult.unanswered`, `RefCheck.unread`, `GnomadClient.unanswered`, `CivicApiClient.short_reads`, `Withholding.retired`, `FulltextRetired`, `AtlasRetired`. Open Targets keys a snapshot did not read whole are `not_read`, never `not_in_release`. | A host reading `not_in_release` as an answer reads `not_read` as unknown. |
 | Clients | `EutilsClient.esummary` raises `EutilsError` on a body with no summary block; OLS4/HGNC raise `IdentifierUnavailable` on a body without their answer block; `EnsemblResolver.resolve_rsid` returns `(None, None)` for any REST status but 400; a Hub failure other than not-found raises the lane's error instead of `SnapshotNotPublished`; `cpic_build` refuses a table with no stated count. | A host that caught only the old negative answer catches the could-not-ask type it already catches for an outage. |
 | `dataset` labels | A ClinGen or GenCC file with no release line labels its rows with the bare lane (`clingen_dosage`), not `clingen_dosage_unknown`. | Nothing. |
+| Lane `*Retired` types and `net.stream_to_file` (audit round 2, 2026-11-05) | A 410 from a bulk download, ClinGen's curation list, a gene-validity export, MANE's release discovery or ACMG's page raises the lane's new `*Retired`, a subclass of its `*Unavailable` (`AcmgRetired`, `CivicRetired`, `ClinGenRetired`, `ClinPgxRetired`, `ClinVarRetired`, `ConstraintRetired`, `DrugLabelRetired`, `GeneValidityRetired`, `ManeRetired`, `MitomapRetired`, `OpenTargetsRetired`, `PubMindRetired`, `StrchiveRetired`). `stream_to_file` requires `retired=`. `clinvar_gkm.LaneCurrency.unchecked` reads `retired (…)` for a 410. | A handler catching the `*Unavailable` needs nothing. A caller of `net.stream_to_file` passes its lane's `*Retired`. A reader of `unchecked` keys on its first word. |
 
 ### 1.27 The publisher's refusal family, and what a publish sends (RM368, no break)
 
@@ -861,7 +862,9 @@ A table written before 0.8 keeps its `not_found` rows until `enrich --rederive`,
     `spelling`. `SubjectDrift.respelled` is `bool | None`: test `is True` (§ 1.31). Import `Allele` and
     `same_event` from `just_dna_enricher.events` (§ 1.31). The new could-not-ask fields (`not_read`,
     `unanswered`, …) read as unknown, never as an answer, and the clients raise their unavailability types
-    on a body without an answer (§ 1.26). `fetch_fulltext` tells an outage from an absent copy (§ 1.3).
+    on a body without an answer (§ 1.26). A 410 from a bulk download or a function-style fetch raises the
+    lane's `*Retired`, a subclass of its `*Unavailable`, and a caller of `net.stream_to_file` passes
+    `retired=` (§ 1.26). `fetch_fulltext` tells an outage from an absent copy (§ 1.3).
 19. **Drafting tools.** The CPIC drafter spells `DEL`/`INS`/`UNIT(n)` alleles and reports what it could
     not spell in new sentences (§ 1.8); a second gene's haplotype row is `added`, not a duplicate (§ 1.16);
     every `--gene`/`--drug` filter compares by `gene_key`/`drug_key`, while a live query sends the cell as

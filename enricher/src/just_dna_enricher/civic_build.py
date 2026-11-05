@@ -76,7 +76,7 @@ from just_dna_enricher.locations import (
     SNAPSHOT_DATA_DIRNAME,
     SNAPSHOT_LICENSE_FILENAME,
 )
-from just_dna_enricher.net import stream_to_file
+from just_dna_enricher.net import EndpointRetired, stream_to_file
 
 try:  # the one guarded optional import (CLAUDE.md): polars is builder-only ([dev] extra)
     import polars as pl
@@ -236,6 +236,15 @@ class CivicUnavailable(CivicBuildError):
     """
 
 
+class CivicRetired(CivicUnavailable, EndpointRetired):
+    """The source answered HTTP 410: it retired a CIViC nightly TSV (RM361, audit round 2).
+
+    Its lane's `CivicUnavailable`, so every handler still catches it; marked `EndpointRetired`, so
+    the reason is `retired` and the message says the file moved and to upgrade, never that the
+    host was down.
+    """
+
+
 @dataclass(frozen=True)
 class CivicDownload:
     """What a download established about one file's bytes — each half `None` when unstated."""
@@ -326,6 +335,7 @@ def download_civic_file(dest: Path, url: str) -> CivicDownload:
         dest,
         url,
         error_cls=CivicUnavailable,
+        retired=CivicRetired,
         what=f"the CIViC file {Path(url).name}",
         timeout=120.0,
     )
