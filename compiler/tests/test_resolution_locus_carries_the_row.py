@@ -17,17 +17,20 @@ import csv
 import shutil
 from pathlib import Path
 
+import polars as pl
 import pytest
 from just_dna_compiler.compiler import compile_module, reverse_module
 from just_dna_compiler.compiler.parquets import (
     RESOLUTION_LOCUS_DTYPE,
     RESOLUTION_LOCUS_EXCLUDED,
     RESOLUTION_LOCUS_FIELDS,
+    RESOLUTION_LOCUS_NOT_WRITTEN,
 )
 from just_dna_compiler.compiler.reverse import (
     REVERSED_RESOLUTION_FIELDS,
     STUDIES_CSV_FIELDS,
     VARIANTS_CSV_FIELDS,
+    _resolution_record,
 )
 from just_dna_format.base import authored_field_names
 from just_dna_format.resolution import ResolutionRow
@@ -50,15 +53,23 @@ def test_every_resolution_column_is_carried_or_excluded() -> None:
 
 def test_the_struct_is_the_carried_list() -> None:
     assert [field.name for field in RESOLUTION_LOCUS_DTYPE.fields] == list(RESOLUTION_LOCUS_FIELDS)
+    # `_resolution_record` renders a carried cell with the scalar renderer, so a list-typed column would
+    # come back as a Python repr; a new one has to bring its own rendering (as `vrs_id`'s `_vrs_cell`).
+    listed = [f.name for f in RESOLUTION_LOCUS_DTYPE.fields if isinstance(f.dtype, pl.List)]
+    assert not listed, f"list-typed carried column(s) need a renderer in reverse: {listed}"
 
 
-def test_the_reversed_header_is_the_model_minus_what_reverse_cannot_know() -> None:
-    """Reverse writes every carried column plus the ones it stamps itself, in the model's order."""
-    written = set(REVERSED_RESOLUTION_FIELDS)
-    assert written >= set(RESOLUTION_LOCUS_FIELDS)
+def test_the_reversed_header_is_the_model_minus_what_reverse_does_not_write() -> None:
+    """Reverse writes every column but the three left to the enricher, in the model's order, and the
+    record it builds names exactly those columns (a key the header lacks would make DictWriter raise, a
+    header name the record lacks would be written empty on every row)."""
+    assert RESOLUTION_LOCUS_NOT_WRITTEN <= set(RESOLUTION_LOCUS_EXCLUDED)
     assert list(REVERSED_RESOLUTION_FIELDS) == [
-        name for name in ResolutionRow.model_fields if name in written
+        name for name in ResolutionRow.model_fields if name not in RESOLUTION_LOCUS_NOT_WRITTEN
     ]
+    assert set(REVERSED_RESOLUTION_FIELDS) >= set(RESOLUTION_LOCUS_FIELDS)
+    record = _resolution_record({}, "rs1", "1", 100, "G", 0, "GRCh38")
+    assert list(record) and set(record) == set(REVERSED_RESOLUTION_FIELDS)
 
 
 def _table(path: Path) -> list[ResolutionRow]:
@@ -162,3 +173,40 @@ def test_a_hand_kept_reverse_header_is_the_models_authored_columns(
     has and the header lacks is a column the round trip drops (`@three-touch-points`)."""
     assert len(header) == len(set(header))
     assert set(header) == set(authored_field_names(model))
+
+
+def test_an_ambiguous_pick_stays_one_on_the_second_lap(tmp_path: Path) -> None:
+    """`status=ambiguous` rides the locus, so reverse does not launder the pick into `resolved`.
+
+    Before, lap 1 warned that the rsID resolved as ambiguous and lap 2, reading `resolved`, said nothing,
+    and `strict` built on lap 2 what it refused on lap 1."""
+    spec = tmp_path / "spec"
+    shutil.copytree(_EXAMPLES / "hfe_hemochromatosis", spec)
+    with (spec / "resolution.csv").open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    target = next(row for row in rows if row["rsid"] and row["start"])
+    fieldnames = [*rows[0], *(name for name in ("rsid_alternates",) if name not in rows[0])]
+    with (spec / "resolution.csv").open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            ambiguous = row is target
+            writer.writerow(
+                {
+                    **row,
+                    "status": "ambiguous" if ambiguous else row["status"],
+                    "rsid_alternates": f"{row['rsid']},rs1" if ambiguous else row.get("rsid_alternates", ""),
+                }
+            )
+    lap1 = compile_module(spec, tmp_path / "o1")
+    assert lap1.success, lap1.errors
+    flagged = [w for w in lap1.warnings if "AMBIGUOUS" in w]
+    assert flagged, "lap 1 must report the ambiguous pick for this to test anything"
+    reverse_module(tmp_path / "o1", tmp_path / "back")
+    back = _table(tmp_path / "back" / "resolution.csv")
+    assert {r.status for r in back if r.variant_key == target["variant_key"]} == {"ambiguous"}
+    lap2 = compile_module(tmp_path / "back", tmp_path / "o2")
+    assert lap2.success, lap2.errors
+    assert len([w for w in lap2.warnings if "AMBIGUOUS" in w]) == len(flagged)
+    assert compile_module(tmp_path / "back", tmp_path / "o3", strict=True).success is False
+    assert lap2.manifest.artifact.digest == lap1.manifest.artifact.digest

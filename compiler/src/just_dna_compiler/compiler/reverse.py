@@ -24,7 +24,7 @@ from just_dna_format.resolution import ResolutionRow
 from just_dna_format.vrs import join_vrs_ids
 
 from just_dna_compiler.compiler.manifest import _log_left_behind_reason
-from just_dna_compiler.compiler.parquets import RESOLUTION_LOCUS_FIELDS
+from just_dna_compiler.compiler.parquets import RESOLUTION_LOCUS_FIELDS, RESOLUTION_LOCUS_NOT_WRITTEN
 from just_dna_compiler.compiler.positional import _POSITIONAL_TABLE_CSVS, _POSITIONAL_TABLE_KINDS
 from just_dna_compiler.compiler.tables import (
     _FACT_TABLES,
@@ -766,17 +766,11 @@ RESOLUTION_SOURCE_TABLES: tuple[str, ...] = (
 )
 
 
-#: The columns `_resolution_record` stamps itself on every reversed row rather than reading off a locus:
-#: the key, the module's build, and the reverse link's own provenance (`RESOLUTION_LOCUS_EXCLUDED` says why
-#: each is not carried).
-_REVERSE_STAMPED: frozenset[str] = frozenset(
-    {"variant_key", "genome_build", "source", "status", "fetched_at"}
-)
-
-#: The reversed `resolution.csv` header, in the model's column order: every column a locus carries plus
-#: the stamped ones, derived rather than hand-kept so a carried column reaches the file (RM380).
+#: The reversed `resolution.csv` header, in the model's column order: every column but the three reverse
+#: does not write, derived rather than hand-kept so a carried column reaches the file (RM380). The ones a
+#: locus does not carry (the key, the module's build, `source`, `fetched_at`) `_resolution_record` stamps.
 REVERSED_RESOLUTION_FIELDS: tuple[str, ...] = tuple(
-    name for name in ResolutionRow.model_fields if name in RESOLUTION_LOCUS_FIELDS or name in _REVERSE_STAMPED
+    name for name in ResolutionRow.model_fields if name not in RESOLUTION_LOCUS_NOT_WRITTEN
 )
 
 
@@ -832,9 +826,10 @@ def _write_resolution_csv(
     `source_release`, `caid`, `authored_event`/`judged_coordinate` and the `vrs_id`/`vrs_spec` pair
     all come back, because the next compile reads several of them (`sources_in_use`, the placement
     check's withholds, the release reading) and a second lap reading a table that says less than the
-    first reached different findings. Five columns reverse stamps itself: the key, the module's
-    `genome_build`, `source` (`reversed`, the link that wrote this row), `status` (`resolved`) and an
-    empty `fetched_at` (no clock is read, so the emit is deterministic). Three it leaves out:
+    first reached different findings. `status` is carried too, so an `ambiguous` pick stays one on the
+    second lap (the cell rebuild writes `resolved`, which every positioned locus it rebuilds is). Four
+    columns reverse stamps itself: the key, the module's `genome_build`, `source` (`reversed`, the link
+    that wrote this row) and an empty `fetched_at` (no clock is read, so the emit is deterministic). Three it leaves out:
     `rsid_alternates`, `rsid_current` and `rsid_status`, statements about a reference at a moment that
     re-running the enricher recovers (`@rsid-alternates-closed`). A row the cell rebuild writes (a
     parquet compiled before the carried column existed, or one whose loci the row's cells reproduce and
@@ -1103,7 +1098,9 @@ def _resolution_record(
             # An older artifact has neither column and writes empty cells, as before.
             "vrs_id": _vrs_cell(row.get("vrs_id")),
             "source": "reversed",
-            "status": "resolved",
+            # The locus's own status where it carries one (an `ambiguous` pick stays one, RM380); the cell
+            # rebuild and an older parquet hold none, and every positioned locus they rebuild resolved.
+            "status": _scalar_cell(row.get("status")) or "resolved",
             "fetched_at": "",
         }
     )

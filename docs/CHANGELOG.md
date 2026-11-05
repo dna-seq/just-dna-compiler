@@ -44,7 +44,8 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 ## 2026-11-05 — RM380: reverse gives back every resolution.csv column a parquet carries (0.8, uncut)
 
 `compile → reverse → compile` now keeps `authority`, `placement_witness`/`placement_verdict`,
-`left_aligned`, `source_release` and `caid` on every `resolution.csv` row a parquet carries. The locus
+`left_aligned`, `source_release`, `caid` and `status` on every `resolution.csv` row a parquet carries,
+so a best-effort `ambiguous` pick is no longer laundered into `resolved` by a round trip. The locus
 struct (`resolution_loci`, `proxy_loci`) is derived from `ResolutionRow` minus
 `parquets.RESOLUTION_LOCUS_EXCLUDED`, a map naming each left-out column with its reason, and a test walks
 the model against the two. A key whose locus holds any of those columns keeps its loci, so a cleanly

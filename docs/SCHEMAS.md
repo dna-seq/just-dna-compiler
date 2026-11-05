@@ -2448,8 +2448,8 @@ row's own cells alone.
   `ensembl-rest`/`ensembl-graphql`/`cache`/`clinvar`/`gnomad`/`authored`/`reversed`/`manual` — *which link
   answered* (`ensembl-graphql` is no longer written since its leg was retired in 0.8, and still reads), which matters for diagnosing a compile and has no other home. `authority` is the thing
   `sources.csv.source` joins on (`ensembl`, `clinvar`, `gnomad`), and it is **empty** where there is no
-  external source to name: `authored` is the module's own bytes, `reversed` is the compiler, `manual` is a
-  human. Before the split, the compiler compared the link against `sources.csv` by string and every
+  external source to name: `authored` is the module's own bytes, `manual` is a human. A `reversed` row
+  keeps the authority of the row it was reversed from, since its facts are still that source's (RM380). Before the split, the compiler compared the link against `sources.csv` by string and every
   enriched module was told `ensembl-rest` has no terms recorded. The link→authority map lives in the
   **enricher**, the only tier permitted a source convention (P2) — never in the compiler.
   Every *other* fact table's `source` already names the licensed source directly, so only this table
@@ -2475,8 +2475,9 @@ row's own cells alone.
   `parquets.RESOLUTION_LOCUS_EXCLUDED` names with a reason, the struct is derived from the model, and a
   test asserts the model's fields equal the carried ones plus the excluded ones. So `authority`,
   `placement_witness`/`placement_verdict`, `left_aligned`, `source_release`, `caid`, `vrs_id`/`vrs_spec`
-  and `authored_event`/`judged_coordinate` survive the round trip. Reverse stamps `source=reversed`,
-  `status=resolved` and an empty `fetched_at` itself, and leaves out `rsid_alternates`/`rsid_current`/
+  `authored_event`/`judged_coordinate` and `status` survive the round trip (an `ambiguous` pick stays one;
+  a row rebuilt from a parquet row's own cells reads `resolved`). Reverse stamps `source=reversed` and an
+  empty `fetched_at` itself, and leaves out `rsid_alternates`/`rsid_current`/
   `rsid_status`, statements about a reference at a moment that re-running the enricher recovers. Before
   RM380 the struct was a hand-kept list and every 0.8 provenance column the enricher began to write was
   dropped by the first round trip, so the second lap's compile read a table that said less than the first.
@@ -2553,10 +2554,10 @@ row's own cells alone.
   none, and nothing back-fills one (`@sidecar-authoritative`); `enrich --rederive` re-answers every row
   and stamps each. **Empty is "not recorded", never "current"**: the old Ensembl repo states no release,
   the retired GraphQL link stated none, gnomAD's dataset id (`gnomad_r4`) names a release line rather than a release, an
-  authored, `manual` or `reversed` row has no source that answered, and an
+  authored or `manual` row has no source that answered, and an
   answer seeded from an interrupted run's journal never had its release written down. Per row rather
   than per table because merge-not-clobber makes a table two releases answered the normal case. Reverse
-  cannot emit it, for `authority`'s reason above. The licence rows `enrich` writes take their `dataset`
+  writes it back from the parquets' resolution loci (RM380), as it does `authority`. The licence rows `enrich` writes take their `dataset`
   from it (ENRICHER.md § *Which release answered*).
 - **`RESOLUTION_FACT_FIELDS`** names the fact columns; `integrity.resolution_signature` hashes only
   those (provenance deliberately excluded), so a human-filled and an Ensembl-filled table with identical

@@ -390,10 +390,6 @@ RESOLUTION_LOCUS_EXCLUDED: dict[str, str] = {
         "the link that wrote the row; a reversed row was written by reverse, so it says `reversed` "
         "(`compilation.resolution_sources` is excluded from the round trip for that reason)"
     ),
-    "status": (
-        "reverse writes `resolved` for every positioned locus it re-emits; a `not_found` row places "
-        "nothing and carries no locus"
-    ),
     "fetched_at": "when a pass wrote the row; reverse reads no clock, so its emit stays deterministic",
     "rsid_alternates": (
         "a candidate list from a reverse back-fill against a reference at a moment, recovered by "
@@ -408,6 +404,10 @@ RESOLUTION_LOCUS_EXCLUDED: dict[str, str] = {
         "enricher (`@rsid-alternates-closed`)"
     ),
 }
+
+#: The excluded columns reverse does not write at all; every other excluded column it stamps itself
+#: (`reverse.REVERSED_RESOLUTION_FIELDS` is the model minus these). A subset of the map above.
+RESOLUTION_LOCUS_NOT_WRITTEN: frozenset[str] = frozenset({"rsid_alternates", "rsid_current", "rsid_status"})
 
 #: A carried column whose parquet type is not the one its annotation maps to.
 _LOCUS_DTYPE_OVERRIDES: dict[str, pl.DataType] = {"start": pl.UInt32}
@@ -430,12 +430,21 @@ RESOLUTION_LOCUS_DTYPE = pl.Struct(
 )
 
 #: The carried columns a parquet row's own cells rebuild, the locus facts plus the row's `vrs_id`/`vrs_spec`
-#: columns (RM270). A locus holding a value in any OTHER carried column is never withheld as reproduced:
-#: no cell holds it, so withholding it is dropping it.
+#: columns (RM270). A locus holding a value in any OTHER carried column, other than the value the cell
+#: rebuild writes for it (`_CELL_REBUILD_WRITES`), is never withheld as reproduced: no cell holds it, so
+#: withholding it is dropping it.
 _CELL_REBUILT: frozenset[str] = frozenset(
     {"rsid", "chrom", "start", "ref", "alts", "locus_index", "vrs_id", "vrs_spec"}
 )
 _LOCUS_ONLY: tuple[str, ...] = tuple(name for name in RESOLUTION_LOCUS_FIELDS if name not in _CELL_REBUILT)
+#: What the cell rebuild writes for a carried column no cell holds, where that is not empty: every
+#: positioned locus it rebuilds is `resolved`, so only an `ambiguous` one has to ride the struct.
+_CELL_REBUILD_WRITES: dict[str, object] = {"status": "resolved"}
+
+
+def _locus_holds_more_than_cells(locus: dict[str, Any]) -> bool:
+    """Whether `locus` holds a carried value the row's own cells would not write back (RM380)."""
+    return any(locus.get(name) not in (None, _CELL_REBUILD_WRITES.get(name)) for name in _LOCUS_ONLY)
 
 
 def resolution_loci(
@@ -486,6 +495,12 @@ def withhold_reproduced_loci(
     files under it, the cells answer and the column stays null, so a module the fill resolved cleanly
     carries nothing new, and its `artifact.digest` matches the deprecated `ensembl_cache` path's, which
     reads no table. Everywhere else, which is every row the fill left alone, the loci are kept.
+
+    **Since RM380 a locus holding provenance is kept too** — `authority`, a placement witness,
+    `left_aligned`, `source_release`, an `ambiguous` status, RM375's verdict — because no cell holds those
+    and withholding the locus would drop them on the round trip. So the "carries nothing new" case is
+    now a table with no provenance (a hand-filled or reversed-from-old table, or the deprecated path's),
+    and an enriched module carries its loci on every keyed row: a parquet column, priced near zero (P9).
     """
     by_key: dict[str, set[tuple[Any, ...]]] = {}
     for key, fact in zip(keys, facts, strict=True):
@@ -500,7 +515,7 @@ def withhold_reproduced_loci(
         and cell
         # A row's cells hold no provenance (RM375's verdict, RM267's witness, RM373's release, ...), so a
         # locus holding any is never rebuilt from the cells (RM380). `False` is a value: `is not None`.
-        and not any(locus.get(name) is not None for locus in cell for name in _LOCUS_ONLY)
+        and not any(_locus_holds_more_than_cells(locus) for locus in cell)
         and by_key[key]
         == {
             _locus_fact(

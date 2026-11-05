@@ -41,8 +41,8 @@ from just_dna_format.vrs import normalize_chrom, split_vrs_ids, validate_caid, v
 #
 # The rest of the columns are outside too, each for a reason SCHEMAS.md § resolution.csv states at
 # length (named here since RM365, which found them outside with no word about them on this tuple):
-# `authority` is out as provenance beside `source`: it names the link that answered (RM33), and a
-# reversed table has none to name. `rsid_alternates`, `rsid_current` and `rsid_status` are out because
+# `authority` is out as provenance beside `source`: it names the licensed source the link spoke for
+# (RM33), which says who answered, not what; a reversed row keeps it (RM380). `rsid_alternates`, `rsid_current` and `rsid_status` are out because
 # they describe dbSNP's time-varying state about the rsID, not the placement, and stay out of the
 # artifact on purpose. `vrs_id`, `vrs_spec` and `caid` are out as cross-references to the allele the
 # coordinate already names; leaving them out meant adding them in 0.5 moved no signature.

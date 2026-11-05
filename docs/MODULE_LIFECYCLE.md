@@ -695,10 +695,11 @@ not do is restore a module:
   closure. A reversed spec is open and warns until a human closes it again, which is deliberate:
   reverse holds no key and no standing to declare someone else's authoring finished.
 - **Lost, because they were deliberately never materialized:** `resolution.csv`'s time-varying
-  provenance — `rsid_alternates`, `rsid_current`, `rsid_status`; `source` resets to `reversed`,
-  `status` to `resolved`, `fetched_at` to empty. Recovering them means re-running the enricher.
+  provenance — `rsid_alternates`, `rsid_current`, `rsid_status`; `source` resets to `reversed` and
+  `fetched_at` to empty. Recovering them means re-running the enricher.
 - **Kept since RM380:** every other `resolution.csv` column — `authority`, the placement witness and its
-  verdict, `left_aligned`, `source_release`, `caid` — on the parquets' resolution loci, under a test that
+  verdict, `left_aligned`, `source_release`, `caid`, and `status`, so an `ambiguous` pick stays one — on
+  the parquets' resolution loci, under a test that
   walks `ResolutionRow` against the carried struct.
 - **Kept since RM364, on any build:** the resolution rows filed under a positional row's key, because
   every positional parquet carries them as `resolution_loci`. Before that, a non-GRCh38 module lost its

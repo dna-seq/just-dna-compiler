@@ -484,7 +484,8 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   (`parquets.RESOLUTION_LOCUS_EXCLUDED` is the walked list of what does not, each with its reason), so
   "the artifact carries no provenance" is no longer true. `rsid_alternates`/`rsid_current`/`rsid_status`
   stay excluded on purpose: each is a statement about dbSNP at a moment, not about the module, and
-  re-running the enricher is how it is recovered. `source`/`status`/`fetched_at` are reverse's own stamps.
+  re-running the enricher is how it is recovered. `source`/`fetched_at` are reverse's own stamps; `status`
+  is carried, so an `ambiguous` pick is no longer laundered into `resolved` by a round trip.
   Before RM380 the struct was a hand-kept list and silently dropped `authority`, the placement witness and
   verdict, `left_aligned`, `source_release` and `caid` as well — the shape `@fieldnames-from-model` names.
 
