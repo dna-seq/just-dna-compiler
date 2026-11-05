@@ -37,11 +37,19 @@ _NOT_A_LOCAL_FETCH = {
 
 
 def _hub_names() -> set[str]:
+    """Every hub name the enricher reaches, imported by name or read off the module at call time
+    (`huggingface_hub.HfApi(...)`, the publisher's spelling, so a test's patch on the module applies)."""
     names: set[str] = set()
     for path in _PACKAGE.rglob("*.py"):
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if isinstance(node, ast.ImportFrom) and (node.module or "").startswith("huggingface_hub"):
                 names.update(alias.name for alias in node.names)
+            elif (
+                isinstance(node, ast.Attribute)
+                and isinstance(node.value, ast.Name)
+                and node.value.id == "huggingface_hub"
+            ):
+                names.add(node.attr)
     return names
 
 

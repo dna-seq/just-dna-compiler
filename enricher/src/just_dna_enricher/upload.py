@@ -33,8 +33,12 @@ from glob import escape as glob_escape
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+# `HfApi`, `get_token` and `hf_hub_download` are read off the module at call time, never bound here: the
+# test fences and the publisher tests patch them on `huggingface_hub` itself.
+import huggingface_hub
 from huggingface_hub import CommitOperationAdd, CommitOperationDelete
 from huggingface_hub.errors import HfHubHTTPError
+from huggingface_hub.hf_api import DEFAULT_IGNORE_PATTERNS
 from just_dna_compiler.compiler import ARTIFACT_PARQUETS, LEAD_PARQUETS
 from just_dna_format.identity import is_valid_version
 from just_dna_format.integrity import SHA256_PREFIX, sha256_bytes, sha256_file
@@ -172,23 +176,15 @@ def _hf_api(repo_id: str, token: str | None = None):
     read where it is used (`@credential-where-read`) through `env_value`, so an exported variable still
     wins and nothing else in the file is exported (RM301).
 
-    Raises PermissionError if no token is available and ImportError if huggingface_hub is absent
-    (a guarded lazy import, so a download-only install that somehow lacks the wheel fails clearly).
+    Raises PermissionError if no token is available.
     """
-    try:
-        from huggingface_hub import HfApi, get_token
-    except ImportError as exc:
-        raise ImportError(
-            "huggingface_hub is required to publish to HuggingFace; install just-dna-enricher "
-            "(or just-dna-enricher[dev] for the publisher surface)"
-        ) from exc
-    resolved_token = token or env_value("HF_TOKEN") or get_token()
+    resolved_token = token or env_value("HF_TOKEN") or huggingface_hub.get_token()
     if not resolved_token:
         raise PermissionError(
             f"No HuggingFace token found: {missing_credential_reason('HF_TOKEN')}. Or authenticate "
             f"with `hf auth login`. Whichever route, it needs write access to {repo_id}."
         )
-    return HfApi(token=resolved_token)
+    return huggingface_hub.HfApi(token=resolved_token)
 
 
 def ensure_repo(repo_id: str, token: str | None = None):
@@ -294,7 +290,7 @@ class PublishRefused(Exception):
     remote already holds something else (`PublishCollisionError`, `ToolchainDiffersError`,
     `OrphanedSidecarError`), or the remote moved after the plan read it (`RemoteMovedError`). Two
     things stay outside it because they say nothing about what would be sent: a missing write token
-    (`PermissionError`) and a missing `huggingface_hub` (`ImportError`).
+    (`PermissionError`), and whatever the hub client itself raises.
 
     **A base class, so a caller's `except` order is load-bearing** (`@client-exception-contract`): a
     handler for a member goes before the handler for the family, as the CLI's do.
@@ -778,16 +774,7 @@ def _declared_files(document: dict) -> list[tuple[str, str | None]]:
 
 
 def _hub_ignore_patterns() -> list[str]:
-    """``upload_folder``'s own default ignore list, read from the hub rather than restated.
-
-    A guarded lazy import, like ``_hf_api``'s: importing ``huggingface_hub.hf_api`` costs every CLI
-    start about 0.3 s, and only a publish needs it. Without the wheel nothing can be uploaded either,
-    so an empty list refuses nothing that would have been sent.
-    """
-    try:
-        from huggingface_hub.hf_api import DEFAULT_IGNORE_PATTERNS
-    except ImportError:
-        return []
+    """``upload_folder``'s own default ignore list, read from the hub rather than restated."""
     return list(DEFAULT_IGNORE_PATTERNS)
 
 
@@ -1202,13 +1189,11 @@ def _versioned_conflict(
         return None
     remote_manifest = f"{plan.versioned_path_in_repo}/{_MANIFEST_FILENAME}"
     try:
-        from huggingface_hub import hf_hub_download
-
         if not api.file_exists(
             repo_id=plan.repo_id, filename=remote_manifest, repo_type="dataset", revision=revision
         ):
             return None
-        local_copy = hf_hub_download(
+        local_copy = huggingface_hub.hf_hub_download(
             repo_id=plan.repo_id,
             filename=remote_manifest,
             repo_type="dataset",
@@ -1310,13 +1295,7 @@ def _read_only_api(token: str | None = None):
     A rehearsal must not need write access to say what a publish would do, and reading a public repo
     needs none (the snapshot dry run's reader, ``check_publish_orphans_no_sidecar``, does the same).
     """
-    try:
-        from huggingface_hub import HfApi, get_token
-    except ImportError as exc:
-        raise ImportError(
-            "huggingface_hub is required to check a publish against the published repo"
-        ) from exc
-    return HfApi(token=token or env_value("HF_TOKEN") or get_token())
+    return huggingface_hub.HfApi(token=token or env_value("HF_TOKEN") or huggingface_hub.get_token())
 
 
 def _commit_operations(prefix: str, payload: list[tuple[str, bytes]]) -> list[Any]:
@@ -1401,7 +1380,7 @@ def upload_module(
     manifest compiled before 0.8), the same toolchain on both, or a difference in declared files or
     other fields alone, keeps the plain `PublishCollisionError`.
 
-    Raises PermissionError if no token is available and ImportError if huggingface_hub is absent.
+    Raises PermissionError if no token is available.
     """
     read = _manifest_document(module_dir)
     plan = _plan_from_document(module_dir, name, repo_id, read)
@@ -1613,11 +1592,7 @@ def plan_prune(repo_id: str, filename_glob: str, api=None) -> PrunePlan:
     what it did not recognise would be the sweep this design exists to avoid.
     """
     if api is None:
-        try:
-            from huggingface_hub import HfApi, get_token
-        except ImportError as exc:
-            raise ImportError("huggingface_hub is required to inspect a published repo") from exc
-        api = HfApi(token=env_value("HF_TOKEN") or get_token())
+        api = huggingface_hub.HfApi(token=env_value("HF_TOKEN") or huggingface_hub.get_token())
     # The listing is pinned to one revision, and the plan carries it, so the deletion can refuse a repo
     # that changed after a person was shown the list (RM386).
     revision = _head(api, repo_id)
@@ -1783,7 +1758,7 @@ def publish_reference_snapshot(
     hashes before the description is sent (`PlanChangedError` if not); the description is sent as the
     bytes read with the rest, never read again. The returned plan states the revision and the hashes.
 
-    Raises PermissionError if no token is available and ImportError if huggingface_hub is absent.
+    Raises PermissionError if no token is available.
     """
     plan = plan_reference_snapshot(snapshot_dir, repo_id, payload=payload)
     api = ensure_repo(plan.repo_id, token)

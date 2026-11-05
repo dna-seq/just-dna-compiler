@@ -1745,9 +1745,10 @@ def test_a_module_refusal_is_a_publish_refusal(tmp_path: Path) -> None:
 
 _UPLOAD_SOURCE = Path(upload.__file__)
 _CLI_DIR = _UPLOAD_SOURCE.parent / "cli"
-#: Raised by the publisher and outside its refusal family on purpose: neither says anything about what
-#: would be sent. A missing write token is a credential, a missing `huggingface_hub` a dependency.
-_NOT_REFUSALS = {"PermissionError", "ImportError"}
+#: Raised by the publisher and outside its refusal family on purpose: it says nothing about what would
+#: be sent. A missing write token is a credential. (`huggingface_hub` is a core dependency imported at
+#: module level, so no `ImportError` is raised here.)
+_NOT_REFUSALS = {"PermissionError"}
 
 
 def _raised_names(tree: ast.AST) -> set[str]:
@@ -1767,7 +1768,7 @@ def _subclasses(cls: type) -> set[type]:
 
 
 def test_every_refusal_the_publisher_raises_is_in_its_family() -> None:
-    """An AST walk over `upload.py`: what it raises is its refusal family plus the two non-refusals,
+    """An AST walk over `upload.py`: what it raises is its refusal family plus the one non-refusal,
     and every member of the family is raised somewhere. A `FileNotFoundError` for "this module is not
     publishable" was the wrong type: a caller could not tell it from a missing directory."""
     family = {cls.__name__ for cls in _subclasses(upload.PublishRefused)}

@@ -2829,9 +2829,9 @@ the repo pre-existed).
 > `data/*.parquet`, so a two-column citations table inside it is the same poisoning a stale
 > single-file `clinvar.parquet` causes. Absence is normal (only ClinVar has one, only after
 > `clinvar citations`), so neither end treats it as an error.
-Each needs a write token (`hf auth login` or `HF_TOKEN`) — a missing one raises `PermissionError`;
-`huggingface_hub` is a guarded lazy import. Every refusal is a `PublishRefused` (RM368, below); the
-token and the import are the two failures outside that family.
+Each needs a write token (`hf auth login` or `HF_TOKEN`) — a missing one raises `PermissionError`.
+`huggingface_hub` is a core dependency, imported at module level. Every refusal is a `PublishRefused`
+(RM368, below); the token is the one failure outside that family.
 
 ### What publishes, and what refuses (RM89)
 
