@@ -4697,6 +4697,10 @@ and no `--use` (MIT grants the fetch, so the gate would answer the same on every
 just-dna-enricher draft-repeats spec/ --catalogue data/repro/strchive --gene HTT
 ```
 
+Without `--catalogue` the provisioned lane is read (`$JUST_DNA_STRCHIVE_CACHE`, else the shared cache
+base), as `check-repeat-bands` reads it; until RM395 the drafter skipped with *no STRchive catalogue was
+provisioned* on a machine holding one. With neither, the skip is nobody-asked, never an empty source.
+
 **A drafted row is thinner than the item that ordered it expected, and that is this module's own
 finding.** The proposal listed `chrom`/`start_hg38`/`stop_hg38`, `locus_structure`, `ref_copies` and
 the disease identifiers as the identity half. `RepeatAlleleRow` has a column for exactly one of them:

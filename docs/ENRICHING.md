@@ -156,6 +156,15 @@ CYP2C9:
 added 3131 row(s) across 1 gene(s) in draft_mod
 ```
 
+`draft-repeats` reads the STRchive snapshot `cache status` lists (or `--catalogue <dir>`), and leaves
+every band for you to write:
+
+```text
+  1 of 1 locus/loci state a fractional ref_copies (the reference allele is not a whole number of motif copies). No authored column carries it, so it was read and not written — it is not rounded anywhere.
+added 1 row(s) from 1 strchive locus/loci (strchive_v2.26.0)
+  every drafted row needs its bands and its conclusion written; the placeholder is what stops the module compiling until they are
+```
+
 Drafting **appends, never mutates** — new rows go at the end, and a partial row validates by omission
 and matches on `match_on` rather than the natural key. Where a human must decide something, the
 drafter writes a **placeholder** rather than a plausible value, and a generated stub is built so that
