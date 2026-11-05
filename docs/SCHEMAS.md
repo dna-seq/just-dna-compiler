@@ -2586,12 +2586,13 @@ row's own cells alone.
   those (provenance deliberately excluded), so a human-filled and an Ensembl-filled table with identical
   facts hash equal.
 
-> **Not yet frozen.** `resolution.csv` is **new in unreleased 0.5** — no 0.4 module carries it, so the
-> additive-within-a-major / digest-freeze obligations (Principles 3/8) have **not** engaged yet. Its
-> shape (columns, keying, the `status` vocabulary, how expansion is encoded) is **free to be refactored
-> wholesale** during 0.5 development, and is expected to take a few run-overs before it settles. Treat
-> everything in this section as provisional until 0.5 ships. The stable parts of the contract
-> (`variant_key` identity, `artifact.digest`, `content_signature`) are unaffected by resolution's shape.
+> **Bound by the major since 0.5.0.** `resolution.csv` was new in 0.5, and while 0.5 was in
+> development its shape (columns, keying, the `status` vocabulary, how expansion is encoded) was free to
+> be refactored wholesale, because no published module carried it. 0.5.0 shipped it, so the
+> additive-within-a-major and requiredness obligations (Principles 3/8) hold for it as for every other
+> published table: a new optional column is a minor, and removing, promoting or retyping one waits for
+> the major. The stable parts of the contract (`variant_key` identity, `artifact.digest`,
+> `content_signature`) were never affected by resolution's shape.
 
 ## The hash family — the complete roster
 

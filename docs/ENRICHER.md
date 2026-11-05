@@ -1712,7 +1712,7 @@ already **present** is kept — which reads as the safe direction and has one sh
 variable is what lets the file supply it, so a test isolating itself with `del os.environ[...]` (or
 `monkeypatch.delenv`) is un-isolated by the next resolve. Set it empty instead; that is the same rule
 the enricher's own tests follow. Every resolver and every `default_*_cache_dir` takes
-`load_dotenv_file`, and since 0.6.3 (in the tree, uncut) passing `False` really does reach the load —
+`load_dotenv_file`, and since 0.6.3 passing `False` really does reach the load —
 before that it reached none of the six, because the default directory is computed as an *argument* and
 loaded the file on its own way in (S39). **The credential paths export nothing since RM301 (S124).**
 Every client, the PharmVar guard, the AlphaGenome key, the HuggingFace token and the retry floor read

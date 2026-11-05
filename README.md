@@ -103,8 +103,8 @@ full map of `docs/` with a grep hint per file.
 - [`docs/CONSUMER_SUGGESTIONS.md`](docs/CONSUMER_SUGGESTIONS.md) — the open inbox for consumer repos
   (empty means nothing is owed); answered items and the runbook sit beside it.
 - `docs/proposals/`, `docs/probes/`, `docs/history/`, `docs/audit/` — closed design threads, probe
-  rounds, the pre-0.6 halves of the history files, and a dated code-first re-derivation. Records,
-  not contracts.
+  rounds, the retired halves of the history files with the closed roadmaps and superseded upgrade
+  notes, and a dated code-first re-derivation. Records, not contracts.
 
 Operator drivers live in [`scripts/`](scripts/README.md); everything a command generates lands under
 `data/`, which is git-ignored whole.

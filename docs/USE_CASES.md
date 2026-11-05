@@ -2,7 +2,7 @@
 
 For each real or desired use case: **is it enabled by the format as it stands, and if not, what is
 missing?** (The verdicts were first written against 0.4 and are revised in place as items ship; the
-tree is at 0.7.) The point is to separate three things that get conflated —
+latest cut is 0.8.0.) The point is to separate three things that get conflated —
 
 - work the format **already enables** (author it today),
 - work that is a **consumer** concern the format deliberately does not own (the data-agnostic north
@@ -25,7 +25,7 @@ The design docs are stages of **one loop**; an idea moves left-to-right as it ma
    *consumer-side*, or a *gap*; and is the gap closable **additively**? → **this doc**
 3. **Means → draft schema → decision** — for a gap worth closing, the proposed shape + a charter check
    + the open questions to settle it. → the `PROPOSAL_*` thread for the release under
-   [`proposals/`](proposals/) (eight so far, 0.4.1 through 0.7 PT3, every one now a record).
+   [`proposals/`](proposals/) (count them with `ls`; every one is now a record).
    *(Shipped decisions → [`CHANGELOG.md`](CHANGELOG.md).)*
 4. **Conclusion — "how to do it now, with these bricks"** — the distilled worked example once the shape
    is settled. → [`REFERENCE_EXAMPLES.md`](REFERENCE_EXAMPLES.md)
@@ -191,7 +191,7 @@ that lands on the *marketplace* rather than on the format, and one that shapes h
 rework it, and publish it as modules. The concrete instance is **SNPedia**: 106,603 SNP entries plus
 its genosets, reachable as a MediaWiki dump (the extraction is already done in
 [`zhaofengli/snappy`](https://github.com/zhaofengli/snappy) — see
-[ROADMAP_0_8 § RM188](ROADMAP.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)).
+[ROADMAP § RM188](ROADMAP.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)).
 This is a different shape from 2a and 2b: those draft rows *from* a source into an author's own
 module, where this republishes somebody's whole corpus under terms that travel with it.
 

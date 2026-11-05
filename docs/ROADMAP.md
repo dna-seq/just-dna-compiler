@@ -45,7 +45,14 @@ deferral is filed against the release that will decide it:
 Code comments citing "ROADMAP item N" / "ROADMAP 0.3 item 5b" are historical breadcrumbs — follow them
 to [CHANGELOG.md](CHANGELOG.md) / [COMPILER.md](COMPILER.md).
 
-**Status:** **0.7.0 is cut, tagged and published** — all three packages, on 2026-09-12. The tag is
+**Status:** **0.8.0 is cut, tagged and published** — all three packages at `0.8.0`, on 2026-11-05. The
+tag is `v0.8.0` at `e97339a3`, and PyPI has the three releases as of 19:56 UTC that day; what a
+consumer checks and changes is [INTEGRATION_0_8.md](INTEGRATION_0_8.md), and the cut's own entry is in
+[CHANGELOG.md](CHANGELOG.md). The previous cut was **`v0.7.3`** (2026-09-27: format 0.7.1, compiler
+0.7.2, enricher 0.7.3), the last of the 0.7 patches after `v0.7.1` (2026-09-21) and `v0.7.2`
+(2026-09-25).
+
+**0.7.0 was cut, tagged and published** on 2026-09-12, all three packages. The tag is
 `v0.7.0` at `2001215` and it moved through four positions before settling there, each because a gate
 found something rather than because anyone changed their mind; the sequence and the reason for each
 move are in
@@ -57,14 +64,15 @@ RM109, RM111), the two shipped items of the S57–S60 batch (RM121, RM123), and 
 rounds' successors, the 2026-08-24 consumer round, the source-adoption round and the whole 0.7 build
 round — went out in 0.7.0 rather than in any 0.6 number.
 
-**Re-read this paragraph whenever a version moves, because it has lied twice.** It read *"0.6.4 is the
-current line"* for two releases, and then *"0.7.0 is bumped and not tagged"* for as long as it took
-somebody to run `git rev-parse v0.7.0` — the same failure the *Active items* heading had, and the
-reason both are called out rather than quietly corrected. `schema_version` stays `"1.0"` and has since
-0.4. **Tagged is not published** — they are separate steps and the second is the maintainer's, so
-check [CHANGELOG.md](CHANGELOG.md) before promising a field to anyone; for 0.7.0 both have happened,
-which is not the state this file has usually been in. 0.5.0 went to PyPI on 2026-08-07, with
-`just-dna-enricher` 0.5.0 the first release of that package.
+**Re-read this paragraph whenever a version moves, because it has lied three times.** It read *"0.6.4
+is the current line"* for two releases, then *"0.7.0 is bumped and not tagged"* for as long as it took
+somebody to run `git rev-parse v0.7.0`, and then *"0.7.0 is cut, tagged and published"* as the current
+status through three 0.7 patches and the 0.8.0 cut — the same failure the *Active items* heading had,
+and the reason each is called out rather than quietly corrected. `schema_version` stays `"1.0"` and
+has since 0.4. **Tagged is not published** — they are separate steps and the second is the
+maintainer's, so check [CHANGELOG.md](CHANGELOG.md) before promising a field to anyone; for 0.8.0 both
+have happened. 0.5.0 went to PyPI on 2026-08-07, with `just-dna-enricher` 0.5.0 the first release of
+that package.
 
 **0.6.0 was cut and tagged `v0.6.0` on 2026-08-17**, and `0.6.1` followed on 2026-08-18 with RM93–RM100
 (see [ROADMAP_HISTORY § 0.6.1](history/ROADMAP_HISTORY_0_6.md#061--the-eight-the-documents-caught-the-two-the-fixes-found-and-rm88)).
