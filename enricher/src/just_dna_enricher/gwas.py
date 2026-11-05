@@ -71,21 +71,29 @@ from just_dna_enricher.enrich import (
 )
 from just_dna_enricher.licensing import (
     GWAS_CATALOG_TERMS,
-    merge_sources_file,
+    record_table_sources,
     require_sources_file,
     sidecar_path,
+    table_datasets,
 )
 from just_dna_enricher.net import (
     EndpointRetired,
     PacingGate,
     attempt_floor,
     raise_if_retired,
+    release_dataset,
     retry_if_transient,
+    stated_release,
 )
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_GWAS_ENDPOINT = "https://www.ebi.ac.uk/gwas/rest/api/v2"
+#: Where the Catalog states its release (`{"date": "2026-10-29", "ensemblbuild": "116", …}`, read by hand
+#: on 2026-11-05). The v2 API states none, so a row's `dataset` is read from here (RM373).
+DEFAULT_GWAS_STATS_URL = "https://www.ebi.ac.uk/gwas/api/search/stats"
+#: The bare lane a row's `dataset` carries when the Catalog stated no release (`release_dataset`).
+GWAS_LANE = "gwas_catalog"
 GWAS_SOURCE = GWAS_CATALOG_TERMS.source
 
 #: Derived from the model, never hand-kept — a parallel list is how `SOURCES_FIELDNAMES` lost a column.
@@ -212,6 +220,7 @@ class GwasCatalogClient:
     """
 
     endpoint: str = DEFAULT_GWAS_ENDPOINT
+    stats_url: str = DEFAULT_GWAS_STATS_URL
     timeout: float = 30.0
     gate: PacingGate = field(default_factory=lambda: PacingGate(DEFAULT_REQUEST_INTERVAL))
     _client: httpx.Client | None = None
@@ -267,6 +276,21 @@ class GwasCatalogClient:
             raise GwasError(f"GWAS Catalog request failed for {url}: {exc}") from exc
         except ValueError as exc:
             raise GwasError(f"GWAS Catalog returned unparseable JSON for {url}: {exc}") from exc
+
+    def release(self) -> str | None:
+        """The release date the Catalog states, or `None` when it could not be read or states none (RM373).
+
+        Asked once per run. A failure is the unknown arm, logged, never an error: the associations are
+        the run's work, and a release that could not be read is withheld from their label, never
+        replaced by the day the run happened.
+        """
+        try:
+            payload = self._get(self.stats_url)
+        except GwasError as exc:
+            logger.warning("GWAS Catalog did not state its release (%s); the rows name none.", exc)
+            return None
+        date = payload.get("date") if isinstance(payload, dict) else None
+        return date.strip() if isinstance(date, str) and date.strip() else None
 
     def association_pages(self, rsid: str) -> list[list[dict]]:
         """Every page of the Catalog's associations for one rsID, one list per request made.
@@ -676,7 +700,8 @@ def enrich_gwas(
     try:
         catalog = client or GwasCatalogClient()
         cache = _LinkCache(fetch=catalog.follow)
-        release = dataset or f"gwas_catalog_{now_utc_iso()[:10]}"
+        # The Catalog's own release (RM373), never the day this run happened to ask.
+        release = dataset or release_dataset(GWAS_LANE, catalog.release())
         fetched_at = now_utc_iso()
 
         seen = {_merge_key(row) for row in existing_rows}
@@ -775,10 +800,13 @@ def enrich_gwas(
             _write_gwas_csv(
                 out,
                 output_path,
-                before_commit=lambda: merge_sources_file(
-                    [GWAS_CATALOG_TERMS.row("gwas_effect", declared_use=declared_use, dataset=release)],
+                # Labelled by the release every committed row states, not by this run's alone (RM373).
+                before_commit=lambda: record_table_sources(
+                    table_datasets(out, release=lambda row: stated_release(row.dataset, GWAS_LANE)),
+                    "gwas_effect",
                     spec_dir,
                     error=GwasError,
+                    declared_use=declared_use,
                 ),
             )
     finally:

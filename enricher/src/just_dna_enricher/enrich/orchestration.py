@@ -21,6 +21,7 @@ from just_dna_format.alleles import (
 from just_dna_format.base import merge_key
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.resolution import ResolutionRow
+from just_dna_format.snapshot import release_label as snapshot_release_label
 from just_dna_format.spec import VariantRow
 from just_dna_format.vocab import ALLELE_PATTERN
 from just_dna_format.vrs import refget_accession
@@ -47,9 +48,9 @@ from just_dna_enricher.concordance import (
 )
 from just_dna_enricher.currency import (
     CurrencyCheck,
+    DatasetCurrency,
     ReleaseProbe,
     check_dataset_currency,
-    summarize_currency,
     unchecked_sentences,
 )
 from just_dna_enricher.download import ensure_clinvar_snapshot, ensure_snapshot
@@ -61,6 +62,7 @@ from just_dna_enricher.enrich.outcome import (
     _rederived_drift,
     _subject_key,
 )
+from just_dna_enricher.enrich.releases import LinkReleases, run_label, table_releases
 from just_dna_enricher.enrich.resolution_csv import _write_resolution_csv
 from just_dna_enricher.enrich.subjects import (
     Subject,
@@ -77,14 +79,16 @@ from just_dna_enricher.gnomad import GnomadClient, GnomadError
 from just_dna_enricher.grch37 import Grch37Client, diagnose_wrong_build, summarize_build_diagnoses
 from just_dna_enricher.identifiers import IdentifierUnavailable, RsidStatus, check_rsids
 from just_dna_enricher.licensing import (
+    DRAFTED_LAYERS,
     overlay_answers,
     read_sources_file,
-    record_source_terms,
+    record_table_sources,
     require_sources_file,
     resolution_authority,
     sidecar_path,
 )
 from just_dna_enricher.locations import (
+    ensembl_release_label,
     resolve_civic_reference,
     resolve_clinvar_gkm_reference,
     resolve_clinvar_reference,
@@ -121,6 +125,21 @@ from just_dna_enricher.verification import examples, record_verification
 from just_dna_enricher.vrs import MintResult, VrsMinter, mint_resolution_rows
 
 logger = logging.getLogger("just_dna_enricher.enrich")
+
+
+def _split_by_layer(behind: list[DatasetCurrency]) -> tuple[list[DatasetCurrency], list[DatasetCurrency]]:
+    """`(drafted, derived)`: superseded legs a re-draft moves, and those only a re-derivation moves (RM373)."""
+    return (
+        [leg for leg in behind if leg.layer in DRAFTED_LAYERS],
+        [leg for leg in behind if leg.layer not in DRAFTED_LAYERS],
+    )
+
+
+def _superseded(legs: list[DatasetCurrency]) -> str:
+    """One aggregated sentence: how many recorded releases were superseded, with examples."""
+    return f"{len(legs)} recorded release(s) have been superseded: " + examples(
+        [f"{c.source} ({c.layer}) {c.recorded} → {c.current}" for c in legs]
+    )
 
 
 def enrich(
@@ -667,6 +686,9 @@ def _run_enrichment(
     live_ensembl_runs = not offline and genome_build == "GRCh38"
     gnomad_runs = use_gnomad and not offline and genome_build == "GRCh38"
     dropped_link: list[str] = []
+    # A seeded answer's release was never written down by the run that asked, so it is recorded as
+    # unknown rather than as this run's (RM373).
+    staged_rsids: set[str] = set()
     for rsid, (staged_source, staged_loci) in staged.items():
         if not (gnomad_runs if staged_source == "gnomad" else live_ensembl_runs):
             dropped_link.append(staged_source)
@@ -674,6 +696,7 @@ def _run_enrichment(
         if rsid not in rsid_to_loci:
             rsid_to_loci[rsid] = staged_loci
             source_of_rsid[rsid] = staged_source
+            staged_rsids.add(rsid)
         tracker.settle(subjects_of_rsid.get(rsid, ()))
     if dropped_link:
         logger.info(
@@ -686,15 +709,20 @@ def _run_enrichment(
 
     # ── live Ensembl link (REST), for cache misses, unless offline ─────────────────────────────
     ensembl_link: object | None = None
+    # The data release live REST answered from, asked once and only when it answered (RM373). Read by
+    # `EnsemblResolver` only: a host may inject a resolver that cannot say, and that one records none.
+    rest_release: str | None = None
     if live_ensembl_runs:
         missing = [v.rsid for v in need_pos if v.rsid and v.rsid not in rsid_to_loci]
         if missing:
             owned = resolver is None
             client = resolver or EnsemblResolver()
             ensembl_link = client
+            rest_answered = False
             try:
                 for rsid in missing:
                     loci, src = client.resolve_rsid(rsid)
+                    rest_answered = rest_answered or (loci is not None and src == "ensembl-rest")
                     # RM272: the resolver names an rsID whose every mapping carried no nucleotide
                     # allele. Read by attribute because a host may inject its own resolver, and one
                     # that does not collect them simply contributes none.
@@ -720,6 +748,10 @@ def _run_enrichment(
                         # a transient outage into a permanent negative on every future run.
                         journal.record(rsid, src or "ensembl", loci)
                         tracker.settle(subjects_of_rsid.get(rsid, ()))
+                # Only our own client: its `data_release` withholds rather than raises, and a host's
+                # resolver makes no such promise, so an optional provenance label could abort the run.
+                if rest_answered and isinstance(client, EnsemblResolver):
+                    rest_release = client.data_release()
             finally:
                 if owned:
                     client.close()
@@ -781,10 +813,11 @@ def _run_enrichment(
     fresh_rsids = sorted(
         {v.rsid for v in subjects if v.rsid and _subject_key(v) not in covered} & set(rsid_to_loci)
     )
+    clinvar_gkm_ref = resolve_clinvar_gkm_reference(clinvar_gkm_cache) if genome_build == "GRCh38" else None
     if genome_build != "GRCh38":
         placement = PlacementCheck(not_checked="unsupported")
     else:
-        witnesses = load_witnesses(clinvar_ref, resolve_clinvar_gkm_reference(clinvar_gkm_cache), fresh_rsids)
+        witnesses = load_witnesses(clinvar_ref, clinvar_gkm_ref, fresh_rsids)
         fresh_loci = {rsid: rsid_to_loci[rsid] for rsid in fresh_rsids}
         # The third witness, online only: Ensembl REST, asked about a snapshot indel no loaded witness
         # holds (S117's own `rs8176719`). Through the run's live client, so an injected resolver is
@@ -893,6 +926,31 @@ def _run_enrichment(
     # deliberately a *run*-level question, not a per-rsID one: the branch it guards is reached only for
     # a subject no link produced a locus for, and if no link ran there is no per-rsID answer to have.
     rsid_links_consulted = reference is not None or clinvar_ref is not None or not offline
+    # The release each link answered from this run (RM373), by the lane's own label for a snapshot
+    # (`CacheLane.release_label`: the manifest's `release_id` for Ensembl, `release.json`'s `dataset`
+    # for ClinVar). Stamped on the rows this run writes and on nothing else.
+    cache_release = ensembl_release_label(reference) if reference is not None else None
+    # ClinVar's through `clinvar_dataset_label`, the one function the currency check, the tautology skip
+    # and `assertions` read too, so the writer and its readers cannot spell one release two ways.
+    clinvar_release = clinvar.clinvar_dataset_label(clinvar_ref)
+    releases = LinkReleases(
+        by_link={
+            "cache": cache_release,
+            "clinvar": clinvar_release,
+            # The live link's empty answer is written `source="ensembl"`; REST is what gave it.
+            "ensembl": rest_release,
+            "ensembl-rest": rest_release,
+            # gnomAD is absent on purpose: its API answers from a dataset id (`gnomad_r4`) that names a
+            # release line, not a release, so a 4.0 answer and a 4.1 answer would read alike.
+        },
+        staged=frozenset(staged_rsids),
+    )
+    witness_release = {
+        "clinvar": clinvar_release,
+        "clinvar_gkm": snapshot_release_label(clinvar_gkm_ref) if clinvar_gkm_ref is not None else None,
+    }
+    # Rows put back as recorded, by identity: what this run did not answer (`table_releases`).
+    carried_rows: set[int] = set()
     out: list[ResolutionRow] = []
     unresolved: list[str] = []
     # Collected across the loop and reported once. A per-row line here would be one line per variant —
@@ -911,6 +969,7 @@ def _run_enrichment(
         tracker.settle((key,))
         if subject in covered:
             out.extend(covered[subject])
+            carried_rows.update(id(row) for row in covered[subject])
             if not any(r.chrom is not None for r in covered[subject]):
                 unresolved.append(key)
             continue
@@ -1102,6 +1161,7 @@ def _run_enrichment(
                             genome_build=genome_build,
                             locus_index=i,
                             source=src,
+                            source_release=releases.of(src, v.rsid),
                             status="resolved",
                             placement_witness=witness,
                             placement_verdict=verdict,
@@ -1163,6 +1223,7 @@ def _run_enrichment(
                         rsid=v.rsid,
                         genome_build=genome_build,
                         source="ensembl" if not offline else "cache",
+                        source_release=releases.of("ensembl" if not offline else "cache", v.rsid),
                         status="not_found",
                     )
                 )
@@ -1197,6 +1258,7 @@ def _run_enrichment(
                     alts=v.alts,
                     genome_build=genome_build,
                     source=src,
+                    source_release=releases.of(src),
                     status=status,
                     rsid_alternates=alternates,
                     left_aligned=_authored_verdict(authored_spelling, v),
@@ -1248,6 +1310,7 @@ def _run_enrichment(
             if subject_key in fresh_keys or subject_key not in in_scope:
                 continue
             out.extend(recorded)
+            carried_rows.update(id(row) for row in recorded)
             carried_keys.add(subject_key)
             carried.append(recorded[0].variant_key)
             if any(r.chrom is not None for r in recorded):
@@ -1717,9 +1780,9 @@ def _run_enrichment(
             )
 
     # Fifth validation pass, and the only one whose subject is a claim the module makes about its own
-    # provenance rather than about a variant (RM85). Read off `sources.csv` **as it stands** — the
-    # licence rows this run writes are at the resolution layer and carry no `dataset`, so nothing here
-    # is comparing the module against something this same run just derived. That is the trap next
+    # provenance rather than about a variant (RM85). Read off `sources.csv` **as it stands**, before the
+    # commit writes this run's labels (RM373), so nothing here is comparing the module against something
+    # this same run just derived. That is the trap next
     # door: a check satisfied by the value it is checking agrees with itself, which is how a
     # re-derivation once reported a clean bill for exactly the subjects it had rewritten.
     dataset_currency: CurrencyCheck | None = None
@@ -1727,14 +1790,26 @@ def _run_enrichment(
         dataset_currency = check_dataset_currency(
             read_sources_file(spec_dir), probes=release_probes, offline=offline
         )
-        if dataset_currency.behind:
+        drafted_behind, derived_behind = _split_by_layer(dataset_currency.behind)
+        if drafted_behind:
             # One sentence for the run, aggregated by reason; warned in BOTH modes, with `strict`'s
             # refusal below over the same set. It comes first so the sentence an author reads is the
             # same one either way.
             logger.warning(
                 "Dataset currency: %s. Re-draft from the current release to move the label, and "
                 "consider --rederive to see whether any answer actually changed.",
-                summarize_currency(dataset_currency)[0],
+                _superseded(drafted_behind),
+            )
+        if derived_behind:
+            # A derived table's source publishing past the release that answered it is the source
+            # working, and no authored edit clears it, so it warns in BOTH modes and escalates in
+            # neither (`@a-source-recuring-is-not-a-strict-matter`, RM373). Its remedy is a re-derivation,
+            # never a re-draft: nothing in a derived table was drafted.
+            logger.warning(
+                "Dataset currency (derived tables): %s. Not a strict matter: a source publishing past "
+                "the release that answered is the source working. Re-derive with `enrich --rederive`, "
+                "or delete the derived table and re-run, to move the label.",
+                _superseded(derived_behind),
             )
         for line in unchecked_sentences(dataset_currency):
             # INFO, not WARNING, and the level is the judgement: this is not a finding about the
@@ -1926,7 +2001,8 @@ def _run_enrichment(
             )
         )
 
-    if mode == "strict" and dataset_currency is not None and dataset_currency.behind:
+    drafted_superseded = _split_by_layer(dataset_currency.behind)[0] if dataset_currency is not None else []
+    if mode == "strict" and drafted_superseded:
         # Last of the gates, because it is the mildest diagnosis of the five: nothing here contradicts
         # the genome or leaves a variant unplaced, it says the module is describing an older release
         # than the one its source serves today.
@@ -1934,8 +2010,9 @@ def _run_enrichment(
         # **Over `behind` alone**, never over the unchecked legs. An unreachable source and an
         # `--offline` run both leave every leg unchecked, and refusing on those would make `--offline
         # --strict` impossible forever over something no author can edit — the `unreachable_rsids`
-        # rule, which warns in both modes and escalates in neither.
-        superseded = dataset_currency.behind
+        # rule, which warns in both modes and escalates in neither. **Over drafted layers alone** (RM373):
+        # a derived layer's release moving is `@a-source-recuring-is-not-a-strict-matter`.
+        superseded = drafted_superseded
         raise EnrichmentError(
             f"strict enrichment: {len(superseded)} of {dataset_currency.subjects} recorded "
             f"release(s) have been superseded — "
@@ -1959,12 +2036,17 @@ def _run_enrichment(
         _write_resolution_csv(
             out,
             resolution_path,
-            before_commit=lambda: record_source_terms(
+            before_commit=lambda: record_table_sources(
                 # The link's authority, and every placement witness a written row names (RM267):
                 # a pass that consults a source writes its row (`@write-the-sourcerow`), and one that
-                # contributes nothing — a witness no written row names — writes none.
-                {row.authority for row in out if row.authority}
-                | {w for row in out if row.placement_witness for w in row.placement_witness.split("+")},
+                # contributes nothing — a witness no written row names — writes none. Each labelled by
+                # the release every committed row it answered states, or withheld (RM373).
+                table_releases(
+                    out,
+                    carried=carried_rows,
+                    witness_release=witness_release,
+                    recorded={r.source: r.dataset for r in recorded_sources if r.layer == "resolution"},
+                ),
                 "resolution",
                 spec_dir,
                 error=EnrichmentError,
@@ -1976,7 +2058,9 @@ def _run_enrichment(
             # the archive caught up with them. A run where nobody could be consulted returns `None`
             # above and writes nothing, so a previous run's record survives a run that could not
             # replace it.
-            write_concordance_tables(spec_dir, clin_sig_record.parents, clin_sig_record.calls)
+            write_concordance_tables(
+                spec_dir, clin_sig_record.parents, clin_sig_record.calls, error=EnrichmentError
+            )
         # The attestation (RM45), written once for the whole run — the proof-of-work binds the
         # document, so recording per check would pay it once per check for one guarantee. It goes after
         # `resolution.csv` and before the licence rows for no reason but reading order; the binding is
@@ -2005,7 +2089,7 @@ def _run_enrichment(
                 stale_rsids=stale_rsids,
                 rsid_unanswered=rsid_unanswered,
                 pairs=pair_check,
-                ensembl_ref=reference,
+                pair_release=run_label(cache_release, out, "cache"),
                 placement=placement,
                 currency=dataset_currency,
             ),

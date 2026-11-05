@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
+from just_dna_compiler.compiler import load_csv_rows
 from just_dna_enricher.expression import (
     DEFAULT_MAX_ROWS,
     SIDECAR_NAME,
@@ -23,6 +24,7 @@ from just_dna_enricher.expression import (
     _summarise,
     enrich_expression,
 )
+from just_dna_format.sources import SourceRow
 
 _YAML = """\
 schema_version: "1.0"
@@ -514,7 +516,8 @@ def test_a_licence_merge_that_fails_mid_commit_leaves_no_data_table(tmp_path: Pa
     def refuse(*args, **kwargs):
         raise ExpressionError("existing licensing.csv is invalid: (simulated, mid-commit)")
 
-    monkeypatch.setattr(expression_module, "merge_sources_file", refuse)
+    # The licence write goes through `record_table_sources` since RM373; it is what the commit calls.
+    monkeypatch.setattr(expression_module, "record_table_sources", refuse)
     with pytest.raises(ExpressionError, match="mid-commit"):
         _run(spec, _Stub((_score(26090000),)))
     assert not (spec / SIDECAR_NAME).exists()
@@ -529,3 +532,13 @@ def test_a_dry_run_and_an_empty_match_still_write_neither_file(tmp_path: Path) -
     assert not (spec / SIDECAR_NAME).exists() and not (spec / "licensing.csv").exists()
     _run(spec, _Stub(()))
     assert not (spec / SIDECAR_NAME).exists() and not (spec / "licensing.csv").exists()
+
+
+def test_rm373_a_service_that_states_no_release_is_withheld_never_dated_by_the_run(tmp_path: Path) -> None:
+    """The atlas states no release, so a row says the bare lane (`release_dataset`, RM361), and the
+    licence row names none: the run's date was a release nobody published."""
+    spec = _spec(tmp_path)
+    result = _run(spec, _Stub((_score(26090000),)))
+    assert {r.dataset for r in result.rows} == {"alphagenome_atlas"}
+    rows, errors, _ = load_csv_rows(spec / "licensing.csv", SourceRow, "licensing.csv")
+    assert errors == [] and [r.dataset for r in rows] == [None]

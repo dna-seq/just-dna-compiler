@@ -46,6 +46,19 @@ DEFAULT_REST_ENDPOINT = "https://rest.ensembl.org"
 #: about the rsID, so it is could-not-ask, never the empty answer (RM361).
 _REST_NO_RECORD_STATUS = 400
 _ASSEMBLY = "GRCh38"
+#: How an Ensembl data release is labelled wherever a live answer records one: `ensembl_116`. The
+#: number is `/info/data`'s; the LD pass (`ld_pairs.LD_DATASET_PREFIX`) and resolution share the spelling.
+ENSEMBL_RELEASE_PREFIX = "ensembl_"
+
+
+def ensembl_data_release(payload: object) -> int | None:
+    """The one release `/info/data` states (`{"releases": [116]}`), or `None` when it states not exactly one."""
+    releases = payload.get("releases") if isinstance(payload, dict) else None
+    if not isinstance(releases, list) or len(releases) != 1:
+        return None
+    (release,) = releases
+    return release if isinstance(release, int) and not isinstance(release, bool) else None
+
 
 #: Ensembl publishes 15 requests/second per IP (and ~55,000 per rolling hour, `x-ratelimit-*` on every
 #: answer); a tenth of a second keeps a run inside both, the interval `grch37` uses for the same service.
@@ -217,6 +230,45 @@ class EnsemblResolver(Withholding):
                 "; no placeable locus is left, so it is written as not found" if not loci else "",
             )
         return loci, "ensembl-rest"
+
+    def data_release(self) -> str | None:
+        """The data release REST answers from, as a label (`ensembl_116`), or `None` when it will not say.
+
+        `/info/data` (`{"releases": [116]}`, read by hand on 2026-11-04), never `/info/rest`, which states
+        the REST software's own version (`15.12`) and moves on a different clock from the data (RM373).
+        Asked once by the run that used the live link, so the label is the release of that run's answers.
+        A transport failure is retried; a status error, a body that is not JSON or one naming no single
+        release is `None` with a log line: the rows are written, and only the release goes unrecorded.
+        """
+        try:
+            payload = self._rest_info_data()
+        except (httpx.HTTPError, EnsemblError) as exc:
+            logger.warning("Ensembl REST did not state its data release (%s); recorded as unknown.", exc)
+            return None
+        release = ensembl_data_release(payload)
+        if release is None:
+            logger.warning(
+                "Ensembl REST's /info/data states no single release (%r); recorded as unknown.", payload
+            )
+            return None
+        return f"{ENSEMBL_RELEASE_PREFIX}{release}"
+
+    @retry(
+        stop=attempt_floor(3),
+        wait=wait_retry_after(wait_exponential_jitter(multiplier=0.5, max=8.0)),
+        retry=retry_if_transient_within(),
+        reraise=True,
+    )
+    def _rest_info_data(self) -> dict:
+        assert self.gate is not None
+        self.gate.wait()
+        resp = self._http().get(
+            f"{self.settings.rest_endpoint}/info/data",
+            params={"content-type": "application/json"},
+            headers={"Accept": "application/json"},
+        )
+        resp.raise_for_status()
+        return _json(resp)
 
     # ── V1: legacy REST ───────────────────────────────────────────────────────────────────────
     # A 5xx and a 429 are retried too (RM354's predicate): REST is the rung a run leans on, and the

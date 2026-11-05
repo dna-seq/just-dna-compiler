@@ -35,7 +35,7 @@ but on its own it produces no row, because a question nobody could put is not a 
 
 import csv
 import logging
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -43,7 +43,12 @@ from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.concordance import ClinSigAuthorityCallRow, ClinSigConcordanceRow
 from just_dna_format.layout import atomic_writer, nothing_to_write, resolve_sidecar, sidecar_write_path
 
-from just_dna_enricher.licensing import overlay_answered_subjects
+from just_dna_enricher.licensing import overlay_answered_subjects, record_table_sources, require_sources_file
+from just_dna_enricher.net import stated_release
+
+#: The licence layer the authority calls are recorded at (RM379): one row per authority a written call
+#: row names that was consulted, its `dataset` the release every such row states.
+AUTHORITY_CALL_LAYER = "clin_sig_authority_call"
 
 logger = logging.getLogger(__name__)
 
@@ -310,7 +315,14 @@ def _cell(value: object) -> str:
     return str(value)
 
 
-def _write_table(rows: Sequence[object], fieldnames: list[str], path: Path, *, answered: bool) -> bool:
+def _write_table(
+    rows: Sequence[object],
+    fieldnames: list[str],
+    path: Path,
+    *,
+    answered: bool,
+    before_commit: Callable[[], object] | None = None,
+) -> bool:
     """Write one table atomically, with a fixed column order and canonical cells; `True` if written.
 
     Atomic because every sidecar here is read back by the next run: a process killed mid-write leaves
@@ -322,7 +334,7 @@ def _write_table(rows: Sequence[object], fieldnames: list[str], path: Path, *, a
     """
     if not answered and nothing_to_write(path, rows):
         return False  # RM370: a pass that answered nothing leaves no table
-    with atomic_writer(path, newline="") as handle:
+    with atomic_writer(path, newline="", before_commit=before_commit) as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         for row in rows:
@@ -335,8 +347,13 @@ def write_concordance_tables(
     spec_dir: Path,
     parents: Sequence[ClinSigConcordanceRow],
     calls: Sequence[ClinSigAuthorityCallRow],
+    *,
+    error: type[Exception] = ValueError,
 ) -> tuple[Path, ...]:
     """Replace both tables beside the spec, and return the paths actually written.
+
+    `error` is the caller's own type for a licence table that will not merge (RM379), so a failure
+    surfaces as `enrich`'s error rather than as a bare `ValueError`.
 
     **These are pure build products, and they are rewritten whole rather than merged.** Every other
     derived sidecar gap-fills because a recorded row might carry a curator's judgement; this one
@@ -365,13 +382,30 @@ def write_concordance_tables(
     parent_path = sidecar_write_path(spec_dir, CONCORDANCE_CSV)
     calls_path = sidecar_write_path(spec_dir, AUTHORITY_CALLS_CSV)
     answered = bool(overlay_answered_subjects(spec_dir, CONCORDANCE_CSV))
+    # RM379, `@write-the-sourcerow`: an authority a call row names was consulted unless the row says
+    # `unchecked`, and each consulted one has its licence row, inside the calls table's commit
+    # (`@licence-row-inside-the-commit`), labelled by the release every such row states (RM373). One
+    # nobody asked contributes nothing and writes none; CIViC writes no call, so it writes none either.
+    consulted: dict[str, list[str | None]] = {}
+    for call in calls:
+        if call.status != "unchecked":
+            consulted.setdefault(call.authority, []).append(stated_release(call.dataset))
+    # Read before the write, so a placeholder licence table refuses before a table lands (S98, RM231).
+    require_sources_file(spec_dir, error=error)
+    parents_written = _write_table(parents, _CONCORDANCE_FIELDNAMES, parent_path, answered=answered)
+    calls_written = _write_table(
+        calls,
+        _AUTHORITY_CALL_FIELDNAMES,
+        calls_path,
+        answered=answered,
+        before_commit=(
+            (lambda: record_table_sources(consulted, AUTHORITY_CALL_LAYER, spec_dir, error=error))
+            if consulted
+            else None
+        ),
+    )
     written = tuple(
-        path
-        for rows, fieldnames, path in (
-            (parents, _CONCORDANCE_FIELDNAMES, parent_path),
-            (calls, _AUTHORITY_CALL_FIELDNAMES, calls_path),
-        )
-        if _write_table(rows, fieldnames, path, answered=answered)
+        path for path, wrote in ((parent_path, parents_written), (calls_path, calls_written)) if wrote
     )
     if written:
         logger.info(

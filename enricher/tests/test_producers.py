@@ -12,6 +12,7 @@ composed `f"{name} build"` and printed two commands that do not exist, because t
 that convention. A string an operator is asked to type is pinned against the tree that defines it.
 """
 
+import ast
 from pathlib import Path
 
 import just_dna_enricher
@@ -20,10 +21,12 @@ import typer
 from just_dna_compiler.compiler import _FACT_TABLES
 from just_dna_enricher import cli as enricher_cli
 from just_dna_enricher import licensing
+from just_dna_enricher.caches import CACHE_LANES, LANES_BY_NAME
 from just_dna_enricher.producers import (
     ALL_PRODUCER_COMMANDS,
     ALL_PRODUCER_SOURCES,
     DERIVED_PRODUCERS,
+    LANES_READ_WITHOUT_A_LICENCE_ROW,
     SOURCES_WITHOUT_TERMS,
     WRITTEN_BY_EVERY_PASS,
     producers_for,
@@ -194,3 +197,84 @@ def test_producers_for_answers_empty_rather_than_raising():
     assert producers_for("variants.csv") == ()
     assert producers_for("licensing.csv") == ()
     assert len(producers_for("gene_metrics.csv")) == 2
+
+
+# ── RM373: a lane's release reaches the licence row of every pass that reads it ────────────────
+
+
+#: The functions a pass writes a licence row through. Only `record_table_sources` may appear in a
+#: derived pass: it labels the row by the committed table. The other two leave `dataset` as the first
+#: run wrote it, which is how every derived licence row came to name no release or a stale one.
+_LICENCE_WRITERS = frozenset({"merge_sources_file", "record_source_terms", "record_table_sources"})
+
+
+def _calls(path: Path) -> set[str]:
+    """Every function name a module (or a package's modules) calls, by bare or attribute name."""
+    files = [path] if path.is_file() else sorted(path.rglob("*.py"))
+    names: set[str] = set()
+    for file in files:
+        for node in ast.walk(ast.parse(file.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Call):
+                func = node.func
+                if isinstance(func, ast.Name):
+                    names.add(func.id)
+                elif isinstance(func, ast.Attribute):
+                    names.add(func.attr)
+    return names
+
+
+def _lanes_read(path: Path) -> set[str]:
+    """The cache lanes a module reads, by the resolver each `CACHE_LANES` member declares."""
+    by_resolver = {lane.resolve.__name__: lane.name for lane in CACHE_LANES}
+    assert len(by_resolver) == len(CACHE_LANES), "two lanes share a resolver, so a read names neither"
+    return {by_resolver[name] for name in _calls(path) if name in by_resolver}
+
+
+_MODULES = sorted({p.module for group in DERIVED_PRODUCERS.values() for p in group})
+
+
+def _command_reads(command: str) -> set[str]:
+    """The lanes a command's code reads: every module its producers name, since one run reads for all."""
+    modules = {p.module for group in DERIVED_PRODUCERS.values() for p in group if p.command == command}
+    return set().union(*(_lanes_read(_module_source(module)) for module in modules))
+
+
+@pytest.mark.parametrize("command", sorted(ALL_PRODUCER_COMMANDS))
+def test_every_lane_a_pass_reads_is_declared_or_named_as_owing_no_licence_row(command: str) -> None:
+    """**An equality.** The lanes a command's code reads, against `release_lanes` plus the stated exemptions.
+
+    A pass that starts reading a lane fails here until it says whether that lane's release reaches its
+    licence row, which is the question the 0.8 Ensembl migration probe found nobody had asked: the
+    resolution pass read three lanes and its licence rows named no release at all. Grouped by command,
+    as the checks walk above is (RM379): `enrich` reads PubMind's lane in `enrich/` and writes its licence
+    row with the concordance record in `concordance.py`, and both are one run.
+    """
+    declared = {
+        lane
+        for group in DERIVED_PRODUCERS.values()
+        for p in group
+        if p.command == command
+        for _, lane in p.release_lanes
+    }
+    exempt = {lane for (owner, lane) in LANES_READ_WITHOUT_A_LICENCE_ROW if owner == command}
+    assert not declared & exempt, f"{command}: a lane both declared and exempted: {sorted(declared & exempt)}"
+    assert _command_reads(command) == declared | exempt
+
+
+def test_every_release_lane_names_a_real_lane_and_a_declared_source() -> None:
+    pairs = {pair for group in DERIVED_PRODUCERS.values() for p in group for pair in p.release_lanes}
+    assert {lane for _, lane in pairs} <= set(LANES_BY_NAME)
+    assert {source for source, _ in pairs} <= _declared_sources()
+    assert {lane for _, lane in LANES_READ_WITHOUT_A_LICENCE_ROW} <= set(LANES_BY_NAME)
+
+
+@pytest.mark.parametrize("module", _MODULES)
+def test_a_derived_pass_writes_its_licence_rows_through_the_one_helper(module: str) -> None:
+    """Every licence write in a derived pass is `record_table_sources`, and a pass reading a lane makes one."""
+    writes = _calls(_module_source(module)) & _LICENCE_WRITERS
+    assert writes <= {"record_table_sources"}, f"{module} writes licence rows through {sorted(writes)}"
+    declared = any(
+        p.release_lanes for group in DERIVED_PRODUCERS.values() for p in group if p.module == module
+    )
+    if declared:
+        assert writes == {"record_table_sources"}

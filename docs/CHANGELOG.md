@@ -41,6 +41,36 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-05 — RM379: every authority the concordance record names has its licence row (0.8, uncut)
+
+- **`enrich` records ClinVar's and PubMind's terms at the new `clin_sig_authority_call` layer** for each
+  authority a `clin_sig_authority_calls.csv` row names and that was consulted, inside that table's commit,
+  `dataset` labelled by the release the rows state. An authority nobody asked writes none; CIViC, whose
+  checks write no table row, writes none. The compiler does not corroborate the layer (its `authority`
+  column admits `manual`), so the new rows raise no `source_row_unused`.
+
+## 2026-11-04 — RM373: every resolution row names the release that answered it, and no label speaks for a table two releases answered (0.8, uncut)
+
+- **`resolution.csv` gains `source_release`**: the release of the link that answered the row, as the lane
+  states it (`ensembl-variation-2026_07_13-vep116.0` from the split repo's manifest, `clinvar_<date>`, live
+  REST's `ensembl_116` from `/info/data`; none for gnomAD, whose `gnomad_r4` names a release line). Written
+  only by the run that answered the row,
+  never back-filled; `--rederive` stamps every row. Outside `resolution_signature`; `reverse` writes none.
+- **Every derived pass labels its licence row by the committed table** (`licensing.record_table_sources`):
+  the one release its rows state, withdrawn when they state two or any states none. `enrich` and four fact
+  passes left `dataset` blank; five more kept their first run's label forever. A row is labelled by its
+  source's own release, never by the day it was asked: `gwas` reads the Catalog's from `/api/search/stats`,
+  the AlphaGenome atlas states none (`alphagenome_atlas`), `assertions` uses `clinvar_dataset_label` (an
+  unstated release is `clinvar`, no longer `clinvar_unknown`), and `gene-metrics` reads the snapshot's own
+  `release.json` rather than a constant.
+- **`rsid_coordinate_agreement.release` is withheld over a mixed table**, with the count of rows another
+  release, or no recorded release, answered. The probe's case (an all-old table re-enriched against the new
+  snapshot without deleting it) now reads null and says why. Rows live REST answered are not counted
+  against the snapshot's label.
+- **A derived table's source publishing past it never makes `strict` refuse**
+  (`@a-source-recuring-is-not-a-strict-matter`): on every layer but `annotation` the currency finding warns
+  in both modes and names `enrich --rederive`; only a drafted layer refuses and says re-draft.
+
 ## 2026-11-04 — RM375: two spellings of one indel are one event, judged by the enricher and trusted by the compiler (0.8, uncut)
 
 - **`enrich` records whether an authored coordinate spells the resolved event**: `resolution.csv` gains

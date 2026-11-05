@@ -59,11 +59,12 @@ from just_dna_enricher.gene_metrics import GeneMetricsEnrichmentError, module_ge
 from just_dna_enricher.licensing import (
     CLINGEN_TERMS,
     GENCC_TERMS,
-    record_source_terms,
+    record_table_sources,
     require_sources_file,
     sidecar_path,
+    table_datasets,
 )
-from just_dna_enricher.net import release_dataset
+from just_dna_enricher.net import release_dataset, stated_release
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +77,8 @@ DEFAULT_CLINGEN_VALIDITY_URL = "https://search.clinicalgenome.org/kb/gene-validi
 DEFAULT_GENCC_URL = "https://thegencc.org/download/action/submissions-export-csv"
 
 CLINGEN_SOURCE = CLINGEN_TERMS.source
+#: The bare lanes a row carries when its file states no release (`release_dataset`): ClinGen's, GenCC's.
+VALIDITY_LANES = ("clingen_gene_validity", "gencc_submissions")
 GENCC_SOURCE = GENCC_TERMS.source
 
 #: Which submitters this pass can reach, by the name that joins `sources.csv.source`.
@@ -465,10 +468,10 @@ def enrich_gene_validity(
     )
     if source == CLINGEN_SOURCE:
         assertions, released = parse_clingen_validity(text, unmapped=unmapped)
-        dataset = release_dataset("clingen_gene_validity", released)
+        dataset = release_dataset(VALIDITY_LANES[0], released)
     else:
         assertions, released = parse_gencc(text, unmapped=unmapped)
-        dataset = release_dataset("gencc_submissions", released)
+        dataset = release_dataset(VALIDITY_LANES[1], released)
 
     by_gene: dict[str, list[ValidityAssertion]] = {}
     for assertion in assertions:
@@ -574,8 +577,10 @@ def enrich_gene_validity(
         _write_gene_validity_csv(
             out,
             output_path,
-            before_commit=lambda: record_source_terms(
-                {row.source for row in out if row.source},
+            # Each source's licence row labelled by the release every committed row it answered
+            # states, or withheld when they differ (RM373, `licensing.record_table_sources`).
+            before_commit=lambda: record_table_sources(
+                table_datasets(out, release=lambda row: stated_release(row.dataset, *VALIDITY_LANES)),
                 "gene_validity",
                 spec_dir,
                 error=GeneValidityError,

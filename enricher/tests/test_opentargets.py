@@ -18,6 +18,7 @@ import duckdb
 import polars as pl
 import pytest
 from just_dna_compiler.compiler import compile_module, load_csv_rows, reverse_module
+from just_dna_enricher.caches import LANES_BY_NAME
 from just_dna_enricher.licensing import sidecar_path
 from just_dna_enricher.locations import resolve_opentargets_reference
 from just_dna_enricher.opentargets import OpenTargetsError, enrich_opentargets
@@ -1268,3 +1269,52 @@ def test_a_snapshot_read_whole_still_answers_absent(module: Path) -> None:
 def test_strict_refuses_a_snapshot_that_cannot_say_whether_it_is_whole(module: Path, tmp_path: Path) -> None:
     with pytest.raises(OpenTargetsError, match="does not record how many"):
         enrich_opentargets(module, snapshot=_unread(tmp_path, "study", None), mode="strict")
+
+
+# ── RM373: the licence rows name the lane's release, and a later release re-labels them ────────
+
+
+def _datasets(spec: Path) -> dict[str, str | None]:
+    path = sidecar_path(spec, "sources.csv", error=RuntimeError)
+    rows, errors, _ = load_csv_rows(path, SourceRow, path.name)
+    assert not errors
+    return {r.layer: r.dataset for r in rows if r.source == "opentargets"}
+
+
+def test_rm373_every_licence_row_names_the_lanes_release_and_a_rerun_against_a_newer_one_relabels(
+    module: Path, tmp_path: Path
+) -> None:
+    """`merge_sources_file` never clobbers, so a re-run against 26.12 used to keep saying 26.09.
+
+    Every row the second run answers is 26.12's, so the label moves; a row it kept would withhold it.
+    The posterior on `gwas_effects.csv` comes back the same, so that table is not rewritten and its
+    licence row keeps naming the release that wrote it, which is still true (`@empty-work-is-a-path`).
+    """
+    enrich_opentargets(module, snapshot=SLICE)
+    first = _datasets(module)
+    assert first and set(first.values()) == {LANES_BY_NAME["opentargets"].release_label(SLICE)}
+
+    newer = tmp_path / "opentargets_26_12"
+    shutil.copytree(SLICE, newer)
+    record = read_release(newer)
+    assert record is not None
+    write_release(newer, record.model_copy(update={"dataset": "opentargets_26.12"}))
+    enrich_opentargets(module, snapshot=newer)
+    assert _datasets(module) == {
+        layer: first[layer] if layer == "gwas_effect" else "opentargets_26.12" for layer in first
+    }
+
+
+def test_rm373_a_row_this_run_did_not_answer_withholds_the_label(module: Path) -> None:
+    """A kept row's release is not known: the recorded label may be a pre-0.8 first run's, kept forever."""
+    enrich_opentargets(module, snapshot=SLICE)
+    path = sidecar_path(module, "locus_to_gene.csv", error=RuntimeError)
+    with path.open(newline="") as handle:
+        reader = csv.DictReader(handle)
+        fieldnames, first = reader.fieldnames, next(reader)
+    _append(path, [{**first, "variant_key": "rs999999999"}])
+    assert fieldnames is not None
+    enrich_opentargets(module, snapshot=SLICE)
+    datasets = _datasets(module)
+    assert datasets["locus_to_gene"] is None
+    assert datasets["consequence"] == LANES_BY_NAME["opentargets"].release_label(SLICE)

@@ -24,6 +24,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from just_dna_compiler.compiler import load_csv_rows
 from just_dna_enricher.gwas import (
     DEFAULT_GWAS_ENDPOINT,
     GwasCatalogClient,
@@ -36,6 +37,7 @@ from just_dna_enricher.gwas import (
 from just_dna_enricher.licensing import sources_path
 from just_dna_enricher.net import PacingGate
 from just_dna_format.gwas import GwasEffectRow
+from just_dna_format.sources import SourceRow
 
 _YAML = """\
 schema_version: "1.0"
@@ -861,3 +863,46 @@ def test_live_the_legacy_api_is_retired_and_v2_answers() -> None:
         assert client.association_pages("rs111033563") == [[]]
     finally:
         client.close()
+
+
+# ── RM373: a row is labelled by the Catalog's own release, never by the day it was asked ────────
+
+
+#: `https://www.ebi.ac.uk/gwas/api/search/stats`, read by hand on 2026-11-05 (trimmed).
+_STATS = {"date": "2026-10-29", "ensemblbuild": "116", "dbsnpbuild": "156", "genebuild": "GRCh38.p14"}
+
+
+def _with_stats(stats: dict | None) -> GwasCatalogClient:
+    client = _client()
+    recorded = client._client._transport
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/search/stats"):
+            return httpx.Response(200, json=stats) if stats is not None else httpx.Response(503)
+        return recorded.handle_request(request)
+
+    client._client = httpx.Client(transport=httpx.MockTransport(handler))
+    return client
+
+
+def _licence_dataset(spec: Path) -> str | None:
+    path = sources_path(spec, error=RuntimeError)
+    rows, errors, _ = load_csv_rows(path, SourceRow, path.name)
+    assert errors == []
+    (row,) = [r for r in rows if r.source == "gwas_catalog"]
+    return row.dataset
+
+
+def test_rm373_rows_carry_the_catalogs_stated_release(tmp_path: Path) -> None:
+    spec = _spec(tmp_path)
+    result = enrich_gwas(spec, client=_with_stats(_STATS))
+    assert {r.dataset for r in result.rows} == {"gwas_catalog_2026-10-29"}
+    assert _licence_dataset(spec) == "gwas_catalog_2026-10-29"
+
+
+def test_rm373_a_catalog_that_states_no_release_is_withheld_never_dated_by_the_run(tmp_path: Path) -> None:
+    """`release_dataset`'s rule (RM361): the bare lane says no release was stated; the licence row names none."""
+    spec = _spec(tmp_path)
+    result = enrich_gwas(spec, client=_with_stats(None))
+    assert {r.dataset for r in result.rows} == {"gwas_catalog"}
+    assert _licence_dataset(spec) is None

@@ -44,13 +44,20 @@ from just_dna_format.spelling import gene_key
 from just_dna_format.vocab import DOSAGE_SENSITIVITY_BY_CODE
 
 from just_dna_enricher.gene_metrics import _write_gene_metrics_csv, module_genes
-from just_dna_enricher.licensing import CLINGEN_TERMS, merge_sources_file, require_sources_file, sidecar_path
-from just_dna_enricher.net import release_dataset
+from just_dna_enricher.licensing import (
+    CLINGEN_TERMS,
+    record_table_sources,
+    require_sources_file,
+    sidecar_path,
+)
+from just_dna_enricher.net import release_dataset, stated_release
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_CLINGEN_URL = "https://ftp.clinicalgenome.org/ClinGen_gene_curation_list_GRCh38.tsv"
 CLINGEN_SOURCE = CLINGEN_TERMS.source
+#: The bare lane a dosage row carries when the file states no release (`release_dataset`).
+DOSAGE_LANE = "clingen_dosage"
 # The header line the file's comment block ends with (see the module docstring).
 _HEADER_PREFIX = "#Gene Symbol"
 _NOT_EVALUATED = "not yet evaluated"
@@ -229,7 +236,7 @@ def enrich_dosage_sensitivity(
             existing[merge_key(row)] = row
 
     ratings, released = parse_curation_list(curation_text or fetch_curation_list(url))
-    dataset = release_dataset("clingen_dosage", released)
+    dataset = release_dataset(DOSAGE_LANE, released)
     fetched_at = now_utc_iso()
 
     out: list[GeneMetricsRow] = list(existing.values())
@@ -302,7 +309,25 @@ def enrich_dosage_sensitivity(
             out,
             output_path,
             before_commit=(
-                (lambda: merge_sources_file([source_row], spec_dir, error=ClinGenError)) if covered else None
+                # Labelled by the release every committed ClinGen row states (RM373); the table's gnomAD
+                # rows are another pass's and name another source.
+                (
+                    lambda: record_table_sources(
+                        {
+                            CLINGEN_SOURCE: [
+                                stated_release(row.dataset, DOSAGE_LANE)
+                                for row in out
+                                if row.source == CLINGEN_SOURCE
+                            ]
+                        },
+                        source_row.layer,
+                        spec_dir,
+                        error=ClinGenError,
+                        declared_use=declared_use,
+                    )
+                )
+                if covered
+                else None
             ),
         )
     return ClinGenResult(

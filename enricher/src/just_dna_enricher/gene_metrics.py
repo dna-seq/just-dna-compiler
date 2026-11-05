@@ -33,6 +33,7 @@ from just_dna_format.base import merge_key
 from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.layout import atomic_writer, nothing_to_write
 from just_dna_format.normalize import now_utc_iso
+from just_dna_format.snapshot import release_label as snapshot_release_label
 from just_dna_format.spelling import gene_key
 
 from just_dna_enricher.download import ensure_constraint_snapshot
@@ -44,8 +45,14 @@ from just_dna_enricher.gnomad import (
     normalize_constraint_flags,
 )
 from just_dna_enricher.identifiers import _id_bearing_tables, authored_rows
-from just_dna_enricher.licensing import record_source_terms, require_sources_file, sidecar_path
+from just_dna_enricher.licensing import (
+    record_table_sources,
+    require_sources_file,
+    sidecar_path,
+    table_datasets,
+)
 from just_dna_enricher.locations import resolve_constraint_reference
+from just_dna_enricher.net import release_dataset, stated_release
 
 logger = logging.getLogger(__name__)
 
@@ -230,13 +237,22 @@ def _snapshot_parquet(reference: Path | None) -> str | None:
     return None
 
 
+#: The bare lane label a constraint row carries when its snapshot states no release (`release_dataset`).
+CONSTRAINT_LANE = "gnomad_constraint"
+
+
+def _snapshot_dataset(reference: Path | None) -> str | None:
+    """The release a constraint snapshot states (`release.json`'s `dataset`), or `None`."""
+    return snapshot_release_label(reference) if reference is not None and reference.is_dir() else None
+
+
 def enrich_gene_metrics(
     spec_dir: Path,
     *,
     mode: str = "best_effort",
     offline: bool = False,
     constraint_cache: Path | None = None,
-    dataset: str = CONSTRAINT_DATASET_LABEL,
+    dataset: str | None = None,
     download: bool = True,
     write: bool = True,
     client: GnomadClient | None = None,
@@ -288,7 +304,13 @@ def enrich_gene_metrics(
     # Scoping to the two labels is what keeps the fetch running for a *second authority's* row: a
     # ClinGen dosage row for the same gene carries a different `dataset`, so it is a different key and
     # not this pass's work. Keying on the gene alone is the older bug in the other direction.
-    pass_datasets = {dataset, API_CONSTRAINT_DATASET_LABEL}
+    # The snapshot route's label is the snapshot's own (RM373), read without provisioning here: until
+    # one is provisioned, the published release's label is the one a recorded row would carry.
+    located = resolve_constraint_reference(constraint_cache)
+    pass_datasets = {
+        dataset or _snapshot_dataset(located) or CONSTRAINT_DATASET_LABEL,
+        API_CONSTRAINT_DATASET_LABEL,
+    }
     # By `gene_key` (RM363): a row written for `APOE` covers an authored `Apoe`.
     done = {gene_key(row.gene) for row in existing.values() if row.dataset in pass_datasets}
     wanted = [g for g in genes if gene_key(g) not in done]
@@ -349,7 +371,10 @@ def enrich_gene_metrics(
         api_unanswered = set(getattr(gnomad, "unanswered", {})) & set(still_missing)
 
     # Which release a `not_found` row is reporting absence *from*: the last route actually consulted.
-    absent_from = dataset if offline else API_CONSTRAINT_DATASET_LABEL
+    # The snapshot route's label: the caller's, else what the snapshot read states (RM373), never the
+    # label of the build this pass was written against; a snapshot stating none gives the bare lane.
+    snapshot_label = dataset or _snapshot_dataset(reference) or release_dataset(CONSTRAINT_LANE, None)
+    absent_from = snapshot_label if offline else API_CONSTRAINT_DATASET_LABEL
     # **Was either route consulted at all?** (RM98.) The snapshot link needs a resolved `reference`,
     # the API link needs `not offline` — so an offline run with no snapshot opens neither, and the
     # pass has already logged that gene metrics "will be empty". It then wrote a `not_found` row per
@@ -369,7 +394,7 @@ def enrich_gene_metrics(
         # (RM33, the same overloading found in `resolution.csv`). The route is not lost — it is what
         # `dataset` carries, which is where this file already says the release distinction lives, and
         # `dataset` is inside the fact set while `source` is provenance.
-        source, row_dataset = "gnomad", dataset
+        source, row_dataset = "gnomad", snapshot_label
         if payload is None:
             payload = from_api.get(gene)
             row_dataset = API_CONSTRAINT_DATASET_LABEL
@@ -455,8 +480,10 @@ def enrich_gene_metrics(
         _write_gene_metrics_csv(
             out,
             output_path,
-            before_commit=lambda: record_source_terms(
-                {row.source for row in out if row.source},
+            # Each source's licence row labelled by the release every committed row it answered
+            # states, or withheld when they differ (RM373, `licensing.record_table_sources`).
+            before_commit=lambda: record_table_sources(
+                table_datasets(out, release=lambda row: stated_release(row.dataset, CONSTRAINT_LANE)),
                 "gene_metrics",
                 spec_dir,
                 error=GeneMetricsEnrichmentError,

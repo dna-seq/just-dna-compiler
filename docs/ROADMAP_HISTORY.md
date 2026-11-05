@@ -224,6 +224,144 @@ at `13:48040982`: the event is a one-base deletion in `G AAAAA T` (977–983), w
 `undecided` and compiles under the code without an accusation; the authored `start` is the row's to
 correct, by a later unit.
 
+## RM379 — `enrich` consults PubMind and ClinVar for the concordance record and writes no licence row for either
+
+**SHIPPED 2026-11-05 on `0.8`, uncut — a minor (the 0.8 Ensembl migration probe, RM373's review).**
+Owner enricher + format + compiler, severity low.
+
+**Residuals** won't fix — CIViC writes no licence row, correctly: its two checks compare authored cells
+and write no row of any table, so it contributes nothing (`@write-the-sourcerow`'s second half) · won't
+fix — a licence row an authority stops earning keeps its old label, because the record is rewritten whole
+and an absent authority is not re-stamped; the compiler does not corroborate this layer, so it warns
+nothing either
+
+**The class (RM373's, one rule over).** A pass that consults a source writes its `SourceRow`, and one
+that contributes nothing writes none. `enrich` read the `pubmind` lane (and ClinVar's) for the
+clinical-significance concordance, wrote `clin_sig_authority_calls.csv` naming each authority per row,
+and recorded no licence row for either at any layer. RM373's guard listed `("enrich", "pubmind")` as an
+exemption with that reason; this removes it.
+
+**What shipped.** `VALID_SOURCE_LAYERS` gains `clin_sig_authority_call` (P5 audit: named for the table
+whose rows the licence row describes, singular as every layer is; no collision; fact class, so it never
+taints). `concordance.write_concordance_tables` records one row per authority a written call row names
+with a status other than `unchecked`, inside the calls table's atomic commit (`before_commit`,
+`@licence-row-inside-the-commit`) and through `licensing.record_table_sources` (RM373), so `dataset` is
+the release every such row states, read through `net.stated_release`. A `manual` authority has no terms
+constant and gets no row. The compiler adds the layer to `_UNCORROBORABLE_LAYERS`: the table's
+`authority` column is open and admits `manual`, so a string match cannot tell a licensed authority from a
+hand's, and a PubMind row would otherwise read as `source_row_unused` on every module carrying one.
+
+**The guards.** `test_producers.py`'s lane walk is grouped by **command** (the checks walk beside it
+already was): `enrich` reads PubMind's lane in `enrich/` and writes its row in `concordance.py`, one
+run. The concordance producer declares `release_lanes` for ClinVar and PubMind, and the walk's equality
+holds with only CIViC exempt. `test_pubmind_concordance.py` asserts the two rows and their releases equal
+each lane's `release_label`, that a run with no PubMind snapshot writes no PubMind row, and that the
+compile raises no `source_row_unused` for them (watched red with the compiler line removed).
+`test_licence_row_inside_the_commit.py` names `concordance.py` among the passes that commit their row
+with their table.
+
+## RM373 — provenance names the link, never the release: a derived fact's answering release is missing, blank or the run's
+
+**SHIPPED 2026-11-04 on `0.8`, uncut — a minor (the 0.8 Ensembl migration probe).** Owner format +
+enricher, severity medium.
+
+**Residuals** won't fix — the hand-typed
+`--ensembl-reference` flag stays unchecked: it names the superseded DuckDB injection path, and the
+per-row column now carries the release · won't fix — an answer seeded from an interrupted run's journal
+records no release, because that run never wrote one down, and `--rederive` re-answers it · won't fix —
+the enricher never writes `fetched_at` on a resolution row: the cell says when a pass wrote a row, an
+axis apart from which release answered, which `source_release` now records, and no check reads the time · won't fix — the `ensembl` licence row of a table the snapshot and live REST both answered names
+no release: REST spells Ensembl's release `ensembl_116` and the snapshot `…vep116.0`, and no published
+mapping equates them · won't fix — `frequencies.csv` keeps the constant `gnomad_v4.1_joint`: the gnomAD
+API states no release, and the constant names the release its numbers describe
+
+**The class.** The record of which source release answered a derived fact was missing, blank, or the
+current run's, so an old-release answer and a new-release answer looked identical to every tier. The
+probe (`scratchpad/rm372_migration.md`, Q2/Q3 and error classes 1–2) measured it on `build/RM372`: a
+module whose `resolution.csv` was every row the Oct-11 snapshot's, re-enriched against
+`ensembl_variations_split` without deleting the file, kept every old row and stated the new release in
+`rsid_coordinate_agreement.release`. Two rules were broken at once: a pass that consults a source records
+which release it drew from (`@write-the-sourcerow`, `@currency-asks-the-source-not-the-cache`), and a
+record describes what it binds (`@a-record-written-in-two-passes-drifts-between-them`).
+
+**Every instance, re-verified on `65410522`** (before → after):
+
+- `schema/.../resolution.py` `ResolutionRow`: no release column → `source_release`, optional, `since
+  0.8.0`, outside `RESOLUTION_FACT_FIELDS`. P5 audit: named for what it records, the release of the
+  *source* that answered (the link is `source`, the licensed source `authority`); no collision with any
+  `ResolutionRow` field, the reserved namespace, or `SnapshotRelease.source_release` (ClinVar-GKM's
+  upstream release, the same meaning one tier over); a future per-witness release would be its own
+  column, never a member squeezed in here. P9: a derived sidecar column, half cost; no parquet.
+- `enrich/orchestration.py:1881` the `ensembl`/`clinvar`/`gnomad`/`clinvar_gkm` licence rows at
+  `resolution`: `record_source_terms(...)` with no `datasets=` → `record_table_sources`, labelled by the
+  committed rows (the ClinVar row was blank on every probe arm too).
+- `enrich/verification_records.py:440` `rsid_coordinate_agreement.release`: the run's snapshot label
+  over any table → the label only when every row the snapshot answered carries it, else null with a counted
+  reason in `detail` (`enrich.releases.run_label`).
+- `assertions.py:406`, `gene_metrics.py:458`, `frequencies.py:419`, `gene_validity.py:576`: licence rows
+  with a blank `dataset` although every row records its release → labelled from the rows' `dataset`.
+- `gwas.py:778`, `expression.py:542`, `clingen.py:305`, `ld_pairs.py:517`, `opentargets.py:871`: a
+  label written on the first run and never revisited (`merge_sources_file` and `record_source_terms`
+  never clobber), so a re-run against a newer release kept the old label over a mixed table → stamped
+  from the committed table. Open Targets' tables carry no per-row release, so a row this run answered
+  states this run's and a kept row states the label recorded before the run.
+- `ensembl_reference` (hand flag) and `fetched_at` (blank everywhere observed): re-verified, left, see
+  *Residuals*.
+
+**The mechanism.** One helper, `licensing.record_table_sources(releases, layer, spec_dir)`: `releases`
+maps each source to the release every committed row it answered states (`licensing.table_datasets` for
+a table with a `dataset` column, `enrich.releases.table_releases` for `resolution.csv`), the label is
+`table_release` — the one release they all state, else withheld — and the cell is **stamped**, re-labelled
+or withdrawn, because `merge_sources_file` never fills a row an earlier run wrote blank. That is
+`stamp_draft_digest`'s precedent rather than `withdraw_stale_dataset`'s: a drafted table holds rows from
+releases nobody recorded, while a derived table's rows each name theirs. On `resolution.csv`
+`enrich.releases.LinkReleases` stamps each row this run answers with its link's release, read the way
+the lane states it (`ensembl_release_label` for the cache, `snapshot.release_label` for ClinVar and
+ClinVar-GKM, the `CacheLane.release_label` each declares), REST's from `/info/data` asked once per run
+(`EnsemblResolver.data_release`; read by hand on 2026-11-04: `/info/data` → `{"releases":[116]}`,
+`/info/rest` → `{"release":"15.12"}`, the software's version, so the brief's `/info/rest` was not used),
+gnomAD's from the client's dataset id. Carried and pre-0.8 rows keep what they had, `--rederive` stamps
+every row it answers. A placement witness has no column, so a carried row speaks for it through the
+recorded label, which was computed over every row then in the table — without that, a no-op re-run
+withdrew a true label.
+
+**Inside or outside the signature: outside**, by `@provenance-beside-a-claim-is-outside-content-identity`.
+It says which release answered, beside the claim; two releases agreeing on a placement hash equal, and
+a release that moves a fact moves a fact column the signature already reads. Reverse writes none, for
+`authority`'s reason: a reversed table's facts came out of parquet, so no source answered them.
+
+**The guards.** `DerivedProducer.release_lanes` names, per pass, the lane whose release reaches its
+licence row; `test_producers.py` asserts, per command (per module until RM379), that the lanes its code
+reads (an AST walk over each `CacheLane.resolve`) **equal** that field plus `LANES_READ_WITHOUT_A_LICENCE_ROW`
+(CIViC's, with its reason; PubMind's was the second until RM379 gave it its row), and that no derived pass writes a licence row except through `record_table_sources`. Each
+declared lane has a behavioural test asserting the licence row equals `LANES_BY_NAME[lane].release_label`
+of the snapshot the pass read (`test_source_release.py`, `test_placement_witness.py`,
+`test_clinical_assertions.py`, `test_fact_passes.py`, `test_opentargets.py`). The probe's case is
+`test_reenriching_an_old_table_keeps_its_rows_unlabelled_and_withholds_the_runs_label`.
+
+**A derived table's release moving is not a strict matter.** A filled `clinvar`/`clinvar_gkm` licence
+row is a release `--verify-datasets` compares. A source publishing past it is the source working and no
+authored edit clears it (`@a-source-recuring-is-not-a-strict-matter`), so on every layer but `annotation`
+(`licensing.DRAFTED_LAYERS`) the finding warns in both modes and names `enrich --rederive` (or deleting
+the derived table); only a drafted layer refuses and says re-draft.
+
+**The review round (2026-11-05), each finding with a red test first** (`data/rm373/red_4.txt`):
+`run_label` counts only the rows the snapshot's link answered (a REST row beside a cache row no longer
+withholds the snapshot's label); ClinVar's label is `clinvar_dataset_label`, the one spelling every
+ClinVar reader computes (a digest-only snapshot was `None` here); `record_table_sources` stamps only rows
+of a source with a terms constant, so a curator's `manual` row is never touched; an Open Targets row this
+run kept states no release, because the recorded label may be a pre-0.8 first run's; a gnomAD answer
+records none (`gnomad_r4` names a release line); `data_release` is asked only of this tier's own
+`EnsemblResolver`, so a host's resolver cannot abort a finished run for a label. Two more instances of
+the class: `gwas` and `alphagenome expression` labelled their rows by the run's date, now by the source's
+own release (`GwasCatalogClient.release`, the Catalog's `/api/search/stats` `date`, read by hand on
+2026-11-05) or the bare lane when none is stated (`net.release_dataset`, RM361), and a licence row reads a
+row label through `net.stated_release`, so a bare lane is no release; `assertions.snapshot_dataset` was a
+second spelling of the ClinVar label and is now `clinvar_dataset_label` (unstated: `clinvar`, no longer
+`clinvar_unknown`); `gene-metrics` stamped the constant `gnomad_v4.1_constraint` on a snapshot row and now
+reads the snapshot's `release.json`. Mutated: the drafted/derived split collapsed and `stated_release`
+passing a bare lane through, each watched red.
+
 ## RM372 — the Ensembl snapshot moved to a new Hugging Face repo, and a warm cache never migrates
 
 **SHIPPED 2026-11-04 on `0.8`, uncut — a minor.** Owner enricher + format, severity medium.

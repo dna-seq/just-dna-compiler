@@ -20,7 +20,6 @@ from just_dna_enricher.clinvar import clinvar_dataset_label
 from just_dna_enricher.currency import CurrencyCheck, summarize_currency
 from just_dna_enricher.grch37 import BuildDiagnosisResult
 from just_dna_enricher.identifiers import RsidStatus
-from just_dna_enricher.locations import ensembl_release_label
 from just_dna_enricher.placement import PlacementCheck
 from just_dna_enricher.resolver import PairCheck
 from just_dna_enricher.sequences import RefCheck, summarize_ref_mismatches
@@ -108,7 +107,7 @@ def _verification_records(
     rsid_subjects: int,
     stale_rsids: list[RsidStatus],
     pairs: PairCheck,
-    ensembl_ref: Path | None,
+    pair_release: tuple[str | None, str | None],
     placement: PlacementCheck,
     currency: CurrencyCheck | None,
     rsid_unanswered: tuple[str, str] | None = None,
@@ -431,13 +430,19 @@ def _verification_records(
             )
         if not_compared:
             notes.append("Further authored pairs were not compared: " + "; ".join(not_compared) + ".")
+        # RM373: the snapshot's label, only where it speaks for every Ensembl-answered row the table
+        # holds — the run's label over an all-old table read as the module's release. Withheld, the
+        # counted reason travels in `detail` (`enrich.releases.run_label`).
+        release, withheld = pair_release
+        if withheld is not None:
+            notes.append(withheld)
         records.append(
             ran(
                 "rsid_coordinate_agreement",
                 subjects=pairs.subjects,
                 findings=len(pairs.disagreements),
                 source="ensembl",
-                release=ensembl_release_label(ensembl_ref) if ensembl_ref is not None else None,
+                release=release,
                 detail=" ".join(notes) or None,
                 # RM292 / `@tautology-zero`: the RM31 tolerance abstains on every indel position
                 # difference, so the abstentions are counted here rather than left to read as agreement.

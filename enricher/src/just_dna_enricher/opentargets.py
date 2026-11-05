@@ -85,8 +85,8 @@ from pydantic import BaseModel
 
 from just_dna_enricher.licensing import (
     OPENTARGETS_TERMS,
-    merge_sources_file,
     overlaid_input_rows,
+    record_table_sources,
     require_sources_file,
     sidecar_path,
 )
@@ -856,23 +856,52 @@ def enrich_opentargets(
             setattr(result, csv_name.removesuffix(".csv"), merged)
             # The licence row lands inside this table's commit, and only when this run contributed a
             # row to it (`@write-the-sourcerow`, `@licence-row-inside-the-commit`).
-            _write(merged, model, path, _licence(spec_dir, layer, dataset, declared_use) if rows else None)
+            this_run = {id(row) for row in rows}
+            kept = sum(1 for row in merged if id(row) not in this_run)
+            _write(
+                merged,
+                model,
+                path,
+                _licence(spec_dir, layer, dataset, declared_use, answered=len(merged) - kept, kept=kept)
+                if rows
+                else None,
+            )
         if gwas_rows and updated != gwas_rows:
+            # A posterior an earlier run filled and this one left alone states no release (`_licence`).
+            untouched = {id(row) for row in gwas_rows}
+            kept = sum(1 for row in updated if id(row) in untouched and row.posterior_probability is not None)
             _write(
                 updated,
                 GwasEffectRow,
                 gwas_path,
-                _licence(spec_dir, GWAS_LAYER, dataset, declared_use) if counts.filled else None,
+                _licence(spec_dir, GWAS_LAYER, dataset, declared_use, answered=counts.filled, kept=kept)
+                if counts.filled
+                else None,
             )
     return result
 
 
-def _licence(spec_dir: Path, layer: str, dataset: str, declared_use: str) -> Callable[[], None]:
-    return lambda: merge_sources_file(
-        [OPENTARGETS_TERMS.row(layer, declared_use=declared_use, dataset=dataset)],
-        spec_dir,
-        error=OpenTargetsError,
-    )
+def _licence(
+    spec_dir: Path, layer: str, dataset: str, declared_use: str, *, answered: int, kept: int
+) -> Callable[[], None]:
+    """The licence row for `layer`, labelled by the table rather than by this run alone (RM373).
+
+    These tables carry no per-row release, so a row this run answered states this run's `dataset` and a
+    row an earlier run wrote and this one kept states none: the label recorded before this run may be a
+    pre-0.8 first run's, which `merge_sources_file` kept whatever the table later held, so it is not
+    evidence about the kept rows. One kept row withholds the table's label until a run re-answers it.
+    """
+
+    def _commit_licence() -> None:
+        record_table_sources(
+            {OPENTARGETS_TERMS.source: [dataset] * answered + [None] * kept},
+            layer,
+            spec_dir,
+            error=OpenTargetsError,
+            declared_use=declared_use,
+        )
+
+    return _commit_licence
 
 
 def summarise(result: OpenTargetsResult) -> dict:

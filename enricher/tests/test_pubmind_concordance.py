@@ -17,8 +17,9 @@ import io
 from pathlib import Path
 
 import pytest
-from just_dna_compiler.compiler import load_csv_rows
+from just_dna_compiler.compiler import compile_module, load_csv_rows
 from just_dna_enricher import pubmind as pubmind_reader
+from just_dna_enricher.caches import LANES_BY_NAME
 from just_dna_enricher.clinical import (
     AUTHORITY_LEG_STATES,
     AUTHORITY_ORDER,
@@ -34,6 +35,7 @@ from just_dna_enricher.clinvar import clinvar_dataset_label, select_by_gene
 from just_dna_enricher.clinvar_build import build_snapshot as build_clinvar_snapshot
 from just_dna_enricher.clinvar_draft import draft_gene_panel
 from just_dna_enricher.concordance import (
+    AUTHORITY_CALL_LAYER,
     AUTHORITY_CALLS_CSV,
     CONCORDANCE_CSV,
     AuthorityCall,
@@ -880,3 +882,51 @@ def test_the_snapshot_reader_is_never_a_resolver_link() -> None:
     module's surface rather than on a comment, because the tempting repair is to add the function."""
     assert not [name for name in dir(pubmind_reader) if "lookup_loci" in name]
     assert not [name for name in dir(pubmind_reader) if name.endswith("_rsid_candidates")]
+
+
+# ── RM379: an authority the concordance record names has its licence row ──────────────────────
+
+
+def _concordance_run(spec: Path, clinvar: Path, pubmind: Path) -> dict[str, str | None]:
+    """One best-effort run over a contested `rs334`, returning the authority-call layer's licence rows."""
+    spec.mkdir(exist_ok=True)
+    (spec / "module_spec.yaml").write_text(_YAML, encoding="utf-8")
+    _write_variants(spec, [_variant("benign", "A/T", rsid="rs334")])
+    (spec / "studies.csv").write_text("rsid,pmid\nrs334,9545397\n", encoding="utf-8")
+    enrich(
+        spec,
+        offline=True,
+        clinvar_cache=clinvar,
+        pubmind_cache=pubmind,
+        civic_cache=spec.parent / "no-civic-here",
+        use_gnomad=False,
+        verify_rsids=False,
+        verify_datasets=False,
+        mint_vrs=False,
+    )
+    assert (spec / AUTHORITY_CALLS_CSV).is_file()
+    return {r.source: r.dataset for r in read_sources_file(spec) if r.layer == AUTHORITY_CALL_LAYER}
+
+
+def test_rm379_every_authority_a_call_row_names_has_a_licence_row_with_its_release(
+    clinvar: Path, tmp_path: Path
+) -> None:
+    """`@write-the-sourcerow`: PubMind contributed a call row, so its terms are recorded, release and all."""
+    pubmind = _pubmind(tmp_path / "pm", [(_CHROM, _START, "T", "A", "PV1", "Benign", "0.1", "1")])
+    recorded = _concordance_run(tmp_path / "spec", clinvar, pubmind)
+    assert recorded == {
+        "clinvar": LANES_BY_NAME["clinvar"].release_label(clinvar) or clinvar_dataset_label(clinvar),
+        "pubmind": LANES_BY_NAME["pubmind"].release_label(pubmind),
+    }
+    assert recorded["pubmind"] is not None
+    # The compiler cannot corroborate an authority by its string (`manual` is one), so the row it is
+    # handed is not reported as unused.
+    compiled = compile_module(tmp_path / "spec", tmp_path / "out")
+    assert compiled.success, compiled.errors
+    assert not [w for w in compiled.manifest.compilation.warnings if "no table in this module uses" in str(w)]
+
+
+def test_rm379_an_authority_nobody_asked_writes_no_licence_row(clinvar: Path, tmp_path: Path) -> None:
+    """One that contributes nothing writes none: no PubMind snapshot, no PubMind row; CIViC writes no call."""
+    recorded = _concordance_run(tmp_path / "spec", clinvar, _no_pubmind(tmp_path))
+    assert set(recorded) == {"clinvar"}

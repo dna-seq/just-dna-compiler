@@ -41,9 +41,10 @@ from just_dna_enricher.gnomad import (
 )
 from just_dna_enricher.licensing import (
     overlaid_input_rows,
-    record_source_terms,
+    record_table_sources,
     require_sources_file,
     sidecar_path,
+    table_datasets,
 )
 
 logger = logging.getLogger(__name__)
@@ -416,8 +417,10 @@ def enrich_frequencies(
         _write_frequencies_csv(
             out,
             frequencies_path,
-            before_commit=lambda: record_source_terms(
-                {row.source for row in out if row.source},
+            # Each source's licence row labelled by the release every committed row it answered
+            # states, or withheld when they differ (RM373, `licensing.record_table_sources`).
+            before_commit=lambda: record_table_sources(
+                table_datasets(out, release=lambda row: row.dataset),
                 "frequency",
                 spec_dir,
                 error=FrequencyEnrichmentError,

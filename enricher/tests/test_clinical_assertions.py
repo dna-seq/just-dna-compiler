@@ -17,6 +17,8 @@ from just_dna_enricher.assertions import (
     enrich_clinical_assertions,
     snapshot_dataset,
 )
+from just_dna_enricher.caches import LANES_BY_NAME
+from just_dna_enricher.clinvar import clinvar_dataset_label
 from just_dna_enricher.clinvar_build import review_stars
 from just_dna_format.assertions import ClinicalAssertionRow
 from just_dna_format.layout import SOURCES_CSV, preferred_spelling
@@ -210,7 +212,19 @@ def test_the_dataset_is_the_snapshots_own_release(tmp_path: Path) -> None:
 def test_a_snapshot_that_cannot_state_its_release_says_unknown_rather_than_inventing_one(
     tmp_path: Path,
 ) -> None:
-    assert snapshot_dataset(_snapshot(tmp_path, release=None)) == "clinvar_unknown"
+    """The bare lane is the unstated release (`release_dataset`, RM361), never a release named `unknown`."""
+    assert snapshot_dataset(_snapshot(tmp_path, release=None)) == "clinvar"
+
+
+def test_rm373_the_row_label_is_the_one_clinvar_label_every_reader_computes(tmp_path: Path) -> None:
+    """`snapshot_dataset` was a second spelling: a digest-only snapshot is named by its digest everywhere."""
+    snapshot = _snapshot(tmp_path, release=None)
+    (snapshot / "release.json").write_text('{"source_sha256": "sha256:' + "cd" * 32 + '"}', encoding="utf-8")
+    assert clinvar_dataset_label(snapshot) == "clinvar_sha256:" + "cd" * 32
+    assert snapshot_dataset(snapshot) == clinvar_dataset_label(snapshot)
+    assert snapshot_dataset(_snapshot(tmp_path / "dated")) == clinvar_dataset_label(
+        _snapshot(tmp_path / "again")
+    )
 
 
 def test_an_allele_clinvar_has_no_record_for_gets_a_not_found_row(tmp_path: Path) -> None:
@@ -250,6 +264,33 @@ def test_the_pass_records_clinvars_terms_at_its_own_layer(tmp_path: Path) -> Non
     rows, errors, _ = load_csv_rows(spec / _LICENCE_CSV, SourceRow, _LICENCE_CSV)
     assert errors == []
     assert ("clinvar", "clinical_assertion") in {(r.source, r.layer) for r in rows}
+
+
+def _assertion_dataset(spec: Path) -> str | None:
+    rows, errors, _ = load_csv_rows(spec / _LICENCE_CSV, SourceRow, _LICENCE_CSV)
+    assert errors == []
+    (row,) = [r for r in rows if (r.source, r.layer) == ("clinvar", "clinical_assertion")]
+    return row.dataset
+
+
+def test_rm373_the_licence_row_names_the_snapshots_release_and_withholds_it_over_two(tmp_path: Path) -> None:
+    """The lane's own label on the licence row; a table two releases answered names neither."""
+    spec = _spec(tmp_path)
+    first = _snapshot(tmp_path, records=_RECORDS[:2])
+    enrich_clinical_assertions(spec, clinvar_cache=first)
+    assert _assertion_dataset(spec) == LANES_BY_NAME["clinvar"].release_label(first) == "clinvar_2026-06-27"
+    # HBB is answered by the newer release; the RYR1 rows are kept as the older one wrote them.
+    result = enrich_clinical_assertions(
+        spec, clinvar_cache=_snapshot(tmp_path / "newer", release="2026-07-01")
+    )
+    assert {r.dataset for r in result.rows} == {"clinvar_2026-06-27", "clinvar_2026-07-01"}
+    assert _assertion_dataset(spec) is None
+
+
+def test_rm373_a_snapshot_stating_no_release_labels_no_licence_row(tmp_path: Path) -> None:
+    spec = _spec(tmp_path)
+    enrich_clinical_assertions(spec, clinvar_cache=_snapshot(tmp_path, release=None))
+    assert _assertion_dataset(spec) is None
 
 
 def test_a_rerun_merges_rather_than_duplicating(tmp_path: Path) -> None:
