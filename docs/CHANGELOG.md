@@ -41,6 +41,18 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-05 — RM395: the commands the user guides run do what the guides say (0.8, uncut)
+
+- `just-dna-compiler keygen --out <path>` creates a missing parent directory, as `compile` and `reverse`
+  do, instead of a traceback.
+- `just-dna-enricher draft-repeats` without `--catalogue` reads the provisioned STRchive lane, as its
+  `--help` says and `check-repeat-bands` does.
+- `cache pull` ends with what the run left on disk and which lanes had nothing published (`nothing
+  pulled; nothing published for: clinvar_gkm`), never *caches available:* and the registry's list, and a
+  pull that found nothing published leaves no empty directory for `cache status` to call occupied.
+  `cache status` names both routes for an absent lane that can be pulled or built. ENRICHING.md quotes the
+  re-run output.
+
 ## 2026-11-05 — Docs pass: the user guides re-run against the 0.8 candidate, and 0.8's surfaces added (0.8, uncut)
 
 RELEASE_CYCLE § Minors step 8, run at `64c835b9`. Every command in `index.md`, `GETTING_STARTED.md`,
@@ -61,7 +73,7 @@ lane and the publisher's `PublishRefused` family. CLAUDE.md's doc map gains the 
 Two guide commands still fail as written because the code is wrong, and are left for the fix rather
 than worked around: `keygen --out` into a directory that does not exist raises a traceback, and
 `draft-repeats` without `--catalogue` does not find a provisioned STRchive lane although its help says
-it does.
+it does. Both are fixed in code by RM395 (above).
 
 ## 2026-11-05 — `hboc_palb2` and `pathogenic_clinvar` regenerated against the split snapshot (0.8, uncut)
 

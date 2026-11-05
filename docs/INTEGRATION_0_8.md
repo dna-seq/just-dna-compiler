@@ -731,6 +731,15 @@ A table written before 0.8 keeps its `not_found` rows until `enrich --rederive`,
 | `check_publish_orphans_no_sidecar` | New keyword `revision=` (default: the head). | None. |
 | `cache prune --yes` | A refused deletion prints `PRUNE REFUSED — …` and goes on to the next lane. | None. |
 
+### 1.41 The commands the user guides run do what the guides say (RM395, no break)
+
+| Surface | What changed | What to do |
+| --- | --- | --- |
+| `just-dna-compiler keygen --out` | Creates a missing parent directory instead of raising. The overwrite refusal is unchanged. | None. |
+| `strchive_draft.draft_repeat_loci(catalogue=None)`, `draft-repeats` | Reads the provisioned STRchive lane (`resolve_strchive_reference`), as `check_repeat_bands` does; it skipped with *No STRchive catalogue was provisioned* before. With no lane either, the skip is unchanged. | A caller that passed `None` to mean "draft nothing" passes nothing to call, or points `$JUST_DNA_STRCHIVE_CACHE` at an empty place. |
+| `cache pull` closing line | Was ``caches available: <every lane with a pull route>. Run `cache status` to confirm.``; is now `on disk: <lanes this run pulled or found present>`, or `nothing pulled`, followed by `; nothing published for: <lanes>` when a repo was empty. A pull that found nothing published leaves no directory behind. | A script grepping `caches available` reads `on disk:`. |
+| `cache status`, an absent lane | A lane with both a pull route and a builder names both: ``provision with `cache pull` or `<build command>` ``. | None. |
+
 ## 2. What to change
 
 ### Upgrade order

@@ -35,6 +35,47 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM395 — commands the user guides run fail or misreport
+
+✅ **SHIPPED 2026-11-05 on `0.8`, uncut — a minor (the 0.8 docs pass).** Owner compiler + enricher,
+docs, severity low. *related* RM202, RM176
+
+**Residuals** none
+
+**The class.** A guide command whose behaviour the guide states and the code does not do. The 0.8 docs
+pass re-ran every command in the four user guides and found three, each there since 0.7.3. The guard is
+that the guides' commands are re-runnable: the docs pass re-runs them before a cut
+([RELEASE_CYCLE.md](RELEASE_CYCLE.md)), and each instance below has a test that went red first.
+
+**Instances, before → after.** All three fixed in code, each well inside the pm's thirty minutes, so no
+guide was rewritten to work around one.
+
+- **D1, `just-dna-compiler keygen --out ./keys/private.pem`** (COMPILING.md) raised a
+  `FileNotFoundError` traceback when `./keys` did not exist, where `compile` and `reverse` create their
+  missing parents. `keygen` now creates the parent after the overwrite refusal.
+  `test_keygen_creates_a_missing_parent_directory_as_compile_and_reverse_do`.
+- **D2, `just-dna-enricher draft-repeats ./my_module --gene FMR1`** (ENRICHING.md) skipped with *No
+  STRchive catalogue was provisioned* on a machine holding the lane, though its `--help` says the lane
+  is read and `check-repeat-bands` read it. `draft_repeat_loci` now resolves the lane with
+  `resolve_strchive_reference`, as `check_repeat_bands` does, before the nobody-asked skip.
+  `test_draft_repeats_reads_the_provisioned_strchive_lane_as_check_repeat_bands_does`, through the CLI.
+- **D3, `cache status` and `cache pull --only clinvar_gkm`** (ENRICHING.md) described the lane registry,
+  not the disk. `cache pull` closed with *caches available:* and every lane with a pull route, so a run
+  that found nothing published for `clinvar_gkm` named it available; it now names what the run left on
+  disk and which lanes had nothing published. A pull that found nothing left an empty `data/` (or, for a
+  root-file lane, an empty directory), which the next `cache status` called *occupied* and `cache
+  prepare` refused to build over; the directory is now made only once there is something to put in it.
+  `cache status` said *provision with `cache pull`* for a lane whose repository is empty; it reads only
+  and cannot see publication, so a lane with a pull route and a builder names both.
+  `test_cache_pull_names_only_what_is_on_disk_as_available`,
+  `test_an_absent_lanes_line_names_every_route_that_can_provision_it`.
+
+**Found while building, outside the three and reported to the lead for a number:** a builder named on a
+status line writes to its own `--out` default (`data/repro/<lane>`), never the place the lane is read
+from, so *provision with `clinvar-gkm build`* (and every build-only lane's line, as before this item)
+leaves the lane absent unless the operator passes `--out`.
+
+
 ## RM384 — the Ensembl lane's repository has no public name on 0.8, and every pulled lane spells its repository twice
 
 ✅ **SHIPPED 2026-11-05 on `0.8`, uncut — a minor (S130, the tail of RM372).** Owner enricher (`download.py`,
