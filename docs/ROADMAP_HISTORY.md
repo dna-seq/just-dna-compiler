@@ -66,7 +66,9 @@ None was a test whose point is the live call, so none became network-only, and n
 assertion. `compiler/tests` and `schema/tests` reached nothing, and their source trees import no transport.
 
 **After: 0** of the enricher, compiler and schema suites reach the network with the opt-in unset,
-measured under the same fence and log.
+outside `test_the_network_is_fenced.py`'s own deliberate `example.org` provocations, which it takes
+itself. Measured at the branch's final conftest for the enricher suite (four chunks); compiler and
+schema reached nothing at the first fence, and nothing since touches them.
 
 **The mechanism: one fence at the transport, in the root `conftest.py`.** `socket.getaddrinfo`,
 `socket.socket.connect`/`connect_ex` and gRPC's `secure_channel`/`insecure_channel`, sync and `grpc.aio`,
@@ -108,6 +110,9 @@ exactly, as `_fenced_hub` and the rule do. Four live tests skip on any truthy va
 
 **Out of the class, observed:** `test_literature.py::test_a_regex_locator_matches_the_fulltext` failed
 once in the enumeration under load and passes alone (its regex timeout runs in a killable process).
+And the shape behind most of the 31: `enrich()` has no switch for its live-Ensembl link but `offline`,
+and `verify_ref`/`verify_rsids` default on, so an `enrich()` test meaning "no network" must remember
+them; the fence now says so the first time one forgets.
 
 ## RM380 — a hand-kept struct mirrored `ResolutionRow` with nothing asserting the two agree, so reverse dropped every 0.8 provenance column
 
