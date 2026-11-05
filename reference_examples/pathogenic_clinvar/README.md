@@ -31,6 +31,10 @@ module, not just the syntax.
 just-dna-compiler compile reference_examples/pathogenic_clinvar /tmp/hbb_out --strict
 ```
 
+Since 0.8 the committed table is the split Ensembl snapshot's answer, and `enrich` also writes
+`licensing.csv`, `clin_sig_concordance.csv` and `clin_sig_authority_calls.csv`; the last section says how
+it was regenerated. The ClinVar-only recipe below is the 0.5 dogfood's, and no longer reproduces it.
+
 To rebuild from scratch (needs the local ClinVar snapshot at `data/interim/clinvar`, produced by
 `just-dna-enricher clinvar build --vcf <clinvar.vcf.gz>`):
 
