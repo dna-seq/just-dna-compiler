@@ -747,6 +747,23 @@ coord but no rsid), runs a **first-hit-wins chain**, and writes/merges `resoluti
    `alts` and move its `artifact.digest`. Last place makes the link strictly additive — it can only
    ever add variants nothing else had. A failure here is logged and skipped, never fatal.
 
+**A rejected answer is a miss (RM382, 0.8).** "First hit" means the first answer a subject can use.
+Each link's answer passes through the allele-aware filter below as it arrives, and an answer that every
+subject of the rsID rejects (every locus, by the same predicate the table's writer uses), where at least
+one subject is rsID-only, is set aside, so the next link is asked. Measured on `pathogenic_clinvar`: the split Ensembl snapshot's only
+locus for HBB `rs613985` is `3:159434329 T>G`, which the authored 13 bp deletion cannot sit on, and the
+ClinVar link now places it at `11:5226724 CATAACAGCATCAG>C`. The digest argument for the order is
+untouched: a variant some subject can host on the Ensembl answer still keeps it, so only rsIDs that
+used to resolve to nothing change. The decision is per rsID, never per subject, because the placement
+comparison below takes one authority per rsID; an rsID one subject hosts and another rejects keeps the
+first answer, and the rejecting subject is reported as below. A pair (rsID and coordinate authored) is
+never a reason to ask on, since no link is asked live for a pair, but a pair that can host the answer
+keeps it; the rsid↔coordinate check still compares a pair with the snapshot's own answer.
+`EnrichmentResult.superseded_answers` names each set-aside answer and the link that placed the rsID after
+it (`AlleleMismatch.links`, `placed_by`). Under `--rederive` a recorded placement is kept when this run's
+links answered only at loci nothing can host (it came from a link this run may not have reached), and a
+recorded `not_found` row is dropped.
+
 After the chain settles, `vrs.mint_resolution_rows` stamps `vrs_id`/`vrs_spec` onto every mintable row
 (`mint_vrs=True`). An existing id is never overwritten.
 
@@ -1060,6 +1077,13 @@ the asking *succeeded* and the answer did not match. `strand_flip` is the single
 settle from the allele strings alone, and it is `False` for *not established* rather than *established
 otherwise* — an allele that cannot be complemented withholds it.
 
+**Since 0.8 the row is gone too, and the chain asks on (RM382).** S85 kept the `not_found` row beside
+the finding. Regenerating `pathogenic_clinvar` showed what that cost: the rejected answer also ended the
+chain, so ClinVar, which holds HBB `rs613985` where the snapshot does not, was never asked. A rejected
+answer is now a miss (*the resolver chain* above), the finding names every link that answered
+(`links`, in chain order, with `loci` in the same order), and an rsID-only subject every link rejected
+gets no row. A later link's placement is recorded in `superseded_answers`, with `placed_by` naming it.
+
 **Three more states are named since 0.8 (RM272)**, each an rsID that is also in `unresolved` and in
 exactly one of these lists, because each has a different remedy:
 
@@ -1112,7 +1136,12 @@ forward direction only caught up in this round, which is why the asymmetry is wo
 positions 254 bp apart; the authored genotype says which are meant. Recording the rest would hand the
 compiler a locus it can only drop — and a dropped locus makes the compile unreproducible from the
 injected table, which `--strict` refuses. This **selects, it does not repair**: no authored value is
-touched, and every skipped record is logged. (The compiler applies the same predicate as a safety net
+touched, and every skipped record is logged. When every link that answered was rejected, an rsID-only subject gets
+**no row** (RM382): until 0.8 it got `status=not_found`, which says the source has no record of the
+rsID, about an rsID it has. The key stays unresolved, `EnrichmentResult.allele_mismatches` names every
+link's rejected loci, and `strict`'s refusal names the rejection rather than asking for a cache, unless
+a live link could not be asked for the rsID, in which case it asks for the link. A pair keeps its
+authored row. (The compiler applies the same predicate as a safety net
 for hand-authored or stale tables — `resolution.hosting_verdict` is shared, so the two cannot drift.)
 
 ### A row that authors both halves is recorded from the reference, not copied (S104, RM251)

@@ -660,6 +660,22 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `called <= locus` **first**, because a palindromic SNV (`A/T` at `T>A`) satisfies both readings and
   would otherwise be reported as a flip when it needed no explaining at all.
 
+  **Addendum, 2026-11-05 (RM382): the row no longer stays, and a rejected answer no longer ends the
+  chain.** Regenerating `pathogenic_clinvar` against the split Ensembl snapshot showed the cost of
+  keeping it. HBB `rs613985` (authored `C/CATAACAGCATCAG`) has one snapshot locus, `3:159434329 T>G`; the
+  filter rejected it, and because every link asks only about rsIDs not yet answered, ClinVar, which
+  holds the authored 13 bp deletion at `11:5226724`, was never asked. The row went out `not_found` under
+  the warning that says the source HAS it. Two changes, one predicate (`orchestration._hosting`, shared
+  by the loop and the chain): **an answer every subject of the rsID rejects, one of them rsID-only, is set
+  aside as it arrives, so the next link is asked** (per rsID, because the placement comparison takes one
+  authority per rsID; any subject, a pair included, that hosts or leaves a locus undecided keeps the
+  answer); and **an rsID-only
+  subject whose every answer was rejected gets no row**, like RM267's disputed subject, and is named in
+  `strict`'s refusal by its own arm. The new-status refusal above still binds — `VALID_RESOLUTION_STATUS`
+  is shared with `literature.csv` and `clinical_assertions.csv`. The signature refusal does not: it was
+  measured against a table already written, a fresh run has no prior, and RM267 had already dropped a
+  row for the reason that applies here. Do not restore the `not_found` row to keep a signature still.
+
 - `@roster-is-as-wide-as-the-tables-it-reads` — **A check is only as wide as the table it reads, and a
   narrow roster reports its blindness as a clean zero (S86, 0.7).** `check_identifiers` built its trait
   and gene rosters from `variants.csv` while **eleven** authored models declare one of those columns —

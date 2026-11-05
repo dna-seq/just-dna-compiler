@@ -583,6 +583,14 @@ reads the record and no longer calls such a row a contradiction.
 | `licensing.csv`, `manifest.sources` | New rows at the new `clin_sig_authority_call` layer (`VALID_SOURCE_LAYERS`, 14 members) for ClinVar and PubMind when a run writes `clin_sig_authority_calls.csv` naming them, consulted. `sources.signature` and `artifact.digest` move on the next enrich and compile of a module with a concordance record. Fact class: never taints. | A reader closed over the 13 layers accepts the new member. |
 | `concordance.write_concordance_tables` | Takes `error=` (the caller's type for a licence table that will not merge), and reads the licence table before it writes. | None. |
 
+## 1.34 A rejected resolution answer asks the next link, and is never a `not_found` row (RM382, no new code)
+
+| Surface | What changed | What to do |
+| --- | --- | --- |
+| `resolution.csv` | An rsID-only subject whose every link's answer the authored genotype cannot host has **no row** (was `status=not_found`). A subject an earlier link's rejected answer used to leave `not_found` may now carry a later link's row (`source=clinvar`, `ensembl-rest` or `gnomad`), so `resolution_signature` and `artifact.digest` move on the next `--rederive` of such a module. Rows a subject could host are unchanged. | A reader counting `not_found` rows as "the source lacks it" now gets that reading only; read `EnrichmentResult.allele_mismatches` for answered-and-rejected. |
+| `AlleleMismatch.links`, `.placed_by`; `EnrichmentResult.superseded_answers` | New: the links whose answers were rejected (chain order, `loci` in the same order), and the later link that placed the rsID, if any. | None; additive. |
+| `enrich(mode="strict")` refusal | A third arm names the keys every link answered at loci the genotype cannot host (RM382), apart from RM267's placement disagreement and from a missing cache. | A host matching the refusal's wording reads the new sentence. |
+
 ## 2. What to change
 
 1. If you parse `manifest.json` with `just-dna-format`, move your pin to 0.8 when you start reading

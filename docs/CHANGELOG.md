@@ -41,6 +41,19 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-05 — RM382: a resolution answer the authored genotype cannot host lets the next link answer, and is never written as an absence (0.8, uncut)
+
+- **A rejected answer no longer ends the chain.** Each link's answer passes the allele-aware filter as it
+  arrives; one that every subject of the rsID rejects (one of them rsID-only) is set aside and the next link is asked
+  (ClinVar cache, staged answers, live Ensembl, gnomAD). `pathogenic_clinvar`'s HBB `rs613985`, whose only
+  split-snapshot locus is `3:159434329 T>G`, now resolves from ClinVar at `11:5226724 CATAACAGCATCAG>C`.
+- **An rsID-only subject every link rejected gets no `resolution.csv` row** (was `status=not_found`, a
+  false absence beside the "the source HAS these variants" warning). It stays unresolved; `strict` names
+  the rejection in its own arm. `--rederive` drops a recorded `not_found` for it and keeps a recorded
+  placement.
+- `AlleleMismatch` gains `links` and `placed_by`; `EnrichmentResult.superseded_answers` names each
+  set-aside answer and the link that placed the rsID after it.
+
 ## 2026-11-05 — RM379: every authority the concordance record names has its licence row (0.8, uncut)
 
 - **`enrich` records ClinVar's and PubMind's terms at the new `clin_sig_authority_call` layer** for each

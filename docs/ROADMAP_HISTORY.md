@@ -35,6 +35,83 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM382 — a resolution answer the hosting filter rejects ends the chain, and the row is written `not_found` about an rsID the sources have
+
+**SHIPPED 2026-11-05 on `0.8`, uncut — a minor (found regenerating the reference examples).** Owner
+enricher, severity medium.
+
+**Residuals** won't fix — an rsID one subject hosts and another rejects keeps the first link's answer, and
+the rejecting subject gets no row and an `AlleleMismatch` rather than a later link's placement: the
+placement comparison (RM267) takes one authority per rsID, and a per-subject fall-through would make the
+authority per row · won't fix — a pair (rsID and coordinate authored) is never a reason to ask on, because
+no link is asked live for a pair (S104); it keeps its authored row · won't fix — the deprecated DuckDB
+path (`resolver.resolve_variants`) has one link and no chain, and is removed at 1.0
+
+**The class.** Every place one link's rejected answer is written as the identity's absence. The resolver
+chain is first-hit-wins and every link asks only about rsIDs not yet in `rsid_to_loci`, while the
+allele-aware filter runs after all of them, in the assembly loop. So an answer whose every locus the
+authored genotype cannot host ended the chain, and the row-writer's last branch wrote it `not_found`
+(*this source has no record of the rsID*) beside the S85 warning that says the source HAS it. Measured
+regenerating `reference_examples/pathogenic_clinvar` against `ensembl-variation-2026_07_13-vep116.0`:
+HBB `rs613985`, authored `C/CATAACAGCATCAG`, has one snapshot locus, `3:159434329 T>G`; ClinVar 2026-06-27
+holds the authored 13 bp deletion at `11:5226724` (VCV 4074263) and was never asked.
+
+**The contract allowed the fall-through.** ENRICHER's chain says a snapshot miss falls through and gives
+one reason for the order, digest stability: a variant both caches know keeps the Ensembl `alts`. A
+variant none of whose Ensembl loci a subject can host never compiled with an Ensembl locus, so asking on
+moves no digest that was not already unresolved. RM267 already routed an all-withheld rsID as
+unresolved with no row, in the same loop.
+
+**Instances (all in `enricher/src/just_dna_enricher/enrich/orchestration.py`), before → after.**
+1. The ClinVar cache link's gate (`cv_rsids`, `rsid not in rsid_to_loci`): a rejected cache answer counted
+   as answered → set aside, so ClinVar is asked.
+2. The staged-answer seeding: same gate → same.
+3. The live Ensembl link's `missing`: same gate → same (and deduplicated per rsID, so one rsID costs one
+   request and records one rejection).
+4. The gnomAD link's `missing`: same gate → same.
+5. The row writer's `elif genome_build == "GRCh38"` branch: reached with every answered locus rejected and
+   wrote `status=not_found` → a new `elif all_loci` branch writes no row; the key is unresolved and named
+   in `hosting_unresolved` for `strict`'s refusal.
+
+The positional fill and the witnesses were hunted and are not instances: the compiler's `_hostable_loci`
+reports `rsid_no_hosting_locus` and leaves the subject unresolved without asserting an absence, and a
+placement witness's `unplaced` describes the witness's alleles, not the subject's identity.
+
+**The mechanism.** One predicate, `orchestration._hosting` (`hosting_verdict`, settled against the
+reference by RM274 where it withholds), read by the assembly loop and by `withdraw_rejected`, which runs
+on each link's answers as they arrive and sets aside an answer every subject of the rsID rejects, where
+one is rsID-only (`_rejected_by_every_subject`; a pair that hosts keeps the answer). The gates are untouched: withdrawing the answer reopens them. An
+rsID no link places gets its first answer back before the loop, so the loop sees what it saw before (its
+per-locus warnings, its finding), and the finding now names every link's answer (`AlleleMismatch.links`,
+`loci` in the same order). A later link's placement is recorded in `EnrichmentResult.superseded_answers`
+(`placed_by`) and logged at info. The sequence proxy and minter are built before the first link (both
+are lazy) so the predicate can settle an indel with the reference. Four consequences, each from the
+review: a withdrawn staged answer leaves `staged_rsids`, so a later link's row records its own release
+(RM373); a link whose staged answer was set aside is not asked again on resume; the rsid↔coordinate
+check is handed the snapshot's own answer, since it reports a snapshot comparison; and `--rederive`
+keeps a recorded placement when this run's links answered only at loci nothing can host (a link it did
+not reach placed it, `@rederive-never-shortens`) and drops a recorded `not_found`. A key whose live link
+could not be asked stays in the refusal's could-not-ask arm, not RM382's.
+
+**Departure recorded.** S85 kept the `not_found` row on two grounds; the new-status refusal still binds
+(`VALID_RESOLUTION_STATUS` is shared with `literature.csv` and `clinical_assertions.csv`), and the
+signature refusal was measured against a written table. The addendum is under `@answered-is-not-absent`
+in AGENT_NOTES, and the S85 test that pinned the byte-identical rows is inverted with that reasoning in
+its docstring.
+
+**The guards.** `enricher/tests/test_a_rejected_answer_is_not_the_chains_last_word.py`, real bytes of
+`rs613985` (the snapshot row, ClinVar's two records): ClinVar places it and the compile passes `strict`;
+the snapshot alone writes no row and names the mismatch; two rejecting links are both named; `strict`
+names the rejection, or asks for the link when live Ensembl was unreachable; `--rederive` keeps a
+recorded placement and drops a recorded `not_found`; a subject that can host keeps the answer; and a test
+parametrized over the
+three later links (ClinVar cache, live Ensembl, gnomAD) asserts each is reached past a rejected answer.
+Red on 1007a26d (the 8 written first all failed); with `_rejected_by_every_subject` forced `False` the parametrized guard and
+three more go red. `test_enrich.py::test_a_dbsnp_outage_does_not_sink_a_finished_enrichment` authored its
+genotype on the other strand of its fixture, so the fall-through reached live Ensembl; it now authors the
+fixture's strand. E2E: a copy of `pathogenic_clinvar`, `enrich --offline --rederive` against the split
+release, records `rs613985` from ClinVar and passes `validate --strict`.
+
 ## RM376 — one rsID, three ALTs offline and one online on the same snapshot: not a misread, RM270's reference-dependent spelling rule
 
 ✖ **CLOSED 2026-11-04 on `0.8` — not a defect, no code change (the 0.8 Ensembl migration probe).** Owner

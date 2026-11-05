@@ -55,8 +55,10 @@ def test_a_rejected_locus_is_recorded_as_a_mismatch_not_as_an_absence(tmp_path: 
     # It names what it compared against, so the author can see the other strand rather than guess.
     assert found.loci == ("1:11856378 C>T",)
     assert found.genotype == "A/G"
-    # The row itself is untouched: still written, still honestly unresolved.
+    # Honestly unresolved, and with no row claiming the source lacks it (RM382).
     assert result.unresolved == ["rs61849494"]
+    assert result.rows == []
+    assert found.links == ("cache",)
 
 
 def test_a_source_that_genuinely_lacks_the_rsid_records_no_mismatch(tmp_path: Path) -> None:
@@ -75,14 +77,15 @@ def test_a_source_that_genuinely_lacks_the_rsid_records_no_mismatch(tmp_path: Pa
     assert result.unresolved == ["rs61849494"]
 
 
-def test_the_two_states_were_indistinguishable_in_the_row_and_still_are(tmp_path: Path) -> None:
-    """Why a structured finding rather than a new status member — and the honest limit of the fix.
+def test_the_two_states_are_told_apart_in_the_table_too(tmp_path: Path) -> None:
+    """S85 kept the rows byte-identical across the two runs below, and RM382 parts them.
 
-    The rows really are byte-identical across the two runs above, deliberately: `status` is provenance
-    and sits outside `RESOLUTION_FACT_FIELDS`, while dropping the row entirely would move
-    `resolution_signature` (`variant_key` and `rsid` are fact fields). So the artifact is unchanged
-    and the distinction lives in the result object, where a caller can surface it. Pinning it here
-    means a later change to the row cannot happen silently.
+    The S85 reasoning, kept as the record: a new `VALID_RESOLUTION_STATUS` member would change a wire
+    vocabulary `literature.csv` and `clinical_assertions.csv` share, and dropping the row moves
+    `resolution_signature`. The first still holds, so no member was added. The second was measured
+    against a table already written, and RM267 had since dropped a disputed subject's row for the reason
+    that applies here: the sources do have it. So the absent rsID keeps its `not_found` row, which is a
+    fact, and the rejected one gets no row, which asserts nothing. Both stay unresolved.
     """
     absent = enrich(
         _spec(tmp_path / "a", "A/G"),
@@ -98,8 +101,9 @@ def test_the_two_states_were_indistinguishable_in_the_row_and_still_are(tmp_path
     def shape(result):
         return [(r.rsid, r.status, r.chrom, r.start) for r in result.rows]
 
-    assert shape(absent) == shape(rejected)
-    # ...and the result object is what tells them apart.
+    assert shape(absent) == [("rs61849494", "not_found", None, None)]
+    assert shape(rejected) == []
+    assert absent.unresolved == rejected.unresolved == ["rs61849494"]
     assert (absent.allele_mismatches == []) and (rejected.allele_mismatches != [])
 
 
