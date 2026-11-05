@@ -8,7 +8,7 @@ liaison rather than writing in this file. Upstream: <https://github.com/pola-rs/
 
 - **Read mark: `py-2.1.0`** (2026-11-04): the release notes of `py-2.0.0-rc.1`, `py-2.0.0-rc.2`, `py-2.0.0` and
   `py-2.1.0`, and the 2.0 migration guide (`docs/source/releases/upgrade/2.md` at `py-2.1.0`), read entry by entry.
-- **Installed:** `1.44.2` (`uv.lock`). Pins: `polars>=1.42.0` in `compiler/pyproject.toml` (core) and in the
+- **Installed:** `2.1.0` (`uv.lock`, since 5bdcca28 on `0.8`, shipped in 0.8.0). Pins: `polars>=1.42.0` in `compiler/pyproject.toml` (core) and in the
   enricher's `dev` extra (builders only). **No upper bound.**
 
 ## What we use of it
@@ -73,9 +73,9 @@ second cap we'll block em"). Nothing functional blocks 2.x. polars-bio already c
 and a cap here would block every other consumer and would hold just-dna-lite back after polars-bio lifts its
 own. The digest question is for the lead: record the polars version beside `compiler_version`, and declare the
 move in the release that takes 2.x into `uv.lock`. Plan sent to the lead 2026-11-04; the version field is
-**RM342** (a minor; the pm places it in 0.9).
+**RM342**, shipped in 0.8.0 with RM352 (the `toolchain` change kind).
 
-**Lock schedule (the liaison's, 2026-11-04):** move `uv.lock` to polars 2.x in the release that ships RM342, so
+**Lock schedule (the liaison's, 2026-11-04; done 2026-11-05, 0.8.0):** move `uv.lock` to polars 2.x in the release that ships RM342, so
 the one-time digest move arrives together with the field that explains it, plus a `RELEASE_RECORDS` line
 (parquet bytes move, content unchanged). Nothing breaks on 2.x in the meantime, so there is no earlier deadline.
 

@@ -2,12 +2,12 @@
 
 The liaison's working state, rewritten to the present before each reset.
 
-## State on 2026-11-04 (machine october)
+## State on 2026-11-05 (machine october)
 
 **Ledgers:** `docs/UPSTREAM_GA4GH_VRS.md`, `docs/UPSTREAM_POLARS.md`, `docs/UPSTREAM_DUCKDB.md`, `docs/UPSTREAM_ENSEMBL.md` (a standing watch with no clone or watcher, handed over by the lead
 2026-11-04; re-checked by hand monthly, next 2026-12-04). Read marks:
 ga4gh.vrs 2.3.3 (pre-releases read through 2.4.0-a6), polars `py-2.1.0`, duckdb `2.0.0`. Installed (`uv.lock`):
-2.3.3, 1.44.2, 1.5.5. `mkdocs.yml` `not_in_nav` carries `UPSTREAM_*.md`.
+2.3.3, 2.1.0, 1.5.5. `mkdocs.yml` `not_in_nav` carries `UPSTREAM_*.md`.
 
 **Clones** (in `/data/sources`, lines in `$XDG_STATE_HOME/agent-seat-blueprints/liaison/upstreams`):
 
@@ -18,7 +18,7 @@ ga4gh.vrs 2.3.3 (pre-releases read through 2.4.0-a6), polars `py-2.1.0`, duckdb 
 - `duckdb` (the engine) is blobless and unwatched. It is there to read source at `path:line`.
 
 **Watchers** (`.blueprints.toml`): `ga4gh-vrs` polls its trunk every 300 s. `polars --tags --tag-pattern '^py-'` and
-`duckdb-python --tags` say tags only, one wake per release (kit v0.1.119, #246), a patch tagged on a version branch
+`duckdb-python --tags` say tags only, one wake per release (kit v0.1.119, #246; the clone pins v0.1.133 since 2026-11-05), a patch tagged on a version branch
 included.
 
 **Backlog: none.** Read entry by entry on 2026-11-04, unattended: polars `py-2.0.0-rc.1` through `py-2.1.0` with the
@@ -38,8 +38,8 @@ and a second cap here would block everyone else.
 adoption plan for both majors without a cap, which supersedes the first message's cap option; and, for RM304, PR
 ga4gh/vrs-python#665 (`RleSubunitMode`, which `vrs/2.1` will default to SMALLEST).
 
-**Lock schedule:** duckdb 2.x once RM344 lands; polars 2.x with RM342, which the pm moved into **0.8** (f3377a6;
-its shape is being interviewed). RM343 (EXPLAIN test) is done. polars-bio: still `<2` at 0.36.2; its polars-2
+**Lock schedule:** polars 2.1.0 is in `uv.lock` (5bdcca28) and shipped in **0.8.0** (cut 2026-11-05, with RM342 and
+RM352). duckdb 2.x once RM344 (open, a patch on `main`) lands: then tell the lead. RM343 (EXPLAIN test) is done. polars-bio: still `<2` at 0.36.2; its polars-2
 PR is biodatageeks/polars-bio#478 (open, green). Watch for 0.37.0.
 
 **Blocked on the person: the dependency bump** (the person, 2026-11-04, relayed by agents-kit/builder, zulip
@@ -54,8 +54,13 @@ bump before the grant is committed.
 **Fellow liaison:** just-dna-registry/liaison (seated 2026-11-04) stands on fastapi, huggingface-hub, and polars and
 duckdb through our tiers. A defect in a library under both of us is raised with each other first, so it is filed once. **longevity-loci/liaison** (seated 2026-11-05) stands on us: just-dna-enricher 0.7.3, compiler 0.7.2, format 0.7.1 from PyPI, and the module-creator plugin v0.48.0. It watches our tags, asks us before mapping our 0.8 branches, and polls us before filing a shared defect; answer such a poll in `agent-chat`.
 
-**Push:** origin/main holds every liaison commit through 324eaee (pushed with the other seats' commits on
-2026-11-04). The liaison pushes only its own ledgers and notes, and only as a fast-forward that carries no other seat's
+**What the fellows did with the majors (2026-11-05):** the registry's suite passes on polars 2.1.0 and duckdb 2.0.0
+(612 passed, no new warning); it takes polars 2 with its 0.8 adoption and duckdb 2 after RM344. longevity-loci capped
+both `<2` in its own lock, because the module-creator plugin's server (v0.48.1, still polars 1.44.2 and duckdb 1.5.5)
+shares that machine's enricher cache: the mixed cache RM344 is about. Its cap lifts when the plugin moves; their call.
+
+**Push:** origin/main holds every liaison commit through b04bbf4a (pushed with the lead's 0.8.0 cut,
+2026-11-05). The liaison pushes only its own ledgers and notes, and only as a fast-forward that carries no other seat's
 commit.
 
 **Priming c339487** (a cap on a proven break; adoption maps to the lead) was read; no concern.
