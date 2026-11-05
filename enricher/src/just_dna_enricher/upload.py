@@ -45,6 +45,7 @@ from pydantic import BaseModel, Field
 from just_dna_enricher.locations import (
     RELEASE_FILENAME,
     SNAPSHOT_DATA_DIRNAME,
+    SNAPSHOT_REPO_IDS,
     SNAPSHOT_ROOT_FILENAMES,
     SNAPSHOT_SIDECAR_DIRNAMES,
     env_value,
@@ -111,45 +112,49 @@ _EXPECTED_WITH_WEIGHTS = ("annotations.parquet", "studies.parquet")
 logger = logging.getLogger(__name__)
 
 DEFAULT_REPO_ID = "just-dna-seq/annotators"
-DEFAULT_CLINVAR_REPO_ID = "just-dna-seq/clinvar"
-DEFAULT_CONSTRAINT_REPO_ID = "just-dna-seq/gnomad_constraint"
+# Each lane's publish default below is a **working alias** (P3) of its entry in
+# `locations.SNAPSHOT_REPO_IDS`, the one spelling of every pulled lane's repo (RM384): the names stay
+# importable, and the repo id is never written here a second time. `DEFAULT_REPO_ID` is the module
+# repo, not a lane's, so it is the one literal.
+DEFAULT_CLINVAR_REPO_ID = SNAPSHOT_REPO_IDS["clinvar"]
+DEFAULT_CONSTRAINT_REPO_ID = SNAPSHOT_REPO_IDS["constraint"]
 # The two licence-gated snapshots that may be published (RM38): both record `redistribution=True`, and
 # CC BY-SA grants sharing under share-alike plus attribution. **PharmVar has no entry here on purpose** —
 # its bulk data is pulled under a personal, non-transferable key and no recorded axis covers passing
 # that on, so an unestablished permission stays a refusal.
-DEFAULT_CLINPGX_REPO_ID = "just-dna-seq/clinpgx"
-DEFAULT_CPIC_REPO_ID = "just-dna-seq/cpic"
+DEFAULT_CLINPGX_REPO_ID = SNAPSHOT_REPO_IDS["clinpgx"]
+DEFAULT_CPIC_REPO_ID = SNAPSHOT_REPO_IDS["cpic"]
 #: CIViC's snapshot repo (RM152/RM153). CC0 content, so unlike PubMind's there is nothing to refuse
 #: and unlike PharmVar's nothing to withhold — the only reason none exists yet is that nobody has run
 #: the command.
-DEFAULT_CIVIC_REPO_ID = "just-dna-seq/civic"
+DEFAULT_CIVIC_REPO_ID = SNAPSHOT_REPO_IDS["civic"]
 #: STRchive's snapshot repo (RM176). MIT, so redistribution is granted outright — the reason there was
 #: no publish command is that this lane grew from a check rather than from a cache, not that anything
 #: barred one. Its snapshot holds no parquet, which is why `plan_reference_snapshot` had to learn about
 #: a payload before this constant could mean anything.
-DEFAULT_STRCHIVE_REPO_ID = "just-dna-seq/strchive"
+DEFAULT_STRCHIVE_REPO_ID = SNAPSHOT_REPO_IDS["strchive"]
 #: The regulator drug labels — a **second** ClinPGx archive, and so a second repo rather than a table
 #: inside `clinpgx/`. The two downloads do not refresh in lockstep and each is dated from its own
 #: `CREATED_*.txt`, so one repo holding both would date the pair from whichever was published last.
 #: Same CC BY-SA terms as the annotation lane, hence the same grounds and the same `LICENSE.txt`.
-DEFAULT_DRUG_LABELS_REPO_ID = "just-dna-seq/clinpgx_drug_labels"
+DEFAULT_DRUG_LABELS_REPO_ID = SNAPSHOT_REPO_IDS["drug_labels"]
 #: MITOMAP's curated mtDNA variant tables, cut from the source's published `pg_dump` (RM171). CC BY
 #: 3.0 with commercial and clinical use stated free, so redistribution is granted outright and the
 #: attribution duty travels in the snapshot's own `SourceRow`. The **derived** miss lane has no repo
 #: on purpose: it pins the digests of two parents, and a puller who does not hold those parents would
 #: be handed an increment its own currency check cannot verify.
-DEFAULT_MITOMAP_REPO_ID = "just-dna-seq/mitomap"
+DEFAULT_MITOMAP_REPO_ID = SNAPSHOT_REPO_IDS["mitomap"]
 
 #: AlphaGenome AVI (RM198). Publishable on a **recorded reading** rather than a quoted clause: RM195
 #: pinned the page that makes AVI Permissive Use, and `redistribution=True` carries the maintainer's
 #: reading that an open publication falls inside prohibition 1's "open source release" carve-out.
 #: What makes that defensible in practice is that the snapshot carries the Use restrictions as
 #: `LICENSE.txt`, so a puller receives the terms with the bytes.
-DEFAULT_ALPHAGENOME_AVI_REPO_ID = "just-dna-seq/alphagenome_avi"
+DEFAULT_ALPHAGENOME_AVI_REPO_ID = SNAPSHOT_REPO_IDS["alphagenome_avi"]
 
 #: ClinVar-GKM's indel witness (RM305). CC0 over ClinGen's transformation of public-domain ClinVar, so
 #: redistribution is granted; ClinVar's attribution and disclaimer travel as the snapshot's `LICENSE.txt`.
-DEFAULT_CLINVAR_GKM_REPO_ID = "just-dna-seq/clinvar_gkm"
+DEFAULT_CLINVAR_GKM_REPO_ID = SNAPSHOT_REPO_IDS["clinvar_gkm"]
 
 
 def _hf_api(repo_id: str, token: str | None = None):
@@ -216,9 +221,9 @@ class LayoutShift:
     """
 
     #: The repo this is about. Keyed on the repo rather than on the lane name, because the publisher
-    #: is handed a `repo_id` and knows nothing about lanes — a lane→repo map here would be a second
-    #: copy of `CacheLane.publish_repo`, and `caches` already imports this module, so it cannot be
-    #: imported back.
+    #: is handed a `repo_id`, and a publish may target a repo no lane names (`--repo`). The lane→repo
+    #: map is `locations.SNAPSHOT_REPO_IDS` (RM384); an entry here takes its repo from one of the
+    #: `DEFAULT_*_REPO_ID` aliases of it, never from a literal.
     repo_id: str
     #: Repo-relative path of the file being retired. One name, never a glob: a migration that deletes
     #: a *pattern* is a prune wearing a declaration.

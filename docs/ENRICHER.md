@@ -2462,8 +2462,12 @@ every lap (`@a-set-that-silences-is-narrower-than-one-that-raises`, taken the ot
   not say" for a release id.
 - **`download.py`** — `ensure_snapshot`, `ensure_clinvar_snapshot` and `ensure_constraint_snapshot` pull
   the parquet slice from the HF datasets (`just-dna-seq/ensembl_variations_split` / `just-dna-seq/clinvar` /
-  `just-dna-seq/gnomad_constraint`) via one shared footer-checked/atomic body; every lane's repo is a
-  row of `download.SNAPSHOT_REPO_PREFIXES`, keyed like `SNAPSHOT_FILE_GLOBS`. A complete parquet
+  `just-dna-seq/gnomad_constraint`) via one shared footer-checked/atomic body. Every pulled lane's repo
+  id is spelled once, in the public `locations.SNAPSHOT_REPO_IDS` (lane → `org/repo`, RM384): each
+  `download.SNAPSHOT_REPO_PREFIXES` row, keyed like `SNAPSHOT_FILE_GLOBS`, is derived from it as
+  `datasets/<repo id>/data`, and so are the `upload.DEFAULT_*_REPO_ID` aliases and every
+  `CacheLane.publish_repo`. A consumer pinning `ensembl_reference` (`org/repo@<rev>`) takes the repo
+  from `SNAPSHOT_REPO_IDS["ensembl"]`; an AST walk refuses a repo id written anywhere else. A complete parquet
   begins/ends with the `PAR1` magic; downloads go to a `.part` temp and rename only after the footer
   verifies, and a corrupt/truncated file is removed and refetched rather than skipped forever.
   `huggingface_hub` is a **guarded lazy import** — a missing wheel fails with a clear diagnosis pointing

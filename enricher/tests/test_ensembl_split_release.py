@@ -170,11 +170,6 @@ def test_the_ensembl_lane_reads_the_split_repo() -> None:
     assert _NEW == "datasets/just-dna-seq/ensembl_variations_split/data"
 
 
-def test_every_provisioned_lane_states_its_repo() -> None:
-    """The prefixes are a registry beside the globs: the same lanes, so neither can lose one."""
-    assert set(dl.SNAPSHOT_REPO_PREFIXES) == set(dl.SNAPSHOT_FILE_GLOBS)
-
-
 # ── 1. a warm cache from the old repo is not this snapshot ─────────────────────────────────────
 
 

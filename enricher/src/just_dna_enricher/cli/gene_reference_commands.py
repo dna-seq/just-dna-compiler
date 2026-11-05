@@ -7,6 +7,7 @@ from pathlib import Path
 import typer
 
 from just_dna_enricher.locations import repro_out
+from just_dna_enricher.upload import DEFAULT_CONSTRAINT_REPO_ID
 
 # ── gnomAD constraint snapshot (build + publish, publisher/dev surface) ─────────────────────────
 
@@ -82,7 +83,7 @@ def constraint_publish_(
     repo_id: str | None = typer.Option(
         None,
         "--repo",
-        help="Target HF dataset (owner/name). Default: just-dna-seq/gnomad_constraint.",
+        help=f"Target HF dataset (owner/name). Default: {DEFAULT_CONSTRAINT_REPO_ID}.",
     ),
     commit_message: str | None = typer.Option(None, "--message", "-m", help="Commit message."),
     dry_run: bool = typer.Option(

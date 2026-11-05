@@ -12,6 +12,7 @@ from just_dna_enricher.licensing import PUBMIND_TERMS, LicenseRefusal, check_dec
 from just_dna_enricher.locations import CITATIONS_DIRNAME, RELEASE_FILENAME, repro_out
 from just_dna_enricher.pubmind_build import PubMindBuildError, download_pubmind_table
 from just_dna_enricher.pubmind_build import build_snapshot as build_pubmind_snapshot
+from just_dna_enricher.upload import DEFAULT_CLINVAR_REPO_ID
 
 clinvar_app = typer.Typer(
     add_completion=False,
@@ -76,7 +77,7 @@ def clinvar_publish_(
     repo_id: str | None = typer.Option(
         None,
         "--repo",
-        help="Target HF dataset (owner/name). Default: just-dna-seq/clinvar.",
+        help=f"Target HF dataset (owner/name). Default: {DEFAULT_CLINVAR_REPO_ID}.",
     ),
     commit_message: str | None = typer.Option(None, "--message", "-m", help="Commit message."),
     dry_run: bool = typer.Option(

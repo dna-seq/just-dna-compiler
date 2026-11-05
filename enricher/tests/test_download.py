@@ -448,8 +448,8 @@ def test_the_two_new_parquet_lanes_join_the_one_download_body(fake_hub, tmp_path
     test that only counted them.
     """
     for ensure, prefix in (
-        (dl.ensure_civic_snapshot, dl._CIVIC_HF_PREFIX),
-        (dl.ensure_drug_labels_snapshot, dl._DRUG_LABELS_HF_PREFIX),
+        (dl.ensure_civic_snapshot, dl.SNAPSHOT_REPO_PREFIXES["civic"]),
+        (dl.ensure_drug_labels_snapshot, dl.SNAPSHOT_REPO_PREFIXES["drug_labels"]),
     ):
         fs = fake_hub({"table.parquet": "variant_key"})
         cache = tmp_path / prefix.rsplit("/", 2)[-2]

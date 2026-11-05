@@ -705,6 +705,13 @@ A table written before 0.8 keeps its `not_found` rows until `enrich --rederive`,
 | `reverse`'s `resolution.csv` | Gains the `source_loci` column (empty where no `resolution_loci` locus carried one). | None. |
 | `just_dna_format.resolution` | New public names `source_loci_cell`, `split_source_loci`. | None. |
 
+### 1.39 Every pulled lane's repository has a public name (RM384, no break)
+
+| Surface | What changed | What to do |
+| --- | --- | --- |
+| `locations.SNAPSHOT_REPO_IDS` | New public name: lane → HuggingFace repository (`org/repo`) for every lane this tier pulls, eleven of them, the Ensembl lane's `just-dna-seq/ensembl_variations_split` included. The one place a repo id is written. | Take the `org/repo` half of `manifest.compilation.ensembl_reference` (`org/repo@<rev>`) from `SNAPSHOT_REPO_IDS["ensembl"]`; the revision is yours to pin. |
+| `download.SNAPSHOT_REPO_PREFIXES`, `upload.DEFAULT_*_REPO_ID`, `CacheLane.publish_repo` | Derived from the map: each prefix is `datasets/<repo id>/data`, each publisher default is an alias of its lane's entry, each `publish_repo` reads one. Every value is unchanged. The private `download._*_HF_PREFIX` constants are removed. | A caller reading a private prefix reads `SNAPSHOT_REPO_PREFIXES[lane]`, or the repo from `SNAPSHOT_REPO_IDS[lane]`. |
+
 ## 2. What to change
 
 ### Upgrade order
@@ -870,6 +877,9 @@ A table written before 0.8 keeps its `not_found` rows until `enrich --rederive`,
     `rsid_placements_disagree` naming a positional row at another locus of a one-to-many rsID, run
     `just-dna-enricher enrich <spec-dir> --rederive` once: it records the rsID's `source_loci` and the
     check reads the sibling as the same answer (§ 1.38).
+25. **Pinning a snapshot repository.** Read the repo id from `locations.SNAPSHOT_REPO_IDS[lane]` rather than
+    spelling it or stripping `datasets/` and `/data` off a prefix (§ 1.39). A compile host passing
+    `ensembl_reference` builds it as `f"{SNAPSHOT_REPO_IDS['ensembl']}@<rev>"`.
 
 ---
 
@@ -895,7 +905,8 @@ follows that map; the differences are listed last.
    are derived. Add them to the recognized spec files, better by deriving the list (§ 2 step 9): a
    `meta.csv` the `revalidate`/`upgrade` rebuild drops moves the module's signature.
 3. **The Ensembl repo (M8).** The default `ensembl_reference` moves to
-   `just-dna-seq/ensembl_variations_split`, and each box pulls 14.5 GB before the 0.8 deploy (§ 1.29,
+   `just-dna-seq/ensembl_variations_split`, read from `locations.SNAPSHOT_REPO_IDS["ensembl"]` rather than
+   spelled (§ 1.39, § 2 step 25), and each box pulls 14.5 GB before the 0.8 deploy (§ 1.29,
    § 2 upgrade step 3).
 4. **The catalog recompile (M3).** Every module with `variants.csv` gets a new `artifact.digest`: one
    PATCH per version, `upgrade --dry-run` first. A `toolchain` change is neither a correction nor an
@@ -917,6 +928,9 @@ follows that map; the differences are listed last.
 9. `manifest.artifact.files` remains the source of truth for what a module contains.
 10. If the `revalidate`/`upgrade` rebuild reverses a module and reads its `resolution.csv`, it gets six more
     columns and keeps an `ambiguous` row `ambiguous` (§ 1.34, § 2 step 21).
+11. S130's interim retires with RM384: the spelled repo in `config.py` becomes
+    `SNAPSHOT_REPO_IDS["ensembl"]`, and the drift test reading `download._ENSEMBL_HF_PREFIX` goes, since
+    that private name no longer exists (§ 1.39).
 
 **Where this block and the map differ**
 

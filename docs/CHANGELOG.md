@@ -41,6 +41,18 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-05 — RM384: every pulled lane's repository has one public name, the Ensembl lane's included (0.8, uncut)
+
+`locations.SNAPSHOT_REPO_IDS` maps each lane this tier pulls to its HuggingFace repository (`org/repo`),
+so a consumer pinning `manifest.compilation.ensembl_reference` takes `just-dna-seq/ensembl_variations_split`
+from `SNAPSHOT_REPO_IDS["ensembl"]` instead of spelling it or stripping a private prefix (S130). It is the
+only place a repo id is written: `SNAPSHOT_REPO_PREFIXES` is derived from it as `datasets/<repo id>/data`,
+the `upload.DEFAULT_*_REPO_ID` names stay as aliases of its entries, every `CacheLane.publish_repo` reads
+one, and four `--repo` help texts that wrote their default by hand now interpolate it. The private
+`download._*_HF_PREFIX` constants are gone; every prefix and pull record is byte-identical to before. A
+test asserts the equalities over the walked map and an AST walk over the three source trees refuses a
+repo id written anywhere else. → [ROADMAP_HISTORY § RM384](ROADMAP_HISTORY.md#rm384--the-ensembl-lanes-repository-has-no-public-name-on-08-and-every-pulled-lane-spells-its-repository-twice)
+
 ## 2026-11-05 — RM387: a positional row at a sibling locus of a one-to-many rsID no longer refuses a valid module (0.8, uncut)
 
 - **RM374's `rsid_placements_disagree` compares against the source's whole answer.** The rows under an
