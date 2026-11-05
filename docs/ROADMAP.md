@@ -973,10 +973,6 @@ running duckdb cannot read rather than mocking `connect`.
 
 **Residuals** none yet.
 
-# Not format scope
-
-Listed so they are not mistaken for format scope, and so nobody re-proposes them.
-
 ## RM388 — placement readers bypass `usable_loci`
 
 **Parked, the pm (2026-11-05)**, under the maintainer's rule for audit findings: "for once per known universe scenario defer to 'when roadmap is empty/someone steps on this defect'". **Unparks when** a real `resolution.csv` that reaches compile carries a row off the module's build or a `not_found` row with coordinates (the enricher writes neither; only a hand-written or multi-build table does), or when the roadmap is empty, or when a scope the maintainer highlights touches it.
@@ -1000,6 +996,10 @@ Listed so they are not mistaken for format scope, and so nobody re-proposes them
 **What it would be.** The enricher runs the same predicate the compiler does on the table it is about to commit, and warns with the same code and text. RM373's withheld-release reason appears in every arm. Design it after RM387 settles what RM374 compares.
 
 **Residuals** none yet.
+
+# Not format scope
+
+Listed so they are not mistaken for format scope, and so nobody re-proposes them.
 
 ## RM7 — Evaluation-output / report-card schema
 
