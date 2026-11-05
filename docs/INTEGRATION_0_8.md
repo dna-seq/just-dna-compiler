@@ -107,6 +107,7 @@ COMPILER.md § The phrases, under *retired*, for grepping old manifests.
 | `stats.clin_sig_counts` | RM300 | Authored `variants.csv` rows per ClinVar tier, from the effective `clin_sig`, every `VALID_CLIN_SIG` member present (zeros included) in sorted order. Rows, the grain of `pathogenic_count`. Empty on a manifest compiled before 0.8, which means *not counted*, never zero. |
 | `stats.clin_sig_variant_counts` | RM300 | Distinct `variant_key`s per tier, keyed the same way. |
 | `compilation.toolchain` | RM342 | The libraries that wrote the bytes, `{"polars": "2.1.0", "python": "3.13.1"}`; a library added later is a new key. Outside `artifact.digest`. `null` on a manifest compiled before 0.8, which means *not recorded*. `Compilation` ignores unknown keys too, so a 0.7 reader drops it. |
+| `literature.quotes_checked` | RM256 | Of `quotes_authored`, how many quotes a retrieved text settled, found or missed: the denominator `quotes_found` is read against, in quotes. A fulltext settles every quote, an abstract only its hits. `quotes_authored - quotes_checked` is what nothing established. `null` on a manifest compiled before 0.8, which means *not counted*, never zero; `quotes_unchecked` keeps its meaning (citations, not quotes). `Literature` ignores unknown keys too, so a 0.7 reader drops it. |
 | `compilation.vrs_version` | RM304 | The VRS spec version, at its minor (`"2.0"`), the module's `vrs_id`s are pinned to: the rule this compiler verifies them against. `null` when no allele in `resolution.csv` carries an id, and on a manifest compiled before 0.8. `Compilation` ignores keys it does not know, so a 0.7 reader drops it. |
 
 `ModuleManifest` itself ignores keys it does not know, so a 0.7 reader parses these top-level fields
@@ -719,6 +720,11 @@ A table written before 0.8 keeps its `not_found` rows until `enrich --rederive`,
 | `reverse`'s `resolution.csv` | Gains the `source_loci` column (empty where no `resolution_loci` locus carried one). | None. |
 | `just_dna_format.resolution` | New public names `source_loci_cell`, `split_source_loci`. | None. |
 
+13 of the 16 reference examples that commit a `resolution.csv` carry no `source_loci` header, because they
+were regenerated before RM387 landed. An absent optional derived column reads as `None`, and the round
+trip and the reference-example tests hold on all 16 at the cut, so they stay as committed; a module of
+yours enriched before RM387 reads the same way.
+
 ### 1.39 Every pulled lane's repository has a public name (RM384, no break)
 
 | Surface | What changed | What to do |
@@ -760,6 +766,55 @@ A table written before 0.8 keeps its `not_found` rows until `enrich --rederive`,
 | The carry-forward warning | `Re-derivation kept the recorded rows for N subject(s), unchanged rather than re-derived, …: <count> subject(s) <reason>; …`, one group per `rederive_words.CARRY_REASONS` member, each with its remedy. It said "no source could be asked" about every subject, including ones a link answered. | A log reader matching `no source could be asked` matches the `not_asked` group only. |
 | The derived-layer `Dataset currency (derived tables)` warning | One line per `rederive_words.CURRENCY_CASES` member and source, read against the label of the snapshot the run read: the snapshot current and the table behind it says `enrich --rederive`; the snapshot the release the table recorded says `cache pull --only <lane>` (or `cache rebuild`) first, since a re-derivation reads that snapshot and repeats the line; a snapshot that is neither says both; no comparable snapshot read names `cache status`. It always said `enrich --rederive`. | Follow the remedy the line names. |
 | `events.covers`, `currency.comparable_labels` | New public names: one direction of the event judge (every allele of one side is an event of the other), and whether two release labels are in one form. | None. |
+
+### 1.44 Public names the reference docs document and the sections above do not name (no break)
+
+Each is new since `v0.7.3` and documented in SCHEMAS.md, COMPILER.md or ENRICHER.md, which say what it
+does; this list only says it exists. Measured at the cut by a name diff of the three packages' module-level
+names against `v0.7.3`, kept to the ones a reference doc names. A new name the docs do not mention is left
+out: being importable does not make it a supported surface. All additive.
+
+| Module | New names |
+| --- | --- |
+| `just_dna_format.base` | `Companion`, `PairedFields` |
+| `just_dna_format.consequences` | `ConsequenceRow` |
+| `just_dna_format.integrity` | `colocalisation_signature`, `consequence_signature`, `ld_pair_signature`, `locus_to_gene_signature` |
+| `just_dna_format.ld_pairs` | `LdPairRow` |
+| `just_dna_format.locus_genes` | `ColocalisationRow`, `LocusToGeneRow` |
+| `just_dna_format.manifest` | `TOOLCHAIN_DIFFERS`, `toolchains_differ` |
+| `just_dna_format.meta` | `META_MEMBER_TABLES`, `MetaRow`, `allele_bearing`, `member_rank`, `normalize_members`, `parse_members` |
+| `just_dna_format.model_organisms` | `ModelOrganismRow`, `VALID_MODEL_ORGANISM_CONCORDANCE` |
+| `just_dna_format.overrides` | `VINDICATING_OVERLAY_TABLES` |
+| `just_dna_format.pgx` | `HLA_ALLELE_PATTERN` |
+| `just_dna_format.snapshot` | `clinvar_release_label` |
+| `just_dna_format.spelling` | `COMPARISON_KEYS`, `doi_token` |
+| `just_dna_format.vocab` | `RECOMMENDED_QTL_STUDY_TYPES`, `VALID_AGE_OF`, `VALID_IMPACTS`, `VALID_SAMPLE_UNITS` |
+| `just_dna_compiler.compiler.load` | `load_authored_table` |
+| `just_dna_compiler.compiler.manifest` | `LOG_NOT_SHIPPED_PHRASE`, `ancillary_errors`, `discover_logs` |
+| `just_dna_compiler.compiler.meta` | `Scope`, `build_meta` |
+| `just_dna_compiler.compiler.parquets` | `CELL_FACT_FIELDS`, `withhold_reproduced_loci` |
+| `just_dna_compiler.compiler.resolution_step` | `identity_after_resolution`, `unplaced_refusal` |
+| `just_dna_compiler.compiler.reverse` | `RESOLUTION_SOURCE_TABLES`, `REVERSE_EXCLUDED`, `REVERSE_RECONSTRUCTED` |
+| `just_dna_compiler.compiler.tables` | `MODEL_ORGANISMS_CSV` |
+| `just_dna_compiler.compiler.vcf_checks` | `QUAL_REFERENCE_EVIDENCE_PHRASE` |
+| `just_dna_compiler.compiler.vrs_checks` | `SNAPSHOT_UNPLACED_PHRASE` |
+| `just_dna_compiler.compiler.vrs_columns` | `resolution_key` |
+| `just_dna_compiler.sweep` | `TOOLCHAIN_ACROSS_COMPILERS_PHRASE`, `TOOLCHAIN_CONTENT_MOVED_PHRASE`, `TOOLCHAIN_EXPLAINS_NOTHING_PHRASE`, `TOOLCHAIN_NOT_DIFFERENT_PHRASE`, `TOOLCHAIN_OTHER_AFTER_PHRASE`, `TOOLCHAIN_SWEEP_UNUSED_NOTE_PHRASE`, `TOOLCHAIN_UNBACKED_PHRASE`, `TOOLCHAIN_UNEXPLAINED_PHRASE`, `TOOLCHAIN_WRONG_COMPILER_PHRASE` |
+| `just_dna_enricher.atlas_client` | `channel_options` |
+| `just_dna_enricher.cpic_build` | `ERRORS` |
+| `just_dna_enricher.cpic_notation` | `NOT_SPELLED_EXPLANATION`, `delins_partner` |
+| `just_dna_enricher.download` | `ensure_clinvar_gkm_snapshot` |
+| `just_dna_enricher.enrich.subjects` | `SUBJECT_TABLES`, `meta_member_rsids`, `study_proxy_rsids` |
+| `just_dna_enricher.gene_spans` | `genes_covering` |
+| `just_dna_enricher.ld_pairs` | `LdError`, `LdPairsResult`, `LdUnavailable` |
+| `just_dna_enricher.locations` | `env_value` |
+| `just_dna_enricher.net` | `could_not_ask_reason`, `raise_if_retired`, `release_dataset`, `retry_if_transient`, `withheld_reason` |
+| `just_dna_enricher.opentargets` | `OpenTargetsError`, `READS`, `Unstated`, `enrich_opentargets`, `read_is_complete` |
+| `just_dna_enricher.opentargets_build` | `OpenTargetsBuildError`, `OpenTargetsUnavailable`, `download_release`, `subset_snapshot` |
+| `just_dna_enricher.placement` | `Resolve`, `compare_placements` |
+| `just_dna_enricher.upload` | `COMPILATION_COMPARED`, `DECLARED_FILE_FIELDS`, `SPEC_SIDE_FILE_FIELDS` |
+| `just_dna_enricher.verification` | `CHECK_WITNESSES` |
+| the enricher's clients (RM361's amendment, § 1.26) | One `*Retired` class per client, raised on HTTP 410: `civic_api.CivicApiRetired`, `cpic.CpicRetired`, `currency.ReleaseRetired`, `eutils.EutilsRetired`, `gnomad.GnomadRetired`, `gwas.GwasRetired`, `identifiers.IdentifierRetired`, `ld_pairs.LdRetired`, `literature.LiteratureRetired`, `litvar.LitvarRetired`, `pgs.PgsCatalogRetired`, `pharmvar.PharmVarRetired` |
 
 ## 2. What to change
 
