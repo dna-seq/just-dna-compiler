@@ -997,6 +997,43 @@ running duckdb cannot read rather than mocking `connect`.
 
 **Residuals** none yet.
 
+## RM396 — six paced clients keep their default interval or their gate private, so a host sharing one gate reads a private name
+
+**Severity** low · **Status** open — **a minor, for the pm to place** (triage proposes 0.9 by the pm's rule: a new
+public name is new capability, and the reporter has a working interim) · **Owner** enricher (`pgs.py`,
+`litvar.py`, `civic_api.py`, `clingen_allele.py`, `pharmvar.py`, `atlas_client.py`, ENRICHER.md) · **Motivating
+case** S131 in CONSUMER_SUGGESTIONS_HISTORY.md (just-dna-registry's liaison seat, 2026-11-05) · *related* RM203,
+RM156, RM384
+
+**The gap, read on `origin/0.8` at `64c835b9` (the same on `main`).** A host that answers many checks holds one
+`PacingGate` per upstream and builds a fresh client around it per check, the shape `gate=` and the S15 sharing
+contract invite. Building that gate needs the client's interval, and reading the gate back (`gate.spent`, RM203)
+needs the gate. The dataclass clients answer both publicly: a `gate` field, and an interval as a public
+constant or a settings field. Six do not:
+
+| Client | Default interval | Gate kept as | Takes `gate=` |
+|---|---|---|---|
+| `pgs.PgsCatalogClient` | `_REQUEST_INTERVAL` (private) | `_gate` | yes |
+| `litvar` | `_REQUEST_INTERVAL` (private) | `_gate` | yes |
+| `civic_api` | `_REQUEST_INTERVAL` (private) | `_gate` | yes |
+| `clingen_allele` | `_REQUEST_INTERVAL` (private) | `_gate` | **no**: no host can share its pace at all |
+| `pharmvar` | `PHARMVAR_MIN_INTERVAL` | `_gate` | yes |
+| `atlas_client.AtlasClient` | `ATLAS_REQUEST_INTERVAL` | `_gate` | yes |
+
+ENRICHER.md's RM203 paragraph sends a meter to `client._gate.spent` and names five of the six; `atlas_client`
+is missing, which is the hand-kept-list failure (`@registry-completeness`).
+
+**What it would be.** Every paced client takes `gate=`, keeps it as a public `gate`, and names its default
+interval publicly (`PGS_REQUEST_INTERVAL` and the like, beside the existing public ones). The private names stay
+as aliases, since a downstream reads `pgs._REQUEST_INTERVAL` today (P3 does not bind a private name, but nothing
+is gained by breaking it). The reporter's (a) and (b) together, over the six rather than PGS alone. A test walks
+every `PacingGate(` construction in the enricher (AST) and asserts its client exposes `gate` and its interval
+under a public name, so a seventh client cannot reopen it; the ENRICHER.md sentence about `_gate` goes.
+
+**Sizing.** New public names in the enricher are new surface: a minor. P9 prices it near free (no authored or
+published field moves). About an hour with the walking test. Not asked, and not proposed: a PGS field in
+`LookupClients`, whose bundle is shared while the PGS score cache is per run.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
