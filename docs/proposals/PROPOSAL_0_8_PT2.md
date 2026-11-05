@@ -1,6 +1,10 @@
 # 0.8 part 2: the build plan for the agreed scope
 
-**Status.** Written by the lead on 2026-11-04 from the pm's handout ("0.8 scope agreed: yours to plan and
+**Status: concluded 2026-11-05, at the 0.8.0 cut.** Every item it planned landed on the `0.8` branch; each
+record is in [ROADMAP_HISTORY](../ROADMAP_HISTORY.md) with its **Residuals**, and what 0.8 shipped unfixed is in
+[INTEGRATION_0_8 § 4](../INTEGRATION_0_8.md#4-known-issues). It no longer overrides the roadmap files.
+
+Written by the lead on 2026-11-04 from the pm's handout ("0.8 scope agreed: yours to plan and
 build") and its two addenda (the tag selector, then `column=value` selectors). This is RELEASE_CYCLE § Minors
 step 2: the plan the build runs from without asking. PT1 (the bugfix round) is concluded on the `0.8` branch.
 A fresh critic read it the same day against the decision lines and the code; its findings that held are
@@ -8,7 +12,7 @@ applied, and the ones that need the maintainer are §4 questions 5 to 7. The pm'
 shape agreed after the second measuring run) is folded in.
 
 **How to read it.** The decisions are the maintainer's and live as dated lines under each item in
-[ROADMAP_0_8.md](../ROADMAP_0_8.md); where an item has several, the latest wins. This file does not restate
+[ROADMAP_0_8.md](../history/ROADMAP_0_8.md); where an item has several, the latest wins. This file does not restate
 them. It fixes what the decisions left open (§3), names what goes back to the pm (§4), and gives each item the
 contract a builder works from (§5). A builder that finds a decided column with no case, or a needed one
 missing, stops and sends it to the pm; it never builds around it.

@@ -7,58 +7,61 @@ I have to check, and what do I have to change?* § 1 is the surface delta, item 
 upgrade order and the changes it implies, by surface. § 3 is the same list cut per consumer. § 4 lists
 the known issues 0.8 ships with.
 
-**Status, pre-cut (2026-11-05): 0.8 is feature-complete on the `0.8` branch at `1007a26d`, pushed as
-`origin/0.8`. It is not cut and not on PyPI.** The cut rewrites this paragraph and the three below it.
+**Status: cut as 0.8.0 on 2026-11-05.** All three packages are `0.8.0` (one number per cut: each changed
+since `v0.7.3`), each intra-workspace floor is `>=0.8.0`, and `polars>=1.42.0` is unchanged, so a polars 1.x
+install still resolves. Publishing to PyPI is the maintainer's, and the tag `v0.8.0` follows the publish.
 
-**The branch reports a mixed trio.** `schema/pyproject.toml` reads `0.8.0`, but `compiler/` still reads
-`0.7.2` and `enricher/` `0.7.3`, each with a `just-dna-format>=0.8.0` floor. An install of the branch
-reports format 0.8.0, compiler 0.7.2, enricher 0.7.3 (measured from a clone at `1007a26d`). A consumer
-that compares installed versions sees that pair; floor on those numbers for a branch test, and on
-`>=0.8.0` for all three only after the cut, which is expected to set all three to `0.8.0`.
-
-**Integrate against the branch for testing only, through a git dependency, and never in a published
-lock.** A path, editable or git source belongs on a throwaway branch of yours, never in a tracked file
-on your `main` or in a lock you publish. The three packages are subdirectories of this repository,
-whose GitHub name is `dna-seq/just-dna-compiler`:
+**Pin the release, not the branch:**
 
 ```toml
-[tool.uv.sources]
-just-dna-format = { git = "https://github.com/dna-seq/just-dna-compiler", rev = "1007a26d", subdirectory = "schema" }
-just-dna-compiler = { git = "https://github.com/dna-seq/just-dna-compiler", rev = "1007a26d", subdirectory = "compiler" }
-just-dna-enricher = { git = "https://github.com/dna-seq/just-dna-compiler", rev = "1007a26d", subdirectory = "enricher" }
+dependencies = [
+    "just-dna-format>=0.8.0",
+    "just-dna-compiler>=0.8.0",
+    "just-dna-enricher>=0.8.0",
+]
 ```
 
-Then `uv lock` and run your suite. A consumer that tested against `1007a26d` runs its suite again at the
-cut tag.
+A consumer that holds only the format tier pins the first line alone. A git dependency on the `0.8` branch
+(`rev = "1007a26d"` and later), which this file recommended for testing before the cut, goes from your
+tracked files and your lock: `uv lock` against the published `0.8.0`, then run your suite again.
 
-**Landed on the branch since `1007a26d`:** RM380, `reverse` carrying every `resolution.csv` column a
+**The release record says what a recompile moves.** `release_records.RELEASE_RECORDS["0.8.0"]`, measured at
+the cut against the published compiler 0.7.2, declares each correction and addition (RM363's contig
+spelling and RM361's `:None` key are the two corrections), and `needs_recompile(stamp, "0.8.0")` reads it.
+**`toolchain_differs` is the normal case between this release and just-dna-lite**, not a one-time move:
+lite stays on polars 1.x (polars-bio caps `polars<2`), and this workspace locks polars 2.1.0, so one
+`compiler_version` over one spec writes two `artifact.digest`s and one `content_signature`. Compare content
+by `content_signature`; read a digest mismatch with `compilation.toolchain` beside it (§ 1.11).
+
+**What landed after `1007a26d`**, the pre-cut head this file first named, for a consumer who tested
+there; all of it is in 0.8.0. **First:** RM380, `reverse` carrying every `resolution.csv` column a
 parquet holds through `resolution_loci` and `proxy_loci` (§ 1.34); the RM373 amendment, a row Ensembl REST
 witnessed contributing REST's release (§ 1.32); and 14 reference examples' `resolution.csv` regenerated
-against the new Ensembl snapshot (§ 1.29). A consumer that tested at `1007a26d` tests again at the branch
-head once it is pushed.
+against the new Ensembl snapshot (§ 1.29).
 
-**Landed since, the release candidate audit round 3 reads:** RM381, the split snapshot's multi-ALT
+**Then, the release candidate audit round 3 read:** RM381, the split snapshot's multi-ALT
 indels trimmed per ALT (§ 1.35); RM382, reversing S85 (§ 1.36), and RM383 (§ 1.37); and audit round 2's
 items: RM387 (§ 1.38), RM384 (§ 1.39), RM386 (§ 1.40), RM389, RM361's amendment (§ 1.26), RM391 and RM392;
 and `hboc_palb2` and `pathogenic_clinvar` regenerated (§ 1.29 says why they waited).
 
-**Landed since, from audit round 3 and the docs pass:** RM395, the commands the user guides run (§ 1.41);
+**Then, from audit round 3 and the docs pass:** RM395, the commands the user guides run (§ 1.41);
 RM393, a re-derivation with no position→rsID map keeping the back-filled rsID (§ 1.42); RM394, the
 re-derivation's report by arm, carry reason and per-source remedy (§ 1.43); the user guides re-run, and
 `mt_common_deletion` re-derived without its stale licence row.
-**What can still land before the cut:** nothing listed. Round 3's other eleven findings are parked in
-ROADMAP.md. § 4 lists what 0.8 ships with unfixed.
+Nothing else landed before the cut. Round 3's other eleven findings are parked in ROADMAP.md, and § 4
+lists what 0.8 ships with unfixed.
 
 [RM_TOC.md](RM_TOC.md) is the per-item record; a status sentence here goes stale when work lands, so
 check it there.
 
-**Consumer pre-integration was skipped for 0.8, by the maintainer's call (2026-11-05).** RELEASE_CYCLE.md
+**Consumer pre-integration was skipped for 0.8, by the maintainer's call (2026-11-05): an intentional,
+expedited shipment.** RELEASE_CYCLE.md
 § Minors step 6 has the consumer repos try an unreleased minor before the release-gate sweep, and lets
 only the maintainer skip it. The maintainer chose an expedited shipment ("I'm asking downstream to build
-because we're behind schedule on this"), so the consumers integrate after the fact, from this file:
-against the branch now, against the tag after the cut. A defect a consumer finds is filed as an `Sn` in
-[CONSUMER_SUGGESTIONS.md](CONSUMER_SUGGESTIONS.md) like any other; it reaches 0.8 only if it lands
-before the cut, and the release cycle sizes it otherwise.
+because we're behind schedule on this"), so the consumers integrate after the fact, from this file,
+against the published 0.8.0. A defect a consumer finds is filed as an `Sn` in
+[CONSUMER_SUGGESTIONS.md](CONSUMER_SUGGESTIONS.md) like any other, and the release cycle sizes its fix
+(a patch on `main`, or the next minor).
 
 ---
 
@@ -299,7 +302,11 @@ import from there keeps working.
 `DeclaredChange.kind` (in `just_dna_format.release_records`) validates against
 `VALID_RELEASE_CHANGE_KINDS`, a closed vocabulary that gains `toolchain` in 0.8 (RM352): the bytes
 moved, the content did not, and the recorded toolchain (`compilation.toolchain`) says why. The 0.8.0
-record is expected to declare the polars 1 → 2 byte move with it. The records ship inside the package,
+record does not use it: its fixed-compiler sweep moved `parquet_bytes` on every example and
+`content_signature` on none, but 0.8.0's compiler moved the bytes of every measured example under polars
+1.44.2 too, so the toolchain explains none of them on its own and the gate refuses the declaration. The
+move is real all the same, and between a polars 1.x consumer such as just-dna-lite and a polars 2.x one it
+is the normal case (the status paragraph). The records ship inside the package,
 so a 0.7 install never holds the 0.8.0 one; the break reaches a consumer that **serializes** a record
 (JSON, a cache, an API response) and validates it again with a 0.7 `just-dna-format`, which refuses
 `kind: toolchain`. That is the same shape as § 1 and has the same remedy: validate with 0.8. The
@@ -823,8 +830,7 @@ out: being importable does not make it a supported surface. All additive.
 1. **Pins, in tier order: format, then compiler, then enricher.** `just-dna-format` first, because a 0.7
    reader refuses some 0.8 output (§ 1, § 1.13, § 1.18) and drops the new manifest fields (§ 1.2); then
    `just-dna-compiler`; then `just-dna-enricher`. A consumer that holds only the format tier stops after
-   the first. After the cut, floor all three on `>=0.8.0`; before it, read the status paragraph (the
-   branch reports compiler 0.7.2 and enricher 0.7.3).
+   the first. Floor all three on `>=0.8.0`.
 2. **`uv lock`**, regenerated and never hand-edited, committed with the floors.
 3. **Move the shared Ensembl cache, once per machine** (§ 1.29): `just-dna-enricher cache pull --only
    ensembl`, or `cache prepare`. The lane now pulls `just-dna-seq/ensembl_variations_split` (dbSNP 157 /

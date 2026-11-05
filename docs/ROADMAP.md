@@ -28,8 +28,10 @@ deferral is filed against the release that will decide it:
   at the time; PT2 re-asked which release each belonged to now that 0.6 is uncut, and took five back:
   RM55's fix, RM72, RM82, RM84 and RM87. It is authoritative for those five, and for three of them the
   probe overturned what the roadmap entry says.
-- **[ROADMAP_0_8.md](ROADMAP_0_8.md)** — items legal in a minor, each waiting on a design question, a
-  corpus or a caller. **0.8 is a stabilization and competitor-parity release, decided 2026-09-11 with
+- **[ROADMAP_0_9.md](ROADMAP_0_9.md)** — items legal in a minor, each waiting on a design question, a
+  corpus or a caller. Its predecessor `ROADMAP_0_8.md`, 0.8's scope, closed at the 0.8.0 cut on 2026-11-05 into
+  [history/](history/ROADMAP_0_8.md), and its one waiting item, RM28's predicate half, moved here. What
+  follows describes the 0.8 file as it was. **0.8 is a stabilization and competitor-parity release, decided 2026-09-11 with
   the maintainer**; the theme is stated in that file's header and does not itself admit an item. RM10 closed there, folded into RM28. **It succeeded `ROADMAP_0_7.md` at the 0.7
   cut** — that round is closed in [history/](history/ROADMAP_0_7.md), which keeps four of the five
   records the line above names; only RM84 is still waiting and still here. **Read the membership rule in its header, not a list here**:
@@ -272,7 +274,7 @@ which item is invisible and to whom.
 
 **The 2026-08-21 decision round is what emptied the other half.** Six items stood here, every one of
 them a decision rather than a missing line of code, and one pass answered all six: **RM102** closed
-outright, **RM122** parked on demand and moved to the minor-deferral file ([ROADMAP_0_8.md](ROADMAP_0_8.md) since
+outright, **RM122** parked on demand and moved to the minor-deferral file ([ROADMAP_0_8.md](history/ROADMAP_0_8.md) since
 the 0.7 cut), **RM117** narrowed
 to the half that costs nobody a decision, and **RM103** split — the manifest half stays here, the
 refusal is a tightening and moved to [§ The 1.0 cleanup](#the-10-cleanup-candidate-tracker). The
@@ -299,7 +301,7 @@ with their rationale and with the five places the eight filings turned out to un
 there. **An empty list here is not an all-clear** — it means nothing is *filed*, and this file has read
 empty twice before while carrying real work one heading down. The live consumer inbox
 ([CONSUMER_SUGGESTIONS.md](CONSUMER_SUGGESTIONS.md)) is the other half of that question, and
-[ROADMAP_0_8.md](ROADMAP_0_8.md) / [ROADMAP_1_0.md](ROADMAP_1_0.md) hold the deferred items.
+[ROADMAP_0_9.md](ROADMAP_0_9.md) / [ROADMAP_1_0.md](ROADMAP_1_0.md) hold the deferred items.
 Every one of them broke a rule this repo had already written down — which is the finding worth keeping
 out of the item entries and stating once: **the gotcha book is not the thing that catches a
 regression.** In four of the eight the file carrying the violation also carried the rule, sometimes in
@@ -325,7 +327,7 @@ several of these grew from — closed on 2026-08-16, both halves. What remains o
 blocker, in [ROADMAP_1_0.md](ROADMAP_1_0.md). Everything that was open on the
 `0.6` branch *before* that round was built in the 0.6 batch and moved to
 [ROADMAP_HISTORY.md](ROADMAP_HISTORY.md) with its rationale; what was deferred moved to the roadmap of
-the release that will decide it — [ROADMAP_0_8.md](ROADMAP_0_8.md) (RM16, RM23, RM28, the deferred
+the release that will decide it — [ROADMAP_0_8.md](history/ROADMAP_0_8.md) (RM16, RM23, RM28, the deferred
 halves of RM55, RM56, RM65, plus RM66 and RM67, and the dogfooding items RM68–RM72) and
 [ROADMAP_1_0.md](ROADMAP_1_0.md) (RM15, RM52, RM55's removal half). *That sentence records the
 2026-08-13 split and is not a current inventory — RM69 has since moved to the 1.0 file, and five of the
@@ -428,7 +430,7 @@ be made deterministic, since the helper's reason is recorded in the docstring.
 `docs/longevitymap_v2/longevitymap_v2_requirements.md` §4.2, §6.2, §10), read against the schema
 2026-11-03 · *related* RM28, `@field-description-is-a-claim`
 
-**For longevitymap v2 (2026-11-03):** v2's plan sets `pleiotropic` and `conditional` expecting behaviour. See [the group](ROADMAP_0_8.md#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
+**For longevitymap v2 (2026-11-03):** v2's plan sets `pleiotropic` and `conditional` expecting behaviour. See [the group](history/ROADMAP_0_8.md#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
 
 **What was confirmed.** The `flags` description says *"Reserved tags the tooling acts on:
 conditional|phased|pleiotropic"*, and the comment above `RESERVED_FLAGS` says the same. A grep over
@@ -1018,7 +1020,7 @@ this, and can they exist today?* If the answer names something downstream of the
 gate is circular and the entry needs a different one — usually the **shape** question hiding behind
 the demand question, which is answerable now.
 
-**Swept 2026-09-13** across [ROADMAP.md](ROADMAP.md), [ROADMAP_0_8.md](ROADMAP_0_8.md) and
+**Swept 2026-09-13** across [ROADMAP.md](ROADMAP.md), [ROADMAP_0_8.md](history/ROADMAP_0_8.md) and
 [ROADMAP_1_0.md](ROADMAP_1_0.md), prompted by the maintainer after
 [RM16](ROADMAP_0_9.md#rm16--authored-prs-weights-a-scoring-file-not-a-manifest) was caught. Every
 item carrying a parked-on / would-unpark clause was checked. **One circular, one marginal, one
@@ -1599,7 +1601,7 @@ New ideas enter here as freeform suggestions, then graduate through the design c
   [METHYLATION_PACBIO](probes/METHYLATION_PACBIO.md) measured what PacBio users actually hold. The
   per-base VCF 4.5 `M5mC` shape this bullet described has no PacBio producer. What exists became
   RM317 (TRGT `FORMAT/AM`, FMR1), RM318 (imprinting regions in BED/TSV) and RM319 (TRGT's `MC` count),
-  all in [ROADMAP_0_8.md](ROADMAP_0_8.md).
+  all in [ROADMAP_0_8.md](history/ROADMAP_0_8.md).
 
 ## Consumer note (just-dna-lite, 2026-08-21) — a dogfooding pass over ten modules, and the eleven findings that are yours rather than the plugin's
 

@@ -6,7 +6,7 @@ shape decided in the 0.8 interview. Then every new column was checked twice: it 
 without, and it must not be derivable from the others. The run was a subagent (Opus), and the pm seat
 compiled it. The full candidate reference examples are in the appendix.
 
-**The proposal measured.** The 2026-11-04 decision lines in [ROADMAP_0_8.md](../ROADMAP_0_8.md) (RM28,
+**The proposal measured.** The 2026-11-04 decision lines in [ROADMAP_0_8.md](../history/ROADMAP_0_8.md) (RM28,
 RM322–RM336, with RM323's final "go with C" winning over its earlier lines), and RM302 in
 [ROADMAP.md](../ROADMAP.md).
 

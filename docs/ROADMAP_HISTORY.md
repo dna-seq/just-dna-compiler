@@ -3012,7 +3012,7 @@ The column count is the same, and every value has a case. It is a derived table,
 **Owner** enricher · **Motivating case** [`probes/CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md) §
 *nine databases, and the two axes that come back with no home*
 
-**For longevitymap v2 (2026-11-03):** the fine-mapping posterior is the input to causal confidence C1–C4. See [the group](ROADMAP_0_8.md#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
+**For longevitymap v2 (2026-11-03):** the fine-mapping posterior is the input to causal confidence C1–C4. See [the group](history/ROADMAP_0_8.md#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
 
 The same `gwas-lookup` report returns three fine-mapping credible sets for rs3798220 with a posterior
 probability and 95%/99% set membership per `(trait, study)` — PP 0.92 for Lipoprotein(a) in
@@ -3046,7 +3046,7 @@ harmonised release carries no credible set, which is a nobody-asked third state 
 [`probes/CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md) § *the two columns their engine reads that we
 cannot store*
 
-**For longevitymap v2 (2026-11-03):** causal confidence C1 and effector confidence E1 both key on a variant being coding. See [the group](ROADMAP_0_8.md#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
+**For longevitymap v2 (2026-11-03):** causal confidence C1 and effector confidence E1 both key on a variant being coding. See [the group](history/ROADMAP_0_8.md#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
 
 [ROADMAP § Reserved namespace](ROADMAP.md#reserved-namespace) lists `consequence` (the VEP/Sequence
 Ontology term) and `impact` (`HIGH|MODERATE|LOW|MODIFIER`) as *planned future annotation axes*, with
@@ -4421,7 +4421,7 @@ They are never repeated on `variants.csv` or `diplotypes.csv`.
 
 One new table holds facts and combinations. Priced at about 20 (a new table at about 10, plus five fact columns
 and the finding's columns), against about 30 for a separate fact table or for facts repeated on the
-existing tables. The maintainer's standing rule from this decision is in [RM28](ROADMAP_0_8.md#rm28--meta-conclusions-the-predicate-half):
+existing tables. The maintainer's standing rule from this decision is in [RM28](ROADMAP_0_9.md#rm28--meta-conclusions-the-predicate-half):
 weight toward fewer entities.
 
 **Re-decided 2026-11-04 by the maintainer: no new fact table, and no subject kinds.** This supersedes the
@@ -5013,7 +5013,7 @@ forward-only files they had been sitting in with a `SHIPPED` banner on them: RM1
 describes what is *not* built reads as late rather than done, which is the state this move ends. The
 deferral round those two came from closed at the same time —
 [history/ROADMAP_0_7.md](history/ROADMAP_0_7.md) keeps it, and everything still waiting moved to
-[ROADMAP_0_8.md](ROADMAP_0_8.md). RM83 is in this file as **closed, not shipped**, and RM139 was filed
+[ROADMAP_0_8.md](history/ROADMAP_0_8.md). RM83 is in this file as **closed, not shipped**, and RM139 was filed
 by the cut itself rather than by the proposal.
 
 **RM140 joined them on 2026-08-31 from a consumer report, after the round had closed.** It is not one
@@ -14442,7 +14442,7 @@ else RM127 used to ask now belongs to RM126.
 every one of them was a *decision* rather than a missing line of code, and none had been made. All six
 were answered in a single pass on 2026-08-21. Four stayed open with their shape settled or narrowed and
 are still in the active file (RM103's manifest half, RM108, RM110, RM117); **RM122** parked on demand
-and moved to the minor-deferral file ([ROADMAP_0_8.md](ROADMAP_0_8.md) since the 0.7 cut); **RM103's refusal half** moved to
+and moved to the minor-deferral file ([ROADMAP_0_8.md](history/ROADMAP_0_8.md) since the 0.7 cut); **RM103's refusal half** moved to
 [ROADMAP § The 1.0 cleanup](ROADMAP.md#the-10-cleanup-candidate-tracker); and **RM102** closed
 outright, which is why it is here.
 

@@ -39,9 +39,59 @@ RM257, RM259, RM260 and RM262 were committed to `main` on 2026-09-24/25 although
 minor, and were moved to the `0.8` branch by a history rewrite the same evening. Their entries below
 stay here because this log is shared across the ecosystem, but their code is **not on `main`** and
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
-[RELEASE_CYCLE.md](RELEASE_CYCLE.md).
+[RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
+
+## 2026-11-05 — 0.8.0: the cut
+
+**Cut as 0.8.0 on 2026-11-05**, all three packages at one number: `just-dna-format`, `just-dna-compiler`
+and `just-dna-enricher` each changed since `v0.7.3` and each takes `0.8.0` (PyPI's latest at the cut:
+format 0.7.1, compiler 0.7.2, enricher 0.7.3). Every intra-workspace floor is `>=0.8.0`; `polars>=1.42.0`
+stays, because just-dna-lite stays on polars 1.x. Publishing is the maintainer's, and the tag `v0.8.0`
+follows the publish. Every entry below headed *(0.8, uncut)* ships in it. The surface delta and the
+per-consumer lists are [INTEGRATION_0_8.md](INTEGRATION_0_8.md).
+
+- **Consumer pre-integration was SKIPPED**, by the maintainer's call: an intentional, expedited shipment
+  (RELEASE_CYCLE.md § Minors step 6 lets only the maintainer skip it). The consumers integrate against the
+  published 0.8.0, from INTEGRATION_0_8.
+- **The charter wording was vetted.** The changed sentences of Principle 4, Principle 7, the Goals bullet
+  on the reference-snapshot layout and the Goals toolchain clause (*and the recorded toolchain*) were read
+  old → new by the maintainer in chat on 2026-11-04 and accepted ("Good, I accept"). Each 2026-11-04 entry
+  of [CONSTITUTION_AMENDMENTS_HISTORY.md](CONSTITUTION_AMENDMENTS_HISTORY.md) records it.
+- **The release record, `RELEASE_RECORDS["0.8.0"]`, measured by two sweeps.** The release sweep (published
+  compiler 0.7.2 under polars 1.44.2 against 0.8.0 under the locked polars 2.1.0, one spec root) measured
+  6 of the 22 reference examples: `content_signature` moved on 1 (`hla_alleles`, whose `meta.csv` 0.7.2
+  skips as unknown), every other axis on all 6. The other 16 are `unmeasured`: each commits a
+  `resolution.csv` written by 0.8, which 0.7.2 refuses. With polars held at 1.44.2 the same six move the
+  same way, so every byte move in the interval is the compiler's. The fixed-compiler sweep (0.8.0 under
+  polars 1.44.2 and 2.1.0) moved `parquet_bytes` on 22 of 22 and nothing else. Because it explains no
+  measured module on its own, the gate refuses a `toolchain` declaration, and none is made; the record's
+  `evidence` states the move. **`toolchain_differs` is the normal case between 0.8 and just-dna-lite**
+  (polars 1.x against 2.x): one compiler, two digests, one `content_signature`. Declared: RM363's contig
+  spelling and RM361's `:None` key as corrections; the manifest additions of RM300, RM304, RM256, RM28,
+  RM324, RM331, RM333 and RM292; the parquet columns of RM270, RM331, RM364, RM380, RM387 and RM325–RM336;
+  RM380's DuckDB-path parity, which holds for facts and not bytes. The example data that moved (the
+  split-snapshot regeneration, `pathogenic_clinvar`'s duplicate row, `cpic_gene_pairs`' NUDT15 anchor) is in
+  the record's `evidence`, not declared, since no reach grammar confines a declaration to the examples.
+  `sweep --toolchain-before … --release 0.8.0`: *release record for 0.8.0 covers the measurement*. RM342's
+  tests pass under polars 1.44.2 and 2.1.0, and a manifest polars 1.44.2 wrote reads under both.
+- **Known issues** ([INTEGRATION_0_8 § 4](INTEGRATION_0_8.md#4-known-issues)): RM385 (offline enrich
+  cannot left-align an indel, for 0.9), RM376 (an offline and an online fill of one snapshot can differ),
+  RM388 (placement readers that bypass `usable_loci`, parked), RM390 (the enricher does not say what
+  compile will refuse, parked) and RM386 (publish pinning with no live run yet).
+- **The release-gate sweep** added `literature.quotes_checked` (RM256) to INTEGRATION_0_8 § 1.2 and a
+  § 1.44 of the new public names the reference docs document, and filed every closed item of
+  `RM_TOC_300_399.md` under Shipped. The P3 scan: the 11 published modules in the registry mirror cloned here
+  get the same `validate` verdict and errors under 0.8 as under 0.7.2 (three are invalid under both, for
+  reasons older than 0.8), and no module there or in `reference_examples/` holds a DOI in `pmid` or an HLA
+  name 0.8 refuses.
+- **The roadmap files.** `ROADMAP_0_8.md` closed into [history/](history/ROADMAP_0_8.md), and its one
+  waiting item, RM28's predicate half, moved to [ROADMAP_0_9.md](ROADMAP_0_9.md), the open minor file.
+  `PROPOSAL_0_8_PT2` is concluded.
 
 ## 2026-11-05 — RM394: the re-derivation's report says what happened, and the remedy each case needs (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 - **The drift label has seven arms.** An allele the source added (`A` → `A,T`) reads "gained an allele"
   where it read "moved: the source names a different event" (94 subjects of the examples' regeneration);
@@ -57,6 +107,9 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 
 ## 2026-11-05 — RM393: a re-derivation with no snapshot keeps a positional row's back-filled rsID (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 - **`enrich --rederive` no longer erases what it could not ask.** A coordinate-only row's rsID comes from a
   position→rsID map, which only the Ensembl and ClinVar snapshots supply. With neither read (a bare machine
   under `--offline`, or a failed pull), the re-derivation wrote the row `rsid` empty and `source=authored`,
@@ -66,6 +119,9 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   rsID at the allele still replaces it. Measured on `hfe_hemochromatosis` (audit round 3).
 
 ## 2026-11-05 — RM395: the commands the user guides run do what the guides say (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 - `just-dna-compiler keygen --out <path>` creates a missing parent directory, as `compile` and `reverse`
   do, instead of a traceback.
@@ -78,6 +134,9 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   re-run output.
 
 ## 2026-11-05 — Docs pass: the user guides re-run against the 0.8 candidate, and 0.8's surfaces added (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 RELEASE_CYCLE § Minors step 8, run at `64c835b9`. Every command in `index.md`, `GETTING_STARTED.md`,
 `COMPILING.md`, `CONSUMING.md` and `ENRICHING.md` was re-run on a scratch copy of the module it uses.
@@ -101,6 +160,9 @@ it does. Both are fixed in code by RM395 (above).
 
 ## 2026-11-05 — `hboc_palb2` and `pathogenic_clinvar` regenerated against the split snapshot (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 - The two examples the first regeneration withheld are re-derived online now that RM381, RM382 and RM387
   are on `0.8`, so every example that commits a `resolution.csv` answers from
   `ensembl-variation-2026_07_13-vep116.0`. Both pass `validate --strict` and `compile → reverse → compile`
@@ -113,6 +175,9 @@ it does. Both are fixed in code by RM395 (above).
 
 ## 2026-11-05 — INTEGRATION_0_8 names the known issues 0.8 ships with (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 - **[INTEGRATION_0_8 § 4](INTEGRATION_0_8.md#4-known-issues)** lists what 0.8 ships with unfixed, each
   line with its item: RM385 (offline enrich cannot left-align an indel, for 0.9), RM376 (an offline and an
   online fill differ), RM388 and RM390 (parked, each with its return condition), and RM386's first live
@@ -121,6 +186,9 @@ it does. Both are fixed in code by RM395 (above).
 - RM362's and RM374's `**Residuals**` name RM388 and RM390, their parked remainders.
 
 ## 2026-11-05 — RM392: a count beside a registry or table is dropped or compared, in the docs and in code comments (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 - **A total stated in the comment above a registry must be its size.** `test_source_counted_prose.py`
   walks every module-level registry in the three packages; a bold headline number (`**Nine, and …`) or a
@@ -140,6 +208,9 @@ it does. Both are fixed in code by RM395 (above).
 
 ## 2026-11-05 — RM391: no test reaches the network without `JUST_DNA_NETWORK_TESTS=1`, whichever client it uses (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 - The root `conftest.py` fences the transport: `socket.getaddrinfo`, `socket.socket.connect`/`connect_ex`
   and gRPC's channel constructors refuse every host but this machine unless the opt-in is set. The
   error, `NetworkReachedInTests`, names the test and the host, and a test whose body swallowed it fails
@@ -151,6 +222,9 @@ it does. Both are fixed in code by RM395 (above).
   to do: the packages are unchanged.
 
 ## 2026-11-05 — RM361, audit round 2: a 410 from a bulk download or a function-style fetch is its lane's `*Retired` (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 - **A source that retired a file now says so in every lane, not only in the clients.** `net.stream_to_file`
   takes the lane's `*Retired` as a required `retired=` keyword. A 410 raises it with the body quoted and
@@ -174,6 +248,9 @@ it does. Both are fixed in code by RM395 (above).
 
 ## 2026-11-05 — RM386: a publish refuses a concurrent writer, and a snapshot's description describes the bytes that were sent (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 Every write the enricher makes to Hugging Face now goes through one helper that commits on top of the
 revision its plan read (`parent_commit`), and every remote read after that names the revision. A second
 publisher or a prune landing in between makes the hub refuse the write, raised as the new
@@ -192,6 +269,9 @@ to a revision; the tests run on a new `fake_hub` fixture, a repository with a he
 
 ## 2026-11-05 — RM389: a locus with a `vrs_spec` and no id survives the round trip (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 - **`resolution_loci` is withheld only when the row's cells rebuild the locus on every column the cell
   rebuild writes.** The comparison was a hand-kept tuple of six that left out `vrs_id`/`vrs_spec`, so a
   locus stating `vrs_spec` with no id (legal) or an id on a row with no `ref` was withheld and reverse
@@ -205,6 +285,9 @@ to a revision; the tests run on a new `fake_hub` fixture, a repository with a he
 
 ## 2026-11-05 — RM384: every pulled lane's repository has one public name, the Ensembl lane's included (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 `locations.SNAPSHOT_REPO_IDS` maps each lane this tier pulls to its HuggingFace repository (`org/repo`),
 so a consumer pinning `manifest.compilation.ensembl_reference` takes `just-dna-seq/ensembl_variations_split`
 from `SNAPSHOT_REPO_IDS["ensembl"]` instead of spelling it or stripping a private prefix (S130). It is the
@@ -216,6 +299,9 @@ test asserts the equalities over the walked map and an AST walk over the three s
 repo id written anywhere else. → [ROADMAP_HISTORY § RM384](ROADMAP_HISTORY.md#rm384--the-ensembl-lanes-repository-has-no-public-name-on-08-and-every-pulled-lane-spells-its-repository-twice)
 
 ## 2026-11-05 — RM387: a positional row at a sibling locus of a one-to-many rsID no longer refuses a valid module (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 - **RM374's `rsid_placements_disagree` compares against the source's whole answer.** The rows under an
   rsID's own key are the loci its genotype can sit on (the hosting filter runs before they are written),
@@ -232,6 +318,9 @@ repo id written anywhere else. → [ROADMAP_HISTORY § RM384](ROADMAP_HISTORY.md
 
 ## 2026-11-05 — RM383: a re-derivation retires the licence row for a source no resolution row names (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 - **`enrich --rederive` removes a `resolution`-layer licence row whose source no committed row names**
   (`mt_common_deletion`'s `clinvar,resolution`, left behind when its loci moved to the Ensembl
   snapshot), inside the table's commit, with an info line naming it. The compile's `source_row_unused`
@@ -247,6 +336,9 @@ repo id written anywhere else. → [ROADMAP_HISTORY § RM384](ROADMAP_HISTORY.md
 
 ## 2026-11-05 — RM382: a resolution answer the authored genotype cannot host lets the next link answer, and is never written as an absence (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 - **A rejected answer no longer ends the chain.** Each link's answer passes the allele-aware filter as it
   arrives; one that every subject of the rsID rejects (one of them rsID-only) is set aside and the next link is asked
   (ClinVar cache, staged answers, live Ensembl, gnomAD). `pathogenic_clinvar`'s HBB `rs613985`, whose only
@@ -261,6 +353,9 @@ repo id written anywhere else. → [ROADMAP_HISTORY § RM384](ROADMAP_HISTORY.md
   set-aside answer and the link that placed the rsID after it.
 
 ## 2026-11-05 — RM381: a split-snapshot site is filled ALT by ALT in the caller's spelling, offline too (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 - **Every reader of a snapshot's `alt` spells each ALT alone** (`alleles.trim_allele`, regrouped by
   `sequences.per_alt_loci`): the Ensembl and ClinVar rsID lookups, REST's `allele_string`, gnomAD's
@@ -278,6 +373,9 @@ repo id written anywhere else. → [ROADMAP_HISTORY § RM384](ROADMAP_HISTORY.md
 
 ## 2026-11-05 — INTEGRATION_0_8 is finished for downstream to integrate against the branch (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 - **[INTEGRATION_0_8.md](INTEGRATION_0_8.md) now covers every § 1 item from § 2 and § 3**: an upgrade order
   (format, compiler, enricher pins; `uv lock`; the `ensembl_variations` cache moving to the split release;
   recompile; `enrich --rederive` after the snapshot switch), § 2 steps 12–21 for RM267 through RM379, and
@@ -294,6 +392,9 @@ repo id written anywhere else. → [ROADMAP_HISTORY § RM384](ROADMAP_HISTORY.md
   `pathogenic_clinvar` regenerated, and the second audit round.
 
 ## 2026-11-05 — The reference examples' `resolution.csv` regenerated against the split snapshot (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 - **All 16 examples that commit a `resolution.csv` were re-derived** (`enrich --rederive`) against
   `just-dna-seq/ensembl_variations_split`, release `ensembl-variation-2026_07_13-vep116.0` (the maintainer's
@@ -378,6 +479,9 @@ measured by the release record at the cut, not read off this table.
 
 ## 2026-11-05 — RM380: reverse gives back every resolution.csv column a parquet carries (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 `compile → reverse → compile` now keeps `authority`, `placement_witness`/`placement_verdict`,
 `left_aligned`, `source_release`, `caid` and `status` on every `resolution.csv` row a parquet carries,
 so a best-effort `ambiguous` pick is no longer laundered into `resolved` by a round trip. The locus
@@ -393,6 +497,9 @@ finding, instead of saying it is lost. 20 of 22 reference examples get a new `ar
 
 ## 2026-11-05 — RM373 amendment: a row Ensembl REST witnessed contributes REST's release (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 - **The placement witness's release map covers every witness.** It named ClinVar and ClinVar-GKM and
   predated the REST witness, so a REST-witnessed row stated no release for it; the REST witness now asks
   `/info/data` once (or reuses the live link's answer), and both release maps, by link and by witness,
@@ -401,6 +508,9 @@ finding, instead of saying it is lost. 20 of 22 reference examples get a new `ar
 
 ## 2026-11-05 — RM379: every authority the concordance record names has its licence row (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 - **`enrich` records ClinVar's and PubMind's terms at the new `clin_sig_authority_call` layer** for each
   authority a `clin_sig_authority_calls.csv` row names and that was consulted, inside that table's commit,
   `dataset` labelled by the release the rows state. An authority nobody asked writes none; CIViC, whose
@@ -408,6 +518,9 @@ finding, instead of saying it is lost. 20 of 22 reference examples get a new `ar
   column admits `manual`), so the new rows raise no `source_row_unused`.
 
 ## 2026-11-04 — RM373: every resolution row names the release that answered it, and no label speaks for a table two releases answered (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 - **`resolution.csv` gains `source_release`**: the release of the link that answered the row, as the lane
   states it (`ensembl-variation-2026_07_13-vep116.0` from the split repo's manifest, `clinvar_<date>`, live
@@ -431,6 +544,9 @@ finding, instead of saying it is lost. 20 of 22 reference examples get a new `ar
 
 ## 2026-11-04 — RM375: two spellings of one indel are one event, judged by the enricher and trusted by the compiler (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 - **`enrich` records whether an authored coordinate spells the resolved event**: `resolution.csv` gains
   `authored_event` (`same_event` / `different_event` / `undecided`), written against the reference where
   the authored `chrom`/`start`/`ref` differs from the locus, and `judged_coordinate`, the coordinate it
@@ -449,6 +565,9 @@ finding, instead of saying it is lost. 20 of 22 reference examples get a new `ar
   and an AST walk over its callers.
 
 ## 2026-11-04 — RM374: one rsID placed two ways in one resolution.csv is reported, and refused under strict (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 - **`rsid_placements_disagree`, a new warning code.** `read_resolution` asks, for both `validate` and
   `compile`, whether a `resolution.csv` places one rsID at one `(chrom, start)` under its own key and at
@@ -471,6 +590,9 @@ finding, instead of saying it is lost. 20 of 22 reference examples get a new `ar
 
 ## 2026-11-04 — RM376: why one rsID fills three ALTs offline and one online on the same snapshot (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 - **No code change.** The 0.8 migration probe saw `rs746071566` filled with three ALTs offline and one
   online from one split snapshot. The snapshot, Ensembl REST and dbSNP 157 all carry the same three
   alleles at one site, and the resolver groups them correctly. The difference is RM270's rule: online,
@@ -491,6 +613,9 @@ refusal cannot ship unpublished. No message, field or identity moves. Coded erro
 
 ## 2026-11-04 — RM372: the enricher reads the Ensembl snapshot from its new repo, and never serves two releases as one (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 - **`ensure_snapshot` pulls `just-dna-seq/ensembl_variations_split`** (dbSNP 157, VEP 116, one row per ALT,
   left-aligned indels), prepare-annotations' release of 2026-11-04. Every lane's repo is a row of
   `download.SNAPSHOT_REPO_PREFIXES`.
@@ -507,6 +632,9 @@ refusal cannot ship unpublished. No message, field or identity moves. Coded erro
   enricher conftest, after a test re-pulled six chromosomes of a shared cache on this branch.
 
 ## 2026-11-04 — RM364: `reverse` gives back everything the compile carried, or names why not (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 - **`provenance.json` and the logs come back.** A compile copies both into the artifact and hashes
   them into `manifest.provenance` / `manifest.logs`; reverse copied back only the README and logo, so
@@ -540,6 +668,9 @@ refusal cannot ship unpublished. No message, field or identity moves. Coded erro
 
 ## 2026-11-04 — RM362 (amended): a fact row at the resolved spelling of an identity the module carries is not an orphan (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 - **A position is every spelling the module's own `resolution.csv` gives a carried identity.** A row authored at one
   spelling of an indel (CPIC's right-shifted NUDT15 allele) and the table placing its rsID at another (Ensembl's
   left-aligned one) are one place, and the frequency pass asks gnomAD at the table's. `module_subjects` now joins every
@@ -555,6 +686,9 @@ refusal cannot ship unpublished. No message, field or identity moves. Coded erro
   `ModuleSubjects.resolved_positions`; `resolution.usable_loci` is public. No reference example gains or loses a warning.
 
 ## 2026-11-04 — RM368: a module publish sends exactly the bytes it checked, and every dry run runs the real run's checks (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 **enricher** — what the publisher plans, checks and sends is now one reading of the disk.
 
@@ -579,6 +713,9 @@ refusal cannot ship unpublished. No message, field or identity moves. Coded erro
   traceback. INTEGRATION_0_8 § 1.27. No format or compiler change, and no identity moves.
 
 ## 2026-11-04 — RM267: Ensembl REST is the placement's third witness online, so S117's `rs8176719` is withheld against the real witnesses (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 **enricher, format (a description)** — For an rsID the Ensembl snapshot placed, with an allele that is
 not a substitution, and that neither the ClinVar snapshot nor ClinVar-GKM holds, an online `enrich` now
@@ -626,6 +763,9 @@ after the retries is unreachable rather than "no record". New: `verification.ran
 
 ## 2026-11-04 — RM361: a failed, retired, unread or undecided answer is never recorded as a definite one (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 - **A 410 is `retired`, never `unreachable`.** Every `*Retired` error carries `net.EndpointRetired`, and every
   handler that records why a question went unanswered reads it with `net.could_not_ask_reason`. A client
   whose contract is a withheld value (Crossref, the PMC id converter, BioC, GRCh37 REST, Ensembl, the ClinGen
@@ -658,6 +798,9 @@ after the retries is unreachable rather than "no record". New: `verification.ran
 
 ## 2026-11-04 — RM362: the orphan checks, `stats.genes` and the enricher agree on which genes and loci a module is about (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 - **One answer, `just_dna_compiler.compiler.subjects.module_subjects`**, over two rosters derived from the table
   registry: `MODULE_GENE_TABLES` (`variants.csv` and every gene-bearing table kind) and `MODULE_LOCUS_TABLES`
   (`variants.csv` and every positional table kind). `model_organisms.csv` is on neither.
@@ -684,6 +827,9 @@ moves.
 
 ## 2026-11-04 — RM370: a pass that answered nothing leaves no table behind (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 - **An enrichment pass with no subject to ask about writes no sidecar, and so no licence row.** Seven
   writers left a header-only table instead: `enrich`'s `clin_sig_concordance.csv` and
   `clin_sig_authority_calls.csv` on a module with no `clin_sig` cell; `frequencies.csv` and `clinical_assertions.csv` when every resolved row is
@@ -704,6 +850,9 @@ moves.
   predicate.
 
 ## 2026-11-04 — RM369: a snapshot build that dies before its last write leaves no `release.json`, never the previous build's (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 - **Every builder withdraws `release.json` before its payload moves and writes the new one last.**
   `just_dna_format.snapshot.begin_snapshot_write(dir)` removes the record and returns a `SnapshotWrite`
@@ -726,6 +875,9 @@ moves.
 
 ## 2026-11-04 — RM367: `validate` and `compile` reach one verdict, and a refused compile writes nothing (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 - **One resolution step for both commands.** `validate_spec` now runs the compile's own resolution step
   (`compiler/resolution_step.py`), so `validate --strict` refuses what `compile --strict` refuses on a
   GRCh37 rsID-only module, under `--no-resolve`, for `locus_cannot_host_genotype`,
@@ -745,6 +897,9 @@ moves.
   [ROADMAP_HISTORY.md](ROADMAP_HISTORY.md) under RM367.
 
 ## 2026-11-04 — RM363: a gene, drug, DOI, PMID and contig compare by one rule in every tier (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 The 0.8 audit's class B2 (`@one-normalizer-two-spellings`). What now works:
 
@@ -773,6 +928,9 @@ Gene and drug cells stay as written. The duplicate-row refusal folds only on a t
 
 ## 2026-11-04 — RM366: a column that means nothing without its companion is refused half-stated (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 - **Refused at load, on columns new in 0.8:** `gwas_effects.csv` `posterior_probability` and
   `fine_mapping_method` (both or neither); `colocalisations.csv` `h4` or `clpp` without `method`;
   `resolution.csv` `placement_witness` and `placement_verdict` (both or neither).
@@ -792,6 +950,9 @@ Gene and drug cells stay as written. The duplicate-row refusal folds only on a t
   (`PosteriorCounts.method_missing`); 26.09 has none.
 
 ## 2026-11-04 — RM365: the registry guards that were floors or subsets are equalities, and the registries they guard name what they describe (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 - **`DERIVED_PRODUCERS` names every check its passes write.** `resolution.csv`'s `enrich` producer
   gains `placement_agreement`, `published_refutation` and `evidence_status_currency`; `literature`'s
@@ -815,6 +976,9 @@ Gene and drug cells stay as written. The duplicate-row refusal folds only on a t
 
 ## 2026-11-04 — RM28: a `meta.csv` row can be scoped to a drug, so one phenotype pair states each thiopurine's recommendation (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 - **`meta.csv` gains an optional `drug`** (`MetaRow.drug`, free text as on `diplotypes.csv`, first in
   0.8.0), and the key is now `(members_key, trait_efo_id, sex, drug)`. An azathioprine row and a
   mercaptopurine row for one TPMT × NUDT15 phenotype pair are two statements; the same drug twice is
@@ -834,6 +998,9 @@ Gene and drug cells stay as written. The duplicate-row refusal folds only on a t
   records (re-run 2026-11-04T17:15:31Z; the azathioprine texts were unchanged). Re-enriched and closed.
 
 ## 2026-11-04 — RM270: an indel's spelling-independent `vrs_id` reaches every variant parquet, and a filled coordinate is written left-aligned (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 - **`weights.parquet` gains `vrs_id` (`List(Utf8)`, parallel to `alts`) and `vrs_spec`**; the three
   positional parquets (`pharm_variants`, `haplotypes`, `heteroplasmy`) gain the same pair as the
@@ -861,6 +1028,9 @@ Gene and drug cells stay as written. The duplicate-row refusal folds only on a t
 
 ## 2026-11-04 — PT2 §6: three meta-table reference examples compile, round-trip and state what they resolve (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 - **`reference_examples/apoe_klvs_meta/`**: the legacy tag selector beaten by a locus row, APOE ε2 and ε4 as
   `allele_function.csv` items whose facts differ, the ε2/ε4 diplotype settling the confidence column and
   leaving the unstated `flags` withheld, KL-VS × ε4 as one combination that replaces the four rows it
@@ -876,6 +1046,9 @@ Gene and drug cells stay as written. The duplicate-row refusal folds only on a t
 
 ## 2026-11-04 — PT2 §6: three reference examples carry the 0.8 study, HLA and model-organism shapes (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 - **`reference_examples/longevity_studies/`**: five longevity loci and thirteen `studies.csv` rows from
   Timmers 2019 and 2020, Deelen 2019, Pilling 2017, a Research Square preprint (`pmid=NONE` + `doi`) and CHAMP.
   They use every 0.8 `StudyRow` column: `phenotype_class`, `sample_size`/`sample_unit`/`n_cases`, the age
@@ -889,6 +1062,9 @@ Gene and drug cells stay as written. The duplicate-row refusal folds only on a t
 - Each README names what the build found in the sources and the shape. `docs/REFERENCE_EXAMPLES.md` §12–§14.
 
 ## 2026-11-04 — RM331: a study measured on an LD proxy gets r² with its proxy, in the study's own superpopulation (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 - **`just-dna-enricher ld-pairs <spec>`** asks Ensembl REST's pairwise LD for r² and |D′| between each
   `studies.csv` row's `proxy_rsid` and its lead, in the 1000 Genomes phase 3 superpopulation the row's one
@@ -911,6 +1087,9 @@ Gene and drug cells stay as written. The duplicate-row refusal folds only on a t
   the only gap.
 
 ## 2026-11-04 — RM267: an rsID two authorities place as two different events is withheld, and every written placement says who else was asked (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 **enricher, format** — `enrich` now compares every placement its links give an rsID with the two
 offline witnesses this tier holds, the ClinVar snapshot and ClinVar-GKM (new `clinvar_gkm_cache=` /
@@ -939,6 +1118,9 @@ forward. No parquet and no warning code. INTEGRATION_0_8 § 1.18.
 
 ## 2026-11-04 — RM28: a study on a `pharm_variants.csv` variant is not an orphan, and a module with no `variants.csv` is checked (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 - **`pharm_variants.csv` is an arm of the study-orphan check of its own** (the lead's decision,
   reversible until the cut). A study on a `pharm_variants.csv` row's variant is carried whether or not
   a `meta.csv` member reaches it; before, only a member's reach counted.
@@ -952,6 +1134,9 @@ forward. No parquet and no warning code. INTEGRATION_0_8 § 1.18.
   ([INTEGRATION_0_8 § 1.15](INTEGRATION_0_8.md#115-which-study-rows-study_variant_orphan-reports-rm28-no-new-code)).
 
 ## 2026-11-04 — RM359: under `--strict` an escalated finding is an error only, and the docs state no registry totals (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 - **One finding, one channel.** A `compile --strict` used to publish every mode-ladder finding twice: once
   in `errors`, and once in `warnings` as the best-effort sentence its pre-flight had run into. It is now in
@@ -1005,6 +1190,9 @@ file was missing. No format or compiler change, and no identity moves.
 
 ## 2026-11-04 — RM357: the authored tables that are not table kinds have one registry and one loader, and a refused `meta.csv` no longer reports its citations as uncited (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 - **One registry.** `just_dna_compiler.compiler.AUTHORED_NON_KIND_TABLES` registers `overrides.csv`,
   `meta.csv` and `model_organisms.csv` (CSV name, parquets, row model, its own table checks). Every list that named them is derived from it, among them `_INPUT_FILES`,
   `ARTIFACT_PARQUETS`, `_TABLE_DUPE_KEYS`, `_CITING_TABLE_KINDS`, `draft.DRAFTABLE`, `reverse_module` and
@@ -1022,6 +1210,9 @@ file was missing. No format or compiler change, and no identity moves.
   as before.
 
 ## 2026-11-04 — RM356: two genes' `*2` defined by one variant are two `haplotypes.csv` rows (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 - **`haplotypes.csv`'s duplicate rule reads `gene`, when both rows state it.** The key stays
   `(haplotype_name, variant_key, allele)`; `HaplotypeRow._KEY_DISTINCT_WHEN_STATED = ("gene",)` declares
@@ -1042,6 +1233,9 @@ file was missing. No format or compiler change, and no identity moves.
   drafter matches `(gene, allele)`, and RM351 had already re-keyed the cross-table checks.
 
 ## 2026-11-04 — RM28: a study on a variant `haplotypes.csv` defines, or a `meta.csv` member reaches, is not an orphan (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 - **`study_variant_orphan` counts what the module carries, not `variants.csv` alone** (PROPOSAL_0_8_PT2 §5 B1
   step 4). A study's variant is carried when it is a `variants.csv` row's, a defining variant in
@@ -1074,6 +1268,9 @@ glob-escaped by one helper: the snapshot publisher's file list (a `data/chr[1].p
 compiler change, and no identity moves.
 
 ## 2026-11-04 — RM333, RM239, RM236: the Open Targets lane fills a locus-to-gene table, its colocalisations, per-transcript consequences and a fine-mapping posterior (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 - **A new snapshot lane, `opentargets`.** `just-dna-enricher opentargets build` mirrors Open Targets Platform
   release 26.09 from EBI's FTP over https (retried, translated to `OpenTargetsUnavailable`) and flattens five
@@ -1112,6 +1309,9 @@ compiler change, and no identity moves.
 
 ## 2026-11-04 — RM305: ClinVar-GKM's indels are a lane, an offline witness for where an indel sits (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 **enricher** — A new cache lane, `clinvar_gkm`: ClinGen's ClinVar-GKM Parquet set cut to its
 GRCh38 net insertions and net deletions (309,405 alleles on the 2026-10-24 set), each with its VRS id,
 SPDI, gnomAD-style VCF spelling, ClinVar variation and rsID. It is a **witness**, not a check: it runs
@@ -1136,6 +1336,9 @@ or parquet change.
 
 ## 2026-11-04 — RM326, RM328: `weights.parquet` says whether a locus's evidence is European-only, and which outcomes were studied (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 **format, compiler** — `weights.parquet` gains four derived columns, repeated on each genotype row of a
 locus and read off its supporting study rows (same rsid or same `chrom:start:ref`). `eur_only_evidence`
 is true when every row states only `EUR`, false when one states another code, and null when any states
@@ -1147,6 +1350,9 @@ writes none back. Closes RM326 and RM328.
 
 ## 2026-11-04 — RM326, RM329, RM330: one paper's several outcomes, bands and strata are not duplicate citations (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 **compiler** — `duplicate_study_citation` reads the 0.8 study columns by RM140's rule: two rows for one
 `(variant_key, pmid)` are two claims when `phenotype_class`, an age-band cell (`age_min`, `age_max`,
 `age_of`, each on its own) or the stratum pair is stated on both and differs, as `statistical_test`
@@ -1156,6 +1362,9 @@ exactly as before. Closes RM329 and RM330 (both halves of RM330 are now on 0.8).
 
 ## 2026-11-04 — RM332: an effect states its unit on the study row, and `weights.parquet` carries it when the studies agree (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 **format, compiler** — `studies.csv` gains `effect_unit`, free text and verbatim, the column
 `gwas_effects.csv` has carried since 0.6. `weights.parquet` gains a derived `effect_unit` per variant:
 the unit every supporting study row that states one agrees on, null when none states one or two
@@ -1164,6 +1373,9 @@ it back. Every module carrying `variants.csv` gets a new `artifact.digest` on a 
 `weights.parquet` gains a column; `content_signature` does not move.
 
 ## 2026-11-04 — RM331 (the author's half): a study measured on an LD proxy says so, and its allele is checked against the proxy (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 **format, compiler, enricher** — `studies.csv` gains `proxy_rsid`, the variant a study measured when it
 stood in for the row's lead. A proxy on a row naming no variant, or equal to its own `rsid`, is refused.
@@ -1179,12 +1391,18 @@ asked for and one warning names the rest. The r² between proxy and lead, comput
 
 ## 2026-11-04 — RM330: a study row states the stratum its estimate was measured in (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 **format, compiler** — `studies.csv` gains `stratum` and `stratum_level`, free text and written both or
 neither (`sex`/`male`, `parent_sex`/`father`); one without the other is refused. They reach
 `studies.parquet` and `reverse` writes them back. This is RM330's study half; its conclusion half,
 `meta.csv`'s `sex`, shipped with the meta-table.
 
 ## 2026-11-04 — RM329: a study row states the age band its estimate covers, and whose age it is (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 **format, compiler** — `studies.csv` gains `age_min` and `age_max` (years, finite and non-negative;
 either may be empty for an open band) and `age_of` (closed: `participant`, `parent`). No refusal ties
@@ -1193,6 +1411,9 @@ the maintainer before the build.
 
 ## 2026-11-04 — RM328: a study row names the ancestry it was measured in (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 **format, compiler** — `studies.csv` gains `ancestry`, optional, multi-valued and closed over the 1000
 Genomes superpopulation codes (`vocab.VALID_SUPERPOPULATIONS`: `AFR`, `AMR`, `EAS`, `EUR`, `SAS`). A
 trans-ethnic study lists its codes; `population` stays free text. `pgs.VALID_TRAINING_ANCESTRY` is now
@@ -1200,6 +1421,9 @@ derived from the same constant plus `multi`, so the five codes are one vocabular
 unchanged. The column reaches `studies.parquet` as a list and `reverse` writes it back `|`-joined.
 
 ## 2026-11-04 — RM326: a study row states which outcome it measured (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 **format, compiler** — `studies.csv` gains `phenotype_class`, optional and open, with longevitymap v2's
 twelve classes as the recommended members (`RECOMMENDED_PHENOTYPE_CLASSES`: `EXTREME_SURVIVAL_CC`,
@@ -1211,6 +1435,9 @@ reader pinned to 0.7 refuses a manifest carrying it (INTEGRATION_0_8 § 1).
 
 ## 2026-11-04 — RM325: a study row states how many were analysed, in what unit, and how many were cases (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 **format, compiler** — `studies.csv` gains `sample_size` (the total analysed, cases included),
 `sample_unit` (closed: `individuals`, `lives`) and `n_cases`, optional and declared after every 0.7
 column. A `sample_size` without its unit is refused, since a parental-lifespan study counts two lives
@@ -1220,6 +1447,9 @@ keeps its `content_signature`; every module with `studies.csv` gets a new `artif
 recompile, because the parquet gains columns.
 
 ## 2026-11-04 — RM349: a `pmid=NONE` row's DOI is checked to exist, and its quote matched where the text is reachable (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 **enricher** — The literature pass now asks about a work cited by DOI alone. Each distinct DOI on a
 `pmid=NONE` row (`spec.doi_key`) is put to Crossref, and the answer names the title Crossref holds for
@@ -1248,6 +1478,9 @@ for a citation that has no row.
 
 ## 2026-11-04 — RM292: every verification check names its witness, and a check that reads its own source says so (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 A record in `verification.json` (and `manifest.verification.checks[]`) now states what the check read
 and what it read it against. `VerificationRecord` gains `checked_source`, `witness_source`, `undecided`
 and `independence` (all optional, `since 0.8.0`); `independence` is derived from the two sources over the
@@ -1264,6 +1497,9 @@ break:** a 0.7 reader refuses a 0.8-written record (`extra="forbid"`, 0.7's `pro
 [INTEGRATION_0_8 § 1.13](INTEGRATION_0_8.md). No published `verification.signature` moved.
 
 ## 2026-11-04 — RM335: model-organism evidence has a table of its own, `model_organisms.csv` (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 **format** — `just_dna_format.model_organisms.ModelOrganismRow`: one row per model-organism lifespan
 finding about a human gene. `gene` (required, the human symbol), `orthologue`, `species`, `model_type`,
@@ -1288,6 +1524,9 @@ passes, leaves `model_organisms.csv` out (a gene named only there is not one of 
 
 ## 2026-11-04 — RM351: the PGx cross-table checks know an allele by its gene, and an HLA allele is no longer "undefined" (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 **format, compiler** — The two cross-table PGx checks key a named allele on `(gene, allele)`, not on
 the bare name. `star_allele_undefined` used to let one gene's definition answer for another's: a module
 defining CYP2C19 `*2` and using CYP2C9 `*2` with no definition got no warning, and now gets one. The
@@ -1305,6 +1544,9 @@ appended text is new. The six PGx reference examples report the same gaps as bef
 No column, code or identity changes.
 
 ## 2026-11-04 — RM327: `meta_resolved.parquet` says which rows carry a trade-off, computed from the per-trait meta rows (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 **compiler** — `meta_resolved.parquet` gains `tradeoff`, a nullable boolean between the fact columns and
 `withheld`. It is computed per allele-bearing member: `true` when one member has a `protective` per-trait
@@ -1328,6 +1570,9 @@ without `meta.csv` is untouched. A tool listing unwritable names from `RESERVED_
 sees `tradeoff`; read `MISPLACED_COLUMN_REASONS` too.
 
 ## 2026-11-04 — RM352: a release record can declare a toolchain-only byte move, backed by a fixed-compiler sweep (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 **format, compiler** — `VALID_RELEASE_CHANGE_KINDS` gains `toolchain`: the bytes moved, the content did
 not, and the recorded toolchain (`compilation.toolchain`, RM342) says why. It is legal on
@@ -1361,6 +1606,9 @@ what is sent. No format or compiler change, and no identity moves.
 
 ## 2026-11-04 — RM348: `logs/` discovery stops trusting the filesystem (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 **compiler** — Every path log discovery considers, the top-level `*.log` included, must resolve to
 exactly where it lies inside the spec directory. A symlink at any level stays behind with
 `log_file_not_shipped`'s symlink reason, now *"it is a symlink or lies under one, and a link can reach
@@ -1376,6 +1624,9 @@ and a `*.log` over 5 MiB used to ship and now stay behind with a warning. A `*.l
 still not checked for content. An explicit `log_files` list is unaffected, and neither identity moves.
 
 ## 2026-11-04 — RM28, RM323, RM324 (and RM327's rows, RM330's `sex`): the meta-table, `meta.csv` (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 **format, compiler, enricher** — A new optional authored table, `meta.csv` (`just_dna_format.meta.MetaRow`),
 maps a member set to a finding and/or the per-locus facts. A member is `table[column=value, …]` over
@@ -1395,6 +1646,9 @@ dbSNP about every rsID a member names. See [INTEGRATION_0_8.md](INTEGRATION_0_8.
 
 ## 2026-11-04 — RM303: the snapshot layout and `release.json`'s model move into `just-dna-format` (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 **format, enricher** — New module `just_dna_format.snapshot`: the reference-snapshot layout names
 (`data/`, the sidecar and root-filename tuples, `LICENSE.txt`, `release.json`, the two named payload files),
 `SnapshotRelease`, the model of `release.json`, and `read_release` / `write_release` / `release_label` /
@@ -1409,6 +1663,9 @@ label from `clinvar_file_date` through the same formula, so `CacheLane.release_l
 is gone and `cache status` prints the same labels. See [INTEGRATION_0_8 § 1.9](INTEGRATION_0_8.md).
 
 ## 2026-11-04 — RM253: the CPIC drafter defines UGT1A1 `*28`, spells CPIC's DEL/INS/repeat notation, and drafts HGVS-named genes (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 **enricher** — `draft --gene UGT1A1` now defines `*28`, `*36` and `*37` (and `*80+*28`, `*80+*37`), so
 `validate` no longer warns that they are used but not defined. CPIC's `DEL<bases>`, `INS<bases>` and
@@ -1427,6 +1684,9 @@ disagrees or could not be read (every notation row under `--offline`). `draft_ge
 
 ## 2026-11-04 — RM334: an HLA allele name is checked against IPD-IMGT/HLA's grammar (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 **format, enricher** — An HLA allele is an `allele_function.csv` row (there is no HLA table). Where `gene` starts
 with `HLA-`, `allele` must be `*`, then two to four colon-separated numeric fields of at least two
 digits, then an optional expression suffix (`N`, `L`, `S`, `C`, `A`, `Q`): `*15:01`, `*57:01:01` and
@@ -1439,6 +1699,9 @@ model refuses, with the same reason (`pgx.hla_allele_refusal`), instead of faili
 
 ## 2026-11-04 — RM322: a diplotype row states its trade-off and its report group (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 **format, compiler** — `diplotypes.csv` gains two optional free-text columns, `negatives` and
 `category`, the `variants.csv` columns of the same names with the same descriptions. A scored diplotype
 such as APOE ε, which v2 scores once as a pair, can now carry the trade-off and the report group a
@@ -1448,6 +1711,9 @@ keeps its signature, but its `artifact.digest` moves on a 0.8 recompile because 
 columns. They are the last two columns, so no 0.7 column changes position. The maintainer cut `priority`, `actionability` and `flags` from the item.
 
 ## 2026-11-04 — RM336: a DOI in `pmid` is refused, and `pmid=NONE` cites a preprint by its `doi`, on every citing table (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 **format, compiler, enricher** — A `pmid` cell whose only identifier is a DOI is refused, naming the
 DOI; before, `10.1101/2025.03.01.640000` parsed as six PubMed ids and the literature pass looked each
@@ -1465,6 +1731,9 @@ scanned first: no `pmid` cell holds a DOI. A 0.7 reader refuses `NONE` and the n
 ([INTEGRATION_0_8 § 1.5](INTEGRATION_0_8.md)).
 
 ## 2026-11-04 — RM304: a `vrs_id` says which VRS minted it, and the module pins one (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 **format, compiler, enricher** — VRS 2.1 re-ids some ambiguous insertions, so an id now carries the
 version that minted it and the manifest pins the version a module's ids are meant under.
@@ -1488,6 +1757,9 @@ version that minted it and the manifest pins the version a module's ids are mean
 
 ## 2026-11-04 — RM342: the manifest records the toolchain that wrote the bytes, and a digest it explains says so (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 **format, compiler, enricher** — Every compile now stamps `manifest.compilation.toolchain`, the Python and
 polars that wrote the bytes (`{"polars": "2.1.0", "python": "3.13.1"}`; a library added later is a new key).
 It is optional and outside `artifact.digest`, like `compiler_version`, and `null` on older manifests. From
@@ -1500,6 +1772,9 @@ reproducibility is pinned via `compiler_version`, the recorded toolchain and the
 `verify_manifest` is unchanged. See [INTEGRATION_0_8.md](INTEGRATION_0_8.md).
 
 ## 2026-11-04 — RM337: a coded warning names each file under `logs/` that does not ship (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 **format** — `VALID_WARNING_CODES` gains `log_file_not_shipped` (actionable). An older reader refuses a
 manifest that carries it ([INTEGRATION_0_8 § 1](INTEGRATION_0_8.md)).
@@ -1625,12 +1900,18 @@ are in `docs/seats/`, now listed in `mkdocs.yml`'s `not_in_nav`; the seat pull r
 
 ## 2026-09-30 — RM288: the CPIC and PharmVar builders and the PGx drafter export their error families (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 **enricher** — `cpic_build.ERRORS`, `pharmvar_build.ERRORS` and `pgx_draft.ERRORS` are callee-owned
 tuples of every type each surface raises, and every caller in the tier catches `<module>.ERRORS` instead
 of spelling its own list (RM310 was such a list missing one member). An AST test refuses a caller that
 spells the list. `draft --use commercial` against CPIC now prints `DRAFT FAILED` instead of a traceback.
 
 ## 2026-09-30 — RM283: a ClinPGx build says when its archive has gone quiet (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 **enricher** — A ClinPGx build that downloads now `HEAD`s its archive and two sibling archives, records
 their `Last-Modified` in `release.json` as `archive_last_modified`, and warns (never refuses) when the
@@ -1639,12 +1920,18 @@ archive still answering 200, would have been named on the first build.
 
 ## 2026-09-30 — RM263: a DOI's PMID, through Europe PMC (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 **enricher** — `lookup_citation(doi=…)` / `hint citation --doi` with no PMID now asks Europe PMC which
 PubMed record the DOI names (`EuropePmcClient.pmids_for_doi`, new) and offers it as an advisory, never a
 fill, then asks PubMed which paper that is. Crossref's title and PubMed's are reported as two `info`
 findings; several PMIDs withhold the advisory and are named; none is reported as Europe PMC's answer.
 
 ## 2026-09-30 — RM258: the literature pass records how the fulltext question ended, and asks an outage again (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 **enricher** + **format** — A Europe PMC or BioC 5xx used to read like "no copy": the row was written on
 the abstract and merge-not-clobber never asked again, so an outage became a permanent abstract-only pin.
@@ -1656,6 +1943,9 @@ request; `fulltext()` keeps its old contract.
 
 ## 2026-09-30 — RM272: `EnrichmentResult` names three answered-but-withheld states (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 **enricher** — `unanchored_rsids` (live Ensembl's one-sided indel whose anchor base could not be read,
 RM268; transient), `non_nucleotide_rsids` (every allele either Ensembl rung gave is not a base, RM271;
 permanent) and `reference_rejected_loci` (per locus, the indel the reference showed is a different
@@ -1665,6 +1955,9 @@ event, RM274). Each rsID is in exactly one list and still in `unresolved`. The l
 
 ## 2026-09-30 — RM278: `compile --ensembl-reference` and `--ba1-threshold` (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 **compiler** — The `compile` command gains `--ensembl-reference` (stamps
 `manifest.compilation.ensembl_reference`, which a CLI compile could not set before) and
 `--ba1-threshold`. `test_cli_parity.py` now asserts the command's options equal `compile_module`'s
@@ -1672,6 +1965,9 @@ parameters minus a declared set of four, each with its reason (the auto-discover
 logo and readme paths).
 
 ## 2026-09-30 — RM300: the manifest counts rows and variants per ClinVar tier (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 **format** + **compiler** — `stats.pathogenic_count`/`benign_count` fold a tier pair each, so a
 catalog could not split `pathogenic` from `likely_pathogenic` without reading the artifact. Two new
@@ -1681,6 +1977,9 @@ effective `clin_sig`. The existing counts keep their meaning. Outside `artifact.
 ignores them.
 
 ## 2026-09-30 — RM313: the QUAL warning that stated the spec backwards is retired, and the true finding replaces it (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 **compiler** + **format** — RM57's `quality_floor_inverted` told authors that a high QUAL on a
 reference record means the position is probably variant, and recommended GQ. VCF §1.6.1 item 6 says
@@ -1694,6 +1993,9 @@ The new code is an old-reader break, in `INTEGRATION_0_8.md`.
 
 ## 2026-09-30 — RM308: a conclusion naming another genotype warns at `validate` and `compile` (0.8, uncut)
 
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
+
 **compiler** + **format** — RM279's rule ran only on the authoring surface (`hint`, `lint_rows`), so a
 module nobody linted compiled green under `--strict` with two conclusions swapped. It now runs in the
 pre-flight as **`conclusion_names_other_genotype`**, a new member of `VALID_WARNING_CODES` (an
@@ -1701,6 +2003,9 @@ old-reader break, in `INTEGRATION_0_8.md`), one sentence per reason: a swapped p
 a neighbour. A warning in both modes.
 
 ## 2026-09-30 — RM275: two fact-table rows under one merge key that disagree now warn (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 **compiler** + **format** — `frequencies`, `gene_metrics`, `literature`, `gene_validity`,
 `clinical_assertions`, `gwas_effects` and `expression_effects` had no duplicate rule, so two rows under
@@ -1710,6 +2015,9 @@ came first. They now warn in both modes as **`fact_rows_contradict`**, a new mem
 carrying the code, recorded in the new `INTEGRATION_0_8.md`. Refused from 1.0.
 
 ## 2026-09-30 — RM241: `reverse` writes back every spec field the manifest carries (0.8, uncut)
+
+**Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
+line was uncut.
 
 **compiler** — `reverse_module` now reads the artifact's `manifest.json` for the whole spec header: the
 `module:` block's display fields, `version`, `genome_build`, the defaults' `curator`/`method`,
@@ -2439,7 +2747,7 @@ so the code is checked against the emission site and the phrase against the modu
 sentence — the boundary where a code goes missing.
 
 **RM149 stays open**: this is a draft nobody has read. Its dated addendum in
-[ROADMAP_0_8.md](ROADMAP_0_8.md) carries the measurement the item was waiting for — four findings in
+[ROADMAP_0_8.md](history/ROADMAP_0_8.md) carries the measurement the item was waiting for — four findings in
 the first pass, two of them filed and fixed as RM242 and RM243 — and says what a review should push on.
 
 ## 2026-09-13 — RM243: four per-command counts in the paragraph that refuses to state a total
@@ -2513,7 +2821,7 @@ dropped instead — then passes once a real PMID (7647779) is supplied. **That r
 working, not a gap**: the folate claim has primary literature behind it and genomi cites the CDC's
 summary of it, which is a curation shortcut rather than something we owe a slot for.
 
-**The findings route to [RM188](ROADMAP_0_8.md), and all of them are 0.8.** A derived sidecar is a row
+**The findings route to [RM188](history/ROADMAP_0_8.md), and all of them are 0.8.** A derived sidecar is a row
 model plus a `VALID_SOURCE_LAYERS` member plus a parquet plus an enricher pass, so it touches format
 and compiler and is minor-legal-and-minor-required under P3/P8; the same holds for
 `out_of_scope_claims` as a new optional authored column. The one item that could still be a
@@ -5443,7 +5751,7 @@ arriving rather than drift.
   minor-deferral file is named for the release that will decide its contents, so a cut closes one and
   opens the next: the round is in [history/ROADMAP_0_7.md](history/ROADMAP_0_7.md) with the seven
   entries that shipped or closed, and the ten still waiting — RM122, RM23, RM16, RM28, RM56, RM65,
-  RM66, RM67, RM68, RM84 — became [ROADMAP_0_8.md](ROADMAP_0_8.md), unchanged but for the file they sit
+  RM66, RM67, RM68, RM84 — became [ROADMAP_0_8.md](history/ROADMAP_0_8.md), unchanged but for the file they sit
   in. `PROPOSAL_0_7.md` stays beside the other five concluded threads in `docs/proposals/` and is
   marked a record rather than a plan; it no longer wins over anything, because everything it decided
   has landed.

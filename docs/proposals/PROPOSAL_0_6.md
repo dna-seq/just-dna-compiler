@@ -1165,7 +1165,7 @@ Deferred and closed items are **not** in this document — they were moved to th
 that will decide them, so this file stays a record of what 0.6 builds and why:
 
 - **[ROADMAP_0_7.md](../history/ROADMAP_0_7.md)** — closed at the 0.7 cut; these three are live in
-  [ROADMAP_0_8.md](../ROADMAP_0_8.md) — RM23 (predictor scores), RM16 (authored PRS weights), RM28
+  [ROADMAP_0_8.md](../history/ROADMAP_0_8.md) — RM23 (predictor scores), RM16 (authored PRS weights), RM28
   (the meta-conclusion predicate; its cofactor half closed here).
 - **[ROADMAP_1_0.md](../ROADMAP_1_0.md)** — RM15 (multi-build identity), RM52 (the upgrade procedure).
 - **RM10** closed as an item — folded into RM28; see ROADMAP_0_7.

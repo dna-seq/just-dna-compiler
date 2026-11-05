@@ -65,7 +65,7 @@ show that rather than assert it.
    `["CYP2C9", "VKORC1"]` — and our own `reference_examples/cyp2c9_warfarin_grch37/` carries the
    CYP2C9 diplotypes and the VKORC1 per-variant rows *side by side with nothing joining them*.
    `pgx_draft._cpic_recommendation_rows` says so in a comment. This is not new: it is
-   [RM28](../ROADMAP_0_8.md#rm28--meta-conclusions-the-predicate-half)'s surviving "pairing across
+   [RM28](../ROADMAP_0_9.md#rm28--meta-conclusions-the-predicate-half)'s surviving "pairing across
    *subjects*" clause, parked on a corpus that had exactly one entry (RM174/CIViC). **This survey is
    the second corpus entry**, and it is the first one that is a routine clinical guideline rather
    than an oncology molecular profile.
@@ -489,7 +489,7 @@ skills wanting it is an argument. It stays parked.
 
 Sized in the usual units. **Filed 2026-09-13** — a probe records and the tracker allocates, so the
 numbers below came from `.claude/rm-next.py`, not from this file: items 1–6 are
-[RM28's second corpus entry](../ROADMAP_0_8.md#rm28--meta-conclusions-the-predicate-half),
+[RM28's second corpus entry](../ROADMAP_0_9.md#rm28--meta-conclusions-the-predicate-half),
 [RM236](../ROADMAP_HISTORY.md#rm236--consequence-and-impact-are-planned-axes-with-no-slot-and-an-acmg-engine-reads-both-as-primary-inputs),
 [RM237](../ROADMAP_0_9.md#rm237--clingen-dosage-is-gene-keyed-so-a-recurrent-cnv-region-has-nowhere-to-be-written),
 [RM238](../ROADMAP_0_9.md#rm238--a-per-tissue-eqtl-has-no-row-and-expression_effectscsv-is-the-wrong-table-to-widen),

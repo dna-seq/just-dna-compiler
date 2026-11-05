@@ -37,6 +37,8 @@ moved with the item.
 **What it does not change.** No principle moved, and nothing about legality: the `toolchain` kind is a
 new member of a closed vocabulary, additive and minor-legal under Principle 3.
 
+**Wording vetted.** The maintainer read the changed sentences old → new in chat on 2026-11-04 and accepted them as written ("Good, I accept"). Deciding that an amendment happens is not approving its sentences, so the acceptance is recorded here.
+
 ## 0.8 — the format package also defines the reference-snapshot layout (2026-11-04)
 
 Recorded in Goals as the second bullet, *Be the contract for the reference-snapshot layout as well*.

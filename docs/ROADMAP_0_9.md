@@ -10,7 +10,7 @@ waits. It was opened on 2026-11-03, before 0.8 is cut, when the maintainer scope
 
 "The rest goes to 0.9." Opening the next minor's file before the cut has a precedent:
 `ROADMAP_0_7.md` was split out on 2026-08-13, four days before 0.6.0 was cut. The rule is the one
-[ROADMAP_0_8.md](ROADMAP_0_8.md) followed: the deferral file is named for the release that will decide its
+[ROADMAP_0_8.md](history/ROADMAP_0_8.md) followed: the deferral file is named for the release that will decide its
 contents.
 
 **0.9's theme is not decided.** Competitor parity, with RM188 as its spine, was 0.8's second half from
@@ -183,11 +183,11 @@ level. The maintainer kept them in.
 research item, asked by the maintainer 2026-09-20. Nothing here is a proposal yet; the exit is a
 measurement and a charter ruling, not a draft schema. The class is the most additive outcome this
 could have, which is a new optional table or spec block; two of its three exits ship nothing at all · **Owner** unassigned — the placement question is half the research · **Pairs with**
-[RM28](ROADMAP_0_8.md#rm28--meta-conclusions-the-predicate-half),
+[RM28](ROADMAP_0_9.md#rm28--meta-conclusions-the-predicate-half),
 [RM188](ROADMAP_0_9.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics),
 and RM7 below (which is **not** the same item — see *What this is not*)
 
-**For longevitymap v2 (2026-11-03):** v2's §5 is a report specification: a context card, grouping by mechanism, a research view. See [the group](ROADMAP_0_8.md#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
+**For longevitymap v2 (2026-11-03):** v2's §5 is a report specification: a context card, grouping by mechanism, a research view. See [the group](history/ROADMAP_0_8.md#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
 
 **The ask, verbatim in intent:** some kind of report schema — Jinja templates or something — where the
 *contents* are static and declarative and all the fancy CSS lives downstream.
@@ -247,7 +247,7 @@ ends:
   it does today is the baseline any schema has to beat** — and if it needs nothing from us, that is an
   answer rather than a gap.
 
-### Why it pairs with [RM28](ROADMAP_0_8.md#rm28--meta-conclusions-the-predicate-half)
+### Why it pairs with [RM28](ROADMAP_0_9.md#rm28--meta-conclusions-the-predicate-half)
 
 RM28's surviving half is the **predicate** — a claim keyed on more than one subject, which no brick
 holds. Its second corpus entry is exactly a *report* finding: ClawBio's pharmgx-reporter renders one
@@ -329,7 +329,7 @@ routed; round 2's roster is below, searched for rather than named** · **Owner**
 then whichever tier the findings land in ·
 **Motivating case** the maintainer's direction, not a consumer report
 
-**For longevitymap v2 (2026-11-03):** its axes 2, 3 and 5 are now numbered, as RM328, RM330 and RM324. See [the group](ROADMAP_0_8.md#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
+**For longevitymap v2 (2026-11-03):** its axes 2, 3 and 5 are now numbered, as RM328, RM330 and RM324. See [the group](history/ROADMAP_0_8.md#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
 
 **Progress.** Both named competitors are now probed, one document each, and neither turned out to be
 a competing *format*: [`probes/GENOMI_SURVEY.md`](probes/GENOMI_SURVEY.md) (genomi is a runtime; its
@@ -347,7 +347,7 @@ and RM23's grain question with them), **RM237** (region-keyed ClinGen dosage), *
 eQTL, open but parked on a consumer), **RM239** (fine-mapping posterior), **RM240** (land the
 translated nutrition panel in the corpus) and **RM241** (`weighting` does not survive `reverse`). The
 sixth finding was not filed as a new item because it is not one: warfarin's multi-gene call is
-[RM28](ROADMAP_0_8.md#rm28--meta-conclusions-the-predicate-half)'s surviving *pairing across subjects* clause, and
+[RM28](ROADMAP_0_9.md#rm28--meta-conclusions-the-predicate-half)'s surviving *pairing across subjects* clause, and
 it went in there as that entry's **second corpus entry**. The genomi half's seven ranked candidates
 are recorded in its own § 8 and are not filed here.
 
@@ -455,7 +455,7 @@ load and never authored on a row (`@build-injected`), and a module is single-bui
 with two coordinates that can disagree and nothing able to notice. **Not a gap.** Worth one paragraph
 in whichever survey reads them, and no more.
 
-**And one that is not an axis but a corpus: [RM28](ROADMAP_0_8.md#rm28--meta-conclusions-the-predicate-half) has a third entry.** snappy's
+**And one that is not an axis but a corpus: [RM28](ROADMAP_0_9.md#rm28--meta-conclusions-the-predicate-half) has a third entry.** snappy's
 `genosets.json` carries SNPedia's boolean-combinator DSL — `and(rs4988235(C;C), rs182549(C;C))`, with
 genoset-of-genoset nesting for haplogroup trees. That is a third independent grammar for the same
 thing after CIViC's molecular profiles (RM174) and ClawBio's guideline logic, and unlike those two it
@@ -761,7 +761,7 @@ first real case would dictate, so fixing it now spends a one-way door on a guess
 
 **What would unpark it:** a real consumer. See [PROPOSAL_0_5.md](proposals/PROPOSAL_0_5.md) D1.
 
-**This entry and [RM28](ROADMAP_0_8.md#rm28--meta-conclusions-the-predicate-half) are one axis at two operators
+**This entry and [RM28](ROADMAP_0_9.md#rm28--meta-conclusions-the-predicate-half) are one axis at two operators
 (maintainer, 2026-09-13), and they should be decided together rather than merged.** Both ask the same
 question — *how does a conclusion get derived from more than one variant row, and where does the
 combining rule live?* — and the format already answers it once:
@@ -1768,7 +1768,7 @@ are not reopened here.
 **Motivating case** RM276's minor half, split off when the warning shipped on 2026-09-27 · *related*
 RM276, RM170, RM165
 
-**For longevitymap v2 (2026-11-03):** a source's evidence grade travelling into a module is the same column family as RM324's tier. See [the group](ROADMAP_0_8.md#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
+**For longevitymap v2 (2026-11-03):** a source's evidence grade travelling into a module is the same column family as RM324's tier. See [the group](history/ROADMAP_0_8.md#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
 
 RM276 names a drafted locus STRchive grades `Refuted` or `Disputed`, in a note the drafting run prints
 once. Nothing in the module keeps it, so the next reader of `repeat_alleles.csv` sees `DMD`'s bands
@@ -1791,7 +1791,7 @@ open (see *Decided*) · **Owner** format (the authored models) + compiler (the p
 an explanatory mode, and one text cannot be right for all three · *related* RM7, RM28, the "not format
 scope" note on lay-language rendering
 
-**For longevitymap v2 (2026-11-03):** v2 writes for three readers (citizen, geneticist, ageing researcher), which is the register question. See [the group](ROADMAP_0_8.md#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
+**For longevitymap v2 (2026-11-03):** v2 writes for three readers (citizen, geneticist, ageing researcher), which is the register question. See [the group](history/ROADMAP_0_8.md#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
 
 **The ask.** Today every annotation carries one `conclusion`, the detailed wording. The report needs up
 to three **registers** of the same claim: **detailed** (today's text), **lay** (a simpler explanation for
@@ -1826,7 +1826,7 @@ rework), which constrains every option below.
   lay-language rendering draws from the other side.
 - **Shape: kept open, with two columns as the default.** Unless something below changes it, the build
   is option 1: two optional columns on the carrying kinds.
-- **The exception is meta-conclusions.** If [RM28](ROADMAP_0_8.md#rm28--meta-conclusions-the-predicate-half)
+- **The exception is meta-conclusions.** If [RM28](ROADMAP_0_9.md#rm28--meta-conclusions-the-predicate-half)
   lands its own table, the registers may belong there instead (a meta-conclusion is the claim a report
   most needs in lay words), and the two items then decide the shape together.
 
@@ -1865,7 +1865,7 @@ ClawBio half; PARKED on a consumer, deliberately** · **Owner** enricher · **Mo
 [`probes/CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md) § *nine databases, and the two axes that come
 back with no home*
 
-**For longevitymap v2 (2026-11-03):** the cis-QTL colocalisation behind effector confidence E1/E2. See [the group](ROADMAP_0_8.md#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
+**For longevitymap v2 (2026-11-03):** the cis-QTL colocalisation behind effector confidence E1/E2. See [the group](history/ROADMAP_0_8.md#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
 
 `clawbio.py run gwas --demo` on rs3798220 returns five cis-eQTLs **by named tissue** from GTEx and the
 EBI eQTL Catalogue — `LPA` in Liver at β −0.82, in Adipose at −0.45, `SLC22A3` in Liver at +0.31.
@@ -1950,3 +1950,307 @@ none is. "No reference configured" stays a named could-not-ask, never an absence
    (`CACHE_SURFACE.md`), or a URI the operator passes. The fewer-entities rule weighs toward the URI.
 
 **Residuals** none yet.
+
+## RM28 — Meta-conclusions (the predicate half)
+
+**Moved here from `ROADMAP_0_8.md` at the 0.8.0 cut (2026-11-05)**, unchanged but for the file it sits in: its combination half (the meta-table) shipped in 0.8 ([ROADMAP_HISTORY § RM28](ROADMAP_HISTORY.md#rm28--the-combination-half-the-meta-table)), and the decisions it was built to are in [history/ROADMAP_0_8.md](history/ROADMAP_0_8.md#rm28--meta-conclusions-the-combination-halfs-decisions-shipped-in-08). What waits is the predicate half's remainder (open-world negation, OR, *trans* phase), parked on the corpus below.
+
+**Severity** medium (after the corpus) · **Status** parked on a corpus — **and halved on 2026-08-13**:
+the injected-cofactor half closed, the predicate half stays here · **Owner** format (schema + compiler)
+· **Motivating case** combination annotations; disclosure policy
+
+**For longevitymap v2 (2026-11-03):** KL-VS buffering in APOE4 carriers joins two loci on two chromosomes, so no haplotype holds it; added as a corpus entry there. See [the group](history/ROADMAP_0_8.md#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
+
+**Read this entry knowing how much of the original item has already dissolved.** Probing in 0.5 removed
+most of it, and the 0.6 review removed the rest of the cofactor axis. What is left is genuinely small
+and genuinely unsolved.
+
+**The corpus this was parked waiting for has its first real entry (2026-09-02, [RM174](history/ROADMAP_HISTORY_0_6.md#rm174--a-claim-about-two-variants-in-trans-is-written-as-two-single-variant-rows-because-no-brick-holds-the-real-subject)).**
+Not an argument — an adopted source whose grammar was counted. CIViC publishes molecular profiles as
+boolean expressions over variants: of 1,964 profiles, **209 are multi-variant** — `AND` 141, `OR` 72,
+`NOT` 1 — and they nest (`BRAF Amplification AND ( BRAF V600E OR BRAF V600K )`). Both halves of this
+entry's surviving case appear there, with instances:
+
+* **Economy, and it is this entry's own phrase.** Evidence item 8721 is a claim about
+  `VHL S183L AND VHL D126N` whose description reads *"heterozygous compound mutation"* — two variants
+  **in trans**, observed, cited. `HaplotypeRow` cannot hold it: a haplotype is same-strand co-location,
+  so drafting it there asserts *cis* where the source says *trans*, silently, because no column carries
+  phase for anything to contradict.
+* **Open-world negation.** `MET Amplification AND NOT KRAS Mutation` quantifies over a set no module
+  can close, on a class term rather than an enumerable allele.
+
+The 72 disjunctions are the half that is **already expressible** — rows are a disjunction — which is
+where this entry drew the line and it holds. **This is evidence for the corpus, not a reason to
+unpark**: one source, one observed trans instance, one negation. RM174 carries the measurement; the
+decision stays here.
+
+**Second corpus entry, 2026-09-13 — and it is a routine clinical guideline rather than an oncology
+molecular profile.** From [RM188](ROADMAP_0_9.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)'s
+ClawBio half ([`probes/CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md) § *pharmgx-reporter*). Their
+pharmacogenomic report renders exactly one AVOID across 59 drugs, and it is **warfarin**, keyed
+`"genes": ["CYP2C9", "VKORC1"]`. Our own `reference_examples/cyp2c9_warfarin_grch37/` carries the
+CYP2C9 diplotype phenotypes in `diplotypes.csv` and the VKORC1 per-genotype claims in
+`pharm_variants.csv`, **side by side, with nothing keying the pair** — which is this entry's surviving
+"pairing across *subjects*" clause with a shipped module standing on it.
+
+Three things make it sharper than the CIViC entry rather than a repeat of it:
+
+* **It is the *drafter's* recorded gap, not an inference.** `pgx_draft`'s own comment says it:
+  *"the guideline exists, it is a dosing algorithm over several genes rather than a per-phenotype
+  recommendation, so nothing lands here and the author was told CPIC has nothing."* What shipped for it
+  was a better **warning**, deliberately, not a table.
+* **The competitor has no declarative form either.** ClawBio's answer is `"special": "warfarin"` — a
+  hardcoded branch calling `get_warfarin_rec(profiles)`, for one drug out of 59. That is evidence the
+  shape is genuinely hard, not evidence that everyone else solved it.
+* **It is CPIC, so the population is countable.** The measurement this entry still wants, and the one
+  cheap enough to do before any design: **how many CPIC guidelines are keyed on a gene *pair* rather
+  than a single gene phenotype**, counted off the CPIC snapshot already provisioned. If the answer is
+  three, this parks again with a sharper reason; if it is thirty, the economy argument changes.
+
+**Third corpus entry, 2026-09-13 — and this one is a general-purpose grammar rather than a domain's
+by-product.** From the same item's [round-2 roster](ROADMAP_0_9.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics):
+SNPedia publishes **genosets**, boolean expressions over genotypes, and
+[`zhaofengli/snappy`](https://github.com/zhaofengli/snappy) (`2d5255f`) has them extracted from a
+MediaWiki dump into `data/genosets.json` beside 106,603 SNP entries. The grammar is
+`and(rs4988235(C;C), rs182549(C;C))`, it nests, and a genoset may reference another genoset — the
+haplogroup trees are built that way.
+
+What makes it the sharpest of the three is that CIViC's profiles and ClawBio's warfarin branch each
+fell out of one domain solving one problem, where **this grammar was written for consumer genetics in
+general** and has been in use for over a decade. It is also the first entry where the *condition* side
+and the *conclusion* side are both published, at scale, by one source.
+
+**This entry and [RM16](ROADMAP_0_9.md#rm16--authored-prs-weights-a-scoring-file-not-a-manifest) are one axis at two
+operators** — boolean here, weighted-sum there, with the enumerative combiner already shipped in
+`diplotypes.csv` and covering the small-arity cases both would serve. RM16 carries the table setting
+that out; read it before opening this one, and take the *where does the combining rule live* decision
+once rather than twice. They stay separate items, because a categorical conclusion and a number
+needing a reference distribution are different outputs.
+
+**One argument from it does reach beyond the count, and it is [RM16](ROADMAP_0_9.md#rm16--authored-prs-weights-a-scoring-file-not-a-manifest)'s
+rather than this entry's** (maintainer, 2026-09-13): genosets are a *familiar shape*, in use for over a
+decade, and an author's ability to bring one across is an adoption signal in its own right. It bears
+on this entry only as a reason the count below is worth running rather than as a reason to unpark —
+this item is parked on a corpus, and a corpus is measured, not argued.
+
+**It changes no decision yet, and the reason is the same one that has held twice.** The measurement
+this entry wants from it is cheap and has not been done: **how many genosets are there, what is the
+operator distribution, and how deep does the nesting go** — counted off `genosets.json`, which is a
+committed file needing no network. A corpus of forty flat conjunctions argues differently from four
+thousand nested ones. The licence is **not** the obstacle a first reading here made it: CC BY-NC-SA
+3.0 US is established and adoptable as an unsellable share-alike module
+([USE_CASES § 2e](USE_CASES.md#2e-republishing-a-licence-encumbered-third-party-corpus-as-modules-2026-09-13)).
+What still has to be beaten is `reference_examples/apoe_epsilon`, which answers the two-variant case
+with no predicate at all.
+
+
+**Fourth corpus entry, 2026-09-13 — and it is the first where enumeration *succeeds* and the schema
+around it complains anyway.** Raised by the maintainer from their own genotype: **Kulminski's
+subdivision of APOE ε4 by linked TOMM40/APOC1 markers**, where a carrier is not simply *ε4* but
+`1-0-0`, `1-1-0`, `1-0-1`, `1-1-1` — a binary vector over the ε4 call plus the linked sites, each
+pattern carrying a different reported risk.
+
+**This one is expressible today, and that is the finding rather than a reason to close.** Three
+markers is eight patterns and at most thirty-six pairs, which is `haplotypes.csv` (one row per pattern
+× defining marker) plus `diplotypes.csv` (pair → phenotype) — the shape
+`reference_examples/apoe_epsilon` already ships for ε2/ε3/ε4 across rs429358 and rs7412, with one more
+marker. The enumerative combiner is not beaten here, so **this entry argues for no predicate at all**.
+
+**What it does show is the shape being outgrown at a different seam — the *subject*, not the
+combiner** (the maintainer's reading, and it is the right one). Expressing it fires two shipped
+warnings, and neither is a bug:
+
+- **`composite_gene_cell`.** The haplotype spans TOMM40, APOE and APOC1; `DiplotypeRow.gene` is
+  **required and single-valued** (`HaplotypeRow.gene` is optional, so only the diplotype half forces
+  the choice). Labelling the locus `TOMM40-APOE-APOC1` publishes a gene name no registry index will
+  match, beside its parts — which is exactly what the warning says. So the author picks between **one
+  findable symbol and an honest locus label**, and there is no third option. `apoe_epsilon` never met
+  this because ε alleles sit in one gene.
+- **`diplotype_phase_ambiguous`**, conditionally. `HaplotypeRow` *is* same-strand co-location, so this
+  translation is only honest if Kulminski's patterns are **phased haplotypes**. If they are unphased
+  multi-locus genotype vectors, writing them as haplotypes asserts *cis* the source never claimed —
+  RM174's trap exactly — and the pairs that collapse to one unphased genotype with different
+  conclusions are what this warning already catches, telling a consumer with unphased calls to
+  withhold.
+
+**So the honest verdict is: yes, with caveats, and the caveats are the entry.** The format holds the
+claim; what it cannot do is hold it *cleanly*. A use case that compiles only by choosing between
+findability and honesty, and only under a phase assumption, has grown past the gene-keyed subject the
+PGx tables were cut for — and that pressure lands on `DiplotypeRow`'s key rather than on any predicate
+language. **Read against the other three entries, this is the one that argues RM28 may be the wrong
+item for its own class of case**: CIViC's contribution was that enumeration *cannot* reach trans and
+open-world negation, ClawBio's was that nobody has a declarative form for a multi-gene dosing
+algorithm, SNPedia's was a general grammar at scale — and this one enumerates fine and still does not
+fit. A locus-keyed subject would settle it and a predicate would not.
+
+**The count this entry asked for, 2026-09-20 — and it is between the two numbers the question
+named.** Measured off the provisioned CPIC snapshot (`cpic_snapshot_b0ffd4c6f010`, built 2026-09-02)
+while answering S102, whose reporter had counted the same table from the other side: of **103 drugs**
+with a recommendation row, **18 are keyed only on a gene pair** and none is keyed both ways — every
+drug is single-gene or pair-keyed, never a mix — and `gene_count` never exceeds 2. By rows it is
+**2,656 of 3,411** pair-keyed, which is what made the drafter's *"the snapshot has no row for it"*
+false for a drug with 35 of them. The 18 drugs fall into **six pairs**:
+
+| pair | drugs |
+|---|---|
+| CACNA1S + RYR1 | desflurane, enflurane, halothane, isoflurane, methoxyflurane, sevoflurane, succinylcholine |
+| CYP2C19 + CYP2D6 | amitriptyline, clomipramine, doxepin, imipramine, trimipramine |
+| NUDT15 + TPMT | azathioprine, mercaptopurine, thioguanine |
+| ABCG2 + SLCO1B1 | rosuvastatin |
+| CYP2B6 + CYP2C19 | sertraline |
+| CYP2C9 + SLCO1B1 | fluvastatin |
+
+Warfarin is **not** among them: it has no recommendation row at any arity, because its guideline is a
+dosing algorithm rather than a recommendation table, so the ClawBio entry's case is the one CPIC drug
+this count cannot reach. Read against the question — *three parks again, thirty changes the economy
+argument* — eighteen drugs across six pairs is the middle: more than a warfarin-shaped exception,
+less than a pattern the enumerative combiner is failing at scale, and every one of them is arity 2.
+The drafter now names the partner gene instead of claiming absence (RM249), which is a message and
+not a table; whether six pairs earn a pair-keyed subject stays the maintainer's decision, and this
+entry stays parked on it. The reporter's reading — ClawBio keys each of these on a single gene and
+never mentions the partner, *a lossy answer, not a model to copy* — is the right one and is recorded
+beside the survey's plan item 1, which this measurement answers.
+
+**Unmeasured, and flagged as such.** This is a *reported* case: the paper has not been read here, so
+the marker count, the exact patterns, and above all **whether Kulminski phases them** are unverified.
+That last one decides which of the two warnings above applies, and it is the first thing to establish
+if anyone builds it. Separately, `just-module-creator`'s `assets/longevity_2026` was checked and does
+**not** attempt this — it takes the opposite reading, collapsing the cluster to rs429358 as the shared
+causal signal on colocalization evidence, with TOMM40/APOC1 named only in prose and no
+`haplotypes.csv` at all.
+
+Still **parked**, on the same rule: the corpus grows, the decision does not move until the count is in.
+
+**2026-09-20 — the count is in, and it does not support the parking reason.** Measured directly off
+the provisioned CPIC snapshot (`data/interim/cpic/`, `dataset: cpic_snapshot_3d2123598711`, built
+2026-08-07, `recommendations.parquet` 3,411 rows), prompted by a peer session drafting ClawBio's PGx
+corpus that hit it from the other side:
+
+* **2,656 of 3,411 recommendation rows (78%) are `gene_count = 2`.** Multi-gene is not the exception
+  in CPIC's recommendation table; single-gene is.
+* **36 of 121 `(gene, drug)` pairs have no single-gene row at all.** For those the drafter writes
+  nothing, because `CpicSnapshot.recommendations` filters `gene_count = 1` (deliberately — a row about
+  CYP2C19 *and* CYP2D6 is not a statement about CYP2C19 alone) and the live client applies the same
+  `len(phenotypes) != 1` filter.
+* They are **recognisable clinical pairs, not edge cases**: TPMT+NUDT15 over the three thiopurines
+  (azathioprine, mercaptopurine, thioguanine — 35 rows each); CYP2D6+CYP2C19 over five tricyclics
+  (amitriptyline, clomipramine, doxepin, imipramine, trimipramine — 206 rows each); SLCO1B1 with
+  CYP2C9 and ABCG2 over fluvastatin and rosuvastatin; CYP2B6+CYP2C19 over sertraline.
+* **RYR1+CACNA1S is the one that breaks the fallback argument.** Seven drugs — the six volatile
+  anaesthetics plus succinylcholine — and **neither gene appears in a single-gene recommendation
+  anywhere in the table**. Elsewhere a module can at least carry the single-gene rule and lose the
+  refinement; for malignant-hyperthermia susceptibility there is no single-gene rule to fall back on,
+  so a module carries *nothing* for those seven drugs.
+
+**Independently reproduced on a second snapshot, and the two units reconcile exactly.** The peer
+session measured `cpic_snapshot_b0ffd4c6f010` and counted **drugs** where the above counts
+**`(gene, drug)` pairs**: 103 drugs carry a recommendation, 85 single-gene, **18 pair-keyed across
+six pairs** — NUDT15+TPMT (3 drugs), CYP2C19+CYP2D6 (5), CACNA1S+RYR1 (7), ABCG2+SLCO1B1
+(rosuvastatin), CYP2B6+CYP2C19 (sertraline), CYP2C9+SLCO1B1 (fluvastatin). Those 18 drugs times two
+genes each is **36 `(gene, drug)` pairs**, which is the number measured here from a different
+snapshot built six weeks apart. Two denominators, stated apart deliberately
+(`@two-surfaces-two-denominators`): *18 of 103 drugs* and *36 of 121 pairs* are the same fact at two
+grains, and the drug grain is the more legible one to quote. **Warfarin is in neither**: CPIC's
+warfarin guideline is a dosing algorithm and carries no recommendation row at all, so the shape this
+entry was reopened on is not even the marginal case — it is off the end of the table.
+
+**What this changes and what it does not.** It does not by itself unpark the entry: the economy and
+open-world-negation objections in *What remains* are untouched, and a table keyed on two subjects is
+still a design nobody has drawn. What it removes is the *premise* the parking rested on — that
+pairing across subjects is a rare shape worth deferring until a corpus appears. Three sources now
+carry it (CIViC 209 profiles, CPIC 36 pairs / 78% of rows, ClawBio's one hardcoded branch), and in
+CPIC's case the pairs are the routine half of a guideline set this project already ingests and
+drafts from.
+
+**The smaller finding beside it is filed separately as S102** (peer report, 2026-09-20): the drafter
+does not just skip these, it **misreports** them — the snapshot path's `knows_drug` returns `None`
+unconditionally, so the `known is None` arm always fires and tells the author the snapshot *has no
+row*, when it has 35 or 206 of them and filtered every one. That is `@answered-is-not-absent`
+(answered-and-rejected is a fourth state; the row stays and the *reason* moves), and the arm's
+remedy — consult the live API — reaches the identical filter. The fourth arm, the one whose text
+names warfarin, is unreachable whenever a snapshot is present.
+
+**A blood-group instance, S119 (2026-09-27): Lewis is keyed on two genes' *phenotypes*.** The
+Lewis phenotype (Le(a−b+), Le(a+b−), Le(a−b−)) is a function of the FUT3 phenotype and the FUT2
+secretor phenotype, not of either gene's diplotype. `just-dna-lite` shipped FUT2 secretor status as
+its own module and left Lewis out for exactly this reason. It is the same subject-pairing shape as
+CPIC's six gene pairs, outside pharmacogenomics, and like them it enumerates (a small table over two
+per-gene phenotype vocabularies), so it argues for a two-subject key and not for a predicate.
+Unbuilt, so it is corpus evidence and not a measured case.
+
+**A longevity instance, 2026-11-03: KL-VS buffering in APOE ε4 carriers.** longevitymap v2's plan
+(§4.2, protection type `BUFFERING`) holds that the KL-VS heterozygote matters in ε4 carriers. KL is on
+chromosome 13 and APOE on 19, so no haplotype holds the pair, and both halves are already enumerable on
+their own (KL-VS as two-SNP haplotype rows, APOE as `apoe_epsilon`). Like CPIC's gene pairs and Lewis, it
+argues for a **two-subject key** over two enumerated per-gene states (3 × 6 rows), not for a predicate.
+The plan's interim is `flags: conditional` plus prose, and that tag does nothing ([RM321](ROADMAP.md#rm321--variantrowflags-calls-its-reserved-tags-the-tags-the-tooling-acts-on-and-no-tier-acts-on-any-of-them)). Unbuilt; corpus evidence.
+
+### What dissolved, so it is not re-proposed
+
+- **No operator is missing.** Rows are a disjunction and columns are a conjunction, so the existing
+  tables already span any finite boolean function over an enumerable set of genotypes: `OR` is two rows,
+  `XOR` and bounded `NOT` are enumeration, and `haplotypes.csv` is same-strand `AND`.
+- **APOE** — whose ε4 condition (`rs429358==C AND rs7412==C`) is the Constitution's own example of a
+  predicate — was built with 0.4 bricks and **no predicate at all**
+  (`reference_examples/apoe_epsilon/`). `HaplotypeRow` is a junction table, so same-strand co-location
+  is what it already expresses.
+- **The cis/trans motivation closed as a check, not a table.** `reference_examples/hfe_compound_het/`
+  showed that a diplotype is already a statement about two homologs, so cis and trans are two rows —
+  the relational notion the grammar was going to add is what a diplotype pair *is*. What building it
+  surfaced instead was that the two rows are **indistinguishable without phase**, which shipped as
+  `_cross_validate_phase_ambiguity` (a warning, never a block). A `requires_phase` column was rejected:
+  it would make an author restate what the data determines and go stale the moment a haplotype is
+  edited. **Confirmed from the caller side, S116 (2026-09-26):** a shipped `just-dna-lite` caller ran
+  against this example and the enumeration held — because the module defines the *cis* allele
+  (`C282Y-H63D`) as its own haplotype with its own diplotype row, the caller could *name* the
+  ambiguity (`ambiguous`, both candidates) rather than guessing or reporting `no_match`. So this is a
+  case where enumeration succeeds and no predicate is wanted, which is where the entry drew its line.
+  The one thing the caller had to re-derive — *which* diplotype pairs are the phase-confusable set — is
+  not a predicate the author states but a value the compiler already computes and discards, filed as
+  [RM266](ROADMAP_0_9.md#rm266--the-phase-confusable-diplotype-pair-set-is-computed-at-compile-and-dropped-it-reaches-the-artifact-only-as-a-capped-warning-string), not here.
+
+### What remains
+
+- **Pairing across *subjects*** — no table keys on more than one.
+- **Economy and intent** — "any two pathogenic variants in trans" over 300 of them is ~45,000 pairs:
+  expressible, unwritable, unreadable.
+- **Open-world negation** — "no pathogenic variant in this gene" quantifies over a set the module does
+  not close, and absence is only assertable where the region was callable (`requires_callable`). No
+  operator fixes this, and a negation feature ignoring it would **manufacture reassurance**, the worst
+  failure mode this format has.
+
+It also blocks the "shy module" signal.
+
+### Why it stays parked
+
+It waits on a corpus to generalize from — roughly 70% built; nutrigenomics and supplements do not exist
+yet — because fixing a shape against four table kinds and then meeting the fifth is how a one-way door
+gets spent badly (P3/P5).
+
+The design thread, the starter shape and what is deliberately left open are in
+[PROPOSAL_0_5.md § G3](proposals/PROPOSAL_0_5.md): a new **optional** table, a predicate that **never blocks**, a
+grammar kept to the smallest thing covering the motivating case, and a **three-valued** algebra
+(true/false/**unknown**, Kleene operators) — with `unknown` withheld, never reported and never negated.
+Kleene matters concretely: a conclusion gated on "ε4 present AND QUAL ≥ 60" is decidably **false** at
+ref/ref whatever the quality was, so a blanket withhold-on-any-unknown would be strictly worse than the
+tables it replaces.
+
+### The cofactor half — CLOSED in the 0.6 review, do not re-open as a general mechanism
+
+The original item proposed **injected cofactors**: values the consumer supplies at query time that a
+module must never hold, in three classes. Two of the three were resolved in 0.5 by making them **plain
+columns** — clinical context became `DiplotypeRow.clinical_context`, call quality became
+`quality_from` / `min_quality` (RM29) — and neither needed a general mechanism.
+
+**Decided 2026-08-13: the general "injected cofactor" mechanism is dropped as never-earned.** Each
+remaining class gets the same treatment — a plain column, on demand, one at a time. Two classes wait:
+
+- **Ancestry** — a panel-scale inference, not derivable from a curated module's own gnomAD frequencies,
+  since real models do not rely on single SNPs.
+- **Family structure** — **this is RM10**, folded in here on 2026-08-13. A declarative trio / de-novo /
+  Mendelian-consistency expectation is only meaningful once the consumer supplies family structure at
+  query time, which makes it a cofactor class rather than its own item. Designing it separately would
+  fix a shape for one class before the axis exists. It was on-demand-only and shapeless for its whole
+  life; it stays that way, here.
+
+Neither is built until a real module needs it.

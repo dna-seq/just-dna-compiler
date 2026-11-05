@@ -22,7 +22,7 @@ twelve have landed now, so every entry is in [ROADMAP_HISTORY.md](../ROADMAP_HIS
 the file to read for what shipped; the last four moved there on 2026-08-31, having sat in the
 forward-only files with a `SHIPPED` banner. `ROADMAP_0_7.md` closed the same day into
 [history/](../history/ROADMAP_0_7.md), and what was still waiting became
-[ROADMAP_0_8.md](../ROADMAP_0_8.md). This document stays here beside the other five concluded threads:
+[ROADMAP_0_8.md](../history/ROADMAP_0_8.md). This document stays here beside the other five concluded threads:
 it is the decision record, kept for the reasoning and the refusals, and is not rewritten to match the
 code — where the two disagree the code won.
 
@@ -1518,7 +1518,7 @@ deferral is a reason rather than an omission.
 | [RM65](../ROADMAP_0_9.md#rm65-implementation-half--repeat-and-copy-number-tables-are-positional) — coordinates on the positional repeat/CNV tables | **A real repeat-caller or CNV VCF.** Same gate as RM56. Would take RM43's coordinate lane from three tables to five. |
 | [RM66](../ROADMAP_0_9.md#rm66--one-repeat-locus-several-motifs) — several motifs at one repeat locus | **Same gate as RM65**, and it is a keying change on a shipped table, the expensive kind. |
 | [RM23](../ROADMAP_0_9.md#rm23--computational-predictor-scores-as-a-table) — predictor scores as a table | **Two blockers unmoved**: per-transcript grain, and the acquisition measurement. Licensing is not the blocker. |
-| [RM28](../ROADMAP_0_8.md#rm28--meta-conclusions-the-predicate-half) — meta-conclusions, predicate half | **A corpus.** The injected-cofactor half dissolved on 2026-08-13; what is left is small and genuinely unsolved. |
+| [RM28](../ROADMAP_0_9.md#rm28--meta-conclusions-the-predicate-half) — meta-conclusions, predicate half | **A corpus.** The injected-cofactor half dissolved on 2026-08-13; what is left is small and genuinely unsolved. |
 | [RM67](../ROADMAP_0_9.md#rm67--polyploid-and-partially-phased-genotypes) — polyploid / partially-phased genotypes | **Not work** — a documented divergence, numbered so it is findable and not re-probed. |
 
 **RM126 is the counter-example that makes the table honest**: it is in this document rather than this

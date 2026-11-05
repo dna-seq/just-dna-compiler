@@ -7,7 +7,7 @@ addendum was already in place; each record is in [ROADMAP_HISTORY](../ROADMAP_HI
 as dated addenda here (RM241) and in the items' history entries (RM241, RM258).
 
 Drafted and decided with the maintainer on 2026-09-29, in one interview over the open items on `main`
-and in [ROADMAP_0_8.md](../ROADMAP_0_8.md).
+and in [ROADMAP_0_8.md](../history/ROADMAP_0_8.md).
 
 **What PT1 is.** The first build round on the `0.8` branch, limited to defects and gaps whose repair
 the entries had already mostly worked out. Each item below states its decision, the build, the test

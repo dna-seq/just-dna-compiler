@@ -1502,7 +1502,7 @@ ledger, [DOGFOOD_0_6_FINDINGS.md](../probes/DOGFOOD_0_6_FINDINGS.md), whose own 
 round. This is that round: twelve parallel units in isolated worktrees, one finding or group each, every
 one exercised against a real module rather than only the suite. Ten `fix` findings landed, five
 `surface` ones became **RM68–RM72** in `ROADMAP_0_7.md` ([now closed](../history/ROADMAP_0_7.md); what is
-still waiting moved to [ROADMAP_0_8.md](../ROADMAP_0_8.md)), and the work turned up **nine
+still waiting moved to [ROADMAP_0_8.md](ROADMAP_0_8.md)), and the work turned up **nine
 new findings** which are filed in the same ledger as Round 2 rather than in a new file.
 
 **Nothing in the corpus moved except where a new column made it legal.** All sixteen reference examples
