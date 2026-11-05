@@ -58,8 +58,9 @@ patches right after real use started, so the pm reads an audit sceptically: the 
   in its gate-audit table. RM388 and RM390 parked on this rule (2026-11-05).
 - **Owed: re-size ROADMAP_0_9.md under this rule** (about an hour). Most of its items went there under the old automatic-next-minor
   policy; each either stays (a zone the maintainer named, or a real run hits it) or parks in ROADMAP.md with a gate. Decided by the
-  maintainer's "park/unpark as you see fit", so no desk question. **Waits until** the account's 7-day window resets (2026-11-05
-  23:00 CET); it stood at 91% at 05:02Z, and nothing waits on this sweep before the 0.8 cut.
+  maintainer's "park/unpark as you see fit", so no desk question. **Waits until** the 0.8 cut or the 7-day window's next reset
+  (Fri 2026-11-06 03:00 CET), whichever comes first. The window reset early on 2026-11-05 but still stood at 83%, and the lead's
+  0.8 blockers (RM387, RM389) draw on the same account. Nothing waits on this sweep before the cut.
 
 ## Open questions and owed work
 
