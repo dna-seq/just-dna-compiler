@@ -54,3 +54,31 @@ Prose is left byte-for-byte when it is answered and when it is moved, so it stay
 observed rather than of what was decided.
 
 ---
+
+## S131 — the PGS Catalog client's pace has no public name, so a host sharing it reads a private one
+
+*From just-dna-registry's liaison seat, 2026-11-05, against the `0.8` branch at `a4a401e7`, relayed from the
+registry's lead while it pre-builds its 0.8 adoption.*
+
+**What we ran.** The registry's `/check` runs `check_identifiers`, whose PGS leg (RM156) takes
+`pgs_client=PgsCatalogClient(...)`. A server answers many checks, so one fresh client per check with its own
+`PacingGate` would pace each check alone and the process at N times the Catalog's rate. `PgsCatalogClient`
+takes `gate=`, and its docstring calls the gate and the score cache per-run state, so we hold one `PacingGate`
+per process and build a fresh client per check around it. That is the shape your API invites, and we kept it.
+
+**What happened.** Building that gate needs the Catalog's interval, and it has no public name:
+`pgs._REQUEST_INTERVAL = 0.2` (`pgs.py:63`), private, and the client keeps its gate as `self._gate`
+(`pgs.py:368`), private too. Most paced clients here expose theirs: `currency.py` has a public `gate` field
+and `CLINVAR_MIN_INTERVAL`, `ensembl.py`, `civic_api.py` and `atlas_client.py` take and keep `gate`. Your own
+history notes the split (`client.gate.spent`, "or `_gate` on the clients that keep it private — `pgs`,
+`litvar`, `civic_api`").
+
+**What we did meanwhile.** Our lead reads `pgs._REQUEST_INTERVAL` in one place (registry 0.28 branch,
+`ffe263d`), with a comment naming it private. A rename on a patch would break our `/check` at its first PGS
+call, not at import.
+
+**Candidate fixes.** (a) A public `PGS_REQUEST_INTERVAL` (or the same for each client that keeps its interval
+private), which is all a host needs to build the shared gate. (b) A public `gate` attribute on
+`PgsCatalogClient`, as the dataclass clients have, which also lets a host read `gate.spent`. (a) is the
+smaller change and answers our case; (b) answers a meter as well. Not asked: a PGS field in
+`LookupClients`, since its cache is per-run and the bundle is shared.
