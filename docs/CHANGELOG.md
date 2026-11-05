@@ -41,6 +41,18 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-05 — INTEGRATION_0_8 is finished for downstream to integrate against the branch (0.8, uncut)
+
+- **[INTEGRATION_0_8.md](INTEGRATION_0_8.md) now covers every § 1 item from § 2 and § 3**: an upgrade order
+  (format, compiler, enricher pins; `uv lock`; the `ensembl_variations` cache moving to the split release;
+  recompile; `enrich --rederive` after the snapshot switch), § 2 steps 12–21 for RM267 through RM379, and
+  per-consumer lists for just-dna-registry (checked against its M1–M11 map), just-dna-lite,
+  just-dna-pipelines, just-dna-agents and the new longevity-loci. The status line is the honest pre-cut one
+  (`0.8` at `1007a26d`, not on PyPI, git dependency for testing only), and the file records that consumer
+  pre-integration (RELEASE_CYCLE § Minors step 6) was skipped for 0.8 by the maintainer's call. Two wrong
+  pointers fixed (RM368 is § 1.27, RM267's `undecided` § 1.18), and RM_TOC's RM364 row now points at § 1.28.
+  Docs only.
+
 ## 2026-11-05 — RM379: every authority the concordance record names has its licence row (0.8, uncut)
 
 - **`enrich` records ClinVar's and PubMind's terms at the new `clin_sig_authority_call` layer** for each
