@@ -872,7 +872,10 @@ def _write_resolution_csv(
             continue
         resolution_key = _resolution_key(row, chrom, start, alts_cell, genome_build)
         # One authored row may appear several times in weights (one per genotype); the resolved
-        # fact is the same each time, so emit it once.
+        # fact is the same each time, so emit it once. Narrower than `parquets.CELL_FACT_FIELDS` on
+        # purpose, and not RM389's defect: `vrs_id`/`vrs_spec` were looked up by exactly this key,
+        # coordinate and alleles (`VrsIds.lookup`), so two rows equal here hold the same pair, and
+        # `locus_index` is left out so one locus is emitted once (`_reverse_locus_index`).
         fact = (resolution_key, row.get("rsid"), chrom, start, row.get("ref"), alts_cell)
         if fact in seen_rows:
             continue

@@ -35,6 +35,64 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM389 — a "reproduced, so withhold" comparison over a hand-kept subset of the columns its own registry says are rebuilt
+
+✅ **SHIPPED 2026-11-05 on `0.8`, uncut — a minor (the 0.8 audit, round 2)**, class 4. Owner compiler,
+severity medium (a P7 loss, introduced in 0.8 by RM364 and widened by RM380).
+
+**Residuals** none
+
+**The class.** A predicate that decides a stored value is "reproduced" by something else, and withholds
+it, while comparing a hand-kept subset of the columns a registry beside it names as reproduced. A column
+the registry lists and the comparison leaves out is neither compared nor kept, so a value only that
+column holds is withheld and lost.
+
+**The instance.** `parquets.withhold_reproduced_loci` nulls a key's `resolution_loci` wherever the row's
+own cells rebuild the table's rows exactly, and `reverse` then writes the table back from those cells.
+`_CELL_REBUILT` names the carried columns the cell rebuild writes, `vrs_id`/`vrs_spec` among them, and
+`_locus_holds_more_than_cells` keeps a locus holding any other carried column (RM380). The comparison
+over the rebuilt columns was `_locus_fact`, a hand-kept tuple of six (`rsid`, `chrom`, `start`, `ref`,
+`alts`, `locus_index`). A locus stating `vrs_spec=2.0` with no id, legal because `ResolutionRow` does
+not pair the two, matched on its coordinate and was withheld, and reverse wrote `vrs_spec` empty, since
+the cell lookup (`VrsIds`) copies a version only beside an id. The same held for an id on a table row
+with no `ref`, which the lookup skips. Re-verified on `5b1b73b8`: with provenance stripped so the
+withhold is reachable, every one of the 16 reference examples carrying a `resolution.csv` lost the
+`vrs_spec` of every withheld key (2 to 328 keys each), and `hfe_hemochromatosis` with `ref` blanked lost
+the id of all 10 keys it records one for. An enriched table carries provenance, so its loci were kept
+anyway; the loss needed a hand-filled, reversed-from-old or deprecated-path table.
+
+**Every instance hunted** (compiler, enricher, format):
+
+- `compiler/.../parquets.py:481` `_locus_fact(rsid, chrom, start, ref, alts, locus_index)` →
+  `cell_fact(cells)` (`:497`) over `CELL_FACT_FIELDS` (`:446`), which is `_CELL_REBUILT` in the carried
+  order. The comparison (`:544`) and both callers read through it: the weights builder from the record it
+  just built (`:236`, so the cell `vrs_id` list and `vrs_spec` are the parquet's), the positional builder
+  by `row.get` over the same columns with `locus_index` 0 (`:566`), which is how reverse's
+  `_resolution_record` reads them. `cell_fact` indexes rather than `.get`s, so a caller missing a
+  rebuilt column fails instead of comparing it as empty.
+- Checked, not an instance: `reverse.py:879` dedupes the weights cell rebuild on
+  `(key, rsid, chrom, start, ref, alts)`. `vrs_id`/`vrs_spec` were looked up by exactly that key,
+  coordinate and allele set, so two rows equal there hold the same pair, and `locus_index` is left out so
+  one locus is emitted once (`_reverse_locus_index`). A comment there now says so.
+- Checked, not an instance: `studies.parquet.proxy_loci` (`parquets.py` `_build_studies`) is never
+  withheld; the reverse positional pass dedupes by key alone, the documented one-row-per-key fallback
+  for a pre-0.6 parquet; `reverse._carries_a_filled_cell` compares `_FILLABLE_IDENTITY`, but is reached
+  only when no table was read, and a parquet holds `vrs_id` only when one was. The enricher and format
+  tiers carry no locus struct and no reproduction withhold.
+
+**The mechanism.** The compared columns are derived from the registry, `CELL_FACT_FIELDS`, and with
+`_LOCUS_ONLY` they partition every carried column, so each one is either compared or keeps the locus
+whenever it holds a value.
+
+**The guard** (`compiler/tests/test_reproduced_locus_compares_every_rebuilt_column.py`). The equality
+`set(CELL_FACT_FIELDS) == _CELL_REBUILT`, no exclusions, each a carried column. The walk: on a locus the
+cells reproduce, perturb each carried column alone, and the set that keeps the locus must equal
+`RESOLUTION_LOCUS_FIELDS`. The round trip: every reference example with a `resolution.csv`, provenance
+stripped and `vrs_spec=2.0` with no id on every positioned row, reverses to a table still saying `2.0`,
+and lap 2's `artifact.digest`, `content_signature` and `resolution_signature` equal lap 1's; plus the
+id-with-no-`ref` case on `hfe_hemochromatosis`. Red on `5b1b73b8` (all 17 round trips); mutating
+`CELL_FACT_FIELDS` to drop `vrs_spec` turns 18 of the 20 red.
+
 ## RM380 — a hand-kept struct mirrored `ResolutionRow` with nothing asserting the two agree, so reverse dropped every 0.8 provenance column
 
 ✅ **SHIPPED 2026-11-05 on `0.8`, uncut — a minor (found building RM375).** Owner compiler, severity
