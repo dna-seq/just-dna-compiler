@@ -4583,7 +4583,7 @@ decided with the maintainer before the cut because the window in which it moves 
   `content_identity_exclusions`, read only by `integrity.content_signature`, so `model_dump()` stays
   complete for every writer. The stamped-column idiom was probed first and emptied `reason` in
   `draft._authored_dump` and the enricher's overlay writers — a drafted row the model then refuses.
-- **Filed, not built**: [RM181](ROADMAP_0_9.md#rm181--a-byte-digest-that-moves-beside-intact-signatures-says-something-changed-and-not-what-and-provenance-has-no-shift-tracker) — a byte digest moving beside intact
+- **Filed, not built**: [RM181](ROADMAP.md#rm181--a-byte-digest-that-moves-beside-intact-signatures-says-something-changed-and-not-what-and-provenance-has-no-shift-tracker) — a byte digest moving beside intact
   signatures says *something* changed and not what, and provenance has no shift tracker of its own.
   The maintainer's note for the 0.8 digest-coverage review.
 

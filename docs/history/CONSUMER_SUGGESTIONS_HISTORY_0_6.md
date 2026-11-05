@@ -3819,7 +3819,7 @@ currently tell authors this is a known gap and cannot tell them who will close i
 
 **Status — accepted as the documentation defect you filed it as; both of your two closers shipped in
 the tree, and the third question they raise is filed as
-[RM122](../ROADMAP_0_9.md#rm122--the-measure-lookup-is-specified-and-nothing-anywhere-implements-it).**
+[RM122](../ROADMAP.md#rm122--the-measure-lookup-is-specified-and-nothing-anywhere-implements-it).**
 [SCHEMAS.md](../SCHEMAS.md) now carries the normative bin lookup beside the genotype one, opening with the
 plain sentence that the family is specified ahead of its consumers. You asked for either; you have both,
 because the paragraph without the admission would still have left an author guessing whether anything

@@ -222,7 +222,7 @@ findable from its gate)*:
   closes outright.** The `_resolve_positional_tables` skip on `genome_build != DEFAULT_GENOME_BUILD`
   *is* the RM15 gate; un-gating the fill makes the injected rows reach the positional parquets, which is
   the missing field Principle 7's own remedy clause points at. Nothing else reaches it.
-- **[RM68](ROADMAP_0_9.md#rm68--a-drafting-provider-on-a-non-grch38-module-refuse-or-strip-to-the-rsid)
+- **[RM68](ROADMAP.md#rm68--a-drafting-provider-on-a-non-grch38-module-refuse-or-strip-to-the-rsid)
   loses its premise but keeps its own exit.** Once a provider can write the coordinate under the build
   it came from there is nothing left to refuse or strip. It stays filed in 0.7 because its other exit —
   an author with a non-GRCh38 module saying which outcome they wanted — is reachable first and would

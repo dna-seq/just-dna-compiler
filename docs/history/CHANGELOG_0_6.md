@@ -164,7 +164,7 @@ than record a zero.*
   The six unscoped columns are checked claims — RM43 puts resolution on the positional kinds, RM47 makes
   a bin a second citation site — and scoping either from the checker-name strings would have suppressed
   a *true* advisory.
-- **[RM122](../ROADMAP_0_9.md#rm122--the-measure-lookup-is-specified-and-nothing-anywhere-implements-it)
+- **[RM122](../ROADMAP.md#rm122--the-measure-lookup-is-specified-and-nothing-anywhere-implements-it)
   — the binning family is now specified for consumers, and says so.** [SCHEMAS.md](../SCHEMAS.md) gains the
   normative **measure lookup** beside the genotype join contract: scope to the group, select the row whose
   inclusive range contains the value, greatest `measure_min` on a shared endpoint, compare in float32

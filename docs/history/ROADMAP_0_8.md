@@ -93,7 +93,7 @@ answers v2's §8 consumer requests 1 and 2 (category prose from the module, no "
 
 ## RM28 — Meta-conclusions: the combination half's decisions (shipped in 0.8)
 
-**Built on 0.8, 2026-11-04: the combination half** (the meta-table; its shipped record is [ROADMAP_HISTORY § RM28](../ROADMAP_HISTORY.md#rm28--the-combination-half-the-meta-table)). The study-orphan widening (B1 step 4) shipped on `0.8` the same day, in wave 3, recorded in the same history entry. The predicate half's remainder (open-world negation, OR, *trans* phase), which the maintainer put out of bounds on 2026-11-04 and 0.8 did not build, moved at the 0.8.0 cut with its corpus to [ROADMAP_0_9.md § RM28](../ROADMAP_0_9.md#rm28--meta-conclusions-the-predicate-half), where it stays parked. What follows is the record of the decisions the combination half was built to.
+**Built on 0.8, 2026-11-04: the combination half** (the meta-table; its shipped record is [ROADMAP_HISTORY § RM28](../ROADMAP_HISTORY.md#rm28--the-combination-half-the-meta-table)). The study-orphan widening (B1 step 4) shipped on `0.8` the same day, in wave 3, recorded in the same history entry. The predicate half's remainder (open-world negation, OR, *trans* phase), which the maintainer put out of bounds on 2026-11-04 and 0.8 did not build, moved at the 0.8.0 cut with its corpus to [ROADMAP_0_9.md § RM28](../ROADMAP.md#rm28--meta-conclusions-the-predicate-half), where it stays parked. What follows is the record of the decisions the combination half was built to.
 
 **The name and grammar, accepted 2026-11-04 by the maintainer, as written in `proposals/PROPOSAL_0_8_PT2.md`
 §3 items 1–4.**

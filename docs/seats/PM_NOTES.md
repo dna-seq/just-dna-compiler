@@ -59,11 +59,18 @@ patches right after real use started, so the pm reads an audit sceptically: the 
 - **Audit round 3 and the docs pass sized, 2026-11-05.** Four block (all on the rederive migration path), six go in as the docs pass,
   eleven park without a number in ROADMAP.md's "Audit findings parked without a number" (an `RMn` only on unparking, to keep the
   entity count down). The containment breach (two outside runs left their copy) is already the kit's #278.
-- **Owed: re-size ROADMAP_0_9.md under this rule** (about an hour). Most of its items went there under the old automatic-next-minor
-  policy; each either stays (a zone the maintainer named, or a real run hits it) or parks in ROADMAP.md with a gate. Decided by the
-  maintainer's "park/unpark as you see fit", so no desk question. **Waits until** the 0.8 cut or the 7-day window's next reset
-  (Fri 2026-11-06 03:00 CET), whichever comes first. The window reset early on 2026-11-05 but still stood at 83%, and the lead's
-  0.8 blockers (RM387, RM389) draw on the same account. Nothing waits on this sweep before the cut.
+- **ROADMAP_0_9.md re-sized, 2026-11-05, after the 0.8.0 cut: done.**
+  - **Parked into ROADMAP.md Active items (22):** the old default had moved them to 0.9. Each now has a "**Unparks when**" line, its
+    status token reads `a minor, parked`, and it has a gate-audit row; the 15 new rows were all judged Sound.
+  - **Stays in 0.9 (15):** what the maintainer placed there by name (methylation RM317–RM319, RM350, RM385, RM302); the PacBio zone
+    (RM56, RM65 and RM66, which wait on RM319's repeat-caller output); longevitymap v2's leftovers (RM360, RM358, RM294, RM345, plus
+    RM286 as the same licence-shape design); and RM265, which a real run hits (S114: it warns on every compile of just-dna-lite's
+    three ClinVar panel modules).
+  - **Kept in 0.9 as notes, not work:** RM67, RM84's consumer half and RM149 (frozen).
+  - **The §4 counter lamp now counts parked items.** `grep -c 'Status** open — **a minor'` reads 25, past the 20 lamp, and
+    most of that is parked. The lamp asks nothing (RELEASE_CYCLE), so this is information for triage, not a change I make.
+- **Owed, a priming edit through change-priming:** `docs/seats/PM.md:14` (and `LEAD.md:17`) still name `docs/ROADMAP_0_8.md`, which
+  the cut moved to `docs/history/`. The lead flagged it in LEAD_NOTES at the cut. `unattended`.
 
 ## Open questions and owed work
 

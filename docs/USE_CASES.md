@@ -191,7 +191,7 @@ that lands on the *marketplace* rather than on the format, and one that shapes h
 rework it, and publish it as modules. The concrete instance is **SNPedia**: 106,603 SNP entries plus
 its genosets, reachable as a MediaWiki dump (the extraction is already done in
 [`zhaofengli/snappy`](https://github.com/zhaofengli/snappy) — see
-[ROADMAP_0_8 § RM188](ROADMAP_0_9.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)).
+[ROADMAP_0_8 § RM188](ROADMAP.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)).
 This is a different shape from 2a and 2b: those draft rows *from* a source into an author's own
 module, where this republishes somebody's whole corpus under terms that travel with it.
 

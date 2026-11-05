@@ -3463,7 +3463,7 @@ still sees the prose, as you expected: `overrides.parquet`, the raw-bytes hash o
 SCHEMAS rather than repaired, beside a second one you did not raise: `curator`/`method` on
 `variants.csv` are inside the signature and stay there, because moving them re-keys every published
 module. The maintainer's note on your closing paragraph became
-[RM181](ROADMAP_0_9.md#rm181--a-byte-digest-that-moves-beside-intact-signatures-says-something-changed-and-not-what-and-provenance-has-no-shift-tracker) — a byte digest moving beside intact signatures says *something*
+[RM181](ROADMAP.md#rm181--a-byte-digest-that-moves-beside-intact-signatures-says-something-changed-and-not-what-and-provenance-has-no-shift-tracker) — a byte digest moving beside intact signatures says *something*
 changed and not *what*, and provenance has no shift tracker of its own. **What to do now:** nothing.
 No published module carries an overlay, so no signature moved; once 0.7 is cut, an overlay whose
 reason you improve is a patch. If you compute the signature yourself rather than calling
@@ -5093,7 +5093,7 @@ why this note exists. Fixture: a trimmed copy of the real answer at
 
 ## S111 — idea: an enrichment that states a module's expected match rate on consumer genotyping chips
 
-**Status — taken as a design input, not filed as its own item: it is axis 1 of [RM188](ROADMAP_0_9.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics), deferred to 0.8, and your measurement is recorded there.**
+**Status — taken as a design input, not filed as its own item: it is axis 1 of [RM188](ROADMAP.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics), deferred to 0.8, and your measurement is recorded there.**
 The 0.8 competitor survey had already listed *which genotyping arrays can call this variant* as a gap
 with three independent sightings (dosedna, dna-engine, dna-annotator) and the note "we have nothing".
 Yours is the fourth, and the first to come with a source and numbers, so it went into that entry as a
@@ -5381,7 +5381,7 @@ put that distinction in the artifact. Filed as an observation, not a blocker —
 
 ## S116 — RM28: the HFE compound-het-vs-cis case is a meta-conclusion a consumer can name but not resolve
 
-**Status — note 1 recorded on [RM28](ROADMAP_0_9.md#rm28--meta-conclusions-the-predicate-half) (it confirms the boundary); note 2 filed as [RM266](ROADMAP_0_9.md#rm266--the-phase-confusable-diplotype-pair-set-is-computed-at-compile-and-dropped-it-reaches-the-artifact-only-as-a-capped-warning-string), open, a minor.** Two distinct findings, and they route apart.
+**Status — note 1 recorded on [RM28](ROADMAP.md#rm28--meta-conclusions-the-predicate-half) (it confirms the boundary); note 2 filed as [RM266](ROADMAP.md#rm266--the-phase-confusable-diplotype-pair-set-is-computed-at-compile-and-dropped-it-reaches-the-artifact-only-as-a-capped-warning-string), open, a minor.** Two distinct findings, and they route apart.
 
 Note 1 — keep the enumerative property — is exactly RM28's boundary, and your building it confirms it from the caller side. Because the module defines the *cis* allele (`C282Y-H63D`) as its own haplotype with its own diplotype row, the enumeration let your caller **name** the ambiguity rather than guess or report `no_match`. RM28 is parked precisely because enumeration reaches the small-arity cases without a predicate, and `hfe_compound_het` was already its "cis/trans closed as a check, not a table" entry; S116 is now recorded there as the shipped-caller confirmation that the boundary holds. Nothing to add to the format for note 1.
 
@@ -5548,7 +5548,7 @@ consumer cannot tell whether "`*1` = reference at every site" is the rule or a C
 
 **Status — note 1 accepted and filed for 1.0 as
 [RM269](ROADMAP_1_0.md#rm269--diplotyperowhaplotype_b-is-required-so-a-hemizygous-star-allele-call-has-no-row);
-note 2 recorded in [RM28's corpus](ROADMAP_0_9.md#rm28--meta-conclusions-the-predicate-half).** Nothing
+note 2 recorded in [RM28's corpus](ROADMAP.md#rm28--meta-conclusions-the-predicate-half).** Nothing
 shipped.
 
 **Note 1.** Confirmed: `haplotype_b` has been required since 0.4.0. Making it nullable is the right
@@ -5769,7 +5769,7 @@ detects a violation of it at resolve time, one records which authority was trust
 
 **Status — the diff is not a draft regression: the two builds read different snapshots, and the
 rebuild is the faithful one. Your 1A concern did find a real defect, in the check that should have
-caught it: filed as [RM297](ROADMAP_0_9.md#rm297--the-clinpgx-currency-check-compares-a-row-against-an-annotation-it-never-cited).** Your baseline (`prebuild_baseline/pharmgkb/manifest.json`, the one whose
+caught it: filed as [RM297](ROADMAP_HISTORY.md#rm297--the-clinpgx-currency-check-compares-a-row-against-an-annotation-it-never-cited).** Your baseline (`prebuild_baseline/pharmgkb/manifest.json`, the one whose
 `content_signature` is `sha256:53685843…`) records **`clinpgx_2025-07-05`**, not `2026-08-05`. So does
 the 0.5-era `v1_port_0_5/pharmgkb/sources.csv`. Only the rebuild's manifest names
 `clinpgx_2026-08-05`, and the two `sources.signature` values differ (`798f5dae…` against `03ca0771…`),
@@ -5803,7 +5803,7 @@ annotation instead of removing it. RM297 makes an absent `annotation_id` its own
 mistyped*. It is a patch that warns and never blocks, decided with the maintainer the same day. The
 check cannot know that a row cites ClinPGx at all, since a curator may author a row from an article
 with its own accession, so an absent id withholds rather than refuses. The per-row provenance that
-would let it block again is [RM298](ROADMAP_0_9.md#rm298--nothing-records-per-row-that-a-pharm_variantscsv-row-came-from-clinpgx),
+would let it block again is [RM298](ROADMAP.md#rm298--nothing-records-per-row-that-a-pharm_variantscsv-row-came-from-clinpgx),
 a minor. Until RM297 ships, treat any conflict on a row whose `annotation_id` your snapshot does not
 hold as a withdrawal, not a re-tier.
 <!-- triaged: RM297 filed · sha 72886a82671c -->

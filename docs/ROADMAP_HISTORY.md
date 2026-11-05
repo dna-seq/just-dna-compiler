@@ -3065,7 +3065,7 @@ things, and choosing is the first deliverable — **build the column**, or **add
 a `vocab.RESERVED_NAME_REASONS` entry** so an author hears what the name is held for instead of the
 stray-column message. The second is the honest outcome if the grain question below defers the build.
 
-**The blocker is grain, and it is [RM23](ROADMAP_0_9.md#rm23--computational-predictor-scores-as-a-table)'s blocker
+**The blocker is grain, and it is [RM23](ROADMAP.md#rm23--computational-predictor-scores-as-a-table)'s blocker
 restated.** A variant has one consequence *per transcript*; `VariantRow` is one row per
 `(variant_key, genotype)`. Three options:
 
@@ -4421,7 +4421,7 @@ They are never repeated on `variants.csv` or `diplotypes.csv`.
 
 One new table holds facts and combinations. Priced at about 20 (a new table at about 10, plus five fact columns
 and the finding's columns), against about 30 for a separate fact table or for facts repeated on the
-existing tables. The maintainer's standing rule from this decision is in [RM28](ROADMAP_0_9.md#rm28--meta-conclusions-the-predicate-half):
+existing tables. The maintainer's standing rule from this decision is in [RM28](ROADMAP.md#rm28--meta-conclusions-the-predicate-half):
 weight toward fewer entities.
 
 **Re-decided 2026-11-04 by the maintainer: no new fact table, and no subject kinds.** This supersedes the
@@ -4941,7 +4941,7 @@ merge key. Instances: schema `frequency.py:78`, `assertions.py:91`, `consequence
 
 ## RM241 — `weighting` does not survive `reverse`, so a reversed module has no scale to read
 
-**Severity** low · **Status** ✅ **SHIPPED 2026-09-30 on `0.8`, uncut — a minor**, taken into 0.8 on 2026-09-29 ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md), widened there to every authored field `reverse` drops, and decided) · **filed 2026-09-13 from [RM188](ROADMAP_0_9.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)'s
+**Severity** low · **Status** ✅ **SHIPPED 2026-09-30 on `0.8`, uncut — a minor**, taken into 0.8 on 2026-09-29 ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md), widened there to every authored field `reverse` drops, and decided) · **filed 2026-09-13 from [RM188](ROADMAP.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)'s
 ClawBio half** · **Owner** format · **Motivating case**
 [`probes/CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md) § *The translation, run*, last paragraph
 
@@ -9792,7 +9792,7 @@ which moves. That is the README shape.
 `overrides.parquet` can find two modules with one signature whose overlay prose differs — the
 consumer's own argument against their fix, and the shape README already has; stated in SCHEMAS. And
 the maintainer's observation on the resulting picture — byte digest moved, every signature intact,
-*what* moved unstated — is [RM181](ROADMAP_0_9.md#rm181--a-byte-digest-that-moves-beside-intact-signatures-says-something-changed-and-not-what-and-provenance-has-no-shift-tracker).
+*what* moved unstated — is [RM181](ROADMAP.md#rm181--a-byte-digest-that-moves-beside-intact-signatures-says-something-changed-and-not-what-and-provenance-has-no-shift-tracker).
 
 ## RM187 — eleven bulk downloads carried one body in eleven copies, four of them leaking the transport
 
