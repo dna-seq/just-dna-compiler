@@ -12,6 +12,7 @@ The authoritative field-by-field reference is [SCHEMAS.md](SCHEMAS.md); this is 
 apoe_epsilon/
 ├── haplotypes.parquet     one parquet per table kind the module uses
 ├── diplotypes.parquet
+├── sources.parquet        the licence table (authored as licensing.csv)
 ├── manifest.json          identity, build, licence, stats, digests, warnings
 └── README.md              optional, authored
 ```
@@ -176,11 +177,93 @@ In a **compiled** module those rows are `sources.parquet` and `manifest.sources`
 named `licensing.csv` (older spelling `sources.csv`), but the artifact keeps the old name for the whole
 0.x line, because both are inside `artifact.digest` and renaming them waits for the major.
 
+## 5. What 0.8 added to the artifact
+
+Most additions are a new parquet, a new column or a new manifest key, which a 0.7 reader ignores. The
+exceptions are the old-reader breaks in [INTEGRATION_0_8.md](INTEGRATION_0_8.md) § 1 (a 0.7
+`just-dna-format` refuses a manifest carrying a warning code it does not know), so upgrade the format
+tier first. The additions a reporting consumer meets:
+
+- **`meta.parquet` and `meta_resolved.parquet`**, from an authored `meta.csv`. A `meta.parquet` row
+  whose `replaces` is true is a finding about a combination: when every member matches the sample, it
+  replaces the findings of the rows in its `matches`. `meta_resolved.parquet` gives each row's `tier`,
+  `age_of_action` and flags after precedence, looked up by `(table, key, sex, drug)`. The manifest's
+  `tier_scale` names the scale `tier` grades on.
+- **`model_organisms.parquet`**: model-organism lifespan findings about a gene. Annotation only, never
+  a weight.
+- **`studies.parquet`** gains the study's size, ancestry, age band, stratum, LD proxy and effect unit.
+  A `pmid` of `NONE` means the work has no PubMed record, and `doi` then names it: skip `NONE` when you
+  parse PubMed ids.
+- **`weights.parquet`** gains derived cells: `effect_unit`, `eur_only_evidence`, and three `outcome_*`
+  cells that are true or null and never false.
+- **`resolution_loci`**, on the variant and positional parquets, keeps the lookup's whole answer per
+  locus, including `source_release` (the snapshot or service release that answered) and `source_loci`.
+  Read its fields by name. It is not a join key: join on the row's own `chrom`/`start`/`ref`/`alts`,
+  or on `vrs_id`.
+- **Open Targets** (`locus_to_gene.parquet`, `colocalisations.parquet`, `consequences.parquet`) and
+  **`ld_pairs.parquet`** appear only in a module the enricher's passes filled.
+
+Run against three reference examples compiled into the working directory
+(`just-dna-compiler compile reference_examples/<name> ./<name>`):
+
+```python
+import polars as pl
+
+# A combination row, and what it replaces
+meta = pl.read_parquet("apoe_klvs_meta/meta.parquet")
+print(meta.filter(pl.col("replaces")).select("members", "tier", "match_count", "matches"))
+
+# The per-row statements after precedence: look a row up by (table, key, sex, drug)
+resolved = pl.read_parquet("apoe_klvs_meta/meta_resolved.parquet")
+print(resolved.select("table", "key", "sex", "drug", "tier", "age_of_action").head(3))
+
+# A study with no PubMed record is cited by its DOI
+studies = pl.read_parquet("longevity_studies/studies.parquet")
+print(studies.filter(pl.col("pmid") == "NONE").select("rsid", "pmid", "doi", "ancestry"))
+
+# Which release answered each locus, kept inside resolution_loci
+weights = pl.read_parquet("longevity_studies/weights.parquet")
+loci = weights.select("variant_key", "resolution_loci").explode("resolution_loci").unnest("resolution_loci")
+print(loci.select("variant_key", "chrom", "start", "source_release").unique(maintain_order=True).head(3))
+```
+
+```text
+┌─────────────────────────────────┬──────┬─────────────┬─────────────────────────────────┐
+│ members                         ┆ tier ┆ match_count ┆ matches                         │
+╞═════════════════════════════════╪══════╪═════════════╪═════════════════════════════════╡
+│ diplotypes[gene=KL, haplotype_… ┆ C    ┆ 4           ┆ [{0,"diplotypes",["KL", "KL-VS… │
+└─────────────────────────────────┴──────┴─────────────┴─────────────────────────────────┘
+┌──────────┬───────────────────────┬──────┬──────┬──────┬───────────────┐
+│ table    ┆ key                   ┆ sex  ┆ drug ┆ tier ┆ age_of_action │
+╞══════════╪═══════════════════════╪══════╪══════╪══════╪═══════════════╡
+│ variants ┆ ["rs10455872", "A/A"] ┆ null ┆ null ┆ A    ┆ MIDLIFE       │
+│ variants ┆ ["rs10455872", "A/G"] ┆ null ┆ null ┆ A    ┆ MIDLIFE       │
+│ variants ┆ ["rs10455872", "G/G"] ┆ null ┆ null ┆ A    ┆ MIDLIFE       │
+└──────────┴───────────────────────┴──────┴──────┴──────┴───────────────┘
+┌────────────┬──────┬─────────────────────────────┬───────────┐
+│ rsid       ┆ pmid ┆ doi                         ┆ ancestry  │
+╞════════════╪══════╪═════════════════════════════╪═══════════╡
+│ rs75571981 ┆ NONE ┆ 10.21203/rs.3.rs-6869504/v1 ┆ ["EAS"]   │
+└────────────┴──────┴─────────────────────────────┴───────────┘
+┌─────────────┬───────┬───────────┬─────────────────────────────────┐
+│ variant_key ┆ chrom ┆ start     ┆ source_release                  │
+╞═════════════╪═══════╪═══════════╪═════════════════════════════════╡
+│ rs10455872  ┆ 6     ┆ 160589086 ┆ ensembl-variation-2026_07_13-v… │
+│ rs429358    ┆ 19    ┆ 44908684  ┆ ensembl-variation-2026_07_13-v… │
+│ rs646776    ┆ 1     ┆ 109275908 ┆ ensembl-variation-2026_07_13-v… │
+└─────────────┴───────┴───────────┴─────────────────────────────────┘
+```
+
+(Shapes and dtypes trimmed from polars' output.) [INTEGRATION_0_8.md](INTEGRATION_0_8.md) § 2 lists
+every change by surface, and [SCHEMAS.md](SCHEMAS.md) holds the columns.
+
 ## Where to go next
 
 - **[SCHEMAS.md](SCHEMAS.md)** — every model, every column, the vocabularies and the hash family.
 - **[MODULE_LIFECYCLE.md](MODULE_LIFECYCLE.md)** — where a module comes from and what a second version
   moves.
 - **[FAQ.md](FAQ.md)** — settled questions, keyed by the question you would actually ask.
+- **[Upgrading to 0.8](INTEGRATION_0_8.md)** — the 0.7 → 0.8 surface delta, the upgrade order, and
+  the old-reader breaks.
 - **[Upgrading to 0.7](INTEGRATION_0_7.md)** — the surface delta, including the one break for an old
   reader.
