@@ -849,6 +849,7 @@ def _write_resolution_csv(
         "vrs_spec",
         "authored_event",
         "judged_coordinate",
+        "source_loci",
         "source",
         "status",
         "fetched_at",
@@ -1111,6 +1112,8 @@ def _resolution_record(
         # a row's own cells hold none, so the cell rebuild writes it empty, as before.
         "authored_event": _scalar_cell(row.get("authored_event")),
         "judged_coordinate": _scalar_cell(row.get("judged_coordinate")),
+        # RM387: the source's whole answer, carried on a `resolution_loci` locus like the verdict above.
+        "source_loci": _scalar_cell(row.get("source_loci")),
         "source": "reversed",
         "status": "resolved",
         "fetched_at": "",

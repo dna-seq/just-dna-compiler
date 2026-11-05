@@ -35,6 +35,82 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM387 — a check compares a hosting-narrowed answer as if it were the source's whole answer
+
+**SHIPPED 2026-11-05 on `0.8`, uncut — a minor (the 0.8 audit, round 2).** Owner format + enricher +
+compiler, severity medium. Blocked the 0.8 cut (the pm's sizing).
+
+**Residuals** won't fix — a table recorded before the column still reads a sibling as two placements, since
+an empty `source_loci` cannot tell "nothing was dropped" from "never recorded"; `--rederive` writes the
+column and clears it, which is the remedy the finding already names · won't fix — not in this item: the
+`left_aligned` true/false exemption in `placement_disagreements` assumes one release and does not compare
+the two rows' `source_release` (the audit's class 2, Sol alone, no demo)
+
+**The class.** A check comparing two sets where one was filtered before it was written and the other was
+not. The enricher writes the rows under an rsID's own key after the hosting filter (only the loci the
+authored genotype can sit on), after RM267's disputed placements are withheld, after the pseudoautosomal
+choice and after RM270's left-aligned respelling; it back-fills a positional row's rsID from the source's
+unfiltered reverse map. RM374's `placement_disagreements` read the rsID-keyed rows as the source's whole
+answer. For an rsID the source places at two loci, a positional row authored at the locus the rsID-keyed
+subject's genotype cannot host was a second placement: `rsid_placements_disagree`, `compile --strict`
+refused a valid module, and `enrich --rederive` wrote the same table again, so the remedy the finding
+names did not clear it. The audit's probe (`audit2-probe/sibling.py`) re-ran red on the base (`cad26510`),
+and so did the same shape written by the real enricher, rederive included.
+
+**Instances (re-verified on `cad26510`, before → after).**
+
+1. `compiler/src/just_dna_compiler/resolution.py:1299` `placement_disagreements` (was `:1292`): the full
+   answer was the rsID key's places → those places plus the `source_loci` its rows record, a Y
+   pseudoautosomal place read as its X partner (`_folded_place`, shared with `_place`). A row with no
+   `source_loci` is the whole answer, so RM374's stale case (`Q_mixed`'s `rs761191455`) still fires.
+2. `enricher/src/just_dna_enricher/enrich/orchestration.py:1193` the forward branch (was `:1155`), and the
+   authored fallback row at `:1371`: wrote only the hostable loci → also record, through `_wider_answer`,
+   every place the links offered this run (the link's answer before `placement.keeps`, plus every answer
+   RM382 set aside), on each row written under the rsID's key, only where it holds a place the rows stand
+   for nowhere: a respelled piece stands for its source locus (RM374 already reads a respelling apart, by
+   `left_aligned`) and a Y pseudoautosomal twin for its X partner, folded as the compiler folds it.
+3. `compiler/src/just_dna_compiler/resolution.py` `_answer_label`: the sentence named only the kept loci →
+   it also names the offered places, `(the source offered …)`, so the author sees what was compared.
+
+Checked and not in the class: `subjects.identity_placements` / `module_subjects` (RM362) ask where the
+*module* sits, which is the hostable set by definition, and a positional row contributes its own position;
+`subjects.row_positions` looks the row up under its own key too, so a sibling sees itself before the rsID's
+answer; `allele_checks._check_allele_membership` compares the genotype that was the filter's input;
+`resolution._verify` is a pair whose key is the rsID, one answer; `parquets.resolution_loci` (RM364) is a
+round-trip carrier keyed by the row's own key; RM382's `_rejected_by_every_subject` reads the link's whole
+answer; `resolver.check_rsid_coordinates` does a fresh unfiltered lookup.
+
+**The mechanism.** One recorded set and one pair of helpers: `ResolutionRow.source_loci` (0.8.0, outside
+`RESOLUTION_FACT_FIELDS`), spelled by `just_dna_format.resolution.source_loci_cell` and read by
+`split_source_loci`, which both tiers import and the field validator calls. It rides the parquets'
+`RESOLUTION_LOCUS_DTYPE` and `reverse`'s `resolution.csv`, and `withhold_reproduced_loci` keeps a key's loci
+whenever one records it, so the second lap reads the answer the first did. Written only where wider, so a
+cleanly resolved rsID carries nothing and `test_offline_enrich_then_compile_matches_duckdb_digest` holds.
+Guarded by an equality over `ResolutionRow.model_fields`: every column is a field of
+`RESOLUTION_LOCUS_DTYPE` (and so of `reverse`'s table) or in a declared not-carried set, so the next
+column a compile reads cannot be dropped by the round trip unnoticed (`@fieldnames-from-model`).
+
+**Decided here (the smaller choice where the contract is silent).** The offered set includes a locus RM267
+withheld as disputed and an answer RM382 set aside: a link did put the rsID there in this run, so a
+positional row there is not a stale answer, which is what RM374 exists to catch; the pm accepted silence
+for an rsID the source places at two or more loci as the floor. A subject carried by an ordinary run never
+gains the column, so adding a positional sibling to a module enriched before RM387 still refuses until
+`--rederive` (which, on the base, did not clear it).
+
+**The guards.** `enricher/tests/test_a_narrowed_answer_is_not_the_sources_whole_answer.py`: the probe's shape
+from the real enricher (`rs999` at `5:500 A>T` and `6:600 A>C`, `A/T` by rsID and `A/C` by position) compiles
+under `strict`, reverses with the column and recompiles to the same `artifact.digest` and `content_signature`;
+a table stripped of the column refuses, a plain re-run still refuses, and `--rederive` clears it; a
+property over every one-run table of a three-locus rsID (which locus the genotype keeps × which loci are
+authored by position, twelve tables) is silent under `validate --strict`; RM382's HBB `rs613985` records the
+rejected snapshot locus; a PAR twin and a respelled piece are not "wider". `compiler/tests/test_rsid_placements_disagree.py` gains the probe's rows with and
+without the column, a place outside the recorded set, and a Y place in it; its walk over every reference
+example stays silent. `schema/tests/test_source_loci.py`: one string per set, malformed cells refused.
+Mutated six times, each red: the enricher writing no column (both e2e tests, nine of the twelve property
+tables and the HBB case), the check ignoring it, the parquet withholding a locus that records it (the round
+trip), the rejected answers left out of the offered set (the HBB case), no PAR fold in the enricher, and
+the struct losing the field (the carrier equality).
+
 ## RM383 — a re-derivation leaves a licence row for a source that no committed row names any more
 
 **SHIPPED 2026-11-05 on `0.8`, uncut — a minor (found regenerating the reference examples).** Owner
@@ -233,9 +309,9 @@ class 4, already reserved as its own item.
 medium.
 
 **Residuals** RM275 · won't fix — one key repeating a `locus_index` and positional-only answers
-are withheld, because the table cannot tell them from a legitimate one-to-many rsID · won't fix — a
-positional row at a locus the rsID's own answer dropped for its genotype reads as two placements; the
-dropped locus leaves no trace in the table · won't fix — not in this item: a merged rsID's own key
+are withheld, because the table cannot tell them from a legitimate one-to-many rsID · RM387 — a
+positional row at a locus the rsID's own answer dropped for its genotype read as two placements; the
+dropped locus left no trace in the table · won't fix — not in this item: a merged rsID's own key
 (`rs_old`, `rsid_current` naming `rs_new`) is not joined with a positional row back-filled `rs_new`, so that
 pair is not compared · won't fix — not in this item: the check reads every row of the table, including a
 subject the spec no longer names, which the next ordinary enrich drops · won't fix — not in this item: one event in two spellings within one release (an old snapshot read online) is the
@@ -279,6 +355,12 @@ external source answered (`authority` set). `test_one_channel_under_strict.py` g
 scenario. Mutated twice: dropping the subset test sent four negatives red; routing with `strict=False` sent
 the two strict refusals red. The release-named tests skip until RM373's column exists; run against a
 simulated column they pass.
+
+**2026-11-05, RM387 (the 0.8 audit, round 2):** the residual above was a false refusal, not a limit. The
+rsID key's rows are what the hosting filter kept, so for a one-to-many rsID a positional row at the sibling
+locus refused a valid module under `strict`, and `--rederive` wrote the same table. The rsID-keyed rows now
+record the source's whole set of places (`source_loci`) where it is wider, and this check compares against
+the union; a table recorded before the column still fires, and `--rederive` clears it.
 
 ## RM375 — two spellings of one indel were judged two events wherever a comparison held no reference
 

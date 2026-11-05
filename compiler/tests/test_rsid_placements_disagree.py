@@ -23,6 +23,7 @@ from pathlib import Path
 import pytest
 from just_dna_compiler.compiler import compile_module, reverse_module, validate_spec
 from just_dna_compiler.compiler.allele_checks import _check_allele_membership
+from just_dna_compiler.compiler.parquets import RESOLUTION_LOCUS_DTYPE, resolution_loci
 from just_dna_compiler.resolution import PLACEMENTS_DISAGREE_PHRASE, placement_disagreements
 from just_dna_format.manifest import read_manifest
 from just_dna_format.resolution import ResolutionRow
@@ -287,6 +288,48 @@ def test_the_pieces_of_one_split_are_one_answer() -> None:
     assert placement_disagreements(rows, "GRCh38") == []
 
 
+# ── RM387: the rsID's own key is the narrowed answer, `source_loci` the whole one ─────────────────────
+
+
+def _sibling(source_loci: str | None) -> list[ResolutionRow]:
+    """The audit's probe (`audit2-probe/sibling.py`): the hosting filter kept locus A under the rsID's key,
+    and a positional row was authored at sibling locus B, its rsID back-filled from the same answer."""
+    return [
+        _row("rs123", "rs123", "1", 1000, "A", "G", source_loci=source_loci),
+        _row("1:5000:C:T", "rs123", "1", 5000, "C", "T"),
+    ]
+
+
+def test_a_sibling_locus_the_source_placed_is_one_answer() -> None:
+    assert placement_disagreements(_sibling("1:1000,1:5000"), "GRCh38") == []
+
+
+def test_a_sibling_recorded_without_the_whole_answer_still_reads_as_two() -> None:
+    """A table written before the column: the rows are the whole answer, as RM374 read them, so the stale
+    case it was built for still fires, and `--rederive` (which writes the column) is what clears a sibling."""
+    (finding,) = placement_disagreements(_sibling(None), "GRCh38")
+    assert finding.warning.code == CODE
+
+
+def test_a_locus_outside_the_whole_answer_is_still_two_placements() -> None:
+    """The column widens the answer to what the source offered, never further."""
+    (finding,) = placement_disagreements(_sibling("1:1000,1:6000"), "GRCh38")
+    assert "1:5000" in finding.warning
+    # The sentence names what it compared against, so the author sees why 1:6000 would pass.
+    assert "the source offered 1:1000, 1:6000" in finding.warning
+
+
+def test_a_pseudoautosomal_offer_is_read_as_its_x_partner() -> None:
+    x_start = 640_851
+    partner = par_partner("X", x_start)
+    assert partner is not None
+    rows = [
+        _row("rs9", "rs9", "1", 100, "A", "G", source_loci=f"1:100,Y:{partner[1]}"),
+        _row(f"X:{x_start}:A:G", "rs9", "X", x_start, "A", "G"),
+    ]
+    assert placement_disagreements(rows, "GRCh38") == []
+
+
 _EXAMPLES = Path(__file__).resolve().parents[2] / "reference_examples"
 
 
@@ -381,3 +424,40 @@ def test_the_whole_probe_spec_refuses_on_both_findings(tmp_path: Path) -> None:
     joined = "\n".join(validated.errors)
     assert "rs761191455" in joined and _PHRASE in joined
     assert "rs646776" in joined and "--rederive" in joined
+
+
+# ── RM387's carrier: a recorded column the compile reads must ride the round trip ──────────────────────
+
+#: The `ResolutionRow` columns `reverse` cannot or deliberately does not restore, each for a reason
+#: SCHEMAS.md § resolution.csv states (the key and build are the row's; provenance has no source to name on
+#: a reversed table; dbSNP's time-varying state stays out of the artifact; the enricher's verdicts on a
+#: placement are not read by the compile). Every other column is carried on `resolution_loci`.
+_NOT_CARRIED = frozenset(
+    {
+        "variant_key",
+        "genome_build",
+        "caid",
+        "source",
+        "authority",
+        "status",
+        "rsid_alternates",
+        "rsid_current",
+        "rsid_status",
+        "placement_witness",
+        "placement_verdict",
+        "left_aligned",
+        "fetched_at",
+        "source_release",
+    }
+)
+
+
+def test_every_resolution_column_is_carried_or_declared_uncarried() -> None:
+    """An equality over the model's fields: a new column lands in the struct (and so in `reverse`) or in
+    `_NOT_CARRIED` with a reason, never silently in neither, which is how lap 2 loses what lap 1 read."""
+
+    carried = {field.name for field in RESOLUTION_LOCUS_DTYPE.fields}
+    assert carried == set(ResolutionRow.model_fields) - _NOT_CARRIED
+    row = _row("rs1", "rs1", "1", 100, "A", "G", source_loci="1:100,1:200")
+    (locus,) = resolution_loci("rs1", {"rs1": [row]}, "GRCh38") or []
+    assert set(locus) == carried

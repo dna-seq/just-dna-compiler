@@ -598,6 +598,16 @@ reads the record and no longer calls such a row a contradiction.
 | `licensing.csv`, `manifest.sources` | After `enrich --rederive`, a `resolution`-layer row for a licensed source no `resolution.csv` row names is removed; the concordance record does the same at `clin_sig_authority_call` on every write. `sources.signature` and `artifact.digest` move on the next compile of such a module. A row for a source with no terms constant is never touched. | None, unless you hand-wrote a `resolution`-layer row for a licensed source no row uses: it goes on the next `--rederive`. |
 | `licensing.record_table_sources` | New keyword-only argument `answered_every_row`, default `False` (no retirement, the old behaviour). | None; pass `True` only when your commit is the table's whole answer. |
 
+## 1.36 RM374's placement check reads the source's whole answer, recorded beside the narrowed one (RM387, no new code)
+
+| Surface | What changed | What to do |
+| --- | --- | --- |
+| `resolution.csv` `source_loci` | New optional derived column on the rows under an rsID's own key: every place the links answered the rsID at in the run that wrote the row (`chrom:start`, comma-joined, sorted), written only where that is wider than what the rows place (the hosting filter, a disputed placement, the pseudoautosomal choice or the respelling narrowed it). Empty means the rows are the whole answer, or the row predates the column. Outside `resolution_signature`; a malformed cell is refused at load. **A 0.7 reader refuses a 0.8-enriched table carrying it** (`extra="forbid"`, § 1.18's remedy). | None. |
+| `rsid_placements_disagree` | A positional row at a locus the rsID's recorded `source_loci` names is one answer, not two: a valid module whose rsID-keyed subject's genotype sits on one locus of a one-to-many rsID, with a positional row at a sibling, compiles under `strict`. A table recorded before the column still fires as before. The code, its sentence and its severity are unchanged. | A module refused for a sibling locus: `just-dna-enricher enrich <spec-dir> --rederive`, which now writes the column. |
+| The parquets' `resolution_loci` and `studies.parquet` `proxy_loci` | The struct gains `source_loci` (`Utf8`); a key whose locus records it always keeps its loci, so `reverse` writes it back. Another schema change on these parquets: **`artifact.digest` moves on a 0.8 recompile** of a module carrying them; `content_signature` does not. | None. |
+| `reverse`'s `resolution.csv` | Gains the `source_loci` column (empty where no `resolution_loci` locus carried one). | None. |
+| `just_dna_format.resolution` | New public names `source_loci_cell`, `split_source_loci`. | None. |
+
 ## 2. What to change
 
 1. If you parse `manifest.json` with `just-dna-format`, move your pin to 0.8 when you start reading
@@ -642,3 +652,8 @@ reads the record and no longer calls such a row a contradiction.
 11. **Publishers (RM368).** Catch `upload.PublishRefused` around a publish rather than
    `FileNotFoundError`: the two plan refusals keep `FileNotFoundError` as a second base only until 1.0.
    A `--dry-run` of `upload` or a snapshot `publish` now reads the hub (§ 1.20).
+
+12. If a module enriched with 0.8 before RM387 is refused by `compile --strict` with
+   `rsid_placements_disagree` naming a positional row at another locus of a one-to-many rsID, run
+   `just-dna-enricher enrich <spec-dir> --rederive` once: it records the rsID's `source_loci` and the
+   check reads the sibling as the same answer (§ 1.36).

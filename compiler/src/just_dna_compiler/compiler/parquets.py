@@ -399,6 +399,9 @@ RESOLUTION_LOCUS_DTYPE = pl.Struct(
         # compile read as agreement or not, so the second lap reads the same verdict the first did.
         "authored_event": pl.Utf8,
         "judged_coordinate": pl.Utf8,
+        # RM387: the source's whole answer beside the narrowed one, which RM374's placement check
+        # compares a positional row against, so the second lap reads the same answer the first did.
+        "source_loci": pl.Utf8,
     }
 )
 
@@ -443,6 +446,7 @@ def resolution_loci(
             "vrs_spec": r.vrs_spec,
             "authored_event": r.authored_event,
             "judged_coordinate": r.judged_coordinate,
+            "source_loci": r.source_loci,
         }
         for r in loci
     ]
@@ -477,8 +481,9 @@ def withhold_reproduced_loci(
         for key, cell in zip(keys, cells, strict=True)
         if key is not None
         and cell
-        # A row's cells carry no verdict, so loci holding one (RM375) are never rebuilt from the cells.
-        and not any(locus.get("authored_event") for locus in cell)
+        # A row's cells carry no verdict and no record of the source's whole answer, so loci holding
+        # either (RM375, RM387) are never rebuilt from the cells.
+        and not any(locus.get("authored_event") or locus.get("source_loci") for locus in cell)
         and by_key[key]
         == {
             _locus_fact(

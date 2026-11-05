@@ -2443,7 +2443,7 @@ row's own cells alone.
   rsids for the exact allele — a dbSNP merge), `rsid_alternates?` (the full candidate list when
   `ambiguous`; `rsid` holds the deterministic pick), `rsid_current?` / `rsid_status?`
   (`VALID_RSID_STATUS = {live, merged, absent, withdrawn}` — what dbSNP says about `rsid` today),
-  `fetched_at?`, `placement_witness?`, `placement_verdict?`, `left_aligned?`, `authored_event?`, `judged_coordinate?` (0.8, below).
+  `fetched_at?`, `placement_witness?`, `placement_verdict?`, `left_aligned?`, `authored_event?`, `judged_coordinate?`, `source_release?`, `source_loci?` (0.8, below).
 - **`source` names the link; `authority` names the licensed source it speaks for (RM33).** `source` is
   `ensembl-rest`/`ensembl-graphql`/`cache`/`clinvar`/`gnomad`/`authored`/`reversed`/`manual` — *which link
   answered* (`ensembl-graphql` is no longer written since its leg was retired in 0.8, and still reads), which matters for diagnosing a compile and has no other home. `authority` is the thing
@@ -2555,6 +2555,22 @@ row's own cells alone.
   than per table because merge-not-clobber makes a table two releases answered the normal case. Reverse
   cannot emit it, for `authority`'s reason above. The licence rows `enrich` writes take their `dataset`
   from it (ENRICHER.md § *Which release answered*).
+- **`source_loci` is the source's whole answer beside the narrowed one (0.8, RM387).** The rows under an
+  rsID's own key are the loci its authored genotype can sit on: the hosting filter, a disputed placement
+  (RM267) and the pseudoautosomal choice all run before they are written. A
+  positional row's rsID is back-filled from the source's unfiltered answer. So the rows were never every
+  place the source put the rsID, and RM374's check read them as if they were. `source_loci` records every
+  place the links answered the rsID at in the run that wrote the row (`chrom:start`, comma-joined, sorted:
+  `5:500,6:600`; `resolution.source_loci_cell` writes it and `split_source_loci` reads it, and a malformed
+  cell is refused at load). It is written on the rows under the rsID's own key, and only where that set
+  holds a place they stand for nowhere (a respelled piece stands for its source locus and a Y
+  pseudoautosomal twin for its X partner, the compiler's fold), so a cleanly resolved rsID carries nothing
+  new. The finding's sentence names the offered places when it fires against a recorded set. **Empty means the rows
+  place the whole answer, or the row predates the column**, and the compiler reads either as the whole
+  answer, which keeps RM374's stale case firing; `enrich --rederive` writes the column. Outside the fact
+  set: it records what was offered beside the placement chosen. **Reverse carries it** on the parquets'
+  `resolution_loci` struct, and a key whose locus records it always keeps its loci, so the second lap reads
+  the answer the first did.
 - **`RESOLUTION_FACT_FIELDS`** names the fact columns; `integrity.resolution_signature` hashes only
   those (provenance deliberately excluded), so a human-filled and an Ensembl-filled table with identical
   facts hash equal.
