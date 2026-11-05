@@ -35,6 +35,72 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM394 — the re-derivation's report had fewer arms than the cases it describes, so its words named what had not happened
+
+✅ **SHIPPED 2026-11-05 on `0.8`, uncut — a minor (the 0.8 audit, round 3)**, a cut blocker (audit 3 and the
+docs pass, D4, D5 and class 4's carry instance). Owner enricher (`enrich/outcome.py`, `enrich/orchestration.py`,
+`events.py`, `currency.py`), severity medium. *related* RM375, RM373, RM382, RM393
+
+**Residuals** none
+
+**The class.** A report with fewer arms than the cases it reports (`@answered-is-not-absent`: a verdict with
+several arms owes a reason with the same arms, pairwise distinct), on the `enrich --rederive` migration
+step 0.8 tells every consumer to run. Each sentence was true of one case and printed for all of them, so a
+migrating operator read a cause that had not happened and a remedy that did not apply.
+
+**The instances, on `64c835b9`.**
+
+- **D5**, `enrich/outcome.py:57–64` (`SubjectDrift.__str__`, three arms) and `:79–95` (`_same_events`, any
+  rsID difference → `False`): an allele the source added (`A` → `A,T`, or a row that had no ALT) and an rsID
+  newly named both printed "moved: the source names a different event". Measured by the examples' 0.8
+  regeneration: 94 subjects gained an allele, 10 gained an rsID. → seven arms, `rederive_words.DRIFT_CASES`:
+  `respelled`, `gained_allele`, `lost_allele`, `gained_rsid`, `renamed`, `moved`, `undecided`, carried as
+  `SubjectDrift.case`; the drift warning counts by arm. Re-measured on the pre-regeneration
+  `apoe_klvs_meta` and `hfe_compound_het` against the split snapshot (offline): all four drifts now read
+  "gained an allele", none "moved".
+- **D4**, `enrich/orchestration.py:2087–2092`: the derived-layer currency line always said "Re-derive with
+  `enrich --rederive`". When the release that is behind is the local snapshot, a re-derivation reads it and
+  prints the same line. → one line per `rederive_words.CURRENCY_CASES` member, read against the label of the
+  snapshot the run read (`clinvar`, `clinvar_gkm`): `table_behind_snapshot` → `--rederive`;
+  `snapshot_behind` → `cache pull --only <lane>` (or `cache rebuild`) first; `both_behind` → both;
+  `snapshot_unread` (none read, or a label in the other form) → `cache status`, then both.
+  `test_source_release.py::test_a_source_publishing_past_the_snapshot_never_makes_strict_refuse` had pinned
+  the wrong remedy for the `snapshot_behind` case; it now asserts the pull.
+- **Class 4's carry instance**, `enrich/orchestration.py:1595–1602`: "kept the recorded rows for N subject(s)
+  no source could be asked about" was said about subjects a link answered and the hosting filter rejected
+  (RM382's carry) and about ones whose request failed. → each branch that writes no row declares why
+  (`no_row_reason`), and the warning groups the carried subjects by `rederive_words.CARRY_REASONS`:
+  `not_asked`, `off_build`, `no_reverse_map` (RM393's subjects), `unreachable`, `rejected`, and
+  `not_re_answered`, the default for a subject no branch declared, which claims no reason.
+
+The hunt over the other sentences the `--rederive` path prints found each true of every case it is printed
+for: `releases.run_label`'s "`enrich --rederive` re-answers them" (rows another release answered, which this
+run's snapshot does re-answer), the drafted-layer currency line, the undecided-drift line, and
+`unchecked_sentences` (one per skip reason already). Two neighbours stay out by the pm's sizing: the S85
+"recorded as unresolved" warning, and `net.py`'s "upgrade just-dna-enricher" for a hand-picked release, both
+parked by the pm on 2026-11-05 without a number (the audit findings list in `main`'s ROADMAP.md).
+
+**The mechanism.** One module, `enrich/rederive_words.py`, holds each report as a closed vocabulary
+(`frozenset`, P6) and a map from case to sentence, with the decision beside it (`drift_case`,
+`currency_case`); the run and `SubjectDrift` read nothing else. The drift reads the event judge in each
+direction through `events.covers` (`same_allele_sets` is now the two directions combined, unchanged in
+answer), so a gain is decided by the one judge and an unmatched indel stays undecided. `SubjectDrift.respelled`
+is read off the arm and keeps its meaning, except that an rsID change whose events the run could not settle
+is `None` rather than `False`.
+
+**The guard**, `enricher/tests/test_the_rederive_report_names_each_case.py`: for each of the three
+registries, the map's keys equal the cases and the sentences are pairwise distinct (no one contained in
+another); every drift arm is what `_drift_case` answers for a real pair of rows; every currency case is
+reached by its labels, and each sentence names its remedy and not the other's (only `table_behind_snapshot`
+lacks the pull); every carry reason names its remedy, an AST walk over the run asserts the reasons the
+branches write equal the registry less `not_re_answered`, which is only the default, and the hfe run with no
+snapshot prints the `not_asked` and `no_reverse_map` groups apart. `test_source_release.py` adds the
+end-to-end other side: a table behind its snapshot is sent to `--rederive`, and after one the line is gone.
+`test_authored_event.py`'s judge registry now names `_drift_case` and `covers`. Mutated once each: the
+gained arm returned as `moved` (two tests red), the currency decision sending every non-recorded snapshot
+to `--rederive` (`both_behind` red), the positional carry declared `not_asked` (the AST walk and the hfe
+run red).
+
 ## RM393 — a re-derivation that read no position→rsID map erased a back-filled rsID, and the artifact shipped it null
 
 ✅ **SHIPPED 2026-11-05 on `0.8`, uncut — a minor (the 0.8 audit, round 3)**, class 1, a cut blocker. Owner

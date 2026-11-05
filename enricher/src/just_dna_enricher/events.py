@@ -270,14 +270,29 @@ def same_allele_sets(
     """
     if not before and not after:
         return None
+    return kleene_all(
+        (
+            covers(before, after, mint=mint, read_window=read_window),
+            covers(after, before, mint=mint, read_window=read_window),
+        )
+    )
+
+
+def covers(
+    side: Sequence[Allele], other: Sequence[Allele], *, mint: Mint, read_window: ReadWindow | None
+) -> bool | None:
+    """Whether every allele of `side` is the same event as one of `other`'s: one direction of the judge.
+
+    `same_allele_sets` is both directions; the `--rederive` drift reads them apart (RM394), because a
+    source that kept every recorded event and named one more **gained** an allele, which is neither a
+    respelling nor a move. The per-allele rule is the one `same_allele_sets` states: no counterpart is
+    `False` for a substitution and undecided for an indel. An empty `side` is covered.
+    """
     answers: list[bool | None] = []
-    for side, other in ((before, after), (after, before)):
-        for allele in side:
-            matches = counterparts(allele, other)
-            if not matches:
-                answers.append(False if _kind(allele)[0] == "substitution" else None)
-                continue
-            answers.append(
-                kleene_any(same_event(allele, o, mint=mint, read_window=read_window) for o in matches)
-            )
+    for allele in side:
+        matches = counterparts(allele, other)
+        if not matches:
+            answers.append(False if _kind(allele)[0] == "substitution" else None)
+            continue
+        answers.append(kleene_any(same_event(allele, o, mint=mint, read_window=read_window) for o in matches))
     return kleene_all(answers)

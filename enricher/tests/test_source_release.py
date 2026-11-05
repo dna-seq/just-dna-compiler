@@ -451,7 +451,9 @@ def test_a_source_publishing_past_the_snapshot_never_makes_strict_refuse(
     """`@a-source-recuring-is-not-a-strict-matter`: no authored edit clears it, so it warns in both modes.
 
     The first run records ClinVar's release on the resolution layer; the second, strict, finds live ClinVar
-    has published since. It stays green, and the warning names the remedy a derived table has.
+    has published since. It stays green, and the warning names the remedy a derived table has. The local
+    snapshot is the release the table recorded, so that remedy is the lane's pull: a re-derivation reads
+    the same snapshot and prints the same line again (RM394; this test asserted `enrich --rederive` before).
     """
     clinvar = _clinvar(tmp_path / "clinvar", {"dataset": "clinvar_2026-06-27"})
     spec = _spec(tmp_path, ["rs1801133,,,,A/G", "rs1061170,,,,C/T"])
@@ -465,7 +467,37 @@ def test_a_source_publishing_past_the_snapshot_never_makes_strict_refuse(
     assert _dataset(spec, "clinvar") == "clinvar_2026-06-27"
     with caplog.at_level("WARNING"):
         _enrich(spec, new, mode="strict", **options)
-    assert "enrich --rederive" in caplog.text and "re-draft" not in caplog.text.lower()
+    assert "re-draft" not in caplog.text.lower()
+    assert "cache pull --only clinvar" in caplog.text
+    assert "a re-derivation repeats this line" in caplog.text
+
+
+def test_a_table_behind_its_snapshot_is_sent_to_rederive_which_clears_the_line(
+    new: Path, tmp_path: Path, caplog
+) -> None:
+    """RM394: the other side of the remedy. The table recorded an older ClinVar than the snapshot now holds,
+    and the snapshot is what live ClinVar publishes, so `--rederive` is the remedy, and it works: the
+    re-derived run records the snapshot's release and the line is gone."""
+    spec = _spec(tmp_path, ["rs1801133,,,,A/G", "rs1061170,,,,C/T"])
+    common = {
+        "offline": False,
+        "resolver": _NoLive(),
+        "release_probes": {"clinvar": lambda: "clinvar_2026-11-01"},
+    }
+    _enrich(spec, new, clinvar_cache=_clinvar(tmp_path / "june", {"dataset": "clinvar_2026-06-27"}), **common)
+    assert _dataset(spec, "clinvar") == "clinvar_2026-06-27"
+    november = _clinvar(tmp_path / "november", {"dataset": "clinvar_2026-11-01"})
+    with caplog.at_level("WARNING"):
+        _enrich(spec, new, clinvar_cache=november, **common)
+    assert "The local snapshot (clinvar_2026-11-01) is current and the table is behind it" in caplog.text
+    assert "cache pull" not in caplog.text
+    _enrich(spec, new, clinvar_cache=november, rederive=True, **common)
+    assert _dataset(spec, "clinvar") == "clinvar_2026-11-01"
+    # The re-derivation compared the table as it stood before its own commit; the next run reads its label.
+    caplog.clear()
+    with caplog.at_level("WARNING"):
+        _enrich(spec, new, clinvar_cache=november, **common)
+    assert "Dataset currency (derived tables)" not in caplog.text
 
 
 def test_a_curators_row_for_a_source_with_no_terms_is_never_restamped(tmp_path: Path) -> None:

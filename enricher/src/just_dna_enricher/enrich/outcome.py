@@ -14,7 +14,8 @@ from just_dna_enricher.civic_refutation import RefutationFinding
 from just_dna_enricher.clinical import ClinSigComparison, ClinSigConflict, ConcordanceRecord
 from just_dna_enricher.concordance import AnsweredCallReport
 from just_dna_enricher.currency import CurrencyCheck
-from just_dna_enricher.events import Mint, ReadWindow, alleles_of, no_mint, same_allele_sets
+from just_dna_enricher.enrich.rederive_words import DRIFT_CASES, DRIFT_PHRASES, RESPELLED_BY_CASE, drift_case
+from just_dna_enricher.events import Mint, ReadWindow, alleles_of, covers, no_mint
 from just_dna_enricher.grch37 import BuildDiagnosis
 from just_dna_enricher.identifiers import RsidStatus
 from just_dna_enricher.placement import PlacementCheck
@@ -53,15 +54,22 @@ class SubjectDrift:
     #: answered differently. `None`: nothing this run held could tell (an indel with no id and no
     #: reference read), which is never reported as either. The default keeps an older call's `False`.
     respelled: bool | None = False
+    #: Which `rederive_words.DRIFT_CASES` member this is (RM394): `respelled` and `moved` split into the
+    #: seven ways a subject's facts move, so an allele the source added reads "gained an allele" rather
+    #: than "moved". `respelled` is this read through `RESPELLED_BY_CASE`. `None` on construction takes
+    #: the arm `respelled` names (an older call), and a case that contradicts `respelled` is refused.
+    case: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.case is None:
+            object.__setattr__(
+                self, "case", {True: "respelled", False: "moved", None: "undecided"}[self.respelled]
+            )
+        if self.case not in DRIFT_CASES or RESPELLED_BY_CASE[self.case] is not self.respelled:
+            raise ValueError(f"drift case {self.case!r} does not agree with respelled={self.respelled!r}")
 
     def __str__(self) -> str:
-        suffix = {
-            True: " (respelled: the same events, spelled another way)",
-            False: " (moved: the source names a different event)",
-            None: " (undecided whether respelled or moved: no VRS id and no reference read, or an indel "
-            "ALT only one table keeps)",
-        }[self.respelled]
-        return f"{self.variant_key}: {self.before} → {self.after}{suffix}"
+        return f"{self.variant_key}: {self.before} → {self.after} ({DRIFT_PHRASES[self.case]})"
 
 
 def _allele_ids(rows: Sequence[ResolutionRow]) -> list[str] | None:
@@ -76,31 +84,40 @@ def _allele_ids(rows: Sequence[ResolutionRow]) -> list[str] | None:
     return sorted(ids)
 
 
-def _same_events(
+def _drift_case(
     before: Sequence[ResolutionRow],
     after: Sequence[ResolutionRow],
     *,
     mint: Mint = no_mint,
     read_window: ReadWindow | None = None,
-) -> bool | None:
-    """Whether two answers for one subject name the same events — `True`, `False`, or `None` (RM375).
+) -> str:
+    """How one subject's two answers differ: a `rederive_words.DRIFT_CASES` member (RM375, RM394).
 
-    A different rsID or build is a different answer. Ids on every allele of both sides decide it
-    exactly. Otherwise the alleles go to the one judge (`events.same_allele_sets`), which reads the
-    reference when this run has one and answers `None` when it does not: an offline re-derive of a
-    left-shifted indel is a respelling it cannot see, never a source that moved (`None` is never
-    `False`, the house algebra).
+    The judge is asked each way (`events.covers`): whether every recorded allele is answered now, and
+    whether every fresh allele was recorded. Ids on every allele of both sides decide both exactly;
+    otherwise the alleles go to the one judge, which reads the reference when this run has one and
+    answers `None` when it does not, so an offline re-derive of a left-shifted indel is undecided, never
+    a source that moved (`None` is never `False`, the house algebra). `rederive_words.drift_case` turns
+    the two answers and the identities into the arm.
     """
-    if {(r.rsid, r.genome_build) for r in before} != {(r.rsid, r.genome_build) for r in after}:
-        return False
     was, now = _allele_ids(before), _allele_ids(after)
     if was is not None and now is not None:
-        return was == now
-    return same_allele_sets(
-        alleles_of(r.model_dump() for r in before),
-        alleles_of(r.model_dump() for r in after),
-        mint=mint,
-        read_window=read_window,
+        kept: bool | None = set(was) <= set(now)
+        nothing_new: bool | None = set(now) <= set(was)
+    else:
+        old_alleles = alleles_of(r.model_dump() for r in before)
+        new_alleles = alleles_of(r.model_dump() for r in after)
+        if not old_alleles and not new_alleles:
+            kept = nothing_new = None
+        else:
+            kept = covers(old_alleles, new_alleles, mint=mint, read_window=read_window)
+            nothing_new = covers(new_alleles, old_alleles, mint=mint, read_window=read_window)
+    return drift_case(
+        same_build={r.genome_build for r in before} == {r.genome_build for r in after},
+        rsids_before=frozenset(r.rsid for r in before),
+        rsids_after=frozenset(r.rsid for r in after),
+        kept=kept,
+        nothing_new=nothing_new,
     )
 
 
@@ -147,8 +164,8 @@ def _rederived_drift(
         compared += 1
         was, now = _render_facts(old_rows), _render_facts(new_rows)
         if was != now:
-            same = _same_events(old_rows, new_rows, mint=mint, read_window=read_window)
-            drift.append(SubjectDrift(old_rows[0].variant_key, was, now, same))
+            case = _drift_case(old_rows, new_rows, mint=mint, read_window=read_window)
+            drift.append(SubjectDrift(old_rows[0].variant_key, was, now, RESPELLED_BY_CASE[case], case))
     return sorted(drift, key=lambda d: d.variant_key), compared
 
 
