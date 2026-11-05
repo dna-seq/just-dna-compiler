@@ -10,7 +10,8 @@ any more. `sources.csv` travels with the module and means *this module uses this
 answer, and a row of the pass's own (a source with a terms constant, at the pass's layer) that no
 committed row names is retired inside the table's commit, with a log line naming it. A plain enrich
 merges and never retires (merge-not-clobber). The fixture is the example itself, with an Ensembl cache
-holding the two loci exactly as the split release does.
+holding the two loci exactly as the split release does, and the stale row planted on its copy: the
+example itself was re-derived after RM383 landed and no longer carries it.
 """
 
 import ast
@@ -44,7 +45,23 @@ _ENSEMBL = {
 def _module(tmp_path: Path) -> Path:
     spec = tmp_path / "mt_common_deletion"
     shutil.copytree(_EXAMPLE, spec)
+    _plant_stale_clinvar_row(spec / _LICENCE_CSV)
     return spec
+
+
+def _plant_stale_clinvar_row(path: Path) -> None:
+    """The `clinvar,resolution` row the 0.7-era back-fill wrote, as the example carried it before RM383.
+
+    ClinVar's terms are the ones its `clin_sig_authority_call` row states; the 0.7 row had no `dataset`.
+    """
+    rows, errors, _ = _load_csv_rows(path, SourceRow, _LICENCE_CSV)
+    assert errors == []
+    assert ("clinvar", "resolution") not in {(r.source, r.layer) for r in rows}
+    clinvar = next(row for row in rows if row.source == "clinvar")
+    stale = clinvar.model_copy(
+        update={"layer": "resolution", "dataset": None, "fetched_at": "2026-08-13T23:30:29Z"}
+    )
+    licensing.write_sources_csv([*rows, stale], path)
 
 
 def _cache(tmp_path: Path) -> Path:
@@ -114,6 +131,7 @@ def test_a_rederive_that_could_ask_nothing_retires_nothing(tmp_path: Path) -> No
     )
     (spec / "studies.csv").write_text("rsid,pmid\nrs199474657,1977311\n", encoding="utf-8")
     shutil.copy(_EXAMPLE / _LICENCE_CSV, spec / _LICENCE_CSV)
+    _plant_stale_clinvar_row(spec / _LICENCE_CSV)
     (spec / "resolution.csv").write_text(
         "variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,source,authority,status\n"
         "rs199474657,rs199474657,MT,3243,A,G,GRCh38,0,clinvar,clinvar,resolved\n",

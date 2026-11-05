@@ -41,6 +41,40 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-05 — RM395: the commands the user guides run do what the guides say (0.8, uncut)
+
+- `just-dna-compiler keygen --out <path>` creates a missing parent directory, as `compile` and `reverse`
+  do, instead of a traceback.
+- `just-dna-enricher draft-repeats` without `--catalogue` reads the provisioned STRchive lane, as its
+  `--help` says and `check-repeat-bands` does.
+- `cache pull` ends with what the run left on disk and which lanes had nothing published (`nothing
+  pulled; nothing published for: clinvar_gkm`), never *caches available:* and the registry's list, and a
+  pull that found nothing published leaves no empty directory for `cache status` to call occupied.
+  `cache status` names both routes for an absent lane that can be pulled or built. ENRICHING.md quotes the
+  re-run output.
+
+## 2026-11-05 — Docs pass: the user guides re-run against the 0.8 candidate, and 0.8's surfaces added (0.8, uncut)
+
+RELEASE_CYCLE § Minors step 8, run at `64c835b9`. Every command in `index.md`, `GETTING_STARTED.md`,
+`COMPILING.md`, `CONSUMING.md` and `ENRICHING.md` was re-run on a scratch copy of the module it uses.
+Quoted outputs now match the run (`apoe_epsilon`'s digest is `c86809…` with three parquets; its
+`content_signature` did not move). Three commands had been wrong as written and are corrected: `hint`
+in COMPILING takes a kind and `--file`/`--row`, `hint variant`/`hint citation` take `--rsid`/`--pmid`,
+and `draft`/`draft-clinpgx` draft nothing from a no-sale source without `--use`. `scaffold` stubs only
+the kinds named with `--kind`.
+
+Added, each with a command that ran: validate's strict switches and the refusals new in 0.8 (COMPILING),
+`meta.csv` and `model_organisms.csv` with their table pages, the `studies.csv` columns and the `pmid`
+`NONE` + `doi` pair (COMPILING, CONSUMING), what 0.8 added to the artifact including `source_release`
+inside `resolution_loci` (CONSUMING), and in ENRICHING `enrich --rederive` after the snapshot switch,
+`cache pull --only ensembl`, `SNAPSHOT_REPO_IDS`, the ClinVar-GKM placement witness, the Open Targets
+lane and the publisher's `PublishRefused` family. CLAUDE.md's doc map gains the `INTEGRATION_0_8.md` row.
+
+Two guide commands still fail as written because the code is wrong, and are left for the fix rather
+than worked around: `keygen --out` into a directory that does not exist raises a traceback, and
+`draft-repeats` without `--catalogue` does not find a provisioned STRchive lane although its help says
+it does. Both are fixed in code by RM395 (above).
+
 ## 2026-11-05 — `hboc_palb2` and `pathogenic_clinvar` regenerated against the split snapshot (0.8, uncut)
 
 - The two examples the first regeneration withheld are re-derived online now that RM381, RM382 and RM387
@@ -181,6 +215,11 @@ repo id written anywhere else. → [ROADMAP_HISTORY § RM384](ROADMAP_HISTORY.md
 - The concordance record, rewritten whole on each run that writes it, retires an authority's
   `clin_sig_authority_call` row once no call row names it.
 - `licensing.record_table_sources` takes `answered_every_row` (default `False`); every call in the package states it.
+- `reference_examples/mt_common_deletion` is re-derived with this in place (`enrich --offline --rederive`,
+  as its regeneration ran): the regeneration had run before RM383 merged and kept the row. The row is
+  gone, so is the compile's `source_row_unused`, and `resolution.csv` gains RM387's `source_loci` header.
+  `content_signature` is unchanged; `compile → reverse → compile` gives one `artifact.digest`. The RM383
+  tests plant the old row on their copy.
 
 ## 2026-11-05 — RM382: a resolution answer the authored genotype cannot host lets the next link answer, and is never written as an absence (0.8, uncut)
 

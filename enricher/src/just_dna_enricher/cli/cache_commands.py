@@ -106,7 +106,12 @@ def cache_status_() -> None:
             # The lane's own command, taken from the registry rather than composed from its name:
             # two lanes are not `<name> build` (`clinpgx build-labels`, `gnomad constraint build`)
             # and a convention that holds for ten of twelve prints two commands nobody can run.
-            how = "`cache pull`" if lane.ensure is not None else f"`{lane.build_command}`"
+            # A lane with both routes names both (RM395): this command reads only, so it cannot see
+            # whether the lane's repo has anything published, and `clinvar_gkm`'s has not.
+            routes = (["`cache pull`"] if lane.ensure is not None else []) + (
+                [f"`{lane.build_command}`"] if lane.build_command is not None else []
+            )
+            how = " or ".join(routes)
             typer.secho(
                 f"  {lane.name:13} absent   — {lane.serves}; provision with {how}",
                 fg=typer.colors.YELLOW,
@@ -159,6 +164,10 @@ def cache_pull_(
     declared = _use(use)
     wanted, lanes = _selected(only)
     failures = 0
+    # What this run left on disk and what it found unpublished, for the closing line (RM395): it
+    # listed every lane with a pull route, so an unpublished lane was called available.
+    on_disk: list[str] = []
+    not_published: list[str] = []
     for lane in lanes:
         if lane.ensure is None:
             if lane.name in wanted:  # asked for by name, so say why it is not coming
@@ -183,16 +192,20 @@ def cache_pull_(
             # on a fresh machine because a snapshot has never been published is reporting the state
             # of the world, not an error (`@unreachable-not-absent`).
             typer.secho(f"  {lane.name}: not published yet — {exc}", fg=typer.colors.YELLOW, err=True)
+            not_published.append(lane.name)
             continue
         except Exception as exc:
             typer.secho(f"  {lane.name}: FAILED — {exc}", fg=typer.colors.RED, err=True)
             failures += 1
             continue
         typer.secho(f"  {lane.name}: {path}", fg=typer.colors.GREEN)
+        on_disk.append(lane.name)
     if failures:
         raise typer.Exit(code=1)
-    pullable = sorted(lane.name for lane in CACHE_LANES if lane.ensure is not None)
-    typer.echo(f"caches available: {', '.join(pullable)}. Run `cache status` to confirm.")
+    summary = f"on disk: {', '.join(sorted(on_disk))}" if on_disk else "nothing pulled"
+    if not_published:
+        summary += f"; nothing published for: {', '.join(sorted(not_published))}"
+    typer.echo(summary)
 
 
 @cache_app.command("prepare")

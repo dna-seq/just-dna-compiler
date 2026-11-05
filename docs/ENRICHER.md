@@ -1765,7 +1765,10 @@ Four things worth knowing before you run it on a server:
   counting it as a failure**: nobody-published is the same third state as nobody-asked, and the
   command that provisions a deployment must not exit 1 on a fresh machine because a snapshot has
   never been uploaded. A download that *breaks* is still a failure and still exits 1. Build and
-  publish them once (below), or point at a locally built directory.
+  publish them once (below), or point at a locally built directory. Since RM395 such a pull leaves no
+  directory behind (an empty one read as *occupied* to `cache status` and was refused by `cache
+  prepare`), and its closing line names what the run left on disk and which lanes had nothing
+  published, never the registry's list of pullable lanes.
 - **A published dataset accumulates.** Each `ensure_*` fetches only the files its own snapshot is made
   of, because the ClinVar repo still carries a 159 MB `clinvar.parquet` from the single-file era whose
   columns are raw VCF INFO fields. The readers glob `data/*.parquet`, so one foreign file puts two
@@ -4696,6 +4699,10 @@ and no `--use` (MIT grants the fetch, so the gate would answer the same on every
 ```bash
 just-dna-enricher draft-repeats spec/ --catalogue data/repro/strchive --gene HTT
 ```
+
+Without `--catalogue` the provisioned lane is read (`$JUST_DNA_STRCHIVE_CACHE`, else the shared cache
+base), as `check-repeat-bands` reads it; until RM395 the drafter skipped with *no STRchive catalogue was
+provisioned* on a machine holding one. With neither, the skip is nobody-asked, never an empty source.
 
 **A drafted row is thinner than the item that ordered it expected, and that is this module's own
 finding.** The proposal listed `chrom`/`start_hg38`/`stop_hg38`, `locus_structure`, `ref_copies` and

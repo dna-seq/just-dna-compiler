@@ -13,11 +13,14 @@ locus, so the provider withholds it. Neither number is typed into an assertion.
 
 import csv
 import json
+import shutil
 from pathlib import Path
 
 import pytest
 from just_dna_compiler.compiler import load_csv_rows
 from just_dna_compiler.draft import DRAFTABLE, authoring_requirements
+from just_dna_enricher import locations
+from just_dna_enricher.cli import app
 from just_dna_enricher.drafting import missing_required
 from just_dna_enricher.licensing import STRCHIVE_TERMS, TERMS_BY_SOURCE, check_declared_use
 from just_dna_enricher.strchive import (
@@ -39,6 +42,7 @@ from just_dna_format.binning import RepeatAlleleRow
 from just_dna_format.layout import SOURCES_CSV, resolve_sidecar
 from just_dna_format.sources import SourceRow
 from just_dna_format.vocab import TEMPLATE_PLACEHOLDER, VALID_DECLARED_USE
+from typer.testing import CliRunner
 
 _ROOT = Path(__file__).resolve().parents[2]
 _SLICE = _ROOT / "assets" / "strchive_loci_slice.json"
@@ -356,13 +360,41 @@ def test_a_dry_run_writes_no_file_at_all(tmp_path: Path, catalogue: StrchiveCata
     assert sorted(p.name for p in spec.iterdir()) == []
 
 
-def test_no_catalogue_is_a_skip_rather_than_a_source_with_nothing_in_it(tmp_path: Path) -> None:
-    """Nobody-asked is a third state beside asked-and-failed and asked-and-absent."""
+def test_no_catalogue_is_a_skip_rather_than_a_source_with_nothing_in_it(
+    tmp_path: Path, no_ambient_caches: Path
+) -> None:
+    """Nobody-asked is a third state beside asked-and-failed and asked-and-absent.
+
+    "No catalogue" means none passed **and** none provisioned: since RM395 a provisioned lane answers.
+    """
     spec = _spec(tmp_path)
     result = draft_repeat_loci(spec, catalogue=None)
     assert result.skipped and result.candidates == 0
     assert any("strchive build" in warning for warning in result.warnings)
     assert sorted(p.name for p in spec.iterdir()) == []
+
+
+def test_draft_repeats_reads_the_provisioned_strchive_lane_as_check_repeat_bands_does(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_ambient_caches: Path
+) -> None:
+    """RM395 D2: ENRICHING.md runs `draft-repeats ./my_module --gene FMR1` with no `--catalogue`.
+
+    Its `--help` says the provisioned lane is used then, and `check-repeat-bands` used it; the drafter
+    skipped with "No STRchive catalogue was provisioned" on a machine holding one. Through the CLI,
+    because the guide's command is what has to run.
+    """
+    lane = tmp_path / "strchive"
+    lane.mkdir()
+    shutil.copyfile(_SLICE, lane / locations.STRCHIVE_CATALOGUE_FILENAME)
+    monkeypatch.setenv(locations.STRCHIVE_CACHE_VAR, str(lane))
+    spec = _spec(tmp_path)
+
+    result = CliRunner().invoke(app, ["draft-repeats", str(spec), "--gene", "FMR1"])
+
+    assert result.exit_code == 0, result.output
+    expected = {locus.locus_id for locus in load_strchive_catalogue(_SLICE).loci if locus.gene == "FMR1"}
+    assert expected, "the slice carries no FMR1 locus, so this test proves nothing"
+    assert {row["gene"] for row in _rows(spec)} == {"FMR1"}
 
 
 def test_a_run_that_covered_nothing_writes_no_licence_row(
