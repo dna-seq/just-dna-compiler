@@ -224,7 +224,9 @@ def compile_module(
     # there, and every refusal the pre-flight can ask is `validate --strict`'s own. That includes the
     # ladders that read RESOLVED rows (`locus_cannot_host_genotype`, `rsid_coordinate_disagrees`): since
     # RM367 the pre-flight runs this compile's resolution step over the injected table, so both refuse
-    # on both paths, and no ladder is compile-only any more. `resolve_with_ensembl` is passed for its
+    # on both paths. The one path it cannot follow is the deprecated `ensembl_cache` placing rows with
+    # no table beside the spec, which it is not handed (`legacy_reference`, below; `validate.py` says
+    # so at its resolution step). `resolve_with_ensembl` is passed for its
     # own reason: it is not a severity, it decides whether the injected table is consulted at all, and
     # a pre-flight answering that differently would seed `all_warnings` with a finding this compile
     # contradicts.

@@ -407,8 +407,9 @@ def _validate_spec(
     # That is the one thing this command must never do: the documented authoring order puts `validate`
     # immediately before `compile`, so it is the author's pre-flight, and a green pre-flight followed by
     # a refusal sends them looking for a change they did not make. Row-level validation, plus the
-    # *self*-checks below — what stays compile-only is a check that needs **resolved** rows, which is a
-    # narrower exemption than "a cross-check": `_verify_vrs_ids` compares a `resolution.csv` row against
+    # *self*-checks below. A check that needs **resolved** rows was once exempted as compile-only, and
+    # since RM367 that exemption is gone (the resolution step below); even before, it was narrower than
+    # "a cross-check": `_verify_vrs_ids` compares a `resolution.csv` row against
     # its own content-addressed id and consults nothing else, so being a sidecar check never made it a
     # cross-check. Lumping the two together is how it stayed compile-only.
     #
@@ -512,9 +513,9 @@ def _validate_spec(
                 # compile, which is the shape this pre-flight exists to prevent.
                 #
                 # The orphan check rides along because its key is a **gene**: `gene` is authored and
-                # nothing fills it, so the answer here is the answer the compile reaches. Its three
-                # position-keyed cousins stay compile-only, and that is the standing exemption
-                # working rather than an oversight — see `_frequency_checks` below. Held rather than
+                # nothing fills it, so the answer here is the answer the compile reaches. Its
+                # position-keyed cousins are asked below, over the resolved rows, since RM367 retired
+                # the exemption that kept them compile-only. Held rather than
                 # run here: the module's genes are every gene-bearing table's (RM362), and those are
                 # asked once, below, beside the study check that reads the same subjects.
                 all_warnings.extend(_check_gene_metrics_arithmetic(injected_rows))

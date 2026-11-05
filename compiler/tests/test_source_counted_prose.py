@@ -26,6 +26,7 @@ distinct** — which a number never checked in the first place.
 """
 
 import ast
+import functools
 import importlib
 import re
 import typing
@@ -111,15 +112,23 @@ def test_every_gap_reason_arm_is_distinct() -> None:
 # document a consumer reads once; here a comment sits on the literal it counts, and many state a
 # correct, load-bearing total ("the three states a lane can be in"). Rewriting every one of those to
 # satisfy a ban is the smaller defect traded for a larger diff, so a stated total must EQUAL the
-# registry. What makes it walkable is that a total is recognised in two shapes only, both bound to the
-# registry's own name rather than to proximity — the proximity draft of RM223's guard failed on five
-# legitimate sentences, and the same draft here flagged ~50 sub-counts ("two members from …"):
+# registry. What makes it walkable is that a total is recognised in two shapes only, not by proximity
+# — the proximity draft of RM223's guard failed on five legitimate sentences, and the same draft here
+# flagged ~50 sub-counts ("two members from …"):
 #
-# * the headline idiom, a bold number opening a sentence: `**Nine, and …`, `**Three readings`;
 # * a number directly before the registry's own noun — the last word of its name — with only other
-#   words of its name between: "the three states" over `LANE_STATES`, "ten ancestry groups" over
-#   `RECOMMENDED_ANCESTRY_GROUPS`. "two snapshot witnesses" over `PLACEMENT_WITNESSES` is a sub-count,
-#   and `snapshot` is not in the name, so it is not read as a total.
+#   words of its name between, bold or not: "the three states" over `LANE_STATES`, "ten ancestry
+#   groups" over `RECOMMENDED_ANCESTRY_GROUPS`, "**two** parquets" over `SNP_CORE_PARQUETS`. "two
+#   snapshot witnesses" over `PLACEMENT_WITNESSES` is a sub-count, and `snapshot` is not in the name,
+#   so it is not read as a total;
+# * the headline idiom, a bold number and a comma opening a sentence (`**Nine, and the number is …`,
+#   `**Four, and the fourth is not padding`). This one is NOT bound to the name: it is the idiom the
+#   three stale instances used to state the registry's own size, and over every comment block in the
+#   workspace it matches nothing else. A sentence it misreads is reworded, not exempted.
+#
+# Out of reach, and repaired by hand when RM392 found them: a count in a docstring, a count of a
+# different registry ("the seven derived-fact tables" in `LEAD_PARQUETS`' comment), and a number with
+# no noun after it.
 #
 # A mapping holds two sets, its keys and its values, and its noun may name either: `SNP_CORE_PARQUETS`
 # is keyed by CSV and its "three core parquets" are the values. Both sizes are accepted.
@@ -170,8 +179,8 @@ def _total_claims(text: str, name: str) -> list[tuple[str, int]]:
     noun = rf"(?:{re.escape(stem)}(?:s|es)?)"
     between = "|".join(re.escape(word) for word in words)
     shapes = (
-        rf"\*\*{_NUMBER}(?=[,\s])",
-        rf"(?<![\w.\-]){_NUMBER}\s+(?:(?:{between})\s+){{0,2}}{noun}\b",
+        rf"\*\*{_NUMBER},",
+        rf"(?<![\w.\-]){_NUMBER}(?:\*\*)?\s+(?:(?:{between})\s+){{0,2}}{noun}\b",
     )
     return [
         (hit.group(0), _value(hit.group(1)))
@@ -192,52 +201,93 @@ def _sizes(registry: object) -> set[int]:
     return sizes
 
 
-def _registry_comment_blocks() -> list[tuple[str, str, object, str]]:
-    """`(where, name, registry, comment)` for every module-level sized registry with a comment above it."""
+_REGISTRY_TYPES = (tuple, list, dict, frozenset, set)
+
+
+def _modules() -> list[tuple[Path, str, list[str]]]:
+    """`(path, module name, source lines)` for every module in the three packages."""
+    return [
+        (
+            path,
+            ".".join(path.relative_to(root).with_suffix("").parts).removesuffix(".__init__"),
+            path.read_text(encoding="utf-8").splitlines(),
+        )
+        for root in _PACKAGE_ROOTS
+        for path in sorted(root.rglob("*.py"))
+    ]
+
+
+def _comment_above(lines: list[str], lineno: int) -> str:
+    """The contiguous `#` block ending on the line before 1-based `lineno`, markers stripped."""
+    block: list[str] = []
+    index = lineno - 2
+    while index >= 0 and lines[index].lstrip().startswith("#"):
+        block.insert(0, lines[index].lstrip().lstrip("#:").strip())
+        index -= 1
+    return " ".join(block)
+
+
+def _sized(module_name: str, name: str) -> object | None:
+    """The module attribute `name` if it is a registry with more than one member, else `None`."""
+    registry = getattr(importlib.import_module(module_name), name, None)
+    if isinstance(registry, _REGISTRY_TYPES) and len(registry) > 1:
+        return registry
+    return None
+
+
+@functools.cache
+def _registry_comment_blocks() -> tuple[tuple[str, str, object, str], ...]:
+    """`(where, name, registry, comment)` for every module-level sized registry with a comment above it.
+
+    Built on first use rather than at collection, so importing every package module is paid only by
+    the tests that read it.
+    """
     found: list[tuple[str, str, object, str]] = []
-    for root in _PACKAGE_ROOTS:
-        for path in sorted(root.rglob("*.py")):
-            lines = path.read_text(encoding="utf-8").splitlines()
-            module_name = ".".join(path.relative_to(root).with_suffix("").parts).removesuffix(".__init__")
-            module = None
-            for node in ast.parse("\n".join(lines)).body:
-                if isinstance(node, ast.Assign) and len(node.targets) == 1:
-                    target = node.targets[0]
-                elif isinstance(node, ast.AnnAssign):
-                    target = node.target
-                else:
-                    continue
-                if not isinstance(target, ast.Name) or not target.id.strip("_").isupper():
-                    continue
-                block: list[str] = []
-                index = node.lineno - 2
-                while index >= 0 and lines[index].lstrip().startswith("#"):
-                    block.insert(0, lines[index].lstrip().lstrip("#:").strip())
-                    index -= 1
-                if not block:
-                    continue
-                module = module or importlib.import_module(module_name)
-                registry = getattr(module, target.id)
-                if isinstance(registry, (tuple, list, dict, frozenset, set)) and len(registry) > 1:
-                    where = f"{path.relative_to(_WORKSPACE)}:{node.lineno}"
-                    found.append((where, target.id, registry, " ".join(block)))
-    return found
+    for path, module_name, lines in _modules():
+        for node in ast.parse("\n".join(lines)).body:
+            if isinstance(node, ast.Assign) and len(node.targets) == 1:
+                target = node.targets[0]
+            elif isinstance(node, ast.AnnAssign) and node.value is not None:
+                target = node.target
+            else:
+                continue
+            if not isinstance(target, ast.Name) or not target.id.strip("_").isupper():
+                continue
+            comment = _comment_above(lines, node.lineno)
+            registry = _sized(module_name, target.id) if comment else None
+            if registry is not None:
+                found.append((f"{path.relative_to(_WORKSPACE)}:{node.lineno}", target.id, registry, comment))
+    return tuple(found)
 
 
-_BLOCKS = _registry_comment_blocks()
+#: A module-level assignment to an upper-case name, read off the source text: the second, independent
+#: derivation the AST walk is compared to.
+_ASSIGNMENT_LINE = re.compile(r"^(_?[A-Z][A-Z0-9_]*)\s*(?::[^=]+)?=(?!=)")
 
 
-def test_the_walk_reaches_the_registries_it_was_written_for() -> None:
-    """The floor, so a broken walk cannot pass by reading nothing."""
-    walked = {name for _where, name, _registry, _comment in _BLOCKS}
-    assert {"OVERRIDABLE_TABLES", "VALID_CAID_OUTCOME", "VALID_RECOVERY_OUTCOME", "LANE_STATES"} <= walked
+def test_the_walk_reaches_every_commented_registry() -> None:
+    """An equality, not a floor (`@registry-completeness`): the AST walk reaches exactly the registries a
+    plain line scan finds, so a walk that silently narrows (a node shape it stops recognising) fails."""
+    walked = {where for where, _name, _registry, _comment in _registry_comment_blocks()}
+    scanned = {
+        f"{path.relative_to(_WORKSPACE)}:{lineno}"
+        for path, module_name, lines in _modules()
+        for lineno, line in enumerate(lines, 1)
+        if (match := _ASSIGNMENT_LINE.match(line))
+        and _comment_above(lines, lineno)
+        and _sized(module_name, match.group(1)) is not None
+    }
+    assert walked == scanned, f"the walk and the scan disagree: {sorted(walked ^ scanned)}"
+    assert {"OVERRIDABLE_TABLES", "VALID_CAID_OUTCOME", "VALID_RECOVERY_OUTCOME", "LANE_STATES"} <= {
+        name for _where, name, _registry, _comment in _registry_comment_blocks()
+    }
 
 
 def test_a_total_stated_above_a_registry_is_its_size() -> None:
     """Every total a registry's own comment states, against the registry it sits on."""
     wrong = [
         f"{where} {name} (size {sorted(_sizes(registry))}): {phrase!r} says {stated}"
-        for where, name, registry, comment in _BLOCKS
+        for where, name, registry, comment in _registry_comment_blocks()
         for phrase, stated in _total_claims(comment, name)
         if stated not in _sizes(registry)
     ]
@@ -253,6 +303,9 @@ def test_the_guard_reads_the_sentences_it_was_written_for() -> None:
     assert _total_claims("What one lookup concluded. **Three, and the third", "VALID_CAID_OUTCOME")
     assert _total_claims("Seeded with gnomAD v4's ten ancestry groups", "RECOMMENDED_ANCESTRY_GROUPS")
     assert _total_claims("The three states a lane can be in", "LANE_STATES") == [("three states", 3)]
+    assert _total_claims("`variants.csv` maps to **two** parquets", "SNP_CORE_PARQUETS") == [
+        ("two** parquets", 2)
+    ]
 
 
 def test_the_guard_leaves_a_sub_count_alone() -> None:
@@ -261,3 +314,4 @@ def test_the_guard_leaves_a_sub_count_alone() -> None:
     assert not _total_claims("It borrows two members from the resolution table", "VALID_FREQUENCY_STATUS")
     assert not _total_claims("The 0.4 table kinds that can name a locus", "_POSITIONAL_TABLE_KINDS")
     assert not _total_claims("**0.7** added a member", "VALID_SOURCE_LAYERS")
+    assert not _total_claims("**Three readings, and none is interchangeable", "KEY_RULES")

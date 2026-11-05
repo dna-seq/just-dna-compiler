@@ -1296,7 +1296,8 @@ round trip. Reverse stamps the key, the module's `genome_build`, `source="revers
 the column) is rebuilt from its cells, and there a positional table still contributes one row per key,
 since a second row rebuilt from cells would invent a one-to-many the table never stated. A module that
 resolved nothing anywhere and has no `weights.parquet` gets no file, rather than a header-only sidecar
-invented out of an absence.
+invented out of an absence, unless the compiled spec carried a table: then a header-only table comes
+back header-only (RM364).
 
 **`resolution.csv` still gets no parquet**, and that is the repair this item deliberately did not
 make: it is a build-time derived artifact whose consumers are the compiler and the enricher, and

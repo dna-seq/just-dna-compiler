@@ -791,7 +791,7 @@ def _id_bearing_tables(column: str) -> dict[str, type[BaseModel]]:
     """`{filename: model}` for every **authored** table whose model declares `column`.
 
     **Derived from `DRAFTABLE`, never restated** (`@registry-completeness`). The defect this repairs
-    is a roster that named one table while eleven carry the column, so a hand-kept list here would be
+    is a roster that named one table while many carried the column, so a hand-kept list here would be
     the same bug with a longer literal in it: a table kind added later must join this set by existing,
     not by someone remembering. `DRAFTABLE` is the filename→model map the authoring surfaces already
     share, and it is built from `_TABLE_KINDS`, so it carries every optional kind by construction.
