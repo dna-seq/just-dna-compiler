@@ -1946,18 +1946,6 @@ none is. "No reference configured" stays a named could-not-ask, never an absence
 
 **Residuals** none yet.
 
-## RM386 — a snapshot publish is not tied to the bytes or the revision it sends
-
-**0.9, sized by the pm (2026-11-05)** at the maintainer's request ("RM386 is a purely theoretical thing, happening like once in a lifetime. Frequency of the parquet updates is like once a year"). **Built and parked** on `build/RM386` at bf234700. It is not merged into 0.8.
-
-**Severity** low · **Status** open — **a minor, 0.9**, built · **Owner** enricher (`upload.py`) · **Motivating case** audit round 2, class 1 (the lead's scratchpad audit2/report.md (audit round 2 of 0.8, 2026-11-05)) · *related* RM368, RM199
-
-**The gap.** The snapshot `upload_folder` re-reads unhashed paths after the plan hashed them, `create_commit` passes no `parent_commit`, and prune deletes by path at whatever the repo has become. Every case needs a concurrent writer to the same dataset repo. RM368 already ties the *module* publish to its bytes; this extends it to snapshots and prune.
-
-**What the parked branch does.** One `upload._commit` helper pins `parent_commit` and walks the commit history for a token, so a concurrent writer raises `RemoteMovedError` (a `PublishRefused`). A snapshot is hashed once and checked against the hub's tree before `release.json` is sent. Prune deletes exactly the paths it listed, at a pinned revision. AST guards cover every hub write. Before merging in 0.9, rebase it onto the 0.9 branch and re-run its tests; also drop the dead lazy `ImportError` guards it leaves in `_hf_api`/`_read_only_api`/`plan_prune`.
-
-**Residuals** none yet.
-
 ## RM388 — placement readers bypass `usable_loci`
 
 **0.9, sized by the pm (2026-11-05)**: only a hand-written or multi-build `resolution.csv` reaches it.

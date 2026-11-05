@@ -80,7 +80,9 @@ purpose; normalization is the compiled parquet's job (RM346, 1.0).
 - **Audit round 2 sized, 2026-11-05** (the maintainer asked, through the lead, for "what really blocks the release"). The line: a defect 0.8 itself
   introduced on a surface a consumer gates on (a strict refusal of a valid module, a P7 loss) blocks; a defect that was already there is
   sized by how often a real run hits it; the maintainer's word overrides. Blocks: RM387 (from RM374), RM389 (from RM364). In if built
-  and cheap: RM361's amendment, RM391, RM392. 0.9: RM386 (built, parked), RM388, RM390. RM387's reach measured on the 16 examples'
+  and cheap: RM361's amendment (merged whole, the lead's call), RM391, RM392. 0.9: RM388, RM390. RM386 first went to 0.9; the
+  maintainer moved it to 0.8 the same morning: "if branch is built, what's the sense to defer then? Defer unbuilt items." So a built
+  branch is never deferred; only unbuilt work is sized by frequency. RM387's reach measured on the 16 examples'
   `resolution.csv` at origin/0.8: no rsID at two loci, so it is rare in the corpus, but the enricher writes the shape itself. Residuals
   owed on 0.8: RM368 → RM386, RM362 → RM388, RM374 → RM390 (the lead's edit).
 - **RM253's precedent, from just-vcf's lead (2026-11-04)**: the short-read callers they read (GATK,
