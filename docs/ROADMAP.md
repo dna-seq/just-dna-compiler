@@ -999,8 +999,10 @@ running duckdb cannot read rather than mocking `connect`.
 
 ## RM396 — six paced clients keep their default interval or their gate private, so a host sharing one gate reads a private name
 
-**Severity** low · **Status** open — **a minor, for the pm to place** (triage proposes 0.9 by the pm's rule: a new
-public name is new capability, and the reporter has a working interim) · **Owner** enricher (`pgs.py`,
+**Severity** low · **Status** open — **a minor, parked** (the pm, 2026-11-05; triage proposed 0.9). The reporter's
+interim, reading `pgs._REQUEST_INTERVAL`, works, and only one host shares one client's pace today. **Unparks when** a host
+needs a second client's pace or `clingen_allele`'s, when someone renames a private name the registry reads, or when the
+roadmap is empty. Until then, keep `pgs._REQUEST_INTERVAL` and `_gate` as they are · **Owner** enricher (`pgs.py`,
 `litvar.py`, `civic_api.py`, `clingen_allele.py`, `pharmvar.py`, `atlas_client.py`, ENRICHER.md) · **Motivating
 case** S131 in CONSUMER_SUGGESTIONS_HISTORY.md (just-dna-registry's liaison seat, 2026-11-05) · *related* RM203,
 RM156, RM384
