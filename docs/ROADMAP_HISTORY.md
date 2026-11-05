@@ -62,9 +62,10 @@ guide was rewritten to work around one.
 - **D3, `cache status` and `cache pull --only clinvar_gkm`** (ENRICHING.md) described the lane registry,
   not the disk. `cache pull` closed with *caches available:* and every lane with a pull route, so a run
   that found nothing published for `clinvar_gkm` named it available; it now names what the run left on
-  disk and which lanes had nothing published. A pull that found nothing left an empty `data/` (or, for a
-  root-file lane, an empty directory), which the next `cache status` called *occupied* and `cache
-  prepare` refused to build over; the directory is now made only once there is something to put in it.
+  disk and which lanes had nothing published. A parquet lane's pull that found nothing left an empty `data/`,
+  which the next `cache status` called *occupied* and `cache prepare` refused to build over; it is now
+  made only once there is something to put in it. A root-file lane (STRchive) left an empty directory,
+  harmless to both checks, and now removes the one it made.
   `cache status` said *provision with `cache pull`* for a lane whose repository is empty; it reads only
   and cannot see publication, so a lane with a pull route and a builder names both.
   `test_cache_pull_names_only_what_is_on_disk_as_available`,

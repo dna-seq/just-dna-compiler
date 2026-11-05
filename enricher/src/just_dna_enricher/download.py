@@ -914,8 +914,8 @@ def _provision_root_file_snapshot(
     except Exception as exc:
         tmp_path.unlink(missing_ok=True)
         if created and not any(cache_dir.iterdir()):
-            # The directory this call made for the fetch, and nothing came (RM395): left behind, it is
-            # a place `cache status` calls occupied and `cache prepare` refuses to build over.
+            # The directory this call made for the fetch, and nothing came (RM395): a pull that found
+            # nothing published leaves nothing behind, as the parquet lanes' pull now does.
             cache_dir.rmdir()
         if not _hub_says_absent(exc):
             raise error_cls(
