@@ -125,7 +125,9 @@ def test_a_table_recorded_without_the_column_is_cleared_by_rederive(tmp_path: Pa
     _enrich(spec, cache)
     assert not compile_module(spec, tmp_path / "plain", strict=True).success
     # The remedy the refusal names re-asks every subject and writes the whole answer.
-    _enrich(spec, cache, rederive=True)
+    rederived = _enrich(spec, cache, rederive=True)
+    # The fresh row differs from the recorded one by `source_loci` alone, which is no fact: no drift.
+    assert rederived.rederived == []
     cleared = compile_module(spec, tmp_path / "rederived", strict=True)
     assert cleared.success, cleared.errors
 
