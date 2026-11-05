@@ -62,7 +62,13 @@ from just_dna_enricher.enrich.outcome import (
     _rederived_drift,
     _subject_key,
 )
-from just_dna_enricher.enrich.releases import LinkReleases, run_label, table_releases
+from just_dna_enricher.enrich.releases import (
+    LinkReleases,
+    link_releases,
+    run_label,
+    table_releases,
+    witness_releases,
+)
 from just_dna_enricher.enrich.resolution_csv import _write_resolution_csv
 from just_dna_enricher.enrich.subjects import (
     Subject,
@@ -97,6 +103,8 @@ from just_dna_enricher.locations import (
 )
 from just_dna_enricher.net import could_not_ask_reason
 from just_dna_enricher.placement import (
+    CLINVAR_GKM_WITNESS,
+    CLINVAR_WITNESS,
     ENSEMBL_WITNESS,
     Loci,
     PlacementCheck,
@@ -712,6 +720,8 @@ def _run_enrichment(
     # The data release live REST answered from, asked once and only when it answered (RM373). Read by
     # `EnsemblResolver` only: a host may inject a resolver that cannot say, and that one records none.
     rest_release: str | None = None
+    # Whether `/info/data` was asked this run, so the REST witness below reuses the answer, a `None` too.
+    rest_release_asked = False
     if live_ensembl_runs:
         missing = [v.rsid for v in need_pos if v.rsid and v.rsid not in rsid_to_loci]
         if missing:
@@ -752,6 +762,7 @@ def _run_enrichment(
                 # resolver makes no such promise, so an optional provenance label could abort the run.
                 if rest_answered and isinstance(client, EnsemblResolver):
                     rest_release = client.data_release()
+                    rest_release_asked = True
             finally:
                 if owned:
                     client.close()
@@ -814,6 +825,9 @@ def _run_enrichment(
         {v.rsid for v in subjects if v.rsid and _subject_key(v) not in covered} & set(rsid_to_loci)
     )
     clinvar_gkm_ref = resolve_clinvar_gkm_reference(clinvar_gkm_cache) if genome_build == "GRCh38" else None
+    # The release REST answered the witness from (RM373), `None` when it was not asked. A run whose
+    # snapshot answered everything never used REST as a link, so the witness asks for itself, once.
+    rest_witness_release: str | None = None
     if genome_build != "GRCh38":
         placement = PlacementCheck(not_checked="unsupported")
     else:
@@ -844,6 +858,9 @@ def _run_enrichment(
                         len(rest_subjects),
                     )
                     rest_answers, rest_not_asked = ask_live_witness(client.resolve_rsid_rest, rest_subjects)
+                    # Our own client only, as for the link: a host's resolver makes no withholding promise.
+                    if rest_answers and isinstance(client, EnsemblResolver):
+                        rest_witness_release = rest_release if rest_release_asked else client.data_release()
                 else:
                     rest_not_asked = list(rest_subjects)
                     rest_not_asked_reason = (
@@ -934,21 +951,29 @@ def _run_enrichment(
     # and `assertions` read too, so the writer and its readers cannot spell one release two ways.
     clinvar_release = clinvar.clinvar_dataset_label(clinvar_ref)
     releases = LinkReleases(
-        by_link={
-            "cache": cache_release,
-            "clinvar": clinvar_release,
-            # The live link's empty answer is written `source="ensembl"`; REST is what gave it.
-            "ensembl": rest_release,
-            "ensembl-rest": rest_release,
-            # gnomAD is absent on purpose: its API answers from a dataset id (`gnomad_r4`) that names a
-            # release line, not a release, so a 4.0 answer and a 4.1 answer would read alike.
-        },
+        # Checked against the link registry; gnomAD and the retired GraphQL leg are named, with their
+        # reasons, in `LINKS_WITHOUT_A_RELEASE`.
+        by_link=link_releases(
+            {
+                "cache": cache_release,
+                "clinvar": clinvar_release,
+                # The live link's empty answer is written `source="ensembl"`; REST is what gave it.
+                "ensembl": rest_release,
+                "ensembl-rest": rest_release,
+            }
+        ),
         staged=frozenset(staged_rsids),
     )
-    witness_release = {
-        "clinvar": clinvar_release,
-        "clinvar_gkm": snapshot_release_label(clinvar_gkm_ref) if clinvar_gkm_ref is not None else None,
-    }
+    # Checked against `PLACEMENT_WITNESSES`, so a witness added there cannot go unlabelled here.
+    witness_release = witness_releases(
+        {
+            CLINVAR_WITNESS: clinvar_release,
+            CLINVAR_GKM_WITNESS: snapshot_release_label(clinvar_gkm_ref)
+            if clinvar_gkm_ref is not None
+            else None,
+            ENSEMBL_WITNESS: rest_witness_release,
+        }
+    )
     # Rows put back as recorded, by identity: what this run did not answer (`table_releases`).
     carried_rows: set[int] = set()
     out: list[ResolutionRow] = []

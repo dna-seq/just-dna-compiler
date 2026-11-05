@@ -22,9 +22,18 @@ from just_dna_compiler.compiler import _load_csv_rows
 from just_dna_enricher.caches import LANES_BY_NAME
 from just_dna_enricher.clinvar import clinvar_dataset_label
 from just_dna_enricher.enrich import enrich
+from just_dna_enricher.enrich.releases import LINKS_WITHOUT_A_RELEASE, link_releases, witness_releases
 from just_dna_enricher.ensembl import EnsemblResolver
-from just_dna_enricher.licensing import record_table_sources, sources_path, table_release, write_sources_csv
+from just_dna_enricher.licensing import (
+    RESOLUTION_AUTHORITY_BY_LINK,
+    record_table_sources,
+    sources_path,
+    table_release,
+    write_sources_csv,
+)
 from just_dna_enricher.locations import SNAPSHOT_MANIFEST_FILENAME
+from just_dna_enricher.placement import _NOT_INDEPENDENT, ENSEMBL_WITNESS, PLACEMENT_WITNESSES
+from just_dna_enricher.verification import CHECK_WITNESSES
 from just_dna_format.integrity import resolution_signature
 from just_dna_format.layout import SOURCES_CSV, VERIFICATION_JSON, preferred_spelling
 from just_dna_format.resolution import RESOLUTION_FACT_FIELDS, ResolutionRow
@@ -471,3 +480,45 @@ def test_a_curators_row_for_a_source_with_no_terms_is_never_restamped(tmp_path: 
     rows, errors, _ = _load_csv_rows(path, SourceRow, path.name)
     assert errors == []
     assert {r.source: r.dataset for r in rows} == {"manual": "my_curation_v2", "gnomad": "gnomad_v4.1_joint"}
+
+
+# ── the release maps cover their registries (2026-11-05, found merging block 3) ─────────────────
+#
+# The witness map was a hand-kept dict naming `clinvar` and `clinvar_gkm`, written before RM267 made
+# Ensembl REST a witness, so every REST-witnessed row contributed no release. Each map keyed by a
+# registry's members is now checked against the registry, with every exclusion named and given a reason.
+
+
+def test_the_witness_release_map_must_name_every_placement_witness_and_nothing_else() -> None:
+    full = {witness: f"{witness}_release" for witness in PLACEMENT_WITNESSES}
+    assert witness_releases(full) == full
+    for witness in PLACEMENT_WITNESSES:
+        with pytest.raises(ValueError, match=f"missing \\['{witness}'\\]"):
+            witness_releases({w: r for w, r in full.items() if w != witness})
+    with pytest.raises(ValueError, match="unknown \\['pubmind'\\]"):
+        witness_releases({**full, "pubmind": None})
+
+
+def test_the_link_release_map_must_name_every_link_with_an_authority_bar_the_named_exclusions() -> None:
+    # An exclusion naming a link the registry does not hold is a reason about nothing.
+    assert set(LINKS_WITHOUT_A_RELEASE) <= set(RESOLUTION_AUTHORITY_BY_LINK)
+    stamped = set(RESOLUTION_AUTHORITY_BY_LINK) - set(LINKS_WITHOUT_A_RELEASE)
+    full = dict.fromkeys(stamped)
+    assert link_releases(full) == full
+    for link in stamped:
+        with pytest.raises(ValueError, match="missing"):
+            link_releases({k: v for k, v in full.items() if k != link})
+    for excluded in LINKS_WITHOUT_A_RELEASE:
+        with pytest.raises(ValueError, match="unknown"):
+            link_releases({**full, excluded: None})
+
+
+def test_every_map_keyed_by_placement_witness_names_the_same_witnesses() -> None:
+    """The two other witness-keyed tables in this tier, each against the roster, exclusions named."""
+    assert set(CHECK_WITNESSES["placement_agreement"].witness) == PLACEMENT_WITNESSES
+    # `_NOT_INDEPENDENT` is read with a default: a witness absent from it is asked about placements of
+    # its own authority. That is REST's design (RM292: it compares, and is counted self-consistent), so
+    # it is the one named exclusion; any other witness has to say whom it may not speak for.
+    asked_of_its_own_authority = {ENSEMBL_WITNESS: "REST against the snapshot is compared, never independent"}
+    assert set(_NOT_INDEPENDENT) | set(asked_of_its_own_authority) == PLACEMENT_WITNESSES
+    assert not set(_NOT_INDEPENDENT) & set(asked_of_its_own_authority)

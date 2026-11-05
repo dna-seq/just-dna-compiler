@@ -1329,7 +1329,8 @@ release had answered. Three pieces now, one rule each (`enrich/releases.py`):
   it (blank) when the rows state two, or any row states none. It stamps the cell rather than leaving it
   to `merge_sources_file`, which never clobbers and so never filled a row an earlier run wrote blank. A
   placement witness has no column of its own: a row this run wrote speaks for the witness's release
-  this run, and a carried row speaks through the label recorded before this run, which was computed over
+  this run (a snapshot witness's own label; for the REST witness, `/info/data`'s, asked once per run
+  and shared with the live link), and a carried row speaks through the label recorded before this run, which was computed over
   every row the table then held — so a run with nothing to do does not withdraw a label still true.
   Only rows of a source with a terms constant are stamped, so a curator's `manual` row is never touched.
 - **The run's own record withholds its label over a mixed table.** `rsid_coordinate_agreement.release`

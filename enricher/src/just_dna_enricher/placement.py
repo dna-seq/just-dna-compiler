@@ -94,6 +94,10 @@ _AUTHORITY_OF_WITNESS: dict[str, str] = {
     CLINVAR_GKM_WITNESS: CLINVAR_WITNESS,
     ENSEMBL_WITNESS: ENSEMBL_WITNESS,
 }
+#: Every placement witness this tier can name on a row (`ResolutionRow.placement_witness`), read off the
+#: one map that must know each of them. A map keyed by witness elsewhere is checked against this roster,
+#: never hand-listed beside it: RM373's release map named the two snapshot witnesses and missed REST.
+PLACEMENT_WITNESSES: frozenset[str] = frozenset(_AUTHORITY_OF_WITNESS)
 
 #: The row verdicts (`ResolutionRow.placement_verdict`, `vocab.VALID_PLACEMENT_VERDICTS`).
 SAME_EVENT = "same_event"

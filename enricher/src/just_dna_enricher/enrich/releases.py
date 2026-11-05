@@ -12,6 +12,11 @@ snapshot over a table every row of which an older release had answered. Three pi
   release, by the source it names, so the label describes the table rather than the run.
 - `run_label` lets the run's own record carry its snapshot's label only when that label speaks for
   every row the snapshot's source answered; otherwise it is withheld, with the count behind it.
+
+The two maps a run fills, release by link and release by placement witness, are each checked against
+the registry that names every member (`link_releases`, `witness_releases`): both were first written as
+hand-kept dicts, and the witness one predated RM267's REST witness, so a REST-witnessed row contributed
+no release at all (2026-11-05).
 """
 
 from collections.abc import Iterable, Mapping
@@ -19,14 +24,63 @@ from dataclasses import dataclass
 
 from just_dna_format.resolution import ResolutionRow
 
+from just_dna_enricher.licensing import RESOLUTION_AUTHORITY_BY_LINK
+from just_dna_enricher.placement import PLACEMENT_WITNESSES
+
+#: The links with an external authority (`RESOLUTION_AUTHORITY_BY_LINK`) that a run never stamps a
+#: release for, each with the reason. Every other link must be answered by `link_releases`.
+LINKS_WITHOUT_A_RELEASE: dict[str, str] = {
+    "gnomad": (
+        "its API answers from a dataset id (`gnomad_r4`) that names a release line, not a release, so a "
+        "4.0 answer and a 4.1 answer would read alike"
+    ),
+    "ensembl-graphql": (
+        "retired on 2026-11-04 and never asked again; a row written before 0.8 that names it keeps the "
+        "release it was written with, which is none"
+    ),
+}
+
+
+def _covering(answered: Mapping[str, str | None], roster: Iterable[str], what: str) -> dict[str, str | None]:
+    """`answered` when its keys are exactly `roster`; a mismatch is a defect in this tier and raises.
+
+    A run cannot repair it and a test reaches it at once (every GRCh38 `enrich` builds both maps), so it
+    is not a finding to report: it is the registry and the map drifting apart, refused where they meet.
+    """
+    expected = frozenset(roster)
+    missing, unknown = sorted(expected - set(answered)), sorted(set(answered) - expected)
+    if missing or unknown:
+        raise ValueError(
+            f"the release map by {what} does not cover its registry: missing {missing}, unknown {unknown}"
+        )
+    return dict(answered)
+
+
+def link_releases(answered: Mapping[str, str | None]) -> dict[str, str | None]:
+    """The release each link answered from this run, for every link with an external authority.
+
+    `answered` names every `RESOLUTION_AUTHORITY_BY_LINK` link except `LINKS_WITHOUT_A_RELEASE`.
+    """
+    return _covering(answered, set(RESOLUTION_AUTHORITY_BY_LINK) - set(LINKS_WITHOUT_A_RELEASE), "link")
+
+
+def witness_releases(answered: Mapping[str, str | None]) -> dict[str, str | None]:
+    """The release each placement witness answered from this run, for every `PLACEMENT_WITNESSES` member.
+
+    Each value is the release of the source that answered the witness: a snapshot's own label, or for
+    Ensembl REST the release `/info/data` states (`None` when REST was not asked, or would not say).
+    """
+    return _covering(answered, PLACEMENT_WITNESSES, "placement witness")
+
 
 @dataclass(frozen=True)
 class LinkReleases:
     """The release each resolution link answered from this run, by the link name `source` records.
 
-    A link missing from `by_link` (`authored`, `manual`, `reversed`, `ensembl-graphql`, which states
-    no release) answers `None`. `staged` are rsIDs seeded from an interrupted run's journal: that run
-    asked, and its release was never written down, so this run's label would be a guess about it.
+    A link missing from `by_link` (`authored`, `manual`, `reversed`, and `LINKS_WITHOUT_A_RELEASE`)
+    answers `None`; `link_releases` builds `by_link` against the link registry. `staged` are rsIDs
+    seeded from an interrupted run's journal: that run asked, and its release was never written down,
+    so this run's label would be a guess about it.
     """
 
     by_link: Mapping[str, str | None]

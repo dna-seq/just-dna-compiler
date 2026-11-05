@@ -41,6 +41,14 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-05 — RM373 amendment: a row Ensembl REST witnessed contributes REST's release (0.8, uncut)
+
+- **The placement witness's release map covers every witness.** It named ClinVar and ClinVar-GKM and
+  predated the REST witness, so a REST-witnessed row stated no release for it; the REST witness now asks
+  `/info/data` once (or reuses the live link's answer), and both release maps, by link and by witness,
+  refuse to drift from their registries. The `ensembl` licence row of such a run is still withheld: the
+  snapshot and REST spell one Ensembl release two ways.
+
 ## 2026-11-05 — RM379: every authority the concordance record names has its licence row (0.8, uncut)
 
 - **`enrich` records ClinVar's and PubMind's terms at the new `clin_sig_authority_call` layer** for each
