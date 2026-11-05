@@ -32,7 +32,7 @@ from just_dna_enricher.licensing import (
     write_sources_csv,
 )
 from just_dna_enricher.locations import SNAPSHOT_MANIFEST_FILENAME
-from just_dna_enricher.placement import _NOT_INDEPENDENT, ENSEMBL_WITNESS, PLACEMENT_WITNESSES
+from just_dna_enricher.placement import _ASKED_OF_ITS_OWN_AUTHORITY, _NOT_INDEPENDENT, PLACEMENT_WITNESSES
 from just_dna_enricher.verification import CHECK_WITNESSES
 from just_dna_format.integrity import resolution_signature
 from just_dna_format.layout import SOURCES_CSV, VERIFICATION_JSON, preferred_spelling
@@ -516,9 +516,6 @@ def test_the_link_release_map_must_name_every_link_with_an_authority_bar_the_nam
 def test_every_map_keyed_by_placement_witness_names_the_same_witnesses() -> None:
     """The two other witness-keyed tables in this tier, each against the roster, exclusions named."""
     assert set(CHECK_WITNESSES["placement_agreement"].witness) == PLACEMENT_WITNESSES
-    # `_NOT_INDEPENDENT` is read with a default: a witness absent from it is asked about placements of
-    # its own authority. That is REST's design (RM292: it compares, and is counted self-consistent), so
-    # it is the one named exclusion; any other witness has to say whom it may not speak for.
-    asked_of_its_own_authority = {ENSEMBL_WITNESS: "REST against the snapshot is compared, never independent"}
-    assert set(_NOT_INDEPENDENT) | set(asked_of_its_own_authority) == PLACEMENT_WITNESSES
-    assert not set(_NOT_INDEPENDENT) & set(asked_of_its_own_authority)
+    # `_NOT_INDEPENDENT` is read with a default, so its deliberate omissions are named, with reasons.
+    assert set(_NOT_INDEPENDENT) | set(_ASKED_OF_ITS_OWN_AUTHORITY) == PLACEMENT_WITNESSES
+    assert not set(_NOT_INDEPENDENT) & set(_ASKED_OF_ITS_OWN_AUTHORITY)

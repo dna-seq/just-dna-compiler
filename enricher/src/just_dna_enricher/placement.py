@@ -85,6 +85,15 @@ _NOT_INDEPENDENT: dict[str, frozenset[str]] = {
     CLINVAR_WITNESS: frozenset({CLINVAR_WITNESS, CLINVAR_GKM_WITNESS}),
     CLINVAR_GKM_WITNESS: frozenset({CLINVAR_WITNESS, CLINVAR_GKM_WITNESS}),
 }
+#: The witnesses `_NOT_INDEPENDENT` leaves out on purpose, each with its reason: it is read with a
+#: default, so a witness absent from it is asked about its own authority's placements. The two maps
+#: partition `PLACEMENT_WITNESSES` under a test, so a new witness has to choose one.
+_ASKED_OF_ITS_OWN_AUTHORITY: dict[str, str] = {
+    ENSEMBL_WITNESS: (
+        "REST is asked about the snapshot's placements by design (RM292): its disagreement withholds, "
+        "and its agreement is counted self-consistent, never independent"
+    ),
+}
 #: The authority each witness belongs to. A witness compared against a placement of its own authority
 #: (REST against the snapshot) is asked — its disagreement is a finding — but it is never an independent
 #: witness, so its agreement leaves the rsID in the one-witness count. One map, so a witness whose name

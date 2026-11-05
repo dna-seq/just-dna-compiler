@@ -372,8 +372,9 @@ that roster; the REST witness takes the release the live link already asked for,
 The link map (`LinkReleases.by_link`) was the same shape and is now `releases.link_releases`, checked
 against `RESOLUTION_AUTHORITY_BY_LINK` with gnomAD and the retired GraphQL leg named in
 `LINKS_WITHOUT_A_RELEASE`, each with its reason. Two more witness-keyed tables are guarded by equality
-with the roster: `CHECK_WITNESSES["placement_agreement"].witness`, and `_NOT_INDEPENDENT` with REST as
-its one named exclusion (it is asked about its own authority's placements by design). Not the same class:
+with the roster: `CHECK_WITNESSES["placement_agreement"].witness`, and `_NOT_INDEPENDENT`, whose one deliberate
+omission (REST, asked about its own authority's placements by design) is named with its reason in
+`_ASKED_OF_ITS_OWN_AUTHORITY`. Not the same class:
 `DerivedProducer.release_lanes` (REST is live, not a `CACHE_LANES` member, and Ensembl's lane is already
 named) and `CACHE_LANES` itself (the registry, already walked). The `ensembl` licence row in such a run
 stays withheld, now for a true reason: the row REST witnessed was answered by the snapshot, whose label
