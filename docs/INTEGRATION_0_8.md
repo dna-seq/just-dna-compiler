@@ -880,14 +880,15 @@ A table written before 0.8 keeps its `not_found` rows until `enrich --rederive`,
 20. **Spec-tree and log handling.** A symlinked or oversize `*.log` stays behind with
     `log_file_not_shipped` (§ 1.10). `reverse` copies `provenance.json` and the shipped logs back, and
     writes no `resolution.csv` for a module that read none (§ 1.28).
-21. **Readers of a reversed `resolution.csv`.** `reverse` now writes `caid`, `authority`,
-    `placement_witness`, `placement_verdict`, `left_aligned`, `source_release` and `source_loci` back from
-    the locus, in the model's column order, and an `ambiguous` row comes back `ambiguous` rather than
-    `resolved` (§ 1.34, § 1.38). A tool that parses a reversed `resolution.csv` (a registry rebuild, a spec mirror) accepts
+21. **Readers of a reversed `resolution.csv`.** `reverse` now writes `vrs_id`, `vrs_spec`, `caid`,
+    `authority`, `placement_witness`, `placement_verdict`, `left_aligned`, `authored_event`,
+    `judged_coordinate`, `source_release` and `source_loci` back from the locus, eleven columns a 0.7
+    `reverse` did not write, in the model's column order, and an `ambiguous` row comes back `ambiguous`
+    rather than `resolved` (§ 1.28, § 1.31, § 1.34, § 1.38). A tool that parses a reversed `resolution.csv` (a registry rebuild, a spec mirror) accepts
     the new columns, best by reading it through `ResolutionRow`; `source=reversed` and an empty
     `fetched_at` are unchanged.
-22. **Levers, not changes.** `just_dna_format.spelling` is the one comparison for a gene, drug, DOI, PMID
-    or contig (§ 1.22); `compiler.subjects.module_subjects` answers which genes and loci a module is about
+22. **Levers, not changes.** `just_dna_format.spelling` is the one comparison for a gene, drug, DOI or
+    contig, and `spec.citation_key` for a cited work, a PMID or a `NONE` row's DOI (§ 1.22); `compiler.subjects.module_subjects` answers which genes and loci a module is about
     (§ 1.25); `layout.nothing_to_write` is the predicate a sidecar writer of yours may ask (§ 1.24).
 23. **Readers of `resolution.csv` (RM382, reversing S85).** A missing row for an rsID-only subject now
     means *every link answered and none could host the genotype* as well as could-not-ask; tell them apart
@@ -949,8 +950,8 @@ follows that map; the differences are listed last.
 8. RM368's and RM386's publisher changes (§ 1.27, § 1.40) are the enricher's HuggingFace publisher, which
    the registry does not use; RM303's `read_release` model (§ 1.9) reaches only an `is None` test there. Both per the map.
 9. `manifest.artifact.files` remains the source of truth for what a module contains.
-10. If the `revalidate`/`upgrade` rebuild reverses a module and reads its `resolution.csv`, it gets six more
-    columns and keeps an `ambiguous` row `ambiguous` (§ 1.34, § 2 step 21).
+10. If the `revalidate`/`upgrade` rebuild reverses a module and reads its `resolution.csv`, it gets eleven
+    more columns than a 0.7 `reverse` wrote and keeps an `ambiguous` row `ambiguous` (§ 1.34, § 2 step 21).
 11. S130's interim retires with RM384: the spelled repo in `config.py` becomes
     `SNAPSHOT_REPO_IDS["ensembl"]`, and the drift test reading `download._ENSEMBL_HF_PREFIX` goes, since
     that private name no longer exists (§ 1.39).
