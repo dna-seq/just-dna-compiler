@@ -221,11 +221,13 @@ def compile_module(
     # mode, so it seeded `all_warnings` with every mode-ladder sentence and a `strict` compile then
     # refused with the same finding in `errors`: one finding on two channels, counted twice by any
     # consumer. In the compile's mode a ladder finding lands where its severity puts it, and only
-    # there, and every refusal the pre-flight can ask is `validate --strict`'s own. The ladders that
-    # read RESOLVED rows (`locus_cannot_host_genotype`, `rsid_coordinate_disagrees`) are compile-only
-    # and refuse further down. `resolve_with_ensembl` is passed for its own reason: it is not a
-    # severity, it decides whether the injected table is consulted at all, and a pre-flight answering
-    # that differently would seed `all_warnings` with a finding this compile contradicts.
+    # there, and every refusal the pre-flight can ask is `validate --strict`'s own. That includes the
+    # ladders that read RESOLVED rows (`locus_cannot_host_genotype`, `rsid_coordinate_disagrees`): since
+    # RM367 the pre-flight runs this compile's resolution step over the injected table, so both refuse
+    # on both paths, and no ladder is compile-only any more. `resolve_with_ensembl` is passed for its
+    # own reason: it is not a severity, it decides whether the injected table is consulted at all, and
+    # a pre-flight answering that differently would seed `all_warnings` with a finding this compile
+    # contradicts.
     # `legacy_reference` tells it the deprecated `ensembl_cache` will place rows it cannot see.
     validation, validation_findings = _validate_spec(
         spec_dir,

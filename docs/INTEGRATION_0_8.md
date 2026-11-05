@@ -644,7 +644,7 @@ reads the record and no longer calls such a row a contradiction.
 
 | Surface | What changed | What to do |
 | --- | --- | --- |
-| The parquets' `resolution_loci` and `studies.parquet` `proxy_loci` | The struct is every `ResolutionRow` column but the eight `just_dna_compiler.compiler.parquets.RESOLUTION_LOCUS_EXCLUDED` names, in the model's order: it gains `caid`, `authority`, `status`, `placement_witness`, `placement_verdict`, `left_aligned` (`Boolean`) and `source_release`, and `authored_event`/`judged_coordinate` move after them. A key whose locus holds any value no row cell rebuilds (anything but an empty cell, or `status=resolved`) keeps its loci, so an enriched module carries loci where it carried none. Every parquet with either column gets a new `artifact.digest`; `content_signature` and `resolution_signature` do not move. | Read struct fields by name. A reader that indexed them by position re-reads the order. |
+| The parquets' `resolution_loci` and `studies.parquet` `proxy_loci` | The struct is every `ResolutionRow` column but the ones `just_dna_compiler.compiler.parquets.RESOLUTION_LOCUS_EXCLUDED` names, in the model's order: it gains `caid`, `authority`, `status`, `placement_witness`, `placement_verdict`, `left_aligned` (`Boolean`) and `source_release`, and `authored_event`/`judged_coordinate` move after them. A key whose locus holds any value no row cell rebuilds (anything but an empty cell, or `status=resolved`) keeps its loci, so an enriched module carries loci where it carried none. Every parquet with either column gets a new `artifact.digest`; `content_signature` and `resolution_signature` do not move. | Read struct fields by name. A reader that indexed them by position re-reads the order. |
 | `reverse`'s `resolution.csv` | Gains `caid`, `authority`, `placement_witness`, `placement_verdict`, `left_aligned` and `source_release`, in the model's column order, written back from the locus; a reversed row keeps the authority and release of the row it came from, and an `ambiguous` row stays `ambiguous` (it came back `resolved` before, so lap 2 dropped the warning and `strict` built). `source=reversed` and an empty `fetched_at` are unchanged; `rsid_alternates`/`rsid_current`/`rsid_status` are still not written. A second-lap compile now reads the same `authority` and witness the first did, so it no longer names a declared source unused. | None. A consumer that read an empty `authority` as "reversed" reads `source`. |
 | `rsid_coordinate_disagrees` strict refusal | The `strict`-only continuation now reads "The authored value is kept and the table's position is carried beside it, so the next compile reaches this same finding: strict builds only on an authored pair the table agrees with." The warning text and the closing "Fix one of the two, or compile without strict." are unchanged. | A consumer grepping "does not survive a reverse" greps the new phrase. |
 
@@ -719,9 +719,9 @@ reads the record and no longer calls such a row a contradiction.
    module's `artifact.digest`), `measurement_json` carries all four, and
    `sweep --toolchain-before DIR --json` nests the fixed-compiler sweep under `toolchain_sweep`.
 9. If you keep a hand-written list of artifact parquets or authored CSVs (a publisher's allowlist, a
-   spec-directory mirror), derive it from `ARTIFACT_PARQUETS` (30 entries at `1007a26d`),
+   spec-directory mirror), derive it from `ARTIFACT_PARQUETS`,
    `table_bindings()` and `compiler.AUTHORED_NON_KIND_TABLES` (`overrides.csv`, `meta.csv`,
-   `model_organisms.csv`). 0.8 adds eight parquets: `meta.parquet` and `meta_resolved.parquet` (§ 1.2.1),
+   `model_organisms.csv`). 0.8 adds these parquets: `meta.parquet` and `meta_resolved.parquet` (§ 1.2.1),
    `model_organisms.parquet` (§ 1.2.2), `locus_to_gene.parquet`, `colocalisations.parquet`,
    `consequences.parquet` (§ 1.2.3) and `ld_pairs.parquet` (§ 1.2.4). None is a `LEAD_PARQUET`.
 10. If you read `verification.json` or `manifest.verification`, upgrade to 0.8 first (§ 1.13), and do not
@@ -753,7 +753,7 @@ reads the record and no longer calls such a row a contradiction.
     is spelled without `:None` now (§ 1.26): respell a stored `13:48037749:None` in `overrides.csv`, or it
     stops matching.
 15. **Parquet readers.** The variant and positional parquets gain `vrs_id` and `vrs_spec` (§ 1.19) and
-    `resolution_loci` (§ 1.28), whose struct is every `ResolutionRow` column but the eight
+    `resolution_loci` (§ 1.28), whose struct is every `ResolutionRow` column but the ones
     `parquets.RESOLUTION_LOCUS_EXCLUDED` names, in the model's order (§ 1.31, § 1.34): read its fields by
     name. `studies.parquet` gains the RM325–RM332 columns and `proxy_loci`, and `weights.parquet`
     `effect_unit`, `eur_only_evidence` and the three `outcome_*` cells, true or null and never false
@@ -880,7 +880,7 @@ the private `compiler._split_genotype` included (measured in a clean environment
    every variant parquet for a join that does not depend on spelling.
 4. `haplotypes.parquet` keys on `gene` too (§ 1.16); `chrom` is bare on the positional parquets (§ 1.22);
    `weights.parquet`'s `outcome_*` are true or null, never false (§ 1.6).
-5. `ARTIFACT_PARQUETS` and `LEAD_PARQUETS` are already imported rather than hand-listed, so the eight new
+5. `ARTIFACT_PARQUETS` and `LEAD_PARQUETS` are already imported rather than hand-listed, so the new
    parquets need nothing; none of them is a lead parquet.
 6. If the app renders warnings, step 12 of § 2.
 

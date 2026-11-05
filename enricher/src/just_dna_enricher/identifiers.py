@@ -773,9 +773,10 @@ def module_trait_ids(variants: list[VariantRow]) -> list[str]:
     `trait_efo_id` is a multi-valued cell (comma/semicolon/pipe-separated), so one row can name
     several traits.
 
-    **This is the roster of one table, and eleven authored tables carry the column.** Kept as-is
-    because a caller holding rows is the only thing it can serve, and widened where the tables are
-    actually reachable: `authored_identifiers` below takes a spec directory and reads all of them.
+    **This is the roster of one table, and every table `_id_bearing_tables` names carries the
+    column.** Kept as-is because a caller holding rows is the only thing it can serve, and widened
+    where the tables are actually reachable: `authored_identifiers` below takes a spec directory and
+    reads all of them.
     A caller passing `variants=` gets this narrow roster and is told so (S86).
     """
     out: list[str] = []

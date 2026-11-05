@@ -35,6 +35,82 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM392 — a count in prose beside a registry or table drifted from it, in the docs and in code comments
+
+✅ **SHIPPED 2026-11-05 on `0.8`, uncut — a minor (the 0.8 audit, round 2)** · **Severity** low ·
+**Owner** compiler + format + enricher (comments), docs · *related* `@registry-completeness`, RM218,
+RM223, RM359, RM364, RM365, RM367, RM380
+
+**Residuals** won't fix — `CHANGELOG.md`'s "Ten online … Six offline" paragraph is left to the examples regeneration, which rewrites it when it regenerates the last two examples · won't fix — the code guard reads a registry's own comment block for its own noun, so a count of a different registry, or a number with no noun after it, is out of its reach and those instances were repaired by hand
+
+**The class.** A number spelled in prose (a doc, a comment above a registry) beside the list or registry
+it counts, or a description of a behaviour beside the code that implements it, with nothing walking the
+two together. The registry grows, the sentence does not. The audit (round 2, class 8) found the
+instances below not marked "(hunt)"; the hunt across `docs/` root and the three packages' comments
+found the rest. Re-verified on `5b1b73b8`, every one held.
+
+**Instances, file:line on `5b1b73b8`, before → after:**
+
+- `schema/.../overrides.py:119` "**Nine, and the number is a decision rather than a count**" over
+  `OVERRIDABLE_TABLES` (12) → "**Membership is a decision rather than a count**", no number; `:158` "The
+  ninth" → dropped.
+- `enricher/.../clingen_allele.py:54` "**Three, and the third is not padding**" over `VALID_CAID_OUTCOME`
+  (5) → "**`unchecked` is not padding**". (hunt)
+- `enricher/.../grch37.py:69` "**Four, and the fourth is not padding**" over `VALID_RECOVERY_OUTCOME` (5)
+  → "**`unchecked` is not padding**", and `skipped_offline` named. (hunt)
+- `compiler/.../tables.py:423` "the ten that carry … the seven derived-fact tables" (`_FACT_TABLES` is 14)
+  → "`weights` plus one per table kind … every `_FACT_TABLES` parquet".
+- `compiler/.../pipeline.py:225` the two resolution ladders "are compile-only" → since RM367 both refuse
+  on both paths, and no ladder is compile-only.
+- `compiler/.../binning_checks.py:24` "Today that is the four binning kinds plus `pharm_variants.csv`"
+  over seven (the two 0.8 non-kind tables) → names the kinds without a count. (hunt)
+- `compiler/.../fact_checks.py:235` "all five orphan checks … through five tables" (six emit the code) and
+  `schema/.../vocab.py:1658`, `COMPILER.md:2033` "the five orphan fact tables" → no count. (hunt)
+- `enricher/.../civic_vcf.py:264` "three exceptions in twenty members" over 28 → no count. (hunt)
+- `enricher/.../identifiers.py:776` "eleven authored tables carry the column" (ten carry `trait_efo_id`)
+  → "every table `_id_bearing_tables` names". (hunt)
+- `schema/.../vocab.py:1149` "gnomAD v4's ten ancestry groups plus `global`": true, but read by the new
+  guard as a total of `RECOMMENDED_ANCESTRY_GROUPS` (11) → no count.
+- `SCHEMAS.md:1958` "for the seven where overriding is the intended feature" → "every table in
+  `overrides.OVERRIDABLE_TABLES`".
+- `SCHEMAS.md:1977-1989` the overlay key table, nine rows over twelve → adds `locus_to_gene.csv`,
+  `colocalisations.csv`, `consequences.csv`.
+- `SCHEMAS.md:1991` "**Two** derived sidecars sit outside the set … minus those two" (three do) → each
+  named, `ld_pairs.csv` added, no count.
+- `SCHEMAS.md:134-151` the authored roster had no `meta.csv` and carried `gwas_effects.csv`, a derived
+  sidecar the paragraph above it says the table leaves out → `meta.csv` in, `gwas_effects.csv` out.
+- `COMPILER.md:1286-1288` reverse "contributes at most one row per key" and "provenance is discarded"
+  → the RM364/RM380 behaviour: `resolution_loci` written back as stored, every column but
+  `RESOLUTION_LOCUS_EXCLUDED`, the cell rebuild only for a null locus.
+- `COMPILER.md:2037` "the eleven an author cannot clear" → names `CARRIED_WARNING_CODES`. (hunt, correct
+  but beside a table `test_warning_codes.py` already walks)
+- `ENRICHER.md:1502` "the fourteen names" (18) and `:5946` "four of the nine that carry `gene`" (ten) →
+  no count. (hunt)
+- `INTEGRATION_0_8.md:647`, `:756` "the eight `RESOLUTION_LOCUS_EXCLUDED` names" (seven); `:724` "0.8
+  adds eight parquets" over a list of seven; `:883` "the eight new parquets"; `:722` "30 entries at
+  `1007a26d`" → no count. (hunt)
+- Not instances: `CHANGELOG.md:66-68` (skipped, see Residuals); `reference_examples/longevity_studies/README.md:50-55`
+  sits in a historical section; `SCHEMAS.md:3214` "the seven `module_stats` facets" is correct (nine
+  `AUTHORED_ROW_DERIVED_FIELDS`, two unconditional).
+
+**The mechanism.** Drop the count where the list is beside it (name the registry or its rule), and
+compare the list to the registry as a set — the hash roster's shape (`test_counted_prose.py`).
+
+**The guards.** `test_source_counted_prose.py` walks every module-level sized registry in the three
+packages and reads the comment block directly above it; a total stated there must equal the registry's
+size (keys or distinct values for a mapping). A total is recognised in two shapes only, both bound to the
+registry's own name: a bold number opening a sentence (`**Nine, and`), and a number before the last word
+of the registry's name with only other words of its name between ("ten ancestry groups" over
+`RECOMMENDED_ANCESTRY_GROUPS`). Equality rather than absence, unlike RM223, because a comment on a
+literal often states a correct, load-bearing total and rewriting them all is a larger diff for no gain;
+a proximity draft flagged about fifty sub-counts. Red on `5b1b73b8` with four hits (overrides,
+clingen_allele, grch37, vocab); reinserting "**Nine," turns it red again. `test_counted_prose.py` adds
+three set equalities against the registries (the authored roster against `_INPUT_FILES` plus
+`resolution.csv`, the overlay key table against `OVERRIDABLE_TABLES` with each subject and member, the
+exclusions sentence against `_FACT_TABLES` minus `OVERRIDABLE_TABLES`), the reverse paragraph pinned to
+`resolution_loci`, and five more paragraphs on the rule-never-total list; all red on `5b1b73b8`'s docs,
+and reinserting "0.8 adds eight parquets" turns the list red again.
+
 ## RM380 — a hand-kept struct mirrored `ResolutionRow` with nothing asserting the two agree, so reverse dropped every 0.8 provenance column
 
 ✅ **SHIPPED 2026-11-05 on `0.8`, uncut — a minor (found building RM375).** Owner compiler, severity

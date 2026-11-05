@@ -21,7 +21,7 @@ _BINNING_TABLE_KINDS: tuple[tuple[str, type[BaseModel]], ...] = tuple(
 
 #: The table kinds that **cite**, derived the same way and for the sharper version of the same reason
 #: (RM132): a kind is a citation site exactly when its model declares a `pmid`, and the literature
-#: cross-check reads every one of them. Today that is the four binning kinds plus `pharm_variants.csv`.
+#: cross-check reads every one of them: among the table kinds, the binning kinds and `pharm_variants.csv`.
 #:
 #: **Hand-listing this is the failure the check cannot survive.** A citation site the cross-check does
 #: not know about makes every citation from it read as a stale orphan in one direction and leaves it

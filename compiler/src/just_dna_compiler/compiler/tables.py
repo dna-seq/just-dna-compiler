@@ -420,9 +420,10 @@ ARTIFACT_PARQUETS: tuple[str, ...] = (
 )
 
 
-# The **lead** parquets: the ten that carry a module's own annotation rows, one per authored table
-# family. Everything else in `ARTIFACT_PARQUETS` is a side table — `annotations`/`studies`, the seven
-# derived-fact tables — which describes or cites the rows rather than being them. The distinction is
+# The **lead** parquets: the ones that carry a module's own annotation rows, `weights` plus one per
+# table kind. Everything else in `ARTIFACT_PARQUETS` is a side table — `annotations`/`studies`, every
+# `_FACT_TABLES` parquet, the authored non-kind tables — which describes or cites the rows rather than
+# being them. The distinction is
 # not ours: it is what the reference consumer's discovery probes to decide "is this directory a
 # module" (S35), and RM2 made it the honest publish gate too, since a module carries only the kinds it
 # uses and `weights.parquet` has been optional for four releases.

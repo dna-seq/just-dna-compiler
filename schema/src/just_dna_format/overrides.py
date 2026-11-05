@@ -116,17 +116,16 @@ _MERGED = (
 
 #: The derived tables an overlay may correct, and how each one is keyed.
 #:
-#: **Nine, and the number is a decision rather than a count** — the seven merge-not-clobber derived
-#: sidecars settled on 2026-08-28, plus the concordance record RM130 added the same day. The proposal
-#: that carries RM124 says "the six covered derived tables" and never enumerates them; the roadmap
-#: entry it inherits the number from does not either. That miscount is pinned here rather than left to
-#: be re-counted, and the compiler's own test asserts an **equality** against its table tuples, so a
-#: new sidecar landing without a decision here fails rather than shipping as a table nobody can
-#: correct.
+#: **Membership is a decision rather than a count**: the merge-not-clobber derived sidecars settled on
+#: 2026-08-28, the concordance record RM130 added the same day, and each sidecar a later release added
+#: with its own entry below. The proposal that carries RM124 never enumerated its set, so the set is
+#: stated here rather than counted, and the compiler's own test asserts an **equality** against its
+#: table tuples, so a new sidecar landing without a decision here fails rather than shipping as a table
+#: nobody can correct. This sentence opened with a number once, and the number went stale (RM392).
 #:
-#: `clin_sig_concordance.csv` is in for a *different* reason from the seven, and the difference is
-#: worth keeping. It is not merge-not-clobber and never carried hand-curation to lose; it is here
-#: because **an overlay row is the answer to the question it asks.** An author who has read a
+#: `clin_sig_concordance.csv` is in for a *different* reason from the merge-not-clobber ones, and the
+#: difference is worth keeping. It is not merge-not-clobber and never carried hand-curation to lose;
+#: it is here because **an overlay row is the answer to the question it asks.** An author who has read a
 #: contested subject and decided records that decision as an overlay row against it, carrying the
 #: `reason` this table makes mandatory — which is what turns a finding into a record, and what makes
 #: the vindication signal work: when the archive later moves, that row stops changing anything.
@@ -155,8 +154,8 @@ _MERGED = (
 #:   module annotates and the subject alone does not reach one of them.
 #: * `expression_effects.csv` — `gene`. The record is per `(variant_key, gene)` because one variant is
 #:   attributed to every gene within the model's window and genuinely moves them in different
-#:   directions, so the subject alone reaches a group rather than a row. The ninth, and the one that
-#:   reaches rows naming variants the module does not author — an overlay here corrects a claim about
+#:   directions, so the subject alone reaches a group rather than a row. It reaches rows
+#:   naming variants the module does not author — an overlay here corrects a claim about
 #:   a locus, not about an annotation.
 #: * `locus_to_gene.csv` / `colocalisations.csv` — `gene_id` / `right_study_locus_id` under the subject
 #:   `study_locus_id`, the source's own grain (RM333). One variant is a member of several study loci, so

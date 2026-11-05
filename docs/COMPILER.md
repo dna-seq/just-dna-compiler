@@ -1284,11 +1284,19 @@ chosen.** Once a coordinate is filled, a reverse that dropped the lookup table w
 recompile leaves those parquets unfilled — `compile → reverse → compile` would stop reproducing the
 artifact (Principle 7), and a PGx module carries no `weights.parquet` for the old writer to read at
 all. Weights are written first and own any shared key (`variants.csv` is the only table carrying
-`alts` as an *authored* fact), and the positional side contributes at most one row per key, or the
-next compile would read two rows as a one-to-many rsID. Provenance is discarded exactly as before
-(`source="reversed"`, `status="resolved"`, blank `fetched_at`). A module that resolved nothing anywhere
-and has no `weights.parquet` gets no file, rather than a header-only sidecar invented out of an
-absence.
+`alts` as an *authored* fact). **Since RM364 the rows are the table's own**: `weights.parquet` and every
+positional parquet carry `resolution_loci`, the loci the table filed under the row's authored key, and
+reverse writes those back as stored, several under one key where the table had several, so the next
+compile reads the one-to-many the first read. **Since RM380 every column a locus carries comes back** —
+every `ResolutionRow` column but the ones `parquets.RESOLUTION_LOCUS_EXCLUDED` names, so `authority`,
+`status`, the placement witness and verdict, `left_aligned`, `source_release` and `caid` survive the
+round trip. Reverse stamps the key, the module's `genome_build`, `source="reversed"` and a blank
+`fetched_at` itself, and leaves out `rsid_alternates`/`rsid_current`/`rsid_status`. A row whose
+`resolution_loci` is null (its own cells rebuild the key's loci exactly, or a parquet compiled before
+the column) is rebuilt from its cells, and there a positional table still contributes one row per key,
+since a second row rebuilt from cells would invent a one-to-many the table never stated. A module that
+resolved nothing anywhere and has no `weights.parquet` gets no file, rather than a header-only sidecar
+invented out of an absence.
 
 **`resolution.csv` still gets no parquet**, and that is the repair this item deliberately did not
 make: it is a build-time derived artifact whose consumers are the compiler and the enricher, and
@@ -2030,11 +2038,12 @@ over the parquet `FileEntry` list), so adding them moved no hash — and both ar
 when `warnings` moves.
 
 A code names **the finding**, never the function that builds it, and one code carries one remediation:
-two sentences cleared by the same edit share a code and say which cell (the weight-sign pair, the five
+two sentences cleared by the same edit share a code and say which cell (the weight-sign pair, the
 orphan fact tables), two cleared differently do not. The set is published, so it is permanent within
 the major — additions are minor-legal, re-spellings are not.
 
-**Carried findings** — the eleven an author cannot clear, and the reason each is on this side:
+**Carried findings** — the ones an author cannot clear (`vocab.CARRIED_WARNING_CODES`), and the reason
+each is on this side:
 
 | Code | Why no authored edit clears it |
 |---|---|
