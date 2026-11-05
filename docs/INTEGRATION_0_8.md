@@ -650,8 +650,8 @@ reads the record and no longer calls such a row a contradiction.
    compares placements (§ 1.18), writes fills left-aligned (§ 1.19), judges an authored spelling
    (§ 1.31) and stamps `source_release` (§ 1.32). Run it online: offline, every indel verdict is
    `undecided` and Ensembl REST is not asked. Read the diff, because resolutions move as data (§ 1.29). A
-   module enriched before the switch and never re-derived may stop compiling under `--strict`
-   (`rsid_placements_disagree`, § 1.30).
+   module enriched once before the switch and again after it without `--rederive` holds two placement
+   sets for one rsID and may stop compiling under `--strict` (`rsid_placements_disagree`, § 1.30).
 6. **Validate with the compile's switches, then compile.** `just-dna-compiler validate` takes
    `--strict`, `--resolve/--no-resolve` and `--ba1-threshold` (§ 1.23); pass what the compile gets, and
    a green `validate --strict` then means the strict compile will not refuse. The refusals new in 0.8 are
@@ -797,7 +797,7 @@ follows that map; the differences are listed last.
    placement disagreement (§ 1.18), a `retired` source (§ 1.26) and a null
    `rsid_coordinate_agreement.release` (§ 1.32) as what they are; none is a transient, so `unresolved_hint`
    must not say re-run. RM374's strict refusal (§ 1.30) reaches the publish gate for a module enriched
-   before the snapshot switch, and its remedy is `enrich --rederive`.
+   across the snapshot switch without `--rederive`, and its remedy is `enrich --rederive`.
 6. **One verdict (M9).** Pass `validate_spec` the switches the compile gets, and drop any cleanup of a
    partial output directory (§ 1.23).
 
