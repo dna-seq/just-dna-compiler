@@ -6188,7 +6188,10 @@ the suite never really sleeps six seconds), partial-error resilience, AC/AN agai
 snapshot rebuild, the chain order (a both-links variant keeps `source="cache"`), `--offline` making zero
 gnomAD calls, an unqueryable ClinVar cache degrading instead of crashing, VRS minting and the
 snapshot-vs-API dataset labelling. Live queries and indel normalization are `@integration` and opt-in
-via `JUST_DNA_NETWORK_TESTS=1`.
+via `JUST_DNA_NETWORK_TESTS=1`. Without it, every other test is fenced off the network at the transport
+(RM391): the root `conftest.py` refuses any host but this machine at `socket.getaddrinfo`/`connect` and
+gRPC's channel constructors, raises an error that names the test and the host, and fails the test at
+teardown even when a client swallowed the raise.
 
 The **ClinVar** tests (`test_clinvar.py`) build against a small committed real slice
 (`assets/clinvar_GRCh38_slice.vcf.gz`), computing expected values from that VCF at runtime: build

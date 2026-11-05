@@ -41,6 +41,18 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-05 — RM391: no test reaches the network without `JUST_DNA_NETWORK_TESTS=1`, whichever client it uses (0.8, uncut)
+
+- The root `conftest.py` fences the transport: `socket.getaddrinfo`, `socket.socket.connect`/`connect_ex`
+  and gRPC's channel constructors refuse every host but this machine unless the opt-in is set. The
+  error, `NetworkReachedInTests`, names the test and the host, and a test whose body swallowed it fails
+  at teardown. `JUST_DNA_NETWORK_GUARD_LOG=<file>` lists every refusal.
+- The 31 tests in 7 files that asked ClinGen, Ensembl REST, eutils or the seqrepo proxy, and passed on
+  whatever came back, now script those clients or turn the incidental pass off; none lost its point.
+- `enricher/tests/test_the_network_is_fenced.py` drives httpx, requests, `urllib`, `huggingface_hub` and
+  gRPC into the fence and holds the enricher's imported transports to that set. Nothing for a consumer
+  to do: the packages are unchanged.
+
 ## 2026-11-05 — INTEGRATION_0_8 is finished for downstream to integrate against the branch (0.8, uncut)
 
 - **[INTEGRATION_0_8.md](INTEGRATION_0_8.md) now covers every § 1 item from § 2 and § 3**: an upgrade order

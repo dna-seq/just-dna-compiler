@@ -35,6 +35,80 @@ up.
 The schema round [PROPOSAL_0_8_PT2.md](proposals/PROPOSAL_0_8_PT2.md) decided on 2026-11-04, built on
 the `0.8` branch lane by lane. Newest first.
 
+## RM391 — the test network fence covered one client, so 31 tests asked remote services and passed on the refusal
+
+✅ **SHIPPED 2026-11-05 on `0.8`, uncut — a minor (the 0.8 audit, round 2).** Owner enricher (tests),
+severity medium.
+
+**Residuals** none
+
+**The class.** A rule of the suite (`@network-tests-optin`: network tests are opt-in with
+`JUST_DNA_NETWORK_TESTS=1`) enforced per client, by name, so the one client fenced was the only one
+held to it. RM372's `_fenced_hub` (`enricher/tests/conftest.py:147-153` at `5b1b73b8`) replaced
+`HfFileSystem` and `hf_hub_download`; nothing stood between any other test and the network.
+
+**Re-verified on `5b1b73b8`, with the fence below installed and before any test was changed: 31 tests in
+7 files reached a remote host** (the audit counted 8 files; the same 31 ids). Each refused at its first
+reach, so a test whose first host was refused could have had a second behind it; the fixes were re-run
+under the fence until none remained.
+
+| File (tests) | Host | Before → after |
+| --- | --- | --- |
+| `test_civic_draft.py` (15) | `reg.clinicalgenome.org` | the drafter's default ClinGen client asked live for the slice's CAID-only rows → the enricher conftest's `clingen_registry_down`, used through `pytestmark`, gives that client a 503 transport: the real client and its real `unchecked`, the state the tests had passed in offline |
+| `test_civic_draft_licence_row.py` (3) | `reg.clinicalgenome.org` | the same → the same fixture |
+| `test_answered_call_shift.py` (3) | `rest.ensembl.org` | `_run` said "every network-touching pass off" and turned off four passes, but the chain's live-Ensembl link has no flag of its own → `_run` passes `offline=True` |
+| `test_enrich.py` (7: six functions, one parametrized twice) | `services.genomicmedlab.org`, `eutils.ncbi.nlm.nih.gov` | `verify_ref` (seqrepo) and `verify_rsids` (eutils) are on by default and incidental to tests about the chain, the resolver and a dbSNP outage → turned off in each call, `verify_rsids` kept where the outage is the subject |
+| `test_dataset_currency.py` (1) | `services.genomicmedlab.org` | the CLI run's reference pass and VRS mint → the test's `enrich` wrapper turns both off beside its existing `download=False` |
+| `test_literature_terms.py` (1) | `eutils.ncbi.nlm.nih.gov` | the PMCID/PMID disagreement case left eutils and Europe PMC live → scripted, as its sibling test already does |
+| `test_meta_member_rsids.py` (1) | `services.genomicmedlab.org` | the reference pass → `verify_ref=False`; dbSNP's oracle is the subject |
+
+None was a test whose point is the live call, so none became network-only, and none lost its
+assertion. `compiler/tests` and `schema/tests` reached nothing, and their source trees import no transport.
+
+**After: 0** of the enricher, compiler and schema suites reach the network with the opt-in unset,
+measured under the same fence and log.
+
+**The mechanism: one fence at the transport, in the root `conftest.py`.** `socket.getaddrinfo`,
+`socket.socket.connect`/`connect_ex` and gRPC's `secure_channel`/`insecure_channel`, sync and `grpc.aio`,
+over every target form gRPC names (its C core opens sockets no Python patch sees), refuse every host but this machine (loopback, unspecified, `localhost`,
+Unix sockets) unless `JUST_DNA_NETWORK_TESTS=1`, from import on, so collection is covered too. That
+covers httpx (sync and async), requests (`ga4gh.vrs`'s seqrepo proxy), `urllib`, `huggingface_hub`
+and gRPC in one place. Three choices, each with the alternative it refuses:
+
+- It raises `NetworkReachedInTests`, a `RuntimeError`, never an `OSError`: every client translates a
+  refused connection into its own *unreachable*, which is how all 31 passed under the audit's
+  `ConnectionRefusedError` probe.
+- It records the reach, and the autouse `_fenced_network` fails a test at teardown when the body passed
+  anyway: `SequenceProxy.proxy()` catches broadly, and seven of the 31 swallowed even the
+  `RuntimeError`. A test that already failed or xfailed is not failed twice (`pytest_runtest_makereport`
+  marks it). Each reach is filed under the test that made it, so a late one (a module fixture's
+  finalizer runs after its last test's teardown) fails the run at session end under its own name and
+  never the next, innocent test.
+- The error names the test (`PYTEST_CURRENT_TEST`) and the host, and says how to arrange the test.
+  `JUST_DNA_NETWORK_GUARD_LOG=<file>` appends one line per refusal, which is how the 31 were listed.
+
+`_fenced_hub` stays: it refuses before any socket with the hub's own remedy, and its real-cache-base half
+holds under the opt-in, where the transport fence steps aside.
+
+**The guard.** `enricher/tests/test_the_network_is_fenced.py` drives each transport into the fence and
+asserts the refusal names the test and the host; proves the teardown net in a child pytest carrying the
+real root conftest (a swallowed reach is a teardown error, a raised one fails once, an xfail stays
+an xfail, a late reach fails the run and not the next test); keeps loopback open and steps aside under
+the opt-in; and holds, by an import walk, the transports the enricher imports equal to the set it
+drives less two named with a reason (`requests`, a dependency's; `grpc.aio`, fenced ahead of use), and
+the format and compiler trees to none. Mutated five times, each red: `_is_local` answering `True` (9 of
+the then 13), no already-failed check, no xfail check, a teardown taking every test's reaches, and
+`grpc.aio` left unfenced.
+
+**Decided without a contract, the smaller choice:** the fence opens on `JUST_DNA_NETWORK_TESTS=1`
+exactly, as `_fenced_hub` and the rule do. Four live tests skip on any truthy value
+(`test_strchive_draft.py`, `test_strchive_bands.py`, `test_gnomad.py`, `test_drug_labels.py`), so
+`=true` runs them into the fence, which refuses them loudly and names `=1`. The CIViC fixture is one
+`clingen_registry_down` in the enricher conftest, used by both files through `pytestmark`.
+
+**Out of the class, observed:** `test_literature.py::test_a_regex_locator_matches_the_fulltext` failed
+once in the enumeration under load and passes alone (its regex timeout runs in a killable process).
+
 ## RM380 — a hand-kept struct mirrored `ResolutionRow` with nothing asserting the two agree, so reverse dropped every 0.8 provenance column
 
 ✅ **SHIPPED 2026-11-05 on `0.8`, uncut — a minor (found building RM375).** Owner compiler, severity

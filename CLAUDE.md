@@ -420,7 +420,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - Take a snapshot's release label from the bytes, not from the transfer — or the off-switch build is incomparable. `@a-label-read-in-band-beats-one-read-off-the-transfer`
 - Every stage a lane lacks carries its reason as a **field**, and a rebuild's outcome is tri-state. `@a-cache-lane-has-three-stages-and-a-list-cannot-say-which-are-missing`
 - A rebuild writes to `<base>/<lane>/`, never in place: a short parquet still has a footer. `@a-cache-lane-has-three-stages-and-a-list-cannot-say-which-are-missing`
-- Network tests are opt-in: `JUST_DNA_NETWORK_TESTS=1`. `@network-tests-optin`
+- Network tests are opt-in: `JUST_DNA_NETWORK_TESTS=1`; without it the root conftest refuses every non-local host at the socket and fails the test. `@network-tests-optin`
 - Kill a background job by **pgid**, never `pkill -f`/`-x` on a name: two sessions share this tree. `@two-agents-in-one-tree-cannot-use-name-matched-process-cleanup`
 - A flag must mean the same thing in every function that takes one. `@flag-means-same`
 - Don't compute a number and discard it — every consumer then recomputes it. `@dont-discard-computed`
