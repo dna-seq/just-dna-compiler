@@ -1359,6 +1359,59 @@ no place keys as `""`. A `retired` fulltext row is asked again. An unparsable `s
 `no_reference`, no new vocabulary member. Atlas `UNIMPLEMENTED` on an SNV is read as a retired method
 (unprobed: the probe that classified the status used an indel).
 
+**2026-11-05, audit round 2: a retired endpoint was still recorded as an outage wherever a guard did
+not walk.** The 0.8 audit's second round (class 6, found by one model of four) named three new instances
+of this item's class on `0.8` at `5b1b73b8`; each held when re-verified there. It also named
+`acmg.py:434-443` and was judged wrong, because that handler's `skip` already reads the reason. Why
+the guards above missed the three:
+(1) the client roster walks *classes*, and every instance but one sat in a module-level function that
+calls `httpx` itself; (2) the handler walk compared `ast.Constant` for equality, and
+`f"unreachable ({exc})"` is a `JoinedStr` whose constant piece is `"unreachable ("`; (3) a check reading
+only `could_not_ask_reason` passes on a plain `*Unavailable` raised `from` a 410, because the helper reads
+`__cause__`, while the type and the message still say "could not fetch". Instances, before → after:
+
+1. `net.py:486-490` `stream_to_file` raised every 410 as the caller's `error_cls` ("could not download")
+   at all fourteen call sites in eleven lanes (CIViC, ClinPGx, ClinVar twice, ClinVar-GKM, constraint, drug
+   labels, MANE, MITOMAP, Open Targets three times, PubMind, STRchive) → a required `retired=` keyword;
+   a 410 raises it with `retired_message` (the body read and quoted, the host that answered named, after
+   any redirect), followed by the file and the lane's own `remedy`, which still applies when the
+   retired file is a release the operator picked. New: `CivicRetired`, `ClinPgxRetired`, `ClinVarRetired`, `ConstraintRetired`,
+   `DrugLabelRetired`, `ManeRetired`, `MitomapRetired`, `OpenTargetsRetired`, `PubMindRetired`,
+   `StrchiveRetired`, each beside its `*Unavailable`; ClinVar-GKM's download raises `ClinVarGkmRetired`.
+2. `clinvar_gkm.py:450-453` `lane_currency`: `ClinVarGkmRetired` caught as `ClinVarGkmUnavailable` and
+   written `unchecked="unreachable (…)"` → the reason from `could_not_ask_reason`, `retired (…)`.
+3. `clingen.py:161-168` `fetch_curation_list`: a 410 → `ClinGenUnavailable`, "could not fetch" →
+   `ClinGenRetired`.
+4. Found by the hunt: `gene_validity.py:388-401` `fetch_validity_export` → `GeneValidityRetired` (the
+   host names the submitter); `mane_build.py:592-604` `discover_current_release` → `ManeRetired`.
+5. Found by the hunt: the placement witness (`enrich/orchestration.py:860`; the reason is dropped at
+   `placement.py:416-432`). `EnsemblResolver` noted a REST 410 (`Withholding.retired`), and the
+   record's not-asked sentence still said "unreachable after retries…" → `REST_RETIRED_REASON`, a fixed
+   sentence: the source's body stays in the log, since the record is attested and must be lap-stable,
+   and it says "at least once" because the resolver's note is sticky across the run.
+6. `acmg.py:434-443` `fetch_acmg_page`, the instance the audit judged wrong: the recorded `skip` was
+   right, but the type and the message were the outage's, and the guard asserts the type →
+   `AcmgRetired` (its `skip` defaults to `retired`).
+
+Checked and not instances: `clinpgx_build.probe_archive_dates` answers `None` for every failed `HEAD`,
+a 410 included, because it gates nothing (pinned as a withhold). `atlas_protos.fetch_protos` reads a
+pinned commit through `urllib`, and the Hub routes in `download.py` go through `huggingface_hub`; both
+sit outside an `httpx` walk, and neither is a source that retires a path (a pinned commit's file 404s).
+
+**Guards** (`enricher/tests/test_could_not_ask.py`). An AST walk finds every module-level class and
+function that calls an `httpx` transport. A class withholds, or its module declares a `*Retired`. A
+function is a `FETCHERS` row (or the one withholding probe), asserted equal to the walk. Each row is
+driven three ways: a 410 must raise its lane's could-not-ask type marked `EndpointRetired`, with the
+body quoted and no partial left; a 503 and a refused connection must raise it unmarked, read as
+`unreachable`. A third walk checks every `stream_to_file` call: its `retired=` resolves, in the calling
+module, to a subclass of its `error_cls` and of `EndpointRetired`. The handler walk reads an f-string
+that opens with `unreachable`, and its not-vacuous test runs that one predicate over all four
+spellings. The placement case is `test_placement_witness.py`. Red on `5b1b73b8`: the five functions'
+410s, `stream_to_file`'s two outage legs (no `retired=`), the handler walk (`clinvar_gkm.py:452`),
+`lane_currency` and the placement sentence. Each mutation turns a guard red: dropping `raise_if_retired`
+from `stream_to_file` fails its row, and `retired=MitomapUnavailable` fails the call-site walk. The
+entry's `**Residuals**` line above stays `none`.
+
 ## RM368 — what the module publisher plans, checks and sends are three readings of the disk
 
 **SHIPPED 2026-11-04 on `0.8`, uncut — a minor (the 0.8 audit, round 1).** Owner enricher, severity

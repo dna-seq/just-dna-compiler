@@ -101,7 +101,7 @@ from just_dna_enricher.locations import (
     resolve_ensembl_reference,
     resolve_pubmind_reference,
 )
-from just_dna_enricher.net import could_not_ask_reason
+from just_dna_enricher.net import RETIRED, could_not_ask_reason, withheld_reason
 from just_dna_enricher.placement import (
     CLINVAR_GKM_WITNESS,
     CLINVAR_WITNESS,
@@ -133,6 +133,12 @@ from just_dna_enricher.verification import examples, record_verification
 from just_dna_enricher.vrs import MintResult, VrsMinter, mint_resolution_rows
 
 logger = logging.getLogger("just_dna_enricher.enrich")
+
+#: The placement record's not-asked reason when Ensembl REST answered a 410 (RM361, audit round 2).
+REST_RETIRED_REASON = (
+    "Ensembl REST answered HTTP 410 at least once in this run: it retired a route this enricher asks, "
+    "so upgrade just-dna-enricher (the source's own words are in the run's log)"
+)
 
 
 def _split_by_layer(behind: list[DatasetCurrency]) -> tuple[list[DatasetCurrency], list[DatasetCurrency]]:
@@ -858,6 +864,12 @@ def _run_enrichment(
                         len(rest_subjects),
                     )
                     rest_answers, rest_not_asked = ask_live_witness(client.resolve_rsid_rest, rest_subjects)
+                    # A 410 is a fact the resolver noted (`Withholding`, RM361): the not-asked sentence
+                    # says so, never the outage default it fell back to (audit round 2). A fixed
+                    # sentence rather than the source's body, which the log already carries: the record
+                    # is attested and lap-stable, and the note is sticky, so it claims "at least once".
+                    if rest_not_asked and withheld_reason(client) == RETIRED:
+                        rest_not_asked_reason = REST_RETIRED_REASON
                     # Our own client only, as for the link: a host's resolver makes no withholding promise.
                     if rest_answers and isinstance(client, EnsemblResolver):
                         rest_witness_release = rest_release if rest_release_asked else client.data_release()

@@ -47,6 +47,7 @@ from just_dna_enricher.drug_labels import (
     LABELS_PARQUET,
     SOURCE_NAME,
     DrugLabelError,
+    DrugLabelRetired,
     DrugLabelUnavailable,
 )
 from just_dna_enricher.locations import (
@@ -139,6 +140,7 @@ def download_drug_labels_zip(dest: Path, url: str = DEFAULT_DRUG_LABELS_URL) -> 
         dest,
         url,
         error_cls=DrugLabelUnavailable,
+        retired=DrugLabelRetired,
         what="the ClinPGx drug-label archive",
         remedy="Pass --zip <archive> to build from a copy you already hold.",
     )

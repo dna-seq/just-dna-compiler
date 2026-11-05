@@ -425,6 +425,7 @@ def stream_to_file(
     url: str,
     *,
     error_cls: type[Exception],
+    retired: type[Exception],
     what: str,
     timeout: float | None = None,
     remedy: str = "",
@@ -456,6 +457,12 @@ def stream_to_file(
     digest is real and whose contents are nonsense, which no footer check and no `raise_for_status`
     would catch.
 
+    **A 410 is the lane's `retired`, never its `error_cls`** (RM361, audit round 2). A source that
+    retired the file moved it, and the remedy is an upgrade rather than a re-run; `retired` is the
+    lane's `*Retired` (a subclass of `error_cls` marked `EndpointRetired`), required so no lane can
+    forget it, and the message is `retired_message`'s (the host that answered, the source's own body
+    quoted), followed by `what` and the lane's `remedy`.
+
     `what` names the thing being fetched for the message ("the ClinVar VCF"); `remedy` is an optional
     sentence saying what the caller can do instead, for the lanes that accept a local file.
     """
@@ -472,6 +479,8 @@ def stream_to_file(
     def _attempt() -> StreamedFile:
         hasher = hashlib.sha256()
         with httpx.stream("GET", url, follow_redirects=True, timeout=timeout) as response:
+            if response.status_code == GONE:
+                response.read()  # a 410's body is the source's own word on where the file went
             response.raise_for_status()
             etag = response.headers.get("ETag")
             last_modified = response.headers.get("Last-Modified")
@@ -486,6 +495,13 @@ def stream_to_file(
         streamed = _attempt()
     except httpx.HTTPError as exc:
         tmp.unlink(missing_ok=True)
+        if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == GONE:
+            # The host that answered retired it (a redirect may have moved the request), and the lane's
+            # own remedy still applies: a release the operator picked, or a file they already hold.
+            gone = retired_message(exc.response.request.url.host, exc.response)
+            raise retired(
+                f"{gone} (fetching {what}). {remedy}" if remedy else f"{gone} (fetching {what})"
+            ) from exc
         message = f"could not download {what} from {url}: {exc}"
         raise error_cls(f"{message}. {remedy}" if remedy else message) from exc
     except BaseException:

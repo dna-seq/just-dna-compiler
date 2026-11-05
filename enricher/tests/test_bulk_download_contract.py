@@ -28,13 +28,17 @@ from contextlib import contextmanager
 import httpx
 import pytest
 from just_dna_enricher import net
-from just_dna_enricher.net import RETRY_ATTEMPTS_ENV, StreamedFile, stream_to_file
+from just_dna_enricher.net import RETRY_ATTEMPTS_ENV, EndpointRetired, StreamedFile, stream_to_file
 
 _SRC = pathlib.Path(net.__file__).parent
 
 
 class _Boom(RuntimeError):
     """A lane's own error type, standing in for the eleven real ones."""
+
+
+class _BoomRetired(_Boom, EndpointRetired):
+    """Its `*Retired`, which `stream_to_file` requires of every lane (RM361, audit round 2)."""
 
 
 # ── the walk: no builder may open a stream of its own ────────────────────────────────────────────
@@ -152,6 +156,10 @@ def _fake_stream(script: list):
 
         class _Response:
             headers = {"ETag": '"abc"', "Last-Modified": "Wed, 03 Sep 2026 00:00:00 GMT"}
+            status_code = entry.response.status_code if isinstance(entry, httpx.HTTPStatusError) else 200
+
+            def read(self):
+                return b""
 
             def raise_for_status(self):
                 if isinstance(entry, httpx.HTTPStatusError):
@@ -186,6 +194,7 @@ def test_a_truncated_body_is_retried_and_the_second_attempt_wins(
         tmp_path / "f.bin",
         "https://example.invalid/f.bin",
         error_cls=_Boom,
+        retired=_BoomRetired,
         what="a file",
     )
     assert stream.attempts["n"] == 2
@@ -222,7 +231,13 @@ def test_a_status_error_is_not_retried(
     monkeypatch.setattr(net.httpx, "stream", stream)
 
     with pytest.raises(_Boom):
-        stream_to_file(tmp_path / "f.bin", "https://example.invalid/f", error_cls=_Boom, what="a file")
+        stream_to_file(
+            tmp_path / "f.bin",
+            "https://example.invalid/f",
+            error_cls=_Boom,
+            retired=_BoomRetired,
+            what="a file",
+        )
     assert stream.attempts["n"] == 1, "a status error was retried"
 
 
@@ -245,6 +260,7 @@ def test_a_persistent_transport_failure_is_translated_not_leaked(
             tmp_path / "f.bin",
             "https://example.invalid/f",
             error_cls=_Boom,
+            retired=_BoomRetired,
             what="a thing",
             remedy="Pass a local copy instead.",
         )
@@ -268,7 +284,9 @@ def test_a_failed_fetch_leaves_the_directory_as_it_found_it(
     monkeypatch.setattr(net.httpx, "stream", _fake_stream([httpx.ConnectError("nope")]))
 
     with pytest.raises(_Boom):
-        stream_to_file(dest, "https://example.invalid/f", error_cls=_Boom, what="a file")
+        stream_to_file(
+            dest, "https://example.invalid/f", error_cls=_Boom, retired=_BoomRetired, what="a file"
+        )
     assert dest.read_bytes() == b"the good copy"
     assert not list(tmp_path.glob("*.part"))
 
@@ -287,6 +305,7 @@ def test_the_digest_is_returned_rather_than_only_logged(
         tmp_path / "f.bin",
         "https://example.invalid/f",
         error_cls=_Boom,
+        retired=_BoomRetired,
         what="a file",
     )
     assert isinstance(result, StreamedFile)
@@ -311,7 +330,9 @@ def test_the_retry_floor_is_the_tiers_own_knob(
     monkeypatch.setattr(net.httpx, "stream", stream)
 
     with pytest.raises(_Boom):
-        stream_to_file(tmp_path / "f.bin", "https://example.invalid/f", error_cls=_Boom, what="x")
+        stream_to_file(
+            tmp_path / "f.bin", "https://example.invalid/f", error_cls=_Boom, retired=_BoomRetired, what="x"
+        )
     assert stream.attempts["n"] == 5
 
 
@@ -383,6 +404,8 @@ def test_a_write_failure_leaves_no_partial_behind_either(
 
     monkeypatch.setattr(net.hashlib, "sha256", _Full)
     with pytest.raises(OSError):
-        stream_to_file(dest, "https://example.invalid/f", error_cls=_Boom, what="a file")
+        stream_to_file(
+            dest, "https://example.invalid/f", error_cls=_Boom, retired=_BoomRetired, what="a file"
+        )
     assert not dest.exists()
     assert not list(tmp_path.glob("*.part"))

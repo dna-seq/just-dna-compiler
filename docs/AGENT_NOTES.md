@@ -2254,6 +2254,20 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   the legacy resource 404'd on a rare variant, the v2 search answers it with an empty 200 — so the
   `FOUR_OH_FOUR_IS_AN_ANSWER` row went. A status's meaning is a property of the endpoint, and a new
   endpoint re-asks it.
+
+  **Owning a transport is a function's property too, and a reason is not a type (2026-11-05, the 0.8
+  audit's second round).** RM361 shipped a guard over the clients and a walk over the handlers, and a
+  410 still reached three records as an outage. Each sat where a guard did not look. The bulk downloader
+  (`net.stream_to_file`, under every bulk-download lane), ClinGen's curation list, the gene-validity exports, MANE's
+  release discovery and ACMG's page are module-level *functions* that call `httpx` themselves, and the
+  roster walks classes. `clinvar_gkm.lane_currency` wrote `f"unreachable ({exc})"`, and the handler
+  walk compared `ast.Constant` for equality: an f-string's constant piece is `"unreachable ("`. And
+  a check that asks only `could_not_ask_reason` passes on all five functions, because the helper reads
+  the 410 through `__cause__` while the type and the message still say "could not fetch". The walk
+  now finds every module-level class and function by what it calls; a function is a roster row driven
+  with a 410, a 503 and a refused connection, and the 410 assertion is the *type* (`EndpointRetired`)
+  and the quoted body, not only the reason. `stream_to_file` takes the lane's `*Retired` as a required
+  keyword, so a new lane cannot leave it out, and a walk resolves each call's pair to one family.
 - `@draft-appends` — **Drafting appends, it never mutates — that word is the whole line.** `just_dna_compiler.draft`
   appends rows into an authored CSV at **row** granularity (a file-level "refuse if it exists" rule
   self-defuses after the first gene and makes a multi-gene module unbuildable). A row whose key exists

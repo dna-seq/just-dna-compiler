@@ -43,7 +43,7 @@ from just_dna_format.normalize import now_utc_iso
 from just_dna_format.snapshot import SnapshotRelease, SnapshotWrite, begin_snapshot_write
 
 from just_dna_enricher.gnomad import normalize_constraint_flags
-from just_dna_enricher.net import stream_to_file
+from just_dna_enricher.net import EndpointRetired, stream_to_file
 
 try:  # the one guarded optional import (CLAUDE.md): polars is builder-only ([dev] extra)
     import polars as pl
@@ -231,6 +231,15 @@ class ConstraintUnavailable(ConstraintBuildError):
     """The gnomAD download did not answer — the fetch failed, not the file."""
 
 
+class ConstraintRetired(ConstraintUnavailable, EndpointRetired):
+    """The source answered HTTP 410: it retired the gnomAD constraint file (RM361, audit round 2).
+
+    Its lane's `ConstraintUnavailable`, so every handler still catches it; marked `EndpointRetired`, so
+    the reason is `retired` and the message says the file moved and to upgrade, never that the
+    host was down.
+    """
+
+
 def download_constraint_tsv(dest: Path, url: str = DEFAULT_CONSTRAINT_URL) -> Path:
     """Stream the gnomAD constraint TSV to ``dest`` (atomic ``.part`` rename), returning the path.
 
@@ -242,6 +251,7 @@ def download_constraint_tsv(dest: Path, url: str = DEFAULT_CONSTRAINT_URL) -> Pa
         dest,
         url,
         error_cls=ConstraintUnavailable,
+        retired=ConstraintRetired,
         what="the gnomAD constraint TSV",
         remedy="Pass --source constraint=<tsv> to build from a copy you already hold.",
     ).path

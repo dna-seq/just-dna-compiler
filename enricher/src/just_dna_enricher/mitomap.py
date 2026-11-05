@@ -40,6 +40,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from just_dna_enricher.clin_sig import normalize_clin_sig
+from just_dna_enricher.net import EndpointRetired
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +120,15 @@ class MitomapUnavailable(MitomapError):
     Its own subclass because a caller's recovery differs: an unreadable dump on disk is something to
     fix, while a download that did not answer is something to retry or to route around with a local
     copy (`@client-exception-contract`).
+    """
+
+
+class MitomapRetired(MitomapUnavailable, EndpointRetired):
+    """The source answered HTTP 410: it retired a MITOMAP dump (RM361, audit round 2).
+
+    Its lane's `MitomapUnavailable`, so every handler still catches it; marked `EndpointRetired`, so
+    the reason is `retired` and the message says the file moved and to upgrade, never that the
+    host was down.
     """
 
 

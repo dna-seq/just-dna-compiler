@@ -58,6 +58,7 @@ from just_dna_enricher.net import (
     EndpointRetired,
     PacingGate,
     attempt_floor,
+    could_not_ask_reason,
     raise_if_retired,
     retry_if_transient,
 )
@@ -450,7 +451,10 @@ def lane_currency(
     try:
         manifest = asker.parquet_manifest()
     except ClinVarGkmUnavailable as exc:
-        return LaneCurrency(pinned.pinned_release, pinned.pinned_sha256, unchecked=f"unreachable ({exc})")
+        # The reason off the exception (RM361): `ClinVarGkmRetired` is a `ClinVarGkmUnavailable`, and an
+        # equality-on-constants walk could not see this f-string write `unreachable` about it.
+        reason = could_not_ask_reason(exc)
+        return LaneCurrency(pinned.pinned_release, pinned.pinned_sha256, unchecked=f"{reason} ({exc})")
     except ClinVarGkmError as exc:
         return LaneCurrency(pinned.pinned_release, pinned.pinned_sha256, unchecked=f"unreadable ({exc})")
     return LaneCurrency(

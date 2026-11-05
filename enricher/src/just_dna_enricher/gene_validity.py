@@ -64,7 +64,7 @@ from just_dna_enricher.licensing import (
     sidecar_path,
     table_datasets,
 )
-from just_dna_enricher.net import release_dataset, stated_release
+from just_dna_enricher.net import EndpointRetired, raise_if_retired, release_dataset, stated_release
 
 logger = logging.getLogger(__name__)
 
@@ -165,6 +165,15 @@ class GeneValidityUnavailable(GeneValidityError):
     existing `gene_validity.csv` is invalid", and only the first means a source was asked. Found by
     walking the passes rather than by a report — S37 named ClinGen's instance and this one is its
     twin, which is why the repair is a walked registry and not two hand-picked sites.
+    """
+
+
+class GeneValidityRetired(GeneValidityUnavailable, EndpointRetired):
+    """The source answered HTTP 410: it retired a submitter's export (RM361, audit round 2).
+
+    Its lane's `GeneValidityUnavailable`, so every handler still catches it; marked `EndpointRetired`, so
+    the reason is `retired` and the message says the file moved and to upgrade, never that the
+    host was down.
     """
 
 
@@ -397,6 +406,8 @@ def fetch_validity_export(url: str, *, timeout: float = 180.0) -> str:
         response = httpx.get(url, timeout=timeout, follow_redirects=True)
         response.raise_for_status()
     except httpx.HTTPError as exc:
+        # The host names the submitter: this one fetch serves ClinGen's export and GenCC's.
+        raise_if_retired(exc, GeneValidityRetired, httpx.URL(url).host or url)
         raise GeneValidityUnavailable(f"could not fetch the gene-validity export from {url}: {exc}") from exc
     return response.text
 

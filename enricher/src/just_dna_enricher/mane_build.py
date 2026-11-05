@@ -75,7 +75,7 @@ from just_dna_format.normalize import now_utc_iso
 from just_dna_format.snapshot import SnapshotRelease, SnapshotWrite, begin_snapshot_write
 
 from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME
-from just_dna_enricher.net import stream_to_file
+from just_dna_enricher.net import EndpointRetired, raise_if_retired, stream_to_file
 
 try:  # the one guarded optional import (CLAUDE.md): polars is builder-only ([dev] extra)
     import polars as pl
@@ -149,6 +149,15 @@ class ManeUnavailable(ManeBuildError):
     distinction is carried by the type rather than by a message, because a reword must not be able to
     flip a caller's verdict (`@client-exception-contract`) — and the subclassing makes a caller's
     `except` **order** load-bearing: list this arm before its parent or it is dead code.
+    """
+
+
+class ManeRetired(ManeUnavailable, EndpointRetired):
+    """The source answered HTTP 410: it retired a MANE release file (RM361, audit round 2).
+
+    Its lane's `ManeUnavailable`, so every handler still catches it; marked `EndpointRetired`, so
+    the reason is `retired` and the message says the file moved and to upgrade, never that the
+    host was down.
     """
 
 
@@ -576,6 +585,7 @@ def download_mane_file(dest: Path, url: str) -> ManeDownload:
         dest,
         url,
         error_cls=ManeUnavailable,
+        retired=ManeRetired,
         what=f"the MANE file {Path(url).name}",
         timeout=120.0,
         remedy="Pass the local file instead of --download if you already hold a copy.",
@@ -601,6 +611,7 @@ def discover_current_release() -> str:
         response = httpx.get(url, timeout=60.0, follow_redirects=True)
         response.raise_for_status()
     except httpx.HTTPError as exc:
+        raise_if_retired(exc, ManeRetired, "NCBI (MANE)")
         raise ManeUnavailable(f"could not read {url}: {exc}") from exc
     release = parse_versions(response.text).get(MANE_VERSION_LABEL)
     if not release:

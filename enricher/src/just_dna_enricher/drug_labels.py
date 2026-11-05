@@ -68,6 +68,7 @@ from just_dna_enricher.locations import (
     SNAPSHOT_DATA_DIRNAME,
     resolve_drug_labels_reference,
 )
+from just_dna_enricher.net import EndpointRetired
 from just_dna_enricher.verification import examples, ran, record_verification, skipped
 
 logger = logging.getLogger(__name__)
@@ -214,6 +215,15 @@ class DrugLabelError(RuntimeError):
 
 class DrugLabelUnavailable(DrugLabelError):
     """No snapshot was provisioned, so the comparison could not be put at all."""
+
+
+class DrugLabelRetired(DrugLabelUnavailable, EndpointRetired):
+    """The source answered HTTP 410: it retired the drug-label file (RM361, audit round 2).
+
+    Its lane's `DrugLabelUnavailable`, so every handler still catches it; marked `EndpointRetired`, so
+    the reason is `retired` and the message says the file moved and to upgrade, never that the
+    host was down.
+    """
 
 
 @dataclass(frozen=True)

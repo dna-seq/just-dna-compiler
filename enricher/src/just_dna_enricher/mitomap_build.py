@@ -38,6 +38,7 @@ from just_dna_enricher.mitomap import (
     REFERENCE_TABLE,
     VARIANT_TABLES,
     MitomapError,
+    MitomapRetired,
     MitomapUnavailable,
     allele_defect,
     nlmid_pmid,
@@ -157,6 +158,7 @@ def download_mitomap_dump(dest: Path, url: str = DEFAULT_MITOMAP_URL) -> Downloa
         dest,
         url,
         error_cls=MitomapUnavailable,
+        retired=MitomapRetired,
         what="the MITOMAP dump",
     )
     return DownloadedDump(
