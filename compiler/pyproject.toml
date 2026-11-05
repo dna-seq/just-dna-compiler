@@ -24,7 +24,7 @@ dependencies = [
 just-dna-compiler = "just_dna_compiler.cli:app"
 
 [build-system]
-requires = ["uv-build"]
+requires = ["uv-build<0.13"]
 build-backend = "uv_build"
 
 [tool.uv.sources]
