@@ -123,7 +123,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S82** a hand-read source that yielded no row — shipped; RM147
 - **S83** `direction` for a trend whose sign is unestablished — RM148
 - **S84** CIViC scored as a source; germline quarter too thin — RM152
-- **S85** `not_found` for an rsID the source has — accepted, RM154
+- **S85** `not_found` for an rsID the source has — accepted, RM154; partly reversed on 0.8 by RM382
 - **S86** identifier roster read only variants.csv — accepted, RM155
 - **S87** overlay `reason` inside `content_signature` — accepted, RM180
 - **S88** `needs_recompile` crashed on an unstamped version — accepted, RM183
@@ -3314,6 +3314,12 @@ Not changed, deliberately: the rows stay `not_found` in `resolution.csv`, and `u
 as you said. Nothing in your data needs editing beyond the five genotypes' strand. The new symptom
 entries are in the authoring skill's guide, so the next author is sent to the strand rather than to
 dbSNP — which is what you did for your own team meanwhile.
+**Later, 2026-11-05: on 0.8, RM382 reverses "the rows stay" for one case** (the maintainer's decision). An
+rsID-only subject that *every* link answered and *none* could host now gets no `resolution.csv` row, and
+`strict` names it in a sentence of its own. A rejected answer also no longer ends the chain: the next link
+(ClinVar, the staged table, live Ensembl, gnomAD) is asked. Where one link hosts the authored alleles, nothing
+here changes. The records are RM382's ROADMAP_HISTORY entry and the `@answered-is-not-absent` addendum in
+AGENT_NOTES, on the `0.8` line.
 <!-- triaged: 0.7.0 · sha 8d0159ae0d36 -->
 
 Reported by `just-module-creator`, 2026-08-31. Enricher 0.6.6.
