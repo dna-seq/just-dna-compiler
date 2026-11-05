@@ -247,12 +247,18 @@ class EnrichmentResult:
     # plain fabrication of — the row used to be written, naming a cache that was never opened.
     unconsulted_rsids: list[str] = field(default_factory=list)
     # rsIDs the source HAS, whose every locus the allele-aware filter rejected (S85). The fourth state
-    # in this family and the only one whose row is written anyway: `unreachable_rsids` means the
-    # request failed, `unconsulted_rsids` that nobody looked, `unresolved` that a key has no position
-    # and stays silent about why — and this one that the asking *succeeded* and the answer did not
-    # match. The row is honestly unresolved, so it stays; what was wrong was the reason it gave.
-    # Empty is a clean bill only because every branch that writes one appends here.
+    # in this family: `unreachable_rsids` means the request failed, `unconsulted_rsids` that nobody
+    # looked, `unresolved` that a key has no position and stays silent about why — and this one that
+    # the asking *succeeded* and the answer did not match. Since RM382 a rejected answer is a miss for
+    # the chain, so a finding here means every link that answered was rejected (`links` names them),
+    # and an rsID-only subject gets **no** row: the S85 `not_found` row asserted an absence the finding
+    # contradicted. A pair keeps its authored row. Empty is a clean bill only because every branch
+    # that rejects an answer appends here.
     allele_mismatches: list[AlleleMismatch] = field(default_factory=list)
+    # Rejected answers a later link superseded by placing the rsID (RM382): the row is the later link's
+    # and `placed_by` names it, while `links`/`loci` name what was set aside. Not unresolved, and not a
+    # mismatch the author must act on; recorded so `source` reading `clinvar` has its reason.
+    superseded_answers: list[AlleleMismatch] = field(default_factory=list)
     # Three more answered-but-withheld states (RM272), each apart from the neighbours above and from one
     # another, because the remedy differs. Each rsID here is also in `unresolved` (by its key), which is
     # silent about why; the three lists are disjoint.

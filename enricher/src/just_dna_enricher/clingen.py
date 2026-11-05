@@ -323,6 +323,8 @@ def enrich_dosage_sensitivity(
                         source_row.layer,
                         spec_dir,
                         error=ClinGenError,
+                        # A routine merge declares nothing, so it retires no licence row (RM383).
+                        answered_every_row=False,
                         declared_use=declared_use,
                     )
                 )

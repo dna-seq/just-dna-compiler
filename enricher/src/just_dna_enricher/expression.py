@@ -551,6 +551,8 @@ def enrich_expression(
                 SOURCE_LAYER,
                 spec_dir,
                 error=ExpressionError,
+                # A routine merge declares nothing, so it retires no licence row (RM383).
+                answered_every_row=False,
                 declared_use=declared_use,
             ),
         )

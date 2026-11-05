@@ -41,6 +41,31 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-05 — RM383: a re-derivation retires the licence row for a source no resolution row names (0.8, uncut)
+
+- **`enrich --rederive` removes a `resolution`-layer licence row whose source no committed row names**
+  (`mt_common_deletion`'s `clinvar,resolution`, left behind when its loci moved to the Ensembl
+  snapshot), inside the table's commit, with an info line naming it. The compile's `source_row_unused`
+  for it goes away. A plain enrich never removes a row.
+- The concordance record, rewritten whole on each run that writes it, retires an authority's
+  `clin_sig_authority_call` row once no call row names it.
+- `licensing.record_table_sources` takes `answered_every_row` (default `False`); every call in the package states it.
+
+## 2026-11-05 — RM382: a resolution answer the authored genotype cannot host lets the next link answer, and is never written as an absence (0.8, uncut)
+
+- **A rejected answer no longer ends the chain.** Each link's answer passes the allele-aware filter as it
+  arrives; one that every subject of the rsID rejects (one of them rsID-only) is set aside and the next link is asked
+  (ClinVar cache, staged answers, live Ensembl, gnomAD). `pathogenic_clinvar`'s HBB `rs613985`, whose only
+  split-snapshot locus is `3:159434329 T>G`, now resolves from ClinVar at `11:5226724 CATAACAGCATCAG>C`.
+- **An rsID-only subject every link rejected gets no `resolution.csv` row** — this **reverses S85**
+  (0.7), which kept the `status=not_found` row beside the "the source HAS these variants" warning; the
+  maintainer accepted the reversal on 2026-11-05. INTEGRATION_0_8 § 1.36 and § 2 step 23 say what a
+  reader of the table sees now. It stays unresolved; `strict` names
+  the rejection in its own arm. `--rederive` drops a recorded `not_found` for it and keeps a recorded
+  placement.
+- `AlleleMismatch` gains `links` and `placed_by`; `EnrichmentResult.superseded_answers` names each
+  set-aside answer and the link that placed the rsID after it.
+
 ## 2026-11-05 — RM381: a split-snapshot site is filled ALT by ALT in the caller's spelling, offline too (0.8, uncut)
 
 - **Every reader of a snapshot's `alt` spells each ALT alone** (`alleles.trim_allele`, regrouped by

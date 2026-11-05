@@ -657,6 +657,44 @@ reads the record and no longer calls such a row a contradiction.
 | A genotype spelled in a site's padded frame | Read in that frame, both tiers (`just_dna_compiler.resolution.site_verdicts`): each allele is trimmed against a locus's ref with the readers' own trim, so `GTT/GTTT` names the insertion `G>GT` alone and the site's other pieces do not host it, and a compound het no piece hosts alone (`G/GTTT`) is hosted by the piece each allele names. A caller-spelled genotype (`G/GT`, a homozygote) is judged per locus as before. | None: a module authored from an unnormalized multi-ALT record keeps resolving and compiling. |
 | `just_dna_format.alleles`, `just_dna_enricher.sequences`, `just_dna_compiler.resolution` | New public names `alleles.trim_allele`, `sequences.per_alt_loci`, `resolution.frame_reading`, `resolution.site_verdicts`, `resolution.LocusSpelling`. | None. |
 
+### 1.36 A rejected resolution answer asks the next link, and is never a `not_found` row (RM382, no new code)
+
+**This partly reverses S85 (0.7)**, accepted by the maintainer on 2026-11-05. S85 kept the row: an rsID
+whose answer the authored genotype could not sit on was written `status=not_found` and the reason moved
+to `EnrichmentResult.allele_mismatches`. The finding stays; the row does not, because `not_found` says the
+source has no record of an rsID it has. And the answer no longer ends the resolver chain. What a consumer
+sees now, per rsID-only subject (no authored coordinate):
+
+- **A later link can host it**: the row is that link's (`source` `clinvar`, `ensembl-rest` or `gnomad`),
+  `status=resolved`. `EnrichmentResult.superseded_answers` carries the set-aside answer as an
+  `AlleleMismatch` whose `links` / `loci` name what was rejected and whose `placed_by` names the link
+  that placed it. Measured: `pathogenic_clinvar`'s HBB `rs613985` now resolves from ClinVar at
+  `11:5226724 CATAACAGCATCAG>C` past the split snapshot's `3:159434329 T>G`.
+- **No link can host it**: **no `resolution.csv` row**. The key is in `unresolved`, and
+  `allele_mismatches` names it with `links` (every link that answered, in chain order) and `loci` (their
+  loci, same order); `placed_by` is `None`. `enrich(mode="strict")` refuses, and its sentence carries the
+  pinned phrase *"were answered only at loci the authored genotype cannot host, by every link this run
+  could ask (RM382)"*. When a live link could not be asked for the rsID, the refusal keeps its old
+  could-not-ask sentence instead.
+- **A subject with an authored coordinate** keeps its authored row, as before.
+- `not_found` now means one thing only: a link was asked and holds no record of the rsID.
+
+A table written before 0.8 keeps its `not_found` rows until `enrich --rederive`, which drops them.
+
+| Surface | What changed | What to do |
+| --- | --- | --- |
+| `resolution.csv` | An rsID-only subject whose every link's answer the authored genotype cannot host has **no row** (was `status=not_found`). A subject an earlier link's rejected answer used to leave `not_found` may now carry a later link's row (`source=clinvar`, `ensembl-rest` or `gnomad`), so `resolution_signature` and `artifact.digest` move on the next `--rederive` of such a module. Rows a subject could host are unchanged. | A reader counting `not_found` rows as "the source lacks it" now gets that reading only; read `EnrichmentResult.allele_mismatches` for answered-and-rejected. |
+| `AlleleMismatch.links`, `.placed_by`; `EnrichmentResult.superseded_answers` | New: the links whose answers were rejected (chain order, `loci` in the same order), and the later link that placed the rsID, if any. | None; additive. |
+| `enrich(mode="strict")` refusal | A third arm names the keys every link answered at loci the genotype cannot host (RM382), apart from RM267's placement disagreement and from a missing cache. | A host matching the refusal's wording reads the new sentence. |
+| S85's `not_found` row (reversed, accepted by the maintainer 2026-11-05) | Since S85 (0.7) an rsID every link answered at loci the authored genotype cannot host was written `status=not_found` beside the warning *"The source HAS these variants"*. Now a reader of `resolution.csv` sees **no row** for that subject; `enrich(mode="strict")` refuses with *"were answered only at loci the authored genotype cannot host, by every link this run could ask (RM382)"*; `EnrichmentResult.allele_mismatches[*].links` names every link that answered, in chain order, beside `.loci`; and where a later link placed it, the row is that link's and `EnrichmentResult.superseded_answers[*].placed_by` names it. `not_found` keeps one meaning: the link was asked and holds no record. | A consumer that read `not_found` as "answered but unusable" reads `allele_mismatches` instead (§ 2, step 23). |
+
+### 1.37 A re-derivation retires a licence row no resolution row names (RM383, no new code)
+
+| Surface | What changed | What to do |
+| --- | --- | --- |
+| `licensing.csv`, `manifest.sources` | After `enrich --rederive`, a `resolution`-layer row for a licensed source no `resolution.csv` row names is removed; the concordance record does the same at `clin_sig_authority_call` on every write. `sources.signature` and `artifact.digest` move on the next compile of such a module. A row for a source with no terms constant is never touched. | None, unless you hand-wrote a `resolution`-layer row for a licensed source no row uses: it goes on the next `--rederive`. |
+| `licensing.record_table_sources` | New keyword-only argument `answered_every_row`, default `False` (no retirement, the old behaviour). | None; pass `True` only when your commit is the table's whole answer. |
+
 ## 2. What to change
 
 ### Upgrade order
@@ -785,7 +823,8 @@ reads the record and no longer calls such a row a contradiction.
     and a 0.7 reader refuses a row carrying one. `dataset` on a derived layer is the release its rows
     state, relabelled on every run and blank when they state two (§ 1.32); a row `dataset` of
     `clinvar_unknown` is now the bare `clinvar`. A superseded release on a derived layer warns and never
-    refuses.
+    refuses. After `enrich --rederive`, a `resolution`-layer row for a licensed source no `resolution.csv`
+    row names is removed, and `licensing.record_table_sources` takes `answered_every_row` (§ 1.37).
 18. **Hosts calling the enricher in process.** Pass `enrich(clinvar_gkm_cache=)` your configured path
     (§ 1.14, § 1.18). An injected Ensembl resolver written against 0.7 keeps working, without the REST
     witness (`ensembl.RestWitness`) or `data_release` (§ 1.18, § 1.32); `EnsemblSettings.graphql_endpoint`
@@ -810,6 +849,13 @@ reads the record and no longer calls such a row a contradiction.
 22. **Levers, not changes.** `just_dna_format.spelling` is the one comparison for a gene, drug, DOI, PMID
     or contig (§ 1.22); `compiler.subjects.module_subjects` answers which genes and loci a module is about
     (§ 1.25); `layout.nothing_to_write` is the predicate a sidecar writer of yours may ask (§ 1.24).
+23. **Readers of `resolution.csv` (RM382, reversing S85).** A missing row for an rsID-only subject now
+    means *every link answered and none could host the genotype* as well as could-not-ask; tell them apart
+    with `EnrichmentResult.allele_mismatches` (answered, rejected, with `links`) against
+    `unreachable_rsids` / `unconsulted_rsids`. Do not count `not_found` rows to find answered-but-rejected
+    rsIDs any more. A module enriched before 0.8 keeps its `not_found` row until `enrich --rederive`
+    ([§ 1.36](#136-a-rejected-resolution-answer-asks-the-next-link-and-is-never-a-not_found-row-rm382-no-new-code)).
+    just-module-creator's own correction is in § 3.
 
 ---
 
@@ -943,6 +989,21 @@ Not cloned beside this repository; this block is derived from the 0.7 block and 
 3. **Repin at the cut.** An authoring surface answering from the 0.7 packages does not know the 0.8 tables
    or columns, and a 0.7 compiler refuses a spec that uses them. On 2026-11-05 the plugin's v0.47.0
    server announced format 0.7.1 and compiler 0.7.2.
+
+### just-module-creator (the MCP authoring plugin)
+
+**Change**
+
+1. **Correct F85** in `docs/just-dna-format-pending-fixes.md` (its record of S85) against
+   [§ 1.36](#136-a-rejected-resolution-answer-asks-the-next-link-and-is-never-a-not_found-row-rm382-no-new-code):
+   S85's "the row stays" is reversed for an rsID-only subject. Every link answered and none could host
+   the genotype now means no `resolution.csv` row, the strict phrase quoted there, and
+   `allele_mismatches[*].links`; a later link that can host it writes its own row and is named in
+   `superseded_answers[*].placed_by`.
+2. **Correct the compile guide** wherever it tells an author that a `not_found` row for an rsID the
+   source has means an allele or strand mismatch: since 0.8 that case leaves no row, so the author
+   reads `allele_mismatches` (or the strict sentence) instead, and a `not_found` row means the link has
+   no record of the rsID.
 
 ### longevity-loci (a module author: the longevitymap v2 re-curation)
 

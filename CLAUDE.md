@@ -215,7 +215,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - Resolution reaches the positional tables too since 0.6; `authored_ident` is what keeps the fill out of `content_signature`. `@rm43-positional-fill`
 - Unreachable is not absent: write no row, name it separately, warn in both modes. `@unreachable-not-absent`
 - **Nobody-asked is a third state** beside asked-and-failed and asked-and-absent; `--offline` is where it bites. `@unreachable-not-absent`
-- Answered-and-rejected is a fourth: the row stays and the *reason* moves, never the status. `@answered-is-not-absent`
+- Answered-and-rejected is a fourth: never `not_found`, never a new status; the next link is asked, and no row if none hosts. `@answered-is-not-absent`
 - A verdict function with several arms owes a reason function with the same arms, pairwise distinct. `@answered-is-not-absent`
 
 ### Checks: placement and severity
@@ -300,6 +300,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - Licensing lives as data in the licence table, never as a table in the compiler. `@licensing-as-data`
 - Every pass that consults a source **writes** its `SourceRow`. `@write-the-sourcerow`
 - And one that **contributes nothing writes none** — key on what this run covered, never on the table or on `not missing`. `@write-the-sourcerow`
+- A run that answered every row retires its own licence row no committed row names; a merge never does — the caller declares which. `@write-the-sourcerow`
 - Nor any **table**: every sidecar writer asks `layout.nothing_to_write` — zero rows and no file writes nothing; an existing file is still the pass's to empty; `resolution.csv` and an overlay-answered concordance record are the stated exceptions. `@write-the-sourcerow`
 - A second surface of an already-declared source may not claim the lane's `(source, layer)` row. `@write-the-sourcerow`
 - Derive a column list from the model; a hand-kept one loses a column. `@fieldnames-from-model`

@@ -424,6 +424,8 @@ def enrich_frequencies(
                 "frequency",
                 spec_dir,
                 error=FrequencyEnrichmentError,
+                # A routine merge declares nothing, so it retires no licence row (RM383).
+                answered_every_row=False,
             ),
         )
     return result

@@ -230,6 +230,139 @@ deletion where the genotype fits both (`rs587776418 T/TTA`), as ClinVar records 
 outside `content_signature`, so no authored identity moves; `resolution_signature` and `artifact.digest`
 move where a fill did. No new column, code or vocabulary member.
 
+## RM383 — a re-derivation leaves a licence row for a source that no committed row names any more
+
+**SHIPPED 2026-11-05 on `0.8`, uncut — a minor (found regenerating the reference examples).** Owner
+enricher, severity low.
+
+**Residuals** won't fix — the nine merge passes (frequencies, gene metrics, gene validity, clinical
+assertions, ClinGen dosage, GWAS effects, expression effects, LD pairs, Open Targets) have no
+`--rederive`, so nothing declares that their table is the whole answer, and a licence row one of them
+stops earning stays until the table is deleted and the pass re-run · won't fix — a plain `enrich` that
+prunes a variant the author deleted can leave its source's row, since a merge never retires · won't fix
+— a concordance record deleted by hand and found uncontested writes no table (RM370), so no commit runs
+to retire its authorities' rows
+
+**The class.** A derived pass's licence row for a source that no row of the committed table names any
+more. `merge_sources_file` never clobbers and nothing removed a row, so once a pass stopped earning a
+source the row stayed, and the compile warned `source_row_unused` about a row the pass wrote itself.
+Measured regenerating `reference_examples/mt_common_deletion`: its two point variants were back-filled
+from ClinVar before and from the split Ensembl snapshot after, and `enrich --rederive` kept
+`clinvar,resolution` (its `dataset` blank).
+
+**The choice: remove, by declaration.** `@write-the-sourcerow`'s converse makes the row a false
+statement in a published artifact (*this module uses this source*). Keeping it with a reason was
+refused: `SourceRow` has no field a gate could read, and an exclusion stated in prose is
+`@one-side-only-has-two-causes`. `@licence-row-inside-the-commit` puts the removal inside the table's
+commit, and `@a-publish-may-not-orphan-the-bytes-it-stops-describing` wants deletion by declaration, never
+as a side effect: the declaration is `--rederive` (the operator saying every row is re-answered), or a
+record rewritten whole on every run that writes it. A routine merging run retires nothing: its
+committed table may name no row of a source just as truly, but merge-not-clobber is that run's contract,
+and a deletion it makes without being asked is the side effect the rule forbids.
+
+**Instances, before → after.** Every call of `licensing.record_table_sources` (RM373's one route):
+`enrich/orchestration.py` (the `resolution` layer: retired nothing → retires under `rederive`),
+`concordance.py` (the `clin_sig_authority_call` layer, rewritten whole: retired nothing, and recorded
+nothing when no authority was consulted → retires on every write; this closes RM379's second residual),
+and the nine merge passes in `assertions.py`, `clingen.py`, `expression.py`, `frequencies.py`,
+`gene_metrics.py`, `gene_validity.py`, `gwas.py`, `ld_pairs.py`, `opentargets.py` (unchanged, now stated
+`answered_every_row=False`).
+
+**The mechanism.** `record_table_sources` takes `answered_every_row`, keyword-only, default `False` so a
+host's existing call keeps its behaviour (P3), and every call in the package passes it. When
+true, a row with the pass's layer and a source in `TERMS_BY_SOURCE` that the committed table does not
+name is removed (the relabel's own ownership filter, so a curator's row for a source with no terms
+constant is never touched), the licence table is rewritten, and an info line names each `source,layer`.
+Keyed on the committed table, so a subject nobody could ask carries its rows forward and its source
+stays.
+
+**The guards.** `enricher/tests/test_a_rederive_retires_an_unused_licence_row.py`, on a copy of the
+example with an Ensembl cache holding its two loci as the split release does: `--rederive` retires
+`clinvar,resolution`, keeps `ensembl,resolution`, logs it, and the compile raises no `source_row_unused`;
+a plain enrich keeps both; an offline `--rederive` that could ask nothing keeps ClinVar's; a curator's
+row for an unknown source survives; and an AST walk asserts every `record_table_sources` call under
+`just_dna_enricher` passes `answered_every_row` by keyword. Red on b712a2fc (the retirement test, and
+the walk, which named every call); the filter forced empty turns the retirement test red, dropping the
+keyword from `gwas.py` turns the walk red, ignoring the declaration turns the plain-enrich test red, and
+dropping the terms-constant ownership check turns the curator test red.
+
+## RM382 — a resolution answer the hosting filter rejects ends the chain, and the row is written `not_found` about an rsID the sources have
+
+**SHIPPED 2026-11-05 on `0.8`, uncut — a minor (found regenerating the reference examples).** Owner
+enricher, severity medium.
+
+**Residuals** won't fix — an rsID one subject hosts and another rejects keeps the first link's answer, and
+the rejecting subject gets no row and an `AlleleMismatch` rather than a later link's placement: the
+placement comparison (RM267) takes one authority per rsID, and a per-subject fall-through would make the
+authority per row · won't fix — a pair (rsID and coordinate authored) is never a reason to ask on, because
+no link is asked live for a pair (S104); it keeps its authored row · won't fix — the deprecated DuckDB
+path (`resolver.resolve_variants`) has one link and no chain, and is removed at 1.0
+
+**The class.** Every place one link's rejected answer is written as the identity's absence. The resolver
+chain is first-hit-wins and every link asks only about rsIDs not yet in `rsid_to_loci`, while the
+allele-aware filter runs after all of them, in the assembly loop. So an answer whose every locus the
+authored genotype cannot host ended the chain, and the row-writer's last branch wrote it `not_found`
+(*this source has no record of the rsID*) beside the S85 warning that says the source HAS it. Measured
+regenerating `reference_examples/pathogenic_clinvar` against `ensembl-variation-2026_07_13-vep116.0`:
+HBB `rs613985`, authored `C/CATAACAGCATCAG`, has one snapshot locus, `3:159434329 T>G`; ClinVar 2026-06-27
+holds the authored 13 bp deletion at `11:5226724` (VCV 4074263) and was never asked.
+
+**The contract allowed the fall-through.** ENRICHER's chain says a snapshot miss falls through and gives
+one reason for the order, digest stability: a variant both caches know keeps the Ensembl `alts`. A
+variant none of whose Ensembl loci a subject can host never compiled with an Ensembl locus, so asking on
+moves no digest that was not already unresolved. RM267 already routed an all-withheld rsID as
+unresolved with no row, in the same loop.
+
+**Instances (all in `enricher/src/just_dna_enricher/enrich/orchestration.py`), before → after.**
+1. The ClinVar cache link's gate (`cv_rsids`, `rsid not in rsid_to_loci`): a rejected cache answer counted
+   as answered → set aside, so ClinVar is asked.
+2. The staged-answer seeding: same gate → same.
+3. The live Ensembl link's `missing`: same gate → same (and deduplicated per rsID, so one rsID costs one
+   request and records one rejection).
+4. The gnomAD link's `missing`: same gate → same.
+5. The row writer's `elif genome_build == "GRCh38"` branch: reached with every answered locus rejected and
+   wrote `status=not_found` → a new `elif all_loci` branch writes no row; the key is unresolved and named
+   in `hosting_unresolved` for `strict`'s refusal.
+
+The positional fill and the witnesses were hunted and are not instances: the compiler's `_hostable_loci`
+reports `rsid_no_hosting_locus` and leaves the subject unresolved without asserting an absence, and a
+placement witness's `unplaced` describes the witness's alleles, not the subject's identity.
+
+**The mechanism.** One predicate, `orchestration._hosting` (`hosting_verdict`, settled against the
+reference by RM274 where it withholds), read by the assembly loop and by `withdraw_rejected`, which runs
+on each link's answers as they arrive and sets aside an answer every subject of the rsID rejects, where
+one is rsID-only (`_rejected_by_every_subject`; a pair that hosts keeps the answer). The gates are untouched: withdrawing the answer reopens them. An
+rsID no link places gets its first answer back before the loop, so the loop sees what it saw before (its
+per-locus warnings, its finding), and the finding now names every link's answer (`AlleleMismatch.links`,
+`loci` in the same order). A later link's placement is recorded in `EnrichmentResult.superseded_answers`
+(`placed_by`) and logged at info. The sequence proxy and minter are built before the first link (both
+are lazy) so the predicate can settle an indel with the reference. Four consequences, each from the
+review: a withdrawn staged answer leaves `staged_rsids`, so a later link's row records its own release
+(RM373); a link whose staged answer was set aside is not asked again on resume; the rsid↔coordinate
+check is handed the snapshot's own answer, since it reports a snapshot comparison; and `--rederive`
+keeps a recorded placement when this run's links answered only at loci nothing can host (a link it did
+not reach placed it, `@rederive-never-shortens`) and drops a recorded `not_found`. A key whose live link
+could not be asked stays in the refusal's could-not-ask arm, not RM382's.
+
+**Departure recorded.** S85 kept the `not_found` row on two grounds; the new-status refusal still binds
+(`VALID_RESOLUTION_STATUS` is shared with `literature.csv` and `clinical_assertions.csv`), and the
+signature refusal was measured against a written table. The addendum is under `@answered-is-not-absent`
+in AGENT_NOTES, and the S85 test that pinned the byte-identical rows is inverted with that reasoning in
+its docstring.
+
+**The guards.** `enricher/tests/test_a_rejected_answer_is_not_the_chains_last_word.py`, real bytes of
+`rs613985` (the snapshot row, ClinVar's two records): ClinVar places it and the compile passes `strict`;
+the snapshot alone writes no row and names the mismatch; two rejecting links are both named; `strict`
+names the rejection, or asks for the link when live Ensembl was unreachable; `--rederive` keeps a
+recorded placement and drops a recorded `not_found`; a subject that can host keeps the answer; and a test
+parametrized over the
+three later links (ClinVar cache, live Ensembl, gnomAD) asserts each is reached past a rejected answer.
+Red on 1007a26d (the 8 written first all failed); with `_rejected_by_every_subject` forced `False` the parametrized guard and
+three more go red. `test_enrich.py::test_a_dbsnp_outage_does_not_sink_a_finished_enrichment` authored its
+genotype on the other strand of its fixture, so the fall-through reached live Ensembl; it now authors the
+fixture's strand. E2E: a copy of `pathogenic_clinvar`, `enrich --offline --rederive` against the split
+release, records `rs613985` from ClinVar and passes `validate --strict`.
+
 ## RM376 — one rsID, three ALTs offline and one online on the same snapshot: not a misread, RM270's reference-dependent spelling rule
 
 ✖ **CLOSED 2026-11-04 on `0.8` — not a defect, no code change (the 0.8 Ensembl migration probe).** Owner
@@ -426,9 +559,8 @@ Owner enricher + format + compiler, severity low.
 
 **Residuals** won't fix — CIViC writes no licence row, correctly: its two checks compare authored cells
 and write no row of any table, so it contributes nothing (`@write-the-sourcerow`'s second half) · won't
-fix — a licence row an authority stops earning keeps its old label, because the record is rewritten whole
-and an absent authority is not re-stamped; the compiler does not corroborate this layer, so it warns
-nothing either
+fix — the compiler does not corroborate this layer, so a stale row there warns nothing · RM383 (a
+licence row an authority stops earning is retired by the record's whole rewrite, 2026-11-05)
 
 **The class (RM373's, one rule over).** A pass that consults a source writes its `SourceRow`, and one
 that contributes nothing writes none. `enrich` read the `pubmind` lane (and ClinVar's) for the

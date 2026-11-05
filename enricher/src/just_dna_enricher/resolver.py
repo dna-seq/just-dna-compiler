@@ -592,10 +592,11 @@ class AlleleMismatch:
     the asking succeeded and the *answer* did not match.
 
     Carried as a structured finding rather than spelled as a new `VALID_RESOLUTION_STATUS` member,
-    because that vocabulary is a wire contract every reader of a published `resolution.csv` shares,
-    and because the row itself is honestly unresolved either way — what was wrong was never the row's
-    existence, only the reason it gave. The row therefore stays exactly where it was, which also keeps
-    `resolution_signature` still (`variant_key` and `rsid` are fact fields; `status` is not).
+    because that vocabulary is a wire contract three tables share (`literature.csv` and
+    `clinical_assertions.csv` read it too). S85 kept the `not_found` row beside it; RM382 removed that
+    row for an rsID-only subject, since it asserted the absence this finding contradicts, and made a
+    rejected answer a miss for the chain, so a finding here means every link that answered was rejected
+    (`links`, in chain order). A later link's placement is recorded in `superseded_answers` instead.
 
     `strand_flip` is the one cause this tier can settle from the allele strings alone, and it is by
     far the most common: a paper's supplementary published against hg19 routinely spells the submitted
@@ -611,6 +612,12 @@ class AlleleMismatch:
     offered: tuple[str, ...] = ()
     #: Whether reading the genotype on the other strand is what makes it fit. See the class note.
     strand_flip: bool = False
+    #: The links whose answers were rejected, in chain order (RM382): `loci` is their loci in the
+    #: same order. Empty only for a finding built by hand.
+    links: tuple[str, ...] = ()
+    #: The later link that placed the rsID after every earlier answer was rejected (RM382), or `None`
+    #: when no link could. Only `EnrichmentResult.superseded_answers` carries a non-`None` one.
+    placed_by: str | None = None
 
 
 #: The `resolution.csv` columns this comparison actually reads. An overlay `update` on one of them is

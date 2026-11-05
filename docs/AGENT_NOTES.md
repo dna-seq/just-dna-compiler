@@ -677,6 +677,22 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `called <= locus` **first**, because a palindromic SNV (`A/T` at `T>A`) satisfies both readings and
   would otherwise be reported as a flip when it needed no explaining at all.
 
+  **Addendum, 2026-11-05 (RM382): the row no longer stays, and a rejected answer no longer ends the
+  chain.** Regenerating `pathogenic_clinvar` against the split Ensembl snapshot showed the cost of
+  keeping it. HBB `rs613985` (authored `C/CATAACAGCATCAG`) has one snapshot locus, `3:159434329 T>G`; the
+  filter rejected it, and because every link asks only about rsIDs not yet answered, ClinVar, which
+  holds the authored 13 bp deletion at `11:5226724`, was never asked. The row went out `not_found` under
+  the warning that says the source HAS it. Two changes, one predicate (`orchestration._hosting`, shared
+  by the loop and the chain): **an answer every subject of the rsID rejects, one of them rsID-only, is set
+  aside as it arrives, so the next link is asked** (per rsID, because the placement comparison takes one
+  authority per rsID; any subject, a pair included, that hosts or leaves a locus undecided keeps the
+  answer); and **an rsID-only
+  subject whose every answer was rejected gets no row**, like RM267's disputed subject, and is named in
+  `strict`'s refusal by its own arm. The new-status refusal above still binds — `VALID_RESOLUTION_STATUS`
+  is shared with `literature.csv` and `clinical_assertions.csv`. The signature refusal does not: it was
+  measured against a table already written, a fresh run has no prior, and RM267 had already dropped a
+  row for the reason that applies here. Do not restore the `not_found` row to keep a signature still.
+
 - `@roster-is-as-wide-as-the-tables-it-reads` — **A check is only as wide as the table it reads, and a
   narrow roster reports its blindness as a clean zero (S86, 0.7).** `check_identifiers` built its trait
   and gene rosters from `variants.csv` while **eleven** authored models declare one of those columns —
@@ -1840,6 +1856,18 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `annotation` and `literature` are exempt from the compiler's orphan check, so any other spelling warns
   `source_row_unused` on every module that runs the pass. The check writes no row, which is also what the
   converse above already required of it, and the module docstring says so where a reader would look.
+
+  **A run that answered every row retires the row no committed row names (RM383, 2026-11-05).** The
+  converse above, at the other end of a module's life: `mt_common_deletion`'s point variants moved from
+  ClinVar's back-fill to the split Ensembl snapshot's under `--rederive`, and `clinvar,resolution` stayed
+  in the licence table, because `merge_sources_file` never clobbers and nothing ever removed a row. Two
+  repairs refused. *Keep it with a stated reason*: `SourceRow` has no field a gate could act on, and an
+  exclusion in prose is the `@one-side-only-has-two-causes` defect. *Retire on every run*: a routine
+  merge's contract is merge-not-clobber, and a deletion it was not asked for is exactly the side effect
+  `@a-publish-may-not-orphan-the-bytes-it-stops-describing` forbids, however true "no row names it" is.
+  So the caller declares it (`record_table_sources(answered_every_row=…)`, default `False` for a host's
+  call, stated by every call here and walked by an AST guard): `enrich` passes `rederive`, the concordance record (rewritten whole) passes `True`, every merge
+  pass `False`. Only the pass's own rows go: its layer, a source with a terms constant.
 
 - `@fieldnames-from-model` — **A column list written by hand will lose a column — derive it from the model.** `SOURCES_FIELDNAMES`
   was a literal and omitted `redistribution`, so every `sources.csv` ever written recorded *unknown* for

@@ -523,7 +523,9 @@ def test_a_dbsnp_outage_does_not_sink_a_finished_enrichment(
 
     # The name `enrich()` looks up lives in the submodule that runs it (RM260), not the re-export shell.
     monkeypatch.setattr("just_dna_enricher.enrich.orchestration.check_rsids", failing_check)
-    spec = _spec(tmp_path / "spec", "rsid,genotype,state,conclusion\nrs1801133,C/T,risk,c\n")
+    # `A/G`, the alleles the cache's `G>A` holds: authored on the other strand, the cache's answer is
+    # rejected and the chain asks live Ensembl next (RM382), which this test never meant to reach.
+    spec = _spec(tmp_path / "spec", "rsid,genotype,state,conclusion\nrs1801133,A/G,risk,c\n")
 
     result = enrich(
         spec,

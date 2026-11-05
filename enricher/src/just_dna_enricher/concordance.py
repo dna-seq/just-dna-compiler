@@ -398,10 +398,12 @@ def write_concordance_tables(
         _AUTHORITY_CALL_FIELDNAMES,
         calls_path,
         answered=answered,
-        before_commit=(
-            (lambda: record_table_sources(consulted, AUTHORITY_CALL_LAYER, spec_dir, error=error))
-            if consulted
-            else None
+        # Rewritten whole on every run that writes it, so the commit is the record's whole answer and an
+        # authority no consulted row names any more has its row retired with it (RM383). Handed over even
+        # with nothing consulted: a record that empties is the commit whose stale rows remain. A record
+        # that writes nothing at all (RM370) runs no commit, so it retires nothing.
+        before_commit=lambda: record_table_sources(
+            consulted, AUTHORITY_CALL_LAYER, spec_dir, error=error, answered_every_row=True
         ),
     )
     written = tuple(

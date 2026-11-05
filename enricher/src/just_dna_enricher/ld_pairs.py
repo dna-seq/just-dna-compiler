@@ -522,6 +522,8 @@ def enrich_ld_pairs(
                         LD_LAYER,
                         spec_dir,
                         error=LdError,
+                        # A routine merge declares nothing, so it retires no licence row (RM383).
+                        answered_every_row=False,
                     )
                 )
                 if answered

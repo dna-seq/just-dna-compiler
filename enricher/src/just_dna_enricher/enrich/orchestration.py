@@ -6,7 +6,7 @@ logic edit, not a move.
 """
 
 import logging
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import Optional
 
@@ -357,6 +357,70 @@ def _settle_by_reference(
 
 ReadWindow = Callable[[str, int, int], str | None]
 
+#: The `source` values the live Ensembl link writes (and journals): REST, the retired GraphQL leg, and
+#: the fallback a host's resolver gets when it names none.
+_LIVE_ENSEMBL_LINKS: frozenset[str] = frozenset({"ensembl-rest", "ensembl-graphql", "ensembl"})
+
+
+def _hostings(
+    constraint: str | None, loci: list[dict], read_window: ReadWindow | None
+) -> list[tuple[bool | None, bool | None]]:
+    """`(verdict, settled)` per locus: can it host the authored genotype, and did the reference decide it.
+
+    The allele-aware filter's one predicate, read by the assembly loop and by the chain's fall-through
+    (RM382), so the two cannot disagree about which answer was rejected (`@parity-by-check`). The
+    genotype is read in its site's frame first (`site_verdicts`, RM381), so a padded `GTT/GTTT` names
+    one piece of the site and its siblings do not host it; a `None` left there is settled against the
+    GRCh38 reference where one is readable (RM274), and `settled` says so, since the loop logs that arm
+    apart. A subject with no constraint hosts every locus: nothing is known about which allele it is
+    about. The verdicts are per list, not per locus, because the frame is read over a site's loci.
+    """
+    if constraint is None:
+        return [(True, None)] * len(loci)
+    framed = site_verdicts(
+        constraint, [(lo.get("chrom"), lo.get("start"), lo.get("ref"), lo.get("alts")) for lo in loci]
+    )
+    out: list[tuple[bool | None, bool | None]] = []
+    for lo, verdict in zip(loci, framed, strict=True):
+        settled = (
+            _settle_by_reference(constraint, lo, read_window)
+            if verdict is None and read_window is not None
+            else None
+        )
+        out.append((settled if settled is not None else verdict, settled))
+    return out
+
+
+def _rejected_by_every_subject(
+    constraints: list[str | None], loci: list[dict], read_window: ReadWindow | None
+) -> bool:
+    """Whether every subject of one rsID rejects every locus a link gave for it (RM382).
+
+    That answer is a miss for the chain: the next link is asked. `False` with no subject to judge (an
+    rsID only a pair names, which no link is asked live for) and for any subject that hosts a locus or
+    leaves one undecided, so an answer somebody can use is never replaced.
+    """
+    return bool(constraints) and all(
+        all(verdict is False for verdict, _ in _hostings(c, loci, read_window)) for c in constraints
+    )
+
+
+def _allele_mismatch(
+    rsid: str, constraint: str | None, answers: list[tuple[str, list[dict]]], placed_by: str | None = None
+) -> AlleleMismatch:
+    """The finding for one subject whose links' answers were rejected, naming every link and locus."""
+    loci = [lo for _, given in answers for lo in given]
+    return AlleleMismatch(
+        rsid=rsid,
+        genotype=constraint or "",
+        loci=tuple(f"{lo.get('chrom')}:{lo.get('start')} {lo.get('ref')}>{lo.get('alts')}" for lo in loci),
+        offered=tuple(f"{lo.get('ref')}>{lo.get('alts')}" for lo in loci),
+        strand_flip=constraint is not None
+        and any(strand_flip_explains(constraint, lo.get("ref"), lo.get("alts")) for lo in loci),
+        links=tuple(link for link, _ in answers),
+        placed_by=placed_by,
+    )
+
 
 def _spelling_of(locus: Mapping[str, object], read_window: ReadWindow | None) -> SpellingVerdict:
     """`spelling_verdict` over a locus dict as a link gives it."""
@@ -565,6 +629,8 @@ def _run_enrichment(
     # The source answered and every locus it gave was rejected by the allele-aware filter (S85). A
     # list rather than a set: it carries a finding per subject, not a bare id.
     allele_mismatches: list[AlleleMismatch] = []
+    # Rejected answers a later link superseded by placing the rsID (RM382), per subject.
+    superseded_answers: list[AlleleMismatch] = []
     # Reverse (position→rsid) back-fill is allele-aware and keeps ALL candidates per authored allele,
     # so we can take a deterministic pick and flag a genuine multi-rsid allele as ambiguous rather than
     # guessing an allele-blind label (which was the mis-attribution / reverse-round-trip drift).
@@ -574,6 +640,70 @@ def _run_enrichment(
     rev_candidates: dict[tuple, list[str]] = {}  # (chrom,start,ref,alt) -> sorted candidate rsids
     rev_source: dict[tuple, str] = {}  # which link produced the candidates
     positions = [(v.chrom, v.start, v.ref, _authored_alt(v)) for v in need_rsid]
+
+    # One proxy, one read cache for the run: the hosting filter settles an undecided indel with it
+    # (RM274), at each link's answer (RM382) and again in the assembly loop, and minting and the
+    # reference check reuse it after the table is assembled. Lazy, so nothing is read until asked.
+    sequences = SequenceProxy(offline=offline)
+    read_window = _grch38_window(sequences) if genome_build == "GRCh38" else None
+    # One minter for the run too: the placement comparison below and the stamping after the table
+    # both mint, and sharing it shares the proxy's read cache.
+    minter = VrsMinter(offline=offline, sequences=sequences)
+
+    def mint(chrom: str, start: int, ref: str, alt: str) -> str | None:
+        """One allele's VRS id, or `None`: what the shared spelling judge (`events`) mints with."""
+        return minter.mint(chrom, start, ref, alt)[0]
+
+    # **A rejected answer is a miss for the chain (RM382).** Every link below asks only about rsIDs
+    # not yet in `rsid_to_loci`, and the hosting filter runs after all of them, so an answer whose
+    # every locus the authored genotype cannot host ended the chain: the next link, which may place
+    # the identity, was never asked, and the row went out `not_found` about an rsID the source has.
+    # `pathogenic_clinvar`'s `rs613985` is the measured case — the split Ensembl snapshot's only
+    # locus is `3:159434329 T>G`, ClinVar's is the authored 13 bp deletion at `11:5226724`. So each
+    # link's answers pass through the filter's own predicate as they arrive, and one every subject of
+    # the rsID rejects is set aside, which leaves the rsID open for the next link. Per rsID, never per
+    # subject: a link answers an rsID, and the placement comparison (RM267) takes one authority per
+    # rsID. Only an rsID-only subject is a reason to ask on (no link is asked live for a pair, S104),
+    # but a pair that can host the answer keeps it, since the forward branch records it for the pair
+    # too. The links' gates are untouched; withdrawing the answer is what reopens them.
+    asks_on = {v.rsid for v in need_pos if v.rsid}
+    judges: dict[str, list[str | None]] = {}
+    for v in subjects:
+        if v.rsid and _subject_key(v) not in covered:
+            judges.setdefault(v.rsid, []).append(v.constraint)
+    # rsID → every rejected `(link, loci)`, in chain order.
+    rejected_answers: dict[str, list[tuple[str, list[dict]]]] = {}
+    # The rsIDs no link placed, whose first answer is put back for the assembly loop below.
+    restored_rsids: set[str] = set()
+    # rsIDs seeded from an interrupted run's journal (RM373); defined here because a withdrawal drops
+    # one, so a later link's answer this run is stamped with its own release.
+    staged_rsids: set[str] = set()
+
+    def withdraw_rejected(rsids: Iterable[str]) -> None:
+        """Set aside each answer no subject of its rsID can host, so the next link is asked."""
+        for rsid in list(rsids):
+            loci = rsid_to_loci.get(rsid)
+            if (
+                rsid in asks_on
+                and loci
+                and _rejected_by_every_subject(judges.get(rsid, []), loci, read_window)
+            ):
+                link = source_of_rsid.pop(rsid, "cache")
+                rejected_answers.setdefault(rsid, []).append((link, rsid_to_loci.pop(rsid)))
+                staged_rsids.discard(rsid)
+                logger.info(
+                    "%s: %s answered %s, which no authored genotype for it can sit on; the next link is "
+                    "asked (RM382).",
+                    rsid,
+                    link,
+                    ", ".join(
+                        f"{lo.get('chrom')}:{lo.get('start')} {lo.get('ref')}>{lo.get('alts')}" for lo in loci
+                    ),
+                )
+
+    def rejected_from(rsid: str, links: frozenset[str]) -> bool:
+        """Whether one of `links` already answered `rsid` this run and was set aside (a resumed run)."""
+        return any(link in links for link, _ in rejected_answers.get(rsid, ()))
 
     # ── Ensembl cache link (offline, first) ────────────────────────────────────────────────────
     reference = resolve_ensembl_reference(ensembl_cache)
@@ -618,6 +748,7 @@ def _run_enrichment(
                 rev_candidates[pt] = cands
                 rev_source[pt] = "cache"
         tracker.settle(k for rsid in rsid_to_loci for k in subjects_of_rsid.get(rsid, ()))
+        withdraw_rejected(rsid_to_loci)
 
     # ── ClinVar cache link (offline, after Ensembl cache, before live) ─────────────────────────
     # Fills only what the Ensembl cache missed, stamping source="clinvar". Placing it after the
@@ -681,6 +812,7 @@ def _run_enrichment(
                         rev_candidates[pt] = cands
                         rev_source[pt] = "clinvar"
                 tracker.settle(k for rsid in cv_rsid_to_loci for k in subjects_of_rsid.get(rsid, ()))
+                withdraw_rejected(cv_rsid_to_loci)
 
     # ── staged answers from an interrupted run, between the caches and the live links ──────────
     # Placed exactly here, and the position is the whole reason a resumed run reproduces an
@@ -700,8 +832,7 @@ def _run_enrichment(
     gnomad_runs = use_gnomad and not offline and genome_build == "GRCh38"
     dropped_link: list[str] = []
     # A seeded answer's release was never written down by the run that asked, so it is recorded as
-    # unknown rather than as this run's (RM373).
-    staged_rsids: set[str] = set()
+    # unknown rather than as this run's (RM373): `staged_rsids`, defined with the fall-through above.
     for rsid, (staged_source, staged_loci) in staged.items():
         if not (gnomad_runs if staged_source == "gnomad" else live_ensembl_runs):
             dropped_link.append(staged_source)
@@ -710,6 +841,7 @@ def _run_enrichment(
             rsid_to_loci[rsid] = staged_loci
             source_of_rsid[rsid] = staged_source
             staged_rsids.add(rsid)
+            withdraw_rejected((rsid,))
         tracker.settle(subjects_of_rsid.get(rsid, ()))
     if dropped_link:
         logger.info(
@@ -728,7 +860,16 @@ def _run_enrichment(
     # Whether `/info/data` was asked this run, so the REST witness below reuses the answer, a `None` too.
     rest_release_asked = False
     if live_ensembl_runs:
-        missing = [v.rsid for v in need_pos if v.rsid and v.rsid not in rsid_to_loci]
+        # Once per rsID: a second request for an answer just set aside would record the same rejection twice.
+        # Never an rsID whose live answer, staged by an interrupted run, was just set aside: asking again
+        # would get the same answer and journal it twice.
+        missing = list(
+            dict.fromkeys(
+                v.rsid
+                for v in need_pos
+                if v.rsid and v.rsid not in rsid_to_loci and not rejected_from(v.rsid, _LIVE_ENSEMBL_LINKS)
+            )
+        )
         if missing:
             owned = resolver is None
             client = resolver or EnsemblResolver()
@@ -763,6 +904,7 @@ def _run_enrichment(
                         # a transient outage into a permanent negative on every future run.
                         journal.record(rsid, src or "ensembl", loci)
                         tracker.settle(subjects_of_rsid.get(rsid, ()))
+                        withdraw_rejected((rsid,))
                 # Only our own client: its `data_release` withholds rather than raises, and a host's
                 # resolver makes no such promise, so an optional provenance label could abort the run.
                 if rest_answered and isinstance(client, EnsemblResolver):
@@ -780,7 +922,11 @@ def _run_enrichment(
     # compiled module's alts and move its artifact.digest. Going last means it can only ever add
     # variants nothing else had — a strictly additive link.
     if gnomad_runs:
-        missing = [v.rsid for v in need_pos if v.rsid and v.rsid not in rsid_to_loci]
+        missing = [
+            v.rsid
+            for v in need_pos
+            if v.rsid and v.rsid not in rsid_to_loci and not rejected_from(v.rsid, frozenset({"gnomad"}))
+        ]
         if missing:
             owned = gnomad_client is None
             client = gnomad_client or GnomadClient()
@@ -791,6 +937,7 @@ def _run_enrichment(
                         source_of_rsid[rsid] = "gnomad"
                         journal.record(rsid, "gnomad", loci)
                         tracker.settle(subjects_of_rsid.get(rsid, ()))
+                        withdraw_rejected((rsid,))
                 # An rsID gnomAD answered with an error is named, and its row stays whatever an earlier
                 # link answered: the last-resort link's outage may not overwrite another registry's
                 # answer (`@one-registrys-outage-may-not-speak-for-another`, RM361).
@@ -808,17 +955,16 @@ def _run_enrichment(
                 if owned:
                     client.close()
 
-    # One proxy, one read cache for the run: the hosting filter below settles an undecided indel with
-    # it (RM274), and minting and the reference check reuse it after the table is assembled.
-    sequences = SequenceProxy(offline=offline)
-    read_window = _grch38_window(sequences) if genome_build == "GRCh38" else None
-    # One minter for the run too: the placement comparison below and the stamping after the table
-    # both mint, and sharing it shares the proxy's read cache.
-    minter = VrsMinter(offline=offline, sequences=sequences)
-
-    def mint(chrom: str, start: int, ref: str, alt: str) -> str | None:
-        """One allele's VRS id, or `None`: what the shared spelling judge (`events`) mints with."""
-        return minter.mint(chrom, start, ref, alt)[0]
+    # ── an answer no subject can host was never an answer (RM382) ──────────────────────────────
+    # Every rsID whose links were all rejected gets its first answer back, so the assembly loop below
+    # sees exactly what it saw before the fall-through existed: the loci it rejects, its per-locus
+    # warnings, and a finding naming every link's answer. A later link's placement replaces nothing a
+    # subject could use, since an answer is withdrawn only when no subject can host any of its loci.
+    for rsid, answers in rejected_answers.items():
+        if rsid not in rsid_to_loci:
+            rsid_to_loci[rsid] = answers[0][1]
+            source_of_rsid[rsid] = answers[0][0]
+            restored_rsids.add(rsid)
 
     # ── the placement's second witness (RM267) ─────────────────────────────────────────────────
     # Every link above keeps the first answer and none compares it with another. The ClinVar snapshot
@@ -990,6 +1136,10 @@ def _run_enrichment(
     reference_rejected: list[str] = []
     # The unresolved keys that are so because two authorities disagree (RM267), named in the refusal.
     placement_unresolved: list[str] = []
+    # The unresolved keys every link answered at a locus the authored genotype cannot host (RM382),
+    # named in the refusal, and their subjects, which `--rederive` counts as answered.
+    hosting_unresolved: list[str] = []
+    hosting_rejected_subjects: set[tuple] = set()
     for v in subjects:
         key = v.variant_key
         subject = _subject_key(v)
@@ -1043,18 +1193,15 @@ def _run_enrichment(
             loci = []
             subject = "allele" if v.origin == "haplotypes.csv" else "genotype"
             # RM381: the genotype read in its site's frame, so a padded `G/GTTT` and the per-ALT pieces the
-            # readers hand on meet (`site_verdicts`); a piece of the site it does not name is not hosted.
-            framed = (
-                site_verdicts(
-                    v.constraint,
-                    [(lo.get("chrom"), lo.get("start"), lo.get("ref"), lo.get("alts")) for lo in all_loci],
-                )
-                if v.constraint is not None
-                else [True] * len(all_loci)
-            )
-            for lo, verdict in zip(all_loci, framed, strict=True):
+            # readers hand on meet (`site_verdicts`, inside `_hostings`); a piece of the site it does not
+            # name is not hosted.
+            for lo, (verdict, settled) in zip(
+                all_loci, _hostings(v.constraint, all_loci, read_window), strict=True
+            ):
                 if (
                     verdict is False
+                    and settled is None
+                    and v.constraint is not None
                     and hosting_verdict(v.constraint, lo.get("ref"), lo.get("alts")) is not False
                 ):  # type: ignore[arg-type]
                     logger.info(
@@ -1069,15 +1216,9 @@ def _run_enrichment(
                         v.constraint,
                     )
                     continue
-                settled = (
-                    _settle_by_reference(v.constraint, lo, read_window)
-                    if verdict is None and v.constraint is not None and read_window is not None
-                    else None
-                )
                 if settled is not None:
                     # RM274: the reference decided what the allele strings could not. Logged apart
                     # from both arms below, whose reasons are about the strings.
-                    verdict = settled
                     logger.info(
                         "%s: %s:%s %s>%s %s the authored %s %s: read against the GRCh38 reference, "
                         "the locus's event %s the authored one inside its repeat (RM274).",
@@ -1148,21 +1289,20 @@ def _run_enrichment(
                 # recorded where `all_loci` is non-empty: with nothing returned there was no answer to
                 # reject, and that row is a genuine `not_found` the branches below handle. Built here,
                 # beside the per-locus warnings above, so the finding and the log cannot disagree about
-                # which loci were compared.
-                allele_mismatches.append(
-                    AlleleMismatch(
-                        rsid=v.rsid,
-                        genotype=v.constraint or "",
-                        loci=tuple(
-                            f"{lo.get('chrom')}:{lo.get('start')} {lo.get('ref')}>{lo.get('alts')}"
-                            for lo in all_loci
-                        ),
-                        offered=tuple(f"{lo.get('ref')}>{lo.get('alts')}" for lo in all_loci),
-                        strand_flip=v.constraint is not None
-                        and any(
-                            strand_flip_explains(v.constraint, lo.get("ref"), lo.get("alts"))
-                            for lo in all_loci
-                        ),
+                # which loci were compared. An rsID no link placed names every link's rejected answer
+                # (RM382); one only this subject rejected names the answer it was given.
+                answers = (
+                    rejected_answers[v.rsid]
+                    if v.rsid in restored_rsids
+                    else [*rejected_answers.get(v.rsid, []), (source_of_rsid.get(v.rsid, "cache"), all_loci)]
+                )
+                allele_mismatches.append(_allele_mismatch(v.rsid, v.constraint, answers))
+            elif loci and v.chrom is None and v.rsid in rejected_answers and v.rsid not in restored_rsids:
+                # A later link placed what every earlier answer could not host (RM382): the row is that
+                # link's, and the earlier answers are recorded as superseded, never as an absence.
+                superseded_answers.append(
+                    _allele_mismatch(
+                        v.rsid, v.constraint, rejected_answers[v.rsid], source_of_rsid.get(v.rsid, "cache")
                     )
                 )
             if loci and not keep_par_twin:
@@ -1241,6 +1381,19 @@ def _run_enrichment(
                         left_aligned=_authored_verdict(authored_spelling, v),
                     )
                 )
+            elif all_loci:
+                # **Answered, and every answer rejected (RM382).** The S85 row was written here as
+                # `not_found` — *this source has no record of the rsID* — about an rsID every link that
+                # answered has; the finding above said so and the row contradicted it. So no row, like a
+                # disputed placement one branch up (RM267) and for the same reason: the sources do have
+                # it. The key stays unresolved, so `strict` still refuses, now with the rejection named;
+                # `--rederive` counts it answered, so a recorded placement is not carried past it.
+                unresolved.append(key)
+                hosting_rejected_subjects.add(_subject_key(v))
+                if v.rsid not in unreachable_rsids | unanchored_rsids:
+                    # A link that could not answer leaves the chain incomplete, so the refusal asks for
+                    # the link rather than the genotype (`@unreachable-not-absent`).
+                    hosting_unresolved.append(key)
             elif genome_build == "GRCh38" and v.rsid in unreachable_rsids | unanchored_rsids:
                 # The live link was asked and never answered (S20), so this row has the same shape as
                 # the non-GRCh38 case below and gets the same treatment: no row at all. Writing
@@ -1350,6 +1503,13 @@ def _run_enrichment(
         # A disputed subject WAS asked, and the answer is "two authorities disagree" (RM267): carrying
         # its recorded placement forward would keep exactly the row the comparison withheld.
         fresh_keys |= {_subject_key(v) for v in subjects if v.rsid in disputed}
+        # So is a subject every link answered and no answer could host (RM382) — when what it recorded
+        # places nothing (a pre-0.8 `not_found` row, the false absence itself). A recorded placement is
+        # kept: it came from a link this run may not have reached, and rejecting another link's answer
+        # refutes nothing about it (`@rederive-never-shortens`).
+        fresh_keys |= {
+            k for k in hosting_rejected_subjects if not any(r.chrom is not None for r in existing.get(k, []))
+        }
         # Only subjects the spec still names. A recorded row for a variant the author has since
         # deleted is dropped by an ordinary run — the assembly loop iterates `subjects` and nothing
         # else — so carrying it forward here would make `--rederive` resurrect rows a plain re-run
@@ -1719,7 +1879,12 @@ def _run_enrichment(
     # `verification.json` does not describe.
     pair_check = _check_authored_pairs(
         verify_pairs,
-        rsid_to_loci,
+        # The snapshot's own answer for an rsID a later link placed after it was set aside (RM382): the
+        # pair check reports a snapshot comparison, so it compares against the snapshot.
+        {
+            **rsid_to_loci,
+            **{rsid: answers[0][1] for rsid, answers in rejected_answers.items() if answers[0][0] == "cache"},
+        },
         genome_build=genome_build,
         reference=reference,
         offline=offline,
@@ -1896,6 +2061,7 @@ def _run_enrichment(
         unreachable_rsids=sorted(unreachable_rsids),
         unconsulted_rsids=sorted(unconsulted_rsids),
         allele_mismatches=allele_mismatches,
+        superseded_answers=superseded_answers,
         # RM272. Reduced to the rsIDs left with no locus from ANY link, and apart from the transient
         # states, so the lists stay disjoint: a snapshot row with no bases that live Ensembl then placed,
         # or that another link placed, is not a permanent absence.
@@ -1970,6 +2136,21 @@ def _run_enrichment(
             else "",
         )
 
+    if superseded_answers:
+        # Info, not a warning: the variant is placed, by the next link that could host it (RM382). The
+        # line says which answer was set aside, so a reader of `source` knows why the snapshot did not win.
+        logger.info(
+            "%d rsID(s) were answered at loci the authored genotype cannot host and placed by a later "
+            "link (RM382): %s.",
+            len(superseded_answers),
+            "; ".join(
+                sorted(
+                    f"{m.rsid}: {', '.join(m.links)} gave {', '.join(m.loci)}; {m.placed_by} placed it"
+                    for m in superseded_answers
+                )
+            ),
+        )
+
     if unconsulted_rsids:
         # Warned in BOTH modes, like its neighbour above and for the same reason: nothing an author
         # can edit makes a cache appear, and `strict` already refuses the run on `unresolved`. What
@@ -2033,7 +2214,10 @@ def _run_enrichment(
         # Two remedies, so two sentences: a placement two authorities disagree about is answered, and
         # more cache or egress will not change it (RM267, `@unreachable-not-absent`).
         contested = sorted(set(placement_unresolved) & set(result.unresolved))
-        unplaced = [k for k in result.unresolved if k not in set(contested)]
+        # And a third (RM382): every link answered, at loci the authored genotype cannot host, so the
+        # remedy is the genotype, never a cache.
+        rejected = sorted(set(hosting_unresolved) & set(result.unresolved))
+        unplaced = [k for k in result.unresolved if k not in set(contested) | set(rejected)]
         raise EnrichmentError(
             f"strict enrichment: {len(result.unresolved)} variant(s) unresolved after the chain "
             f"(cache/Ensembl): {result.unresolved}."
@@ -2042,6 +2226,14 @@ def _run_enrichment(
                 f"authorities (placement disagreement, RM267): record the placement you stand behind in "
                 f"overrides.csv as an `insert` on resolution.csv."
                 if contested
+                else ""
+            )
+            + (
+                f" {len(rejected)} of them ({rejected}) were answered only at loci the authored genotype "
+                f"cannot host, by every link this run could ask (RM382): the sources have these rsIDs, so check "
+                f"the genotype's alleles and strand against the loci the warning names, or record the "
+                f"placement you stand behind in overrides.csv as an `insert` on resolution.csv."
+                if rejected
                 else ""
             )
             + (
@@ -2101,6 +2293,9 @@ def _run_enrichment(
                 "resolution",
                 spec_dir,
                 error=EnrichmentError,
+                # `--rederive` re-answers every row, so the committed table is this pass's whole answer
+                # and a licence row no row names is retired with it (RM383). A merging run keeps them.
+                answered_every_row=rederive,
             ),
         )
         if clin_sig_record is not None:
