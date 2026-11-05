@@ -48,6 +48,13 @@ outside every window, 16 new windows after merging the overlapping ones on chr6 
 the same way and on top of the extension above: one `[pos-100, pos+len(ref)+100]` window per row from
 UCSC's hg38 API with its `ref` asserted, overlapping windows merged, and the provisioned ClinVar VCF
 (`clinvar_2026-06-27`) cut to them with INFO reduced to `CLNSIG`/`RS`. No existing line moves.
+
+**Extended again 2026-11-05 for `cpic_gene_pairs`' respelled NUDT15 `*1` `rs1457579126`** (now authored at
+`13:48040977 GA`, the split snapshot's left-aligned anchor, where it used to carry no `ref`). The chr13 window
+`48041004-48041214` grows left to `48040877` (`pos-100`): the 127 new bases are UCSC's hg38
+`chr13:48040876-48041003` (0-based), with `GA` asserted at 48040977, prepended to the old window's sequence.
+The provisioned `clinvar_2026-06-27` VCF adds two records in those bases (48040948, 48040966), INFO reduced
+to `CLNSIG`/`RS`, merged in sort order. No other line moves.
 """
 
 import gzip
