@@ -8,28 +8,31 @@
 # `dist/` is wiped first: `uv publish` uploads everything in it, so an earlier build's files would
 # ride along. Never build into a `dist/` you mean to keep.
 #
-# The alarm: a wheel over WHEEL_ALARM_BYTES (default 1 MiB) usually means a build exclusion is
-# missing and data, a cache or a test fixture went into the wheel. Every wheel is still built; the
-# script then lists the largest members of each wheel over the line and exits 3, so a
-# `build-dists.sh && uv publish` chain stops before the upload. Read the list: if it is all source,
-# raise the line for that run (`WHEEL_ALARM_BYTES=2000000 scripts/build-dists.sh`).
+# The alarm: a wheel whose non-`.py` files are more than WHEEL_NONPY_ALARM_PCT percent of its
+# uncompressed bytes (default 3) usually means a build exclusion is missing and data, a cache or a
+# test fixture went into the wheel. A share, not a total size: source grows with the code and must
+# never trip it. The line sits just above the highest share at 0.8.0 (the enricher, 2.6%: its
+# AlphaGenome protos and their licence text; format and compiler ship under 1%). Every wheel is
+# still built; the script then lists the largest non-`.py` members of each wheel over the line and
+# exits 3, so a `build-dists.sh && uv publish` chain stops before the upload. If the list is all
+# intended, raise the line for that run (`WHEEL_NONPY_ALARM_PCT=5 scripts/build-dists.sh`) or here.
 #
 # Exit codes: 0 built, nothing over the line; 3 built, at least one wheel over the line; anything
 # else, a build failed.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ALARM="${WHEEL_ALARM_BYTES:-1048576}"
+ALARM="${WHEEL_NONPY_ALARM_PCT:-3}"
 cd "$ROOT"
 
-mapfile -t PACKAGES < <(python3 - <<'EOF'
+mapfile -t PACKAGES < <(python3 - <<'PY'
 import tomllib
 from pathlib import Path
 
 members = tomllib.loads(Path("pyproject.toml").read_text())["tool"]["uv"]["workspace"]["members"]
 for member in members:
     print(tomllib.loads((Path(member) / "pyproject.toml").read_text())["project"]["name"])
-EOF
+PY
 )
 if [ "${#PACKAGES[@]}" -eq 0 ]; then
     echo "build-dists: no workspace members found in pyproject.toml" >&2
@@ -43,35 +46,40 @@ for pkg in "${PACKAGES[@]}"; do
 done
 
 echo
-echo "== dist/ (alarm line: $ALARM bytes per wheel)"
-python3 - "$ALARM" <<'EOF'
+echo "== dist/ (alarm line: non-.py files over $ALARM% of a wheel's bytes)"
+python3 - "$ALARM" <<'PY'
 import sys
 import zipfile
 from pathlib import Path
 
-alarm = int(sys.argv[1])
+alarm = float(sys.argv[1])
 over = []
 for path in sorted(Path("dist").iterdir()):
     if path.name.startswith("."):
         continue
-    size = path.stat().st_size
-    flag = ""
-    if path.suffix == ".whl" and size > alarm:
-        flag = "  <-- OVER THE LINE"
-        over.append(path)
-    print(f"{size:>12,}  {path.name}{flag}")
+    note = ""
+    if path.suffix == ".whl":
+        with zipfile.ZipFile(path) as wheel:
+            members = wheel.infolist()
+        total = sum(info.file_size for info in members)
+        non_py = [info for info in members if not info.filename.endswith(".py")]
+        pct = 100 * sum(info.file_size for info in non_py) / total if total else 0.0
+        note = f"  non-.py {pct:5.2f}%"
+        if pct > alarm:
+            note += "  <-- OVER THE LINE"
+            over.append((path, pct, non_py))
+    print(f"{path.stat().st_size:>12,}  {path.name}{note}")
 
-for path in over:
-    with zipfile.ZipFile(path) as wheel:
-        members = sorted(wheel.infolist(), key=lambda info: -info.compress_size)
-    non_py = [info for info in members if not info.filename.endswith(".py")]
-    print(f"\n!! {path.name}: {path.stat().st_size:,} bytes, {len(members)} members, "
-          f"{len(non_py)} of them not .py. Largest (compressed / raw):")
-    for info in members[:12]:
-        print(f"   {info.compress_size:>10,} / {info.file_size:>10,}  {info.filename}")
+for path, pct, non_py in over:
+    print(f"\n!! {path.name}: non-.py files are {pct:.2f}% of its bytes. Largest non-.py members:")
+    for info in sorted(non_py, key=lambda info: -info.file_size)[:12]:
+        print(f"   {info.file_size:>10,}  {info.filename}")
 
 if over:
-    print(f"\n!! {len(over)} wheel(s) over {alarm:,} bytes: check the build exclusions before "
-          "publishing (WHEEL_ALARM_BYTES raises the line).", file=sys.stderr)
+    print(
+        f"\n!! {len(over)} wheel(s) over {alarm}% non-.py bytes: check the build exclusions "
+        "before publishing (WHEEL_NONPY_ALARM_PCT raises the line).",
+        file=sys.stderr,
+    )
     sys.exit(3)
-EOF
+PY
