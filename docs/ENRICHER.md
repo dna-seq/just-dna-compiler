@@ -2912,8 +2912,9 @@ because the table carrying them was dropped at upload.
   **Every name handed to the hub is made literal by one helper** (`_literal_patterns`): the module
   publisher's `allow_patterns`, both of the snapshot publisher's (where `data/chr[1].parquet` unescaped
   selected `data/chr1.parquet` and never itself), a declared retirement's `delete_patterns`
-  (`LayoutShift.retires` is one name, never a glob) and `cache prune`'s `delete_patterns`, where an
-  unescaped listed name would delete a file nobody was shown.
+  (`LayoutShift.retires` is one name, never a glob). `cache prune` used to pass `delete_patterns`
+  too, where an unescaped listed name would delete a file nobody was shown; since RM386 it sends one
+  delete operation per listed path, so it hands the hub no pattern at all.
 - **One reader, one filter, and the dry run refuses as the real run does (RM355).** The plan, the
   publish and the publish's guard read `manifest.json` once, through `_manifest_document`, and pass the
   object on; the version and the file list of one plan come from that one read (the version reader
@@ -2937,7 +2938,8 @@ because the table carrying them was dropped at upload.
     path the hub reads later. A file that changed, went missing or became unreadable in between is a
     `PlanChangedError`, naming each, before either commit. The cost is memory: the module's files are
     held for the two commits, which a module's size (megabytes) affords and a 32 GB snapshot would not,
-    so the snapshot publisher keeps its allowlist send.
+    so the snapshot publisher sends its payload from the directory and checks it on the hub afterwards
+    (RM386, next bullet).
   - **A malformed declared field refuses; an absent one withholds**
     (`@an-absent-input-is-the-unknown-arm-and-a-malformed-one-is-the-refusal`). `artifact.files`
     present but not a list used to fall back to the allowlist and drop the attestation check; a
@@ -2966,6 +2968,39 @@ because the table carrying them was dropped at upload.
     directory; within 0.8 the two plan types keep `FileNotFoundError` as a second base, so an existing
     handler keeps catching them. Every CLI `try` around a publish catches the family (an AST walk
     asserts it), and `cpic publish` / `clinpgx publish`, which caught nothing, now print one line.
+- **Every write is pinned to the revision its plan read, and a snapshot to the bytes it hashed
+  (RM386).** RM368 tied the module send to its bytes; the snapshot publish and `cache prune` were
+  still a plan of paths acted on later. Each defect needs a concurrent writer, and each now refuses:
+  - **One revision per plan.** A publish or a prune plan reads the head once (`_head`), and every
+    remote read after it names that revision: the versioned-path manifest (`file_exists`,
+    `hf_hub_download`), the orphan check's and the retirement's listings, the prune listing. Every
+    write goes through one helper, `_commit`, which passes that revision as `parent_commit`; the
+    second commit of a pair is pinned on the first. The precondition alone does not hold: the library
+    skips a write that changes nothing and answers with the current head unchecked, and its multi-commit
+    uploader pins the first part only. So each write carries a token in its commit description, and
+    `_commit` walks the history from the answered head back to the parent: a commit without the token is
+    another writer's, and the write refuses as a `RemoteMovedError` (a `PublishRefused`) that counts both
+    kinds and names what this publish already landed (the flat path of a module, a snapshot's payload).
+    A hub error takes the same walk, not the status code. A dry run reads the head and commits nothing,
+    so it pins nothing.
+  - **A snapshot is hashed once and held to those hashes.** The publish reads every planned file once
+    (`SnapshotPlan.sha256`, the `sha256:` of each, plus the git blob id the hub states for a non-LFS
+    file). The payload goes up through `upload_folder`, which reads the directory after the plan did
+    (kept for RM199's reason: it is the hub's resumable, multi-commit uploader); then the tree at the
+    payload commit is compared with the plan, by `lfs.sha256` for an LFS entry and by blob id for any
+    other. A difference is a `PlanChangedError` and **the description is withheld**: the payload
+    commit has landed, and the previous `release.json` stays over it until a re-run, as after any
+    failed second commit. `release.json` itself is sent as the bytes the plan read, never read again,
+    so a rebuild after the payload lands cannot put the next release's description over this one's
+    rows. The cost is one more full read of the snapshot (the hash), beside the hub's own.
+  - **A prune deletes what its listing showed, at that revision.** `PrunePlan.revision` is the commit
+    the listing was read at; `prune_repo` commits one delete per listed path on top of exactly it, so a
+    file republished under a listed name after the plan was shown refuses the prune. A plan stating no
+    revision read nothing and refuses.
+  - **What is left.** A refused description leaves the payload landed under the previous
+    `release.json` until a re-run, as any failed second commit does. The walk reads a commit's
+    description as `list_repo_commits` answers it (`message`); were that ever empty, every write would
+    refuse, never pass.
 
 ### A module is published twice, and the second path is the one that can name a release (RM84)
 
@@ -5774,7 +5809,7 @@ caller and `except` order never matters. RM310 was the list shape failing: `cach
 | `mane_build` | `ManeBuildError` | `ManeUnavailable` |
 | `opentargets_build` | `OpenTargetsBuildError` | `OpenTargetsUnavailable` |
 | `pubmind_build` | `PubMindBuildError` | `PubMindUnavailable` |
-| `upload` | `PublishRefused` (RM368: every refusal a publish raises) | `ModuleNotPublishable`, `SnapshotNotPublishable` (both still a `FileNotFoundError` within 0.8), `PlanChangedError`, `OrphanedSidecarError`, `PublishCollisionError` → `ToolchainDiffersError` (RM342: the two recorded toolchains differ) |
+| `upload` | `PublishRefused` (RM368: every refusal a publish raises) | `ModuleNotPublishable`, `SnapshotNotPublishable` (both still a `FileNotFoundError` within 0.8), `PlanChangedError`, `OrphanedSidecarError`, `RemoteMovedError` (RM386: the repo moved after the plan read it), `PublishCollisionError` → `ToolchainDiffersError` (RM342: the two recorded toolchains differ) |
 
 **Snapshot readers — an absent or unreadable cache, deliberately a `FileNotFoundError`**
 

@@ -503,15 +503,3 @@ remaining class gets the same treatment — a plain column, on demand, one at a 
   life; it stays that way, here.
 
 Neither is built until a real module needs it.
-
-## RM386 — a snapshot publish is not tied to the bytes or the revision it sends
-
-**0.8, the maintainer (2026-11-05)**: "if branch is built, what's the sense to defer then? Defer unbuilt items." It overrides the pm's first sizing the same day (0.9, as "purely theoretical": a concurrent writer, snapshots published about yearly). **Built** on `build/RM386` at bf234700; the lead merges it into 0.8. **Shipped without a live rehearsal** (the maintainer, 2026-11-05): it replaces working publish code with code no run has sent to the live Hugging Face hub, since the suite runs offline. No practice publish before the cut. The next real snapshot publish, likely a year away, is its first live run: whoever runs it suspects this code first if the publish fails, and the fix is a patch.
-
-**Severity** low · **Status** open — **a minor, 0.8**, built · **Owner** enricher (`upload.py`) · **Motivating case** audit round 2, class 1 (the lead's scratchpad audit2/report.md (audit round 2 of 0.8, 2026-11-05)) · *related* RM368, RM199
-
-**The gap.** The snapshot `upload_folder` re-reads unhashed paths after the plan hashed them, `create_commit` passes no `parent_commit`, and prune deletes by path at whatever the repo has become. Every case needs a concurrent writer to the same dataset repo. RM368 already ties the *module* publish to its bytes; this extends it to snapshots and prune.
-
-**What the branch does.** One `upload._commit` helper pins `parent_commit` and walks the commit history for a token, so a concurrent writer raises `RemoteMovedError` (a `PublishRefused`). A snapshot is hashed once and checked against the hub's tree before `release.json` is sent. Prune deletes exactly the paths it listed, at a pinned revision. AST guards cover every hub write. Before merging, re-run its tests on the current `0.8`; also drop the dead lazy `ImportError` guards it leaves in `_hf_api`/`_read_only_api`/`plan_prune`.
-
-**Residuals** none yet.

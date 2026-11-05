@@ -163,6 +163,99 @@ and lap 2's `artifact.digest`, `content_signature` and `resolution_signature` eq
 id-with-no-`ref` case on `hfe_hemochromatosis`. Red on `5b1b73b8` (all 17 round trips); mutating
 `CELL_FACT_FIELDS` to drop `vrs_spec` turns 18 of the 20 red.
 
+## RM386 — a publish plan was not tied to the bytes it sent or the revision it read
+
+✅ **SHIPPED 2026-11-05 on `0.8`, uncut — a minor (the 0.8 audit, round 2).** Owner enricher, severity
+medium. Class 1 of the second 0.8 audit (one run of four saw it; each instance re-verified on `0.8` at
+`5b1b73b8` and demonstrated against a fake hub before the fix).
+
+Ships as built, with no practice publish to a throwaway Hugging Face repo before the cut (the
+maintainer's decision). The next real snapshot publish, likely a year away, is its first live run; if it
+fails, suspect this code first; the fix is a patch then.
+
+**Residuals** won't fix — a payload the hash check or the history walk refuses has already landed, and the previous `release.json` stays over it until a re-run, which is what any failed second commit has always left · won't fix — the hub's pipelined uploader retries a commit whose response was lost with the same `parent_commit`, and the 412 that answers it is re-raised as the hub's own error rather than a refusal, because the walk finds only this write's commits; the re-run finds the hashes matching and completes
+
+**The class.** A publisher plans, checks and writes, and RM368 made the module send one reading of the
+disk. The other publish paths still acted on names: what the hub sent was whatever the paths held when
+the hub got round to reading them, and what was committed landed on whatever the repo had become since
+the plan read it. Each instance needs a concurrent writer (a rebuild of the snapshot directory, a second
+publisher, a prune run from another machine), which is why no test without a repository with a head saw
+one. RM368 had recorded the snapshot half as a residual (no attestation a re-read could defeat, and two
+reads of 32 GB); the audit's scenario is the attestation: `release.json` describes the payload, and the
+second upload read it off the disk after the first had sent the payload.
+
+**Instances** (file:line on `0.8` at `5b1b73b8` → after):
+
+1. `enricher/src/just_dna_enricher/upload.py:1562`, `:1585` — `publish_reference_snapshot`'s two
+   `upload_folder` calls each read the directory. A rebuild landing after the payload commit put the next
+   release's `release.json` over this release's rows (reproduced: R1's parquet under R2's description),
+   and one landing while the hub read the folder sent bytes nothing hashed → every planned file is hashed
+   once (`_read_once`: the `sha256:` and the git blob id, from one read) and stated on
+   `SnapshotPlan.sha256`; the payload stays one `upload_folder` (RM199's resumable uploader), then
+   `_check_on_the_hub` compares the tree at the payload commit with the plan (`lfs.sha256` for an LFS
+   entry, the blob id for any other) and withholds the description on a difference
+   (`PlanChangedError`); `release.json` is sent as the bytes read with the rest, through `create_commit`.
+2. `upload.py:1265`, `:1273` — `upload_module`'s two `create_commit`s passed no `parent_commit`, and the
+   versioned-path check read the remote with no revision (`:1066` `file_exists`, `:1068`
+   `hf_hub_download`), so a version another publisher landed after the check was overwritten without
+   `--force` → the head is read once (`_head`), the check reads at it, the flat commit is pinned on it
+   and the versioned commit on the flat one.
+3. `upload.py:1562` (again), `:1368`, `:1524` — the snapshot payload commit had no parent, and the orphan
+   check's and the retirement's listings read the head at their own moments → both listings read at the
+   pinned revision (`check_publish_orphans_no_sidecar(…, revision=)`), the payload commit is pinned on it
+   and the description commit on the payload commit.
+4. `upload.py:1450`, `:1489` — `plan_prune` listed the head and `prune_repo` deleted by pattern on
+   whatever the head had become, so a file republished under a listed name after the plan was shown was
+   deleted unseen → `PrunePlan.revision` is the commit the listing was read at; the deletion is one
+   `CommitOperationDelete` per listed path in one commit pinned on it (no pattern reaches the hub, so
+   RM353's escaping has nothing to escape there). A plan stating no revision refuses.
+5. `enricher/src/just_dna_enricher/cli/cache_commands.py:346` — `cache prune --yes` called `prune_repo`
+   outside any handler, and RM368's guard read only the `try` blocks that exist → the call sits in a
+   `try` naming `PublishRefused` and prints `PRUNE REFUSED`; `prune_repo` joined the guard's entry list,
+   and a second test asserts every publisher call in the CLI is inside such a `try`, the one allowlisted
+   bare plan aside.
+
+No hub write exists outside `upload.py`, in any tier; `schema/` and `compiler/` reach no hub.
+
+**The mechanism.** One helper, `_commit`, is the only way the tier writes to the hub, and it always
+passes the plan's revision as `parent_commit`. That alone does not hold, as the code review of the first
+cut found: the library skips a write that changes nothing and answers with the *current* head without
+sending the precondition (a byte-identical republish took another writer's head as its own and described
+over that writer's sidecar), and the multi-commit uploader pins its first part only. So every write
+carries a per-write token in its commit description, and after the write `_commit` walks
+`list_repo_commits` from the answered head back to the parent: a commit without the token is another
+writer's, and the write is a `RemoteMovedError` (a new `PublishRefused`) that counts both kinds and names
+what the publish already landed (the flat path, the payload). A hub error takes the same walk from the
+head, so the translation rests on the history rather than on the status code; an error with no foreign
+commit behind it is re-raised. Every remote read after the pin
+names the revision. A snapshot's payload is held to the hashes of the one local read on the hub itself,
+which costs one full read of the snapshot beside the hub's own and holds nothing in memory. The guards,
+in `enricher/tests/test_a_publish_is_pinned.py`: `test_every_hub_write_goes_through_the_one_pinned_helper`
+(an AST walk over the package: every call to an `HfApi` method that takes `parent_commit`, the roster
+read off the library's signatures, is inside `_commit` and passes it) and
+`test_every_remote_read_in_the_publisher_names_its_revision` (every call in `upload.py` to an `HfApi`
+method taking `revision`, writes aside, plus `hf_hub_download`, passes one, `_head` aside). Mutated once
+each (a `create_commit` without `parent_commit`, a stray `delete_files`, the versioned check's
+`file_exists` without a revision, the hub check removed): each went red. The tests run against
+`FakeHub` (enricher conftest, `fake_hub` fixture), a git-backed repo in memory with a head, parents, a
+tree per revision and a hub-side refusal of a stale `parent_commit`; the snapshot and prune tests that
+used a `MagicMock` moved onto it.
+
+**Decisions taken.** The payload stays on `upload_folder`, not a `create_commit` of paths: RM199 chose
+the hub's resumable multi-commit uploader for a 32 GB lane, and checking on the hub afterwards ties the
+bytes without giving that up. The hash runs in the real publish, not in the plan: a dry run reads no
+bytes, so `SnapshotPlan.sha256` is empty on a rehearsal. A rehearsal reads the head and pins nothing,
+since it commits nothing. `test_a_publish_never_reaches_for_the_deprecated_large_uploader` and
+`test_a_retirement_still_rides_the_payload_commit_at_any_size` no longer build a 6 GiB sparse snapshot,
+which the hash would read twice per run (measured: 12 s a read); the first asserts the deprecated
+uploader is named nowhere in the package instead, which holds at every size. The check assumes the hub
+states an LFS (or Xet-backed) file's `lfs.sha256` in its tree listing and a plain file's git blob id, as
+`huggingface_hub` 2.0 documents; a file stated by neither withholds the description rather than passing.
+The walk assumes `list_repo_commits` answers a commit's description as its `message`, as the library
+documents; were it not, every write would refuse rather than pass. `FakeHub` models the empty-write skip
+and a two-part `upload_folder`, and the module tests that kept a `MagicMock` give it a linear history
+(`_linear_hub`).
+
 ## RM380 — a hand-kept struct mirrored `ResolutionRow` with nothing asserting the two agree, so reverse dropped every 0.8 provenance column
 
 ✅ **SHIPPED 2026-11-05 on `0.8`, uncut — a minor (found building RM375).** Owner compiler, severity
@@ -1811,7 +1904,7 @@ no place keys as `""`. A `retired` fulltext row is asked again. An unparsable `s
 **SHIPPED 2026-11-04 on `0.8`, uncut — a minor (the 0.8 audit, round 1).** Owner enricher, severity
 medium. Reported by four builders of the 0.8 round, each instance re-verified on `0.8` at `0a5293b`.
 
-**Residuals** won't fix — the reference-snapshot send stays an allowlist over the plan's names: a snapshot records no per-file hash (`SnapshotRelease` has none), so there is no attestation a re-read at send time could defeat, and byte-verifying a 32 GB lane at send would read it twice
+**Residuals** won't fix — the reference-snapshot send stays an allowlist over the plan's names: a snapshot records no per-file hash (`SnapshotRelease` has none), so there is no attestation a re-read at send time could defeat, and byte-verifying a 32 GB lane at send would read it twice · RM386 took that back on 2026-11-05: `release.json` is the attestation a re-read defeated, so the snapshot payload is now hashed once and checked on the hub before it is described
 
 **The class.** A publisher states what it will send (the plan), checks it (the plan's refusals and the
 remote guard), and sends it. Each of the three read the disk, the manifest or the remote on its own,

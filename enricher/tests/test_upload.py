@@ -101,6 +101,28 @@ def _no_hub(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(huggingface_hub, "hf_hub_download", _unreachable_download)
 
 
+def _linear_hub() -> MagicMock:
+    """A `MagicMock` HfApi whose commits form one linear history, each carrying the description it was
+    sent with, so the publisher's walk back to the revision it read finds only its own (RM386). The
+    calls are still recorded as a `MagicMock` records them."""
+    api = MagicMock()
+    root = "0" * 40
+    commits: list[tuple[str, str]] = [(root, "")]
+    api.repo_info.return_value.sha = root
+
+    def commit(**kwargs: Any) -> SimpleNamespace:
+        commits.append((f"{len(commits):040x}", kwargs.get("commit_description") or ""))
+        return SimpleNamespace(oid=commits[-1][0])
+
+    def history(**kwargs: Any) -> list[SimpleNamespace]:
+        upto = next(i for i, (oid, _) in enumerate(commits) if oid == kwargs["revision"])
+        return [SimpleNamespace(commit_id=oid, message=text) for oid, text in reversed(commits[: upto + 1])]
+
+    api.create_commit.side_effect = commit
+    api.list_repo_commits.side_effect = history
+    return api
+
+
 def _manifest(name: str, version: str | None) -> ModuleManifest:
     """The smallest manifest that validates — identity, display, artifact."""
     return ModuleManifest(
@@ -432,7 +454,7 @@ def test_an_unrelated_manifest_defect_does_not_withhold_a_legible_version(tmp_pa
 
 def test_upload_module_calls_hf_api(tmp_path: Path) -> None:
     module_dir = _compiled_module(tmp_path / "lipidmetabolism", version="0.4.0")
-    mock_api = MagicMock()
+    mock_api = _linear_hub()
     # Nothing is published at the versioned path. A bare MagicMock answers `file_exists` truthily, and
     # the collision check then called the real `hf_hub_download` with this fake token (RM372's fence).
     mock_api.file_exists.return_value = False
@@ -473,7 +495,7 @@ def test_upload_module_calls_hf_api(tmp_path: Path) -> None:
 def test_upload_module_writes_one_path_when_the_version_is_unknown(tmp_path: Path) -> None:
     """The dual write is the fix; a `vNone` directory would be the defect wearing a version."""
     module_dir = _compiled_module(tmp_path / "superhuman", version=None)
-    mock_api = MagicMock()
+    mock_api = _linear_hub()
     with (
         patch("huggingface_hub.HfApi", return_value=mock_api),
         patch("huggingface_hub.get_token", return_value="hf_test_token"),
@@ -487,7 +509,7 @@ def test_the_default_commit_messages_name_which_copy_they_are(tmp_path: Path) ->
     """Two commits land in one repo history; identical default messages would make the versioned copy
     unreadable as a separate act."""
     module_dir = _compiled_module(tmp_path / "coronary", version="1.0.0")
-    mock_api = MagicMock()
+    mock_api = _linear_hub()
     mock_api.file_exists.return_value = False  # see `test_upload_module_calls_hf_api`
     with (
         patch("huggingface_hub.HfApi", return_value=mock_api),
@@ -570,38 +592,43 @@ def test_plan_reference_snapshot_rejects_empty(tmp_path: Path) -> None:
         plan_reference_snapshot(empty)
 
 
-def test_publish_reference_snapshot_creates_repo_then_uploads(tmp_path: Path) -> None:
+def _sent(hub) -> list[tuple[str, list[str]]]:
+    """Each write a publish made, as `(method, the repo paths it sends in order)`: an `upload_folder`'s
+    allowlist, a `create_commit`'s added paths."""
+    sent = []
+    for method, kwargs in hub.calls:
+        if method == "upload_folder":
+            sent.append((method, list(kwargs["allow_patterns"])))
+        elif method == "create_commit":
+            sent.append((method, [op.path_in_repo for op in kwargs["operations"]]))
+    return sent
+
+
+def test_publish_reference_snapshot_creates_repo_then_uploads(tmp_path: Path, fake_hub) -> None:
     snap = _snapshot(tmp_path / "snap")
-    mock_api = MagicMock()
-    with (
-        patch("huggingface_hub.HfApi", return_value=mock_api) as api_cls,
-        patch("huggingface_hub.get_token", return_value="hf_test_token"),
-    ):
-        plan = publish_reference_snapshot(snap, "just-dna-seq/clinvar")
-    api_cls.assert_called_once_with(token="hf_test_token")
-    mock_api.create_repo.assert_called_once_with(
-        repo_id="just-dna-seq/clinvar", repo_type="dataset", exist_ok=True
-    )
-    calls = mock_api.upload_folder.call_args_list
+    hub = fake_hub("just-dna-seq/clinvar")
+    plan = publish_reference_snapshot(snap, "just-dna-seq/clinvar")
     # **Two commits, payload then description** (RM199). `release.json` is what a puller reads to
-    # learn which release it holds, so it must not arrive before the bytes it describes.
-    assert len(calls) == 2
-    payload, description = (c.kwargs for c in calls)
-    for kwargs in (payload, description):
-        assert kwargs["folder_path"] == str(snap)
-        assert kwargs["path_in_repo"] == ""
-        assert kwargs["repo_id"] == "just-dna-seq/clinvar"
-        assert kwargs["repo_type"] == "dataset"
-    assert RELEASE_FILENAME not in payload["allow_patterns"], "the description went out too early"
-    assert description["allow_patterns"] == [RELEASE_FILENAME]
+    # learn which release it holds, so it must not arrive before the bytes it describes. The payload
+    # goes up through the hub's own uploader from the directory; the description is sent as the bytes
+    # the publish read (RM386).
+    (payload_call, payload), (description_call, description) = _sent(hub)
+    assert (payload_call, description_call) == ("upload_folder", "create_commit")
+    assert hub.calls[0][1]["folder_path"] == str(snap)
+    assert hub.calls[0][1]["path_in_repo"] == ""
+    assert RELEASE_FILENAME not in payload, "the description went out too early"
+    assert description == [RELEASE_FILENAME]
     # The allowlist IS the plan's file list, not a parallel pattern list that has to agree with it
     # (`@publisher-allowlist-derived`). The two were separate statements of one thing, so a dry run
     # could print a file the upload then dropped — which is how `citations/` and `LICENSE.txt` each
     # went a release unpublished. Splitting the upload does not get to weaken that: the two calls
     # together must still send exactly what the plan promised, which is why this is a union rather
     # than a check on one call.
-    assert payload["allow_patterns"] + description["allow_patterns"] == plan.files
+    assert payload + description == plan.files
     assert plan.repo_id == "just-dna-seq/clinvar"
+    assert {name: hub.tree()[name] for name in plan.files} == {
+        name: (snap / name).read_bytes() for name in plan.files
+    }
 
 
 def test_a_snapshots_licence_travels_with_its_bytes(tmp_path: Path) -> None:
@@ -649,7 +676,7 @@ def _published_as(module_dir: Path, *, digest: str | None = None) -> dict:
 def _remote(tmp_path: Path, document: dict | None) -> tuple[MagicMock, Path | None]:
     """A mock api whose versioned path holds `document` as its manifest, or nothing when it is None.
     Returns the api and the file `hf_hub_download` should hand back."""
-    api = MagicMock()
+    api = _linear_hub()
     api.token = "hf_test_token"
     if document is None:
         api.file_exists.return_value = False
@@ -785,7 +812,7 @@ def test_an_unreadable_published_manifest_proceeds_with_a_warning(tmp_path: Path
     error path.
     """
     module_dir = _compiled_module(tmp_path / "m", version="1.2.3")
-    api = MagicMock()
+    api = _linear_hub()
     api.token = "hf_test_token"
     api.file_exists.side_effect = OSError("the hub is unwell")
 
@@ -833,7 +860,7 @@ def _published_like(
         document["compilation"]["toolchain"] = toolchain
     published = tmp_path / "published_manifest.json"
     published.write_text(json.dumps(document), encoding="utf-8")
-    api = MagicMock()
+    api = _linear_hub()
     api.token = "hf_test_token"
     api.file_exists.return_value = True
     return api, published
@@ -947,7 +974,7 @@ def test_the_cli_says_toolchain_differs_rather_than_already_published(tmp_path: 
     assert "ALREADY PUBLISHED" not in result.output
 
 
-def test_the_dry_run_promises_exactly_what_the_upload_sends(tmp_path: Path) -> None:
+def test_the_dry_run_promises_exactly_what_the_upload_sends(tmp_path: Path, fake_hub) -> None:
     """The property the derived allowlist buys, over a snapshot carrying every optional part.
 
     Pinned on a snapshot with a sidecar *and* a licence because that is where the two lists used to
@@ -960,16 +987,12 @@ def test_the_dry_run_promises_exactly_what_the_upload_sends(tmp_path: Path) -> N
     (snap / "LICENSE.txt").write_text("CC BY-SA 4.0", encoding="utf-8")
     promised = plan_reference_snapshot(snap, "just-dna-seq/clinpgx").files
 
-    mock_api = MagicMock()
-    with (
-        patch("huggingface_hub.HfApi", return_value=mock_api),
-        patch("huggingface_hub.get_token", return_value="hf_test_token"),
-    ):
-        publish_reference_snapshot(snap, "just-dna-seq/clinpgx")
+    hub = fake_hub("just-dna-seq/clinpgx")
+    publish_reference_snapshot(snap, "just-dna-seq/clinpgx")
     # Summed over both commits (RM199 split the upload), because the promise is about what *reaches*
     # the repo and not about how many commits carried it. A check on one call would have started
     # passing for the wrong reason the moment the publish was split.
-    sent = [f for c in mock_api.upload_folder.call_args_list for f in c.kwargs["allow_patterns"]]
+    sent = [f for _, paths in _sent(hub) for f in paths]
     assert sent == promised
     assert set(promised) >= {"citations/citations.parquet", "LICENSE.txt"}
     assert sent[-1] == RELEASE_FILENAME, "the description must be the last thing sent"
@@ -1003,64 +1026,53 @@ def test_a_payload_snapshot_with_nothing_built_is_refused_like_an_empty_parquet_
 # ── the publish path's shape (RM199) ─────────────────────────────────────────────────────────────
 
 
-def _snapshot_of_size(tmp_path: Path, payload_bytes: int) -> Path:
-    """A snapshot whose `data/` really is this big — size is measured, never asserted."""
-    from just_dna_enricher.locations import RELEASE_FILENAME, SNAPSHOT_DATA_DIRNAME
-
-    snap = tmp_path / "snap"
-    (snap / SNAPSHOT_DATA_DIRNAME).mkdir(parents=True)
-    with (snap / SNAPSHOT_DATA_DIRNAME / "clinvar-chr1.parquet").open("wb") as fh:
-        fh.truncate(payload_bytes)
-    (snap / RELEASE_FILENAME).write_text('{"dataset": "2026-08-27"}')
-    return snap
-
-
-def test_a_publish_never_reaches_for_the_deprecated_large_uploader(tmp_path: Path) -> None:
+def test_a_publish_never_reaches_for_the_deprecated_large_uploader(tmp_path: Path, fake_hub) -> None:
     """`upload_large_folder` is deprecated in `huggingface_hub` 1.x and must not be called.
 
     It existed here because `upload_folder` used to be one non-resumable commit, which is the wrong
     shape for 32 GB. The Hub settled it the other way — `upload_folder` is multi-commit now — and
-    said so with a `FutureWarning` in a real publish. Asserted at **both** sizes, because the branch
-    this replaces only fired above a threshold and a small-snapshot test would not have seen it.
+    said so with a `FutureWarning` in a real publish. This was asserted at 1 KiB and at a 6 GiB sparse
+    snapshot, because the branch it replaced only fired above a 5 GB threshold. Since RM386 the publish
+    reads every byte once to hash it, so the large arm cost two full reads of 6 GiB per run; the
+    property is now asserted where it holds at every size by construction — the deprecated uploader is
+    named nowhere in the package — and the payload goes up as one `upload_folder`.
     """
+    named = [
+        f"{path.name}:{node.lineno}"
+        for path in sorted(_UPLOAD_SOURCE.parent.rglob("*.py"))
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+        if isinstance(node, ast.Attribute) and node.attr == "upload_large_folder"
+    ]
+    assert named == []
+    hub = fake_hub("just-dna-seq/alphagenome_avi")
+    publish_reference_snapshot(_snapshot(tmp_path / "snap"), "just-dna-seq/alphagenome_avi")
+    assert [method for method, _ in hub.calls] == ["upload_folder", "create_commit"], (
+        "payload then description"
+    )
 
-    for payload in (1024, 6 * 1024**3):
-        api = MagicMock()
-        api.list_repo_files.return_value = []
-        with (
-            patch("huggingface_hub.HfApi", return_value=api),
-            patch("huggingface_hub.get_token", return_value="hf_test_token"),
-        ):
-            publish_reference_snapshot(
-                _snapshot_of_size(tmp_path / str(payload), payload), "just-dna-seq/alphagenome_avi"
-            )
-        api.upload_large_folder.assert_not_called()
-        assert len(api.upload_folder.call_args_list) == 2, "payload then description"
 
-
-def test_a_retirement_still_rides_the_payload_commit_at_any_size(tmp_path: Path) -> None:
+def test_a_retirement_still_rides_the_payload_commit_at_any_size(tmp_path: Path, fake_hub) -> None:
     """RM186's guarantee survived the RM199 revision, and that is the point of recording it.
 
     The first cut of RM199 had to *refuse* a declared retirement above the threshold, because
     `upload_large_folder` takes no `delete_patterns`. Dropping that uploader dissolves the collision:
-    the deletion rides the payload call again, at every size.
+    the deletion rides the payload call again, at every size (there is no size branch left to take;
+    see the test above for why this no longer builds a 6 GiB fixture).
     """
-    api = MagicMock()
-    api.list_repo_files.return_value = []
-    with (
-        patch("huggingface_hub.HfApi", return_value=api),
-        patch("huggingface_hub.get_token", return_value="hf_test_token"),
-        patch(
-            "just_dna_enricher.upload.layout_shifts_to_apply",
-            # `retires` is one name, never a glob (`LayoutShift`), and it reaches the hub as a literal.
-            return_value=[SimpleNamespace(retires="data/clinvar.parquet", reason="a test")],
-        ),
+    hub = fake_hub("just-dna-seq/alphagenome_avi", {"data/clinvar.parquet": b"PAR1 retired PAR1"})
+    with patch(
+        "just_dna_enricher.upload.layout_shifts_to_apply",
+        # `retires` is one name, never a glob (`LayoutShift`), and it reaches the hub as a literal.
+        return_value=[SimpleNamespace(retires="data/clinvar.parquet", reason="a test")],
     ):
-        publish_reference_snapshot(_snapshot_of_size(tmp_path, 6 * 1024**3), "just-dna-seq/alphagenome_avi")
+        publish_reference_snapshot(_snapshot(tmp_path / "snap"), "just-dna-seq/alphagenome_avi")
 
-    payload, description = (c.kwargs for c in api.upload_folder.call_args_list)
+    (_, payload), (_, description) = hub.calls
     assert payload["delete_patterns"] == ["data/clinvar.parquet"]
-    assert "delete_patterns" not in description, "the description commit deletes nothing"
+    assert not any(
+        isinstance(op, huggingface_hub.CommitOperationDelete) for op in description["operations"]
+    ), "the description commit deletes nothing"
+    assert "data/clinvar.parquet" not in hub.tree()
 
 
 # ── the logs `manifest.logs` names travel with the module (RM347) ────────────────────────────────
@@ -1131,7 +1143,7 @@ def test_the_module_upload_sends_exactly_what_the_plan_promises(tmp_path: Path) 
     (out / "logs" / "scratch.log").write_text("not attested\n", encoding="utf-8")
     (out / "logs" / "fig1.png").write_bytes(_PNG_BYTES)
     promised = plan_upload(out, _LOGS_EXAMPLE).files
-    api = MagicMock()
+    api = _linear_hub()
     with (
         patch("huggingface_hub.HfApi", return_value=api),
         patch("huggingface_hub.get_token", return_value="hf_test_token"),
@@ -1239,7 +1251,7 @@ def test_every_file_the_manifest_declares_is_planned(tmp_path: Path) -> None:
     assert set(plan.files) == {*declared, "manifest.json"}
 
     # What the commit carries is the plan, provenance included.
-    api = MagicMock()
+    api = _linear_hub()
     with (
         patch("huggingface_hub.HfApi", return_value=api),
         patch("huggingface_hub.get_token", return_value="hf_test_token"),
@@ -1279,7 +1291,7 @@ def test_a_declared_optional_file_that_leaves_the_module_is_never_planned(tmp_pa
     assert any("../outside.json" in record.getMessage() for record in caplog.records)
 
 
-def test_a_snapshot_file_with_a_glob_metacharacter_selects_only_itself(tmp_path: Path) -> None:
+def test_a_snapshot_file_with_a_glob_metacharacter_selects_only_itself(tmp_path: Path, fake_hub) -> None:
     """`upload_folder` matches its allowlist with `fnmatch`, so an unescaped `data/chr[1].parquet` is a
     character class: it selects `data/chr1.parquet` and never itself. RM347 escaped the module
     publisher's patterns; the snapshot publisher's went through unescaped."""
@@ -1289,22 +1301,20 @@ def test_a_snapshot_file_with_a_glob_metacharacter_selects_only_itself(tmp_path:
     plan = plan_reference_snapshot(snap, "just-dna-seq/clinvar")
     assert "data/chr[1].parquet" in plan.files
 
-    api = MagicMock()
-    api.list_repo_files.return_value = []
-    with (
-        patch("huggingface_hub.HfApi", return_value=api),
-        patch("huggingface_hub.get_token", return_value="hf_test_token"),
-    ):
-        publish_reference_snapshot(snap, "just-dna-seq/clinvar")
+    hub = fake_hub("just-dna-seq/clinvar")
+    publish_reference_snapshot(snap, "just-dna-seq/clinvar")
     on_disk = _files_under(snap)
-    patterns = [p for c in api.upload_folder.call_args_list for p in c.kwargs["allow_patterns"]]
-    # One pattern per planned file, each selecting exactly that file and nothing else.
-    assert len(patterns) == len(plan.files)
-    for name, pattern in zip(plan.files, patterns, strict=True):
+    (_, payload), _ = hub.calls
+    patterns = payload["allow_patterns"]
+    # One pattern per payload file, each selecting exactly that file and nothing else; the description
+    # is a `create_commit` of its bytes since RM386, which no pattern reaches.
+    assert len(patterns) == len(plan.files) - 1
+    for name, pattern in zip(plan.files, patterns, strict=False):
         assert set(filter_repo_objects(on_disk, allow_patterns=[pattern])) == {name}, pattern
+    assert hub.tree()["data/chr[1].parquet"] == b"PAR1payloadPAR1"
 
 
-def test_a_declared_retirement_deletes_only_the_file_it_names(tmp_path: Path) -> None:
+def test_a_declared_retirement_deletes_only_the_file_it_names(tmp_path: Path, fake_hub) -> None:
     """`LayoutShift.retires` is one name, never a glob, and `delete_patterns` is matched with
     `fnmatch` too — so a retired name carrying `[` would delete a different file, unescaped."""
     shift = LayoutShift(
@@ -1314,33 +1324,26 @@ def test_a_declared_retirement_deletes_only_the_file_it_names(tmp_path: Path) ->
         reason="a test",
     )
     remote = ["data/old[1].parquet", "data/old1.parquet"]
-    api = MagicMock()
-    api.list_repo_files.return_value = remote
-    with (
-        patch("huggingface_hub.HfApi", return_value=api),
-        patch("huggingface_hub.get_token", return_value="hf_test_token"),
-        patch("just_dna_enricher.upload.layout_shifts_to_apply", return_value=[shift]),
-    ):
+    hub = fake_hub("just-dna-seq/clinvar", dict.fromkeys(remote, b"PAR1 old PAR1"))
+    with patch("just_dna_enricher.upload.layout_shifts_to_apply", return_value=[shift]):
         publish_reference_snapshot(_snapshot(tmp_path / "snap"), "just-dna-seq/clinvar")
-    delete = api.upload_folder.call_args_list[0].kwargs["delete_patterns"]
+    delete = hub.calls[0][1]["delete_patterns"]
     assert set(filter_repo_objects(remote, allow_patterns=delete)) == {"data/old[1].parquet"}
+    assert "data/old1.parquet" in hub.tree() and "data/old[1].parquet" not in hub.tree()
 
 
-def test_a_prune_deletes_only_the_files_its_plan_names(tmp_path: Path) -> None:
-    """The prune plan lists remote paths and `delete_files` matches them with `fnmatch`: a candidate
-    `data/x[1].parquet` unescaped would delete `data/x1.parquet`, a file nobody was shown."""
+def test_a_prune_deletes_only_the_files_its_plan_names(tmp_path: Path, fake_hub) -> None:
+    """The prune plan lists remote paths and `delete_files` matched them with `fnmatch`: a candidate
+    `data/x[1].parquet` unescaped would delete `data/x1.parquet`, a file nobody was shown. Since RM386
+    the deletion is one delete operation per listed path, so no pattern exists to be misread."""
+    hub = fake_hub("just-dna-seq/clinvar", {"data/x[1].parquet": b"PAR1", "data/x1.parquet": b"PAR1"})
     plan = PrunePlan(
-        repo_id="just-dna-seq/clinvar", candidates=[PruneCandidate(path="data/x[1].parquet", reason="t")]
+        repo_id="just-dna-seq/clinvar",
+        candidates=[PruneCandidate(path="data/x[1].parquet", reason="t")],
+        revision=hub.head,
     )
-    api = MagicMock()
-    with (
-        patch("huggingface_hub.HfApi", return_value=api),
-        patch("huggingface_hub.get_token", return_value="hf_test_token"),
-    ):
-        prune_repo(plan)
-    delete = api.delete_files.call_args.kwargs["delete_patterns"]
-    remote = ["data/x[1].parquet", "data/x1.parquet"]
-    assert set(filter_repo_objects(remote, allow_patterns=delete)) == {"data/x[1].parquet"}
+    prune_repo(plan)
+    assert set(hub.tree()) == {".gitattributes", "data/x1.parquet"}
 
 
 def test_a_logs_only_change_at_the_versioned_path_refuses_without_force(tmp_path: Path) -> None:
@@ -1781,6 +1784,7 @@ _PUBLISH_ENTRIES = {
     "rehearse_reference_snapshot",
     "plan_reference_snapshot",
     "check_publish_orphans_no_sidecar",
+    "prune_repo",
 }
 #: The one command calling a bare plan, and why that is not a dry run: `civic reproduce` asserts the
 #: plan's file list offline as one of its reproduction checks, and publishes nothing.
@@ -1813,6 +1817,38 @@ def test_every_publish_command_catches_the_refusal_family() -> None:
             if "PublishRefused" not in handled:
                 missing.append(f"{path.name}:{node.lineno}")
     assert missing == []
+
+
+def test_every_publisher_call_in_the_cli_sits_inside_a_refusal_handler() -> None:
+    """The test above reads the `try` blocks that exist, so a call outside any `try` went unseen:
+    `cache prune --yes` called `prune_repo` bare, and a prune refused because the repo moved after its
+    plan (RM386) would have been a traceback. Every call to an entry is inside a `try` whose handlers
+    name `PublishRefused`, but the allowlisted bare plan."""
+    bare: list[str] = []
+    for path in sorted(_CLI_DIR.glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        guarded = {
+            id(call)
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Try)
+            and "PublishRefused"
+            in {
+                n.id
+                for h in node.handlers
+                if h.type is not None
+                for n in ast.walk(h.type)
+                if isinstance(n, ast.Name)
+            }
+            for stmt in node.body
+            for call in ast.walk(stmt)
+        }
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)):
+                continue
+            unguarded = node.func.id in _PUBLISH_ENTRIES and id(node) not in guarded
+            if unguarded and (path.name, node.func.id) not in _BARE_PLAN_CALLERS:
+                bare.append(f"{path.name}:{node.lineno} {node.func.id}")
+    assert bare == []
 
 
 def test_every_dry_run_is_a_rehearsal() -> None:

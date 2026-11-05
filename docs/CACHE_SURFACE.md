@@ -69,6 +69,13 @@ operation. **A large upload is several commits either way**, which is upstream's
 this tier's — the one-commit guarantee holds for payloads that fit in one and is the Hub's to keep
 for those that do not.
 
+**And the description describes the bytes that were sent (RM386).** The publish hashes every planned
+file once, checks the tree the hub holds at the payload commit against those hashes, and only then
+sends `release.json` — the bytes it read with the rest, never read again — pinned on the payload
+commit, which is itself pinned on the revision the publish read. A rebuild while the hub reads the
+directory withholds the description (`PlanChangedError`); a concurrent commit refuses the write
+(`RemoteMovedError`).
+
 **A root-level file must be in the registry or it is silently dropped.** `SNAPSHOT_ROOT_FILENAMES`
 carries them in publish order. This has bitten twice: a share-alike snapshot published without the
 `LICENSE.txt` it exists to carry, and `avi_knots.parquet`, without which a puller holds scores nobody

@@ -712,6 +712,16 @@ A table written before 0.8 keeps its `not_found` rows until `enrich --rederive`,
 | `locations.SNAPSHOT_REPO_IDS` | New public name: lane → HuggingFace repository (`org/repo`) for every lane this tier pulls, eleven of them, the Ensembl lane's `just-dna-seq/ensembl_variations_split` included. The one place a repo id is written. | Take the `org/repo` half of `manifest.compilation.ensembl_reference` (`org/repo@<rev>`) from `SNAPSHOT_REPO_IDS["ensembl"]`; the revision is yours to pin. |
 | `download.SNAPSHOT_REPO_PREFIXES`, `upload.DEFAULT_*_REPO_ID`, `CacheLane.publish_repo` | Derived from the map: each prefix is `datasets/<repo id>/data`, each publisher default is an alias of its lane's entry, each `publish_repo` reads one. Every value is unchanged. The private `download._*_HF_PREFIX` constants are removed. | A caller reading a private prefix reads `SNAPSHOT_REPO_PREFIXES[lane]`, or the repo from `SNAPSHOT_REPO_IDS[lane]`. |
 
+### 1.40 A publish is pinned to the revision it read, and a snapshot to the bytes it hashed (RM386, no break)
+
+| Surface | What changed | What to do |
+| --- | --- | --- |
+| `upload.RemoteMovedError` | New `PublishRefused` subclass: the repo moved after the plan read it, or a prune plan stated no revision. Nothing of the refused write landed. | A caller catching `PublishRefused` already catches it; re-run to read the repo again. |
+| `upload_module`, `publish_reference_snapshot`, `prune_repo` | Each commit carries `parent_commit` (the revision the plan read, or the previous commit of the pair), so a concurrent commit refuses the write. The snapshot description goes up through `create_commit` as the bytes the publish read, after the payload is checked on the hub; a payload that is not the bytes hashed withholds it (`PlanChangedError`). `prune_repo` sends one delete per listed path. | None, unless you drove these with a stub `HfApi`: it now needs `repo_info(...).sha`, a `list_repo_commits` whose history carries each write's `commit_description`, and (for a snapshot) `list_repo_tree` at the payload commit. |
+| `SnapshotPlan.sha256`, `SnapshotPlan.revision`, `PrunePlan.revision` | New fields with defaults: the publish's hashes and pinned revision (empty and `None` on a rehearsal), and the commit a prune listing was read at. **A tightening:** `prune_repo` refuses a plan whose `revision` is `None`, which only a hand-built plan has. | Build prune plans with `plan_prune`, or set `revision`. |
+| `check_publish_orphans_no_sidecar` | New keyword `revision=` (default: the head). | None. |
+| `cache prune --yes` | A refused deletion prints `PRUNE REFUSED — …` and goes on to the next lane. | None. |
+
 ## 2. What to change
 
 ### Upgrade order
@@ -792,7 +802,9 @@ A table written before 0.8 keeps its `not_found` rows until `enrich --rederive`,
     count a `self_consistent` check's agreement as evidence for the value it checked (its findings stand).
 11. **Publishers (RM368).** Catch `upload.PublishRefused` around a publish rather than
     `FileNotFoundError`: the two plan refusals keep `FileNotFoundError` as a second base only until 1.0.
-    A `--dry-run` of `upload` or a snapshot `publish` now reads the hub (§ 1.27).
+    A `--dry-run` of `upload` or a snapshot `publish` now reads the hub (§ 1.27). A publish or a prune
+    that another writer races now refuses as `upload.RemoteMovedError`, and a stub `HfApi` needs
+    `repo_info(...).sha` and `list_repo_commits` (§ 1.40).
 12. **Match a finding by its code or a pinned phrase, never by its whole sentence.** Sentences grew in 0.8:
     `star_allele_undefined` appends a per-gene list (§ 1.12); `study_variant_orphan` appends a clause and
     now runs in a module with no `variants.csv` (§ 1.15); every paired-column refusal has one message
@@ -923,8 +935,8 @@ follows that map; the differences are listed last.
 
 7. M5: carry `independence`, and say beside each check whether its agreement counts (§ 1.13). M6: nothing
    to change (§ 1.17). M7: the new manifest fields are levers (§ 1.2). M11: likely nothing (§ 1.24).
-8. RM368's publisher changes (§ 1.27) are the enricher's HuggingFace publisher, which the registry does not
-   use; RM303's `read_release` model (§ 1.9) reaches only an `is None` test there. Both per the map.
+8. RM368's and RM386's publisher changes (§ 1.27, § 1.40) are the enricher's HuggingFace publisher, which
+   the registry does not use; RM303's `read_release` model (§ 1.9) reaches only an `is None` test there. Both per the map.
 9. `manifest.artifact.files` remains the source of truth for what a module contains.
 10. If the `revalidate`/`upgrade` rebuild reverses a module and reads its `resolution.csv`, it gets six more
     columns and keeps an `ambiguous` row `ambiguous` (§ 1.34, § 2 step 21).
