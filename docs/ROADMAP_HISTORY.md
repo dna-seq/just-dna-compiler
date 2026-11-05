@@ -43,8 +43,10 @@ enricher, severity high.
 **Residuals** won't fix — a genotype spelled only in a site's padded joint frame (a compound het such as
 `G/GTTT` on `16:23635706 GTT>G,GT,GTTT`) finds no hosting locus, because per ALT none holds both alleles;
 that frame moved between the two snapshot releases (`16:23635707 TT` against `16:23635706 GTT`), so a
-genotype spelled in it was never release-stable, and the old repo's pipe-joined SHOX row through `enrich`
-now writes both pieces for `AG/AGAG`, as the string algebra reads it, where RM270 wrote the deletion · won't
+genotype spelled in it was never release-stable; likewise a genotype naming one ALT in that frame is read
+per ALT, so the old repo's pipe-joined SHOX row (`X:634690 AGA>A|AGAGA`) through `enrich` offline writes
+both trimmed pieces for `AGA/AGAGA`, the duplication alone in the old frame (measured), as the
+direction-blind string algebra reads it · won't
 fix — not in this item: a position→rsID reader joins snapshot rows at the probe's own `start`, so an
 allele whose trim moves it right of its row (9,954 of 44.5 M chr16 rows, mostly one base, a substitution
 or delins sharing the site's leading base) is matched only as the row spells it, and a ref-less authored
