@@ -18,7 +18,7 @@ ga4gh.vrs 2.3.3 (pre-releases read through 2.4.0-a6), polars `py-2.1.0`, duckdb 
 - `duckdb` (the engine) is blobless and unwatched. It is there to read source at `path:line`.
 
 **Watchers** (`.blueprints.toml`): `ga4gh-vrs` polls its trunk every 300 s. `polars --tags --tag-pattern '^py-'` and
-`duckdb-python --tags` say tags only, one wake per release (kit v0.1.119, #246; the clone pins v0.1.133 since 2026-11-05), a patch tagged on a version branch
+`duckdb-python --tags` say tags only, one wake per release (kit v0.1.119, #246; the clone pins v0.1.137 since 2026-11-06), a patch tagged on a version branch
 included.
 
 **Backlog: none.** Read entry by entry on 2026-11-04, unattended: polars `py-2.0.0-rc.1` through `py-2.1.0` with the
@@ -62,5 +62,9 @@ shares that machine's enricher cache: the mixed cache RM344 is about. Its cap li
 **Push:** origin/main holds every liaison commit through b04bbf4a (pushed with the lead's 0.8.0 cut,
 2026-11-05). The liaison pushes only its own ledgers and notes, and only as a fast-forward that carries no other seat's
 commit.
+
+**Role change read (v0.1.137, 2026-11-06):** the role adds "An in-house release" (the liaison takes the mechanical
+half of adopting an upstream the person also keeps). This repo has no in-house upstream (ga4gh.vrs, polars, duckdb,
+Ensembl are all outside), so nothing changes here. reflect after 2026-11-13: classes/liaison/LIAISON.md as of v0.1.137.
 
 **Priming c339487** (a cap on a proven break; adoption maps to the lead) was read; no concern.
