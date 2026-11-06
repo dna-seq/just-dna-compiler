@@ -78,6 +78,7 @@ patches right after real use started, so the pm reads an audit sceptically: the 
 
 ## Open questions and owed work
 
+- reflect after 2026-11-13: classes/base/BASE.md as of v0.1.136 (commit by path, `git commit --only`; read 2026-11-06, no concern).
 - **0.8's scope, agreed 2026-11-04.**
   - The final run's audit is in `docs/probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md`. The diffs were put to the
     maintainer and decided; the hand-written cost went from about 85 to about 55.
