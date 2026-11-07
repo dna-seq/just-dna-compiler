@@ -36,7 +36,7 @@ Patches on `main` after the 0.8.0 cut (2026-11-05), newest first.
 
 ## RM398 — `placement_agreement` had no witness at dbSNP scale, and its third witness cost a cold REST request per indel
 
-**SHIPPED 2026-11-07 on `main`, uncut — a patch, candidate 0 (S132, just-dna-registry's lead; the maintainer's
+**SHIPPED 2026-11-07 on `main`, cut 2026-11-07 as `v0.8.1` — a patch, candidate 0 (S132, just-dna-registry's lead; the maintainer's
 ask).** Owner enricher, severity medium.
 
 **The class: a record the run already holds, read for one field and discarded for the one a check needed**
@@ -89,7 +89,7 @@ SPDI field belongs to prepare-annotations, the snapshot builder outside this rep
 
 ## RM407 — minting an indel's VRS id reads the reference a slice at a time over HTTP, about a dozen reads per indel
 
-**SHIPPED 2026-11-07 on `main`, uncut — a patch (the maintainer, reading the registry's replay log).** Owner
+**SHIPPED 2026-11-07 on `main`, cut 2026-11-07 as `v0.8.1` — a patch (the maintainer, reading the registry's replay log).** Owner
 enricher, severity low.
 
 **Residuals** RM404 · RM385

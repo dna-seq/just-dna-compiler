@@ -41,7 +41,33 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
-## 2026-11-07 — RM398: the third placement witness is dbSNP's own record, not a live REST request (patch, uncut)
+## 2026-11-07 — `v0.8.1`: enricher 0.8.1 (a patch, cut from `main`; format and compiler stay 0.8.0)
+
+**Only `just-dna-enricher` moves.** Neither `just-dna-format` nor `just-dna-compiler` changed a line of
+source since `v0.8.0`, so both keep 0.8.0, are not built, and the enricher's floors stay `>=0.8.0`. Their
+`uv-build<0.13` bound (below) therefore ships with their next release, not this one. Nothing adds a
+field, table, parameter, public function or warning code: RM401's and RM403's new names are private in the
+0.8 patch line, and 0.9 makes the batch knobs settings with RM404. Recut the same day, before the publish,
+to take RM398 and RM407; nothing was published under 0.8.1 before them. The compiler is unchanged, so there is
+no release record: a sweep would compare 0.8.0 with itself, and a compiled module needs no recompile.
+
+- **RM398** — the third placement witness is dbSNP's own record, read from the merge check's `esummary`,
+  where it was a live Ensembl REST request: independent of the snapshot, and no new request.
+- **RM407** — an indel's VRS mint reads the reference once per locus, not once per `normalize` step.
+- **RM401** — the live Ensembl link and the REST placement witness (until RM398) ask 20 rsIDs per request.
+- **RM400** — a corrected derivation: live REST no longer writes loci on GRCh38 patch and alt contigs,
+  and a re-derivation leaves recorded ones out instead of reporting `lost_allele`.
+- **RM403** — every retry writes a WARNING line, and every give-up names its attempts and seconds.
+- **RM397** — the wheel no longer ships the Atlas `.proto` sources a second time.
+- **Tests and tooling** — the cross-tier floor check reads `just_dna_compiler.compiler` as a package
+  (it read every import of it as absent from 0.8.0), and `scripts/build-dists.sh`.
+
+**After upgrading**: `just-dna-enricher enrich <spec> --rederive` online rewrites a `resolution.csv` that
+live REST filled with patch or alt-contig loci (INTEGRATION_0_8 § 4 names the case); new `resolution.csv`
+rows name `dbsnp` where they named `ensembl` as `placement_witness`, and `sources.csv` gains a `dbsnp` row. No HuggingFace
+snapshot changed.
+
+## 2026-11-07 — RM398: the third placement witness is dbSNP's own record, not a live REST request (patch, cut as `v0.8.1`)
 
 - **The placement witness reads dbSNP's GRCh38 placement from the `esummary db=snp` record the rsID merge
   check already fetches** (RM398, S132), for the same subjects live Ensembl REST was asked about: snapshot
@@ -51,34 +77,13 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   `resolution` layer (public domain, release withheld). A run with the merge check off counts those indels as
   not asked. No public name, field or warning code.
 
-## 2026-11-07 — RM407: an indel's VRS mint reads the reference once per locus (patch, uncut)
+## 2026-11-07 — RM407: an indel's VRS mint reads the reference once per locus (patch, cut as `v0.8.1`)
 
 - **Minting an indel's VRS id reads one seqrepo window per locus** instead of one HTTP read per step of
   vrs-python's `normalize` (RM407): 1,024 bases each side, read once and served from memory; a slice past it is
   read as before, so no id changes. The registry's replay made 2,472 such reads, about ten per indel. The run's
   minter also keeps its ids, so the placement comparison and the minting pass normalize an allele once. No
   public name, field or warning code.
-
-## 2026-11-07 — `v0.8.1`: enricher 0.8.1 (a patch, cut from `main`; format and compiler stay 0.8.0)
-
-**Only `just-dna-enricher` moves.** Neither `just-dna-format` nor `just-dna-compiler` changed a line of
-source since `v0.8.0`, so both keep 0.8.0, are not built, and the enricher's floors stay `>=0.8.0`. Their
-`uv-build<0.13` bound (below) therefore ships with their next release, not this one. Nothing adds a
-field, table, parameter, public function or warning code: RM401's and RM403's new names are private in the
-0.8 patch line, and 0.9 makes the batch knobs settings with RM404. The compiler is unchanged, so there is
-no release record: a sweep would compare 0.8.0 with itself, and a compiled module needs no recompile.
-
-- **RM401** — the live Ensembl link and the REST placement witness ask 20 rsIDs per request.
-- **RM400** — a corrected derivation: live REST no longer writes loci on GRCh38 patch and alt contigs,
-  and a re-derivation leaves recorded ones out instead of reporting `lost_allele`.
-- **RM403** — every retry writes a WARNING line, and every give-up names its attempts and seconds.
-- **RM397** — the wheel no longer ships the Atlas `.proto` sources a second time.
-- **Tests and tooling** — the cross-tier floor check reads `just_dna_compiler.compiler` as a package
-  (it read every import of it as absent from 0.8.0), and `scripts/build-dists.sh`.
-
-**After upgrading**: `just-dna-enricher enrich <spec> --rederive` online rewrites a `resolution.csv` that
-live REST filled with patch or alt-contig loci (INTEGRATION_0_8 § 4 names the case). No HuggingFace
-snapshot changed.
 
 ## 2026-11-07 — RM401: live Ensembl asks many rsIDs per request (patch, cut as `v0.8.1`)
 
