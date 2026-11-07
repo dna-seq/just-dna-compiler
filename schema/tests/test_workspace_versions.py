@@ -28,6 +28,8 @@ import subprocess
 import tomllib
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 #: Read from the workspace table, never listed here — a new member must not be able to slip the guard.
 MEMBERS: tuple[str, ...] = tuple(
@@ -87,11 +89,24 @@ def _modules_at(tag: str, member: str, top: str) -> set[str] | None:
     if listing.returncode != 0:
         return None
     prefix = f"src/{top}/"
+    # A package is importable by its directory's name: `compiler/__init__.py` is `compiler`, which
+    # 0.8.0 made `just_dna_compiler.compiler` (a module through 0.7). Read as `compiler.__init__`, every
+    # `from just_dna_compiler.compiler import …` read as absent from the release that has it.
     return {
-        path.split(prefix, 1)[1][: -len(".py")].replace("/", ".")
+        path.split(prefix, 1)[1][: -len(".py")].replace("/", ".").removesuffix(".__init__")
         for path in listing.stdout.split()
         if path.endswith(".py")
     }
+
+
+def test_a_package_is_a_module_of_the_release_that_ships_it() -> None:
+    """Read off the real `v0.8.0` tag: the package, a module inside it, and nothing that is not there."""
+    published = _modules_at("v0.8.0", "compiler", "just_dna_compiler")
+    if published is None:
+        pytest.skip("this clone has no v0.8.0 tag")
+    assert {"compiler", "compiler.load", "resolution_findings"} <= published
+    assert "compiler.__init__" not in published
+    assert "compiler.no_such_module" not in published
 
 
 def test_a_cross_tier_import_exists_in_the_version_its_floor_names() -> None:
