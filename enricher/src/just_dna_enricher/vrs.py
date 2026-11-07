@@ -238,6 +238,46 @@ class MintResult:
         ]
 
 
+#: Bases read on each side of an indel's locus for its VRS mint (RM407). `normalize` trims and then rolls
+#: through a repeat one slice at a time; the window serves every slice from one read. A repeat longer
+#: than this reaches past it, and that slice is read from the proxy as before, so the id never changes.
+_MINT_WINDOW = 1024
+
+
+class _WindowedReference:
+    """A data proxy for one mint: one window of one sequence, read once, behind the run's proxy (RM407).
+
+    vrs-python's `normalize` wraps whatever proxy it is given in its own `SequenceProxy`, whose every slice
+    is a `get_sequence(alias, start, end)`; over seqrepo each one was an HTTP read, about ten per indel.
+    This serves a slice inside the window from memory and hands any other read to the proxy unchanged, so
+    a slice it cannot serve costs what it cost before and never a different base. Duck-typed: `normalize`
+    calls `get_metadata` and `get_sequence` and nothing else.
+    """
+
+    def __init__(self, proxy, alias: str, lo: int, window: str | None, metadata: dict[str, dict]) -> None:
+        self._proxy = proxy
+        self._alias = alias
+        self._lo = lo
+        self._window = window
+        self._metadata = metadata
+
+    def get_metadata(self, identifier: str) -> dict:
+        if identifier not in self._metadata:
+            self._metadata[identifier] = self._proxy.get_metadata(identifier)
+        return self._metadata[identifier]
+
+    def get_sequence(self, identifier: str, start: int | None = None, end: int | None = None) -> str:
+        if (
+            self._window is not None
+            and identifier == self._alias
+            and start is not None
+            and end is not None
+            and self._lo <= start <= end <= self._lo + len(self._window)
+        ):
+            return self._window[start - self._lo : end - self._lo]
+        return self._proxy.get_sequence(identifier, start, end)
+
+
 @dataclass
 class VrsMinter:
     """Mints allele ids: substitutions always, indels whenever the run is allowed to reach the network.
@@ -249,6 +289,11 @@ class VrsMinter:
     seqrepo_uri: str = DEFAULT_SEQREPO_URI
     offline: bool = False
     sequences: SequenceProxy | None = None
+    #: Ids this run already minted by normalization, so the placement comparison and the minting pass
+    #: never normalize one allele twice (RM407). Only an id is kept: a failed mint is asked again.
+    _normalized: dict[tuple[str, int, str, str, str], str] = field(default_factory=dict, repr=False)
+    #: Each sequence's metadata, read once per run rather than once per allele (RM407).
+    _metadata: dict[str, dict] = field(default_factory=dict, repr=False)
 
     def __post_init__(self) -> None:
         if self.sequences is None:
@@ -352,6 +397,9 @@ class VrsMinter:
             return None
         if accession is None:
             return None
+        key = (chrom, start, ref.upper(), alt.upper(), build)
+        if key in self._normalized:
+            return self._normalized[key]
         allele = models.Allele(
             location=models.SequenceLocation(
                 sequenceReference=models.SequenceReference(refgetAccession=accession),
@@ -363,7 +411,9 @@ class VrsMinter:
         # A failure here is a live-service problem (unreachable, a contig it does not know), never a
         # reason to fail the enrichment — a null id degrades exactly like an unresolved position does.
         try:
-            return ga4gh_identify(normalize(allele, data_proxy=proxy))
+            minted = ga4gh_identify(
+                normalize(allele, data_proxy=self._window_for(proxy, accession, start, ref))
+            )
         except Exception as exc:
             logger.warning(
                 "VRS normalization failed for %s:%s %s>%s (%s); leaving vrs_id unset",
@@ -374,6 +424,23 @@ class VrsMinter:
                 exc,
             )
             return None
+        self._normalized[key] = minted
+        return minted
+
+    def _window_for(self, proxy, accession: str, start: int, ref: str) -> _WindowedReference:
+        """The data proxy one mint normalizes against: `_MINT_WINDOW` bases each side of the locus, read once
+        through the run's `SequenceProxy` (memoized), clipped at the contig's ends, never shifted (RM407)."""
+        alias = f"ga4gh:{accession}"
+        if alias not in self._metadata:
+            self._metadata[alias] = proxy.get_metadata(alias)
+        lo = max(0, start - 1 - _MINT_WINDOW)
+        hi = start - 1 + len(ref) + _MINT_WINDOW
+        length = self._metadata[alias].get("length")
+        if isinstance(length, int):
+            hi = min(hi, length)
+        assert self.sequences is not None
+        window = self.sequences.subsequence(accession, lo, hi) if lo < hi else None
+        return _WindowedReference(proxy, alias, lo, window, self._metadata)
 
 
 def _alt_list(alts: str | None) -> list[str | None]:

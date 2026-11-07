@@ -41,6 +41,14 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-07 — RM407: an indel's VRS mint reads the reference once per locus (patch, uncut)
+
+- **Minting an indel's VRS id reads one seqrepo window per locus** instead of one HTTP read per step of
+  vrs-python's `normalize` (RM407): 1,024 bases each side, read once and served from memory; a slice past it is
+  read as before, so no id changes. The registry's replay made 2,472 such reads, about ten per indel. The run's
+  minter also keeps its ids, so the placement comparison and the minting pass normalize an allele once. No
+  public name, field or warning code.
+
 ## 2026-11-07 — `v0.8.1`: enricher 0.8.1 (a patch, cut from `main`; format and compiler stay 0.8.0)
 
 **Only `just-dna-enricher` moves.** Neither `just-dna-format` nor `just-dna-compiler` changed a line of

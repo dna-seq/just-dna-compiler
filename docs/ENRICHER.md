@@ -535,7 +535,7 @@ per service, put a semaphore around your call site; the gate will not give you t
 | **Ensembl REST** (`rest.ensembl.org`) | `ensembl` (the live link); the placement witness (0.8, RM267), for each snapshot indel no loaded witness holds. Both ask 20 rsIDs per `POST /variation/:species` since RM401 (`ensembl._REST_BATCH_SIZE`, fixed in the 0.8 patch line; 0.9 makes it a setting with RM404), with the POST's own read timeout (`_REST_BATCH_TIMEOUT`, 120 s), and one GET for an rsID a batch leaves out | **15 req/s** per IP, **~55 000 / rolling hour**; 429 + `Retry-After` / `X-RateLimit-*` | `_REQUEST_INTERVAL=0.1` (`EnsemblSettings.interval`), one `PacingGate` per resolver, waited once per attempt (since 2026-11-04); tenacity on transport, 5xx and 429, waiting at least the answer's `Retry-After` (`net.wait_retry_after`); one longer than `net.RETRY_AFTER_CEILING` (10 s) is not retried, and the resolver asks nothing until it passes | none |
 | **CPIC** (`api.cpicpgx.org`) | `cpic` / `pgx_draft` | unpublished | **no `PacingGate`** — coarse PostgREST GETs (gene-scoped), not per-allele loops | none |
 | **ClinPGx** | `clinpgx` / `clinpgx_draft` | n/a at runtime | **offline snapshot only** for the check/draft path — no live poll budget | none (live API retired → snapshot) |
-| **seqrepo REST** (`services.genomicmedlab.org`) | `sequences` / VRS indel mint | unpublished | **no `PacingGate`**; in-process memo of window reads | none |
+| **seqrepo REST** (`services.genomicmedlab.org`) | `sequences` / VRS indel mint | unpublished | **no `PacingGate`**; in-process memo of window reads, one window per indel mint (RM407) | none |
 | **GWAS Catalog REST v2** (`www.ebi.ac.uk/gwas/rest/api/v2`) | `gwas` | **none established** — EBI publishes no numeric budget for this API, unlike gnomAD's real and load-bearing 10/60s | `DEFAULT_REQUEST_INTERVAL=1.0` — a **courtesy, not a transcribed limit**. Cost is one request per page of associations plus one per **distinct** study (its ancestries); measured at **190 requests for `hfe_hemochromatosis`** on v2 (11 saved by the cache), where the legacy API's `1 + 2N` cost 382. `--no-study-facts` drops it to the pages alone | none |
 | **AlphaGenome Atlas** (`gdmscience.googleapis.com`) | `alphagenome expression`, `alphagenome check` | **none published** — the Additional Terms bar classes of holder outright rather than metering requests, which is an eligibility bar and not a budget | measured **~1,091 SNVs/s** end to end; a gene plus its ±512 kb flanks is ~3.3 M SNVs ≈ 50 min, which the pass prints **before** the query rather than after | `ALPHAGENOME_API_KEY` |
 | **ClinGen** dosage TSV | `clingen` | n/a (one file) | single download, then local parse | none |
@@ -2814,7 +2814,12 @@ rows by three routes:
 1. **stdlib** — a substitution, via the format tier's `derive_vrs_allele_id`. Zero egress, zero heavy
    dependency, and byte-identical to what `ga4gh.vrs` and the live gnomAD API produce.
 2. **normalized** — an indel/MNV, justified against the reference through the seqrepo REST data proxy.
-   Needs the network, so `--offline` skips it.
+   Needs the network, so `--offline` skips it. One read per locus since RM407: `normalize` is handed a
+   window of 1,024 bases each side, read once through the run's `SequenceProxy`, and every slice it takes
+   while trimming and rolling through a repeat is served from it (before, each slice was its own HTTP read,
+   about ten per indel). A slice past the window is read from seqrepo as before, so no id changes. The run's
+   one minter keeps what it minted, so the placement comparison and the minting pass normalize an allele
+   once.
 3. **null** — an indel offline, an unreachable sequence service, an off-assembly contig, or an allele
    that names no sequence at all. A missing id is honest; an unjustified one would be a `ga4gh:VA.…`
    that *looks* interoperable and is not.

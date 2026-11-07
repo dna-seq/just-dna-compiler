@@ -852,6 +852,8 @@ rework), which constrains every option below.
 
 ## RM385 — offline enrich cannot left-align an indel, because `--offline` turns off the reference as well as the network
 
+**RM407's residual (the lead, 2026-11-07).** RM407 (0.8.1) cut an indel's VRS mint to one seqrepo read per locus; a local reference here removes those reads altogether.
+
 **0.9, by the maintainer's word (2026-11-05)**, relayed by the lead; entry written by the pm.
 
 **Severity** low · **Status** open — **a minor, 0.9** · **Owner** enricher (`sequences.py`) · **Motivating
@@ -909,6 +911,8 @@ changes RM372's lane or any digest.
 it is a new change kind, as `toolchain` was (INTEGRATION_0_8 § 1.11). P9: near free; no authored column.
 
 ## RM404 — `enrich()` builds its own NCBI client and sequence proxy, so a host cannot pace them with the rest
+
+**RM407's residual (the lead, 2026-11-07).** RM407 (0.8.1) reads an indel's VRS window once through `SequenceProxy`, but the request under ga4gh's seqrepo proxy still has no timeout; this item's sequence-proxy seam is where that is answered.
 
 **0.9, the pm (2026-11-07), built with RM385.** RM385, already in 0.9 by the maintainer's word, reworks how the enricher gets its `SequenceProxy` (a local reference for offline runs). Accepting the proxy from the caller is near free on that seam, and the eutils client is one more parameter beside the resolver, so deferring RM404 would only mean opening the same signature twice. A real host (the registry) runs its enrichments one at a time because of it. The fewer-entities rule weighs toward taking the whole `LookupClients` bundle over two loose parameters. **Not RM396's unpark condition, the pm's reading:** RM396 is about reading six named clients' intervals and gates by public name; RM404 is about handing clients in, and needs none of those names. RM396 stays parked.
 

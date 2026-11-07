@@ -34,6 +34,36 @@ up.
 
 Patches on `main` after the 0.8.0 cut (2026-11-05), newest first.
 
+## RM407 — minting an indel's VRS id reads the reference a slice at a time over HTTP, about a dozen reads per indel
+
+**SHIPPED 2026-11-07 on `main`, uncut — a patch (the maintainer, reading the registry's replay log).** Owner
+enricher, severity low.
+
+**Residuals** RM404 · RM385
+
+**The class: a read per step where one read per locus serves every step.** vrs-python's `normalize` wraps the
+data proxy it is given in its own `SequenceProxy`, and every slice it takes while trimming and rolling through
+a repeat is one `get_sequence`, one HTTP GET of seqrepo; the proxy's own `lru_cache` hits only an identical
+`(start, end)`, which each step does not ask. The registry's replay (46 modules, enricher 0.8.0) made 2,472
+sequence reads, about 354 s, roughly ten per indel. Our `sequences.SequenceProxy` already read one window and
+memoized it for `_left_align` (RM273); the VRS path did not go through it.
+
+**What changed.** `VrsMinter._mint_normalized` hands `normalize` a private `_WindowedReference`: 1,024 bases on
+each side of the locus, clipped at the contig's ends, read once through the run's `SequenceProxy`. A slice
+inside the window comes from memory; any other read goes to the proxy unchanged, so an id never changes,
+only how often seqrepo is asked. Each sequence's metadata is read once per run, and the run's one minter keeps
+the ids it normalized, so the placement comparison (RM267) and the minting pass never normalize an allele
+twice. No public name, no field, no warning code.
+
+**Test.** `enricher/tests/test_vrs_window_reads.py`, over a synthetic reference on chromosome 1's real refget
+accession with a homopolymer, a dinucleotide and an 8-base repeat: six indels (insertions and deletions in each
+repeat, one in unique sequence) mint the ids the raw proxy mints, with one read each, where the raw path took
+65 reads; an allele minted twice is read once; a locus at either contig end mints what the proxy would. Run
+against the code before the change, the read counts went red (65 and 46) and the ids held.
+
+**What is left.** The request under the proxy has no timeout; that is vrs-python's (`requests.get` in its
+seqrepo REST proxy), and RM404 names it. A local reference, which removes the HTTP reads altogether, is RM385.
+
 ## RM401 — the live Ensembl link and the REST witness asked one rsID per request, so a re-derivation waited on cold requests one at a time
 
 **SHIPPED 2026-11-07 on `main`, cut 2026-11-07 as `v0.8.1` — a patch, after its probe (S133, just-dna-registry's lead).** Owner
