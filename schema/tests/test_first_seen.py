@@ -72,6 +72,9 @@ _RELEASES: frozenset[str] = frozenset(
         "0.7.3",
         # Uncut, on the `0.8` branch: the release the PT1 round lands in (RM258 is the first field).
         "0.8.0",
+        # The 0.8 patch line, tagged on `main`. 0.8.1 moved the enricher only, but the tag is the
+        # release, and the guard below holds this list equal to the tags.
+        "0.8.1",
     }
 )
 
