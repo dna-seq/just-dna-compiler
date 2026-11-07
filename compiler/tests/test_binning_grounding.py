@@ -250,6 +250,16 @@ def test_grounding_is_counted_per_row_not_per_table() -> None:
     finding = _finding(_check_binning_grounding({"repeat_alleles.csv": rows}, []), "repeat_alleles.csv")
     assert finding is not None
     assert f"{len(rows) - 1} of {len(rows)} bin(s)" in finding
+    # RM415 (S137): the clause says what is true of this module, never "no bin pmid" beside a bin that has one.
+    assert "no bin pmid, and no studies.csv rows; 1 other bin(s) do cite one" in finding
+    assert "at all" not in finding
+
+
+def test_with_no_bin_cited_the_clause_says_no_evidence_at_all() -> None:
+    rows = _repeat_rows(pmid=None)
+    finding = _finding(_check_binning_grounding({"repeat_alleles.csv": rows}, []), "repeat_alleles.csv")
+    assert finding is not None
+    assert "records no grounding evidence at all (no studies.csv rows, no bin pmid)" in finding
 
 
 def test_a_module_that_carries_variants_is_not_told_twice(tmp_path: Path) -> None:

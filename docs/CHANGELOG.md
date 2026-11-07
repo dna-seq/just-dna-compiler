@@ -41,6 +41,16 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-07 — RM414 and RM415: two repeat-bin warnings stop misstating a module (patch, uncut)
+
+- **The repeat- and copy-number warnings name the field the module reads** (RM414, S136). When every bin
+  declares a `source_field` and none is VCF 4.4's own (`RUC`, `CN`), `measure_field_fractional` and
+  `measurement_spans_bins` name it (`FORMAT/REPCN`) and speak conditionally, instead of telling the author
+  their field is a Float and sending them to `CIRUC`. Codes, firing conditions and the published fragments
+  are unchanged; `reference_examples/htt_repeat_expansion` is one such module.
+- **`bins_ungrounded` no longer says "no bin pmid" when a bin carries one** (RM415, S137): with one bin
+  cited, the clause reads "carry no grounding evidence of their own (…; N other bin(s) do cite one)".
+
 ## 2026-11-07 — RM413: no cut while a lane with a repository has nothing published in it (patch, uncut)
 
 - **Every cut now passes three cache-lane gates** (RM413, `enricher/tests/test_prerelease_gates.py`): stage

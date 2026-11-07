@@ -16,6 +16,8 @@ from just_dna_format.base import derive_variant_key
 from just_dna_format.binning import (
     _INTEGER_KINDS,
     _VCF_MEASURE_FIELDS,
+    FRACTIONAL_MEASURE_PHRASE,
+    SPANNING_MEASUREMENT_PHRASE,
     VALID_MEASURE_KINDS,
     CopyNumberRow,
     HeteroplasmyRow,
@@ -167,6 +169,52 @@ def test_the_warning_names_the_field_and_the_kind_it_is_about() -> None:
         assert ci_field in warnings[1]
         other_field = next(f for k, (f, _c, _n) in _VCF_MEASURE_FIELDS.items() if k != kind)
         assert not any(other_field in w for w in warnings)
+
+
+def _htt_bins_from(source_field: str | None) -> list[RepeatAlleleRow]:
+    return [
+        r.model_copy(update={"source_field": source_field, "source_element": "largest"}) for r in _htt_bins()
+    ]
+
+
+def test_a_declared_caller_field_is_named_and_never_typed_as_vcfs() -> None:
+    """RM414 (S136): the HTT module the plugin's tester authored reads `FORMAT/REPCN`, ExpansionHunter's
+    count. Both warnings named `RUC`/`CIRUC`, a field the module never reads, and the first told the author
+    their field is a Float. Now they name the declared field and speak conditionally: this tier cannot type a
+    caller's field, so it states the spec's typing beside it and asserts nothing about it."""
+    fractional, spanning = measurement_shape_warnings(_htt_bins_from("FORMAT/REPCN"))
+    assert "FORMAT/REPCN" in fractional and "FORMAT/REPCN" in spanning
+    assert "is not one this format can type" in fractional
+    assert "if FORMAT/REPCN can carry a fraction" in fractional
+    assert "field a consumer reads the measurement from (RUC)" not in fractional
+    assert "A RUC call travels with CIRUC" not in spanning
+    # The published fragments a manifest reader greps for survive in both forms.
+    assert FRACTIONAL_MEASURE_PHRASE in fractional and SPANNING_MEASUREMENT_PHRASE in spanning
+
+
+@pytest.mark.parametrize("source_field", [None, "RUC", "INFO/RUC", "FORMAT/RUC|FORMAT/REPCN"])
+def test_a_module_reading_the_spec_field_keeps_the_spec_wording(source_field: str | None) -> None:
+    """No pointer, or a pointer naming `RUC` under either namespace or as one alternative, reads the spec's
+    field, so the finding names it as before."""
+    fractional, spanning = measurement_shape_warnings(_htt_bins_from(source_field))
+    assert "field a consumer reads the measurement from (RUC)" in fractional
+    assert "A RUC call travels with CIRUC" in spanning
+
+
+def test_one_row_without_a_pointer_keeps_the_spec_wording() -> None:
+    """A row that names no field says nothing about where it is read, so the scoped form needs every row."""
+    rows = _htt_bins_from("FORMAT/REPCN")
+    rows[0] = rows[0].model_copy(update={"source_field": None})
+    fractional, _spanning = measurement_shape_warnings(rows)
+    assert "(RUC)" in fractional
+
+
+def test_the_copy_number_kind_scopes_the_same_way() -> None:
+    """`CN` is the other spec-typed kind; a caller's own dosage field is named, never typed as `CN`."""
+    rows = [r.model_copy(update={"source_field": "FORMAT/CNQ"}) for r in _smn_bins()]
+    fractional, spanning = measurement_shape_warnings(rows)
+    assert "FORMAT/CNQ" in fractional and "if FORMAT/CNQ can carry a fraction" in fractional
+    assert "VCF 4.4 pairs CN with CICN" in spanning
 
 
 # ── RM56: a measurement is an interval, and it can cross a threshold ───────────────────────────

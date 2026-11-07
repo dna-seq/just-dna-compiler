@@ -958,12 +958,36 @@ def measurement_shape_warnings(rows: Sequence[MeasureBinRow]) -> list[str]:
     for kind in sorted(kinds):
         value_field, ci_field, spec_note = _VCF_MEASURE_FIELDS[kind]
         of_kind = {key: grp for key, grp in groups.items() if any(r.measure_kind == kind for r in grp)}
+        foreign = _foreign_source_fields([r for grp in of_kind.values() for r in grp], value_field)
+        if foreign:
+            # RM414 (S136): every row of the kind names where its measurement is read, and none names the
+            # VCF field the spec types. This tier cannot type a caller's own field (ExpansionHunter's
+            # `REPCN` is an integer; the format holds no opinion, Principle 2), so the finding is stated
+            # for the field the module named, conditionally, never asserted about it.
+            read_from = (
+                f"the field this module names ({', '.join(foreign)}) is not one this format can type: "
+                f"VCF 4.4's own field for it ({value_field}) {FRACTIONAL_MEASURE_PHRASE} ({spec_note}), "
+                f"and if {', '.join(foreign)} can carry a fraction the same holds"
+            )
+            interval = (
+                f"VCF 4.4 pairs {value_field} with {ci_field}, whose missing upper bound means "
+                f"*unbounded*, and a caller's own field ({', '.join(foreign)}) may come with an interval of "
+                f"its own, so the measurement can be an interval"
+            )
+        else:
+            read_from = (
+                f"the field a consumer reads the measurement from ({value_field}) "
+                f"{FRACTIONAL_MEASURE_PHRASE}: {spec_note}"
+            )
+            interval = (
+                f"A {value_field} call travels with {ci_field}, whose missing upper bound means "
+                f"*unbounded*, so the measurement is an interval"
+            )
         if any(resolve_tiling(grp).value == "quantised" for grp in of_kind.values()):
             warnings.append(
                 CodedWarning(
                     "measure_field_fractional",
-                    f"{kind} bins here are tiled as whole numbers, but the field a consumer reads the "
-                    f"measurement from ({value_field}) {FRACTIONAL_MEASURE_PHRASE}: {spec_note}. A "
+                    f"{kind} bins here are tiled as whole numbers, but {read_from}. A "
                     f"fractional measurement falling between two adjacent bins matches neither — "
                     f"`[0,0] [1,1] [2,2] [3,∞)` is a legal quantised tiling and answers nothing at all "
                     f"for a 2.4 — and the coverage-gap check does not report the hole, because under "
@@ -982,8 +1006,7 @@ def measurement_shape_warnings(rows: Sequence[MeasureBinRow]) -> list[str]:
                 CodedWarning(
                     "measurement_spans_bins",
                     f"{kind} bins: {SPANNING_MEASUREMENT_PHRASE}, and nothing in this format says what to "
-                    f"do with one (RM56). A {value_field} call travels with {ci_field}, whose missing upper "
-                    f"bound means *unbounded*, so the measurement is an interval — and the widest group "
+                    f"do with one (RM56). {interval} — and the widest group "
                     f"here states {widest} bins for it to cross. The consumer contract has three "
                     f"states (a bin matched, no bin matched, the measurement absent) and none of them is "
                     f"this one. Not implemented, and stated rather than left silent: until the policy "
@@ -993,6 +1016,25 @@ def measurement_shape_warnings(rows: Sequence[MeasureBinRow]) -> list[str]:
                 )
             )
     return warnings
+
+
+def _foreign_source_fields(rows: Sequence[MeasureBinRow], value_field: str) -> list[str]:
+    """The `source_field` values of `rows`, as authored and sorted, when **every** row names one and no
+    alternative of any is the spec's own field `value_field`; otherwise `[]` (RM414).
+
+    A row with no `source_field` says nothing about where it is read, so the spec's field is the reading
+    and the finding names it as before; so does a pointer naming it (`INFO/RUC`, `CN|FORMAT/DS`), under
+    either namespace. The key is the pointer's last segment, its namespace stripped.
+    """
+    named: set[str] = set()
+    for row in rows:
+        if not row.source_field:
+            return []
+        keys = {alt.strip().rsplit("/", 1)[-1] for alt in row.source_field.split("|")}
+        if value_field in keys:
+            return []
+        named.add(row.source_field)
+    return sorted(named)
 
 
 #: The fragment naming the one deprecated binning column, for the same reason the two phrases above

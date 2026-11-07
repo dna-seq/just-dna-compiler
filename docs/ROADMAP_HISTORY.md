@@ -34,6 +34,58 @@ up.
 
 Patches on `main` after the 0.8.0 cut (2026-11-05), newest first.
 
+## RM415 — `bins_ungrounded` said "no bin pmid" on a module whose bin carries one
+
+**SHIPPED 2026-11-07 on `main`, uncut — a patch (S137, just-module-creator's liaison).** Owner compiler,
+severity low.
+
+**The class: a clause written for one arm of a count, printed for every arm.** The warning's numerator is
+right (the rows with no `pmid`), but the sentence after it, "the module records no grounding evidence at all
+(no studies.csv rows, no bin pmid)", was fixed text written for the case where every bin is uncited. On the
+plugin's four-bin HTT module, whose `36-39` bin cites `27335115`, it said "3 of 4 … no bin pmid", so an
+author could read it as the `pmid` they set not being read.
+
+**Instances (one):** `compiler/binning_checks._check_binning_grounding` now chooses the clause by whether
+any bin cites: none keeps the old sentence; otherwise "carry no grounding evidence of their own (no bin
+pmid, and no studies.csv rows; N other bin(s) do cite one)". Both keep the phrase `grounding evidence`, which
+a reader of a published manifest greps for. The code, the count and the remedy are unchanged.
+
+**The mechanism:** `test_binning_grounding.py`: one cited bin among four reads "1 other bin(s) do cite one"
+and never "at all", and none cited keeps the old clause. The scenario corpus is unchanged: its scenario is
+the none-cited case.
+
+**Residuals** none
+
+## RM414 — the repeat-count warnings reasoned about `RUC`/`CIRUC` when the module declares another `source_field`
+
+**SHIPPED 2026-11-07 on `main`, uncut — a patch (S136, just-module-creator's liaison).** Owner format
+(`binning.measurement_shape_warnings`), severity low.
+
+**The class: a check keyed on a kind when the row names the thing the check is about.** RM55's fractional
+finding and RM56's spanning finding key on `measure_kind` alone and name VCF 4.4's own field for it (`RUC`,
+`CN`) and its interval (`CIRUC`, `CICN`). `source_field` is the module's pointer to the field a consumer reads,
+and nothing read it. So a module reading ExpansionHunter's `FORMAT/REPCN` (a whole number) was told the field
+it reads is a Float, and sent to `CIRUC`, a field it does not use. The shipped
+`reference_examples/htt_repeat_expansion` is such a module.
+
+**Instances (both findings, both kinds):** `_foreign_source_fields` returns the declared pointers when every
+row of the kind names one and no alternative of any is the spec's field (namespace stripped, `|`-alternation
+read). Then both findings name the declared field. The fractional one says the format cannot type it, states
+VCF 4.4's typing of its own field beside it, and holds "if <field> can carry a fraction". The spanning one says
+the caller's field may come with an interval of its own. With no pointer, a row without one, or a pointer
+naming the spec's field, the wording is as before. This tier still holds no opinion on a caller's field types
+(Principle 2): it asserts nothing about `REPCN`, and the finding is not dropped, since a caller may write a
+fraction. Codes, tiling and firing conditions are unchanged, and both published fragments
+(`FRACTIONAL_MEASURE_PHRASE`, `SPANNING_MEASUREMENT_PHRASE`) stay in both forms.
+
+**The mechanism:** `schema/tests/test_vcf_measure_shape.py`: the reporter's HTT bins on `FORMAT/REPCN`
+name the field, speak conditionally and never say `(RUC)` or "A RUC call travels with CIRUC"; no pointer,
+`RUC`, `INFO/RUC` and an alternation including `RUC` keep the spec wording; one row without a pointer keeps
+it; the copy-number kind scopes the same way. The HTT reference example's validate output now names
+`FORMAT/REPCN`.
+
+**Residuals** none
+
 ## RM413 — no gate kept a lane with a builder and no repository out of a release
 
 **SHIPPED 2026-11-07 on `main`, uncut — a patch, tests and the release rule (the maintainer: "Add a prerelease

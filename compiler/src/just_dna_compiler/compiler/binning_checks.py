@@ -132,11 +132,22 @@ def _check_binning_grounding(rows_by_csv: dict[str, list[Any]], studies: list[St
                 f"name a variant as its subject and never a bin, so it grounds the module while the "
                 f"bin pointer grounds this threshold"
             )
+        # The clause states what is true of the module, read off the rows (RM415, S137): "no bin pmid" was
+        # fixed text written for the case where every bin is uncited, and on a table where one bin cites
+        # its boundary it told the author the pmid they set was not read. Both forms keep the phrase
+        # `grounding evidence`, which a reader of a published manifest greps for.
+        cited = len(rows) - len(ungrounded)
+        evidence = (
+            "the module records no grounding evidence at all (no studies.csv rows, no bin pmid)"
+            if not cited
+            else f"carry no grounding evidence of their own (no bin pmid, and no studies.csv rows; {cited} "
+            f"other bin(s) do cite one)"
+        )
         warnings.append(
             CodedWarning(
                 "bins_ungrounded",
-                f"{csv_name}: {len(ungrounded)} of {len(rows)} bin(s) state a threshold and the module "
-                f"records no grounding evidence at all (no studies.csv rows, no bin pmid). {remedy}.",
+                f"{csv_name}: {len(ungrounded)} of {len(rows)} bin(s) state a threshold and {evidence}. "
+                f"{remedy}.",
             )
         )
     return warnings
