@@ -56,7 +56,7 @@ asks nothing.
 """
 
 import logging
-from collections.abc import Callable, Collection, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -411,11 +411,14 @@ def live_witness_subjects(
     )
 
 
-Resolve = Callable[[str], tuple[Sequence[Mapping[str, object]] | None, str | None]]
+#: Many rsIDs asked, one `(rsid, (loci, source))` back per rsID: `EnsemblResolver.resolve_rsids_rest`.
+AskMany = Callable[
+    [Sequence[str]], Iterable[tuple[str, tuple[Sequence[Mapping[str, object]] | None, str | None]]]
+]
 
 
-def ask_live_witness(resolve: Resolve, rsids: Sequence[str]) -> tuple[Loci, list[str]]:
-    """Ask the live REST rung (`EnsemblResolver.resolve_rsid_rest`) about each rsID, one at a time.
+def ask_live_witness(ask: AskMany, rsids: Sequence[str]) -> tuple[Loci, list[str]]:
+    """Ask the live REST rung (`EnsemblResolver.resolve_rsids_rest`) about the rsIDs, in batches (RM401).
 
     Returns `rsid -> loci` for every rsID it answered (an empty list is an answer: REST has no placeable
     locus), and the rsIDs it did not answer — `None` loci, whether the request failed after its retries
@@ -424,8 +427,7 @@ def ask_live_witness(resolve: Resolve, rsids: Sequence[str]) -> tuple[Loci, list
     """
     answered: Loci = {}
     not_asked: list[str] = []
-    for rsid in rsids:
-        loci, _ = resolve(rsid)
+    for rsid, (loci, _) in ask(rsids):
         if loci is None:
             not_asked.append(rsid)
         else:

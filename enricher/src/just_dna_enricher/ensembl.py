@@ -18,7 +18,7 @@ written before 0.8 may carry.
 
 import logging
 import threading
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
@@ -32,6 +32,7 @@ from just_dna_enricher.net import (
     PacingGate,
     Withholding,
     attempt_floor,
+    batched,
     log_give_up,
     log_retry,
     retry_after_seconds,
@@ -67,12 +68,23 @@ def ensembl_data_release(payload: object) -> int | None:
 _REQUEST_INTERVAL = 0.1
 
 
+#: The most rsIDs one `POST /variation/:species` may carry, Ensembl's documented ceiling.
+REST_BATCH_CEILING = 200
+
+
 @dataclass
 class EnsemblSettings:
     rest_endpoint: str = DEFAULT_REST_ENDPOINT
     species: str = "human"
     timeout: float = 15.0
     interval: float = _REQUEST_INTERVAL
+    #: rsIDs per `POST /variation/:species` (RM401), at most `REST_BATCH_CEILING`. `1` is the off-switch:
+    #: every rsID is one GET, as before RM401. Conservative on purpose: on 2026-11-07 a batch of 10 cold
+    #: ids took 13 to 32 s, and the registry measured 13.9 s, where one cold GET takes 1 to 58 s.
+    batch_size: int = 20
+    #: The read timeout of one batch POST, in seconds. A batch is many cold lookups in one answer, so the
+    #: single GET's `timeout` would abandon it; an abandoned request warms nothing on the server.
+    batch_timeout: float = 120.0
 
 
 class EnsemblError(RuntimeError):
@@ -102,6 +114,29 @@ class RestWitness(Protocol):
     """
 
     def resolve_rsid_rest(self, rsid: str) -> tuple[list[dict] | None, str | None]: ...
+
+
+#: One rsID's answer, the four outcomes `EnsemblResolver.resolve_rsid` documents.
+Answer = tuple[list[dict] | None, str | None]
+
+
+@runtime_checkable
+class BatchResolver(Protocol):
+    """The optional capability the live link asks (RM401): `resolve_rsid` for many rsIDs.
+
+    Yields `(rsid, answer)` once per rsID asked, in the order asked, and asks the next batch only once
+    the caller has taken every answer of the one before, so a caller that records each answer as it
+    arrives loses at most one batch to a kill. A resolver without it is asked one rsID at a time.
+    """
+
+    def resolve_rsids(self, rsids: Sequence[str]) -> Iterator[tuple[str, Answer]]: ...
+
+
+@runtime_checkable
+class RestBatchWitness(Protocol):
+    """`RestWitness` for many rsIDs (RM401), with `BatchResolver`'s contract."""
+
+    def resolve_rsids_rest(self, rsids: Sequence[str]) -> Iterator[tuple[str, Answer]]: ...
 
 
 @dataclass
@@ -182,21 +217,13 @@ class EnsemblResolver(Withholding):
         mapping puts the rsID, through RM268's anchor, and an injected resolver's `resolve_rsid` may
         answer from any surface. It is an optional capability of an injected one (`RestWitness`).
         """
-        assert self.gate is not None
-        with self._hold_lock:
-            held = self._resume_at is not None and self.gate.clock() < self._resume_at
-        if held:
+        if self._held():
             logger.info("V1 REST for %s not asked: Ensembl's Retry-After has not passed", rsid)
             return None, None
         try:
-            loci, withheld, unplaceable, off_primary = self._rest_rsid(rsid)
+            parsed = self._rest_rsid(rsid)
         except httpx.HTTPStatusError as exc:
-            asked = retry_after_seconds(exc)
-            if asked is not None:
-                # The retries are spent or the wait was too long to sleep: honour it for every rsID after.
-                resume_at = self.gate.clock() + asked
-                with self._hold_lock:
-                    self._resume_at = max(self._resume_at or resume_at, resume_at)
+            self._hold_for(exc)
             # Only a 400 is "no record" (RM361): a 5xx or a 429 after the retries, a 403, a 404 path or a
             # 410 retired route answered nothing about the rsID (`@unreachable-not-absent`).
             if exc.response.status_code != _REST_NO_RECORD_STATUS:
@@ -208,6 +235,99 @@ class EnsemblResolver(Withholding):
         except (httpx.HTTPError, EnsemblError) as exc:
             logger.warning("V1 REST for %s could not be reached: %s", rsid, exc)
             return None, None
+        return self._rest_answer(rsid, parsed)
+
+    def resolve_rsids(self, rsids: Sequence[str]) -> Iterator[tuple[str, Answer]]:
+        """`resolve_rsid` for many rsIDs (`BatchResolver`, RM401); REST is the only surface, as there."""
+        return self.resolve_rsids_rest(rsids)
+
+    def resolve_rsids_rest(self, rsids: Sequence[str]) -> Iterator[tuple[str, Answer]]:
+        """`resolve_rsid_rest` for many rsIDs, `settings.batch_size` per `POST /variation/:species` (RM401).
+
+        Before RM401 the live link and the placement witness sent one GET per rsID, and a re-derivation
+        spent 599 of one module's 672 s on 59 cold GETs (S133). Each rsID gets exactly the answer the GET
+        would give, by the same rules (`_rest_answer`), and these are what the probe of 2026-11-07 showed
+        a 200 batch answer does, each with the arm it takes here:
+
+        * an rsID with a record is a key of the answer, under its own name → its record;
+        * a **merged** rsID is not a key: the answer keys its record by the current id and lists the asked
+          one in `synonyms` (`rs8192284` → `rs2228145`) → the one record whose `synonyms` name it, as the
+          GET (which answers 200 with that record) would; two such records → the GET;
+        * an rsID with **no record is left out**, with no failure field (a batch of only such ids is
+          `200 {}`). An omission does not say why, so it is never read as "no record": the rsID is asked
+          by GET, whose 400 is the no-record arm RM361 measured (`@unreachable-not-absent`).
+
+        A batch that fails after its retries, a POST 400 included (it is no GET 400), is could-not-ask for
+        every rsID in it, never a negative. `batch_size=1` (the off-switch) is one GET per rsID. A
+        throttle's hold is read before each batch and set by its failure, as for one rsID.
+        """
+        asked = list(rsids)
+        size = max(1, min(self.settings.batch_size, REST_BATCH_CEILING))
+        if size == 1:
+            for rsid in asked:
+                yield rsid, self.resolve_rsid_rest(rsid)
+            return
+        for chunk in batched(asked, size):
+            if self._held():
+                logger.info(
+                    "V1 REST not asked about %d rsID(s): Ensembl's Retry-After has not passed", len(chunk)
+                )
+                for rsid in chunk:
+                    yield rsid, (None, None)
+                continue
+            try:
+                payload = self._rest_batch(tuple(dict.fromkeys(chunk)))
+            except httpx.HTTPStatusError as exc:
+                self._hold_for(exc)
+                self.note_retired("Ensembl REST", exc)
+                logger.warning(
+                    "V1 REST batch of %d rsID(s) failed: %s; none of them was answered", len(chunk), exc
+                )
+                for rsid in chunk:
+                    yield rsid, (None, None)
+                continue
+            except (httpx.HTTPError, EnsemblError) as exc:
+                logger.warning(
+                    "V1 REST batch of %d rsID(s) could not be reached: %s; none of them was answered",
+                    len(chunk),
+                    exc,
+                )
+                for rsid in chunk:
+                    yield rsid, (None, None)
+                continue
+            records = _batch_records(payload, chunk)
+            for rsid in chunk:
+                record = records.get(rsid)
+                if record is None:
+                    # Left out, or two records name it: the GET says which (RM361's 400 is "no record").
+                    yield rsid, self.resolve_rsid_rest(rsid)
+                    continue
+                try:
+                    parsed = _loci_from_rest(record, self._base_reader())
+                except (httpx.HTTPError, EnsemblError) as exc:
+                    logger.warning("V1 REST for %s could not be placed: %s", rsid, exc)
+                    yield rsid, (None, None)
+                    continue
+                yield rsid, self._rest_answer(rsid, parsed)
+
+    def _held(self) -> bool:
+        """Whether a throttle's `Retry-After` that outlived the retries still forbids asking."""
+        assert self.gate is not None
+        with self._hold_lock:
+            return self._resume_at is not None and self.gate.clock() < self._resume_at
+
+    def _hold_for(self, exc: httpx.HTTPStatusError) -> None:
+        """The retries are spent or the wait was too long to sleep: honour it for every rsID after."""
+        assert self.gate is not None
+        asked = retry_after_seconds(exc)
+        if asked is not None:
+            resume_at = self.gate.clock() + asked
+            with self._hold_lock:
+                self._resume_at = max(self._resume_at or resume_at, resume_at)
+
+    def _rest_answer(self, rsid: str, parsed: tuple[list[dict], int, int, int]) -> Answer:
+        """One rsID's REST mappings, parsed, as its answer: the same rules whichever request carried it."""
+        loci, withheld, unplaceable, off_primary = parsed
         if withheld:
             logger.info(
                 "V1 REST for %s: %d one-sided indel locus/loci withheld, the anchor base could not be "
@@ -308,6 +428,53 @@ class EnsemblResolver(Withholding):
         )
         resp.raise_for_status()
         return _loci_from_rest(_json(resp), self._base_reader())
+
+    # The same policy as one rsID's GET (RM354's predicate, RM403's lines). A batch timing out is retried
+    # like a GET timing out: the read timeout is the batch's own, so a retry is a slow server, not a short
+    # clock.
+    @retry(
+        before_sleep=log_retry,
+        retry_error_callback=log_give_up,
+        stop=attempt_floor(3),
+        wait=wait_retry_after(wait_exponential_jitter(multiplier=0.5, max=8.0)),
+        retry=retry_if_transient_within(),
+        reraise=True,
+    )
+    def _rest_batch(self, rsids: tuple[str, ...]) -> dict:
+        assert self.gate is not None
+        self.gate.wait()
+        resp = self._http().post(
+            f"{self.settings.rest_endpoint}/variation/{self.settings.species}",
+            json={"ids": list(rsids)},
+            headers={"Accept": "application/json", "Content-Type": "application/json"},
+            timeout=httpx.Timeout(
+                self.settings.timeout, read=max(self.settings.timeout, self.settings.batch_timeout)
+            ),
+        )
+        resp.raise_for_status()
+        return _json(resp)
+
+
+def _batch_records(payload: dict, asked: Sequence[str]) -> dict[str, dict]:
+    """`rsid -> its record` for each asked rsID a batch answer settles, read as `resolve_rsids_rest` says.
+
+    Its own name first; otherwise the one record whose `synonyms` list it (a merged rsID); none, or two,
+    and the rsID is not in the result, which sends it to the GET. A value that is not a record is no
+    record. The asked rsID stays the key: NCBI, not Ensembl, is the merge oracle (`@ncbi-merge-oracle`).
+    """
+    records = {name: record for name, record in payload.items() if isinstance(record, dict)}
+    by_synonym: dict[str, list[dict]] = {}
+    for record in records.values():
+        synonyms = record.get("synonyms")
+        for synonym in synonyms if isinstance(synonyms, list) else ():
+            by_synonym.setdefault(str(synonym), []).append(record)
+    settled: dict[str, dict] = {}
+    for rsid in asked:
+        if rsid in records:
+            settled[rsid] = records[rsid]
+        elif len(named := by_synonym.get(rsid, [])) == 1:
+            settled[rsid] = named[0]
+    return settled
 
 
 def _grch38_base_reader(sequences: SequenceProxy) -> Callable[[str, int], str | None]:

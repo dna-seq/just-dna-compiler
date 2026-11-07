@@ -92,7 +92,13 @@ from just_dna_enricher.enrich.subjects import (
     select_par_representative,
 )
 from just_dna_enricher.enrich.verification_records import _verification_records
-from just_dna_enricher.ensembl import EnsemblResolver, RestWitness, RsidResolver
+from just_dna_enricher.ensembl import (
+    BatchResolver,
+    EnsemblResolver,
+    RestBatchWitness,
+    RestWitness,
+    RsidResolver,
+)
 from just_dna_enricher.events import authored_event
 from just_dna_enricher.gnomad import GnomadClient, GnomadError
 from just_dna_enricher.grch37 import Grch37Client, diagnose_wrong_build, summarize_build_diagnoses
@@ -959,8 +965,15 @@ def _run_enrichment(
             ensembl_link = client
             rest_answered = False
             try:
-                for rsid in missing:
-                    loci, src = client.resolve_rsid(rsid)
+                # RM401: many rsIDs per request where the resolver can (ours, `BatchResolver`), each
+                # answer taken and journalled below before the next batch is asked; one at a time where
+                # it cannot (a host's resolver written before it).
+                answers = (
+                    client.resolve_rsids(missing)
+                    if isinstance(client, BatchResolver)
+                    else ((rsid, client.resolve_rsid(rsid)) for rsid in missing)
+                )
+                for rsid, (loci, src) in answers:
                     rest_answered = rest_answered or (loci is not None and src == "ensembl-rest")
                     # RM272: the resolver names an rsID whose every mapping carried no nucleotide
                     # allele. Read by attribute because a host may inject its own resolver, and one
@@ -982,7 +995,7 @@ def _run_enrichment(
                         source_of_rsid[rsid] = src or "ensembl"
                         # Staged before the next request is made, which is what makes minute 29
                         # recoverable: everything answered so far is already on disk when the kill
-                        # arrives. Only a positive answer is staged — a request that failed is
+                        # arrives (a batch's answers each, before the next batch is asked, RM401). Only a positive answer is staged — a request that failed is
                         # unchecked rather than absent, and freezing that into the journal would turn
                         # a transient outage into a permanent negative on every future run.
                         journal.record(rsid, src or "ensembl", loci)
@@ -1086,12 +1099,19 @@ def _run_enrichment(
                 # resolver written before 0.8 has `resolve_rsid` alone, and calling the method blindly
                 # raised `AttributeError` at the first eligible indel.
                 if isinstance(client, RestWitness):
+                    batch = isinstance(client, RestBatchWitness)
                     logger.info(
                         "Placement witness — asking Ensembl REST about %d snapshot indel(s) no loaded "
-                        "witness holds, one request at a time (RM267).",
+                        "witness holds, %s (RM267).",
                         len(rest_subjects),
+                        "in batches (RM401)" if batch else "one request at a time",
                     )
-                    rest_answers, rest_not_asked = ask_live_witness(client.resolve_rsid_rest, rest_subjects)
+                    rest_answers, rest_not_asked = ask_live_witness(
+                        client.resolve_rsids_rest
+                        if batch
+                        else lambda rsids: ((rsid, client.resolve_rsid_rest(rsid)) for rsid in rsids),
+                        rest_subjects,
+                    )
                     # A 410 is a fact the resolver noted (`Withholding`, RM361): the not-asked sentence
                     # says so, never the outage default it fell back to (audit round 2). A fixed
                     # sentence rather than the source's body, which the log already carries: the record

@@ -532,7 +532,7 @@ per service, put a semaphore around your call site; the gate will not give you t
 | **ClinGen Allele Registry** (`reg.clinicalgenome.org/allele`) | `clingen_allele` → the identity-from-a-name procedure (0.7, RM153) | none published | `_REQUEST_INTERVAL=0.1` (courtesy) | none |
 | **Ensembl GRCh37 REST** (`grch37.rest.ensembl.org`) | `grch37.diagnose_wrong_build` (0.6), `hint recover` | Ensembl publishes **15 req/s** | `_REQUEST_INTERVAL=0.1` — keeps a whole panel inside it while still interactive | none |
 | **ClinVar release probe** | `currency.ClinVarReleaseClient` — one bounded read of the VCF's header (`HEADER_PROBE_BYTES`) per `--verify-datasets` run (0.7) | NCBI asks for no particular pacing on the FTP-over-HTTPS mirror | `CLINVAR_MIN_INTERVAL=0.5` — this tier paces every service it touches, and one probe per run is inside any budget | none |
-| **Ensembl REST** (`rest.ensembl.org`) | `ensembl` (the live link); the placement witness (0.8, RM267), one sequential request per snapshot indel no loaded witness holds | **15 req/s** per IP, **~55 000 / rolling hour**; 429 + `Retry-After` / `X-RateLimit-*` | `_REQUEST_INTERVAL=0.1` (`EnsemblSettings.interval`), one `PacingGate` per resolver, waited once per attempt (since 2026-11-04); tenacity on transport, 5xx and 429, waiting at least the answer's `Retry-After` (`net.wait_retry_after`); one longer than `net.RETRY_AFTER_CEILING` (10 s) is not retried, and the resolver asks nothing until it passes | none |
+| **Ensembl REST** (`rest.ensembl.org`) | `ensembl` (the live link); the placement witness (0.8, RM267), for each snapshot indel no loaded witness holds. Both ask `EnsemblSettings.batch_size` rsIDs (default 20, ceiling 200) per `POST /variation/:species` since RM401, with the POST's own read timeout (`batch_timeout`, 120 s), and one GET for an rsID a batch leaves out | **15 req/s** per IP, **~55 000 / rolling hour**; 429 + `Retry-After` / `X-RateLimit-*` | `_REQUEST_INTERVAL=0.1` (`EnsemblSettings.interval`), one `PacingGate` per resolver, waited once per attempt (since 2026-11-04); tenacity on transport, 5xx and 429, waiting at least the answer's `Retry-After` (`net.wait_retry_after`); one longer than `net.RETRY_AFTER_CEILING` (10 s) is not retried, and the resolver asks nothing until it passes | none |
 | **CPIC** (`api.cpicpgx.org`) | `cpic` / `pgx_draft` | unpublished | **no `PacingGate`** — coarse PostgREST GETs (gene-scoped), not per-allele loops | none |
 | **ClinPGx** | `clinpgx` / `clinpgx_draft` | n/a at runtime | **offline snapshot only** for the check/draft path — no live poll budget | none (live API retired → snapshot) |
 | **seqrepo REST** (`services.genomicmedlab.org`) | `sequences` / VRS indel mint | unpublished | **no `PacingGate`**; in-process memo of window reads | none |
@@ -574,7 +574,15 @@ Org limits apply **per member**, not shared. Source of truth:
   per lookup throws the interval away (`lookup` holds them for that reason).
 - **Batch where the API allows it.** gnomAD aliases (20) and NCBI esummary (200) exist because the
   published ceilings make one-id-per-request unusable; PharmVar is the opposite — 2 rps forces
-  gene-scoped endpoints, never per-allele.
+  gene-scoped endpoints, never per-allele. Ensembl REST batches since RM401 (`POST /variation/:species`,
+  `resolve_rsids_rest`), and a batch answer is read by what the probe of 2026-11-07 showed it does: an
+  rsID with no record is **left out** (an all-unknown batch is `200 {}`), and a **merged** rsID is keyed
+  by its current id with the asked one in `synonyms` (`rs8192284` → `rs2228145`). So the asked rsID is
+  matched by name, then by the one record whose `synonyms` name it, and an rsID still unmatched is asked
+  by GET, whose 400 is the only "no record" (RM361). An omission is never a negative. A batch that
+  fails, a POST 400 included, is could-not-ask for every rsID in it. `batch_size=1` is one GET per rsID,
+  as before. An injected resolver is batched only through the optional `BatchResolver` /
+  `RestBatchWitness` capabilities, and one without them is asked one rsID at a time.
 - **No response cache for the live clients.** NCBI / PharmVar / gnomAD GraphQL / Crossref / Europe PMC
   / OLS4 / HGNC / PGS Catalog / LitVar2 / the CIViC API / the ClinGen Allele Registry / GRCh37 Ensembl /
   the ClinVar release probe / live Ensembl are paced only. Persistence is the authored sidecars
@@ -1280,7 +1288,8 @@ case needs a witness that holds it, which is why REST is asked:
   least one allele that is not a substitution, and that neither loaded witness holds, an online run asks
   the live REST rung (`EnsemblResolver.resolve_rsid_rest`, the V1 half of `resolve_rsid` on its own, so
   the beta GraphQL surface is never asked; through the run's own resolver, so an injected one is
-  honoured), one request at a time, and compares its answer by the same ladder. REST answers `rs8176719` as `-/C` at
+  honoured), in batches since RM401 (`resolve_rsids_rest`, one rsID at a time for an injected resolver
+  without it), and compares its answer by the same ladder. REST answers `rs8176719` as `-/C` at
   `start 133257522, end 133257521`, which RM268's anchor turns into `9:133257521 T>TC`; the snapshot's
   `9:133257520 G>GC` mints a different id, so the rsID is withheld with both placements named. A row the
   live rung gave itself, a substitution, and an rsID ClinVar or ClinVar-GKM holds are not asked. Answers

@@ -54,6 +54,7 @@ import ast
 import functools
 import gzip
 import hashlib
+import json
 import os
 import re
 from collections.abc import Callable
@@ -427,6 +428,42 @@ def cli_text():
     the supported route and it keeps the helper's single definition.
     """
     return _cli_text
+
+
+def _rest_batch(
+    handler: Callable[[httpx.Request], httpx.Response],
+) -> Callable[[httpx.Request], httpx.Response]:
+    """A one-rsID REST mock that also answers `POST /variation/:species` (RM401), the way Ensembl does.
+
+    Each id in the batch is put to `handler` as the GET it would be. An id the GET answers 200 for is a
+    key of the batch answer, its body as the record; every other id is left out, as Ensembl leaves out
+    an id with no record. The resolver asks a left-out id by GET, so a per-id failure the handler raises
+    (an outage, a 400, a 5xx) reaches it exactly as it did one GET at a time, and a test written against
+    one-rsID mocks keeps its meaning under batching.
+    """
+
+    def serve(request: httpx.Request) -> httpx.Response:
+        if request.method != "POST" or request.url.path.rstrip("/").split("/")[-2:-1] != ["variation"]:
+            return handler(request)
+        answer: dict[str, object] = {}
+        for rsid in json.loads(request.content)["ids"]:
+            single = httpx.Request("GET", request.url.join(f"{request.url.path.rstrip('/')}/{rsid}"))
+            try:
+                response = handler(single)
+            except httpx.HTTPError:
+                continue
+            if response.status_code == 200:
+                response.read()
+                answer[rsid] = response.json()
+        return httpx.Response(200, json=answer)
+
+    return serve
+
+
+@pytest.fixture
+def rest_batch():
+    """`_rest_batch` as a fixture (the importlib-mode route `cli_text` explains)."""
+    return _rest_batch
 
 
 def write_mitomap_dump(path: Path, blocks=BLOCKS) -> Path:

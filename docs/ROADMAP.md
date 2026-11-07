@@ -1957,29 +1957,6 @@ closure:** the snapshot keeping VEP's `SPDI` CSQ field (the registry's (d)) is t
 prepare-annotations, outside this repository; it normalises rather than witnesses, and would make candidate 1 a
 join.
 
-## RM401 — the live Ensembl link and the REST witness ask one rsID per request, so a re-derivation waits on cold requests one at a time
-
-**Placed, the pm (2026-11-07): the next patch on `main`, probe first.** Every online re-derivation pays it (599 of one module's 672 s). The fix's own risk is the omission question below: reading an id a batch answer leaves out as "no record" would turn could-not-ask into a negative, so the probe's answer is the precondition, and the build waits on it rather than assuming.
-
-**Severity** medium · **Status** open — **a patch**, the next on `main` after its probe (no recorded field moves; the same answers by
-fewer requests) · **Owner** enricher (`enrich/orchestration.py` live link ~:962, `placement.ask_live_witness`
-~:418, `ensembl.EnsemblResolver`) · **Motivating case** S133 in CONSUMER_SUGGESTIONS_HISTORY.md (just-dna-registry's
-lead, 2026-11-07) · *related* RM402, RM403, RM267, RM361
-
-**The gap, as the registry measured it on 0.8.0.** One module (178 rsIDs) took 11 s offline and 672 s online, and
-599 s of that was 59 Ensembl REST GETs, one rsID each. A cold first GET takes 1–12 s and a repeat 0.21 s, and
-an abandoned GET does not warm the server's cache, so a shorter timeout only buys more cold requests. One
-`POST /variation/homo_sapiens` with 10 cold ids took 13.9 s against roughly 100 s one at a time. The endpoint
-takes up to 200 ids. Both REST callers loop per rsID: the live link and RM267's placement witness.
-
-**What it would be.** Both callers ask in batches through the resolver's gate, and the anchoring and the
-non-nucleotide rules apply per id as they do now. **Open questions, to probe before building**
-(`@probe-the-real-file`): an id a 200 batch answer omits may be "no record" or "not answered", and RM361 makes
-only a GET 400 the no-record arm, so the omission's meaning is measured, never assumed (`@unreachable-not-absent`);
-the batch size against the client's 15 s read timeout, given 10 cold ids took 13.9 s; and the journal stages
-each answer before the next request today ("minute 29 recoverable"), so a batch journals each id it answered
-before the next POST. A failed batch falls back to its ids' could-not-ask arm, never to a negative.
-
 ## RM402 — a snapshot answer rejected under RM382 is asked again of live Ensembl, the same authority, which answers the same locus
 
 **Placed, the pm (2026-11-07): after RM401 ships, and only if a re-measure still shows it.** The 600 s here is 38 cold one-at-a-time GETs, which is RM401's cost; batched, the same 38 ids are one POST of tens of seconds. What RM402 would then save is that remainder, bought with a new release-equality rule over two spellings of one label, which is its own risk. So it waits: once RM401 ships, a re-run of the registry's module (or any online re-derivation with reverse-complement genotypes) says whether the repeat asks still cost enough to build it. If not, it closes as superseded by RM401.

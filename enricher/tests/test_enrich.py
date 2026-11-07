@@ -447,7 +447,7 @@ def test_an_unanchorable_ensembl_answer_writes_no_row_and_is_named_apart(
 
 
 def test_three_answered_or_failed_states_are_named_apart_and_stay_unresolved(
-    cache: Path, tmp_path: Path
+    cache: Path, tmp_path: Path, rest_batch
 ) -> None:
     """RM272. One run, one rsID in each state, each named in exactly one result list and still in
     `unresolved`: a failed request (rs6567160, transient), a one-sided indel whose anchor base cannot be
@@ -472,7 +472,7 @@ def test_three_answered_or_failed_states_are_named_apart_and_stay_unresolved(
 
     resolver = EnsemblResolver()
     resolver._read_base = lambda _chrom, _pos: None
-    resolver._client = httpx.Client(transport=httpx.MockTransport(handler))
+    resolver._client = httpx.Client(transport=httpx.MockTransport(rest_batch(handler)))
     spec = _spec(
         tmp_path / "spec",
         "rsid,genotype,state,conclusion\nrs6567160,C/T,risk,c\nrs8176719,T/TC,risk,c\nrs2101156061,G/G,risk,c\n",

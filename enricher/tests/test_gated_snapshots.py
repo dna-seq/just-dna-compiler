@@ -607,6 +607,9 @@ def test_every_live_client_reads_the_floor_rather_than_a_frozen_constant(
         # RM85's release probe: the retried inner reads the header, the outer translates both legs.
         "currency.ClinVarReleaseClient._header_bytes",
         "ensembl.EnsemblResolver._rest_rsid",
+        # RM401. The same policy, many rsIDs per POST; the outer (`resolve_rsids_rest`) withholds every
+        # rsID of a batch that failed, and asks a left-out one by the GET above.
+        "ensembl.EnsemblResolver._rest_batch",
         # RM373. The data release REST answered from (`/info/data`), asked once per run; the outer
         # (`data_release`) translates every failure into an unknown release, never an error.
         "ensembl.EnsemblResolver._rest_info_data",

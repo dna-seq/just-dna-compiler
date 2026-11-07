@@ -601,11 +601,18 @@ class _Rest:
                 # What `/info/data` answered by hand on 2026-11-04 (`test_source_release.py`).
                 self.release_asked += 1
                 return httpx.Response(200, json={"releases": [116]})
-            rsid = request.url.path.rsplit("/", 1)[-1]
-            self.requested.append(rsid)
+            # Ensembl's two shapes (RM401): one rsID by GET, or many by POST, keyed by name. A failing
+            # status fails the whole POST, as an outage does; each rsID asked is recorded once a request.
+            rsids = (
+                json.loads(request.content)["ids"]
+                if request.method == "POST"
+                else [request.url.path.rsplit("/", 1)[-1]]
+            )
+            self.requested.extend(rsids)
             if self.status != 200:
                 return httpx.Response(self.status, text="No server is available to handle this request.")
-            return httpx.Response(200, json={"name": rsid, "mappings": REST_MAPPINGS.get(rsid, [])})
+            records = {rsid: {"name": rsid, "mappings": REST_MAPPINGS.get(rsid, [])} for rsid in rsids}
+            return httpx.Response(200, json=records if request.method == "POST" else records[rsids[0]])
 
         resolver = EnsemblResolver()
         resolver._client = httpx.Client(transport=httpx.MockTransport(handler))

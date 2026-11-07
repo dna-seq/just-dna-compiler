@@ -34,6 +34,56 @@ up.
 
 Patches on `main` after the 0.8.0 cut (2026-11-05), newest first.
 
+## RM401 — the live Ensembl link and the REST witness asked one rsID per request, so a re-derivation waited on cold requests one at a time
+
+**SHIPPED 2026-11-07 on `main`, uncut — a patch, after its probe (S133, just-dna-registry's lead).** Owner
+enricher, severity medium.
+
+**The class: a per-item loop against an API that takes a batch.** Both REST callers, the live link and
+RM267's placement witness, sent one GET per rsID. The registry measured one module (178 rsIDs) at 11 s
+offline and 672 s online, 599 s of it on 59 GETs. A cold GET takes seconds and an abandoned one warms
+nothing, and `POST /variation/:species` takes up to 200 ids.
+
+**The probe came first (2026-11-07), because the omission's meaning was the fix's own risk.** By hand
+against `rest.ensembl.org`: a batch of `rs1801133`, an impossible rsID, a malformed id and two real ones
+answered 200 with the three real ones only, and no failure field; a batch of only unknown ids answered
+`200 {}` (58 s); the merged `rs8192284` came back keyed `rs2228145`, the asked id only in `synonyms`,
+while its GET answers 200 with that record and the impossible id's GET answers 400; `/variation/human`
+works as `/variation/homo_sapiens` does. Timings that day: batches of 10 cold ids 13 to 32 s (the
+registry measured 13.9 s), cold single GETs 20 to 58 s with one 503, so the client's 15 s read timeout
+would have abandoned most batches.
+
+**Instances (the resolver, two callers):**
+
+- `EnsemblResolver.resolve_rsids_rest` (and `resolve_rsids`, its `resolve_rsid` twin) yields `(rsid,
+  answer)` per rsID in asked order, `settings.batch_size` per POST (default 20, capped at
+  `REST_BATCH_CEILING` 200), each POST through `_rest_batch` under the GET's own retry policy and with
+  `batch_timeout` (120 s) as its read timeout. `_batch_records` matches an asked rsID by name, then by the
+  one record whose `synonyms` list it; none or two, and the rsID is asked by GET. The asked rsID stays the
+  key (`@ncbi-merge-oracle`). A failed batch, a POST 400 included, is `(None, None)` for every rsID in
+  it, with no GET fallback. The per-rsID rules (RM268's anchor, RM271, RM400) moved into one
+  `_rest_answer` both routes call, and the throttle hold into `_held` / `_hold_for`.
+- The next batch is asked only once every answer of the one before is taken, so the live link still
+  journals each answer before the next request: a kill loses at most one batch.
+- `BatchResolver` and `RestBatchWitness` are new optional Protocols. The live link and
+  `placement.ask_live_witness` (which now takes a many-rsID callable) batch only through them, so an
+  injected resolver written before RM401 is asked one rsID at a time, as before.
+
+**The mechanism:** `enricher/tests/test_ensembl_rest_batch.py` answers in the probe's shapes. It asserts
+a batch answers each rsID exactly as the off-switch's GETs do (one POST plus one GET for the left-out
+rsID, against one GET per rsID), the order and key, the RM271 collection, the ambiguous-synonym fallback,
+could-not-ask on a failed POST (503, 400, 429) and on a timeout, the cut and the ceiling, the lazy next
+batch, the throttle hold, the POST's own timeout, and end to end that the live link sends one POST for
+its misses while a host resolver without the capability is asked one at a time. Reading an omission as
+"no record" fails three of them; one is an rsID the batch leaves out that its GET places. The tests that
+mocked REST by GET alone answer the POST too: the witness's `_Rest` natively, three others through the
+conftest's `rest_batch`, which answers what a GET answers 200 for and leaves out the rest, so each per-id
+failure still reaches the resolver through the GET.
+
+**Residuals** won't fix — the defaults are one slow day's numbers: `batch_size` 20 and `batch_timeout`
+120 s were chosen on 2026-11-07, when Ensembl answered slowly, and are settings for a host to tune. RM402,
+waiting on this item and a re-measure, is where the registry's sweep says whether they hold.
+
 ## RM400 — the REST rung wrote placements on GRCh38 patch and alt contigs, which no snapshot carries, so a re-derivation reported a lost allele that did not move
 
 **SHIPPED 2026-11-07 on `main`, uncut — a patch, both halves (S132, just-dna-registry's lead).** Owner

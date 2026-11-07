@@ -282,7 +282,7 @@ def test_a_rederive_that_cannot_ask_keeps_the_old_release_on_the_rows_it_carries
 # ── the live link ──────────────────────────────────────────────────────────────────────────────
 
 
-def test_a_live_rest_answer_records_the_data_release_rest_reports(tmp_path: Path) -> None:
+def test_a_live_rest_answer_records_the_data_release_rest_reports(tmp_path: Path, rest_batch) -> None:
     """Asked once per run, of `/info/data` (`{"releases": [116]}`, read by hand on 2026-11-04)."""
     asked: list[str] = []
 
@@ -298,7 +298,7 @@ def test_a_live_rest_answer_records_the_data_release_rest_reports(tmp_path: Path
         return httpx.Response(200, json={"name": rsid, "mappings": [{**mapping, "assembly_name": "GRCh38"}]})
 
     resolver = EnsemblResolver()
-    resolver._client = httpx.Client(transport=httpx.MockTransport(handler))
+    resolver._client = httpx.Client(transport=httpx.MockTransport(rest_batch(handler)))
     spec = _spec(tmp_path, ["rs1801133,,,,A/G", "rs7412,,,,C/T"])
     _enrich(spec, tmp_path / "no-cache", offline=False, resolver=resolver, verify_datasets=False)
     assert _releases(spec) == {"rs1801133": "ensembl_116", "rs7412": "ensembl_116"}
@@ -348,7 +348,9 @@ def _rest_handler(asked: list[str] | None = None):
 _LIVE_ONLY = {"rs1061170": ("1", 196690107, "T", "C")}
 
 
-def test_rest_rows_beside_snapshot_rows_leave_the_snapshots_label_standing(new: Path, tmp_path: Path) -> None:
+def test_rest_rows_beside_snapshot_rows_leave_the_snapshots_label_standing(
+    new: Path, tmp_path: Path, rest_batch
+) -> None:
     """The run's record speaks for the rows its snapshot answered; REST's rows carry their own release.
 
     The two links spell one Ensembl release two ways (`…vep116.0` and `ensembl_116`) and nothing here can
@@ -356,7 +358,7 @@ def test_rest_rows_beside_snapshot_rows_leave_the_snapshots_label_standing(new: 
     the snapshot's, and every row the snapshot answered is this release's.
     """
     resolver = EnsemblResolver()
-    resolver._client = httpx.Client(transport=httpx.MockTransport(_rest_handler()))
+    resolver._client = httpx.Client(transport=httpx.MockTransport(rest_batch(_rest_handler())))
     spec = _spec(tmp_path, [*_FIRST, "rs1061170,,,,C/T"])
     _enrich(spec, new, offline=False, resolver=resolver, verify_datasets=False)
     assert _releases(spec) == {"rs1801133": _NEW, "rs429358": _NEW, "rs1061170": "ensembl_116"}
