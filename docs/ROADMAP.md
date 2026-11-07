@@ -1979,6 +1979,101 @@ those 4 modules were refused.
 **Open question:** a recorded patch-contig locus still meets every re-derivation as `lost_allele`; whether a
 lost locus off the primary assembly is its own drift arm or a carry reason (RM394's words) is the design half.
 
+## RM401 — the live Ensembl link and the REST witness ask one rsID per request, so a re-derivation waits on cold requests one at a time
+
+**Severity** medium · **Status** open — **a patch** (no recorded field moves; the same answers by fewer requests),
+for the pm to place · **Owner** enricher (`enrich/orchestration.py` live link ~:962, `placement.ask_live_witness`
+~:418, `ensembl.EnsemblResolver`) · **Motivating case** S133 in CONSUMER_SUGGESTIONS_HISTORY.md (just-dna-registry's
+lead, 2026-11-07) · *related* RM402, RM403, RM267, RM361
+
+**The gap, as the registry measured it on 0.8.0.** One module (178 rsIDs) took 11 s offline and 672 s online, and
+599 s of that was 59 Ensembl REST GETs, one rsID each. A cold first GET takes 1–12 s and a repeat 0.21 s, and
+an abandoned GET does not warm the server's cache, so a shorter timeout only buys more cold requests. One
+`POST /variation/homo_sapiens` with 10 cold ids took 13.9 s against roughly 100 s one at a time. The endpoint
+takes up to 200 ids. Both REST callers loop per rsID: the live link and RM267's placement witness.
+
+**What it would be.** Both callers ask in batches through the resolver's gate, and the anchoring and the
+non-nucleotide rules apply per id as they do now. **Open questions, to probe before building**
+(`@probe-the-real-file`): an id a 200 batch answer omits may be "no record" or "not answered", and RM361 makes
+only a GET 400 the no-record arm, so the omission's meaning is measured, never assumed (`@unreachable-not-absent`);
+the batch size against the client's 15 s read timeout, given 10 cold ids took 13.9 s; and the journal stages
+each answer before the next request today ("minute 29 recoverable"), so a batch journals each id it answered
+before the next POST. A failed batch falls back to its ids' could-not-ask arm, never to a negative.
+
+## RM402 — a snapshot answer rejected under RM382 is asked again of live Ensembl, the same authority, which answers the same locus
+
+**Severity** medium · **Status** open — **a patch** (fewer requests; the written table is unchanged wherever the
+two releases agree), for the pm to place · **Owner** enricher (`enrich/orchestration.py`, the live link's
+`missing` ~:948) · **Motivating case** S133 in CONSUMER_SUGGESTIONS_HISTORY.md · *related* RM382, RM373, RM292,
+RM401
+
+**The gap.** RM382 sets a rejected answer aside so the next link is asked (`@answered-is-not-absent`). The live
+link's `missing` skips an rsID live Ensembl already rejected (`rejected_from(..., _LIVE_ENSEMBL_LINKS)`) but not
+one the Ensembl snapshot rejected. Live REST and the snapshot are one authority (RM292 counts REST
+self-consistent with it), so at one release REST returns the locus the snapshot did and the rejection repeats.
+On the registry's module that was 38 asks, none placed, about 600 s: every one an rsID whose authored genotype
+is the reverse complement. `enrich` already tells the author so ("check the strand your alleles are written
+on"), and flipping those genotypes is the author's remedy; this item is the cost of the repeat ask, not that.
+
+**What it would be.** An rsID the snapshot answered and the hosting rule rejected is not asked of live Ensembl
+when live REST's data release equals the snapshot's (RM373 records both: `/info/data` and the lane's release
+label). The release is asked before the loop rather than after it. ClinVar and gnomAD are still asked, being
+other authorities, so the rule the gotcha states holds for every *other* link. When the releases differ, or REST's
+cannot be read, the ask stays. **Open question:** the two labels are spelled differently (`ensembl_116` against
+`…vep116.0`, RM373's won't-fix), so equality needs a stated mapping, tested both ways
+(`@one-normalizer-two-spellings`).
+
+## RM403 — a retried request leaves no log line, and a give-up says neither how many attempts nor how long
+
+**Severity** low · **Status** open — **a patch** (log lines only; no warning code, no result field), for the pm
+to place · **Owner** enricher (`net.py`, every tenacity policy; `ensembl.py` ~:207, `enrich/orchestration.py`
+~:1036, ~:1976) · **Motivating case** S133 in CONSUMER_SUGGESTIONS_HISTORY.md · *related* RM401, RM42
+
+**The gap.** No tenacity policy in the enricher sets `before_sleep`, and httpx logs responses only, so a
+timed-out attempt writes nothing. The registry saw 26 `ReadTimeout`s at 15.2 s and five rsIDs that spent all
+three attempts, about 48 s each, and the give-up warning named the error alone. An operator watching a slow
+sweep cannot tell attempts timing out from a slow server.
+
+**What it would be.** Every retry policy logs each attempt it is about to retry (client, subject, attempt n of
+m, the error, the wait), and each give-up line carries the attempts made and the seconds spent. An AST walk
+asserts every `retry(` in the enricher names the shared `before_sleep`, so a new client cannot be silent.
+
+## RM404 — `enrich()` builds its own NCBI client and sequence proxy, so a host cannot pace them with the rest
+
+**Severity** low · **Status** open — **a minor** (new public parameters), for the pm to place · **Owner**
+enricher (`enrich()` signature, `identifiers.check_rsids`, `sequences.SequenceProxy`) · **Motivating case** S133
+in CONSUMER_SUGGESTIONS_HISTORY.md · *related* RM396, RM385
+
+**The gap.** `enrich()` takes `resolver=`, `gnomad_client=` and `grch37_client=`, but builds its own eutils client
+for the dbSNP check (`check_rsids` takes `client=`, and `enrich` does not pass one through) and a fresh
+`SequenceProxy` per call. A host running modules in parallel through one paced bundle cannot share either, and
+the registry runs such enrichments one at a time for it. Beneath the proxy, ga4gh's seqrepo REST proxy calls
+`requests.get` with no timeout (`ga4gh/vrs/dataproxy.py`, vrs-python 2.3.3, each call marked `noqa: S113`); the
+registry counted 141 serial unpaced reads on one module, 36 s.
+
+**What it would be.** `enrich()` accepts the eutils client and the sequence proxy the way it accepts the
+resolver, or a whole `LookupClients`; which is the design question, and the fewer-entities rule weighs toward
+the bundle. **Residuals, to be stated at closure:** the missing timeout is vrs-python's, upstream of this
+repository; a proxy of our own that adds one would be the workaround the house rules refuse. RM396 (public gates
+and intervals, parked) unparks when a host needs a second client's pace, which this may meet; that is the pm's
+reading.
+
+## RM405 — an offline enrichment's floor is the Ensembl snapshot's lookups, and the snapshot has no rsID index
+
+**Severity** low · **Status** open — **a minor or a patch, by design**, for the pm to place · **Owner** enricher
+(`resolver._lookup_rsid_candidates`, `_lookup_positions_by_rsid`, `_lookup_rsid_sets_by_position`,
+`_lookup_rsids_by_position`) · **Motivating case** S133 in CONSUMER_SUGGESTIONS_HISTORY.md · *related* RM372,
+RM303
+
+**The gap.** The registry measured 9 of an offline enrichment's 10 s in four duckdb queries over the snapshot's
+parquet view. Two of the four are rsID lookups and two are by position (the registry's note calls all four
+by rsID); each scans the 1.17-billion-record snapshot with no index. Which query costs what was not measured
+here.
+
+**What it would be.** Measure the four first. Then either fewer scans in one run (one rsID pass, one positional
+pass), or a lookup the snapshot's sort order serves. **Residuals, to be stated at closure:** an rsID-sorted
+sidecar or an index is the snapshot builder's, prepare-annotations, and its layout is RM303's contract.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
