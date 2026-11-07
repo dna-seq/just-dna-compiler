@@ -1,6 +1,6 @@
 # Lead notes
 
-The lead's working state, rewritten to the present before each reset. Last rewritten 2026-11-03, at first seating.
+The lead's working state, rewritten to the present before each reset. Last rewritten 2026-11-07.
 
 ## First seating (2026-11-03): the handout's first work
 
@@ -47,15 +47,15 @@ None open.
 - **0.8.0 released, 2026-11-05.** Published on PyPI by the person; tag `v0.8.0` on e97339a3; GitHub release
   up; docs refreshed (INTEGRATION_0_7 archived) and merged. RELEASE_CYCLE step 10 now makes tag, GitHub
   release and docs refresh the lead's after every publish (auto-mode rule 13 covers the release, kit #283).
-- **Patches on `main` since the cut, uncut:** RM397 (the enricher wheel no longer ships the Atlas proto
-  sources twice), `scripts/build-dists.sh` (wipes `dist/`, builds every member, exit 3 on a non-`.py` share
-  over 3% or duplicate bytes), `uv-build<0.13`. They go into the next patch cut.
-- **The next patch also waits on** RM400 (both halves), RM401 (after its batch-omission probe) and RM403, placed
-  by the pm (`6047e082`, `d61974da`). Patch scope, so triage builds them; told triage 2026-11-07 that I am not,
-  and to hand me any it would rather not. I cut the patch once they are on `main`. RM402 waits on RM401.
-  All three landed (local `main`, 2026-11-07); the cut waits on triage making RM401's and RM403's new names
-  private (the pm's ruling, 0.9 makes them public with RM404, `929a2d97`): a public field or method is never
-  patch scope (RELEASE_CYCLE), and the pm declined a network-tier exception.
+- **0.8.1 released, 2026-11-07** (enricher only: RM397, RM398, RM400, RM401, RM403, RM407). Tag `v0.8.1`
+  on 6330f908, pushed. The GitHub release waits on the person (auto-mode rule 13 missing; notes in the
+  session scratchpad, `release_notes_0_8_1.md`).
+- **Next patch, uncut on `main`:** RM408 (7c075b70), the Open Targets lane's repo and private pull route.
+  **Cut it only after the person publishes the lane** (`cache rebuild --only opentargets --publish`, ~22 GB
+  download): until a snapshot is in `just-dna-seq/opentargets`, `cache prepare` reports the lane unpublished
+  instead of building it. ClinVar-GKM needed no code: `cache rebuild --only clinvar_gkm --publish`, the
+  person's. After both publish: ENRICHING.md § 3's `clinvar_gkm` "not published yet" example and § 4's
+  "build it once" go stale (the step-10 docs refresh).
 - **Cache:** `/data/just-dna-cache/ensembl_variations` is the split release; the old one is
   `ensembl_variations.pre-0.8`, to drop on the person's word. The just-dna-lite side still to be told.
 - **Desk:** #210 (should the liaison keep `docs/DOWNSTREAM.md`, who waits on us; default: no list) and
