@@ -41,7 +41,28 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
-## 2026-11-07 — RM401: live Ensembl asks many rsIDs per request (patch, uncut)
+## 2026-11-07 — `v0.8.1`: enricher 0.8.1 (a patch, cut from `main`; format and compiler stay 0.8.0)
+
+**Only `just-dna-enricher` moves.** Neither `just-dna-format` nor `just-dna-compiler` changed a line of
+source since `v0.8.0`, so both keep 0.8.0, are not built, and the enricher's floors stay `>=0.8.0`. Their
+`uv-build<0.13` bound (below) therefore ships with their next release, not this one. Nothing adds a
+field, table, parameter, public function or warning code: RM401's and RM403's new names are private in the
+0.8 patch line, and 0.9 makes the batch knobs settings with RM404. The compiler is unchanged, so there is
+no release record: a sweep would compare 0.8.0 with itself, and a compiled module needs no recompile.
+
+- **RM401** — the live Ensembl link and the REST placement witness ask 20 rsIDs per request.
+- **RM400** — a corrected derivation: live REST no longer writes loci on GRCh38 patch and alt contigs,
+  and a re-derivation leaves recorded ones out instead of reporting `lost_allele`.
+- **RM403** — every retry writes a WARNING line, and every give-up names its attempts and seconds.
+- **RM397** — the wheel no longer ships the Atlas `.proto` sources a second time.
+- **Tests and tooling** — the cross-tier floor check reads `just_dna_compiler.compiler` as a package
+  (it read every import of it as absent from 0.8.0), and `scripts/build-dists.sh`.
+
+**After upgrading**: `just-dna-enricher enrich <spec> --rederive` online rewrites a `resolution.csv` that
+live REST filled with patch or alt-contig loci (INTEGRATION_0_8 § 4 names the case). No HuggingFace
+snapshot changed.
+
+## 2026-11-07 — RM401: live Ensembl asks many rsIDs per request (patch, cut as `v0.8.1`)
 
 - **The live Ensembl link and the REST placement witness ask 20 rsIDs per `POST /variation/:species`**
   instead of one GET each (RM401, S133). Each rsID gets the answer its GET would give: an rsID the batch
@@ -50,7 +71,7 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   read timeout (120 s) are fixed private constants in the 0.8 patch line, and 0.9 makes them settings with
   RM404. Only `EnsemblResolver` batches; an injected resolver is asked one rsID at a time, as before.
 
-## 2026-11-07 — RM400: live REST no longer writes loci on GRCh38 patch and alt contigs, and a re-derivation leaves recorded ones out (patch, uncut)
+## 2026-11-07 — RM400: live REST no longer writes loci on GRCh38 patch and alt contigs, and a re-derivation leaves recorded ones out (patch, cut as `v0.8.1`)
 
 - **Live Ensembl REST drops a mapping off the GRCh38 primary assembly** (`HSCHR17_1_CTG5`, `HG76_PATCH`)
   instead of writing it as a locus (RM400, S132), as the snapshot and the tier's other readers already do.
@@ -59,7 +80,7 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   counting them. A table REST filled on 0.7 or 0.8.0 no longer reads such a subject as `lost_allele`; the
   committed table drops the patch rows. No drift arm, carry reason, result field or warning code is added.
 
-## 2026-11-07 — RM403: every retry writes a line, and every give-up says how many attempts and how long (patch, uncut)
+## 2026-11-07 — RM403: every retry writes a line, and every give-up says how many attempts and how long (patch, cut as `v0.8.1`)
 
 - **An enricher request that is retried now says so**, at WARNING on the `just_dna_enricher.net` logger:
   `EnsemblResolver._rest_rsid(rs1801133): attempt 1 of 3 failed (ReadTimeout: …); retrying in 0.6 s`, and on
@@ -68,7 +89,7 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   the give-up raises what it raised before. A host that filters the enricher's warnings will see more of them
   during an outage, one per retried attempt.
 
-## 2026-11-05 — the enricher wheel shipped its Atlas build input beside the generated tree (patch, uncut)
+## 2026-11-05 — the enricher wheel shipped its Atlas build input beside the generated tree (patch, cut as `v0.8.1`)
 
 - **The enricher wheel no longer carries `_atlas_protos/`** (RM397), the fetched AlphaGenome `.proto`
   sources the build generates the bindings from. Everything the runtime reads is under `generated/`, as

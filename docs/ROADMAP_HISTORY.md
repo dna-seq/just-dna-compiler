@@ -36,7 +36,7 @@ Patches on `main` after the 0.8.0 cut (2026-11-05), newest first.
 
 ## RM401 — the live Ensembl link and the REST witness asked one rsID per request, so a re-derivation waited on cold requests one at a time
 
-**SHIPPED 2026-11-07 on `main`, uncut — a patch, after its probe (S133, just-dna-registry's lead).** Owner
+**SHIPPED 2026-11-07 on `main`, cut 2026-11-07 as `v0.8.1` — a patch, after its probe (S133, just-dna-registry's lead).** Owner
 enricher, severity medium.
 
 **The class: a per-item loop against an API that takes a batch.** Both REST callers, the live link and
@@ -92,7 +92,7 @@ fixed numbers hold.
 
 ## RM400 — the REST rung wrote placements on GRCh38 patch and alt contigs, which no snapshot carries, so a re-derivation reported a lost allele that did not move
 
-**SHIPPED 2026-11-07 on `main`, uncut — a patch, both halves (S132, just-dna-registry's lead).** Owner
+**SHIPPED 2026-11-07 on `main`, cut 2026-11-07 as `v0.8.1` — a patch, both halves (S132, just-dna-registry's lead).** Owner
 enricher, severity low.
 
 **The class: one link keeps what every other reader of the tier drops.** `_loci_from_rest` kept any
@@ -132,7 +132,7 @@ the registry's `lost_allele`.
 
 ## RM403 — a retried request left no log line, and a give-up said neither how many attempts nor how long
 
-**SHIPPED 2026-11-07 on `main`, uncut — a patch (S133, just-dna-registry's lead).** Owner enricher, severity
+**SHIPPED 2026-11-07 on `main`, cut 2026-11-07 as `v0.8.1` — a patch (S133, just-dna-registry's lead).** Owner enricher, severity
 low.
 
 **The class: a retry that is silent until it gives up, and a give-up that cannot say what it gave up on.**
@@ -166,7 +166,7 @@ path. The rule is in ENRICHER.md's rate-limit rules.
 
 ## RM397 — the enricher wheel shipped its Atlas build input beside the generated tree
 
-**SHIPPED 2026-11-05 on `main`, uncut — a patch (found by the lead while scripting the dist build).** Owner
+**SHIPPED 2026-11-05 on `main`, cut 2026-11-07 as `v0.8.1` — a patch (found by the lead while scripting the dist build).** Owner
 enricher, packaging, severity low.
 
 **The class: a build tree that is input to a later step was shipped beside that step's output.** The
