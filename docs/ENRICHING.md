@@ -211,14 +211,16 @@ from just_dna_enricher.locations import SNAPSHOT_REPO_IDS
 SNAPSHOT_REPO_IDS["ensembl"]      # 'just-dna-seq/ensembl_variations_split'
 ```
 
-`clinvar_gkm` is in that map, but nothing is published there yet, so `cache pull --only clinvar_gkm`
-says so, leaves nothing on disk, and ends with what it actually pulled; `clinvar-gkm build` builds it
-locally (`cache prepare` reports the same *nothing published yet* and does not build a pullable lane):
+`clinvar_gkm` is in that map and has a published snapshot (17 MB), so `cache pull --only clinvar_gkm`
+fetches it and ends with what is on disk; `clinvar-gkm build` still builds it locally instead:
 
 ```text
-  clinvar_gkm: not published yet — nothing is published at datasets/just-dna-seq/clinvar_gkm/data — the repo or its data/ does not exist. Build the snapshot locally (`cache rebuild --only …`), or publish one.
-nothing pulled; nothing published for: clinvar_gkm
+  clinvar_gkm: <base>/clinvar_gkm
+on disk: clinvar_gkm
 ```
+
+A lane whose repository holds nothing yet says *not published yet* and leaves nothing on disk, and
+`cache prepare` reports the same and does not build a pullable lane.
 
 A lane has three stages, and where one is absent the status says **why** as a field rather than
 leaving you to guess. A derived lane also names its parents: an absent parent is *could not run*,
@@ -235,7 +237,8 @@ the command's help says which.
 New in 0.8, the Open Targets lane fills three derived tables from one pinned release:
 `locus_to_gene.csv` (the locus-to-gene score of every GWAS credible set a module variant belongs to),
 `colocalisations.csv` and `consequences.csv` (per transcript), plus a fine-mapping posterior on
-`gwas_effects.csv`. Build the snapshot once with `opentargets build`, then:
+`gwas_effects.csv`. Provision the snapshot once, with `cache pull --only opentargets` (about 5.5 GB) or by
+building it from the Platform release with `opentargets build` (about 22 GB of download), then:
 
 ```bash
 just-dna-enricher opentargets enrich ./ot_mod
