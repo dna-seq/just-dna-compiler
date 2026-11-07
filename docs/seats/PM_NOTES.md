@@ -78,6 +78,10 @@ patches right after real use started, so the pm reads an audit sceptically: the 
 
 ## Open questions and owed work
 
+- **S132's three placed (2026-11-07), triage's ask.** RM399 into 0.9 (a real sweep heard nothing of a corrected
+  derivation; P3 met in prose only; near free). RM398 parked, gated on a planned snapshot move or a second report.
+  RM400 the next patch on `main`, both halves; my default for its design half is to filter the recorded side the
+  same way, adding no word. S132 noted on RM385 as its second case.
 - reflect after 2026-11-13: classes/base/BASE.md as of v0.1.136 (commit by path, `git commit --only`; read 2026-11-06, no concern).
 - **0.8's scope, agreed 2026-11-04.**
   - The final run's audit is in `docs/probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md`. The diffs were put to the

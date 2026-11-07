@@ -22,7 +22,8 @@ maintainer names, and the pm parks or unparks the rest. So this file keeps only 
 - **It is in the PacBio zone**: RM56, RM65 and RM66 wait on the same repeat-caller output as RM319;
 - **It is a leftover of longevitymap v2, the last zone named**: RM360, RM358, RM345 (with RM286, the same
   licence-shape design), RM294;
-- **A real run hits it**: RM265's warning fires on every compile of just-dna-lite's three ClinVar panel modules (S114).
+- **A real run hits it**: RM265's warning fires on every compile of just-dna-lite's three ClinVar panel modules (S114); RM399, added 2026-11-07,
+  because the registry's 0.8 sweep (S132) heard nothing of a corrected derivation the record cannot declare.
 
 The other 22 items moved to [ROADMAP.md](ROADMAP.md#active-items) as **a minor, parked**. Each states what
 unparks it, and each has a row in its gate audit. RM188 is one of them, so **0.9's theme is not decided**:
@@ -853,7 +854,9 @@ rework), which constrains every option below.
 
 **Severity** low · **Status** open — **a minor, 0.9** · **Owner** enricher (`sequences.py`) · **Motivating
 case** the registry's catalog sweep enriches offline by default, so on 0.8 its indels must be enriched online
-(the lead's advice for the registry's M12, 2026-11-05) · *related* RM273, RM270, RM381, RM382
+(the lead's advice for the registry's M12, 2026-11-05); and S132 (the registry's 0.8 replay, 2026-11-07), where
+an offline re-derivation left 23 subjects `undecided` that a local reference would have turned into `respelled`
+· *related* RM273, RM270, RM381, RM382
 
 **The gap.** Every reference base the enricher reads goes through `SequenceProxy`: left-aligning an indel
 (`_left_align`, RM273), minting an indel's VRS id, and the reference-allele check. Its default is the public
@@ -875,3 +878,30 @@ none is. "No reference configured" stays a named could-not-ask, never an absence
    (`CACHE_SURFACE.md`), or a URI the operator passes. The fewer-entities rule weighs toward the URI.
 
 **Residuals** none yet.
+
+## RM399 — a release cannot declare that a reference snapshot it reads moved, so `needs_recompile` says nothing about re-deriving
+
+**0.9, the pm (2026-11-07).** A real consumer's sweep (S132) read the 0.7 → 0.8 record and heard nothing of a corrected derivation that moved about 38% of insertions on the two chromosomes it measured. Principle 3 asks each release to declare its corrections readable offline, and 0.8 did so in prose only. Near free (P9: format tier, no authored column). Whether the 0.8.0 entry can carry the new field as well is the build's to check; if it can, the registry's sweep across 0.7 → 0.8 says re-derive. Shape, by the fewer-entities rule: a field beside the five axes before a record of its own; a new change kind breaks old readers (INTEGRATION_0_8 § 1.11), so it comes last.
+
+**Severity** medium · **Status** open — **a minor, 0.9** · **Owner** format
+(`release_records.py`, `vocab.VALID_RELEASE_CHANGE_KINDS`) with the enricher's default lanes as its subject ·
+**Motivating case** S132 in CONSUMER_SUGGESTIONS_HISTORY.md (just-dna-registry's lead, 2026-11-07) · *related*
+RM372, RM267, RM126, RM181, RM398
+
+**The gap.** `needs_recompile("0.7.0", "0.8.0")` declares 35 changes and none names RM372's snapshot switch,
+`resolution.csv` or a placement. That is the record doing its job: its five axes describe what the compiler
+does with a given spec, and a re-derivation changes the spec's derived input, for which the record has no axis.
+But 0.8 corrected a derivation there: RM267's insertions now land on dbSNP's event, and the registry measured
+roughly 38% of insertions on chr22 and chr9 as naming a different event across the switch. Principle 3 says a
+corrected derivation ships in any release but never silently, declared readable offline. 0.8 declares it in
+prose (INTEGRATION_0_8 § 1.29, the CHANGELOG), and a consumer's sweep, which reads the record, hears nothing.
+
+**What it would be.** A release states, beside its compiled-output changes, which reference lanes its enricher
+now reads at a different release (lane, old label, new label, the items the move corrects), and a reader asking
+across a span learns "re-derive" as well as "recompile". Whether that is a member of `release_records`, a field
+beside the five axes, or its own small record is the design question, and RM181's provenance tracker is a
+different one (what an *edit* moved about a module, not what a *release* moved about its inputs). Nothing here
+changes RM372's lane or any digest.
+
+**Sizing.** A new optional field or vocabulary member in the format tier: a minor, and an old-reader break if
+it is a new change kind, as `toolchain` was (INTEGRATION_0_8 § 1.11). P9: near free; no authored column.

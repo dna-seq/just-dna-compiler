@@ -1915,7 +1915,9 @@ Neither is built until a real module needs it.
 
 ## RM398 — `placement_agreement` has no witness at dbSNP scale, so most placed rsIDs are compared with nothing
 
-**Severity** medium · **Status** open — **a minor**, for the pm to place · **Owner** enricher (`placement.py`, a
+**Parked, the pm (2026-11-07)**, as filed from S132, under the maintainer's rule that a minor takes the zones they name and what real runs hit. The check misreports nothing: it publishes its one-witness count. What it lacks bites when a reference snapshot moves, which has happened once (0.7 → 0.8), and the six moved insertions were then settled by hand in minutes through NCBI's refsnp endpoint. It is the costliest of S132's three items (a new lane or client, three candidates, an open question whether dbSNP is independent of a snapshot built from it). **Unparks when** a release plans to move a reference snapshot (the moment placements next disagree), a second consumer reports a placement the witnesses could not decide (S132 was the first, and was settled by hand), a scope the maintainer highlights touches it, or the roadmap is empty.
+
+**Severity** medium · **Status** open — **a minor, parked** · **Owner** enricher (`placement.py`, a
 new lane or client, ENRICHER.md § Placement agreement) · **Motivating case** S132 in
 CONSUMER_SUGGESTIONS_HISTORY.md (just-dna-registry's lead, 2026-11-07) · *related* RM267, RM292, RM305, RM385,
 RM399
@@ -1955,35 +1957,12 @@ closure:** the snapshot keeping VEP's `SPDI` CSQ field (the registry's (d)) is t
 prepare-annotations, outside this repository; it normalises rather than witnesses, and would make candidate 1 a
 join.
 
-## RM399 — a release cannot declare that a reference snapshot it reads moved, so `needs_recompile` says nothing about re-deriving
-
-**Severity** medium · **Status** open — **a minor**, for the pm to place · **Owner** format
-(`release_records.py`, `vocab.VALID_RELEASE_CHANGE_KINDS`) with the enricher's default lanes as its subject ·
-**Motivating case** S132 in CONSUMER_SUGGESTIONS_HISTORY.md (just-dna-registry's lead, 2026-11-07) · *related*
-RM372, RM267, RM126, RM181, RM398
-
-**The gap.** `needs_recompile("0.7.0", "0.8.0")` declares 35 changes and none names RM372's snapshot switch,
-`resolution.csv` or a placement. That is the record doing its job: its five axes describe what the compiler
-does with a given spec, and a re-derivation changes the spec's derived input, for which the record has no axis.
-But 0.8 corrected a derivation there: RM267's insertions now land on dbSNP's event, and the registry measured
-roughly 38% of insertions on chr22 and chr9 as naming a different event across the switch. Principle 3 says a
-corrected derivation ships in any release but never silently, declared readable offline. 0.8 declares it in
-prose (INTEGRATION_0_8 § 1.29, the CHANGELOG), and a consumer's sweep, which reads the record, hears nothing.
-
-**What it would be.** A release states, beside its compiled-output changes, which reference lanes its enricher
-now reads at a different release (lane, old label, new label, the items the move corrects), and a reader asking
-across a span learns "re-derive" as well as "recompile". Whether that is a member of `release_records`, a field
-beside the five axes, or its own small record is the design question, and RM181's provenance tracker is a
-different one (what an *edit* moved about a module, not what a *release* moved about its inputs). Nothing here
-changes RM372's lane or any digest.
-
-**Sizing.** A new optional field or vocabulary member in the format tier: a minor, and an old-reader break if
-it is a new change kind, as `toolchain` was (INTEGRATION_0_8 § 1.11). P9: near free; no authored column.
-
 ## RM400 — the REST rung writes placements on GRCh38 patch and alt contigs, which no snapshot carries, so a re-derivation reports a lost allele that did not move
 
-**Severity** low · **Status** open — **a patch** (a corrected derivation of a derived table, no new column or
-code), for the pm to place · **Owner** enricher (`ensembl._loci_from_rest`, `enrich/rederive_words.py`) ·
+**Placed, the pm (2026-11-07): the next patch on `main`, both halves.** A real run hit it: the registry's own gate refused 4 of its modules. The REST half alone would not clear those 4, because their 0.7 tables already hold the off-primary loci, so the patch takes the design half too. The pm's default for that half, which the builder may push back on: neither a new drift arm nor a new carry reason, but the same off-primary filter applied to the recorded side before the comparison, counted in the report. The subject then re-derives on its primary placement, which did not move, and no new word is added. The fix's own risk is low: it is the filter the tier's other readers already apply.
+
+**Severity** low · **Status** open — **a patch**, the next on `main` (a corrected derivation of a derived
+table, no new column or code) · **Owner** enricher (`ensembl._loci_from_rest`, `enrich/rederive_words.py`) ·
 **Motivating case** S132 in CONSUMER_SUGGESTIONS_HISTORY.md (just-dna-registry's lead, 2026-11-07) · *related*
 RM268, RM362, RM376, RM394
 
@@ -2517,6 +2496,7 @@ possibly already satisfied, and the rest sound** — the sweep's value is mostly
 | **RM298** — no per-row ClinPGx provenance on `pharm_variants.csv` (parked 2026-11-05) | the currency check withholds on a real mixed module whose operator needed the answer | **Sound.** RM297's warning fires today. |
 | **RM306** — no exon structure in the tier (parked 2026-11-05) | a real module's AlphaGenome rows need an exon-level gene attribution | **Sound.** The AlphaGenome lane ships. |
 | **RM378** — errors carry no code (parked 2026-11-05) | a consumer needs to tell apart refusals RM377's two phrases do not cover | **Sound.** S129 already came in through `Sn`. |
+| **RM398** — no placement witness at dbSNP scale (parked 2026-11-07) | a release plans a reference-snapshot move, or a second consumer report of a placement the witnesses could not decide | **Sound.** A snapshot move is planned before it is built, and the `Sn` inbox is the channel S132 already used. |
 | **RM15** / **RM69** / **RM52** and the 1.0 queue | a major-version bump | **Sound, and not this kind of gate.** A release boundary is a schedule, not a satisfier. |
 
 **What the sweep did not find, stated so it is not re-run for a while.** No gate anywhere is parked on
