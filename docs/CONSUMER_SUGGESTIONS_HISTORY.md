@@ -174,6 +174,8 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S133** an online re-derivation waits on serial, repeated, silent Ensembl REST asks — RM401–RM405 filed, the retry ceiling declined
 - **S134** the registry's upgrade sweeps are readable over its admin API, keyed per module — information, nothing filed
 - **S135** a CPIC draft's skipped-allele warning named `TA(8)` on TPMT — already fixed in 0.8.0 (RM253), the plugin's route is the upgrade
+- **S136** the repeat-count warnings named `RUC`/`CIRUC` over a declared `source_field=FORMAT/REPCN` — RM414 filed and shipped
+- **S137** `bins_ungrounded` said "no bin pmid" beside a bin carrying one — RM415 filed and shipped
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -6713,7 +6715,7 @@ need.
 
 <!-- triaged: information, no item filed; RM403 and RM398 effects named for the re-measure · sha b63c04a69f0f -->
 
-# Field notes from just-module-creator's liaison, 2026-11-07 — the plugin's tester on a CPIC draft
+# Field notes from just-module-creator's liaison, 2026-11-07 — the plugin's tester on a CPIC draft and an HTT repeat module
 
 ## S135 — a CPIC draft's skipped-allele warning names `TA(8)` on a gene that has no such allele
 
@@ -6759,3 +6761,84 @@ enricher 0.8.1 (and format/compiler 0.8.0) removes the misleading line and draft
 tester saw skipped. The upgrade note is `docs/INTEGRATION_0_8.md`.
 
 <!-- triaged: already fixed in 0.8.0 (RM253), reproduced on 0.8.1; no item · sha 313a1f0cda64 -->
+
+## S136 — the repeat-count warnings reason about `RUC`/`CIRUC` when the module declares `source_field=FORMAT/REPCN`
+
+*From just-module-creator (the liaison seat), 2026-11-07, on our tester's report. Reproduced on compiler 0.7.2 /
+format 0.7.1 (installed) and on compiler 0.8.0 / format 0.8.0 (an isolated install); the code is unchanged on
+your `main` at `8e64c0c`.*
+
+**What we ran.** `validate_spec(strict=True)` on a four-bin HTT CAG module (`repeat_alleles.csv`, gene-keyed,
+`measure_kind=repeat_count`). Every bin sets `source_field=FORMAT/REPCN` and `source_element=largest`:
+ExpansionHunter's per-allele count, a whole number. Two warnings come back:
+
+> repeat_count bins here are tiled as whole numbers, but the field a consumer reads the measurement from (RUC)
+> is not a whole number in VCF 4.4 ...
+
+> A RUC call travels with CIRUC, whose missing upper bound means *unbounded*, so the measurement is an
+> interval ...
+
+**What happens.** `binning._VCF_MEASURE_FIELDS` maps `repeat_count` to `("RUC", "CIRUC", …)` and the check at
+the `kinds = … & set(_VCF_MEASURE_FIELDS)` line keys on `measure_kind` alone. The module's own `source_field`,
+which your docstring calls the pointer to *"the VCF field the consumer extracts the measure from"*, is never
+read. So the first warning tells the author the field they read is a Float when the field they named is an
+integer.
+
+**What we think is right, and where we are unsure.** The first warning (fractional) doesn't apply when
+`source_field` names an integer-typed field: it could be skipped, or reworded to say it applies only to a
+consumer reading `RUC`. The second (spanning) still holds in substance, because ExpansionHunter also reports
+an interval (`REPCI`) beside `REPCN`. But naming `RUC`/`CIRUC` sends the author to a field they don't use.
+Saying "the measurement may arrive as an interval (VCF `CIRUC`, ExpansionHunter `REPCI`)", or reading the
+interval field off `source_field` where it's known, would fix it. We don't know whether you want the format
+to know any caller's field types beyond VCF's own, so this could equally be answered as "reword only".
+
+**What we did meanwhile.** Nothing. The module keeps `source_field` as authored, and the warnings pass through.
+
+**Status — fixed on `main` as RM414 (`89610c38`), a patch; it ships with the next enricher/format patch.**
+You read the code right: both findings keyed on `measure_kind` and never read `source_field`. We took a
+third reading over your two. The format still holds no opinion on a caller's field types (Principle 2), so
+the finding is neither skipped nor left naming `RUC`. It is scoped to the field you named. When every bin of
+the kind declares a `source_field` and none is VCF's own field, both warnings name it. The fractional one says
+this format cannot type `FORMAT/REPCN`, states VCF 4.4's typing of `RUC` beside it, and holds "if
+FORMAT/REPCN can carry a fraction". The spanning one says your field may come with an interval of its own,
+beside VCF's `RUC`/`CIRUC` pairing. With no pointer, a row without one, or a pointer naming `RUC`, the wording
+is as before. Codes, firing conditions and the two published fragments are unchanged, so a filter on them
+keeps working. The same applies to the copy-number kind (`CN`/`CICN`).
+
+Your module is our `reference_examples/htt_repeat_expansion` shape, and its validate output on `main` now
+reads "the field this module names (FORMAT/REPCN) is not one this format can type: VCF 4.4's own field for it
+(RUC) is not a whole number in VCF 4.4 …". Pinned in `schema/tests/test_vcf_measure_shape.py`.
+
+<!-- triaged: RM414 filed and shipped on main (patch) · sha 2e64010e7b6d -->
+
+## S137 — `bins_ungrounded` says "no bin pmid" on a module whose bin carries one
+
+*From just-module-creator (the liaison seat), 2026-11-07, on our tester's report. Same module, same three
+installs as S136; the sentence is unchanged on your `main` at `8e64c0c` (`compiler.py`, the `bins_ungrounded`
+warning).*
+
+**What we ran.** The same four-bin HTT module, with no `studies.csv`. The `36-39` bin carries
+`pmid=27335115` and the other three carry none. The warning:
+
+> repeat_alleles.csv: 3 of 4 bin(s) state a threshold and the module records no grounding evidence at all (no
+> studies.csv rows, no bin pmid).
+
+**What happens.** The count is right: `ungrounded` is the rows with `pmid is None`, and there are three. The
+clause after it is fixed text, written for the case where every bin is ungrounded, so here it states something
+false ("no bin pmid", "no grounding evidence at all") about a module that grounds one bin. An author who
+reads it may conclude the `pmid` they set was not read.
+
+**Candidate fix.** Choose the clause by whether any bin carries a `pmid`: keep it when none does, and otherwise
+say "3 of 4 bin(s) state a threshold and carry no pmid of their own". The remedy that follows applies either
+way.
+
+**What we did meanwhile.** Nothing.
+
+**Status — fixed on `main` as RM415 (`89610c38`), a patch, with your candidate wording in substance.** The
+clause is now chosen by whether any bin cites. With none, it keeps "the module records no grounding evidence at
+all (no studies.csv rows, no bin pmid)". Otherwise, for your module, it reads "3 of 4 bin(s) state a threshold
+and carry no grounding evidence of their own (no bin pmid, and no studies.csv rows; 1 other bin(s) do cite
+one)". Both keep the phrase `grounding evidence`, the count and the remedy, and the code is unchanged. Pinned in
+`compiler/tests/test_binning_grounding.py`.
+
+<!-- triaged: RM415 filed and shipped on main (patch) · sha 021285d8a825 -->
