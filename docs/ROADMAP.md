@@ -2032,7 +2032,9 @@ fake server and asserts it returns within a chunk's time.
 (`docs/UPSTREAM_DATA_SOURCES.md`, "Adoption note: gnomAD constraint 4.1 → 4.1.2"). **Class and severity: the
 pm's to size.**
 
-**Owner** enricher (`constraint_build.py`, the `constraint` lane) · *related* RM229, RM408
+**Severity** low · **Status** open — **a patch**, the next on `main`; its publish waits on the maintainer, as
+RM408's does · **Owner** enricher (`constraint_build.py`, the `constraint` lane; `gene_metrics.py`) · *related*
+RM229, RM408
 
 **What the note found.** 4.1.1 recomputes pLI, LOEUF, o/e and the z-scores (low-coverage coding loci by AN, chrX
 and chrY for the first time, a revised LOFTEE `END_TRUNC`); 4.1.2 fixes only the rank and bin fields 4.1.1 got
@@ -2043,6 +2045,28 @@ wrong, so 4.1.2 is the one to take. Every column `_COLUMN_MAP` reads is present 
 `gene_metrics.csv` drafted from the old snapshot then reads as stale against the lane, which is a content change
 consumers see, not a relabel; and `@constraint-two-releases`: which release the live API route answers must be
 checked before the snapshot moves past it.
+
+**Sized, the pm (2026-11-07): a patch.** Nothing a reader of the schema sees moves: a URL, a gzip read, the lane's
+label and its declared size. Principle 3 sizes it by the schema and leaves the content to its staleness clause, so it
+may ship in a patch, declared in the CHANGELOG and not silently. A new release upstream is not a defect of ours, so
+severity is low. What it buys is chrX and chrY metrics for the first time, and gnomAD's corrected LOEUF.
+
+- **The live-route question is already answered.** The live `gnomad_constraint` API serves v2.1.1
+  (`API_CONSTRAINT_DATASET_LABEL`), not 4.1, so moving the snapshot to 4.1.2 crosses nothing. The two routes keep
+  different labels, as now.
+- **The build must also handle one thing the note did not name: a re-run over a module that already holds 4.1
+  rows.** `enrich_gene_metrics` counts a gene as done only when its row carries one of the pass's two current
+  labels (`pass_datasets`, `gene_metrics.py`). Once the snapshot says 4.1.2, a 4.1 row is no longer the pass's, so
+  the gene is fetched again and a 4.1.2 row is appended beside the 4.1 one. The module then states two pLI values
+  for one gene, and a consumer joining on `gene` gets both. The fix stays in patch scope: the pass counts a row
+  from any release of the constraint snapshot lane as its own, so a default re-run adds nothing. Moving a module
+  to 4.1.2 is then the author's choice, made by deleting the sidecar (`@sidecar-authoritative`). Its test: a sidecar
+  with a 4.1 row, re-enriched against a 4.1.2 snapshot, comes back unchanged.
+- **The note says modules "read as stale" against the new lane, but nothing reports that today.** gnomAD has no
+  release probe (`currency.default_probes` asks ClinVar, the PGS Catalog and ClinVar-GKM only). A probe is not
+  part of this item. It is a residual, to be filed if a consumer asks to be told.
+- **For the build, not a decision:** the 4.1.2 file is 574.5 MB compressed, with 113 columns, some of them arrays.
+  Select the columns `_COLUMN_MAP` reads while streaming the file, rather than decompressing all of it into memory.
 
 # Not format scope
 
