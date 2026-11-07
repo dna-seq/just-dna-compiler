@@ -3,7 +3,8 @@
 #
 # The root `pyproject.toml` is a workspace with no project of its own, so a bare `uv build` there
 # fails (setuptools finds seven top-level directories). Each package is built by name instead, and
-# the names are read from `[tool.uv.workspace] members`, so a new member needs no edit here.
+# the names are read from `[tool.uv.workspace] members`, so a new member needs no edit here. Names given
+# as arguments build only those members, for a cut that moves only some packages.
 #
 # `dist/` is wiped first: `uv publish` uploads everything in it, so an earlier build's files would
 # ride along. Never build into a `dist/` you mean to keep.
@@ -40,6 +41,17 @@ PY
 if [ "${#PACKAGES[@]}" -eq 0 ]; then
     echo "build-dists: no workspace members found in pyproject.toml" >&2
     exit 1
+fi
+# A cut moves only the packages that changed (RELEASE_CYCLE, "one number per cut"), and `uv publish`
+# uploads all of `dist/`, so a partial cut names its packages: `scripts/build-dists.sh just-dna-enricher`.
+if [ "$#" -gt 0 ]; then
+    for pkg in "$@"; do
+        if [[ ! " ${PACKAGES[*]} " == *" $pkg "* ]]; then
+            echo "build-dists: $pkg is not a workspace member (members: ${PACKAGES[*]})" >&2
+            exit 1
+        fi
+    done
+    PACKAGES=("$@")
 fi
 
 rm -rf dist
