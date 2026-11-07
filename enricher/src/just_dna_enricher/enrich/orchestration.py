@@ -7,8 +7,9 @@ logic edit, not a move.
 
 import logging
 from collections.abc import Callable, Iterable, Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from just_dna_compiler.compiler import _restamp_for_build, load_csv_rows
 from just_dna_compiler.resolution import (
@@ -94,11 +95,10 @@ from just_dna_enricher.enrich.subjects import (
 from just_dna_enricher.enrich.verification_records import _verification_records
 from just_dna_enricher.ensembl import (
     EnsemblResolver,
-    RestWitness,
     RsidResolver,
     _BatchResolver,
-    _RestBatchWitness,
 )
+from just_dna_enricher.eutils import EutilsClient, EutilsError
 from just_dna_enricher.events import authored_event
 from just_dna_enricher.gnomad import GnomadClient, GnomadError
 from just_dna_enricher.grch37 import Grch37Client, diagnose_wrong_build, summarize_build_diagnoses
@@ -120,14 +120,14 @@ from just_dna_enricher.locations import (
     resolve_ensembl_reference,
     resolve_pubmind_reference,
 )
-from just_dna_enricher.net import RETIRED, could_not_ask_reason, withheld_reason
+from just_dna_enricher.net import could_not_ask_reason
 from just_dna_enricher.placement import (
+    _DBSNP_WITNESS,
     CLINVAR_GKM_WITNESS,
     CLINVAR_WITNESS,
     ENSEMBL_WITNESS,
-    Loci,
     PlacementCheck,
-    _ask_live_witness,
+    _dbsnp_witness,
     answered_placements,
     compare_placements,
     live_witness_subjects,
@@ -153,11 +153,41 @@ from just_dna_enricher.vrs import MintResult, VrsMinter, mint_resolution_rows
 
 logger = logging.getLogger("just_dna_enricher.enrich")
 
-#: The placement record's not-asked reason when Ensembl REST answered a 410 (RM361, audit round 2).
+#: The placement record's not-asked reason when Ensembl REST answered a 410 (RM361, audit round 2). Kept as
+#: 0.8.0 shipped it; nothing asks REST as a witness since RM398.
 REST_RETIRED_REASON = (
     "Ensembl REST answered HTTP 410 at least once in this run: it retired a route this enricher asks, "
     "so upgrade just-dna-enricher (the source's own words are in the run's log)"
 )
+#: The placement record's not-asked reason when the merge check, whose dbSNP record the witness reads, is off.
+_DBSNP_SWITCHED_OFF = (
+    "the rsID merge check is switched off (verify_rsids=False), and the dbSNP witness reads that check's "
+    "record (RM398)"
+)
+
+
+@dataclass
+class _RecordedEutils(EutilsClient):
+    """An `EutilsClient` that fetches each `esummary` record once per run (RM398).
+
+    The dbSNP witness reads the merge check's `esummary db=snp` records before the merge check runs, so
+    both are served one fetch: the merge check is handed this client and asks only what the witness did
+    not. Every uid asked is remembered, a missing one as `{}`, which `check_rsids` already reads as absent.
+    """
+
+    _recorded: dict[tuple[str, str], dict[str, Any]] = field(default_factory=dict, repr=False)
+
+    def esummary(self, db: str, ids: list[str]) -> dict[str, dict[str, Any]]:
+        wanted = [uid for uid in dict.fromkeys(ids) if (db, uid) not in self._recorded]
+        if wanted:
+            fetched = super().esummary(db, wanted)
+            self._recorded.update({(db, uid): fetched.get(uid, {}) for uid in wanted})
+        return {uid: self._recorded[(db, uid)] for uid in ids}
+
+
+def _dbsnp_client() -> _RecordedEutils:
+    """The run's NCBI client for the dbSNP witness and the merge check; a test patches this (RM398)."""
+    return _RecordedEutils()
 
 
 def _split_by_layer(behind: list[DatasetCurrency]) -> tuple[list[DatasetCurrency], list[DatasetCurrency]]:
@@ -946,8 +976,6 @@ def _run_enrichment(
     # The data release live REST answered from, asked once and only when it answered (RM373). Read by
     # `EnsemblResolver` only: a host may inject a resolver that cannot say, and that one records none.
     rest_release: str | None = None
-    # Whether `/info/data` was asked this run, so the REST witness below reuses the answer, a `None` too.
-    rest_release_asked = False
     if live_ensembl_runs:
         # Once per rsID: a second request for an answer just set aside would record the same rejection twice.
         # Never an rsID whose live answer, staged by an interrupted run, was just set aside: asking again
@@ -1005,7 +1033,6 @@ def _run_enrichment(
                 # resolver makes no such promise, so an optional provenance label could abort the run.
                 if rest_answered and isinstance(client, EnsemblResolver):
                     rest_release = client.data_release()
-                    rest_release_asked = True
             finally:
                 if owned:
                     client.close()
@@ -1072,73 +1099,43 @@ def _run_enrichment(
         {v.rsid for v in subjects if v.rsid and _subject_key(v) not in covered} & set(rsid_to_loci)
     )
     clinvar_gkm_ref = resolve_clinvar_gkm_reference(clinvar_gkm_cache) if genome_build == "GRCh38" else None
-    # The release REST answered the witness from (RM373), `None` when it was not asked. A run whose
-    # snapshot answered everything never used REST as a link, so the witness asks for itself, once.
-    rest_witness_release: str | None = None
+    # The dbSNP witness and the merge check share one client, so each rsID's record is fetched once (RM398).
+    dbsnp = _dbsnp_client() if verify_rsids and not offline else None
     if genome_build != "GRCh38":
         placement = PlacementCheck(not_checked="unsupported")
     else:
         witnesses = load_witnesses(clinvar_ref, clinvar_gkm_ref, fresh_rsids)
         fresh_loci = {rsid: rsid_to_loci[rsid] for rsid in fresh_rsids}
-        # The third witness, online only: Ensembl REST, asked about a snapshot indel no loaded witness
-        # holds (S117's own `rs8176719`). Through the run's live client, so an injected resolver is
-        # honoured; its answers are never journalled, since a witness's answer is not a placement this
-        # run writes. Self-consistent with the snapshot by RM292's rule — see `placement`.
+        # The third witness, online only: dbSNP, asked about a snapshot indel no loaded witness holds
+        # (S117's own `rs8176719`), through the `esummary db=snp` record the merge check fetches anyway.
+        # Self-consistent with the snapshot, which is built from dbSNP, by RM292's rule — see `placement`.
         asked_about: dict[str, set[str]] = {}
-        rest_not_asked: list[str] = []
-        rest_not_asked_reason: str | None = None
-        rest_subjects = (
-            live_witness_subjects(fresh_loci, source_of_rsid, witnesses) if live_ensembl_runs else []
-        )
-        if rest_subjects:
-            owned = resolver is None
-            client = resolver or EnsemblResolver()
-            rest_answers: Loci = {}
+        dbsnp_not_asked: list[str] = []
+        dbsnp_not_asked_reason: str | None = None
+        dbsnp_subjects = live_witness_subjects(fresh_loci, source_of_rsid, witnesses) if not offline else []
+        if dbsnp_subjects and dbsnp is None:
+            dbsnp_not_asked, dbsnp_not_asked_reason = list(dbsnp_subjects), _DBSNP_SWITCHED_OFF
+        elif dbsnp_subjects and dbsnp is not None:
+            logger.info(
+                "Placement witness — reading dbSNP's placement of %d snapshot indel(s) no loaded witness "
+                "holds, from the merge check's record (RM398).",
+                len(dbsnp_subjects),
+            )
             try:
-                # An optional capability of an injected resolver, asked only where it exists: a host's
-                # resolver written before 0.8 has `resolve_rsid` alone, and calling the method blindly
-                # raised `AttributeError` at the first eligible indel.
-                if isinstance(client, RestWitness):
-                    batch = isinstance(client, _RestBatchWitness)
-                    logger.info(
-                        "Placement witness — asking Ensembl REST about %d snapshot indel(s) no loaded "
-                        "witness holds, %s (RM267).",
-                        len(rest_subjects),
-                        "in batches (RM401)" if batch else "one request at a time",
-                    )
-                    rest_answers, rest_not_asked = _ask_live_witness(
-                        client._resolve_rsids_rest
-                        if batch
-                        else lambda rsids: ((rsid, client.resolve_rsid_rest(rsid)) for rsid in rsids),
-                        rest_subjects,
-                    )
-                    # A 410 is a fact the resolver noted (`Withholding`, RM361): the not-asked sentence
-                    # says so, never the outage default it fell back to (audit round 2). A fixed
-                    # sentence rather than the source's body, which the log already carries: the record
-                    # is attested and lap-stable, and the note is sticky, so it claims "at least once".
-                    if rest_not_asked and withheld_reason(client) == RETIRED:
-                        rest_not_asked_reason = REST_RETIRED_REASON
-                    # Our own client only, as for the link: a host's resolver makes no withholding promise.
-                    if rest_answers and isinstance(client, EnsemblResolver):
-                        rest_witness_release = rest_release if rest_release_asked else client.data_release()
-                else:
-                    rest_not_asked = list(rest_subjects)
-                    rest_not_asked_reason = (
-                        f"the injected resolver ({type(client).__name__}) has no `resolve_rsid_rest`, so "
-                        "this run could not ask Ensembl REST"
-                    )
-                    logger.warning(
-                        "Placement witness — Ensembl REST not asked about %d snapshot indel(s): %s; pass an "
-                        "`EnsemblResolver`, or give yours the method, to have them compared (RM267).",
-                        len(rest_subjects),
-                        rest_not_asked_reason,
-                    )
-            finally:
-                if owned:
-                    client.close()
-            if rest_answers:
-                witnesses[ENSEMBL_WITNESS] = rest_answers
-                asked_about[ENSEMBL_WITNESS] = set(rest_answers)
+                records = dbsnp.esummary("snp", [rsid.removeprefix("rs") for rsid in dbsnp_subjects])
+            except EutilsError as exc:
+                logger.warning("Placement witness — dbSNP could not be asked (%s).", exc)
+                dbsnp_not_asked = list(dbsnp_subjects)
+                dbsnp_not_asked_reason = f"dbSNP could not be reached: {exc}"
+            else:
+                dbsnp_answers, dbsnp_not_asked = _dbsnp_witness(
+                    records,
+                    dbsnp_subjects,
+                    lambda chrom, pos: read_window(chrom, pos, pos) if read_window else None,
+                )
+                if dbsnp_answers:
+                    witnesses[_DBSNP_WITNESS] = dbsnp_answers
+                    asked_about[_DBSNP_WITNESS] = set(dbsnp_answers)
         placement = compare_placements(
             fresh_loci,
             {rsid: resolution_authority(source_of_rsid.get(rsid)) for rsid in fresh_rsids},
@@ -1147,8 +1144,8 @@ def _run_enrichment(
             read_window=read_window,
             asked_about=asked_about,
         )
-        placement.not_asked = rest_not_asked
-        placement.not_asked_reason = rest_not_asked_reason
+        placement.not_asked = dbsnp_not_asked
+        placement.not_asked_reason = dbsnp_not_asked_reason
         if not fresh_rsids:
             placement.not_checked = "nothing_to_check"
         elif not witnesses:
@@ -1230,7 +1227,10 @@ def _run_enrichment(
         {
             CLINVAR_WITNESS: clinvar_release,
             CLINVAR_GKM_WITNESS: clinvar_gkm_release,
-            ENSEMBL_WITNESS: rest_witness_release,
+            # Nothing asks REST as a witness since RM398: a row this run wrote never names it.
+            ENSEMBL_WITNESS: None,
+            # The `esummary db=snp` record names no dbSNP build, so the release is withheld, never guessed.
+            _DBSNP_WITNESS: None,
         }
     )
     # Rows put back as recorded, by identity: what this run did not answer (`table_releases`).
@@ -1976,7 +1976,7 @@ def _run_enrichment(
         asked = sorted({r.rsid for r in out if r.rsid} | set(member_rsids))
         rsid_subjects = len(asked)
         try:
-            statuses = check_rsids(asked)
+            statuses = check_rsids(asked, client=dbsnp)
         except IdentifierUnavailable as exc:
             # The same rule as the gnomAD block above, and it had no handler at all (RM97): this is a
             # *validation* pass that runs after every other pass has finished and before
@@ -2010,6 +2010,8 @@ def _run_enrichment(
             logger.warning("Stale rsID — %s", status)
     elif verify_rsids:
         logger.info("rsID currency check skipped: --offline (dbSNP has no offline merge table).")
+    if dbsnp is not None:
+        dbsnp.close()
 
     # Fourth validation pass: for a row that authored both an rsID and a coordinate, does the pair
     # agree with the reference? This is the enricher's half of a question the compiler also asks —

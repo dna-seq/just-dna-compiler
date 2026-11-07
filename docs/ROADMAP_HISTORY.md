@@ -34,6 +34,59 @@ up.
 
 Patches on `main` after the 0.8.0 cut (2026-11-05), newest first.
 
+## RM398 — `placement_agreement` had no witness at dbSNP scale, and its third witness cost a cold REST request per indel
+
+**SHIPPED 2026-11-07 on `main`, uncut — a patch, candidate 0 (S132, just-dna-registry's lead; the maintainer's
+ask).** Owner enricher, severity medium.
+
+**The class: a record the run already holds, read for one field and discarded for the one a check needed**
+(`@dont-discard-computed`). The rsID merge check fetches `esummary db=snp` for every rsID an online run
+carries and kept only live, merged or absent. The same record carries dbSNP's GRCh38 SPDI, the placement
+the third placement witness was buying from live Ensembl REST one cold request per indel (S133).
+
+**Instances (the witness, the run's order, the roster):**
+
+- `placement._dbsnp_placements` reads the record's `spdi` (comma-separated, `accession:position:deleted:
+  inserted`, 0-based): an accession off the GRCh38 primary assembly is no locus, a two-sided allele sits at
+  `position + 1`, a one-sided one is anchored on the base at `position` (`anchor_indel`, REST's interbase
+  convention), each ALT is handed on alone (`per_alt_loci`). A missing record is the answered-empty `[]`; an
+  indel with no readable anchor base is not asked (RM268's rule). A merged id's record is the current id's,
+  served under the asked uid, and is compared as the asked rsID.
+- The witness reads before the merge check, through `_RecordedEutils`, an `EutilsClient` that remembers each
+  uid it fetched; the merge check is handed the same client (`check_rsids(asked, client=…)`) and asks only
+  what the witness did not. So the run asks dbSNP nothing it did not ask before, and asks REST nothing as a
+  witness. Same subjects as REST had (`live_witness_subjects`: snapshot indels no loaded witness holds), the
+  same gate as the merge check (`verify_rsids` and not offline). The merge check off leaves every subject
+  counted as not asked, with that reason.
+- The witness is `dbsnp`, its own authority, so the licence join stays true (`@source-vs-authority`), with a
+  public-domain terms entry (`_DBSNP_TERMS`). Independence keeps REST's reading: `_UPSTREAM_OF` names the
+  authorities a witness is upstream of, and dbSNP's agreement with an Ensembl placement is self-consistent,
+  not independent, since the snapshot is built from dbSNP 157. The record names no dbSNP build, so its
+  release is withheld. `ENSEMBL_WITNESS` stays in the roster (a recorded row may name it); `RestWitness`,
+  `ask_live_witness` and `REST_RETIRED_REASON` stay as 0.8.0 shipped them; nothing asks them. No public name
+  is added.
+
+**The measurement the pm asked for, bounded (2026-11-07).** Over the 169 snapshot indels of the reference
+examples (5 modules, the 0.8 split snapshot), each witness compared with the snapshot by
+`compare_placements`: dbSNP and REST disagreed with the snapshot on none, so no locus is withheld
+differently. Verdicts were identical on 157; on 11 dbSNP confirmed alleles REST left unplaced; on 1
+(`rs1569493663`, a PAR insertion) dbSNP's record places the Y copy only, so the X copy reads unplaced. S117's
+`rs8176719` is still caught (live, unmocked: dbSNP's SPDI anchors to ClinVar's `9:133257521 T>TC`).
+
+**The mechanism:** `test_placement_witness.py`'s REST-witness tests became dbSNP-witness tests over
+recorded `esummary` records behind the run's patched client: S117 withheld with `dbsnp` as the witness and
+the merge check asking no uid twice, an agreed indel written `dbsnp`/`same_event` and counted
+self-consistent with its licence row, an outage counted not asked with its reason, the merge check off
+counted not asked, a resolver with `resolve_rsid` alone needing nothing, offline asking nothing, the
+witness's release withheld, and a run using REST as a link asking it nothing as a witness. A network test
+reads the live record for S117.
+
+**Residuals** RM406 — dbSNP witnesses only REST's old subjects, and the count over the registry's
+46-module replay, which RM406 waits on, is the registry's re-measure; this build measured the reference
+examples only · won't fix — an offline dbSNP witness (a snapshot lane, the entry's candidate 1) is not
+needed while the merge check's record is online-only and free · won't fix — the snapshot keeping VEP's
+SPDI field belongs to prepare-annotations, the snapshot builder outside this repository
+
 ## RM407 — minting an indel's VRS id reads the reference a slice at a time over HTTP, about a dozen reads per indel
 
 **SHIPPED 2026-11-07 on `main`, uncut — a patch (the maintainer, reading the registry's replay log).** Owner

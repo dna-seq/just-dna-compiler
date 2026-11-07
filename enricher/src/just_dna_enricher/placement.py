@@ -41,30 +41,40 @@ rewritten (PROPOSAL_0_8_PT2 §4 question 3: no corrected spelling in 0.8, `@enri
 **Independence.** A placement the ClinVar link filled has no independent witness here — ClinVar-GKM is
 ClinVar's own release — so it is counted with the one-witness class and never compared.
 
-**Ensembl REST, the third witness, online only.** Neither loaded witness holds S117's own `rs8176719`
-(ClinVar has no record there, ClinVar-GKM lacks it), so against them it is one witness. REST does hold it,
-as `-/C` at the interbase point RM268 anchors to `9:133257521 T>TC`. So for an indel the Ensembl snapshot
-placed and no loaded witness holds, an online run asks the live REST rung (`live_witness_subjects`,
-`ask_live_witness`) and compares the answer by the same ladder. REST and the snapshot are one authority,
-Ensembl, so the witness is named `ensembl` — the licensed source `placement_witness` joins
-`sources.csv` on — and a comparison against it is **self-consistent, not independent** (RM292): it still
-catches the snapshot's dump disagreeing with Ensembl's own REST mapping, which is S117's case, but an
-agreement proves nothing about the placement, so a REST-only agreement stays in the one-witness count.
-A request that got no answer (unreachable after retries, or an anchor base that could not be read) leaves
-REST *not asked* for that rsID — counted, never agreement (`@unreachable-not-absent`) — and `--offline`
-asks nothing.
+**dbSNP, the third witness, online only (RM398).** Neither loaded witness holds S117's own `rs8176719`
+(ClinVar has no record there, ClinVar-GKM lacks it), so against them it is one witness. dbSNP does: the
+`esummary db=snp` record the merge check already fetches for every rsID carries dbSNP's GRCh38 SPDI,
+`NC_000009.12:133257521::C`, which anchors to `9:133257521 T>TC`. So for an indel the Ensembl snapshot
+placed and no loaded witness holds, an online run with the merge check on reads that record first
+(`_dbsnp_placements`; the merge check is then served the same records and asks nothing again) and
+compares it by the same ladder. The witness is named `dbsnp`, the source `placement_witness` joins
+`sources.csv` on. The snapshot was built from dbSNP, so a comparison against it is **self-consistent,
+not independent** (RM292): it catches the snapshot's processing disagreeing with dbSNP's own placement,
+which is S117's case, but an agreement proves nothing about dbSNP's placement, so it stays in the
+one-witness count (`_UPSTREAM_OF`). A record that could not be fetched, or an indel whose anchor base
+could not be read, leaves dbSNP *not asked* for that rsID, counted, never agreement
+(`@unreachable-not-absent`); `--offline` and a run with the merge check off ask nothing.
+
+**Until RM398 the third witness was live Ensembl REST** (`ensembl`), asked once per rsID: S133 measured
+REST's cold requests as most of an online re-derivation's time, and dbSNP's placement is in a record the
+run fetched anyway. `ENSEMBL_WITNESS` stays in the roster because recorded rows name it; nothing asks it.
+`live_witness_subjects` still chooses the subjects, and `ask_live_witness` stays as 0.8.0 shipped it.
 """
 
 import logging
-from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from just_dna_compiler.compiler import load_overlay
 
 from just_dna_enricher import clinvar
+from just_dna_enricher.civic_build import GRCH38_REFSEQ_ACCESSIONS
+from just_dna_enricher.clingen_allele import anchor_indel
 from just_dna_enricher.clinvar_gkm import ClinVarGkmWitness
+from just_dna_enricher.eutils import is_missing
 from just_dna_enricher.events import Mint, ReadWindow, _kind, alleles_of, counterparts, kleene_any, same_event
+from just_dna_enricher.sequences import per_alt_loci
 from just_dna_enricher.verification import examples
 
 logger = logging.getLogger(__name__)
@@ -72,10 +82,13 @@ logger = logging.getLogger(__name__)
 #: The two witnesses this tier holds offline, by the names `sources.csv` and the RM292 roster use.
 CLINVAR_WITNESS = "clinvar"
 CLINVAR_GKM_WITNESS = "clinvar_gkm"
-#: The live one: Ensembl REST, named by its licensed source because `placement_witness` joins
-#: `sources.csv` (`@source-vs-authority`). It is the snapshot's own authority, so it witnesses the
-#: snapshot self-consistently, never independently.
+#: Ensembl REST, the third witness until RM398 and asked by nothing since. Kept because a recorded row
+#: may name it (`placement_witness=ensembl`) and the release and licence maps read every roster member.
 ENSEMBL_WITNESS = "ensembl"
+#: dbSNP (RM398), named by its licensed source because `placement_witness` joins `sources.csv`
+#: (`@source-vs-authority`). Read off the merge check's `esummary db=snp` record, so the run asks
+#: nothing new for it.
+_DBSNP_WITNESS = "dbsnp"
 #: The resolution link whose placements the REST witness is asked about: the Ensembl snapshot. A row the
 #: live rung itself gave is never re-asked.
 _SNAPSHOT_LINK = "cache"
@@ -90,8 +103,12 @@ _NOT_INDEPENDENT: dict[str, frozenset[str]] = {
 #: partition `PLACEMENT_WITNESSES` under a test, so a new witness has to choose one.
 _ASKED_OF_ITS_OWN_AUTHORITY: dict[str, str] = {
     ENSEMBL_WITNESS: (
-        "REST is asked about the snapshot's placements by design (RM292): its disagreement withholds, "
-        "and its agreement is counted self-consistent, never independent"
+        "REST was asked about the snapshot's placements by design (RM292) until RM398, and is asked by "
+        "nothing since; a recorded row may still name it, and it is read as it was"
+    ),
+    _DBSNP_WITNESS: (
+        "dbSNP is asked about the snapshot's placements by design (RM398): the snapshot is built from it, "
+        "so its disagreement withholds and its agreement is counted self-consistent (`_UPSTREAM_OF`)"
     ),
 }
 #: The authority each witness belongs to. A witness compared against a placement of its own authority
@@ -102,7 +119,13 @@ _AUTHORITY_OF_WITNESS: dict[str, str] = {
     CLINVAR_WITNESS: CLINVAR_WITNESS,
     CLINVAR_GKM_WITNESS: CLINVAR_WITNESS,
     ENSEMBL_WITNESS: ENSEMBL_WITNESS,
+    _DBSNP_WITNESS: _DBSNP_WITNESS,
 }
+#: The authorities a witness is the **upstream** of: a placement one of them gave was built from the
+#: witness's own data, so the witness compares it self-consistently, never independently (RM398). dbSNP
+#: is its own authority, so the licence join stays true (`@source-vs-authority`), and Ensembl's snapshot is
+#: built from dbSNP 157, so dbSNP agreeing with it proves nothing about dbSNP's placement.
+_UPSTREAM_OF: dict[str, frozenset[str]] = {_DBSNP_WITNESS: frozenset({ENSEMBL_WITNESS})}
 #: Every placement witness this tier can name on a row (`ResolutionRow.placement_witness`), read off the
 #: one map that must know each of them. A map keyed by witness elsewhere is checked against this roster,
 #: never hand-listed beside it: RM373's release map named the two snapshot witnesses and missed REST.
@@ -153,14 +176,13 @@ class PlacementCheck:
     * `undecided` — rsIDs with no withheld locus left unsettled: some allele could not be decided.
     * `single_witness` — rsIDs this run placed that no independent witness placed: the ClinVar link's
       own fills, every rsID none of whose alleles a witness holds, and every rsID only its own
-      authority's other surface compared (Ensembl REST against the snapshot). Published beside the
-      finding (`@tautology-zero`).
-    * `self_consistent` — compared rsIDs whose only witness was their own authority (REST for a
-      snapshot placement): a disagreement there is a finding, an agreement proves nothing.
-    * `not_asked` — rsIDs a live witness was due to be asked about and got no answer for: unknown.
-    * `not_asked_reason` — why, when one reason covers them all (an injected resolver without the
-      REST method); `None` means per rsID: unreachable after retries, held by a `Retry-After` the
-      resolver is honouring, or an anchor base not read.
+      authority or its upstream compared (dbSNP against the snapshot). Published beside the finding
+      (`@tautology-zero`).
+    * `self_consistent` — compared rsIDs whose only witness was their own authority or its upstream
+      (dbSNP for a snapshot placement): a disagreement there is a finding, an agreement proves nothing.
+    * `not_asked` — rsIDs the dbSNP witness was due to be asked about and got no answer for: unknown.
+    * `not_asked_reason` — why, when one reason covers them all (the merge check switched off, or
+      dbSNP unreachable); `None` means per rsID: an indel's anchor base not read.
     * `reported_by` — the authorities whose placements were compared, the record's checked side.
     * `placed_by` — the authorities of every placement looked at, which a skip names instead.
     * `placed` — every rsID the comparison looked at, the denominator `single_witness` is a part of.
@@ -216,19 +238,18 @@ class PlacementCheck:
             )
         if self.self_consistent:
             out.append(
-                f"{len(self.self_consistent)} of them were compared with Ensembl REST alone "
-                f"({examples(self.self_consistent)}) — Ensembl's own other surface, so self-consistent "
+                f"{len(self.self_consistent)} of them were compared with dbSNP alone "
+                f"({examples(self.self_consistent)}) — the snapshot's own upstream, so self-consistent "
                 "rather than independent: a disagreement is still a finding, an agreement proves nothing "
                 "about the placement"
             )
         if self.not_asked:
             out.append(
-                f"{len(self.not_asked)} rsID(s) Ensembl REST could not be asked about "
+                f"{len(self.not_asked)} rsID(s) dbSNP could not be asked about "
                 f"({examples(self.not_asked)}) — "
                 + (
                     self.not_asked_reason
-                    or "unreachable after retries, held by Ensembl's Retry-After, or an answer whose "
-                    "anchor base could not be read"
+                    or "its record could not be fetched, or an indel's anchor base could not be read"
                 )
                 + " — so it is unknown there, never agreement"
             )
@@ -262,12 +283,12 @@ def compare_placements(
     `placed` is `rsid -> loci` as the first authority gave them (before the hosting filter: the
     question is where the source puts the rsID, not which locus the module can use); `authority_of`
     names that authority per rsID; `witnesses` is `witness name -> rsid -> loci`. A witness in
-    `asked_about` was asked only about the rsIDs it lists there (the live REST witness); every other
+    `asked_about` was asked only about the rsIDs it lists there (the dbSNP witness); every other
     rsID's row does not name it. A loaded snapshot witness is asked about every rsID.
 
-    **A witness that is the rsID's own authority compares, but witnesses nothing independently**
-    (Ensembl REST for a snapshot placement): its disagreement withholds like any other, and its
-    agreement leaves the rsID in the one-witness count.
+    **A witness that is the rsID's own authority, or its upstream, compares, but witnesses nothing
+    independently** (dbSNP for a snapshot placement, `_UPSTREAM_OF`): its disagreement withholds like any
+    other, and its agreement leaves the rsID in the one-witness count.
 
     **Withheld per locus, judged per allele.** A locus holding a disputed allele is not written; a
     locus of the same rsID nobody disputes still is, so one contested allele does not cost the module
@@ -320,7 +341,11 @@ def compare_placements(
             check.subjects += 1
             if authority:
                 check.reported_by.add(authority)
-        independent = {w for w in witnessed_by if _AUTHORITY_OF_WITNESS.get(w, w) != authority}
+        independent = {
+            w
+            for w in witnessed_by
+            if _AUTHORITY_OF_WITNESS.get(w, w) != authority and authority not in _UPSTREAM_OF.get(w, ())
+        }
         if not independent:
             check.single_witness.append(rsid)
             if witnessed_by:
@@ -394,13 +419,14 @@ def live_witness_subjects(
     link_of: Mapping[str, str | None],
     loaded: Mapping[str, Mapping[str, Sequence[Mapping[str, object]]]],
 ) -> list[str]:
-    """The rsIDs Ensembl REST is asked about, sorted: placed by the Ensembl snapshot, with at least one
-    allele that is not a substitution, and held by no loaded witness.
+    """The rsIDs the third witness is asked about, sorted: placed by the Ensembl snapshot, with at least
+    one allele that is not a substitution, and held by no loaded witness. dbSNP since RM398, Ensembl REST
+    before it; the rule did not move.
 
     The snapshot only, because S117's class lives in its dump, and a row the live rung gave is REST's own
     answer. Indels only, because a substitution has one spelling and the snapshot cannot respell it. And
-    only where no loaded witness holds the rsID, because there REST would add a self-consistent answer
-    beside an independent one at the cost of a request.
+    only where no loaded witness holds the rsID, because there a self-consistent answer adds nothing
+    beside an independent one. Widening it to every placed rsID is RM406.
     """
     return sorted(
         rsid
@@ -413,23 +439,12 @@ def live_witness_subjects(
 
 Resolve = Callable[[str], tuple[Sequence[Mapping[str, object]] | None, str | None]]
 
-#: Many rsIDs asked, one `(rsid, (loci, source))` back per rsID: `EnsemblResolver._resolve_rsids_rest`.
-_AskMany = Callable[
-    [Sequence[str]], Iterable[tuple[str, tuple[Sequence[Mapping[str, object]] | None, str | None]]]
-]
-
 
 def ask_live_witness(resolve: Resolve, rsids: Sequence[str]) -> tuple[Loci, list[str]]:
     """Ask the live REST rung (`EnsemblResolver.resolve_rsid_rest`) about each rsID, one at a time.
 
-    The public form, as 0.8.0 shipped it. The run asks through `_ask_live_witness`, which takes RM401's
-    batches (`EnsemblResolver._resolve_rsids_rest`) and gives the same answers.
-    """
-    return _ask_live_witness(lambda asked: ((rsid, resolve(rsid)) for rsid in asked), rsids)
-
-
-def _ask_live_witness(ask: _AskMany, rsids: Sequence[str]) -> tuple[Loci, list[str]]:
-    """`ask_live_witness` for a callable that asks many rsIDs at once (RM401).
+    As 0.8.0 shipped it. The run no longer calls it: the third witness is dbSNP since RM398
+    (`_dbsnp_witness`).
 
     Returns `rsid -> loci` for every rsID it answered (an empty list is an answer: REST has no placeable
     locus), and the rsIDs it did not answer — `None` loci, whether the request failed after its retries
@@ -438,7 +453,72 @@ def _ask_live_witness(ask: _AskMany, rsids: Sequence[str]) -> tuple[Loci, list[s
     """
     answered: Loci = {}
     not_asked: list[str] = []
-    for rsid, (loci, _) in ask(rsids):
+    for rsid in rsids:
+        loci, _ = resolve(rsid)
+        if loci is None:
+            not_asked.append(rsid)
+        else:
+            answered[rsid] = [dict(locus) for locus in loci]
+    return answered, not_asked
+
+
+def _dbsnp_placements(
+    record: Mapping[str, object], read_base: Callable[[str, int], str | None]
+) -> list[dict] | None:
+    """dbSNP's own GRCh38 placement of one rsID, as loci, from its `esummary db=snp` record (RM398).
+
+    The record's `spdi` lists every allele, comma-separated, as `accession:position:deleted:inserted`,
+    position 0-based (probed 2026-11-07: `rs8176719` is `NC_000009.12:133257521::C`, `rs1801133` three
+    substitutions at `NC_000001.11:11796320`). An accession off the GRCh38 primary assembly is no locus
+    (RM400's rule, read off the per-chromosome RefSeq map, `@accession-version-names-no-build`). A
+    two-sided allele sits at `position + 1`; a one-sided one is anchored on the base at `position`
+    (`anchor_indel`, the convention REST's interbase point shares), and each ALT is handed on alone
+    (`per_alt_loci`). A merged rsID's record is the current id's, served under the asked one, and is
+    compared as that: dbSNP places the variant the asked id names.
+
+    `[]` when dbSNP has no record, or none on the primary assembly: an answer, placing nothing. `None`
+    when every allele it states needed an anchor base that could not be read: not asked (RM268's rule).
+    """
+    if is_missing(record):
+        return []
+    placed: list[tuple[str, int, str, str]] = []
+    unanchored = 0
+    for spdi in str(record.get("spdi") or "").split(","):
+        parts = spdi.strip().split(":")
+        if len(parts) != 4 or not parts[1].isdigit():
+            continue
+        accession, position, deleted, inserted = parts[0], int(parts[1]), parts[2].upper(), parts[3].upper()
+        chrom = GRCH38_REFSEQ_ACCESSIONS.get(accession) or ("MT" if accession == "NC_012920.1" else None)
+        if chrom is None or deleted == inserted:
+            continue
+        if deleted and inserted:
+            placed.append((chrom, position + 1, deleted, inserted))
+            continue
+        anchored = anchor_indel((chrom, position, deleted, inserted), read_base)
+        if anchored is None:
+            unanchored += 1
+            continue
+        placed.append(anchored)
+    if not placed and unanchored:
+        return None
+    return per_alt_loci(placed)
+
+
+def _dbsnp_witness(
+    records: Mapping[str, Mapping[str, object]],
+    rsids: Sequence[str],
+    read_base: Callable[[str, int], str | None],
+) -> tuple[Loci, list[str]]:
+    """`(rsid -> loci, not asked)` for the dbSNP witness, from the merge check's records keyed by uid.
+
+    An rsID whose record is not in `records` was not answered by the request: not asked, never placed
+    nowhere (`@unreachable-not-absent`).
+    """
+    answered: Loci = {}
+    not_asked: list[str] = []
+    for rsid in rsids:
+        record = records.get(rsid.removeprefix("rs"))
+        loci = None if record is None else _dbsnp_placements(record, read_base)
         if loci is None:
             not_asked.append(rsid)
         else:

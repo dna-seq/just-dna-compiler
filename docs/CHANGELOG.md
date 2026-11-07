@@ -41,6 +41,16 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-07 — RM398: the third placement witness is dbSNP's own record, not a live REST request (patch, uncut)
+
+- **The placement witness reads dbSNP's GRCh38 placement from the `esummary db=snp` record the rsID merge
+  check already fetches** (RM398, S132), for the same subjects live Ensembl REST was asked about: snapshot
+  indels neither ClinVar witness holds. S117's misanchored ABO insertion is still withheld. The merge check is
+  served the same records, so an online run asks dbSNP nothing new and REST nothing as a witness. New rows
+  name `dbsnp` as `placement_witness` where they named `ensembl`, and `sources.csv` gains a `dbsnp` row at the
+  `resolution` layer (public domain, release withheld). A run with the merge check off counts those indels as
+  not asked. No public name, field or warning code.
+
 ## 2026-11-07 — RM407: an indel's VRS mint reads the reference once per locus (patch, uncut)
 
 - **Minting an indel's VRS id reads one seqrepo window per locus** instead of one HTTP read per step of

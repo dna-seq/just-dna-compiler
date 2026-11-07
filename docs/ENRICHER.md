@@ -520,7 +520,7 @@ per service, put a semaphore around your call site; the gate will not give you t
 | Service | Used by | Published budget | Our pace / batching | Auth / identity |
 |---|---|---|---|---|
 | **gnomAD GraphQL** | `gnomad` (resolve, frequencies, live constraint) | **10 req / IP / 60 s** | `min_request_interval=6.0` (exactly that budget); GraphQL alias batches of **20** (25 worked live; 29 → HTTP 400) ≈ 200 variants/min | none |
-| **NCBI E-utilities** | `eutils` → literature + rsID currency | **3 req/s** without a key; **10 req/s** with `NCBI_API_KEY` | `1/3 s` or `1/10 s` from whether the key is present; esummary batches of **200** | `tool=just-dna-enricher`; `email` from `JUST_DNA_CONTACT_EMAIL` when set; key optional |
+| **NCBI E-utilities** | `eutils` → literature + rsID currency, whose `esummary db=snp` record is also the dbSNP placement witness (RM398; one fetch serves both) | **3 req/s** without a key; **10 req/s** with `NCBI_API_KEY` | `1/3 s` or `1/10 s` from whether the key is present; esummary batches of **200** | `tool=just-dna-enricher`; `email` from `JUST_DNA_CONTACT_EMAIL` when set; key optional |
 | **PharmVar** | `pharmvar` / `pgx` | **2 req/s** (OpenAPI “Limitations”) | `PHARMVAR_MIN_INTERVAL=0.5` | `Api-Key` header from `PHARMVAR_API_KEY` (personal; never written to a module) |
 | **Crossref** | `literature.CrossrefClient` (DOI existence, and the work it names since RM262) | **polite pool**: 10 req/s single-DOI (5 public); concurrency 3 polite / 1 public (Crossref docs, Dec 2025 revision) | `min_request_interval=0.1` (10/s — polite single-DOI ceiling) | User-Agent `just-dna-enricher (mailto:…)` when `JUST_DNA_CONTACT_EMAIL` is set → polite pool; omitted rather than invented |
 | **Europe PMC** | `literature.EuropePmcClient` (OA fulltext + abstracts + per-article licence; a preprint's JATS through `europepmc.org/api/fulltextRepo`, RM349, on the same gate) | no durable official figure on the developer pages (community reports vary) | `min_request_interval=0.5` (2/s), batches of **25** on `search` | none |
@@ -532,7 +532,7 @@ per service, put a semaphore around your call site; the gate will not give you t
 | **ClinGen Allele Registry** (`reg.clinicalgenome.org/allele`) | `clingen_allele` → the identity-from-a-name procedure (0.7, RM153) | none published | `_REQUEST_INTERVAL=0.1` (courtesy) | none |
 | **Ensembl GRCh37 REST** (`grch37.rest.ensembl.org`) | `grch37.diagnose_wrong_build` (0.6), `hint recover` | Ensembl publishes **15 req/s** | `_REQUEST_INTERVAL=0.1` — keeps a whole panel inside it while still interactive | none |
 | **ClinVar release probe** | `currency.ClinVarReleaseClient` — one bounded read of the VCF's header (`HEADER_PROBE_BYTES`) per `--verify-datasets` run (0.7) | NCBI asks for no particular pacing on the FTP-over-HTTPS mirror | `CLINVAR_MIN_INTERVAL=0.5` — this tier paces every service it touches, and one probe per run is inside any budget | none |
-| **Ensembl REST** (`rest.ensembl.org`) | `ensembl` (the live link); the placement witness (0.8, RM267), for each snapshot indel no loaded witness holds. Both ask 20 rsIDs per `POST /variation/:species` since RM401 (`ensembl._REST_BATCH_SIZE`, fixed in the 0.8 patch line; 0.9 makes it a setting with RM404), with the POST's own read timeout (`_REST_BATCH_TIMEOUT`, 120 s), and one GET for an rsID a batch leaves out | **15 req/s** per IP, **~55 000 / rolling hour**; 429 + `Retry-After` / `X-RateLimit-*` | `_REQUEST_INTERVAL=0.1` (`EnsemblSettings.interval`), one `PacingGate` per resolver, waited once per attempt (since 2026-11-04); tenacity on transport, 5xx and 429, waiting at least the answer's `Retry-After` (`net.wait_retry_after`); one longer than `net.RETRY_AFTER_CEILING` (10 s) is not retried, and the resolver asks nothing until it passes | none |
+| **Ensembl REST** (`rest.ensembl.org`) | `ensembl` (the live link); until RM398 also the placement witness (0.8, RM267), for each snapshot indel no loaded witness holds. The link asks 20 rsIDs per `POST /variation/:species` since RM401 (`ensembl._REST_BATCH_SIZE`, fixed in the 0.8 patch line; 0.9 makes it a setting with RM404), with the POST's own read timeout (`_REST_BATCH_TIMEOUT`, 120 s), and one GET for an rsID a batch leaves out | **15 req/s** per IP, **~55 000 / rolling hour**; 429 + `Retry-After` / `X-RateLimit-*` | `_REQUEST_INTERVAL=0.1` (`EnsemblSettings.interval`), one `PacingGate` per resolver, waited once per attempt (since 2026-11-04); tenacity on transport, 5xx and 429, waiting at least the answer's `Retry-After` (`net.wait_retry_after`); one longer than `net.RETRY_AFTER_CEILING` (10 s) is not retried, and the resolver asks nothing until it passes | none |
 | **CPIC** (`api.cpicpgx.org`) | `cpic` / `pgx_draft` | unpublished | **no `PacingGate`** — coarse PostgREST GETs (gene-scoped), not per-allele loops | none |
 | **ClinPGx** | `clinpgx` / `clinpgx_draft` | n/a at runtime | **offline snapshot only** for the check/draft path — no live poll budget | none (live API retired → snapshot) |
 | **seqrepo REST** (`services.genomicmedlab.org`) | `sequences` / VRS indel mint | unpublished | **no `PacingGate`**; in-process memo of window reads, one window per indel mint (RM407) | none |
@@ -1275,48 +1275,46 @@ ids are VRS 2.1.1 and ours 2.0, so its VCF spelling is minted here rather than i
   and the compiler's orphan check counts those names as used.
 - **It attests as `placement_agreement`**: `subjects` is the rsIDs compared, `findings` the rsIDs
   with a disputed placement, `undecided` the respellings nothing could settle, and `detail` the one-witness count over
-  every placed rsID, the rsIDs only Ensembl REST compared, and the rsIDs REST could not be asked about.
+  every placed rsID, the rsIDs only dbSNP compared, and the rsIDs dbSNP could not be asked about.
 - **Recorded rows are not re-asked.** Merge-not-clobber holds, so a `resolution.csv` written before 0.8
   meets the comparison only under `--rederive` or after the file is deleted. Under `--rederive` a
   disputed subject counts as answered, so its recorded placement is not carried forward.
 
 Probed 2026-11-04 on real data: neither loaded witness holds `rs8176719` (ClinVar's 2026-06-27 VCF has
 no record at `9:133257510–529` and no `RS=8176719`; ClinVar-GKM lacks it, RM305). Catching S117's own
-case needs a witness that holds it, which is why REST is asked:
+case needs a witness that holds it, which is why dbSNP is read:
 
-- **Ensembl REST is the third witness, online only.** For an rsID the Ensembl snapshot placed with at
-  least one allele that is not a substitution, and that neither loaded witness holds, an online run asks
-  the live REST rung (`EnsemblResolver.resolve_rsid_rest`, the V1 half of `resolve_rsid` on its own, so
-  the beta GraphQL surface is never asked; through the run's own resolver, so an injected one is
-  honoured), in batches since RM401 (`_resolve_rsids_rest`; an injected resolver is asked one rsID at a
-  time), and compares its answer by the same ladder. REST answers `rs8176719` as `-/C` at
-  `start 133257522, end 133257521`, which RM268's anchor turns into `9:133257521 T>TC`; the snapshot's
-  `9:133257520 G>GC` mints a different id, so the rsID is withheld with both placements named. A row the
-  live rung gave itself, a substitution, and an rsID ClinVar or ClinVar-GKM holds are not asked. Answers
-  are never journalled: a witness's answer is not a placement the run writes.
-- **REST is Ensembl, so it is self-consistent, not independent** (RM292). The witness is named
-  `ensembl`, the licensed source `placement_witness` joins `sources.csv` on, and the record names its
-  checked side `ensembl` once REST answered, so `independence` derives `self_consistent` when REST was the
-  only witness and is withheld when ClinVar answered for other rsIDs in the same run. A skipped record
-  names the authorities of what it placed the same way, so an Ensembl-placed module's skip does not
-  read `independent` against a witness list that names Ensembl. That does not empty
-  the comparison of value: it catches the snapshot's VCF dump disagreeing with Ensembl's own REST mapping,
-  which is exactly S117's mechanism (the dump anchors a class of insertions one base left of Ensembl's
-  interbase point). It cannot catch an error both surfaces share, so an rsID only REST agreed with stays
-  in the one-witness count, and `detail` names those apart.
-- **Unreachable is not asked.** REST is retried on a transport error, a 5xx and a 429. A request still
-  unanswered, or an answer whose anchor base could not be read, leaves REST not asked for that rsID: the
-  row does not name `ensembl`, nothing is withheld, and `detail` counts the rsIDs. A 4xx is an answer:
-  REST holds no placement, so the row names `ensembl` with `unplaced`. `--offline` asks nothing.
-- **An injected resolver need only have `resolve_rsid`** (`ensembl.RsidResolver`). REST's mapping is an
-  optional capability, `ensembl.RestWitness` (`resolve_rsid_rest`), asked only where the injected
-  resolver has it. One written before 0.8 leaves REST not asked for the run: every eligible rsID is
-  counted as not asked, `detail` says the resolver has no such method, and one warning names the class.
-  Before this, the first eligible indel raised `AttributeError` and the run died.
-- **Paced, and told when to come back.** The rung waits on its resolver's `PacingGate` before every
-  attempt and honours a throttle's `Retry-After` (the rate table above). During an outage each asked rsID
-  still costs three attempts; a `Retry-After` past the ceiling leaves every later rsID not asked, with no
-  request, until the time the server named.
+- **dbSNP is the third witness, online, with the merge check on (RM398).** For an rsID the Ensembl
+  snapshot placed with at least one allele that is not a substitution, and that neither loaded witness
+  holds, the run reads dbSNP's own GRCh38 placement out of the `esummary db=snp` record the rsID merge
+  check fetches anyway (`placement._dbsnp_placements`). The record's `spdi` lists every allele as
+  `accession:position:deleted:inserted`, 0-based: `rs8176719` is `NC_000009.12:133257521::C`, which
+  anchors on GRCh38's own base to `9:133257521 T>TC`; the snapshot's `9:133257520 G>GC` mints a different
+  id, so the rsID is withheld with both placements named. An accession off the primary assembly is no
+  locus. The witness reads first and the merge check is then served the same records, so the run asks
+  dbSNP nothing it did not ask before RM398. A row the live rung gave itself, a substitution, and an rsID
+  ClinVar or ClinVar-GKM holds are not asked. Answers are never journalled.
+- **dbSNP is the snapshot's upstream, so it is self-consistent, not independent** (RM292). The witness is
+  named `dbsnp`, the licensed source `placement_witness` joins `sources.csv` on (public domain, NCBI), and
+  it is its own authority, so the licence join stays true; the snapshot is built from dbSNP 157, so
+  `placement._UPSTREAM_OF` counts dbSNP's agreement with a snapshot placement as self-consistent and
+  leaves the rsID in the one-witness count, which `detail` names apart. It still catches the snapshot's
+  processing disagreeing with dbSNP's placement, which is S117's mechanism; it cannot catch an error in
+  dbSNP's own placement. The record names no dbSNP build, so the licence row's release is withheld.
+- **Not asked is counted, never agreement.** A record that could not be fetched (eutils retries a
+  transport error, a 5xx and a 429), or an indel whose anchor base could not be read, leaves dbSNP not
+  asked for that rsID: the row does not name `dbsnp`, nothing is withheld, and `detail` counts the rsIDs
+  with the reason. A run with the merge check off (`verify_rsids=False`) counts every eligible rsID as
+  not asked and says so; `--offline` asks nothing.
+- **It needs nothing of an injected resolver.** Until RM398 the third witness was live Ensembl REST,
+  asked through `ensembl.RestWitness`, an optional method of the resolver, and S133 measured REST's cold
+  requests as most of an online re-derivation's time. `RestWitness` and `placement.ask_live_witness`
+  stay as 0.8.0 shipped them, and a recorded row may still name `ensembl` as its witness; nothing asks it.
+- **Measured before it landed (2026-11-07).** Over the 169 snapshot indels of the reference examples (5
+  modules, the 0.8 split snapshot), dbSNP and REST each disagreed with the snapshot on none, so no locus
+  is withheld differently. Their verdicts were identical on 157. On 11, dbSNP confirmed alleles REST left
+  unplaced; on 1 (`rs1569493663`, a PAR locus) dbSNP's record places the Y copy only, so the X copy reads
+  unplaced. The registry's 46-module replay is the larger re-measure (RM406).
 
 
 The ClinVar witness is the snapshot the run locates for its link and the `clin_sig` check, so
@@ -1440,8 +1438,8 @@ release had answered. Three pieces now, one rule each (`enrich/releases.py`):
   it (blank) when the rows state two, or any row states none. It stamps the cell rather than leaving it
   to `merge_sources_file`, which never clobbers and so never filled a row an earlier run wrote blank. A
   placement witness has no column of its own: a row this run wrote speaks for the witness's release
-  this run (a snapshot witness's own label; for the REST witness, `/info/data`'s, asked once per run
-  and shared with the live link), and a carried row speaks through the label recorded before this run, which was computed over
+  this run (a snapshot witness's own label; none for the dbSNP witness, whose record names no build, so
+  its label is withheld; the REST witness, before RM398, stated `/info/data`'s), and a carried row speaks through the label recorded before this run, which was computed over
   every row the table then held — so a run with nothing to do does not withdraw a label still true.
   Only rows of a source with a terms constant are stamped, so a curator's `manual` row is never touched.
 - **A run that answered every row retires the licence row no committed row names (RM383, 0.8).**

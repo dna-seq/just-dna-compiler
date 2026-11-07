@@ -1913,66 +1913,6 @@ remaining class gets the same treatment — a plain column, on demand, one at a 
 
 Neither is built until a real module needs it.
 
-## RM398 — `placement_agreement` has no witness at dbSNP scale, so most placed rsIDs are compared with nothing
-
-**Placed, the pm (2026-11-07): the next patch on `main` after 0.8.1, on the maintainer's ask.** They asked: "Can we have ncbi dbsnp witness for ensembl? I can't imagine any other way to do it, other dbs are too small to meaningfully witness." The lead had kept the live Ensembl REST witness in 0.8.1 until prepare-annotations checks the snapshot at build time. On that, the maintainer said it exists for "historical reasons + heavy overhead and API impact", and "Arguably, patch (witness is info-only anyway)".
-
-**What the patch is.** Candidate 0 below replaces REST, for the same subjects REST is asked about today: a snapshot indel that neither ClinVar witness holds. dbSNP's placement is already in the record the merge check fetches, so the run asks nothing new and stops asking REST. S117's case is still caught: dbSNP places `rs8176719` where ClinVar and REST do. So nothing has to wait for prepare-annotations.
-
-**Why it is a patch.** No field, function or CLI is added: `placement_witness` is an open string, so new rows say `dbsnp` where they said `ensembl`. A disagreement does what REST's did, for the same subjects.
-
-**The witness is not info-only today.** RM267 withholds a disputed locus, which is what kept S117's misanchored ABO insertion out. A module therefore meets no refusal it could not meet under 0.8.1, and only dbSNP and REST could answer differently. The build counts those differences on the registry's replay before it lands.
-
-**Independence.** It keeps REST's `self_consistent` reading, since dbSNP is the snapshot's own upstream, unless the build shows grounds to claim more.
-
-**Not this patch: widening dbSNP to every placed rsID, substitutions included.** That moves which loci a run withholds, so it waits for the disagreement count, as RM406.
-
-**Not taken: agreement among several small sources as a substitute** (the maintainer's "3+ coordinates matched against other dbs"). ClinVar, ClinVar-GKM, PharmGKB and the rest key on dbSNP's rsIDs, so their agreement is one witness counted several times. They reach about 0.23% of the snapshot, and agreement on substitutions says nothing about the indels, where every known misplacement lives (S117, S132).
-
-**Severity** medium · **Status** open — **a patch**, the next on `main` after 0.8.1 (candidate 0 for REST's subjects; the widening stays a residual) · **Owner** enricher (`placement.py`, a
-new lane or client, ENRICHER.md § Placement agreement) · **Motivating case** S132 in
-CONSUMER_SUGGESTIONS_HISTORY.md (just-dna-registry's lead, 2026-11-07) · *related* RM267, RM292, RM305, RM385,
-RM399
-
-**The gap, as the registry measured it on 0.8.0.** The witnesses RM267 shipped are ClinVar and ClinVar-GKM,
-plus Ensembl REST online for a snapshot indel neither holds, which RM292 counts as self-consistent. ClinVar's
-VCF (2026-06-27) carries 2,645,243 distinct rsIDs against 1,172,660,304 records in the 0.8 Ensembl snapshot,
-about 0.23%. Across the registry's 46-module replay, 4,112 of 4,688 placed rsIDs (87.7%) had one witness only,
-and the six insertions that really moved between the two snapshots were held by neither loaded witness; four
-of them went unasked because REST timed out. Every one of the 34 records said 0 findings, which is true and
-says little. The check publishes its one-witness count, so nothing is misreported; what is missing is a witness
-whose reach is the snapshot's.
-
-**What settled the six.** The registry used the 1000G GRCh38 call set (positional, no rsIDs): it holds the
-0.8 event at all six loci and the pre-0.8 event at none. Triage asked NCBI's Variation Services
-(`api.ncbi.nlm.nih.gov/variation/v0/refsnp/<id>`) on 2026-11-07 for the same six: dbSNP's GRCh38 SPDI is the
-0.8 event for every allele of every one, compared by haplotype against the reference, and the pre-0.8 event
-for none. So both candidate witnesses below would have decided all six.
-
-**Candidates.**
-
-0. **The dbSNP record the run already fetches (found 2026-11-07, the pm; the patch).** Every online run asks `esummary db=snp` for every rsID it carries, in batches, for the merge check: `identifiers.check_rsids`, "the third validation pass" in `enrich/orchestration.py`. Of that record, `classify_rsid` keeps only live/merged/absent, but the same record carries dbSNP's GRCh38 SPDI. Probed on S117's `rs8176719`: `spdi` is `NC_000009.12:133257521::C` (0-based, so `9:133257521 T>TC`, the placement ClinVar and REST give), against the snapshot's `9:133257520 G>GC`. So it needs no new client, endpoint or lane: read the field (`@dont-discard-computed`) and compare it by RM267's ladder. **The build checks:**
-   - a multi-allelic record's SPDI list;
-   - a merged id's record;
-   - the order of the passes: the merge check runs after the links today, and the comparison must see its answer;
-   - a run with the merge check switched off, or offline, which gets no dbSNP witness, as it gets no REST.
-1. **dbSNP itself, as a snapshot lane**: NCBI's GRCh38 VCF, or its SPDI, read the way ClinVar-GKM is read.
-   It is the only source that states what an rsID is rather than that an event exists at a locus. Its size is
-   the Ensembl snapshot's order; measure the real file before choosing (`@probe-the-real-file`), and price it
-   with the lane's parents and stages (`CACHE_SURFACE.md`).
-2. **dbSNP online, per rsID**, through the refsnp endpoint above, asked the way REST is asked today: only for a
-   snapshot indel no loaded witness holds. No client here reads that endpoint yet.
-3. **A population call set as a positional witness for indels** (gnomAD sites, or 1000G as the registry used):
-   it witnesses that an event exists at a locus, not which rsID it is, so it can confirm one spelling but not
-   tie it to the rsID. On chr22 it held the pre-0.8 spelling and not the 0.8 one at 914 loci, which a
-   positional set cannot resolve.
-
-**Open questions.** Is dbSNP independent of a snapshot Ensembl built from dbSNP 157, or self-consistent in
-RM292's sense? It catches Ensembl's processing (RM267's class was exactly that) and cannot catch an error in
-dbSNP's own placement. Which of the three, or the online one first as REST was: answered by candidate 0, which needs neither a lane nor a client. **Residuals, to be stated at closure:** dbSNP widened to every placed rsID is RM406; an offline dbSNP witness (candidate 1) if one is ever needed; the snapshot keeping VEP's `SPDI` CSQ field (the registry's (d)) is the snapshot builder's,
-prepare-annotations, outside this repository; it normalises rather than witnesses, and would make candidate 1 a
-join.
-
 ## RM402 — a snapshot answer rejected under RM382 is asked again of live Ensembl, the same authority, which answers the same locus
 
 **Placed, the pm (2026-11-07): after RM401 ships, and only if a re-measure still shows it.** The 600 s here is 38 cold one-at-a-time GETs, which is RM401's cost; batched, the same 38 ids are one POST of tens of seconds. What RM402 would then save is that remainder, bought with a new release-equality rule over two spellings of one label, which is its own risk. So it waits: once RM401 ships, a re-run of the registry's module (or any online re-derivation with reverse-complement genotypes) says whether the repeat asks still cost enough to build it. If not, it closes as superseded by RM401.

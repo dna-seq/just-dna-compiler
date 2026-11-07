@@ -262,6 +262,20 @@ CLINVAR_GKM_TERMS = SourceTerms(
     redistribution=True,
 )
 
+# dbSNP, the placement witness since RM398, read off the `esummary db=snp` record the merge check fetches.
+# An NCBI database, so the same footing as `CLINVAR_TERMS`: a US-government work with no copyright
+# asserted, citation requested (NCBI's policy page, linked below).
+_DBSNP_TERMS = SourceTerms(
+    source="dbsnp",
+    license="public-domain",
+    license_url="https://www.ncbi.nlm.nih.gov/home/about/policies/",
+    attribution="dbSNP, NCBI (https://www.ncbi.nlm.nih.gov/snp/)",
+    notice="US-government work, no copyright asserted. NCBI asks that dbSNP be cited.",
+    share_alike=False,
+    commercial_use=True,
+    redistribution=True,
+)
+
 # Already in the chain and unrestricted — recorded so a module's licence picture is complete rather
 # than only listing the sources that constrain it.
 ENSEMBL_TERMS = SourceTerms(
@@ -950,6 +964,7 @@ TERMS_BY_SOURCE: dict[str, SourceTerms] = {
         GENCC_TERMS,
         CLINVAR_TERMS,
         CLINVAR_GKM_TERMS,
+        _DBSNP_TERMS,
         ENSEMBL_TERMS,
         GNOMAD_TERMS,
         GWAS_CATALOG_TERMS,

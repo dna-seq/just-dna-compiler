@@ -181,12 +181,13 @@ CHECK_WITNESSES: dict[str, CheckWitness] = {
     ),
     "placement_agreement": CheckWitness(
         REPORTING_SOURCE,
-        ("clinvar", "clinvar_gkm", "ensembl"),
+        ("clinvar", "clinvar_gkm", "dbsnp", "ensembl"),
         "the placement the run's own link gave an rsID (the Ensembl snapshot, live Ensembl or gnomAD — "
-        "per row) against where ClinVar and ClinVar-GKM place it, and, online, where Ensembl REST places "
-        "a snapshot indel neither holds; a ClinVar fill has no independent witness here and is counted "
-        "with the one-witness class, and REST against the snapshot is Ensembl against itself, so a "
-        "record it took part in names `ensembl` as its checked side (RM267)",
+        "per row) against where ClinVar and ClinVar-GKM place it, and, online with the merge check on, "
+        "where dbSNP's own record places a snapshot indel neither holds (RM398; Ensembl REST before it); "
+        "a ClinVar fill has no independent witness here and is counted with the one-witness class, and "
+        "dbSNP against the snapshot is the snapshot against its own upstream, so its agreement is "
+        "self-consistent rather than independent (RM267)",
         tolerance=(
             "an indel the witness spells differently, with no reference sequence this run to settle "
             "whether the two spellings are one event — counted, never read as agreement"

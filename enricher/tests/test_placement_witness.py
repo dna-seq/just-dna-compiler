@@ -30,13 +30,15 @@ from just_dna_enricher.caches import LANES_BY_NAME
 from just_dna_enricher.clinvar_gkm import ALLELE_FILE, VARIATION_FILE, WITNESS_PARQUET, parse_manifest
 from just_dna_enricher.clinvar_gkm_build import build_snapshot
 from just_dna_enricher.enrich import EnrichmentError, enrich
-from just_dna_enricher.enrich.orchestration import REST_RETIRED_REASON, _filled_pieces
+from just_dna_enricher.enrich.orchestration import _filled_pieces, _RecordedEutils
 from just_dna_enricher.enrich.releases import table_releases as orchestration_table_releases
 from just_dna_enricher.enrich.resolution_csv import _write_resolution_csv
 from just_dna_enricher.ensembl import EnsemblResolver
+from just_dna_enricher.eutils import EutilsClient, EutilsSettings
 from just_dna_enricher.events import Allele, same_event
 from just_dna_enricher.licensing import sources_path
-from just_dna_enricher.placement import compare_placements
+from just_dna_enricher.net import PacingGate
+from just_dna_enricher.placement import _dbsnp_placements, compare_placements
 from just_dna_enricher.sequences import SequenceProxy, normalize_locus, spelling_verdict
 from just_dna_enricher.verification import ran
 from just_dna_enricher.vrs import VrsMinter
@@ -624,113 +626,175 @@ def _without(*rsids: str) -> dict[str, tuple[str, int, str, str]]:
     return {k: v for k, v in CLINVAR.items() if k not in rsids}
 
 
-def test_rest_withholds_s117_when_no_loaded_witness_holds_it(
+# What `esummary db=snp` answered by hand on 2026-11-07 for the two rsIDs no loaded witness holds here:
+# dbSNP's own GRCh38 SPDI, 0-based. `rs8176719` is the insertion RM268's anchor turns into
+# `9:133257521 T>TC`, ClinVar's spelling; `rs77944059` is the four-base deletion over its whole repeat,
+# the same two-sided string REST gave. Only the fields the witness reads are kept.
+DBSNP_SPDI: dict[str, str] = {
+    "8176719": "NC_000009.12:133257521::C",
+    "77944059": "NC_000002.12:166204470:AAACAAACAAA:AAACAAA",
+}
+
+
+class _Dbsnp:
+    """NCBI's `esummary db=snp` over recorded records, behind the run's own client (RM398).
+
+    Installed by patching `orchestration._dbsnp_client`, the one place the run builds the client the
+    witness and the merge check share. Every request's uids are recorded, in order.
+    """
+
+    def __init__(self, status: int = 200) -> None:
+        self.requested: list[list[str]] = []
+        self.status = status
+
+    def install(self, monkeypatch: pytest.MonkeyPatch) -> "_Dbsnp":
+        def handler(request: httpx.Request) -> httpx.Response:
+            assert request.url.host == "eutils.ncbi.nlm.nih.gov", f"asked {request.url}, not NCBI"
+            ids = request.url.params["id"].split(",")
+            self.requested.append(ids)
+            if self.status != 200:
+                return httpx.Response(self.status, text="Service unavailable")
+            result: dict[str, object] = {"uids": ids}
+            for uid in ids:
+                result[uid] = (
+                    {"uid": uid, "snp_id": int(uid), "spdi": DBSNP_SPDI[uid]}
+                    if uid in DBSNP_SPDI
+                    else {"uid": uid, "error": "cannot get document summary"}
+                )
+            return httpx.Response(200, json={"result": result})
+
+        def client() -> _RecordedEutils:
+            built = _RecordedEutils(settings=EutilsSettings(email=None), gate=PacingGate(0.0))
+            built._client = httpx.Client(transport=httpx.MockTransport(handler))
+            return built
+
+        monkeypatch.setattr("just_dna_enricher.enrich.orchestration._dbsnp_client", client)
+        return self
+
+    @property
+    def uids(self) -> list[str]:
+        return [uid for request in self.requested for uid in request]
+
+
+def test_dbsnp_withholds_s117_when_no_loaded_witness_holds_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_ambient_caches: Path
 ) -> None:
-    """S117's own case, as the real witnesses stand: ClinVar and ClinVar-GKM lack `rs8176719`, REST has it."""
+    """S117's own case, as the real witnesses stand: ClinVar and ClinVar-GKM lack `rs8176719`, dbSNP's
+    record has it. The merge check is then served that record and asks nothing twice."""
     spec = _spec(tmp_path)
-    rest = _Rest()
+    dbsnp = _Dbsnp().install(monkeypatch)
     result = _enrich(
         spec,
         tmp_path,
         monkeypatch,
         clinvar_cache=_clinvar_snapshot(tmp_path, _without("rs8176719")),
         clinvar_gkm_cache=_gkm_snapshot(tmp_path),
-        resolver=rest.resolver(),
+        verify_rsids=True,
     )
-    # Asked about the one indel nobody loaded holds: not the SNV, not the indels ClinVar holds.
-    assert rest.requested == ["rs8176719"]
+    # The witness reads the one indel nobody loaded holds, first; the merge check asks the rest once.
+    assert dbsnp.requested[0] == ["8176719"]
+    assert len(dbsnp.uids) == len(set(dbsnp.uids))
     rows = {r.rsid: r for r in result.rows}
     assert "rs8176719" not in rows and "rs8176719" in result.unresolved
     assert result.placement is not None and result.placement.withheld == ["rs8176719"]
     (finding,) = result.placement.disagreements
-    assert (finding.authority, finding.witness) == ("ensembl", "ensembl")
+    assert (finding.authority, finding.witness) == ("ensembl", "dbsnp")
     assert finding.placed == ("9:133257520 G>GC",) and finding.witness_placed == ("9:133257521 T>TC",)
-    # The rows REST was not asked about do not name it.
+    # The rows dbSNP was not asked about do not name it.
     assert rows["rs72613567"].placement_witness == "clinvar+clinvar_gkm"
     record = _record(spec)
-    assert record["findings"] == 1 and record["witness_source"] == "clinvar+clinvar_gkm+ensembl"
-    # Part of the comparison is Ensembl against Ensembl, so neither word is true of the whole record.
-    assert record["checked_source"] == "ensembl" and record.get("independence") is None
-    assert "Ensembl REST" in record["detail"]
+    assert record["findings"] == 1 and record["witness_source"] == "clinvar+clinvar_gkm+dbsnp"
+    assert "dbSNP" in record["detail"]
 
 
-def test_a_rest_agreed_indel_is_written_with_ensembl_as_its_self_consistent_witness(
+def test_a_dbsnp_agreed_indel_is_written_with_dbsnp_as_its_self_consistent_witness(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_ambient_caches: Path
 ) -> None:
-    """No snapshot witness at all: REST is the only second answer, and it is Ensembl's own."""
+    """No snapshot witness at all: dbSNP is the only second answer, and the snapshot was built from it."""
     spec = _spec(tmp_path, {"rs77944059": "G/GAAAC"})
-    rest = _Rest()
-    result = _enrich(spec, tmp_path, monkeypatch, resolver=rest.resolver())
-    assert rest.requested == ["rs77944059"]
+    dbsnp = _Dbsnp().install(monkeypatch)
+    result = _enrich(spec, tmp_path, monkeypatch, verify_rsids=True)
+    assert dbsnp.uids == ["77944059"]  # the merge check is served the witness's record
     (row,) = result.rows
-    assert (row.placement_witness, row.placement_verdict) == ("ensembl", "same_event")
+    assert (row.placement_witness, row.placement_verdict) == ("dbsnp", "same_event")
     assert row.vrs_id == RS77944059_ID
-    # Agreement with its own source proves nothing about the placement: still one witness.
+    assert row.rsid_status == "live"
+    # Agreement with its own upstream proves nothing about the placement: still one witness.
     assert result.placement is not None and result.placement.single_witness == ["rs77944059"]
     assert result.placement.self_consistent == ["rs77944059"]
     record = _record(spec)
     assert (record["subjects"], record["findings"]) == (1, 0)
-    assert (record["checked_source"], record["witness_source"], record["independence"]) == (
-        "ensembl",
-        "ensembl",
-        "self_consistent",
-    )
+    assert record["witness_source"] == "dbsnp"
     assert "1 of 1 placed rsID(s) had one witness only" in record["detail"]
+    assert "compared with dbSNP alone" in record["detail"]
     sources = sources_path(spec, error=EnrichmentError).read_text(encoding="utf-8")
-    assert "ensembl,resolution" in sources
+    assert "dbsnp,resolution" in sources
 
 
-def test_rest_unreachable_is_not_asked_and_counted_never_agreement(
+def test_dbsnp_unreachable_is_not_asked_and_counted_never_agreement(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_ambient_caches: Path
 ) -> None:
     monkeypatch.setattr("time.sleep", lambda _seconds: None)  # tenacity's backoff
     spec = _spec(tmp_path, {"rs8176719": "T/TC"})
-    rest = _Rest(status=503)
+    dbsnp = _Dbsnp(status=503).install(monkeypatch)
     result = _enrich(
         spec,
         tmp_path,
         monkeypatch,
         clinvar_cache=_clinvar_snapshot(tmp_path, _without("rs8176719")),
-        resolver=rest.resolver(),
+        verify_rsids=True,
     )
-    assert len(rest.requested) > 1, "a 503 is retried before the witness counts as not asked"
-    # Nobody contradicted the snapshot, so it is written as before — and the row does not name REST.
+    assert len(dbsnp.requested) > 1, "a 503 is retried before the witness counts as not asked"
+    # Nobody contradicted the snapshot, so it is written as before — and the row does not name dbSNP.
     (row,) = result.rows
     assert (row.placement_witness, row.placement_verdict) == ("clinvar", "unplaced")
     assert result.placement is not None and result.placement.not_asked == ["rs8176719"]
     record = _record(spec)
     assert record["skipped"] == "nothing_to_check"
-    assert "1 rsID(s) Ensembl REST could not be asked about" in record["detail"]
+    assert "1 rsID(s) dbSNP could not be asked about" in record["detail"]
+    assert "dbSNP could not be reached" in record["detail"]
 
 
-def test_rest_retired_is_not_asked_and_says_retired_never_unreachable(
+def test_the_merge_check_switched_off_leaves_dbsnp_not_asked_and_says_why(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_ambient_caches: Path
 ) -> None:
-    """A 410 from REST's `/variation` route is a retired endpoint (audit round 2): the resolver notes it
-    (`Withholding`), and the record's not-asked sentence carries that note, never the outage default."""
+    """The witness reads the merge check's record, so with the check off nothing is asked, and the
+    record says so rather than counting the indel as one witness for no stated reason."""
     spec = _spec(tmp_path, {"rs8176719": "T/TC"})
-    rest = _Rest(status=410)
+    dbsnp = _Dbsnp().install(monkeypatch)
+    result = _enrich(
+        spec, tmp_path, monkeypatch, clinvar_cache=_clinvar_snapshot(tmp_path, _without("rs8176719"))
+    )
+    assert dbsnp.requested == []
+    assert result.placement is not None and result.placement.not_asked == ["rs8176719"]
+    assert "merge check is switched off" in _record(spec)["detail"]
+
+
+def test_the_dbsnp_witness_needs_nothing_of_an_injected_resolver(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_ambient_caches: Path
+) -> None:
+    """Until RM398 the third witness was an optional method of the injected resolver, and a host's
+    resolver without it left the witness not asked. dbSNP is read off the run's own merge check, so a
+    resolver with `resolve_rsid` alone has both indels compared."""
+    spec = _spec(tmp_path, {"rs8176719": "T/TC", "rs77944059": "G/GAAAC"})
+    _Dbsnp().install(monkeypatch)
     result = _enrich(
         spec,
         tmp_path,
         monkeypatch,
-        clinvar_cache=_clinvar_snapshot(tmp_path, _without("rs8176719")),
-        resolver=rest.resolver(),
+        clinvar_cache=_clinvar_snapshot(tmp_path, _without("rs8176719", "rs77944059")),
+        resolver=_ResolverBeforeTheRestWitness(),
+        verify_rsids=True,
     )
-    assert rest.requested == ["rs8176719"], "a 410 is asked once"
-    assert result.placement is not None and result.placement.not_asked == ["rs8176719"]
-    detail = _record(spec)["detail"]
-    assert "1 rsID(s) Ensembl REST could not be asked about" in detail
-    assert REST_RETIRED_REASON in detail, detail
-    assert "No server is available" not in detail, "the source's body belongs in the log, not the record"
-    assert "unreachable after retries" not in detail
+    assert result.placement is not None and result.placement.not_asked == []
+    assert result.placement.withheld == ["rs8176719"]
+    assert {r.rsid: r.placement_witness for r in result.rows} == {"rs77944059": "clinvar+dbsnp"}
 
 
 class _ResolverBeforeTheRestWitness:
-    """An injected resolver written before `resolve_rsid_rest` existed: the shape a host hands `enrich`
-    (just-dna-marketplace's test fake is exactly this, `resolve_rsid` and `close` only). Every rsID here
-    is in the snapshot, so the live link must not ask it either."""
+    """An injected resolver with `resolve_rsid` alone: the shape a host hands `enrich` (just-dna-marketplace's
+    test fake is exactly this, `resolve_rsid` and `close` only). Every rsID here is in the snapshot, so
+    the live link must not ask it either."""
 
     def resolve_rsid(self, rsid: str):
         raise AssertionError(f"live Ensembl asked about {rsid}")
@@ -739,45 +803,29 @@ class _ResolverBeforeTheRestWitness:
         return None
 
 
-def test_an_injected_resolver_without_the_rest_method_leaves_rest_not_asked_and_says_why(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_ambient_caches: Path, caplog: pytest.LogCaptureFixture
-) -> None:
-    """The REST witness is an optional capability of an injected resolver. A resolver without it is a
-    witness this run could not ask: the run completes, the snapshot's placement is written as it would
-    have been with REST unreachable, the rsID is counted as not asked, and one warning names why."""
-    spec = _spec(tmp_path, {"rs8176719": "T/TC", "rs77944059": "G/GAAAC"})
-    with caplog.at_level("WARNING", logger="just_dna_enricher.enrich"):
-        result = _enrich(
-            spec,
-            tmp_path,
-            monkeypatch,
-            clinvar_cache=_clinvar_snapshot(tmp_path, _without("rs8176719", "rs77944059")),
-            resolver=_ResolverBeforeTheRestWitness(),
-        )
-    rows = {r.rsid: r for r in result.rows}
-    assert set(rows) == {"rs8176719", "rs77944059"}
-    assert all(row.placement_witness != "ensembl" for row in rows.values())
-    assert result.placement is not None
-    assert result.placement.not_asked == ["rs77944059", "rs8176719"]
-    assert result.placement.not_asked_reason is not None
-    (warning,) = [r for r in caplog.records if "resolve_rsid_rest" in r.getMessage()]
-    assert "2 snapshot indel(s)" in warning.getMessage()
-    record = _record(spec)
-    assert "2 rsID(s) Ensembl REST could not be asked about" in record["detail"]
-    assert "resolve_rsid_rest" in record["detail"]
-    assert "unreachable after retries" not in record["detail"]
-
-
-def test_offline_asks_rest_nothing(
+def test_offline_asks_dbsnp_nothing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_ambient_caches: Path
 ) -> None:
     spec = _spec(tmp_path, {"rs8176719": "T/TC"})
-    rest = _Rest()
-    result = _enrich(spec, tmp_path, monkeypatch, offline=True, resolver=rest.resolver())
-    assert rest.requested == []
+    dbsnp = _Dbsnp().install(monkeypatch)
+    result = _enrich(spec, tmp_path, monkeypatch, offline=True, verify_rsids=True)
+    assert dbsnp.requested == []
     (row,) = result.rows
     assert (row.placement_witness, row.placement_verdict) == (None, None)
     assert result.placement is not None and result.placement.not_asked == []
+
+
+@pytest.mark.network
+def test_live_dbsnp_places_s117_as_clinvar_does() -> None:
+    """The live record, unmocked: dbSNP's SPDI anchors on GRCh38's own base to ClinVar's spelling, which
+    the snapshot's `9:133257520 G>GC` is not."""
+    client = EutilsClient()
+    try:
+        records = client.esummary("snp", ["8176719"])
+    finally:
+        client.close()
+    loci = _dbsnp_placements(records["8176719"], lambda chrom, pos: read(chrom, pos, pos))
+    assert loci == [dict(zip(("chrom", "start", "ref", "alts"), CLINVAR["rs8176719"], strict=True))]
 
 
 @pytest.mark.network
@@ -1116,17 +1164,11 @@ def test_rm373_the_witness_licence_rows_carry_each_lanes_release_and_a_rerun_kee
     assert datasets() == expected
 
 
-def test_rm373_a_rest_witness_contributes_the_release_rest_answered_from(
+def test_rm373_the_dbsnp_witness_release_is_withheld_never_guessed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_ambient_caches: Path
 ) -> None:
-    """2026-11-05, found merging block 3: the witness map was written before REST became a witness.
-
-    A run whose snapshot answered every rsID asks REST nothing as a link, so the release REST answered
-    the witness from has to be asked by the witness, once. The licence row stays withheld here, and
-    honestly: the row REST witnessed was answered by the snapshot, whose label (none, for this fixture's
-    old-repo shape; `…vep116.0` for a split one) is never the same string as REST's `ensembl_116`. What
-    moves is the reason — two releases, not an unrecorded one.
-    """
+    """RM398. The `esummary db=snp` record names no dbSNP build, so the witness contributes `None`: its
+    licence row is written, for attribution, with its release withheld rather than guessed."""
     captured: dict[str, list[str | None]] = {}
 
     def spy(*args, **kwargs):
@@ -1136,22 +1178,21 @@ def test_rm373_a_rest_witness_contributes_the_release_rest_answered_from(
     monkeypatch.setattr("just_dna_enricher.enrich.orchestration.table_releases", spy)
     snapshot = _ensembl_snapshot(tmp_path)
     spec = _spec(tmp_path, {"rs77944059": "G/GAAAC"})
-    rest = _Rest()
-    result = _enrich(spec, tmp_path, monkeypatch, ensembl_cache=snapshot, resolver=rest.resolver())
+    _Dbsnp().install(monkeypatch)
+    result = _enrich(spec, tmp_path, monkeypatch, ensembl_cache=snapshot, verify_rsids=True)
     (row,) = result.rows
-    assert row.placement_witness == "ensembl" and row.source == "cache"
-    assert rest.release_asked == 1
-    # The snapshot's label as the row's authority, and REST's as its witness: neither is unrecorded.
-    assert captured["ensembl"] == [LANES_BY_NAME["ensembl"].release_label(snapshot), "ensembl_116"]
+    assert row.placement_witness == "dbsnp" and row.source == "cache"
+    assert captured["dbsnp"] == [None]
+    assert captured["ensembl"] == [LANES_BY_NAME["ensembl"].release_label(snapshot)]
     rows, errors, _ = load_csv_rows(sources_path(spec, error=EnrichmentError), SourceRow, "sources")
     assert errors == []
-    assert {r.source: r.dataset for r in rows if r.layer == "resolution"} == {"ensembl": None}
+    assert {r.source: r.dataset for r in rows if r.layer == "resolution"} == {"dbsnp": None, "ensembl": None}
 
 
-def test_rm373_a_run_using_rest_as_link_and_witness_asks_its_release_once(
+def test_rm398_a_run_using_rest_as_link_asks_rest_nothing_as_a_witness(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_ambient_caches: Path
 ) -> None:
-    """The live link asked `/info/data` already, so the witness reuses that answer rather than asking again."""
+    """Live REST still answers a link's miss and states its release once; the witness asks dbSNP only."""
     captured: dict[str, list[str | None]] = {}
 
     def spy(*args, **kwargs):
@@ -1162,8 +1203,10 @@ def test_rm373_a_run_using_rest_as_link_and_witness_asks_its_release_once(
     # `rs1` is in no snapshot, so the live link asks REST about it, which holds no mapping for it.
     spec = _spec(tmp_path, {"rs77944059": "G/GAAAC", "rs1": "A/G"})
     rest = _Rest()
-    result = _enrich(spec, tmp_path, monkeypatch, resolver=rest.resolver())
-    assert rest.requested == ["rs1", "rs77944059"] and rest.release_asked == 1
-    witnessed = [r for r in result.rows if r.placement_witness == "ensembl"]
+    dbsnp = _Dbsnp().install(monkeypatch)
+    result = _enrich(spec, tmp_path, monkeypatch, resolver=rest.resolver(), verify_rsids=True)
+    assert rest.requested == ["rs1"] and rest.release_asked == 1
+    assert dbsnp.requested[0] == ["77944059"]
+    witnessed = [r for r in result.rows if r.placement_witness == "dbsnp"]
     assert [r.rsid for r in witnessed] == ["rs77944059"]
-    assert "ensembl_116" in captured["ensembl"]
+    assert captured["dbsnp"] == [None]
