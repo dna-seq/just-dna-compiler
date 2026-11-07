@@ -55,12 +55,14 @@ None open.
 - **0.8.1 released, 2026-11-07** (enricher only: RM397, RM398, RM400, RM401, RM403, RM407). Tag `v0.8.1`
   on 6330f908, pushed. The GitHub release waits on the person (auto-mode rule 13 missing; notes in the
   session scratchpad, `release_notes_0_8_1.md`).
-- **Next patch, uncut on `main`:** RM408 (7c075b70), the Open Targets lane's repo and private pull route.
-  The person published the lane on 2026-11-07 from the shared cache (`publish_reference_snapshot`, 428 parquet
-  + `release.json`, `opentargets_26.09`, publicly readable), so RM408 is cuttable now. RM409 (Ctrl-C) and RM410
-  (constraint 4.1.2, the pm sizes) are filed; the `cache rebuild --dry-run` help fix is 931215fb. ClinVar-GKM needed no code: `cache rebuild --only clinvar_gkm --publish`, the
-  person's. After both publish: ENRICHING.md § 3's `clinvar_gkm` "not published yet" example and § 4's
-  "build it once" go stale (the step-10 docs refresh).
+- **0.8.2 cut, 2026-11-07, b98f7e9c, waiting on the maintainer's PyPI publish.** All three packages (format
+  and compiler moved for RM414/RM415). Carries RM408, RM410, RM411, RM413-RM417. Dists in the root `dist/`
+  (six, metadata valid). After the publish, in order: (1) upload the gnomAD 4.1.2 constraint snapshot from
+  `data/caches/constraint` (`gnomad constraint publish`; the pm signed off on the condition that 0.8.2 is on
+  PyPI first, because 0.8.1 has no re-run guard); (2) tag `v0.8.2` on b98f7e9c; (3) GitHub release, still
+  blocked on auto-mode rule 13 unless the maintainer pasted it; (4) docs refresh. Open for the maintainer: the
+  `CLAUDE.md` headline for `@constraint-two-releases` (RM417), proposed in chat. RM418 (one NCBI gate per
+  process, the pm's) is the next patch.
 - **Cache:** `/data/just-dna-cache/ensembl_variations` is the split release; the old one is
   `ensembl_variations.pre-0.8`, to drop on the person's word. The just-dna-lite side still to be told.
 - **Desk:** #210 (should the liaison keep `docs/DOWNSTREAM.md`, who waits on us; default: no list) and
