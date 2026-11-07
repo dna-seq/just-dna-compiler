@@ -5,6 +5,7 @@ members = ["schema", "compiler", "enricher"]
 dev = [
     "pytest>=9.0.3",
     "pytest-cov>=7.1.0",
+    "pytest-xdist>=3.8.0",
     "ruff>=0.8.0",
 ]
 # Not in `default-groups`, so `uv sync` stays the lean install every contributor and the test matrix
