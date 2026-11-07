@@ -1925,7 +1925,7 @@ Neither is built until a real module needs it.
 
 **Independence.** It keeps REST's `self_consistent` reading, since dbSNP is the snapshot's own upstream, unless the build shows grounds to claim more.
 
-**Not this patch: widening dbSNP to every placed rsID, substitutions included.** That moves which loci a run withholds, so it waits for the disagreement count; it is the residual named below.
+**Not this patch: widening dbSNP to every placed rsID, substitutions included.** That moves which loci a run withholds, so it waits for the disagreement count, as RM406.
 
 **Not taken: agreement among several small sources as a substitute** (the maintainer's "3+ coordinates matched against other dbs"). ClinVar, ClinVar-GKM, PharmGKB and the rest key on dbSNP's rsIDs, so their agreement is one witness counted several times. They reach about 0.23% of the snapshot, and agreement on substitutions says nothing about the indels, where every known misplacement lives (S117, S132).
 
@@ -1969,7 +1969,7 @@ for none. So both candidate witnesses below would have decided all six.
 
 **Open questions.** Is dbSNP independent of a snapshot Ensembl built from dbSNP 157, or self-consistent in
 RM292's sense? It catches Ensembl's processing (RM267's class was exactly that) and cannot catch an error in
-dbSNP's own placement. Which of the three, or the online one first as REST was: answered by candidate 0, which needs neither a lane nor a client. **Residuals, to be stated at closure:** dbSNP widened to every placed rsID once the disagreement count is in; an offline dbSNP witness (candidate 1) if one is ever needed; the snapshot keeping VEP's `SPDI` CSQ field (the registry's (d)) is the snapshot builder's,
+dbSNP's own placement. Which of the three, or the online one first as REST was: answered by candidate 0, which needs neither a lane nor a client. **Residuals, to be stated at closure:** dbSNP widened to every placed rsID is RM406; an offline dbSNP witness (candidate 1) if one is ever needed; the snapshot keeping VEP's `SPDI` CSQ field (the registry's (d)) is the snapshot builder's,
 prepare-annotations, outside this repository; it normalises rather than witnesses, and would make candidate 1 a
 join.
 
@@ -2015,6 +2015,40 @@ here.
 **What it would be.** Measure the four first. Then either fewer scans in one run (one rsID pass, one positional
 pass), or a lookup the snapshot's sort order serves. **Residuals, to be stated at closure:** an rsID-sorted
 sidecar or an index is the snapshot builder's, prepare-annotations, and its layout is RM303's contract.
+
+## RM406 — dbSNP witnesses only the indels REST was asked about, though the run already holds its placement for every rsID
+
+**Parked, the pm (2026-11-07)**, split from RM398 on the maintainer's ask: "I was suggesting potentially adding one. As a separate item, for future." RM398, the next patch, puts dbSNP where REST was and no further. **Unparks when** RM398's build has counted dbSNP-versus-snapshot disagreements over the registry's replay and the count says what a disagreement should do, a consumer reports a misplacement outside REST's subjects, a scope the maintainer highlights touches it, or the roadmap is empty.
+
+**Severity** low · **Status** open — **a minor or a patch, parked** (class by design: report-only adds counts,
+withholding changes which loci are written) · **Owner** enricher (`placement.py`, `identifiers.classify_rsid`) ·
+**Motivating case** the maintainer's ask, 2026-11-07; S117 and S132 for the class of error · *related* RM398,
+RM267, RM292, RM303
+
+**The cost is not requests.** The maintainer's worry: "On any placed = very high cost, imagine 1M rest calls.
+Should be some flag. Some bayesian sampling maybe?" dbSNP's placement comes from the merge check's
+`esummary db=snp`. Every online run already sends that for every rsID it carries, on by default
+(`verify_rsids=True`), 200 ids a request (`EutilsSettings.batch_size`). So widening asks nothing new and asks
+REST nothing: a million-rsID module costs 5,000 esummary requests today, whether their SPDI is read or not.
+What widening costs is:
+
+- **which loci a run withholds:** every substitution or ClinVar-held indel dbSNP disagrees with would be
+  withheld, and `strict` refuses a subject with every locus withheld;
+- **comparison work:** an indel's left-alignment reads the reference; a substitution's comparison reads none.
+
+**What it would be, cheapest first.**
+
+1. **Report only.** Compare every placed rsID with dbSNP and count the disagreements in `placement_agreement`'s
+   detail, withholding nothing beyond RM398's subjects. It needs no flag, since it costs no request and changes
+   no written row; it says how often the snapshot and dbSNP part.
+2. **Withhold**, if what (1) counts shows dbSNP is right where they part. A flag only if two deployments want
+   different answers (`@retry-attempt-floor`).
+
+**Sampling answers a different question:** whether a snapshot as a whole is sound, asked once per snapshot
+rather than per module. A sample of the snapshot's indels checked against dbSNP at build or provision time
+would estimate its misplacement rate with an interval. **Residuals, to be stated at closure:** that
+snapshot-wide audit is the snapshot builder's (prepare-annotations, under RM303's contract), or a provision-time
+check filed on its own.
 
 # Not format scope
 
@@ -2534,6 +2568,7 @@ possibly already satisfied, and the rest sound** — the sweep's value is mostly
 | **RM306** — no exon structure in the tier (parked 2026-11-05) | a real module's AlphaGenome rows need an exon-level gene attribution | **Sound.** The AlphaGenome lane ships. |
 | **RM378** — errors carry no code (parked 2026-11-05) | a consumer needs to tell apart refusals RM377's two phrases do not cover | **Sound.** S129 already came in through `Sn`. |
 | **RM405** — the offline floor is four unindexed snapshot queries (parked 2026-11-07) | a consumer reports offline enrichment time as a problem, or the snapshot builder offers an rsID-sorted layout | **Sound.** The `Sn` inbox is open, and the layout is another repository's to offer. |
+| **RM406** — dbSNP witnesses only REST's subjects (parked 2026-11-07) | RM398's build counts dbSNP-versus-snapshot disagreements on the registry's replay, or a consumer reports a misplacement outside REST's subjects | **Sound.** RM398 is the next patch and its build step produces the count; the `Sn` inbox is S117's and S132's channel. |
 | **RM15** / **RM69** / **RM52** and the 1.0 queue | a major-version bump | **Sound, and not this kind of gate.** A release boundary is a schedule, not a satisfier. |
 
 **What the sweep did not find, stated so it is not re-run for a while.** No gate anywhere is parked on
