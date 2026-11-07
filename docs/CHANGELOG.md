@@ -41,7 +41,30 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
-## 2026-11-07 — RM414 and RM415: two repeat-bin warnings stop misstating a module (patch, uncut)
+## 2026-11-07 — `v0.8.2`: format, compiler and enricher 0.8.2 (a patch, cut from `main`)
+
+All three packages move, because each changed source since `v0.8.1`: format and compiler for RM414 and
+RM415, the enricher for the rest. The enricher's floors are `just-dna-format>=0.8.2` and
+`just-dna-compiler>=0.8.2`, the compiler's `just-dna-format>=0.8.2`. Nothing adds a public name, field, table,
+flag or warning code; the new names are private in the 0.8 line (RM412 makes them public in 0.9).
+
+- **What it carries:** RM408 (the Open Targets snapshot has a repository and a pull route), RM410 (gnomAD
+  constraint 4.1.2), RM411 (`cache rebuild --dry-run` takes nothing), RM413 (the cache-lane prerelease gates),
+  RM414 and RM415 (two repeat-bin warnings reworded), RM416 (`--pin` taken or refused), RM417 (gnomAD API
+  constraint rows stop claiming v2.1.1).
+- **Release record** (`RELEASE_RECORDS["0.8.2"]`, measured from 0.8.0, the last published compiler): 22
+  reference modules, nothing moved but warnings in 2 (RM414's text). No recompile is needed.
+- **After upgrading:**
+  1. Raise floors to `>=0.8.2`.
+  2. `cache pull --only opentargets` fetches Open Targets instead of building it (~5.5 GB against ~22 GB).
+  3. Rows labelled `gnomad_v2.1.1_constraint` in a module's `gene_metrics.csv` hold v4.x numbers (RM417,
+     declared in `INTEGRATION_0_8.md` § 4); delete the file and enrich again to relabel them.
+  4. The constraint snapshot moves to 4.1.2 once it is published after this release; existing 4.1 rows are
+     kept on a re-run.
+  5. A `--pin` for a lane that cannot take one now stops the run; drop it.
+  6. `cache rebuild --dry-run` no longer builds: build without `--publish`, then dry-run to rehearse the upload.
+
+## 2026-11-07 — RM414 and RM415: two repeat-bin warnings stop misstating a module (patch, cut as `v0.8.2`)
 
 - **The repeat- and copy-number warnings name the field the module reads** (RM414, S136). When every bin
   declares a `source_field` and none is VCF 4.4's own (`RUC`, `CN`), `measure_field_fractional` and
@@ -51,7 +74,7 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 - **`bins_ungrounded` no longer says "no bin pmid" when a bin carries one** (RM415, S137): with one bin
   cited, the clause reads "carry no grounding evidence of their own (…; N other bin(s) do cite one)".
 
-## 2026-11-07 — RM417: gnomAD API constraint rows stop claiming v2.1.1 (patch, uncut; a corrected label)
+## 2026-11-07 — RM417: gnomAD API constraint rows stop claiming v2.1.1 (patch, cut as `v0.8.2`; a corrected label)
 
 - **Gene-metrics rows taken from the live gnomAD API are labelled `gnomad_api_constraint`** (RM417), not
   `gnomad_v2.1.1_constraint`. The API serves gnomAD 4.1.1 or later: its answer for chrX's DMD, a gene no release
@@ -63,7 +86,7 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   delete its `gene_metrics.csv` and enrich again, which moves its fact hash. `INTEGRATION_0_8.md` § 4 carries
   it as a known issue.
 
-## 2026-11-07 — RM410, RM416: gnomAD constraint 4.1.2, and `--pin` taken or refused (patch, uncut)
+## 2026-11-07 — RM410, RM416: gnomAD constraint 4.1.2, and `--pin` taken or refused (patch, cut as `v0.8.2`)
 
 - **The constraint snapshot is gnomAD 4.1.2** (RM410), was 4.1: 19,511 genes where 4.1 had 18,111, chrX and
   chrY for the first time, and gnomAD's recomputed pLI, LOEUF, o/e and z-scores (LOEUF moved for 17,214 of
@@ -80,7 +103,7 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 - **Known, not fixed here:** gene-metrics rows taken from the live gnomAD API are labelled
   `gnomad_v2.1.1_constraint`, and the API serves 4.1.1 or later (RM417, open).
 
-## 2026-11-07 — RM413: no cut while a lane with a repository has nothing published in it (patch, uncut)
+## 2026-11-07 — RM413: no cut while a lane with a repository has nothing published in it (patch, cut as `v0.8.2`)
 
 - **Every cut now passes three cache-lane gates** (RM413, `enricher/tests/test_prerelease_gates.py`): stage
   parity (a published lane can be pulled, every publish command has a `--dry-run`, and a lane built here and
@@ -89,7 +112,7 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   under `JUST_DNA_NETWORK_TESTS=1`, a published release in every lane's repository. 0.8.0 passed none of the
   three for Open Targets. Tests and the release rule only; nothing a consumer imports moves.
 
-## 2026-11-07 — RM411: `cache rebuild --dry-run` takes nothing (patch, uncut)
+## 2026-11-07 — RM411: `cache rebuild --dry-run` takes nothing (patch, cut as `v0.8.2`)
 
 - **`cache rebuild --dry-run` no longer downloads or builds** (RM411, a bug: a dry run that writes is not
   one). It ran the whole rebuild and skipped only the upload, so rehearsing `--only opentargets --publish`
@@ -101,7 +124,7 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   only. Build with `cache rebuild` (no `--publish`), then run `--publish --dry-run` to rehearse that build.
   No public name, flag or warning code; 0.9 adds an opt-in download rehearsal (RM412).
 
-## 2026-11-07 — RM408: the Open Targets snapshot has a repository and a pull route (patch, uncut)
+## 2026-11-07 — RM408: the Open Targets snapshot has a repository and a pull route (patch, cut as `v0.8.2`)
 
 - **`cache rebuild --only opentargets --publish` publishes the Open Targets snapshot to
   `just-dna-seq/opentargets`, and `cache pull --only opentargets` pulls it** (RM408). The lane shipped in 0.8.0

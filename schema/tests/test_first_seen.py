@@ -75,6 +75,8 @@ _RELEASES: frozenset[str] = frozenset(
         # The 0.8 patch line, tagged on `main`. 0.8.1 moved the enricher only, but the tag is the
         # release, and the guard below holds this list equal to the tags.
         "0.8.1",
+        # Uncut until its tag: the release `_UNCUT` names while the 0.8.2 cut is on `main`.
+        "0.8.2",
     }
 )
 

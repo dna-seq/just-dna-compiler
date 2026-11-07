@@ -1478,4 +1478,45 @@ RELEASE_RECORDS: dict[str, ReleaseRecord] = {
             "NUDT15 rs1457579126 row was re-anchored from 13:48040982 to 13:48040977."
         ),
     ),
+    # Measured at the 0.8.2 cut (2026-11-07). `previous` is 0.8.0: 0.8.1 moved the enricher alone, so
+    # 0.8.0 is the newest published compiler, and BEFORE was compiled by it (with format 0.8.0) from this
+    # tree's `reference_examples/`. Same lock on both sides, polars 2.1.0, so no toolchain sweep.
+    "0.8.2": ReleaseRecord(
+        version="0.8.2",
+        previous="0.8.0",
+        axes={
+            "parquet_schema": False,
+            "parquet_bytes": False,
+            "content_signature": False,
+            "manifest_fields": False,
+            "warnings": True,
+        },
+        manifest_fields=[],
+        declared=[
+            DeclaredChange(
+                axis="warnings",
+                target="compilation.warnings",
+                kind="addition",
+                detail=(
+                    "RM414 rewords the two repeat-bin warnings (whole-number tiling, overlapping bins) so "
+                    "they name the field the module names, `source_field`, where they said a consumer reads "
+                    "RUC; RM415 rewords `bins_ungrounded` so it no longer says no bin cites when one does. "
+                    "The old texts misstated some modules, so in substance this is a correction of a message. "
+                    "It is declared an addition, as RM131's rewording was, because the warnings axis drives "
+                    "no recompile and an unscoped `correction` would have a registry spend a PATCH per module "
+                    "for a message: no manifest path can scope it to modules with repeat bins."
+                ),
+                item="RM414",
+            ),
+        ],
+        evidence=(
+            "22 reference module(s) compiled under 0.8.0 and 0.8.2 from one spec root, so the compiler is "
+            "the only variable; modules moved per axis: content_signature 0/22, manifest_fields 0/22, "
+            "parquet_bytes 0/22, parquet_schema 0/22, warnings 2/22. The two are fmr1_cgg_repeat and "
+            "htt_repeat_expansion: RM414 rewords both repeat-bin warnings so they name the field the "
+            "module names (FORMAT/REPCN) instead of saying a consumer reads RUC; same findings, same "
+            "count, new text. RM415's `bins_ungrounded` rewording reaches no reference module. The "
+            "warnings axis drives no recompile."
+        ),
+    ),
 }

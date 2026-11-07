@@ -36,7 +36,7 @@ Patches on `main` after the 0.8.0 cut (2026-11-05), newest first.
 
 ## RM415 — `bins_ungrounded` said "no bin pmid" on a module whose bin carries one
 
-**SHIPPED 2026-11-07 on `main`, uncut — a patch (S137, just-module-creator's liaison).** Owner compiler,
+**SHIPPED 2026-11-07 on `main`, cut 2026-11-07 as `v0.8.2` — a patch (S137, just-module-creator's liaison).** Owner compiler,
 severity low.
 
 **The class: a clause written for one arm of a count, printed for every arm.** The warning's numerator is
@@ -58,7 +58,7 @@ the none-cited case.
 
 ## RM414 — the repeat-count warnings reasoned about `RUC`/`CIRUC` when the module declares another `source_field`
 
-**SHIPPED 2026-11-07 on `main`, uncut — a patch (S136, just-module-creator's liaison).** Owner format
+**SHIPPED 2026-11-07 on `main`, cut 2026-11-07 as `v0.8.2` — a patch (S136, just-module-creator's liaison).** Owner format
 (`binning.measurement_shape_warnings`), severity low.
 
 **The class: a check keyed on a kind when the row names the thing the check is about.** RM55's fractional
@@ -88,7 +88,7 @@ it; the copy-number kind scopes the same way. The HTT reference example's valida
 
 ## RM417 — the live gnomAD API's constraint is v4.1.1 or later, and its rows were labelled `gnomad_v2.1.1_constraint`
 
-**SHIPPED 2026-11-07 on `main`, uncut — a patch, a corrected label declared (the pm's sizing).** Owner enricher,
+**SHIPPED 2026-11-07 on `main`, cut 2026-11-07 as `v0.8.2` — a patch, a corrected label declared (the pm's sizing).** Owner enricher,
 severity medium.
 
 **Residuals** none
@@ -146,7 +146,7 @@ Principle 3 lets it ship in any release, declared.
 
 ## RM416 — nine rebuild adapters ignored `--pin`, so a pinned build built the default and said nothing
 
-**SHIPPED 2026-11-07 on `main`, uncut — a patch (the maintainer: "But why is version of publication hardcoded into
+**SHIPPED 2026-11-07 on `main`, cut 2026-11-07 as `v0.8.2` — a patch (the maintainer: "But why is version of publication hardcoded into
 release?" and "do the whole thing + pinning fix into 0.8.2").** Owner enricher, severity medium.
 
 **Residuals** RM412 — a probe per lane for the source's newest release, so a default can follow it
@@ -169,7 +169,7 @@ the constraint pin choosing URL, file name and label. All eight non-parametrized
 
 ## RM410 — the gnomAD constraint snapshot was pinned to 4.1, and 4.1.2 recomputes the metrics
 
-**SHIPPED 2026-11-07 on `main`, uncut — a patch (sized by the pm; built on the maintainer's "do the whole
+**SHIPPED 2026-11-07 on `main`, cut 2026-11-07 as `v0.8.2` — a patch (sized by the pm; built on the maintainer's "do the whole
 thing + pinning fix into 0.8.2").**
 
 **Residuals** RM417 — the live API's constraint is 4.1.1+ and is labelled v2.1.1, which the snapshot's 4.1.2 now makes visible
@@ -233,7 +233,7 @@ severity is low. What it buys is chrX and chrY metrics for the first time, and g
 
 ## RM413 — no gate kept a lane with a builder and no repository out of a release
 
-**SHIPPED 2026-11-07 on `main`, uncut — a patch, tests and the release rule (the maintainer: "Add a prerelease
+**SHIPPED 2026-11-07 on `main`, cut 2026-11-07 as `v0.8.2` — a patch, tests and the release rule (the maintainer: "Add a prerelease
 checks: idempotency check (on the interfaces expected to be such) and cli-parity for all these
 build/publish/download. This time 0.8 got a dough instead of opentargets. No hf publish thus blocks release").**
 Owner enricher (tests), the lead (RELEASE_CYCLE), severity medium.
@@ -261,7 +261,7 @@ The published-release gate ran live on 2026-11-07: all eleven lanes with a repos
 
 ## RM411 — `cache rebuild --dry-run` downloaded and built every lane, skipping only the upload
 
-**SHIPPED 2026-11-07 on `main`, uncut — a patch (the maintainer: "dry is idempotent, thus it is not expected to
+**SHIPPED 2026-11-07 on `main`, cut 2026-11-07 as `v0.8.2` — a patch (the maintainer: "dry is idempotent, thus it is not expected to
 change stuff, yet it downloads (and overwrites) the sources. Thus maybe 1").** Owner enricher, severity medium.
 
 **Residuals** RM412 — a dry run that rehearses the download itself, opt-in, and the source's newest release asked per lane
@@ -291,7 +291,7 @@ previous `main` (931215fb).
 
 ## RM408 — the Open Targets lane had a builder and no repository, so every deployment cut its own ~5.5 GB snapshot from ~22 GB
 
-**SHIPPED 2026-11-07 on `main`, uncut — a patch (the maintainer: "Fix the code then, unless unspecified public
+**SHIPPED 2026-11-07 on `main`, cut 2026-11-07 as `v0.8.2` — a patch (the maintainer: "Fix the code then, unless unspecified public
 dest is some kind of decision I missed").** Owner enricher, severity medium.
 
 **Residuals** none
