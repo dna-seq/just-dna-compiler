@@ -231,6 +231,34 @@ findable from its gate)*:
   withholds on every build but GRCh38; RM32 (0.5) handed the generalization to this item. Multi-build
   support has to carry a PAR table per assembly, or PAR modules stay GRCh38-only.
 
+**Considered 2026-11-07 (the pm, with the maintainer): keying indels by their VRS id.** RM19 keyed
+substitutions by VRS in 0.5. Indel, multi-allelic and rsID-keyed rows keep their old keys, and nothing
+planned moves them. The maintainer asked whether the compiler could mint an indel's id itself: "Technically it
+can. With a cost of having seqrepo and fa-s. We may use this as loophole and have compiler use either that or
+'thin' provisioning, but this way the key becomes a derived item." The reading, recorded so it is not
+re-derived:
+
+- **It is legal.** Principle 2 forbids the compiler fetching, not reading a reference the caller injects; the
+  pre-0.5 DuckDB reference was one.
+- **It makes the compile environment part of identity.** An indel's VRS id needs reference bases to
+  normalize, and so does any normalized key (a left-aligned spelling included). With the key derived from
+  them, a module with an indel has one key where a reference is present and none where it is absent. The
+  compile must then refuse without one, or the key differs by machine. The round trip holds only where the
+  reference is installed, and `content_signature`, which holds `variant_key`, stops being independent of the
+  reference (Principle 4).
+- **Thin provisioning is weaker than a full reference.** A refget accession digests a whole sequence, so a
+  stored window around an indel cannot be checked against it. A hand-edited window would move identity
+  silently (Principle 9's false claim). A full local seqrepo can be verified.
+- **What it buys is small.** It makes two spellings of one indel equal, and that is covered today by
+  `vrs_id` in the parquet and by `left_aligned` with the leftmost spelling (RM270).
+
+**So:** the key stays computable from the authored row and the build alone. The VRS id of an indel stays a
+derived column, empty where no reference was read. Declined for 1.0 unless 1.0 makes a full, checkable
+reference a **required** compile input; that is the decision to take first, priced by a measurement of the offline routes (owed, 2026-11-07).
+The compiler filling `vrs_id` itself when a reference happens to be injected touches no identity. It is a
+convenience, unfiled while the enricher already fills the column. A local reference for the enricher alone is
+RM385 (0.9).
+
 ---
 
 ## RM69 — `resolution_signature` is not a round-trip invariant when the positional fill is skipped
