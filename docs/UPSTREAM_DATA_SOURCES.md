@@ -19,7 +19,8 @@ house algebra: an unknown is never written as a no).
 ## Marks
 
 - **Last measured:** 2026-11-07, by hand (curl against each source, `cache status`, each HF repo's `release.json`);
-  the published column re-read the same evening after the lead's four publishes.
+  the published column re-read the same evening after the lead's four publishes, and `constraint` on 2026-11-08
+  after the 0.8.2 publish.
 - **Next:** weekly, with the dependency bump; earlier when a lane's builder or a source announces a release.
 
 ## The table (2026-11-07)
@@ -28,7 +29,7 @@ house algebra: an unknown is never written as a no).
 | --- | --- | --- | --- | --- |
 | `ensembl` | Ensembl **116** (REST `/info/data`; FTP tops at `release-116`) | `ensembl-variation-2026_07_13-vep116.0` | `ensembl-variation-2026_07_13-vep116.0` (`ensembl_variations_split`, `manifest.json`; that repo has no `release.json`) | no |
 | `clinvar` | weekly `clinvar_20261101.vcf.gz`; `clinvar.vcf.gz` modified 2026-11-02 | `clinvar_2026-06-27` | `clinvar_2026-11-01` (published 2026-11-07) | published: no. This machine's cache: 4 months behind |
-| `constraint` | gnomAD **v4.1.2** (`release/4.1.2/constraint/` exists; so does 4.1.1) | `gnomad_v4.1_constraint` | `gnomad_v4.1_constraint` | **yes**: the builder pins `release/4.1/` (`constraint_build.py:60`) |
+| `constraint` | gnomAD **v4.1.2** (`release/4.1.2/constraint/` exists; so does 4.1.1) | `gnomad_v4.1_constraint` (`/data/just-dna-cache/gnomad_constraint/`, built 2026-09-02) | `gnomad_v4.1.2_constraint` (published 2026-11-08, builder 0.8.2, 19,511 genes) | published: no (RM410 moved the builder's default to 4.1.2, `constraint_build.py:61`). This machine's cache: behind |
 | `clinpgx` | unchecked: the archive's `Last-Modified` reads 2025-07-05, older than the label we built, so that header is not the release date | `clinpgx_2026-08-05` | `clinpgx_2026-08-05` | unchecked |
 | `cpic` | unchecked: the label is a hash of the API's answer, so only a rebuild says whether it moved | `cpic_snapshot_b0ffd4c6f010` | `cpic_snapshot_b0ffd4c6f010` | unchecked |
 | `drug_labels` | unchecked (ClinPGx, as above) | `clinpgx_drug_labels_2026-08-05` | `clinpgx_drug_labels_2026-08-05` | unchecked |
@@ -46,9 +47,10 @@ house algebra: an unknown is never written as a no).
 
 ## What the table says
 
-1. **On the published copy, only `constraint` is behind its source now** (RM410). `clinvar`, `civic`, `strchive`
-   and `mitomap` were behind when first measured and were published on 2026-11-07.
-2. **This machine's shared cache is older than the published copy** for those four lanes: `cache pull` would bring it
+1. **On the published copy, no dated lane is behind its source** (2026-11-08). `clinvar`, `civic`, `strchive` and
+   `mitomap` were behind when first measured and were published on 2026-11-07; `constraint` followed on 2026-11-08
+   with 0.8.2 (RM410).
+2. **This machine's shared cache is older than the published copy** for those five lanes: `cache pull` would bring it
    level.
 3. **Three lanes have labels a date cannot be compared with** (`cpic`, `pharmvar`, `pubmind` are hashes). Their
    currency is known only by rebuilding and comparing hashes. Whether that is worth a weekly run is open.
@@ -105,11 +107,12 @@ values.
 
 ## Verdicts
 
-- **`constraint`**: filed by the lead as **RM410** (2026-11-07), for the pm to size, from the adoption note above.
+- **`constraint`**: filed by the lead as **RM410** (2026-11-07) from the adoption note above, shipped in 0.8.2;
+  `gnomad_v4.1.2_constraint` **published 2026-11-08** after enricher 0.8.2 reached PyPI (re-read from the hub).
 - **`clinvar`, `civic`, `strchive`, `mitomap`**: rebuild and publish handed by the lead to the maintainer (2026-11-07);
   publishing is theirs. **Published 2026-11-07** on the pm's sign-off (re-read from the hub that evening).
-- **This machine's shared cache** (`/data/just-dna-cache`) still holds the old labels for those four: `cache pull`
-  would bring it level. Whose call that is, on a cache other seats' runs read, is the lead's.
+- **This machine's shared cache** (`/data/just-dna-cache`) still holds the old labels for those four and for
+  `constraint` (`gnomad_v4.1_constraint`): `cache pull` would bring it level. Whose call that is, on a cache other seats' runs read, is the lead's.
 
 ## Outbound
 
