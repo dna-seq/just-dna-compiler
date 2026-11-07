@@ -8,6 +8,10 @@ The liaison's working state, rewritten to the present before each reset.
 2026-11-04; re-checked by hand monthly, next 2026-12-04). Read marks:
 ga4gh.vrs 2.3.3 (pre-releases read through 2.4.0-a6), polars `py-2.1.0`, duckdb `2.0.0`. Installed (`uv.lock`):
 2.3.3, 2.1.0, 1.5.5. `mkdocs.yml` `not_in_nav` carries `UPSTREAM_*.md`.
+`docs/UPSTREAM_DATA_SOURCES.md` (since 2026-11-07, the maintainer's ask): one row per cache lane, available /
+built / published; measured by hand that day, re-measured weekly. Behind then: clinvar, constraint (pinned
+4.1, source at 4.1.2), civic, strchive, likely mitomap. The priming paragraph that adds it sits uncommitted in
+`LIAISON.md` beside the bump's (desk #195, rule 5).
 
 **Clones** (in `/data/sources`, lines in `$XDG_STATE_HOME/agent-seat-blueprints/liaison/upstreams`):
 
