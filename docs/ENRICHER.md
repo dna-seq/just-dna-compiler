@@ -616,6 +616,21 @@ Org limits apply **per member**, not shared. Source of truth:
   appeared up to 21 calls/s ([ALPHAGENOME_ATLAS.md § 6.7](probes/ALPHAGENOME_ATLAS.md)), so the
   "paces before it retries" reasoning holds trivially. The gate is still waited on once per attempt,
   so `spent` meters Atlas calls, and `connect(gate=…)` takes a shared one with a real interval.
+- **Every retry says so, and every give-up says how long (RM403).** Each policy names `net.log_retry`
+  as its `before_sleep` and `net.log_give_up` as its `retry_error_callback`, so the `just_dna_enricher.net`
+  logger writes, at WARNING:
+
+  ```text
+  EnsemblResolver._rest_rsid(rs1801133): attempt 1 of 3 failed (ReadTimeout: The read operation timed out); retrying in 0.6 s
+  EnsemblResolver._rest_rsid(rs1801133): gave up after 3 attempt(s) over 46.2 s (ReadTimeout: The read operation timed out)
+  ```
+
+  The ceiling is the one the stop reads, so a raised `$JUST_DNA_HTTP_RETRY_ATTEMPTS` shows in it. The
+  give-up line precedes the caller's own warning, which names the error and what the run did about it.
+  An error a policy does not retry (a 400, a 404) writes neither line. WARNING because nothing in these
+  tiers configures logging, and Python's last-resort handler drops anything lower. An attempt that
+  timed out used to write nothing, so a sweep's timeouts read as a slow server (S133).
+  `test_retry_logging.py` walks the package and refuses a `retry(` that names neither hook.
 
 ## The author's overlay, read but never written (RM136, 0.7)
 

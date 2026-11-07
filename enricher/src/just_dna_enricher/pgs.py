@@ -43,7 +43,15 @@ from dataclasses import dataclass
 import httpx
 from tenacity import retry, retry_if_exception_type, wait_exponential_jitter
 
-from just_dna_enricher.net import GONE, EndpointRetired, PacingGate, attempt_floor, retired_message
+from just_dna_enricher.net import (
+    GONE,
+    EndpointRetired,
+    PacingGate,
+    attempt_floor,
+    log_give_up,
+    log_retry,
+    retired_message,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -409,6 +417,8 @@ class PgsCatalogClient:
         return parse_release(self.info())
 
     @retry(
+        before_sleep=log_retry,
+        retry_error_callback=log_give_up,
         stop=attempt_floor(3),
         wait=wait_exponential_jitter(multiplier=1.0, max=10.0),
         retry=retry_if_exception_type((httpx.TransportError, httpx.TimeoutException)),

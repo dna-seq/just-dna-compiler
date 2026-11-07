@@ -34,6 +34,37 @@ up.
 
 Patches on `main` after the 0.8.0 cut (2026-11-05), newest first.
 
+## RM403 — a retried request left no log line, and a give-up said neither how many attempts nor how long
+
+**SHIPPED 2026-11-07 on `main`, uncut — a patch (S133, just-dna-registry's lead).** Owner enricher, severity
+low.
+
+**The class: a retry that is silent until it gives up, and a give-up that cannot say what it gave up on.**
+No tenacity policy in the enricher set `before_sleep`, and httpx logs responses only, so an attempt that timed
+out wrote nothing. The registry's sweep met 26 `ReadTimeout`s at 15.2 s and five rsIDs that spent all three
+attempts, about 48 s each, and the only line was the caller's give-up warning naming the error. An operator
+could not tell attempts timing out from a slow server, and RM402's re-measure needs to.
+
+**Instances (every policy, 21 at the fix):** each `@retry` in the package now names two shared hooks in
+`net`. `log_retry` (`before_sleep`) writes `Client.method(subject): attempt n of m failed (Type: message);
+retrying in w s`. `log_give_up` (`retry_error_callback`) writes `…: gave up after n attempt(s) over s s
+(Type: message)`, then raises exactly as tenacity would have, read off the policy: `reraise=True` re-raises
+the attempt's own exception, so every caller's `except` still sees what it was written against
+(`@client-exception-contract`), and a policy without it raises `RetryError` from it. Tenacity calls the
+callback only once the stop fires, so an error the policy does not retry (a 400, a 404) writes neither
+line. The ceiling `m` is read the way `attempt_floor` reads it, so a raised `$JUST_DNA_HTTP_RETRY_ATTEMPTS`
+shows. The type is always named, since a bare `ReadTimeout` stringifies to nothing. Both lines are at
+WARNING: nothing in these tiers configures logging, and Python's last-resort handler drops anything lower.
+
+**The mechanism:** `enricher/tests/test_retry_logging.py` walks the package's source and refuses any
+`retry(`, `Retrying(` or `AsyncRetrying(` that names neither hook; dropping one keyword from one site makes
+it name that site. Its behaviour half runs the real REST route (`EnsemblResolver._rest_rsid`) against a
+transport that times out every time and asserts the two retry lines, the give-up line, and that the caller
+still withholds (`(None, None)`), plus the raised-floor ceiling, the `RetryError` path and the not-retried
+path. The rule is in ENRICHER.md's rate-limit rules.
+
+**Residuals** none
+
 ## RM397 — the enricher wheel shipped its Atlas build input beside the generated tree
 
 **SHIPPED 2026-11-05 on `main`, uncut — a patch (found by the lead while scripting the dist build).** Owner

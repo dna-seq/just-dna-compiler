@@ -41,6 +41,15 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-07 — RM403: every retry writes a line, and every give-up says how many attempts and how long (patch, uncut)
+
+- **An enricher request that is retried now says so**, at WARNING on the `just_dna_enricher.net` logger:
+  `EnsemblResolver._rest_rsid(rs1801133): attempt 1 of 3 failed (ReadTimeout: …); retrying in 0.6 s`, and on
+  giving up `…: gave up after 3 attempt(s) over 46.2 s (ReadTimeout: …)` (RM403, S133). Every client's policy
+  carries it. Until now a timed-out attempt wrote nothing. No exception, return value or warning code moves:
+  the give-up raises what it raised before. A host that filters the enricher's warnings will see more of them
+  during an outage, one per retried attempt.
+
 ## 2026-11-05 — the enricher wheel shipped its Atlas build input beside the generated tree (patch, uncut)
 
 - **The enricher wheel no longer carries `_atlas_protos/`** (RM397), the fetched AlphaGenome `.proto`

@@ -32,6 +32,8 @@ from just_dna_enricher.net import (
     PacingGate,
     Withholding,
     attempt_floor,
+    log_give_up,
+    log_retry,
     retry_after_seconds,
     retry_if_transient_within,
     wait_retry_after,
@@ -254,6 +256,8 @@ class EnsemblResolver(Withholding):
         return f"{ENSEMBL_RELEASE_PREFIX}{release}"
 
     @retry(
+        before_sleep=log_retry,
+        retry_error_callback=log_give_up,
         stop=attempt_floor(3),
         wait=wait_retry_after(wait_exponential_jitter(multiplier=0.5, max=8.0)),
         retry=retry_if_transient_within(),
@@ -275,6 +279,8 @@ class EnsemblResolver(Withholding):
     # placement witness (RM267) reads a request that never got an answer as "not asked" only after a
     # second try could not change it.
     @retry(
+        before_sleep=log_retry,
+        retry_error_callback=log_give_up,
         stop=attempt_floor(3),
         wait=wait_retry_after(wait_exponential_jitter(multiplier=0.5, max=8.0)),
         retry=retry_if_transient_within(),

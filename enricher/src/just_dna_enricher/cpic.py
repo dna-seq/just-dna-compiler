@@ -54,7 +54,14 @@ from tenacity import (
 )
 
 from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME
-from just_dna_enricher.net import EndpointRetired, attempt_floor, raise_if_retired, retry_if_transient
+from just_dna_enricher.net import (
+    EndpointRetired,
+    attempt_floor,
+    log_give_up,
+    log_retry,
+    raise_if_retired,
+    retry_if_transient,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -292,6 +299,8 @@ class CpicClient:
             self._client.close()
 
     @retry(
+        before_sleep=log_retry,
+        retry_error_callback=log_give_up,
         # A 5xx or a 429 only (RM354): a permanent 4xx answers the same on every attempt.
         retry=retry_if_transient(),
         stop=attempt_floor(3),

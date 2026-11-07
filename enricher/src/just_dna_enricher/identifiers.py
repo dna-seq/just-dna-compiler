@@ -74,6 +74,8 @@ from just_dna_enricher.net import (
     attempt_floor,
     could_not_ask_reason,
     dedupe,
+    log_give_up,
+    log_retry,
     raise_if_retired,
 )
 from just_dna_enricher.pgs import (
@@ -621,6 +623,8 @@ class OntologyClient:
         self.close()
 
     @retry(
+        before_sleep=log_retry,
+        retry_error_callback=log_give_up,
         stop=attempt_floor(3),
         wait=wait_exponential_jitter(multiplier=1.0, max=10.0),
         retry=retry_if_exception_type((httpx.TransportError, httpx.TimeoutException)),

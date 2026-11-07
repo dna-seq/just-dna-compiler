@@ -27,6 +27,7 @@ import time
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import NoReturn
 
 import httpx
 from tenacity import (
@@ -199,6 +200,97 @@ class attempt_floor(stop_base):
 
     def __call__(self, retry_state) -> bool:
         return retry_state.attempt_number >= retry_attempts(self.default)
+
+
+# ── what a retry says while it waits, and what a give-up says when it stops (RM403) ─────────────
+#
+# Before RM403 no policy here set `before_sleep` and httpx logs responses only, so an attempt that timed
+# out wrote nothing, and a give-up named the error alone. An operator watching a slow sweep could not
+# tell attempts timing out from a slow server (S133: 26 `ReadTimeout`s at 15.2 s, five rsIDs spending
+# all three attempts, about 48 s each, and not one line said so). Every `@retry` in this tier names both
+# hooks below, and `test_retry_logging.py` walks the package to keep it so. WARNING, not INFO: nothing in
+# these tiers configures logging, so Python's last-resort handler shows WARNING and above only, and a
+# line at INFO is a line nobody watching a sweep sees.
+
+
+def _retry_subject(retry_state: RetryCallState) -> str:
+    """`Client.method(subject)`: the call being retried, and the first argument that names its subject.
+
+    The subject is the first positional or keyword argument that is a string or a number (an rsID, a
+    URL, a gene), or the size of the first collection (a batch). `self` and other objects are skipped,
+    so a method and a plain function read alike. A long one is cut, since a request body may be a query.
+    """
+    name = getattr(retry_state.fn, "__qualname__", None) or repr(retry_state.fn)
+    for value in (*retry_state.args, *retry_state.kwargs.values()):
+        if isinstance(value, (str, int, float)) and not isinstance(value, bool):
+            text = str(value)
+            return f"{name}({text if len(text) <= 80 else text[:77] + '...'})"
+        if isinstance(value, (list, tuple, set, frozenset, dict)):
+            return f"{name}({len(value)} item(s))"
+    return name
+
+
+def _attempt_ceiling(retry_state: RetryCallState) -> int | None:
+    """The attempts this policy allows, read the way its stop reads them, or `None` when it cannot say."""
+    stop = getattr(retry_state.retry_object, "stop", None)
+    if isinstance(stop, attempt_floor):
+        return retry_attempts(stop.default)
+    return getattr(stop, "max_attempt_number", None)
+
+
+def _failure(retry_state: RetryCallState) -> str:
+    """The attempt's error as `Type: message`. A bare `ReadTimeout` stringifies to nothing, so the type
+    is always named."""
+    outcome = retry_state.outcome
+    if outcome is None or not outcome.failed:
+        return "no error recorded"
+    exc = outcome.exception()
+    text = str(exc).strip()
+    return f"{type(exc).__name__}: {text}" if text else type(exc).__name__
+
+
+def log_retry(retry_state: RetryCallState) -> None:
+    """`before_sleep` for every policy here: one line per attempt about to be retried (RM403).
+
+    Client and subject, attempt n of m, the error and the wait, so a timeout reads as a timeout.
+    """
+    ceiling = _attempt_ceiling(retry_state)
+    of = f" of {ceiling}" if ceiling is not None else ""
+    wait = retry_state.next_action.sleep if retry_state.next_action is not None else 0.0
+    logger.warning(
+        "%s: attempt %d%s failed (%s); retrying in %.1f s",
+        _retry_subject(retry_state),
+        retry_state.attempt_number,
+        of,
+        _failure(retry_state),
+        wait,
+    )
+
+
+def log_give_up(retry_state: RetryCallState) -> NoReturn:
+    """`retry_error_callback` for every policy here: the give-up line, then exactly tenacity's own raise.
+
+    Tenacity calls this in place of raising once the stop says so, and only then: an error the policy
+    does not retry is raised from the attempt, never through here. The line carries the attempts made and
+    the seconds spent, which the caller's own warning (it names the error) cannot know. The raise is
+    tenacity's, read off the policy, so `reraise=True` still re-raises the attempt's own exception (the
+    contract every caller's `except` is written against, `@client-exception-contract`) and a policy
+    without it still raises `RetryError` from it.
+    """
+    logger.warning(
+        "%s: gave up after %d attempt(s) over %.1f s (%s)",
+        _retry_subject(retry_state),
+        retry_state.attempt_number,
+        retry_state.seconds_since_start or 0.0,
+        _failure(retry_state),
+    )
+    policy = retry_state.retry_object
+    outcome = retry_state.outcome
+    assert outcome is not None, "tenacity calls retry_error_callback only after an attempt"
+    error = policy.retry_error_cls(outcome)
+    if policy.reraise:
+        error.reraise()
+    raise error from outcome.exception()
 
 
 # ── a status a retry can change, and one that says the source moved (RM354) ────────────────────
@@ -471,6 +563,8 @@ def stream_to_file(
     tmp = dest.with_name(dest.name + ".part")
 
     @retry(
+        before_sleep=log_retry,
+        retry_error_callback=log_give_up,
         stop=attempt_floor(3),
         wait=wait_exponential_jitter(multiplier=2.0, max=30.0),
         retry=retry_if_exception_type(httpx.TransportError),

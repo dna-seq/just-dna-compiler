@@ -41,7 +41,14 @@ from dataclasses import dataclass, field
 import httpx
 from tenacity import retry, wait_exponential_jitter
 
-from just_dna_enricher.net import PacingGate, Withholding, attempt_floor, retry_if_transient
+from just_dna_enricher.net import (
+    PacingGate,
+    Withholding,
+    attempt_floor,
+    log_give_up,
+    log_retry,
+    retry_if_transient,
+)
 from just_dna_enricher.sequences import RefMismatch
 
 logger = logging.getLogger(__name__)
@@ -115,6 +122,8 @@ class Grch37Client(Withholding):
             self._client = None
 
     @retry(
+        before_sleep=log_retry,
+        retry_error_callback=log_give_up,
         stop=attempt_floor(3),
         wait=wait_exponential_jitter(multiplier=0.5, max=8.0),
         retry=retry_if_transient(),

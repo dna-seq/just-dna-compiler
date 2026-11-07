@@ -2027,22 +2027,6 @@ cannot be read, the ask stays. **Open question:** the two labels are spelled dif
 `…vep116.0`, RM373's won't-fix), so equality needs a stated mapping, tested both ways
 (`@one-normalizer-two-spellings`).
 
-## RM403 — a retried request leaves no log line, and a give-up says neither how many attempts nor how long
-
-**Placed, the pm (2026-11-07): the next patch on `main`.** Log lines only, near-zero risk, and it is what lets an operator of any slow sweep (and the RM402 re-measure) tell timeouts from a slow server.
-
-**Severity** low · **Status** open — **a patch**, the next on `main` (log lines only; no warning code, no result field) · **Owner** enricher (`net.py`, every tenacity policy; `ensembl.py` ~:207, `enrich/orchestration.py`
-~:1036, ~:1976) · **Motivating case** S133 in CONSUMER_SUGGESTIONS_HISTORY.md · *related* RM401, RM42
-
-**The gap.** No tenacity policy in the enricher sets `before_sleep`, and httpx logs responses only, so a
-timed-out attempt writes nothing. The registry saw 26 `ReadTimeout`s at 15.2 s and five rsIDs that spent all
-three attempts, about 48 s each, and the give-up warning named the error alone. An operator watching a slow
-sweep cannot tell attempts timing out from a slow server.
-
-**What it would be.** Every retry policy logs each attempt it is about to retry (client, subject, attempt n of
-m, the error, the wait), and each give-up line carries the attempts made and the seconds spent. An AST walk
-asserts every `retry(` in the enricher names the shared `before_sleep`, so a new client cannot be silent.
-
 ## RM405 — an offline enrichment's floor is the Ensembl snapshot's lookups, and the snapshot has no rsID index
 
 **Parked, the pm (2026-11-07)**, as filed from S133. An offline enrichment takes about 10 s a module, which nobody reported as a problem: S133's complaint was the online path. The cheap half (measure the four queries, fewer scans) buys seconds; the real fix is an rsID-sorted layout, which is the snapshot builder's. **Unparks when** a consumer reports offline enrichment time as a problem (a sweep or a deadline it misses), the snapshot builder offers an rsID-sorted layout under RM303's contract, a scope the maintainer highlights touches it, or the roadmap is empty.
