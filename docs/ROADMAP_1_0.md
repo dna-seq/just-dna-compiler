@@ -254,10 +254,42 @@ re-derived:
 
 **So:** the key stays computable from the authored row and the build alone. The VRS id of an indel stays a
 derived column, empty where no reference was read. Declined for 1.0 unless 1.0 makes a full, checkable
-reference a **required** compile input; that is the decision to take first, priced by a measurement of the offline routes (owed, 2026-11-07).
+reference a **required** compile input; that is the decision to take first, priced below.
 The compiler filling `vrs_id` itself when a reference happens to be injected touches no identity. It is a
 convenience, unfiled while the enricher already fills the column. A local reference for the enricher alone is
 RM385 (0.9).
+
+**What a full reference costs, measured 2026-11-07** (a Sonnet subagent, scratch only; sizes from HEAD
+requests and published indexes, times on chr21):
+
+| Route | Download | Disk | Reader dependency | Local mint per indel |
+|---|---|---|---|---|
+| GRCh38 FASTA (NCBI no-alt `.fna.gz`, Ensembl primary `.fa.gz`) | 873 MB, 882 MB | 3.14 GB plain; about 0.9 GB bgzipped, after recompressing | pyfaidx: pure Python, 1 MB | 0.12 ms, plain FASTA |
+| GRCh38-only seqrepo | about 0.85 GB, extrapolated from a chr21 build | about 0.85 GB | biocommons.seqrepo: 33 packages, 64 MB, pysam compiled; system `bgzip` and `rsync`; sqlite | 1.0 ms |
+| Full seqrepo | not measured: the download host is behind a browser check | 7.9 GB for the 2016/2018 instances, per its docs | as above | not measured |
+| UCSC `hg38.2bit` | 835 MB | about the same | py2bit, compiled | not measured |
+| Thin windows (±1,024) | none | about 650 B per indel locus gzipped; 6 MB for the largest corpus on disk (9,115 windows) | none | in memory |
+
+Findings from the measurement:
+
+- **Time does not decide.** A local mint is 0.1–1 ms against 0.3–1.4 s over REST.
+- **Size and placement decide.** Every full route is a provisioned file of 0.9–3.1 GB plus a reader.
+  - Only pyfaidx on a FASTA, or thin windows injected as data, fit the compiler's pure-Python rule.
+  - A seqrepo needs compiled code and system binaries, which is enricher cache-lane work.
+- **vrs-python cannot read a FASTA.** `create_dataproxy` accepts only `seqrepo+` URIs. A FASTA needs a small
+  data-proxy adapter: the enricher's `_WindowedReference` already has that shape, and `refget_accession` in
+  the format tier maps contigs.
+- **Normalization stays outside the compiler.** It is `ga4gh.vrs.normalize`, and `ga4gh.vrs` is enricher-only.
+  The format tier's stdlib `derive_vrs_allele_id` mints substitutions only. A compiler mint would mean a
+  second, stdlib normalizer beside vrs-python's (`@one-normalizer-two-spellings`).
+- **A FASTA must be checked against the refget digest, contig by contig.** UCSC's hg38 chr21 digests to a
+  different `SQ.` id than ours, because UCSC writes `N` where NCBI has IUPAC codes at three bases. NCBI's
+  NC_000021.9 matches. So the 2bit route is out as published, and a reader recomputes `sha512t24u` per contig
+  and refuses a mismatch.
+- **Neither NCBI nor Ensembl ships bgzip.** A random-access deployment recompresses once, or reads the plain
+  3.14 GB file.
+- **Thin windows keep today's limit.** A repeat longer than the window withholds the spelling, exactly as
+  `_LEFT_ALIGN_WINDOW` does now; only a full reference removes it.
 
 ---
 
