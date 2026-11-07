@@ -50,6 +50,8 @@ grepping.
 The allocator writes here. A row below is a number some session has claimed; it moves to its page when
 the entry is written.
 
+- 🔷 **reserved** **RM418** — pm: process-wide NCBI pacing gate, RM404's patch half (registry 638423336). Claimed by an allocator run so a concurrent session cannot take the same id; replace this line with the item's real entry, or run `item-next.py --release RM418`, which drops it once the entry is written (on a page of a paged index too) and leaves a tombstone if it never was.
+
 ## 🔒 The major bucket — unnumbered on purpose, and that is why it hides
 
 Everything needing a **major** lives in one table in
