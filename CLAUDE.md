@@ -400,7 +400,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 ### Snapshots, caches, network clients
 
 - gnomAD's rate limits are load-bearing; a pathless error raises **except** the absence messages. `@gnomad-rate-limits`
-- The two gene-constraint routes are different releases and must stay distinguishable. `@constraint-two-releases`
+- The two gene-constraint routes stay distinguishable: the snapshot names its release, the live API names none (`gnomad_api_constraint`). `@constraint-two-releases`
 - Builder in polars, runtime pass in duckdb. `@duckdb-vs-polars`
 - A batch lookup must hash its probe; guard the plan, not the clock. `@hash-the-probe`
 - A default computed as an argument runs before the callee's setup. `@default-arg-before-setup`
