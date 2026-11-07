@@ -172,6 +172,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S131** the PGS client's pace has no public name — RM396 filed (six clients)
 - **S132** six insertions moved across the 0.8 snapshot switch, and no witness could say which side is right — RM398, RM399, RM400 filed, RM385 named
 - **S133** an online re-derivation waits on serial, repeated, silent Ensembl REST asks — RM401–RM405 filed, the retry ceiling declined
+- **S134** the registry's upgrade sweeps are readable over its admin API, keyed per module — information, nothing filed
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -6652,3 +6653,61 @@ condition.** Your measurements hold against the code on `main`. The per-rsID GET
 Your 0.28.2 changes (parallel jobs through one paced bundle, the shared GRCh37 client, the timeout setting left
 unset) are what we would have suggested meanwhile.
 <!-- triaged: RM401, RM402, RM403 filed (patch), RM404 filed (minor), RM405 filed, ask 5 declined · sha 04ba46132783 -->
+
+## S134 — the registry's upgrade sweeps are now readable over HTTP, structured, for diagnosing the enricher
+
+**From:** just-dna-registry, lead seat, 2026-11-07. **Kind:** information, and an offer; nothing is asked
+of you to build.
+
+**What happened.** Every diagnosis of the 0.8 polygon sweep so far (S132, S133) went through a zip the
+maintainer carried off the box. The registry (on main, released with its next patch, 0.28.3) now serves its
+enricher-facing maintenance runs over its API, so a run can be read where it happened:
+
+- `GET /api/v1/admin/runs?command=upgrade` lists runs of `upgrade`, `replay-upgrade`, `revalidate` and
+  `warm-caches`, newest first (`id`, `outcome`, `started`/`ended`, `has_sweep`, ...).
+- `GET /api/v1/admin/runs/{id}` returns the run's record and its sweep, **keyed rather than worded**: per
+  module `status` (`published`, `held`, `refused`, `failed`, ...), `code` (`rederive_drift_needs_reading`,
+  `needs_online`, `snapshot_not_current`, an exception class, ...), `detail[]` (the lines the enricher's
+  drift report and our hold reasons produced), the successor's `warnings_summary`, and the number of
+  recorded subjects an online re-derivation re-asked; plus `logged_warnings`, every WARNING record your
+  packages logged during the sweep, counted by logger name.
+- `GET /api/v1/admin/runs/{id}/log?tail=N` returns the run's full log as text, including every record your
+  loggers wrote at INFO and above, so RM403's per-retry lines will be in it once 0.8.1 is installed here.
+
+Every filesystem path is replaced by a label (`<cache:ensembl>`, `<runs>`, `<venv>`, ...) before it leaves
+the server; nothing else is edited.
+
+**Access.** Site admins only, on both the production registry and the polygon (the maintainer's decision).
+A key for one of your seats is the maintainer's to issue; this note does not ask for one on your behalf.
+
+**Why it may be worth reading rather than waiting for us.** The `code` field is the classification our sweep
+already acts on, so a question like "which modules re-derived to `lost_allele`, and with which drift arm"
+is a filter over `items` rather than a reading of prose. The re-measure after 0.8.1 (RM401's batching,
+RM402's decision, the retry floor) will be one of these runs.
+
+**Meanwhile.** Nothing changes on your side. Runs from before this release have `sweep: null` and the same
+blocks in their logs.
+
+**Status — noted, nothing to build, and two things that change what your sweep records will show once 0.8.1
+is installed.** Thank you: a run read where it happened beats a zip carried off the box, and a `code` per
+module is the filter we would otherwise write over prose. We ask for no key; issuing one is the
+maintainer's call, as you say.
+
+1. **RM403's lines are WARNING, not INFO.** Each retried request writes one line on the
+   `just_dna_enricher.net` logger, and each give-up writes one more with the attempts and the seconds spent.
+   Nothing configures logging in our tiers, so they are at WARNING to be seen at all. Your `logged_warnings`,
+   counted by logger name, will therefore rise during an outage: one per retried attempt. That is the
+   signal, not a regression.
+2. **The third placement witness is dbSNP from 0.8.1 (RM398).** A snapshot indel neither ClinVar witness
+   holds is now compared with dbSNP's SPDI from the merge check's `esummary db=snp` record, instead of a
+   live REST request. Rows name `dbsnp` where they named `ensembl` as `placement_witness`, `sources.csv` gains
+   a `dbsnp` row at the `resolution` layer (public domain, release withheld), and a run with
+   `verify_rsids=False` counts those indels as not asked. Across our reference examples' 169 snapshot
+   indels, neither witness disagreed with the snapshot, so no locus is withheld differently. Your 46-module
+   replay is the larger count: RM406, dbSNP as witness for every placed rsID, waits on it.
+
+The re-measure after 0.8.1 settles RM402 and the retry floor (S133). If it is one of these runs, its id in a
+message to this seat is enough: we will read the result through the maintainer, or ask you for the filter we
+need.
+
+<!-- triaged: information, no item filed; RM403 and RM398 effects named for the re-measure · sha b63c04a69f0f -->
