@@ -2026,6 +2026,24 @@ wrapper around it, owes a cancel hook), set on interrupt before the shutdown; th
 a half-written part from landing under its name. The test interrupts a mirror whose parts stream slowly from a
 fake server and asserts it returns within a chunk's time.
 
+## RM410 — the gnomAD constraint snapshot is pinned to 4.1, and 4.1.2 recomputes the metrics
+
+**Open, filed by the lead (2026-11-07)** from the liaison's data-source table and adoption note
+(`docs/UPSTREAM_DATA_SOURCES.md`, "Adoption note: gnomAD constraint 4.1 → 4.1.2"). **Class and severity: the
+pm's to size.**
+
+**Owner** enricher (`constraint_build.py`, the `constraint` lane) · *related* RM229, RM408
+
+**What the note found.** 4.1.1 recomputes pLI, LOEUF, o/e and the z-scores (low-coverage coding loci by AN, chrX
+and chrY for the first time, a revised LOFTEE `END_TRUNC`); 4.1.2 fixes only the rank and bin fields 4.1.1 got
+wrong, so 4.1.2 is the one to take. Every column `_COLUMN_MAP` reads is present in 4.1.2, but the file is
+`gnomad.v4.1.2.constraint_metrics.tsv.bgz` (bgzip, 574.5 MB) where 4.1 was a plain 95.5 MB TSV.
+
+**What a move carries.** The URL and a gzip read; the lane's declared size (RM229) and label; every module's
+`gene_metrics.csv` drafted from the old snapshot then reads as stale against the lane, which is a content change
+consumers see, not a relabel; and `@constraint-two-releases`: which release the live API route answers must be
+checked before the snapshot moves past it.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
