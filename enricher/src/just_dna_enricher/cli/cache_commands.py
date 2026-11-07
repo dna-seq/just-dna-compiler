@@ -411,7 +411,11 @@ def cache_rebuild_(
     dry_run: bool = typer.Option(
         False,
         "--dry-run",
-        help="With --publish: show what would be uploaded, send nothing.",
+        help=(
+            "With --publish: show what would be uploaded, send nothing. Only the upload is dry: the "
+            "rebuild still downloads and builds each lane. To rehearse a snapshot already built, use "
+            "the lane's own `<lane> publish <dir> --dry-run`."
+        ),
     ),
 ) -> None:
     """Rebuild every cache this tier builds — acquire, convert, and optionally publish (RM176).
