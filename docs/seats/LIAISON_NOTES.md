@@ -18,7 +18,7 @@ ga4gh.vrs 2.3.3 (pre-releases read through 2.4.0-a6), polars `py-2.1.0`, duckdb 
 - `duckdb` (the engine) is blobless and unwatched. It is there to read source at `path:line`.
 
 **Watchers** (`.blueprints.toml`): `ga4gh-vrs` polls its trunk every 300 s. `polars --tags --tag-pattern '^py-'` and
-`duckdb-python --tags` say tags only, one wake per release (kit v0.1.119, #246; the clone pins v0.1.137 since 2026-11-06), a patch tagged on a version branch
+`duckdb-python --tags` say tags only, one wake per release (kit v0.1.119, #246; the clone pins v0.1.141 since 2026-11-07), a patch tagged on a version branch
 included.
 
 **Backlog: none.** Read entry by entry on 2026-11-04, unattended: polars `py-2.0.0-rc.1` through `py-2.1.0` with the
@@ -57,7 +57,10 @@ duckdb through our tiers. A defect in a library under both of us is raised with 
 **What the fellows did with the majors (2026-11-05):** the registry's suite passes on polars 2.1.0 and duckdb 2.0.0
 (612 passed, no new warning); it takes polars 2 with its 0.8 adoption and duckdb 2 after RM344. longevity-loci capped
 both `<2` in its own lock, because the module-creator plugin's server (v0.48.1, still polars 1.44.2 and duckdb 1.5.5)
-shares that machine's enricher cache: the mixed cache RM344 is about. Its cap lifts when the plugin moves; their call.
+shares that machine's enricher cache: the mixed cache RM344 is about. Its cap lifts when the plugin moves; their call. **just-module-creator/liaison** (seated 2026-11-07) keeps
+the plugin in step with us: ledgers `UPSTREAM_COMPILER.md`, `UPSTREAM_REGISTRY.md`, `UPSTREAM_HOSTS.md`; it locks format
+0.7.1 / compiler 0.7.2 / enricher 0.7.3, capped `<0.8`, and polars and duckdb `<2`, until both registry instances serve
+0.8. It is on our triage's `wake_from` (8de1fa80).
 
 **Push:** origin/main holds every liaison commit through b04bbf4a (pushed with the lead's 0.8.0 cut,
 2026-11-05). The liaison pushes only its own ledgers and notes, and only as a fast-forward that carries no other seat's
