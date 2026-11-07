@@ -2046,7 +2046,21 @@ What widening costs is:
 
 **Sampling answers a different question:** whether a snapshot as a whole is sound, asked once per snapshot
 rather than per module. A sample of the snapshot's indels checked against dbSNP at build or provision time
-would estimate its misplacement rate with an interval. **Residuals, to be stated at closure:** that
+would estimate its misplacement rate with an interval. What a sample can and cannot say, worked on 2026-11-07:
+
+- **A systematic error is settled by a few samples.** The maintainer: "bayessian samples answers alignmend with
+  absurd confidence on 5000 samples." If the whole snapshot, or one event kind in it, is off by one, nearly
+  every sample disagrees. Even allowing 1% chance disagreement per sample, 10 disagreeing samples in a row is
+  about 10⁻²⁰ (near 9 sigma), and 5,000 is beyond any table.
+- **A class error is measured, if the sample is drawn from that class.** The known misplacements are
+  insertions (S117; S132's 38% of insertions on two chromosomes), so the sample is drawn from indels, not from
+  all records, where substitutions would swamp it. 5,000 indels put a 38% rate at ±1.4%.
+- **A rare per-record error is not found.** With no disagreement in 5,000, the 95% bound on the rate is about
+  3/5,000, 0.06%; at the snapshot's 1.17 billion records that still allows hundreds of thousands. S117's single
+  ABO insertion is of that kind. That is why the per-module comparison stays: it costs no request and checks the
+  very records a module uses.
+
+**Residuals, to be stated at closure:** that
 snapshot-wide audit is the snapshot builder's (prepare-annotations, under RM303's contract), or a provision-time
 check filed on its own.
 
