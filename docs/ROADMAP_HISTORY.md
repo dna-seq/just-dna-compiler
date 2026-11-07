@@ -34,6 +34,42 @@ up.
 
 Patches on `main` after the 0.8.0 cut (2026-11-05), newest first.
 
+## RM408 — the Open Targets lane had a builder and no repository, so every deployment cut its own ~5.5 GB snapshot from ~22 GB
+
+**SHIPPED 2026-11-07 on `main`, uncut — a patch (the maintainer: "Fix the code then, unless unspecified public
+dest is some kind of decision I missed").** Owner enricher, severity medium.
+
+**Residuals** none
+
+**What happened.** The registry's server reported `opentargets` and `clinvar_gkm` unpublished. `clinvar_gkm`
+has a repository and a rebuild adapter, so `cache rebuild --only clinvar_gkm --publish` publishes it and only
+the publish itself was missing. `opentargets` had neither a repository nor a pull route: `CacheLane.publish_repo`
+was `None`, and `unpublished` said "the release is marked CC0, so nothing bars a snapshot, but no repository
+holds one". Nothing in RM333's record, the 0.8 scope or the proposals decided to keep it unpublished; the
+`OPENTARGETS_SUBDIR` comment named the missing repository and the missing `ensure` as the gap.
+
+**What changed.** `locations.SNAPSHOT_REPO_IDS["opentargets"] = "just-dna-seq/opentargets"`, which derives the
+lane's pull prefix; `download.SNAPSHOT_FILE_GLOBS["opentargets"] = "*.parquet"` (six tables, four in numbered
+parts, so the glob is the whole `data/`, as CIViC's is); a private `download._ensure_opentargets_snapshot` on
+`_provision_snapshot`; and the lane's `publish_repo` and `ensure` set, `unpublished` dropped. The lane keeps its
+rebuild adapter as its one publish route, which `test_every_publishable_lane_can_actually_be_published` requires.
+
+**Why private.** A new public function is minor scope on `main` (RELEASE_CYCLE), and nothing outside
+`CACHE_LANES` needs to call it: `cache pull` and `cache prepare` reach it through the lane. A standalone
+`opentargets publish <dir>` for an already-built snapshot was left out for the same reason (a new CLI command),
+so publishing means a rebuild, which also stamps the current builder version into `release.json` (the shared
+cache's says 0.7.3).
+
+**The cost a deployment sees.** `cache pull` with no `--only` now pulls this lane too, ~5.5 GB, once the repo
+holds a snapshot. Until then `cache prepare` reports *nothing published yet* for it rather than building it,
+as for `clinvar_gkm`, so this should be cut only after the first publish.
+
+**Tests.** `test_download.py::test_cache_pull_reaches_the_opentargets_lane_and_brings_every_table` pulls a fake
+repo holding all six tables through `cache pull --only opentargets` and asserts the prefix it asked and the
+file set it landed; on the previous `main` it fails (nothing is asked). The lane-registry walks
+(`test_cache_lanes.py`, `test_snapshot_repo_ids.py`) pass unchanged. A read-only rehearsal against the shared
+cache lists 428 parquet files and `release.json` for `just-dna-seq/opentargets`.
+
 ## RM398 — `placement_agreement` had no witness at dbSNP scale, and its third witness cost a cold REST request per indel
 
 **SHIPPED 2026-11-07 on `main`, cut 2026-11-07 as `v0.8.1` — a patch, candidate 0 (S132, just-dna-registry's lead; the maintainer's

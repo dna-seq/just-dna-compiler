@@ -1673,7 +1673,7 @@ service* below). Pre-provisioning is therefore a deployment step, not an optimiz
 | **MITOMAP miss** ⛓ | `mitomap_miss/` | `$JUST_DNA_MITOMAP_MISS_CACHE` | **none — derived** | **not published, deliberately** | what MITOMAP publishes and the ClinVar cache does not (`draft-panel --source mitomap-miss`) |
 | **AlphaGenome AVI** 🔑 | `alphagenome_avi/` | `$JUST_DNA_ALPHAGENOME_AVI_CACHE` | `ensure_alphagenome_avi_snapshot` | `just-dna-seq/alphagenome_avi` — Permissive Use (RM195), repo not created yet | variant-impact scores for 8.8 B SNVs, `Int32`×10⁵ plus a 466 KB knot table (`alphagenome build --input`, RM191/RM198) |
 | **ClinVar-GKM** ✅ | `clinvar_gkm/` | `$JUST_DNA_CLINVAR_GKM_CACHE` | `ensure_clinvar_gkm_snapshot` | `just-dna-seq/clinvar_gkm` — CC0 (ClinGen's transformation), repo not created yet | the GRCh38 indels of ClinVar-GKM with VRS id, VCF spelling, ClinVar variation and rsID: a **placement witness** a check names (RM305; `clinvar-gkm build`, `currency`, `lookup`) |
-| **Open Targets** ✅ | `opentargets/` | `$JUST_DNA_OPENTARGETS_CACHE` | **none yet** | **not published** — CC0-marked, no repo | Platform 26.09 trimmed: GWAS credible sets and members, L2G, GWAS × molecular-QTL coloc, per-transcript consequences (`opentargets enrich`, RM333) |
+| **Open Targets** ✅ | `opentargets/` | `$JUST_DNA_OPENTARGETS_CACHE` | `_ensure_opentargets_snapshot` (private in the 0.8 line, RM408; reached by `cache pull`) | `just-dna-seq/opentargets` — CC0-marked, published by `cache rebuild --only opentargets --publish`, repo not created yet | Platform 26.09 trimmed: GWAS credible sets and members, L2G, GWAS × molecular-QTL coloc, per-transcript consequences (`opentargets enrich`, RM333) |
 
 🔒 = licence-gated (`commercial_use=False`). ❓ = terms **unestablished** (`commercial_use=None`), which
 is a different state and not a weaker one: unknown is not permissive. ⛓ = **derived**: this lane has
@@ -6040,7 +6040,7 @@ directly to compose passes, inject clients, or run in-process.
 | `pharmvar build` | `pharmvar_build.build_snapshot` (no publish — see *The caches*) |
 | `pubmind build` / `publish` | `pubmind_build.download_pubmind_table` + `build_snapshot` / **refuses**, `cli.PUBMIND_PUBLISH_REFUSAL` |
 | `mane build` | `mane_build.discover_current_release` + `download_mane_file` + `build_snapshot` (no publish — see *The caches*) |
-| `opentargets build` / `enrich` | `opentargets_build.download_release` + `build_snapshot` (no publish yet — see *The caches*) / `opentargets.enrich_opentargets` |
+| `opentargets build` / `enrich` | `opentargets_build.download_release` + `build_snapshot` (published through `cache rebuild --publish`, RM408) / `opentargets.enrich_opentargets` |
 | `acmg build` | `acmg_build.build_acmg_snapshot` → `acmg.load_acmg_snapshot` |
 | `draft` | `pgx_draft.draft_gene` |
 | `draft-clinpgx` | `clinpgx_draft.draft_pharm_variants` |

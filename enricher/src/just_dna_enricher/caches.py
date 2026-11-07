@@ -72,6 +72,7 @@ from just_dna_enricher.download import (
     SNAPSHOT_FILE_GLOBS,
     SNAPSHOT_REPO_PREFIXES,
     SnapshotNotPublished,
+    _ensure_opentargets_snapshot,
     ensure_alphagenome_avi_snapshot,
     ensure_civic_snapshot,
     ensure_clinpgx_snapshot,
@@ -129,6 +130,7 @@ from just_dna_enricher.locations import (
     PUBMIND_CACHE_VAR,
     PUBMIND_SUBDIR,
     SNAPSHOT_DATA_DIRNAME,
+    SNAPSHOT_REPO_IDS,
     STRCHIVE_CACHE_VAR,
     STRCHIVE_SUBDIR,
     default_acmg_cache_dir,
@@ -1181,15 +1183,13 @@ CACHE_LANES: list[CacheLane] = [
         resolve=resolve_opentargets_reference,
         default_dir=default_opentargets_cache_dir,
         rebuild=_rebuild_opentargets,
-        ensure=None,
-        publish_repo=None,
+        # RM408: published since 0.8.1's patch line, through `cache rebuild --publish` (the one route
+        # `test_every_publishable_lane_can_actually_be_published` allows a lane with an adapter).
+        ensure=_ensure_opentargets_snapshot,
+        publish_repo=SNAPSHOT_REPO_IDS["opentargets"],
         # None, as for CIViC's CC0 lane: a CC0 mark gates no declared use, so there is nothing for
         # `cache rebuild` to check. The terms a module records are written by the pass, per table.
         terms=None,
-        unpublished=(
-            "not yet published: the release is marked CC0, so nothing bars a snapshot, but no "
-            "repository holds one. Build your own with `opentargets build` (about 22 GB downloaded)"
-        ),
     ),
     CacheLane(
         name="alphagenome_avi",

@@ -41,6 +41,19 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-07 — RM408: the Open Targets snapshot has a repository and a pull route (patch, uncut)
+
+- **`cache rebuild --only opentargets --publish` publishes the Open Targets snapshot to
+  `just-dna-seq/opentargets`, and `cache pull --only opentargets` pulls it** (RM408). The lane shipped in 0.8.0
+  with a builder and no repository, so every deployment had to download ~22 GB of Platform parquet to cut
+  a ~5.5 GB snapshot, and a registry asking for the lane was told it was unpublished. The release is CC0-marked,
+  and no decision had kept it unpublished: the code named the missing repository as the only gap.
+- **After upgrading:** `cache pull` with no `--only` now fetches this lane too (~5.5 GB) once the repository
+  holds a snapshot; until then it reports *not published yet*, as it does for `clinvar_gkm`, and
+  `cache prepare` no longer builds the lane when it is absent (a pullable lane pulls). Build it locally with
+  `opentargets build` meanwhile. A cache you already built is left as it is. No public name, field or
+  warning code: the pull route is private in the 0.8 line.
+
 ## 2026-11-07 — `v0.8.1`: enricher 0.8.1 (a patch, cut from `main`; format and compiler stay 0.8.0)
 
 **Only `just-dna-enricher` moves.** Neither `just-dna-format` nor `just-dna-compiler` changed a line of

@@ -176,9 +176,10 @@ MANE_SUBDIR: str = "mane"
 #: Open Targets' cache (0.8, RM333) is a **trimmed** cut of one Platform release (26.09): the GWAS
 #: credible sets and their members, the locus-to-gene scores, the GWAS-left × molecular-QTL-right
 #: colocalisations, and every variant's per-transcript consequences, flattened to parquet so the
-#: runtime pass reads it with duckdb. The release is marked CC0, so publishing it is not barred; what
-#: is missing is a repository, which is why there is no `download.ensure_opentargets_snapshot` yet.
-#: Build one with `opentargets build`.
+#: runtime pass reads it with duckdb. The release is marked CC0, so publishing it is not barred, and
+#: since RM408 it has a repository: `cache rebuild --only opentargets --publish` publishes it and
+#: `cache pull --only opentargets` pulls it (~5.5 GB, against ~22 GB downloaded to build one with
+#: `opentargets build`).
 OPENTARGETS_SUBDIR: str = "opentargets"
 
 #: MITOMAP's cache is a **parquet** snapshot cut from the source's own `pg_dump` (RM171): the two
@@ -314,6 +315,7 @@ SNAPSHOT_REPO_IDS: dict[str, str] = {
     "mitomap": "just-dna-seq/mitomap",
     "alphagenome_avi": "just-dna-seq/alphagenome_avi",
     "clinvar_gkm": "just-dna-seq/clinvar_gkm",
+    "opentargets": "just-dna-seq/opentargets",
 }
 
 

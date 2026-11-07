@@ -44,6 +44,7 @@ from just_dna_enricher.locations import (
     default_drug_labels_cache_dir,
     default_ensembl_cache_dir,
     default_mitomap_cache_dir,
+    default_opentargets_cache_dir,
     default_strchive_cache_dir,
     env_value,
     manifest_attests,
@@ -116,6 +117,11 @@ _ALPHAGENOME_AVI_FILES = "alphagenome_avi-*.parquet"
 #: ~5 GB of Parquet to cut it. The attribution and ClinVar's disclaimer travel as `LICENSE.txt`.
 _CLINVAR_GKM_FILES = "clinvar_gkm-*.parquet"
 
+#: Open Targets (RM408): six tables, four of them in numbered parts (`colocalisations-00000.parquet`,
+#: …, `variants.parquet`), so the glob is the whole `data/`, as CIViC's is. The repo holds nothing else:
+#: CC0-marked, with the release's own Croissant record in `release.json`.
+_OPENTARGETS_FILES = "*.parquet"
+
 #: STRchive's repo root, not a `data/` prefix: this snapshot is the upstream catalogue verbatim beside
 #: its provenance, and it holds no parquet at all.
 _STRCHIVE_HF_REPO = _hf_dataset_root(SNAPSHOT_REPO_IDS["strchive"])
@@ -143,6 +149,7 @@ SNAPSHOT_FILE_GLOBS: dict[str, str] = {
     "mitomap": _MITOMAP_FILES,
     "alphagenome_avi": _ALPHAGENOME_AVI_FILES,
     "clinvar_gkm": _CLINVAR_GKM_FILES,
+    "opentargets": _OPENTARGETS_FILES,
 }
 
 
@@ -820,6 +827,27 @@ def ensure_clinvar_gkm_snapshot(clinvar_gkm_cache: Path | None = None) -> Path:
         label="ClinVar-GKM",
         error_cls=OpenSnapshotError,
         filename_glob=SNAPSHOT_FILE_GLOBS["clinvar_gkm"],
+    )
+
+
+def _ensure_opentargets_snapshot(opentargets_cache: Path | None = None) -> Path:
+    """Provision the trimmed Open Targets Platform snapshot from HuggingFace Hub (RM408).
+
+    The release is CC0-marked, so a deployment pulls ~5.5 GB instead of downloading ~22 GB of
+    Platform parquet to cut it. A pulled copy is the release its `release.json` names; the lane pins
+    one release, so currency is a new pin, never a re-pull.
+
+    **Private on `main`.** It is reached through `CACHE_LANES` (`cache pull`, `cache prepare`) and a
+    new public function is minor scope (RELEASE_CYCLE), so the next minor may give it its siblings'
+    public name.
+    """
+    cache_dir = Path(opentargets_cache) if opentargets_cache is not None else default_opentargets_cache_dir()
+    return _provision_snapshot(
+        cache_dir,
+        SNAPSHOT_REPO_PREFIXES["opentargets"],
+        label="Open Targets",
+        error_cls=OpenSnapshotError,
+        filename_glob=SNAPSHOT_FILE_GLOBS["opentargets"],
     )
 
 

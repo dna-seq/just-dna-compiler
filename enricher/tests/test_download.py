@@ -23,6 +23,7 @@ from just_dna_enricher.locations import (
     PULL_RECORD_FILENAME,
     RELEASE_FILENAME,
     SNAPSHOT_ROOT_FILENAMES,
+    default_opentargets_cache_dir,
     resolve_clinvar_reference,
     snapshot_record_missing,
 )
@@ -461,6 +462,38 @@ def test_the_two_new_parquet_lanes_join_the_one_download_body(fake_hub, tmp_path
         # which every lane makes and every lane but ClinVar comes back empty from.
         assert fs.asked[0] == prefix, f"{ensure.__name__} asked {fs.asked}"
         assert (cache / "data" / "table.parquet").is_file()
+
+
+def test_cache_pull_reaches_the_opentargets_lane_and_brings_every_table(
+    fake_hub, no_ambient_caches: Path
+) -> None:
+    """RM408: Open Targets had a builder and no repository, so `cache pull` said "not yet published".
+
+    A deployment then had to download ~22 GB of Platform parquet to cut a ~5.5 GB snapshot it could
+    have pulled. The lane's six tables have four basenames in numbered parts and two whole, so the
+    pull is checked against all of them, from the lane's own repo prefix.
+    """
+    tables = dict.fromkeys(
+        (
+            "colocalisations-00000.parquet",
+            "colocalisations-00001.parquet",
+            "consequences-00000.parquet",
+            "credible_set_members-00000.parquet",
+            "credible_sets.parquet",
+            "l2g.parquet",
+            "variants.parquet",
+        ),
+        "variant_id",
+    )
+    fs = fake_hub(tables)
+
+    result = CliRunner().invoke(enricher_app, ["cache", "pull", "--only", "opentargets"])
+
+    assert result.exit_code == 0, result.output
+    assert fs.asked[0] == dl.SNAPSHOT_REPO_PREFIXES["opentargets"], fs.asked
+    pulled = default_opentargets_cache_dir(load_dotenv_file=False) / "data"
+    assert {path.name for path in pulled.glob("*.parquet")} == set(tables)
+    assert "not yet published" not in result.output
 
 
 def test_a_catalogue_snapshot_is_fetched_whole_or_not_at_all(monkeypatch, tmp_path: Path) -> None:
