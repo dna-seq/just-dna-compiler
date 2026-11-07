@@ -93,6 +93,24 @@ say one number, so "which versions are in this release" has one answer. `v0.7.3`
 bumped each package by one on its own line (format 0.7.1, compiler 0.7.2, enricher 0.7.3), already
 published when the rule was set on 2026-09-27.
 
+**Every cut, patch or minor, passes the cache-lane gates first** (RM413; the maintainer, 2026-11-07, after
+0.8.0 shipped the Open Targets lane with a builder and no repository: "No hf publish thus blocks release").
+`JUST_DNA_NETWORK_TESTS=1 uv run pytest enricher/tests/test_prerelease_gates.py`, green, at the cut commit:
+
+- **Parity**: a lane this tier publishes can be pulled, a pulled lane is published by someone, every
+  publish command has a `--dry-run`, and a lane built here and published nowhere names its bar
+  (`refused:`, `unestablished:`, `derived,`). "No repository yet" is not a bar.
+- **Idempotency**: `cache status`, `cache rebuild --dry-run` over every lane and every `publish --dry-run`
+  leave the disk as it was and answer the same twice.
+- **Published**: every lane with a repository states a release in it. A red here **blocks the cut** until the
+  lane is published, and *could not ask* is red too.
+
+**The lead publishes reference snapshots to HuggingFace on the pm's sign-off** (the maintainer, 2026-11-07:
+"you have HF upload rights on PM's signoff (basically, two-agent consensus instead of human)"). The lead asks
+the pm in the repo's channel, naming the lane, the release label, the dry run's file count and why; the pm's
+written yes is the sign-off, and the commit or note that follows quotes it. A module upload to the registry,
+and every PyPI publish, stay the maintainer's.
+
 **The item counts in the triage runbook's §4 are a "worth doing" lamp, not a start pistol.** They are
 reported, never asked about, and they never freeze scope.
 
@@ -142,7 +160,8 @@ reported, never asked about, and they never freeze scope.
 9. **The cut**, at **zero active items**: versions and floors, the lock, the CHANGELOG cut heading, the
    release record (measured by sweeps; a toolchain move is declared only from a sweep that holds the
    compiler fixed), the INTEGRATION file finished, the branch merged into `main`, the dists built and
-   checked. Publishing stays the maintainer's; step 10 follows the publish.
+   checked, and the cache-lane gates green (§ Patches; a lane with a repository and nothing published in
+   it blocks the cut). Publishing to PyPI stays the maintainer's; step 10 follows the publish.
 10. **After the publish** (added 2026-11-05: at 0.8.0 the tag, the GitHub release and the docs refresh were
     all missing hours after the publish). Once the maintainer has published, the lead does all three
     without asking:

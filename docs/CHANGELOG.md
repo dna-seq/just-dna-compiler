@@ -41,6 +41,15 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-07 — RM413: no cut while a lane with a repository has nothing published in it (patch, uncut)
+
+- **Every cut now passes three cache-lane gates** (RM413, `enricher/tests/test_prerelease_gates.py`): stage
+  parity (a published lane can be pulled, every publish command has a `--dry-run`, and a lane built here and
+  published nowhere names what bars it, so "no repository yet" fails), idempotency (`cache status`,
+  `cache rebuild --dry-run` and every `publish --dry-run` write nothing and answer the same twice), and,
+  under `JUST_DNA_NETWORK_TESTS=1`, a published release in every lane's repository. 0.8.0 passed none of the
+  three for Open Targets. Tests and the release rule only; nothing a consumer imports moves.
+
 ## 2026-11-07 — RM411: `cache rebuild --dry-run` takes nothing (patch, uncut)
 
 - **`cache rebuild --dry-run` no longer downloads or builds** (RM411, a bug: a dry run that writes is not

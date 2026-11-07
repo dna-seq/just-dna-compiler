@@ -34,6 +34,34 @@ up.
 
 Patches on `main` after the 0.8.0 cut (2026-11-05), newest first.
 
+## RM413 — no gate kept a lane with a builder and no repository out of a release
+
+**SHIPPED 2026-11-07 on `main`, uncut — a patch, tests and the release rule (the maintainer: "Add a prerelease
+checks: idempotency check (on the interfaces expected to be such) and cli-parity for all these
+build/publish/download. This time 0.8 got a dough instead of opentargets. No hf publish thus blocks release").**
+Owner enricher (tests), the lead (RELEASE_CYCLE), severity medium.
+
+**Residuals** RM412 — the source's newest release is still asked by hand (the liaison's table), and two lanes publish only through a rebuild
+
+**The class.** A lane's three stages (build, publish, pull) were each checked to exist where declared
+(`test_every_publishable_lane_can_actually_be_published`, the `unpublished` reason test), and none was checked
+against the others or against the hub. So Open Targets shipped in 0.8.0 with a builder, an `unpublished` reason
+that named no bar ("nothing bars a snapshot, but no repository holds one"), and a registry told it was
+unpublished. A dry run that wrote 22 GB (RM411) was the same class from the other side: a command that promises
+to change nothing, never checked for it.
+
+**What was added.** `test_prerelease_gates.py`, three gates walked off `CACHE_LANES` and the Typer tree:
+parity (a lane built here and published nowhere must open its reason with `refused:`, `unestablished:` or
+`derived,`; publish implies pull and pull implies a publisher; every `publish*` command has `--dry-run` unless it
+only refuses, which is `pubmind publish`); idempotency (`cache status`, `cache rebuild --publish --dry-run` over
+every lane, and each of the ten `publish --dry-run` commands against a minimal snapshot, each run twice with
+the hub faked: same disk, same output); and the published release, `@pytest.mark.network`, per lane with a
+repository, *could not ask* counted red. RELEASE_CYCLE § Patches makes it a cut gate for patches and minors
+and records the maintainer's grant that the lead uploads reference snapshots on the pm's sign-off.
+
+**Shown red.** The parity rule, evaluated on the code before RM408 (9d118dd8), names exactly `opentargets`.
+The published-release gate ran live on 2026-11-07: all eleven lanes with a repository state a release.
+
 ## RM411 — `cache rebuild --dry-run` downloaded and built every lane, skipping only the upload
 
 **SHIPPED 2026-11-07 on `main`, uncut — a patch (the maintainer: "dry is idempotent, thus it is not expected to

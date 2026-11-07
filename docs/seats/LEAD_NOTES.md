@@ -16,6 +16,11 @@ The lead's working state, rewritten to the present before each reset. Last rewri
 
 ## Standing rules from the person
 
+- **HF uploads on the pm's sign-off (the maintainer, 2026-11-07):** "you have HF upload rights on PM's signoff
+  (basically, two-agent consensus instead of human)". Reference snapshots only, never a registry module or
+  PyPI. Ask the pm with lane, label, dry-run file count and reason; quote its yes. RELEASE_CYCLE § Patches.
+- **No cut with an unpublished lane (same day):** `JUST_DNA_NETWORK_TESTS=1 uv run pytest
+  enricher/tests/test_prerelease_gates.py` green at the cut commit (RM413).
 - **Long jobs run niced (the maintainer, 2026-11-05: "memorize nice setting for the seat jobs"):** every long command
   the lead or its agents start (full pytest suites, enrich/rebuild batches) runs under `nice -n 19`. Per-item batches
   run at `-P1`, at most `-P2`; pytest-xdist at most `-n 4`. Write this into every builder and merge brief. When the

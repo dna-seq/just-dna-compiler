@@ -939,7 +939,11 @@ reading.
 ## RM412 — a dry run cannot rehearse the download, and the 0.8 line's private names wait for their public ones
 
 **Open, a minor, 0.9 (the maintainer, 2026-11-07: "inverted --rehearse-download flag in 0.9 along with all this
-private-to-public debt").** Owner enricher · *related* RM411, RM408, RM401, RM403, RM404
+private-to-public debt").** Owner enricher · *related* RM411, RM413, RM408, RM401, RM403, RM404
+
+**The residual of RM411 and of RM413 (the lead, 2026-11-07).** RM411 left the download rehearsal and the source's
+newest release unasked; RM413's gates still read that release off the liaison's hand-kept table, and two lanes
+(`opentargets`, `clinvar_gkm`) publish only through a rebuild.
 
 **Two halves, one reason: each is new public surface that patch scope kept off `main`.**
 
