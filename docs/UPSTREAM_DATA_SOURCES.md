@@ -46,11 +46,10 @@ house algebra: an unknown is never written as a no).
 
 ## What the table says
 
-1. **Four lanes are behind their source on the published copy**: `clinvar`, `constraint` (a pinned point
-   release), `civic` and `strchive`; `mitomap` probably is. A rebuild and a publish is the lead's (the builders and
-   the publish are code and outbound); this seat schedules it and says when.
-2. **This machine's `clinvar` cache is older than the published one** (06-27 against 08-29): `cache pull clinvar`
-   would bring it level, before any rebuild.
+1. **On the published copy, only `constraint` is behind its source now** (RM410). `clinvar`, `civic`, `strchive`
+   and `mitomap` were behind when first measured and were published on 2026-11-07.
+2. **This machine's shared cache is older than the published copy** for those four lanes: `cache pull` would bring it
+   level.
 3. **Three lanes have labels a date cannot be compared with** (`cpic`, `pharmvar`, `pubmind` are hashes). Their
    currency is known only by rebuilding and comparing hashes. Whether that is worth a weekly run is open.
 4. **Lanes with a currency command already ask the source**: `clinvar_gkm` (`ClinVarGkmClient.current_release`)
