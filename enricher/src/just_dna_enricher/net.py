@@ -249,7 +249,7 @@ def _failure(retry_state: RetryCallState) -> str:
     return f"{type(exc).__name__}: {text}" if text else type(exc).__name__
 
 
-def log_retry(retry_state: RetryCallState) -> None:
+def _log_retry(retry_state: RetryCallState) -> None:
     """`before_sleep` for every policy here: one line per attempt about to be retried (RM403).
 
     Client and subject, attempt n of m, the error and the wait, so a timeout reads as a timeout.
@@ -267,7 +267,7 @@ def log_retry(retry_state: RetryCallState) -> None:
     )
 
 
-def log_give_up(retry_state: RetryCallState) -> NoReturn:
+def _log_give_up(retry_state: RetryCallState) -> NoReturn:
     """`retry_error_callback` for every policy here: the give-up line, then exactly tenacity's own raise.
 
     Tenacity calls this in place of raising once the stop says so, and only then: an error the policy
@@ -563,8 +563,8 @@ def stream_to_file(
     tmp = dest.with_name(dest.name + ".part")
 
     @retry(
-        before_sleep=log_retry,
-        retry_error_callback=log_give_up,
+        before_sleep=_log_retry,
+        retry_error_callback=_log_give_up,
         stop=attempt_floor(3),
         wait=wait_exponential_jitter(multiplier=2.0, max=30.0),
         retry=retry_if_exception_type(httpx.TransportError),

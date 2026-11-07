@@ -5,7 +5,7 @@ attempt that timed out wrote nothing at all. A registry sweep met 26 `ReadTimeou
 rsIDs that spent all three attempts, about 48 s each, and its log said only the final error, once. An
 operator could not tell attempts timing out from a slow server.
 
-The fix is two shared hooks in `net` (`log_retry`, `log_give_up`) that every `@retry` names. **Why a
+The fix is two shared hooks in `net` (`_log_retry`, `_log_give_up`) that every `@retry` names. **Why a
 static walk** beside the behaviour: a new client is written by copying an old decorator, and a copy that
 drops a keyword is silent in every test that does not time it out. The walk reads the package's source,
 so the client is covered the day it is written, the same reasoning as `test_retry_wait_keywords.py`.
@@ -27,14 +27,14 @@ from just_dna_enricher.ensembl import EnsemblResolver
 from just_dna_enricher.net import (
     RETRY_ATTEMPTS_ENV,
     PacingGate,
+    _log_give_up,
+    _log_retry,
     attempt_floor,
-    log_give_up,
-    log_retry,
 )
 from tenacity import RetryError, retry, retry_if_exception_type, wait_none
 
 _PACKAGE = Path(just_dna_enricher.__file__).parent
-_HOOKS = {"before_sleep": "log_retry", "retry_error_callback": "log_give_up"}
+_HOOKS = {"before_sleep": "_log_retry", "retry_error_callback": "_log_give_up"}
 
 
 def _retry_calls() -> list[tuple[str, ast.Call]]:
@@ -106,8 +106,8 @@ def test_a_raised_floor_is_the_ceiling_the_line_names(
     calls = []
 
     @retry(
-        before_sleep=log_retry,
-        retry_error_callback=log_give_up,
+        before_sleep=_log_retry,
+        retry_error_callback=_log_give_up,
         stop=attempt_floor(3),
         wait=wait_none(),
         retry=retry_if_exception_type(httpx.ConnectError),
@@ -129,8 +129,8 @@ def test_a_raised_floor_is_the_ceiling_the_line_names(
 def test_the_give_up_hook_raises_as_tenacity_would(caplog: pytest.LogCaptureFixture, _no_floor: None) -> None:
     def policy(reraise: bool):
         return retry(
-            before_sleep=log_retry,
-            retry_error_callback=log_give_up,
+            before_sleep=_log_retry,
+            retry_error_callback=_log_give_up,
             stop=attempt_floor(2),
             wait=wait_none(),
             retry=retry_if_exception_type(httpx.ReadTimeout),

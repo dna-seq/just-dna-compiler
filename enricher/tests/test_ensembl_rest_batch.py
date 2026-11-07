@@ -12,8 +12,8 @@ the shapes the probe saw:
   while its GET answers 400, RM361's no-record arm.
 
 So an omission is never read as "no record" (`@unreachable-not-absent`): the rsID is asked by GET. A
-failed batch, a POST 400 included, is could-not-ask for every rsID in it, never a negative. `batch_size=1`
-is the off-switch (`@off-switch-needs-a-probe`), and it reproduces the one-GET-per-rsID pattern exactly.
+failed batch, a POST 400 included, is could-not-ask for every rsID in it, never a negative. A batch size of
+1 is the off-switch (`@off-switch-needs-a-probe`), and it reproduces the one-GET-per-rsID pattern exactly.
 """
 
 import json
@@ -24,12 +24,12 @@ import httpx
 import pytest
 from just_dna_enricher.enrich import enrich
 from just_dna_enricher.ensembl import (
-    REST_BATCH_CEILING,
-    BatchResolver,
+    _REST_BATCH_CEILING,
+    _REST_BATCH_TIMEOUT,
     EnsemblResolver,
-    EnsemblSettings,
-    RestBatchWitness,
     _batch_records,
+    _BatchResolver,
+    _RestBatchWitness,
 )
 from just_dna_enricher.net import RETRY_ATTEMPTS_ENV, PacingGate
 
@@ -92,8 +92,8 @@ class _Ensembl:
         return httpx.Response(200, json=record)
 
 
-def _resolver(server: _Ensembl, **settings: object) -> EnsemblResolver:
-    resolver = EnsemblResolver(settings=EnsemblSettings(**settings), gate=PacingGate(interval=0.0))
+def _resolver(server: _Ensembl) -> EnsemblResolver:
+    resolver = EnsemblResolver(gate=PacingGate(interval=0.0))
     resolver._client = httpx.Client(transport=httpx.MockTransport(server))
     resolver._read_base = lambda _chrom, _pos: None
     return resolver
@@ -108,10 +108,16 @@ def _quiet(monkeypatch: pytest.MonkeyPatch) -> None:
 _ASKED = ["rs1801133", "rs8192284", "rs99999999999", "rs429358", "rs5", "rs6"]
 
 
-def test_a_batch_answers_each_rsid_as_its_get_would() -> None:
+def _batch_size(monkeypatch: pytest.MonkeyPatch, size: int) -> None:
+    """The private constant the 0.8 patch line fixes at 20; 0.9 makes it a setting (RM404)."""
+    monkeypatch.setattr("just_dna_enricher.ensembl._REST_BATCH_SIZE", size)
+
+
+def test_a_batch_answers_each_rsid_as_its_get_would(monkeypatch: pytest.MonkeyPatch) -> None:
     batched_server, single_server = _Ensembl(), _Ensembl()
-    batched = dict(_resolver(batched_server).resolve_rsids_rest(_ASKED))
-    single = dict(_resolver(single_server, batch_size=1).resolve_rsids_rest(_ASKED))
+    batched = dict(_resolver(batched_server)._resolve_rsids_rest(_ASKED))
+    _batch_size(monkeypatch, 1)
+    single = dict(_resolver(single_server)._resolve_rsids_rest(_ASKED))
     assert batched == single
     assert batched["rs8192284"] == (
         [{"chrom": "1", "start": 154454494, "ref": "A", "alts": "C"}],
@@ -138,7 +144,7 @@ def test_an_rsid_a_batch_leaves_out_is_asked_by_get_never_written_as_no_record()
             return response
 
     server = _Omitting()
-    answers = dict(_resolver(server).resolve_rsids_rest(["rs1801133", "rs429358"]))
+    answers = dict(_resolver(server)._resolve_rsids_rest(["rs1801133", "rs429358"]))
     assert answers["rs429358"] == (
         [{"chrom": "19", "start": 44908684, "ref": "T", "alts": "C"}],
         "ensembl-rest",
@@ -147,13 +153,13 @@ def test_an_rsid_a_batch_leaves_out_is_asked_by_get_never_written_as_no_record()
 
 
 def test_the_answers_come_back_in_the_order_asked_with_the_asked_rsid_as_the_key() -> None:
-    answers = list(_resolver(_Ensembl()).resolve_rsids_rest(_ASKED))
+    answers = list(_resolver(_Ensembl())._resolve_rsids_rest(_ASKED))
     assert [rsid for rsid, _answer in answers] == _ASKED  # rs8192284 is never renamed rs2228145
 
 
 def test_the_no_variation_rsid_is_collected_as_its_get_collects_it() -> None:
     resolver = _resolver(_Ensembl())
-    dict(resolver.resolve_rsids_rest(_ASKED))
+    dict(resolver._resolve_rsids_rest(_ASKED))
     assert resolver.non_nucleotide_rsids == {"rs6"}
 
 
@@ -177,7 +183,7 @@ def test_a_failed_batch_is_could_not_ask_for_every_rsid_never_a_negative(
     """A POST 400 is not the GET's 400: it says nothing about any one rsID, so nobody was answered."""
     server = _Ensembl(post_status=status)
     with caplog.at_level(logging.WARNING):
-        answers = dict(_resolver(server).resolve_rsids_rest(_ASKED))
+        answers = dict(_resolver(server)._resolve_rsids_rest(_ASKED))
     assert answers == dict.fromkeys(_ASKED, (None, None))
     assert all(request.startswith("POST") for request in server.requests)  # no GET fallback in an outage
     assert any("V1 REST batch of 6 rsID(s) failed" in r.getMessage() for r in caplog.records)
@@ -189,24 +195,30 @@ def test_a_transport_failure_is_could_not_ask_for_every_rsid() -> None:
 
     resolver = EnsemblResolver(gate=PacingGate(interval=0.0))
     resolver._client = httpx.Client(transport=httpx.MockTransport(dead))
-    assert dict(resolver.resolve_rsids_rest(["rs1", "rs2"])) == {"rs1": (None, None), "rs2": (None, None)}
+    assert dict(resolver._resolve_rsids_rest(["rs1", "rs2"])) == {"rs1": (None, None), "rs2": (None, None)}
 
 
-def test_batches_are_cut_at_the_setting_and_capped_at_ensembls_ceiling() -> None:
+def test_batches_are_cut_at_the_fixed_size_and_capped_at_ensembls_ceiling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     server = _Ensembl()
     asked = [f"rs{n}" for n in range(1000, 1045)]
-    dict(_resolver(server, batch_size=20).resolve_rsids_rest(asked))
+    dict(_resolver(server)._resolve_rsids_rest(asked))
     posts = [r for r in server.requests if r.startswith("POST")]
     assert posts == ["POST 20", "POST 20", "POST 5"]
     server = _Ensembl()
-    dict(_resolver(server, batch_size=10_000).resolve_rsids_rest([f"rs{n}" for n in range(1000, 1250)]))
-    assert [r for r in server.requests if r.startswith("POST")] == [f"POST {REST_BATCH_CEILING}", "POST 50"]
+    _batch_size(monkeypatch, 10_000)
+    dict(_resolver(server)._resolve_rsids_rest([f"rs{n}" for n in range(1000, 1250)]))
+    assert [r for r in server.requests if r.startswith("POST")] == [f"POST {_REST_BATCH_CEILING}", "POST 50"]
 
 
-def test_the_next_batch_waits_until_every_answer_of_the_one_before_is_taken() -> None:
+def test_the_next_batch_waits_until_every_answer_of_the_one_before_is_taken(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """What lets the live link journal each answer before the next request (minute 29 recoverable)."""
     server = _Ensembl()
-    answers = _resolver(server, batch_size=2).resolve_rsids_rest(["rs1801133", "rs429358", "rs2228145"])
+    _batch_size(monkeypatch, 2)
+    answers = _resolver(server)._resolve_rsids_rest(["rs1801133", "rs429358", "rs2228145"])
     next(answers)
     assert server.requests == ["POST 2"]
     next(answers)
@@ -215,8 +227,9 @@ def test_the_next_batch_waits_until_every_answer_of_the_one_before_is_taken() ->
     assert server.requests == ["POST 2", "POST 1"]
 
 
-def test_a_throttle_past_the_ceiling_holds_the_batches_after_it() -> None:
+def test_a_throttle_past_the_ceiling_holds_the_batches_after_it(monkeypatch: pytest.MonkeyPatch) -> None:
     server = _Ensembl()
+    _batch_size(monkeypatch, 2)
 
     def throttled(request: httpx.Request) -> httpx.Response:
         if request.method == "POST" and not server.requests:
@@ -224,26 +237,26 @@ def test_a_throttle_past_the_ceiling_holds_the_batches_after_it() -> None:
             return httpx.Response(429, headers={"Retry-After": "3600"})
         return server(request)
 
-    resolver = EnsemblResolver(settings=EnsemblSettings(batch_size=2), gate=PacingGate(interval=0.0))
+    resolver = EnsemblResolver(gate=PacingGate(interval=0.0))
     resolver._client = httpx.Client(transport=httpx.MockTransport(throttled))
-    answers = dict(resolver.resolve_rsids_rest(["rs1801133", "rs429358", "rs2228145"]))
+    answers = dict(resolver._resolve_rsids_rest(["rs1801133", "rs429358", "rs2228145"]))
     assert answers == dict.fromkeys(["rs1801133", "rs429358", "rs2228145"], (None, None))
     assert server.requests == ["POST throttled"]  # the second batch was never sent
 
 
-def test_the_resolver_offers_both_batch_capabilities_and_a_post_timeout_of_its_own() -> None:
+def test_the_resolver_has_both_batch_capabilities_and_a_post_timeout_of_its_own() -> None:
     resolver = EnsemblResolver()
-    assert isinstance(resolver, BatchResolver) and isinstance(resolver, RestBatchWitness)
+    assert isinstance(resolver, _BatchResolver) and isinstance(resolver, _RestBatchWitness)
     seen: list[httpx.Timeout] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen.append(httpx.Timeout(**request.extensions["timeout"]))
         return httpx.Response(200, json={})
 
-    resolver = EnsemblResolver(settings=EnsemblSettings(batch_timeout=90.0), gate=PacingGate(interval=0.0))
+    resolver = EnsemblResolver(gate=PacingGate(interval=0.0))
     resolver._client = httpx.Client(transport=httpx.MockTransport(handler))
-    next(resolver.resolve_rsids_rest(["rs1", "rs2"]))
-    assert seen[0].read == 90.0 and seen[0].connect == resolver.settings.timeout
+    next(resolver._resolve_rsids_rest(["rs1", "rs2"]))
+    assert seen[0].read == _REST_BATCH_TIMEOUT and seen[0].connect == resolver.settings.timeout
 
 
 _YAML = (

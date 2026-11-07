@@ -411,14 +411,25 @@ def live_witness_subjects(
     )
 
 
-#: Many rsIDs asked, one `(rsid, (loci, source))` back per rsID: `EnsemblResolver.resolve_rsids_rest`.
-AskMany = Callable[
+Resolve = Callable[[str], tuple[Sequence[Mapping[str, object]] | None, str | None]]
+
+#: Many rsIDs asked, one `(rsid, (loci, source))` back per rsID: `EnsemblResolver._resolve_rsids_rest`.
+_AskMany = Callable[
     [Sequence[str]], Iterable[tuple[str, tuple[Sequence[Mapping[str, object]] | None, str | None]]]
 ]
 
 
-def ask_live_witness(ask: AskMany, rsids: Sequence[str]) -> tuple[Loci, list[str]]:
-    """Ask the live REST rung (`EnsemblResolver.resolve_rsids_rest`) about the rsIDs, in batches (RM401).
+def ask_live_witness(resolve: Resolve, rsids: Sequence[str]) -> tuple[Loci, list[str]]:
+    """Ask the live REST rung (`EnsemblResolver.resolve_rsid_rest`) about each rsID, one at a time.
+
+    The public form, as 0.8.0 shipped it. The run asks through `_ask_live_witness`, which takes RM401's
+    batches (`EnsemblResolver._resolve_rsids_rest`) and gives the same answers.
+    """
+    return _ask_live_witness(lambda asked: ((rsid, resolve(rsid)) for rsid in asked), rsids)
+
+
+def _ask_live_witness(ask: _AskMany, rsids: Sequence[str]) -> tuple[Loci, list[str]]:
+    """`ask_live_witness` for a callable that asks many rsIDs at once (RM401).
 
     Returns `rsid -> loci` for every rsID it answered (an empty list is an answer: REST has no placeable
     locus), and the rsIDs it did not answer — `None` loci, whether the request failed after its retries

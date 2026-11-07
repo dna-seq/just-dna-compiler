@@ -47,9 +47,9 @@ from just_dna_enricher.net import (
     GONE,
     EndpointRetired,
     PacingGate,
+    _log_give_up,
+    _log_retry,
     attempt_floor,
-    log_give_up,
-    log_retry,
     retired_message,
 )
 
@@ -417,8 +417,8 @@ class PgsCatalogClient:
         return parse_release(self.info())
 
     @retry(
-        before_sleep=log_retry,
-        retry_error_callback=log_give_up,
+        before_sleep=_log_retry,
+        retry_error_callback=_log_give_up,
         stop=attempt_floor(3),
         wait=wait_exponential_jitter(multiplier=1.0, max=10.0),
         retry=retry_if_exception_type((httpx.TransportError, httpx.TimeoutException)),

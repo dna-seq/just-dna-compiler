@@ -66,9 +66,9 @@ from just_dna_enricher.licensing import (
 from just_dna_enricher.net import (
     EndpointRetired,
     PacingGate,
+    _log_give_up,
+    _log_retry,
     attempt_floor,
-    log_give_up,
-    log_retry,
     raise_if_retired,
     retry_if_transient,
 )
@@ -154,8 +154,8 @@ class LdClient:
             self.client = None
 
     @retry(
-        before_sleep=log_retry,
-        retry_error_callback=log_give_up,
+        before_sleep=_log_retry,
+        retry_error_callback=_log_give_up,
         stop=attempt_floor(4),
         wait=wait_exponential_jitter(multiplier=2.0, max=20.0),
         # A 5xx or a 429 only (RM354): a permanent 4xx answers the same on every attempt.

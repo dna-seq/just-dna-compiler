@@ -46,10 +46,9 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 - **The live Ensembl link and the REST placement witness ask 20 rsIDs per `POST /variation/:species`**
   instead of one GET each (RM401, S133). Each rsID gets the answer its GET would give: an rsID the batch
   leaves out is asked by GET, a merged one is found by its `synonyms`, and a failed batch is could-not-ask
-  for every rsID in it, never `not_found`. Additive: `EnsemblSettings.batch_size` (`1` restores one GET per
-  rsID) and `batch_timeout` (the POST's read timeout, 120 s), `EnsemblResolver.resolve_rsids` /
-  `resolve_rsids_rest`, and the optional `BatchResolver` / `RestBatchWitness` capabilities. An injected
-  resolver without them is asked one rsID at a time, as before.
+  for every rsID in it, never `not_found`. No public name is added: the batch size (20) and the POST's
+  read timeout (120 s) are fixed private constants in the 0.8 patch line, and 0.9 makes them settings with
+  RM404. Only `EnsemblResolver` batches; an injected resolver is asked one rsID at a time, as before.
 
 ## 2026-11-07 — RM400: live REST no longer writes loci on GRCh38 patch and alt contigs, and a re-derivation leaves recorded ones out (patch, uncut)
 

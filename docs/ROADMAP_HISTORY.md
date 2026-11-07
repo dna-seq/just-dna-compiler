@@ -55,34 +55,40 @@ would have abandoned most batches.
 
 **Instances (the resolver, two callers):**
 
-- `EnsemblResolver.resolve_rsids_rest` (and `resolve_rsids`, its `resolve_rsid` twin) yields `(rsid,
-  answer)` per rsID in asked order, `settings.batch_size` per POST (default 20, capped at
-  `REST_BATCH_CEILING` 200), each POST through `_rest_batch` under the GET's own retry policy and with
-  `batch_timeout` (120 s) as its read timeout. `_batch_records` matches an asked rsID by name, then by the
+- `EnsemblResolver._resolve_rsids_rest` (and `_resolve_rsids`, its `resolve_rsid` twin) yields `(rsid,
+  answer)` per rsID in asked order, `_REST_BATCH_SIZE` (20, capped at `_REST_BATCH_CEILING` 200) per
+  POST, each POST through `_rest_batch` under the GET's own retry policy and with `_REST_BATCH_TIMEOUT`
+  (120 s) as its read timeout. `_batch_records` matches an asked rsID by name, then by the
   one record whose `synonyms` list it; none or two, and the rsID is asked by GET. The asked rsID stays the
   key (`@ncbi-merge-oracle`). A failed batch, a POST 400 included, is `(None, None)` for every rsID in
   it, with no GET fallback. The per-rsID rules (RM268's anchor, RM271, RM400) moved into one
   `_rest_answer` both routes call, and the throttle hold into `_held` / `_hold_for`.
 - The next batch is asked only once every answer of the one before is taken, so the live link still
   journals each answer before the next request: a kill loses at most one batch.
-- `BatchResolver` and `RestBatchWitness` are new optional Protocols. The live link and
-  `placement.ask_live_witness` (which now takes a many-rsID callable) batch only through them, so an
-  injected resolver written before RM401 is asked one rsID at a time, as before.
+- The live link and the witness batch only through the private `_BatchResolver` / `_RestBatchWitness`
+  Protocols, so only `EnsemblResolver` batches and an injected resolver is asked one rsID at a time.
+  `placement.ask_live_witness` keeps 0.8.0's signature (one rsID per call) and the run asks through the
+  private `_ask_live_witness`, which takes a many-rsID callable.
+- **No public name is added, by the pm's ruling (2026-11-07).** As first landed (`6837e66a`) the item added
+  two `EnsemblSettings` fields, two resolver methods and two Protocols, and changed `ask_live_witness`'s
+  signature. `RELEASE_CYCLE.md` keeps a new public name off `main`, so every one went private and the
+  signature went back; 0.9 publishes the knobs and the capability with RM404.
 
 **The mechanism:** `enricher/tests/test_ensembl_rest_batch.py` answers in the probe's shapes. It asserts
 a batch answers each rsID exactly as the off-switch's GETs do (one POST plus one GET for the left-out
 rsID, against one GET per rsID), the order and key, the RM271 collection, the ambiguous-synonym fallback,
-could-not-ask on a failed POST (503, 400, 429) and on a timeout, the cut and the ceiling, the lazy next
-batch, the throttle hold, the POST's own timeout, and end to end that the live link sends one POST for
+could-not-ask on a failed POST (503, 400, 429) and on a timeout, the cut and the ceiling (by patching the private
+constant), the lazy next batch, the throttle hold, the POST's own timeout, and end to end that the live link sends one POST for
 its misses while a host resolver without the capability is asked one at a time. Reading an omission as
 "no record" fails three of them; one is an rsID the batch leaves out that its GET places. The tests that
 mocked REST by GET alone answer the POST too: the witness's `_Rest` natively, three others through the
 conftest's `rest_batch`, which answers what a GET answers 200 for and leaves out the rest, so each per-id
 failure still reaches the resolver through the GET.
 
-**Residuals** won't fix — the defaults are one slow day's numbers: `batch_size` 20 and `batch_timeout`
-120 s were chosen on 2026-11-07, when Ensembl answered slowly, and are settings for a host to tune. RM402,
-waiting on this item and a re-measure, is where the registry's sweep says whether they hold.
+**Residuals** RM404 — a host cannot tune the batch: 20 ids and 120 s were chosen on one slow day
+(2026-11-07) and are fixed private constants in the 0.8 patch line; RM404 makes them settings and the
+capability public in 0.9. RM402 waits on this item and the registry's re-measure, which says whether the
+fixed numbers hold.
 
 ## RM400 — the REST rung wrote placements on GRCh38 patch and alt contigs, which no snapshot carries, so a re-derivation reported a lost allele that did not move
 
@@ -136,8 +142,8 @@ attempts, about 48 s each, and the only line was the caller's give-up warning na
 could not tell attempts timing out from a slow server, and RM402's re-measure needs to.
 
 **Instances (every policy, 21 at the fix):** each `@retry` in the package now names two shared hooks in
-`net`. `log_retry` (`before_sleep`) writes `Client.method(subject): attempt n of m failed (Type: message);
-retrying in w s`. `log_give_up` (`retry_error_callback`) writes `…: gave up after n attempt(s) over s s
+`net`. `_log_retry` (`before_sleep`) writes `Client.method(subject): attempt n of m failed (Type: message);
+retrying in w s`. `_log_give_up` (`retry_error_callback`) writes `…: gave up after n attempt(s) over s s
 (Type: message)`, then raises exactly as tenacity would have, read off the policy: `reraise=True` re-raises
 the attempt's own exception, so every caller's `except` still sees what it was written against
 (`@client-exception-contract`), and a policy without it raises `RetryError` from it. Tenacity calls the
@@ -145,6 +151,9 @@ callback only once the stop fires, so an error the policy does not retry (a 400,
 line. The ceiling `m` is read the way `attempt_floor` reads it, so a raised `$JUST_DNA_HTTP_RETRY_ATTEMPTS`
 shows. The type is always named, since a bare `ReadTimeout` stringifies to nothing. Both lines are at
 WARNING: nothing in these tiers configures logging, and Python's last-resort handler drops anything lower.
+
+**The hooks are private** (`_log_retry`, `_log_give_up`): first landed public (`4a07f4ec`), renamed by the pm's
+ruling of 2026-11-07, since `RELEASE_CYCLE.md` keeps a new public name off `main`.
 
 **The mechanism:** `enricher/tests/test_retry_logging.py` walks the package's source and refuses any
 `retry(`, `Retrying(` or `AsyncRetrying(` that names neither hook; dropping one keyword from one site makes

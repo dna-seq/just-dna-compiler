@@ -52,9 +52,9 @@ from tenacity import retry, retry_if_exception_type, wait_exponential_jitter
 from just_dna_enricher.net import (
     EndpointRetired,
     PacingGate,
+    _log_give_up,
+    _log_retry,
     attempt_floor,
-    log_give_up,
-    log_retry,
     raise_if_retired,
 )
 
@@ -345,8 +345,8 @@ class CivicApiClient:
         return data
 
     @retry(
-        before_sleep=log_retry,
-        retry_error_callback=log_give_up,
+        before_sleep=_log_retry,
+        retry_error_callback=_log_give_up,
         retry=retry_if_exception_type(httpx.TransportError),
         wait=wait_exponential_jitter(multiplier=0.5, max=8),
         stop=attempt_floor(3),

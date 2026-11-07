@@ -93,11 +93,11 @@ from just_dna_enricher.enrich.subjects import (
 )
 from just_dna_enricher.enrich.verification_records import _verification_records
 from just_dna_enricher.ensembl import (
-    BatchResolver,
     EnsemblResolver,
-    RestBatchWitness,
     RestWitness,
     RsidResolver,
+    _BatchResolver,
+    _RestBatchWitness,
 )
 from just_dna_enricher.events import authored_event
 from just_dna_enricher.gnomad import GnomadClient, GnomadError
@@ -127,8 +127,8 @@ from just_dna_enricher.placement import (
     ENSEMBL_WITNESS,
     Loci,
     PlacementCheck,
+    _ask_live_witness,
     answered_placements,
-    ask_live_witness,
     compare_placements,
     live_witness_subjects,
     load_witnesses,
@@ -965,12 +965,12 @@ def _run_enrichment(
             ensembl_link = client
             rest_answered = False
             try:
-                # RM401: many rsIDs per request where the resolver can (ours, `BatchResolver`), each
+                # RM401: many rsIDs per request where the resolver can (ours, `_BatchResolver`), each
                 # answer taken and journalled below before the next batch is asked; one at a time where
                 # it cannot (a host's resolver written before it).
                 answers = (
-                    client.resolve_rsids(missing)
-                    if isinstance(client, BatchResolver)
+                    client._resolve_rsids(missing)
+                    if isinstance(client, _BatchResolver)
                     else ((rsid, client.resolve_rsid(rsid)) for rsid in missing)
                 )
                 for rsid, (loci, src) in answers:
@@ -1099,15 +1099,15 @@ def _run_enrichment(
                 # resolver written before 0.8 has `resolve_rsid` alone, and calling the method blindly
                 # raised `AttributeError` at the first eligible indel.
                 if isinstance(client, RestWitness):
-                    batch = isinstance(client, RestBatchWitness)
+                    batch = isinstance(client, _RestBatchWitness)
                     logger.info(
                         "Placement witness — asking Ensembl REST about %d snapshot indel(s) no loaded "
                         "witness holds, %s (RM267).",
                         len(rest_subjects),
                         "in batches (RM401)" if batch else "one request at a time",
                     )
-                    rest_answers, rest_not_asked = ask_live_witness(
-                        client.resolve_rsids_rest
+                    rest_answers, rest_not_asked = _ask_live_witness(
+                        client._resolve_rsids_rest
                         if batch
                         else lambda rsids: ((rsid, client.resolve_rsid_rest(rsid)) for rsid in rsids),
                         rest_subjects,

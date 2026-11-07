@@ -63,7 +63,7 @@ import grpc
 from tenacity import retry, retry_if_exception, wait_random_exponential
 
 from just_dna_enricher.atlas_protos import OUT_DIR, SERVICE_CONFIG_NAME
-from just_dna_enricher.net import EndpointRetired, PacingGate, attempt_floor, log_give_up, log_retry
+from just_dna_enricher.net import EndpointRetired, PacingGate, _log_give_up, _log_retry, attempt_floor
 
 # The one guarded module-level import the house rules allow, and the reason it is guarded is that
 # the bindings are a build product rather than source: `generated/` is git-ignored, so a fresh
@@ -456,8 +456,8 @@ class AtlasClient:
         return self._gate
 
     @retry(
-        before_sleep=log_retry,
-        retry_error_callback=log_give_up,
+        before_sleep=_log_retry,
+        retry_error_callback=_log_give_up,
         stop=attempt_floor(RETRY_DEFAULT_ATTEMPTS),
         # Upstream's own backoff, in the form grpc applies it: a uniform draw below
         # `initialBackoff * backoffMultiplier ** (n - 1)`, capped at `maxBackoff`.
