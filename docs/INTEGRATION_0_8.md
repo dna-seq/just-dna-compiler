@@ -1215,11 +1215,11 @@ What 0.8 ships with, known and not fixed. Each line names its item; [RM_TOC.md](
   correctly; `enrich` would only say so earlier. Returns when an author reports an `enrich` that passed
   and a `compile --strict` that then refused on the same table, when the roadmap is empty, or when a
   scope the maintainer highlights touches it.
-- **A re-derivation can report `lost_allele` for a locus that did not move (RM400, fixed on `main`
-  for the next patch).** On 0.8.0, live REST wrote GRCh38 patch and alt contig mappings as loci, which no
-  snapshot carries, so `--rederive` over a table REST had filled reads those subjects as `lost_allele`.
-  The fix drops them at the REST rung and leaves them out of the comparison, counted. Until it ships,
-  a `lost_allele` whose lost locus sits on a contig named like `HSCHR…` or `…_PATCH` is this one.
+- **A re-derivation can report `lost_allele` for a locus that did not move (RM400, fixed in enricher
+  0.8.1).** On 0.8.0, live REST wrote GRCh38 patch and alt contig mappings as loci, which no snapshot
+  carries, so `--rederive` over a table REST had filled reads those subjects as `lost_allele`. 0.8.1 drops
+  them at the REST rung and leaves them out of the comparison, counted. On 0.8.0, a `lost_allele` whose
+  lost locus sits on a contig named like `HSCHR…` or `…_PATCH` is this one; upgrade and re-derive online.
 - **RM386's publish pinning has no live run yet (RM386).** It shipped with no practice publish to a
   throwaway Hugging Face repo, by the maintainer's decision. The next real snapshot publish is its first
   live run; if that publish fails, suspect this code first, and the fix is a patch.
