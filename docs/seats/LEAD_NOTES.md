@@ -55,14 +55,15 @@ None open.
 - **0.8.1 released, 2026-11-07** (enricher only: RM397, RM398, RM400, RM401, RM403, RM407). Tag `v0.8.1`
   on 6330f908, pushed. The GitHub release waits on the person (auto-mode rule 13 missing; notes in the
   session scratchpad, `release_notes_0_8_1.md`).
-- **0.8.2 cut, 2026-11-07, b98f7e9c, waiting on the maintainer's PyPI publish.** All three packages (format
-  and compiler moved for RM414/RM415). Carries RM408, RM410, RM411, RM413-RM417. Dists in the root `dist/`
-  (six, metadata valid). After the publish, in order: (1) upload the gnomAD 4.1.2 constraint snapshot from
-  `data/caches/constraint` (`gnomad constraint publish`; the pm signed off on the condition that 0.8.2 is on
-  PyPI first, because 0.8.1 has no re-run guard); (2) tag `v0.8.2` on b98f7e9c; (3) GitHub release, still
-  blocked on auto-mode rule 13 unless the maintainer pasted it; (4) docs refresh. Open for the maintainer: the
-  `CLAUDE.md` headline for `@constraint-two-releases` (RM417), proposed in chat. RM418 (one NCBI gate per
-  process, the pm's) is the next patch.
+- **0.8.2 released, 2026-11-08** (all three packages; RM408, RM410, RM411, RM413-RM417). On PyPI (the
+  maintainer); tag `v0.8.2` on b98f7e9c, pushed. gnomAD constraint 4.1.2 published to
+  `just-dna-seq/gnomad_constraint` (rebuilt with 0.8.2 from `data/input/gnomad/`, parquet byte-identical to the
+  pre-bump build; the hub answers `gnomad_v4.1.2_constraint`). The GitHub release was refused by the classifier
+  (rule 13 not pasted): notes in the session scratchpad, `release-notes-0.8.2.md`, the command handed to the
+  maintainer. Docs refresh on branch `docs/refresh-0.8.2` (subagent), to merge. Liaison asked to update the
+  constraint row of `UPSTREAM_DATA_SOURCES.md`. Open for the maintainer: the `CLAUDE.md` headline for
+  `@constraint-two-releases` (RM417), proposed in chat. RM418 (one NCBI gate per process, the pm's) is the
+  next patch.
 - **Cache:** `/data/just-dna-cache/ensembl_variations` is the split release; the old one is
   `ensembl_variations.pre-0.8`, to drop on the person's word. The just-dna-lite side still to be told.
 - **Desk:** #210 (should the liaison keep `docs/DOWNSTREAM.md`, who waits on us; default: no list) and
