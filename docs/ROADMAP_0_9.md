@@ -24,6 +24,8 @@ maintainer names, and the pm parks or unparks the rest. So this file keeps only 
   licence-shape design), RM294;
 - **A real run hits it**: RM265's warning fires on every compile of just-dna-lite's three ClinVar panel modules (S114); RM399, added 2026-11-07,
   because the registry's 0.8 sweep (S132) heard nothing of a corrected derivation the record cannot declare.
+- **It rides on an item already in**: RM404 opens the `enrich()` signature at the seam RM385 rebuilds (added
+  2026-11-07).
 
 The other 22 items moved to [ROADMAP.md](ROADMAP.md#active-items) as **a minor, parked**. Each states what
 unparks it, and each has a row in its gate audit. RM188 is one of them, so **0.9's theme is not decided**:
@@ -905,3 +907,25 @@ changes RM372's lane or any digest.
 
 **Sizing.** A new optional field or vocabulary member in the format tier: a minor, and an old-reader break if
 it is a new change kind, as `toolchain` was (INTEGRATION_0_8 § 1.11). P9: near free; no authored column.
+
+## RM404 — `enrich()` builds its own NCBI client and sequence proxy, so a host cannot pace them with the rest
+
+**0.9, the pm (2026-11-07), built with RM385.** RM385, already in 0.9 by the maintainer's word, reworks how the enricher gets its `SequenceProxy` (a local reference for offline runs). Accepting the proxy from the caller is near free on that seam, and the eutils client is one more parameter beside the resolver, so deferring RM404 would only mean opening the same signature twice. A real host (the registry) runs its enrichments one at a time because of it. The fewer-entities rule weighs toward taking the whole `LookupClients` bundle over two loose parameters. **Not RM396's unpark condition, the pm's reading:** RM396 is about reading six named clients' intervals and gates by public name; RM404 is about handing clients in, and needs none of those names. RM396 stays parked.
+
+**Severity** low · **Status** open — **a minor, 0.9** (new public parameters) · **Owner**
+enricher (`enrich()` signature, `identifiers.check_rsids`, `sequences.SequenceProxy`) · **Motivating case** S133
+in CONSUMER_SUGGESTIONS_HISTORY.md · *related* RM396, RM385
+
+**The gap.** `enrich()` takes `resolver=`, `gnomad_client=` and `grch37_client=`, but builds its own eutils client
+for the dbSNP check (`check_rsids` takes `client=`, and `enrich` does not pass one through) and a fresh
+`SequenceProxy` per call. A host running modules in parallel through one paced bundle cannot share either, and
+the registry runs such enrichments one at a time for it. Beneath the proxy, ga4gh's seqrepo REST proxy calls
+`requests.get` with no timeout (`ga4gh/vrs/dataproxy.py`, vrs-python 2.3.3, each call marked `noqa: S113`); the
+registry counted 141 serial unpaced reads on one module, 36 s.
+
+**What it would be.** `enrich()` accepts the eutils client and the sequence proxy the way it accepts the
+resolver, or a whole `LookupClients`; which is the design question, and the fewer-entities rule weighs toward
+the bundle. **Residuals, to be stated at closure:** the missing timeout is vrs-python's, upstream of this
+repository; a proxy of our own that adds one would be the workaround the house rules refuse. RM396 (public gates
+and intervals, parked) unparks when a host needs a second client's pace, which this may meet; that is the pm's
+reading.

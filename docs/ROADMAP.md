@@ -1981,8 +1981,10 @@ lost locus off the primary assembly is its own drift arm or a carry reason (RM39
 
 ## RM401 — the live Ensembl link and the REST witness ask one rsID per request, so a re-derivation waits on cold requests one at a time
 
-**Severity** medium · **Status** open — **a patch** (no recorded field moves; the same answers by fewer requests),
-for the pm to place · **Owner** enricher (`enrich/orchestration.py` live link ~:962, `placement.ask_live_witness`
+**Placed, the pm (2026-11-07): the next patch on `main`, probe first.** Every online re-derivation pays it (599 of one module's 672 s). The fix's own risk is the omission question below: reading an id a batch answer leaves out as "no record" would turn could-not-ask into a negative, so the probe's answer is the precondition, and the build waits on it rather than assuming.
+
+**Severity** medium · **Status** open — **a patch**, the next on `main` after its probe (no recorded field moves; the same answers by
+fewer requests) · **Owner** enricher (`enrich/orchestration.py` live link ~:962, `placement.ask_live_witness`
 ~:418, `ensembl.EnsemblResolver`) · **Motivating case** S133 in CONSUMER_SUGGESTIONS_HISTORY.md (just-dna-registry's
 lead, 2026-11-07) · *related* RM402, RM403, RM267, RM361
 
@@ -2002,8 +2004,10 @@ before the next POST. A failed batch falls back to its ids' could-not-ask arm, n
 
 ## RM402 — a snapshot answer rejected under RM382 is asked again of live Ensembl, the same authority, which answers the same locus
 
-**Severity** medium · **Status** open — **a patch** (fewer requests; the written table is unchanged wherever the
-two releases agree), for the pm to place · **Owner** enricher (`enrich/orchestration.py`, the live link's
+**Placed, the pm (2026-11-07): after RM401 ships, and only if a re-measure still shows it.** The 600 s here is 38 cold one-at-a-time GETs, which is RM401's cost; batched, the same 38 ids are one POST of tens of seconds. What RM402 would then save is that remainder, bought with a new release-equality rule over two spellings of one label, which is its own risk. So it waits: once RM401 ships, a re-run of the registry's module (or any online re-derivation with reverse-complement genotypes) says whether the repeat asks still cost enough to build it. If not, it closes as superseded by RM401.
+
+**Severity** medium · **Status** open — **a patch**, waits until RM401 ships and a re-measure (fewer requests; the written
+table is unchanged wherever the two releases agree) · **Owner** enricher (`enrich/orchestration.py`, the live link's
 `missing` ~:948) · **Motivating case** S133 in CONSUMER_SUGGESTIONS_HISTORY.md · *related* RM382, RM373, RM292,
 RM401
 
@@ -2025,8 +2029,9 @@ cannot be read, the ask stays. **Open question:** the two labels are spelled dif
 
 ## RM403 — a retried request leaves no log line, and a give-up says neither how many attempts nor how long
 
-**Severity** low · **Status** open — **a patch** (log lines only; no warning code, no result field), for the pm
-to place · **Owner** enricher (`net.py`, every tenacity policy; `ensembl.py` ~:207, `enrich/orchestration.py`
+**Placed, the pm (2026-11-07): the next patch on `main`.** Log lines only, near-zero risk, and it is what lets an operator of any slow sweep (and the RM402 re-measure) tell timeouts from a slow server.
+
+**Severity** low · **Status** open — **a patch**, the next on `main` (log lines only; no warning code, no result field) · **Owner** enricher (`net.py`, every tenacity policy; `ensembl.py` ~:207, `enrich/orchestration.py`
 ~:1036, ~:1976) · **Motivating case** S133 in CONSUMER_SUGGESTIONS_HISTORY.md · *related* RM401, RM42
 
 **The gap.** No tenacity policy in the enricher sets `before_sleep`, and httpx logs responses only, so a
@@ -2038,29 +2043,11 @@ sweep cannot tell attempts timing out from a slow server.
 m, the error, the wait), and each give-up line carries the attempts made and the seconds spent. An AST walk
 asserts every `retry(` in the enricher names the shared `before_sleep`, so a new client cannot be silent.
 
-## RM404 — `enrich()` builds its own NCBI client and sequence proxy, so a host cannot pace them with the rest
-
-**Severity** low · **Status** open — **a minor** (new public parameters), for the pm to place · **Owner**
-enricher (`enrich()` signature, `identifiers.check_rsids`, `sequences.SequenceProxy`) · **Motivating case** S133
-in CONSUMER_SUGGESTIONS_HISTORY.md · *related* RM396, RM385
-
-**The gap.** `enrich()` takes `resolver=`, `gnomad_client=` and `grch37_client=`, but builds its own eutils client
-for the dbSNP check (`check_rsids` takes `client=`, and `enrich` does not pass one through) and a fresh
-`SequenceProxy` per call. A host running modules in parallel through one paced bundle cannot share either, and
-the registry runs such enrichments one at a time for it. Beneath the proxy, ga4gh's seqrepo REST proxy calls
-`requests.get` with no timeout (`ga4gh/vrs/dataproxy.py`, vrs-python 2.3.3, each call marked `noqa: S113`); the
-registry counted 141 serial unpaced reads on one module, 36 s.
-
-**What it would be.** `enrich()` accepts the eutils client and the sequence proxy the way it accepts the
-resolver, or a whole `LookupClients`; which is the design question, and the fewer-entities rule weighs toward
-the bundle. **Residuals, to be stated at closure:** the missing timeout is vrs-python's, upstream of this
-repository; a proxy of our own that adds one would be the workaround the house rules refuse. RM396 (public gates
-and intervals, parked) unparks when a host needs a second client's pace, which this may meet; that is the pm's
-reading.
-
 ## RM405 — an offline enrichment's floor is the Ensembl snapshot's lookups, and the snapshot has no rsID index
 
-**Severity** low · **Status** open — **a minor or a patch, by design**, for the pm to place · **Owner** enricher
+**Parked, the pm (2026-11-07)**, as filed from S133. An offline enrichment takes about 10 s a module, which nobody reported as a problem: S133's complaint was the online path. The cheap half (measure the four queries, fewer scans) buys seconds; the real fix is an rsID-sorted layout, which is the snapshot builder's. **Unparks when** a consumer reports offline enrichment time as a problem (a sweep or a deadline it misses), the snapshot builder offers an rsID-sorted layout under RM303's contract, a scope the maintainer highlights touches it, or the roadmap is empty.
+
+**Severity** low · **Status** open — **a minor or a patch, parked** (class by design) · **Owner** enricher
 (`resolver._lookup_rsid_candidates`, `_lookup_positions_by_rsid`, `_lookup_rsid_sets_by_position`,
 `_lookup_rsids_by_position`) · **Motivating case** S133 in CONSUMER_SUGGESTIONS_HISTORY.md · *related* RM372,
 RM303
@@ -2592,6 +2579,7 @@ possibly already satisfied, and the rest sound** — the sweep's value is mostly
 | **RM306** — no exon structure in the tier (parked 2026-11-05) | a real module's AlphaGenome rows need an exon-level gene attribution | **Sound.** The AlphaGenome lane ships. |
 | **RM378** — errors carry no code (parked 2026-11-05) | a consumer needs to tell apart refusals RM377's two phrases do not cover | **Sound.** S129 already came in through `Sn`. |
 | **RM398** — no placement witness at dbSNP scale (parked 2026-11-07) | a release plans a reference-snapshot move, or a second consumer report of a placement the witnesses could not decide | **Sound.** A snapshot move is planned before it is built, and the `Sn` inbox is the channel S132 already used. |
+| **RM405** — the offline floor is four unindexed snapshot queries (parked 2026-11-07) | a consumer reports offline enrichment time as a problem, or the snapshot builder offers an rsID-sorted layout | **Sound.** The `Sn` inbox is open, and the layout is another repository's to offer. |
 | **RM15** / **RM69** / **RM52** and the 1.0 queue | a major-version bump | **Sound, and not this kind of gate.** A release boundary is a schedule, not a satisfier. |
 
 **What the sweep did not find, stated so it is not re-run for a while.** No gate anywhere is parked on

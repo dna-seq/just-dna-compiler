@@ -78,6 +78,9 @@ patches right after real use started, so the pm reads an audit sceptically: the 
 
 ## Open questions and owed work
 
+- **S133's five placed (2026-11-07), triage's ask.** RM401 and RM403 the next patch (RM401 probes the batch
+  omission first). RM402 waits for RM401 and a re-measure; batching likely makes it moot. RM404 into 0.9 with
+  RM385 (same seam); it does not meet RM396's gate, which stays parked. RM405 parked (offline is ~10 s a module).
 - **S132's three placed (2026-11-07), triage's ask.** RM399 into 0.9 (a real sweep heard nothing of a corrected
   derivation; P3 met in prose only; near free). RM398 parked, gated on a planned snapshot move or a second report.
   RM400 the next patch on `main`, both halves; my default for its design half is to filter the recorded side the
