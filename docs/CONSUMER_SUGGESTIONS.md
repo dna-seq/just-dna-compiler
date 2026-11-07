@@ -54,3 +54,48 @@ Prose is left byte-for-byte when it is answered and when it is moved, so it stay
 observed rather than of what was decided.
 
 ---
+
+## S133 — an online re-derivation spends most of its time in silent Ensembl REST timeouts, and a host cannot see, bound or batch them
+
+*Reporter: just-dna-registry (lead), 2026-11-07, enricher 0.8.0.*
+
+**What we ran.** `registry upgrade --apply --online` on the polygon's 46 modules took 39 minutes, and five
+online modules took as long as the other 41 together. We then timed one module ourselves
+(multimorbidity_aging_v3: 522 rows, 178 rsIDs): offline enrichment took 11 s; the online re-derivation took
+672 s, and 599 s of that was 59 Ensembl REST GETs. 26 of them were `ReadTimeout` at 15.2 s. Five rsIDs
+used all 3 attempts and gave up, about 48 s each. The live link placed **none** of the 38 rsIDs it asked
+about. Every one was an rsID the snapshot had already placed, rejected under RM382 because the authored
+genotype is the reverse complement. Live Ensembl returned the same locus, and the rejection repeated.
+
+**What we measured about the server.** A first GET for an rsID takes 1–12 s, and a repeat 0.21 s.
+Abandoning a GET at 4 s and retrying 2 s later still took 7.8–18.1 s, so an abandoned request does not
+warm Ensembl's cache, and a shorter timeout only buys more cold first requests. One
+`POST /variation/homo_sapiens` with 10 cold ids took 13.9 s, against roughly 100 s one at a time. Raw
+numbers: `/tmp/claude-1000/-data-sources-just-dna-registry/c018d93d-31a4-4167-9074-a2bd131ddf82/scratchpad/measurements.md`
+(copied to `/data/just-dna-cache/upstream-evidence/registry-replay-2026-11-07/timing/`).
+
+**What a host cannot do today, ranked by measured cost** (paths under `site-packages/`):
+1. **Batch the live link.** `enrich/orchestration.py:962` asks one rsID per GET. The batch endpoint takes
+   up to 200 ids. Failing that, ask concurrently, bounded, through the resolver's gate.
+2. **Skip a live ask that cannot change the answer.** An rsID whose snapshot placement was rejected only
+   for strand (RM382) gets the same answer live. On this module that was 38 asks, 0 placed, about 600 s.
+3. **See retries.** No tenacity policy has `before_sleep`, and httpx logs only responses, so a timed-out
+   attempt leaves no line. The give-up WARNING (`ensembl.py:207`, `orchestration.py:1036`, `:1976`)
+   carries neither an attempt count nor the time spent. An operator watching a slow sweep cannot tell
+   N×timeout from a slow server.
+4. **Share the paced clients everywhere.** `enrich()` builds its own eutils client (`orchestration.py:1959`)
+   and a fresh `SequenceProxy` per call (`:728`). Ga4gh's seqrepo proxy calls `requests.get` with **no
+   timeout** (`ga4gh/vrs/dataproxy.py:260,269,278`): 141 serial, unpaced reads on one module, 36 s.
+   An `eutils_client=` and a `sequence_proxy=` argument, or a whole `LookupClients`, would let a host pace
+   them. Until then we run such enrichments one at a time.
+5. **Bound retries.** `JUST_DNA_HTTP_RETRY_ATTEMPTS` is a floor (`net.py:131-175`, `max(default,
+   configured)`), and the backoff constants are fixed in the decorators. A host can raise the attempt count
+   but never lower it.
+6. **Offline floor.** 9 of the 10 s of an offline enrichment is four `duckdb.execute` scans by rsID
+   (`resolver.py:489`). An indexed or sorted rsID lookup on the Ensembl snapshot would cut every offline
+   sweep.
+
+**What we did meanwhile.** Registry 0.28.2 re-publishes modules in parallel (`--jobs`, default 4) through
+one shared, paced client bundle, so waits overlap without raising the request rate. It hands `enrich()` the
+shared GRCh37 client, and it adds a per-request timeout setting that is left unset, because our
+measurements say shorter is worse. None of this reaches the per-rsID GET loop, which is yours.
