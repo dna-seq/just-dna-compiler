@@ -202,7 +202,8 @@ def test_gene_metrics_from_the_snapshot_offline(tmp_path: Path, constraint_cache
     # `source` names the licensed source, not the route the row came in by (RM33); the route is
     # `dataset`'s job and the assertion below is the one that carries the meaning.
     assert {r.source for r in result.rows} == {"gnomad"}
-    assert {r.dataset for r in result.rows} == {CONSTRAINT_DATASET_LABEL}
+    # The fixture is the 4.1 slice, so its rows say 4.1 whatever the lane's default is (RM373, RM410).
+    assert {r.dataset for r in result.rows} == {"gnomad_v4.1_constraint"}
     brca1 = next(r for r in result.rows if r.gene == "BRCA1")
     assert brca1.gene_id == "ENSG00000012048"
     assert brca1.mane_select is True
@@ -239,7 +240,7 @@ def test_snapshot_and_api_are_labelled_as_the_different_releases_they_are(
 
     (spec / "gene_metrics.csv").unlink()
     from_snapshot = enrich_gene_metrics(spec, offline=True, constraint_cache=constraint_cache).rows[0]
-    assert from_snapshot.dataset == CONSTRAINT_DATASET_LABEL
+    assert from_snapshot.dataset == "gnomad_v4.1_constraint"  # the slice's own release
 
     assert from_api.dataset != from_snapshot.dataset
     assert from_api.loeuf != from_snapshot.loeuf  # genuinely different numbers, not a labelling nicety
@@ -324,7 +325,9 @@ def test_a_missing_snapshot_is_provisioned_before_falling_back_to_the_api(
     result = enrich_gene_metrics(spec, constraint_cache=None)
 
     assert asked == [None]
-    assert [r.dataset for r in result.rows] == [CONSTRAINT_DATASET_LABEL]  # v4.1, not the API's v2.1.1
+    assert [r.dataset for r in result.rows] == [
+        "gnomad_v4.1_constraint"
+    ]  # the slice's v4.1, not the API's v2.1.1
 
 
 def test_offline_never_provisions(tmp_path: Path, monkeypatch) -> None:

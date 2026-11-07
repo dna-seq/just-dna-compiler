@@ -13,12 +13,14 @@ from just_dna_format.snapshot import release_label as snapshot_release_label
 from just_dna_format.vocab import VALID_DECLARED_USE
 
 from just_dna_enricher.caches import (
+    _PINNABLE,
     CACHE_LANES,
     CacheLane,
     RebuildOutcome,
     RebuildRequest,
     _gate,
     _rebuild_blocked,
+    _unpinnable,
     lane_name,
     lane_status,
     parents_from_rebuild_dir,
@@ -94,6 +96,9 @@ def _pairs(values: list[str], flag: str, *, must_exist: bool = False) -> dict[st
                 f"{flag} {name}={value} is not a readable file. This is an input you supply, so "
                 f"nothing will fetch it — check the path before the run starts."
             )
+        if flag == "--pin" and name not in _PINNABLE:
+            # Refused before the run, not as one lane's failure after the others downloaded (RM416).
+            raise typer.BadParameter(_unpinnable(name))
         out[name] = value
     return out
 

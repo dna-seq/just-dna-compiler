@@ -51,6 +51,23 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 - **`bins_ungrounded` no longer says "no bin pmid" when a bin carries one** (RM415, S137): with one bin
   cited, the clause reads "carry no grounding evidence of their own (…; N other bin(s) do cite one)".
 
+## 2026-11-07 — RM410, RM416: gnomAD constraint 4.1.2, and `--pin` taken or refused (patch, uncut)
+
+- **The constraint snapshot is gnomAD 4.1.2** (RM410), was 4.1: 19,511 genes where 4.1 had 18,111, chrX and
+  chrY for the first time, and gnomAD's recomputed pLI, LOEUF, o/e and z-scores (LOEUF moved for 17,214 of
+  4.1's genes). The builder reads the release's `.tsv.bgz` and labels the snapshot from the file's own name,
+  `gnomad_v4.1.2_constraint`; it was the constant `gnomad_v4.1_constraint`.
+- **After upgrading:** a module's `gene_metrics.csv` rows from the 4.1 snapshot keep their label and values on
+  a re-run (a row from any release of the snapshot counts as done); to move a module to 4.1.2, delete the file
+  and enrich again, which moves its fact hash. `cache pull --only constraint` brings the new snapshot once it is
+  published.
+- **`cache rebuild --pin` is taken or refused** (RM416). Nine lanes ignored it and built their default, so
+  `--pin constraint=4.1.2` built 4.1 without a word. Seven lanes take one (`acmg`, `civic`, `clinvar_gkm`,
+  `constraint`, `mane`, `opentargets`, `strchive`); a pin for another lane is refused before the run, by
+  `cache rebuild` and `cache prepare`.
+- **Known, not fixed here:** gene-metrics rows taken from the live gnomAD API are labelled
+  `gnomad_v2.1.1_constraint`, and the API serves 4.1.1 or later (RM417, open).
+
 ## 2026-11-07 — RM413: no cut while a lane with a repository has nothing published in it (patch, uncut)
 
 - **Every cut now passes three cache-lane gates** (RM413, `enricher/tests/test_prerelease_gates.py`): stage

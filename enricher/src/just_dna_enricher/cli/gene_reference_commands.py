@@ -40,7 +40,7 @@ def constraint_build_(
     download: bool = typer.Option(
         False,
         "--download",
-        help="Download the gnomAD v4.1 constraint TSV (95.5 MB) into --out first.",
+        help="Download the lane's gnomAD constraint release (4.1.2, 574.5 MB bgzipped) into --out first.",
     ),
     out: Path = typer.Option(
         repro_out("gnomad_constraint"),
@@ -50,14 +50,21 @@ def constraint_build_(
     ),
 ) -> None:
     """Reduce the per-transcript constraint TSV to the gene-level parquet the resolver reads."""
-    from just_dna_enricher.constraint_build import build_snapshot, download_constraint_tsv
+    from just_dna_enricher.constraint_build import (
+        _DEFAULT_RELEASE,
+        _constraint_filename,
+        build_snapshot,
+        download_constraint_tsv,
+    )
 
     if tsv is None and not download:
         typer.secho("Provide --tsv PATH or --download.", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1)
     try:
+        # Named as gnomAD names it, because the snapshot's label is read from that name (RM410): the
+        # fixed `gnomad.v4.1…` name would have labelled a 4.1.2 download as 4.1.
         source = (
-            tsv if tsv is not None else download_constraint_tsv(out / "gnomad.v4.1.constraint_metrics.tsv")
+            tsv if tsv is not None else download_constraint_tsv(out / _constraint_filename(_DEFAULT_RELEASE))
         )
         result = build_snapshot(source, out)
     except (FileNotFoundError, ImportError) as exc:

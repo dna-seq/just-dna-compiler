@@ -418,12 +418,28 @@ def _rebuild_clinvar(request: RebuildRequest) -> RebuildOutcome:
 
 
 def _rebuild_constraint(request: RebuildRequest) -> RebuildOutcome:
+    """The pinned gnomAD release, or the lane's default; `--source` is the file you hold for it (RM410).
+
+    The pin picks the URL and the label. A `--source` file whose name states another release is
+    refused rather than labelled with the pin, the one way a label could be wrong by construction.
+    """
+    release = request.pin or constraint_build._DEFAULT_RELEASE
+    if request.source is not None:
+        named = constraint_build._release_of(request.source.name)
+        if named is not None and named != release:
+            return RebuildOutcome(
+                "constraint",
+                False,
+                f"--source {request.source.name} is gnomAD {named}, the build is for {release}: "
+                f"pass --pin constraint={named}, or the {release} file",
+            )
     request.out_dir.mkdir(parents=True, exist_ok=True)
+    url = constraint_build._constraint_url(release)
     try:
         tsv = request.source or constraint_build.download_constraint_tsv(
-            request.out_dir / "gnomad.v4.1.constraint_metrics.tsv"
+            request.out_dir / constraint_build._constraint_filename(release), url
         )
-        result = constraint_build.build_snapshot(tsv, request.out_dir)
+        result = constraint_build.build_snapshot(tsv, request.out_dir, source_url=url)
     except (
         constraint_build.ConstraintBuildError,
         FileNotFoundError,
@@ -1351,6 +1367,25 @@ def rebuild_lane(lane: CacheLane, request: RebuildRequest) -> RebuildOutcome:
     return lane.rebuild(request)
 
 
+#: The lanes whose rebuild adapter reads `RebuildRequest.pin` (RM416). Nine adapters ignored it, so
+#: `--pin constraint=4.1.2` built 4.1 and said nothing, and the dry run reported the pin as the build.
+#: Held equal to the adapters that read `request.pin` by an AST walk
+#: (`test_a_pin_is_taken_or_refused.py`); a pin for any other lane is refused, before anything runs.
+#: `clinvar_gkm` reads it as a check: ClinVar-GKM serves only its current set, and a pin naming another
+#: refuses the build.
+_PINNABLE: frozenset[str] = frozenset(
+    {"acmg", "civic", "clinvar_gkm", "constraint", "mane", "opentargets", "strchive"}
+)
+
+
+def _unpinnable(lane: str) -> str:
+    """Why `--pin` is refused for `lane`: its adapter builds the source's current release only."""
+    return (
+        f"{lane} takes no --pin: its rebuild fetches the source's current release only. "
+        f"Lanes that take one: {', '.join(sorted(_PINNABLE))}"
+    )
+
+
 def _rebuild_blocked(
     lane: CacheLane, request: RebuildRequest
 ) -> tuple[RebuildOutcome | None, RebuildRequest]:
@@ -1362,6 +1397,8 @@ def _rebuild_blocked(
     """
     if lane.rebuild is None:
         return RebuildOutcome(lane.name, None, lane.unbuilt or "no builder in this tier"), request
+    if request.pin is not None and lane.name not in _PINNABLE:
+        return RebuildOutcome(lane.name, False, _unpinnable(lane.name)), request
     resolved: dict[str, Path] = {}
     if lane.parents:
         resolved, missing = parent_snapshots(lane, request)

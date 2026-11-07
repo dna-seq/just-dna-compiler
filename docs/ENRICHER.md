@@ -1957,6 +1957,12 @@ scripts/rebuild-caches.sh data/caches                             # the driver, 
 just-dna-enricher cache rebuild --out /srv/just-dna/caches-$(date +%F)   # a deployment's own path
 ```
 
+**`--pin lane=release` is taken by seven lanes and refused by the rest** (RM416): `acmg`, `civic`, `clinvar_gkm`
+(a check: ClinVar-GKM serves only its current set, and a pin naming another refuses the build), `constraint`,
+`mane`, `opentargets` and `strchive` (`caches._PINNABLE`, held equal to the adapters that read the pin). The other
+lanes fetch the source's current release only, and a pin for one is refused before the run starts. Until RM416
+nine of them ignored it, so `--pin constraint=4.1.2` built 4.1 and said nothing.
+
 **`--dry-run` downloads, builds and uploads nothing** (RM411; until then it ran the whole rebuild and
 skipped only the upload, so rehearsing `--only opentargets --publish` started a 22 GB download). Per lane
 it says what a run would build, from where (the download, a `--source` file, or a derived lane's parent
@@ -2120,7 +2126,7 @@ at all:
 | Pass | With a snapshot | Without one, online | Without one, `--offline` |
 |---|---|---|---|
 | `enrich` | cache | provision, else live Ensembl/ClinVar/gnomAD | cache only |
-| `gene-metrics` | snapshot (v4.1) | provision, else live API (**v2.1.1** — `dataset` says which) | snapshot only |
+| `gene-metrics` | snapshot (4.1.2 since RM410) | provision, else live API (labelled v2.1.1, which is false: RM417) | snapshot only |
 | `pgx` | snapshot | live PharmVar/CPIC | **skipped, with a reason** |
 | `draft` | snapshot | live CPIC | skipped, with a reason |
 | `clinpgx check` | snapshot | provision (no live route exists — the API was retired) | skipped, with a reason |
@@ -2668,14 +2674,27 @@ gone dark mid-demo), and the warning names the consequence: older numbers, not n
 > `gnomad_v4.1_constraint` from the snapshot, `gnomad_v2.1.1_constraint` from the API, and the fallback
 > logs a warning. `dataset` is inside the fact set precisely so these cannot be confused — labelling
 > both as v4.1 would record a false fact and make the fact-hash claim two different tables identical.
+>
+> **Refuted on 2026-11-07, open as [RM417](ROADMAP.md#rm417--the-live-gnomad-apis-constraint-is-v411-or-later-and-its-rows-are-labelled-gnomad_v211_constraint).**
+> The API's numbers are not v2.1.1. gnomAD 4.1.2's bulk file gives BRCA1 exactly 5.5171e-38 / 0.92759 /
+> 1.7336, and the live API answers chrX's DMD with 4.1.2's LOEUF 0.2354 to every digit, a gene no release
+> before 4.1.1 has constraint for. So the API serves 4.1.1 or later, and `gnomad_v2.1.1_constraint` on an API
+> row is a false label. The two routes did differ in August, as 4.1 against 4.1.1; the label named the wrong
+> one.
 
 ### gnomAD constraint snapshot (`constraint_build.py`, `[dev]`)
 
 `download_constraint_tsv` + `build_snapshot` reduce gnomAD's per-transcript constraint TSV to the
-gene-level parquet the pass reads. The source is **95.5 MB** (not the 4.2 MB some aggregator pages
-claim, which comes from an explicitly illustrative demo listing) at `release/4.1/`, **not**
-`release/v4.1/` — anonymous bucket listing is disabled on both the GCS and S3 mirrors, so the path came
-from the UCSC track makedoc and was verified directly.
+gene-level parquet the pass reads. **The lane builds 4.1.2 since RM410**, `release/4.1.2/constraint/
+gnomad.v4.1.2.constraint_metrics.tsv.bgz` (574.5 MB bgzipped, 113 columns, read through `gzip` because
+the reader tells a compressed file by its bytes), and `cache rebuild --pin constraint=<release>` builds
+another: 4.0 and 4.1 ship a plain `.tsv` (4.1's is 95.5 MB, not the 4.2 MB some aggregator pages claim),
+every later release `.tsv.bgz`. The path is `release/<v>/`, **not** `release/v<v>/`. The snapshot's label,
+`gnomad_v<release>_constraint`, is read from the file's own name, gnomAD's `gnomad.v<release>.…`, and a
+`--source` file naming another release than the pin is refused rather than relabelled. Built from 4.1.2 on
+2026-11-07: 19,511 genes from 221,898 transcript rows (4.1: 18,111), chrX and chrY included, LOEUF moved for
+17,214 of the 18,111 genes 4.1 had. A module's existing rows keep their 4.1 label on a re-run; delete
+`gene_metrics.csv` to move it.
 
 **The row pick is load-bearing, not cosmetic.** The TSV is per-transcript, 55 columns, and mixes RefSeq
 with Ensembl rows for the same gene — and **both carry `mane_select=true`**:

@@ -23,6 +23,7 @@ is about*; querying anything else would be inventing scope the author did not as
 
 import csv
 import logging
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -241,6 +242,12 @@ def _snapshot_parquet(reference: Path | None) -> str | None:
 CONSTRAINT_LANE = "gnomad_constraint"
 
 
+#: Every release label the constraint snapshot lane writes, `gnomad_v<release>_constraint`
+#: (`constraint_build._dataset_label`). The live API's `gnomad_v2.1.1_constraint` fits it too, and is
+#: already this pass's own.
+_SNAPSHOT_RELEASE_LABEL = re.compile(r"gnomad_v\d+(?:\.\d+)*_constraint")
+
+
 def _snapshot_dataset(reference: Path | None) -> str | None:
     """The release a constraint snapshot states (`release.json`'s `dataset`), or `None`."""
     return snapshot_release_label(reference) if reference is not None and reference.is_dir() else None
@@ -312,7 +319,17 @@ def enrich_gene_metrics(
         API_CONSTRAINT_DATASET_LABEL,
     }
     # By `gene_key` (RM363): a row written for `APOE` covers an authored `Apoe`.
-    done = {gene_key(row.gene) for row in existing.values() if row.dataset in pass_datasets}
+    #
+    # **A row from any release of the constraint snapshot is this pass's own** (RM410, the pm's
+    # sizing). Counting only the current label as done meant a snapshot moving from 4.1 to 4.1.2 made
+    # every 4.1 row foreign, so a default re-run appended a 4.1.2 row beside each one and the module
+    # stated two pLI values for one gene. Moving a module to a new release is the author's act:
+    # delete the sidecar and enrich again (`@sidecar-authoritative`).
+    done = {
+        gene_key(row.gene)
+        for row in existing.values()
+        if row.dataset in pass_datasets or _SNAPSHOT_RELEASE_LABEL.fullmatch(row.dataset or "")
+    }
     wanted = [g for g in genes if gene_key(g) not in done]
     fetched_at = now_utc_iso()
     out: list[GeneMetricsRow] = list(existing.values())

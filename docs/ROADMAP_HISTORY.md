@@ -86,6 +86,90 @@ it; the copy-number kind scopes the same way. The HTT reference example's valida
 
 **Residuals** none
 
+## RM416 — nine rebuild adapters ignored `--pin`, so a pinned build built the default and said nothing
+
+**SHIPPED 2026-11-07 on `main`, uncut — a patch (the maintainer: "But why is version of publication hardcoded into
+release?" and "do the whole thing + pinning fix into 0.8.2").** Owner enricher, severity medium.
+
+**Residuals** RM412 — a probe per lane for the source's newest release, so a default can follow it
+
+**What happened.** `cache rebuild --pin lane=release` reached every adapter in `RebuildRequest.pin`, and only
+six read it (acmg, civic, clinvar_gkm, mane, opentargets, strchive). The other nine (clinvar, constraint,
+clinpgx, drug_labels, cpic, pharmvar, pubmind, mitomap, mitomap_miss) built their default, so
+`--pin constraint=4.1.2` built 4.1, and RM411's dry run printed "would build 4.1.2" for it. A flag the callee
+never sees (`@off-switch-needs-a-probe`, `@flag-means-same`).
+
+**What changed.** `caches._PINNABLE` names the lanes whose adapter reads the pin, held equal to them by an AST
+walk; `constraint` joins it (RM410). A pin for any other lane is refused at the command line before the run
+starts (`cache rebuild`, `cache prepare`), and `_rebuild_blocked` refuses it as a failed lane for a host calling
+`rebuild_lane` or `prepare_caches`, so the dry run predicts it too. The answer to the maintainer's question is
+recorded with it: a default release in code is how two unattended rebuilds name the same bytes, and the pin is
+the override that needs no code; the defect was that most lanes had no override.
+
+**Tests.** `test_a_pin_is_taken_or_refused.py` (with RM410's): the set equality, the CLI and Python refusals,
+the constraint pin choosing URL, file name and label. All eight non-parametrized tests fail on f5d7170b.
+
+## RM410 — the gnomAD constraint snapshot was pinned to 4.1, and 4.1.2 recomputes the metrics
+
+**SHIPPED 2026-11-07 on `main`, uncut — a patch (sized by the pm; built on the maintainer's "do the whole
+thing + pinning fix into 0.8.2").**
+
+**Residuals** RM417 — the live API's constraint is 4.1.1+ and is labelled v2.1.1, which the snapshot's 4.1.2 now makes visible
+
+**Built (the lead, 2026-11-07).** `constraint_build` takes a release: `_constraint_url` and
+`_constraint_filename` (`.tsv` for 4.0 and 4.1, `.tsv.bgz` after), a reader that tells gzip by its bytes, and a
+label read from the file's name or the URL, `gnomad_v<release>_constraint`, where it was the constant
+`gnomad_v4.1_constraint`. The default is 4.1.2; the adapter takes `--pin`, and refuses a `--source` whose name
+states another release. `gnomad.CONSTRAINT_DATASET_LABEL`, the label used before a snapshot is provisioned,
+moves to 4.1.2. The pm's re-run guard: `enrich_gene_metrics` counts a row under any snapshot release label as
+its own, so a 4.1 module re-enriched against 4.1.2 comes back byte-identical. Built from the real file
+(md5 ecec6974…, the bucket's own): 19,511 genes from 221,898 transcript rows (4.1: 18,111), 127 without a
+MANE or canonical Ensembl row, chrX and chrY present, LOEUF moved for 17,214 of 4.1's 18,111 genes; under a
+megabyte, inside the lane's declared `approx_mb=1`.
+
+**Found while building it: RM417.** 4.1.2's BRCA1 and MYH7 are the numbers the 0.5.0 note attributed to the
+API as "v2.1.1", and the API answers chrX's DMD with 4.1.2's values.
+
+**Filed by the lead (2026-11-07)** from the liaison's data-source table and adoption note
+(`docs/UPSTREAM_DATA_SOURCES.md`, "Adoption note: gnomAD constraint 4.1 → 4.1.2"). **Class and severity: the
+pm's to size.**
+
+**Severity** low · **Status** open — **a patch**, the next on `main`; its publish waits on the maintainer, as
+RM408's does · **Owner** enricher (`constraint_build.py`, the `constraint` lane; `gene_metrics.py`) · *related*
+RM229, RM408
+
+**What the note found.** 4.1.1 recomputes pLI, LOEUF, o/e and the z-scores (low-coverage coding loci by AN, chrX
+and chrY for the first time, a revised LOFTEE `END_TRUNC`); 4.1.2 fixes only the rank and bin fields 4.1.1 got
+wrong, so 4.1.2 is the one to take. Every column `_COLUMN_MAP` reads is present in 4.1.2, but the file is
+`gnomad.v4.1.2.constraint_metrics.tsv.bgz` (bgzip, 574.5 MB) where 4.1 was a plain 95.5 MB TSV.
+
+**What a move carries.** The URL and a gzip read; the lane's declared size (RM229) and label; every module's
+`gene_metrics.csv` drafted from the old snapshot then reads as stale against the lane, which is a content change
+consumers see, not a relabel; and `@constraint-two-releases`: which release the live API route answers must be
+checked before the snapshot moves past it.
+
+**Sized, the pm (2026-11-07): a patch.** Nothing a reader of the schema sees moves: a URL, a gzip read, the lane's
+label and its declared size. Principle 3 sizes it by the schema and leaves the content to its staleness clause, so it
+may ship in a patch, declared in the CHANGELOG and not silently. A new release upstream is not a defect of ours, so
+severity is low. What it buys is chrX and chrY metrics for the first time, and gnomAD's corrected LOEUF.
+
+- **The live-route question is already answered.** The live `gnomad_constraint` API serves v2.1.1
+  (`API_CONSTRAINT_DATASET_LABEL`), not 4.1, so moving the snapshot to 4.1.2 crosses nothing. The two routes keep
+  different labels, as now.
+- **The build must also handle one thing the note did not name: a re-run over a module that already holds 4.1
+  rows.** `enrich_gene_metrics` counts a gene as done only when its row carries one of the pass's two current
+  labels (`pass_datasets`, `gene_metrics.py`). Once the snapshot says 4.1.2, a 4.1 row is no longer the pass's, so
+  the gene is fetched again and a 4.1.2 row is appended beside the 4.1 one. The module then states two pLI values
+  for one gene, and a consumer joining on `gene` gets both. The fix stays in patch scope: the pass counts a row
+  from any release of the constraint snapshot lane as its own, so a default re-run adds nothing. Moving a module
+  to 4.1.2 is then the author's choice, made by deleting the sidecar (`@sidecar-authoritative`). Its test: a sidecar
+  with a 4.1 row, re-enriched against a 4.1.2 snapshot, comes back unchanged.
+- **The note says modules "read as stale" against the new lane, but nothing reports that today.** gnomAD has no
+  release probe (`currency.default_probes` asks ClinVar, the PGS Catalog and ClinVar-GKM only). A probe is not
+  part of this item. It is a residual, to be filed if a consumer asks to be told.
+- **For the build, not a decision:** the 4.1.2 file is 574.5 MB compressed, with 113 columns, some of them arrays.
+  Select the columns `_COLUMN_MAP` reads while streaming the file, rather than decompressing all of it into memory.
+
 ## RM413 — no gate kept a lane with a builder and no repository out of a release
 
 **SHIPPED 2026-11-07 on `main`, uncut — a patch, tests and the release rule (the maintainer: "Add a prerelease

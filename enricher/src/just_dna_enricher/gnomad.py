@@ -84,7 +84,9 @@ FREQUENCY_DATASET_LABEL = "gnomad_v4.1_joint"
 # `dataset` is inside `GENE_METRICS_FACT_FIELDS` precisely so a v4.1 number and a v2.1.1 number cannot
 # be confused, labelling API rows as v4.1 would record a false fact — and would make the fact-hash
 # claim two tables identical when they hold different numbers.
-CONSTRAINT_DATASET_LABEL = "gnomad_v4.1_constraint"
+#: The snapshot lane's default release (RM410: 4.1.2, the one `cache pull` brings), used only until a
+#: snapshot is provisioned; a provisioned snapshot's rows say its own `release.json` label (RM373).
+CONSTRAINT_DATASET_LABEL = "gnomad_v4.1.2_constraint"
 API_CONSTRAINT_DATASET_LABEL = "gnomad_v2.1.1_constraint"
 
 # The assembly gnomAD v4 coordinates are on. A source convention, so it lives here beside `covers_locus`

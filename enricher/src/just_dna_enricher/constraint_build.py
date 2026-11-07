@@ -1,12 +1,12 @@
 """gnomAD gene-constraint snapshot builder — the ``[dev]`` half of the gene-metrics pass.
 
-Turns gnomAD's v4.1 constraint metrics TSV into a small gene-level parquet the enricher reads offline
+Turns a gnomAD v4 constraint metrics TSV (4.1.2 by default since RM410) into a small gene-level parquet the enricher reads offline
 (`gnomad_constraint/data/*.parquet`), in the same on-disk layout as the Ensembl and ClinVar snapshots.
 Modelled directly on `clinvar_build`, down to the streaming download with the `.part` rename and the
 `release.json` provenance record.
 
-**Why this one can ship offline and frequency cannot** is pure size. The source TSV is 95.5 MB — per
-*transcript*, 55 columns — and reduces to one row per gene with a curated column subset, landing in
+**Why this one can ship offline and frequency cannot** is pure size. The source TSV is 95.5 MB for 4.1
+(574.5 MB bgzipped for 4.1.2, 113 columns) — per *transcript* — and reduces to one row per gene with a curated column subset, landing in
 single-digit MB. The v4.1 *frequency* data is 58 GB of exomes plus 742 GB of genomes, so there is no
 equivalent slice to build.
 
@@ -32,8 +32,10 @@ polars-free (Goal 2).
 """
 
 import csv
+import gzip
 import hashlib
 import logging
+import re
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version
@@ -52,14 +54,51 @@ except ImportError:  # pragma: no cover - exercised only where the [dev] extra i
 
 logger = logging.getLogger(__name__)
 
-# Verified with a live request: HTTP 200, content-length 95546041, last modified 2024-04-18. Note the
-# path is `release/4.1/`, NOT `release/v4.1/` — two plausible-looking guesses 404'd, and anonymous
-# bucket listing is disabled on both the GCS and S3 mirrors, so this came from the UCSC track makedoc
-# and was then checked directly rather than inferred.
-DEFAULT_CONSTRAINT_URL = (
-    "https://storage.googleapis.com/gcp-public-data--gnomad/release/4.1/constraint/"
-    "gnomad.v4.1.constraint_metrics.tsv"
-)
+#: The gnomAD constraint release this lane builds when nothing pins one (RM410). 4.1.2, not 4.1.1: 4.1.1
+#: recomputed the metrics (low-coverage coding loci by allele number, chrX and chrY for the first time,
+#: a revised LOFTEE `END_TRUNC`, a new LOEUF) and miscounted the rank denominator; 4.1.2 fixes only
+#: the ranks. The liaison's adoption note is in `docs/UPSTREAM_DATA_SOURCES.md`.
+_DEFAULT_RELEASE = "4.1.2"
+
+#: Releases whose file is a plain TSV. Every later one ships only `….tsv.bgz` (bgzip, which a gzip
+#: reader takes); a pin of a release after these is fetched under that name, so a new release needs
+#: no code, and one that changed the convention again fails as a 404 naming the URL.
+_PLAIN_TSV_RELEASES = frozenset({"4.0", "4.1"})
+
+#: A gnomAD constraint release named in a file name or a URL: `gnomad.v4.1.2.constraint_metrics…`,
+#: the test slice's `gnomad_v4.1_constraint_slice.tsv`, or a bucket path's `release/4.1.2/constraint/`.
+_RELEASE_IN_NAME = re.compile(r"gnomad[._]v(\d+(?:\.\d+)*)[._]constraint")
+_RELEASE_IN_PATH = re.compile(r"/release/(\d+(?:\.\d+)*)/constraint/")
+
+
+def _constraint_url(release: str) -> str:
+    """The bucket URL of `release`'s constraint metrics. Verified live for 4.1 (`.tsv`, 95.5 MB) and
+    4.1.2 (`.tsv.bgz`, 574.5 MB, md5 ecec6974…); the path is `release/<v>/`, never `release/v<v>/`."""
+    return (
+        "https://storage.googleapis.com/gcp-public-data--gnomad/release/"
+        f"{release}/constraint/{_constraint_filename(release)}"
+    )
+
+
+def _constraint_filename(release: str) -> str:
+    suffix = ".tsv" if release in _PLAIN_TSV_RELEASES else ".tsv.bgz"
+    return f"gnomad.v{release}.constraint_metrics{suffix}"
+
+
+def _release_of(*names: str) -> str | None:
+    """The release the first of `names` that names one names, else `None` (withheld, never guessed)."""
+    for name in names:
+        found = _RELEASE_IN_NAME.search(name) or _RELEASE_IN_PATH.search(name)
+        if found:
+            return found.group(1)
+    return None
+
+
+def _dataset_label(release: str | None) -> str | None:
+    return f"gnomad_v{release}_constraint" if release else None
+
+
+DEFAULT_CONSTRAINT_URL = _constraint_url(_DEFAULT_RELEASE)
 
 # The curated column subset, mapping source column → `GeneMetricsRow` field. The `lof_hc_lc.*` and
 # `mis_pphen.*` families are deliberately left out of this pass: they are refinements of the same two
@@ -184,9 +223,15 @@ def _gene_record(gene: str, row: dict) -> dict:
 
 
 def _iter_rows(tsv: Path) -> Iterator[dict]:
-    """Stream the TSV as dicts. Streamed rather than read whole: the real file is 95.5 MB, and the
-    output is three orders of magnitude smaller, so there is no reason to hold the input in memory."""
-    with open(tsv, encoding="utf-8", newline="") as handle:
+    """Stream the TSV as dicts, plain or gzip-compressed, told apart by the bytes rather than the name.
+
+    Streamed rather than read whole: 4.1.2's file is 574.5 MB compressed. bgzip is a run of gzip
+    members, which `gzip.open` reads through (RM410).
+    """
+    with open(tsv, "rb") as probe:
+        compressed = probe.read(2) == b"\x1f\x8b"
+    opener = gzip.open if compressed else open
+    with opener(tsv, "rt", encoding="utf-8", newline="") as handle:
         yield from csv.DictReader(handle, delimiter="\t")
 
 
@@ -265,6 +310,11 @@ def build_snapshot(
     One row per gene, chosen by `_pick_row`, sorted by `gene` so a rebuild is byte-identical
     (Principle 7); `release.json`'s `built_at` is the only per-run-varying byte and lives outside the
     parquet, exactly as in the ClinVar builder.
+
+    The release label is read from the input's file name (gnomAD names every release's file
+    `gnomad.v<release>.constraint_metrics…`), else from `source_url`'s `release/<v>/` path. It was a
+    constant, `gnomad_v4.1_constraint`, so a 4.1.2 file would have been labelled 4.1 (RM410). A file
+    that names neither is built with no label, which the pass withholds rather than guesses.
     """
     if pl is None:  # pragma: no cover - exercised only where the [dev] extra is absent
         raise ImportError(
@@ -310,6 +360,7 @@ def build_snapshot(
         gene_count=frame.height,
         source_rows=source_rows,
         unresolved_count=len(unresolved),
+        dataset=_dataset_label(_release_of(tsv.name, source_url)),
     )
     logger.info(
         "Built gnomAD constraint snapshot: %d genes from %d transcript rows → %s "
@@ -337,6 +388,7 @@ def _write_release_json(
     gene_count: int,
     source_rows: int,
     unresolved_count: int,
+    dataset: str | None,
 ) -> Path:
     """Write ``release.json`` — the provenance beside the parquet. `built_at` is deliberately outside
     the parquet so the parquet itself stays byte-reproducible."""
@@ -346,7 +398,7 @@ def _write_release_json(
         gene_count=gene_count,
         source_rows=source_rows,
         unresolved_count=unresolved_count,
-        dataset="gnomad_v4.1_constraint",
+        dataset=dataset,
         built_at=now_utc_iso(),
         builder_version=_builder_version(),
     )
