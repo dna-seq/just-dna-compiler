@@ -2064,6 +2064,40 @@ would estimate its misplacement rate with an interval. What a sample can and can
 snapshot-wide audit is the snapshot builder's (prepare-annotations, under RM303's contract), or a provision-time
 check filed on its own.
 
+## RM407 — minting an indel's VRS id reads the reference a slice at a time over HTTP, about a dozen reads per indel
+
+**Placed, the pm (2026-11-07): the next patch on `main`.** The maintainer read the registry's replay log
+(`20261107T043907.576283Z-replay-upgrade`, enricher 0.8.0, 46 modules) and asked why there were a dozen
+sequence calls per indel. Every online run with an indel pays it. The fix is private: one window read per
+locus instead of one per step, and no surface.
+
+**Severity** low · **Status** open — **a patch**, the next on `main` · **Owner** enricher (`vrs.py`
+`_mint_normalized`, `sequences.SequenceProxy`) · **Motivating case** the registry's replay log, read by the
+maintainer 2026-11-07 · *related* RM404, RM385, RM267, RM406
+
+**What the log shows.** 2,472 `seqrepo/1/sequence/<SQ id>` reads and 21 `metadata` reads in a 39-minute run.
+Each indel shows one `metadata` read, which resolves the chromosome, then about ten `sequence` reads of the
+same chromosome id; the log prints the URL without the window, so every one looks alike. Consecutive reads
+took 0.14 s each, about 354 s in all, which is a floor since gaps over 5 s were left out. They fall in two
+places: the placement comparison's VRS rung (RM267, which mints both spellings) and the minting pass (41
+indels minted through `normalize` across the run).
+
+**Why a dozen.** `_mint_normalized` hands vrs-python's `normalize` the raw data proxy. Its VOCA step wraps it
+in ga4gh's own `SequenceProxy`, and every slice it takes (trim, then rolling left and right through a repeat)
+becomes `get_sequence(id, start, end)`, one HTTP GET. The proxy's `lru_cache` only hits an identical
+`(start, end)`, and each step asks a new one, so a read happens at every step and a longer repeat means more
+reads. Our own `sequences.SequenceProxy` already does the right thing for `_left_align`: it reads one
+1,024-base window and memoizes it. The VRS path does not go through it.
+
+**What it would be.** A private data-proxy adapter handed to `normalize`. It reads one window around the
+locus through `SequenceProxy` and serves every slice inside it from memory, falling through to a direct read
+only for a slice that runs off the window (a repeat longer than the window). It also keeps a minted id per
+allele for the run, so the comparison rung and the minting pass do not normalize one allele twice.
+
+**Test.** Count the transport calls for an indel in a known repeat: one read per locus, and ids byte-equal to
+those minted today. **Residuals, to be stated at closure:** the missing request timeout under the proxy is
+vrs-python's (named in RM404). A local reference, which removes the HTTP reads altogether, is RM385.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
