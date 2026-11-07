@@ -105,7 +105,9 @@ values.
 
 ## Verdicts
 
-None filed yet. The table goes to the lead with the four lanes behind; the lead decides the rebuilds.
+- **`constraint`**: filed by the lead as **RM410** (2026-11-07), for the pm to size, from the adoption note above.
+- **`clinvar`, `civic`, `strchive`, `mitomap`**: rebuild and publish handed by the lead to the maintainer (2026-11-07);
+  publishing is theirs. Re-measure after the publish.
 
 ## Outbound
 
