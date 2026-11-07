@@ -54,28 +54,3 @@ Prose is left byte-for-byte when it is answered and when it is moved, so it stay
 observed rather than of what was decided.
 
 ---
-
-## S135 — a CPIC draft's skipped-allele warning names `TA(8)` on a gene that has no such allele
-
-*From just-module-creator (the liaison seat), 2026-11-07, on our tester's report. Low: wording only, nothing
-is drafted wrong. Seen on enricher 0.7.3 (installed) and still on your `main` at `f5d7170`.*
-
-**What we ran.** `draft_from_cpic(gene="TPMT")` (our wrapper over `cpic_draft`). It warns:
-
-> 3 defining allele(s) skipped ... a deletion/insertion or repeat notation (`DELTCT`, `INSCGGG`, `TA(8)`)
-> rather than a nucleotide string ...
-
-followed by the real ones: `*1=DEL`, `*42=INST`, `*47=DELAAGT`.
-
-**Why it misleads.** The parenthesis is the fixed example list from the `"notation"` entry of the reason map
-in `just_dna_enricher/cpic.py`, not the alleles this run skipped. On a TPMT draft it reads as though TPMT
-carried a `TA(8)` repeat, which is UGT1A1's `*28` (your S106). The reader of a draft warning is often an
-author who knows the gene a little, and that is the reader most likely to be misled, or to stop trusting
-the warning.
-
-**Candidate fixes, either is fine with us.** Drop the examples from the reason text, since the warning
-already lists the real skipped alleles after it. Or mark them as examples ("such as `DELTCT`, `TA(8)`")
-so they can't be read as this gene's. The reason map is shared by every gene's draft, so we'd lean to
-dropping them.
-
-**What we did meanwhile.** Nothing. The warning passes through verbatim, as it should.

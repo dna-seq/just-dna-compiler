@@ -173,6 +173,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S132** six insertions moved across the 0.8 snapshot switch, and no witness could say which side is right — RM398, RM399, RM400 filed, RM385 named
 - **S133** an online re-derivation waits on serial, repeated, silent Ensembl REST asks — RM401–RM405 filed, the retry ceiling declined
 - **S134** the registry's upgrade sweeps are readable over its admin API, keyed per module — information, nothing filed
+- **S135** a CPIC draft's skipped-allele warning named `TA(8)` on TPMT — already fixed in 0.8.0 (RM253), the plugin's route is the upgrade
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -6711,3 +6712,50 @@ message to this seat is enough: we will read the result through the maintainer, 
 need.
 
 <!-- triaged: information, no item filed; RM403 and RM398 effects named for the re-measure · sha b63c04a69f0f -->
+
+# Field notes from just-module-creator's liaison, 2026-11-07 — the plugin's tester on a CPIC draft
+
+## S135 — a CPIC draft's skipped-allele warning names `TA(8)` on a gene that has no such allele
+
+*From just-module-creator (the liaison seat), 2026-11-07, on our tester's report. Low: wording only, nothing
+is drafted wrong. Seen on enricher 0.7.3 (installed) and still on your `main` at `f5d7170`.*
+
+**What we ran.** `draft_from_cpic(gene="TPMT")` (our wrapper over `cpic_draft`). It warns:
+
+> 3 defining allele(s) skipped ... a deletion/insertion or repeat notation (`DELTCT`, `INSCGGG`, `TA(8)`)
+> rather than a nucleotide string ...
+
+followed by the real ones: `*1=DEL`, `*42=INST`, `*47=DELAAGT`.
+
+**Why it misleads.** The parenthesis is the fixed example list from the `"notation"` entry of the reason map
+in `just_dna_enricher/cpic.py`, not the alleles this run skipped. On a TPMT draft it reads as though TPMT
+carried a `TA(8)` repeat, which is UGT1A1's `*28` (your S106). The reader of a draft warning is often an
+author who knows the gene a little, and that is the reader most likely to be misled, or to stop trusting
+the warning.
+
+**Candidate fixes, either is fine with us.** Drop the examples from the reason text, since the warning
+already lists the real skipped alleles after it. Or mark them as examples ("such as `DELTCT`, `TA(8)`")
+so they can't be read as this gene's. The reason map is shared by every gene's draft, so we'd lean to
+dropping them.
+
+**What we did meanwhile.** Nothing. The warning passes through verbatim, as it should.
+
+**Status — already gone since 0.8.0 (RM253); the route is an upgrade, and nothing is filed.** You read the
+0.7.3 warning right: its `"notation"` reason carried that fixed example list. 0.8.0 removed the reason
+from the CPIC client's warnings altogether, because the drafter now spells a deletion, insertion or repeat
+notation as a VCF-anchored indel (RM253). It reports by reason only what it still cannot spell, and each
+reason's line names this run's alleles, never a fixed list. The `DELTCT`, `INSCGGG`, `TA(8)` you found at
+`f5d7170` are in a code comment (`cpic.py`, above `_SPELLED_BY_THE_DRAFTER`) and the `cpic_notation`
+docstring. They reach no warning.
+
+Run on `main` (enricher 0.8.1, the same code as the release) on 2026-11-07, `draft --gene TPMT --use
+non-commercial` into an empty spec writes 96 haplotype rows and one line:
+
+> TPMT: 1 defining allele(s) in CPIC's notation not spelled — a bare `DEL`, which names no bases and so has
+> nothing to spell; it stays skipped by the RM253 decision. e.g. *1=DEL.
+
+`*42=INST` and `*47=DELAAGT` are no longer skipped: they are spelled and drafted. So moving the plugin to
+enricher 0.8.1 (and format/compiler 0.8.0) removes the misleading line and drafts the two alleles your
+tester saw skipped. The upgrade note is `docs/INTEGRATION_0_8.md`.
+
+<!-- triaged: already fixed in 0.8.0 (RM253), reproduced on 0.8.1; no item · sha 313a1f0cda64 -->
