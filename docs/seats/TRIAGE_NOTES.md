@@ -54,6 +54,10 @@ three scripts are the kit's, two of them copied into `.claude/` for CI.
   a downstream on just-dna-enricher 0.7.3 that files into `docs/CONSUMER_SUGGESTIONS.md` and then messages
   this seat. Same handling as any `Sn`: commit it on arrival, then triage.
 
+- **just-module-creator/liaison** (added to triage's `wake_from` 2026-11-07, `8de1fa80`, on the maintainer's word):
+  the MCP authoring plugin's seat, which files the plugin's consumer suggestions into
+  `docs/CONSUMER_SUGGESTIONS.md` and messages this seat. Same handling as any `Sn`: commit it on arrival, then triage.
+
 ## Items this seat owns
 
 | Item | State |
