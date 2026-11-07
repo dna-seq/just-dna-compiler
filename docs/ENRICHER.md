@@ -1952,10 +1952,21 @@ they offer the local-file inputs an operator holds, which a rebuild pass by defi
 just-dna-enricher cache rebuild --use non-commercial              # → data/caches/<lane>/
 just-dna-enricher cache rebuild --only strchive --only mane --pin mane=1.5
 just-dna-enricher cache rebuild --only acmg --source acmg=./acmg_sf_v3.3.xlsx
-just-dna-enricher cache rebuild --publish --dry-run               # rehearse the uploads
+just-dna-enricher cache rebuild --publish --dry-run               # the plan: reads, takes nothing
 scripts/rebuild-caches.sh data/caches                             # the driver, all lanes
 just-dna-enricher cache rebuild --out /srv/just-dna/caches-$(date +%F)   # a deployment's own path
 ```
+
+**`--dry-run` downloads, builds and uploads nothing** (RM411; until then it ran the whole rebuild and
+skipped only the upload, so rehearsing `--only opentargets --publish` started a 22 GB download). Per lane
+it says what a run would build, from where (the download, a `--source` file, or a derived lane's parent
+caches) and into which directory; *not run*, *refused* or *skipped* in the real run's own words; the
+release this machine's cache holds; and with `--publish`, the release the lane's repo states, or *nothing
+published*, or *could not ask*. The upload's own checks need the built bytes, so a lane already built into
+`<out>/<lane>` by a run without `--publish` has its upload rehearsed against that snapshot. The source's own
+newest release is not asked: the liaison's `docs/UPSTREAM_DATA_SOURCES.md` keeps it by hand, and
+[RM412](ROADMAP_0_9.md#rm412--a-dry-run-cannot-rehearse-the-download-and-the-08-lines-private-names-wait-for-their-public-ones)
+is the opt-in download rehearsal.
 
 Three things about it are worth reading before a deployment runs it nightly.
 

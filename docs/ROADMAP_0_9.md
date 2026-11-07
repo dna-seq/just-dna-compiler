@@ -935,3 +935,20 @@ the bundle. **Residuals, to be stated at closure:** the missing timeout is vrs-p
 repository; a proxy of our own that adds one would be the workaround the house rules refuse. RM396 (public gates
 and intervals, parked) unparks when a host needs a second client's pace, which this may meet; that is the pm's
 reading.
+
+## RM412 — a dry run cannot rehearse the download, and the 0.8 line's private names wait for their public ones
+
+**Open, a minor, 0.9 (the maintainer, 2026-11-07: "inverted --rehearse-download flag in 0.9 along with all this
+private-to-public debt").** Owner enricher · *related* RM411, RM408, RM401, RM403, RM404
+
+**Two halves, one reason: each is new public surface that patch scope kept off `main`.**
+
+1. **`cache rebuild --dry-run --rehearse-download`**, the opt-in inverse of RM411: a rehearsal that does take the
+   source bytes and builds, then rehearses the upload, the old dry run's behaviour, now asked for by name. Beside
+   it, the cheaper half the maintainer first asked for ("only download headers/metadata"): per lane, the source's
+   newest release and the bytes a build would fetch, asked of the source without the payload. That needs a probe
+   per lane (a `CacheLane` field), which `docs/UPSTREAM_DATA_SOURCES.md` measures by hand today.
+2. **The 0.8 line's private names made public**: `download._ensure_opentargets_snapshot` (RM408) as
+   `ensure_opentargets_snapshot` beside its siblings, a standalone `opentargets publish` and `clinvar-gkm publish`
+   for a snapshot already built (both lanes publish only through a rebuild today), and RM401's and RM403's names,
+   which RM404 already plans to expose.

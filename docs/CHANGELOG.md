@@ -41,6 +41,18 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-07 — RM411: `cache rebuild --dry-run` takes nothing (patch, uncut)
+
+- **`cache rebuild --dry-run` no longer downloads or builds** (RM411, a bug: a dry run that writes is not
+  one). It ran the whole rebuild and skipped only the upload, so rehearsing `--only opentargets --publish`
+  began a 22 GB download into `<out>/opentargets/source/`. It now prints, per lane, what a run would build,
+  from where and into which directory, the release this machine holds and, with `--publish`, the release
+  the lane's repo states (*nothing published* and *could not ask* kept apart). A snapshot already in
+  `<out>/<lane>` has its upload rehearsed.
+- **After upgrading:** a script that used `--publish --dry-run` to build and then rehearse now gets the plan
+  only. Build with `cache rebuild` (no `--publish`), then run `--publish --dry-run` to rehearse that build.
+  No public name, flag or warning code; 0.9 adds an opt-in download rehearsal (RM412).
+
 ## 2026-11-07 — RM408: the Open Targets snapshot has a repository and a pull route (patch, uncut)
 
 - **`cache rebuild --only opentargets --publish` publishes the Open Targets snapshot to

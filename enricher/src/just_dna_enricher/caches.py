@@ -1344,8 +1344,24 @@ def rebuild_lane(lane: CacheLane, request: RebuildRequest) -> RebuildOutcome:
     what is absent belongs to another one. The guard is here rather than in the adapter because it is
     registry-driven — it is `lane.parents` that decides, so a second derived lane inherits it.
     """
+    blocked, request = _rebuild_blocked(lane, request)
+    if blocked is not None:
+        return blocked
+    logger.info("Rebuilding the %s snapshot into %s ...", lane.name, request.out_dir)
+    return lane.rebuild(request)
+
+
+def _rebuild_blocked(
+    lane: CacheLane, request: RebuildRequest
+) -> tuple[RebuildOutcome | None, RebuildRequest]:
+    """Why `lane` cannot be rebuilt from `request`, decided on disk alone, or `None` and the request to build from.
+
+    The half of `rebuild_lane` that reads and never fetches, so `cache rebuild --dry-run` (RM411) says
+    *not run* for exactly the lanes a real run would, in the same words: no adapter, or a derived lane
+    whose parents are not on disk. The returned request carries the parents it resolved.
+    """
     if lane.rebuild is None:
-        return RebuildOutcome(lane.name, None, lane.unbuilt or "no builder in this tier")
+        return RebuildOutcome(lane.name, None, lane.unbuilt or "no builder in this tier"), request
     resolved: dict[str, Path] = {}
     if lane.parents:
         resolved, missing = parent_snapshots(lane, request)
@@ -1363,7 +1379,7 @@ def rebuild_lane(lane: CacheLane, request: RebuildRequest) -> RebuildOutcome:
                 f"derived from {' and '.join(lane.parents)}; not on disk: {how}. A miss set computed "
                 f"without a parent would be an increment measured against a comparison that never "
                 f"ran, not an empty one",
-            )
+            ), request
         request = RebuildRequest(
             out_dir=request.out_dir,
             declared_use=request.declared_use,
@@ -1371,8 +1387,7 @@ def rebuild_lane(lane: CacheLane, request: RebuildRequest) -> RebuildOutcome:
             source=request.source,
             parents=resolved,
         )
-    logger.info("Rebuilding the %s snapshot into %s ...", lane.name, request.out_dir)
-    return lane.rebuild(request)
+    return None, request
 
 
 #: The three states a lane can be in on this machine. `occupied` is the one `absent` used to hide.

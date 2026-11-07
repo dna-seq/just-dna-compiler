@@ -2,9 +2,14 @@
 this out of the former single-file `cli.py`).
 """
 
+import tempfile
+from collections.abc import Callable
 from pathlib import Path
 
+import huggingface_hub
 import typer
+from just_dna_format.snapshot import holds_snapshot_payload
+from just_dna_format.snapshot import release_label as snapshot_release_label
 from just_dna_format.vocab import VALID_DECLARED_USE
 
 from just_dna_enricher.caches import (
@@ -12,6 +17,8 @@ from just_dna_enricher.caches import (
     CacheLane,
     RebuildOutcome,
     RebuildRequest,
+    _gate,
+    _rebuild_blocked,
     lane_name,
     lane_status,
     parents_from_rebuild_dir,
@@ -21,7 +28,7 @@ from just_dna_enricher.caches import (
 from just_dna_enricher.cli._shared import _use
 from just_dna_enricher.download import SnapshotNotPublished
 from just_dna_enricher.licensing import LicenseRefusal, check_declared_use
-from just_dna_enricher.locations import CACHES_DIRNAME, STRCHIVE_CATALOGUE_FILENAME
+from just_dna_enricher.locations import CACHES_DIRNAME, RELEASE_FILENAME, STRCHIVE_CATALOGUE_FILENAME
 
 # ── the caches (pre-provision, rebuild, and say what is where) ──────────────────────────────────
 #
@@ -412,9 +419,9 @@ def cache_rebuild_(
         False,
         "--dry-run",
         help=(
-            "With --publish: show what would be uploaded, send nothing. Only the upload is dry: the "
-            "rebuild still downloads and builds each lane. To rehearse a snapshot already built, use "
-            "the lane's own `<lane> publish <dir> --dry-run`."
+            "Download, build and upload nothing: say per lane what a run would do, the release this "
+            "machine holds and, with --publish, the one published. A snapshot already built into "
+            "<out>/<lane> (a run without --publish) has its upload rehearsed."
         ),
     ),
 ) -> None:
@@ -440,15 +447,22 @@ def cache_rebuild_(
     pins = _pairs(pin, "--pin")
     sources = _pairs(source, "--source", must_exist=True)
 
-    outcomes: list[RebuildOutcome] = []
-    for lane in lanes:
-        request = RebuildRequest(
+    def request_for(lane: CacheLane) -> RebuildRequest:
+        return RebuildRequest(
             out_dir=out / lane.name,
             declared_use=declared,
             pin=pins.get(lane.name),
             source=Path(sources[lane.name]).expanduser() if lane.name in sources else None,
             parents=parents_from_rebuild_dir(lane, out),
         )
+
+    if dry_run:
+        _dry_run(lanes, request_for, out, publish=publish)
+        return
+
+    outcomes: list[RebuildOutcome] = []
+    for lane in lanes:
+        request = request_for(lane)
         outcome = rebuild_lane(lane, request)
         outcomes.append(outcome)
         colour = {
@@ -462,7 +476,7 @@ def cache_rebuild_(
             err=outcome.built is not True,
         )
         if outcome.built and publish:
-            _publish_rebuilt(lane, outcome, dry_run=dry_run)
+            _publish_rebuilt(lane, outcome)
 
     built = [o for o in outcomes if o.built is True]
     failed = [o for o in outcomes if o.built is False]
@@ -475,18 +489,104 @@ def cache_rebuild_(
         raise typer.Exit(code=1)
 
 
-def _publish_rebuilt(lane: CacheLane, outcome: RebuildOutcome, *, dry_run: bool) -> None:
+def _dry_run(
+    lanes: list[CacheLane], request_for: Callable[[CacheLane], RebuildRequest], out: Path, *, publish: bool
+) -> None:
+    """What `cache rebuild` would do, reading only: no download, no build, no upload (RM411).
+
+    The dry run used to run the whole rebuild and skip only the upload, so a rehearsal of
+    `--only opentargets --publish` downloaded 22 GB into `<out>/opentargets/source/`. A dry run that
+    writes is not one. Each lane gets the answer a real run would reach before taking any bytes, in
+    the same words: *not run* from `_rebuild_blocked` (no adapter, a derived lane's parents missing)
+    and *refused* or *skipped* from the declared-use gate, which the adapters run on the same terms
+    `CacheLane.terms` names. Otherwise it says what would be built, from where, into which directory.
+
+    Nothing published is compared here, only shown: the source's own newest release is not asked
+    (that needs a probe per lane; 0.9's `--rehearse-download` and the liaison's table cover it). The
+    upload's own checks need the built bytes, so they are rehearsed only when `<out>/<lane>` already
+    holds a snapshot, from an earlier run without `--publish`.
+    """
+    from just_dna_enricher.upload import PublishRefused, rehearse_reference_snapshot
+
+    planned = 0
+    for lane in lanes:
+        blocked, request = _rebuild_blocked(lane, request_for(lane))
+        if blocked is None:
+            blocked = _gate(lane.terms, request.declared_use, lane.name)
+        if blocked is not None:
+            typer.secho(
+                f"  {lane.name:13} {blocked.label:8} {blocked.detail}",
+                fg=typer.colors.RED if blocked.built is False else typer.colors.YELLOW,
+                err=True,
+            )
+            continue
+        planned += 1
+        release = request.pin or "the lane's own release"
+        if request.parents:
+            origin = "from " + " and ".join(f"{name} at {path}" for name, path in request.parents.items())
+        elif request.source is not None:
+            origin = f"from {request.source}"
+        else:
+            origin = "downloading it"
+        typer.echo(f"  {lane.name:13} would build {release}, {origin}, into {request.out_dir}")
+        held = lane.resolve()
+        here = (lane.release_label(held) or "a snapshot stating no release") if held is not None else "absent"
+        typer.echo(f"      this machine: {here}")
+        if not publish:
+            continue
+        if lane.publish_repo is None:
+            typer.secho(f"      not published — {lane.unpublished}", fg=typer.colors.YELLOW, err=True)
+            continue
+        typer.echo(f"      published at {lane.publish_repo}: {_published_release(lane.publish_repo)}")
+        payload = STRCHIVE_CATALOGUE_FILENAME if lane.name == "strchive" else None
+        built = request.out_dir
+        if not holds_snapshot_payload(built, payload_filename=payload):
+            typer.echo(
+                f"      the upload's checks need the built bytes: run without --publish to build into "
+                f"{built}, then again with --publish --dry-run to rehearse it"
+            )
+            continue
+        try:
+            plan = rehearse_reference_snapshot(built, lane.publish_repo, payload=payload)
+        except (PublishRefused, PermissionError, ImportError) as exc:
+            typer.secho(f"      WOULD BE REFUSED: {exc}", fg=typer.colors.RED, err=True)
+            continue
+        typer.echo(
+            f"      would upload {len(plan.files)} file(s) from the snapshot already at {built} "
+            f"({snapshot_release_label(built) or 'no release stated'}) to {plan.repo_id}"
+        )
+    typer.echo(
+        f"dry run: {planned} of {len(lanes)} lane(s) would be built into {out}; nothing was downloaded, "
+        "built or uploaded"
+    )
+
+
+def _published_release(repo_id: str) -> str:
+    """The release `repo_id`'s root `release.json` states, read alone: never the payload.
+
+    Three answers kept apart (`@unreachable-not-absent`): a label, *nothing published* (the hub
+    answers that the file or the repo is not there), and *could not ask*, which is never written as
+    either. A repo that holds a `release.json` stating no label says so.
+    """
+    remote = f"datasets/{repo_id}/{RELEASE_FILENAME}"
+    with tempfile.TemporaryDirectory() as scratch:
+        try:
+            huggingface_hub.HfFileSystem(token=None).get(remote, str(Path(scratch) / RELEASE_FILENAME))
+        except FileNotFoundError:
+            return "nothing published"
+        except Exception as exc:  # a reporting boundary: any other failure is could-not-ask
+            return f"could not ask ({type(exc).__name__})"
+        return snapshot_release_label(Path(scratch)) or f"a {RELEASE_FILENAME} stating no release"
+
+
+def _publish_rebuilt(lane: CacheLane, outcome: RebuildOutcome) -> None:
     """Upload one rebuilt snapshot, or say why this lane has nothing to upload to.
 
     A lane with no repo is not an error here: `--publish` means *publish what may be published*, and
     the registry's `unpublished` is the answer to why one is skipped. Refusing the whole run because
     PharmVar cannot be published would make the flag unusable on the set it was written for.
     """
-    from just_dna_enricher.upload import (
-        PublishRefused,
-        publish_reference_snapshot,
-        rehearse_reference_snapshot,
-    )
+    from just_dna_enricher.upload import PublishRefused, publish_reference_snapshot
 
     if lane.publish_repo is None:
         typer.secho(f"    not published — {lane.unpublished}", fg=typer.colors.YELLOW, err=True)
@@ -501,13 +601,6 @@ def _publish_rebuilt(lane: CacheLane, outcome: RebuildOutcome, *, dry_run: bool)
         return
     payload = STRCHIVE_CATALOGUE_FILENAME if lane.name == "strchive" else None
     try:
-        if dry_run:
-            # The remote check runs here too: a dry run that skips what a publish refuses on is the
-            # same defect as an allowlist that drops a file the dry run promised — it makes the
-            # rehearsal a different operation from the thing (`@publisher-allowlist-derived`).
-            plan = rehearse_reference_snapshot(snapshot_dir, lane.publish_repo, payload=payload)
-            typer.echo(f"    would upload {len(plan.files)} file(s) to {plan.repo_id}: {plan.files}")
-            return
         plan = publish_reference_snapshot(snapshot_dir, lane.publish_repo, payload=payload)
     except (PublishRefused, PermissionError, ImportError) as exc:
         typer.secho(f"    PUBLISH FAILED: {exc}", fg=typer.colors.RED, err=True)

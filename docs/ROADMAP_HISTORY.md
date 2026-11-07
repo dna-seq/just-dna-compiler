@@ -34,6 +34,36 @@ up.
 
 Patches on `main` after the 0.8.0 cut (2026-11-05), newest first.
 
+## RM411 — `cache rebuild --dry-run` downloaded and built every lane, skipping only the upload
+
+**SHIPPED 2026-11-07 on `main`, uncut — a patch (the maintainer: "dry is idempotent, thus it is not expected to
+change stuff, yet it downloads (and overwrites) the sources. Thus maybe 1").** Owner enricher, severity medium.
+
+**Residuals** RM412 — a dry run that rehearses the download itself, opt-in, and the source's newest release asked per lane
+
+**What happened.** The maintainer ran `cache rebuild --only opentargets --publish --dry-run` to rehearse a publish
+and it began mirroring 22 GB from EBI. `--dry-run` reached only `_publish_rebuilt`; the rebuild ran whole before
+it. The help said "With --publish: show what would be uploaded, send nothing", which was true of the upload and
+silent about everything before it.
+
+**What changed.** A dry run now never calls an adapter. `caches._rebuild_blocked` is the half of `rebuild_lane`
+that decides on disk alone (no adapter, a derived lane's parents missing), so the dry run's *not run* is the real
+run's; the declared-use gate is predicted with `caches._gate` on `CacheLane.terms`, which is the object each
+gated adapter passes (clinpgx, cpic, drug_labels, pharmvar, pubmind; checked by grep, and pinned for CPIC by a
+test comparing the two runs' line). The published release is read from the repo-root `release.json` alone,
+three-valued. The upload's checks (allowlist, orphaned sidecar) are rehearsed only against a snapshot already
+in `<out>/<lane>`, since they need the bytes; that keeps the two rebuild-route lanes with no publish command of
+their own (`opentargets`, `clinvar_gkm`) rehearsable: build, then dry-run.
+
+**Considered and left.** A new `--headers-only` flag was the maintainer's first wording; a new flag is minor
+scope on `main`, and making `--dry-run` dry changes behaviour only where it was a bug. The opt-in inverse,
+`--rehearse-download`, is RM412 in 0.9.
+
+**Tests.** `test_a_dry_run_rebuild_takes_nothing.py`: the opentargets dry run with every outside host fenced
+leaves `<out>` absent; *nothing published* and *could not ask* print differently; a built snapshot is rehearsed
+and its tree's mtimes are unchanged; CPIC's gated line is the same in both runs. The first three fail on the
+previous `main` (931215fb).
+
 ## RM408 — the Open Targets lane had a builder and no repository, so every deployment cut its own ~5.5 GB snapshot from ~22 GB
 
 **SHIPPED 2026-11-07 on `main`, uncut — a patch (the maintainer: "Fix the code then, unless unspecified public
