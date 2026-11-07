@@ -51,9 +51,9 @@ None open.
   on 6330f908, pushed. The GitHub release waits on the person (auto-mode rule 13 missing; notes in the
   session scratchpad, `release_notes_0_8_1.md`).
 - **Next patch, uncut on `main`:** RM408 (7c075b70), the Open Targets lane's repo and private pull route.
-  **Cut it only after the person publishes the lane** (`cache rebuild --only opentargets --publish`, ~22 GB
-  download): until a snapshot is in `just-dna-seq/opentargets`, `cache prepare` reports the lane unpublished
-  instead of building it. ClinVar-GKM needed no code: `cache rebuild --only clinvar_gkm --publish`, the
+  The person published the lane on 2026-11-07 from the shared cache (`publish_reference_snapshot`, 428 parquet
+  + `release.json`, `opentargets_26.09`, publicly readable), so RM408 is cuttable now. RM409 (Ctrl-C) and RM410
+  (constraint 4.1.2, the pm sizes) are filed; the `cache rebuild --dry-run` help fix is 931215fb. ClinVar-GKM needed no code: `cache rebuild --only clinvar_gkm --publish`, the
   person's. After both publish: ENRICHING.md § 3's `clinvar_gkm` "not published yet" example and § 4's
   "build it once" go stale (the step-10 docs refresh).
 - **Cache:** `/data/just-dna-cache/ensembl_variations` is the split release; the old one is
