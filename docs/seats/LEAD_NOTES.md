@@ -53,6 +53,9 @@ None open.
 - **The next patch also waits on** RM400 (both halves), RM401 (after its batch-omission probe) and RM403, placed
   by the pm (`6047e082`, `d61974da`). Patch scope, so triage builds them; told triage 2026-11-07 that I am not,
   and to hand me any it would rather not. I cut the patch once they are on `main`. RM402 waits on RM401.
+  All three landed (local `main`, 2026-11-07); the cut waits on triage making RM401's and RM403's new names
+  private (the pm's ruling, 0.9 makes them public with RM404, `929a2d97`): a public field or method is never
+  patch scope (RELEASE_CYCLE), and the pm declined a network-tier exception.
 - **Cache:** `/data/just-dna-cache/ensembl_variations` is the split release; the old one is
   `ensembl_variations.pre-0.8`, to drop on the person's word. The just-dna-lite side still to be told.
 - **Desk:** #210 (should the liaison keep `docs/DOWNSTREAM.md`, who waits on us; default: no list) and
