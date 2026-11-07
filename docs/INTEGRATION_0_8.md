@@ -9,21 +9,28 @@ the known issues 0.8 ships with.
 
 **Status: cut as 0.8.0 on 2026-11-05.** All three packages are `0.8.0` (one number per cut: each changed
 since `v0.7.3`), each intra-workspace floor is `>=0.8.0`, and `polars>=1.42.0` is unchanged, so a polars 1.x
-install still resolves. Publishing to PyPI is the maintainer's, and the tag `v0.8.0` follows the publish.
+install still resolves. It is published and tagged `v0.8.0`.
 
-**Pin the release, not the branch:**
+**Two patches followed on the 0.8 line, and the current release is 0.8.2.** 0.8.1 (2026-11-07) moved the
+enricher alone, so format and compiler stayed 0.8.0. 0.8.2 (2026-11-07) moved all three packages, and its
+floors are `>=0.8.2` throughout. Neither patch adds a public name, field, table, flag or warning code, so
+this file's surface delta is still the whole 0.7 → 0.8 boundary; what each patch changed, and what to do
+after upgrading to it, is its entry in the [CHANGELOG](CHANGELOG.md), and § 4 says which known issues each
+one fixed.
+
+**Pin the release, not the branch, and floor on the latest patch:**
 
 ```toml
 dependencies = [
-    "just-dna-format>=0.8.0",
-    "just-dna-compiler>=0.8.0",
-    "just-dna-enricher>=0.8.0",
+    "just-dna-format>=0.8.2",
+    "just-dna-compiler>=0.8.2",
+    "just-dna-enricher>=0.8.2",
 ]
 ```
 
 A consumer that holds only the format tier pins the first line alone. A git dependency on the `0.8` branch
 (`rev = "1007a26d"` and later), which this file recommended for testing before the cut, goes from your
-tracked files and your lock: `uv lock` against the published `0.8.0`, then run your suite again.
+tracked files and your lock: `uv lock` against the published `0.8.2`, then run your suite again.
 
 **The release record says what a recompile moves.** `release_records.RELEASE_RECORDS["0.8.0"]`, measured at
 the cut against the published compiler 0.7.2, declares each correction and addition (RM363's contig
@@ -32,6 +39,9 @@ spelling and RM361's `:None` key are the two corrections), and `needs_recompile(
 lite stays on polars 1.x (polars-bio caps `polars<2`), and this workspace locks polars 2.1.0, so one
 `compiler_version` over one spec writes two `artifact.digest`s and one `content_signature`. Compare content
 by `content_signature`; read a digest mismatch with `compilation.toolchain` beside it (§ 1.11).
+The patches add little to that answer: 0.8.1 left the compiler alone and has no record, and
+`RELEASE_RECORDS["0.8.2"]`, measured from 0.8.0, moves only the text of two warnings, so a module
+compiled by 0.8.0 needs no recompile.
 
 **What landed after `1007a26d`**, the pre-cut head this file first named, for a consumer who tested
 there; all of it is in 0.8.0. **First:** RM380, `reverse` carrying every `resolution.csv` column a
@@ -830,7 +840,7 @@ out: being importable does not make it a supported surface. All additive.
 1. **Pins, in tier order: format, then compiler, then enricher.** `just-dna-format` first, because a 0.7
    reader refuses some 0.8 output (§ 1, § 1.13, § 1.18) and drops the new manifest fields (§ 1.2); then
    `just-dna-compiler`; then `just-dna-enricher`. A consumer that holds only the format tier stops after
-   the first. Floor all three on `>=0.8.0`.
+   the first. Floor all three on `>=0.8.2`, the current patch.
 2. **`uv lock`**, regenerated and never hand-edited, committed with the floors.
 3. **Move the shared Ensembl cache, once per machine** (§ 1.29): `just-dna-enricher cache pull --only
    ensembl`, or `cache prepare`. The lane now pulls `just-dna-seq/ensembl_variations_split` (dbSNP 157 /

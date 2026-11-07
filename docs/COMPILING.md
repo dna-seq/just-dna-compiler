@@ -217,7 +217,7 @@ Its output directory holds `meta.parquet` and `meta_resolved.parquet` beside the
   "compilation": {
     "compile_success": true,
     "compiled_by": null,
-    "compiler_version": "just-dna-compiler 0.8.0",
+    "compiler_version": "just-dna-compiler 0.8.2",
     "toolchain": {"polars": "2.1.0", "python": "3.14.8"},
     "warnings": ["…"]
   }

@@ -2,7 +2,7 @@
 
 For each real or desired use case: **is it enabled by the format as it stands, and if not, what is
 missing?** (The verdicts were first written against 0.4 and are revised in place as items ship; the
-latest cut is 0.8.0.) The point is to separate three things that get conflated —
+latest cut is 0.8.2.) The point is to separate three things that get conflated —
 
 - work the format **already enables** (author it today),
 - work that is a **consumer** concern the format deliberately does not own (the data-agnostic north
