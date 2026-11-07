@@ -912,6 +912,8 @@ it is a new change kind, as `toolchain` was (INTEGRATION_0_8 § 1.11). P9: near 
 
 **0.9, the pm (2026-11-07), built with RM385.** RM385, already in 0.9 by the maintainer's word, reworks how the enricher gets its `SequenceProxy` (a local reference for offline runs). Accepting the proxy from the caller is near free on that seam, and the eutils client is one more parameter beside the resolver, so deferring RM404 would only mean opening the same signature twice. A real host (the registry) runs its enrichments one at a time because of it. The fewer-entities rule weighs toward taking the whole `LookupClients` bundle over two loose parameters. **Not RM396's unpark condition, the pm's reading:** RM396 is about reading six named clients' intervals and gates by public name; RM404 is about handing clients in, and needs none of those names. RM396 stays parked.
 
+**It also publishes RM401's batching, the pm (2026-11-07).** RM401 and RM403 ship in the next patch with their new names private, because `RELEASE_CYCLE.md` keeps a new public field, function or method off `main`: the batch size is a fixed 20 and the timeout a fixed 120 s, with no settings field; the resolver methods, the two capability protocols, `ask_live_witness` and the retry-logging helpers carry a leading underscore. Making the batch knobs settings fields and the batch capability a public protocol an injected resolver can implement is the same seam as handing clients into `enrich()`, so it is built here rather than filed apart.
+
 **Severity** low · **Status** open — **a minor, 0.9** (new public parameters) · **Owner**
 enricher (`enrich()` signature, `identifiers.check_rsids`, `sequences.SequenceProxy`) · **Motivating case** S133
 in CONSUMER_SUGGESTIONS_HISTORY.md · *related* RM396, RM385
