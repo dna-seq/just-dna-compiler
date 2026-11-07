@@ -54,3 +54,58 @@ Prose is left byte-for-byte when it is answered and when it is moved, so it stay
 observed rather than of what was decided.
 
 ---
+
+## S136 — the repeat-count warnings reason about `RUC`/`CIRUC` when the module declares `source_field=FORMAT/REPCN`
+
+*From just-module-creator (the liaison seat), 2026-11-07, on our tester's report. Reproduced on compiler 0.7.2 /
+format 0.7.1 (installed) and on compiler 0.8.0 / format 0.8.0 (an isolated install); the code is unchanged on
+your `main` at `8e64c0c`.*
+
+**What we ran.** `validate_spec(strict=True)` on a four-bin HTT CAG module (`repeat_alleles.csv`, gene-keyed,
+`measure_kind=repeat_count`). Every bin sets `source_field=FORMAT/REPCN` and `source_element=largest`:
+ExpansionHunter's per-allele count, a whole number. Two warnings come back:
+
+> repeat_count bins here are tiled as whole numbers, but the field a consumer reads the measurement from (RUC)
+> is not a whole number in VCF 4.4 ...
+
+> A RUC call travels with CIRUC, whose missing upper bound means *unbounded*, so the measurement is an
+> interval ...
+
+**What happens.** `binning._VCF_MEASURE_FIELDS` maps `repeat_count` to `("RUC", "CIRUC", …)` and the check at
+the `kinds = … & set(_VCF_MEASURE_FIELDS)` line keys on `measure_kind` alone. The module's own `source_field`,
+which your docstring calls the pointer to *"the VCF field the consumer extracts the measure from"*, is never
+read. So the first warning tells the author the field they read is a Float when the field they named is an
+integer.
+
+**What we think is right, and where we are unsure.** The first warning (fractional) doesn't apply when
+`source_field` names an integer-typed field: it could be skipped, or reworded to say it applies only to a
+consumer reading `RUC`. The second (spanning) still holds in substance, because ExpansionHunter also reports
+an interval (`REPCI`) beside `REPCN`. But naming `RUC`/`CIRUC` sends the author to a field they don't use.
+Saying "the measurement may arrive as an interval (VCF `CIRUC`, ExpansionHunter `REPCI`)", or reading the
+interval field off `source_field` where it's known, would fix it. We don't know whether you want the format
+to know any caller's field types beyond VCF's own, so this could equally be answered as "reword only".
+
+**What we did meanwhile.** Nothing. The module keeps `source_field` as authored, and the warnings pass through.
+
+## S137 — `bins_ungrounded` says "no bin pmid" on a module whose bin carries one
+
+*From just-module-creator (the liaison seat), 2026-11-07, on our tester's report. Same module, same three
+installs as S136; the sentence is unchanged on your `main` at `8e64c0c` (`compiler.py`, the `bins_ungrounded`
+warning).*
+
+**What we ran.** The same four-bin HTT module, with no `studies.csv`. The `36-39` bin carries
+`pmid=27335115` and the other three carry none. The warning:
+
+> repeat_alleles.csv: 3 of 4 bin(s) state a threshold and the module records no grounding evidence at all (no
+> studies.csv rows, no bin pmid).
+
+**What happens.** The count is right: `ungrounded` is the rows with `pmid is None`, and there are three. The
+clause after it is fixed text, written for the case where every bin is ungrounded, so here it states something
+false ("no bin pmid", "no grounding evidence at all") about a module that grounds one bin. An author who
+reads it may conclude the `pmid` they set was not read.
+
+**Candidate fix.** Choose the clause by whether any bin carries a `pmid`: keep it when none does, and otherwise
+say "3 of 4 bin(s) state a threshold and carry no pmid of their own". The remedy that follows applies either
+way.
+
+**What we did meanwhile.** Nothing.
