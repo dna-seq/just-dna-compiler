@@ -919,6 +919,14 @@ restated — because the provenance columns move on every run by design.
   does not name, or another build) and `undecided`. `SubjectDrift.case` carries the arm and
   `SubjectDrift.respelled` reads it as before: `True` respelled, `None` undecided, `False` every arm where
   the source's answer changed. One drift warning counts the changed subjects by arm.
+* **A recorded locus on a patch or alt contig is left out of the comparison (RM400).** A table live REST
+  filled before RM400 can hold one beside the subject's primary locus, and the fresh answer, from the
+  snapshot or from REST, no longer carries it. Compared whole, such a subject read as `lost_allele` though
+  its primary placement had not moved. The recorded side gets the same filter, the survivors are
+  renumbered in their recorded order (`locus_index` is a fact field), and one warning counts the loci
+  left out and the subjects they sat on, since the committed table is that many rows shorter. A subject
+  recorded only off the primary assembly is compared whole, as before. No arm and no carry reason is
+  added.
 * **A re-derivation resumes only another re-derivation.** After a gap-filling run commits, its staged
   answers are exactly what produced the recorded table — so a later `--rederive` seeded from them
   would compare that table against its own provenance and report a clean bill for precisely the
@@ -1138,6 +1146,14 @@ exactly one of these lists, because each has a different remedy:
   about which locus rather than whether the rsID resolved, so it is not an rsID list.
 
 The log lines that named them before stay as they were.
+
+**A mapping off the GRCh38 primary assembly is not a locus, at the REST rung either (RM400, 2026-11-07).**
+REST maps an rsID onto patch and alt contigs too (`HSCHR17_1_CTG5`, `HG76_PATCH`). No Ensembl snapshot
+carries one, a primary-assembly VCF never joins one, and `gene_spans`, `pharmvar` and the ClinVar-GKM build
+drop them, so `_loci_from_rest` drops them as well, before reading any anchor base, and logs the count. An
+rsID REST maps only off the primary assembly is the answered-empty `[]`, written `not_found`, which is what
+the snapshot answers for it. Before RM400 the rung wrote them, so which link answered decided an rsID's
+loci.
 
 **The row itself is unchanged, deliberately, and that is not a half-fix.** Adding a
 `VALID_RESOLUTION_STATUS` member would change a wire vocabulary every reader of a published

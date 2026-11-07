@@ -322,7 +322,7 @@ def _forward_rest(tmp_path: Path) -> dict[str, set[Spelling]]:
                 }
             ]
         }
-        loci, _, _ = ensembl._loci_from_rest(payload, lambda chrom, pos: None)
+        loci, _, _, _ = ensembl._loci_from_rest(payload, lambda chrom, pos: None)
         out[rsid] = _per_alt(loci)
     return out
 

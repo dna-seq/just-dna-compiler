@@ -1957,28 +1957,6 @@ closure:** the snapshot keeping VEP's `SPDI` CSQ field (the registry's (d)) is t
 prepare-annotations, outside this repository; it normalises rather than witnesses, and would make candidate 1 a
 join.
 
-## RM400 — the REST rung writes placements on GRCh38 patch and alt contigs, which no snapshot carries, so a re-derivation reports a lost allele that did not move
-
-**Placed, the pm (2026-11-07): the next patch on `main`, both halves.** A real run hit it: the registry's own gate refused 4 of its modules. The REST half alone would not clear those 4, because their 0.7 tables already hold the off-primary loci, so the patch takes the design half too. The pm's default for that half, which the builder may push back on: neither a new drift arm nor a new carry reason, but the same off-primary filter applied to the recorded side before the comparison, counted in the report. The subject then re-derives on its primary placement, which did not move, and no new word is added. The fix's own risk is low: it is the filter the tier's other readers already apply.
-
-**Severity** low · **Status** open — **a patch**, the next on `main` (a corrected derivation of a derived
-table, no new column or code) · **Owner** enricher (`ensembl._loci_from_rest`, `enrich/rederive_words.py`) ·
-**Motivating case** S132 in CONSUMER_SUGGESTIONS_HISTORY.md (just-dna-registry's lead, 2026-11-07) · *related*
-RM268, RM362, RM376, RM394
-
-**The gap.** `_loci_from_rest` keeps a mapping whose `assembly_name` is GRCh38 and does not look at
-`seq_region_name`, so a substitution mapped onto a patch or alt contig (`HSCHR17_1_CTG5`, `HG76_PATCH`) is
-written as a locus. An indel there is already withheld, because its anchor base has no refget accession. No
-Ensembl snapshot carries such a contig, a primary-assembly VCF never joins one, and the tier's other readers
-(`gene_spans`, `pharmvar`, the ClinVar-GKM build) drop off-primary placements. So which link answered decides
-an rsID's loci. The registry met it as 11 `lost_allele` subjects in 4 modules: 0.7 tables that REST had
-answered, re-derived from the snapshot, whose primary placement did not move. Its gate holds `lost_allele`, so
-those 4 modules were refused.
-
-**What it would be.** The REST rung drops a mapping off the primary assembly, counted, as the other readers do.
-**Open question:** a recorded patch-contig locus still meets every re-derivation as `lost_allele`; whether a
-lost locus off the primary assembly is its own drift arm or a carry reason (RM394's words) is the design half.
-
 ## RM401 — the live Ensembl link and the REST witness ask one rsID per request, so a re-derivation waits on cold requests one at a time
 
 **Placed, the pm (2026-11-07): the next patch on `main`, probe first.** Every online re-derivation pays it (599 of one module's 672 s). The fix's own risk is the omission question below: reading an id a batch answer leaves out as "no record" would turn could-not-ask into a negative, so the probe's answer is the precondition, and the build waits on it rather than assuming.

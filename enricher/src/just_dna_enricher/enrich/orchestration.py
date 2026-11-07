@@ -2084,9 +2084,23 @@ def _run_enrichment(
     # different statement and the only one of the two that is a clean bill.
     rederived: list[SubjectDrift] | None = None
     if rederive:
-        rederived, compared = _rederived_drift(
+        rederived, compared, off_primary = _rederived_drift(
             existing, out, skip=carried_keys, mint=mint, read_window=read_window
         )
+        if off_primary:
+            # RM400: before it the REST rung wrote GRCh38 patch and alt contig mappings as loci. The fresh
+            # answer drops them, as every link does now, and the comparison left them out of the
+            # recorded side too, so they read as neither a drift nor a lost allele. Said, with the count,
+            # because the committed table is that many rows shorter.
+            logger.warning(
+                "Re-derivation: %d recorded locus/loci on %d of %d re-asked subject(s) sit on a GRCh38 "
+                "patch or alt contig, off the primary assembly no snapshot carries; they were left out of "
+                "the comparison and the fresh table does not carry them (RM400) — %s.",
+                sum(off_primary.values()),
+                len(off_primary),
+                compared,
+                examples(sorted(off_primary)),
+            )
         moved = [d for d in rederived if d.respelled is False]
         respelled = [d for d in rederived if d.respelled is True]
         # RM375: no id and no reference read to tell a respelling from a move. Said apart, in neither

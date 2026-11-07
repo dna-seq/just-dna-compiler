@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 from just_dna_format.base import merge_key
 from just_dna_format.resolution import RESOLUTION_FACT_FIELDS, ResolutionRow
-from just_dna_format.vrs import split_vrs_ids
+from just_dna_format.vrs import PRIMARY_CONTIG_LENGTHS, contig_length, split_vrs_ids
 
 from just_dna_enricher.civic_citations import EvidenceStatusCheck
 from just_dna_enricher.civic_refutation import RefutationFinding
@@ -131,6 +131,38 @@ def _render_facts(rows: Sequence[ResolutionRow]) -> str:
     )
 
 
+def _off_primary(row: ResolutionRow) -> bool:
+    """A recorded locus on a patch or alt contig of its build: one no snapshot carries (RM400).
+
+    Only a build with a primary-contig table can say so, and a row with no `chrom` is no locus at all,
+    so both are on-primary here: nothing may be concluded about them, and they are compared as before.
+    """
+    return (
+        row.chrom is not None
+        and row.genome_build in PRIMARY_CONTIG_LENGTHS
+        and contig_length(row.chrom, row.genome_build) is None
+    )
+
+
+def _primary_rows(rows: Sequence[ResolutionRow]) -> tuple[list[ResolutionRow], int]:
+    """A recorded subject's rows on the primary assembly, renumbered, and how many were left out (RM400).
+
+    Before RM400 the REST rung wrote a mapping on a GRCh38 patch or alt contig as a locus, so a table it
+    filled holds loci the snapshot never answers, and a re-derivation from the snapshot read each such
+    subject as `lost_allele` although its primary placement did not move. The fresh side is already
+    primary-only (every link drops them now), so the recorded side gets the same filter, and the
+    survivors take consecutive `locus_index` values in their recorded order: `locus_index` is a fact
+    field, and a patch locus sorting first (`HSCHRX_…` before `X`) would otherwise move every index
+    after it. A subject with nothing on the primary assembly keeps every row, since there is nothing
+    else to compare, and is compared as before.
+    """
+    ordered = sorted(rows, key=lambda r: r.locus_index)
+    kept = [row for row in ordered if not _off_primary(row)]
+    if not kept or len(kept) == len(ordered):
+        return list(rows), 0
+    return [row.model_copy(update={"locus_index": i}) for i, row in enumerate(kept)], len(ordered) - len(kept)
+
+
 def _rederived_drift(
     before: Mapping[tuple, Sequence[ResolutionRow]],
     after: Sequence[ResolutionRow],
@@ -138,8 +170,8 @@ def _rederived_drift(
     skip: Collection[tuple] = (),
     mint: Mint = no_mint,
     read_window: ReadWindow | None = None,
-) -> tuple[list[SubjectDrift], int]:
-    """`(what moved, how many subjects were re-asked)` between a recorded table and a fresh one.
+) -> tuple[list[SubjectDrift], int, dict[str, int]]:
+    """`(what moved, how many subjects were re-asked, off-primary loci left out)` between two tables.
 
     Compared **only** over subjects present on both sides and not in `skip`. A recorded subject the run
     could not ask about this time produces no fresh row at all — the three branches that deliberately
@@ -150,6 +182,10 @@ def _rederived_drift(
     in `after` by the time this runs, so without it every un-asked subject would still land in the
     denominator and the warning would publish "N of M **re-asked**" over an M that includes subjects
     nothing asked. A count that travels with a finding has to be the count the sentence names.
+
+    The recorded side is read through `_primary_rows` (RM400): a locus on a patch or alt contig is left
+    out of the comparison, and the third value counts them per compared subject's `variant_key`, so the
+    report can say what the fresh table no longer carries rather than calling it a lost allele.
     """
     skipped = set(skip)
     fresh: dict[tuple, list[ResolutionRow]] = {}
@@ -157,16 +193,20 @@ def _rederived_drift(
         fresh.setdefault(merge_key(row), []).append(row)
     drift: list[SubjectDrift] = []
     compared = 0
-    for key, old_rows in before.items():
+    off_primary: dict[str, int] = {}
+    for key, recorded in before.items():
         new_rows = fresh.get(key)
         if new_rows is None or key in skipped:
             continue
         compared += 1
+        old_rows, left_out = _primary_rows(recorded)
+        if left_out:
+            off_primary[old_rows[0].variant_key] = left_out
         was, now = _render_facts(old_rows), _render_facts(new_rows)
         if was != now:
             case = _drift_case(old_rows, new_rows, mint=mint, read_window=read_window)
             drift.append(SubjectDrift(old_rows[0].variant_key, was, now, RESPELLED_BY_CASE[case], case))
-    return sorted(drift, key=lambda d: d.variant_key), compared
+    return sorted(drift, key=lambda d: d.variant_key), compared, dict(sorted(off_primary.items()))
 
 
 @dataclass

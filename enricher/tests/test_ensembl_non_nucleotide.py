@@ -8,6 +8,7 @@ an empty alt (`rs2100212723`, `T`), `<.>` (`rs1553186440`), an IUPAC placeholder
 `N`-masked chrY `ref` (`rs1603142144`). Domain constants, not counts.
 """
 
+import logging
 from pathlib import Path
 
 import httpx
@@ -50,12 +51,47 @@ def test_the_predicate_keeps_only_the_nucleotide_half(ref: str, alts: list[str],
 
 
 def test_rest_withholds_novariation_and_counts_it_apart_from_an_unreadable_anchor() -> None:
+    payload = {"mappings": [_mapping("1", 2651767, "dbSNP_novariation"), _mapping("1", 2651800, "C/T")]}
+    loci, anchor_withheld, unplaceable, off_primary = _loci_from_rest(payload, _never_read)
+    assert loci == [{"chrom": "1", "start": 2651800, "ref": "C", "alts": "T"}]
+    assert (anchor_withheld, unplaceable, off_primary) == (0, 1, 0)
+
+
+def test_rest_drops_a_patch_or_alt_contig_mapping_and_counts_it() -> None:
+    """RM400 (S132). REST maps an rsID onto GRCh38 patch and alt contigs too, which no snapshot carries.
+
+    Until RM400 the patch-contig mapping here was written as a locus, so the rsID's loci depended on
+    which link answered, and a table REST filled met the snapshot's re-derivation as `lost_allele`.
+    The off-primary indel is dropped before its anchor is read (`_never_read` would raise).
+    """
     payload = {
-        "mappings": [_mapping("1", 2651767, "dbSNP_novariation"), _mapping("HSCHR1_1_CTG3", 212341, "C/T")]
+        "mappings": [
+            _mapping("17", 43094464, "C/T"),
+            _mapping("HSCHR17_1_CTG5", 212341, "C/T"),
+            _mapping("HG76_PATCH", 900, "-/A"),
+            _mapping("chrUn_KI270742v1", 5, "G/A"),
+        ]
     }
-    loci, anchor_withheld, unplaceable = _loci_from_rest(payload, _never_read)
-    assert loci == [{"chrom": "HSCHR1_1_CTG3", "start": 212341, "ref": "C", "alts": "T"}]
-    assert (anchor_withheld, unplaceable) == (0, 1)
+    loci, anchor_withheld, unplaceable, off_primary = _loci_from_rest(payload, _never_read)
+    assert loci == [{"chrom": "17", "start": 43094464, "ref": "C", "alts": "T"}]
+    assert (anchor_withheld, unplaceable, off_primary) == (0, 0, 3)
+    # Every primary contig is kept, the mitochondrion included, under either spelling REST might use.
+    for chrom in [*map(str, range(1, 23)), "X", "Y", "MT"]:
+        kept, *_counts = _loci_from_rest({"mappings": [_mapping(chrom, 100, "G/A")]}, _never_read)
+        assert [locus["chrom"] for locus in kept] == [chrom], chrom
+
+
+def test_an_rsid_mapped_only_off_the_primary_assembly_is_an_answered_empty(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The snapshot holds no row for it either, so `[]`, the same as RM271's no-variation arm."""
+    resolver = EnsemblResolver()
+    resolver._client = httpx.Client(
+        transport=_rest_only({"mappings": [_mapping("HSCHR6_MHC_COX", 7, "C/T")]})
+    )
+    with caplog.at_level(logging.WARNING, logger="just_dna_enricher.ensembl"):
+        assert resolver.resolve_rsid_rest("rs9999999") == ([], "ensembl-rest")
+    assert any("patch or alt contig" in r.getMessage() and "RM400" in r.getMessage() for r in caplog.records)
 
 
 def _rest_only(payload: dict) -> httpx.MockTransport:

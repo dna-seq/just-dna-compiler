@@ -41,6 +41,15 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-07 — RM400: live REST no longer writes loci on GRCh38 patch and alt contigs, and a re-derivation leaves recorded ones out (patch, uncut)
+
+- **Live Ensembl REST drops a mapping off the GRCh38 primary assembly** (`HSCHR17_1_CTG5`, `HG76_PATCH`)
+  instead of writing it as a locus (RM400, S132), as the snapshot and the tier's other readers already do.
+  An rsID REST maps only there is written `not_found`, as the snapshot answers it.
+- **`enrich --rederive` leaves a recorded off-primary locus out of the comparison** and logs one warning
+  counting them. A table REST filled on 0.7 or 0.8.0 no longer reads such a subject as `lost_allele`; the
+  committed table drops the patch rows. No drift arm, carry reason, result field or warning code is added.
+
 ## 2026-11-07 — RM403: every retry writes a line, and every give-up says how many attempts and how long (patch, uncut)
 
 - **An enricher request that is retried now says so**, at WARNING on the `just_dna_enricher.net` logger:

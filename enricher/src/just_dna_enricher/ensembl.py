@@ -24,7 +24,7 @@ from typing import Protocol, runtime_checkable
 
 import httpx
 from just_dna_format.vocab import ALLELE_PATTERN
-from just_dna_format.vrs import refget_accession
+from just_dna_format.vrs import contig_length, refget_accession
 from tenacity import retry, wait_exponential_jitter
 
 from just_dna_enricher.clingen_allele import anchor_indel
@@ -189,7 +189,7 @@ class EnsemblResolver(Withholding):
             logger.info("V1 REST for %s not asked: Ensembl's Retry-After has not passed", rsid)
             return None, None
         try:
-            loci, withheld, unplaceable = self._rest_rsid(rsid)
+            loci, withheld, unplaceable, off_primary = self._rest_rsid(rsid)
         except httpx.HTTPStatusError as exc:
             asked = retry_after_seconds(exc)
             if asked is not None:
@@ -217,6 +217,18 @@ class EnsemblResolver(Withholding):
             )
             if not loci:
                 return None, "ensembl-rest"
+        if off_primary:
+            # RM400. A mapping on a GRCh38 patch or alt contig is no locus here, as it is none to the
+            # snapshot, a primary-assembly VCF or the tier's other readers. Permanent, so an rsID left
+            # with no primary mapping is the answered-empty `[]` the snapshot would also give.
+            log = logger.warning if not loci else logger.info
+            log(
+                "V1 REST for %s: %d mapping(s) on a GRCh38 patch or alt contig (off the primary assembly, "
+                "which no snapshot carries) are not loci (RM400)%s",
+                rsid,
+                off_primary,
+                "; no primary-assembly mapping is left, so it is written as not found" if not loci else "",
+            )
         if unplaceable:
             # RM271. A mapping with no nucleotide allele (`dbSNP_novariation`, an `N` run) is not a
             # locus. Permanent, unlike an unreadable anchor, so an rsID left with none is the existing
@@ -286,7 +298,7 @@ class EnsemblResolver(Withholding):
         retry=retry_if_transient_within(),
         reraise=True,
     )
-    def _rest_rsid(self, rsid: str) -> tuple[list[dict], int, int]:
+    def _rest_rsid(self, rsid: str) -> tuple[list[dict], int, int, int]:
         assert self.gate is not None
         self.gate.wait()
         resp = self._http().get(
@@ -344,11 +356,16 @@ def _placeable_alleles(ref: str | None, alts: Iterable[str]) -> tuple[str, list[
 
 def _loci_from_rest(
     payload: dict, read_base: Callable[[str, int], str | None]
-) -> tuple[list[dict], int, int]:
+) -> tuple[list[dict], int, int, int]:
     """Parse Ensembl REST /variation mappings into GRCh38 loci, deterministically ordered.
 
     Returns the loci, the number of mappings withheld because a one-sided indel could not be
-    anchored (RM268), and the number withheld because no nucleotide allele is left (RM271). REST states an insertion as `-/C` with `start = end + 1` and a deletion as
+    anchored (RM268), the number withheld because no nucleotide allele is left (RM271), and the number
+    dropped because they sit off the primary assembly (RM400). A GRCh38 mapping on a patch or alt contig
+    (`HSCHR17_1_CTG5`, `HG76_PATCH`) is no locus: no Ensembl snapshot carries one, a primary-assembly VCF
+    never joins one, and `gene_spans`, `pharmvar` and the ClinVar-GKM build drop them, so keeping it here
+    made which link answered decide an rsID's loci. The test is `contig_length`, the primary-contig
+    table, read before any anchor base, so an off-primary indel costs no sequence read. REST states an insertion as `-/C` with `start = end + 1` and a deletion as
     `AGTAAG/-` over `[start, end]`; in both the base before the event sits at `start - 1`, which is
     `anchor_indel`'s convention (the interbase point is the preceding base). Every allele is prefixed
     with that base, so a mixed string such as `-/G/GT` anchors whole; a string with no `-`
@@ -359,6 +376,7 @@ def _loci_from_rest(
     alleles_placed: list[tuple[str, int, str, str]] = []
     withheld = 0
     unplaceable = 0
+    off_primary = 0
     for m in payload.get("mappings", []):
         if m.get("assembly_name") != _ASSEMBLY:
             continue
@@ -368,6 +386,9 @@ def _loci_from_rest(
         if chrom is None or start is None or not alleles or not alleles[0]:
             continue
         chrom, start = str(chrom), int(start)
+        if contig_length(chrom, _ASSEMBLY) is None:
+            off_primary += 1
+            continue
         if "-" in alleles:
             anchored = _anchor_rest_alleles(chrom, start, alleles, read_base)
             if anchored is None:
@@ -383,7 +404,7 @@ def _loci_from_rest(
     # RM381: a string with no `-` is one joint frame (`TCTT/T/TCTTCTT`), every ALT padded to one ref; each
     # ALT is handed on in its own spelling and regrouped by it, across mappings, as the snapshot readers
     # do, so two mappings spelling one allele give one locus. `per_alt_loci` sorts by (chrom, start, ref).
-    return per_alt_loci(alleles_placed), withheld, unplaceable
+    return per_alt_loci(alleles_placed), withheld, unplaceable, off_primary
 
 
 def _anchor_rest_alleles(

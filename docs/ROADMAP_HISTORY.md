@@ -34,6 +34,46 @@ up.
 
 Patches on `main` after the 0.8.0 cut (2026-11-05), newest first.
 
+## RM400 — the REST rung wrote placements on GRCh38 patch and alt contigs, which no snapshot carries, so a re-derivation reported a lost allele that did not move
+
+**SHIPPED 2026-11-07 on `main`, uncut — a patch, both halves (S132, just-dna-registry's lead).** Owner
+enricher, severity low.
+
+**The class: one link keeps what every other reader of the tier drops.** `_loci_from_rest` kept any
+mapping whose `assembly_name` is GRCh38 and never looked at `seq_region_name`, so a substitution REST
+mapped onto a patch or alt contig was written as a locus (an indel there was already withheld, since its
+anchor base has no refget accession). No Ensembl snapshot carries such a contig, a primary-assembly VCF
+never joins one, and `gene_spans`, `pharmvar` and the ClinVar-GKM build drop them. So which link answered
+decided an rsID's loci. The registry met it as 11 `lost_allele` subjects in 4 modules: 0.7 tables REST had
+answered, re-derived from the 0.8 snapshot, whose primary placement had not moved. Its gate holds
+`lost_allele`, so those 4 modules were refused.
+
+**Instances (two halves):**
+
+- **The write half.** `_loci_from_rest` drops a mapping whose contig is not in `contig_length`'s GRCh38
+  primary table, before any anchor read, and returns the count as a fourth value. `resolve_rsid_rest` logs
+  it (WARNING when no primary mapping is left, and the rsID is the answered-empty `[]`, as the snapshot
+  answers it; INFO otherwise).
+- **The design half, the pm's default taken as is.** The fix alone would not clear the registry's 4
+  modules, since their tables already hold the patch loci. `_rederived_drift` reads the recorded side
+  through `_primary_rows`: a locus on a patch or alt contig of a tabled build is left out, the survivors
+  are renumbered in their recorded order (`locus_index` is a fact field, and `HSCHRX_…` sorts before
+  `X`), and the third return value counts what was left out per `variant_key`. The orchestration logs
+  one WARNING with the count, the subjects and the denominator, since the committed table is that many
+  rows shorter. A subject with nothing on the primary assembly is compared whole, as before. Neither a new
+  drift arm nor a carry reason was added, so RM394's vocabulary is unchanged.
+
+**The mechanism:** `test_ensembl_non_nucleotide.py` asserts the patch, alt and unplaced mappings are
+dropped and counted with no anchor read, every primary contig kept, and an off-primary-only rsID answered
+`[]` with its line. The test there that pinned a patch-contig locus as kept now uses a primary one.
+`test_rederive_off_primary.py` asserts the comparison on its own (the left-out count, the renumbering, a
+real move still reported, the off-primary-only subject compared whole, another build untouched) and end
+to end: an offline `--rederive` over a table holding a patch row beside the primary one reports no drift,
+one RM400 line, and commits the primary row only. Without the recorded-side filter that test reproduces
+the registry's `lost_allele`.
+
+**Residuals** none
+
 ## RM403 — a retried request left no log line, and a give-up said neither how many attempts nor how long
 
 **SHIPPED 2026-11-07 on `main`, uncut — a patch (S133, just-dna-registry's lead).** Owner enricher, severity
