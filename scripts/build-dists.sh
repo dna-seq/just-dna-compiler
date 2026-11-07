@@ -6,6 +6,8 @@
 # the names are read from `[tool.uv.workspace] members`, so a new member needs no edit here. Names given
 # as arguments build only those members, for a cut that moves only some packages.
 #
+# It builds into this clone's own `dist/`, and refuses a package whose directory holds uncommitted files.
+#
 # `dist/` is wiped first: `uv publish` uploads everything in it, so an earlier build's files would
 # ride along. Never build into a `dist/` you mean to keep.
 #
@@ -29,13 +31,18 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ALARM="${WHEEL_NONPY_ALARM_PCT:-3}"
 cd "$ROOT"
 
-mapfile -t PACKAGES < <(python3 - <<'PY'
+declare -A MEMBER_DIR
+PACKAGES=()
+while read -r name dir; do
+    PACKAGES+=("$name")
+    MEMBER_DIR[$name]="$dir"
+done < <(python3 - <<'PY'
 import tomllib
 from pathlib import Path
 
 members = tomllib.loads(Path("pyproject.toml").read_text())["tool"]["uv"]["workspace"]["members"]
 for member in members:
-    print(tomllib.loads((Path(member) / "pyproject.toml").read_text())["project"]["name"])
+    print(tomllib.loads((Path(member) / "pyproject.toml").read_text())["project"]["name"], member)
 PY
 )
 if [ "${#PACKAGES[@]}" -eq 0 ]; then
@@ -53,6 +60,19 @@ if [ "$#" -gt 0 ]; then
     done
     PACKAGES=("$@")
 fi
+
+# A dist is built from the working tree, not from a commit, and this clone is shared with other seats.
+# So a package whose directory holds anything uncommitted (a change, or a file git neither tracks nor
+# ignores) is refused rather than built: the dist is then exactly what HEAD says.
+for pkg in "${PACKAGES[@]}"; do
+    dirty="$(git status --porcelain -- "${MEMBER_DIR[$pkg]}")"
+    if [ -n "$dirty" ]; then
+        echo "build-dists: $pkg's directory has uncommitted files, so its dist would not be HEAD's:" >&2
+        echo "$dirty" >&2
+        exit 1
+    fi
+done
+echo "== building at $(git rev-parse --short HEAD)"
 
 rm -rf dist
 for pkg in "${PACKAGES[@]}"; do
