@@ -2051,6 +2051,50 @@ snapshot's 4.1.2 rows and the API's rows hold the same numbers under two labels,
 label is a decision: the release its numbers match today (`gnomad_v4.1.2_constraint`, which needs re-checking
 whenever gnomAD moves), or a route label that claims no release. RM410 does not depend on it.
 
+**Sized, the pm (2026-11-07): a patch in 0.8.2, severity medium.** A consumer who reads `v2.1.1` applies that
+release's LOEUF cutoffs to v4 numbers, and the two releases' recommended cutoffs differ. Nothing a reader of the
+schema sees moves: a constant's value, a warning's text and a test. The relabel is a corrected derivation, so
+Principle 3 lets it ship in any release, declared.
+
+- **The label claims a route, not a release** (`gnomad_api_constraint`, or the builder's spelling). The API
+  states no release in what it returns, and it has already changed release without notice. The 0.5.0 label was a
+  recalled release, and so would a measured `4.1.2` be: true until gnomAD next moves the API. Rejected: naming
+  the release its numbers match today.
+- **Old rows are counted, not rewritten.** The pass counts `gnomad_v2.1.1_constraint` as its own, so a re-run adds
+  no second row. Deleting the sidecar regenerates it under the new label. There is no automatic relabel: an old
+  row holds whatever the API served on its `fetched_at` date, and no label can name that release.
+- **Declared, not silent:** the CHANGELOG and `INTEGRATION_0_8.md`'s known issues say that a row labelled
+  `gnomad_v2.1.1_constraint` holds the live API's numbers as of its `fetched_at` date, v4.x and never v2.1.1.
+- **The premise goes with it:** `@constraint-two-releases` in AGENT_NOTES, the test that pins the two routes as
+  different releases, and the fallback warning's "serves v2.1.1" text. CLAUDE.md's headline line is the
+  maintainer's to change; the lead hands it over.
+
+## RM418 — every NCBI client builds its own pacing gate, so two in one process pace against two budgets
+
+**Filed by the pm (2026-11-07)** from the registry lead's ask (agent-chat, 638423336, via triage): RM404 in a 0.8.x
+patch, because the registry runs an upgrade sweep's online modules one at a time while the dbSNP merge check builds
+an unshared client per run. RM404 stays in 0.9, since a new public parameter never lands on `main`; this is the
+part a patch can carry.
+
+**Severity** low · **Status** open — **a patch**, the next on `main` · **Owner** enricher (`eutils.EutilsClient`)
+· **Motivating case** the registry's upgrade sweep · *related* RM404, RM398, RM401
+
+**The gap.** `EutilsClient.__post_init__` makes a fresh `PacingGate` whenever it is not handed one, and both callers
+build their own client (`identifiers.check_rsids`, and the literature pass). NCBI limits requests per API key or per
+address, not per client, so two clients in one process each pace to the full rate and together exceed it. A host
+running enrichments in parallel must serialize them, or be throttled. Since RM398 the same client is also the
+placement witness's.
+
+**What it would be.** A client that builds its own gate takes the process's gate for its interval instead: one
+private, module-level gate per `min_request_interval`, made under a lock on first use. The gate already locks the
+bookkeeping and not the sleep (`@shared-pacing-gate`), so threads share it safely. No public name moves, and a
+gate handed in explicitly is still used as handed. Test: two clients built without a gate share one, and requests
+from both, run on two threads, are spaced by the interval.
+
+**What it does not do.** It helps only inside one process. A host that runs enrichments as separate processes keeps
+its lock until RM404 lets it pass one client in; the registry was asked which it does (2026-11-07). The sequence
+proxy's missing timeout stays RM404's.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.

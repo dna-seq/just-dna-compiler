@@ -156,6 +156,9 @@ severity is low. What it buys is chrX and chrY metrics for the first time, and g
 - **The live-route question is already answered.** The live `gnomad_constraint` API serves v2.1.1
   (`API_CONSTRAINT_DATASET_LABEL`), not 4.1, so moving the snapshot to 4.1.2 crosses nothing. The two routes keep
   different labels, as now.
+  **Corrected, the pm (2026-11-07, the same evening): this line was false.** The pm took it from
+  `@constraint-two-releases` without asking the API. The lead measured that the API serves 4.1.1 or later, so its
+  rows' `gnomad_v2.1.1_constraint` label is the false one. That is RM417. RM410's build did not rest on the line.
 - **The build must also handle one thing the note did not name: a re-run over a module that already holds 4.1
   rows.** `enrich_gene_metrics` counts a gene as done only when its row carries one of the pass's two current
   labels (`pass_datasets`, `gene_metrics.py`). Once the snapshot says 4.1.2, a 4.1 row is no longer the pass's, so
