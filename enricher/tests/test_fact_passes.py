@@ -210,14 +210,15 @@ def test_gene_metrics_from_the_snapshot_offline(tmp_path: Path, constraint_cache
     assert brca1.oe_lof_lower <= brca1.oe_lof <= brca1.loeuf
 
 
-def test_snapshot_and_api_are_labelled_as_the_different_releases_they_are(
+def test_snapshot_and_api_are_labelled_as_the_different_routes_they_are(
     tmp_path: Path, constraint_cache: Path
 ) -> None:
-    """The live API serves v2.1.1 constraint; the bulk file serves v4.1. They must not share a label.
+    """The snapshot names its release; the API names none (RM417). They must not share a label.
 
-    Checked against both real sources: same gene, same MANE transcript, different numbers. Recording
-    them under one `dataset` would put two different facts under one name — and `dataset` is inside
-    the fact set precisely to stop that.
+    The recorded API payload (2026-08) and the 4.1 slice give one gene on one MANE transcript different
+    numbers, 4.1.1+ against 4.1. The test used to call the API side v2.1.1, a recall that RM417's
+    measurement refuted; what holds is that the API's answer names no release, so it gets a route label
+    and never a release a snapshot could also state. `dataset` is inside the fact set to keep them apart.
     """
     gene_payload = json.loads((_ASSETS / "gnomad_gene_constraint_payload.json").read_text())
 
@@ -370,7 +371,36 @@ def test_a_failed_provisioning_degrades_to_the_api_and_says_which_release(
         )
     assert [r.dataset for r in result.rows] == [API_CONSTRAINT_DATASET_LABEL]
     message = "\n".join(r.getMessage() for r in caplog.records)
-    assert "provisioning failed" in message and "v2.1.1" in message
+    assert "provisioning failed" in message and "names no release" in message
+    assert "v2.1.1" not in message  # RM417: the API serves 4.1.1+, so the old warning stated a falsehood
+
+
+def test_rm417_an_api_row_says_no_release_and_an_old_v2_1_1_row_is_the_passs_own(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """An API row is labelled `gnomad_api_constraint`, and a row the pass wrote before RM417 under
+    `gnomad_v2.1.1_constraint` counts as done, so a re-run adds no second row beside it."""
+    gene_payload = json.loads((_ASSETS / "gnomad_gene_constraint_payload.json").read_text())
+    client = _mock_client(lambda _r: httpx.Response(200, json=gene_payload))
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    (spec / "variants.csv").write_text("rsid,genotype,state,conclusion,gene\nrs1,A/G,risk,x,BRCA1\n")
+
+    fresh = enrich_gene_metrics(spec, constraint_cache=tmp_path / "absent", download=False, client=client)
+    assert [r.dataset for r in fresh.rows] == ["gnomad_api_constraint"]
+
+    sidecar = spec / "gene_metrics.csv"
+    sidecar.write_bytes(sidecar.read_bytes().replace(b"gnomad_api_constraint", b"gnomad_v2.1.1_constraint"))
+    before = sidecar.read_bytes()
+
+    def no_fetch(*_args, **_kwargs):
+        raise AssertionError("a row under the retired label was refetched")
+
+    monkeypatch.setattr(gene_metrics.GnomadClient, "fetch_gene_constraint", no_fetch)
+    rerun = enrich_gene_metrics(spec, constraint_cache=tmp_path / "absent", download=False, client=client)
+
+    assert [(r.gene, r.dataset) for r in rerun.rows] == [("BRCA1", "gnomad_v2.1.1_constraint")]
+    assert sidecar.read_bytes() == before
 
 
 def test_gene_metrics_round_trips_through_its_csv(tmp_path: Path, constraint_cache: Path) -> None:

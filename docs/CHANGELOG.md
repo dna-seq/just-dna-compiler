@@ -51,6 +51,18 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 - **`bins_ungrounded` no longer says "no bin pmid" when a bin carries one** (RM415, S137): with one bin
   cited, the clause reads "carry no grounding evidence of their own (…; N other bin(s) do cite one)".
 
+## 2026-11-07 — RM417: gnomAD API constraint rows stop claiming v2.1.1 (patch, uncut; a corrected label)
+
+- **Gene-metrics rows taken from the live gnomAD API are labelled `gnomad_api_constraint`** (RM417), not
+  `gnomad_v2.1.1_constraint`. The API serves gnomAD 4.1.1 or later: its answer for chrX's DMD, a gene no release
+  before 4.1.1 has constraint for, is 4.1.2's to every digit. The answer names no release, so the label names
+  the route.
+- **Declared, per the charter's staleness clause:** a row already labelled `gnomad_v2.1.1_constraint`, in any
+  module enriched since 0.5.0, holds whatever the API served on its `fetched_at` date, a v4.x number and never
+  v2.1.1. Nothing rewrites it: a re-run counts it as done and adds nothing beside it. To relabel a module,
+  delete its `gene_metrics.csv` and enrich again, which moves its fact hash. `INTEGRATION_0_8.md` § 4 carries
+  it as a known issue.
+
 ## 2026-11-07 — RM410, RM416: gnomAD constraint 4.1.2, and `--pin` taken or refused (patch, uncut)
 
 - **The constraint snapshot is gnomAD 4.1.2** (RM410), was 4.1: 19,511 genes where 4.1 had 18,111, chrX and

@@ -9,13 +9,12 @@ live API as the fallback, rather than the other way round.
 Snapshot first, live second — the same ordering rule the resolver chain uses, and for the same reason:
 a local hit costs nothing and leaves the rate limit alone for the passes that genuinely need it.
 
-**The two routes are not interchangeable, and the table says so.** Checked against both: the bulk v4.1
-file and the live `gnomad_constraint` field return different numbers for the same gene on the same
-MANE transcript, because the live field serves **v2.1.1** constraint while v4.1 constraint ships only
-in the bulk file. So a row records which release it came from in `dataset` — `gnomad_v4.1_constraint`
-from the snapshot, `gnomad_v2.1.1_constraint` from the API — and a module that gets the API fallback
-because no snapshot was provisioned can *see* that it holds older numbers rather than silently
-believing they are v4.1. This is exactly the confusion `dataset` is in the fact set to prevent.
+**The two routes are not interchangeable, and the table says so.** A row records where it came from in
+`dataset`: the snapshot's own release (`gnomad_v4.1.2_constraint` for the lane's default since RM410), or
+`gnomad_api_constraint` from the live `gnomad_constraint` field, which names no release. The API row
+was labelled `gnomad_v2.1.1_constraint` until RM417, a recall that measurement refuted: the API serves
+gnomAD 4.1.1 or later, and an API row of that label holds whatever it served on its `fetched_at`. This
+is exactly the confusion `dataset` is in the fact set to prevent.
 
 The gene set comes from the `gene` column of `variants.csv`. That is the module *saying which genes it
 is about*; querying anything else would be inventing scope the author did not ask for.
@@ -39,6 +38,7 @@ from just_dna_format.spelling import gene_key
 
 from just_dna_enricher.download import ensure_constraint_snapshot
 from just_dna_enricher.gnomad import (
+    _RETIRED_API_CONSTRAINT_DATASET_LABEL,
     API_CONSTRAINT_DATASET_LABEL,
     CONSTRAINT_DATASET_LABEL,
     GnomadClient,
@@ -243,8 +243,8 @@ CONSTRAINT_LANE = "gnomad_constraint"
 
 
 #: Every release label the constraint snapshot lane writes, `gnomad_v<release>_constraint`
-#: (`constraint_build._dataset_label`). The live API's `gnomad_v2.1.1_constraint` fits it too, and is
-#: already this pass's own.
+#: (`constraint_build._dataset_label`). The retired API label `gnomad_v2.1.1_constraint` fits it too, and
+#: is already this pass's own (RM417).
 _SNAPSHOT_RELEASE_LABEL = re.compile(r"gnomad_v\d+(?:\.\d+)*_constraint")
 
 
@@ -317,6 +317,10 @@ def enrich_gene_metrics(
     pass_datasets = {
         dataset or _snapshot_dataset(located) or CONSTRAINT_DATASET_LABEL,
         API_CONSTRAINT_DATASET_LABEL,
+        # RM417: an API row written before the relabel is still this pass's, so a re-run adds nothing
+        # beside it; deleting the sidecar is what relabels it. No automatic rewrite: the old rows were
+        # fetched on dates the pass cannot see the API's answer for.
+        _RETIRED_API_CONSTRAINT_DATASET_LABEL,
     }
     # By `gene_key` (RM363): a row written for `APOE` covers an authored `Apoe`.
     #
@@ -351,7 +355,7 @@ def enrich_gene_metrics(
             # **Provisioning, wired the same way `enrich()` wires the other two snapshots.**
             # `download.ensure_constraint_snapshot` existed from the day the download body was
             # generalized and had no caller, so a plain install fell straight through to the live API —
-            # which serves **v2.1.1** constraint where the snapshot serves **v4.1**. The pass then
+            # whose answer names no release (RM417), where the snapshot names its own. The pass then
             # warned about the release difference, correctly, for a snapshot it had never tried to get.
             # Best-effort like the others: a failure degrades to the API rather than sinking the pass.
             try:
@@ -360,8 +364,9 @@ def enrich_gene_metrics(
             except Exception as exc:
                 logger.warning(
                     "gnomAD constraint snapshot provisioning failed (%s); continuing with the live "
-                    "API, which serves v2.1.1 rather than v4.1.",
+                    "API, whose answer names no release (rows labelled %s).",
                     exc,
+                    API_CONSTRAINT_DATASET_LABEL,
                 )
         if reference is not None:
             from_snapshot = lookup_snapshot(reference, wanted)
@@ -446,9 +451,9 @@ def enrich_gene_metrics(
         )
     if from_api:
         logger.warning(
-            "%d gene(s) fell back to the live gnomAD API, which serves v2.1.1 constraint rather than "
-            "v4.1 (labelled %s). Provision the v4.1 snapshot with `just-dna-enricher gnomad "
-            "constraint build|publish` for current numbers.",
+            "%d gene(s) fell back to the live gnomAD API, whose answer names no release (labelled %s). "
+            "Provision the snapshot with `just-dna-enricher cache pull --only constraint` for numbers "
+            "that name their release.",
             len(from_api),
             API_CONSTRAINT_DATASET_LABEL,
         )

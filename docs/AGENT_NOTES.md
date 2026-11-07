@@ -3213,9 +3213,20 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   general lesson: "pathless ⇒ our bug" was a premise about the API, not a law — check what the API
   actually does before deriving severity from a field's absence.
 
-- `@constraint-two-releases` — **The two gene-constraint routes are different releases.** The live `gnomad_constraint` API field
-  serves **v2.1.1**; v4.1 ships only in the bulk TSV. They carry different `dataset` labels, and
-  `dataset` is inside the fact set. Don't "fix" a test that asserts they differ.
+- `@constraint-two-releases` — **The two gene-constraint routes are two routes, and only one names its release.** The
+  snapshot is the release it was built from (`gnomad_v<release>_constraint`, read off gnomAD's own file name);
+  the live `gnomad_constraint` API field is whatever gnomAD serves today and its answer names no release, so
+  its rows say `gnomad_api_constraint`. They carry different `dataset` labels, and `dataset` is inside the
+  fact set. Don't "fix" a test that asserts they differ.
+
+  **This entry said the API serves v2.1.1 from 0.5.0 to RM417, and it was a recall, never a measurement.**
+  gnomAD 4.1.1 (2026-03-25) had already recomputed constraint; on 2026-11-07 the 4.1.2 bulk file gave BRCA1
+  and MYH7 the exact numbers the 0.5.0 note had called v2.1.1, and the API answered chrX's DMD (no release
+  before 4.1.1 has chrX constraint) with 4.1.2's values to every digit. The pm sized RM410 on this entry
+  ("the live API serves v2.1.1, so the two-routes check is already answered"), and it held until someone
+  probed. Two rules come out of it: a release named for a source that does not name one is a guess, so the
+  label names the route instead; and an entry here that states a fact about a live service is a claim with
+  a date, to be re-measured before a decision rests on it (`@a-disagreement-with-a-document-may-be-in-the-instrument`).
 
 - `@suppression-from-merge-key` — **A pass's fetch-suppression set must be DERIVED from the merge key,
   never restated beside it.** `enrich_gene_metrics` merges on `(gene, dataset)` and decided "already

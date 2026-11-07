@@ -86,6 +86,64 @@ it; the copy-number kind scopes the same way. The HTT reference example's valida
 
 **Residuals** none
 
+## RM417 — the live gnomAD API's constraint is v4.1.1 or later, and its rows were labelled `gnomad_v2.1.1_constraint`
+
+**SHIPPED 2026-11-07 on `main`, uncut — a patch, a corrected label declared (the pm's sizing).** Owner enricher,
+severity medium.
+
+**Residuals** none
+
+**Built (the lead, 2026-11-07), to the pm's list.** `gnomad.API_CONSTRAINT_DATASET_LABEL` is
+`gnomad_api_constraint`; the old label is `_RETIRED_API_CONSTRAINT_DATASET_LABEL`, read only, in
+`enrich_gene_metrics`'s done set, so a re-run over pre-RM417 API rows adds nothing and nothing rewrites them.
+The two warnings no longer say "serves v2.1.1"; the 0.5.0 note in `gnomad.py`, the pass's docstring, the
+`gene-metrics` help, `@constraint-two-releases` and the user docs are corrected; `CHANGELOG` and
+`INTEGRATION_0_8.md` § 4 declare what an old row holds. The `CLAUDE.md` headline for
+`@constraint-two-releases` still reads "are different releases": that file is the maintainer's to edit on a
+seat's request, so the line was handed to them. Tests: `test_rm417_…` (a fresh API row's label; a v2.1.1 row
+re-run is byte-identical) and the provisioning-failure warning, both failing on 21f59761.
+
+**Filed by the lead (2026-11-07)** while building RM410; sized by the pm the same evening: "a patch in
+0.8.2, severity medium (a consumer reading v2.1.1 applies v2-era LOEUF cutoffs to v4 numbers)", the label a
+route label claiming no release.
+
+**Owner** enricher
+(`gnomad.API_CONSTRAINT_DATASET_LABEL`, `gene_metrics.py`) · *related* RM410, RM373, RM33
+
+**What was measured.** The 0.5.0 note in `gnomad.py` (2026-08-01) read the live API's BRCA1 numbers (pLI
+5.52e-38, LOEUF 0.928, mis_z 1.734) as "the widely-cited v2.1.1 LOEUFs" and labelled every API row
+`gnomad_v2.1.1_constraint`. gnomAD 4.1.2's bulk file gives BRCA1 exactly 5.5171e-38 / 0.92759 / 1.7336 and MYH7
+6.6432e-21 / 0.66247 / 7.3787, the note's MYH7 pair; and on 2026-11-07 the live API answered DMD, a chrX gene
+that no release before 4.1.1 has constraint for, with pLI 1, LOEUF 0.23540 and mis_z -5.4326, 4.1.2's values to
+every digit (HFE and MYH7 matched too; BRCA1's call returned 502). So the API serves 4.1.1 or later (the two
+share their metrics; 4.1.2 changed only ranks), and the v2.1.1 label is false. The 0.5.0 reading was a recall,
+not a measurement: 4.1.1 had been out since 2026-03-25.
+
+**What it touches.** Every `gene_metrics.csv` row a module took from the API fallback says v2.1.1 for 4.1.1+
+numbers; `dataset` is in the fact set, so correcting it moves those modules' fact hashes. After RM410 the
+snapshot's 4.1.2 rows and the API's rows hold the same numbers under two labels, and `@constraint-two-releases`
+("the routes must stay distinguishable") rests on the false premise. The API names no release, so the honest
+label is a decision: the release its numbers match today (`gnomad_v4.1.2_constraint`, which needs re-checking
+whenever gnomAD moves), or a route label that claims no release. RM410 does not depend on it.
+
+**Sized, the pm (2026-11-07): a patch in 0.8.2, severity medium.** A consumer who reads `v2.1.1` applies that
+release's LOEUF cutoffs to v4 numbers, and the two releases' recommended cutoffs differ. Nothing a reader of the
+schema sees moves: a constant's value, a warning's text and a test. The relabel is a corrected derivation, so
+Principle 3 lets it ship in any release, declared.
+
+- **The label claims a route, not a release** (`gnomad_api_constraint`, or the builder's spelling). The API
+  states no release in what it returns, and it has already changed release without notice. The 0.5.0 label was a
+  recalled release, and so would a measured `4.1.2` be: true until gnomAD next moves the API. Rejected: naming
+  the release its numbers match today.
+- **Old rows are counted, not rewritten.** The pass counts `gnomad_v2.1.1_constraint` as its own, so a re-run adds
+  no second row. Deleting the sidecar regenerates it under the new label. There is no automatic relabel: an old
+  row holds whatever the API served on its `fetched_at` date, and no label can name that release.
+- **Declared, not silent:** the CHANGELOG and `INTEGRATION_0_8.md`'s known issues say that a row labelled
+  `gnomad_v2.1.1_constraint` holds the live API's numbers as of its `fetched_at` date, v4.x and never v2.1.1.
+- **The premise goes with it:** `@constraint-two-releases` in AGENT_NOTES, the test that pins the two routes as
+  different releases, and the fallback warning's "serves v2.1.1" text. CLAUDE.md's headline line is the
+  maintainer's to change; the lead hands it over.
+
 ## RM416 — nine rebuild adapters ignored `--pin`, so a pinned build built the default and said nothing
 
 **SHIPPED 2026-11-07 on `main`, uncut — a patch (the maintainer: "But why is version of publication hardcoded into

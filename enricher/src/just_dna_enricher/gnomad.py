@@ -69,9 +69,10 @@ DEFAULT_FREQUENCY_SET = "joint"
 # The `dataset` FACT stamped onto every emitted row: the release the numbers describe, not the API we
 # happened to call. A v4.1 count and a v2.1.1 count are different facts, so this is inside the fact set.
 FREQUENCY_DATASET_LABEL = "gnomad_v4.1_joint"
-# The two constraint routes serve DIFFERENT RELEASES, so they get different labels. This was checked,
-# not assumed, and it is the opposite of what the plan expected: the plan wanted a test asserting the
-# snapshot and the live API agree for BRCA1 within float tolerance. They do not, and they should not.
+# The two constraint routes get different labels, because nothing makes them the same release: the
+# snapshot is the release it was built from, and the API is whatever gnomAD serves today. In August they
+# did differ, which is the opposite of what the plan expected (a test asserting the snapshot and the live
+# API agree for BRCA1 within float tolerance):
 #
 #   BRCA1   bulk v4.1 TSV: pLI 1.55e-34, LOEUF 0.885, mis_z 2.338
 #           live API     : pLI 5.52e-38, LOEUF 0.928, mis_z 1.734
@@ -79,15 +80,25 @@ FREQUENCY_DATASET_LABEL = "gnomad_v4.1_joint"
 #           live API     : LOEUF 0.662, mis_z 7.379
 #
 # Same gene, same MANE transcript (ENST00000357654 for BRCA1) — so this is not a transcript-pick
-# difference. The live `gnomad_constraint` field serves **v2.1.1** constraint (0.93 and 0.66 are the
-# widely-cited v2.1.1 LOEUFs for these two genes); v4.1 constraint ships only in the bulk file. Since
-# `dataset` is inside `GENE_METRICS_FACT_FIELDS` precisely so a v4.1 number and a v2.1.1 number cannot
-# be confused, labelling API rows as v4.1 would record a false fact — and would make the fact-hash
-# claim two tables identical when they hold different numbers.
+# difference. **What it is a difference between was misread at 0.5.0, and corrected by RM417
+# (2026-11-07).** The note read the live numbers as "the widely-cited v2.1.1 LOEUFs" and labelled every
+# API row `gnomad_v2.1.1_constraint`; that was a recall, never a measurement. gnomAD 4.1.1 (2026-03-25)
+# recomputed constraint, and 4.1.2's bulk file gives BRCA1 exactly 5.5171e-38 / 0.92759 / 1.7336 and
+# MYH7 0.66247 / 7.3787, the pairs above; asked on 2026-11-07, the API answered chrX's DMD, which no
+# release before 4.1.1 has constraint for, with 4.1.2's numbers to every digit. So the two columns
+# above are 4.1 against 4.1.1+, and the API serves 4.1.1 or later.
+#
+# The API's answer names no release, so its rows carry a **route label that claims none** (the pm's
+# ruling on RM417): a measured "4.1.2" is true only until gnomAD moves the API without notice, and this
+# lane broke once already by naming a release it had recalled. `dataset` stays inside
+# `GENE_METRICS_FACT_FIELDS`, so the two routes still hash apart.
 #: The snapshot lane's default release (RM410: 4.1.2, the one `cache pull` brings), used only until a
 #: snapshot is provisioned; a provisioned snapshot's rows say its own `release.json` label (RM373).
 CONSTRAINT_DATASET_LABEL = "gnomad_v4.1.2_constraint"
-API_CONSTRAINT_DATASET_LABEL = "gnomad_v2.1.1_constraint"
+API_CONSTRAINT_DATASET_LABEL = "gnomad_api_constraint"
+#: The label API rows carried from 0.5.0 to RM417. Read only: a row still holding it is the pass's own
+#: (a re-run adds nothing), and it holds whatever the API served on its `fetched_at`, v4.x, never v2.1.1.
+_RETIRED_API_CONSTRAINT_DATASET_LABEL = "gnomad_v2.1.1_constraint"
 
 # The assembly gnomAD v4 coordinates are on. A source convention, so it lives here beside `covers_locus`
 # rather than in the pass that queries — and it is a *constant*, not a parameter, because there is one

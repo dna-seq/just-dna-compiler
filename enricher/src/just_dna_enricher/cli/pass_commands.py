@@ -285,10 +285,10 @@ def gene_metrics_(
 ) -> None:
     """Fill gene_metrics.csv for the genes variants.csv mentions (pass 3, snapshot then live API).
 
-    With no local snapshot the v4.1 one is downloaded from HuggingFace first, exactly as `enrich`
-    provisions the Ensembl and ClinVar snapshots — `--offline` is what turns that off, and then the pass
-    is snapshot-only. Reaching the live API instead means **v2.1.1** numbers, which the row's `dataset`
-    records; provisioning is what keeps a plain install on v4.1.
+    With no local snapshot the published one (gnomAD 4.1.2) is downloaded from HuggingFace first, exactly
+    as `enrich` provisions the Ensembl and ClinVar snapshots — `--offline` is what turns that off, and then
+    the pass is snapshot-only. Reaching the live API instead means numbers that name no release, labelled
+    `gnomad_api_constraint`; provisioning is what keeps a plain install on a named release.
     """
     try:
         result = enrich_gene_metrics(

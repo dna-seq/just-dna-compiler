@@ -2126,7 +2126,7 @@ at all:
 | Pass | With a snapshot | Without one, online | Without one, `--offline` |
 |---|---|---|---|
 | `enrich` | cache | provision, else live Ensembl/ClinVar/gnomAD | cache only |
-| `gene-metrics` | snapshot (4.1.2 since RM410) | provision, else live API (labelled v2.1.1, which is false: RM417) | snapshot only |
+| `gene-metrics` | snapshot (4.1.2 since RM410) | provision, else live API (`gnomad_api_constraint`, no release named: RM417) | snapshot only |
 | `pgx` | snapshot | live PharmVar/CPIC | **skipped, with a reason** |
 | `draft` | snapshot | live CPIC | skipped, with a reason |
 | `clinpgx check` | snapshot | provision (no live route exists — the API was retired) | skipped, with a reason |
@@ -2675,12 +2675,14 @@ gone dark mid-demo), and the warning names the consequence: older numbers, not n
 > logs a warning. `dataset` is inside the fact set precisely so these cannot be confused — labelling
 > both as v4.1 would record a false fact and make the fact-hash claim two different tables identical.
 >
-> **Refuted on 2026-11-07, open as [RM417](ROADMAP.md#rm417--the-live-gnomad-apis-constraint-is-v411-or-later-and-its-rows-are-labelled-gnomad_v211_constraint).**
+> **Refuted on 2026-11-07, fixed by [RM417](ROADMAP_HISTORY.md#rm417--the-live-gnomad-apis-constraint-is-v411-or-later-and-its-rows-were-labelled-gnomad_v211_constraint).**
 > The API's numbers are not v2.1.1. gnomAD 4.1.2's bulk file gives BRCA1 exactly 5.5171e-38 / 0.92759 /
 > 1.7336, and the live API answers chrX's DMD with 4.1.2's LOEUF 0.2354 to every digit, a gene no release
 > before 4.1.1 has constraint for. So the API serves 4.1.1 or later, and `gnomad_v2.1.1_constraint` on an API
 > row is a false label. The two routes did differ in August, as 4.1 against 4.1.1; the label named the wrong
-> one.
+> one. API rows are labelled `gnomad_api_constraint` since, a route label naming no release (the pm's ruling:
+> a measured "4.1.2" is true only until gnomAD moves the API); a row still labelled v2.1.1 holds whatever the
+> API served on its `fetched_at`, and a re-run keeps it.
 
 ### gnomAD constraint snapshot (`constraint_build.py`, `[dev]`)
 

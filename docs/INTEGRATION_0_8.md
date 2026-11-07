@@ -1220,6 +1220,15 @@ What 0.8 ships with, known and not fixed. Each line names its item; [RM_TOC.md](
   carries, so `--rederive` over a table REST had filled reads those subjects as `lost_allele`. 0.8.1 drops
   them at the REST rung and leaves them out of the comparison, counted. On 0.8.0, a `lost_allele` whose
   lost locus sits on a contig named like `HSCHR…` or `…_PATCH` is this one; upgrade and re-derive online.
+- **Gene-metrics rows labelled `gnomad_v2.1.1_constraint` do not hold v2.1.1 numbers (RM417, fixed in
+  enricher 0.8.2).** Every enricher since 0.5.0 labelled a row taken from the live gnomAD API that way; the
+  API serves gnomAD 4.1.1 or later, so such a row holds whatever the API served on its `fetched_at` date, a
+  v4.x number, never v2.1.1. A reader applying v2-era LOEUF cutoffs to these rows applies them to v4 numbers.
+  0.8.2 labels new API rows `gnomad_api_constraint`, which names no release, and leaves old rows alone: a
+  re-run adds nothing beside them. To relabel a module, delete its `gene_metrics.csv` and enrich again,
+  which moves its fact hash.
+- **The constraint snapshot moves to gnomAD 4.1.2 (RM410, enricher 0.8.2).** Not a defect: `cache pull`
+  brings 4.1.2 once published, and existing `gnomad_v4.1_constraint` rows are kept on a re-run.
 - **RM386's publish pinning has no live run yet (RM386).** It shipped with no practice publish to a
   throwaway Hugging Face repo, by the maintainer's decision. The next real snapshot publish is its first
   live run; if that publish fails, suspect this code first, and the fix is a patch.
