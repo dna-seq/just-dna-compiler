@@ -22,7 +22,7 @@ built / published; measured by hand that day, re-measured weekly. Behind then: c
 - `duckdb` (the engine) is blobless and unwatched. It is there to read source at `path:line`.
 
 **Watchers** (`.blueprints.toml`): `ga4gh-vrs` polls its trunk every 300 s. `polars --tags --tag-pattern '^py-'` and
-`duckdb-python --tags` say tags only, one wake per release (kit v0.1.119, #246; the clone pins v0.1.141 since 2026-11-07), a patch tagged on a version branch
+`duckdb-python --tags` say tags only, one wake per release (kit v0.1.119, #246; the clone pins v0.1.143 since 2026-11-08), a patch tagged on a version branch
 included.
 
 **Backlog: none.** Read entry by entry on 2026-11-04, unattended: polars `py-2.0.0-rc.1` through `py-2.1.0` with the
@@ -66,8 +66,8 @@ the plugin in step with us: ledgers `UPSTREAM_COMPILER.md`, `UPSTREAM_REGISTRY.m
 0.7.1 / compiler 0.7.2 / enricher 0.7.3, capped `<0.8`, and polars and duckdb `<2`, until both registry instances serve
 0.8. It is on our triage's `wake_from` (8de1fa80).
 
-**Push:** origin/main holds every liaison commit through b04bbf4a (pushed with the lead's 0.8.0 cut,
-2026-11-05). The liaison pushes only its own ledgers and notes, and only as a fast-forward that carries no other seat's
+**Push:** origin/main holds every liaison commit through fe38e101 (the liaison's own fast-forward, 2026-11-08;
+the ledger commits before it went out with the lead's pushes). The liaison pushes only its own ledgers and notes, and only as a fast-forward that carries no other seat's
 commit.
 
 **Role change read (v0.1.137, 2026-11-06):** the role adds "An in-house release" (the liaison takes the mechanical
