@@ -1913,6 +1913,93 @@ remaining class gets the same treatment — a plain column, on demand, one at a 
 
 Neither is built until a real module needs it.
 
+## RM398 — `placement_agreement` has no witness at dbSNP scale, so most placed rsIDs are compared with nothing
+
+**Severity** medium · **Status** open — **a minor**, for the pm to place · **Owner** enricher (`placement.py`, a
+new lane or client, ENRICHER.md § Placement agreement) · **Motivating case** S132 in
+CONSUMER_SUGGESTIONS_HISTORY.md (just-dna-registry's lead, 2026-11-07) · *related* RM267, RM292, RM305, RM385,
+RM399
+
+**The gap, as the registry measured it on 0.8.0.** The witnesses RM267 shipped are ClinVar and ClinVar-GKM,
+plus Ensembl REST online for a snapshot indel neither holds, which RM292 counts as self-consistent. ClinVar's
+VCF (2026-06-27) carries 2,645,243 distinct rsIDs against 1,172,660,304 records in the 0.8 Ensembl snapshot,
+about 0.23%. Across the registry's 46-module replay, 4,112 of 4,688 placed rsIDs (87.7%) had one witness only,
+and the six insertions that really moved between the two snapshots were held by neither loaded witness; four
+of them went unasked because REST timed out. Every one of the 34 records said 0 findings, which is true and
+says little. The check publishes its one-witness count, so nothing is misreported; what is missing is a witness
+whose reach is the snapshot's.
+
+**What settled the six.** The registry used the 1000G GRCh38 call set (positional, no rsIDs): it holds the
+0.8 event at all six loci and the pre-0.8 event at none. Triage asked NCBI's Variation Services
+(`api.ncbi.nlm.nih.gov/variation/v0/refsnp/<id>`) on 2026-11-07 for the same six: dbSNP's GRCh38 SPDI is the
+0.8 event for every allele of every one, compared by haplotype against the reference, and the pre-0.8 event
+for none. So both candidate witnesses below would have decided all six.
+
+**Candidates.**
+
+1. **dbSNP itself, as a snapshot lane**: NCBI's GRCh38 VCF, or its SPDI, read the way ClinVar-GKM is read.
+   It is the only source that states what an rsID is rather than that an event exists at a locus. Its size is
+   the Ensembl snapshot's order; measure the real file before choosing (`@probe-the-real-file`), and price it
+   with the lane's parents and stages (`CACHE_SURFACE.md`).
+2. **dbSNP online, per rsID**, through the refsnp endpoint above, asked the way REST is asked today: only for a
+   snapshot indel no loaded witness holds. No client here reads that endpoint yet.
+3. **A population call set as a positional witness for indels** (gnomAD sites, or 1000G as the registry used):
+   it witnesses that an event exists at a locus, not which rsID it is, so it can confirm one spelling but not
+   tie it to the rsID. On chr22 it held the pre-0.8 spelling and not the 0.8 one at 914 loci, which a
+   positional set cannot resolve.
+
+**Open questions.** Is dbSNP independent of a snapshot Ensembl built from dbSNP 157, or self-consistent in
+RM292's sense? It catches Ensembl's processing (RM267's class was exactly that) and cannot catch an error in
+dbSNP's own placement. Which of the three, or the online one first as REST was. **Residuals, to be stated at
+closure:** the snapshot keeping VEP's `SPDI` CSQ field (the registry's (d)) is the snapshot builder's,
+prepare-annotations, outside this repository; it normalises rather than witnesses, and would make candidate 1 a
+join.
+
+## RM399 — a release cannot declare that a reference snapshot it reads moved, so `needs_recompile` says nothing about re-deriving
+
+**Severity** medium · **Status** open — **a minor**, for the pm to place · **Owner** format
+(`release_records.py`, `vocab.VALID_RELEASE_CHANGE_KINDS`) with the enricher's default lanes as its subject ·
+**Motivating case** S132 in CONSUMER_SUGGESTIONS_HISTORY.md (just-dna-registry's lead, 2026-11-07) · *related*
+RM372, RM267, RM126, RM181, RM398
+
+**The gap.** `needs_recompile("0.7.0", "0.8.0")` declares 35 changes and none names RM372's snapshot switch,
+`resolution.csv` or a placement. That is the record doing its job: its five axes describe what the compiler
+does with a given spec, and a re-derivation changes the spec's derived input, for which the record has no axis.
+But 0.8 corrected a derivation there: RM267's insertions now land on dbSNP's event, and the registry measured
+roughly 38% of insertions on chr22 and chr9 as naming a different event across the switch. Principle 3 says a
+corrected derivation ships in any release but never silently, declared readable offline. 0.8 declares it in
+prose (INTEGRATION_0_8 § 1.29, the CHANGELOG), and a consumer's sweep, which reads the record, hears nothing.
+
+**What it would be.** A release states, beside its compiled-output changes, which reference lanes its enricher
+now reads at a different release (lane, old label, new label, the items the move corrects), and a reader asking
+across a span learns "re-derive" as well as "recompile". Whether that is a member of `release_records`, a field
+beside the five axes, or its own small record is the design question, and RM181's provenance tracker is a
+different one (what an *edit* moved about a module, not what a *release* moved about its inputs). Nothing here
+changes RM372's lane or any digest.
+
+**Sizing.** A new optional field or vocabulary member in the format tier: a minor, and an old-reader break if
+it is a new change kind, as `toolchain` was (INTEGRATION_0_8 § 1.11). P9: near free; no authored column.
+
+## RM400 — the REST rung writes placements on GRCh38 patch and alt contigs, which no snapshot carries, so a re-derivation reports a lost allele that did not move
+
+**Severity** low · **Status** open — **a patch** (a corrected derivation of a derived table, no new column or
+code), for the pm to place · **Owner** enricher (`ensembl._loci_from_rest`, `enrich/rederive_words.py`) ·
+**Motivating case** S132 in CONSUMER_SUGGESTIONS_HISTORY.md (just-dna-registry's lead, 2026-11-07) · *related*
+RM268, RM362, RM376, RM394
+
+**The gap.** `_loci_from_rest` keeps a mapping whose `assembly_name` is GRCh38 and does not look at
+`seq_region_name`, so a substitution mapped onto a patch or alt contig (`HSCHR17_1_CTG5`, `HG76_PATCH`) is
+written as a locus. An indel there is already withheld, because its anchor base has no refget accession. No
+Ensembl snapshot carries such a contig, a primary-assembly VCF never joins one, and the tier's other readers
+(`gene_spans`, `pharmvar`, the ClinVar-GKM build) drop off-primary placements. So which link answered decides
+an rsID's loci. The registry met it as 11 `lost_allele` subjects in 4 modules: 0.7 tables that REST had
+answered, re-derived from the snapshot, whose primary placement did not move. Its gate holds `lost_allele`, so
+those 4 modules were refused.
+
+**What it would be.** The REST rung drops a mapping off the primary assembly, counted, as the other readers do.
+**Open question:** a recorded patch-contig locus still meets every re-derivation as `lost_allele`; whether a
+lost locus off the primary assembly is its own drift arm or a carry reason (RM394's words) is the design half.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
