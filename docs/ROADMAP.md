@@ -2034,7 +2034,7 @@ our clients ask it with a gate each, the resolver (`ensembl.EnsemblResolver`, `E
 and the LD pass (`ld_pairs`, `LD_MIN_INTERVAL` 0.1 s). A run that resolves and fetches LD pairs at once, or a host
 running two enrichments in one process, paces each to the full rate.
 
-**Severity** low · **Status** open — **unsized** (the pm's) · **Owner** enricher (`net._service_gate` and every
+**Severity** low · **Status** open — **a patch, parked** (the pm, 2026-11-08) · **Owner** enricher (`net._service_gate` and every
 client that builds a `PacingGate` by default) · **Motivating case** RM418's build · *related* RM418, RM396, RM404
 
 **The gap, by client.** Each builds its own gate when not handed one: `ensembl`, `grch37`
@@ -2047,6 +2047,26 @@ is on `ncbi.nlm.nih.gov` but is not E-utilities, so whether it shares NCBI's add
 `net._service_gate(<service>, interval)` instead of `PacingGate(interval)`, keyed by service so two unrelated
 budgets at one interval stay apart, and the two Ensembl clients on one key. The enricher conftest already resets the
 registry per test. No public name moves, so it fits a patch; whether it is one, and which clients, is the pm's.
+
+**Sized, the pm (2026-11-08): parked, not built in 0.8.x now.**
+
+- **No run of ours meets it.** The enricher runs its passes one after another; the only thread pools are in two bulk
+  builders (`alphagenome_avi_build`, `opentargets_build`), and neither reaches Ensembl REST. So the resolver and the
+  LD pass never ask Ensembl at the same moment, and no other pair on the list does either. The defect needs a host
+  that runs two enrichments as threads in one process, which is the question put to the registry for RM418 and still
+  unanswered.
+- **No incident.** Nobody has reported a 429 from Ensembl, or from any service on the list, in a run where two of
+  our clients shared a process. RM418 had the registry's ask behind it; this has the mechanism only.
+- **The fix's own risk is the keying, not the code.** Each change is one line, but each key is a claim that two
+  clients spend one budget. A wrong key slows a run (two budgets paced as one); a missing one is today's state.
+  Half the list is unmeasured on exactly that point: `litvar`, `PmcIdConverterClient` and `PmcBiocClient` sit on NCBI
+  hosts but are not E-utilities, and `grch37` is its own host.
+- **Unparks when** either (a) a run reports a rate-limit refusal from a service on the list while two of our
+  clients shared a process, or (b) the registry says it runs enrichments as threads in one process. Either can
+  happen while this is parked, so the gate is honest (the gate audit has its row).
+- **When it unparks, start with the Ensembl pair** (resolver and `ld_pairs` on one key, `grch37` on its own): the
+  one pair whose shared per-address budget is documented. Each further client joins only with its service's limit
+  measured or quoted from its documentation, and a key per service, never one per interval.
 
 # Not format scope
 
@@ -2558,6 +2578,7 @@ possibly already satisfied, and the rest sound** — the sweep's value is mostly
 | **RM240** — the ClawBio nutrition panel in the corpus (parked 2026-11-05) | the corpus is asked for a nutrigenomics example, or RM188 unparks | **Sound.** The translation is already run. |
 | **RM266** — the phase-confusable pair set is dropped (parked 2026-11-05) | a consumer asks for the pairs as data rather than as a warning | **Sound.** S116 already came in through `Sn`. |
 | **RM281** — `clinicalVariants.zip` unread (parked 2026-11-05) | an author needs a row that archive carries and `summaryAnnotations.zip` does not | **Sound.** Both archives are public today. |
+| **RM419** — pacing gates per instance beyond NCBI (parked 2026-11-08) | a rate-limit refusal from a listed service in a run where two of our clients shared a process, or the registry running enrichments as threads in one process | **Sound.** Both can happen with today's gates; nothing needs the fix first. |
 | **RM282** — the PGx lane has one licence class (parked 2026-11-05) | someone runs the source survey its entry describes | **Sound.** The survey needs nothing built. |
 | **RM284** — no run-level place for a skip in `verification.json` (parked 2026-11-05) | a reader needs to know, from `verification.json` alone, that a run could not reach a source | **Sound.** Skips happen today. |
 | **RM287** — ClinGen dosage has no snapshot lane (parked 2026-11-05) | an offline deployment reports a dosage pass that never ran | **Sound.** `skipped_offline` already says so in every offline run. |
