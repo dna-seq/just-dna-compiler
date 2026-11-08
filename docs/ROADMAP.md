@@ -2072,6 +2072,47 @@ registry per test. No public name moves, so it fits a patch; whether it is one, 
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
 
+## RM420 — `cache pull` never fetches a newer published release over a whole cache
+
+**Filed by the lead (2026-11-08)** when the maintainer ran 0.8.2's own boundary step on this machine,
+`cache pull --only constraint --only clinvar --only civic --only strchive --only mitomap`, after gnomAD 4.1.2
+was published: it printed `on disk: …` and left `gnomad_constraint` at `gnomad_v4.1_constraint` (built by
+0.7.0) while `just-dna-seq/gnomad_constraint` serves `gnomad_v4.1.2_constraint`. STRchive is behind the same
+way (`strchive_v2.26.0` here, `strchive_v2.28.0` published). ClinVar, CIViC and MITOMAP matched the hub only
+because nothing newer had been published since their last pull.
+
+**Severity** medium · **Status** open — with the pm to size · **Owner** enricher (`download.ensure_parquet_snapshot`,
+`cache pull`, `cache prepare`) · **Motivating case** the 0.8.2 boundary on this machine · *related* RM410, RM372,
+RM339, RM411
+
+**The gap.** `ensure_parquet_snapshot` returns a cache at once when its parquet files are whole, its pull record
+complete, its repo unchanged and its manifest covers it, without reading the hub (RM339's "a cache whose pull
+record says the pull finished is trusted without touching the network"). RM372 re-pulls only when the
+**repository** moved. Nothing compares the local `release.json` with the published one, so once a machine has
+pulled a lane, no later release of that lane reaches it through `cache pull` or `cache prepare`.
+
+**What the documents promise instead.** Every one of these tells the operator that a pull moves a lane to the
+newer release, and each is a silent no-op on a machine that already holds the older one:
+
+- the 0.8.2 GitHub release notes, "What you must do at the boundary", step 2 (`cache pull --only constraint
+  --only opentargets`; Open Targets is new, so only constraint is affected);
+- `docs/INTEGRATION_0_8.md` § 4, "`cache pull` brings 4.1.2 once published", and the upgrade order's step 5,
+  "pull the lane first (`cache pull --only <lane>`)";
+- the derived-layer `Dataset currency (derived tables)` warning, whose remedy for a stale snapshot is
+  `cache pull --only <lane>`; a re-derivation after that pull reads the same old snapshot and repeats the line.
+
+**Workaround today:** move the lane's directory aside and pull, e.g. `mv /data/just-dna-cache/gnomad_constraint
+/data/just-dna-cache/gnomad_constraint.v4.1 && just-dna-enricher cache pull --only constraint`.
+
+**What it would be.** `cache pull` and `cache prepare`, the explicit provisioning commands, read the published
+`release.json` and re-pull a lane whose published release differs from the local one (keeping a file only where
+the new manifest attests it, as RM372 does). An unreadable hub keeps today's answer: the cache serves as it is,
+with the warning. `enrich`'s own `ensure` call keeps trusting a whole cache without the network, so a warm cache
+still serves offline and an enrichment never downloads a new release mid-run. Whether the published release is
+newer, or only different, is a label comparison the lane already owns (`@the-reporter-cannot-compose-a-lanes-label`).
+No public name needs to move, so it looks like a patch; the size, and whether the 0.8.2 release notes are
+corrected now, are the pm's.
+
 ## RM7 — Evaluation-output / report-card schema
 
 **Severity** — · **Status** **not format scope** — a consumer contract · **Owner** consumer
