@@ -78,6 +78,12 @@ patches right after real use started, so the pm reads an audit sceptically: the 
 
 ## Open questions and owed work
 
+- **Re-ask the trust register after the 1.0 cut** (`docs/TRUST.md`, the base rule for a repo whose code can
+  reach private things). The maintainer, 2026-11-08, through the lead: "lowprio, PM to reask after 1.0". Not
+  started; nothing is owed before then. `waits until` the 1.0 cut; then one question to the maintainer, chat or desk.
+- **RM419 parked (2026-11-08, 88bda8eb)**: a patch, unparks on a reported rate-limit refusal with two of our clients
+  in one process, or the registry saying it runs enrichments as threads in one process. That second half is the
+  question put to the registry for RM418, still unanswered.
 - **S133's five placed (2026-11-07), triage's ask.** RM401 and RM403 the next patch (RM401 probes the batch
   omission first). RM402 waits for RM401 and a re-measure; batching likely makes it moot. RM404 into 0.9 with
   RM385 (same seam); it does not meet RM396's gate, which stays parked. RM405 parked (offline is ~10 s a module).
