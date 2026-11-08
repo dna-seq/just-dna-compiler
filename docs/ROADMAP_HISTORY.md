@@ -74,8 +74,9 @@ rename leaves no unfinished state). The five lanes with no `ensure` are not pull
 recorded cache and STRchive present without reaching `ensure`; both reach it now, and a refresh is reported by the
 labels, since a re-pulled `gnomad_constraint.parquet` changes no file name; a re-pull that began and broke is
 reported as a failure there (it exits 1, as `cache pull` does), never as "already provisioned". Tests:
-`test_cache_pull_follows_the_hub.py`, eighteen, sixteen red on the previous `main` (the two enrich-path ones pin
-today's behaviour), and each part of the fix mutated on purpose turned at least one red.
+`test_cache_pull_follows_the_hub.py`, eighteen: fifteen of the first seventeen run red on the previous `main` (the
+two enrich-path ones pin today's behaviour), the eighteenth (prepare's broken re-pull) seen red with its branch
+removed, and each part of the fix mutated on purpose turned at least one red.
 
 **Filed by the lead (2026-11-08)** when the maintainer ran 0.8.2's own boundary step on this machine,
 `cache pull --only constraint --only clinvar --only civic --only strchive --only mitomap`, after gnomAD 4.1.2
