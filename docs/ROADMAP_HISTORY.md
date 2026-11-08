@@ -34,6 +34,118 @@ up.
 
 Patches on `main` after the 0.8.0 cut (2026-11-05), newest first.
 
+## RM420 — `cache pull` never fetches a newer published release over a whole cache
+
+**SHIPPED 2026-11-08 on `main` — a patch, uncut.** Owner enricher (`download._provision_snapshot`,
+`download._provision_root_file_snapshot`, `cache pull`, `caches.prepare_lane`), severity medium.
+
+**Residuals** won't fix — a STRchive catalogue pulled before this patch carries no pull record, so nothing says it
+was pulled and it is left alone, named with both labels, until its operator moves it aside and pulls once
+
+**Built (the lead, 2026-11-08), to the pm's sizing.** `cache pull` and `cache prepare` pass a private intent,
+`download._FollowHub`, to the lane's `ensure` as the keyword `_follow_hub`; every other caller passes none, so
+`enrich` still returns a whole cache without reading the hub (a test replaces `HfFileSystem` with one that fails if
+touched, and an AST test holds that exactly the three provisioning call sites pass it). The intent carries the lane's
+own `release_label`, applied to the cache and to the repo's `release.json` (then `manifest.json`, which is where
+Ensembl states its release) staged in a scratch directory, so no reporter composes a label. Where the labels differ:
+
+- **a cache that came from a pull of the lane's repo is re-pulled** down RM372's switched-repo path, not a second
+  one: a file is kept only where the new manifest attests it by sha256, without a manifest none is, sidecars are
+  refetched and a root file the repo no longer has is removed. `release.json` is withdrawn right before the first
+  byte moves and fetched last (`@snapshot-layout-locations`), so a refresh cut short states no release and the next
+  pull finishes it;
+- **a cache that did not is left alone** and printed with both labels and the move-aside remedy. The witness is the
+  pull record, which only the provisioner writes (no builder does; checked, the one writer is `download.py`). The
+  record now also states the sha256 of the `release.json` the pull placed, so a builder pointed at a pulled cache,
+  whose `commit` writes another, is not taken for the pull. A record without the key, from before this patch, is read
+  as the pull it was: that is what reaches the motivating machine, whose constraint record dates from 2026-11-04;
+- **an unrecorded cache** (RM339's case) with a label of its own that differs is left alone too, where `cache pull`
+  used to compare it with the listing, write a record and replace its `release.json` with the hub's, after which
+  nothing could tell the build from a pull. An unrecorded cache that states no release is no builder's, and is
+  completed as before.
+
+A hub that cannot be read, or that states no release, serves the cache as it is. No lane owns an ordering over its
+labels (`CacheLane.release_label` reads, it does not compare), so a pulled cache follows the hub whichever way the
+labels differ, the pm's rule for an unorderable pair; adding a comparator would have been a new name. The class was
+checked over every lane `cache pull` reaches: the eleven parquet lanes, Ensembl's (`ensure_snapshot`, manifest
+`release_id`) among them, share `_provision_snapshot`; STRchive's root-file provisioner had the same shape and no pull
+record at all, so it is fixed the same way and writes a record from now on (its file list empty, since one parsed
+rename leaves no unfinished state). The five lanes with no `ensure` are not pulled. `prepare_lane` used to call a
+recorded cache and STRchive present without reaching `ensure`; both reach it now, and a refresh is reported by the
+labels, since a re-pulled `gnomad_constraint.parquet` changes no file name; a re-pull that began and broke is
+reported as a failure there (it exits 1, as `cache pull` does), never as "already provisioned". Tests:
+`test_cache_pull_follows_the_hub.py`, eighteen, sixteen red on the previous `main` (the two enrich-path ones pin
+today's behaviour), and each part of the fix mutated on purpose turned at least one red.
+
+**Filed by the lead (2026-11-08)** when the maintainer ran 0.8.2's own boundary step on this machine,
+`cache pull --only constraint --only clinvar --only civic --only strchive --only mitomap`, after gnomAD 4.1.2
+was published: it printed `on disk: …` and left `gnomad_constraint` at `gnomad_v4.1_constraint` (built by
+0.7.0) while `just-dna-seq/gnomad_constraint` serves `gnomad_v4.1.2_constraint`. STRchive is behind the same
+way (`strchive_v2.26.0` here, `strchive_v2.28.0` published). ClinVar, CIViC and MITOMAP matched the hub only
+because nothing newer had been published since their last pull.
+
+**Severity** medium · **Status** open — **a patch, the next on `main`** (the pm, 2026-11-08), ahead of RM400, RM401 and RM403 · **Owner** enricher (`download.ensure_parquet_snapshot`,
+`cache pull`, `cache prepare`) · **Motivating case** the 0.8.2 boundary on this machine · *related* RM410, RM372,
+RM339, RM411
+
+**The gap.** `ensure_parquet_snapshot` returns a cache at once when its parquet files are whole, its pull record
+complete, its repo unchanged and its manifest covers it, without reading the hub (RM339's "a cache whose pull
+record says the pull finished is trusted without touching the network"). RM372 re-pulls only when the
+**repository** moved. Nothing compares the local `release.json` with the published one, so once a machine has
+pulled a lane, no later release of that lane reaches it through `cache pull` or `cache prepare`.
+
+**What the documents promise instead.** Every one of these tells the operator that a pull moves a lane to the
+newer release, and each is a silent no-op on a machine that already holds the older one:
+
+- the 0.8.2 GitHub release notes, "What you must do at the boundary", step 2 (`cache pull --only constraint
+  --only opentargets`; Open Targets is new, so only constraint is affected);
+- `docs/INTEGRATION_0_8.md` § 4, "`cache pull` brings 4.1.2 once published", and the upgrade order's step 5,
+  "pull the lane first (`cache pull --only <lane>`)";
+- the derived-layer `Dataset currency (derived tables)` warning, whose remedy for a stale snapshot is
+  `cache pull --only <lane>`; a re-derivation after that pull reads the same old snapshot and repeats the line.
+
+**Workaround today:** move the lane's directory aside and pull, e.g. `mv /data/just-dna-cache/gnomad_constraint
+/data/just-dna-cache/gnomad_constraint.v4.1 && just-dna-enricher cache pull --only constraint`.
+
+**What it would be.** `cache pull` and `cache prepare`, the explicit provisioning commands, read the published
+`release.json` and re-pull a lane whose published release differs from the local one (keeping a file only where
+the new manifest attests it, as RM372 does). An unreadable hub keeps today's answer: the cache serves as it is,
+with the warning. `enrich`'s own `ensure` call keeps trusting a whole cache without the network, so a warm cache
+still serves offline and an enrichment never downloads a new release mid-run. Whether the published release is
+newer, or only different, is a label comparison the lane already owns (`@the-reporter-cannot-compose-a-lanes-label`).
+No public name needs to move, so it looks like a patch; the size, and whether the 0.8.2 release notes are
+corrected now, are the pm's.
+
+**Sized, the pm (2026-11-08): a patch, the next on `main`, severity medium.**
+
+- **Every upgrading machine meets it.** The boundary step is written for machines that already hold a lane, and
+  those are exactly the ones the pull skips. It is not a rare path: it is the documented one, and it failed on the
+  first machine that ran it. So it goes ahead of the queued patches (RM400, RM401, RM403), not behind them.
+- **The class is a patch.** `cache pull` and `cache prepare` are asked to do what the release notes, INTEGRATION_0_8
+  and the currency warning already say they do. No public name moves, and `enrich`'s own call keeps today's trust.
+- **The fix's own risk: a pull replacing a snapshot built on this machine.** This machine builds snapshots and then
+  publishes them; between the build and the upload the local lane is newer than the hub's. A pull that re-pulls on
+  any differing label would put the older published release back over it. So the build must keep a lane that was
+  built here: a lane re-pulls only when the cache came from a pull of that repo and the published label differs;
+  a lane built here is reported with both labels and left alone. How the pull tells the two apart is the lead's
+  (the pull record, or what a rebuild writes); **the test that holds it**: build a lane locally, publish an older
+  label to the fake hub, run `cache pull`, and the local bytes are unchanged and the report names both labels.
+- **Newer or only different.** The lane's own label comparison decides where it can order the two; where it cannot
+  (a digest label against a dated one, `@currency-asks-the-source-not-the-cache`), a pulled cache follows the hub,
+  since the operator asked for the hub's release by running `cache pull`.
+- **Not in the fix:** `enrich` never downloads a release mid-run, and an unreadable hub serves the cache as it is
+  (both as the entry says).
+
+**Corrected now, before the fix (the pm, 2026-11-08):**
+
+- **The 0.8.2 GitHub release notes get a correction line under step 2:** on a machine that already holds the
+  constraint lane, `cache pull` leaves it at 4.1 (RM420); move the lane's directory aside, then pull. The release is
+  published, so this edit is outbound: the lead's if its grant covers editing a published release's notes,
+  otherwise the person's.
+- **INTEGRATION_0_8 § 4 gets an RM420 known-issue line with the same workaround**, and its RM410 line, "`cache pull`
+  brings 4.1.2 once published", is corrected to name RM420 for a machine that already holds the lane. The lead's
+  edit, on `main`.
+
 ## RM418 — every NCBI client builds its own pacing gate, so two in one process pace against two budgets
 
 **SHIPPED 2026-11-08 on `main` — a patch, uncut.** Owner enricher (`eutils.EutilsClient`, `net._service_gate`),

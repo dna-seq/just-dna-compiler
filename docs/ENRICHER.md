@@ -1800,11 +1800,28 @@ just-dna-enricher cache pull --use non-commercial    # …and the gated ones you
 just-dna-enricher cache pull --only clinvar --only cpic --use non-commercial
 ```
 
-`cache pull` is **re-runnable and cheap**: a cache whose pull record says the pull finished is trusted
-without touching the network, and anything else fetches only what it lacks. The record
+`cache pull` is **re-runnable and cheap**: a cache whose pull record says the pull finished costs one
+small read, the release its repo publishes, and anything else fetches only what it lacks. The record
 (`pull-record.json` beside `data/`) is written from the remote listing **before** the first download, so
 an interrupted pull names the files it never got, every resolver reports the lane absent rather than
-present, and the next run finishes it (RM339). A cache with no record, built here or pulled before the
+present, and the next run finishes it (RM339).
+
+**A pulled lane follows the hub's release (RM420).** `cache pull` and `cache prepare` compare the
+cache's release label with the one its repo publishes, both read by the lane's own
+`CacheLane.release_label` (`release.json`'s `dataset`, Ensembl's manifest `release_id`). Where they
+differ and the pull record says the cache came from a pull of that repo, it is re-pulled down the
+repo-switch path: a file is kept only where the new release's manifest attests it, and without a
+manifest none is; `release.json` is withdrawn before the first byte moves and fetched last, so a
+re-pull cut short states no release and the next pull finishes it. No lane owns an ordering over its
+labels, so a pulled cache follows the hub whichever way the labels differ. A cache **built on this
+machine** is left alone and printed with both labels, because between a build and its upload the local
+lane is the newer one: a builder writes no pull record, and the record states the sha256 of the
+`release.json` the pull placed, so a builder's release written over an old pull is not taken for it.
+A record from before RM420 carries no digest and is read as the pull it was. A hub that cannot be read
+leaves the cache as it is, with a warning. `enrich`'s own `ensure` call never reads the hub for a whole
+cache: a warm cache serves offline, and no enrichment downloads a release mid-run. STRchive's pull
+writes a record since RM420 too; a catalogue pulled before then carries none, so it is left alone and
+named with both labels until it is moved aside and pulled once. A cache with no record, built here or pulled before the
 record existed, is compared with the published listing once; with no route to the Hub it is used as it
 is, with a warning that its completeness is unknown. A download that times out names
 `HF_HUB_DOWNLOAD_TIMEOUT` (10 s by default, short for a 1 GB file). One snapshot failing does not sink
@@ -1909,7 +1926,8 @@ published, build if not.
   builds, because that is the only route there will ever be. `PrepareOutcome.route` records which
   answered — `present`, `pulled`, `built` — because a deployment auditing its own caches has to tell a
   snapshot it *fetched* from one it *made*, and `release.json` names the release but not the route.
-- **A present cache is left alone**, exactly as `cache pull` leaves one alone, so this is idempotent.
+- **A present cache is left alone** unless it came from a pull and its repo now publishes another
+  release, exactly as `cache pull` treats one (RM420), so this is idempotent.
   Re-cutting a snapshot that already exists is `cache rebuild`, which writes somewhere else on
   purpose — a build straight into a live cache is visible half-done to anything reading it, and unlike
   a truncated download there is no footer check to catch it because the file is real.

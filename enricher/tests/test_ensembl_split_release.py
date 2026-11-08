@@ -367,7 +367,7 @@ def test_cache_pull_sends_an_old_repo_cache_down_the_pull_route(tmp_path: Path) 
     )
     pulled: list[str] = []
 
-    def ensure() -> Path:
+    def ensure(**_) -> Path:
         pulled.append("pulled")
         return cache
 
@@ -379,13 +379,14 @@ def test_cache_pull_sends_an_old_repo_cache_down_the_pull_route(tmp_path: Path) 
     assert (outcome.ready, outcome.route) == (True, "pulled")
     assert _OLD in outcome.detail
 
-    # …and one whose record names this lane's repo is still present, untouched.
+    # …and one whose record names this lane's repo is still present when `ensure` moves nothing. Since
+    # RM420 it is asked all the same, for the release the hub publishes (`test_cache_pull_follows_the_hub`).
     (cache / PULL_RECORD_FILENAME).write_text(
         json.dumps({"repo": _NEW, "files": [f"data/{n}" for n in _NAMES]}), encoding="utf-8"
     )
     pulled.clear()
     assert caches.prepare_lane(lane, RebuildRequest(out_dir=tmp_path)).route == "present"
-    assert pulled == []
+    assert pulled == ["pulled"]
 
 
 # ── 2. a cache mixing releases is withheld ─────────────────────────────────────────────────────

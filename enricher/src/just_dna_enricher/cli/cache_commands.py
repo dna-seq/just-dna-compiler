@@ -28,7 +28,7 @@ from just_dna_enricher.caches import (
     rebuild_lane,
 )
 from just_dna_enricher.cli._shared import _use
-from just_dna_enricher.download import SnapshotNotPublished
+from just_dna_enricher.download import SnapshotNotPublished, _FollowHub
 from just_dna_enricher.licensing import LicenseRefusal, check_declared_use
 from just_dna_enricher.locations import CACHES_DIRNAME, RELEASE_FILENAME, STRCHIVE_CATALOGUE_FILENAME
 
@@ -164,10 +164,13 @@ def cache_pull_(
 ) -> None:
     """Download the published parquet snapshots from HuggingFace into the local caches.
 
-    The provisioning step a hosted deployment runs **once**, so no pass ever reaches a source live per
-    request. A cache whose pull record says the pull finished is trusted without touching the network,
-    so this is re-runnable and cheap; an interrupted pull fetches only what it lacks, and a truncated
-    file is removed and refetched (RM339).
+    The provisioning step a hosted deployment runs, so no pass ever reaches a source live per request.
+    A cache already here is compared with the release its repo publishes, one small read per lane
+    (RM420): a cache that came from a pull of that repo and holds another release is re-pulled, and one
+    built on this machine is left alone and named with both labels, since it may not be uploaded yet.
+    So this is re-runnable and cheap; an interrupted pull fetches only what it lacks, and a truncated
+    file is removed and refetched (RM339). When the hub cannot be read, the cache serves as it is.
+    `enrich` never reads the hub for a cache that is already whole.
 
     A lane with nothing published says so and names its reason, which is a field on the registry
     rather than a comment: PharmVar's and PubMind's are refusals, ACMG's and MANE's are permissions
@@ -196,8 +199,9 @@ def cache_pull_(
             if reason is not None:
                 typer.secho(f"  {lane.name}: skipped — {reason}", fg=typer.colors.YELLOW, err=True)
                 continue
+        follow = _FollowHub(lane.release_label)
         try:
-            path = lane.ensure()
+            path = lane.ensure(_follow_hub=follow)
         except SnapshotNotPublished as exc:
             # Asked, and absent. Not a failure and not counted as one: three lanes gained an
             # `ensure_*` before anyone created their repos, and a provisioning command that exits 1
@@ -210,7 +214,14 @@ def cache_pull_(
             typer.secho(f"  {lane.name}: FAILED — {exc}", fg=typer.colors.RED, err=True)
             failures += 1
             continue
-        typer.secho(f"  {lane.name}: {path}", fg=typer.colors.GREEN)
+        # Both labels, when the hub's release and the cache's were compared and the answer is news
+        # (RM420): re-pulled, left alone because it was built here, or the hub could not be read.
+        note = follow.note()
+        quiet = follow.outcome in (None, "current", "refreshed")
+        typer.secho(
+            f"  {lane.name}: {path}" + (f" — {note}" if note else ""),
+            fg=typer.colors.GREEN if quiet else typer.colors.YELLOW,
+        )
         on_disk.append(lane.name)
     if failures:
         raise typer.Exit(code=1)
@@ -256,8 +267,9 @@ def cache_prepare_(
     one builds, because that is the only route there will ever be. Asking for the choice would be
     asking an operator to restate the licensing story.
 
-    **A cache that is already present is left alone**, exactly as `cache pull` leaves one alone, so
-    this is idempotent and cheap to re-run. Re-cutting a snapshot that exists is `cache rebuild`,
+    **A cache that is already present is left alone** unless it came from a pull and its repo now
+    publishes another release, exactly as `cache pull` treats one (RM420), so this is idempotent and
+    cheap to re-run. Re-cutting a snapshot that exists is `cache rebuild`,
     which writes somewhere else on purpose — a build straight into a live cache is visible half-done
     to anything reading it, and a short parquet still has a footer.
 

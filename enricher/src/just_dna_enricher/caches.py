@@ -69,10 +69,10 @@ from just_dna_enricher import (
 )
 from just_dna_enricher.clinvar_gkm import ClinVarGkmClient, ClinVarGkmError
 from just_dna_enricher.download import (
-    SNAPSHOT_FILE_GLOBS,
     SNAPSHOT_REPO_PREFIXES,
     SnapshotNotPublished,
     _ensure_opentargets_snapshot,
+    _FollowHub,
     ensure_alphagenome_avi_snapshot,
     ensure_civic_snapshot,
     ensure_clinpgx_snapshot,
@@ -170,7 +170,6 @@ from just_dna_enricher.locations import (
     resolve_pharmvar_reference,
     resolve_pubmind_reference,
     resolve_strchive_reference,
-    snapshot_record_missing,
 )
 from just_dna_enricher.upload import (
     DEFAULT_ALPHAGENOME_AVI_REPO_ID,
@@ -1550,29 +1549,27 @@ def _payload_names(directory: Path) -> set[str]:
 
 
 def _present_or_completed(lane: CacheLane, existing: Path, request: RebuildRequest) -> PrepareOutcome:
-    """A lane that resolves: left alone, unless it is a pulled parquet cache that carries no pull record.
+    """A lane that resolves: asked against the hub through its own `ensure`, and left alone unless that moves it.
 
-    **That one cache is compared with the published listing once** (RM339). It was pulled before the
-    record existed, or built here, and nothing on disk can say whether it is whole: an interrupted pull
-    of 3 of 25 chromosomes resolved, and this command called it present. A cache with a record is
-    judged by the resolver, which answers `None` for an unfinished pull and sends it down the pull
-    route in `prepare_lane`. So only the unrecorded one reaches `ensure` from here, and it reaches it
-    only where `ensure` writes (the default directory, not an override pointing elsewhere) and only
-    when the terms would let it be pulled at all. A gated lane under `--use unstated` stays present as
-    before rather than turning into skipped.
+    **A pulled cache follows the release the hub publishes** (RM420). Before, a cache with a complete
+    pull record was called present without reading the hub, so once a machine had pulled a lane no
+    later release reached it through `cache prepare`. The lane's `ensure` is now called with
+    `_follow_hub`, which compares the local release label with the published one: a cache that came
+    from a pull of the lane's repo and holds another release is re-pulled, and one that did not (built
+    here, and maybe not uploaded yet) is left alone with both labels in the detail. An unreadable hub
+    leaves it present as it is.
 
-    **A cache whose pull record names another repo goes the same way** (RM372). The Ensembl lane moved
-    to a new repo under the same file names, and such a cache resolves (it is a whole snapshot of the
-    old release), so without this `cache pull` would call it present forever.
+    **An unrecorded cache is compared with the published listing once** (RM339): it was pulled before
+    the record existed, or built here, and an interrupted pull of 3 of 25 chromosomes resolved and was
+    called present. **A cache whose pull record names another repo is re-pulled** (RM372): the Ensembl
+    lane moved to a new repo under the same file names. Both happen inside the same `ensure` call.
+
+    `ensure` is reached only where it writes (the default directory, not an override pointing
+    elsewhere) and only when the terms would let the lane be pulled at all: a gated lane under
+    `--use unstated` stays present rather than turning into skipped.
     """
     present = PrepareOutcome(lane.name, True, "present", f"already provisioned at {existing}", existing)
-    elsewhere = pulled_from_elsewhere(lane.name, existing)
-    if (
-        lane.ensure is None
-        or lane.name not in SNAPSHOT_FILE_GLOBS
-        or (snapshot_record_missing(existing) is not None and elsewhere is None)
-        or existing.resolve() != lane.default_dir().resolve()
-    ):
+    if lane.ensure is None or existing.resolve() != lane.default_dir().resolve():
         return present
     if lane.terms is not None:
         try:
@@ -1580,14 +1577,27 @@ def _present_or_completed(lane: CacheLane, existing: Path, request: RebuildReque
                 return present
         except LicenseRefusal:
             return present
+    elsewhere = pulled_from_elsewhere(lane.name, existing)
     before = _payload_names(existing)
+    follow = _FollowHub(lane.release_label)
     try:
-        path = lane.ensure()
+        path = lane.ensure(_follow_hub=follow)
     except Exception as exc:
+        if follow.outcome == "refreshed":
+            # The re-pull had begun: its `release.json` is withdrawn and some files may be the new
+            # release's, so the cache is not "already provisioned". `cache pull` exits 1 here; so does
+            # this, and the next run finishes the re-pull.
+            return PrepareOutcome(
+                lane.name,
+                False,
+                "pulled",
+                f"re-pulling {existing} from {follow.local or 'no release label'} to {follow.published} "
+                f"failed: {exc}",
+            )
         tried = (
             f"re-pulling it from {SNAPSHOT_REPO_PREFIXES[lane.name]} (it was pulled from {elsewhere}) failed"
             if elsewhere is not None
-            else "checking it against the published listing failed"
+            else "checking it against the published release failed"
         )
         return PrepareOutcome(
             lane.name, True, "present", f"already provisioned at {existing}; {tried}: {exc}", existing
@@ -1601,6 +1611,9 @@ def _present_or_completed(lane: CacheLane, existing: Path, request: RebuildReque
             f"{SNAPSHOT_REPO_PREFIXES[lane.name]}",
             path,
         )
+    note = follow.note()
+    if follow.outcome == "refreshed":
+        return PrepareOutcome(lane.name, True, "pulled", f"{note} → {path}", path)
     fetched = sorted(_payload_names(path) - before)
     if fetched:
         return PrepareOutcome(
@@ -1609,6 +1622,10 @@ def _present_or_completed(lane: CacheLane, existing: Path, request: RebuildReque
             "pulled",
             f"completed at {path}: it carried no pull record and lacked {len(fetched)} published file(s)",
             path,
+        )
+    if note is not None:
+        return PrepareOutcome(
+            lane.name, True, "present", f"already provisioned at {existing}; {note}", existing
         )
     return present
 
@@ -1623,8 +1640,8 @@ def prepare_lane(lane: CacheLane, request: RebuildRequest) -> PrepareOutcome:
     is the only route there will ever be. Asking the caller to choose would be asking them to restate
     the licensing story as a flag.
 
-    **A present cache is left alone**, exactly as `cache pull` leaves one alone: provisioning is
-    idempotent and cheap to re-run, and re-deriving a snapshot somebody is reading is how a resolver
+    **A present cache is left alone** unless it came from a pull and its repo now publishes another
+    release, exactly as `cache pull` treats one (RM420): provisioning is idempotent and cheap to re-run, and re-deriving a snapshot somebody is reading is how a resolver
     comes to see a half-written table. Re-cutting one is `cache rebuild`, which writes somewhere else
     on purpose.
     """
@@ -1642,7 +1659,8 @@ def prepare_lane(lane: CacheLane, request: RebuildRequest) -> PrepareOutcome:
             if reason is not None:
                 return PrepareOutcome(lane.name, None, "none", f"skipped: {reason}")
         try:
-            path = lane.ensure()
+            # The provisioning command's intent (RM420); an absent cache is pulled whole either way.
+            path = lane.ensure(_follow_hub=_FollowHub(lane.release_label))
         except Exception as exc:
             # Not an error here either, and for a sharper reason than in `cache pull`: this command's
             # job is to leave the machine with a usable cache, and a repo nobody has created yet is a

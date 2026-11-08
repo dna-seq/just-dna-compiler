@@ -1239,7 +1239,8 @@ What 0.8 ships with, known and not fixed. Each line names its item; [RM_TOC.md](
   which moves its fact hash.
 - **The constraint snapshot moves to gnomAD 4.1.2 (RM410, enricher 0.8.2).** Not a defect: `cache pull`
   brings 4.1.2 to a machine that has no constraint lane yet, and existing `gnomad_v4.1_constraint` rows are
-  kept on a re-run. A machine that already holds the lane stays at 4.1 after a pull (RM420, next).
+  kept on a re-run. A machine that already holds the lane stays at 4.1 after a pull on 0.8.2 (RM420, fixed
+  on `main`, uncut).
 - **`cache pull` never brings a newer release of a lane this machine already pulled (RM420).** A complete
   cache is kept without asking the hub whether a newer release is published, so the pull is a silent no-op
   for exactly the machines an upgrade step is written for. Seen at the 0.8.2 boundary: gnomAD constraint
@@ -1248,7 +1249,10 @@ What 0.8 ships with, known and not fixed. Each line names its item; [RM_TOC.md](
   it with the hub's. The same applies wherever this note, or the derived-layer `Dataset currency` warning,
   says `cache pull --only <lane>`. Until the fix: move the lane's directory aside, then pull, e.g.
   `mv <base>/gnomad_constraint <base>/gnomad_constraint.v4.1 && just-dna-enricher cache pull --only
-  constraint`. The fix is the next patch.
+  constraint`. **Fixed on `main`, uncut** (RM420): from the next patch `cache pull` and `cache prepare` re-pull a
+  lane that came from a pull when its repo publishes another release, and leave a lane built here alone with both
+  labels. On 0.8.2 the workaround is still needed, and after the fix once more for a STRchive catalogue pulled
+  before it, which carries no pull record.
 - **RM386's publish pinning has no live run yet (RM386).** It shipped with no practice publish to a
   throwaway Hugging Face repo, by the maintainer's decision. The next real snapshot publish is its first
   live run; if that publish fails, suspect this code first, and the fix is a patch.

@@ -41,6 +41,22 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-08 — RM420: `cache pull` and `cache prepare` bring a newer published release (patch, uncut)
+
+- **A pulled lane follows the hub's release** (RM420). `cache pull` and `cache prepare` compare the release label a
+  cache holds with the one its repo publishes, read by the lane's own label reader, and re-pull a cache that came
+  from a pull of that repo when the two differ, keeping a file only where the new manifest attests it. On 0.8.2 a
+  machine that already held a lane stayed on it: gnomAD constraint at `gnomad_v4.1_constraint` though
+  `gnomad_v4.1.2_constraint` is published, STRchive at `strchive_v2.26.0` against `strchive_v2.28.0`.
+- **A lane built on this machine is left alone** and printed with both labels, since it may not be uploaded yet. A
+  builder writes no pull record, and the record now states the `release.json` its pull placed, so a build over an old
+  pull is not taken for one. `cache pull` also stops writing a record over an unrecorded build and replacing its
+  `release.json` with the hub's.
+- **Unchanged:** `enrich` never reads the hub for a whole cache, and a hub that cannot be read serves the cache as it
+  is, with a warning. No public name moves.
+- **Still needed once:** a STRchive catalogue pulled before this patch carries no pull record, so it is left alone;
+  move it aside and pull. On 0.8.2 itself the workaround in INTEGRATION_0_8 § 4 stays.
+
 ## 2026-11-08 — RM418: two NCBI clients in one process share one pacing gate (patch, uncut)
 
 - **An `EutilsClient` built without a gate takes the process's NCBI gate** (RM418), one per interval, so the rsID

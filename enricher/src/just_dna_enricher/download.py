@@ -13,9 +13,13 @@ format + compiler). The download logic (footer-checked, atomic `.part` rename) i
 just-dna-lite's pipelines byte-for-byte so no drift is born.
 """
 
+import hashlib
 import json
 import logging
 import os
+import tempfile
+from collections.abc import Callable
+from dataclasses import dataclass
 from fnmatch import fnmatch
 from pathlib import Path
 
@@ -218,6 +222,178 @@ class SnapshotNotPublished(FileNotFoundError):
 _parquet_footer_ok = parquet_footer_ok
 
 
+# ── following the hub's release (RM420) ─────────────────────────────────────────────────────────
+
+
+@dataclass
+class _FollowHub:
+    """The provisioning commands' intent to follow the hub's release, and what the provisioner found (RM420).
+
+    `cache pull` and `cache prepare` pass one to a lane's `ensure` as `_follow_hub`; every other caller
+    passes none, so `enrich` keeps trusting a whole cache without the network (a warm cache serves
+    offline, and no enrichment downloads a release mid-run). Private on `main`, because a new public
+    name is minor scope.
+
+    `release_label` is the **lane's** own label reader (`CacheLane.release_label`,
+    `@the-reporter-cannot-compose-a-lanes-label`), applied to the local cache and to the published
+    repo's description files alike, so Ensembl's manifest-only label needs no case here. No lane owns
+    an ordering over its labels, so a differing label is followed by a pulled cache whichever way it
+    differs: the operator asked for the hub's release by running the pull.
+
+    `outcome` is `None` when no whole cache was compared (an absent or unfinished one is pulled as
+    before), else one of `current` (the labels agree, or the hub states none to compare), `refreshed`
+    (re-pulled to the published release), `kept` (the labels differ and nothing says the cache came
+    from a pull of this repo, so it is left alone: a snapshot built here may not be uploaded yet) and
+    `unknown` (the hub could not be read, so the cache serves as it is).
+    """
+
+    release_label: Callable[[Path], str | None]
+    repo: str | None = None
+    local: str | None = None
+    published: str | None = None
+    outcome: str | None = None
+    detail: str | None = None
+
+    def note(self) -> str | None:
+        """The line `cache pull` and `cache prepare` print beside the lane, naming both labels; `None` when quiet."""
+        local = self.local or "no release label"
+        if self.outcome == "refreshed":
+            return f"re-pulled: it held {local}, and {self.repo} publishes {self.published}"
+        if self.outcome == "kept":
+            return (
+                f"left alone: it holds {local} and was not pulled from {self.repo}, which publishes "
+                f"{self.published} (built here, or pulled before this tier kept a pull record). Move it "
+                f"aside and pull to take the published release"
+            )
+        if self.outcome == "unknown":
+            return f"served as it is: the release {self.repo} publishes could not be read ({self.detail})"
+        return None
+
+
+#: The pull-record key naming the sha256 of the `release.json` the pull placed, `None` when it placed
+#: none (RM420). A builder pointed at a pulled cache leaves the old record behind and writes its own
+#: `release.json`, so a record whose digest no longer matches is not this cache's origin any more. A
+#: record without the key was written before RM420 and is read as a pull, which is what it was: only
+#: the provisioner writes one.
+_RELEASE_DIGEST_KEY = "release_sha256"
+
+
+def _file_sha256(path: Path) -> str | None:
+    return hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
+
+
+def _write_pull_record(cache_dir: Path, repo: str, files: list[str]) -> None:
+    """The record of a pull that finished: its repo, its files, and the `release.json` it placed."""
+    record = {"repo": repo, "files": files, _RELEASE_DIGEST_KEY: _file_sha256(cache_dir / RELEASE_FILENAME)}
+    atomic_write_text(cache_dir / PULL_RECORD_FILENAME, json.dumps(record, indent=2) + "\n")
+
+
+def _pulled_by_this_repo(cache_dir: Path, repo: str) -> bool:
+    """Whether `cache_dir` came from a pull of `repo` and nothing has been built over it since (RM420).
+
+    The pull record is the witness, because only the provisioner writes one: a builder never does. A
+    record naming no repo is read as this repo's, as `locations.pulled_from` reads it.
+    """
+    try:
+        payload = json.loads((cache_dir / PULL_RECORD_FILENAME).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(payload, dict) or pulled_from(cache_dir, repo) is not None:
+        return False
+    if _RELEASE_DIGEST_KEY not in payload:
+        return True
+    return payload[_RELEASE_DIGEST_KEY] == _file_sha256(cache_dir / RELEASE_FILENAME)
+
+
+def _hub_filesystem():
+    """The Hub's filesystem, or `None` when `huggingface_hub` is not installed.
+
+    A token is optional on the read side and doubles the per-IP rate allowance, so the `.env` is read
+    here for the same reason the publisher reads it (`@credential-where-read`): anonymous traffic
+    sleeping on a 429 looks exactly like a hung download. `env_value` reads the one key and exports
+    nothing else from the file (RM301).
+    """
+    try:
+        from huggingface_hub import HfFileSystem, get_token
+    except ImportError:  # the one guarded optional import (CLAUDE.md)
+        return None
+    return HfFileSystem(token=env_value("HF_TOKEN") or get_token())
+
+
+def _published_release_label(fs, repo_root: str, release_label: Callable[[Path], str | None]) -> str | None:
+    """The release `repo_root` publishes, read by the lane's own label reader over its description files.
+
+    The files are staged in a scratch directory, never in the cache: the cache's own `release.json` is
+    what the answer is compared with. `release.json` is asked first and `manifest.json` only when that
+    names no release (Ensembl's split repo states its release in the manifest alone). `None` when the
+    repo states none. Could-not-ask raises `OSError` (`_hub_says_absent` is the one absent answer).
+    """
+    with tempfile.TemporaryDirectory(prefix="published-release-") as scratch:
+        for name in (RELEASE_FILENAME, SNAPSHOT_MANIFEST_FILENAME):
+            staged = Path(scratch) / name
+            try:
+                fs.get(f"{repo_root}/{name}", str(staged))
+            except Exception as exc:
+                staged.unlink(missing_ok=True)
+                if not _hub_says_absent(exc):
+                    raise OSError(f"{name}: {type(exc).__name__}: {exc}") from exc
+                continue
+            label = release_label(Path(scratch))
+            if label is not None:
+                return label
+    return None
+
+
+def _compare_with_hub(cache_dir: Path, repo_root: str, label: str, follow: _FollowHub) -> bool:
+    """Read the published release beside the local one into `follow`; `True` when the two labels differ.
+
+    An unreadable hub is the `unknown` outcome, with a warning, and never a difference: the cache serves
+    as it is. A hub stating no release is `current`, since nothing can be compared.
+    """
+    follow.repo = repo_root.removeprefix("datasets/")
+    follow.local = follow.release_label(cache_dir)
+    fs = _hub_filesystem()
+    try:
+        if fs is None:
+            raise OSError("huggingface_hub is not installed")
+        follow.published = _published_release_label(fs, repo_root, follow.release_label)
+    except OSError as exc:
+        follow.outcome, follow.detail = "unknown", str(exc)
+        logger.warning(
+            "%s cache at %s: the release %s publishes could not be read (%s), so whether a newer one is "
+            "published is unknown. Using the cache as it is.",
+            label,
+            cache_dir,
+            follow.repo,
+            exc,
+        )
+        return False
+    if follow.published is None or follow.published == follow.local:
+        follow.outcome = "current"
+        return False
+    return True
+
+
+def _left_alone(cache_dir: Path, label: str, follow: _FollowHub) -> Path:
+    """A cache whose release differs from the hub's and that did not come from a pull: kept, and said so."""
+    follow.outcome = "kept"
+    logger.warning("%s cache at %s %s.", label, cache_dir, follow.note())
+    return cache_dir
+
+
+def _refreshing(cache_dir: Path, label: str, follow: _FollowHub) -> None:
+    follow.outcome = "refreshed"
+    logger.warning(
+        "%s cache at %s holds %s; %s publishes %s. Re-pulling: a file is kept only where the new "
+        "release's manifest attests it.",
+        label,
+        cache_dir,
+        follow.local or "no release label",
+        follow.repo,
+        follow.published,
+    )
+
+
 def _timeout_knob() -> str:
     """Where `huggingface_hub`'s read timeout came from, for a message about one (RM339)."""
     configured = os.environ.get("HF_HUB_DOWNLOAD_TIMEOUT")
@@ -304,11 +480,18 @@ def _provision_snapshot(
     label: str,
     error_cls: type[Exception],
     filename_glob: str,
+    _follow_hub: _FollowHub | None = None,
 ) -> Path:
     """Provision a parquet cache from HuggingFace Hub, returning the cache directory.
 
     **A cache is trusted without touching the network only when its pull record says the pull
-    finished** (RM339): every file the record names is present and whole. Before the record, any
+    finished** (RM339), and only for a caller that does not ask to follow the hub (RM420): every file
+    the record names is present and whole. `cache pull` and `cache prepare` pass `_follow_hub`, and for
+    them a whole cache is compared with the release the repo publishes: one that came from a pull of
+    this repo (`_pulled_by_this_repo`) and holds another release is re-pulled down the repo-switch path
+    (a file is kept only where the new manifest attests it, and without a manifest none is), and one
+    that did not is left alone and reported with both labels, since a snapshot built here may not be
+    uploaded yet. `enrich`'s call passes nothing and never reads the hub for a whole cache. Before the record, any
     non-empty set of whole files was trusted, and the `.part` staging that keeps each file whole is
     exactly what made an interrupted pull look finished: a cache holding 3 of 25 chromosomes verified
     file by file and was never completed. The record is written after the remote listing and **before**
@@ -353,7 +536,14 @@ def _provision_snapshot(
     switched_from = pulled_from(cache_dir, hf_repo_prefix)
     switched = switched_from is not None
     coverage = manifest_coverage(cache_dir)
-    if existing and not corrupt and missing == [] and not switched and (coverage is None or coverage.whole):
+    whole = (
+        bool(existing)
+        and not corrupt
+        and missing == []
+        and not switched
+        and (coverage is None or coverage.whole)
+    )
+    if whole and _follow_hub is None:
         return cache_dir
     # Nothing on disk says this cache is unfinished: the one state that may still serve, as it is,
     # when the published listing cannot be read. Since RM372 that includes a whole cache of another
@@ -361,6 +551,23 @@ def _provision_snapshot(
     # take it away, and "nothing is published" would be false about it.
     servable = bool(existing) and not corrupt and missing in (None, [])
     unrecorded = missing is None and servable
+    repo_root = hf_repo_prefix.rsplit("/", 1)[0]
+
+    # RM420: the provisioning commands ask whether the hub publishes another release than this cache
+    # holds. Only a whole cache, or an unrecorded one, is asked about: an unfinished pull or a switched
+    # repo is pulled below as before.
+    refreshing = False
+    if _follow_hub is not None and (whole or unrecorded):
+        differs = _compare_with_hub(cache_dir, repo_root, label, _follow_hub)
+        if differs and whole and _pulled_by_this_repo(cache_dir, hf_repo_prefix):
+            refreshing = True
+            _refreshing(cache_dir, label, _follow_hub)
+        elif differs and (whole or _follow_hub.local is not None):
+            # Built here, or a builder's release over a stale record. An unrecorded cache stating no
+            # release is no builder's (every builder writes one): it is RM339's case, completed below.
+            return _left_alone(cache_dir, label, _follow_hub)
+        elif whole:
+            return cache_dir
 
     for p in corrupt:
         logger.warning("Corrupt/truncated %s parquet %s — removing for re-download", label, p.name)
@@ -385,27 +592,23 @@ def _provision_snapshot(
         )
 
     logger.info("Provisioning %s parquet cache from HuggingFace Hub ...", label)
-    try:
-        from huggingface_hub import HfFileSystem, get_token
-    except ImportError as exc:  # the one guarded optional import (CLAUDE.md)
+    fs = _hub_filesystem()
+    if fs is None:
         if servable:
-            return _unverified(cache_dir, label, "huggingface_hub is not installed")
+            return _unverified(cache_dir, label, "huggingface_hub is not installed", _follow_hub)
         raise error_cls(
             f"huggingface_hub is required to download the {label} snapshot; install "
             f"just-dna-enricher (which depends on it) or point at a local cache"
-        ) from exc
-
-    # A token is optional on the read side and doubles the per-IP rate allowance, so the `.env`
-    # is read here for the same reason the publisher reads it (`@credential-where-read`):
-    # anonymous traffic sleeping on a 429 looks exactly like a hung download. `env_value` reads the
-    # one key and exports nothing else from the file (RM301).
-    fs = HfFileSystem(token=env_value("HF_TOKEN") or get_token())
+        )
     try:
         listing = fs.ls(hf_repo_prefix, detail=False)
     except Exception as exc:
         if servable:
             return _unverified(
-                cache_dir, label, f"the published listing could not be read ({type(exc).__name__})"
+                cache_dir,
+                label,
+                f"the published listing could not be read ({type(exc).__name__})",
+                _follow_hub,
             )
         if not _hub_says_absent(exc):
             raise error_cls(
@@ -428,7 +631,9 @@ def _provision_snapshot(
         )
     if not remote_files:
         if servable:
-            return _unverified(cache_dir, label, f"{hf_repo_prefix} publishes no {filename_glob}")
+            return _unverified(
+                cache_dir, label, f"{hf_repo_prefix} publishes no {filename_glob}", _follow_hub
+            )
         raise error_cls(
             f"no {filename_glob} in {hf_repo_prefix} — the published snapshot carries "
             f"{len(remote_parquet)} parquet file(s), none of them this snapshot's "
@@ -439,8 +644,6 @@ def _provision_snapshot(
     # an empty `data/`, which `cache status` then called occupied and `cache prepare` refused to build
     # over.
     data_dir.mkdir(parents=True, exist_ok=True)
-
-    repo_root = hf_repo_prefix.rsplit("/", 1)[0]
 
     # The release's manifest (RM372), fetched **first** and staged beside the cache rather than in it:
     # it is what a kept or a downloaded file is checked against, so it has to be in hand before the
@@ -456,7 +659,10 @@ def _provision_snapshot(
         manifest_part.unlink(missing_ok=True)
         if servable:
             return _unverified(
-                cache_dir, label, f"its {SNAPSHOT_MANIFEST_FILENAME} could not be fetched ({exc})"
+                cache_dir,
+                label,
+                f"its {SNAPSHOT_MANIFEST_FILENAME} could not be fetched ({exc})",
+                _follow_hub,
             )
         raise error_cls(
             f"the {label} repo's {SNAPSHOT_MANIFEST_FILENAME} could not be fetched ({exc}); nothing was "
@@ -521,14 +727,24 @@ def _provision_snapshot(
         record[PULL_RECORD_REPLACING_KEY] = switched_from
     atomic_write_text(cache_dir / PULL_RECORD_FILENAME, json.dumps(record, indent=2) + "\n")
     # A file this repo's own pull already placed was checked by sha256 on its way in; only a file of
-    # unknown origin (no record, or another repo's) is hashed again.
-    placed_here = recorded_repo == hf_repo_prefix
+    # unknown origin (no record, or another repo's) is hashed again. A file an older release's pull
+    # placed is of unknown release, so a refresh hashes it too (RM420).
+    placed_here = recorded_repo == hf_repo_prefix and not refreshing
+    # A refresh replaces the release whole, as a switch does: nothing on disk says which release a whole
+    # file without a manifest entry is.
+    replacing = switched or refreshing
+    if refreshing:
+        # Withdrawn right before the first byte moves, and fetched last below, as a builder's record is
+        # (`@snapshot-layout-locations`): a refresh cut short leaves a cache that states no release, which
+        # the next pull reads as differing from the hub's and finishes, never old bytes beside new ones
+        # described as the old release.
+        (cache_dir / RELEASE_FILENAME).unlink(missing_ok=True)
 
     for remote_path in remote_files:
         filename = remote_path.rsplit("/", 1)[-1]
         local_path = data_dir / filename
         relative = f"{SNAPSHOT_DATA_DIRNAME}/{filename}"
-        if _keep(local_path, relative, manifest, switched=switched, placed_here=placed_here):
+        if _keep(local_path, relative, manifest, switched=replacing, placed_here=placed_here):
             continue
         _fetch_parquet(
             fs,
@@ -546,8 +762,9 @@ def _provision_snapshot(
         target_dir = cache_dir / sidecar
         target_dir.mkdir(parents=True, exist_ok=True)
         local_path = target_dir / filename
-        # After a switch a whole sidecar may be the old repo's, and no manifest names `citations/`.
-        if parquet_footer_ok(local_path) and not switched:
+        # After a switch or a refresh a whole sidecar may be the old release's, and no manifest names
+        # `citations/`.
+        if parquet_footer_ok(local_path) and not replacing:
             continue
         _fetch_parquet(
             fs, remote_path, local_path, display=f"{sidecar}/{filename}", label=label, error_cls=error_cls
@@ -591,20 +808,22 @@ def _provision_snapshot(
             tmp_path.replace(target)
         except Exception as exc:
             tmp_path.unlink(missing_ok=True)
-            if switched and target.is_file():
-                # The old repo's file, describing (or licensing) bytes this pull replaced.
+            if replacing and target.is_file():
+                # The old repo's or release's file, describing (or licensing) bytes this pull replaced.
                 target.unlink()
                 logger.info(
-                    "Removed %s: it came with %s, and %s has none.", optional, switched_from, hf_repo_prefix
+                    "Removed %s: it came with %s, and %s has none.",
+                    optional,
+                    switched_from or _follow_hub.local,
+                    hf_repo_prefix,
                 )
             logger.info(
                 "No %s in the %s repo (%s); the cache carries data only.", optional, label, type(exc).__name__
             )
-    if switched_from is not None:
-        atomic_write_text(
-            cache_dir / PULL_RECORD_FILENAME,
-            json.dumps({"repo": hf_repo_prefix, "files": planned}, indent=2) + "\n",
-        )
+    # Rewritten now that every file is in place: a switch is no longer under way, and the record states
+    # the `release.json` this pull placed, so a builder's release written over it later is not taken
+    # for this pull (RM420, `_pulled_by_this_repo`).
+    _write_pull_record(cache_dir, hf_repo_prefix, planned)
     logger.info("Download complete: %s", cache_dir)
     return cache_dir
 
@@ -659,13 +878,28 @@ def _keep(
     return not switched
 
 
-def _unverified(cache_dir: Path, label: str, why: str) -> Path:
+def _unverified(cache_dir: Path, label: str, why: str, follow: _FollowHub | None = None) -> Path:
     """Serve a cache nothing on disk calls unfinished, whose completeness could not be checked, and say so.
 
     The unknown arm of the three (RM339): neither trusted as complete, which is the defect, nor refused,
     which would take a working cache away from a machine with no network. The record is not written,
     so the next call that can reach the listing checks again.
+
+    A re-pull to a newer published release (RM420) that cannot start for the same reasons serves the
+    cache as it is too, before anything in it moved, and says that instead.
     """
+    if follow is not None and follow.outcome == "refreshed":
+        follow.outcome, follow.detail = "unknown", why
+        logger.warning(
+            "%s cache at %s was not re-pulled to %s: %s. Using it as it is.",
+            label,
+            cache_dir,
+            follow.published,
+            why,
+        )
+        return cache_dir
+    if follow is not None and follow.outcome is None:
+        follow.outcome, follow.detail = "unknown", why
     logger.warning(
         "%s cache at %s carries no pull record, and %s, so whether it is complete is unknown. "
         "Using it as it is; a run that can reach HuggingFace checks it against the published listing.",
@@ -676,7 +910,7 @@ def _unverified(cache_dir: Path, label: str, why: str) -> Path:
     return cache_dir
 
 
-def ensure_snapshot(ensembl_cache: Path | None = None) -> Path:
+def ensure_snapshot(ensembl_cache: Path | None = None, *, _follow_hub: _FollowHub | None = None) -> Path:
     """Provision the Ensembl parquet cache from HuggingFace Hub, returning the cache directory."""
     cache_dir = Path(ensembl_cache) if ensembl_cache is not None else default_ensembl_cache_dir()
     return _provision_snapshot(
@@ -685,10 +919,13 @@ def ensure_snapshot(ensembl_cache: Path | None = None) -> Path:
         label="Ensembl",
         error_cls=EnsemblReferenceError,
         filename_glob=SNAPSHOT_FILE_GLOBS["ensembl"],
+        _follow_hub=_follow_hub,
     )
 
 
-def ensure_clinvar_snapshot(clinvar_cache: Path | None = None) -> Path:
+def ensure_clinvar_snapshot(
+    clinvar_cache: Path | None = None, *, _follow_hub: _FollowHub | None = None
+) -> Path:
     """Provision the ClinVar parquet cache from HuggingFace Hub, returning the cache directory."""
     cache_dir = Path(clinvar_cache) if clinvar_cache is not None else default_clinvar_cache_dir()
     return _provision_snapshot(
@@ -697,10 +934,13 @@ def ensure_clinvar_snapshot(clinvar_cache: Path | None = None) -> Path:
         label="ClinVar",
         error_cls=ClinVarReferenceError,
         filename_glob=SNAPSHOT_FILE_GLOBS["clinvar"],
+        _follow_hub=_follow_hub,
     )
 
 
-def ensure_constraint_snapshot(constraint_cache: Path | None = None) -> Path:
+def ensure_constraint_snapshot(
+    constraint_cache: Path | None = None, *, _follow_hub: _FollowHub | None = None
+) -> Path:
     """Provision the gnomAD constraint parquet cache from HuggingFace Hub.
 
     The third caller of one download body — the plumbing generalized when ClinVar landed, so this is
@@ -713,10 +953,13 @@ def ensure_constraint_snapshot(constraint_cache: Path | None = None) -> Path:
         label="gnomAD constraint",
         error_cls=ConstraintReferenceError,
         filename_glob=SNAPSHOT_FILE_GLOBS["constraint"],
+        _follow_hub=_follow_hub,
     )
 
 
-def ensure_clinpgx_snapshot(clinpgx_cache: Path | None = None) -> Path:
+def ensure_clinpgx_snapshot(
+    clinpgx_cache: Path | None = None, *, _follow_hub: _FollowHub | None = None
+) -> Path:
     """Provision the ClinPGx clinical-annotation snapshot from HuggingFace Hub (RM38).
 
     The builder shipped a release ahead of this, so the snapshot existed and no code path could reach
@@ -732,10 +975,11 @@ def ensure_clinpgx_snapshot(clinpgx_cache: Path | None = None) -> Path:
         label="ClinPGx",
         error_cls=GatedSnapshotError,
         filename_glob=SNAPSHOT_FILE_GLOBS["clinpgx"],
+        _follow_hub=_follow_hub,
     )
 
 
-def ensure_cpic_snapshot(cpic_cache: Path | None = None) -> Path:
+def ensure_cpic_snapshot(cpic_cache: Path | None = None, *, _follow_hub: _FollowHub | None = None) -> Path:
     """Provision the CPIC snapshot from HuggingFace Hub (RM38).
 
     CPIC is open and unauthenticated, so the cache is not about access — it is about a *host* not
@@ -754,10 +998,11 @@ def ensure_cpic_snapshot(cpic_cache: Path | None = None) -> Path:
         label="CPIC",
         error_cls=GatedSnapshotError,
         filename_glob=SNAPSHOT_FILE_GLOBS["cpic"],
+        _follow_hub=_follow_hub,
     )
 
 
-def ensure_civic_snapshot(civic_cache: Path | None = None) -> Path:
+def ensure_civic_snapshot(civic_cache: Path | None = None, *, _follow_hub: _FollowHub | None = None) -> Path:
     """Provision the CIViC snapshot from HuggingFace Hub (RM176).
 
     The cache roster recorded this one's absence as a **gap**, in those words, beside PharmVar's and
@@ -772,10 +1017,13 @@ def ensure_civic_snapshot(civic_cache: Path | None = None) -> Path:
         label="CIViC",
         error_cls=OpenSnapshotError,
         filename_glob=SNAPSHOT_FILE_GLOBS["civic"],
+        _follow_hub=_follow_hub,
     )
 
 
-def ensure_drug_labels_snapshot(drug_labels_cache: Path | None = None) -> Path:
+def ensure_drug_labels_snapshot(
+    drug_labels_cache: Path | None = None, *, _follow_hub: _FollowHub | None = None
+) -> Path:
     """Provision the regulator drug-label snapshot from HuggingFace Hub (RM176).
 
     Publishable on the annotation lane's grounds and gated on its terms — ClinPGx's CC BY-SA permits
@@ -791,10 +1039,13 @@ def ensure_drug_labels_snapshot(drug_labels_cache: Path | None = None) -> Path:
         label="ClinPGx drug labels",
         error_cls=GatedSnapshotError,
         filename_glob=SNAPSHOT_FILE_GLOBS["drug_labels"],
+        _follow_hub=_follow_hub,
     )
 
 
-def ensure_mitomap_snapshot(mitomap_cache: Path | None = None) -> Path:
+def ensure_mitomap_snapshot(
+    mitomap_cache: Path | None = None, *, _follow_hub: _FollowHub | None = None
+) -> Path:
     """Provision the MITOMAP snapshot from HuggingFace Hub (RM171).
 
     Publishable on the source's own terms — CC BY 3.0, with commercial and clinical use stated free —
@@ -810,10 +1061,13 @@ def ensure_mitomap_snapshot(mitomap_cache: Path | None = None) -> Path:
         label="MITOMAP",
         error_cls=OpenSnapshotError,
         filename_glob=SNAPSHOT_FILE_GLOBS["mitomap"],
+        _follow_hub=_follow_hub,
     )
 
 
-def ensure_clinvar_gkm_snapshot(clinvar_gkm_cache: Path | None = None) -> Path:
+def ensure_clinvar_gkm_snapshot(
+    clinvar_gkm_cache: Path | None = None, *, _follow_hub: _FollowHub | None = None
+) -> Path:
     """Provision the ClinVar-GKM indel witness from HuggingFace Hub (RM305).
 
     Publishable on the source's own terms (CC0 over ClinGen's transformation, ClinVar public domain
@@ -827,10 +1081,13 @@ def ensure_clinvar_gkm_snapshot(clinvar_gkm_cache: Path | None = None) -> Path:
         label="ClinVar-GKM",
         error_cls=OpenSnapshotError,
         filename_glob=SNAPSHOT_FILE_GLOBS["clinvar_gkm"],
+        _follow_hub=_follow_hub,
     )
 
 
-def _ensure_opentargets_snapshot(opentargets_cache: Path | None = None) -> Path:
+def _ensure_opentargets_snapshot(
+    opentargets_cache: Path | None = None, *, _follow_hub: _FollowHub | None = None
+) -> Path:
     """Provision the trimmed Open Targets Platform snapshot from HuggingFace Hub (RM408).
 
     The release is CC0-marked, so a deployment pulls ~5.5 GB instead of downloading ~22 GB of
@@ -848,10 +1105,13 @@ def _ensure_opentargets_snapshot(opentargets_cache: Path | None = None) -> Path:
         label="Open Targets",
         error_cls=OpenSnapshotError,
         filename_glob=SNAPSHOT_FILE_GLOBS["opentargets"],
+        _follow_hub=_follow_hub,
     )
 
 
-def ensure_alphagenome_avi_snapshot(alphagenome_avi_cache: Path | None = None) -> Path:
+def ensure_alphagenome_avi_snapshot(
+    alphagenome_avi_cache: Path | None = None, *, _follow_hub: _FollowHub | None = None
+) -> Path:
     """Provision the AVI snapshot from HuggingFace Hub (RM198).
 
     **A pull, never a build.** The 88.5 GB source is behind an eligibility gate that bars classes of
@@ -876,10 +1136,13 @@ def ensure_alphagenome_avi_snapshot(alphagenome_avi_cache: Path | None = None) -
         label="AlphaGenome AVI",
         error_cls=OpenSnapshotError,
         filename_glob=SNAPSHOT_FILE_GLOBS["alphagenome_avi"],
+        _follow_hub=_follow_hub,
     )
 
 
-def ensure_strchive_snapshot(strchive_cache: Path | None = None) -> Path:
+def ensure_strchive_snapshot(
+    strchive_cache: Path | None = None, *, _follow_hub: _FollowHub | None = None
+) -> Path:
     """Provision the STRchive catalogue from HuggingFace Hub (RM176).
 
     **Not `_provision_snapshot`, and the difference is the snapshot rather than the plumbing.** That
@@ -897,6 +1160,7 @@ def ensure_strchive_snapshot(strchive_cache: Path | None = None) -> Path:
         payload=STRCHIVE_CATALOGUE_FILENAME,
         label="STRchive",
         error_cls=OpenSnapshotError,
+        _follow_hub=_follow_hub,
     )
 
 
@@ -907,35 +1171,43 @@ def _provision_root_file_snapshot(
     payload: str,
     label: str,
     error_cls: type[Exception],
+    _follow_hub: _FollowHub | None = None,
 ) -> Path:
     """Fetch a snapshot whose payload is one named file at the repo root, plus `release.json`.
 
     A present, parseable payload is trusted without touching the network — the whole cache, provenance
-    included, as a parquet cache whose pull record says the pull finished is trusted whole. A snapshot that arrived without a
-    `release.json` therefore stays without one until it is re-provisioned from scratch, which is the
-    parquet lanes' behaviour too and is why it is not repaired here: a catalogue with no release label
-    is honestly unlabelled, and the check says so rather than claiming a release it cannot name.
+    included, as a parquet cache whose pull record says the pull finished is trusted whole — for every
+    caller but `cache pull` and `cache prepare` (RM420). They pass `_follow_hub`, and a present
+    catalogue is compared with the release the repo publishes: re-pulled when the labels differ and
+    its pull record says it came from this repo, left alone and reported with both labels when nothing
+    says so. Since RM420 a pull writes that record here too; a catalogue pulled before then carries
+    none and is left alone, which costs its operator one move-aside rather than risking a build.
+
+    A snapshot that arrived without a `release.json` stays without one until it is re-provisioned,
+    which is the parquet lanes' behaviour too and is why it is not repaired here: a catalogue with no
+    release label is honestly unlabelled, and the check says so rather than claiming a release it
+    cannot name.
     """
     target = cache_dir / payload
+    refreshing = False
     if _json_parses(target):
-        return cache_dir
+        if _follow_hub is None or not _compare_with_hub(cache_dir, hf_repo, label, _follow_hub):
+            return cache_dir
+        if not _pulled_by_this_repo(cache_dir, hf_repo):
+            return _left_alone(cache_dir, label, _follow_hub)
+        refreshing = True
+        _refreshing(cache_dir, label, _follow_hub)
 
     logger.info("Provisioning the %s snapshot from HuggingFace Hub ...", label)
-    try:
-        from huggingface_hub import HfFileSystem, get_token
-    except ImportError as exc:  # the one guarded optional import (CLAUDE.md)
+    fs = _hub_filesystem()
+    if fs is None:
         raise error_cls(
             f"huggingface_hub is required to download the {label} snapshot; install "
             f"just-dna-enricher (which depends on it) or point at a local cache"
-        ) from exc
+        )
 
     created = not cache_dir.exists()
     cache_dir.mkdir(parents=True, exist_ok=True)
-    # A token is optional on the read side and doubles the per-IP rate allowance, so the `.env`
-    # is read here for the same reason the publisher reads it (`@credential-where-read`):
-    # anonymous traffic sleeping on a 429 looks exactly like a hung download. `env_value` reads the
-    # one key and exports nothing else from the file (RM301).
-    fs = HfFileSystem(token=env_value("HF_TOKEN") or get_token())
     tmp_path = target.with_suffix(target.suffix + ".part")
     try:
         fs.get(f"{hf_repo}/{payload}", str(tmp_path))
@@ -957,6 +1229,10 @@ def _provision_root_file_snapshot(
     if not _json_parses(tmp_path):
         tmp_path.unlink(missing_ok=True)
         raise error_cls(f"Downloaded {payload} is not readable JSON (interrupted download?)")
+    if refreshing:
+        # Withdrawn right before the payload moves, and fetched last below (`@snapshot-layout-locations`):
+        # the old release's record may not describe the new catalogue for a moment, let alone after a crash.
+        (cache_dir / RELEASE_FILENAME).unlink(missing_ok=True)
     tmp_path.replace(target)
 
     # **Staged, like the payload two lines up and like every other fetch in this module** (RM219).
@@ -978,6 +1254,11 @@ def _provision_root_file_snapshot(
             label,
             type(exc).__name__,
         )
+    # The witness that this catalogue came from a pull of this repo (RM420), written last. It names no
+    # files: the payload lands whole by one rename after it parses, so there is no unfinished pull for
+    # a file list to describe, and `snapshot_record_missing` judges what a list names by the parquet
+    # footer, which a JSON payload never has.
+    _write_pull_record(cache_dir, hf_repo, [])
     logger.info("Download complete: %s", cache_dir)
     return cache_dir
 

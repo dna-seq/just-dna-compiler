@@ -654,7 +654,7 @@ def test_prepare_picks_each_lanes_route_from_the_registry(
         stub_ensure = None
         if lane.ensure is not None:
 
-            def stub_ensure(_name=lane.name, _base=base):
+            def stub_ensure(_name=lane.name, _base=base, **_):
                 pulled.append(_name)
                 _base.mkdir(parents=True, exist_ok=True)
                 return _base
@@ -689,13 +689,15 @@ def test_prepare_leaves_a_present_cache_alone(tmp_path: Path, monkeypatch: pytes
     lane = dataclasses.replace(
         LANES_BY_NAME["strchive"],
         resolve=lambda: tmp_path / "already-here",
-        ensure=lambda: touched.append("pulled") or tmp_path,
+        # Since RM420 the lane's own `ensure` is asked whether the hub publishes another release (one
+        # small read, `test_cache_pull_follows_the_hub.py`); a stub that finds it current moves nothing.
+        ensure=lambda **_: touched.append("asked") or tmp_path / "already-here",
         default_dir=lambda: tmp_path / "already-here",
     )
     monkeypatch.setattr(caches, "rebuild_lane", lambda *a, **k: touched.append("built"))
     outcome = caches.prepare_lane(lane, RebuildRequest(out_dir=tmp_path))
     assert outcome.route == "present" and outcome.ready is True
-    assert touched == [], "a present cache must cost neither a download nor a build"
+    assert touched == ["asked"], "a present cache must cost neither a download nor a build"
 
 
 def _whole(path: Path) -> None:
@@ -718,7 +720,7 @@ def test_prepare_completes_an_unrecorded_pulled_cache_that_lacks_published_files
     cache = tmp_path / "clinvar"
     _whole(cache / "data" / "clinvar-chr1.parquet")
 
-    def ensure() -> Path:
+    def ensure(**_) -> Path:
         _whole(cache / "data" / "clinvar-chr2.parquet")
         return cache
 
@@ -728,13 +730,17 @@ def test_prepare_completes_an_unrecorded_pulled_cache_that_lacks_published_files
 
 
 def test_prepare_leaves_a_recorded_cache_and_a_foreign_place_and_a_gated_lane_alone(tmp_path: Path) -> None:
-    """The compare reaches only an unrecorded cache in the place `ensure` writes, with the terms met."""
+    """The compare reaches only a cache in the place `ensure` writes, with the terms met.
+
+    A recorded cache there reaches `ensure` too since RM420, which asks the hub's release; a stub that
+    finds it current leaves it present.
+    """
     touched: list[str] = []
     cache = tmp_path / "clinvar"
     _whole(cache / "data" / "clinvar-chr1.parquet")
 
-    def ensure() -> Path:
-        touched.append("pulled")
+    def ensure(**_) -> Path:
+        touched.append("asked")
         return cache
 
     # an override pointing elsewhere: `ensure` would write to the default directory, not here
@@ -747,10 +753,11 @@ def test_prepare_leaves_a_recorded_cache_and_a_foreign_place_and_a_gated_lane_al
     (cache / locations.PULL_RECORD_FILENAME).write_text(
         '{"files": ["data/clinvar-chr1.parquet"]}', encoding="utf-8"
     )
+    assert touched == []
     assert caches.prepare_lane(_clinvar_lane_at(cache, ensure), RebuildRequest(out_dir=tmp_path)).route == (
         "present"
     )
-    assert touched == []
+    assert touched == ["asked"]
 
 
 def test_a_built_lane_is_staged_and_moved_rather_than_written_in_place(
@@ -818,7 +825,7 @@ def test_a_repo_nobody_has_published_is_unavailable_rather_than_failed(
     """`prepare`'s job is to leave the machine usable, and an unpublished repo is a fact about the
     world that no retry changes — so it is the third state, and the exit code stays clean."""
 
-    def unpublished():
+    def unpublished(**_):
         raise caches.SnapshotNotPublished("nothing at datasets/x/data")
 
     lane = dataclasses.replace(
@@ -837,7 +844,7 @@ def test_a_gated_lane_is_skipped_when_no_use_is_declared(tmp_path: Path) -> None
     lane = dataclasses.replace(
         LANES_BY_NAME["cpic"],
         resolve=lambda: None,
-        ensure=lambda: pytest.fail("the gate did not run before the download"),
+        ensure=lambda **_: pytest.fail("the gate did not run before the download"),
         default_dir=lambda: tmp_path / "cpic",
     )
     outcome = caches.prepare_lane(lane, RebuildRequest(out_dir=tmp_path / "cpic"))
@@ -857,7 +864,7 @@ def test_rebuild_caches_and_prepare_caches_are_the_cli_loops(tmp_path: Path) -> 
     lane = dataclasses.replace(
         LANES_BY_NAME["ensembl"],
         resolve=lambda: None,
-        ensure=lambda: pulled.append("ensembl") or tmp_path,
+        ensure=lambda **_: pulled.append("ensembl") or tmp_path,
         default_dir=lambda: tmp_path,
     )
     prepared = caches.prepare_caches([lane])
