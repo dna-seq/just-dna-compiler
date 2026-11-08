@@ -2055,7 +2055,7 @@ caller that names none gets **no** connect, read or pool timeout. Only three of 
 `drug_labels_build`, `mitomap_build`, `strchive_build`, `clinpgx_build`, `pubmind_build` and `opentargets_build`
 (listing and every part) name none.
 
-**Severity** low · **Status** open — **a patch, the lead's read, with the pm to size** · **Owner** enricher (`net.stream_to_file` and its
+**Severity** low · **Status** open — **a patch, `unattended`** (the pm, 2026-11-08; about 20 minutes) · **Owner** enricher (`net.stream_to_file` and its
 callers) · **Motivating case** RM409's build · *related* RM409, RM403
 
 **The gap.** A connection that stalls without sending a byte (a half-open TCP session, a server that accepted and
@@ -2068,6 +2068,22 @@ even Ctrl-C cannot end that part. Not seen in a run yet; it is read from the cod
 `stream_to_file` (a read timeout generous enough for a slow mirror, since a timeout bounds the gap between
 chunks, not the whole download) or each caller naming one. A default changes no signature and adds no name,
 so it looks like a patch; the value, and whether it is a knob (`@retry-attempt-floor`), are the pm's.
+
+**Sized, the pm (2026-11-08): a patch, built unattended, after RM400, RM401 and RM403.**
+
+- **Built although no run has met it, unlike RM419.** The fix carries almost no risk of its own, and the failure
+  it prevents is the worst kind for an unattended run: a rebuild that hangs with no line printed, which no retry,
+  no stop flag and no watcher catches. RM419's fix, by contrast, makes claims about services nobody measured.
+- **One default in `stream_to_file`, never per caller:** `timeout=120.0` instead of `None`, the value three
+  builders already pass. httpx applies it to connect, read, write and pool alike, and the read half bounds the gap
+  between two chunks, not the whole download, so a slow mirror that keeps sending is never cut off. A caller that
+  names its own keeps it. The signature keeps `float | None`, so a caller may still ask for no timeout on purpose.
+- **Not a knob.** `@retry-attempt-floor` makes a constant a knob when two deployments want different values of it;
+  nobody has asked for a different one, and the three callers agree on 120 s. It becomes a knob on the first such ask.
+- **The test:** a local server that accepts the connection and sends nothing; `stream_to_file`, given no timeout
+  of its own, raises the lane's translated error within a bounded time instead of blocking (the test may shrink the
+  default through a private seam so it runs in seconds). And an equality over the call sites: none passes
+  `timeout=None` by accident.
 
 # Not format scope
 
