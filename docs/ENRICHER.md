@@ -406,7 +406,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `clinical` | the `clin_sig` cross-check over the ClinVar snapshot (offline, reports only) | format |
 | `concordance` | **0.7** (RM130): the other half of that check — the two verdicts, the per-authority calls behind them, and the writer that puts `clin_sig_concordance.csv` + `clin_sig_authority_calls.csv` beside the spec | format `concordance`, compiler `load_csv_rows` |
 | `clin_sig` | **0.7**: the one raw-significance → `VALID_CLIN_SIG` normalizer, shared by every source that reports one. Dependency-free on purpose, so a runtime pass reads it without the `[dev]` extra | format `VALID_CLIN_SIG` |
-| `net` | shared HTTP politeness: `PacingGate`, `batched`, `dedupe`, `attempt_floor`, and **`stream_to_file`** — the one body every bulk download in this package uses, atomic, translated and retried (RM187) | `httpx`, `tenacity` |
+| `net` | shared HTTP politeness: `PacingGate`, `batched`, `dedupe`, `attempt_floor`, and **`stream_to_file`** — the one body every bulk download in this package uses, atomic, translated and retried (RM187), with a 120 s timeout by default (RM421) | `httpx`, `tenacity` |
 | `eutils` | NCBI E-utilities client (esummary), shared by the literature and rsID checks | `httpx`, `tenacity` |
 | `literature` | pass 4: a module's citations (`studies.csv` + binning `pmid`s) → `literature.csv` (PubMed + Europe PMC), fulltext quote match, per-article licence, PMCID→PMID | `httpx`, `tenacity` |
 | `identifiers` | rsID / trait-CURIE / gene-symbol / PGS-accession currency (dbSNP, OLS4, HGNC, PGS Catalog) | `httpx`, `tenacity` |

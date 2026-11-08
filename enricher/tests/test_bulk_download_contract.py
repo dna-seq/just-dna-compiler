@@ -145,8 +145,10 @@ def test_no_bulk_download_runs_without_a_timeout() -> None:
     literal `None` from either side; a call spreading `**kwargs` cannot be read and is refused too. A
     caller that wants no timeout on purpose still may, by changing this test with a reason.
 
-    Not vacuous: the modules found calling it must be exactly the modules that import it, two walks
-    that agree or fail, never a count.
+    Not escapable: every reference to the function (a bare name or `net.stream_to_file`) must be the
+    callee of a call the walk read, so binding it to another name or passing it on as a value, where
+    no call here can read its timeout, fails the walk rather than slipping past it. And not vacuous:
+    the walk must have read at least one call.
     """
     (default,) = [
         node.args.kw_defaults[[a.arg for a in node.args.kwonlyargs].index("timeout")]
@@ -158,27 +160,35 @@ def test_no_bulk_download_runs_without_a_timeout() -> None:
     offenders: list[str] = []
     if isinstance(default, ast.Constant) and default.value is None:
         offenders.append("net.py::stream_to_file's own default")
-    calling: set[str] = set()
-    importing: set[str] = set()
+    calls: list[str] = []
     for name, tree in _package_sources():
+        callees: set[int] = set()
+        references: list[ast.expr] = []
         for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and any(a.name == "stream_to_file" for a in node.names):
-                importing.add(name)
+            if (isinstance(node, ast.Name) and node.id == "stream_to_file") or (
+                isinstance(node, ast.Attribute) and node.attr == "stream_to_file"
+            ):
+                references.append(node)
             if not isinstance(node, ast.Call):
                 continue
             func = node.func
             called = func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
             if called != "stream_to_file":
                 continue
-            calling.add(name)
+            callees.add(id(func))
+            calls.append(f"{name}:{node.lineno}")
             if any(k.arg is None for k in node.keywords):
                 offenders.append(f"{name}:{node.lineno} spreads **kwargs, so its timeout cannot be read")
                 continue
             given = {k.arg: k.value for k in node.keywords}.get("timeout", default)
             if isinstance(given, ast.Constant) and given.value is None:
                 offenders.append(f"{name}:{node.lineno}")
-    assert calling, "the walk found no bulk download"
-    assert calling == importing, f"callers {sorted(calling)} != importers {sorted(importing)}"
+        offenders.extend(
+            f"{name}:{ref.lineno} names stream_to_file outside a call, so its timeout cannot be read"
+            for ref in references
+            if id(ref) not in callees
+        )
+    assert calls, "the walk found no bulk download"
     assert offenders == [], f"these bulk downloads run with no timeout at all: {offenders}"
 
 

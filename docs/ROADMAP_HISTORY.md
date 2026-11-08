@@ -44,9 +44,9 @@ severity low.
 **Built (2026-11-08), for the lead.** The pm's shape, unchanged. `stream_to_file`'s `timeout` defaults to a
 private `net._BULK_TIMEOUT = 120.0` instead of `None`; the signature still reads `float | None`, a caller's own
 value wins, and an explicit `None` is still passed to httpx as no timeout (no caller in the package passes one,
-and the walk below refuses it, so that way back stays a decision rather than an accident). Not a knob: no environment variable and
-no setting. The three builders that named 120 s (`civic_build`, `clinvar_gkm_build`, `mane_build`) no longer pass
-it, so the value lives in one place and none of the three goes stale on the first change. httpx applies the value
+and the walk below refuses it, so that way back stays a decision rather than an accident). Not a knob: no
+environment variable and no setting. The three builders that named 120 s (`civic_build`, `clinvar_gkm_build`,
+`mane_build`) no longer pass it, so the value lives in one place and none of the three goes stale on the first change. httpx applies the value
 to connect, read, write and pool; the read half bounds the gap between two chunks, so a slow mirror that keeps
 sending is never cut off, and a silent one raises `httpx.ReadTimeout`, a `TransportError`, which the existing
 retry takes and the existing arm translates to the lane's `error_cls` on giving up. No public name, field, flag or
@@ -65,9 +65,11 @@ Three tests, each seen red on the previous `main`:
 - `test_no_bulk_download_runs_without_a_timeout` (in `test_bulk_download_contract.py`): an AST walk over the
   package resolving each `stream_to_file` call's effective timeout, its own `timeout=` or else the definition's
   default, and refusing a literal `None` from either side (and a `**kwargs` spread, which cannot be read). Not
-  vacuous: the modules calling it must equal the modules importing it. Red on `main` with exactly the eleven call
-  sites this item listed plus the definition's own default; red again when one caller is mutated to pass
-  `timeout=None`.
+  escapable by passing the function on as a value: every reference to it (a bare name or `net.stream_to_file`) must
+  be the callee of a call the walk read, and the walk must read at least one. Red on `main` with exactly the eleven
+  call sites this item listed plus the definition's own default; red again when one caller is mutated to pass
+  `timeout=None`, and when a module that already calls it also binds `_fetch = stream_to_file` (or another binds
+  `net.stream_to_file`) without a call the walk can read.
 - `test_the_default_timeout_reaches_httpx_and_a_callers_own_wins`: no `timeout=` reaches httpx as 120.0, `5.0` as
   5.0, and an explicit `None` as `None`.
 
