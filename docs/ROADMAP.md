@@ -2068,10 +2068,6 @@ registry per test. No public name moves, so it fits a patch; whether it is one, 
   one pair whose shared per-address budget is documented. Each further client joins only with its service's limit
   measured or quoted from its documentation, and a key per service, never one per interval.
 
-# Not format scope
-
-Listed so they are not mistaken for format scope, and so nobody re-proposes them.
-
 ## RM420 — `cache pull` never fetches a newer published release over a whole cache
 
 **Filed by the lead (2026-11-08)** when the maintainer ran 0.8.2's own boundary step on this machine,
@@ -2081,7 +2077,7 @@ was published: it printed `on disk: …` and left `gnomad_constraint` at `gnomad
 way (`strchive_v2.26.0` here, `strchive_v2.28.0` published). ClinVar, CIViC and MITOMAP matched the hub only
 because nothing newer had been published since their last pull.
 
-**Severity** medium · **Status** open — with the pm to size · **Owner** enricher (`download.ensure_parquet_snapshot`,
+**Severity** medium · **Status** open — **a patch, the next on `main`** (the pm, 2026-11-08), ahead of RM400, RM401 and RM403 · **Owner** enricher (`download.ensure_parquet_snapshot`,
 `cache pull`, `cache prepare`) · **Motivating case** the 0.8.2 boundary on this machine · *related* RM410, RM372,
 RM339, RM411
 
@@ -2112,6 +2108,40 @@ still serves offline and an enrichment never downloads a new release mid-run. Wh
 newer, or only different, is a label comparison the lane already owns (`@the-reporter-cannot-compose-a-lanes-label`).
 No public name needs to move, so it looks like a patch; the size, and whether the 0.8.2 release notes are
 corrected now, are the pm's.
+
+**Sized, the pm (2026-11-08): a patch, the next on `main`, severity medium.**
+
+- **Every upgrading machine meets it.** The boundary step is written for machines that already hold a lane, and
+  those are exactly the ones the pull skips. It is not a rare path: it is the documented one, and it failed on the
+  first machine that ran it. So it goes ahead of the queued patches (RM400, RM401, RM403), not behind them.
+- **The class is a patch.** `cache pull` and `cache prepare` are asked to do what the release notes, INTEGRATION_0_8
+  and the currency warning already say they do. No public name moves, and `enrich`'s own call keeps today's trust.
+- **The fix's own risk: a pull replacing a snapshot built on this machine.** This machine builds snapshots and then
+  publishes them; between the build and the upload the local lane is newer than the hub's. A pull that re-pulls on
+  any differing label would put the older published release back over it. So the build must keep a lane that was
+  built here: a lane re-pulls only when the cache came from a pull of that repo and the published label differs;
+  a lane built here is reported with both labels and left alone. How the pull tells the two apart is the lead's
+  (the pull record, or what a rebuild writes); **the test that holds it**: build a lane locally, publish an older
+  label to the fake hub, run `cache pull`, and the local bytes are unchanged and the report names both labels.
+- **Newer or only different.** The lane's own label comparison decides where it can order the two; where it cannot
+  (a digest label against a dated one, `@currency-asks-the-source-not-the-cache`), a pulled cache follows the hub,
+  since the operator asked for the hub's release by running `cache pull`.
+- **Not in the fix:** `enrich` never downloads a release mid-run, and an unreadable hub serves the cache as it is
+  (both as the entry says).
+
+**Corrected now, before the fix (the pm, 2026-11-08):**
+
+- **The 0.8.2 GitHub release notes get a correction line under step 2:** on a machine that already holds the
+  constraint lane, `cache pull` leaves it at 4.1 (RM420); move the lane's directory aside, then pull. The release is
+  published, so this edit is outbound: the lead's if its grant covers editing a published release's notes,
+  otherwise the person's.
+- **INTEGRATION_0_8 § 4 gets an RM420 known-issue line with the same workaround**, and its RM410 line, "`cache pull`
+  brings 4.1.2 once published", is corrected to name RM420 for a machine that already holds the lane. The lead's
+  edit, on `main`.
+
+# Not format scope
+
+Listed so they are not mistaken for format scope, and so nobody re-proposes them.
 
 ## RM7 — Evaluation-output / report-card schema
 
