@@ -10,7 +10,8 @@ The lead's working state, rewritten to the present before each reset. Last rewri
    `not_in_nav`, which the seat PRs had left red).
 3. **The id scripts**: kept at seating; triage then moved to the kit's copies (150d916). Claim an `RMn` with
    the kit's `classes/triage/item-next.py --note`.
-4. **Trust register** (`docs/TRUST.md`): asked the person once, in chat. No answer yet.
+4. **Trust register** (`docs/TRUST.md`): the maintainer, 2026-11-08: "lowprio, PM to reask after 1.0".
+   Not started; handed to the pm to ask again after the 1.0 cut.
 5. **Scope files are the pm's**: noted. `docs/ROADMAP_0_8.md`, `docs/ROADMAP_1_0.md`, `docs/proposals/`.
 6. **The kit pin**: this seat moves it (`bin/move-to-tag.py`), on a release announcement that needs it or a fix waited on.
 
@@ -66,8 +67,9 @@ None open.
   `net._service_gate`). RM419 filed (the same class beyond NCBI); the pm parked it as a patch (88bda8eb): it
   unparks on a reported rate-limit refusal with two of our clients in one process, or the registry running
   enrichments as threads, then the Ensembl pair first.
-- **Cache:** `/data/just-dna-cache/ensembl_variations` is the split release; the old one is
-  `ensembl_variations.pre-0.8`, to drop on the person's word. The just-dna-lite side still to be told.
+- **Cache:** `/data/just-dna-cache/ensembl_variations` is the split release. The old
+  `ensembl_variations.pre-0.8` (14 GB): the maintainer said delete (2026-11-08); the classifier refused the
+  `rm -rf`, so the command is with the person. The just-dna-lite side still to be told.
 - **Desk:** #210 (should the liaison keep `docs/DOWNSTREAM.md`, who waits on us; default: no list) and
   #211 (the stale-branch script in the scratchpad, `delete_stale_branches.sh`; default: nothing deleted).
 - **Not done, the person's:** the worktree `.claude/worktrees/lead-RM372/data/rm372/fence_check`; merge
