@@ -68,8 +68,7 @@ None open.
   unparks on a reported rate-limit refusal with two of our clients in one process, or the registry running
   enrichments as threads, then the Ensembl pair first.
 - **Cache:** `/data/just-dna-cache/ensembl_variations` is the split release. The old
-  `ensembl_variations.pre-0.8` (14 GB): the maintainer said delete (2026-11-08); the classifier refused the
-  `rm -rf`, so the command is with the person. The just-dna-lite side still to be told.
+  `ensembl_variations.pre-0.8` was deleted by the maintainer, 2026-11-08. The just-dna-lite side still to be told.
 - **Desk:** #210 (should the liaison keep `docs/DOWNSTREAM.md`, who waits on us; default: no list) and
   #211 (the stale-branch script in the scratchpad, `delete_stale_branches.sh`; default: nothing deleted).
 - **Not done, the person's:** the worktree `.claude/worktrees/lead-RM372/data/rm372/fence_check`; merge
