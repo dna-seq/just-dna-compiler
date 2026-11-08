@@ -63,8 +63,9 @@ None open.
   (fe38e101). `CLAUDE.md`'s `@constraint-two-releases` headline changed on the maintainer's yes (59491cbf).
   RELEASE_CYCLE step 10 complete.
 - **Next patch on `main`, uncut:** RM418 shipped 2026-11-08 (d28c74b5, one NCBI gate per process via
-  `net._service_gate`). RM419 filed (the same class beyond NCBI, Ensembl's two clients first), sent to the pm to
-  size; build it on their word.
+  `net._service_gate`). RM419 filed (the same class beyond NCBI); the pm parked it as a patch (88bda8eb): it
+  unparks on a reported rate-limit refusal with two of our clients in one process, or the registry running
+  enrichments as threads, then the Ensembl pair first.
 - **Cache:** `/data/just-dna-cache/ensembl_variations` is the split release; the old one is
   `ensembl_variations.pre-0.8`, to drop on the person's word. The just-dna-lite side still to be told.
 - **Desk:** #210 (should the liaison keep `docs/DOWNSTREAM.md`, who waits on us; default: no list) and
