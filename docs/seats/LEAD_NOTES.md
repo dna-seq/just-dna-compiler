@@ -61,7 +61,10 @@ None open.
   pre-bump build; the hub answers `gnomad_v4.1.2_constraint`). GitHub release up (the maintainer granted
   that one command; rule 13 is still not pasted). Docs refresh merged (9c37d7db). Liaison's ledger updated
   (fe38e101). `CLAUDE.md`'s `@constraint-two-releases` headline changed on the maintainer's yes (59491cbf).
-  RELEASE_CYCLE step 10 complete. RM418 (one NCBI gate per process, the pm's) is the next patch.
+  RELEASE_CYCLE step 10 complete.
+- **Next patch on `main`, uncut:** RM418 shipped 2026-11-08 (d28c74b5, one NCBI gate per process via
+  `net._service_gate`). RM419 filed (the same class beyond NCBI, Ensembl's two clients first), sent to the pm to
+  size; build it on their word.
 - **Cache:** `/data/just-dna-cache/ensembl_variations` is the split release; the old one is
   `ensembl_variations.pre-0.8`, to drop on the person's word. The just-dna-lite side still to be told.
 - **Desk:** #210 (should the liaison keep `docs/DOWNSTREAM.md`, who waits on us; default: no list) and
