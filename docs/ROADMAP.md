@@ -2046,6 +2046,29 @@ registry per test. No public name moves, so it fits a patch; whether it is one, 
   one pair whose shared per-address budget is documented. Each further client joins only with its service's limit
   measured or quoted from its documentation, and a key per service, never one per interval.
 
+## RM421 — eleven of fourteen bulk downloads set no read timeout, so a stalled connection is never stopped
+
+**Filed by the lead (2026-11-08)** from RM409's build, which named it as a won't-fix residual of its own rather
+than widen into it. `net.stream_to_file`'s `timeout` defaults to `None` and is passed to `httpx.stream` as is, so a
+caller that names none gets **no** connect, read or pool timeout. Only three of the fourteen call sites name one
+(`civic_build`, `clinvar_gkm_build`, `mane_build`, 120 s each); `clinvar_build` (twice), `constraint_build`,
+`drug_labels_build`, `mitomap_build`, `strchive_build`, `clinpgx_build`, `pubmind_build` and `opentargets_build`
+(listing and every part) name none.
+
+**Severity** low · **Status** open — **a patch, the lead's read, with the pm to size** · **Owner** enricher (`net.stream_to_file` and its
+callers) · **Motivating case** RM409's build · *related* RM409, RM403
+
+**The gap.** A connection that stalls without sending a byte (a half-open TCP session, a server that accepted and
+went quiet) blocks the read forever: no retry fires, because nothing raises, and RM403's retry lines never print.
+RM409 made a pool's workers stop between chunks, but a worker blocked inside a read never reaches the check, so
+even Ctrl-C cannot end that part. Not seen in a run yet; it is read from the code.
+
+**What it would be.** A read timeout on every bulk download, so a stall raises `httpx.ReadTimeout`, which
+`stream_to_file` already retries as a transport error and translates on giving up. Either a default in
+`stream_to_file` (a read timeout generous enough for a slow mirror, since a timeout bounds the gap between
+chunks, not the whole download) or each caller naming one. A default changes no signature and adds no name,
+so it looks like a patch; the value, and whether it is a knob (`@retry-attempt-floor`), are the pm's.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.

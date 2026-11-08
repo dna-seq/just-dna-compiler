@@ -41,9 +41,9 @@ Patches on `main` after the 0.8.0 cut (2026-11-05), newest first.
 
 **Residuals** won't fix — `opentargets_build._source_digest` hashes the mirrored parts on a pool of eight and an
 interrupt there still waits for each in-flight part's hash, which is seconds of local disk reads and not a
-download · won't fix — a part whose connection stalls without sending a byte is stopped only when its next chunk
-arrives, because `stream_to_file` sets no read timeout on any bulk download; that is a defect of its own, reported
-to the lead with this build rather than widened into it
+download · RM421 — a part whose connection stalls without sending a byte is stopped only when its next chunk
+arrives, because `stream_to_file` sets no read timeout unless its caller names one; filed as a defect of its own
+rather than widened into this build
 
 **Built (2026-11-08), for the lead.** The mechanism is confirmed: a test that interrupts the mirror while four
 parts stream slowly from a local server waited three to eight seconds on the previous `main`: the in-flight
