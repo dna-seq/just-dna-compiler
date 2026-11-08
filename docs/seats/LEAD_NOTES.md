@@ -63,7 +63,8 @@ None open.
   that one command; rule 13 was pasted afterwards, `automode.py --check` clean on 2026-11-08). Docs refresh merged (9c37d7db). Liaison's ledger updated
   (fe38e101). `CLAUDE.md`'s `@constraint-two-releases` headline changed on the maintainer's yes (59491cbf).
   RELEASE_CYCLE step 10 complete.
-- **Next patch on `main`, uncut:** RM420 shipped 2026-11-08 (dd900ff3: `cache pull`/`prepare` follow the hub's
+- **Next patch on `main`, uncut:** RM409 shipped 2026-11-08 (e0ceaa28: Ctrl-C stops the Open Targets mirror and the
+  AVI build within a chunk); RM421 filed from it (no read timeout on most bulk downloads), with the pm. RM420 shipped 2026-11-08 (dd900ff3: `cache pull`/`prepare` follow the hub's
   release over a pulled cache; a local build is left alone; the pm sized it ahead of everything). The 0.8.2 GitHub
   notes and INTEGRATION_0_8 § 4 carry its correction. RM418 shipped 2026-11-08 (d28c74b5, one NCBI gate per process via
   `net._service_gate`). RM419 filed (the same class beyond NCBI); the pm parked it as a patch (88bda8eb): it
