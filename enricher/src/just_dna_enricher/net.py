@@ -95,6 +95,28 @@ class PacingGate:
             self.sleeper(remaining)
 
 
+#: The process's gates, one per (service, interval) (RM418). A service limits requests per key or per
+#: address, never per client, so two clients that each built a gate paced to the full rate apiece and
+#: together exceeded it. The service is part of the key because two unrelated budgets can share an
+#: interval (keyed NCBI and Ensembl's LD endpoint both pace at 0.1 s). The enricher's test conftest
+#: resets this per test, so no test waits on a slot another one claimed.
+_SERVICE_GATES: dict[tuple[str, float], PacingGate] = {}
+_SERVICE_GATES_LOCK = threading.Lock()
+
+
+def _service_gate(service: str, interval: float) -> PacingGate:
+    """The gate every client of `service` at `interval` shares in this process, made on first use.
+
+    Only for a client that was not handed a gate: a gate handed in is the caller's decision and is used
+    as handed. One shared gate is safe across threads (`PacingGate`'s lock covers the bookkeeping, not
+    the sleep), and its `spent` counts every default-built client's attempts against that service."""
+    with _SERVICE_GATES_LOCK:
+        gate = _SERVICE_GATES.get((service, interval))
+        if gate is None:
+            gate = _SERVICE_GATES[(service, interval)] = PacingGate(interval)
+        return gate
+
+
 def batched[T](items: list[T], size: int) -> Iterator[list[T]]:
     """Split into batches of at most `size`, preserving order (so emission stays deterministic)."""
     iterator = iter(items)

@@ -34,6 +34,46 @@ up.
 
 Patches on `main` after the 0.8.0 cut (2026-11-05), newest first.
 
+## RM418 — every NCBI client builds its own pacing gate, so two in one process pace against two budgets
+
+**SHIPPED 2026-11-08 on `main` — a patch, uncut.** Owner enricher (`eutils.EutilsClient`, `net._service_gate`),
+severity low.
+
+**Residuals** RM419 (the same class beyond NCBI: the two Ensembl REST clients first, and every other client that
+builds its own gate); RM404 (a host running enrichments as separate processes still needs to pass one client in,
+0.9; the registry was asked which it does on 2026-11-07, unanswered here).
+
+**Built (the lead, 2026-11-08), to the pm's sizing.** `net._service_gate(service, interval)` hands out one
+`PacingGate` per (service, interval) per process, made under a lock on first use. `EutilsClient` built without a
+gate takes `_service_gate("ncbi-eutils", interval)`; a gate handed in is used as handed. The service is in the key,
+where the item said "one gate per `min_request_interval`", because keyed NCBI and Ensembl's LD endpoint both pace
+at 0.1 s and are unrelated budgets; and so RM419 can reuse the registry. Every new name is private. A shared gate's
+`spent` now counts every default-built client's attempts against NCBI, which is what a host metering egress per
+upstream wants (S95). The enricher conftest resets the registry before every test (`_fresh_service_gates`), so no
+test waits on a slot another one claimed. Tests: `test_one_ncbi_gate_per_process.py`, five; on the previous `main`
+two default clients held different gates.
+
+**Filed by the pm (2026-11-07)** from the registry lead's ask (agent-chat, 638423336, via triage): RM404 in a 0.8.x
+patch, because the registry runs an upgrade sweep's online modules one at a time while the dbSNP merge check builds
+an unshared client per run. RM404 stays in 0.9, since a new public parameter never lands on `main`; this is the
+part a patch can carry.
+
+**The gap.** `EutilsClient.__post_init__` makes a fresh `PacingGate` whenever it is not handed one, and both callers
+build their own client (`identifiers.check_rsids`, and the literature pass). NCBI limits requests per API key or per
+address, not per client, so two clients in one process each pace to the full rate and together exceed it. A host
+running enrichments in parallel must serialize them, or be throttled. Since RM398 the same client is also the
+placement witness's.
+
+**What it would be.** A client that builds its own gate takes the process's gate for its interval instead: one
+private, module-level gate per `min_request_interval`, made under a lock on first use. The gate already locks the
+bookkeeping and not the sleep (`@shared-pacing-gate`), so threads share it safely. No public name moves, and a
+gate handed in explicitly is still used as handed. Test: two clients built without a gate share one, and requests
+from both, run on two threads, are spaced by the interval.
+
+**What it does not do.** It helps only inside one process. A host that runs enrichments as separate processes keeps
+its lock until RM404 lets it pass one client in; the registry was asked which it does (2026-11-07). The sequence
+proxy's missing timeout stays RM404's.
+
 ## RM415 — `bins_ungrounded` said "no bin pmid" on a module whose bin carries one
 
 **SHIPPED 2026-11-07 on `main`, cut 2026-11-07 as `v0.8.2` — a patch (S137, just-module-creator's liaison).** Owner compiler,

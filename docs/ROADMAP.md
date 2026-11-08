@@ -2026,31 +2026,27 @@ wrapper around it, owes a cancel hook), set on interrupt before the shutdown; th
 a half-written part from landing under its name. The test interrupts a mirror whose parts stream slowly from a
 fake server and asserts it returns within a chunk's time.
 
-## RM418 — every NCBI client builds its own pacing gate, so two in one process pace against two budgets
+## RM419 — a client that builds its own pacing gate paces per instance, not per service, beyond NCBI too
 
-**Filed by the pm (2026-11-07)** from the registry lead's ask (agent-chat, 638423336, via triage): RM404 in a 0.8.x
-patch, because the registry runs an upgrade sweep's online modules one at a time while the dbSNP merge check builds
-an unshared client per run. RM404 stays in 0.9, since a new public parameter never lands on `main`; this is the
-part a patch can carry.
+**Filed by the lead (2026-11-08)** while building RM418, which fixed this for NCBI E-utilities alone, as the pm
+sized it. The same error class has a second instance: Ensembl REST limits requests per address (15/s), and two of
+our clients ask it with a gate each, the resolver (`ensembl.EnsemblResolver`, `EnsemblSettings.interval` 0.1 s)
+and the LD pass (`ld_pairs`, `LD_MIN_INTERVAL` 0.1 s). A run that resolves and fetches LD pairs at once, or a host
+running two enrichments in one process, paces each to the full rate.
 
-**Severity** low · **Status** open — **a patch**, the next on `main` · **Owner** enricher (`eutils.EutilsClient`)
-· **Motivating case** the registry's upgrade sweep · *related* RM404, RM398, RM401
+**Severity** low · **Status** open — **unsized** (the pm's) · **Owner** enricher (`net._service_gate` and every
+client that builds a `PacingGate` by default) · **Motivating case** RM418's build · *related* RM418, RM396, RM404
 
-**The gap.** `EutilsClient.__post_init__` makes a fresh `PacingGate` whenever it is not handed one, and both callers
-build their own client (`identifiers.check_rsids`, and the literature pass). NCBI limits requests per API key or per
-address, not per client, so two clients in one process each pace to the full rate and together exceed it. A host
-running enrichments in parallel must serialize them, or be throttled. Since RM398 the same client is also the
-placement witness's.
+**The gap, by client.** Each builds its own gate when not handed one: `ensembl`, `grch37`
+(`grch37.rest.ensembl.org`, a second host with its own limit), `ld_pairs`, `gnomad`, `civic_api`, `clingen_allele`,
+`atlas_client`, `gwas`, `clinvar_gkm`, `currency`, and the private-gate clients RM396 names (`pgs`, `litvar`,
+`pharmvar`). Whether each is a per-address budget, and so the same defect, is a question per service; `litvar`
+is on `ncbi.nlm.nih.gov` but is not E-utilities, so whether it shares NCBI's address budget is unmeasured.
 
-**What it would be.** A client that builds its own gate takes the process's gate for its interval instead: one
-private, module-level gate per `min_request_interval`, made under a lock on first use. The gate already locks the
-bookkeeping and not the sleep (`@shared-pacing-gate`), so threads share it safely. No public name moves, and a
-gate handed in explicitly is still used as handed. Test: two clients built without a gate share one, and requests
-from both, run on two threads, are spaced by the interval.
-
-**What it does not do.** It helps only inside one process. A host that runs enrichments as separate processes keeps
-its lock until RM404 lets it pass one client in; the registry was asked which it does (2026-11-07). The sequence
-proxy's missing timeout stays RM404's.
+**What it would be.** RM418's mechanism, taken by each client whose service limits per address or per key:
+`net._service_gate(<service>, interval)` instead of `PacingGate(interval)`, keyed by service so two unrelated
+budgets at one interval stay apart, and the two Ensembl clients on one key. The enricher conftest already resets the
+registry per test. No public name moves, so it fits a patch; whether it is one, and which clients, is the pm's.
 
 # Not format scope
 

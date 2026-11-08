@@ -41,6 +41,15 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-08 — RM418: two NCBI clients in one process share one pacing gate (patch, uncut)
+
+- **An `EutilsClient` built without a gate takes the process's NCBI gate** (RM418), one per interval, so the rsID
+  check and the literature pass, or two enrichments a host runs on two threads, pace against NCBI's one budget per
+  key or address instead of each to the full rate. A gate handed in is still used as handed, and no public name
+  moves. A shared gate's `spent` now counts every default-built client's attempts against NCBI.
+- **Not in it:** separate processes still pace apart (RM404, 0.9), and the other services' clients still build a
+  gate each, the two Ensembl REST clients first (RM419).
+
 ## 2026-11-07 — `v0.8.2`: format, compiler and enricher 0.8.2 (a patch, cut from `main`)
 
 All three packages move, because each changed source since `v0.8.1`: format and compiler for RM414 and

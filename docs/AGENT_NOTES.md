@@ -3513,6 +3513,12 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   give "one in-flight request per service", which is a **concurrency limit, not a pace** — a different
   axis, and a semaphore's job (P5). Proven on a frozen clock: four threads at a barrier must come out
   spaced by the interval, and the old code yields gaps of `[6.0, 0.0, 0.0]`.
+  **Sharing is the budget's unit, not the client's (RM418, 2026-11-08).** A safe gate is no help when every
+  client builds its own: NCBI limits per key or address, and two `EutilsClient`s in one process paced each to
+  the full rate. A client not handed a gate takes `net._service_gate(service, interval)`, keyed by **service**
+  as well as interval, because two unrelated budgets can share an interval (keyed NCBI and Ensembl's LD endpoint,
+  both 0.1 s). The test conftest resets the registry per test, or a gate one test advanced makes the next one
+  really sleep. The other clients are RM419.
 
 - `@probe-the-real-file` — **Probe a source's real file before modelling it; the docs lie by omission.** Every non-obvious
   decision in this round came from a probe, not from a spec: CPIC's recommendation classifications

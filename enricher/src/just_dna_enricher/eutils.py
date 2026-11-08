@@ -37,6 +37,7 @@ from just_dna_enricher.net import (
     PacingGate,
     _log_give_up,
     _log_retry,
+    _service_gate,
     attempt_floor,
     batched,
     dedupe,
@@ -69,6 +70,10 @@ class EutilsRateLimitedError(EutilsError):
 class EutilsRetired(EutilsError, EndpointRetired):
     """NCBI answered HTTP 410: it retired the eutils endpoint asked (RM354). A fact about the source,
     not an outage, and not retried; an `EutilsError` so every existing handler still catches it."""
+
+
+#: The key of NCBI E-utilities' shared pacing gate (`net._service_gate`, RM418).
+_EUTILS_SERVICE = "ncbi-eutils"
 
 
 @dataclass
@@ -121,9 +126,11 @@ class EutilsClient:
     _client: httpx.Client | None = None
 
     def __post_init__(self) -> None:
+        # NCBI's budget is per key or per address, never per client (RM418): a client built without a
+        # gate takes the process's, so the rsID check and the literature pass running at once share it.
         if self.gate is None:
             assert self.settings.min_request_interval is not None
-            self.gate = PacingGate(self.settings.min_request_interval)
+            self.gate = _service_gate(_EUTILS_SERVICE, self.settings.min_request_interval)
 
     def _http(self) -> httpx.Client:
         if self._client is None:

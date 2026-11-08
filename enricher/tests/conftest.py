@@ -70,7 +70,7 @@ from huggingface_hub import CommitOperationDelete
 from huggingface_hub.errors import HfHubHTTPError, RemoteEntryNotFoundError
 from huggingface_hub.hf_api import RepoFile
 from huggingface_hub.utils import filter_repo_objects
-from just_dna_enricher import civic_draft, clinvar_build, download, locations
+from just_dna_enricher import civic_draft, clinvar_build, download, locations, net
 from just_dna_enricher.caches import CACHE_LANES
 from just_dna_enricher.clingen_allele import ClingenAlleleClient
 from just_dna_enricher.mitomap_build import build_snapshot as build_mitomap_snapshot
@@ -200,6 +200,18 @@ def _no_ambient_pubmind_snapshot(
 ) -> None:
     absent = Path(tmp_path_factory.getbasetemp()) / "no-pubmind-snapshot"
     monkeypatch.setenv(locations.PUBMIND_CACHE_VAR, str(absent))
+
+
+@pytest.fixture(autouse=True)
+def _fresh_service_gates(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every test starts with no shared pacing gate (RM418).
+
+    A client built without a gate takes the process's gate for its service (`net._service_gate`), so a
+    gate one test advanced would make the next test's first request really sleep, and a test's spacing
+    would depend on which tests ran before it in the same worker. A test that wants a gate on a fake
+    clock seeds `net._SERVICE_GATES` itself.
+    """
+    monkeypatch.setattr(net, "_SERVICE_GATES", {})
 
 
 @pytest.fixture(autouse=True)

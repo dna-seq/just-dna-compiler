@@ -513,6 +513,13 @@ with no lock, so two workers could both find the interval elapsed, both skip the
 published 3/s budget into 6/s — a budget somebody else enforces by blocking the operator's IP. The lock
 covers the bookkeeping only: each caller reserves the next free slot and waits for it alone, so N
 callers get N slots spaced one interval apart and no worker is blocked by another's sleep.
+
+**NCBI's clients share one gate per process** (RM418). NCBI limits E-utilities per key or per address, never
+per client, and the rsID check and the literature pass each built a client with a gate of its own, so two
+enrichments on two threads paced each to the full rate. An `EutilsClient` built without a gate now takes
+`net._service_gate("ncbi-eutils", interval)`, one gate per (service, interval) in the process; a gate handed in is
+used as handed. The other clients still build a gate each, the two Ensembl REST ones included (RM419), and separate
+processes still pace apart (RM404).
 Single-threaded behaviour is unchanged, and `test_net.py` proves the spacing on a frozen clock without
 really sleeping. **It is a pace, not a concurrency limit.** If what you need is one request in flight
 per service, put a semaphore around your call site; the gate will not give you that.
@@ -570,8 +577,8 @@ Org limits apply **per member**, not shared. Source of truth:
 
 - **Pace before retry.** `tenacity` backs off on transport / 429, but a blind retry spends the same
   budget that caused the 429; every gated client waits first.
-- **Reuse clients.** A `PacingGate` is per-client state — constructing a fresh gnomAD / eutils client
-  per lookup throws the interval away (`lookup` holds them for that reason).
+- **Reuse clients.** A `PacingGate` is per-client state, except NCBI's since RM418 — constructing a fresh gnomAD
+  client per lookup throws the interval away (`lookup` holds them for that reason).
 - **Batch where the API allows it.** gnomAD aliases (20) and NCBI esummary (200) exist because the
   published ceilings make one-id-per-request unusable; PharmVar is the opposite — 2 rps forces
   gene-scoped endpoints, never per-allele. Ensembl REST batches since RM401 (`POST /variation/:species`,
