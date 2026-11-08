@@ -53,13 +53,13 @@ None open.
   up; docs refreshed (INTEGRATION_0_7 archived) and merged. RELEASE_CYCLE step 10 now makes tag, GitHub
   release and docs refresh the lead's after every publish (auto-mode rule 13 covers the release, kit #283).
 - **0.8.1 released, 2026-11-07** (enricher only: RM397, RM398, RM400, RM401, RM403, RM407). Tag `v0.8.1`
-  on 6330f908, pushed. The GitHub release waits on the person (auto-mode rule 13 missing; notes in the
-  session scratchpad, `release_notes_0_8_1.md`).
+  on 6330f908, pushed. The GitHub release is not up (notes were in a session scratchpad,
+  `release_notes_0_8_1.md`); auto-mode rule 13 is pasted now (2026-11-08), so the lead can create it.
 - **0.8.2 released, 2026-11-08** (all three packages; RM408, RM410, RM411, RM413-RM417). On PyPI (the
   maintainer); tag `v0.8.2` on b98f7e9c, pushed. gnomAD constraint 4.1.2 published to
   `just-dna-seq/gnomad_constraint` (rebuilt with 0.8.2 from `data/input/gnomad/`, parquet byte-identical to the
   pre-bump build; the hub answers `gnomad_v4.1.2_constraint`). GitHub release up (the maintainer granted
-  that one command; rule 13 is still not pasted). Docs refresh merged (9c37d7db). Liaison's ledger updated
+  that one command; rule 13 was pasted afterwards, `automode.py --check` clean on 2026-11-08). Docs refresh merged (9c37d7db). Liaison's ledger updated
   (fe38e101). `CLAUDE.md`'s `@constraint-two-releases` headline changed on the maintainer's yes (59491cbf).
   RELEASE_CYCLE step 10 complete.
 - **Next patch on `main`, uncut:** RM418 shipped 2026-11-08 (d28c74b5, one NCBI gate per process via
