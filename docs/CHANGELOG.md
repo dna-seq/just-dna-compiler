@@ -41,6 +41,19 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-08 — RM409: Ctrl-C stops the Open Targets mirror and the AlphaGenome build mid-download (patch, uncut)
+
+- **An interrupt stops the in-flight work within a chunk** (RM409). `opentargets build` and
+  `cache rebuild --only opentargets` used to wait, after Ctrl-C, for every part already downloading to stream to
+  its end, so an interrupt about 1 GB into the ~22 GB mirror was ignored twice and needed SIGTERM. The workers now
+  stop at their next chunk, and a part cut short is removed rather than left under its name; the parts that
+  finished stay, and the next run resumes past them. A failed part stops the others the same way, so the failure is
+  reported when it happens.
+- **The AlphaGenome AVI build had the same shape over whole contigs** and stops at the next block now, with no
+  contig written and no `tabix` left running.
+- **Unchanged:** no public name moves. A part whose connection stalls without sending anything still stops only
+  when its next chunk arrives, since bulk downloads carry no read timeout.
+
 ## 2026-11-08 — RM420: `cache pull` and `cache prepare` bring a newer published release (patch, uncut)
 
 - **A pulled lane follows the hub's release** (RM420). `cache pull` and `cache prepare` compare the release label a

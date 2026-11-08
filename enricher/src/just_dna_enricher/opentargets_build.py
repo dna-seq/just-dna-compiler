@@ -40,6 +40,7 @@ import json
 import logging
 import re
 import shutil
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version
@@ -204,6 +205,8 @@ def download_release(
             jobs.append((target, dataset_url(dataset, release=release, base_url=base_url) + name, dataset))
     atomic_write_text(dest / "parts_total.json", json.dumps(totals, sort_keys=True))
 
+    stop = threading.Event()
+
     def _fetch(job: tuple[Path, str, str]) -> None:
         target, url, dataset = job
         stream_to_file(
@@ -212,6 +215,7 @@ def download_release(
             error_cls=OpenTargetsUnavailable,
             retired=OpenTargetsRetired,
             what=f"Open Targets `{dataset}` part {target.name}",
+            _stop=stop,
         )
 
     with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
@@ -220,8 +224,12 @@ def download_release(
             for future in futures:
                 future.result()
         except BaseException:
-            # The first failure surfaces now, typed as this lane's, rather than after every queued
-            # part has been fetched for nothing.
+            # The first failure, or the user's Ctrl-C, surfaces now: the queued parts are cancelled and
+            # the in-flight ones stop at their next chunk, each removing its `.part` (RM409). Without the
+            # flag the shutdown joined every in-flight part streamed to its end, and an interrupted
+            # 22 GB mirror ignored two Ctrl-C. A part that finished before the stop stays on disk, and
+            # the next run resumes past it.
+            stop.set()
             pool.shutdown(wait=True, cancel_futures=True)
             raise
     return totals

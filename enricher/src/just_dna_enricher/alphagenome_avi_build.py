@@ -303,19 +303,46 @@ def list_contigs(source: Path) -> tuple[str, ...]:
     return contigs
 
 
-def _stream_lines(source: Path, contig: str, *, chunk_bytes: int = CHUNK_BYTES) -> Iterator[bytes]:
+class _ContigStopped(Exception):
+    """A contig's build stopped because the build set its `_stop` (RM409); never seen past the pool.
+
+    The build that set the flag is already raising its own exception (the user's `KeyboardInterrupt`, or
+    the first contig that failed), so nothing reports this one.
+    """
+
+
+def _stopped(stop: threading.Event | None, contig: str) -> None:
+    if stop is not None and stop.is_set():
+        raise _ContigStopped(f"stopped building {contig}")
+
+
+def _stream_lines(
+    source: Path,
+    contig: str,
+    *,
+    chunk_bytes: int = CHUNK_BYTES,
+    _stop: threading.Event | None = None,
+) -> Iterator[bytes]:
     """Yield whole-line blocks of one contig's decompressed TSV.
 
     Blocks rather than lines because the parser downstream is vectorised: handing polars a megabyte
     at a time is what keeps Python out of the hot path for nine billion rows. Each block ends on a
     newline, with the tail carried into the next — a chunk boundary that split a row would produce a
     ragged CSV, and `@ragged-csv-row` is a diagnosis, not something to create.
+
+    `_stop` is checked before each block is read (RM409): once set, the stop is raised, the pipe is
+    closed under `tabix` (which ends at its next write), and the nonzero exit that causes is not reported
+    as a failure of the file.
     """
     proc = subprocess.Popen(["tabix", str(source), contig], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     assert proc.stdout is not None
     remainder = b""
+    stopped = False
     try:
         while True:
+            if _stop is not None and _stop.is_set():
+                stopped = True
+                _stopped(_stop, contig)
             block = proc.stdout.read(chunk_bytes)
             if not block:
                 break
@@ -334,7 +361,7 @@ def _stream_lines(source: Path, contig: str, *, chunk_bytes: int = CHUNK_BYTES) 
         if proc.stderr:
             proc.stderr.close()
         code = proc.wait()
-        if code != 0:
+        if code != 0 and not stopped:
             raise AlphaGenomeBuildError(
                 f"`tabix {source} {contig}` failed ({code}): {stderr.decode(errors='replace').strip()}"
             )
@@ -383,7 +410,12 @@ def _read_block(block: bytes):
 
 
 def _build_contig(
-    source: Path, contig: str, out_dir: Path, *, chunk_bytes: int = CHUNK_BYTES
+    source: Path,
+    contig: str,
+    out_dir: Path,
+    *,
+    chunk_bytes: int = CHUNK_BYTES,
+    _stop: threading.Event | None = None,
 ) -> tuple[ContigResult, object]:
     """One contig → one parquet, plus its knot aggregate.
 
@@ -404,7 +436,7 @@ def _build_contig(
     #: is usually incomplete — carrying it forward is what makes `_widen`'s three-ALT requirement a
     #: statement about the *source* rather than about where the reader happened to stop.
     carried = None
-    for block in _stream_lines(source, contig, chunk_bytes=chunk_bytes):
+    for block in _stream_lines(source, contig, chunk_bytes=chunk_bytes, _stop=_stop):
         frame = _read_block(block)
         if not frame.height:  # pragma: no cover - tabix does not emit empty blocks
             continue
@@ -455,6 +487,9 @@ def _build_contig(
         rows += carried.height
         part += 1
 
+    # Checked again before the assembly, which waits its turn on `_ASSEMBLY` and then copies the whole
+    # contig: a stopped build may not queue behind it (RM409).
+    _stopped(_stop, contig)
     path = out_dir / f"alphagenome_avi-{contig}.parquet"
     if part:
         _assemble_contig(sorted(scratch.glob("*.parquet")), path)
@@ -728,12 +763,26 @@ def build_snapshot(
     data_dir.mkdir(parents=True, exist_ok=True)
     results: list[ContigResult] = []
     knot_frames = []
+    stop = threading.Event()
     with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
-        for contig_result, knots in pool.map(
-            lambda c: _build_contig(source, c, data_dir, chunk_bytes=chunk_bytes), wanted
-        ):
-            results.append(contig_result)
-            knot_frames.append(knots)
+        futures = [
+            pool.submit(_build_contig, source, c, data_dir, chunk_bytes=chunk_bytes, _stop=stop)
+            for c in wanted
+        ]
+        try:
+            for future in futures:
+                contig_result, knots = future.result()
+                results.append(contig_result)
+                knot_frames.append(knots)
+        except BaseException:
+            # The first failure, or the user's Ctrl-C, surfaces now: the queued contigs are cancelled and
+            # the in-flight ones stop at their next block and their `tabix` exits (RM409). `pool.map` alone
+            # cancelled the queue and then joined every in-flight contig to its end, which on this
+            # artifact is most of an hour. `release.json` was withdrawn above, so nothing half-built is
+            # described; a contig's scratch directory is cleared by the next build of it.
+            stop.set()
+            pool.shutdown(wait=True, cancel_futures=True)
+            raise
 
     knot_table = (
         pl.concat(knot_frames)

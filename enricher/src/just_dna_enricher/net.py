@@ -534,6 +534,16 @@ class StreamedFile:
     last_modified: str | None = None
 
 
+class _StreamStopped(Exception):
+    """A download stopped because its caller set the `_stop` it passed (RM409); never seen past a pool.
+
+    Raised in a worker thread, and the caller that set the flag is already raising its own exception
+    (the user's `KeyboardInterrupt`, or the first part that failed), so nothing ever reports this one.
+    It is not a transport error, so the retry does not take it for one, and not `httpx`'s, so the
+    `except BaseException` arm removes the `.part` and lets it through untranslated.
+    """
+
+
 def stream_to_file(
     dest: "Path",
     url: str,
@@ -543,6 +553,7 @@ def stream_to_file(
     what: str,
     timeout: float | None = None,
     remedy: str = "",
+    _stop: threading.Event | None = None,
 ) -> StreamedFile:
     """Stream `url` to `dest` atomically, hashing as it goes; retry the transport, translate the rest.
 
@@ -577,12 +588,26 @@ def stream_to_file(
     forget it, and the message is `retired_message`'s (the host that answered, the source's own body
     quoted), followed by `what` and the lane's `remedy`.
 
+    **Stoppable between chunks, for a caller on a thread pool** (RM409). `_stop` is checked before the
+    request opens and before each chunk is written, and a retry's backoff waits on it rather than
+    sleeping; once it is set the download raises, the `.part` is removed, and nothing lands under `dest`. A `KeyboardInterrupt` reaches only the main thread, so a
+    pool that fetches parts in workers sets the flag on interrupt before it joins them; without it the
+    join waited for every in-flight part to stream to its end, and a 22 GB mirror ignored two Ctrl-C.
+
     `what` names the thing being fetched for the message ("the ClinVar VCF"); `remedy` is an optional
     sentence saying what the caller can do instead, for the lanes that accept a local file.
     """
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_name(dest.name + ".part")
+
+    def _stopped() -> None:
+        if _stop is not None and _stop.is_set():
+            raise _StreamStopped(f"stopped downloading {what}")
+
+    # A stoppable download's backoff waits on the flag instead of sleeping, so a stop that lands
+    # between attempts is not held for up to thirty seconds of backoff before the next one notices it.
+    nap = {"sleep": _stop.wait} if _stop is not None else {}
 
     @retry(
         before_sleep=_log_retry,
@@ -591,9 +616,11 @@ def stream_to_file(
         wait=wait_exponential_jitter(multiplier=2.0, max=30.0),
         retry=retry_if_exception_type(httpx.TransportError),
         reraise=True,
+        **nap,
     )
     def _attempt() -> StreamedFile:
         hasher = hashlib.sha256()
+        _stopped()
         with httpx.stream("GET", url, follow_redirects=True, timeout=timeout) as response:
             if response.status_code == GONE:
                 response.read()  # a 410's body is the source's own word on where the file went
@@ -602,6 +629,7 @@ def stream_to_file(
             last_modified = response.headers.get("Last-Modified")
             with tmp.open("wb") as handle:
                 for chunk in response.iter_bytes():
+                    _stopped()
                     handle.write(chunk)
                     hasher.update(chunk)
         return StreamedFile(tmp, hasher.hexdigest(), etag, last_modified)

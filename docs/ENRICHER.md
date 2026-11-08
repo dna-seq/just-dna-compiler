@@ -3912,7 +3912,8 @@ row's gene and tissue. The probe behind every choice here is [probes/LANES_0_8.m
 **Build.** `just-dna-enricher opentargets build` mirrors release 26.09 from
 `https://ftp.ebi.ac.uk/pub/databases/opentargets/platform/26.09/output/<dataset>/` (eight parallel
 streams through `net.stream_to_file`, so retried on transport errors and translated to
-`OpenTargetsUnavailable`; a part already on disk with a parquet footer is not fetched again) and
+`OpenTargetsUnavailable`; a part already on disk with a parquet footer is not fetched again; Ctrl-C or a
+failed part stops the parts in flight at their next chunk and removes each one cut short, RM409) and
 flattens it into `data/`: `variants.parquet` (the allele table, alleles from columns, never from the
 `variantId`, plus each allele's `rsIds` verbatim as the list `rs_ids`), `consequences-*.parquet`
 (`transcriptConsequences` exploded), `credible_sets.parquet` and

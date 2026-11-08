@@ -34,6 +34,75 @@ up.
 
 Patches on `main` after the 0.8.0 cut (2026-11-05), newest first.
 
+## RM409 — Ctrl-C does not stop `opentargets build` or its rebuild while parts are downloading
+
+**SHIPPED 2026-11-08 on `main` — a patch, uncut.** Owner enricher (`net.stream_to_file`,
+`opentargets_build.download_release`, `alphagenome_avi_build.build_snapshot`), severity low.
+
+**Residuals** won't fix — `opentargets_build._source_digest` hashes the mirrored parts on a pool of eight and an
+interrupt there still waits for each in-flight part's hash, which is seconds of local disk reads and not a
+download · won't fix — a part whose connection stalls without sending a byte is stopped only when its next chunk
+arrives, because `stream_to_file` sets no read timeout on any bulk download; that is a defect of its own, reported
+to the lead with this build rather than widened into it
+
+**Built (2026-11-08), for the lead.** The mechanism is confirmed: a test that interrupts the mirror while four
+parts stream slowly from a local server waited three to eight seconds on the previous `main`: the in-flight
+parts streamed to their end first. The fix is the shape the item gave.
+`net.stream_to_file` takes a private keyword `_stop` (a `threading.Event`), checked before the request opens and
+before each chunk is written; once set it raises a private `_StreamStopped`, which the retry does not take for a
+transport error and which the existing `except BaseException` arm lets through after removing the `.part`, so a
+stopped part never lands. A retry's backoff waits on the flag rather than sleeping, so a part that is between two
+attempts (up to thirty seconds of backoff) stops at once too. Every other caller passes nothing and is
+unchanged. `download_release` sets the flag in its `except BaseException` arm before the shutdown, so the queued
+parts are cancelled as before and the in-flight ones stop within a chunk; the `with` exit and the interpreter's own
+join then find the workers gone. A part that finished before the stop stays on disk and the next run resumes past
+it.
+
+The flag is set on any exception, not only on `KeyboardInterrupt`, because the arm's own comment promised that the
+first failure "surfaces now", and with parts in flight it surfaced only once up to seven of them finished. The cost is that those
+seven are fetched again on the next run; the benefit is that the failure is reported when it happens.
+
+**The class, checked.** `grep ThreadPoolExecutor` over the enricher finds three pools. The AlphaGenome AVI build
+(`alphagenome_avi_build.build_snapshot`) had the same shape and worse: `pool.map` over `_build_contig`, one
+contig per worker through a `tabix` subprocess, so an interrupt that reached only Python waited for every
+in-flight contig, tens of minutes each on the real artifact (at a terminal, Ctrl-C would also reach `tabix` through the
+process group and end the stream sooner, but not a contig already assembling, and assembly is serialised on
+`_ASSEMBLY`). It is fixed the same way: a private `_stop` checked before each block `_stream_lines` reads and again
+before the assembly, the pipe closed under `tabix` on a stop and its nonzero exit not reported as a failure of the
+file, and the pool driven by `submit` with the same `except BaseException` arm. `release.json` was already
+withdrawn before the first contig, and a contig's scratch directory is cleared by its next build, so a stopped build
+leaves nothing a reader believes. The third pool, `_source_digest`, is local hashing and is named above. The single
+`stream_to_file` callers on the main thread are not this class: an interrupt lands in the streaming loop itself.
+`literature`'s regex worker is a killable process by design (`@regex-timeout-process`). The lane adapters in
+`caches` and the `cache` commands catch `Exception`, so a `KeyboardInterrupt` still ends a `cache rebuild` rather
+than moving to the next lane.
+
+Tests: `enricher/tests/test_an_interrupt_stops_a_bulk_build.py`, three, each seen red: the mirror interrupted
+mid-part (3 to 8 s on the previous `main`, under 1 s now, with no part left on disk), the AVI build interrupted
+mid-contig through a stand-in `tabix` (≈3 s before), and a stop during a retry backoff (≈2 s before). The
+interrupt is delivered by the pool's own `future.result()` once every worker is mid-stream, never by timing.
+Removing `stop.set()`, the per-chunk check or the backoff wait each turns its test red.
+
+**Open, filed by the lead (2026-11-07)** from the maintainer's run: `cache rebuild --only opentargets --publish`,
+interrupted about five minutes in (~1 GB of ~22 GB), ignored two Ctrl-C and had to be stopped with SIGTERM to
+its process group.
+
+**Severity** low · **Status** open — **a patch** (no surface moves) · **Owner** enricher
+(`opentargets_build.download_release`) · *related* RM333, RM408
+
+**Mechanism, read from the code, not yet reproduced in a test.** `download_release` fetches parts on an
+eight-thread `ThreadPoolExecutor`. A `KeyboardInterrupt` in the main thread's `future.result()` reaches
+`except BaseException`, whose `pool.shutdown(wait=True, cancel_futures=True)` cancels the queued parts but waits
+for the eight in flight, each a large part streamed to the end by `stream_to_file`; the `with` block's exit
+and the interpreter's exit join the same worker threads again. So an interrupt lands only after every running
+part finishes. It is the only bulk download in the enricher on a thread pool (grep
+`shutdown(wait=True, cancel_futures=True)`).
+
+**Shape of a fix.** A stop flag the workers' streaming loop checks between chunks (so `stream_to_file`, or a
+wrapper around it, owes a cancel hook), set on interrupt before the shutdown; the `.part` staging already keeps
+a half-written part from landing under its name. The test interrupts a mirror whose parts stream slowly from a
+fake server and asserts it returns within a chunk's time.
+
 ## RM420 — `cache pull` never fetches a newer published release over a whole cache
 
 **SHIPPED 2026-11-08 on `main` — a patch, uncut.** Owner enricher (`download._provision_snapshot`,

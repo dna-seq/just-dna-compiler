@@ -2004,28 +2004,6 @@ would estimate its misplacement rate with an interval. What a sample can and can
 snapshot-wide audit is the snapshot builder's (prepare-annotations, under RM303's contract), or a provision-time
 check filed on its own.
 
-## RM409 — Ctrl-C does not stop `opentargets build` or its rebuild while parts are downloading
-
-**Open, filed by the lead (2026-11-07)** from the maintainer's run: `cache rebuild --only opentargets --publish`,
-interrupted about five minutes in (~1 GB of ~22 GB), ignored two Ctrl-C and had to be stopped with SIGTERM to
-its process group.
-
-**Severity** low · **Status** open — **a patch** (no surface moves) · **Owner** enricher
-(`opentargets_build.download_release`) · *related* RM333, RM408
-
-**Mechanism, read from the code, not yet reproduced in a test.** `download_release` fetches parts on an
-eight-thread `ThreadPoolExecutor`. A `KeyboardInterrupt` in the main thread's `future.result()` reaches
-`except BaseException`, whose `pool.shutdown(wait=True, cancel_futures=True)` cancels the queued parts but waits
-for the eight in flight, each a large part streamed to the end by `stream_to_file`; the `with` block's exit
-and the interpreter's exit join the same worker threads again. So an interrupt lands only after every running
-part finishes. It is the only bulk download in the enricher on a thread pool (grep
-`shutdown(wait=True, cancel_futures=True)`).
-
-**Shape of a fix.** A stop flag the workers' streaming loop checks between chunks (so `stream_to_file`, or a
-wrapper around it, owes a cancel hook), set on interrupt before the shutdown; the `.part` staging already keeps
-a half-written part from landing under its name. The test interrupts a mirror whose parts stream slowly from a
-fake server and asserts it returns within a chunk's time.
-
 ## RM419 — a client that builds its own pacing gate paces per instance, not per service, beyond NCBI too
 
 **Filed by the lead (2026-11-08)** while building RM418, which fixed this for NCBI E-utilities alone, as the pm
