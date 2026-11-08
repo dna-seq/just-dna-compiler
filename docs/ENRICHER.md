@@ -1945,6 +1945,11 @@ this item — and translates everything else into the lane's own error type. A s
 retried, because a 404 from a mistyped release tag is the same 404 four times over. A 410 is the lane's
 own `*Retired`, which every caller passes as `retired=` (required, so no lane can leave it out; RM361's
 audit round 2): the source moved the file, and the message says so and to upgrade, quoting the body.
+Every bulk download has a **timeout of 120 s** unless its caller names its own (RM421; not a setting). It
+bounds connect and the gap between two chunks, not the whole download, so a slow mirror that keeps sending
+is never cut off, while a server that accepts the connection and sends nothing raises a read timeout, which
+is retried as a transport failure and then translated like any other. Before RM421 the default was no
+timeout at all and eleven of the fourteen downloads named none, so such a stall blocked a build forever.
 
 That last part is what a caller notices. Before RM187 four of the eleven downloads raised `httpx`'s
 own exception, and each lane adapter catches its own builder's type — so a truncated download was a

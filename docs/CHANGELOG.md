@@ -41,6 +41,19 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-08 — RM421: a bulk download from a server that goes silent is given up on, not waited on forever (patch, uncut)
+
+- **Every bulk download now has a timeout** (RM421). `net.stream_to_file` defaults to 120 s when its caller
+  names none; before, the default was no timeout at all, and eleven of the fourteen builder downloads named none
+  (`clinvar` twice, `constraint`, `drug_labels`, `mitomap`, `strchive`, `clinpgx`, `pubmind`, and the Open Targets
+  listing and parts). A server that accepted the connection and then sent nothing blocked the build forever, with
+  no retry line and, on the Open Targets pool, no Ctrl-C. Now the stall raises a read timeout, which is retried as
+  a transport error and then reported as the lane's own error, so a `cache rebuild` moves on to the next lane.
+- **A slow mirror is not cut off:** the timeout bounds the gap between two chunks, not the whole download.
+- **Unchanged:** no public name moves, and this is not a setting. A caller's own `timeout=` still wins, including
+  an explicit `None`, which no caller in the package passes; `civic`, `clinvar_gkm` and `mane` no longer name the
+  120 s they passed, since it is the default now.
+
 ## 2026-11-08 — RM409: Ctrl-C stops the Open Targets mirror and the AlphaGenome build mid-download (patch, uncut)
 
 - **An interrupt stops the in-flight work within a chunk** (RM409). `opentargets build` and

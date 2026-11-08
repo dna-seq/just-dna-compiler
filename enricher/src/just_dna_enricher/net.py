@@ -534,6 +534,12 @@ class StreamedFile:
     last_modified: str | None = None
 
 
+#: `stream_to_file`'s timeout when a caller names none (RM421): the 120 s three builders already passed,
+#: generous because it bounds the gap between chunks on a slow mirror, not the whole download. A constant,
+#: not a knob (`@retry-attempt-floor`): no deployment has asked for another value.
+_BULK_TIMEOUT: float = 120.0
+
+
 class _StreamStopped(BaseException):
     """A download stopped because its caller set the `_stop` it passed (RM409); never seen past a pool.
 
@@ -555,7 +561,7 @@ def stream_to_file(
     error_cls: type[Exception],
     retired: type[Exception],
     what: str,
-    timeout: float | None = None,
+    timeout: float | None = _BULK_TIMEOUT,
     remedy: str = "",
     _stop: threading.Event | None = None,
 ) -> StreamedFile:
@@ -597,6 +603,16 @@ def stream_to_file(
     sleeping; once it is set the download raises, the `.part` is removed, and nothing lands under `dest`. A `KeyboardInterrupt` reaches only the main thread, so a
     pool that fetches parts in workers sets the flag on interrupt before it joins them; without it the
     join waited for every in-flight part to stream to its end, and a 22 GB mirror ignored two Ctrl-C.
+
+    **Bounded, by default** (RM421). `timeout` is 120 s unless the caller names its own, and httpx
+    applies it to connect, read, write and pool alike. The read half bounds the gap between two chunks,
+    not the whole download, so a slow mirror that keeps sending is never cut off, while a server that
+    accepts the connection and then sends nothing raises `httpx.ReadTimeout`, which is retried as a
+    transport error above and translated to `error_cls` on giving up. The default was once `None`, which
+    httpx reads as no timeout at all: eleven of fourteen callers named none, so such a stall blocked
+    forever, no retry fired, and a pool worker stuck in the read never reached the `_stop` check. An
+    explicit `timeout=None` still means no timeout; no caller in this package passes it, and a walk over
+    the call sites keeps it that way.
 
     `what` names the thing being fetched for the message ("the ClinVar VCF"); `remedy` is an optional
     sentence saying what the caller can do instead, for the lanes that accept a local file.

@@ -34,6 +34,80 @@ up.
 
 Patches on `main` after the 0.8.0 cut (2026-11-05), newest first.
 
+## RM421 — eleven of fourteen bulk downloads set no read timeout, so a stalled connection is never stopped
+
+**SHIPPED 2026-11-08 on `main` — a patch, uncut.** Owner enricher (`net.stream_to_file` and its callers),
+severity low.
+
+**Residuals** none
+
+**Built (2026-11-08), for the lead.** The pm's shape, unchanged. `stream_to_file`'s `timeout` defaults to a
+private `net._BULK_TIMEOUT = 120.0` instead of `None`; the signature still reads `float | None`, a caller's own
+value wins, and an explicit `None` is still passed to httpx as no timeout (no caller in the package passes one,
+and the walk below refuses it, so that way back stays a decision rather than an accident). Not a knob: no environment variable and
+no setting. The three builders that named 120 s (`civic_build`, `clinvar_gkm_build`, `mane_build`) no longer pass
+it, so the value lives in one place and none of the three goes stale on the first change. httpx applies the value
+to connect, read, write and pool; the read half bounds the gap between two chunks, so a slow mirror that keeps
+sending is never cut off, and a silent one raises `httpx.ReadTimeout`, a `TransportError`, which the existing
+retry takes and the existing arm translates to the lane's `error_cls` on giving up. No public name, field, flag or
+warning code moves.
+
+Three tests, each seen red on the previous `main`:
+
+- `test_a_silent_server_is_given_up_on_by_the_default_timeout` (in `test_an_interrupt_stops_a_bulk_build.py`,
+  beside RM409's): a local server that accepts the connection and sends nothing; a call that names no timeout,
+  with the default shrunk to 0.25 s through the function's `__kwdefaults__` (the private seam a keyword-only
+  default has; a module constant cannot shrink it, because the default is bound when `def` runs), raises
+  `OpenTargetsUnavailable` whose cause is `httpx.ReadTimeout`, leaves no `.part`, and does it inside a 10 s join on
+  a daemon thread, so a regression fails rather than hangs the suite. It first pins that the shipped default is a
+  positive float, which is what the seam stands in for. Red on `main` there; with the body mutated to pass
+  `timeout=None` to httpx, it fails on the join bound ("still blocked on a silent server after 10.0s").
+- `test_no_bulk_download_runs_without_a_timeout` (in `test_bulk_download_contract.py`): an AST walk over the
+  package resolving each `stream_to_file` call's effective timeout, its own `timeout=` or else the definition's
+  default, and refusing a literal `None` from either side (and a `**kwargs` spread, which cannot be read). Not
+  vacuous: the modules calling it must equal the modules importing it. Red on `main` with exactly the eleven call
+  sites this item listed plus the definition's own default; red again when one caller is mutated to pass
+  `timeout=None`.
+- `test_the_default_timeout_reaches_httpx_and_a_callers_own_wins`: no `timeout=` reaches httpx as 120.0, `5.0` as
+  5.0, and an explicit `None` as `None`.
+
+**Filed by the lead (2026-11-08)** from RM409's build, which named it as a won't-fix residual of its own rather
+than widen into it. `net.stream_to_file`'s `timeout` defaults to `None` and is passed to `httpx.stream` as is, so a
+caller that names none gets **no** connect, read or pool timeout. Only three of the fourteen call sites name one
+(`civic_build`, `clinvar_gkm_build`, `mane_build`, 120 s each); `clinvar_build` (twice), `constraint_build`,
+`drug_labels_build`, `mitomap_build`, `strchive_build`, `clinpgx_build`, `pubmind_build` and `opentargets_build`
+(listing and every part) name none.
+
+**Severity** low · **Status** open — **a patch, `unattended`** (the pm, 2026-11-08; about 20 minutes) · **Owner** enricher (`net.stream_to_file` and its
+callers) · **Motivating case** RM409's build · *related* RM409, RM403
+
+**The gap.** A connection that stalls without sending a byte (a half-open TCP session, a server that accepted and
+went quiet) blocks the read forever: no retry fires, because nothing raises, and RM403's retry lines never print.
+RM409 made a pool's workers stop between chunks, but a worker blocked inside a read never reaches the check, so
+even Ctrl-C cannot end that part. Not seen in a run yet; it is read from the code.
+
+**What it would be.** A read timeout on every bulk download, so a stall raises `httpx.ReadTimeout`, which
+`stream_to_file` already retries as a transport error and translates on giving up. Either a default in
+`stream_to_file` (a read timeout generous enough for a slow mirror, since a timeout bounds the gap between
+chunks, not the whole download) or each caller naming one. A default changes no signature and adds no name,
+so it looks like a patch; the value, and whether it is a knob (`@retry-attempt-floor`), are the pm's.
+
+**Sized, the pm (2026-11-08): a patch, built unattended, after RM400, RM401 and RM403.**
+
+- **Built although no run has met it, unlike RM419.** The fix carries almost no risk of its own, and the failure
+  it prevents is the worst kind for an unattended run: a rebuild that hangs with no line printed, which no retry,
+  no stop flag and no watcher catches. RM419's fix, by contrast, makes claims about services nobody measured.
+- **One default in `stream_to_file`, never per caller:** `timeout=120.0` instead of `None`, the value three
+  builders already pass. httpx applies it to connect, read, write and pool alike, and the read half bounds the gap
+  between two chunks, not the whole download, so a slow mirror that keeps sending is never cut off. A caller that
+  names its own keeps it. The signature keeps `float | None`, so a caller may still ask for no timeout on purpose.
+- **Not a knob.** `@retry-attempt-floor` makes a constant a knob when two deployments want different values of it;
+  nobody has asked for a different one, and the three callers agree on 120 s. It becomes a knob on the first such ask.
+- **The test:** a local server that accepts the connection and sends nothing; `stream_to_file`, given no timeout
+  of its own, raises the lane's translated error within a bounded time instead of blocking (the test may shrink the
+  default through a private seam so it runs in seconds). And an equality over the call sites: none passes
+  `timeout=None` by accident.
+
 ## RM409 — Ctrl-C does not stop `opentargets build` or its rebuild while parts are downloading
 
 **SHIPPED 2026-11-08 on `main` — a patch, uncut.** Owner enricher (`net.stream_to_file`,

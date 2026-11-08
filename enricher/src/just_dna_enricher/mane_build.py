@@ -587,7 +587,6 @@ def download_mane_file(dest: Path, url: str) -> ManeDownload:
         error_cls=ManeUnavailable,
         retired=ManeRetired,
         what=f"the MANE file {Path(url).name}",
-        timeout=120.0,
         remedy="Pass the local file instead of --download if you already hold a copy.",
     )
     return ManeDownload(

@@ -12,6 +12,10 @@ for the contigs) and delivers the interrupt deterministically: the build pool's 
 replaced by one that waits until every worker is mid-stream and then raises `KeyboardInterrupt`, exactly
 where the real one arrives. The assertions are that the interrupt propagates, that the build returns well inside the time
 the in-flight work still needs, and that nothing half-written sits under a final name.
+
+A worker blocked inside a read never reaches the stop check, so the last test is RM421's: a server that
+accepts the connection and sends nothing is given up on by `stream_to_file`'s default timeout, after the
+transport retries, as the lane's own error.
 """
 
 import concurrent.futures
@@ -269,3 +273,90 @@ def test_an_interrupt_stops_the_alphagenome_build_mid_contig(
         "an interrupted contig was written under its final name"
     )
     assert [c.args for c in children if c.poll() is None] == [], "a `tabix` outlived the interrupted build"
+
+
+# ── a server that accepts and then says nothing (RM421) ─────────────────────────────────────────────
+
+#: The default the test shrinks `stream_to_file`'s to, and the bound the whole call must meet: three
+#: attempts of `SILENT_TIMEOUT` each, with the backoff removed, finish far inside it, while a download with
+#: no timeout never finishes at all.
+SILENT_TIMEOUT = 0.25
+SILENT_BOUND = 10.0
+
+
+class _Silent(BaseHTTPRequestHandler):
+    """Accepts the connection, reads the request, and sends nothing until the test ends."""
+
+    release: threading.Event
+
+    def log_message(self, format: str, *args: object) -> None:  # noqa: A002 - the stdlib's signature
+        return
+
+    def do_GET(self) -> None:
+        self.release.wait(SILENT_BOUND * 2)
+
+
+@pytest.fixture
+def silent_server():
+    release = threading.Event()
+    handler = type("_Handler", (_Silent,), {"release": release})
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    server.daemon_threads = True
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_address[1]}"
+    finally:
+        release.set()
+        server.shutdown()
+        server.server_close()
+
+
+def test_a_silent_server_is_given_up_on_by_the_default_timeout(
+    silent_server: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A download that names no timeout raises the lane's error in bounded time, not never (RM421).
+
+    Eleven of the fourteen bulk downloads named no timeout and the default was `None`, so a connection the
+    server accepted and then left silent blocked the read forever: nothing raised, so no retry fired, and a
+    pool worker stuck inside the read never reached RM409's stop check. The call below names none, so it
+    runs on the default. That default is shrunk through the private seam a keyword-only default has, the
+    function's `__kwdefaults__`, so three attempts take a second rather than six minutes; the test first
+    pins that the real default is a finite number, which is what the seam stands in for.
+
+    The download runs on a daemon thread joined with a bound, so the old behaviour fails the test rather
+    than hanging the suite.
+    """
+    shipped = net.stream_to_file.__kwdefaults__["timeout"]
+    assert isinstance(shipped, float) and shipped > 0, f"stream_to_file's default timeout is {shipped!r}"
+    monkeypatch.setitem(net.stream_to_file.__kwdefaults__, "timeout", SILENT_TIMEOUT)
+    monkeypatch.setattr(net, "wait_exponential_jitter", lambda **kw: lambda _state: 0)
+    monkeypatch.setenv(net.RETRY_ATTEMPTS_ENV, "3")
+    assert issubclass(httpx.ReadTimeout, httpx.TransportError), "the retry predicate rests on this"
+
+    raised: list[BaseException] = []
+
+    def _download() -> None:
+        try:
+            net.stream_to_file(
+                tmp_path / "part.parquet",
+                f"{silent_server}/part.parquet",
+                error_cls=ot.OpenTargetsUnavailable,
+                retired=ot.OpenTargetsRetired,
+                what="a part",
+            )
+        except BaseException as exc:  # noqa: BLE001 - the test inspects whatever it was
+            raised.append(exc)
+
+    worker = threading.Thread(target=_download, daemon=True)
+    began = time.monotonic()
+    worker.start()
+    worker.join(SILENT_BOUND)
+    took = time.monotonic() - began
+
+    assert not worker.is_alive(), f"the download was still blocked on a silent server after {took:.1f}s"
+    assert len(raised) == 1 and isinstance(raised[0], ot.OpenTargetsUnavailable), raised
+    assert isinstance(raised[0].__cause__, httpx.ReadTimeout), (
+        f"the lane's error came from {raised[0].__cause__!r}, not a read timeout on a silent server"
+    )
+    assert sorted(p.name for p in tmp_path.iterdir()) == [], "a failed download left a file behind"

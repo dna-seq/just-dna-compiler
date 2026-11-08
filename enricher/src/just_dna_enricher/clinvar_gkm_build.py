@@ -107,7 +107,6 @@ def download_input(name: str, manifest: GkmManifest, dest: Path, *, url: str | N
         error_cls=ClinVarGkmUnavailable,
         retired=ClinVarGkmRetired,
         what=f"ClinVar-GKM's {name}",
-        timeout=120.0,
         remedy="Pass the files you already hold with --allele/--variation/--manifest",
     )
     verify_against_manifest(fetched.path, entry, fetched.sha256)

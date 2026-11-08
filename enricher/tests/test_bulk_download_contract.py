@@ -130,6 +130,58 @@ def test_the_only_raw_stream_in_the_package_is_the_shared_one() -> None:
     assert streaming == {"net.py"}, f"httpx.stream is called outside net.py: {sorted(streaming)}"
 
 
+def _package_sources() -> list[tuple[str, ast.Module]]:
+    """Every module of the package, parsed; `generated/` is protoc output, not ours."""
+    paths = sorted(p for p in _SRC.rglob("*.py") if "generated" not in p.relative_to(_SRC).parts)
+    return [(str(p.relative_to(_SRC)), ast.parse(p.read_text(encoding="utf-8"))) for p in paths]
+
+
+def test_no_bulk_download_runs_without_a_timeout() -> None:
+    """The timeout every `stream_to_file` call ends up with, read off the code: none may be `None` (RM421).
+
+    httpx with `timeout=None` waits forever on a connection that accepted and then went quiet, and
+    eleven of fourteen calls once named no timeout while the default was `None`. So the walk resolves
+    each call's effective value, its own `timeout=` or else the definition's default, and refuses a
+    literal `None` from either side; a call spreading `**kwargs` cannot be read and is refused too. A
+    caller that wants no timeout on purpose still may, by changing this test with a reason.
+
+    Not vacuous: the modules found calling it must be exactly the modules that import it, two walks
+    that agree or fail, never a count.
+    """
+    (default,) = [
+        node.args.kw_defaults[[a.arg for a in node.args.kwonlyargs].index("timeout")]
+        for name, tree in _package_sources()
+        if name == "net.py"
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "stream_to_file"
+    ]
+    offenders: list[str] = []
+    if isinstance(default, ast.Constant) and default.value is None:
+        offenders.append("net.py::stream_to_file's own default")
+    calling: set[str] = set()
+    importing: set[str] = set()
+    for name, tree in _package_sources():
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and any(a.name == "stream_to_file" for a in node.names):
+                importing.add(name)
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            called = func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
+            if called != "stream_to_file":
+                continue
+            calling.add(name)
+            if any(k.arg is None for k in node.keywords):
+                offenders.append(f"{name}:{node.lineno} spreads **kwargs, so its timeout cannot be read")
+                continue
+            given = {k.arg: k.value for k in node.keywords}.get("timeout", default)
+            if isinstance(given, ast.Constant) and given.value is None:
+                offenders.append(f"{name}:{node.lineno}")
+    assert calling, "the walk found no bulk download"
+    assert calling == importing, f"callers {sorted(calling)} != importers {sorted(importing)}"
+    assert offenders == [], f"these bulk downloads run with no timeout at all: {offenders}"
+
+
 # ── the behaviour, on a fake transport ──────────────────────────────────────────────────────────
 
 
@@ -137,6 +189,31 @@ def test_the_only_raw_stream_in_the_package_is_the_shared_one() -> None:
 def _no_waiting(monkeypatch: pytest.MonkeyPatch) -> None:
     """Retries without the backoff, so these run in milliseconds rather than seconds."""
     monkeypatch.setattr(net, "wait_exponential_jitter", lambda **kw: lambda _state: 0)
+
+
+def test_the_default_timeout_reaches_httpx_and_a_callers_own_wins(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No `timeout=` gets the 120 s default; a caller's own value wins, `None` included (RM421).
+
+    120 s is the pm's value, the one three builders already named. An explicit `None` is still passed
+    through, deliberately: the signature keeps `float | None`, and the walk above is what keeps any
+    caller in this package from asking for it.
+    """
+    seen: list[object] = []
+    serve = _fake_stream([b"payload"])
+
+    def capture(method, url, **kwargs):  # type: ignore[no-untyped-def]
+        seen.append(kwargs["timeout"])
+        return serve(method, url, **kwargs)
+
+    monkeypatch.setattr(net.httpx, "stream", capture)
+    common = {"error_cls": _Boom, "retired": _BoomRetired, "what": "a file"}
+    stream_to_file(tmp_path / "a.bin", "https://example.invalid/a", **common)
+    stream_to_file(tmp_path / "b.bin", "https://example.invalid/b", timeout=5.0, **common)
+    stream_to_file(tmp_path / "c.bin", "https://example.invalid/c", timeout=None, **common)
+    assert seen == [120.0, 5.0, None]
 
 
 def _fake_stream(script: list):

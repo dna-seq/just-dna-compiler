@@ -337,7 +337,6 @@ def download_civic_file(dest: Path, url: str) -> CivicDownload:
         error_cls=CivicUnavailable,
         retired=CivicRetired,
         what=f"the CIViC file {Path(url).name}",
-        timeout=120.0,
     )
     return CivicDownload(
         path=streamed.path,
