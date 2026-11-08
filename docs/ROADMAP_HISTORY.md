@@ -51,7 +51,9 @@ parts streamed to their end first. The fix is the shape the item gave.
 `net.stream_to_file` takes a private keyword `_stop` (a `threading.Event`), checked before the request opens and
 before each chunk is written; once set it raises a private `_StreamStopped`, which the retry does not take for a
 transport error and which the existing `except BaseException` arm lets through after removing the `.part`, so a
-stopped part never lands. A retry's backoff waits on the flag rather than sleeping, so a part that is between two
+stopped part never lands. It subclasses `BaseException`, as `GeneratorExit` does, because it is a stop and not an
+error a caller handles: no `except Exception` may take it for a failed download, and the error roster in
+ENRICHER.md (what a caller catches, asserted equal to the package's `Exception` subclasses) stays as it was. A retry's backoff waits on the flag rather than sleeping, so a part that is between two
 attempts (up to thirty seconds of backoff) stops at once too. Every other caller passes nothing and is
 unchanged. `download_release` sets the flag in its `except BaseException` arm before the shutdown, so the queued
 parts are cancelled as before and the in-flight ones stop within a chunk; the `with` exit and the interpreter's own

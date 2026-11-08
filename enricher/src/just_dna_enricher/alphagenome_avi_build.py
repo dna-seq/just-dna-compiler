@@ -303,11 +303,12 @@ def list_contigs(source: Path) -> tuple[str, ...]:
     return contigs
 
 
-class _ContigStopped(Exception):
+class _ContigStopped(BaseException):
     """A contig's build stopped because the build set its `_stop` (RM409); never seen past the pool.
 
     The build that set the flag is already raising its own exception (the user's `KeyboardInterrupt`, or
-    the first contig that failed), so nothing reports this one.
+    the first contig that failed), so nothing reports this one. A `BaseException` for the reason
+    `net._StreamStopped` is one: a stop, not an error a caller handles.
     """
 
 

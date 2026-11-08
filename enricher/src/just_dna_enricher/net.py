@@ -534,13 +534,17 @@ class StreamedFile:
     last_modified: str | None = None
 
 
-class _StreamStopped(Exception):
+class _StreamStopped(BaseException):
     """A download stopped because its caller set the `_stop` it passed (RM409); never seen past a pool.
 
     Raised in a worker thread, and the caller that set the flag is already raising its own exception
     (the user's `KeyboardInterrupt`, or the first part that failed), so nothing ever reports this one.
     It is not a transport error, so the retry does not take it for one, and not `httpx`'s, so the
     `except BaseException` arm removes the `.part` and lets it through untranslated.
+
+    A `BaseException`, like `GeneratorExit`: it is a stop, not an error a caller handles, so no
+    `except Exception` on the way out may take it for a failed download, and it stays off the error
+    roster ENRICHER.md keeps of what a caller catches.
     """
 
 
