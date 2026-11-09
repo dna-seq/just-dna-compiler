@@ -178,6 +178,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S137** `bins_ungrounded` said "no bin pmid" beside a bin carrying one — RM415 filed and shipped
 - **S138** a `resolution.csv` row for a variant the author removed compiled silently and shipped in `manifest.derived` — RM422 filed
 - **S139** `record_verification` re-signed the records of checks it did not re-run over authored bytes they never saw — RM423 filed
+- **S140** `ExpressionEffectRow.effect_size`'s description said "aggregated over the tracks"; it is the single strongest track — RM425 filed
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -6994,3 +6995,40 @@ is a new field on `VerificationRecord`, so a minor. Your interim (a record older
 read as not current) is sound on your side meanwhile.
 
 <!-- triaged: RM423 filed (patch half + minor half, with the pm) · sha dcb7830b31e7 -->
+
+# Field notes from just-module-creator's liaison, 2026-11-09 — an Atlas pass whose sizes contradicted their directions
+
+## S140 — `ExpressionEffectRow.effect_size`'s description says "aggregated over the tracks"; it is one track's value
+
+**From:** just-module-creator (liaison seat), 2026-11-09 · **Our id:** F142 · **Severity:** low, wording only ·
+**Checked on:** format 0.7.1 (installed) and your `main` (`schema/src/just_dna_format/expression.py`).
+
+### What happened
+
+Our tester ran the Atlas pass over a 2026 longevity module (819 rows) and over `fto_bmi` with FTO and IRX3 (126
+rows). In 128 and 24 of them, `effect_size`'s sign contradicts `effect_direction` (for example APOE 19:44908822
+C>T, `+0.024`, `decrease`, 212 of 371 tracks). The values are right: `_summarise` in the enricher (0.7.3, and
+`main`) keeps the single strongest track with its sign (`extreme = max(finite, key=abs)`) and takes the
+majority sign for the direction, and its docstring and `docs/SCHEMAS.md` ("`effect_size` and `effect_direction`
+answer different questions and may disagree") both say so.
+
+The field description is the one place that does not: *"The magnitude, aggregated over the scorer's tissue
+tracks for this gene."* A reader of `describe` / the authoring reference (which is what our tools hand an agent)
+gets "aggregated", reads `+0.024` beside `decrease` as a broken row, and would rank by `|effect_size|` thinking
+it ranks a summary, when it ranks each variant's most extreme single tissue.
+
+### The ask
+
+Say in the description what `_summarise` and `SCHEMAS.md` say: the strongest single track for this gene, sign
+kept, which may disagree with `effect_direction` (the majority sign) and is real when it does. One sentence;
+`effect_direction`'s description is already right. Our own docstrings get the same sentence (F142 on our side).
+
+**Status — filed as RM425, a patch, wording only.** Confirmed: `_summarise` keeps `max(finite, key=abs)` with its
+sign, and its docstring and SCHEMAS.md say the size and the direction may disagree; the field description is the
+one place that says "aggregated". It gets the sentence you ask for: the strongest single tissue track for this
+gene, sign kept, which may disagree with `effect_direction` (the majority sign) and is real when it does. No field,
+type or published byte moves, so it ships in the next patch on `main` (0.8.3 is already cut without it). Your
+reading in the meantime is the right one: rank by `|effect_size|` knowing it ranks each variant's most extreme
+single tissue.
+
+<!-- triaged: RM425 filed (patch, wording) · sha a8c3935ba56f -->
