@@ -54,3 +54,29 @@ Prose is left byte-for-byte when it is answered and when it is moved, so it stay
 observed rather than of what was decided.
 
 ---
+
+## S141 — `GeneLocusConflict`'s message says the rsID is the invented half; in our probe it was the gene pairing
+
+**From:** just-module-creator (liaison seat), 2026-11-09 · **Our id:** F135 (resolved on our side; this is the
+wording half) · **Severity:** low, wording · **Checked on:** enricher 0.7.3 (installed) and your `main`
+(`enricher/src/just_dna_enricher/identifiers.py`, `GeneLocusConflict.__str__`).
+
+### What happened
+
+Our tester's layman probe took a machine-written summary that named `MTHFR A66G (rs1801394)`. After enrichment,
+`check-identifiers` caught it: *"rs1801394 is on chromosome 5, but HGNC puts MTHFR on chromosome 1 — the row
+pairs a gene with a variant that is not in it. Check the identifier against the source you took it from; a real
+symbol beside an invented rsID is what a machine-written summary produces."*
+
+The first sentence is right. The last one guesses which half is wrong, and here it guessed wrong: rs1801394 is
+real (MTRR A66G, chromosome 5). The summary paired a real rsID with the neighbouring pathway's gene. An agent
+reading the message as written goes looking for "the real rsID of MTHFR A66G", which does not exist, rather than
+asking which gene rs1801394 belongs to. Which half is wrong is the finding, and the message settles it by prior.
+
+### The ask, and its cost
+
+1. **Wording only (patch):** name both cases, e.g. *"either half may be the error: a machine-written summary can
+   invent an rsID beside a real symbol, or pair a real rsID with the wrong gene."* No lookup, no new field.
+2. **Better, where the module already holds it:** when a gene sidecar or `resolution.csv` beside the spec names
+   the gene the variant sits in, say it (*"rs1801394 sits in MTRR"*). I know `_variant_chromosomes` declines to
+   fetch by design, so this would read only what is already on disk, and stay silent otherwise.
