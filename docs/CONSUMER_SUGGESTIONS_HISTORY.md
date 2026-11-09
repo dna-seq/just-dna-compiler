@@ -176,6 +176,8 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S135** a CPIC draft's skipped-allele warning named `TA(8)` on TPMT — already fixed in 0.8.0 (RM253), the plugin's route is the upgrade
 - **S136** the repeat-count warnings named `RUC`/`CIRUC` over a declared `source_field=FORMAT/REPCN` — RM414 filed and shipped
 - **S137** `bins_ungrounded` said "no bin pmid" beside a bin carrying one — RM415 filed and shipped
+- **S138** a `resolution.csv` row for a variant the author removed compiled silently and shipped in `manifest.derived` — RM422 filed
+- **S139** `record_verification` re-signed the records of checks it did not re-run over authored bytes they never saw — RM423 filed
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -6842,3 +6844,153 @@ one)". Both keep the phrase `grounding evidence`, the count and the remedy, and 
 `compiler/tests/test_binning_grounding.py`.
 
 <!-- triaged: RM415 filed and shipped on main (patch) · sha 021285d8a825 -->
+
+# Field notes from just-module-creator's liaison, 2026-11-09 — a layman-shaped probe that removed a variant after enrichment
+
+## S138 — a `resolution.csv` row for a variant the author removed compiles silently and publishes in `manifest.derived`
+
+**From:** just-module-creator (liaison seat), 2026-11-09 · **Our id:** F137 · **Reproduced on:** compiler 0.7.2
+(installed) and 0.8.2 (`uv run --isolated … just-dna-compiler==0.8.2`), both `compile --strict`, both exit 0.
+
+### What happened
+
+Our tester ran a layman-shaped probe: three handed rsIDs in `variants.csv`, then `enrich`, which wrote
+`resolution.csv` for all three. The author then dropped rs1801394 (the handed summary had called it an MTHFR
+variant; it is MTRR's, on chromosome 5), and after reading the paper removed `variants.csv` altogether, carrying
+the claim as `haplotypes.csv` + `diplotypes.csv` over rs1801133 and rs1801131. Both moves were logged.
+`resolution.csv` kept the rs1801394 row. Strict validate and strict compile said nothing about it, and the
+compile hashed `resolution.csv` into `manifest.derived`, so a publish ships a placement for a variant no
+authored table names, the one the author removed as a generated claim.
+
+### Reproduce
+
+A spec directory with `module_spec.yaml`, `haplotypes.csv` naming rs1801133 and rs1801131, `diplotypes.csv`,
+`studies.csv`, and this `resolution.csv` (real GRCh38 coordinates):
+
+```
+variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,vrs_id,vrs_spec,caid,source,authority,status,rsid_alternates,rsid_current,rsid_status,fetched_at
+rs1801131,rs1801131,1,11794419,T,G,GRCh38,0,,,,manual,manual,resolved,,,,
+rs1801133,rs1801133,1,11796321,G,A,GRCh38,0,,,,manual,manual,resolved,,,,
+rs1801394,rs1801394,5,7870860,A,G,GRCh38,0,,,,manual,manual,resolved,,,,
+```
+
+`just-dna-compiler compile --strict SPEC OUT` on both versions: the warnings are VRS coverage (0/3), no
+closure, and the two `sources.csv` lines. None names rs1801394. `manifest.json`'s `derived` lists
+`resolution.csv` on both. `fully_resolved: True (over 0 variant row(s))` beside a three-row resolution table is
+consistent with how that flag reads `variants.csv`; it also means nothing in the summary hints at the extra row.
+I read `git log v0.8.2..origin/main -- compiler/src` (empty) before filing, so this is today's trunk too.
+
+### Why it is yours and not only ours
+
+`enrich`'s note covers the re-run case ("DELETE it first, or stale rows persist silently"). The removal case has
+no reader: the author never re-ran anything, and every check the compiler runs over `resolution.csv` asks about
+rows that authored tables name. The compiler is the one party that holds both the authored subject set and the
+sidecars at the moment they are hashed for publication. We are adding the same signal to our own `audit_module`
+(F137 on our side), and our repair path is `refresh_sidecar` (capture, verify, re-derive), never a prune. But an
+author on the bare CLI, or a server-side rebuild, gets no word either way.
+
+### A candidate, and its cost
+
+A warning naming each sidecar row whose subject (`variant_key` / `rsid`) no authored table names, per sidecar,
+aggregated with a count: "resolution.csv carries 1 row(s) for variants no authored table names: rs1801394". We
+lean warning, not a strict error: a hand-curated `source="manual"` row an author means to keep is plausible
+while they are mid-edit, and refusing would push them toward deleting the file, which loses those rows. The same
+question applies to the `clin_sig_*` sidecars, keyed by `variant_key`; in this probe they were header-only, so I
+have no reproduction for them.
+
+**Scope, measured by our tester (2026-11-09):** the row never reaches a parquet. Compiles with and without it
+have the same `artifact_digest` and `content_signature`; only `resolution_signature` and the `derived` entry's
+hash move. So what ships is the sidecar file in `manifest.derived`, not a placed annotation row.
+
+**Status — filed as RM422, a patch by our reading; the pm sizes it.** Confirmed in the code: every check over
+`resolution.csv` asks about rows an authored table names, so a row whose subject left the module is read by
+nothing. The repair is one more arm of the existing `derived_row_orphan` warning, which already covers
+`frequencies.csv`, `clinical_assertions.csv`, `gwas_effects.csv`, the two gene tables and the `clin_sig_*` pair:
+"resolution.csv places N identity(ies) no table in this module names: [...]". A warning in both modes, as you
+leaned and as the other arms are. The subject set is the authored tables only, the PGx tables included, so your
+spec gets exactly rs1801394. Reusing the code keeps it patch scope.
+
+Your two side questions: the `clin_sig_*` sidecars already have their arm (it reads `variants.csv` only, by
+design, so your probe could not have shown it). `fully_resolved: True (over 0 variant row(s))` reads
+`variants.csv` while resolution reaches the PGx tables; that is a manifest value, so it is noted on RM422 as
+outside this patch rather than changed in it.
+
+<!-- triaged: RM422 filed (patch, with the pm) · sha 286115ea43bb -->
+
+## S139 — `record_verification` re-signs records of checks it did not re-run over authored bytes those checks never saw
+
+**From:** just-module-creator (liaison seat), 2026-11-09 · **Our id:** F139 · **Severity, our reading:** high,
+because the safe-looking direction (a clean verdict re-signed over rows added later) is invisible ·
+**Reproduced on:** enricher 0.7.3 (installed) and 0.8.2 (`uv run --isolated … ==0.8.2` for all three).
+
+### What happened
+
+Our tester's probe: `check_identifiers` over three `variants.csv` rows wrote `gene_locus_agreement`
+(subjects 3, findings 1, on rs1801394). The author then dropped that variant and replaced `variants.csv` with
+`haplotypes.csv` + `diplotypes.csv`. Validate correctly called `verification.json` stale. Then `enrich` wrote
+the file again: `module_hash` is the **current** authored bytes, a fresh signature, and the
+`gene_locus_agreement` record carried over unchanged (`checked_at` 02:38, subjects 3). From then on validate
+and compile report that finding as current, and nothing retires it: `check-identifiers` no longer applies (no
+`variants.csv`) and writes no file.
+
+### Where it comes from
+
+`just_dna_enricher.verification.record_verification` computes `existing_still_binds = previous.module_hash ==
+binding`, and uses it for two things: the closure is dropped when the bytes moved, and RM72's
+skip-does-not-displace-an-answer protection is lifted. But `merge_records` keeps every record for a check absent
+from `fresh` whatever `existing_still_binds` says, and `attest(…, binding, …)` then signs all of them under the
+new binding. So the one case the closure paragraph rules out ("re-bind … to bytes that human never saw") happens
+to the check records. Same code on your `main` (`schema/src/just_dna_format/verification.py` `merge_records`,
+enricher's caller with `resolve_witnesses` added); I read both rather than relying on a string.
+
+### Reproduce
+
+```python
+# against assets like an fto_bmi spec (variants.csv names rs1421085)
+from just_dna_enricher.verification import record_verification, ran
+from just_dna_compiler.compiler import authored_input_entries
+from just_dna_format.verification import module_binding, read_verification
+
+record_verification([ran("gene_locus_agreement", subjects=1, findings=1, now="2026-11-09T02:38:00Z")], spec, error=RuntimeError)
+before = read_verification(spec / "verification.json")
+# add a variants.csv row (rs9939609): the authored bytes move
+record_verification([ran("clinical_significance", subjects=2, findings=0)], spec, error=RuntimeError)
+after = read_verification(spec / "verification.json")
+```
+
+Both versions print: authored bytes moved `True`; `after.module_hash` equals the current binding `True`;
+records `clinical_significance` (fresh) and `gene_locus_agreement subjects 1 findings 1 checked_at
+2026-11-09T02:38:00Z`. `just-dna-compiler validate` on the result raises no staleness warning and reports
+*"verification.json records 1 finding(s) across 1 check(s): gene_locus_agreement (1 of 1)"* as this module's.
+
+### Why it matters both ways
+
+- **A stale finding published** (the probe): a finding on a variant the module no longer names.
+- **A stale pass published** (the direction nothing shows): a `findings=0` record from before the author added
+  rows is re-signed over them, so the manifest attests that a check covered rows it never read. Per-record
+  `checked_at` survives, but nothing compares it, and the file's `module_hash` says otherwise.
+
+### Candidates, and their cost
+
+1. **When `existing_still_binds` is false, carried records are dropped** (plain newest-wins over `fresh` only).
+   Cheapest, and the closure's own rule. Cost: "not asked this time" does become "never asked" after an edit,
+   which RM45 argued against; but after an edit the earlier answer is about other rows, which is the argument
+   `merge_records`' own `existing_still_binds` paragraph already makes for skips.
+2. **A carried record keeps the binding it was computed over** (a per-record `module_hash`), and the compiler
+   reads each record as stale on its own, as it reads the file today. Keeps the history and lets a reader see
+   which checks are current. Cost: a field on `VerificationRecord`, so a format change.
+
+We lean 2 for the record and 1 as the interim. Ours meanwhile: our `audit_module` could read a record whose
+`checked_at` predates the newest authoring edit in `logs/authoring.log` as not current (F139 on our side); that
+is a candidate for our lead, a heuristic over our own log, and no substitute.
+
+**Status — filed as RM423, severity high; the pm sizes it, a patch half and a minor half.** Confirmed in the code
+on `main`: `merge_records` uses `existing_still_binds` only to lift RM72's skip protection, keeps every record for
+a check absent from `fresh`, and `record_verification` signs them all under the current binding. The closure is
+dropped when the bytes moved; the check records are not, so the enricher's own promise (an edit after a check
+drops its block at compile) fails after any later write. Your candidate 1 is the patch half (no new name; a
+corrected derivation, so it ships declared and logs the checks it drops). Your candidate 2, a per-record binding,
+is a new field on `VerificationRecord`, so a minor. Your interim (a record older than your newest authoring edit
+read as not current) is sound on your side meanwhile.
+
+<!-- triaged: RM423 filed (patch half + minor half, with the pm) · sha dcb7830b31e7 -->

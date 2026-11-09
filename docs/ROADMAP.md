@@ -2046,6 +2046,67 @@ registry per test. No public name moves, so it fits a patch; whether it is one, 
   one pair whose shared per-address budget is documented. Each further client joins only with its service's limit
   measured or quoted from its documentation, and a key per service, never one per interval.
 
+## RM422 — a `resolution.csv` row for a variant no authored table names compiles silently, and publishes
+
+**Filed by triage (2026-11-09)** from S138 (just-module-creator's liaison, their F137), reproduced by them on compiler
+0.7.2 and 0.8.2 under `compile --strict`; trunk has no compiler change since `v0.8.2`. Confirmed in the code: no
+check compares `resolution.csv`'s rows with the module's subjects. Every check over the table asks about rows an
+authored table names (`subjects.identity_placements` keys off the authored row's `variant_key`/`rsid`), so a row
+whose subject the author removed is read by nothing and hashed into `manifest.derived`.
+
+**Severity** low · **Status** open — **a patch, my reading; with the pm to size** · **Owner** compiler
+(`fact_checks` beside the six `derived_row_orphan` arms, `validate_spec` and compile both) · **Motivating case**
+S138 · *related* RM43, RM337
+
+**The case.** `enrich` writes `resolution.csv` for three rsIDs in `variants.csv`. The author drops one
+(rs1801394), then replaces `variants.csv` with `haplotypes.csv` + `diplotypes.csv` over the other two. Nobody
+re-runs `enrich`, so `enrich`'s "delete it first, or stale rows persist" note never reaches them. Strict validate
+and compile name nothing, and a publish ships a placement for the variant the author removed. The
+reporter measured the reach: the row reaches no parquet (`artifact_digest` and `content_signature` unchanged),
+only `resolution_signature` and the `derived` entry's hash move, so what ships is the sidecar file.
+
+**What it would be.** One more `derived_row_orphan` arm: "resolution.csv places N identity(ies) no table in this
+module names: [...]", a warning in both modes like the other six. The subject set is `module_subjects` over
+authored tables only, so a resolution row never vouches for itself, and the PGx tables count (RM43 put them under
+resolution). It reuses the code, so no new public name and no new code: patch scope, unlike RM337, which needed a
+new code. Emitted from validate and compile with the message dedupe the other arms use; a COMPILER.md catalogue
+line, an INTEGRATION_0_8 row, a CHANGELOG line, and the reporter's spec as the fixture (exactly one orphan,
+rs1801394).
+
+**Not in it.** The `clin_sig_*` pair already has its arm (the concordance one, reading `variants.csv` only, by
+design). `fully_resolved: True (over 0 variant row(s))` beside a three-row table reads `variants.csv` while
+resolution reaches the PGx tables; that is a manifest value, so it is a question of its own, not this patch.
+
+## RM423 — `record_verification` re-signs the records of checks it did not re-run over authored bytes they never saw
+
+**Filed by triage (2026-11-09)** from S139 (just-module-creator's liaison, their F139), reproduced by them on
+enricher 0.7.3 and 0.8.2. Confirmed in the code: `verification.merge_records` keeps every record for a check absent
+from `fresh` whatever `existing_still_binds` says (the flag only lifts RM72's skip protection), and
+`record_verification` then signs all of them under the binding of the bytes as they are now. The closure is
+dropped when the bytes moved (RM73); the check records are not. So `enrich`'s own docstring ("an author who edits
+`variants.csv` after this ran gets the block dropped at compile with a warning") stops holding after any later run
+that writes the file.
+
+**Severity** high (the reporter's reading, and RM45's: a forged pass is worse than silence) · **Status** open —
+**with the pm to size; a patch half and a minor half** · **Owner** format (`merge_records`) + enricher
+(`record_verification`) · **Motivating case** S139 · *related* RM45, RM72, RM73, RM284, RM292
+
+**Both directions.** A stale finding published (the probe: `gene_locus_agreement` on rs1801394, after the author
+removed it), and a stale pass published, the direction nothing shows: a `findings=0` record from before rows were
+added is re-signed over them, so the attestation says a check covered rows it never read. Per-record `checked_at`
+survives, and nothing compares it.
+
+**Two candidates, the reporter's.**
+
+1. **Patch:** when `existing_still_binds` is false, carried records are dropped, plain newest-wins over `fresh`
+   only; the closure's own rule. No new name. The cost is RM45's argument ("not asked this time" becomes "never
+   asked"), answered by the same docstring's skip paragraph: after an edit, the earlier answer is about other rows.
+   A corrected derivation, so it ships declared (P3), and the dropped checks are logged by name.
+2. **Minor:** a per-record binding (`module_hash` on `VerificationRecord`), each record read as stale on its own.
+   Keeps the history and shows which checks are current. A new field: 0.9 or later.
+
+The reporter leans 2 for the record and 1 as the interim.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
