@@ -85,5 +85,10 @@ cmd = "sh kit:classes/liaison/watch-upstream.sh polars --tags --tag-pattern '^py
 [seat.liaison.watch.duckdb-python]
 cmd = "sh kit:classes/liaison/watch-upstream.sh duckdb-python --tags"
 
+# The weekly dependency bump, this seat's unattended routine (docs/seats/LIAISON.md, "The dependency bump";
+# the person, 2026-11-04): says it due once a week while the person is away.
+[seat.liaison.watch.nightly]
+cmd = "sh kit:bin/py.sh kit:classes/base/nightly.py deps"
+
 [seat.liaison.zulip]
 pool = "~/.config/agent-seat-blueprints/zulip/pool"
