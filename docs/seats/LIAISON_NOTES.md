@@ -44,7 +44,9 @@ ga4gh/vrs-python#665 (`RleSubunitMode`, which `vrs/2.1` will default to SMALLEST
 
 **Lock schedule:** polars 2.1.0 is in `uv.lock` (5bdcca28) and shipped in **0.8.0** (cut 2026-11-05, with RM342 and
 RM352). duckdb 2.x once RM344 (open, a patch on `main`) lands: then tell the lead. RM343 (EXPLAIN test) is done. polars-bio **0.37.0** (on PyPI by 2026-11-07) requires `polars>=1.40.0,<2.2`: the `<2` block on just-dna-lite
-is gone; the lead was told (zulip …638402138). Its new cap is `<2.2`: a polars 2.2**The dependency bump** (the person, 2026-11-04, relayed by agents-kit/builder, zulip …637618265) is this seat's
+is gone; the lead was told (zulip …638402138). Its new cap is `<2.2`: a polars 2.2 release holds just-dna-lite again until polars-bio follows.
+
+**The dependency bump** (the person, 2026-11-04, relayed by agents-kit/builder, zulip …637618265) is this seat's
 unattended routine, in the grant since fc6e7ca1 (2026-11-09; desk #195 withdrawn as moot once the auto-mode rules
 were current). The watcher `nightly` runs `nightly.py deps` (41e8dced), started in the watchdog 2026-11-09; it says
 the bump due weekly while the person is away. Both commits on local main for the lead to push. No bump has run yet.
@@ -60,8 +62,8 @@ the plugin in step with us: ledgers `UPSTREAM_COMPILER.md`, `UPSTREAM_REGISTRY.m
 0.7.1 / compiler 0.7.2 / enricher 0.7.3, capped `<0.8`, and polars and duckdb `<2`, until both registry instances serve
 0.8. It is on our triage's `wake_from` (8de1fa80).
 
-**Push:** origin/main holds every liaison commit through fe38e101 (the liaison's own fast-forward, 2026-11-08;
-the ledger commits before it went out with the lead's pushes). The liaison pushes only its own ledgers and notes, and only as a fast-forward that carries no other seat's
+**Push:** origin/main holds every liaison commit through 5611ea91; the notes commits after it wait for the lead's
+next push (a push of mine was refused by auto mode, kit #332). The liaison pushes only its own ledgers and notes, and only as a fast-forward that carries no other seat's
 commit.
 
 **Role change read (v0.1.137, 2026-11-06):** the role adds "An in-house release" (the liaison takes the mechanical
