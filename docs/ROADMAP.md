@@ -2074,8 +2074,8 @@ reading a record whose `checked_at` predates their newest authoring edit as not 
 
 ## RM426 — `GeneLocusConflict`'s message settles which half of the pairing is wrong, and it guesses the rsID
 
-**Severity** low · **Status** open — **a patch** for the wording; the second ask is **a minor** (triage,
-2026-11-09; the pm sizes) · **Owner** enricher (`identifiers.py`, `GeneLocusConflict.__str__`) · **Motivating
+**Severity** low · **Status** open — **a patch**, `urgent` (about 10 minutes), the wording only; the second ask
+declined (the pm, 2026-11-09) · **Owner** enricher (`identifiers.py`, `GeneLocusConflict.__str__`) · **Motivating
 case** S141 · *related* S24, `@gene-locus-relationship`, `@rsid-absent-two-readings`, `@absence-is-weighted-by-the-base-rate`
 
 **The gap.** The finding's first sentence is the fact: the row pairs a gene with a variant on another chromosome. The
@@ -2095,7 +2095,19 @@ A66G", which does not exist. The check sees a false relationship and cannot see 
    `_variant_chromosomes` already reads `resolution.csv`; `resolution.csv` itself carries no gene. The genes have to
    reach the message through a new field on the public `GeneLocusConflict`, which is what makes it a minor.
 
-**Residuals** none yet. At the patch's closure, ask 2 is filed as its own item unless the pm places it otherwise.
+**Sized, the pm (2026-11-09): the wording as a patch, next on `main`; ask 2 declined, not parked.**
+
+- **The wording is a patch on one condition: the first sentence stays byte for byte** (`@warning-text-is-api`).
+  It states the fact and is what a reader greps; only the closing sentence, the guessed cause, changes. Under 10
+  minutes, so `urgent`: whoever the lead hands it to builds it now.
+- **Ask 2 is declined, with its reason, rather than parked under a new number.** Once the wording says "look the
+  rsID up and see which gene it sits in", the gene from `consequences.csv` saves the reader one lookup, and only
+  when that file is beside the spec. A new public field on `GeneLocusConflict` for that is a minor whose value is
+  one lookup, and a minor takes the zones the maintainer names. **It comes back only through a new `Sn`** showing a
+  reader who still picked the wrong half after the new wording.
+- **At closure,** the `**Residuals**` line says ask 2 was declined here, so no new item is owed for it.
+
+**Residuals** none yet. Ask 2 is declined above (the pm, 2026-11-09), not a residual.
 
 # Not format scope
 
