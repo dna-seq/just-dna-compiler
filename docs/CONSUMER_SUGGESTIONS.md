@@ -105,3 +105,70 @@ lean warning, not a strict error: a hand-curated `source="manual"` row an author
 while they are mid-edit, and refusing would push them toward deleting the file, which loses those rows. The same
 question applies to the `clin_sig_*` sidecars, keyed by `variant_key`; in this probe they were header-only, so I
 have no reproduction for them.
+
+## S139 — `record_verification` re-signs records of checks it did not re-run over authored bytes those checks never saw
+
+**From:** just-module-creator (liaison seat), 2026-11-09 · **Our id:** F139 · **Severity, our reading:** high,
+because the safe-looking direction (a clean verdict re-signed over rows added later) is invisible ·
+**Reproduced on:** enricher 0.7.3 (installed) and 0.8.2 (`uv run --isolated … ==0.8.2` for all three).
+
+### What happened
+
+Our tester's probe: `check_identifiers` over three `variants.csv` rows wrote `gene_locus_agreement`
+(subjects 3, findings 1, on rs1801394). The author then dropped that variant and replaced `variants.csv` with
+`haplotypes.csv` + `diplotypes.csv`. Validate correctly called `verification.json` stale. Then `enrich` wrote
+the file again: `module_hash` is the **current** authored bytes, a fresh signature, and the
+`gene_locus_agreement` record carried over unchanged (`checked_at` 02:38, subjects 3). From then on validate
+and compile report that finding as current, and nothing retires it: `check-identifiers` no longer applies (no
+`variants.csv`) and writes no file.
+
+### Where it comes from
+
+`just_dna_enricher.verification.record_verification` computes `existing_still_binds = previous.module_hash ==
+binding`, and uses it for two things: the closure is dropped when the bytes moved, and RM72's
+skip-does-not-displace-an-answer protection is lifted. But `merge_records` keeps every record for a check absent
+from `fresh` whatever `existing_still_binds` says, and `attest(…, binding, …)` then signs all of them under the
+new binding. So the one case the closure paragraph rules out ("re-bind … to bytes that human never saw") happens
+to the check records. Same code on your `main` (`schema/src/just_dna_format/verification.py` `merge_records`,
+enricher's caller with `resolve_witnesses` added); I read both rather than relying on a string.
+
+### Reproduce
+
+```python
+# against assets like an fto_bmi spec (variants.csv names rs1421085)
+from just_dna_enricher.verification import record_verification, ran
+from just_dna_compiler.compiler import authored_input_entries
+from just_dna_format.verification import module_binding, read_verification
+
+record_verification([ran("gene_locus_agreement", subjects=1, findings=1, now="2026-11-09T02:38:00Z")], spec, error=RuntimeError)
+before = read_verification(spec / "verification.json")
+# add a variants.csv row (rs9939609): the authored bytes move
+record_verification([ran("clinical_significance", subjects=2, findings=0)], spec, error=RuntimeError)
+after = read_verification(spec / "verification.json")
+```
+
+Both versions print: authored bytes moved `True`; `after.module_hash` equals the current binding `True`;
+records `clinical_significance` (fresh) and `gene_locus_agreement subjects 1 findings 1 checked_at
+2026-11-09T02:38:00Z`. `just-dna-compiler validate` on the result raises no staleness warning and reports
+*"verification.json records 1 finding(s) across 1 check(s): gene_locus_agreement (1 of 1)"* as this module's.
+
+### Why it matters both ways
+
+- **A stale finding published** (the probe): a finding on a variant the module no longer names.
+- **A stale pass published** (the direction nothing shows): a `findings=0` record from before the author added
+  rows is re-signed over them, so the manifest attests that a check covered rows it never read. Per-record
+  `checked_at` survives, but nothing compares it, and the file's `module_hash` says otherwise.
+
+### Candidates, and their cost
+
+1. **When `existing_still_binds` is false, carried records are dropped** (plain newest-wins over `fresh` only).
+   Cheapest, and the closure's own rule. Cost: "not asked this time" does become "never asked" after an edit,
+   which RM45 argued against; but after an edit the earlier answer is about other rows, which is the argument
+   `merge_records`' own `existing_still_binds` paragraph already makes for skips.
+2. **A carried record keeps the binding it was computed over** (a per-record `module_hash`), and the compiler
+   reads each record as stale on its own, as it reads the file today. Keeps the history and lets a reader see
+   which checks are current. Cost: a field on `VerificationRecord`, so a format change.
+
+We lean 2 for the record and 1 as the interim. Ours meanwhile: our `audit_module` could read a record whose
+`checked_at` predates the newest authoring edit in `logs/authoring.log` as not current (F139 on our side); that
+is a candidate for our lead, a heuristic over our own log, and no substitute.
