@@ -79,3 +79,13 @@ it ranks a summary, when it ranks each variant's most extreme single tissue.
 Say in the description what `_summarise` and `SCHEMAS.md` say: the strongest single track for this gene, sign
 kept, which may disagree with `effect_direction` (the majority sign) and is real when it does. One sentence;
 `effect_direction`'s description is already right. Our own docstrings get the same sentence (F142 on our side).
+
+**Status — filed as RM425, a patch, wording only.** Confirmed: `_summarise` keeps `max(finite, key=abs)` with its
+sign, and its docstring and SCHEMAS.md say the size and the direction may disagree; the field description is the
+one place that says "aggregated". It gets the sentence you ask for: the strongest single tissue track for this
+gene, sign kept, which may disagree with `effect_direction` (the majority sign) and is real when it does. No field,
+type or published byte moves, so it ships in the next patch on `main` (0.8.3 is already cut without it). Your
+reading in the meantime is the right one: rank by `|effect_size|` knowing it ranks each variant's most extreme
+single tissue.
+
+<!-- triaged: RM425 filed (patch, wording) · sha a8c3935ba56f -->
