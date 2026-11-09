@@ -22,7 +22,7 @@ built / published; measured by hand that day, re-measured weekly. Behind then: c
 - `duckdb` (the engine) is blobless and unwatched. It is there to read source at `path:line`.
 
 **Watchers** (`.blueprints.toml`): `ga4gh-vrs` polls its trunk every 300 s. `polars --tags --tag-pattern '^py-'` and
-`duckdb-python --tags` say tags only, one wake per release (kit v0.1.119, #246; the clone pins v0.1.144 since 2026-11-08), a patch tagged on a version branch
+`duckdb-python --tags` say tags only, one wake per release (kit v0.1.119, #246; the clone pins v0.1.145 since 2026-11-09), a patch tagged on a version branch
 included.
 
 **Backlog: none.** Read entry by entry on 2026-11-04, unattended: polars `py-2.0.0-rc.1` through `py-2.1.0` with the
