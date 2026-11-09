@@ -54,3 +54,54 @@ Prose is left byte-for-byte when it is answered and when it is moved, so it stay
 observed rather than of what was decided.
 
 ---
+
+## S138 — a `resolution.csv` row for a variant the author removed compiles silently and publishes in `manifest.derived`
+
+**From:** just-module-creator (liaison seat), 2026-11-09 · **Our id:** F137 · **Reproduced on:** compiler 0.7.2
+(installed) and 0.8.2 (`uv run --isolated … just-dna-compiler==0.8.2`), both `compile --strict`, both exit 0.
+
+### What happened
+
+Our tester ran a layman-shaped probe: three handed rsIDs in `variants.csv`, then `enrich`, which wrote
+`resolution.csv` for all three. The author then dropped rs1801394 (the handed summary had called it an MTHFR
+variant; it is MTRR's, on chromosome 5), and after reading the paper removed `variants.csv` altogether, carrying
+the claim as `haplotypes.csv` + `diplotypes.csv` over rs1801133 and rs1801131. Both moves were logged.
+`resolution.csv` kept the rs1801394 row. Strict validate and strict compile said nothing about it, and the
+compile hashed `resolution.csv` into `manifest.derived`, so a publish ships a placement for a variant no
+authored table names, the one the author removed as a generated claim.
+
+### Reproduce
+
+A spec directory with `module_spec.yaml`, `haplotypes.csv` naming rs1801133 and rs1801131, `diplotypes.csv`,
+`studies.csv`, and this `resolution.csv` (real GRCh38 coordinates):
+
+```
+variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,vrs_id,vrs_spec,caid,source,authority,status,rsid_alternates,rsid_current,rsid_status,fetched_at
+rs1801131,rs1801131,1,11794419,T,G,GRCh38,0,,,,manual,manual,resolved,,,,
+rs1801133,rs1801133,1,11796321,G,A,GRCh38,0,,,,manual,manual,resolved,,,,
+rs1801394,rs1801394,5,7870860,A,G,GRCh38,0,,,,manual,manual,resolved,,,,
+```
+
+`just-dna-compiler compile --strict SPEC OUT` on both versions: the warnings are VRS coverage (0/3), no
+closure, and the two `sources.csv` lines. None names rs1801394. `manifest.json`'s `derived` lists
+`resolution.csv` on both. `fully_resolved: True (over 0 variant row(s))` beside a three-row resolution table is
+consistent with how that flag reads `variants.csv`; it also means nothing in the summary hints at the extra row.
+I read `git log v0.8.2..origin/main -- compiler/src` (empty) before filing, so this is today's trunk too.
+
+### Why it is yours and not only ours
+
+`enrich`'s note covers the re-run case ("DELETE it first, or stale rows persist silently"). The removal case has
+no reader: the author never re-ran anything, and every check the compiler runs over `resolution.csv` asks about
+rows that authored tables name. The compiler is the one party that holds both the authored subject set and the
+sidecars at the moment they are hashed for publication. We are adding the same signal to our own `audit_module`
+(F137 on our side), and our repair path is `refresh_sidecar` (capture, verify, re-derive), never a prune. But an
+author on the bare CLI, or a server-side rebuild, gets no word either way.
+
+### A candidate, and its cost
+
+A warning naming each sidecar row whose subject (`variant_key` / `rsid`) no authored table names, per sidecar,
+aggregated with a count: "resolution.csv carries 1 row(s) for variants no authored table names: rs1801394". We
+lean warning, not a strict error: a hand-curated `source="manual"` row an author means to keep is plausible
+while they are mid-edit, and refusing would push them toward deleting the file, which loses those rows. The same
+question applies to the `clin_sig_*` sidecars, keyed by `variant_key`; in this probe they were header-only, so I
+have no reproduction for them.
