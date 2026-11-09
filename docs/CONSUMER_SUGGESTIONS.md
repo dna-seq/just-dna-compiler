@@ -106,6 +106,10 @@ while they are mid-edit, and refusing would push them toward deleting the file, 
 question applies to the `clin_sig_*` sidecars, keyed by `variant_key`; in this probe they were header-only, so I
 have no reproduction for them.
 
+**Scope, measured by our tester (2026-11-09):** the row never reaches a parquet. Compiles with and without it
+have the same `artifact_digest` and `content_signature`; only `resolution_signature` and the `derived` entry's
+hash move. So what ships is the sidecar file in `manifest.derived`, not a placed annotation row.
+
 ## S139 — `record_verification` re-signs records of checks it did not re-run over authored bytes those checks never saw
 
 **From:** just-module-creator (liaison seat), 2026-11-09 · **Our id:** F139 · **Severity, our reading:** high,
