@@ -2072,6 +2072,31 @@ reading a record whose `checked_at` predates their newest authoring edit as not 
 
 **Residuals** none yet.
 
+## RM426 — `GeneLocusConflict`'s message settles which half of the pairing is wrong, and it guesses the rsID
+
+**Severity** low · **Status** open — **a patch** for the wording; the second ask is **a minor** (triage,
+2026-11-09; the pm sizes) · **Owner** enricher (`identifiers.py`, `GeneLocusConflict.__str__`) · **Motivating
+case** S141 · *related* S24, `@gene-locus-relationship`, `@rsid-absent-two-readings`, `@absence-is-weighted-by-the-base-rate`
+
+**The gap.** The finding's first sentence is the fact: the row pairs a gene with a variant on another chromosome. The
+last one then names a cause, *"a real symbol beside an invented rsID is what a machine-written summary produces"*,
+written from S24, where four of one reporter's seven rows were that. S141's probe was the other half: `MTHFR` beside
+rs1801394, a real rsID in *MTRR*, so the gene was wrong. An agent reading the message looks for "the real rsID of MTHFR
+A66G", which does not exist. The check sees a false relationship and cannot see which member is false;
+`@absence-is-weighted-by-the-base-rate` makes naming both readings the floor, and no measurement here says which leads.
+
+**What it would be.**
+
+1. **The patch (wording).** Name both readings and the step that tells them apart: either half may be the error (an
+   invented rsID beside a real symbol, or a real rsID paired with the wrong gene); look the rsID up and see which gene
+   it sits in. No lookup, no field, no code.
+2. **The minor (S141's ask 2).** When `consequences.csv` beside the spec lists transcripts for the variant, name their
+   genes (*"consequences.csv places rs1801394 in MTRR"*), silent otherwise. Read-only and on disk, as
+   `_variant_chromosomes` already reads `resolution.csv`; `resolution.csv` itself carries no gene. The genes have to
+   reach the message through a new field on the public `GeneLocusConflict`, which is what makes it a minor.
+
+**Residuals** none yet. At the patch's closure, ask 2 is filed as its own item unless the pm places it otherwise.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
