@@ -2046,59 +2046,31 @@ registry per test. No public name moves, so it fits a patch; whether it is one, 
   one pair whose shared per-address budget is documented. Each further client joins only with its service's limit
   measured or quoted from its documentation, and a key per service, never one per interval.
 
-## RM423 — `record_verification` re-signs the records of checks it did not re-run over authored bytes they never saw
+## RM424 — a verification record carries no binding of its own, so a reader cannot tell which checks are current
 
-**Filed by triage (2026-11-09)** from S139 (just-module-creator's liaison, their F139), reproduced by them on
-enricher 0.7.3 and 0.8.2. Confirmed in the code: `verification.merge_records` keeps every record for a check absent
-from `fresh` whatever `existing_still_binds` says (the flag only lifts RM72's skip protection), and
-`record_verification` then signs all of them under the binding of the bytes as they are now. The closure is
-dropped when the bytes moved (RM73); the check records are not. So `enrich`'s own docstring ("an author who edits
-`variants.csv` after this ran gets the block dropped at compile with a warning") stops holding after any later run
-that writes the file.
+**Severity** low · **Status** open — **a minor, parked** (the pm, 2026-11-09, at RM423's sizing; filed at its
+closure) · **Owner** format (`VerificationRecord`, `merge_records`) + enricher (`record_verification`) + compiler
+(the verification block's staleness read) · **Motivating case** S139's candidate 2 · *related* RM423, RM45, RM72,
+RM284
 
-**Severity** high (the reporter's reading, and RM45's: a forged pass is worse than silence) · **Status** open — **a patch, the next on `main`**
-(the pm, 2026-11-09; the patch half only, the minor half parked) · **Owner** format (`merge_records`) + enricher
-(`record_verification`) · **Motivating case** S139 · *related* RM45, RM72, RM73, RM284, RM292
+**The gap.** `verification.json` is bound once, at the document (`VerificationDoc.module_hash`). RM423 made a run
+over moved authored bytes keep only its own records, so the document never signs an earlier record under a binding
+it was not computed over; the price is the history. An earlier answer about other bytes is now dropped rather than
+kept and marked, so a reader cannot see that a check was put once, over which bytes, and is not current. Per-record
+`checked_at` survives on the records that stay, and nothing compares it.
 
-**Both directions.** A stale finding published (the probe: `gene_locus_agreement` on rs1801394, after the author
-removed it), and a stale pass published, the direction nothing shows: a `findings=0` record from before rows were
-added is re-signed over them, so the attestation says a check covered rows it never read. Per-record `checked_at`
-survives, and nothing compares it.
+**What it would be.** S139's candidate 2: a `module_hash` on each `VerificationRecord`, the binding that record was
+computed over. `merge_records` could then carry every record across an edit, and the compiler reads each one as
+stale on its own, as it reads the document today. A new optional field, so a minor; whether it joins
+`VERIFICATION_FACT_FIELDS` (and so moves published signatures) is the first design question, answered against
+RM129's reasoning for `producer` and `checked_at`.
 
-**Two candidates, the reporter's.**
+**Parked, the pm (2026-11-09).** A new field is a minor, and a minor takes the zones the maintainer names, nothing
+by default. **Unparks when** a reader asks to see which checks are current without re-running them, or wants the
+history RM423 now drops. Either can happen while it is parked: S139's reporter already proposes, on their side,
+reading a record whose `checked_at` predates their newest authoring edit as not current, which is the first.
 
-1. **Patch:** when `existing_still_binds` is false, carried records are dropped, plain newest-wins over `fresh`
-   only; the closure's own rule. No new name. The cost is RM45's argument ("not asked this time" becomes "never
-   asked"), answered by the same docstring's skip paragraph: after an edit, the earlier answer is about other rows.
-   A corrected derivation, so it ships declared (P3), and the dropped checks are logged by name.
-2. **Minor:** a per-record binding (`module_hash` on `VerificationRecord`), each record read as stale on its own.
-   Keeps the history and shows which checks are current. A new field: 0.9 or later.
-
-The reporter leans 2 for the record and 1 as the interim.
-
-**Sized, the pm (2026-11-09): candidate 1 as a patch, the next on `main`; candidate 2 parked.**
-
-- **The patch is `merge_records`' own reasoning, applied to the case it left out.** Its docstring already says that
-  once the authored bytes have moved, an earlier answer "describes rows that no longer exist", and on that ground
-  it lifts RM72's protection of a `ran` record over a fresh skip. A record for a check the new run did not put at
-  all is the same stale answer, so with `existing_still_binds=False` the result is `fresh` alone. RM45's argument
-  ("not asked this time" becomes "never asked") does not reach this case: about these bytes, the check was never
-  asked. The default stays `True`, and nothing changes while the bytes have not moved.
-- **Real-run frequency is high.** Every second pass meets it: an author edits a table after `enrich`, then runs any
-  command that writes `verification.json`. The harm is the worst kind the document can carry, a signed pass over
-  rows the check never read. That puts it first on `main`, ahead of RM422 and the queued RM400, RM401 and RM403.
-- **Declared, never silent (P3, release class is not staleness).** A corrected derivation of a public function's
-  output. A CHANGELOG line; an INTEGRATION_0_8 § 4 known issue saying that a `verification.json` written by format
-  or enricher 0.8.2 or earlier, over bytes edited since an earlier run, may carry records of checks that run never
-  put, and that a record whose `checked_at` is older than the edit is the sign; the run logs each dropped check by
-  name.
-- **The test**, the reporter's probe as the fixture: enrich, remove rs1801394 from `variants.csv`, run one command
-  that writes `verification.json` without `gene_locus_agreement`; the record for that check is gone, the log names
-  it, and with the bytes unchanged the same sequence keeps it (both arms, so the default's behaviour is pinned too).
-- **Candidate 2 (a per-record `module_hash` on `VerificationRecord`) is parked.** A new field is a minor, and the
-  maintainer's rule is that a minor takes the zones they name, nothing by default. **Unparks when** a reader asks to
-  see which checks are current without re-running them, or wants the history the patch now drops. Either can happen
-  while it is parked. At RM423's closure it is the `**Residuals**` line's item, filed then under its own number.
+**Residuals** none yet.
 
 # Not format scope
 
@@ -2620,6 +2592,7 @@ possibly already satisfied, and the rest sound** — the sweep's value is mostly
 | **RM378** — errors carry no code (parked 2026-11-05) | a consumer needs to tell apart refusals RM377's two phrases do not cover | **Sound.** S129 already came in through `Sn`. |
 | **RM405** — the offline floor is four unindexed snapshot queries (parked 2026-11-07) | a consumer reports offline enrichment time as a problem, or the snapshot builder offers an rsID-sorted layout | **Sound.** The `Sn` inbox is open, and the layout is another repository's to offer. |
 | **RM406** — dbSNP witnesses only REST's subjects (parked 2026-11-07) | RM398's build counts dbSNP-versus-snapshot disagreements on the registry's replay, or a consumer reports a misplacement outside REST's subjects | **Sound.** RM398 is the next patch and its build step produces the count; the `Sn` inbox is S117's and S132's channel. |
+| **RM424** — a verification record carries no binding of its own (parked 2026-11-09) | a reader asks which checks are current without re-running them, or wants the history RM423 drops | **Sound.** Readers of `verification.json` exist today, and S139's reporter already proposes approximating the first from `checked_at`. |
 | **RM15** / **RM69** / **RM52** and the 1.0 queue | a major-version bump | **Sound, and not this kind of gate.** A release boundary is a schedule, not a satisfier. |
 
 **What the sweep did not find, stated so it is not re-run for a while.** No gate anywhere is parked on

@@ -34,6 +34,91 @@ up.
 
 Patches on `main` after the 0.8.0 cut (2026-11-05), newest first.
 
+## RM423 — `record_verification` re-signs the records of checks it did not re-run over authored bytes they never saw
+
+**SHIPPED 2026-11-09 on `main` — a patch, uncut.** Owner format (`merge_records`) + enricher
+(`record_verification`), severity high.
+
+**Residuals** [RM424](ROADMAP.md#rm424--a-verification-record-carries-no-binding-of-its-own-so-a-reader-cannot-tell-which-checks-are-current)
+(candidate 2, a per-record `module_hash` on `VerificationRecord`; parked, a minor).
+
+**Built (2026-11-09), for the lead.** The pm's shape, unchanged. `merge_records` starts from the existing records
+only when `existing_still_binds` is true; with `False` the result is `fresh` alone, newest-wins among its own
+records, so the RM72 skip rule needs no change (it already read `existing_still_binds`). `record_verification`,
+when it read a document whose `module_hash` differs from the binding, logs one warning naming every check it held
+that this run did not put (`… not re-signed over these: <checks>. Re-run the check(s) …`), sorted, once per run. The
+closure rule (RM73) is untouched. Both docstrings now say the RM45 carry holds while the bytes stand still; ENRICHER
+gained the matching bullet, and `features/enricher/verification_checks.feature` a scenario. No public name, field,
+flag or warning code moves. Declared (P3, a corrected derivation): CHANGELOG, and INTEGRATION_0_8 § 4, which also
+says the fix does not repair a document already written that way (its `module_hash` matches the bytes, so a later
+run carries the records on until the bytes move again; re-run the named checks or delete the file).
+
+Two tests, each seen red on the previous `main`:
+
+- `test_a_check_this_run_did_not_put_is_not_carried_over_bytes_that_moved` (format, `test_verification.py`): with
+  `existing_still_binds=False` the merge is this run's records only and newest-wins among them; with the default the
+  earlier record stands. Red on `main` with `reference_allele` carried through.
+- `test_a_later_command_does_not_re_sign_a_check_it_did_not_put_over_moved_bytes` (enricher,
+  `test_verification_record.py`), S139's probe on the real commands: `grch37_build` plus rs1801394 (MTRR A66G, at
+  its GRCh37 position), `check-identifiers --no-traits` over HGNC on a mock transport (`gene_locus_agreement`,
+  subjects 4), then the row removed and `enrich --offline` run, which never puts that check. `bytes_moved`: the
+  record is gone, the document is bound to the current bytes, and one warning names every check
+  `check-identifiers` put and `enrich` does not, `gene_locus_agreement` among them. `bytes_unchanged`: the record stands unchanged and nothing is
+  logged. Red on `main` for `bytes_moved` (the four-row record re-signed over three rows); `bytes_unchanged` green
+  on both, pinning the default.
+
+**Filed by triage (2026-11-09)** from S139 (just-module-creator's liaison, their F139), reproduced by them on
+enricher 0.7.3 and 0.8.2. Confirmed in the code: `verification.merge_records` keeps every record for a check absent
+from `fresh` whatever `existing_still_binds` says (the flag only lifts RM72's skip protection), and
+`record_verification` then signs all of them under the binding of the bytes as they are now. The closure is
+dropped when the bytes moved (RM73); the check records are not. So `enrich`'s own docstring ("an author who edits
+`variants.csv` after this ran gets the block dropped at compile with a warning") stops holding after any later run
+that writes the file.
+
+**Severity** high (the reporter's reading, and RM45's: a forged pass is worse than silence) · **Status** open — **a patch, the next on `main`**
+(the pm, 2026-11-09; the patch half only, the minor half parked) · **Owner** format (`merge_records`) + enricher
+(`record_verification`) · **Motivating case** S139 · *related* RM45, RM72, RM73, RM284, RM292
+
+**Both directions.** A stale finding published (the probe: `gene_locus_agreement` on rs1801394, after the author
+removed it), and a stale pass published, the direction nothing shows: a `findings=0` record from before rows were
+added is re-signed over them, so the attestation says a check covered rows it never read. Per-record `checked_at`
+survives, and nothing compares it.
+
+**Two candidates, the reporter's.**
+
+1. **Patch:** when `existing_still_binds` is false, carried records are dropped, plain newest-wins over `fresh`
+   only; the closure's own rule. No new name. The cost is RM45's argument ("not asked this time" becomes "never
+   asked"), answered by the same docstring's skip paragraph: after an edit, the earlier answer is about other rows.
+   A corrected derivation, so it ships declared (P3), and the dropped checks are logged by name.
+2. **Minor:** a per-record binding (`module_hash` on `VerificationRecord`), each record read as stale on its own.
+   Keeps the history and shows which checks are current. A new field: 0.9 or later.
+
+The reporter leans 2 for the record and 1 as the interim.
+
+**Sized, the pm (2026-11-09): candidate 1 as a patch, the next on `main`; candidate 2 parked.**
+
+- **The patch is `merge_records`' own reasoning, applied to the case it left out.** Its docstring already says that
+  once the authored bytes have moved, an earlier answer "describes rows that no longer exist", and on that ground
+  it lifts RM72's protection of a `ran` record over a fresh skip. A record for a check the new run did not put at
+  all is the same stale answer, so with `existing_still_binds=False` the result is `fresh` alone. RM45's argument
+  ("not asked this time" becomes "never asked") does not reach this case: about these bytes, the check was never
+  asked. The default stays `True`, and nothing changes while the bytes have not moved.
+- **Real-run frequency is high.** Every second pass meets it: an author edits a table after `enrich`, then runs any
+  command that writes `verification.json`. The harm is the worst kind the document can carry, a signed pass over
+  rows the check never read. That puts it first on `main`, ahead of RM422 and the queued RM400, RM401 and RM403.
+- **Declared, never silent (P3, release class is not staleness).** A corrected derivation of a public function's
+  output. A CHANGELOG line; an INTEGRATION_0_8 § 4 known issue saying that a `verification.json` written by format
+  or enricher 0.8.2 or earlier, over bytes edited since an earlier run, may carry records of checks that run never
+  put, and that a record whose `checked_at` is older than the edit is the sign; the run logs each dropped check by
+  name.
+- **The test**, the reporter's probe as the fixture: enrich, remove rs1801394 from `variants.csv`, run one command
+  that writes `verification.json` without `gene_locus_agreement`; the record for that check is gone, the log names
+  it, and with the bytes unchanged the same sequence keeps it (both arms, so the default's behaviour is pinned too).
+- **Candidate 2 (a per-record `module_hash` on `VerificationRecord`) is parked.** A new field is a minor, and the
+  maintainer's rule is that a minor takes the zones they name, nothing by default. **Unparks when** a reader asks to
+  see which checks are current without re-running them, or wants the history the patch now drops. Either can happen
+  while it is parked. At RM423's closure it is the `**Residuals**` line's item, filed then under its own number (RM424).
+
 ## RM422 — a `resolution.csv` row for a variant no authored table names compiles silently, and publishes
 
 **SHIPPED 2026-11-09 on `main` — a patch, uncut.** Owner compiler (`fact_checks._cross_check_resolution`, called
