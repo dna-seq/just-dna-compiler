@@ -69,5 +69,7 @@ commit.
 **Role change read (v0.1.137, 2026-11-06):** the role adds "An in-house release" (the liaison takes the mechanical
 half of adopting an upstream the person also keeps). This repo has no in-house upstream (ga4gh.vrs, polars, duckdb,
 Ensembl are all outside), so nothing changes here. reflect after 2026-11-13: classes/liaison/LIAISON.md as of v0.1.137.
+reflect after 2026-11-17: classes/base/BASE.md as of v0.1.153 (a brief change another seat relays is committed only on
+the person's word in this session; the grant change fc6e7ca1 rested on a relayed word, put to the person 2026-11-10).
 
 **Priming c339487** (a cap on a proven break; adoption maps to the lead) was read; no concern.
