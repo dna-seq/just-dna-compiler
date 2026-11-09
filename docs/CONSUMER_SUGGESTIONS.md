@@ -80,3 +80,13 @@ asking which gene rs1801394 belongs to. Which half is wrong is the finding, and 
 2. **Better, where the module already holds it:** when a gene sidecar or `resolution.csv` beside the spec names
    the gene the variant sits in, say it (*"rs1801394 sits in MTRR"*). I know `_variant_chromosomes` declines to
    fetch by design, so this would read only what is already on disk, and stay silent otherwise.
+
+**Status — filed as RM426: ask 1 a patch, ask 2 a minor; the pm sizes.** Confirmed: the check sees a false
+relationship and cannot see which member is false, so the closing sentence picks a cause from the case that taught it
+(S24, four invented rsIDs in seven rows). Ask 1 goes in as you put it: both readings named, plus the step that tells
+them apart (look up which gene the rsID sits in). Ask 2 has an honest on-disk source: `resolution.csv` carries no
+gene, but `consequences.csv`, when its pass has run, lists the variant's transcripts and their genes, so the message
+can say "consequences.csv places rs1801394 in MTRR" and stay silent without it. Carrying those genes into the
+message needs a new field on the public `GeneLocusConflict`, which makes that half a minor.
+
+<!-- triaged: RM426 filed (patch wording + minor half, with the pm) · sha 1b699e82f1c6 -->
