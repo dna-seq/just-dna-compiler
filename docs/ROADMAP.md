@@ -2054,7 +2054,7 @@ check compares `resolution.csv`'s rows with the module's subjects. Every check o
 authored table names (`subjects.identity_placements` keys off the authored row's `variant_key`/`rsid`), so a row
 whose subject the author removed is read by nothing and hashed into `manifest.derived`.
 
-**Severity** low · **Status** open — **a patch, my reading; with the pm to size** · **Owner** compiler
+**Severity** low · **Status** open — **a patch, `unattended`** (the pm, 2026-11-09), after RM423 · **Owner** compiler
 (`fact_checks` beside the six `derived_row_orphan` arms, `validate_spec` and compile both) · **Motivating case**
 S138 · *related* RM43, RM337
 
@@ -2077,6 +2077,17 @@ rs1801394).
 design). `fully_resolved: True (over 0 variant row(s))` beside a three-row table reads `variants.csv` while
 resolution reaches the PGx tables; that is a manifest value, so it is a question of its own, not this patch.
 
+**Sized, the pm (2026-11-09): a patch, built unattended, after RM423.**
+
+- **Triage's reading holds.** One more arm under a code that exists, the subject set already computed
+  (`module_subjects`), the six arms' dedupe. No public name.
+- **One condition makes it a patch: it stays a warning under `strict`,** as the other six arms do. A module that
+  compiles under `--strict` on 0.8.2 must still compile on 0.8.3; a refusal would be a minor.
+- **Real-run frequency is moderate and the harm small.** Any author who edits tables after `enrich` and does not
+  re-run it meets it; what ships is a sidecar row for a removed variant, and no parquet moves. Severity low stands.
+- **The `fully_resolved` denominator stays out**, as the entry says. It is a manifest value, so changing it is
+  not this patch; it gets an item only if a reader is misled by it.
+
 ## RM423 — `record_verification` re-signs the records of checks it did not re-run over authored bytes they never saw
 
 **Filed by triage (2026-11-09)** from S139 (just-module-creator's liaison, their F139), reproduced by them on
@@ -2087,8 +2098,8 @@ dropped when the bytes moved (RM73); the check records are not. So `enrich`'s ow
 `variants.csv` after this ran gets the block dropped at compile with a warning") stops holding after any later run
 that writes the file.
 
-**Severity** high (the reporter's reading, and RM45's: a forged pass is worse than silence) · **Status** open —
-**with the pm to size; a patch half and a minor half** · **Owner** format (`merge_records`) + enricher
+**Severity** high (the reporter's reading, and RM45's: a forged pass is worse than silence) · **Status** open — **a patch, the next on `main`**
+(the pm, 2026-11-09; the patch half only, the minor half parked) · **Owner** format (`merge_records`) + enricher
 (`record_verification`) · **Motivating case** S139 · *related* RM45, RM72, RM73, RM284, RM292
 
 **Both directions.** A stale finding published (the probe: `gene_locus_agreement` on rs1801394, after the author
@@ -2106,6 +2117,30 @@ survives, and nothing compares it.
    Keeps the history and shows which checks are current. A new field: 0.9 or later.
 
 The reporter leans 2 for the record and 1 as the interim.
+
+**Sized, the pm (2026-11-09): candidate 1 as a patch, the next on `main`; candidate 2 parked.**
+
+- **The patch is `merge_records`' own reasoning, applied to the case it left out.** Its docstring already says that
+  once the authored bytes have moved, an earlier answer "describes rows that no longer exist", and on that ground
+  it lifts RM72's protection of a `ran` record over a fresh skip. A record for a check the new run did not put at
+  all is the same stale answer, so with `existing_still_binds=False` the result is `fresh` alone. RM45's argument
+  ("not asked this time" becomes "never asked") does not reach this case: about these bytes, the check was never
+  asked. The default stays `True`, and nothing changes while the bytes have not moved.
+- **Real-run frequency is high.** Every second pass meets it: an author edits a table after `enrich`, then runs any
+  command that writes `verification.json`. The harm is the worst kind the document can carry, a signed pass over
+  rows the check never read. That puts it first on `main`, ahead of RM422 and the queued RM400, RM401 and RM403.
+- **Declared, never silent (P3, release class is not staleness).** A corrected derivation of a public function's
+  output. A CHANGELOG line; an INTEGRATION_0_8 § 4 known issue saying that a `verification.json` written by format
+  or enricher 0.8.2 or earlier, over bytes edited since an earlier run, may carry records of checks that run never
+  put, and that a record whose `checked_at` is older than the edit is the sign; the run logs each dropped check by
+  name.
+- **The test**, the reporter's probe as the fixture: enrich, remove rs1801394 from `variants.csv`, run one command
+  that writes `verification.json` without `gene_locus_agreement`; the record for that check is gone, the log names
+  it, and with the bytes unchanged the same sequence keeps it (both arms, so the default's behaviour is pinned too).
+- **Candidate 2 (a per-record `module_hash` on `VerificationRecord`) is parked.** A new field is a minor, and the
+  maintainer's rule is that a minor takes the zones they name, nothing by default. **Unparks when** a reader asks to
+  see which checks are current without re-running them, or wants the history the patch now drops. Either can happen
+  while it is parked. At RM423's closure it is the `**Residuals**` line's item, filed then under its own number.
 
 # Not format scope
 
