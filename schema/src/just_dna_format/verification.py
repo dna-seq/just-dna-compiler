@@ -317,9 +317,9 @@ def merge_records(
 
     Replace rather than accumulate, because a record answers "what happened the last time this check
     was put" and two answers to that are not two facts. A check absent from `fresh` keeps its earlier
-    record: a run that did not put a question has said nothing about it, and deleting the older answer
-    would turn "not asked this time" into "never asked", which is the exact collapse RM45 exists to
-    undo.
+    record while the authored bytes stand still: a run that did not put a question has said nothing
+    about it, and deleting the older answer would turn "not asked this time" into "never asked", which
+    is the exact collapse RM45 exists to undo. Once the bytes have moved it does not (RM423, below).
 
     **A `skipped` record does not replace a `ran` one (RM72), and that is the paragraph above applied
     one step further out.** A skip *is* a run that did not put the question — the same fact as an
@@ -337,16 +337,25 @@ def merge_records(
     ask" would publish a stale finding rather than a real one. That case is not hypothetical: it is
     how `literature` behaves when the module's citations change, and a previous round fixed exactly
     that defect by writing the skip. So the caller passes whether the document it read was computed
-    over the bytes it is now being rewritten over (`VerificationDoc.module_hash` vs the binding), and
-    with `False` this is plain newest-wins. The default is `True` because a caller holding no earlier
-    document has nothing that could fail the test.
+    over the bytes it is now being rewritten over (`VerificationDoc.module_hash` vs the binding).
+
+    **With `False` the result is `fresh` alone, newest-wins among its own records (RM423).** A record
+    for a check this run did not put at all is the same stale answer as the one a skip now displaces,
+    so the argument above reaches it unchanged: it describes rows that no longer exist, and keeping it
+    would have the caller sign it under the binding of bytes it never saw. That published a finding on
+    a row the author had removed, and, in the direction nothing shows, a `findings=0` pass over rows
+    the check never read. RM45's argument does not reach this case: about these bytes the check was
+    never asked, so "never asked" is the true answer. The caller that drops records names them (the
+    enricher's `record_verification` logs each). The default is `True` because a caller holding no
+    earlier document has nothing that could fail the test, and nothing changes while the bytes stand
+    still.
 
     The counter-argument to the protection is real and is answered rather than dismissed: a reader may
     legitimately want to know that *today's* run could not reach the source. That is a fact about the
     **run**, not about the **check**, and this is a per-check document — a run-level fact needs a
     run-level place, which is a separate question and is deliberately not opened here.
     """
-    by_check = {record.check: record for record in existing}
+    by_check = {record.check: record for record in existing} if existing_still_binds else {}
     for record in fresh:
         previous = by_check.get(record.check)
         if (

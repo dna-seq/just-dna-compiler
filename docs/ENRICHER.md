@@ -181,6 +181,13 @@ stale, one function does not. What to hold onto when wiring a new pass into it:
   of its checks at the end of the run, and `enrich_literature` and `check-identifiers` do the same. The merge is what keeps every command in one document, replacing per check and never erasing
   a check this run did not put — and until `literature` was wired in there was no second writer at
   all, so the merge was machinery tested only against a document nothing produced.
+- **…while the authored bytes stand still (RM423, a 0.8.x patch).** Once they have moved
+  (`VerificationDoc.module_hash` against the current binding), the earlier records are about rows that
+  no longer exist, and the run keeps its own records only: carrying the others would have it sign them
+  under the binding of bytes they never saw, a finding on a removed row or a `findings=0` pass over rows
+  the check never read. RM45's "not asked this time" is not "never asked" here, because about these
+  bytes the check never was asked. `record_verification` logs one warning naming every check it drops.
+  A record's own binding, which would keep the history, is a new field, parked as a minor (RM424).
 - **A skip does not displace an answer the document already holds (RM72, 0.6) — while the authored
   bytes stand still.** The merge was unconditional newest-wins, so `check-acmg --offline` after a real
   run, or `check-identifiers --no-traits` after a full one, rewrote a true `subjects=13, findings=0`

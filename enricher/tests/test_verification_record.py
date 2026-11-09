@@ -744,6 +744,61 @@ def test_an_answer_over_bytes_that_moved_gives_way_to_this_runs_skip(
     assert kept.skipped == "offline"
 
 
+# rs1801394 (MTRR A66G) at its GRCh37 position, the variant S139's probe removed after checking it.
+_MTRR_A66G = "5,7870973,A,G,G/G,risk,MTRR A66G homozygote,MTRR,Homocysteine level,metabolic,,,risk,\n"
+
+
+@pytest.mark.parametrize("edited", [True, False], ids=["bytes_moved", "bytes_unchanged"])
+def test_a_later_command_does_not_re_sign_a_check_it_did_not_put_over_moved_bytes(
+    tmp_path: Path,
+    hgnc,
+    monkeypatch: pytest.MonkeyPatch,
+    no_ambient_caches: Path,
+    caplog: pytest.LogCaptureFixture,
+    edited: bool,
+) -> None:
+    """RM423, S139's probe end to end: two real commands, the author's edit between them.
+
+    `check-identifiers` puts `gene_locus_agreement` over four rows, one of them rs1801394. The author
+    then removes that row, and `enrich` runs: it writes `verification.json` and never puts that check.
+    Before the fix `merge_records` carried the record across whatever the bytes did, and
+    `record_verification` signed it under the binding of rows it never read, so the compiler took a
+    four-row verdict as this three-row module's. With the bytes moved the record is gone and the run
+    names it; with them unchanged (the second arm) the record stands, as RM45 wants.
+    """
+    monkeypatch.setitem(_HGNC_BANDS, "MTRR", "5p15.31")
+    spec = _module(tmp_path, "grch37_build", records=False)
+    variants = spec / "variants.csv"
+    original = variants.read_text(encoding="utf-8")
+    variants.write_text(original + _MTRR_A66G, encoding="utf-8")
+
+    result = CliRunner().invoke(app, ["check-identifiers", str(spec), "--no-traits"])
+    assert result.exit_code == 0, result.output
+    first = {r.check: r for r in read_verification(spec / VERIFICATION_JSON).records}
+    assert (first["gene_locus_agreement"].subjects, first["gene_locus_agreement"].skipped) == (4, None)
+
+    if edited:
+        variants.write_text(original, encoding="utf-8")
+    with caplog.at_level("WARNING", logger="just_dna_enricher.verification"):
+        enrich(spec, offline=True, download=False)
+
+    doc = read_verification(spec / VERIFICATION_JSON)
+    after = {r.check: r for r in doc.records}
+    assert doc.module_hash == module_binding(authored_input_entries(spec))
+    dropped_lines = [rec.getMessage() for rec in caplog.records if "not re-signed" in rec.getMessage()]
+    if edited:
+        assert "gene_locus_agreement" not in after
+        # Every check `check-identifiers` put and `enrich` did not is dropped, and each is named.
+        not_put_by_enrich = set(first) - set(after)
+        assert not_put_by_enrich >= {"gene_locus_agreement", "gene_symbol_currency", "trait_currency"}
+        assert len(dropped_lines) == 1
+        assert all(check in dropped_lines[0] for check in not_put_by_enrich)
+    else:
+        assert after["gene_locus_agreement"] == first["gene_locus_agreement"]
+        assert set(first) <= set(after)
+        assert dropped_lines == []
+
+
 def test_a_merge_does_not_restamp_the_record_it_carried_across(tmp_path: Path) -> None:
     """`producer` is per-record, so an older run's attribution survives a newer run's write (S71).
 

@@ -276,6 +276,29 @@ def test_an_answer_about_bytes_that_have_moved_does_not_outrank_this_run() -> No
     assert kept.skipped == "offline" and kept.subjects == 0
 
 
+def test_a_check_this_run_did_not_put_is_not_carried_over_bytes_that_moved() -> None:
+    """RM423. The same stale answer as the skip above, for a check the run did not put at all.
+
+    Once the authored bytes have moved, an earlier record is about rows that no longer exist, and
+    carrying it would have the caller sign it under the binding of bytes it never saw: a stale finding
+    published, or a stale `findings=0` pass over rows the check never read. So the result is this
+    run's records alone. Before the fix `reference_allele` came through with its old `checked_at`.
+    """
+    existing = _records()
+    fresh = [VerificationRecord(check="clinical_significance", subjects=99, findings=0)]
+
+    moved = merge_records(existing, fresh, existing_still_binds=False)
+    assert [(r.check, r.subjects) for r in moved] == [("clinical_significance", 99)]
+
+    # Newest-wins still holds among the run's own records, so the condition drops only the earlier ones.
+    twice = [*fresh, VerificationRecord(check="clinical_significance", subjects=100, findings=0)]
+    assert [r.subjects for r in merge_records(existing, twice, existing_still_binds=False)] == [100]
+
+    # And with the bytes unchanged (the default) the earlier record stands, as RM45 wants.
+    kept = {r.check for r in merge_records(existing, fresh)}
+    assert kept == {"clinical_significance", "reference_allele"}
+
+
 # ── the binding, and the document on disk ────────────────────────────────────────────────────────
 
 

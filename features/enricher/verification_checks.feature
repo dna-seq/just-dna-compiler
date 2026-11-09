@@ -414,6 +414,25 @@ Feature: The verification checks and their three outcomes
     # the document may keep asserting. Without it, `literature`'s deliberate skip-on-changed-citations
     # became a stale finding again, undoing an earlier round.
 
+  # source: schema/src/just_dna_format/verification.py
+  # anchor: merge_records
+  Scenario: a check the run did not put is not carried over moved bytes
+    Given a verification.json recording a check over authored bytes
+    And those authored files edited since
+    When a later run that does not put that check writes the document
+    Then the earlier record is dropped rather than signed under the new binding
+    # RM423 (S139). Carrying it signed a finding on a removed row, or a clean pass over rows the check
+    # never read, as this module's. While the bytes stand still the earlier record is kept (RM45).
+
+  # source: enricher/src/just_dna_enricher/verification.py
+  # anchor: record_verification
+  Scenario: the run names the checks whose records it dropped
+    Given a verification.json whose records were put over authored bytes edited since
+    When a pass that does not put some of those checks writes the document
+    Then one warning names every check whose record was dropped
+    # RM423. A record that vanishes without a line reads as a check nobody ever put; the author re-runs
+    # the named checks to record them again.
+
   # source: enricher/src/just_dna_enricher/verification.py
   # anchor: record_verification
   Scenario: the attestation is bound to the module's authored bytes

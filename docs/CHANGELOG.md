@@ -41,6 +41,23 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-09 — RM423: a later command no longer re-signs the records of checks it did not run over rows they never read (patch, uncut)
+
+- **`merge_records` drops the earlier records once the authored bytes have moved** (RM423, from S139).
+  With `existing_still_binds=False` the result is this run's records alone, newest-wins among them. Before, a
+  record for a check the run did not put was kept whatever the bytes did, and `record_verification` signed it
+  under the binding of the module as it now stands. So after an author edited a table, any later command that
+  wrote `verification.json` (`enrich`, `literature`, a `check-*`) published the old answer as this module's: a
+  finding on a row the author had removed, or a `findings=0` pass over rows the check never read. The compiler
+  then saw a bound document and kept the block.
+- **The run names what it drops.** `record_verification` logs one warning listing each check whose record it
+  dropped because the bytes moved; re-run those checks to record them again.
+- **Unchanged while the bytes stand still:** the default stays `True`, and a check a run did not put keeps its
+  earlier record (RM45), as does an answer a fresh skip would otherwise replace (RM72). The closure was already
+  dropped on moved bytes (RM73). No public name moves. A corrected derivation of a public function's output, so
+  declared rather than silent: see [INTEGRATION_0_8 § 4](INTEGRATION_0_8.md#4-known-issues) for documents
+  written by 0.8.2 or earlier.
+
 ## 2026-11-09 — RM422: a `resolution.csv` row for a variant the module no longer names is reported (patch, uncut)
 
 - **`validate` and `compile` name a resolution row no authored table asks about** (RM422, from S138). A module

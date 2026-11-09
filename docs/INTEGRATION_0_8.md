@@ -1258,6 +1258,15 @@ What 0.8 ships with, known and not fixed. Each line names its item; [RM_TOC.md](
   nor `compile --strict` says so; the compile ships the file in `manifest.derived` (no parquet carries the row).
   Delete such rows by hand. **Fixed on `main`, uncut** (RM422): from the next patch a `derived_row_orphan` warning
   names them, in both modes.
+- **A `verification.json` can carry records of checks its last writer never put (RM423).** A document
+  written by `just-dna-format` or `just-dna-enricher` 0.8.2 or earlier, over authored bytes edited since an
+  earlier run, may hold records that run carried across from before the edit and signed under the current
+  binding: a finding on a row since removed, or a clean pass over rows the check never read. The compiler sees
+  a bound document and keeps them. The sign is a record whose `checked_at` is older than the edit. Re-run the
+  checks that record names, or delete the file and re-run every pass that writes it. **Fixed on `main`,
+  uncut** (RM423): from the next patch a run over moved bytes keeps only its own records and logs each check it
+  dropped by name. The fix does not repair a document already written that way: its `module_hash` matches the
+  bytes, so a later run carries those records on until the bytes move again. Re-run or delete, as above.
 - **RM386's publish pinning has no live run yet (RM386).** It shipped with no practice publish to a
   throwaway Hugging Face repo, by the maintainer's decision. The next real snapshot publish is its first
   live run; if that publish fails, suspect this code first, and the fix is a patch.

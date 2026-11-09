@@ -407,13 +407,19 @@ def record_verification(
     after this ran gets the block dropped at compile with a warning, because the checks were put
     against rows that no longer exist.
 
-    Existing records for checks this run did not put are kept (`verification.merge_records`) — a run
-    that did not ask a question has said nothing about it, and dropping the earlier answer would turn
-    "not asked this time" into "never asked", which is the collapse this whole item exists to undo.
-    Since RM72 a *skip* this run writes does not displace an earlier real answer either, for the same
-    reason one step further out — but only while the earlier answer still describes the module's
-    current authored bytes, which is what `existing_still_binds` carries. Where they have moved, the
-    older record is about rows that no longer exist and this run's honest "could not ask" wins.
+    Existing records for checks this run did not put are kept (`verification.merge_records`) while
+    the authored bytes stand still — a run that did not ask a question has said nothing about it, and
+    dropping the earlier answer would turn "not asked this time" into "never asked", which is the
+    collapse this whole item exists to undo. Since RM72 a *skip* this run writes does not displace an
+    earlier real answer either, for the same reason one step further out. Both hold only while the
+    earlier answer still describes the module's current authored bytes, which is what
+    `existing_still_binds` carries.
+
+    **Where the bytes have moved, the document is this run's records alone (RM423).** Every earlier
+    record is about rows that no longer exist: a skip's honest "could not ask" wins over it, and a
+    check this run did not put is dropped rather than signed under a binding it was never computed
+    over — which is what keeps the paragraph above true after any later run, not only after a compile.
+    The run logs one warning naming each check it dropped, so the author knows which to put again.
 
     **An existing closure (RM73) is carried across, but only while the binding holds.** Enrichment
     writes derived sidecars, which are outside the authored set, so the ordinary case is that a run
@@ -469,6 +475,20 @@ def record_verification(
                     "re-bound. Re-close the module once you are finished editing it.",
                     path.name,
                 )
+
+    if existing and not existing_still_binds:
+        # RM423: over moved bytes `merge_records` keeps this run's records only. Name what that drops,
+        # once, because a record that vanishes without a line reads as a check nobody ever put.
+        put = {record.check for record in fresh}
+        dropped = sorted({record.check for record in existing} - put)
+        if dropped:
+            logger.warning(
+                "%s held %d record(s) put over different authored bytes, not re-signed over these: "
+                "%s. Re-run the check(s) to record them again.",
+                path.name,
+                len(dropped),
+                ", ".join(dropped),
+            )
 
     doc = attest(
         # RM292: what each check read is settled against the module as it stands, at the one seam
