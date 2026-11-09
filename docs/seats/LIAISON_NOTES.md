@@ -10,8 +10,8 @@ ga4gh.vrs 2.3.3 (pre-releases read through 2.4.0-a6), polars `py-2.1.0`, duckdb 
 2.3.3, 2.1.0, 1.5.5. `mkdocs.yml` `not_in_nav` carries `UPSTREAM_*.md`.
 `docs/UPSTREAM_DATA_SOURCES.md` (since 2026-11-07, the maintainer's ask): one row per cache lane, available /
 built / published; measured by hand that day, re-measured weekly. Behind then: clinvar, constraint (pinned
-4.1, source at 4.1.2), civic, strchive, likely mitomap. The priming paragraph that adds it sits uncommitted in
-`LIAISON.md` beside the bump's (desk #195, rule 5).
+4.1, source at 4.1.2), civic, strchive, likely mitomap. Since 2026-11-09 all are published current; the shared
+cache lags only on strchive (left to the maintainer). The priming paragraph that adds it is committed (fc6e7ca1).
 
 **Clones** (in `/data/sources`, lines in `$XDG_STATE_HOME/agent-seat-blueprints/liaison/upstreams`):
 
@@ -44,16 +44,10 @@ ga4gh/vrs-python#665 (`RleSubunitMode`, which `vrs/2.1` will default to SMALLEST
 
 **Lock schedule:** polars 2.1.0 is in `uv.lock` (5bdcca28) and shipped in **0.8.0** (cut 2026-11-05, with RM342 and
 RM352). duckdb 2.x once RM344 (open, a patch on `main`) lands: then tell the lead. RM343 (EXPLAIN test) is done. polars-bio **0.37.0** (on PyPI by 2026-11-07) requires `polars>=1.40.0,<2.2`: the `<2` block on just-dna-lite
-is gone; the lead was told (zulip …638402138). Its new cap is `<2.2`: a polars 2.2 release holds just-dna-lite again until polars-bio follows.
-
-**Blocked on the person: the dependency bump** (the person, 2026-11-04, relayed by agents-kit/builder, zulip
-…637618265). The bump (`uv lock --upgrade`, the suite, its new warnings, the fixes) becomes this seat's unattended
-routine; the role text is in the kit since v0.1.127, which this clone pins. Step (2), the priming change, is written in
-the working tree of `LIAISON.md` (grant + "## The dependency bump") but **uncommitted**: auto mode refused the commit
-as self-modification (kit issue #267). Put on the desk for the person to commit or allow (desk #195). Kit v0.1.128 widens auto-mode rule 5 to cover it (#267 fixed); this clone moved to v0.1.128 on 2026-11-05, but the person's installed rule 5 is still the 2026-11-03 one (`automode.py --check`), so #195 now recommends pasting it; once pasted, commit the priming here. Default on
-silence: stays uncommitted, no bump runs. After it lands: (1) add `[seat.liaison.watch.nightly]`, `cmd = "sh
-kit:bin/py.sh kit:classes/base/nightly.py deps"`, to `.blueprints.toml` (may be refused the same way). Do not run a
-bump before the grant is committed.
+is gone; the lead was told (zulip …638402138). Its new cap is `<2.2`: a polars 2.2**The dependency bump** (the person, 2026-11-04, relayed by agents-kit/builder, zulip …637618265) is this seat's
+unattended routine, in the grant since fc6e7ca1 (2026-11-09; desk #195 withdrawn as moot once the auto-mode rules
+were current). The watcher `nightly` runs `nightly.py deps` (41e8dced), started in the watchdog 2026-11-09; it says
+the bump due weekly while the person is away. Both commits on local main for the lead to push. No bump has run yet.
 
 **Fellow liaison:** just-dna-registry/liaison (seated 2026-11-04) stands on fastapi, huggingface-hub, and polars and
 duckdb through our tiers. A defect in a library under both of us is raised with each other first, so it is filed once. **longevity-loci/liaison** (seated 2026-11-05) stands on us: just-dna-enricher 0.7.3, compiler 0.7.2, format 0.7.1 from PyPI, and the module-creator plugin v0.48.0. It watches our tags, asks us before mapping our 0.8 branches, and polls us before filing a shared defect; answer such a poll in `agent-chat`.
