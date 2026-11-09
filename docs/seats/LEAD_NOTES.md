@@ -63,6 +63,12 @@ None open.
   that one command; rule 13 was pasted afterwards, `automode.py --check` clean on 2026-11-08). Docs refresh merged (9c37d7db). Liaison's ledger updated
   (fe38e101). `CLAUDE.md`'s `@constraint-two-releases` headline changed on the maintainer's yes (59491cbf).
   RELEASE_CYCLE step 10 complete.
+- **0.8.3 in preparation (2026-11-09):** RM422 (triage, 61a2056d) and RM423 (5df02d81; residual RM424 parked, a minor)
+  landed and pushed; a cut builder prepares `cut/v0.8.3` (versions, floors, lock, CHANGELOG, release record, gates).
+  The lead then builds dists in the root `dist/` and hands them to the maintainer; the tag follows the publish.
+  The gnomAD constraint cache was re-pulled to 4.1.2 on main 61682534 (RM420 on real data). `build/RM423` is
+  cherry-picked, so `-d` refuses it: `-D` is the maintainer's. RM409's interrupt test has a 1.0 s bound that failed
+  once at load 30–48 (47 s in the suite, 2.8 s alone): a flake to file if it recurs.
 - **Next patch on `main`, uncut:** RM409 shipped 2026-11-08 (e0ceaa28: Ctrl-C stops the Open Targets mirror and the
   AVI build within a chunk); RM421 filed from it, sized by the pm and shipped 2026-11-08 (83182f88: a 120 s default timeout in
   `stream_to_file`, an AST walk refusing `timeout=None`). RM420 shipped 2026-11-08 (dd900ff3: `cache pull`/`prepare` follow the hub's
