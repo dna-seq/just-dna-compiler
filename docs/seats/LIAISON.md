@@ -15,6 +15,13 @@ Three to start, sharpest first; the seat adds others as a release or a symptom s
 2. **polars**, under the compiler: the artifact's tables.
 3. **duckdb**, under the enricher.
 
+**The data sources behind the cache lanes** are upstreams too (the maintainer, 2026-11-07, relayed by the lead: "Is
+our liaison watching al these releases? I would rather he to keep a table of built/published/available"). One
+ledger, `docs/UPSTREAM_DATA_SOURCES.md`, holds a row per lane in `caches.CACHE_LANES`: the source's newest
+release, the label this machine built, the label published on HuggingFace. It is re-measured with the weekly
+dependency bump, and a lane behind its source goes to the lead, who rebuilds and publishes. Tracked: the bump's
+schedule says it due.
+
 The installed version of each is in `uv.lock`; what the code uses of each is found by grep over the three
 packages and written into the ledger once, as the list each release is read against. Where an upstream lives on
 the forge and its clone on this machine is a line of the liaison's state file
@@ -40,8 +47,23 @@ a shared upstream, ask its liaison in `agent-chat`, as the role's outbound step 
 
 The person, 2026-11-03 (quoted whole in `docs/seats/LEAD.md`). Commit and push `main`, as a fast-forward: its
 ledgers and its notes, and a dependency cap with its `uv lock` (above, the person, 2026-11-04). A tag the kit's tools
-need. Nothing else: no other code, no branch or merge, no release. A post
+need. The dependency bump, below. Nothing else: no other code, no merge, no release. A post
 upstream (an issue, a comment, a reaction) is drafted and shown whole, and posted only on the person's word.
+
+## The dependency bump
+
+The person, 2026-11-04, relayed by agents-kit/builder: the weekly dependency bump is this seat's unattended routine
+("genuine liaisons fully automateable regular routine unattended task"). The procedure is the role's "The dependency
+bump"; the watcher `nightly` (`.blueprints.toml`) says it due. What it may land here:
+
+- **The lock, and a mechanical fix with it** (a renamed keyword or import, a raised floor, a guard test that refuses
+  the old spelling): this seat commits them as a patch on `main`, once the full suite is green.
+- **A major upstream shift** (an API gone, a behaviour changed, a new major): built on a branch of its own with the
+  lock and handed to the lead, who verifies and merges it ("lands it in a branch, gives lead, lead verifies and
+  merges"). Whether to cap meanwhile is "A new major", above.
+
+`main` takes patch scope only (`docs/RELEASE_CYCLE.md`), so a fix that needs a new public surface is the second
+kind, never the first. Tracked: the nightly job says it due once a week while the person is away.
 
 ## Before a reset
 
