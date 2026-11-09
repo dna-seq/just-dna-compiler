@@ -1253,6 +1253,11 @@ What 0.8 ships with, known and not fixed. Each line names its item; [RM_TOC.md](
   lane that came from a pull when its repo publishes another release, and leave a lane built here alone with both
   labels. On 0.8.2 the workaround is still needed, and after the fix once more for a STRchive catalogue pulled
   before it, which carries no pull record.
+- **A `resolution.csv` row for a variant the module no longer names is silent (RM422).** A variant removed
+  after `enrich` keeps its row, since `enrich` keeps rows it is not asked about, and on 0.8.2 neither `validate`
+  nor `compile --strict` says so; the compile ships the file in `manifest.derived` (no parquet carries the row).
+  Delete such rows by hand. **Fixed on `main`, uncut** (RM422): from the next patch a `derived_row_orphan` warning
+  names them, in both modes.
 - **RM386's publish pinning has no live run yet (RM386).** It shipped with no practice publish to a
   throwaway Hugging Face repo, by the maintainer's decision. The next real snapshot publish is its first
   live run; if that publish fails, suspect this code first, and the fix is a patch.

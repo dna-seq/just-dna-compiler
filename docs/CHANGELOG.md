@@ -41,6 +41,20 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-09 — RM422: a `resolution.csv` row for a variant the module no longer names is reported (patch, uncut)
+
+- **`validate` and `compile` name a resolution row no authored table asks about** (RM422, from S138). A module
+  that dropped a variant after `enrich` kept that variant's `resolution.csv` row, and every check over the table
+  asked only about rows an authored table names, so `--strict` said nothing and the compile hashed the file into
+  `manifest.derived`. Now one more arm of `derived_row_orphan` reads: "resolution.csv places {n} identity(ies) no
+  table in this module names: {orphans}. Delete those rows: `enrich` keeps a row it is not asked about, so no run
+  removes them."
+- **A row is the module's own** when its `variant_key` or `rsid` is named by `variants.csv` or any locus table
+  (`haplotypes.csv`, `pharm_variants.csv`, `heteroplasmy.csv`), or is a study's `proxy_rsid`: the subjects `enrich`
+  asks about. No reference example gains the warning.
+- **Unchanged:** a warning in both modes, never a refusal (a hand-kept row is plausible mid-edit), and no new code
+  or public name. The row never reached a parquet, so `artifact.digest` and `content_signature` do not move.
+
 ## 2026-11-08 — RM421: a bulk download from a server that goes silent is given up on, not waited on forever (patch, uncut)
 
 - **Every bulk download now has a timeout** (RM421). `net.stream_to_file` defaults to 120 s when its caller

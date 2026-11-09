@@ -844,3 +844,48 @@ def _cross_check_gwas_effects(rows: list[GwasEffectRow], subjects: ModuleSubject
             f"module carries: {orphans}",
         )
     ]
+
+
+def _cross_check_resolution(
+    rows: list[ResolutionRow], authored: ModuleSubjects, studies: list[StudyRow]
+) -> list[str]:
+    """Warn when `resolution.csv` places an identity no table in the module names (RM422, S138).
+
+    Every other check over this table asks about the rows an authored table names, so a row whose
+    subject the author removed was read by nothing, and the compile hashed it into `manifest.derived`.
+    `enrich` keeps such a row by design (merge, never clobber), and its own note covers only the re-run;
+    an author who removes a variant and never re-runs anything hears from no one but this.
+
+    **`authored` must be the module's subjects over the AUTHORED rows, with no resolution consulted**,
+    or a table row vouches for itself (`@tautology-zero`): `module_subjects` widens positions through
+    the table, never identities, and is called here without it. The subject set is the one `enrich`
+    asks about (`collect_subjects`): every locus table's `variant_key` and `rsid`, the PGx tables
+    included, plus each study's LD proxy (RM331), which is usually no module variant and is resolved on
+    purpose. A table row is the module's when its `variant_key` or its `rsid` is one of them.
+
+    **Warning-only, in both modes**, the other `derived_row_orphan` arms' reason: a stale sidecar row is
+    the ordinary result of narrowing a module, and a hand-kept `manual` row is plausible mid-edit, so
+    refusing would push an author toward deleting the file and losing the rows they meant to keep.
+    Withheld when a locus table is present and loaded no row (`loci_unknown`), where every row would
+    read as an orphan and bury the load errors. Counted per identity, not per row: a multi-locus
+    subject has several rows, and the remedy (delete or re-derive) is per identity.
+    """
+    if authored.loci_unknown or not rows:
+        return []
+    proxies = {s.proxy_rsid for s in studies if s.proxy_rsid}
+    orphans = sorted(
+        {
+            r.variant_key
+            for r in rows
+            if not authored.carries(r.variant_key, r.rsid) and not ({r.variant_key, r.rsid} & proxies)
+        }
+    )
+    if not orphans:
+        return []
+    return [
+        CodedWarning(
+            "derived_row_orphan",
+            f"resolution.csv places {len(orphans)} identity(ies) no table in this module names: {orphans}. "
+            f"Delete those rows: `enrich` keeps a row it is not asked about, so no run removes them",
+        )
+    ]

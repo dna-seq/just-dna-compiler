@@ -53,6 +53,7 @@ from just_dna_compiler.compiler.fact_checks import (
     _cross_check_gene_validity,
     _cross_check_gwas_effects,
     _cross_check_literature,
+    _cross_check_resolution,
 )
 from just_dna_compiler.compiler.load import _load_csv_rows, _load_yaml, load_authored_table
 from just_dna_compiler.compiler.manifest import (
@@ -953,6 +954,13 @@ def _validate_spec(
     if studies:
         _, study_warnings = _cross_validate_studies(studies, subjects)
         all_warnings.extend(study_warnings)
+    # The injected table's own rows against the same authored subjects (RM422, S138): a row whose
+    # subject left the module is read by no check above, and the compile hashes it into
+    # `manifest.derived`. Here and not in `compile_module`, which runs this pass and keeps its warnings;
+    # a second emission there would publish the count twice (`@no-rerun-with-counts`). `subjects` takes
+    # identities from authored rows only (the table widens positions, never identities), so a table row
+    # never vouches for itself.
+    all_warnings.extend(_cross_check_resolution(injected.rows, subjects, studies))
 
     if variants:
         cross_errors, cross_warnings = _cross_validate_variants(variants)

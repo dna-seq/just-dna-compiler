@@ -23,7 +23,7 @@ Feature: Derived sidecars, their arithmetic, and their orphans
     When the module is compiled
     Then a warning fires naming the count and examples
     And it is matched at <granularity>
-    # One code across six tables, because the remediation is identical: the sidecar is stale or
+    # One code across seven tables, because the remediation is identical: the sidecar is stale or
     # over-broad, and an extra row is harmless. What differs is the join, and it differs by a property
     # of the SOURCE rather than by preference.
     Examples:
@@ -34,6 +34,7 @@ Feature: Derived sidecars, their arithmetic, and their orphans
       | clinical_assertions.csv   | position level — chrom:start:ref, no alt          |
       | clin_sig_concordance.csv  | variant_key, against the AUTHORED keys            |
       | gwas_effects.csv          | variant_key, against the AUTHORED keys            |
+      | resolution.csv            | variant_key or rsid, against the AUTHORED keys and study proxies |
 
   # source: compiler/src/just_dna_compiler/compiler/subjects.py
   # anchor: module_subjects

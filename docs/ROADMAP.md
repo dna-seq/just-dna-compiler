@@ -2046,48 +2046,6 @@ registry per test. No public name moves, so it fits a patch; whether it is one, 
   one pair whose shared per-address budget is documented. Each further client joins only with its service's limit
   measured or quoted from its documentation, and a key per service, never one per interval.
 
-## RM422 — a `resolution.csv` row for a variant no authored table names compiles silently, and publishes
-
-**Filed by triage (2026-11-09)** from S138 (just-module-creator's liaison, their F137), reproduced by them on compiler
-0.7.2 and 0.8.2 under `compile --strict`; trunk has no compiler change since `v0.8.2`. Confirmed in the code: no
-check compares `resolution.csv`'s rows with the module's subjects. Every check over the table asks about rows an
-authored table names (`subjects.identity_placements` keys off the authored row's `variant_key`/`rsid`), so a row
-whose subject the author removed is read by nothing and hashed into `manifest.derived`.
-
-**Severity** low · **Status** open — **a patch, `unattended`** (the pm, 2026-11-09), after RM423 · **Owner** compiler
-(`fact_checks` beside the six `derived_row_orphan` arms, `validate_spec` and compile both) · **Motivating case**
-S138 · *related* RM43, RM337
-
-**The case.** `enrich` writes `resolution.csv` for three rsIDs in `variants.csv`. The author drops one
-(rs1801394), then replaces `variants.csv` with `haplotypes.csv` + `diplotypes.csv` over the other two. Nobody
-re-runs `enrich`, so `enrich`'s "delete it first, or stale rows persist" note never reaches them. Strict validate
-and compile name nothing, and a publish ships a placement for the variant the author removed. The
-reporter measured the reach: the row reaches no parquet (`artifact_digest` and `content_signature` unchanged),
-only `resolution_signature` and the `derived` entry's hash move, so what ships is the sidecar file.
-
-**What it would be.** One more `derived_row_orphan` arm: "resolution.csv places N identity(ies) no table in this
-module names: [...]", a warning in both modes like the other six. The subject set is `module_subjects` over
-authored tables only, so a resolution row never vouches for itself, and the PGx tables count (RM43 put them under
-resolution). It reuses the code, so no new public name and no new code: patch scope, unlike RM337, which needed a
-new code. Emitted from validate and compile with the message dedupe the other arms use; a COMPILER.md catalogue
-line, an INTEGRATION_0_8 row, a CHANGELOG line, and the reporter's spec as the fixture (exactly one orphan,
-rs1801394).
-
-**Not in it.** The `clin_sig_*` pair already has its arm (the concordance one, reading `variants.csv` only, by
-design). `fully_resolved: True (over 0 variant row(s))` beside a three-row table reads `variants.csv` while
-resolution reaches the PGx tables; that is a manifest value, so it is a question of its own, not this patch.
-
-**Sized, the pm (2026-11-09): a patch, built unattended, after RM423.**
-
-- **Triage's reading holds.** One more arm under a code that exists, the subject set already computed
-  (`module_subjects`), the six arms' dedupe. No public name.
-- **One condition makes it a patch: it stays a warning under `strict`,** as the other six arms do. A module that
-  compiles under `--strict` on 0.8.2 must still compile on 0.8.3; a refusal would be a minor.
-- **Real-run frequency is moderate and the harm small.** Any author who edits tables after `enrich` and does not
-  re-run it meets it; what ships is a sidecar row for a removed variant, and no parquet moves. Severity low stands.
-- **The `fully_resolved` denominator stays out**, as the entry says. It is a manifest value, so changing it is
-  not this patch; it gets an item only if a reader is misled by it.
-
 ## RM423 — `record_verification` re-signs the records of checks it did not re-run over authored bytes they never saw
 
 **Filed by triage (2026-11-09)** from S139 (just-module-creator's liaison, their F139), reproduced by them on

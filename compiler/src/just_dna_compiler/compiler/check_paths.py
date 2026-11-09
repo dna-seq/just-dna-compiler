@@ -44,6 +44,7 @@ PREFLIGHT_ONLY: frozenset[str] = frozenset(
         "_check_phenotype_classes",
         "_check_qual_floor_on_reference_evidence",
         "_check_vcf_pointers",
+        "_cross_check_resolution",
         "_cross_validate_haplotype_definitions",
         "_cross_validate_phase_ambiguity",
         "_cross_validate_studies",

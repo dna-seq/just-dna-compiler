@@ -2305,6 +2305,10 @@ claim(s) and nothing orders them: {groups}. Either two rows share a classificati
 none, so no row is called current and none superseded — every classification in those groups is
 published, which is the honest answer rather than a winner picked from an identifier. Withheld
 deliberately, not skipped.
+
+derived_row_orphan (the resolution arm, RM422, 0.8.3): resolution.csv places {n} identity(ies) no table
+in this module names: {orphans}. Delete those rows: `enrich` keeps a row it is not asked about, so no
+run removes them.
 ```
 
 **The overlay's three warnings (0.7, RM124; the third split out on 2026-08-31), and there are only three on purpose.** `overrides.csv`

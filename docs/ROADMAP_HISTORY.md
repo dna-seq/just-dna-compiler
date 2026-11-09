@@ -34,6 +34,65 @@ up.
 
 Patches on `main` after the 0.8.0 cut (2026-11-05), newest first.
 
+## RM422 — a `resolution.csv` row for a variant no authored table names compiles silently, and publishes
+
+**SHIPPED 2026-11-09 on `main` — a patch, uncut.** Owner compiler (`fact_checks._cross_check_resolution`, called
+from `validate_spec`), severity low.
+
+**Residuals** none
+
+**Built (2026-11-09), by triage on the lead's hand-over.** `_cross_check_resolution(rows, subjects, studies)`
+beside the other arms, called once, in `validate_spec`, over every injected row: `compile_module` runs that pass
+and keeps its warnings, so a second call there would publish the count twice. The subject set is validate's
+`module_subjects` over every authored row (identities come from authored rows only; the table widens positions,
+never identities, so a row cannot vouch for itself), plus each study's `proxy_rsid`, which `enrich` resolves on
+purpose (RM331). A row is the module's when its `variant_key` or `rsid` is one of them. Withheld when a locus
+table loaded no row. Counted per identity. The remedy names deleting the rows, not `enrich --rederive`: a
+re-derivation never shortens a table. A warning in both modes, the pm's condition. No new code, name or field.
+Tests in `compiler/tests/test_resolution_orphan.py`, the first seen red on the previous `main`: the reporter's
+shape (`cyp2c19_star_alleles`, no `variants.csv`, plus rs1801394's row) names exactly rs1801394 in both modes and
+never as an error; the compile publishes it once; `longevity_studies`' proxy row is silent until its `proxy_rsid`
+is blanked, then named; and no reference example warns.
+
+**Filed by triage (2026-11-09)** from S138 (just-module-creator's liaison, their F137), reproduced by them on compiler
+0.7.2 and 0.8.2 under `compile --strict`; trunk has no compiler change since `v0.8.2`. Confirmed in the code: no
+check compares `resolution.csv`'s rows with the module's subjects. Every check over the table asks about rows an
+authored table names (`subjects.identity_placements` keys off the authored row's `variant_key`/`rsid`), so a row
+whose subject the author removed is read by nothing and hashed into `manifest.derived`.
+
+**Severity** low · **Owner** compiler (`fact_checks` beside the six `derived_row_orphan` arms) · **Motivating
+case** S138 · *related* RM43, RM337
+
+**The case.** `enrich` writes `resolution.csv` for three rsIDs in `variants.csv`. The author drops one
+(rs1801394), then replaces `variants.csv` with `haplotypes.csv` + `diplotypes.csv` over the other two. Nobody
+re-runs `enrich`, so `enrich`'s "delete it first, or stale rows persist" note never reaches them. Strict validate
+and compile name nothing, and a publish ships a placement for the variant the author removed. The
+reporter measured the reach: the row reaches no parquet (`artifact_digest` and `content_signature` unchanged),
+only `resolution_signature` and the `derived` entry's hash move, so what ships is the sidecar file.
+
+**What it would be.** One more `derived_row_orphan` arm: "resolution.csv places N identity(ies) no table in this
+module names: [...]", a warning in both modes like the other six. The subject set is `module_subjects` over
+authored tables only, so a resolution row never vouches for itself, and the PGx tables count (RM43 put them under
+resolution). It reuses the code, so no new public name and no new code: patch scope, unlike RM337, which needed a
+new code. Emitted from validate and compile with the message dedupe the other arms use; a COMPILER.md catalogue
+line, an INTEGRATION_0_8 row, a CHANGELOG line, and the reporter's spec as the fixture (exactly one orphan,
+rs1801394).
+
+**Not in it.** The `clin_sig_*` pair already has its arm (the concordance one, reading `variants.csv` only, by
+design). `fully_resolved: True (over 0 variant row(s))` beside a three-row table reads `variants.csv` while
+resolution reaches the PGx tables; that is a manifest value, so it is a question of its own, not this patch.
+
+**Sized, the pm (2026-11-09): a patch, built unattended, after RM423.**
+
+- **Triage's reading holds.** One more arm under a code that exists, the subject set already computed
+  (`module_subjects`), the six arms' dedupe. No public name.
+- **One condition makes it a patch: it stays a warning under `strict`,** as the other six arms do. A module that
+  compiles under `--strict` on 0.8.2 must still compile on 0.8.3; a refusal would be a minor.
+- **Real-run frequency is moderate and the harm small.** Any author who edits tables after `enrich` and does not
+  re-run it meets it; what ships is a sidecar row for a removed variant, and no parquet moves. Severity low stands.
+- **The `fully_resolved` denominator stays out**, as the entry says. It is a manifest value, so changing it is
+  not this patch; it gets an item only if a reader is misled by it.
+
 ## RM421 — eleven of fourteen bulk downloads set no read timeout, so a stalled connection is never stopped
 
 **SHIPPED 2026-11-08 on `main` — a patch, uncut.** Owner enricher (`net.stream_to_file` and its callers),
