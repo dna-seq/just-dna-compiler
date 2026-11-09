@@ -34,6 +34,51 @@ up.
 
 Patches on `main` after the 0.8.0 cut (2026-11-05), newest first.
 
+## RM426 — `GeneLocusConflict`'s message settles which half of the pairing is wrong, and it guesses the rsID
+
+**SHIPPED 2026-11-09 on `main`, uncut (the patch after 0.8.3) — a patch, the wording only; ask 2 declined (the pm).** Severity low · **Owner** enricher (`identifiers.py`, `GeneLocusConflict.__str__`) · **Motivating
+case** S141 · *related* S24, `@gene-locus-relationship`, `@rsid-absent-two-readings`, `@absence-is-weighted-by-the-base-rate`
+
+**The gap.** The finding's first sentence is the fact: the row pairs a gene with a variant on another chromosome. The
+last one then names a cause, *"a real symbol beside an invented rsID is what a machine-written summary produces"*,
+written from S24, where four of one reporter's seven rows were that. S141's probe was the other half: `MTHFR` beside
+rs1801394, a real rsID in *MTRR*, so the gene was wrong. An agent reading the message looks for "the real rsID of MTHFR
+A66G", which does not exist. The check sees a false relationship and cannot see which member is false;
+`@absence-is-weighted-by-the-base-rate` makes naming both readings the floor, and no measurement here says which leads.
+
+**What it would be.**
+
+1. **The patch (wording).** Name both readings and the step that tells them apart: either half may be the error (an
+   invented rsID beside a real symbol, or a real rsID paired with the wrong gene); look the rsID up and see which gene
+   it sits in. No lookup, no field, no code.
+2. **The minor (S141's ask 2).** When `consequences.csv` beside the spec lists transcripts for the variant, name their
+   genes (*"consequences.csv places rs1801394 in MTRR"*), silent otherwise. Read-only and on disk, as
+   `_variant_chromosomes` already reads `resolution.csv`; `resolution.csv` itself carries no gene. The genes have to
+   reach the message through a new field on the public `GeneLocusConflict`, which is what makes it a minor.
+
+**Sized, the pm (2026-11-09): the wording as a patch, next on `main`; ask 2 declined, not parked.**
+
+- **The wording is a patch on one condition: the first sentence stays byte for byte** (`@warning-text-is-api`).
+  It states the fact and is what a reader greps; only the closing sentence, the guessed cause, changes. Under 10
+  minutes, so `urgent`: whoever the lead hands it to builds it now.
+- **Ask 2 is declined, with its reason, rather than parked under a new number.** Once the wording says "look the
+  rsID up and see which gene it sits in", the gene from `consequences.csv` saves the reader one lookup, and only
+  when that file is beside the spec. A new public field on `GeneLocusConflict` for that is a minor whose value is
+  one lookup, and a minor takes the zones the maintainer names. **It comes back only through a new `Sn`** showing a
+  reader who still picked the wrong half after the new wording.
+- **At closure,** the `**Residuals**` line says ask 2 was declined here, so no new item is owed for it.
+
+**Residuals** won't fix — ask 2 declined by the pm (2026-11-09), above; it comes back only through a new `Sn`.
+
+**Built (2026-11-09), triage on the lead's hand-over.** `GeneLocusConflict.__str__`'s fact sentence is byte for
+byte what it was; the closing sentence names both readings and the lookup (`Either half may be the wrong one: a real
+symbol beside an invented variant, or a real variant paired with the wrong gene, and a machine-written summary
+produces both. Look up which gene <variant> sits in, then check the row against the source you took it from.`). It
+says "variant" rather than "rsID" because a `variant_key` may be positional. The class docstring records S141's
+case. A test in `enricher/tests/test_identifiers.py` runs S141's row (rs1801394 beside `MTHFR`) through
+`check_identifiers` and pins the unchanged fact sentence as a prefix, the new phrases, and the old guess's absence.
+ENRICHER's paragraph on the check quotes both sentences. No code, field or check result moves.
+
 ## RM425 — `ExpressionEffectRow.effect_size`'s description says "aggregated over the tracks"; it is the single strongest track
 
 **SHIPPED 2026-11-09 on `main`, uncut (the patch after 0.8.3) — a patch, wording only.** Owner format

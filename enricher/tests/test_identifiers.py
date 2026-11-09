@@ -466,6 +466,7 @@ _GENE_BANDS = {
     "FOXO3": "6q21",
     "FTO": "16q12.2",
     "XG": "Xp22.33",
+    "MTHFR": "1p36.22",
 }
 
 
@@ -527,6 +528,28 @@ def test_a_gene_on_another_chromosome_than_its_variant_is_reported() -> None:
     assert report.gene_loci_not_checked is None
     assert not report.clean
     assert "is not in it" in str(report.gene_loci[0])
+
+
+def test_the_message_names_both_halves_and_the_lookup_that_separates_them() -> None:
+    """RM426 (S141): the check sees a false pairing and cannot see which member is false.
+
+    The message used to close on "a real symbol beside an invented rsID"; S141's row was a real rsID
+    (rs1801394, in MTRR) beside the wrong gene. Its fact sentence is unchanged byte for byte
+    (`@warning-text-is-api`); the closing sentence names both readings and the lookup.
+    """
+    variants = [_row("rs1801394", "MTHFR", "5", 7870860)]  # MTHFR is on 1; rs1801394 sits in MTRR
+    report = check_identifiers(variants=variants, check_traits=False, client=_hgnc_with_locations())
+
+    [conflict] = report.gene_loci
+    text = str(conflict)
+    assert text.startswith(
+        "rs1801394 is on chromosome 5, but HGNC puts MTHFR on chromosome 1 — the row pairs a gene "
+        "with a variant that is not in it. "
+    )
+    assert "Either half may be the wrong one" in text
+    assert "a real variant paired with the wrong gene" in text
+    assert "Look up which gene rs1801394 sits in" in text
+    assert "invented rsID is what" not in text
 
 
 def test_the_check_is_chromosome_level_and_not_an_interval() -> None:

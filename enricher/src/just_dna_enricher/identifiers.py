@@ -280,6 +280,11 @@ class GeneLocusConflict:
     citation: a real gene name beside an invented rs number, which resolves anyway because dbSNP is
     dense enough that almost any seven-digit number hits something. Four of one reporter's seven rows
     were this, each pairing a real symbol with a variant on another chromosome.
+
+    **The check cannot see which half is false, so the message names both** (RM426, S141). The other
+    half is as real: a summary naming `MTHFR A66G (rs1801394)` paired a real rsID, in *MTRR*, with the
+    neighbouring pathway's gene. A message guessing "invented rsID" sends a reader looking for an rsID
+    that does not exist, so it names both readings and the lookup that tells them apart.
     """
 
     gene: str
@@ -291,8 +296,10 @@ class GeneLocusConflict:
         return (
             f"{self.variant_key} is on chromosome {self.variant_chrom}, but HGNC puts {self.gene} on "
             f"chromosome {self.gene_chrom} — the row pairs a gene with a variant that is not in it. "
-            f"Check the identifier against the source you took it from; a real symbol beside an "
-            f"invented rsID is what a machine-written summary produces."
+            f"Either half may be the wrong one: a real symbol beside an invented variant, or a real "
+            f"variant paired with the wrong gene, and a machine-written summary produces both. Look up "
+            f"which gene {self.variant_key} sits in, then check the row against the source you took "
+            f"it from."
         )
 
 

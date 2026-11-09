@@ -2072,43 +2072,6 @@ reading a record whose `checked_at` predates their newest authoring edit as not 
 
 **Residuals** none yet.
 
-## RM426 — `GeneLocusConflict`'s message settles which half of the pairing is wrong, and it guesses the rsID
-
-**Severity** low · **Status** open — **a patch**, `urgent` (about 10 minutes), the wording only; the second ask
-declined (the pm, 2026-11-09) · **Owner** enricher (`identifiers.py`, `GeneLocusConflict.__str__`) · **Motivating
-case** S141 · *related* S24, `@gene-locus-relationship`, `@rsid-absent-two-readings`, `@absence-is-weighted-by-the-base-rate`
-
-**The gap.** The finding's first sentence is the fact: the row pairs a gene with a variant on another chromosome. The
-last one then names a cause, *"a real symbol beside an invented rsID is what a machine-written summary produces"*,
-written from S24, where four of one reporter's seven rows were that. S141's probe was the other half: `MTHFR` beside
-rs1801394, a real rsID in *MTRR*, so the gene was wrong. An agent reading the message looks for "the real rsID of MTHFR
-A66G", which does not exist. The check sees a false relationship and cannot see which member is false;
-`@absence-is-weighted-by-the-base-rate` makes naming both readings the floor, and no measurement here says which leads.
-
-**What it would be.**
-
-1. **The patch (wording).** Name both readings and the step that tells them apart: either half may be the error (an
-   invented rsID beside a real symbol, or a real rsID paired with the wrong gene); look the rsID up and see which gene
-   it sits in. No lookup, no field, no code.
-2. **The minor (S141's ask 2).** When `consequences.csv` beside the spec lists transcripts for the variant, name their
-   genes (*"consequences.csv places rs1801394 in MTRR"*), silent otherwise. Read-only and on disk, as
-   `_variant_chromosomes` already reads `resolution.csv`; `resolution.csv` itself carries no gene. The genes have to
-   reach the message through a new field on the public `GeneLocusConflict`, which is what makes it a minor.
-
-**Sized, the pm (2026-11-09): the wording as a patch, next on `main`; ask 2 declined, not parked.**
-
-- **The wording is a patch on one condition: the first sentence stays byte for byte** (`@warning-text-is-api`).
-  It states the fact and is what a reader greps; only the closing sentence, the guessed cause, changes. Under 10
-  minutes, so `urgent`: whoever the lead hands it to builds it now.
-- **Ask 2 is declined, with its reason, rather than parked under a new number.** Once the wording says "look the
-  rsID up and see which gene it sits in", the gene from `consequences.csv` saves the reader one lookup, and only
-  when that file is beside the spec. A new public field on `GeneLocusConflict` for that is a minor whose value is
-  one lookup, and a minor takes the zones the maintainer names. **It comes back only through a new `Sn`** showing a
-  reader who still picked the wrong half after the new wording.
-- **At closure,** the `**Residuals**` line says ask 2 was declined here, so no new item is owed for it.
-
-**Residuals** none yet. Ask 2 is declined above (the pm, 2026-11-09), not a residual.
-
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.

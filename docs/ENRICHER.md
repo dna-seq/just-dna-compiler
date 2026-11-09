@@ -4468,7 +4468,13 @@ currency checks rather than among them: staleness is the world moving, and this 
 never true.
 
 `check_identifiers` reports `GeneLocusConflict` per row and repairs nothing — which of the two halves is
-wrong is not something this tier can know. Four design points:
+wrong is not something this tier can know, and since RM426 (S141) the message says so. Its fact sentence is
+unchanged (`<variant> is on chromosome <n>, but HGNC puts <gene> on chromosome <m> — the row pairs a gene with a
+variant that is not in it.`); the closing one, which used to guess "a real symbol beside an invented rsID", now reads
+`Either half may be the wrong one: a real symbol beside an invented variant, or a real variant paired with the wrong
+gene, and a machine-written summary produces both. Look up which gene <variant> sits in, then check the row against
+the source you took it from.` S141's row was the second half: `MTHFR` beside rs1801394, which sits in *MTRR*.
+Four design points:
 
 - **Chromosome granularity only, and the stronger version is refused in the code using the reporter's
   own argument.** `rs1421085` sits in an FTO intron and acts on *IRX3*/*IRX5* megabases away, so a row

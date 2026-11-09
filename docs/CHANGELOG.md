@@ -41,6 +41,15 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-09 — RM426: the gene-versus-chromosome finding stops guessing which half is wrong (patch, uncut)
+
+`check-identifiers`' `GeneLocusConflict` closed on "a real symbol beside an invented rsID is what a machine-written
+summary produces". The check cannot see which half of the pairing is false, and S141's was a real rsID (rs1801394,
+in MTRR) beside the wrong gene. The closing sentence now reads "Either half may be the wrong one: a real symbol
+beside an invented variant, or a real variant paired with the wrong gene, and a machine-written summary produces
+both. Look up which gene <variant> sits in, then check the row against the source you took it from." The first
+sentence, the fact a reader greps, is unchanged byte for byte. No check result moves. From S141.
+
 ## 2026-11-09 — RM425: `effect_size`'s description says it is the single strongest track, not an aggregate (patch, uncut)
 
 `ExpressionEffectRow.effect_size`'s description read "aggregated over the scorer's tissue tracks". The enricher writes the
