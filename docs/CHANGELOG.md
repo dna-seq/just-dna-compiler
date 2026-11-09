@@ -41,6 +41,13 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-09 — RM425: `effect_size`'s description says it is the single strongest track, not an aggregate (patch, uncut)
+
+`ExpressionEffectRow.effect_size`'s description read "aggregated over the scorer's tissue tracks". The enricher writes the
+single strongest track with its sign kept, so a size whose sign contradicts `effect_direction` (the majority sign) is
+correct, and the description now says so; ranking by `|effect_size|` ranks each variant's most extreme single tissue.
+Wording only: no field, type or artifact byte moves. Reaches `describe` and the authoring reference. From S140.
+
 ## 2026-11-09 — `v0.8.3`: format, compiler and enricher 0.8.3 (a patch, cut from `main`)
 
 All three packages move, because each changed source since `v0.8.2`: format for RM423, the compiler for

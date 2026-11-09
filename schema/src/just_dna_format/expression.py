@@ -206,7 +206,11 @@ class ExpressionEffectRow(BaseModel):
         json_schema_extra=since("0.7.0"),
         default=None,
         description=(
-            "The magnitude, aggregated over the scorer's tissue tracks for this gene. Its meaning is "
+            "The single strongest of the scorer's tissue tracks for this gene, its sign kept: the "
+            "track with the largest absolute effect, not an aggregate over the tracks. It may "
+            "disagree in sign with `effect_direction`, the majority sign across the tracks, and is "
+            "real when it does (one tissue moving hard against a mild general trend), so ranking by "
+            "its absolute value ranks each variant's most extreme single tissue. Its meaning is "
             "`effect_measure`; it has no unit, and `effect_unit` says so rather than guessing one."
         ),
     )

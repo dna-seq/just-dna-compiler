@@ -2072,27 +2072,6 @@ reading a record whose `checked_at` predates their newest authoring edit as not 
 
 **Residuals** none yet.
 
-## RM425 — `ExpressionEffectRow.effect_size`'s description says "aggregated over the tracks"; it is the single strongest track
-
-**Severity** low · **Status** open — **a patch**, wording only (triage, 2026-11-09) · **Owner** format
-(`schema/src/just_dna_format/expression.py`) · **Motivating case** S140 · *related* RM111, RM200
-
-**The gap.** The field's description reads *"The magnitude, aggregated over the scorer's tissue tracks for this
-gene."* The enricher's `_summarise` keeps the single strongest finite track with its sign (`max(finite, key=abs)`),
-and both its docstring and SCHEMAS.md ("`effect_size` and `effect_direction` answer different questions and may
-disagree") say so. The description is the one place that does not, and it is the one `describe` /
-`authoring_reference` hand an agent. S140 measured the consequence: 128 of 819 and 24 of 126 rows carry a size whose
-sign contradicts `effect_direction`, each correct, each readable as a broken row through "aggregated", and a reader
-ranking by `|effect_size|` believes they rank a summary.
-
-**What it would be.** One sentence in the description, as `@field-description-is-a-claim` asks: make the string
-true rather than soften it. The strongest single tissue track for this gene, sign kept; it may disagree with
-`effect_direction`, the majority sign, and is real when it does. `effect_direction`'s own description is already
-right. No field, type, vocabulary or published byte moves (a description reaches `json_schemas()` and the authoring
-reference, never an artifact), so a patch, as RM111's description fixes were.
-
-**Residuals** none yet.
-
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.

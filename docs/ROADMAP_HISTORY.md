@@ -34,6 +34,34 @@ up.
 
 Patches on `main` after the 0.8.0 cut (2026-11-05), newest first.
 
+## RM425 — `ExpressionEffectRow.effect_size`'s description says "aggregated over the tracks"; it is the single strongest track
+
+**SHIPPED 2026-11-09 on `main`, uncut (the patch after 0.8.3) — a patch, wording only.** Owner format
+(`schema/src/just_dna_format/expression.py`), severity low. From S140 · *related* RM111, RM200
+
+**The gap.** The field's description reads *"The magnitude, aggregated over the scorer's tissue tracks for this
+gene."* The enricher's `_summarise` keeps the single strongest finite track with its sign (`max(finite, key=abs)`),
+and both its docstring and SCHEMAS.md ("`effect_size` and `effect_direction` answer different questions and may
+disagree") say so. The description is the one place that does not, and it is the one `describe` /
+`authoring_reference` hand an agent. S140 measured the consequence: 128 of 819 and 24 of 126 rows carry a size whose
+sign contradicts `effect_direction`, each correct, each readable as a broken row through "aggregated", and a reader
+ranking by `|effect_size|` believes they rank a summary.
+
+**What it would be.** One sentence in the description, as `@field-description-is-a-claim` asks: make the string
+true rather than soften it. The strongest single tissue track for this gene, sign kept; it may disagree with
+`effect_direction`, the majority sign, and is real when it does. `effect_direction`'s own description is already
+right. No field, type, vocabulary or published byte moves (a description reaches `json_schemas()` and the authoring
+reference, never an artifact), so a patch, as RM111's description fixes were.
+
+**Residuals** none
+
+**Built (2026-11-09), triage on the lead's hand-over.** The description now names the single strongest track,
+its sign kept and not an aggregate, says it may disagree in sign with `effect_direction` (the majority sign) and is
+real when it does, and that ranking by its absolute value ranks each variant's most extreme single tissue.
+`effect_direction`'s description was already right and is untouched. A test in `enricher/tests/test_expression.py`
+ties the phrases to `_summarise`'s behaviour on the nine-up, one-hard-down case (it fails on the old text, which
+lacks "single strongest"). No field, type, vocabulary or artifact byte moves.
+
 ## RM423 — `record_verification` re-signs the records of checks it did not re-run over authored bytes they never saw
 
 **SHIPPED 2026-11-09 on `main`, cut 2026-11-09 as `v0.8.3` — a patch.** Owner format (`merge_records`) + enricher

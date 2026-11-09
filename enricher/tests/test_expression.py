@@ -24,6 +24,7 @@ from just_dna_enricher.expression import (
     _summarise,
     enrich_expression,
 )
+from just_dna_format.expression import ExpressionEffectRow
 from just_dna_format.sources import SourceRow
 
 _YAML = """\
@@ -177,6 +178,22 @@ def test_the_two_aggregates_are_allowed_to_disagree() -> None:
     assert (agreeing, total) == (9, 10)
 
 
+def test_the_size_field_describes_what_summarise_writes() -> None:
+    """RM425 (S140): the description said "aggregated over the tracks", and the value is one track.
+
+    A reader of `describe` / the authoring reference took a size whose sign contradicts the direction
+    for a broken row. The description must name the single strongest track and the disagreement the
+    test above pins, and must not call the value an aggregate.
+    """
+    text = ExpressionEffectRow.model_fields["effect_size"].description or ""
+    size, direction, _, _ = _summarise(tuple([0.1] * 9 + [-0.9]))
+    assert (size, direction) == (-0.9, "increase")
+    assert "single strongest" in text
+    assert "sign kept" in text
+    assert "may disagree in sign with `effect_direction`" in text
+    assert "aggregated over" not in text
+
+
 def test_agreement_is_recorded_and_never_gates(tmp_path: Path) -> None:
     """RM200 tested consensus-as-confidence and killed it — `CAGE` is 97% unanimous at PHRED 0.007.
 
@@ -251,8 +268,6 @@ def test_a_hand_edited_row_survives_a_re_run(tmp_path: Path) -> None:
 
 def test_the_header_is_the_model_and_not_a_hand_kept_list(tmp_path: Path) -> None:
     """`@fieldnames-from-model`: a hand-kept column list loses a column."""
-    from just_dna_format.expression import ExpressionEffectRow
-
     spec = _spec(tmp_path)
     _run(spec, _Stub((_score(26090000),)))
     header = (spec / SIDECAR_NAME).read_text().splitlines()[0].split(",")
