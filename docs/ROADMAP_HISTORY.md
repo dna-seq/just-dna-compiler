@@ -36,7 +36,7 @@ Patches on `main` after the 0.8.0 cut (2026-11-05), newest first.
 
 ## RM423 — `record_verification` re-signs the records of checks it did not re-run over authored bytes they never saw
 
-**SHIPPED 2026-11-09 on `main` — a patch, uncut.** Owner format (`merge_records`) + enricher
+**SHIPPED 2026-11-09 on `main`, cut 2026-11-09 as `v0.8.3` — a patch.** Owner format (`merge_records`) + enricher
 (`record_verification`), severity high.
 
 **Residuals** [RM424](ROADMAP.md#rm424--a-verification-record-carries-no-binding-of-its-own-so-a-reader-cannot-tell-which-checks-are-current)
@@ -121,7 +121,7 @@ The reporter leans 2 for the record and 1 as the interim.
 
 ## RM422 — a `resolution.csv` row for a variant no authored table names compiles silently, and publishes
 
-**SHIPPED 2026-11-09 on `main` — a patch, uncut.** Owner compiler (`fact_checks._cross_check_resolution`, called
+**SHIPPED 2026-11-09 on `main`, cut 2026-11-09 as `v0.8.3` — a patch.** Owner compiler (`fact_checks._cross_check_resolution`, called
 from `validate_spec`), severity low.
 
 **Residuals** none
@@ -180,7 +180,7 @@ resolution reaches the PGx tables; that is a manifest value, so it is a question
 
 ## RM421 — eleven of fourteen bulk downloads set no read timeout, so a stalled connection is never stopped
 
-**SHIPPED 2026-11-08 on `main` — a patch, uncut.** Owner enricher (`net.stream_to_file` and its callers),
+**SHIPPED 2026-11-08 on `main`, cut 2026-11-09 as `v0.8.3` — a patch.** Owner enricher (`net.stream_to_file` and its callers),
 severity low.
 
 **Residuals** none
@@ -256,7 +256,7 @@ so it looks like a patch; the value, and whether it is a knob (`@retry-attempt-f
 
 ## RM409 — Ctrl-C does not stop `opentargets build` or its rebuild while parts are downloading
 
-**SHIPPED 2026-11-08 on `main` — a patch, uncut.** Owner enricher (`net.stream_to_file`,
+**SHIPPED 2026-11-08 on `main`, cut 2026-11-09 as `v0.8.3` — a patch.** Owner enricher (`net.stream_to_file`,
 `opentargets_build.download_release`, `alphagenome_avi_build.build_snapshot`), severity low.
 
 **Residuals** won't fix — `opentargets_build._source_digest` hashes the mirrored parts on a pool of eight and an
@@ -327,7 +327,7 @@ fake server and asserts it returns within a chunk's time.
 
 ## RM420 — `cache pull` never fetches a newer published release over a whole cache
 
-**SHIPPED 2026-11-08 on `main` — a patch, uncut.** Owner enricher (`download._provision_snapshot`,
+**SHIPPED 2026-11-08 on `main`, cut 2026-11-09 as `v0.8.3` — a patch.** Owner enricher (`download._provision_snapshot`,
 `download._provision_root_file_snapshot`, `cache pull`, `caches.prepare_lane`), severity medium.
 
 **Residuals** won't fix — a STRchive catalogue pulled before this patch carries no pull record, so nothing says it
@@ -440,7 +440,7 @@ corrected now, are the pm's.
 
 ## RM418 — every NCBI client builds its own pacing gate, so two in one process pace against two budgets
 
-**SHIPPED 2026-11-08 on `main` — a patch, uncut.** Owner enricher (`eutils.EutilsClient`, `net._service_gate`),
+**SHIPPED 2026-11-08 on `main`, cut 2026-11-09 as `v0.8.3` — a patch.** Owner enricher (`eutils.EutilsClient`, `net._service_gate`),
 severity low.
 
 **Residuals** RM419 (the same class beyond NCBI: the two Ensembl REST clients first, and every other client that

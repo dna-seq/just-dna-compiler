@@ -41,7 +41,32 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
-## 2026-11-09 — RM423: a later command no longer re-signs the records of checks it did not run over rows they never read (patch, uncut)
+## 2026-11-09 — `v0.8.3`: format, compiler and enricher 0.8.3 (a patch, cut from `main`)
+
+All three packages move, because each changed source since `v0.8.2`: format for RM423, the compiler for
+RM422, the enricher for RM423's other half and the rest. The enricher's floors are `just-dna-format>=0.8.3` and
+`just-dna-compiler>=0.8.3`, the compiler's `just-dna-format>=0.8.3`. Nothing adds a public name, field, table,
+flag or warning code; RM422 is one more arm of the existing `derived_row_orphan`, and RM423 corrects what
+`merge_records` returns over moved bytes, declared in `INTEGRATION_0_8.md` § 4.
+
+- **What it carries:** RM418 (one NCBI pacing gate per process), RM420 (`cache pull` and `cache prepare` follow
+  the hub's release over a pulled cache), RM409 (Ctrl-C stops the Open Targets mirror and the AlphaGenome build
+  within a chunk), RM421 (a 120 s default timeout on every bulk download, so the stall RM409's entry leaves
+  open now raises and is retried), RM422 (a `resolution.csv` row no authored table names is reported), RM423
+  (a later command no longer re-signs records of checks it did not run over moved bytes).
+- **Release record** (`RELEASE_RECORDS["0.8.3"]`, measured from 0.8.2, the last published compiler): 22
+  reference modules, nothing moved on any axis. No recompile is needed.
+- **After upgrading:**
+  1. Raise floors to `>=0.8.3`.
+  2. `cache pull` or `cache prepare` once: a lane pulled earlier moves to the hub's current release (gnomAD
+     constraint to `gnomad_v4.1.2_constraint`, STRchive to `strchive_v2.28.0`). A STRchive catalogue pulled
+     before this release carries no pull record and is left alone; move it aside and pull.
+  3. A `verification.json` written by 0.8.2 or earlier over authored bytes edited since may hold records its
+     last writer carried across the edit; the fix does not repair it. Re-run the checks it names, or delete it
+     and re-run every pass that writes it.
+  4. Delete any `resolution.csv` rows a new `derived_row_orphan` warning names: `enrich` never removes them.
+
+## 2026-11-09 — RM423: a later command no longer re-signs the records of checks it did not run over rows they never read (patch, cut as `v0.8.3`)
 
 - **`merge_records` drops the earlier records once the authored bytes have moved** (RM423, from S139).
   With `existing_still_binds=False` the result is this run's records alone, newest-wins among them. Before, a
@@ -58,7 +83,7 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   declared rather than silent: see [INTEGRATION_0_8 § 4](INTEGRATION_0_8.md#4-known-issues) for documents
   written by 0.8.2 or earlier.
 
-## 2026-11-09 — RM422: a `resolution.csv` row for a variant the module no longer names is reported (patch, uncut)
+## 2026-11-09 — RM422: a `resolution.csv` row for a variant the module no longer names is reported (patch, cut as `v0.8.3`)
 
 - **`validate` and `compile` name a resolution row no authored table asks about** (RM422, from S138). A module
   that dropped a variant after `enrich` kept that variant's `resolution.csv` row, and every check over the table
@@ -72,7 +97,7 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 - **Unchanged:** a warning in both modes, never a refusal (a hand-kept row is plausible mid-edit), and no new code
   or public name. The row never reached a parquet, so `artifact.digest` and `content_signature` do not move.
 
-## 2026-11-08 — RM421: a bulk download from a server that goes silent is given up on, not waited on forever (patch, uncut)
+## 2026-11-08 — RM421: a bulk download from a server that goes silent is given up on, not waited on forever (patch, cut as `v0.8.3`)
 
 - **Every bulk download now has a timeout** (RM421). `net.stream_to_file` defaults to 120 s when its caller
   names none; before, the default was no timeout at all, and eleven of the fourteen builder downloads named none
@@ -85,7 +110,7 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   an explicit `None`, which no caller in the package passes; `civic`, `clinvar_gkm` and `mane` no longer name the
   120 s they passed, since it is the default now.
 
-## 2026-11-08 — RM409: Ctrl-C stops the Open Targets mirror and the AlphaGenome build mid-download (patch, uncut)
+## 2026-11-08 — RM409: Ctrl-C stops the Open Targets mirror and the AlphaGenome build mid-download (patch, cut as `v0.8.3`)
 
 - **An interrupt stops the in-flight work within a chunk** (RM409). `opentargets build` and
   `cache rebuild --only opentargets` used to wait, after Ctrl-C, for every part already downloading to stream to
@@ -98,7 +123,7 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 - **Unchanged:** no public name moves. A part whose connection stalls without sending anything still stops only
   when its next chunk arrives, since bulk downloads carry no read timeout.
 
-## 2026-11-08 — RM420: `cache pull` and `cache prepare` bring a newer published release (patch, uncut)
+## 2026-11-08 — RM420: `cache pull` and `cache prepare` bring a newer published release (patch, cut as `v0.8.3`)
 
 - **A pulled lane follows the hub's release** (RM420). `cache pull` and `cache prepare` compare the release label a
   cache holds with the one its repo publishes, read by the lane's own label reader, and re-pull a cache that came
@@ -114,7 +139,7 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 - **Still needed once:** a STRchive catalogue pulled before this patch carries no pull record, so it is left alone;
   move it aside and pull. On 0.8.2 itself the workaround in INTEGRATION_0_8 § 4 stays.
 
-## 2026-11-08 — RM418: two NCBI clients in one process share one pacing gate (patch, uncut)
+## 2026-11-08 — RM418: two NCBI clients in one process share one pacing gate (patch, cut as `v0.8.3`)
 
 - **An `EutilsClient` built without a gate takes the process's NCBI gate** (RM418), one per interval, so the rsID
   check and the literature pass, or two enrichments a host runs on two threads, pace against NCBI's one budget per

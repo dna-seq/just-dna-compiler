@@ -11,26 +11,26 @@ the known issues 0.8 ships with.
 since `v0.7.3`), each intra-workspace floor is `>=0.8.0`, and `polars>=1.42.0` is unchanged, so a polars 1.x
 install still resolves. It is published and tagged `v0.8.0`.
 
-**Two patches followed on the 0.8 line, and the current release is 0.8.2.** 0.8.1 (2026-11-07) moved the
-enricher alone, so format and compiler stayed 0.8.0. 0.8.2 (2026-11-07) moved all three packages, and its
-floors are `>=0.8.2` throughout. Neither patch adds a public name, field, table, flag or warning code, so
-this file's surface delta is still the whole 0.7 → 0.8 boundary; what each patch changed, and what to do
-after upgrading to it, is its entry in the [CHANGELOG](CHANGELOG.md), and § 4 says which known issues each
-one fixed.
+**Three patches followed on the 0.8 line, and the current release is 0.8.3.** 0.8.1 (2026-11-07) moved the
+enricher alone, so format and compiler stayed 0.8.0. 0.8.2 (2026-11-07) and 0.8.3 (2026-11-09) each moved all
+three packages, and 0.8.3's floors are `>=0.8.3` throughout. No patch adds a public name, field, table, flag
+or warning code, so this file's surface delta is still the whole 0.7 → 0.8 boundary; what each patch
+changed, and what to do after upgrading to it, is its entry in the [CHANGELOG](CHANGELOG.md), and § 4 says
+which known issues each one fixed.
 
 **Pin the release, not the branch, and floor on the latest patch:**
 
 ```toml
 dependencies = [
-    "just-dna-format>=0.8.2",
-    "just-dna-compiler>=0.8.2",
-    "just-dna-enricher>=0.8.2",
+    "just-dna-format>=0.8.3",
+    "just-dna-compiler>=0.8.3",
+    "just-dna-enricher>=0.8.3",
 ]
 ```
 
 A consumer that holds only the format tier pins the first line alone. A git dependency on the `0.8` branch
 (`rev = "1007a26d"` and later), which this file recommended for testing before the cut, goes from your
-tracked files and your lock: `uv lock` against the published `0.8.2`, then run your suite again.
+tracked files and your lock: `uv lock` against the published `0.8.3`, then run your suite again.
 
 **The release record says what a recompile moves.** `release_records.RELEASE_RECORDS["0.8.0"]`, measured at
 the cut against the published compiler 0.7.2, declares each correction and addition (RM363's contig
@@ -40,8 +40,9 @@ lite stays on polars 1.x (polars-bio caps `polars<2`), and this workspace locks 
 `compiler_version` over one spec writes two `artifact.digest`s and one `content_signature`. Compare content
 by `content_signature`; read a digest mismatch with `compilation.toolchain` beside it (§ 1.11).
 The patches add little to that answer: 0.8.1 left the compiler alone and has no record, and
-`RELEASE_RECORDS["0.8.2"]`, measured from 0.8.0, moves only the text of two warnings, so a module
-compiled by 0.8.0 needs no recompile.
+`RELEASE_RECORDS["0.8.2"]`, measured from 0.8.0, moves only the text of two warnings, and
+`RELEASE_RECORDS["0.8.3"]`, measured from 0.8.2, moves nothing, so a module compiled by 0.8.0 needs no
+recompile.
 
 **What landed after `1007a26d`**, the pre-cut head this file first named, for a consumer who tested
 there; all of it is in 0.8.0. **First:** RM380, `reverse` carrying every `resolution.csv` column a
@@ -840,7 +841,7 @@ out: being importable does not make it a supported surface. All additive.
 1. **Pins, in tier order: format, then compiler, then enricher.** `just-dna-format` first, because a 0.7
    reader refuses some 0.8 output (§ 1, § 1.13, § 1.18) and drops the new manifest fields (§ 1.2); then
    `just-dna-compiler`; then `just-dna-enricher`. A consumer that holds only the format tier stops after
-   the first. Floor all three on `>=0.8.2`, the current patch.
+   the first. Floor all three on `>=0.8.3`, the current patch.
 2. **`uv lock`**, regenerated and never hand-edited, committed with the floors.
 3. **Move the shared Ensembl cache, once per machine** (§ 1.29): `just-dna-enricher cache pull --only
    ensembl`, or `cache prepare`. The lane now pulls `just-dna-seq/ensembl_variations_split` (dbSNP 157 /
@@ -1240,7 +1241,7 @@ What 0.8 ships with, known and not fixed. Each line names its item; [RM_TOC.md](
 - **The constraint snapshot moves to gnomAD 4.1.2 (RM410, enricher 0.8.2).** Not a defect: `cache pull`
   brings 4.1.2 to a machine that has no constraint lane yet, and existing `gnomad_v4.1_constraint` rows are
   kept on a re-run. A machine that already holds the lane stays at 4.1 after a pull on 0.8.2 (RM420, fixed
-  on `main`, uncut).
+  in enricher 0.8.3).
 - **`cache pull` never brings a newer release of a lane this machine already pulled (RM420).** A complete
   cache is kept without asking the hub whether a newer release is published, so the pull is a silent no-op
   for exactly the machines an upgrade step is written for. Seen at the 0.8.2 boundary: gnomAD constraint
@@ -1249,22 +1250,22 @@ What 0.8 ships with, known and not fixed. Each line names its item; [RM_TOC.md](
   it with the hub's. The same applies wherever this note, or the derived-layer `Dataset currency` warning,
   says `cache pull --only <lane>`. Until the fix: move the lane's directory aside, then pull, e.g.
   `mv <base>/gnomad_constraint <base>/gnomad_constraint.v4.1 && just-dna-enricher cache pull --only
-  constraint`. **Fixed on `main`, uncut** (RM420): from the next patch `cache pull` and `cache prepare` re-pull a
+  constraint`. **Fixed in enricher 0.8.3** (RM420): `cache pull` and `cache prepare` re-pull a
   lane that came from a pull when its repo publishes another release, and leave a lane built here alone with both
   labels. On 0.8.2 the workaround is still needed, and after the fix once more for a STRchive catalogue pulled
   before it, which carries no pull record.
 - **A `resolution.csv` row for a variant the module no longer names is silent (RM422).** A variant removed
   after `enrich` keeps its row, since `enrich` keeps rows it is not asked about, and on 0.8.2 neither `validate`
   nor `compile --strict` says so; the compile ships the file in `manifest.derived` (no parquet carries the row).
-  Delete such rows by hand. **Fixed on `main`, uncut** (RM422): from the next patch a `derived_row_orphan` warning
+  Delete such rows by hand. **Fixed in compiler 0.8.3** (RM422): a `derived_row_orphan` warning
   names them, in both modes.
 - **A `verification.json` can carry records of checks its last writer never put (RM423).** A document
   written by `just-dna-format` or `just-dna-enricher` 0.8.2 or earlier, over authored bytes edited since an
   earlier run, may hold records that run carried across from before the edit and signed under the current
   binding: a finding on a row since removed, or a clean pass over rows the check never read. The compiler sees
   a bound document and keeps them. The sign is a record whose `checked_at` is older than the edit. Re-run the
-  checks that record names, or delete the file and re-run every pass that writes it. **Fixed on `main`,
-  uncut** (RM423): from the next patch a run over moved bytes keeps only its own records and logs each check it
+  checks that record names, or delete the file and re-run every pass that writes it. **Fixed in format and
+  enricher 0.8.3** (RM423): a run over moved bytes keeps only its own records and logs each check it
   dropped by name. The fix does not repair a document already written that way: its `module_hash` matches the
   bytes, so a later run carries those records on until the bytes move again. Re-run or delete, as above.
 - **RM386's publish pinning has no live run yet (RM386).** It shipped with no practice publish to a

@@ -1519,4 +1519,23 @@ RELEASE_RECORDS: dict[str, ReleaseRecord] = {
             "warnings axis drives no recompile."
         ),
     ),
+    # Measured at the 0.8.3 cut (2026-11-09). `previous` is 0.8.2, the newest published compiler, and
+    # BEFORE was compiled by it (with format 0.8.2) from this tree's `reference_examples/`. Same lock on
+    # both sides, polars 2.1.0 and Python 3.14.8 recorded by every module, so no toolchain sweep.
+    "0.8.3": ReleaseRecord(
+        version="0.8.3",
+        previous="0.8.2",
+        # A measured zero, with its denominator in `evidence`. RM422's new `derived_row_orphan` arm is
+        # the one change a compile could print, and no reference module carries an orphaned
+        # `resolution.csv` row; RM423 changes what a writer of `verification.json` keeps, which the
+        # compiler only reads.
+        axes=dict.fromkeys(VALID_RELEASE_OUTPUT_AXES, False),
+        manifest_fields=[],
+        declared=[],
+        evidence=(
+            "22 reference module(s) compiled under 0.8.2 and 0.8.3 from one spec root, so the "
+            "compiler is the only variable; modules moved per axis: content_signature 0/22, "
+            "manifest_fields 0/22, parquet_bytes 0/22, parquet_schema 0/22, warnings 0/22"
+        ),
+    ),
 }
