@@ -2074,7 +2074,7 @@ reading a record whose `checked_at` predates their newest authoring edit as not 
 
 ## RM428 — the GWAS pass asks the Catalog v2 for a page of 1000, which it now refuses with 400, so the pass fills nothing on any module
 
-**Severity** high · **Status** open — **ask 1 a patch; the pm sizes asks 2 and 3; ask 4 is a release-line decision** · **Owner** enricher (`gwas.py`)
+**Severity** high · **Status** open — **a patch, `urgent`** (asks 1 to 3 in one commit, for 0.8.4; ask 4 on the desk, #252) · **Owner** enricher (`gwas.py`)
 · **Motivating case** S143 (CONSUMER_SUGGESTIONS_HISTORY.md) · *related* RM354, RM361
 
 **The defect.** `GwasClient.association_pages` sends `size=_PAGE_SIZE` on its first request, and `_PAGE_SIZE` is
@@ -2114,6 +2114,25 @@ on 0.7.x until the production registry serves 0.8, and it asks whether we would 
 would be `v0.7.4`, cut off a branch from `v0.7.3` and carrying RM354 and this item's ask 1. A patch off a revived `0.7`
 branch has been done once before (0.7.2, RELEASE_CYCLE). Whether to do it again is the pm's and the lead's to put to
 the person. The other way back is the registry moving to 0.8, and nothing here decides when that happens.
+
+**Sizing (pm, 2026-11-11).** Asks 1 to 3 are one patch, `urgent`, about 30 minutes, and the next on `main`: the pass
+fills nothing on every module on every installable release, and the fix carries no claim of its own. It goes out as
+0.8.4 with RM425, RM426 and RM427, which are already on `main`.
+
+- **Ask 1** as written: 500, and the docstring's premise corrected (a server may refuse a large page, not only cap it).
+- **Ask 2, yes, as the opt-in network test only**: one request with `_PAGE_SIZE`, asserting a 200. No unit test pins
+  the number, since the server decides it and has already moved it once in a week.
+- **Ask 3, yes, in its narrow form.** Only a 400 to the *first* request of an rsID's paging is retried, once, with no
+  `size` at all, so the Catalog's own default page decides; the pass logs one warning per run naming the refused size,
+  so the next drop is seen, not silently paid for in requests. A second 400 stays could-not-ask, as today. A 400 on a
+  later page is never retried: by then the size has been accepted. The fix's own risk is one wasted request per rsID
+  that the Catalog refuses for another reason, which the could-not-ask count already shows. Test it with a fake
+  transport that refuses `size=500` and answers without it.
+
+Ask 4 is the person's: whether to release an enricher-only 0.7.4 that reads v2, off `v0.7.3` (desk #252). The pm's
+recommendation there is the small form: `gwas.py` alone moves to v2 with asks 1 and 3, not RM354 whole, since RM354's
+other half (a `*Retired` type on every client) fixes nothing a 0.7 user hits, and its format-tier part was docstrings.
+On silence the lead builds that branch and stops: no tag, no publish.
 
 **Residuals** none yet.
 
