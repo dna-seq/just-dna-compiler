@@ -2074,7 +2074,7 @@ reading a record whose `checked_at` predates their newest authoring edit as not 
 
 ## RM427 — the ClinVar-pass skip tells the reader to run `clinvar pull`, and no app registers it
 
-**Severity** low · **Status** open — **asks 1 and 2 a patch, ask 3 a minor; the pm sizes** · **Owner** enricher
+**Severity** low · **Status** open — **a patch, `unattended`** (asks 1 and 2 together; ask 3 declined) · **Owner** enricher
 (`assertions.py`, `cli/pass_commands.py`) · **Motivating case** S142 (CONSUMER_SUGGESTIONS_HISTORY.md) · *related*
 RM131, RM111, RM414
 
@@ -2107,7 +2107,21 @@ already map those by code. The gap is the enricher's `logger.warning` lines, whi
 one of them. The reporter's own reason against stands: a key covering only part of the remedies may mislead more than
 an honest text match, and ask 2 keeps the quotes true without it.
 
-**Residuals** none yet.
+**Sizing (pm, 2026-11-10).** Asks 1 and 2 are one patch, `unattended`, about 45 minutes, built in one commit so the
+test is proved red on the old wording before the new one lands. The skip fires on every machine that has no ClinVar
+snapshot, which is the usual first run, and the command it names fails, so the reader is stuck on the first step.
+A hand check has also already missed it once: the reporter read the CLI's copy as gone on 0.8.2, when it had moved
+from `cli.py` into `cli/pass_commands.py` unchanged. So the walk earns its place: it is a test only, adds no public surface, and its list of deliberate absences holds the
+two `pharmvar publish` lines and nothing else. A new entry on that list needs a sentence saying why the command does
+not exist. Ask 1 takes `cache pull --only clinvar` as the remedy and names `clinvar build` second; the docs quote
+neither old line (checked with a grep of `docs/` and the READMEs), so the change is the two `src/` lines and their pins.
+
+Ask 3 is **declined, not parked**. A remedy key on the enricher's log lines would be a new public field to save one
+lookup that ask 2 already keeps honest, and the reporter's own objection (a key that covers only some remedies
+misleads) still stands. It comes back only through a new Sn from a consumer that maps enricher warnings by key and
+can show a wrong mapping from the text.
+
+**Residuals** ask 3 declined (above); nothing else.
 
 # Not format scope
 
