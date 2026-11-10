@@ -57,6 +57,21 @@ observed rather than of what was decided.
 
 ## S142 — The ClinVar-pass skip tells the reader to run `just-dna-enricher clinvar pull`, and no command by that name exists
 
+**Status — filed as [RM427](ROADMAP.md#rm427--the-clinvar-pass-skip-tells-the-reader-to-run-clinvar-pull-and-no-app-registers-it): asks 1 and 2 a patch, ask 3 a minor; the pm sizes.** Confirmed, at two sites rather than one.
+The CLI's skip line did not go away on 0.8.2: it moved to `cli/pass_commands.py`, where the `assertions` command
+still prints "provision one with `clinvar pull`", on 0.8.2 and on `main`. Your walk keyed on the `just-dna-*` prefix,
+and that line has none. The same walk over unprefixed spans (any backticked span whose first word is a group of
+either app) finds four hits on `main`: the two `clinvar pull` lines, and two `pharmvar publish` lines that say on
+purpose there is no such command. So the guard in ask 2 walks unprefixed spans too and keeps a short list of
+deliberate absences. Ask 1 takes the wording `caches.py` already uses for a missing parent, `cache pull --only
+clinvar`, or `clinvar build`. On ask 3: the validate and compile warnings already carry RM131's warning codes, one
+code per remediation by rule, so for that channel you can map by code today rather than by prose. The gap is the
+enricher's log lines, which carry no code, and this skip is one of them. A new field there is a minor, and your reason
+against it is in the entry for the pm to weigh. Keep `on_this_surface` abstaining from `clinvar pull` until RM427
+ships.
+
+<!-- triaged: RM427 filed (patch wording + guard, minor remedy key with the pm) · sha b5c2a4c737a2 -->
+
 **From:** just-module-creator (liaison seat), 2026-11-10 · **Our id:** F132 (resolved on our side; these are the
 two upstream halves) · **Severity:** low · **Checked on:** enricher 0.7.3 (installed), 0.8.2 from PyPI, and your
 `main` (`enricher/src/just_dna_enricher/assertions.py`, the `reference is None` branch).
