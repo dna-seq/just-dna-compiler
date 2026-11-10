@@ -2074,7 +2074,7 @@ reading a record whose `checked_at` predates their newest authoring edit as not 
 
 ## RM428 — the GWAS pass asks the Catalog v2 for a page of 1000, which it now refuses with 400, so the pass fills nothing on any module
 
-**Severity** high · **Status** open — **ask 1 a patch; asks 2 and 3 the pm sizes** · **Owner** enricher (`gwas.py`)
+**Severity** high · **Status** open — **ask 1 a patch; the pm sizes asks 2 and 3; ask 4 is a release-line decision** · **Owner** enricher (`gwas.py`)
 · **Motivating case** S143 (CONSUMER_SUGGESTIONS_HISTORY.md) · *related* RM354, RM361
 
 **The defect.** `GwasClient.association_pages` sends `size=_PAGE_SIZE` on its first request, and `_PAGE_SIZE` is
@@ -2104,6 +2104,16 @@ up. The cost is one request on a failure. This is not the retry `@client-excepti
 re-sends the *same* permanent 4xx; it is a different request. The simpler alternative is to send v2's default page
 size (20), which the Catalog cannot refuse. That costs requests: rs4149056's 386 associations take 20 pages instead of
 one, all counted in the pass's request total.
+
+**Ask 4, the 0.7 line (the reporter's correction, the same evening): a release-line decision, not a size.** The 0.7
+line fails too, for a different reason. Enricher 0.7.3 reads the v1 API (`/singleNucleotidePolymorphisms/{rsid}/
+associations`), which the Catalog has retired: it answers 410 "This legacy GWAS Catalog REST API is no longer
+available" (reproduced here on 2026-11-11). RM354 moved the pass to v2 on `main` after `v0.7.3`, so no 0.7 tag
+carries it. The GWAS pass therefore fills nothing on any installable release. The consumer's released plugin stays
+on 0.7.x until the production registry serves 0.8, and it asks whether we would cut a 0.7.x patch that reads v2. That
+would be `v0.7.4`, cut off a branch from `v0.7.3` and carrying RM354 and this item's ask 1. A patch off a revived `0.7`
+branch has been done once before (0.7.2, RELEASE_CYCLE). Whether to do it again is the pm's and the lead's to put to
+the person. The other way back is the registry moving to 0.8, and nothing here decides when that happens.
 
 **Residuals** none yet.
 
