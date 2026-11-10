@@ -91,7 +91,7 @@ full map of `docs/` with a grep hint per file.
   what a second pass moves.
 - [`docs/INTEGRATION_0_8.md`](docs/INTEGRATION_0_8.md) — the surface delta a consumer upgrading from
   0.7 checks against, with the upgrade order and the known issues the 0.8 line ships with; the current
-  release is 0.8.2. The earlier notes are archived: 0.6.6 → 0.7 is
+  release is 0.8.3. The earlier notes are archived: 0.6.6 → 0.7 is
   [`INTEGRATION_0_7.md`](docs/history/INTEGRATION_0_7.md), 0.5.4 → 0.6 is
   [`INTEGRATION_0_6.md`](docs/history/INTEGRATION_0_6.md).
 - [`docs/FAQ.md`](docs/FAQ.md) — settled questions, most of them a repair somebody proposed that was
