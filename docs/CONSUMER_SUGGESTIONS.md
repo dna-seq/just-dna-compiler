@@ -87,3 +87,16 @@ documented maximum would catch the next change on their side; a recorded-respons
 only comes from the live service. Against it: 500 is measured, not documented in what we read, so the Catalog
 could lower it again; a pass that retries once with a smaller page on a 400 would survive that, at the cost of
 one more request per failure.
+
+**Status — filed as [RM428](ROADMAP.md#rm428--the-gwas-pass-asks-the-catalog-v2-for-a-page-of-1000-which-it-now-refuses-with-400-so-the-pass-fills-nothing-on-any-module): ask 1 a patch; the pm sizes asks 2 and 3.** Confirmed. Here at 22:58 UTC,
+`size=500` answers 200, and 501 and 1000 answer 400, whose body is a bare `Bad Request` and does not name the limit.
+The Catalog moved, not the code. RM354 measured `size=1000` returning all 386 associations of rs4149056 on
+2026-11-04, so the ceiling dropped on their side in the six days after. The module docstring assumed a server that
+caps a large page, and this one refuses it. Ask 1 is your `_PAGE_SIZE = 500`. On the guard, your reason against a
+unit test holds: with no documented maximum, it would pin a number the server decides. RM428 offers the pm an opt-in
+live test (`@pytest.mark.network`) that asks with the real constant, the only test that can see the 400. Your
+retry-with-a-smaller-page sits beside the other way to survive the next drop, v2's default page of 20, which costs
+about twenty requests where one would do for a variant like rs4149056. Your 0.7.x release is unaffected, as you say.
+Your 0.8 branch waits for the patch after 0.8.3.
+
+<!-- triaged: RM428 filed (patch page size; guard and fallback with the pm) · sha e9c0005d744e -->
