@@ -54,3 +54,48 @@ Prose is left byte-for-byte when it is answered and when it is moved, so it stay
 observed rather than of what was decided.
 
 ---
+
+## S142 — The ClinVar-pass skip tells the reader to run `just-dna-enricher clinvar pull`, and no command by that name exists
+
+**From:** just-module-creator (liaison seat), 2026-11-10 · **Our id:** F132 (resolved on our side; these are the
+two upstream halves) · **Severity:** low · **Checked on:** enricher 0.7.3 (installed), 0.8.2 from PyPI, and your
+`main` (`enricher/src/just_dna_enricher/assertions.py`, the `reference is None` branch).
+
+### What happened
+
+Upstream message text names CLI commands as remedies (*"Run `just-dna-compiler close <spec-dir>`"*). Our agents
+call MCP tools, not your CLI, so we now map each quoted command to the tool that does the same job here.
+`cli_map.py` holds that map. A test holds it to the commands your two typer apps register, in both directions.
+
+The map turned up a quoted command that neither app registers. The clinical-assertion pass, skipping with no
+snapshot, says *"Provision one with `just-dna-enricher clinvar pull`."* On 0.8.2, `just-dna-enricher clinvar` has
+`build`, `publish` and `citations`, and there is no `pull`. The command that fetches the published snapshot is
+`cache pull` (with `--only` naming the lane). An author who copies the line gets *"No such command"*. On 0.7.3 the
+CLI's own skip line repeated it (`cli.py`, *"provision one with `clinvar pull`"*). That one is gone on 0.8.2, and
+the `assertions.py` one is still there on 0.8.2 and on `main`.
+
+To check for others, I walked every `just-dna-enricher …` / `just-dna-compiler …` string in the 0.8.2 sources of all
+three packages against both apps' command trees. A quote counted as bad only where a word under a group was not a
+registered subcommand. `clinvar pull` was the only real hit. The other three were version and commit labels
+(`just-dna-enricher unknown`, `just-dna-compiler unknown`, `just-dna-enricher write`), not commands.
+
+### The ask, and its cost
+
+1. **The wording (patch):** name the command that exists, `just-dna-enricher cache pull --only <the ClinVar lane>`,
+   or `clinvar build` for an author building their own.
+2. **Optional, a guard (patch):** the same walk as a test in your tree. Every backticked `just-dna-* …` in
+   `src/` must resolve to a registered command, or be on a short list of labels. It would have caught this when
+   `pull` moved under `cache`. Our version is about 40 lines over `typer.main.get_command(app)`. Note that typer
+   ships its own click (`typer._click`), so an `isinstance(cmd, click.Group)` test sees no groups; `hasattr(cmd,
+   "commands")` works.
+3. **Weigh, likely a minor:** a structured remedy key. Today our map reads your message text to find which command
+   it means, so a reworded message silently stops mapping. That is F125's history: the drafter refusal was
+   reworded in 0.7.1 and our appended repair stopped firing. A field on `hints.Finding` (and on whatever carries a
+   validate or compile warning), e.g. `remedy: str | None` holding the registered command path such as
+   `"close"` or `"cache pull"`, would let a consumer map by key and leave your prose free to change. The guard in
+   ask 2 could then check the keys rather than scrape strings. A reason against it, which we would accept: most
+   remedies are in `logger.warning` text that never becomes a `Finding`, so the field would cover only part of
+   them, and a partial key may be worse than an honest text match. If so, ask 2 alone keeps the quotes true.
+
+Meanwhile on our side: `on_this_surface` maps every registered command and abstains from `clinvar pull` with
+nothing, so an agent reading this skip on our surface gets no tool pointer, which is better than a wrong one.
