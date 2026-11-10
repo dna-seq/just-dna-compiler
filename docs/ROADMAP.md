@@ -2072,6 +2072,41 @@ reading a record whose `checked_at` predates their newest authoring edit as not 
 
 **Residuals** none yet.
 
+## RM428 — the GWAS pass asks the Catalog v2 for a page of 1000, which it now refuses with 400, so the pass fills nothing on any module
+
+**Severity** high · **Status** open — **ask 1 a patch; asks 2 and 3 the pm sizes** · **Owner** enricher (`gwas.py`)
+· **Motivating case** S143 (CONSUMER_SUGGESTIONS_HISTORY.md) · *related* RM354, RM361
+
+**The defect.** `GwasClient.association_pages` sends `size=_PAGE_SIZE` on its first request, and `_PAGE_SIZE` is
+1000 on every 0.8 release and on `main`. The GWAS Catalog's REST API v2 now refuses any `size` above 500 with a bare
+400 (`{"status":400,"error":"Bad Request"}`, which does not name the limit). So the first page fails for every rsID,
+before any paging, and the pass fills no `gwas_effects.csv` row on any module. It reports this honestly as could
+not ask, not as empty (the S20 shape), which is why nothing else broke. Reproduced on 2026-11-10 at 22:58 UTC against
+`associations?rs_id=rs1421085`: `size=500` answers 200, and `size=501` and `size=1000` answer 400.
+
+**The Catalog moved, not the code.** RM354 measured `size=1000` returning all 386 associations of rs4149056 on
+2026-11-04, so the ceiling dropped on the server some time in the six days after. The module docstring's premise,
+"a server that caps the size loses nothing", assumed a server that *caps* a large page. This one *refuses* it, so the
+paging loop never starts.
+
+**Ask 1, the page size (a patch).** `_PAGE_SIZE = 500`, the ceiling measured today. The loop already follows
+`_links.next`, so a variant with more than 500 associations still comes back whole. Correct the docstring's premise
+in the same commit.
+
+**Ask 2, a guard.** The reporter offers a test pinning the constant at or below the documented maximum, and names
+the problem with it: there is no documented maximum. 500 is measured, and the ceiling has already moved once in a
+week, so a unit test would pin a number that the server decides. A recorded-response test cannot see it either, since
+the 400 comes only from the live service. The guard that can see it is a `@pytest.mark.network` test that asks with
+`_PAGE_SIZE` and asserts a 200 (`@network-tests-optin`). It runs only when someone opts in.
+
+**Ask 3, surviving the next drop.** On a 400 to the first request, ask once more with a smaller page before giving
+up. The cost is one request on a failure. This is not the retry `@client-exception-contract` forbids, which
+re-sends the *same* permanent 4xx; it is a different request. The simpler alternative is to send v2's default page
+size (20), which the Catalog cannot refuse. That costs requests: rs4149056's 386 associations take 20 pages instead of
+one, all counted in the pass's request total.
+
+**Residuals** none yet.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
