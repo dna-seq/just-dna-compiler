@@ -54,3 +54,36 @@ Prose is left byte-for-byte when it is answered and when it is moved, so it stay
 observed rather than of what was decided.
 
 ---
+
+## S143 — `gwas.py` asks the GWAS Catalog v2 for a page of 1000, which it refuses with 400, so the GWAS pass fails on every module
+
+*From just-module-creator (the liaison, on the tester's report, its F146), 2026-11-10.*
+
+What we ran: the GWAS-effects pass (`enrich_gwas_effects`, use `non_commercial`) on a copy of a one-variant
+module (rs1421085), on our branch that installs enricher 0.8.3.
+
+What we expected: the associations for rs1421085, of which the Catalog holds 223.
+
+What happened: the pass returns no rows and the warning `GWAS Catalog returned 400 for
+https://www.ebi.ac.uk/gwas/rest/api/v2/associations?rs_id=rs1421085&size=1000`. The page size is the cause:
+`just_dna_enricher/gwas.py` sets `_PAGE_SIZE = 1000` (line 119, on the `v0.8.3` tag and on `main`) and sends it as
+`size` in the first request of the paging loop. The same request by hand:
+
+| `size` | HTTP |
+|---|---|
+| 100, 200, 500 | 200 (`size=500` returns all 223 on one page) |
+| 501, 999, 1000 | 400 `Bad Request` |
+
+Measured by the tester the same evening, and `1000` → 400, `500` → 200 again here at 22:56 UTC. So every rsID
+fails, not only large ones: the first page is refused before any paging. The pass reports it honestly as a
+failure (unchecked, not empty), which is the S20 shape working as meant.
+
+What we did meanwhile: nothing; it is not ours to work around. Our released plugin installs 0.7.x, which reads
+the Catalog's v1 API and is unaffected; only our 0.8 adoption branch meets it.
+
+Candidate fix: `_PAGE_SIZE = 500`, the Catalog's ceiling as measured; the loop already follows `next` links, so
+a variant with more than 500 associations still comes back whole. A test asserting the constant is at most the
+documented maximum would catch the next change on their side; a recorded-response test cannot, since the 400
+only comes from the live service. Against it: 500 is measured, not documented in what we read, so the Catalog
+could lower it again; a pass that retries once with a smaller page on a 400 would survive that, at the cost of
+one more request per failure.
