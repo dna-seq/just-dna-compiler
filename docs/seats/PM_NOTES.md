@@ -92,6 +92,8 @@ patches right after real use started, so the pm reads an audit sceptically: the 
   RM400 the next patch on `main`, both halves; my default for its design half is to filter the recorded side the
   same way, adding no word. S132 noted on RM385 as its second case.
 - reflect after 2026-11-13: classes/base/BASE.md as of v0.1.136 (commit by path, `git commit --only`; read 2026-11-06, no concern).
+- reflect after 2026-11-17: classes/base/BASE.md as of v0.1.161 (no question dialog for a seat, the watchdog's own
+  reaction, quiet seats, the embassy post; read 2026-11-10, no concern: the pm already asks in text).
 - **0.8's scope, agreed 2026-11-04.**
   - The final run's audit is in `docs/probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md`. The diffs were put to the
     maintainer and decided; the hand-written cost went from about 85 to about 55.
