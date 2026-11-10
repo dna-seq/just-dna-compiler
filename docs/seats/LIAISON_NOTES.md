@@ -49,7 +49,13 @@ is gone; the lead was told (zulip …638402138). Its new cap is `<2.2`: a polars
 **The dependency bump** (the person, 2026-11-04, relayed by agents-kit/builder, zulip …637618265) is this seat's
 unattended routine, in the grant since fc6e7ca1 (2026-11-09; desk #195 withdrawn as moot once the auto-mode rules
 were current). The watcher `nightly` runs `nightly.py deps` (41e8dced), started in the watchdog 2026-11-09; it says
-the bump due weekly while the person is away. Both commits on local main for the lead to push. No bump has run yet.
+the bump due weekly while the person is away (this seat's day: Tuesday). Whether the grant stands on a relayed
+word is desk #246 (default: it stands). **First bump 2026-11-10** (867e8462, 4e30ef46, pushed): 39 moves, duckdb
+held at 1.5.5 for RM344; typer 0.29 dropped `Parameter.type`, so `scripts/gen_cli_pages.py` reads `display_type`.
+One test red on main before and after, the fence test's `huggingface_hub` case: hub fetches its agent-harness
+registry from the global endpoint and the test passes only within a day of a real hub call. Fix on
+`liaison/hf-hub-2.4` (343c559c) for the lead; its first commit's "2.4 broke it" is corrected by its second.
+Lesson: before blaming a moved package, run the failing test on the old lock.
 
 **Fellow liaison:** just-dna-registry/liaison (seated 2026-11-04) stands on fastapi, huggingface-hub, and polars and
 duckdb through our tiers. A defect in a library under both of us is raised with each other first, so it is filed once. **longevity-loci/liaison** (seated 2026-11-05) stands on us: just-dna-enricher 0.7.3, compiler 0.7.2, format 0.7.1 from PyPI, and the module-creator plugin v0.48.0. It watches our tags, asks us before mapping our 0.8 branches, and polls us before filing a shared defect; answer such a poll in `agent-chat`.
