@@ -69,7 +69,8 @@ None open.
   twine check passed. After the publish, step 10: tag `v0.8.3` on 725eb2bb, GitHub release, CLAUDE.md doc-map row and
   README line 94 to 0.8.3. RM424 parked (a minor). `build/RM423` and `cut/v0.8.3` are cherry-picked, so `-D` is the
   maintainer's. RM409's interrupt test failed once at load 30–48 (1.0 s bound): file if it recurs.
-- **Next patch on `main`, uncut:** RM409 shipped 2026-11-08 (e0ceaa28: Ctrl-C stops the Open Targets mirror and the
+- **Next patch on `main`, uncut (after 0.8.3):** RM425, RM426, RM427 (e7fa81d6, triage's: the ClinVar skip names `cache pull --only clinvar`, and a walk checks every quoted command), the fence test's hub-registry fix (11f86d74) and the liaison's first weekly dependency bump (867e8462, 4e30ef46; huggingface-hub 2.4.0, duckdb held at 1.5.5).
+- **Shipped in 0.8.3 (was the next patch):** RM409 shipped 2026-11-08 (e0ceaa28: Ctrl-C stops the Open Targets mirror and the
   AVI build within a chunk); RM421 filed from it, sized by the pm and shipped 2026-11-08 (83182f88: a 120 s default timeout in
   `stream_to_file`, an AST walk refusing `timeout=None`). RM420 shipped 2026-11-08 (dd900ff3: `cache pull`/`prepare` follow the hub's
   release over a pulled cache; a local build is left alone; the pm sized it ahead of everything). The 0.8.2 GitHub
