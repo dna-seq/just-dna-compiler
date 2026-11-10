@@ -78,6 +78,10 @@ patches right after real use started, so the pm reads an audit sceptically: the 
 
 ## Open questions and owed work
 
+- **Desk #252, an enricher-only 0.7.4 reading GWAS v2 (RM428 ask 4)**, filed 2026-11-11, S3. Recommended: `gwas.py`
+  alone on v2, off `v0.7.3`. On silence the lead builds the branch and stops (no tag, no publish). Withdraw it
+  `moot:` if the registry moves to 0.8 first.
+
 - **Re-ask the trust register after the 1.0 cut** (`docs/TRUST.md`, the base rule for a repo whose code can
   reach private things). The maintainer, 2026-11-08, through the lead: "lowprio, PM to reask after 1.0". Not
   started; nothing is owed before then. `waits until` the 1.0 cut; then one question to the maintainer, chat or desk.
