@@ -181,6 +181,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S140** `ExpressionEffectRow.effect_size`'s description said "aggregated over the tracks"; it is the single strongest track — RM425 filed
 - **S141** `GeneLocusConflict`'s message guessed the rsID was the invented half; it was the gene pairing — RM426 filed
 - **S142** the ClinVar-pass skip lines named `clinvar pull`, which no app registers — RM427 filed
+- **S143** the GWAS pass asked the Catalog v2 for a page of 1000, which it now refuses with 400 — RM428 filed
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -7134,3 +7135,60 @@ registered subcommand. `clinvar pull` was the only real hit. The other three wer
 
 Meanwhile on our side: `on_this_surface` maps every registered command and abstains from `clinvar pull` with
 nothing, so an agent reading this skip on our surface gets no tool pointer, which is better than a wrong one.
+
+# The GWAS Catalog's page ceiling, from just-module-creator's liaison on its tester's report, 2026-11-10
+
+## S143 — `gwas.py` asks the GWAS Catalog v2 for a page of 1000, which it refuses with 400, so the GWAS pass fails on every module
+
+*From just-module-creator (the liaison, on the tester's report, its F146), 2026-11-10.*
+
+What we ran: the GWAS-effects pass (`enrich_gwas_effects`, use `non_commercial`) on a copy of a one-variant
+module (rs1421085), on our branch that installs enricher 0.8.3.
+
+What we expected: the associations for rs1421085, of which the Catalog holds 223.
+
+What happened: the pass returns no rows and the warning `GWAS Catalog returned 400 for
+https://www.ebi.ac.uk/gwas/rest/api/v2/associations?rs_id=rs1421085&size=1000`. The page size is the cause:
+`just_dna_enricher/gwas.py` sets `_PAGE_SIZE = 1000` (line 119, on the `v0.8.3` tag and on `main`) and sends it as
+`size` in the first request of the paging loop. The same request by hand:
+
+| `size` | HTTP |
+|---|---|
+| 100, 200, 500 | 200 (`size=500` returns all 223 on one page) |
+| 501, 999, 1000 | 400 `Bad Request` |
+
+Measured by the tester the same evening, and `1000` → 400, `500` → 200 again here at 22:56 UTC. So every rsID
+fails, not only large ones: the first page is refused before any paging. The pass reports it honestly as a
+failure (unchecked, not empty), which is the S20 shape working as meant.
+
+What we did meanwhile: nothing; it is not ours to work around. Our released plugin installs 0.7.x, which reads
+the Catalog's v1 API and is unaffected; only our 0.8 adoption branch meets it.
+
+Candidate fix: `_PAGE_SIZE = 500`, the Catalog's ceiling as measured; the loop already follows `next` links, so
+a variant with more than 500 associations still comes back whole. A test asserting the constant is at most the
+documented maximum would catch the next change on their side; a recorded-response test cannot, since the 400
+only comes from the live service. Against it: 500 is measured, not documented in what we read, so the Catalog
+could lower it again; a pass that retries once with a smaller page on a 400 would survive that, at the cost of
+one more request per failure.
+
+**Status — filed as [RM428](ROADMAP.md#rm428--the-gwas-pass-asks-the-catalog-v2-for-a-page-of-1000-which-it-now-refuses-with-400-so-the-pass-fills-nothing-on-any-module): ask 1 a patch; the pm sizes asks 2 and 3.** Confirmed. Here at 22:58 UTC,
+`size=500` answers 200, and 501 and 1000 answer 400, whose body is a bare `Bad Request` and does not name the limit.
+The Catalog moved, not the code. RM354 measured `size=1000` returning all 386 associations of rs4149056 on
+2026-11-04, so the ceiling dropped on their side in the six days after. The module docstring assumed a server that
+caps a large page, and this one refuses it. Ask 1 is your `_PAGE_SIZE = 500`. On the guard, your reason against a
+unit test holds: with no documented maximum, it would pin a number the server decides. RM428 offers the pm an opt-in
+live test (`@pytest.mark.network`) that asks with the real constant, the only test that can see the 400. Your
+retry-with-a-smaller-page sits beside the other way to survive the next drop, v2's default page of 20, which costs
+about twenty requests where one would do for a variant like rs4149056. Your 0.7.x release is unaffected, as you say.
+Your 0.8 branch waits for the patch after 0.8.3.
+
+<!-- triaged: RM428 filed (patch page size; guard and fallback with the pm) · sha e9c0005d744e -->
+
+**Correction, 22:59 UTC the same evening (the tester, then reproduced here):** the sentence above saying 0.7.x is
+unaffected is wrong. The Catalog has retired the v1 REST API that enricher 0.7.3 calls
+(`DEFAULT_GWAS_ENDPOINT` + `/singleNucleotidePolymorphisms/{rsid}/associations`): `GET
+https://www.ebi.ac.uk/gwas/rest/api/singleNucleotidePolymorphisms/rs1421085/associations` answers **410** with
+"This legacy GWAS Catalog REST API is no longer available." So the GWAS pass returns nothing for any module on
+every installable release: 0.7.x by the 410, 0.8.x by the 400 above. Our released plugin (on 0.7.x) has no GWAS
+pass until it moves to an 0.8 that carries this fix, and that move waits on the production registry serving 0.8.
+A question beside the fix: is a 0.7.x patch that reads v2 something you would cut, or is 0.8 the only way back?
