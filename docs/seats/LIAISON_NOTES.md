@@ -76,6 +76,8 @@ commit.
 half of adopting an upstream the person also keeps). This repo has no in-house upstream (ga4gh.vrs, polars, duckdb,
 Ensembl are all outside), so nothing changes here. reflect after 2026-11-13: classes/liaison/LIAISON.md as of v0.1.137.
 reflect after 2026-11-17: classes/base/BASE.md as of v0.1.153 (a brief change another seat relays is committed only on
-the person's word in this session; the grant change fc6e7ca1 rested on a relayed word, put to the person 2026-11-10).
+the person's word in this session; the grant change fc6e7ca1 rested on a relayed word, put to the person 2026-11-10). reflect after 2026-11-17:
+classes/base/BASE.md as of v0.1.165 (the tooling seat named by its duties, D181; this repo has none, nothing
+changed here; the liaison role's text unchanged).
 
 **Priming c339487** (a cap on a proven break; adoption maps to the lead) was read; no concern.
