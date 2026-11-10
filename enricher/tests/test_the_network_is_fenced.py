@@ -109,6 +109,12 @@ def test_every_client_is_refused_and_the_refusal_names_the_test_and_the_host(
     client: str, network_fence, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("JUST_DNA_NETWORK_TESTS", "")
+    if client == "huggingface_hub":
+        # Every hub request first fetches the agent-harness registry (`utils/_detect_agent.py`, in 2.0.0 and 2.4.0),
+        # from the global `constants.ENDPOINT` rather than the `endpoint` HfApi was given, at most once a
+        # day per `HF_HOME`. Point that endpoint at the same host, so the one reach this test allows is
+        # still the only host reached, whether or not today's registry is cached.
+        monkeypatch.setattr(huggingface_hub.constants, "ENDPOINT", f"https://{_HOST}")
     with pytest.raises(network_fence.error) as refused:
         _CLIENTS[client]()
     assert _HOST in str(refused.value)
