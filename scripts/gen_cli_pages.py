@@ -42,6 +42,7 @@ that are *there*.
 from typing import Any
 
 import mkdocs_gen_files
+import typer
 import typer.main
 from just_dna_compiler import cli as compiler_cli
 from just_dna_enricher import cli as enricher_cli
@@ -81,11 +82,16 @@ def _default(param: Any) -> str:
     return f"`{_clean(str(value))}`"
 
 
-def _type_name(param: Any) -> str:
-    """The parameter's type as the user sees it, with a flag pair spelled as a flag."""
+def _type_name(param: Any, ctx: typer.Context) -> str:
+    """The parameter's type as the user sees it, with a flag pair spelled as a flag.
+
+    Typer 0.29 dropped click's `Parameter.type` from its parameters; the name `--help` prints comes
+    from `display_type(ctx)` now, spelled `<dir>`, `<int range>`, `<list[str]>`. The brackets are
+    stripped so a cell reads as it did when it came from `type.name`.
+    """
     if getattr(param, "is_flag", False):
         return "flag"
-    name = getattr(param.type, "name", "") or ""
+    name = param.display_type(ctx).strip("<>")
     return f"`{name}`" if name else ""
 
 
@@ -110,10 +116,11 @@ def _parameter_rows(command: Any) -> tuple[list[str], list[str], set[str]]:
     arguments: list[str] = []
     options: list[str] = []
     rendered: set[str] = set()
+    ctx = typer.Context(command)
     for param in command.params:
         if param.param_type_name == "argument":
             arguments.append(
-                f"| `{param.name}` | {_type_name(param)} | {_default(param)} | "
+                f"| `{param.name}` | {_type_name(param, ctx)} | {_default(param)} | "
                 f"{_clean(getattr(param, 'help', None))} |"
             )
             rendered.add(param.name)
@@ -124,7 +131,7 @@ def _parameter_rows(command: Any) -> tuple[list[str], list[str], set[str]]:
         if not opts:
             continue
         spelled = " / ".join(f"`{o}`" for o in opts)
-        options.append(f"| {spelled} | {_type_name(param)} | {_default(param)} | {_clean(param.help)} |")
+        options.append(f"| {spelled} | {_type_name(param, ctx)} | {_default(param)} | {_clean(param.help)} |")
         rendered.add(param.name)
     return arguments, options, rendered
 
