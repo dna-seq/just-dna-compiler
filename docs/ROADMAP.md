@@ -2072,6 +2072,43 @@ reading a record whose `checked_at` predates their newest authoring edit as not 
 
 **Residuals** none yet.
 
+## RM427 — the ClinVar-pass skip tells the reader to run `clinvar pull`, and no app registers it
+
+**Severity** low · **Status** open — **asks 1 and 2 a patch, ask 3 a minor; the pm sizes** · **Owner** enricher
+(`assertions.py`, `cli/pass_commands.py`) · **Motivating case** S142 (CONSUMER_SUGGESTIONS_HISTORY.md) · *related*
+RM131, RM111, RM414
+
+**The defect.** With no ClinVar snapshot reachable, the clinical-assertion pass skips, and both of its skip lines
+name a command no app registers: `enrich_clinical_assertions` logs "Provision one with `just-dna-enricher clinvar
+pull`." (`assertions.py`), and the `assertions` command prints "provision one with `clinvar pull`"
+(`cli/pass_commands.py`). `just-dna-enricher clinvar` has `build`, `citations` and `publish`; the fetch is `cache
+pull --only clinvar`. The reporter's walk keyed on the `just-dna-*` prefix and found only the first; the second is
+still on 0.8.2 and `main`. Reproduced on `main` with a walk of every backticked span in the three `src/` trees whose
+first word (after an optional `just-dna-*`) is a group of either typer app: four hits, these two, and two
+`pharmvar publish` quotes that say on purpose there is no such command (`cli/pgx_commands.py`,
+`pharmvar_build.py`).
+
+**Ask 1, the wording (a patch).** Name what exists, in the idiom `caches.py` already uses for a missing parent:
+`cache pull --only clinvar`, or `clinvar build` for an operator building their own. A message rewording is a patch
+(RM111, RM414). Pin the new phrase (`@warning-text-is-api`); nothing pins the old one.
+
+**Ask 2, the guard (a patch).** That walk as a test: every backticked group-and-subcommand span in `src/` resolves
+to a registered command, or sits on a named list of deliberate absences (the two `pharmvar publish` lines). Walk the
+unprefixed spans too, since the prefixed-only walk missed the second site. Typer vendors its own click, so a group is
+found by `hasattr(cmd, "commands")`, not `isinstance` (the same trap as the docs generator's, in
+`@a-docs-site-nav-is-a-registry-over-a-directory-that-grows`). Prove it by reintroducing `clinvar pull` and watching
+it fail.
+
+**Ask 3, a structured remedy key (a minor).** A field on `hints.Finding`, and on whatever carries a validate or
+compile warning, naming the registered command that clears it, so a consumer maps by key rather than by reading the
+prose. A new public field, so a minor, and main takes patches only. Two facts for the sizing. The compile and validate
+channel already has a key of this kind: RM131's warning codes, one code per remediation by rule, so a consumer can
+already map those by code. The gap is the enricher's `logger.warning` lines, which carry no code, and this skip is
+one of them. The reporter's own reason against stands: a key covering only part of the remedies may mislead more than
+an honest text match, and ask 2 keeps the quotes true without it.
+
+**Residuals** none yet.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
