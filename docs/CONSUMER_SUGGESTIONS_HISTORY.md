@@ -7077,7 +7077,7 @@ message needs a new field on the public `GeneLocusConflict`, which makes that ha
 
 ## S142 — The ClinVar-pass skip tells the reader to run `just-dna-enricher clinvar pull`, and no command by that name exists
 
-**Status — filed as [RM427](ROADMAP.md#rm427--the-clinvar-pass-skip-tells-the-reader-to-run-clinvar-pull-and-no-app-registers-it): asks 1 and 2 a patch, ask 3 a minor; the pm sizes.** Confirmed, at two sites rather than one.
+**Status — filed as [RM427](ROADMAP_HISTORY.md#rm427--the-clinvar-pass-skip-tells-the-reader-to-run-clinvar-pull-and-no-app-registers-it): asks 1 and 2 a patch, ask 3 a minor; the pm sizes.** Confirmed, at two sites rather than one.
 The CLI's skip line did not go away on 0.8.2: it moved to `cli/pass_commands.py`, where the `assertions` command
 still prints "provision one with `clinvar pull`", on 0.8.2 and on `main`. Your walk keyed on the `just-dna-*` prefix,
 and that line has none. The same walk over unprefixed spans (any backticked span whose first word is a group of

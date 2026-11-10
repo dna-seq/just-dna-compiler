@@ -18,12 +18,14 @@ from just_dna_enricher.assertions import (
     snapshot_dataset,
 )
 from just_dna_enricher.caches import LANES_BY_NAME
+from just_dna_enricher.cli import app
 from just_dna_enricher.clinvar import clinvar_dataset_label
 from just_dna_enricher.clinvar_build import review_stars
 from just_dna_format.assertions import ClinicalAssertionRow
 from just_dna_format.layout import SOURCES_CSV, preferred_spelling
 from just_dna_format.sources import SourceRow
 from just_dna_format.vrs import derive_vrs_allele_id
+from typer.testing import CliRunner
 
 _LICENCE_CSV = preferred_spelling(SOURCES_CSV)
 
@@ -408,9 +410,6 @@ def test_a_split_module_is_written_and_reported_under_derived(tmp_path: Path) ->
     `derived/` is tolerated rather than canonical — a re-run must not create a second copy beside the
     one that is already there.
     """
-    from just_dna_enricher.cli import app
-    from typer.testing import CliRunner
-
     spec = _spec(tmp_path)
     derived = spec / "derived"
     derived.mkdir()
@@ -434,6 +433,33 @@ def test_no_snapshot_is_a_no_op_with_a_warning_not_a_failure(tmp_path: Path) -> 
     result = enrich_clinical_assertions(spec, offline=True, clinvar_cache=tmp_path / "nothing-here")
     assert result.skipped_no_snapshot and result.rows == []
     assert not (spec / "clinical_assertions.csv").exists()
+
+
+def test_the_skip_names_commands_that_exist(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """Both skip lines name the fetch and the build as the app registers them (RM427, S142).
+
+    They said `clinvar pull`, which no app registers: the fetch moved under `cache`, and an author who
+    copied the line got "No such command" on what is usually their first run. Pinned on the log line
+    and on the CLI's own line, run through the real paths, because the two are worded apart and one of
+    them survived a hand check by having moved file. `test_quoted_commands.py` holds every other quote
+    to the registered commands; this pins the phrase (`@warning-text-is-api`).
+    """
+    spec = _spec(tmp_path)
+    nothing = tmp_path / "nothing-here"
+    with caplog.at_level("WARNING", logger="just_dna_enricher.assertions"):
+        enrich_clinical_assertions(spec, offline=True, clinvar_cache=nothing)
+    assert (
+        "Provision one with `just-dna-enricher cache pull --only clinvar`, or build your own with "
+        "`just-dna-enricher clinvar build`." in caplog.text
+    )
+
+    result = CliRunner().invoke(app, ["assertions", str(spec), "--offline", "--clinvar-cache", str(nothing)])
+    assert result.exit_code == 0, result.output
+    assert (
+        "skipped: no ClinVar snapshot reachable (provision one with `cache pull --only clinvar`, "
+        "or build one with `clinvar build`)" in result.output
+    )
+    assert "clinvar pull" not in caplog.text + result.output
 
 
 def test_a_missing_resolution_table_refuses_and_says_which_pass_to_run(tmp_path: Path) -> None:

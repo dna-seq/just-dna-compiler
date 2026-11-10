@@ -41,6 +41,15 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-10 — RM427: the ClinVar-pass skip names commands that exist (patch, uncut)
+
+With no ClinVar snapshot reachable, the clinical-assertion pass told the reader to run `clinvar pull`, in its log
+line and in the `assertions` command's own line. No app registers that command; the fetch is `cache pull`. Both
+lines now read "provision one with `cache pull --only clinvar`, or build one with `clinvar build`" (the log line
+with the `just-dna-enricher` prefix). A new test resolves every command quoted in the three packages' sources
+against the two apps' command trees, so a quote left behind by a moved command fails the suite. Wording and a test
+only: no public name, field or check result moves. From S142.
+
 ## 2026-11-09 — RM426: the gene-versus-chromosome finding stops guessing which half is wrong (patch, uncut)
 
 `check-identifiers`' `GeneLocusConflict` closed on "a real symbol beside an invented rsID is what a machine-written

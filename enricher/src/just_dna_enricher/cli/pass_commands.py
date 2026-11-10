@@ -516,7 +516,8 @@ def assertions_(
         raise typer.Exit(code=1) from exc
     if result.skipped_no_snapshot:
         typer.secho(
-            "skipped: no ClinVar snapshot reachable (provision one with `clinvar pull`)",
+            "skipped: no ClinVar snapshot reachable (provision one with "
+            "`cache pull --only clinvar`, or build one with `clinvar build`)",
             fg=typer.colors.YELLOW,
         )
         return

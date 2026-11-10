@@ -251,7 +251,8 @@ def enrich_clinical_assertions(
         logger.warning(
             "Clinical-assertion pass skipped: no ClinVar snapshot is reachable%s. Any existing "
             "clinical_assertions.csv is kept as the pin; compiles stay reproducible from it. "
-            "Provision one with `just-dna-enricher clinvar pull`.",
+            "Provision one with `just-dna-enricher cache pull --only clinvar`, or build your own "
+            "with `just-dna-enricher clinvar build`.",
             " and --offline was given" if offline else "",
         )
         out = sorted(existing_rows, key=_sort_key)
