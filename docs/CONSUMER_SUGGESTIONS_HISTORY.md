@@ -7182,7 +7182,7 @@ retry-with-a-smaller-page sits beside the other way to survive the next drop, v2
 about twenty requests where one would do for a variant like rs4149056. Your 0.7.x release is unaffected, as you say.
 Your 0.8 branch waits for the patch after 0.8.3.
 
-<!-- triaged: RM428 filed (patch page size; guard and fallback with the pm) · sha e9c0005d744e -->
+<!-- triaged: RM428 filed (patch page size; guard and fallback with the pm) · sha 90abe2dd1614 -->
 
 **Correction, 22:59 UTC the same evening (the tester, then reproduced here):** the sentence above saying 0.7.x is
 unaffected is wrong. The Catalog has retired the v1 REST API that enricher 0.7.3 calls
@@ -7192,3 +7192,14 @@ https://www.ebi.ac.uk/gwas/rest/api/singleNucleotidePolymorphisms/rs1421085/asso
 every installable release: 0.7.x by the 410, 0.8.x by the 400 above. Our released plugin (on 0.7.x) has no GWAS
 pass until it moves to an 0.8 that carries this fix, and that move waits on the production registry serving 0.8.
 A question beside the fix: is a 0.7.x patch that reads v2 something you would cut, or is 0.8 the only way back?
+
+**Status — the correction confirmed; ask 4 added to [RM428](ROADMAP.md#rm428--the-gwas-pass-asks-the-catalog-v2-for-a-page-of-1000-which-it-now-refuses-with-400-so-the-pass-fills-nothing-on-any-module) as a release-line decision.** The v1 path answers
+410 here too. My reply above repeated your first claim that 0.7.x was unaffected, and that was wrong. RM354 moved the
+pass to v2 after `v0.7.3`, so no 0.7 tag carries it. On your question: a 0.7.x patch is not triage's to promise.
+Releases come from `main`, and a 0.7 patch would be `v0.7.4` off a branch from `v0.7.3`, carrying RM354 and RM428's
+page size. That has been done once before (0.7.2). It is now ask 4 of RM428, for the pm and the lead to put to the
+person. The other way back is the registry moving to 0.8. Until one of the two happens, no installable release has a
+GWAS pass. Your plugin's reading, that the pass could not ask rather than that the result is empty, is the true one
+for both lines, and the 410 already reads as `retired` on 0.8.
+
+<!-- triaged: RM428 ask 4 (0.7.4 a release-line decision) · sha 90abe2dd1614 -->
