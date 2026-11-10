@@ -63,12 +63,11 @@ None open.
   that one command; rule 13 was pasted afterwards, `automode.py --check` clean on 2026-11-08). Docs refresh merged (9c37d7db). Liaison's ledger updated
   (fe38e101). `CLAUDE.md`'s `@constraint-two-releases` headline changed on the maintainer's yes (59491cbf).
   RELEASE_CYCLE step 10 complete.
-- **0.8.3 cut, 2026-11-09, awaiting the maintainer's publish:** cut commit 725eb2bb on `main`, pushed (all three
-  packages 0.8.3; RM418, RM420, RM409, RM421, RM422, RM423; release record a measured zero over 22 modules; full suite
-  7374 passed, prerelease gates 26 passed with the network, strict docs build green). Dists built in the root `dist/`,
-  twine check passed. After the publish, step 10: tag `v0.8.3` on 725eb2bb, GitHub release, CLAUDE.md doc-map row and
-  README line 94 to 0.8.3. RM424 parked (a minor). `build/RM423` and `cut/v0.8.3` are cherry-picked, so `-D` is the
-  maintainer's. RM409's interrupt test failed once at load 30–48 (1.0 s bound): file if it recurs.
+- **0.8.3 released, 2026-11-10** (all three packages; RM418, RM420, RM409, RM421, RM422, RM423). On PyPI (the
+  maintainer); tag `v0.8.3` on 725eb2bb, pushed; GitHub release up; README and the CLAUDE.md doc map name 0.8.3
+  (67a514b8). RELEASE_CYCLE step 10 complete. RM424 parked (a minor). `build/RM423` and `cut/v0.8.3` are
+  cherry-picked, so `-D` is the maintainer's. RM409's interrupt test failed once at load 30–48 (1.0 s bound): file
+  if it recurs.
 - **Next patch on `main`, uncut (after 0.8.3):** RM425, RM426, RM427 (e7fa81d6, triage's: the ClinVar skip names `cache pull --only clinvar`, and a walk checks every quoted command), the fence test's hub-registry fix (11f86d74) and the liaison's first weekly dependency bump (867e8462, 4e30ef46; huggingface-hub 2.4.0, duckdb held at 1.5.5).
 - **Shipped in 0.8.3 (was the next patch):** RM409 shipped 2026-11-08 (e0ceaa28: Ctrl-C stops the Open Targets mirror and the
   AVI build within a chunk); RM421 filed from it, sized by the pm and shipped 2026-11-08 (83182f88: a 120 s default timeout in
