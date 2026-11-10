@@ -65,8 +65,7 @@ None open.
   RELEASE_CYCLE step 10 complete.
 - **0.8.3 released, 2026-11-10** (all three packages; RM418, RM420, RM409, RM421, RM422, RM423). On PyPI (the
   maintainer); tag `v0.8.3` on 725eb2bb, pushed; GitHub release up; README and the CLAUDE.md doc map name 0.8.3
-  (67a514b8). RELEASE_CYCLE step 10 complete. RM424 parked (a minor). `build/RM423` and `cut/v0.8.3` are
-  cherry-picked, so `-D` is the maintainer's. RM409's interrupt test failed once at load 30–48 (1.0 s bound): file
+  (67a514b8). RELEASE_CYCLE step 10 complete. RM424 parked (a minor). The 0.8.3 worktrees and branches were removed by the maintainer, 2026-11-10. RM409's interrupt test failed once at load 30–48 (1.0 s bound): file
   if it recurs.
 - **Next patch on `main`, uncut (after 0.8.3):** RM425, RM426, RM427 (e7fa81d6, triage's: the ClinVar skip names `cache pull --only clinvar`, and a walk checks every quoted command), the fence test's hub-registry fix (11f86d74) and the liaison's first weekly dependency bump (867e8462, 4e30ef46; huggingface-hub 2.4.0, duckdb held at 1.5.5).
 - **Shipped in 0.8.3 (was the next patch):** RM409 shipped 2026-11-08 (e0ceaa28: Ctrl-C stops the Open Targets mirror and the
