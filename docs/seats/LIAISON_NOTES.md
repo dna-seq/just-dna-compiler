@@ -54,7 +54,7 @@ word is desk #246 (default: it stands). **First bump 2026-11-10** (867e8462, 4e3
 held at 1.5.5 for RM344; typer 0.29 dropped `Parameter.type`, so `scripts/gen_cli_pages.py` reads `display_type`.
 One test red on main before and after, the fence test's `huggingface_hub` case: hub fetches its agent-harness
 registry from the global endpoint and the test passes only within a day of a real hub call. Fix on
-`liaison/hf-hub-2.4` (343c559c) for the lead; its first commit's "2.4 broke it" is corrected by its second.
+`liaison/hf-hub-2.4` (343c559c); the lead took its six lines to main as 11f86d74 (2026-11-10).
 Lesson: before blaming a moved package, run the failing test on the old lock.
 
 **Fellow liaison:** just-dna-registry/liaison (seated 2026-11-04) stands on fastapi, huggingface-hub, and polars and
