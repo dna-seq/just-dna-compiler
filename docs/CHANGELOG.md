@@ -59,7 +59,9 @@ Format and the enricher move because each changed source since `v0.8.3`: format 
 RM427 and RM428. The compiler's source did not change. It moves because its floor must name the format's current
 version (`test_workspace_versions`), so its `pyproject.toml` changes, and a published 0.8.3 cannot take a second
 set of metadata. The enricher's floors are `just-dna-format>=0.8.4` and `just-dna-compiler>=0.8.4`, the
-compiler's `just-dna-format>=0.8.4`. Nothing adds a public name, field, table, flag or warning code.
+compiler's `just-dna-format>=0.8.4`. One public attribute is new, `GwasCatalogClient.size_refusals` (RM428's
+count of refused first pages; a patch should not have added it, and RM429 puts it on the result in the next minor).
+Nothing else adds a public name, field, table, flag or warning code.
 
 - **What it carries:** RM425 (`effect_size`'s description names the single strongest track), RM426
   (`GeneLocusConflict` names both readings of a gene paired with a variant on another chromosome), RM427 (the
