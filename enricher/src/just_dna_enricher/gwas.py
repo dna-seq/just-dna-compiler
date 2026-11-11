@@ -44,10 +44,13 @@ rs_id=`), not from its migration guide, and these findings shaped the pass:
   `pvalue_mantissa`/`pvalue_exponent` beside it still say `3e-493`; the verbatim string is built
   from the pair, and the queryable number is read from that same string.
 
-**Rate limits are NOT established.** EBI publishes no numeric budget that could be found, which makes
-this pass unlike `gnomad.py`, whose 10-requests-per-60-seconds is real, documented and load-bearing.
-The gate here is a conservative default rather than a transcribed limit, and it is spelled that way so
-nobody later "corrects" it against a number that does not exist.
+**The published budget is generous, and the gate is not it.** The v2 docs page
+(`https://www.ebi.ac.uk/gwas/rest/api/v2/docs`, "Throttling", read 2026-11-11) says "Users of the API are
+limited to 15 queries per second ... If the limit is exceeded, the API will slow down subsequent calls."
+An excess slows rather than refuses, unlike `gnomad.py`, whose 10-requests-per-60-seconds is load-bearing.
+The gate here (one request a second) stays a conservative default well under that budget, not a
+transcription of it, so nobody "corrects" it up to 15 per second against a server that never refused.
+The page states no page-size ceiling; RM428's 500 is measured only.
 """
 
 import csv
@@ -123,8 +126,9 @@ _BETA_GRAMMAR = re.compile(r"^(?P<size>\S+)(?:\s+(?P<unit>.*?))?\s+(?P<direction
 #: above 500 was a bare 400 (RM428). Measured, never documented; the opt-in live test re-asks it.
 _PAGE_SIZE = 500
 
-#: Seconds between requests. **Not a transcribed limit** — see the module docstring. Conservative
-#: because the pass can issue several requests per variant and EBI publishes no budget to respect.
+#: Seconds between requests. **Not a transcribed limit** — see the module docstring. Conservative,
+#: well under the 15 queries a second the v2 docs page publishes, because the pass can issue several
+#: requests per variant and an excess slows every later call.
 DEFAULT_REQUEST_INTERVAL = 1.0
 
 
