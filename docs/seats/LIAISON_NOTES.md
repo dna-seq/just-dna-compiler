@@ -57,11 +57,10 @@ registry from the global endpoint and the test passes only within a day of a rea
 `liaison/hf-hub-2.4` (343c559c); the lead took its six lines to main as 11f86d74 (2026-11-10).
 Lesson: before blaming a moved package, run the failing test on the old lock.
 
-**A candidate upstream, `unattended`:** the GWAS Catalog REST API v2, under `gwas.py`. RM428 (S143, 2026-11-10/11)
-shows it matters: the Catalog began refusing `size` above 500 with a bare 400, and retired v1 (410), so the GWAS pass
-filled nothing on any module for days, unseen by any watcher. The fix is the lead's and triage's (0.8.4). Mine: a
-ledger `docs/UPSTREAM_GWAS_CATALOG.md` (what `gwas.py` uses, the API's changelog or release notes if it keeps one,
-and a weekly probe of the page limit with the bump), built at the next idle turn.
+**GWAS Catalog REST v2** (`docs/UPSTREAM_GWAS_CATALOG.md`, since 2026-11-11, after RM428): a live service, no
+package or clone; its release channel is the news page (read through the 2026-08-19 post). A weekly probe of the page
+ceiling (500), the legacy 410 and the data release rides with the bump. Its first verdict: the docs now publish a
+15-queries-per-second throttle, which `gwas.py`'s docstring says does not exist; a docstring fix, sent to the lead.
 
 **Fellow liaison:** just-dna-registry/liaison (seated 2026-11-04) stands on fastapi, huggingface-hub, and polars and
 duckdb through our tiers. A defect in a library under both of us is raised with each other first, so it is filed once. **longevity-loci/liaison** (seated 2026-11-05) stands on us: just-dna-enricher 0.7.3, compiler 0.7.2, format 0.7.1 from PyPI, and the module-creator plugin v0.48.0. It watches our tags, asks us before mapping our 0.8 branches, and polls us before filing a shared defect; answer such a poll in `agent-chat`.
