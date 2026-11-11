@@ -2100,6 +2100,77 @@ the place where a result reader looks, and the client's field stays as it is.
 
 **Residuals** none yet.
 
+## RM430 — no snapshot reader takes a remote root: a URL collapses in `Path`, and every resolve, release read and connector checks the local disk
+
+**Severity** medium · **Status** open — **a minor (new accepted inputs on public readers); the pm sizes** · **Owner**
+enricher (`locations`, `clinvar`, `resolver`, `gene_metrics`, `cpic`) + format (a bytes-level release parser at most)
+· **Motivating case** S145 asks 1 to 3 (CONSUMER_SUGGESTIONS_HISTORY.md) · *related* RM431, RM432, RM339
+
+**The gap.** The registry wants its proxy to answer keyed lookups from a lane's published Hugging Face repo when the
+box holds no local snapshot, through these readers rather than a second reader of our layout. Its lead measured
+that the keyed SQL already prunes remote row groups (ClinVar `lookup_clin_sig` 3.1 s and about 2.4 MB;
+`resolver.lookup_loci` by position 3.5 s and about 5.4 MB of 200 MB). What stops it is path handling, checked here on
+`main`. `Path("hf://datasets/a/b")` is `hf:/datasets/a/b`. `locations._resolve_parquet_cache` answers by `is_dir()`
+and a glob, so every `resolve_*_reference` gives `None` for a remote root. `just_dna_format.snapshot.read_release`
+joins a `Path` and tests `is_file()`. The connectors (`clinvar._connect` and the reporter's list: `resolver._connect`,
+`gene_metrics._snapshot_parquet`, `CpicSnapshotClient`) coerce to `Path` and check existence locally.
+
+**The asks.** (1) A remote root survives: a URL string handed back unchanged, or a `remote_reference(lane)` built
+from `SNAPSHOT_REPO_IDS`. (2) `release.json` and Ensembl's `manifest.json` are read from a remote root. (3) The
+connectors take `str | Path`, leave a URL scheme uncoerced, and let duckdb raise rather than checking the local
+disk.
+
+**A charter line for ask 2.** The Constitution's Goals put the snapshot layout and `release.json`'s model in
+`just-dna-format`, and say that tier "reads no environment and fetches nothing; where a snapshot lives on a
+machine, and how it is fetched, stay in the network tier". So `read_release` itself cannot read through fsspec. The
+fetch belongs in the enricher, and the format tier at most gains a parser that takes the record's bytes or text.
+Asks 1 to 3 are the ones the reporter says unblock everything else.
+
+**Two facts from the measurement.** The ClinPGx and CPIC mirrors read anonymously. duckdb's `httpfs` must be
+installed ahead of time on a server with no route to the extension repository. A remote read that fails is the
+case RM432 makes visible.
+
+**Residuals** none yet.
+
+## RM431 — the keyed readers a remote lookup needs: an rsID index for Ensembl, and a key on the whole-table readers
+
+**Severity** low · **Status** open — **a minor (new parameters, a new public function, a new published artifact);
+the pm sizes** · **Owner** enricher · **Motivating case** S145 asks 4 to 7 (CONSUMER_SUGGESTIONS_HISTORY.md) ·
+*related* RM430, RM405
+
+**The asks, as the reporter measured and read them.** (4) Ensembl by rsID alone cannot prune: the split repo's `id`
+column is about 6.1 GB over 25 files, and each row group spans rs1 to rs9…, so `lookup_loci` by rsID reads nearly
+everything. Ask: an rsID-sorted index (rsID → chrom, start) published beside it, consulted first. This is RM405's
+missing rsID index, met from the remote side. (5) The whole-table readers (`clinpgx.load_snapshot`, the drug-label
+reader, the CIViC row reader, `ClinVarGkmWitness.load`) take a key with pushdown. STRchive's 526 KB catalogue stays
+whole. (6) Open Targets gets a public keyed function joining on chrom + position, not `variant_id` (about 55 MB read
+for one lookup, measured). (7) `alphagenome_check.read_local_scores` lists contig files and reads them without a
+local glob or `Path.stem`. Asks 4 to 7 build on RM430. Each is useful without the others, so the pm may split them.
+
+**Residuals** none yet.
+
+## RM432 — two snapshot readers answer an unreadable reference with an empty result, which reads as "nothing found"
+
+**Severity** medium · **Status** open — **the pm sizes (a raise is a behaviour change on two public readers; a
+sibling flag is a new public name)** · **Owner** enricher (`gene_metrics`, `civic_refutation`, `civic_citations`) ·
+**Motivating case** S146 (CONSUMER_SUGGESTIONS_HISTORY.md) · *related* RM361, RM430
+
+**The defect.** `gene_metrics.lookup_snapshot` returns `{}` when `_snapshot_parquet(reference)` finds no parquet.
+`civic_refutation.civic_snapshot_rows` returns `[]` when the parquet does not exist. Both were checked on `main`. A
+caller handed a reference that cannot be read gets the value of a lookup that ran and found nothing. That is the
+house rule RM361 enforced elsewhere: an unread input is never recorded as a definite answer. Inside the workspace,
+the two passes mostly guard the reference before calling. `resolve_*_reference` answers only for a directory that
+holds a parquet, and `compare_refutations` reads an empty list as "missing or unreadable" and skips, which is right
+only because a real CIViC snapshot is never empty. `civic_citations._snapshot_variant_ids` turns an unreadable given
+reference into an empty map, so every variant falls through to the curated table. Today a misconfigured path reaches
+this. With RM430, a failed remote read would reach it too.
+
+**The ask.** Raise on an unreadable reference (the `*Unavailable` family, or a plain error), and keep `{}`/`[]` for
+a lookup that ran and found nothing. Or, if a raise would break a caller relying on the empty value, add a sibling
+flag saying the snapshot was not read. The reporter calls neither reader directly today, so nothing is blocked.
+
+**Residuals** none yet.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
