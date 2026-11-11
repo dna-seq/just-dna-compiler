@@ -2074,7 +2074,7 @@ reading a record whose `checked_at` predates their newest authoring edit as not 
 
 ## RM429 — `GwasResult` carries no count of the page-size refusals RM428 counts, so a caller over MCP never sees the Catalog's ceiling move
 
-**Severity** low · **Status** open — **a minor (a new field on a public result type); the pm sizes** · **Owner**
+**Severity** low · **Status** open — **a minor, parked** · **Owner**
 enricher (`gwas.py`) · **Motivating case** S144 (CONSUMER_SUGGESTIONS_HISTORY.md) · *related* RM428, RM354, RM100
 
 **The gap.** RM428 counts each first request the Catalog refused for its `size` on the client
@@ -2098,11 +2098,16 @@ and it landed on `main` in RM428's patch. Under the same rule it would have take
 and RM403's names did in `b6ea746a`. It is published now, so taking it back would be a removal. RM429's field is
 the place where a result reader looks, and the client's field stays as it is.
 
+**Sizing (pm, 2026-11-11): parked.** No refusal has happened since RM428 (the reporter's live run saw none), a caller
+can read the count today through the client it injects, and the field is a minor with no zone to go in. **Unparks**
+on a run that reports a counted refusal, or a consumer that cannot inject its own client. Then it is a near-free
+field and rides whichever minor is open.
+
 **Residuals** none yet.
 
 ## RM430 — no snapshot reader takes a remote root: a URL collapses in `Path`, and every resolve, release read and connector checks the local disk
 
-**Severity** medium · **Status** open — **a minor (new accepted inputs on public readers); the pm sizes** · **Owner**
+**Severity** medium · **Status** open — **a minor, parked** (asks 1 to 3; the 0.9 zone is on the desk, #261) · **Owner**
 enricher (`locations`, `clinvar`, `resolver`, `gene_metrics`, `cpic`) + format (a bytes-level release parser at most)
 · **Motivating case** S145 asks 1 to 3 (CONSUMER_SUGGESTIONS_HISTORY.md) · *related* RM431, RM432, RM339
 
@@ -2130,12 +2135,18 @@ Asks 1 to 3 are the ones the reporter says unblock everything else.
 installed ahead of time on a server with no route to the extension repository. A remote read that fails is the
 case RM432 makes visible.
 
+**Sizing (pm, 2026-11-11): parked until the maintainer names it a zone.** A minor takes only the zones the maintainer
+names, and a consumer waiting on it is the case for naming it, not a zone by itself. Put to the maintainer on desk #261
+with the recommendation to name asks 1 to 3 alone a 0.9 zone (about a day; it keeps the registry off a second reader
+of our layout, which would break silently on our next layout change). **Unparks** when the maintainer names remote
+snapshot reads a zone. Built, it lands with RM432's patch already in, so a failed remote read raises rather than
+answering empty. On silence it stays parked and returns when 0.9's scope is chosen.
+
 **Residuals** none yet.
 
 ## RM431 — the keyed readers a remote lookup needs: an rsID index for Ensembl, and a key on the whole-table readers
 
-**Severity** low · **Status** open — **a minor (new parameters, a new public function, a new published artifact);
-the pm sizes** · **Owner** enricher · **Motivating case** S145 asks 4 to 7 (CONSUMER_SUGGESTIONS_HISTORY.md) ·
+**Severity** low · **Status** open — **a minor, parked** · **Owner** enricher · **Motivating case** S145 asks 4 to 7 (CONSUMER_SUGGESTIONS_HISTORY.md) ·
 *related* RM430, RM405
 
 **The asks, as the reporter measured and read them.** (4) Ensembl by rsID alone cannot prune: the split repo's `id`
@@ -2147,12 +2158,16 @@ whole. (6) Open Targets gets a public keyed function joining on chrom + position
 for one lookup, measured). (7) `alphagenome_check.read_local_scores` lists contig files and reads them without a
 local glob or `Path.stem`. Asks 4 to 7 build on RM430. Each is useful without the others, so the pm may split them.
 
+**Sizing (pm, 2026-11-11): parked, not split yet.** Ask 4 is RM405's rsID index and unparks with RM405. Asks 5 to 7
+are speed: each is worth building only once a remote lookup through RM430's readers is measured too slow or too large
+for the registry's proxy. **Unparks**, per ask, on that measurement, which needs RM430 shipped but not this item.
+Splitting waits until one ask unparks alone.
+
 **Residuals** none yet.
 
 ## RM432 — two snapshot readers answer an unreadable reference with an empty result, which reads as "nothing found"
 
-**Severity** medium · **Status** open — **the pm sizes (a raise is a behaviour change on two public readers; a
-sibling flag is a new public name)** · **Owner** enricher (`gene_metrics`, `civic_refutation`, `civic_citations`) ·
+**Severity** medium · **Status** open — **a patch, `unattended`** (a raise of `FileNotFoundError`; no new name) · **Owner** enricher (`gene_metrics`, `civic_refutation`, `civic_citations`) ·
 **Motivating case** S146 (CONSUMER_SUGGESTIONS_HISTORY.md) · *related* RM361, RM430
 
 **The defect.** `gene_metrics.lookup_snapshot` returns `{}` when `_snapshot_parquet(reference)` finds no parquet.
@@ -2168,6 +2183,19 @@ this. With RM430, a failed remote read would reach it too.
 **The ask.** Raise on an unreadable reference (the `*Unavailable` family, or a plain error), and keep `{}`/`[]` for
 a lookup that ran and found nothing. Or, if a raise would break a caller relying on the empty value, add a sibling
 flag saying the snapshot was not read. The reporter calls neither reader directly today, so nothing is blocked.
+
+**Sizing (pm, 2026-11-11): a patch, `unattended`, about an hour.** The failure is silent: given a mistyped
+`--civic-snapshot`, the citations pass falls back to the curated table for every variant and says nothing, so the
+operator believes the snapshot was read. That alone earns a patch, however rare the mistype.
+
+- **Raise, not a flag.** A flag a caller can ignore is the same silence. Raise the built-in `FileNotFoundError`, which
+  names the path and adds no public name, so it stays patch scope. Neither reader has an error type of its own, and
+  minting one would be a minor.
+- **`{}`/`[]` keep meaning "read, and nothing matched".**
+- **The three internal callers catch it and report could-not-read**, never empty: `gene_metrics` at its
+  `lookup_snapshot` call, `compare_refutations`, and `civic_citations._snapshot_variant_ids`. This is the fix's own risk,
+  so a test drives each of the three with a reference that is not there.
+- **Declared** in the CHANGELOG and INTEGRATION_0_8's known-issues list as a behaviour change for a direct caller.
 
 **Residuals** none yet.
 
@@ -2692,6 +2720,9 @@ possibly already satisfied, and the rest sound** — the sweep's value is mostly
 | **RM405** — the offline floor is four unindexed snapshot queries (parked 2026-11-07) | a consumer reports offline enrichment time as a problem, or the snapshot builder offers an rsID-sorted layout | **Sound.** The `Sn` inbox is open, and the layout is another repository's to offer. |
 | **RM406** — dbSNP witnesses only REST's subjects (parked 2026-11-07) | RM398's build counts dbSNP-versus-snapshot disagreements on the registry's replay, or a consumer reports a misplacement outside REST's subjects | **Sound.** RM398 is the next patch and its build step produces the count; the `Sn` inbox is S117's and S132's channel. |
 | **RM424** — a verification record carries no binding of its own (parked 2026-11-09) | a reader asks which checks are current without re-running them, or wants the history RM423 drops | **Sound.** Readers of `verification.json` exist today, and S139's reporter already proposes approximating the first from `checked_at`. |
+| **RM429** — `GwasResult` carries no count of page-size refusals (parked 2026-11-11) | a run that reports a counted refusal, or a consumer that cannot inject its own `GwasCatalogClient` | **Sound.** The client counts refusals today, and the Catalog can lower its ceiling at any time. |
+| **RM430** — snapshot readers take no remote root (parked 2026-11-11) | the maintainer names remote snapshot reads a zone (desk #261) | **Sound.** A decision, answerable now. |
+| **RM431** — keyed readers and an rsID index for remote lookups (parked 2026-11-11) | per ask, a remote lookup through RM430's readers measured too slow or too large; ask 4 with RM405 | **Sound** once RM430 ships, which needs nothing from this item; while RM430 is parked, the gate waits on the maintainer's decision for it, not on this item. |
 | **RM15** / **RM69** / **RM52** and the 1.0 queue | a major-version bump | **Sound, and not this kind of gate.** A release boundary is a schedule, not a satisfier. |
 
 **What the sweep did not find, stated so it is not re-run for a while.** No gate anywhere is parked on

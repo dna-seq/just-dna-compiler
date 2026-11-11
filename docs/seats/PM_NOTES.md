@@ -78,6 +78,10 @@ patches right after real use started, so the pm reads an audit sceptically: the 
 
 ## Open questions and owed work
 
+- **Desk #261, remote snapshot reads as a 0.9 zone (RM430, the registry's ask)**, filed 2026-11-11, S3.
+  Recommended: asks 1 to 3 alone. On silence RM430 and RM431 stay parked; raise it again with RM424 when 0.9's scope
+  is chosen.
+
 
 - **Re-ask the trust register after the 1.0 cut** (`docs/TRUST.md`, the base rule for a repo whose code can
   reach private things). The maintainer, 2026-11-08, through the lead: "lowprio, PM to reask after 1.0". Not
