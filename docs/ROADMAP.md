@@ -2072,6 +2072,34 @@ reading a record whose `checked_at` predates their newest authoring edit as not 
 
 **Residuals** none yet.
 
+## RM429 — `GwasResult` carries no count of the page-size refusals RM428 counts, so a caller over MCP never sees the Catalog's ceiling move
+
+**Severity** low · **Status** open — **a minor (a new field on a public result type); the pm sizes** · **Owner**
+enricher (`gwas.py`) · **Motivating case** S144 (CONSUMER_SUGGESTIONS_HISTORY.md) · *related* RM428, RM354, RM100
+
+**The gap.** RM428 counts each first request the Catalog refused for its `size` on the client
+(`GwasCatalogClient.size_refusals`). It adds them to `requests_made` and logs one warning per run when any occurred.
+`GwasResult` carries no count of its own. A caller that runs the pass in process and hands the result on, as the
+reporter's plugin does to an agent over MCP, never reads the server's log. On that path the only trace is
+`requests_made` rising by one per refused rsID, which reads as ordinary cost. The pass still succeeds at the
+Catalog's default page, so nothing else prompts a look. This is the shape `@dont-discard-computed` names: the pass
+computes the number and then leaves it out of the place where it reports every other cost (`p_value_underflows`,
+`unparsed_effects`, `unusable`). Today the Catalog accepts 500. The reporter's lead measured 0.8.4 live (rs1421085,
+223 associations, no refusal), so this concerns the next drop, not a failure now.
+
+**The ask.** `size_refusals: int = 0` on `GwasResult`, set from the count the pass already keeps as
+`size_refusals`. The CLI's summary line prints it beside the other counts. It is a new field on a public type, so it
+is a minor under RELEASE_CYCLE's rule for `main`. With no minor branch open, it is filed and waits.
+
+**Two facts for the sizing.** First, 0.8.4 as published already gives a caller the number. `enrich_gwas` takes
+`client=`, and `GwasCatalogClient.size_refusals` is a public field. A caller that injects its own client and reads
+the field after the run has the count today, with no log parsing. Second, that field is itself a new public name,
+and it landed on `main` in RM428's patch. Under the same rule it would have taken a leading underscore, as RM401's
+and RM403's names did in `b6ea746a`. It is published now, so taking it back would be a removal. RM429's field is
+the place where a result reader looks, and the client's field stays as it is.
+
+**Residuals** none yet.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
