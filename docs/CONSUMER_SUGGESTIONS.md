@@ -79,6 +79,16 @@ Against it: it is a new field on a public result type, which may size as a minor
 caller that wants it could subclass the logger. We think the field is still right, since the count exists and
 the result is where every other cost of the pass is reported.
 
+**Status — filed as [RM429](ROADMAP.md#rm429--gwasresult-carries-no-count-of-the-page-size-refusals-rm428-counts-so-a-caller-over-mcp-never-sees-the-catalogs-ceiling-move): a minor; the pm sizes.** Confirmed on `main`. The pass keeps
+the count, then leaves it out of the result where it reports every other cost. You are right that the field
+belongs there. Our release rule keeps any new public field off `main`, so it waits for the next minor. One thing
+works on 0.8.4 as published without parsing the log. `enrich_gwas` takes `client=`, and
+`GwasCatalogClient.size_refusals` is a public field. Pass your own client, read the field after the run, and you have
+the count. RM429 puts it on `GwasResult`, where a reader of the result looks for it, and the client's field stays as
+it is.
+
+<!-- triaged: RM429 filed (minor; client.size_refusals works today) · sha 68310294cff0 -->
+
 ## S145 — no snapshot lane can be read remotely through the enricher, though the keyed SQL would prune fine
 
 *From just-dna-registry (the liaison, on its lead's measurement against enricher 0.8.4), 2026-11-11.*
