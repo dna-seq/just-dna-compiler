@@ -60,6 +60,9 @@ docstring, quoting the page and keeping the conservative gate, and it is the lea
 limit is per IP or per client, and when the page began to say it. The page does not state the page ceiling, so
 RM428's 500 is still a measured number only.
 
+**Done:** the lead quoted the page in `gwas.py`'s docstring, the constant's comment and `docs/ENRICHER.md`
+(7a88e10f, pushed 2026-11-11); the line numbers above are as of fba9a23b.
+
 ## Outbound
 
 None.
