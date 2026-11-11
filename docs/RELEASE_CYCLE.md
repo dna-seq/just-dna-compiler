@@ -84,10 +84,16 @@ was rebuilt from `v0.7.2` with the patch-scope commits only, and the five moved 
 **One number per cut (from `v0.7.4`).** A cut's tag names the release, `vX.Y.Z`, and **every package
 that changed since the previous tag takes that same number**, skipping whatever its own line never
 used; a package that did not change keeps its version and is not built. Every intra-workspace floor
-names its dependency's current version, as `test_workspace_versions` already requires: the release
-number for a dependency that moved in this cut, its old version for one that did not. Worked example: after `v0.7.3` (format 0.7.1,
-compiler 0.7.2, enricher 0.7.3), a cut changing format and enricher is `v0.7.4` with format **0.7.4**,
-enricher **0.7.4**, compiler staying 0.7.2, and enricher's floors `format>=0.7.4, compiler>=0.7.2`.
+names its dependency's current version, as `test_workspace_versions` requires: the release number for a
+dependency that moved in this cut, its old version for one that did not. **A floor that moves is a change**:
+it edits the dependent's `pyproject.toml`, and a published version cannot take a second set of metadata, so
+the dependent moves too. In practice the compiler moves whenever format does, and the enricher whenever
+either does. Worked example: after `v0.7.3` (format 0.7.1, compiler 0.7.2, enricher 0.7.3), a cut changing
+the enricher alone is `v0.7.4` with enricher **0.7.4**, format and compiler keeping 0.7.1 and 0.7.2, and the
+enricher's floors `format>=0.7.1, compiler>=0.7.2`; a cut changing format moves all three. `v0.8.4` was the
+first cut where this decided it: the compiler's source had not changed, and it moved to 0.8.4 for its floor
+on format (desk #259 records the choice; until 2026-11-11 the example here showed a compiler staying behind a
+moved format, which the test refuses).
 A skipped number is legal SemVer and legal on PyPI. The gain is that the tag and every moved package
 say one number, so "which versions are in this release" has one answer. `v0.7.3` was the last cut that
 bumped each package by one on its own line (format 0.7.1, compiler 0.7.2, enricher 0.7.3), already
