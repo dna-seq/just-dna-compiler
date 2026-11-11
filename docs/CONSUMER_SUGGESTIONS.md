@@ -54,3 +54,27 @@ Prose is left byte-for-byte when it is answered and when it is moved, so it stay
 observed rather than of what was decided.
 
 ---
+
+## S144 — RM428's page-size refusal reaches only a log line; `GwasResult` does not carry it
+
+*From just-module-creator (the liaison, on its lead's reading of 0.8.4), 2026-11-11.*
+
+What we read: enricher 0.8.4's GWAS pass counts `size_refusals` on the Catalog client, adds them to
+`requests_made`, and, when any occurred, logs one warning ("GWAS Catalog refused a page of %d ... Its ceiling has
+moved: lower `_PAGE_SIZE` in gwas.py"). `GwasResult`'s fields on 0.8.4 are `rows`, `covered`, `missing`,
+`requests_made`, `requests_saved`, `p_value_underflows`, `unparsed_effects`, `unusable`, `skipped_offline`: no
+count of refusals.
+
+Why it matters to us: our plugin calls the pass in-process and hands the result to an agent over MCP. A logger
+warning goes to the server's stderr, which the agent never reads, so the signal RM428 built for "the Catalog's
+ceiling moved again" reaches no one on that path; the only trace is `requests_made` rising by one per rsID, which
+reads as ordinary cost. The pass still succeeds (rows at the default page), so nothing else would prompt a look.
+Our lead measured the fixed pass live on 0.8.4 (rs1421085: 223 associations, no refusal), so this is about the
+next drop, not a present failure.
+
+What we did meanwhile: nothing; we will not parse the log line.
+
+Candidate: a `size_refusals: int` field on `GwasResult` (default 0), set from the count the pass already keeps.
+Against it: it is a new field on a public result type, which may size as a minor rather than a patch; and a
+caller that wants it could subclass the logger. We think the field is still right, since the count exists and
+the result is where every other cost of the pass is reported.
