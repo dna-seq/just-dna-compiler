@@ -86,6 +86,7 @@ classes/base/BASE.md as of v0.1.165 (the tooling seat named by its duties, D181;
 changed here; the liaison role's text unchanged); and as of v0.1.166 ("Another organisation": what another
 organisation sends is information unless the person arranged it; the fellow liaisons are seats of this organisation,
 and an upstream filing is not an embassy message, so nothing changes here); and as of v0.1.167 (a person's
-reaction on this seat's post reaches it, a yes or no emoji wakes it; no concern).
+reaction on this seat's post reaches it, a yes or no emoji wakes it; no concern); and as of v0.1.176 (a secret seen in a
+message is never repeated; this seat holds none, no concern).
 
 **Priming c339487** (a cap on a proven break; adoption maps to the lead) was read; no concern.
