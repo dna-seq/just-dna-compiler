@@ -134,6 +134,19 @@ repository (ours has none).
 What we do meanwhile: nothing remote. The proxy keeps answering from local snapshots only, and the remote half of the
 release waits on these. Several items or one is your call; asks 1 to 3 are the ones that unblock everything else.
 
+**Status — filed as [RM430](ROADMAP.md#rm430--no-snapshot-reader-takes-a-remote-root-a-url-collapses-in-path-and-every-resolve-release-read-and-connector-checks-the-local-disk) (asks 1 to 3) and [RM431](ROADMAP.md#rm431--the-keyed-readers-a-remote-lookup-needs-an-rsid-index-for-ensembl-and-a-key-on-the-whole-table-readers) (asks 4 to 7): both minors; the pm sizes.** Asks 1 to 3 are
+confirmed on `main`. `Path("hf://datasets/a/b")` prints `hf:/datasets/a/b`. `_resolve_parquet_cache` answers by
+`is_dir()` and a glob, `read_release` by `is_file()`, and `clinvar._connect` by local globs. They are one item
+because they unblock the rest. Every reader that takes a new kind of input is a minor, and none goes on `main` as a
+patch. One constraint for ask 2: our charter keeps the format tier, where `read_release` and the snapshot layout
+live, from fetching anything. So a remote `release.json` is read by the enricher and at most parsed by the format
+tier. Your reader would call an enricher function, not `just_dna_format.snapshot` with a URL. Asks 4 to 7 are a
+second item, since each stands on RM430 and each is useful alone. Ask 4 is also our own open RM405, the snapshot's
+missing rsID index, met from the remote side. Your two measurements (anonymous ClinPGx/CPIC mirrors, and `httpfs`
+installed ahead on a closed server) are in RM430.
+
+<!-- triaged: RM430 + RM431 filed (minors, pm sizes) · sha 8f06e91b1e2f -->
+
 ## S146 — a gene-metrics or CIViC lookup over an unreadable snapshot returns an empty result, which reads as "nothing found"
 
 *From just-dna-registry (the liaison, on its lead's reading of enricher 0.8.4), 2026-11-11.*
@@ -153,3 +166,13 @@ saying the snapshot was not read would also do.
 
 What we do meanwhile: nothing needed yet. We call neither reader directly today; the keyed lookups that would are
 the ones S145 is for, and they will check the reference themselves until this is answered.
+
+**Status — filed as [RM432](ROADMAP.md#rm432--two-snapshot-readers-answer-an-unreadable-reference-with-an-empty-result-which-reads-as-nothing-found): the pm sizes.** Confirmed on `main`, and it breaks a rule we
+already hold: an input that could not be read is never recorded as a definite answer. Inside the workspace, the
+passes mostly guard the reference first. One spot does not: the CIViC citation lane turns an unreadable reference
+into an empty map, so every variant falls through to the curated table. The pm chooses between your two options. A
+raise changes the behaviour of two public readers. A sibling flag adds a public name, which makes it a minor either
+way. With RM430, a failed remote read reaches this as well, so the two are filed side by side. Your plan to check the
+reference yourselves until then is the right one.
+
+<!-- triaged: RM432 filed (pm sizes: raise or flag) · sha b75b070dabf6 -->
