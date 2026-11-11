@@ -67,15 +67,11 @@ None open.
   maintainer); tag `v0.8.3` on 725eb2bb, pushed; GitHub release up; README and the CLAUDE.md doc map name 0.8.3
   (67a514b8). RELEASE_CYCLE step 10 complete. RM424 parked (a minor). The 0.8.3 worktrees and branches were removed by the maintainer, 2026-11-10. RM409's interrupt test failed once at load 30–48 (1.0 s bound): file
   if it recurs.
-- **0.8.4 cut, 2026-11-11, waiting on the maintainer's publish** (all three packages; RM425, RM426, RM427, RM428).
-  Cut commit 36cbc20f on `main`, pushed (prepared on `cut/v0.8.4` as d35c8525 and cherry-picked). Record: a measured
-  zero over 22 modules. Gates at the cut: full suite 7359 passed, 180 skipped; prerelease gates 26 passed with the
-  network; sweep covers 0.8.4; strict docs green. The compiler moves only because `test_workspace_versions` holds
-  its format floor equal to format's version; RELEASE_CYCLE now says so (307a5ae3, desk #259's default, applied
-  while the maintainer was away; revert if they pick loosening the test). The publish is desk #258 (`blocked`). Dists in `dist/`, `twine check` (7.0.0; 6.1.0 refuses the enricher's metadata 2.5, as
-  0.8.3's published wheel has) passed. Release notes: scratchpad `release_notes_0_8_4.md`. After the publish: tag
-  `v0.8.4` on 36cbc20f, GitHub release, docs refresh (README, CLAUDE.md doc map), remove nothing; unlock
-  `wt-cut-084`, `git branch -d cut/v0.8.4` (needs -D: cherry-picked). No 0.7.4 (the maintainer, desk #252).
+- **0.8.4 released, 2026-11-11** (all three packages; RM425, RM426, RM427, RM428). On PyPI (the maintainer, 01:14
+  UTC); tag `v0.8.4` on 36cbc20f, pushed; GitHub release up (notes corrected: one public attribute,
+  `GwasCatalogClient.size_refusals`, also aec2b744 in the CHANGELOG); README and the CLAUDE.md doc map name 0.8.4
+  (9c4cf9cc). RELEASE_CYCLE step 10 complete. Desk #258 withdrawn (done); #259's default applied (307a5ae3).
+  `wt-cut-084` unlocked; `cut/v0.8.4` handed to the maintainer for `-D` (cherry-picked, `git cherry` shows it on main).
 - **Next patch on `main`, uncut (after the 0.8.4 cut commit):** RM432 (ac3f1bcc, the lead's, 2026-11-11: two
   snapshot readers raise `FileNotFoundError`; a behaviour change for a direct caller), the GWAS docstring's 15/s budget
   (7a88e10f), RELEASE_CYCLE's floor rule (307a5ae3). Lesson from RM428: it added the public attribute
