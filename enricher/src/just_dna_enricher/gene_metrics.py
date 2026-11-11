@@ -194,12 +194,16 @@ def lookup_snapshot(reference: Path, genes: list[str]) -> dict[str, dict]:
 
     Mirrors `clinvar.lookup_loci`'s shape: a batch lookup over an injected parquet directory via an
     in-memory DuckDB view, so the core install stays polars-free (polars is the builder's, `[dev]`).
+
+    **A reference with no parquet behind it raises `FileNotFoundError`** (RM432), naming the path. It used
+    to return `{}`, the value of a lookup that read the snapshot and matched none of `genes`, so a caller
+    could not tell a mistyped path from an answer (`@unreachable-not-absent`). `{}` keeps meaning only that.
     """
     if not genes:
         return {}
     parquet = _snapshot_parquet(reference)
     if parquet is None:
-        return {}
+        raise FileNotFoundError(f"no gnomAD constraint snapshot parquet at {reference}")
     con = duckdb.connect(":memory:")
     try:
         pattern = str(parquet).replace("'", "''")
@@ -369,8 +373,19 @@ def enrich_gene_metrics(
                     API_CONSTRAINT_DATASET_LABEL,
                 )
         if reference is not None:
-            from_snapshot = lookup_snapshot(reference, wanted)
-        elif offline:
+            try:
+                from_snapshot = lookup_snapshot(reference, wanted)
+            except FileNotFoundError as exc:
+                # Could not read, never "read and found nothing" (RM432): the snapshot was not consulted,
+                # so no row may name its release, and offline the genes are reported as never asked.
+                logger.warning(
+                    "gnomAD constraint snapshot at %s could not be read (%s); it is treated as not "
+                    "consulted this run.",
+                    reference,
+                    exc,
+                )
+                reference = None
+        if reference is None and offline:
             logger.warning(
                 "No gnomAD constraint snapshot found and --offline: gene metrics will be empty. "
                 "Provision one with `just-dna-enricher gnomad constraint build|publish`."

@@ -169,7 +169,10 @@ def _snapshot_release_basis(reference: Path) -> str | None:
 
 
 def civic_snapshot_rows(reference: Path) -> list[dict]:
-    """Every row of the CIViC snapshot parquet as plain dicts, or `[]` when there is none.
+    """Every row of the CIViC snapshot parquet as plain dicts. Raises `FileNotFoundError` when there is none.
+
+    It used to return `[]` there (RM432), the value of a snapshot that was read and holds no rows, so a
+    mistyped path read as an empty source. Each caller catches the raise and says it could not read.
 
     Public and shared, because a second reading pass wanted exactly this and a private name is how a
     second caller stops finding the first (`@roster-is-as-wide-as-the-tables-it-reads`) — RM160's
@@ -182,7 +185,7 @@ def civic_snapshot_rows(reference: Path) -> list[dict]:
     """
     parquet = reference / "data" / CIVIC_PARQUET if reference.is_dir() else reference
     if not parquet.exists():
-        return []
+        raise FileNotFoundError(f"no CIViC snapshot parquet at {parquet}")
     try:
         import polars as pl
 
@@ -222,11 +225,20 @@ def compare_refutations(
     if reference is None:
         logger.info("CIViC refutation check skipped: no snapshot provisioned this run.")
         return None
-    rows = civic_snapshot_rows(reference)
-    if not rows:
+    try:
+        rows = civic_snapshot_rows(reference)
+    except FileNotFoundError as exc:
         logger.warning(
-            "CIViC snapshot at %s is missing or unreadable; the refutation check is skipped this "
-            "run. Build one with `just-dna-enricher civic build --release <date>`.",
+            "CIViC snapshot at %s could not be read (%s); the refutation check is skipped this run. "
+            "Build one with `just-dna-enricher civic build --release <date>`.",
+            reference,
+            exc,
+        )
+        return None
+    if not rows:
+        # Read, and empty. A real CIViC snapshot never is, so this is a broken build, not an answer.
+        logger.warning(
+            "CIViC snapshot at %s holds no rows; the refutation check is skipped this run.",
             reference,
         )
         return None

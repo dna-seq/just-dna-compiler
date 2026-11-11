@@ -2167,7 +2167,7 @@ Splitting waits until one ask unparks alone.
 
 ## RM432 — two snapshot readers answer an unreadable reference with an empty result, which reads as "nothing found"
 
-**Severity** medium · **Status** open — **a patch, `unattended`** (a raise of `FileNotFoundError`; no new name) · **Owner** enricher (`gene_metrics`, `civic_refutation`, `civic_citations`) ·
+**Severity** medium · **Status** open — **built on `main` 2026-11-11, uncut** (a raise of `FileNotFoundError`; no new name) · **Owner** enricher (`gene_metrics`, `civic_refutation`, `civic_citations`) ·
 **Motivating case** S146 (CONSUMER_SUGGESTIONS_HISTORY.md) · *related* RM361, RM430
 
 **The defect.** `gene_metrics.lookup_snapshot` returns `{}` when `_snapshot_parquet(reference)` finds no parquet.
@@ -2196,6 +2196,14 @@ operator believes the snapshot was read. That alone earns a patch, however rare 
   `lookup_snapshot` call, `compare_refutations`, and `civic_citations._snapshot_variant_ids`. This is the fix's own risk,
   so a test drives each of the three with a reference that is not there.
 - **Declared** in the CHANGELOG and INTEGRATION_0_8's known-issues list as a behaviour change for a direct caller.
+
+**Built (lead, 2026-11-11), as sized.** Both readers raise `FileNotFoundError` naming the path; the gene-metrics
+pass catches it and sets the reference to unconsulted (offline it had written a `not_found` row stamped with the
+bare lane label for a snapshot it never opened, which the new test showed red), `compare_refutations` skips with a
+could-not-read warning (an empty but readable snapshot keeps its own skip, reworded), and
+`civic_citations._snapshot_variant_ids` warns that variants map from the curated table alone. Tests:
+`enricher/tests/test_unreadable_snapshot_reference.py`, five of six red before the change (the sixth is the
+read-and-matched-nothing control).
 
 **Residuals** none yet.
 

@@ -291,7 +291,19 @@ def _snapshot_variant_ids(reference: Path | None) -> dict[tuple[str, int, str, s
     out: dict[tuple[str, int, str, str], tuple[int, str | None]] = {}
     if reference is None:
         return out
-    for row in civic_snapshot_rows(reference):
+    try:
+        rows = civic_snapshot_rows(reference)
+    except FileNotFoundError as exc:
+        # Said, never silent (RM432): a mistyped `--civic-snapshot` used to map every variant from the
+        # curated table alone while the operator believed the snapshot had been read.
+        logger.warning(
+            "CIViC snapshot at %s could not be read (%s); variants are mapped from the curated name "
+            "identities alone this run.",
+            reference,
+            exc,
+        )
+        return out
+    for row in rows:
         chrom, start, ref, alt = row.get("chrom"), row.get("start"), row.get("ref"), row.get("alt")
         variant_id = row.get("variant_id")
         if chrom and start is not None and ref and alt and variant_id is not None:

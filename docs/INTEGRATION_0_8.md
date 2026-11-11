@@ -1278,6 +1278,12 @@ What 0.8 ships with, known and not fixed. Each line names its item; [RM_TOC.md](
   module it ran on since the change. Enricher 0.7.3 fails too, for another reason: it reads the v1 API, which
   now answers 410. It stays broken, since the maintainer declined a `v0.7.4` (desk #252): upgrading to 0.8.4 is
   the only fix.
+- **Two snapshot readers answered an unreadable reference as "nothing found" (RM432, on `main` after 0.8.4,
+  for the next patch).** `gene_metrics.lookup_snapshot` returned `{}` and `civic_refutation.civic_snapshot_rows`
+  returned `[]` for a path with no parquet behind it, so a mistyped `--civic-snapshot` mapped every variant from
+  the curated table alone, silently, and an offline gene-metrics run could write `not_found` rows for a snapshot
+  it never opened. The next patch raises `FileNotFoundError` from both; **a direct caller of either must catch
+  it**. The enricher's own passes report could-not-read instead.
 - **RM386's publish pinning has no live run yet (RM386).** It shipped with no practice publish to a
   throwaway Hugging Face repo, by the maintainer's decision. The next real snapshot publish is its first
   live run; if that publish fails, suspect this code first, and the fix is a patch.

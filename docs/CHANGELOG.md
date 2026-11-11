@@ -41,6 +41,18 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-11 — RM432: two snapshot readers raise on a reference they cannot read, instead of answering "nothing found" (patch, uncut)
+
+`gene_metrics.lookup_snapshot` returned `{}` and `civic_refutation.civic_snapshot_rows` returned `[]` for a
+reference with no parquet behind it, the value of a lookup that read the snapshot and matched nothing. Both now
+raise the built-in `FileNotFoundError`, naming the path; `{}` and `[]` keep meaning "read, and nothing matched".
+**A behaviour change for a direct caller** of either function, which must now catch it. The three callers in the
+enricher report could-not-read: the gene-metrics pass treats the snapshot as not consulted (offline, it no longer
+writes a `not_found` row naming a release it never opened, and names the genes as never asked), the CIViC
+refutation check is skipped with a warning naming the path, and the citations pass warns that it mapped variants
+from the curated name identities alone (a mistyped `--civic-snapshot` used to fall back silently). No new public
+name or warning code. From S146.
+
 ## 2026-11-11 — `v0.8.4`: format, compiler and enricher 0.8.4 (a patch, cut from `main`)
 
 Format and the enricher move because each changed source since `v0.8.3`: format for RM425, the enricher for RM426,
