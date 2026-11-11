@@ -11,9 +11,10 @@ the known issues 0.8 ships with.
 since `v0.7.3`), each intra-workspace floor is `>=0.8.0`, and `polars>=1.42.0` is unchanged, so a polars 1.x
 install still resolves. It is published and tagged `v0.8.0`.
 
-**Three patches followed on the 0.8 line, and the current release is 0.8.3.** 0.8.1 (2026-11-07) moved the
-enricher alone, so format and compiler stayed 0.8.0. 0.8.2 (2026-11-07) and 0.8.3 (2026-11-09) each moved all
-three packages, and 0.8.3's floors are `>=0.8.3` throughout. No patch adds a public name, field, table, flag
+**Four patches followed on the 0.8 line, and the current release is 0.8.4.** 0.8.1 (2026-11-07) moved the
+enricher alone, so format and compiler stayed 0.8.0. 0.8.2 (2026-11-07), 0.8.3 (2026-11-09) and 0.8.4
+(2026-11-11) each moved all three packages (0.8.4's compiler for its floor only), and 0.8.4's floors are
+`>=0.8.4` throughout. No patch adds a public name, field, table, flag
 or warning code, so this file's surface delta is still the whole 0.7 → 0.8 boundary; what each patch
 changed, and what to do after upgrading to it, is its entry in the [CHANGELOG](CHANGELOG.md), and § 4 says
 which known issues each one fixed.
@@ -22,15 +23,15 @@ which known issues each one fixed.
 
 ```toml
 dependencies = [
-    "just-dna-format>=0.8.3",
-    "just-dna-compiler>=0.8.3",
-    "just-dna-enricher>=0.8.3",
+    "just-dna-format>=0.8.4",
+    "just-dna-compiler>=0.8.4",
+    "just-dna-enricher>=0.8.4",
 ]
 ```
 
 A consumer that holds only the format tier pins the first line alone. A git dependency on the `0.8` branch
 (`rev = "1007a26d"` and later), which this file recommended for testing before the cut, goes from your
-tracked files and your lock: `uv lock` against the published `0.8.3`, then run your suite again.
+tracked files and your lock: `uv lock` against the published `0.8.4`, then run your suite again.
 
 **The release record says what a recompile moves.** `release_records.RELEASE_RECORDS["0.8.0"]`, measured at
 the cut against the published compiler 0.7.2, declares each correction and addition (RM363's contig
@@ -41,8 +42,8 @@ lite stays on polars 1.x (polars-bio caps `polars<2`), and this workspace locks 
 by `content_signature`; read a digest mismatch with `compilation.toolchain` beside it (§ 1.11).
 The patches add little to that answer: 0.8.1 left the compiler alone and has no record, and
 `RELEASE_RECORDS["0.8.2"]`, measured from 0.8.0, moves only the text of two warnings, and
-`RELEASE_RECORDS["0.8.3"]`, measured from 0.8.2, moves nothing, so a module compiled by 0.8.0 needs no
-recompile.
+`RELEASE_RECORDS["0.8.3"]`, measured from 0.8.2, and `RELEASE_RECORDS["0.8.4"]`, measured from 0.8.3, move
+nothing, so a module compiled by 0.8.0 needs no recompile.
 
 **What landed after `1007a26d`**, the pre-cut head this file first named, for a consumer who tested
 there; all of it is in 0.8.0. **First:** RM380, `reverse` carrying every `resolution.csv` column a
@@ -841,7 +842,7 @@ out: being importable does not make it a supported surface. All additive.
 1. **Pins, in tier order: format, then compiler, then enricher.** `just-dna-format` first, because a 0.7
    reader refuses some 0.8 output (§ 1, § 1.13, § 1.18) and drops the new manifest fields (§ 1.2); then
    `just-dna-compiler`; then `just-dna-enricher`. A consumer that holds only the format tier stops after
-   the first. Floor all three on `>=0.8.3`, the current patch.
+   the first. Floor all three on `>=0.8.4`, the current patch.
 2. **`uv lock`**, regenerated and never hand-edited, committed with the floors.
 3. **Move the shared Ensembl cache, once per machine** (§ 1.29): `just-dna-enricher cache pull --only
    ensembl`, or `cache prepare`. The lane now pulls `just-dna-seq/ensembl_variations_split` (dbSNP 157 /
@@ -1268,6 +1269,15 @@ What 0.8 ships with, known and not fixed. Each line names its item; [RM_TOC.md](
   enricher 0.8.3** (RM423): a run over moved bytes keeps only its own records and logs each check it
   dropped by name. The fix does not repair a document already written that way: its `module_hash` matches the
   bytes, so a later run carries those records on until the bytes move again. Re-run or delete, as above.
+- **The GWAS pass fills nothing on enricher 0.8.0 to 0.8.3 (RM428).** Some time after 2026-11-04 the GWAS
+  Catalog's REST API v2 began refusing any page above 500 associations with a bare 400, and those releases ask
+  for 1000, so the first request fails for every rsID and `just-dna-enricher gwas` writes no `gwas_effects.csv`
+  row on any module. It reports each rsID as could-not-ask, never as empty, so no wrong row was written. **Fixed
+  in enricher 0.8.4** (RM428): the pass asks for 500, still follows the Catalog's next-page links, and asks a
+  refused first page once more with no size, warning once per run. After upgrading, re-run the pass on any
+  module it ran on since the change. Enricher 0.7.3 fails too, for another reason: it reads the v1 API, which
+  now answers 410. It stays broken, since the maintainer declined a `v0.7.4` (desk #252): upgrading to 0.8.4 is
+  the only fix.
 - **RM386's publish pinning has no live run yet (RM386).** It shipped with no practice publish to a
   throwaway Hugging Face repo, by the maintainer's decision. The next real snapshot publish is its first
   live run; if that publish fails, suspect this code first, and the fix is a patch.

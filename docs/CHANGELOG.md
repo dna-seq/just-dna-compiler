@@ -41,7 +41,33 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
-## 2026-11-11 — RM428: the GWAS pass asks for a page the Catalog accepts, and survives the next drop (patch, uncut)
+## 2026-11-11 — `v0.8.4`: format, compiler and enricher 0.8.4 (a patch, cut from `main`)
+
+Format and the enricher move because each changed source since `v0.8.3`: format for RM425, the enricher for RM426,
+RM427 and RM428. The compiler's source did not change. It moves because its floor must name the format's current
+version (`test_workspace_versions`), so its `pyproject.toml` changes, and a published 0.8.3 cannot take a second
+set of metadata. The enricher's floors are `just-dna-format>=0.8.4` and `just-dna-compiler>=0.8.4`, the
+compiler's `just-dna-format>=0.8.4`. Nothing adds a public name, field, table, flag or warning code.
+
+- **What it carries:** RM425 (`effect_size`'s description names the single strongest track), RM426
+  (`GeneLocusConflict` names both readings of a gene paired with a variant on another chromosome), RM427 (the
+  ClinVar-pass skip names `cache pull --only clinvar` and `clinvar build`, commands that exist), and RM428's asks
+  1 to 3 (the GWAS pass asks for a page of 500, and asks a refused first page once more with no size). RM428's
+  ask 4, a `v0.7.4` for the 0.7 line, was declined by the maintainer, so RM428 closes here. Beside them, two
+  changes no installed package carries: a test fix that keeps huggingface-hub 2.4's agent-registry fetch inside
+  the network fence, and the weekly dependency bump of the lock (huggingface-hub 2.4.0 among it; no published
+  requirement moved).
+- **Release record** (`RELEASE_RECORDS["0.8.4"]`, measured from 0.8.3, the last published compiler): 22
+  reference modules, nothing moved on any axis. No recompile is needed.
+- **After upgrading:**
+  1. Raise floors to `>=0.8.4`.
+  2. Re-run `just-dna-enricher gwas <spec-dir>` on any module whose GWAS pass ran on enricher 0.8.0 to 0.8.3
+     after the GWAS Catalog's change (some time after 2026-11-04). Those runs asked for a page the Catalog now
+     refuses, so they filled no `gwas_effects.csv` row and reported every rsID as could-not-ask; nothing was
+     written in their place, so the re-run fills the table. Enricher 0.7.3 fails for another reason (its v1 API
+     answers 410), and no 0.7.4 will be cut: upgrading to 0.8.4 is the only fix.
+
+## 2026-11-11 — RM428: the GWAS pass asks for a page the Catalog accepts, and survives the next drop (patch, cut as `v0.8.4`)
 
 The GWAS Catalog's REST API v2 began refusing any page above 500 associations with a bare 400 some time after
 2026-11-04, and the pass asked for 1000, so its first request failed for every rsID and it filled no
@@ -50,10 +76,11 @@ follows `_links.next`, so a variant with more associations comes back whole. A 4
 asked once more with no `size`, at the Catalog's own default page; the run warns once naming the refused size, and
 the extra request is counted in `requests_made`. A second 400, or one on a later page, stays could-not-ask. An
 opt-in live test (`JUST_DNA_NETWORK_TESTS=1`) asks with the page size the pass uses and expects a 200. No public
-name, field or check result moves. Every installed 0.8 enricher fails this way until it upgrades; 0.7.3 fails for
-another reason (its v1 API answers 410), which is desk #252. From S143.
+name, field or check result moves. Every installed 0.8 enricher fails this way until it upgrades. 0.7.3 fails for
+another reason (its v1 API answers 410) and stays broken: the maintainer declined a `v0.7.4` (desk #252), so
+upgrading to 0.8.4 is the only fix. From S143.
 
-## 2026-11-10 — RM427: the ClinVar-pass skip names commands that exist (patch, uncut)
+## 2026-11-10 — RM427: the ClinVar-pass skip names commands that exist (patch, cut as `v0.8.4`)
 
 With no ClinVar snapshot reachable, the clinical-assertion pass told the reader to run `clinvar pull`, in its log
 line and in the `assertions` command's own line. No app registers that command; the fetch is `cache pull`. Both
@@ -62,7 +89,7 @@ with the `just-dna-enricher` prefix). A new test resolves every command quoted i
 against the two apps' command trees, so a quote left behind by a moved command fails the suite. Wording and a test
 only: no public name, field or check result moves. From S142.
 
-## 2026-11-09 — RM426: the gene-versus-chromosome finding stops guessing which half is wrong (patch, uncut)
+## 2026-11-09 — RM426: the gene-versus-chromosome finding stops guessing which half is wrong (patch, cut as `v0.8.4`)
 
 `check-identifiers`' `GeneLocusConflict` closed on "a real symbol beside an invented rsID is what a machine-written
 summary produces". The check cannot see which half of the pairing is false, and S141's was a real rsID (rs1801394,
@@ -71,7 +98,7 @@ beside an invented variant, or a real variant paired with the wrong gene, and a 
 both. Look up which gene <variant> sits in, then check the row against the source you took it from." The first
 sentence, the fact a reader greps, is unchanged byte for byte. No check result moves. From S141.
 
-## 2026-11-09 — RM425: `effect_size`'s description says it is the single strongest track, not an aggregate (patch, uncut)
+## 2026-11-09 — RM425: `effect_size`'s description says it is the single strongest track, not an aggregate (patch, cut as `v0.8.4`)
 
 `ExpressionEffectRow.effect_size`'s description read "aggregated over the scorer's tissue tracks". The enricher writes the
 single strongest track with its sign kept, so a size whose sign contradicts `effect_direction` (the majority sign) is

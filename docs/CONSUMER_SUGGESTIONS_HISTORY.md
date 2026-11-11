@@ -7171,7 +7171,7 @@ only comes from the live service. Against it: 500 is measured, not documented in
 could lower it again; a pass that retries once with a smaller page on a 400 would survive that, at the cost of
 one more request per failure.
 
-**Status — filed as [RM428](ROADMAP.md#rm428--the-gwas-pass-asks-the-catalog-v2-for-a-page-of-1000-which-it-now-refuses-with-400-so-the-pass-fills-nothing-on-any-module): ask 1 a patch; the pm sizes asks 2 and 3.** Confirmed. Here at 22:58 UTC,
+**Status — filed as [RM428](ROADMAP_HISTORY.md#rm428--the-gwas-pass-asks-the-catalog-v2-for-a-page-of-1000-which-it-now-refuses-with-400-so-the-pass-fills-nothing-on-any-module): ask 1 a patch; the pm sizes asks 2 and 3.** Confirmed. Here at 22:58 UTC,
 `size=500` answers 200, and 501 and 1000 answer 400, whose body is a bare `Bad Request` and does not name the limit.
 The Catalog moved, not the code. RM354 measured `size=1000` returning all 386 associations of rs4149056 on
 2026-11-04, so the ceiling dropped on their side in the six days after. The module docstring assumed a server that
@@ -7193,7 +7193,7 @@ every installable release: 0.7.x by the 410, 0.8.x by the 400 above. Our release
 pass until it moves to an 0.8 that carries this fix, and that move waits on the production registry serving 0.8.
 A question beside the fix: is a 0.7.x patch that reads v2 something you would cut, or is 0.8 the only way back?
 
-**Status — the correction confirmed; ask 4 added to [RM428](ROADMAP.md#rm428--the-gwas-pass-asks-the-catalog-v2-for-a-page-of-1000-which-it-now-refuses-with-400-so-the-pass-fills-nothing-on-any-module) as a release-line decision.** The v1 path answers
+**Status — the correction confirmed; ask 4 added to [RM428](ROADMAP_HISTORY.md#rm428--the-gwas-pass-asks-the-catalog-v2-for-a-page-of-1000-which-it-now-refuses-with-400-so-the-pass-fills-nothing-on-any-module) as a release-line decision.** The v1 path answers
 410 here too. My reply above repeated your first claim that 0.7.x was unaffected, and that was wrong. RM354 moved the
 pass to v2 after `v0.7.3`, so no 0.7 tag carries it. On your question: a 0.7.x patch is not triage's to promise.
 Releases come from `main`, and a 0.7 patch would be `v0.7.4` off a branch from `v0.7.3`, carrying RM354 and RM428's

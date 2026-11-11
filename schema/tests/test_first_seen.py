@@ -76,8 +76,9 @@ _RELEASES: frozenset[str] = frozenset(
         # release, and the guard below holds this list equal to the tags.
         "0.8.1",
         "0.8.2",
-        # Uncut until its tag: the release `_UNCUT` names while the 0.8.3 cut is on `main`.
         "0.8.3",
+        # Uncut until its tag: the release `_UNCUT` names while the 0.8.4 cut is on `main`.
+        "0.8.4",
     }
 )
 
