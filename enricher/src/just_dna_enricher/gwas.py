@@ -20,8 +20,11 @@ rs_id=`), not from its migration guide, and these findings shaped the pass:
   Ancestry is the one fact still behind a request — `/studies/<accession>/ancestries` — so the cost is
   one request per page plus one per **distinct** study, and `_LinkCache` keyed on that URL now pays.
 * **It pages, 20 per page by default.** rs4149056 carries 386 associations. The pass asks for large
-  pages and follows `_links.next` until there is none, so a server that caps the size loses nothing,
-  and every page is counted in the request total.
+  pages and follows `_links.next` until there is none, and every page is counted in the request total.
+  **A server may refuse a large page, not only cap it** (RM428): `size=1000` answered whole on
+  2026-11-04 and a bare 400 six days later, when the ceiling had dropped to 500. A refused first
+  request is asked once more with no `size`, so the Catalog's own default page decides, and the run
+  warns once naming the refused size.
 * **The empty answer is a 200 with no `_embedded` key at all**, `page.totalElements: 0` — for an rsID
   the Catalog has never heard of as much as for a rare clinical one. The legacy API 404'd there
   instead, so the meaning of a 404 flipped: on the v2 search path it is a wrong path, never an answer.
@@ -115,8 +118,10 @@ _V2_NO_VALUE = "-"
 #: recorded with a U+2009 in it, which a split-and-join would have rewritten.
 _BETA_GRAMMAR = re.compile(r"^(?P<size>\S+)(?:\s+(?P<unit>.*?))?\s+(?P<direction>increase|decrease)$")
 
-#: Associations per page asked for. v2 defaults to 20; the pass still follows `_links.next`.
-_PAGE_SIZE = 1000
+#: Associations per page asked for. v2 defaults to 20; the pass still follows `_links.next`. **The
+#: server decides the ceiling and has moved it**: 1000 answered on 2026-11-04, and on 2026-11-10 anything
+#: above 500 was a bare 400 (RM428). Measured, never documented; the opt-in live test re-asks it.
+_PAGE_SIZE = 500
 
 #: Seconds between requests. **Not a transcribed limit** — see the module docstring. Conservative
 #: because the pass can issue several requests per variant and EBI publishes no budget to respect.
@@ -225,6 +230,9 @@ class GwasCatalogClient:
     stats_url: str = DEFAULT_GWAS_STATS_URL
     timeout: float = 30.0
     gate: PacingGate = field(default_factory=lambda: PacingGate(DEFAULT_REQUEST_INTERVAL))
+    #: First requests the Catalog refused for their `size` and that were asked again without one
+    #: (RM428). Requests spent, so the pass counts them; and the run warns once when any were.
+    size_refusals: int = 0
     _client: httpx.Client | None = None
 
     def _http(self) -> httpx.Client:
@@ -306,16 +314,10 @@ class GwasCatalogClient:
         unchecked rather than empty. Fusing the last two would turn a failed request into a definite
         negative — which is why a 404 here raises (see `GwasNotFound`).
         """
-        url: str | None = str(
-            httpx.URL(f"{self.endpoint}/associations", params={"rs_id": rsid, "size": _PAGE_SIZE})
-        )
+        url, payload = self._first_page(rsid)
         pages: list[list[dict]] = []
-        asked: set[str] = set()
-        while url:
-            if url in asked:
-                raise GwasError(f"GWAS Catalog paging for {rsid} links back to {url}; refusing to loop")
-            asked.add(url)
-            payload = self._get(url)
+        asked: set[str] = {url}
+        while True:
             associations = (payload.get("_embedded") or {}).get("associations")
             if associations is None:
                 # v2's empty answer is a 200 with no `_embedded` key and a page block saying zero.
@@ -331,8 +333,35 @@ class GwasCatalogClient:
                 )
             pages.append(list(associations))
             nxt = (((payload.get("_links") or {}).get("next")) or {}).get("href")
-            url = str(nxt).split("{")[0] if nxt else None  # a HAL link may be a URI template
+            if not nxt:
+                break
+            url = str(nxt).split("{")[0]  # a HAL link may be a URI template
+            if url in asked:
+                raise GwasError(f"GWAS Catalog paging for {rsid} links back to {url}; refusing to loop")
+            asked.add(url)
+            # A later page is never re-asked on a 400: by now the size has been accepted (RM428).
+            payload = self._get(url)
         return pages
+
+    def _first_page(self, rsid: str) -> tuple[str, dict]:
+        """The first request of one rsID's paging, and the URL that answered it (RM428).
+
+        Asked with `_PAGE_SIZE`. A 400 to it is asked **once** more with no `size`, so the Catalog's own
+        default page decides: v2 answers a page size above its ceiling with a bare 400 that does not
+        name the limit, and the ceiling has already dropped once. This is not the retry
+        `@client-exception-contract` forbids, which re-sends the same permanent 4xx; it is a different
+        request. A second 400 propagates as the could-not-ask `GwasError`, as any other status does.
+        """
+        sized = str(httpx.URL(f"{self.endpoint}/associations", params={"rs_id": rsid, "size": _PAGE_SIZE}))
+        try:
+            return sized, self._get(sized)
+        except GwasError as exc:
+            cause = exc.__cause__
+            if not (isinstance(cause, httpx.HTTPStatusError) and cause.response.status_code == 400):
+                raise
+        self.size_refusals += 1
+        unsized = str(httpx.URL(f"{self.endpoint}/associations", params={"rs_id": rsid}))
+        return unsized, self._get(unsized)
 
     def study_ancestries_url(self, accession: str) -> str:
         """Where v2 keeps one study's ancestries. Built from the accession: v2 associations carry no
@@ -714,6 +743,7 @@ def enrich_gwas(
         missing: list[str] = []
         unusable = 0
         direct_requests = 0
+        refusals_before = catalog.size_refusals
         underflows: list[str] = []
 
         unparsed: list[str] = []
@@ -760,6 +790,18 @@ def enrich_gwas(
                 seen.add(key)
                 out.append(built)
 
+        size_refusals = catalog.size_refusals - refusals_before
+        direct_requests += size_refusals
+        if size_refusals:
+            # Once per run (RM428), so the next drop of the Catalog's page ceiling is seen rather than
+            # paid for silently, one extra request per rsID.
+            logger.warning(
+                "GWAS Catalog refused a page of %d association(s) with a 400 for %d rsID(s); each was "
+                "asked again without a size, at the Catalog's default page. Its ceiling has moved: "
+                "lower `_PAGE_SIZE` in gwas.py to what it accepts.",
+                _PAGE_SIZE,
+                size_refusals,
+            )
         if underflows:
             # Aggregated by reason, once. On a well-studied variant this fires dozens of times, and the
             # rows are all still there — only the queryable number is withheld.

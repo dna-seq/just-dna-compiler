@@ -2074,7 +2074,7 @@ reading a record whose `checked_at` predates their newest authoring edit as not 
 
 ## RM428 — the GWAS pass asks the Catalog v2 for a page of 1000, which it now refuses with 400, so the pass fills nothing on any module
 
-**Severity** high · **Status** open — **a patch, `urgent`** (asks 1 to 3 in one commit, for 0.8.4; ask 4 on the desk, #252) · **Owner** enricher (`gwas.py`)
+**Severity** high · **Status** open — **asks 1 to 3 built on `main` 2026-11-11, for 0.8.4**; ask 4 on the desk, #252 · **Owner** enricher (`gwas.py`)
 · **Motivating case** S143 (CONSUMER_SUGGESTIONS_HISTORY.md) · *related* RM354, RM361
 
 **The defect.** `GwasClient.association_pages` sends `size=_PAGE_SIZE` on its first request, and `_PAGE_SIZE` is
@@ -2133,6 +2133,14 @@ Ask 4 is the person's: whether to release an enricher-only 0.7.4 that reads v2, 
 recommendation there is the small form: `gwas.py` alone moves to v2 with asks 1 and 3, not RM354 whole, since RM354's
 other half (a `*Retired` type on every client) fixes nothing a 0.7 user hits, and its format-tier part was docstrings.
 On silence the lead builds that branch and stops: no tag, no publish.
+
+**Built (lead, 2026-11-11), asks 1 to 3 as sized.** `_PAGE_SIZE = 500` with the docstring's premise corrected;
+`GwasCatalogClient._first_page` asks a refused first request once more with no `size` and counts it in
+`size_refusals`, which `enrich_gwas` adds to `requests_made` and warns on once per run; a later page's 400 is never
+re-asked. Tests: four on a fake transport (`test_rm428_*` in `enricher/tests/test_gwas.py`; three red before the
+change), and the live guard `test_live_rm428_the_catalog_accepts_the_page_size_this_pass_asks_for`, run opted in on
+2026-11-11 and green, with RM354's live test beside it. `test_client_exception_contract.py` declares the pair (`ASKED_AGAIN_DIFFERENTLY`): GWAS on a 400 is asked twice,
+and every client now also asserts it never re-sends the same URL. The item stays open for ask 4 only.
 
 **Residuals** none yet.
 

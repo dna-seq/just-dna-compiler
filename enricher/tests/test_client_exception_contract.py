@@ -484,6 +484,13 @@ RETIRED_IS_NAMED = {
 #: six predicates that retried one retried all three.
 PERMANENT_STATUSES = (400, 404, 410)
 
+#: A (client, status) whose first request is asked once more as a **different** request, never the same
+#: one re-sent. The GWAS Catalog's 400 to a page size above its ceiling is asked again with no `size`
+#: (RM428): the server decides the ceiling and dropped it once in a week, and its 400 does not name it.
+#: The contract this file pins is that a permanent 4xx is never re-sent; a declared second request is
+#: asserted to differ from the first, and to be the last.
+ASKED_AGAIN_DIFFERENTLY = {("gwas", 400)}
+
 
 def test_every_client_names_its_410() -> None:
     assert set(RETIRED_IS_NAMED) == {label for label, _builder, _error in CLIENTS}
@@ -508,7 +515,9 @@ def test_a_permanent_4xx_is_asked_once(label, builder, error, status) -> None:
         call()
     except Exception as exc:  # noqa: BLE001 -- the outcome is pinned by the tests beside this one
         assert not isinstance(exc, httpx.HTTPError), f"{label} leaked {type(exc).__name__}"
-    assert len(asked) == 1, f"{label} asked {len(asked)} times for a {status}"
+    expected = 2 if (label, status) in ASKED_AGAIN_DIFFERENTLY else 1
+    assert len(asked) == expected, f"{label} asked {len(asked)} times for a {status}"
+    assert len(set(asked)) == len(asked), f"{label} re-sent the same request for a {status}: {asked}"
 
 
 @pytest.mark.parametrize("label,builder,error", CLIENTS, ids=[c[0] for c in CLIENTS])

@@ -6518,6 +6518,7 @@ wholesale.
 | --- | --- | --- |
 | `GET /gwas/rest/api/singleNucleotidePolymorphisms/rs4149056/associations` (legacy, what the pass read) | **410** | `text/plain`: "This legacy GWAS Catalog REST API is no longer available.", pointing at the v2 migration guide. Every legacy path answers the same, `/gwas/rest/api/studies/<accession>` included |
 | `GET /gwas/rest/api/v2/associations?rs_id=rs4149056` | 200 | 20 associations of `page.totalElements: 386`, with `_links.next`; `size=1000` returns all 386 on one page |
+| `GET /gwas/rest/api/v2/associations?rs_id=rs1421085&size=501` (2026-11-10, RM428) | **400** | `{"status":400,"error":"Bad Request"}`, which does not name the limit; `size=500` answers 200. The ceiling dropped from at least 1000 in six days |
 | `GET /gwas/rest/api/v2/associations?rs_id=rs111033563` (a rare clinical variant) | 200 | **no `_embedded` key at all**, `page.totalElements: 0` — the same for an rsID that does not exist |
 | `GET /gwas/rest/api/v2/associationz?rs_id=rs1` (a wrong path) | 404 | the only 404 the search gave |
 | `GET /gwas/rest/api/v2/studies/GCST000386/ancestries` | 200 | `_embedded.ancestries[].ancestral_groups[].ancestral_group` per stage (`initial`, `replication`) |
@@ -6526,6 +6527,14 @@ A 410 raises **`GwasRetired`**, a `GwasError` subclass whose message carries the
 own text, and it is asked once. It used to fall into the generic status arm as a plain `GwasError`,
 the could-not-ask an outage raises, so the pass died saying the source had failed rather than that it
 had moved. The class this belonged to, in every client of the tier, is § Exception contract.
+
+**The page size is the server's, and it refuses rather than caps (RM428).** The pass asks for 500
+associations a page, the ceiling measured on 2026-11-10, and follows `_links.next` for the rest. A 400
+to an rsID's *first* request is asked once more with no `size`, so the Catalog's default page (20)
+decides; the run warns once, naming the refused size and how many rsIDs paid the extra request, and
+`requests_made` counts it. A second 400, or a 400 on a later page (the size was accepted by then), is
+the could-not-ask `GwasError` as before. No unit test pins the number; the opt-in live test
+`test_live_rm428_the_catalog_accepts_the_page_size_this_pass_asks_for` asks with it and expects a 200.
 
 **How v2 maps onto `GwasEffectRow`** — the same columns the legacy payload filled, and the association
 ids carried over: legacy 13069 and 55421052 are v2 13069 and 55421052, so a re-run merges into a table

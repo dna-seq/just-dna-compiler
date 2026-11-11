@@ -26,6 +26,7 @@ import httpx
 import pytest
 from just_dna_compiler.compiler import load_csv_rows
 from just_dna_enricher.gwas import (
+    _PAGE_SIZE,
     DEFAULT_GWAS_ENDPOINT,
     GwasCatalogClient,
     GwasError,
@@ -837,6 +838,106 @@ def test_a_no_study_facts_row_is_never_back_filled_by_a_later_run(tmp_path: Path
     enrich_gwas(spec, client=_client(), dataset="d", study_facts=True)
     reported = {a["accession_id"] for a in _ASSOCIATIONS} - {"GCST009733"}  # that study wrote NR
     assert {row["study_accession"] for row in _rows(spec) if row["ancestry"]} == reported
+
+
+# ── RM428: a Catalog that refuses the page size it is asked for ──────────────────────────────────
+
+_BAD_REQUEST = {"status": 400, "error": "Bad Request"}
+
+
+def _refusing(
+    *, ceiling: int | None, refuse_later_pages: bool = False, page_size: int | None = None
+) -> tuple[GwasCatalogClient, list[str]]:
+    """A Catalog that answers a `size` above `ceiling` (any `size` at all when `None`) with a bare 400.
+
+    The body is the one recorded live on 2026-11-10 for `size=501`: it does not name the limit.
+    """
+    calls: list[str] = []
+    serve = _page(_ASSOCIATIONS, page_size=page_size)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(f"{request.url.path}?{request.url.query.decode()}")
+        size = request.url.params.get("size")
+        if refuse_later_pages and request.url.params.get("page", "0") != "0":
+            return httpx.Response(400, json=_BAD_REQUEST)
+        if size is not None and (ceiling is None or int(size) > ceiling):
+            return httpx.Response(400, json=_BAD_REQUEST)
+        return httpx.Response(200, json=serve(request))
+
+    client = GwasCatalogClient(gate=PacingGate(0.0))
+    client._client = httpx.Client(transport=httpx.MockTransport(handler))
+    return client, calls
+
+
+def test_rm428_the_page_size_asked_for_is_within_the_ceiling_measured_live(tmp_path: Path) -> None:
+    """A Catalog that refuses anything above 500 still answers the first request whole."""
+    client, calls = _refusing(ceiling=500)
+    result = enrich_gwas(_spec(tmp_path), client=client, dataset="d", study_facts=False)
+    assert {r.association_id for r in result.rows} == {str(a["association_id"]) for a in _ASSOCIATIONS}
+    assert len(calls) == 1, calls
+
+
+def test_rm428_a_refused_first_page_is_asked_once_more_without_a_size(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The next drop of the ceiling: the first request's 400 is asked again with no `size`, so the
+    Catalog's own default page decides; the refusal is counted as a request and warned once per run."""
+    variants = _VARIANTS + "rs2,1,100,A,G,A/G,risk,second,GENE2\n"
+    client, calls = _refusing(ceiling=None)
+    with caplog.at_level("WARNING", logger="just_dna_enricher.gwas"):
+        result = enrich_gwas(
+            _spec(tmp_path, variants=variants), client=client, dataset="d", study_facts=False
+        )
+    assert {r.association_id for r in result.rows} == {str(a["association_id"]) for a in _ASSOCIATIONS}
+    sized = [c for c in calls if "size=" in c]
+    assert len(sized) == 2, "one refused request per rsID, and no more"
+    assert all("page=" not in c for c in sized), "only a first request is ever re-asked"
+    assert result.requests_made == len(calls), "the refused requests are spent too, and counted"
+    refusals = [r for r in caplog.records if "refused" in r.getMessage()]
+    assert len(refusals) == 1, "one warning per run, not one per rsID"
+    assert str(_PAGE_SIZE) in refusals[0].getMessage()
+
+
+def test_rm428_a_second_400_stays_could_not_ask(tmp_path: Path) -> None:
+    """A Catalog refusing the unsized request too is not asked a third time, and nothing is written."""
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(str(request.url))
+        return httpx.Response(400, json=_BAD_REQUEST)
+
+    client = GwasCatalogClient(gate=PacingGate(0.0))
+    client._client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(GwasError) as caught:
+        enrich_gwas(_spec(tmp_path), client=client, dataset="d", study_facts=False)
+    assert not isinstance(caught.value, (GwasNotFound, GwasRetired))
+    assert len(calls) == 2
+    assert not (tmp_path / "spec" / "gwas_effects.csv").exists()
+
+
+def test_rm428_a_400_on_a_later_page_is_never_re_asked(tmp_path: Path) -> None:
+    """By the second page the size was accepted, so a 400 there is something else: could not ask."""
+    client, calls = _refusing(ceiling=_PAGE_SIZE, refuse_later_pages=True, page_size=2)
+    client_pages = client.association_pages
+    with pytest.raises(GwasError):
+        client_pages("rs4149056")
+    assert [("page=" in c) for c in calls] == [False, True], calls
+
+
+@pytest.mark.network
+def test_live_rm428_the_catalog_accepts_the_page_size_this_pass_asks_for() -> None:
+    """The guard that can see the ceiling move: the server decides it, and moved it once in a week.
+
+    Only the live service answers the 400, so no recording can pin the number; this asks with
+    `_PAGE_SIZE` and expects a 200.
+    """
+    url = httpx.URL(
+        f"{DEFAULT_GWAS_ENDPOINT}/associations", params={"rs_id": "rs1421085", "size": _PAGE_SIZE}
+    )
+    response = httpx.get(url, headers={"Accept": "application/json"}, timeout=30.0)
+    assert response.status_code == 200, (
+        f"size={_PAGE_SIZE} answered {response.status_code}: {response.text[:200]}"
+    )
 
 
 # ── live (RM354's hand-run, kept as a test) ──────────────────────────────────────────────────────

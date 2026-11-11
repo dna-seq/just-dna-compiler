@@ -41,6 +41,18 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-11 — RM428: the GWAS pass asks for a page the Catalog accepts, and survives the next drop (patch, uncut)
+
+The GWAS Catalog's REST API v2 began refusing any page above 500 associations with a bare 400 some time after
+2026-11-04, and the pass asked for 1000, so its first request failed for every rsID and it filled no
+`gwas_effects.csv` row on any module (reported as could-not-ask, never as empty). It now asks for 500 and still
+follows `_links.next`, so a variant with more associations comes back whole. A 400 to an rsID's first request is
+asked once more with no `size`, at the Catalog's own default page; the run warns once naming the refused size, and
+the extra request is counted in `requests_made`. A second 400, or one on a later page, stays could-not-ask. An
+opt-in live test (`JUST_DNA_NETWORK_TESTS=1`) asks with the page size the pass uses and expects a 200. No public
+name, field or check result moves. Every installed 0.8 enricher fails this way until it upgrades; 0.7.3 fails for
+another reason (its v1 API answers 410), which is desk #252. From S143.
+
 ## 2026-11-10 — RM427: the ClinVar-pass skip names commands that exist (patch, uncut)
 
 With no ClinVar snapshot reachable, the clinical-assertion pass told the reader to run `clinvar pull`, in its log
