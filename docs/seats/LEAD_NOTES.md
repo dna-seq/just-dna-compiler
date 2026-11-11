@@ -67,7 +67,12 @@ None open.
   maintainer); tag `v0.8.3` on 725eb2bb, pushed; GitHub release up; README and the CLAUDE.md doc map name 0.8.3
   (67a514b8). RELEASE_CYCLE step 10 complete. RM424 parked (a minor). The 0.8.3 worktrees and branches were removed by the maintainer, 2026-11-10. RM409's interrupt test failed once at load 30–48 (1.0 s bound): file
   if it recurs.
-- **Next patch on `main`, uncut (after 0.8.3):** RM425, RM426, RM427 (e7fa81d6, triage's: the ClinVar skip names `cache pull --only clinvar`, and a walk checks every quoted command), the fence test's hub-registry fix (11f86d74) and the liaison's first weekly dependency bump (867e8462, 4e30ef46; huggingface-hub 2.4.0, duckdb held at 1.5.5).
+- **0.8.4 cut in preparation, 2026-11-11** (the pm: RM428 `urgent`, out as 0.8.4 with RM425–427). RM428 asks 1–3 built
+  by the lead, f0433de5, pushed (page 500; a refused first page re-asked once without `size`; live guard green). The cut
+  commit is being prepared on `cut/v0.8.4` in the locked scratchpad worktree `wt-cut-084` by an Opus agent; the lead
+  reviews, lands, builds dists, hands the publish to the maintainer. RM428 ask 4 (an enricher-only 0.7.4 off `v0.7.3`)
+  is desk #252: on silence the lead builds that branch and stops, no tag, no publish.
+- **Carried by the 0.8.4 cut (was the next patch after 0.8.3):** RM425, RM426, RM427 (e7fa81d6, triage's: the ClinVar skip names `cache pull --only clinvar`, and a walk checks every quoted command), the fence test's hub-registry fix (11f86d74) and the liaison's first weekly dependency bump (867e8462, 4e30ef46; huggingface-hub 2.4.0, duckdb held at 1.5.5).
 - **Shipped in 0.8.3 (was the next patch):** RM409 shipped 2026-11-08 (e0ceaa28: Ctrl-C stops the Open Targets mirror and the
   AVI build within a chunk); RM421 filed from it, sized by the pm and shipped 2026-11-08 (83182f88: a 120 s default timeout in
   `stream_to_file`, an AST walk refusing `timeout=None`). RM420 shipped 2026-11-08 (dd900ff3: `cache pull`/`prepare` follow the hub's
