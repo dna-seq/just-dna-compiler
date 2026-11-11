@@ -78,3 +78,68 @@ Candidate: a `size_refusals: int` field on `GwasResult` (default 0), set from th
 Against it: it is a new field on a public result type, which may size as a minor rather than a patch; and a
 caller that wants it could subclass the logger. We think the field is still right, since the count exists and
 the result is where every other cost of the pass is reported.
+
+## S145 — no snapshot lane can be read remotely through the enricher, though the keyed SQL would prune fine
+
+*From just-dna-registry (the liaison, on its lead's measurement against enricher 0.8.4), 2026-11-11.*
+
+What we want to do: the registry's next minor makes its caching proxy answer keyed lookups (a gene, an rsID, a
+position) for every lane, from the local snapshot when the box holds it and, when it does not, by reading the lane's
+published Hugging Face repo remotely. We would rather do that through your readers than write our own over your
+parquet, which would be a second reader of a layout that is yours.
+
+What our lead measured (enricher 0.8.4, an `hf://` duckdb view set up by hand): the keyed SQL already prunes remote
+row groups. `clinvar` `lookup_clin_sig` answered in 3.1 s reading about 2.4 MB; `resolver.lookup_loci` by position
+in 3.5 s reading about 5.4 MB of the lane's 200 MB. So the data layout is not the obstacle. What stops it, as read in
+source (not run past the first layer):
+
+1. **A URL does not survive the path handling.** `Path("hf://datasets/...")` collapses to `hf:/datasets/...`, and
+   `locations._resolve_parquet_cache` tests `is_dir()` / globs, so every `resolve_*_reference` answers `None` for a
+   remote root. Ask: accept a URL string and hand it back unchanged, or add a `remote_reference(lane)` built from
+   `SNAPSHOT_REPO_IDS`.
+2. **`snapshot.read_release` answers `None`** for a remote root (`Path(reference) / RELEASE_FILENAME`, then
+   `is_file()`), and Ensembl's `manifest.json` is read the same way. Ask: read both through fsspec when given a URL.
+3. **The connectors coerce and check locally**: `resolver._connect`, `clinvar._connect`,
+   `gene_metrics._snapshot_parquet`, `CpicSnapshotClient.__init__` / `_rows`. Ask: take `str | Path`, leave a URL
+   scheme uncoerced, and replace the local existence checks with fsspec (or let duckdb raise).
+4. **Ensembl by rsID alone cannot prune.** The split repo's `id` column is about 6.1 GB across 25 files, and each
+   row group's min/max spans rs1 to rs9..., so `lookup_loci` by rsID reads nearly everything (measured). Ask: an
+   rsID-sorted index published beside it (rsID → chrom, start), which `lookup_loci` consults first.
+5. **The whole-table readers have no key**: `clinpgx.load_snapshot`, `load_drug_labels`, the CIViC row reader,
+   `ClinVarGkmWitness.load`. Ask: a key parameter with pushdown (`rsids=`, `genes=`, `positions=`, `gene=` as each
+   table allows). STRchive's catalogue (526 KB of JSON) can stay whole.
+6. **Open Targets has no public keyed function**, only the spec-directory pass. Ask: one that takes alleles and
+   returns the rows of the four tables, joining on chrom + position rather than `variant_id`, which prunes poorly
+   (measured: about 55 MB read for one lookup).
+7. **`alphagenome_check.read_local_scores`** globs a local `data/` and takes the contig from `Path.stem`. Ask: list
+   the contig files and read the knots through fsspec, taking the contig from the name string. (Measured: a chr22
+   position probe through plain polars, 1.5 s and about 1.7 MB.)
+
+Not asked: a keyed MITOMAP reader. None exists and we do not need one.
+
+Two facts from the measurement that may save you a check: the ClinPGx and CPIC mirrors read anonymously (public
+and ungated), and duckdb's `httpfs` has to be installed ahead of time on a server with no route to the extension
+repository (ours has none).
+
+What we do meanwhile: nothing remote. The proxy keeps answering from local snapshots only, and the remote half of the
+release waits on these. Several items or one is your call; asks 1 to 3 are the ones that unblock everything else.
+
+## S146 — a gene-metrics or CIViC lookup over an unreadable snapshot returns an empty result, which reads as "nothing found"
+
+*From just-dna-registry (the liaison, on its lead's reading of enricher 0.8.4), 2026-11-11.*
+
+What we read: `gene_metrics.lookup_snapshot` returns `{}` when `_snapshot_parquet(reference)` finds no parquet, and
+the CIViC snapshot row reader (`civic_refutation.py`) returns `[]` when its parquet does not exist. A caller handed a
+reference that cannot be read therefore gets the same value as a lookup that found no rows for its genes.
+
+Why it matters to us: the registry reports these lookups to publishers and through its proxy, and our standing rule
+is that "nothing was wrong" and "nothing was checked" must never render the same. An empty collection is the one
+shape where they do. Today it is reachable by a misconfigured path; with S145 it would also be reachable by a remote
+read that failed.
+
+Ask: raise on an unreadable reference (your `...Unavailable` family, or a plain error), and keep `{}` / `[]` for a
+lookup that ran and found nothing. If a raise would break a caller that relies on the empty value, a sibling flag
+saying the snapshot was not read would also do.
+
+What we do meanwhile: nothing needed yet. We call neither reader directly today; the keyed lookups that would are
+the ones S145 is for, and they will check the reference themselves until this is answered.
