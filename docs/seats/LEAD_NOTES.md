@@ -76,6 +76,11 @@ None open.
   0.8.3's published wheel has) passed. Release notes: scratchpad `release_notes_0_8_4.md`. After the publish: tag
   `v0.8.4` on 36cbc20f, GitHub release, docs refresh (README, CLAUDE.md doc map), remove nothing; unlock
   `wt-cut-084`, `git branch -d cut/v0.8.4` (needs -D: cherry-picked). No 0.7.4 (the maintainer, desk #252).
+- **Next patch on `main`, uncut (after the 0.8.4 cut commit):** RM432 (ac3f1bcc, the lead's, 2026-11-11: two
+  snapshot readers raise `FileNotFoundError`; a behaviour change for a direct caller), the GWAS docstring's 15/s budget
+  (7a88e10f), RELEASE_CYCLE's floor rule (307a5ae3). Lesson from RM428: it added the public attribute
+  `GwasCatalogClient.size_refusals` on `main`, which patch scope forbids; it shipped in the 0.8.4 cut and stays (the
+  pm), and RM429 is the minor that surfaces it. A builder's own new attribute gets a leading underscore on `main`.
 - **Carried by the 0.8.4 cut (was the next patch after 0.8.3):** RM425, RM426, RM427 (e7fa81d6, triage's: the ClinVar skip names `cache pull --only clinvar`, and a walk checks every quoted command), the fence test's hub-registry fix (11f86d74) and the liaison's first weekly dependency bump (867e8462, 4e30ef46; huggingface-hub 2.4.0, duckdb held at 1.5.5).
 - **Shipped in 0.8.3 (was the next patch):** RM409 shipped 2026-11-08 (e0ceaa28: Ctrl-C stops the Open Targets mirror and the
   AVI build within a chunk); RM421 filed from it, sized by the pm and shipped 2026-11-08 (83182f88: a 120 s default timeout in
