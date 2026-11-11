@@ -67,11 +67,15 @@ None open.
   maintainer); tag `v0.8.3` on 725eb2bb, pushed; GitHub release up; README and the CLAUDE.md doc map name 0.8.3
   (67a514b8). RELEASE_CYCLE step 10 complete. RM424 parked (a minor). The 0.8.3 worktrees and branches were removed by the maintainer, 2026-11-10. RM409's interrupt test failed once at load 30–48 (1.0 s bound): file
   if it recurs.
-- **0.8.4 cut in preparation, 2026-11-11** (the pm: RM428 `urgent`, out as 0.8.4 with RM425–427). RM428 asks 1–3 built
-  by the lead, f0433de5, pushed (page 500; a refused first page re-asked once without `size`; live guard green). The cut
-  commit is being prepared on `cut/v0.8.4` in the locked scratchpad worktree `wt-cut-084` by an Opus agent; the lead
-  reviews, lands, builds dists, hands the publish to the maintainer. RM428 ask 4 (an enricher-only 0.7.4): the
-  maintainer said no, 2026-11-11 ("no for 0.7.4"), relayed on desk #252; RM428 closes whole in the cut.
+- **0.8.4 cut, 2026-11-11, waiting on the maintainer's publish** (all three packages; RM425, RM426, RM427, RM428).
+  Cut commit 36cbc20f on `main`, pushed (prepared on `cut/v0.8.4` as d35c8525 and cherry-picked). Record: a measured
+  zero over 22 modules. Gates at the cut: full suite 7359 passed, 180 skipped; prerelease gates 26 passed with the
+  network; sweep covers 0.8.4; strict docs green. The compiler moves only because `test_workspace_versions` holds
+  its format floor equal to format's version; RELEASE_CYCLE's worked example (compiler staying) contradicts that
+  test, to reconcile. Dists in `dist/`, `twine check` (7.0.0; 6.1.0 refuses the enricher's metadata 2.5, as
+  0.8.3's published wheel has) passed. Release notes: scratchpad `release_notes_0_8_4.md`. After the publish: tag
+  `v0.8.4` on 36cbc20f, GitHub release, docs refresh (README, CLAUDE.md doc map), remove nothing; unlock
+  `wt-cut-084`, `git branch -d cut/v0.8.4` (needs -D: cherry-picked). No 0.7.4 (the maintainer, desk #252).
 - **Carried by the 0.8.4 cut (was the next patch after 0.8.3):** RM425, RM426, RM427 (e7fa81d6, triage's: the ClinVar skip names `cache pull --only clinvar`, and a walk checks every quoted command), the fence test's hub-registry fix (11f86d74) and the liaison's first weekly dependency bump (867e8462, 4e30ef46; huggingface-hub 2.4.0, duckdb held at 1.5.5).
 - **Shipped in 0.8.3 (was the next patch):** RM409 shipped 2026-11-08 (e0ceaa28: Ctrl-C stops the Open Targets mirror and the
   AVI build within a chunk); RM421 filed from it, sized by the pm and shipped 2026-11-08 (83182f88: a 120 s default timeout in
