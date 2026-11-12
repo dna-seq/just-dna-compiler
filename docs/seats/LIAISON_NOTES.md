@@ -72,6 +72,11 @@ until then a finding goes to triage. Tooling: the kit's `watch-upstream.sh` cove
 `aa6fc8f`, no bump owed. Trap for the next pin bump: at v2.0.0 `protos/dna_model.proto` is a shim importing
 `protos/v1/dna_model.proto`, so `atlas_protos.py` must fetch that too. Adopting v2's live service is RM433 (parked).
 
+**Role change read (v0.1.195, 2026-11-13):** a new duty, upstream-index: one `watch-pypi.py --upstream` watcher
+over the key upstreams the ledgers name (here ga4gh.vrs, polars, duckdb; huggingface-hub is the registry's). Item,
+`unattended`, after the quota hold lifts (97% on 2026-11-13): declare it in `.blueprints.toml`, keeping the git tag
+watchers or dropping the ones it duplicates. reflect after 2026-11-20: classes/liaison/LIAISON.md as of v0.1.195.
+
 **Fellow liaison:** just-dna-registry/liaison (seated 2026-11-04) stands on fastapi, huggingface-hub, and polars and
 duckdb through our tiers. A defect in a library under both of us is raised with each other first, so it is filed once. **longevity-loci/liaison** (seated 2026-11-05) stands on us: just-dna-enricher 0.7.3, compiler 0.7.2, format 0.7.1 from PyPI, and the module-creator plugin v0.48.0. It watches our tags, asks us before mapping our 0.8 branches, and polls us before filing a shared defect; answer such a poll in `agent-chat`.
 
