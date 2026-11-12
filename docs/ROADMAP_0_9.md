@@ -27,7 +27,7 @@ maintainer names, and the pm parks or unparks the rest. So this file keeps only 
   because the registry's 0.8 sweep (S132) heard nothing of a corrected derivation the record cannot declare. RM437, added
   2026-11-12, because just-dna-lite, moving onto the Ensembl lane as INTEGRATION_0_8 asks, found no annotation values there.
 - **It rides on an item already in**: RM404 opens the `enrich()` signature at the seam RM385 rebuilds (added
-  2026-11-07).
+  2026-11-07); RM441 is RM399's re-derive route seen from a corrected derivation (added 2026-11-12).
 
 The other 22 items moved to [ROADMAP.md](ROADMAP.md#active-items) as **a minor, parked**. Each states what
 unparks it, and each has a row in its gate audit. RM188 is one of them, so **0.9's theme is not decided**:
@@ -1084,5 +1084,56 @@ recipe, which is the mixed-release shape. **The doc half is a patch, now**, unde
 says that the lane carries the core only, that a consumer needing consequence, clinical flags or frequencies keeps
 its current source for them until 0.9, and why a hand-fetched group is unsafe (a group joins on `row_idx`, which
 holds within one release only). It goes with the next patch on `main`.
+
+**Residuals** none yet.
+
+## RM441 — a release record has no axis for a correction to a derived table, so 0.8.5's reads as "nothing moved" although RM438 corrected `resolution.csv`
+
+**Severity** low · **Status** open — **a minor, 0.9** (built with RM399, one design) · **Owner**
+format (`vocab.VALID_RELEASE_OUTPUT_AXES`, `release_records`) + compiler (`sweep`) · **Motivating case** S153
+(CONSUMER_SUGGESTIONS_HISTORY.md) · *related* RM399, RM438, RM201, RM120
+
+**The gap.** `VALID_RELEASE_OUTPUT_AXES` is `parquet_schema`, `parquet_bytes`, `content_signature`,
+`manifest_fields` and `warnings`. Every one is compiled output, and the sweep measures them by compiling the
+reference modules with their committed sidecars. A correction to what the enricher derives (`resolution.csv`, the
+fact sidecars) is invisible on that instrument. 0.8.5's record is a measured zero on every axis, and its commit
+says RM438's correction "is enricher output the record does not measure". The registry decides what a release
+changed by reading the record (`release_records.needs_recompile`), so it reads 0.8.5 as moving nothing, and so does
+every consumer that sweeps by the record. RM438 is the kind of change the record exists for: a published value was
+wrong, and only some modules can carry it.
+
+**The three asks, and the design points under each.**
+1. **An axis for derived tables.** A new member of a closed vocabulary is minor-legal (P3) and not a patch. One
+   catch is in the code: `RECOMPILE_DRIVING_AXES` is the vocabulary minus `NON_RECOMPILE_AXES` ("a new axis joins
+   the driving set unless it is explicitly excluded"). A derived-table axis added naively would tell a consumer to
+   *recompile*, when the action a derived-table correction calls for is to *re-derive* (`enrich(rederive=True)`)
+   and then recompile. It needs its own route, a third set or a field saying the action, and not membership in
+   the recompile set.
+2. **A `requires` that reaches the right modules.** Today's grammar is presence of dotted manifest paths. RM438's
+   reach, a module with a coordinate-authored row and no `rsid`, is not spellable in it, so its honest value is
+   `None` ("the reach could not be stated", which a consumer keeps). Whether the manifest should carry a path that
+   makes it spellable is a second question, priced on its own.
+3. **RM438 declared.** Records ship inside the package, so the declaration goes in the next release's record, not
+   an amended 0.8.5. Until the axis exists, the measured and declared halves of a record must agree
+   (`@a-record-written-in-two-passes-drifts-between-them`). So a `correction` on a compiled axis that the sweep
+   measured as zero is not an honest stopgap.
+
+**Meanwhile.** Nothing published needs it. On registry production no row moves, and the five modules still on
+pre-0.8 tables are being re-derived on 0.8.5 by hand. The gap is for the next derived-table correction.
+
+**Sizing (pm, 2026-11-12): 0.9, one design with RM399.** RM399 is the same gap from the other side: a release moved
+a lane the enricher reads (0.8's snapshot switch), and the record could not say "re-derive". Here the enricher's own
+derivation was corrected (RM438), and it cannot say so either. Two fields for one action would be two entities where
+one serves (fewer entities), so the record gains **one route**: a reader across a span learns "re-derive", with the
+cause named (a lane moved, or a derivation corrected) and the items behind it. Under the asks:
+
+1. **Not a recompile axis.** The route is its own set or field, never a member of `RECOMPILE_DRIVING_AXES`, as the
+   entry says; a test holds that "re-derive" is never answered as "recompile".
+2. **`requires` stays `None` for RM438**, the honest "the reach could not be stated". A manifest path to make such a
+   reach spellable is not part of this item; it comes back only when a consumer shows `None` costing it a needless
+   re-derivation.
+3. **RM438 is the route's first declaration**, in the record of the release that ships the route, beside RM399's
+   0.8 snapshot switch if the build can reach the 0.8.0 entry. Until then the CHANGELOG and INTEGRATION_0_8 carry it
+   in prose, and no compiled axis gets a correction the sweep measured as zero.
 
 **Residuals** none yet.

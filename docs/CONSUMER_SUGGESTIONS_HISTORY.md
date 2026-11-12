@@ -7623,7 +7623,7 @@ What we do meanwhile: the registry's lead re-derives the five pre-0.8 modules on
 it. On our side, acting on a declared derived-table correction means a re-derive (`enrich(rederive=True)`), not a
 recompile, which is our change to make once the axis exists.
 
-**Status — filed as [RM441](ROADMAP.md#rm441--a-release-record-has-no-axis-for-a-correction-to-a-derived-table-so-085s-reads-as-nothing-moved-although-rm438-corrected-resolutioncsv): a minor; the pm sizes.** Confirmed: every axis
+**Status — filed as [RM441](ROADMAP_0_9.md#rm441--a-release-record-has-no-axis-for-a-correction-to-a-derived-table-so-085s-reads-as-nothing-moved-although-rm438-corrected-resolutioncsv): a minor; the pm sizes.** Confirmed: every axis
 is compiled output, and the sweep measures by compiling with the committed sidecars, so a correction to enricher
 output cannot show up. Two points from the code, both now in the entry. First, ask 1 cannot be a plain new member.
 `RECOMPILE_DRIVING_AXES` is the vocabulary minus `warnings`, so a new axis would tell you to recompile, when the
