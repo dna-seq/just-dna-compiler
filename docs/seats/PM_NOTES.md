@@ -78,6 +78,11 @@ patches right after real use started, so the pm reads an audit sceptically: the 
 
 ## Open questions and owed work
 
+- **RM433's second trial, `unattended` (at night).** The first (docs/probes/ALPHAGENOME2_METHYLATION_TRIAL.md) was
+  inconclusive: 9 mQTL pairs from one chr1 region, shifts inside the 1 Mb vs 16 kb window noise. The second needs
+  enough loci across the genome (GoDMC's API stalled after a 62 MB read: pace it, or use another mQTL source), a fixed
+  window, and the live terms page re-saved. Its scripts in the scratchpad or `data/interim/`, never tracked.
+
 - **Desk #261, remote snapshot reads as a 0.9 zone (RM430, the registry's ask)**, filed 2026-11-11, S3.
   Recommended: asks 1 to 3 alone. On silence RM430 and RM431 stay parked; raise it again with RM424 when 0.9's scope
   is chosen.

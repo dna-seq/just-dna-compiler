@@ -216,6 +216,14 @@ Built in this order, each step allowed to stop the next:
 Indel scoring rides along only if step 2 shows the model service is usable at our scale; it was never v2's to
 unlock.
 
+**The trial, run 2026-11-12** ([ALPHAGENOME2_METHYLATION_TRIAL.md](probes/ALPHAGENOME2_METHYLATION_TRIAL.md)):
+inconclusive, not negative. Cheap (about 1 s and 1 KB a call, deterministic, no throttling, indels accepted), and
+strong only within about 15 bp of the variant. At nine published blood mQTLs its shifts stayed inside its own window
+sensitivity (at most 0.046 logit against up to 0.1 of noise); 7 of the 8 readable signs agreed, but 6 of those came
+from one locus. The vendored terms allow publishing the scores non-commercially only, with notice and the Use
+Restrictions carried as a term, never under CC0 or CC BY. **So step 3 waits** on a second trial with enough loci,
+spread across the genome, to tell signal from that noise, run at night; and on the live terms page re-read.
+
 **Residuals** none yet.
 
 ## RM56 (policy half) — the rule for a measurement that spans bins
