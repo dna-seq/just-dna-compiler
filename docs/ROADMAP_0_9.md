@@ -24,7 +24,8 @@ maintainer names, and the pm parks or unparks the rest. So this file keeps only 
 - **It is a leftover of longevitymap v2, the last zone named**: RM360, RM358, RM345 (with RM286, the same
   licence-shape design), RM294, and RM435 (added 2026-11-12, from the seat building the v2 module);
 - **A real run hits it**: RM265's warning fires on every compile of just-dna-lite's three ClinVar panel modules (S114); RM399, added 2026-11-07,
-  because the registry's 0.8 sweep (S132) heard nothing of a corrected derivation the record cannot declare.
+  because the registry's 0.8 sweep (S132) heard nothing of a corrected derivation the record cannot declare. RM437, added
+  2026-11-12, because just-dna-lite, moving onto the Ensembl lane as INTEGRATION_0_8 asks, found no annotation values there.
 - **It rides on an item already in**: RM404 opens the `enrich()` signature at the seam RM385 rebuilds (added
   2026-11-07).
 
@@ -1054,5 +1055,34 @@ study parquet like the other 0.3 columns, through the three touch points `@three
 reporter is the seat building that module, and the value is being written today into a cell nothing reads, so the
 cost is paid either way. Built in the precedent's shape only: the name `effect_direction`, `VALID_EFFECT_DIRECTIONS`,
 the warning on a stated size that disagrees, and nothing from `VariantRow.direction`'s vocabulary.
+
+**Residuals** none yet.
+
+## RM437 — the split Ensembl snapshot's `groups/` sidecars have no provisioning route, so a consumer who needs a group must write into the lane's directory itself
+
+**Severity** medium · **Status** open — **a minor, 0.9** (its doc half a patch now) · **Owner** enricher (`download._provision_snapshot`, `locations`, `cache pull`) · **Motivating case** S150
+(CONSUMER_SUGGESTIONS_HISTORY.md) · *related* RM420, RM339, RM381
+
+**The gap.** The `ensembl` lane pulls `data/*.parquet` only. `locations.py` says so on purpose ("Files outside
+`data/` (prepare-annotations' `groups/*`) are the manifest's and not pulled"). The split repo moved every
+annotation value (consequence, clinical flags, frequencies) out of the core and into those groups, so a consumer
+moving onto the lane as INTEGRATION_0_8 § 3 asks gets `id` and `row_idx` and nothing else. A group joins to the
+core on `(chrom, row_idx)`, which holds only within one `release_id`. So the only safe writer is the one that
+pulled the core: it checks the group's files against the same manifest, records them in the pull record, and
+re-pulls them when the release moves (RM420). A consumer's own downloader into the lane's directory is the
+mixed-release shape the lane exists to prevent, and a stale group would join to the wrong variants silently.
+
+**The ask.** An opt-in group selection on the lane (`ensure_snapshot(groups=…)`,
+`cache pull --only ensembl --groups …`), attested by the manifest and recorded in the pull record. Also a public
+path function for a group's directory, so no reader spells it, and a refusal when a present group's files are not
+the core's release. New parameters and a new public name, so a minor.
+
+**Sizing (pm, 2026-11-12): 0.9, with its doc half now.** A real consumer hit it by following our own upgrade note,
+so it meets 0.9's "a real run hits it". The pull, attested and recorded per release, is the only safe writer, as the
+entry says, so the minor is built in that shape and nothing smaller: no documented "fetch the groups yourself"
+recipe, which is the mixed-release shape. **The doc half is a patch, now**, under this number: INTEGRATION_0_8 § 3
+says that the lane carries the core only, that a consumer needing consequence, clinical flags or frequencies keeps
+its current source for them until 0.9, and why a hand-fetched group is unsafe (a group joins on `row_idx`, which
+holds within one release only). It goes with the next patch on `main`.
 
 **Residuals** none yet.

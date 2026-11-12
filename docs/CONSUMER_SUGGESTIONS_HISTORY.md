@@ -7496,7 +7496,7 @@ record, plus a public name for the group directory (`snapshot.ensembl_group_dir(
 reader never spells the path. A refusal when a present group's files are not the manifest's release would be
 the guard `row_idx` needs.
 
-**Status — filed as [RM437](ROADMAP.md#rm437--the-split-ensembl-snapshots-groups-sidecars-have-no-provisioning-route-so-a-consumer-who-needs-a-group-must-write-into-the-lanes-directory-itself): a minor; the pm sizes.** Confirmed: the lane pulls `data/` only, by the comment you
+**Status — filed as [RM437](ROADMAP_0_9.md#rm437--the-split-ensembl-snapshots-groups-sidecars-have-no-provisioning-route-so-a-consumer-who-needs-a-group-must-write-into-the-lanes-directory-itself): a minor; the pm sizes.** Confirmed: the lane pulls `data/` only, by the comment you
 quote. You are right not to write `groups/` yourselves. A group joins to the core on `row_idx`, valid within one
 `release_id`, so the only safe writer is the one that pulled the core under the same manifest. Your candidate is the
 ask: opt-in groups on the lane, attested and recorded, a public directory name, and a refusal on a release

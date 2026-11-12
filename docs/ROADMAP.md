@@ -2285,32 +2285,9 @@ release accepts. Conditions:
 
 **Residuals** none yet.
 
-## RM437 — the split Ensembl snapshot's `groups/` sidecars have no provisioning route, so a consumer who needs a group must write into the lane's directory itself
-
-**Severity** medium · **Status** open — **a minor (a new parameter, CLI flag and public path function); the pm
-sizes** · **Owner** enricher (`download._provision_snapshot`, `locations`, `cache pull`) · **Motivating case** S150
-(CONSUMER_SUGGESTIONS_HISTORY.md) · *related* RM420, RM339, RM381
-
-**The gap.** The `ensembl` lane pulls `data/*.parquet` only. `locations.py` says so on purpose ("Files outside
-`data/` (prepare-annotations' `groups/*`) are the manifest's and not pulled"). The split repo moved every
-annotation value (consequence, clinical flags, frequencies) out of the core and into those groups, so a consumer
-moving onto the lane as INTEGRATION_0_8 § 3 asks gets `id` and `row_idx` and nothing else. A group joins to the
-core on `(chrom, row_idx)`, which holds only within one `release_id`. So the only safe writer is the one that
-pulled the core: it checks the group's files against the same manifest, records them in the pull record, and
-re-pulls them when the release moves (RM420). A consumer's own downloader into the lane's directory is the
-mixed-release shape the lane exists to prevent, and a stale group would join to the wrong variants silently.
-
-**The ask.** An opt-in group selection on the lane (`ensure_snapshot(groups=…)`,
-`cache pull --only ensembl --groups …`), attested by the manifest and recorded in the pull record. Also a public
-path function for a group's directory, so no reader spells it, and a refusal when a present group's files are not
-the core's release. New parameters and a new public name, so a minor.
-
-**Residuals** none yet.
-
 ## RM438 — `resolve_variants` back-fills a position-only row with the first rsID at its `(chrom, start, ref)`, whatever the genotype, and warns nothing
 
-**Severity** high · **Status** open — **a patch (a corrected derivation on a deprecated but working path); the pm
-sizes** · **Owner** enricher (`resolver._lookup_rsids_by_position`, `resolve_variants`) · **Motivating case** S151
+**Severity** high · **Status** open — **a patch, the next on `main`** (into 0.8.5 if it lands before the cut) · **Owner** enricher (`resolver._lookup_rsids_by_position`, `resolve_variants`) · **Motivating case** S151
 (CONSUMER_SUGGESTIONS_HISTORY.md) · *related* RM382, RM381, RM271
 
 **The defect.** Reproduced on `main` with an in-memory table holding S151's four rows at `22:42128945` (three SNVs
@@ -2332,6 +2309,22 @@ rsID on a pharmacogene row is the expensive kind of wrong.
 the row's genotype (RM382's hosting rule, applied to the back-fill). Attach only when one rsID is left. When more
 than one is left, withhold the rsID with a `rsid_ambiguous` warning naming every one. Rows that state `alts` narrow
 on them first. A behaviour correction with no new name, so a patch. Pin it with S151's four rows.
+
+**Sizing (pm, 2026-11-12): a patch, the next on `main`, about an hour.** A wrong rsID on a pharmacogene row, given
+silently, by a public function consumers call: that is the expensive kind of silent, and the deprecation does not
+make it rarer for them. The 0.8.5 cut is paused for RM436 anyway, so it goes in 0.8.5 if it lands first; the lead
+decides. Conditions:
+
+- **One hosting rule, not two.** The back-fill asks the same allele-aware judgement `_lookup_rsid_candidates` already
+  makes for the enrich path (RM382's rule), through a shared function, never a second copy of it
+  (`@roster-is-as-wide-as-the-tables-it-reads`: grep for the question).
+- **The existing word for the outcome**: more than one rsID left is the `rsid_ambiguous` finding the enrich path
+  already emits (`vocab`, `ambiguous_pick`), naming every candidate; no new code. Unlike the enrich path, the
+  back-fill **withholds** the rsID there rather than picking, since nothing downstream marks its pick.
+- **Pinned** with S151's four rows (the three SNVs and the insertion), the `A/G` row getting `rs3892097`, plus a row
+  with no genotype at the same position getting nothing and the warning.
+- **Declared** in the CHANGELOG and INTEGRATION_0_8's known-issues list: a row that used to get an rsID may now get
+  none and a warning.
 
 **Residuals** none yet.
 
