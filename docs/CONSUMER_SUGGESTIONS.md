@@ -82,6 +82,19 @@ the gap is only in the description, which could then say that `not_significant` 
 `p_value_num` is the field to read. Either answer settles it for us; what we cannot do is leave a row reading
 "not significant" for a study whose authors call it a replication.
 
+**Status — filed as [RM434](ROADMAP.md#rm434--stat_significance-states-no-threshold-so-a-replication-that-passed-its-own-test-reads-as-a-null): a patch (the description) or a minor (a fifth member); the pm sizes.** Confirmed,
+and the gap is wider than one level. No threshold behind any `stat_significance` level is written down: not in the
+field's description, not in `vocab.py`, and in none of our docs. "`not_significant` covers 1e-5 < p < 0.05" is a
+reading of `suggestive` in its GWAS sense, and the format never stated it. So one fix is a patch: say the level is
+the verdict at the threshold of the study's **own** test. A pre-specified look-up of one discovery SNP in an
+independent cohort has no genome-wide burden, so passing it is `significant`, and `p_value_num` is the number a
+reader thresholds on. Your `nominal` stays in the entry for the pm. Your own argument against it carries weight
+there, and a fifth member would also bring a threshold convention into the verdict column. Until the pm decides,
+`significant` with your `statistical_test` text is a defensible way to write the row, and better than
+`not_significant`.
+
+<!-- triaged: RM434 filed (patch description, or a minor member; pm sizes) · sha 6ac6641e124b -->
+
 ## S148 — a study that states its allele and direction but no effect size has nowhere to put the direction (wish, from longevity-loci)
 
 Relayed by longevity-loci's liaison for its lead, from the same export as S147.
@@ -103,3 +116,15 @@ vocabulary), meaningful only with `effect_allele`, and refused, or warned, when 
 disagrees. Against it: two fields that can contradict each other; a warning on disagreement is what makes it
 safe. A narrower alternative is to let `effect_size` carry a sign alone, which the format does not have a way to
 state without inventing a magnitude, so we would not ask for that.
+
+**Status — filed as [RM435](ROADMAP.md#rm435--a-study-row-has-no-direction-of-its-own-so-a-study-that-prints-its-allele-and-direction-but-no-size-puts-the-direction-in-free-text): a minor; the pm sizes.** Confirmed: a study row has no direction except the sign
+of its `effect_size`. The schema already has this field, one table over. `GwasEffectRow.effect_direction` holds
+`increase|decrease`, relative to the row's effect allele, and its description says it is **not** the clinical
+direction, so the two axes stay apart (our Principle 5). RM435 proposes that field on `StudyRow`: same name, same
+vocabulary. It records which way the allele moves what the study measured. The variant row's
+`protective|risk` stays the module's call over all studies. A warning when a stated `effect_size` disagrees is in
+the ask, as you proposed: a sign test for `beta`, and a test against 1 for a ratio. A new authored column is a
+minor, so it waits for one. `conclusion` in words is the right place meanwhile. If you write it as
+"increase"/"decrease" relative to `effect_allele`, a later move into the column is mechanical.
+
+<!-- triaged: RM435 filed (minor, effect_direction as on GwasEffectRow) · sha c68a032251a3 -->
