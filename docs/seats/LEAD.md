@@ -68,6 +68,15 @@ Releases, the person, 2026-11-03: "pypi stays human gated. Package prep (dist bu
 seat prepares a cut whole (the versions by `docs/RELEASE_CYCLE.md`, the floors, the changelog, the dists built and
 checked) and hands it to the person, who publishes; the tag follows the publish, cut by this seat without asking.
 
+**What is published, read from the index, never remembered.** Before reminding the person to publish, or saying a
+version is out or not, read `sh <kit>/bin/kit-run.sh drivers/pypi/versions.py` in the clone: each package's
+published versions, with the repository's own beside the newest. Never ask for a version already out (the
+maintainer, 2026-11-12: a seat reminded them to publish versions out a week already). The watcher `pypi` says
+each version published, yanked or gone, and on a publish it runs the branch sweep (`[on_publish.sweep]` in
+`.blueprints.toml`): merged temporary branches (`build/*`, `cut/*`, `worktree-agent-*`) deleted with
+`git branch -d`, unmerged ones left for the person's `/seats:branch-sweep`. Tracked: the watcher. Taken in on
+the maintainer's word, 2026-11-12, "treat builder as my word", from the kit's seat-builder (L136, L137; desk #271).
+
 Not covered, so the person's: publishing to the package index; a force push, rewriting pushed history,
 force-deleting an unmerged branch, a push to another remote.
 

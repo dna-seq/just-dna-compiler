@@ -1,6 +1,8 @@
 [repo]
 # The repo's channel takes this name too; the seats talk there, in agent-chat and in announcements (D104).
 id = "just-dna-compiler"
+# The workspace root has no [project] name, so the package-index reader and watcher read the names here (L136).
+pypi = "just-dna-compiler just-dna-enricher just-dna-format"
 
 # Questions the sessions here put to the decision model (RM14); carried over from the clone's own copy.
 [decisions]
@@ -16,6 +18,10 @@ wake_from = "just-dna-compiler/triage just-dna-compiler/liaison just-dna-compile
 # questions under repo:just-dna-compiler.
 [seat.lead.watch.desk]
 cmd = "sh kit:bin/py.sh kit:classes/desk/watch-answers.py just-dna-compiler lead"
+
+# Each version of this repository's packages the index publishes, yanks or drops (the kit's L136; desk #271).
+[seat.lead.watch.pypi]
+cmd = "sh kit:bin/py.sh kit:drivers/pypi/watch-pypi.py"
 
 [seat.lead.zulip]
 pool = "~/.config/agent-seat-blueprints/zulip/pool"
@@ -99,3 +105,9 @@ cmd = "sh kit:bin/py.sh kit:classes/base/nightly.py deps"
 
 [seat.liaison.zulip]
 pool = "~/.config/agent-seat-blueprints/zulip/pool"
+
+# On a version published, the merged temporary branches deleted (the kit's L137; desk #271): `git branch -d` only,
+# so an unmerged or cherry-picked branch (a `cut/*` landed by cherry-pick) is left and listed for the person's
+# /seats:branch-sweep. `liaison/*` and `triage/*` belong to those seats and are left out on purpose.
+[on_publish.sweep]
+cmd = "python3 kit:bin/branch-sweep.py --apply --pattern 'build/*' --pattern 'cut/*' --pattern 'worktree-agent-*'"
