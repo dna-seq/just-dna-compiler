@@ -91,6 +91,14 @@ installed release offers, so the warning RM371 fixed stays fixed without the flo
 correct RM371's sentence, so the next consumer is not told its install works. We have no view on which is
 better for the enricher; (2) costs us a permanent override until Google lifts its cap.
 
+**Status — filed as [RM436](ROADMAP.md#rm436--the-enricher-floors-tenacity921-and-google-genai-caps-it-below-920-so-a-consumer-depending-on-both-cannot-resolve-the-08-trio): a patch either way; the pm picks between your two.** Confirmed. google-genai 3.2.0, its
+newest, requires `tenacity<9.2.0,>=8.2.3`, and RM371's sentence that just-dna-lite accepts 9.2.1 was wrong: it read
+your direct dependencies and missed the transitive cap. Your second finding is worse than the first, and it is in
+the entry. A relock that does not raise the enricher's floor silently kept enricher 0.7.3 beside format 0.8.4. Your
+override is sound on the evidence you give, since google-genai's calls are unchanged under 9.2.1.
+
+<!-- triaged: RM436 filed (patch; floor vs shim, pm picks) · sha 8a7e5d94f1bf -->
+
 ## S150 — the split Ensembl snapshot's `groups/` sidecars have no provisioning route, so a consumer who wants them must write into the directory 0.8 says only the enricher may write
 
 **Reporter:** just-dna-lite (adopting 0.8.4, 2026-11-12).
@@ -127,6 +135,14 @@ record, plus a public name for the group directory (`snapshot.ensembl_group_dir(
 reader never spells the path. A refusal when a present group's files are not the manifest's release would be
 the guard `row_idx` needs.
 
+**Status — filed as [RM437](ROADMAP.md#rm437--the-split-ensembl-snapshots-groups-sidecars-have-no-provisioning-route-so-a-consumer-who-needs-a-group-must-write-into-the-lanes-directory-itself): a minor; the pm sizes.** Confirmed: the lane pulls `data/` only, by the comment you
+quote. You are right not to write `groups/` yourselves. A group joins to the core on `row_idx`, valid within one
+`release_id`, so the only safe writer is the one that pulled the core under the same manifest. Your candidate is the
+ask: opt-in groups on the lane, attested and recorded, a public directory name, and a refusal on a release
+mismatch. That is a new parameter, a new flag and a new public name, so a minor, and it waits for one.
+
+<!-- triaged: RM437 filed (minor) · sha 718ff0ac926d -->
+
 ## S151 — a position-only row resolves to the lexicographically first rsID at its `(chrom, start, ref)`, so dbSNP 157's new insertion at CYP2D6*4 takes rs3892097's place
 
 **Reporter:** just-dna-lite (adopting 0.8.4 against `ensembl-variation-2026_07_13-vep116.0`, 2026-11-12).
@@ -158,3 +174,14 @@ was latent until dbSNP 157; we have not checked.
 **Candidates.** Narrow the rows at a position to the ones whose ALT set can host the row's genotype (the RM382
 hosting rule, applied to the back-fill), and withhold with a warning naming every rsID when more than one is
 left. A strict mode would refuse the ambiguous case like any unresolved row.
+
+**Status — filed as [RM438](ROADMAP.md#rm438--resolve_variants-back-fills-a-position-only-row-with-the-first-rsid-at-its-chrom-start-ref-whatever-the-genotype-and-warns-nothing): severity high, a patch; the pm sizes.** Reproduced on `main` with your four rows in an
+in-memory table: `_lookup_rsids_by_position` returns `rs2517910443` and no warning. The enrich path that builds
+`resolution.csv` is not this code. It uses the allele-aware `_lookup_rsid_candidates`, which never picks
+silently. `resolve_variants` is the older public function: the compiler reaches it only through the deprecated
+`ensembl_cache` path, and you call it directly. A wrong rsID on a CYP2D6 row is reason enough to fix it now
+rather than at its 1.0 removal. Your candidate is the ask: narrow to the ALTs that can host the genotype (RM382's
+rule), attach only a single survivor, and withhold with a warning naming every rsID otherwise. Moving to
+`enrich` + `resolution.csv` would also take you off this path.
+
+<!-- triaged: RM438 filed (high, patch) · sha c234a6cefc39 -->
