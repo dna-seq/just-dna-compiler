@@ -185,6 +185,8 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S144** `GwasResult` carried no count of RM428's page-size refusals, only a log line — RM429 filed
 - **S145** no snapshot lane could be read remotely through the enricher — RM430 and RM431 filed
 - **S146** two snapshot readers answered an unreadable reference with an empty result — RM432 filed
+- **S147** a replication at p < 0.05 had no `stat_significance` level, since no level states a threshold — RM434 filed
+- **S148** a study row had no direction of its own without an effect size — RM435 filed
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -7332,3 +7334,79 @@ With RM430, a failed remote read reaches this as well, so the two are filed side
 reference yourselves until then is the right one.
 
 <!-- triaged: RM432 filed (pm sizes: raise or flag) · sha b75b070dabf6 -->
+
+# Two format wishes from longevity-loci's export to 0.8.4, by its liaison's handoff, 2026-11-12
+
+## S147 — a replication at p < 0.05 has no `stat_significance` level of its own (wish, from longevity-loci)
+
+Relayed by longevity-loci's liaison for its lead, while building the export of its curated longevity rows into a
+0.8.4 spec directory (`studies.csv`).
+
+**What we have.** Many longevity loci are discovered genome-wide in one study and replicated in another by a
+look-up of the discovery's lead SNP at nominal significance: P 0.002 in CHARGE-EU's 90+ cases (Joshi 2017,
+Table 2) for the LPA locus. Our
+curation rule (longevity-loci's D11, 2026-11-10) counts such a look-up as an independent replication, the "p <
+0.05" of the longevitymap v2 requirements' tier A, and keeps it apart from a look-up that failed.
+
+**What happens on 0.8.4.** `StudyRow.stat_significance` is closed at `significant|suggestive|not_significant|
+unknown`. A replication at P 0.002 can only be written `not_significant`, the same value as a look-up at P 0.6,
+or `unknown`, which it is not. A reader of `studies.csv` sorting the evidence for a variant by
+`stat_significance` sees the replication as a null. `p_value_num` keeps the number, so the information survives,
+but the one column meant to carry the verdict says the opposite of what the study reported.
+
+**Meanwhile.** Our export writes `not_significant`, keeps `p_value` exactly, and says "nominal replication
+look-up (p < 0.05)" in `statistical_test`.
+
+**Candidate.** An added level, `nominal` (p < 0.05 and above the suggestive line), additive to the vocabulary, so
+a 0.8 reader that does not know it treats it as any unknown value would. Against it: if the format keeps
+`stat_significance` derivable from `p_value_num` alone, a fifth level adds nothing a reader cannot compute, and
+the gap is only in the description, which could then say that `not_significant` covers 1e-5 < p < 0.05 and that
+`p_value_num` is the field to read. Either answer settles it for us; what we cannot do is leave a row reading
+"not significant" for a study whose authors call it a replication.
+
+**Status — filed as [RM434](ROADMAP.md#rm434--stat_significance-states-no-threshold-so-a-replication-that-passed-its-own-test-reads-as-a-null): a patch (the description) or a minor (a fifth member); the pm sizes.** Confirmed,
+and the gap is wider than one level. No threshold behind any `stat_significance` level is written down: not in the
+field's description, not in `vocab.py`, and in none of our docs. "`not_significant` covers 1e-5 < p < 0.05" is a
+reading of `suggestive` in its GWAS sense, and the format never stated it. So one fix is a patch: say the level is
+the verdict at the threshold of the study's **own** test. A pre-specified look-up of one discovery SNP in an
+independent cohort has no genome-wide burden, so passing it is `significant`, and `p_value_num` is the number a
+reader thresholds on. Your `nominal` stays in the entry for the pm. Your own argument against it carries weight
+there, and a fifth member would also bring a threshold convention into the verdict column. Until the pm decides,
+`significant` with your `statistical_test` text is a defensible way to write the row, and better than
+`not_significant`.
+
+<!-- triaged: RM434 filed (patch description, or a minor member; pm sizes) · sha 6ac6641e124b -->
+
+## S148 — a study that states its allele and direction but no effect size has nowhere to put the direction (wish, from longevity-loci)
+
+Relayed by longevity-loci's liaison for its lead, from the same export as S147.
+
+**What we have.** A replication table often prints the effect allele, the direction and the P, and no effect
+size: CHARGE-EU's 90+ look-up for LPA (Joshi 2017, Table 2), and meta-analyses that print a pooled P and the
+direction of each arm without a pooled estimate. Our rule (longevity-loci's D13, the person's answer, 2026-11-10)
+lets such a study support a tier A or B row on its `effect_allele`, its direction and its P.
+
+**What happens on 0.8.4.** `StudyRow` has `effect_allele` but no direction: the direction is carried by the sign
+of `effect_size` relative to `effect_measure`, and with no size there is no sign. The variant row's `direction`
+is the module's call over all studies, not this study's finding. So the study's own direction goes into
+`conclusion`, free text, where nothing checks it against `effect_allele` or against the variant's `direction`.
+
+**Meanwhile.** Our export writes the direction into the study's `conclusion` cell, in words.
+
+**Candidate.** An optional study-level direction (`effect_direction` or `direction`, on the variant row's
+vocabulary), meaningful only with `effect_allele`, and refused, or warned, when `effect_size` is given and its sign
+disagrees. Against it: two fields that can contradict each other; a warning on disagreement is what makes it
+safe. A narrower alternative is to let `effect_size` carry a sign alone, which the format does not have a way to
+state without inventing a magnitude, so we would not ask for that.
+
+**Status — filed as [RM435](ROADMAP.md#rm435--a-study-row-has-no-direction-of-its-own-so-a-study-that-prints-its-allele-and-direction-but-no-size-puts-the-direction-in-free-text): a minor; the pm sizes.** Confirmed: a study row has no direction except the sign
+of its `effect_size`. The schema already has this field, one table over. `GwasEffectRow.effect_direction` holds
+`increase|decrease`, relative to the row's effect allele, and its description says it is **not** the clinical
+direction, so the two axes stay apart (our Principle 5). RM435 proposes that field on `StudyRow`: same name, same
+vocabulary. It records which way the allele moves what the study measured. The variant row's
+`protective|risk` stays the module's call over all studies. A warning when a stated `effect_size` disagrees is in
+the ask, as you proposed: a sign test for `beta`, and a test against 1 for a ratio. A new authored column is a
+minor, so it waits for one. `conclusion` in words is the right place meanwhile. If you write it as
+"increase"/"decrease" relative to `effect_allele`, a later move into the column is mechanical.
+
+<!-- triaged: RM435 filed (minor, effect_direction as on GwasEffectRow) · sha c68a032251a3 -->
