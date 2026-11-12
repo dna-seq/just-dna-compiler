@@ -2298,7 +2298,7 @@ and INTEGRATION_0_8 § 4 say the floor moved down and why.
 
 ## RM438 — `resolve_variants` back-fills a position-only row with the first rsID at its `(chrom, start, ref)`, whatever the genotype, and warns nothing
 
-**Severity** high · **Status** open — **a patch, the next on `main`** (into 0.8.5 if it lands before the cut) · **Owner** enricher (`resolver._lookup_rsids_by_position`, `resolve_variants`) · **Motivating case** S151
+**Severity** high · **Status** open — **a patch, built on `main` 2026-11-12, uncut** (into 0.8.5 if it lands before the cut) · **Owner** enricher (`resolver._lookup_rsids_by_position`, `resolve_variants`) · **Motivating case** S151
 (CONSUMER_SUGGESTIONS_HISTORY.md) · *related* RM382, RM381, RM271
 
 **The defect.** Reproduced on `main` with an in-memory table holding S151's four rows at `22:42128945` (three SNVs
@@ -2382,6 +2382,22 @@ replaced by this one. The patch, still the next on `main` and in 0.8.5 if it lan
   ClinVar as a possible effect, and the registry runs it on production before the three panels re-derive.
 - **Pinned** with S151's four rows on both paths: the `A/G` row resolves to `rs3892097` on each, and a row with no
   genotype and no `alts` stays withheld (`resolve_variants`) or `ambiguous` (enrich).
+
+**Built (2026-11-12).** One private rule, `resolver._hosting_rsids(candidates, ref, alts, genotypes)`. It reads
+the row's `alts` with its `ref` when stated, else every genotype the variant's rows author (a pharm or haplotype
+subject narrows on its own). It keeps each rsID whose loci at the position `site_verdicts` does not refute (Kleene),
+and an unreadable allele narrows nothing. The candidates' loci come from the same query, through an out-parameter on
+`_lookup_rsid_candidates` and the private `resolver._lookup_loci` / `clinvar._lookup_loci` twins, so the public
+`lookup_loci` signatures are unchanged. `_lookup_rsids_by_position` now reads through it, one subject per
+`(chrom, start, ref, alts)`. It attaches one rsID, withholds several with `rsid_ambiguous`, and says none can host
+under `rsid_without_resolution_label`. The enrich loop takes the first link whose narrowed set is non-empty. **Two
+choices beyond the sizing**, for review. (1) Zero hosting is an answer, so an `ambiguous` row, or a `resolved` row on
+a single refuted rsID, gets no rsID. That arm is outside the measured query; the CHANGELOG names it. The pm kept it (ruling above). (2) Every row's
+genotype narrows, not the first row's, so a `C/C` row authored first does not keep a key ambiguous. RM382's forward
+filter still reads the first row's genotype. Pinned by
+`enricher/tests/test_a_position_rsid_is_narrowed_by_the_genotype.py` (S151's four rows, both paths), red on
+0ccd50fe (29 of 35). `test_resolver_unit`'s ref-less pick is inverted, with its reason. The feature scenario and
+ENRICHER's back-fill section are rewritten.
 
 **Residuals** none yet.
 

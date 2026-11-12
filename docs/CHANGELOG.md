@@ -41,6 +41,40 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-12 — RM438: a coordinate-only row's back-filled rsID is narrowed by the row's alleles, on both paths (patch, uncut)
+
+`resolve_variants` gave a coordinate-only row the first rsID at its `(chrom, start, ref)` in string order and never
+read the genotype. dbSNP 157 added a 16 bp insertion (`rs2517910443`) at CYP2D6*4 (`22:42128945`, `rs3892097`), so an
+`A/G` row there got the insertion, with no warning. The enrich path flagged its pick `ambiguous` but chose it the same
+blind way. One private rule, `resolver._hosting_rsids`, now narrows a position's rsIDs on both paths. It reads the
+row's `alts` when stated (with its `ref`), else every genotype the variant's rows author, and judges them with the
+forward direction's hosting predicate (`site_verdicts`). An undecided verdict keeps a candidate. An allele it cannot
+read (`*`, symbolic, unparseable, no genotype) narrows nothing. A row stating one ALT was already allele-exact and is
+unchanged. No public name and no warning code is added.
+
+- **`resolve_variants` (deprecated, removed at 1.0; called directly by consumers).** One rsID left is attached. More
+  than one is **withheld** with `rsid_ambiguous` naming every one, since this path writes nothing that could mark a
+  pick. None left, where rsIDs sit at the position, attaches nothing and says, under `rsid_without_resolution_label`,
+  that none there can host the row. **A behaviour change for a direct caller:** a row that got an rsID may now get
+  none and a warning, and the ref-less multi-allelic pick with its "Specify ref to disambiguate." warning is gone.
+- **`enrich` writes a corrected derivation of `resolution.csv` (P3).** It keeps pick-and-flag, applied to what is
+  left: an `ambiguous` row becomes `resolved` where exactly one rsID hosts the genotype, and keeps `ambiguous` with a
+  shorter `rsid_alternates` where several do. Where none hosts, the row is written with no rsID (`source=authored`),
+  as an allele-exact miss already was. That reaches rows that were `ambiguous`, **and rows that were `resolved` on a
+  single back-filled rsID the genotype refutes**. A link whose candidates the row refutes is a miss, so ClinVar is
+  read next, and a row's `source` can move from `cache` to `clinvar`. Rows move only when a table is next written
+  (a fresh `enrich`, or `--rederive`). Merge-not-clobber keeps a recorded row otherwise.
+- **Exposure, measured.** The registry ran the exposure query on production, read-only, over the latest version of
+  all 24 published modules: 439,752 `resolution.csv` rows, 0 with `status=ambiguous`, 0 with `rsid_alternates`. So
+  no published `ambiguous` row moves. The query, kept for the re-derivation ahead: `status=ambiguous`, a coordinate
+  `variant_key`, and `alts` empty or multi-valued. The second arm was **not** measured: `status=resolved`,
+  `source` `cache` or `clinvar`, a coordinate `variant_key` with `rsid` set, and `alts` empty or multi-valued. Those
+  rows can lose their rsID or change `source`, and only re-deriving against the snapshot says which do. Ahead are three
+  ClinVar panels (cancer, cardio, pathogenic; about 141,000 coordinate-keyed rows) still on pre-0.8 tables, which the
+  registry re-derives after installing this. The test registry was not measured.
+
+From S151 and S152.
+
 ## 2026-11-12 — RM436: the enricher accepts tenacity 9.0 again, so it resolves beside google-genai (patch, uncut)
 
 RM371 floored `tenacity>=9.2.1` so every retried client could spell `wait_exponential_jitter(multiplier=…)`, the

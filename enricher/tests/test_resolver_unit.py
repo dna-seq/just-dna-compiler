@@ -44,7 +44,12 @@ def test_rsid_resolves_to_position(cache: Path) -> None:
 
 
 def test_position_with_ref_resolves_to_rsid(cache: Path) -> None:
-    patched, _ = resolve_variants([_v(chrom="19", start=44908683, ref="T")], cache)
+    # A genotype the locus (`T>C`) can host: since RM438 the back-fill reads it, and the fixture's default
+    # `A/G` is refuted there, so it would get no rsID (`test_a_position_rsid_is_narrowed_by_the_genotype`).
+    patched, _ = resolve_variants(
+        [VariantRow(chrom="19", start=44908683, ref="T", genotype="C/T", state="neutral", conclusion="t")],
+        cache,
+    )
     assert patched[0].rsid == "rs429358"
 
 
@@ -85,13 +90,29 @@ def multiallelic_cache(tmp_path: Path) -> Path:
     return tmp_path / "cache"
 
 
-def test_refless_multiallelic_resolves_deterministically_and_warns(multiallelic_cache: Path) -> None:
-    # A ref-less position over a multi-allelic site is genuinely ambiguous. Resolution must be
-    # deterministic (ORDER BY chrom,start,ref,id picks the ref='A' row → rs100 regardless of source
-    # row order or run) and must surface a warning rather than silently guessing.
-    patched, warnings = resolve_variants([_v(chrom="1", start=500)], multiallelic_cache)
-    assert patched[0].rsid == "rs100"
-    assert any("multiple dbSNP ids" in w and "1:500" in w for w in warnings), warnings
+@pytest.mark.parametrize("genotype, expected", [("G/G", "rs200"), ("A/C", "rs100")])
+def test_refless_multiallelic_resolves_on_the_rsid_its_genotype_names(
+    multiallelic_cache: Path, genotype: str, expected: str
+) -> None:
+    # A ref-less position over a multi-allelic site: the genotype tells the two rsIDs apart (RM438).
+    row = VariantRow(chrom="1", start=500, genotype=genotype, state="neutral", conclusion="t")
+    patched, warnings = resolve_variants([row], multiallelic_cache)
+    assert patched[0].rsid == expected
+    assert not warnings
+
+
+def test_refless_multiallelic_withholds_and_warns_when_nothing_tells_them_apart(
+    multiallelic_cache: Path,
+) -> None:
+    # Inverted by RM438. This pinned a deterministic pick (`ORDER BY` chose rs100) beside a warning; the
+    # pick was the S151 defect, a wrong rsID given silently to anyone who did not read the warning. With
+    # an allele the back-fill cannot read (`*`), both rsIDs stay, and the rsID is withheld and both named.
+    row = VariantRow(chrom="1", start=500, genotype="*/A", state="neutral", conclusion="t")
+    patched, warnings = resolve_variants([row], multiallelic_cache)
+    assert patched[0].rsid is None
+    assert [w.code for w in warnings] == ["rsid_ambiguous"]
+    assert "rs100" in warnings[0] and "rs200" in warnings[0] and "1:500" in warnings[0]
+    assert "withheld rather than picked" in warnings[0]
 
 
 def test_no_cache_skips_with_warning(tmp_path: Path) -> None:

@@ -355,8 +355,9 @@ def _id_sets(con: duckdb.DuckDBPyConnection, spellings: list) -> Callable[[Spell
 
 
 def _first_id(con: duckdb.DuckDBPyConnection, spellings: list) -> Callable[[Spelling], set[str]]:
-    found = resolver._lookup_rsids_by_position(con, [(c, p, r) for c, p, r, _ in spellings], [])
-    return lambda s: {found[f"{s[0]}:{s[1]}:{s[2]}"]} if f"{s[0]}:{s[1]}:{s[2]}" in found else set()
+    # No genotype, so nothing narrows (RM438): a `chrom:start:ref` two rsIDs share is withheld (`None`).
+    found = resolver._lookup_rsids_by_position(con, [(c, p, r, None, ()) for c, p, r, _ in spellings], [])
+    return lambda s: {answer} if (answer := found.get((s[0], s[1], s[2], None))) is not None else set()
 
 
 def _forward_gnomad(tmp_path: Path) -> dict[str, set[Spelling]]:
@@ -451,7 +452,11 @@ def _calls(module: str, function: str) -> set[str]:
 
 def test_every_snapshot_reader_is_registered() -> None:
     """A new reader of a snapshot's `alt` fails here until it is placed: a reader, or not one, with a reason."""
-    unsql = {"ensembl._loci_from_rest", "gnomad._loci_from_variant_ids"}  # a payload parser, no SQL
+    unsql = {
+        "ensembl._loci_from_rest",  # a payload parser, no SQL
+        "gnomad._loci_from_variant_ids",  # a payload parser, no SQL
+        "resolver._lookup_rsids_by_position",  # reads through `_lookup_rsid_candidates` since RM438
+    }
     assert _snapshot_sql_functions() == (set(READERS) - unsql) | set(NOT_READERS)
 
 

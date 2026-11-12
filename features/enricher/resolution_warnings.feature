@@ -144,15 +144,17 @@ Feature: What the enricher's resolver says, in its own words
   # anchor: _lookup_rsids_by_position
   # text: compiler/src/just_dna_compiler/resolution_findings.py
   @code:rsid_ambiguous @actionable
-  Scenario: one position, ref unspecified, matching several dbSNP ids
-    Given a lookup by chrom and start with no ref at a multi-allelic site
-    When the reverse map is built
-    Then a warning fires at that position saying the "rsid resolved as AMBIGUOUS"
-    And it says the pick "is a pick, not a finding." and offers "Specify ref to disambiguate."
-    And it fires once per position rather than once per colliding id
-    # The `ORDER BY` fixes which id wins, so the answer is stable; stable is not the same as right, and
-    # the warning is what keeps a deterministic pick from reading as a fact
-    # (`@a-withhold-cannot-be-delegated-to-a-default-that-is-a-definite-answer`).
+  Scenario: one position whose dbSNP ids the row's alleles cannot tell apart
+    Given a coordinate-only row at a position several rsIDs share
+    And its alleles (its `alts`, else every genotype the variant's rows author) leave more than one hosting
+    When `resolve_variants` back-fills the rsID
+    Then no rsID is attached, and a warning fires naming every one that "dbSNP ids can host the row"
+    And it says the rsID "is withheld rather than picked" and offers "or a genotype only one of them can host"
+    And it fires once per variant, not once per row or per colliding id
+    But a row whose alleles exactly one rsID can host gets that rsID, and no warning
+    # RM438 (S151). This scenario pinned a deterministic pick beside the warning, and the pick was the
+    # defect: CYP2D6*4's `A/G` row got the lexicographically first rsID, an insertion it cannot be. The
+    # path writes no table that could mark a pick, so it withholds; `enrich` keeps pick-and-flag.
 
   # source: enricher/src/just_dna_enricher/vrs.py
   # anchor: MintResult

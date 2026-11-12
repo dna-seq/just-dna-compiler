@@ -13,6 +13,7 @@ from typing import Any, Optional
 
 from just_dna_compiler.compiler import _restamp_for_build, load_csv_rows
 from just_dna_compiler.resolution import (
+    LocusSpelling,
     contradiction_reason,
     hosting_verdict,
     site_verdicts,
@@ -134,7 +135,7 @@ from just_dna_enricher.placement import (
     load_witnesses,
     locus_key,
 )
-from just_dna_enricher.resolver import AlleleMismatch, lookup_loci
+from just_dna_enricher.resolver import AlleleMismatch, _hosting_rsids, _lookup_loci
 from just_dna_enricher.sequences import (
     RefCheck,
     SequenceProxy,
@@ -745,18 +746,43 @@ def _run_enrichment(
     # guessing an allele-blind label (which was the mis-attribution / reverse-round-trip drift).
     # Initialized before the lookup, not inside it: the call can fail (a present-but-unqueryable
     # cache) and the loops below still have to have something to iterate.
-    pos_candidates: dict[tuple, list[str]] = {}
-    rev_candidates: dict[tuple, list[str]] = {}  # (chrom,start,ref,alt) -> sorted candidate rsids
-    rev_source: dict[tuple, str] = {}  # which link produced the candidates
+    # Per link, in link order: (chrom,start,ref,alt) -> {candidate rsID: its loci at the position}. The
+    # loci are what narrows a subject's candidates by its alleles (RM438, `_back_fill_candidates`).
+    rev_loci: dict[str, dict[tuple, dict[str, list[LocusSpelling]]]] = {}
     # **Which position→rsID maps were read this run (RM393)**, by the link name a back-filled row records
     # in `source` (`cache` for the Ensembl snapshot, `clinvar`). Only those two snapshot links fill
-    # `rev_candidates` — no live link answers a position — so an empty candidate list is an answer only
+    # `rev_loci` — no live link answers a position — so an empty candidate list is an answer only
     # from a map that was read: a recorded back-fill whose link's map was not read this run (no snapshot,
     # or a failed pull of one while the other is present) was not re-asked. Narrower than
     # `rsid_links_consulted` below on purpose: that one is also true for a run that may go live, which
     # back-fills nothing.
     reverse_maps_read: set[str] = set()
     positions = [(v.chrom, v.start, v.ref, _authored_alt(v)) for v in need_rsid]
+    # **Every genotype a variant's rows author** narrows its back-filled rsID (RM438), never the first
+    # row's alone: a key authored `C/C` then `A/G` would otherwise narrow on the hom-ref call, which
+    # refutes nothing, and stay ambiguous on the order the author typed. A subject from another table
+    # (a pharm genotype, a haplotype's allele) narrows on its own constraint.
+    key_genotypes: dict[str, list[str | None]] = {}
+    for row in variants:
+        if row.variant_key is not None:
+            key_genotypes.setdefault(row.variant_key, []).append(row.genotype)
+
+    def _back_fill_candidates(v: Subject) -> tuple[list[str], str | None]:
+        """The subject's candidate rsIDs from the first link that has one hosting it, and that link.
+
+        `_hosting_rsids` is the rule `resolve_variants` asks too. A link whose candidates the subject's
+        alleles all refute is a miss for the chain, as a rejected forward answer is (RM382), so the next
+        link is read; none hosting leaves no candidate, an answer rather than an unknown.
+        """
+        pt = (v.chrom, v.start, v.ref, _authored_alt(v))
+        genotypes = (
+            key_genotypes.get(v.variant_key, [v.constraint]) if v.origin == "variants.csv" else [v.constraint]
+        )
+        for link, by_position in rev_loci.items():
+            hosting = _hosting_rsids(by_position.get(pt, {}), v.ref, v.alts, genotypes)
+            if hosting:
+                return hosting, link
+        return [], None
 
     # One proxy, one read cache for the run: the hosting filter settles an undecided indel with it
     # (RM274), at each link's answer (RM382) and again in the assembly loop, and minting and the
@@ -837,8 +863,13 @@ def _run_enrichment(
         # check would silently never run on exactly the modules it exists for.
         rsids = [v.rsid for v in need_pos if v.rsid] + [rsid for rsid, _, _, _ in verify_pairs]
         try:
-            rsid_to_loci, pos_candidates, _ = lookup_loci(
-                reference, rsids, positions, non_nucleotide=non_nucleotide_rsids
+            rev_loci["cache"] = {}
+            rsid_to_loci, _, _ = _lookup_loci(
+                reference,
+                rsids,
+                positions,
+                non_nucleotide=non_nucleotide_rsids,
+                candidate_loci=rev_loci["cache"],
             )
             reverse_maps_read.add("cache")
         except Exception as exc:
@@ -861,10 +892,6 @@ def _run_enrichment(
             )
         for rsid in rsid_to_loci:
             source_of_rsid[rsid] = "cache"
-        for pt, cands in pos_candidates.items():
-            if cands:
-                rev_candidates[pt] = cands
-                rev_source[pt] = "cache"
         tracker.settle(k for rsid in rsid_to_loci for k in subjects_of_rsid.get(rsid, ()))
         withdraw_rejected(rsid_to_loci)
 
@@ -899,7 +926,14 @@ def _run_enrichment(
         # Kept nested: the outer clause is the build/mode gate, the inner is whether a cache resolved.
         if clinvar_ref is not None:
             cv_rsids = [v.rsid for v in need_pos if v.rsid and v.rsid not in rsid_to_loci]
-            cv_positions = [pt for pt in positions if not rev_candidates.get(pt)]
+            # A position is asked of ClinVar while some subject there has no hosting candidate yet.
+            cv_positions = list(
+                dict.fromkeys(
+                    (v.chrom, v.start, v.ref, _authored_alt(v))
+                    for v in need_rsid
+                    if not _back_fill_candidates(v)[0]
+                )
+            )
             cv_rsid_to_loci: dict[str, list[dict]] = {}
             cv_pos_candidates: dict[tuple, list[str]] = {}
             if cv_rsids or cv_positions:
@@ -910,9 +944,11 @@ def _run_enrichment(
                 # the Ensembl cache and the live chain can still complete. (Failing hard here was a
                 # real crash for anyone whose cache dir held a foreign ClinVar parquet.)
                 try:
-                    cv_rsid_to_loci, cv_pos_candidates, _ = clinvar.lookup_loci(
-                        clinvar_ref, cv_rsids, cv_positions
+                    cv_candidate_loci: dict[tuple, dict[str, list[LocusSpelling]]] = {}
+                    cv_rsid_to_loci, cv_pos_candidates, _ = clinvar._lookup_loci(
+                        clinvar_ref, cv_rsids, cv_positions, cv_candidate_loci
                     )
+                    rev_loci["clinvar"] = cv_candidate_loci
                     reverse_maps_read.add("clinvar")
                 except Exception as exc:
                     logger.warning(
@@ -926,10 +962,6 @@ def _run_enrichment(
                     if rsid not in rsid_to_loci:
                         rsid_to_loci[rsid] = loci
                         source_of_rsid[rsid] = "clinvar"
-                for pt, cands in cv_pos_candidates.items():
-                    if cands and not rev_candidates.get(pt):
-                        rev_candidates[pt] = cands
-                        rev_source[pt] = "clinvar"
                 tracker.settle(k for rsid in cv_rsid_to_loci for k in subjects_of_rsid.get(rsid, ()))
                 withdraw_rejected(cv_rsid_to_loci)
 
@@ -1573,8 +1605,10 @@ def _run_enrichment(
             # Allele-aware back-fill (Tier 0/1/3): 0 candidates → leave rsid null (coordinate is the
             # identity, don't guess); 1 → attach it; ≥2 (genuine dbSNP merge at the exact allele) →
             # deterministic pick + status="ambiguous" + the full candidate list, never a silent guess.
-            pt = (v.chrom, v.start, v.ref, _authored_alt(v))
-            cands = rev_candidates.get(pt, [])
+            # The candidates are narrowed by the row's alleles first (RM438): a row whose genotype one
+            # rsID at the position can host is `resolved` on it, not `ambiguous` between it and an
+            # insertion it cannot be.
+            cands, cand_link = _back_fill_candidates(v)
             if (
                 rederive
                 and not cands
@@ -1595,9 +1629,9 @@ def _run_enrichment(
             if not cands:
                 rsid, status, alternates, src = None, "resolved", None, "authored"
             elif len(cands) == 1:
-                rsid, status, alternates, src = cands[0], "resolved", None, rev_source[pt]
+                rsid, status, alternates, src = cands[0], "resolved", None, str(cand_link)
             else:
-                rsid, status, alternates, src = cands[0], "ambiguous", ",".join(cands), rev_source[pt]
+                rsid, status, alternates, src = cands[0], "ambiguous", ",".join(cands), str(cand_link)
             out.append(
                 ResolutionRow(
                     variant_key=key,

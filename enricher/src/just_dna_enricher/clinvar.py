@@ -22,6 +22,7 @@ from collections import defaultdict
 from pathlib import Path
 
 import duckdb
+from just_dna_compiler.resolution import LocusSpelling
 from just_dna_format.snapshot import CLINVAR_DATASET_PREFIX as CLINVAR_DATASET_PREFIX
 from just_dna_format.snapshot import clinvar_release_label, read_release, release_label
 
@@ -97,11 +98,23 @@ def lookup_loci(
     code. The reverse map reuses `resolver._lookup_rsid_candidates` (allele-aware, all candidates) over
     the `clinvar` view's `rsid` column — one implementation, no drift. Inject-only; never fetches.
     """
+    return _lookup_loci(reference, rsids, positions)
+
+
+def _lookup_loci(
+    reference: Path,
+    rsids: list[str],
+    positions: list[tuple[str | None, int | None, str | None, str | None]],
+    candidate_loci: dict[tuple, dict[str, list[LocusSpelling]]] | None = None,
+) -> tuple[dict[str, list[dict]], dict[tuple, list[str]], list[str]]:
+    """`lookup_loci`, plus each reverse candidate's alleles into `candidate_loci`: `resolver._lookup_loci`'s twin (RM438)."""
     warnings: list[str] = []
     con = _connect(reference)
     try:
         rsid_to_loci = _lookup_positions_by_rsid(con, sorted(set(rsids)), warnings) if rsids else {}
-        pos_candidates = _lookup_rsid_candidates(con, "clinvar", "rsid", positions) if positions else {}
+        pos_candidates = (
+            _lookup_rsid_candidates(con, "clinvar", "rsid", positions, candidate_loci) if positions else {}
+        )
     finally:
         con.close()
     return rsid_to_loci, pos_candidates, warnings

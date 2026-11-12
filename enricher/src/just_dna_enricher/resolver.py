@@ -17,9 +17,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import duckdb
-from just_dna_compiler.resolution import site_verdicts
+from just_dna_compiler.resolution import LocusSpelling, site_verdicts
 from just_dna_compiler.resolution_findings import (
-    ambiguous_pick,
     coordinate_disagrees,
     expanded_to_multiple_loci,
     locus_cannot_host,
@@ -29,13 +28,23 @@ from just_dna_compiler.resolution_findings import (
     unresolved_rsid,
     without_resolution_label,
 )
+from just_dna_format.alleles import split_genotype
 from just_dna_format.base import derive_variant_key
 from just_dna_format.findings import CodedWarning
 from just_dna_format.spec import VariantRow
+from just_dna_format.vocab import ALLELE_PATTERN
 from just_dna_format.vrs import normalize_chrom
 
 from just_dna_enricher.ensembl import _placeable_alleles
-from just_dna_enricher.events import Mint, ReadWindow, alleles_of, kleene_any, names_event, no_mint
+from just_dna_enricher.events import (
+    Mint,
+    ReadWindow,
+    alleles_of,
+    kleene_all,
+    kleene_any,
+    names_event,
+    no_mint,
+)
 from just_dna_enricher.locations import DUCKDB_NAME, resolve_ensembl_reference
 from just_dna_enricher.sequences import per_alt_loci, trim_allele
 
@@ -164,12 +173,17 @@ def resolve_variants(
         # an unsorted set iteration would leave manifest.compilation.warnings non-reproducible.
         unique_rsids = sorted({v.rsid for v in need_pos if v.rsid is not None})
         rsid_to_pos = _lookup_positions_by_rsid(con, unique_rsids, warnings)
-    pos_to_rsid: dict[str, str] = {}
+    pos_to_rsid: dict[tuple, str | None] = {}
     if need_rsid:
-        unique_positions = sorted(
-            {(v.chrom, v.start, v.ref) for v in need_rsid if v.chrom is not None and v.start is not None}
+        # One subject per `(chrom, start, ref, alts)`, carrying every genotype its rows author, so the rows
+        # of one variant are narrowed together and get one answer (RM438). Sorted for the warning order.
+        genotypes: dict[tuple, list[str | None]] = {}
+        for v in need_rsid:
+            if v.start is not None:
+                genotypes.setdefault((v.chrom, v.start, v.ref, v.alts), []).append(v.genotype)
+        pos_to_rsid = _lookup_rsids_by_position(
+            con, [(*probe, tuple(g)) for probe, g in sorted(genotypes.items(), key=_probe_order)], warnings
         )
-        pos_to_rsid = _lookup_rsids_by_position(con, unique_positions, warnings)
     if verify:
         _check_rsid_coord_consistency(con, verify, warnings)
     con.close()
@@ -273,9 +287,14 @@ def resolve_variants(
                         )
         elif v.rsid is None and v.chrom is not None:
             key = derive_variant_key(None, v.chrom, v.start, v.ref)
-            if key in pos_to_rsid:
+            probe = (v.chrom, v.start, v.ref, v.alts)
+            if pos_to_rsid.get(probe) is not None:
                 # Fill the rsid; the frozen variant_key stays the coordinate (no flip).
-                patched.append(v.model_copy(update={"rsid": pos_to_rsid[key]}))
+                patched.append(v.model_copy(update={"rsid": pos_to_rsid[probe]}))
+            elif probe in pos_to_rsid:
+                # Answered and withheld (RM438): several rsIDs host the row, or none does, and the
+                # back-fill has already said which. Nothing to add here.
+                patched.append(v)
             else:
                 warnings.append(
                     CodedWarning(
@@ -311,6 +330,21 @@ def lookup_loci(
     `non_nucleotide`, when given, receives the rsIDs the snapshot holds with no nucleotide allele at
     any locus (RM271), so a caller can name them rather than read them out of the log (RM272).
     """
+    return _lookup_loci(reference, rsids, positions, non_nucleotide)
+
+
+def _lookup_loci(
+    reference: Path,
+    rsids: list[str],
+    positions: list[tuple[str | None, int | None, str | None, str | None]],
+    non_nucleotide: set[str] | None = None,
+    candidate_loci: dict[tuple, dict[str, list[LocusSpelling]]] | None = None,
+) -> tuple[dict[str, list[dict]], dict[tuple, list[str]], list[str]]:
+    """`lookup_loci`, plus each reverse candidate's alleles at its position into `candidate_loci` (RM438).
+
+    What `enrich` calls, so its back-fill narrows the candidates by the row's alleles (`_hosting_rsids`)
+    from the same query. Private, so the public signature `clinvar.lookup_loci` mirrors stays as it was.
+    """
     warnings: list[str] = []
     con = _connect(reference)
     try:
@@ -318,7 +352,9 @@ def lookup_loci(
             _lookup_positions_by_rsid(con, sorted(set(rsids)), warnings, non_nucleotide) if rsids else {}
         )
         pos_candidates = (
-            _lookup_rsid_candidates(con, "ensembl_variations", "id", positions) if positions else {}
+            _lookup_rsid_candidates(con, "ensembl_variations", "id", positions, candidate_loci)
+            if positions
+            else {}
         )
     finally:
         con.close()
@@ -393,6 +429,7 @@ def _lookup_rsid_candidates(
     table: str,
     id_col: str,
     positions: list[tuple[str | None, int | None, str | None, str | None]],
+    candidate_loci: dict[tuple, dict[str, list[LocusSpelling]]] | None = None,
 ) -> dict[tuple, list[str]]:
     """Allele-aware reverse lookup: `(chrom,start,ref,alt) -> sorted [candidate rsids]`.
 
@@ -401,6 +438,10 @@ def _lookup_rsid_candidates(
     when the authored variant is less specific. Returns every distinct rsid found, so the caller flags
     a >1 result as ambiguous rather than guessing. Shared shape for the Ensembl (`id`) and ClinVar
     (`rsid`) tables — `id_col` selects which. `ORDER BY` keeps the candidate order deterministic (P7).
+
+    `candidate_loci`, when given, receives each candidate's alleles at the position as the probe matched
+    them, spelled per ALT (`per_alt_loci`), so a caller can narrow the candidates by a row's alleles with
+    `_hosting_rsids` (RM438) without a second query.
     """
     uniq = list(dict.fromkeys(positions))
     concrete = [(c, s) for c, s, r, a in uniq if c is not None and s is not None]
@@ -419,6 +460,7 @@ def _lookup_rsid_candidates(
     result: dict[tuple, list[str]] = {}
     for chrom, start, ref, alt in uniq:
         cands: list[str] = []
+        matched: dict[str, list[tuple[str, int, str, str]]] = {}
         for rref, ralt, rid in by_pos.get((str(chrom), int(start)) if chrom is not None else (), []):
             placed = _placeable_alleles(rref, _snapshot_alleles(ralt))
             if placed is None:
@@ -427,14 +469,76 @@ def _lookup_rsid_candidates(
             # pipe-joined cell, and `!=` against the whole cell never matched any of them. Each allele
             # is matched as the row spells it and as `trim_allele` spells it alone (RM381): the split
             # repo pads every ALT of a site to one ref, so `16:23635706 GTT>GT` is a caller's `GT>G`.
-            if not any(
-                _names_allele((int(start), ref, alt), (int(start), rref, ralt_one)) for ralt_one in placed[1]
-            ):
+            named = [
+                ralt_one
+                for ralt_one in placed[1]
+                if _names_allele((int(start), ref, alt), (int(start), rref, ralt_one))
+            ]
+            if not named:
                 continue
             if rid not in cands:  # rows already ordered by ... id
                 cands.append(rid)
+            matched.setdefault(rid, []).extend((str(chrom), int(start), placed[0], a) for a in named)
         result[(chrom, start, ref, alt)] = cands
+        if candidate_loci is not None:
+            candidate_loci[(chrom, start, ref, alt)] = {
+                rid: [(lo["chrom"], lo["start"], lo["ref"], lo["alts"]) for lo in per_alt_loci(found)]  # type: ignore[misc]
+                for rid, found in matched.items()
+            }
     return result
+
+
+def _readable_alleles(cell: str | None) -> bool:
+    """Whether every allele a genotype-shaped cell names is plain bases, so the hosting judgement can read it.
+
+    `*`, a symbolic allele, a `.`, or anything the validators would not have let through is a call this
+    tier cannot place, and an empty cell names nothing.
+    """
+    if not cell:
+        return False
+    called = split_genotype(cell)
+    return bool(called) and all(ALLELE_PATTERN.match(a) for a in called)
+
+
+def _hosting_rsids(
+    candidates: Mapping[str, Sequence[LocusSpelling]],
+    ref: str | None,
+    alts: str | None,
+    genotypes: Sequence[str | None],
+) -> list[str]:
+    """A position's candidate rsIDs, narrowed to those whose alleles there can host the row (RM438).
+
+    The one rule both position→rsID back-fills ask: `resolve_variants`'s `_lookup_rsids_by_position`,
+    which withholds when more than one is left, and `enrich`'s assembly loop, which picks the first and
+    marks the row `ambiguous`. `candidates` maps each rsID to its loci at the position, in the order the
+    lookup found them (`_lookup_rsid_candidates(candidate_loci=…)`), and that order is kept.
+
+    What the row states is read in this order: its `alts` when stated (with its `ref`, so the alleles
+    carry their frame), else every genotype the variant's rows author. An rsID is dropped only when the
+    hosting judgement (`site_verdicts`, the RM381/RM382 predicate the forward direction asks) is a
+    confident `False` for some readable genotype at every one of its loci; an undecided locus keeps it
+    (Kleene). An allele the judgement cannot read (`*`, symbolic, unparseable, or no genotype at all)
+    narrows nothing: withhold on unknown, never drop a candidate. Zero left is an answer, not an unknown:
+    no rsID at the position can carry what the row says.
+    """
+    if alts:
+        stated: list[str | None] = ["/".join([*([ref] if ref else []), *alts.split(",")])]
+    else:
+        stated = list(genotypes)
+    readable = [cell for cell in stated if _readable_alleles(cell)]
+    if not readable:
+        return list(candidates)
+    return [
+        rsid
+        for rsid, loci in candidates.items()
+        if kleene_all(kleene_any(site_verdicts(cell, loci)) for cell in readable) is not False
+    ]
+
+
+def _probe_order(item: tuple[tuple, object]) -> tuple:
+    """A total order over `(chrom, start, ref, alts)` probes that may hold `None` (warning order, P7)."""
+    chrom, start, ref, alts = item[0]
+    return (str(chrom), int(start), ref or "", alts or "")
 
 
 def _names_allele(wanted: tuple[int, str | None, str | None], row: tuple[int, str, str]) -> bool:
@@ -860,60 +964,64 @@ def _lookup_rsid_sets_by_position(
 
 def _lookup_rsids_by_position(
     con: duckdb.DuckDBPyConnection,
-    positions: list[tuple[str | None, int | None, str | None]],
+    subjects: Sequence[tuple[str | None, int | None, str | None, str | None, tuple[str | None, ...]]],
     warnings: list[str],
-) -> dict[str, str]:
-    """Batch lookup: (chrom, start, ref) -> rsid."""
-    if not positions:
+) -> dict[tuple, str | None]:
+    """Batch back-fill for `resolve_variants`: `(chrom, start, ref, alts)` → the one rsID that hosts it.
+
+    Each subject is `(chrom, start, ref, alts, genotypes)`, the genotypes every row of that variant
+    authors. The candidates are `_lookup_rsid_candidates`' (allele-exact on a single stated ALT, else
+    every rsID at `(chrom, start, ref)`, or at `(chrom, start)` with no `ref`), narrowed by
+    `_hosting_rsids`, the rule `enrich` asks too (RM438). One left is attached. **More than one is
+    withheld** with `rsid_ambiguous` naming every one: this path writes no table that could mark a pick,
+    so a pick here is a silent guess, which is how S151's CYP2D6*4 row got the lexicographically first
+    rsID at its position, a 16 bp insertion its `A/G` genotype cannot be. None left, with candidates
+    there, is withheld with the no-label warning saying no rsID there can host the row. A subject with no
+    candidate at all is absent from the answer, and the caller says so as before. A subject present with
+    `None` was answered and withheld, and its warning is already written.
+    """
+    if not subjects:
         return {}
-    # By position only: the ref is compared per ALT below, because the split repo pads it (RM381).
-    conditions = []
-    params: list[object] = []
-    for chrom, start in dict.fromkeys((chrom, start) for chrom, start, _ in positions):
-        conditions.append("(chrom = ? AND start = ?)")
-        params.extend([chrom, start])
-    where = " OR ".join(conditions)
-    rows = con.execute(
-        f"SELECT DISTINCT chrom, start, ref, alt, id FROM ensembl_variations "
-        f"WHERE ({where}) AND id LIKE 'rs%' "
-        # ORDER BY makes the pick deterministic when a position is multi-allelic: two runs against the
-        # same DB resolve a ref-less position to the same id, so `resolve_with_ensembl` stays idempotent.
-        f"ORDER BY chrom, start, ref, id, alt",
-        params,
-    ).fetchall()
-    # A ref-less input position (ref=None) matched on (chrom, start) only, so the caller's lookup key
-    # is `chrom:start:None` — it can never equal a DB key carrying the concrete ref. Register such
-    # positions under the ref-less key too, so a position-only-without-ref variant resolves.
-    refless = {(str(c), s) for c, s, r in positions if r is None}
-    result: dict[str, str] = {}
-    refless_warned: set[tuple[str, int]] = set()
-    for chrom, start, ref, alt, row_id in rows:
-        named = _refs_named(int(start), str(ref), alt)
-        if not named:
-            continue  # RM271
-        for one in sorted(named):  # RM381: each ALT's own ref answers too
-            result.setdefault(derive_variant_key(None, chrom, start, one), str(row_id))
-        pos = (str(chrom), start)
-        if pos in refless:
-            refless_key = derive_variant_key(None, chrom, start, None)
-            if refless_key not in result:
-                result[refless_key] = str(row_id)
-            elif result[refless_key] != str(row_id) and pos not in refless_warned:
-                # A multi-allelic site: the ref-less key already resolved to a different id. The
-                # ORDER BY fixes which one wins, but the choice is genuinely ambiguous — surface it.
-                refless_warned.add(pos)
-                warnings.append(
-                    CodedWarning(
-                        "rsid_ambiguous",
-                        ambiguous_pick(
-                            subject=f"{chrom}:{start} (ref unspecified)",
-                            # Not "resolved as AMBIGUOUS": nothing has resolved anything here. This is
-                            # the moment of choosing, and the table state the compiler's wording names
-                            # does not exist yet.
-                            observed="matches multiple dbSNP ids",
-                            resolved_to=result[refless_key],
-                            remedy="Specify ref to disambiguate.",
-                        ),
-                    )
+    probes = [
+        (chrom, start, ref, alts if alts and "," not in alts else None)
+        for chrom, start, ref, alts, _ in subjects
+    ]
+    found: dict[tuple, dict[str, list[LocusSpelling]]] = {}
+    _lookup_rsid_candidates(con, "ensembl_variations", "id", probes, candidate_loci=found)
+    result: dict[tuple, str | None] = {}
+    for (chrom, start, ref, alts, genotypes), probe in zip(subjects, probes, strict=True):
+        candidates = found.get(probe, {})
+        if not candidates:
+            continue
+        hosting = _hosting_rsids(candidates, ref, alts, genotypes)
+        where = f"Position {derive_variant_key(None, chrom, start, ref)}" + (
+            f" ({ref}>{alts})" if alts else ""
+        )
+        if len(hosting) == 1:
+            result[(chrom, start, ref, alts)] = hosting[0]
+        elif hosting:
+            result[(chrom, start, ref, alts)] = None
+            warnings.append(
+                CodedWarning(
+                    "rsid_ambiguous",
+                    f"{where}: {len(hosting)} dbSNP ids can host the row ({', '.join(hosting)}), so the rsID "
+                    "is withheld rather than picked; stating `alts`, or a genotype only one of them can "
+                    "host, disambiguates.",
                 )
+            )
+        else:
+            result[(chrom, start, ref, alts)] = None
+            warnings.append(
+                CodedWarning(
+                    "rsid_without_resolution_label",
+                    without_resolution_label(
+                        subject=where,
+                        searched=(
+                            f"Ensembl that can host the row's alleles ({', '.join(candidates)} "
+                            f"{'is' if len(candidates) == 1 else 'are'} there, and cannot)"
+                        ),
+                        reassurance=False,
+                    ),
+                )
+            )
     return result

@@ -1523,6 +1523,20 @@ let an un-rs'd insertion inherit a co-located SNV's rsid. So:
 - **≥2 for the same allele** (a genuine dbSNP merge) → deterministic pick in `rsid`, `status="ambiguous"`,
   and the full candidate list in `ResolutionRow.rsid_alternates` — recorded, never silently chosen.
 
+**The candidates are narrowed by the row's alleles before they are counted (RM438).** A row with no single
+`alts` matches every rsID at `(chrom, start, ref)`, and dbSNP 157 put a 16 bp insertion (`rs2517910443`) at
+CYP2D6*4's SNV (`rs3892097`, `22:42128945`), so an `A/G` row there read as two candidates. One shared rule,
+`resolver._hosting_rsids`, now keeps only the rsIDs whose alleles at the position can host what the row
+states: its `alts` when stated (with its `ref`), else **every** genotype the variant's rows author (a pharm
+or haplotype subject narrows on its own genotype or allele). The judgement is the forward direction's,
+`site_verdicts`; an undecided verdict keeps the candidate (Kleene), and an allele it cannot read (`*`,
+symbolic, unparseable, no genotype at all) narrows nothing. The counts above then apply to what is left,
+so zero hosting is an answer (`rsid` stays `null`), and a link whose candidates the row's alleles all
+refute is a miss, so the next link (ClinVar) is read. The deprecated `resolve_variants` path asks the same
+rule and **withholds** at ≥2 (`rsid_ambiguous`, naming every one) rather than picking, because it writes
+no table that could mark the pick; at zero it attaches nothing and says no rsID there can host the row.
+A row stating one ALT was already allele-exact and is unchanged.
+
 ### A pseudoautosomal locus is one place, recorded as the X spelling (RM32)
 
 PAR1 and PAR2 are shared between X and Y, so dbSNP maps one rsID to both contigs and the expansion above
