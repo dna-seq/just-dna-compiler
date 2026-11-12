@@ -2241,6 +2241,62 @@ client is built: if its output cannot be stored, the item is a live check only.
 
 **Residuals** none yet.
 
+## RM434 — `stat_significance` states no threshold, so a replication that passed its own test reads as a null
+
+**Severity** low · **Status** open — **a patch (a field description); a fifth member would be a minor; the pm sizes**
+· **Owner** format (`spec.StudyRow`, `vocab.VALID_SIGNIFICANCE`) · **Motivating case** S147
+(CONSUMER_SUGGESTIONS_HISTORY.md) · *related* RM148, RM150
+
+**The gap.** `StudyRow.stat_significance` is closed at `significant|suggestive|not_significant|unknown`, and its
+description is that list and nothing more. No threshold behind a level is stated anywhere: not in the field, not in
+`vocab.py`, SCHEMAS, TABLES or the FAQ. The reporter read `suggestive` in the GWAS sense (about 1e-5) and so placed
+a look-up replication at P 0.002 (one discovery SNP re-tested in an independent cohort) in `not_significant`, beside
+a failed look-up at P 0.6. A reader sorting a variant's evidence by this column then sees the replication as a null.
+The number survives in `p_value_num`, but the verdict column says the opposite of what the study's authors report.
+
+**Two readings, and why the first is a patch.** (1) The level is the author's verdict at the threshold of the
+study's **own** test. A pre-specified single-SNP look-up has no genome-wide multiple-testing burden, so passing its
+test is `significant`. Under that reading nothing is missing from the vocabulary: the description fails to say so,
+and `p_value_num` is the column a reader thresholds on. A description that says it is a patch, as RM427's rewording
+was. (2) The level is graded on the genome-wide scale, and a fifth member (`nominal`, p < 0.05 above the suggestive
+line) holds a replication. A new member is minor-legal (P3) and lands on the authored layer, so it is full cost
+(P9). The reporter names the cost of (2) themselves: if the level is derivable from `p_value_num`, a fifth member
+adds nothing a reader cannot compute. (2) also carries the threshold convention into the verdict column, a second
+axis on one field (P5). That is the shape `VALID_DIRECTIONS`'s comment refuses for a member that respells a state the
+model can already express.
+
+**Residuals** none yet.
+
+## RM435 — a study row has no direction of its own, so a study that prints its allele and direction but no size puts the direction in free text
+
+**Severity** low · **Status** open — **a minor (a new optional authored column); the pm sizes** · **Owner** format
+(`spec.StudyRow`) + compiler (the study parquet) · **Motivating case** S148 (CONSUMER_SUGGESTIONS_HISTORY.md) ·
+*related* RM91, RM148
+
+**The gap.** A replication table often prints the effect allele, the direction and the P with no effect size: a
+look-up in an independent cohort, or a meta-analysis that pools the P and gives each arm's direction without a
+pooled estimate. `StudyRow` has `effect_allele` (RM91), and the direction rides on the sign of `effect_size` read
+through `effect_measure`. With no size there is no sign. `VariantRow.direction` is the module's call over every
+study, not this study's finding. So the study's own direction goes in `conclusion`, free text, which nothing checks
+against `effect_allele` or `effect_size`.
+
+**The precedent is already in the schema.** `GwasEffectRow.effect_direction` (since 0.6) is exactly this field on
+the derived GWAS table: `increase|decrease` (`VALID_EFFECT_DIRECTIONS`), relative to the row's effect allele, and
+"**not clinical direction**". Its description says folding the two together would overload one field with two axes
+(P5). The reporter's candidate takes the variant row's vocabulary (`protective|risk|…`). The precedent says the
+study-level field should instead be `effect_direction` with the same members and the same meaning. A study reports
+which way the allele moves the measured trait. Whether that is protective is the module's call, which
+`VariantRow.direction` already makes. Same name, same vocabulary, one meaning across the two tables.
+
+**The ask, in that shape.** Optional `StudyRow.effect_direction`, meaningful only with `effect_allele`, plus a check
+when `effect_size` is also stated. The check is a sign test for a signed measure (`beta`) and a test against 1 for a
+ratio (`OR`, `HR`, `RR`), and it warns on disagreement. That warning is what the reporter names as making two fields
+that can contradict safe. A new optional column is minor-legal (P3, P8), and on the authored layer it is full cost
+(P9). The case for paying it is that today the value is written anyway, into a cell nothing can read. It reaches the
+study parquet like the other 0.3 columns, through the three touch points `@three-touch-points` names.
+
+**Residuals** none yet.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
