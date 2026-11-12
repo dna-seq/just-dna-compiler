@@ -190,6 +190,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S149** enricher 0.8.4's `tenacity>=9.2.1` floor could not resolve beside google-genai — RM436 filed
 - **S150** the split Ensembl snapshot's `groups/` sidecars had no provisioning route — RM437 filed
 - **S151** a position-only row back-filled the lexicographically first rsID at its position — RM438 filed
+- **S152** whether RM438's wrong rsID reached the registry's re-derived catalog — folded into RM438 (flagged there, not silent)
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -7546,3 +7547,40 @@ rule), attach only a single survivor, and withhold with a warning naming every r
 `enrich` + `resolution.csv` would also take you off this path.
 
 <!-- triaged: RM438 filed (high, patch) · sha c234a6cefc39 -->
+
+# An addendum to S151 from just-dna-lite, 2026-11-12
+
+## S152 — RM438's wrong back-filled rsID reaches every catalog module the registry's 0.8 upgrade re-derived
+
+**Reporter:** just-dna-lite (2026-11-12), an addendum to S151 / RM438, which are answered; filed separately so
+their record stays as answered.
+
+**What we know.** RM438: a coordinate-only row whose position holds two rsIDs in the split snapshot is back-filled
+with the first rsID in string order, ignoring the row's genotype, with no warning (S151's CYP2D6*4 case).
+
+**Why this is wider than one consumer.** just-dna-registry's 0.8 upgrade procedure (`registry upgrade`, its
+UPGRADE.md § 0.28) re-derives every stored `resolution.csv` against the split snapshot (`enrich(rederive=True)`)
+and publishes immutable successors. Any catalog module with a coordinate-authored row at a position dbSNP 157 now
+shares between two rsIDs can therefore carry the wrong rsID in a published version, on both instances, and the
+wrong rsID flows into what a reader sees (the dbSNP link, the cited studies joined by rsID, the report text).
+Successors cannot be edited, so once RM438 ships the affected modules need re-deriving and a new successor each:
+in effect a registry rebuild, or a sweep that finds coordinate-only rows at multi-rsID positions and checks the
+back-filled rsID against the genotype first, to size it.
+
+**What we did.** Nothing on the registry (not ours). We have not measured which catalog modules carry such rows.
+On our side we hold off rebuilding or publishing modules on 0.8 until RM438 lands.
+
+**Status — folded into [RM438](ROADMAP.md#rm438--resolve_variants-back-fills-a-position-only-row-with-the-first-rsid-at-its-chrom-start-ref-whatever-the-genotype-and-warns-nothing) as its S152 addendum; the pm decided it the same hour: one rule on both paths.** Your
+worry is right in kind but not in its worst form. The registry's re-derivation runs through `enrich`, not through
+`resolve_variants`, and `enrich` never picked silently. With S151's four rows and no single authored ALT, it gets
+both candidates and writes `rsid=rs3892097`, `status=ambiguous` and `rsid_alternates=rs3892097,rs2517910443`. The
+pick is the first by ALT order, which is right at CYP2D6*4 only because `A` sorts before `C…`. So no catalog row
+carries a wrong rsID unflagged. But that pick ignores the genotype too, so an `ambiguous` row's chosen rsID may be
+the wrong one. RM438 now narrows both paths by the row's `alts`, else by its genotype's alleles. `resolve_variants`
+withholds when more than one rsID is left. `enrich` keeps pick-and-flag, so a row moves from `ambiguous` to
+`resolved` only where exactly one rsID hosts the genotype. That changes published `resolution.csv` files, so it
+will be declared as a corrected derivation. The exposure can be sized without a rebuild. The rows it can change are
+published rows with `status=ambiguous`, authored by coordinate, with no single `alts`. That query is in the
+entry, for the registry to run. Holding your own 0.8 rebuilds until RM438 lands is the right call.
+
+<!-- triaged: RM438 S152 addendum (enrich flags, not silent; one rule both paths) · sha 8408ab19d5bf -->
