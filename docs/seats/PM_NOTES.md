@@ -78,6 +78,9 @@ patches right after real use started, so the pm reads an audit sceptically: the 
 
 ## Open questions and owed work
 
+- **Desk #276, link `~/.claude/projects/-data-sources-just-dna-compiler` to the existing `-data-sources-just-dna-format`
+  memory**, filed 2026-11-12, S4, after the checkout swap. Recommended yes; on silence nothing changes.
+
 
 - **RM433's second trial, `unattended` (at night).** The first (docs/probes/ALPHAGENOME2_METHYLATION_TRIAL.md) was
   inconclusive: 9 mQTL pairs from one chr1 region, shifts inside the 1 Mb vs 16 kb window noise. The second needs
