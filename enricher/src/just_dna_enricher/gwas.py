@@ -68,7 +68,7 @@ from just_dna_format.layout import atomic_writer, nothing_to_write
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.sources import SourceRow
 from pydantic import ValidationError
-from tenacity import retry, wait_exponential_jitter
+from tenacity import retry
 
 from just_dna_enricher.enrich import (
     EnrichmentError,
@@ -85,6 +85,7 @@ from just_dna_enricher.licensing import (
 from just_dna_enricher.net import (
     EndpointRetired,
     PacingGate,
+    _jittered_backoff,
     _log_give_up,
     _log_retry,
     attempt_floor,
@@ -253,7 +254,7 @@ class GwasCatalogClient:
         before_sleep=_log_retry,
         retry_error_callback=_log_give_up,
         stop=attempt_floor(3),
-        wait=wait_exponential_jitter(multiplier=0.5, max=8.0),
+        wait=_jittered_backoff(base=0.5, cap=8.0),
         # Transport, 5xx and 429 since RM354: a v2 pass makes ~190 requests on one module, and one
         # passing 503 sank all of them. A permanent 4xx is never retried.
         retry=retry_if_transient(),

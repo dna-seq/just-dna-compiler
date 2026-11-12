@@ -25,12 +25,13 @@ from typing import Protocol, runtime_checkable
 import httpx
 from just_dna_format.vocab import ALLELE_PATTERN
 from just_dna_format.vrs import contig_length, refget_accession
-from tenacity import retry, wait_exponential_jitter
+from tenacity import retry
 
 from just_dna_enricher.clingen_allele import anchor_indel
 from just_dna_enricher.net import (
     PacingGate,
     Withholding,
+    _jittered_backoff,
     _log_give_up,
     _log_retry,
     attempt_floor,
@@ -393,7 +394,7 @@ class EnsemblResolver(Withholding):
         before_sleep=_log_retry,
         retry_error_callback=_log_give_up,
         stop=attempt_floor(3),
-        wait=wait_retry_after(wait_exponential_jitter(multiplier=0.5, max=8.0)),
+        wait=wait_retry_after(_jittered_backoff(base=0.5, cap=8.0)),
         retry=retry_if_transient_within(),
         reraise=True,
     )
@@ -416,7 +417,7 @@ class EnsemblResolver(Withholding):
         before_sleep=_log_retry,
         retry_error_callback=_log_give_up,
         stop=attempt_floor(3),
-        wait=wait_retry_after(wait_exponential_jitter(multiplier=0.5, max=8.0)),
+        wait=wait_retry_after(_jittered_backoff(base=0.5, cap=8.0)),
         retry=retry_if_transient_within(),
         reraise=True,
     )
@@ -438,7 +439,7 @@ class EnsemblResolver(Withholding):
         before_sleep=_log_retry,
         retry_error_callback=_log_give_up,
         stop=attempt_floor(3),
-        wait=wait_retry_after(wait_exponential_jitter(multiplier=0.5, max=8.0)),
+        wait=wait_retry_after(_jittered_backoff(base=0.5, cap=8.0)),
         retry=retry_if_transient_within(),
         reraise=True,
     )

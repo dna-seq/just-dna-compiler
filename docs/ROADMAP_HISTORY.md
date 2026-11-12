@@ -6404,6 +6404,11 @@ to fail. It was measured before choosing: just-dna-lite (`>=9.1.4`), just-module
 marketplace all accept 9.2.1, and dagster does not depend on tenacity. prepare-annotations already floors
 9.2.1.
 
+**Correction (RM436, 2026-11-12).** "just-dna-lite accepts 9.2.1" read its own requirement and missed one
+it inherits: just-dna-lite depends on google-genai, and every google-genai release caps `tenacity<9.2.0`, so
+`uv lock` with the 0.8.4 enricher failed there (S149). RM436 moved the floor down to `tenacity>=9.0.0` and
+picks `multiplier=` or `initial=` in one place by the installed signature; this item's warning stays fixed.
+
 **Not taken.** Silencing the warning, which would hide exactly the removal this guards against. A
 `<9.3` cap, which would trade a future import failure for a future resolve conflict with every consumer
 that moves on, and would still leave the warning.

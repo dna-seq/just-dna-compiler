@@ -38,15 +38,13 @@ import duckdb
 import httpx
 from just_dna_format.base import coordinate_key
 from just_dna_format.snapshot import SnapshotRelease, read_release
-from tenacity import (
-    retry,
-    wait_exponential_jitter,
-)
+from tenacity import retry
 
 from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME, env_value
 from just_dna_enricher.net import (
     EndpointRetired,
     PacingGate,
+    _jittered_backoff,
     _log_give_up,
     _log_retry,
     attempt_floor,
@@ -259,7 +257,7 @@ class PharmVarClient:
         # A 5xx or a 429 only (RM354): a permanent 4xx answers the same on every attempt.
         retry=retry_if_transient(),
         stop=attempt_floor(3),
-        wait=wait_exponential_jitter(multiplier=1, max=10),
+        wait=_jittered_backoff(base=1, cap=10),
         reraise=True,
     )
     def _request(self, path: str, params: dict[str, str] | None = None) -> Any:

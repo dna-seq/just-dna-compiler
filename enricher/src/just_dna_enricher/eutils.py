@@ -26,15 +26,13 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
-from tenacity import (
-    retry,
-    wait_exponential_jitter,
-)
+from tenacity import retry
 
 from just_dna_enricher.locations import env_value
 from just_dna_enricher.net import (
     EndpointRetired,
     PacingGate,
+    _jittered_backoff,
     _log_give_up,
     _log_retry,
     _service_gate,
@@ -152,7 +150,7 @@ class EutilsClient:
         before_sleep=_log_retry,
         retry_error_callback=_log_give_up,
         stop=attempt_floor(4),
-        wait=wait_exponential_jitter(multiplier=1.0, max=20.0),
+        wait=_jittered_backoff(base=1.0, cap=20.0),
         # A 5xx or a 429 only (RM354): a permanent 4xx answers the same on every attempt.
         retry=retry_if_transient(EutilsRateLimitedError),
         reraise=True,

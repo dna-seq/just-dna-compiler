@@ -1278,6 +1278,12 @@ What 0.8 ships with, known and not fixed. Each line names its item; [RM_TOC.md](
   module it ran on since the change. Enricher 0.7.3 fails too, for another reason: it reads the v1 API, which
   now answers 410. It stays broken, since the maintainer declined a `v0.7.4` (desk #252): upgrading to 0.8.4 is
   the only fix.
+- **The 0.8.4 enricher cannot resolve beside google-genai (RM436, on `main` after 0.8.4, for the next patch).**
+  Enricher 0.8.1 to 0.8.4 floor `tenacity>=9.2.1`, and every google-genai release caps `tenacity<9.2.0`, so a project
+  depending on both fails `uv lock` unless it overrides the cap (`override-dependencies = ["tenacity>=9.2.1"]` works;
+  google-genai's calls are unchanged under 9.2.1). Watch for the quieter failure too: a relock that does not raise
+  the enricher's floor can keep an old enricher beside a new format package. The next patch floors `tenacity>=9.0.0`,
+  and the override can then be dropped.
 - **Two snapshot readers answered an unreadable reference as "nothing found" (RM432, on `main` after 0.8.4,
   for the next patch).** `gene_metrics.lookup_snapshot` returned `{}` and `civic_refutation.civic_snapshot_rows`
   returned `[]` for a path with no parquet behind it, so a mistyped `--civic-snapshot` mapped every variant from

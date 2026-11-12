@@ -79,7 +79,7 @@ from just_dna_format.layout import SidecarCollision, resolve_sidecar
 from just_dna_format.manifest import VerificationRecord
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.vocab import MULTI_SEP
-from tenacity import retry, retry_if_exception_type, wait_exponential_jitter
+from tenacity import retry, retry_if_exception_type
 
 from just_dna_enricher.clingen_allele import ClingenAlleleClient, anchor_indel
 from just_dna_enricher.licensing import overlaid_input_rows
@@ -87,6 +87,7 @@ from just_dna_enricher.net import (
     RETIRED,
     EndpointRetired,
     PacingGate,
+    _jittered_backoff,
     _log_give_up,
     _log_retry,
     attempt_floor,
@@ -407,7 +408,7 @@ class LitvarClient:
         before_sleep=_log_retry,
         retry_error_callback=_log_give_up,
         retry=retry_if_exception_type(httpx.TransportError),
-        wait=wait_exponential_jitter(multiplier=0.5, max=8),
+        wait=_jittered_backoff(base=0.5, cap=8),
         stop=attempt_floor(3),
         reraise=True,
     )

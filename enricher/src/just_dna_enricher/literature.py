@@ -69,10 +69,7 @@ from just_dna_format.manifest import VerificationRecord
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.spec import StudyRow, extract_pmcids, extract_pmids
 from just_dna_format.spelling import doi_key, doi_token
-from tenacity import (
-    retry,
-    wait_exponential_jitter,
-)
+from tenacity import retry
 
 from just_dna_enricher.eutils import EutilsClient, EutilsError, is_missing
 from just_dna_enricher.licensing import article_terms, sidecar_path
@@ -84,6 +81,7 @@ from just_dna_enricher.net import (
     EndpointRetired,
     PacingGate,
     Withholding,
+    _jittered_backoff,
     _log_give_up,
     _log_retry,
     aggregate_reason,
@@ -461,7 +459,7 @@ class EuropePmcClient:
         before_sleep=_log_retry,
         retry_error_callback=_log_give_up,
         stop=attempt_floor(3),
-        wait=wait_exponential_jitter(multiplier=1.0, max=10.0),
+        wait=_jittered_backoff(base=1.0, cap=10.0),
         retry=retry_if_transient(),
         reraise=True,
     )
@@ -830,7 +828,7 @@ class CrossrefClient(Withholding):
         before_sleep=_log_retry,
         retry_error_callback=_log_give_up,
         stop=attempt_floor(3),
-        wait=wait_exponential_jitter(multiplier=1.0, max=10.0),
+        wait=_jittered_backoff(base=1.0, cap=10.0),
         retry=retry_if_transient(),
         reraise=True,
     )
@@ -992,7 +990,7 @@ class PmcIdConverterClient(Withholding):
         before_sleep=_log_retry,
         retry_error_callback=_log_give_up,
         stop=attempt_floor(3),
-        wait=wait_exponential_jitter(multiplier=1.0, max=10.0),
+        wait=_jittered_backoff(base=1.0, cap=10.0),
         retry=retry_if_transient(),
         reraise=True,
     )
@@ -1092,7 +1090,7 @@ class PmcBiocClient(Withholding):
         before_sleep=_log_retry,
         retry_error_callback=_log_give_up,
         stop=attempt_floor(3),
-        wait=wait_exponential_jitter(multiplier=1.0, max=10.0),
+        wait=_jittered_backoff(base=1.0, cap=10.0),
         retry=retry_if_transient(),
         reraise=True,
     )

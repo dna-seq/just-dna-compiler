@@ -41,6 +41,17 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-12 — RM436: the enricher accepts tenacity 9.0 again, so it resolves beside google-genai (patch, uncut)
+
+RM371 floored `tenacity>=9.2.1` so every retried client could spell `wait_exponential_jitter(multiplier=…)`, the
+keyword 9.2.1 renamed from `initial`. Every google-genai release caps `tenacity<9.2.0`, so a consumer depending on
+both (just-dna-lite) could not resolve the 0.8 trio without an override, and a relock that did not raise the
+enricher's own floor kept a mixed trio silently. The floor is now `tenacity>=9.0.0`. One private helper in `net.py`
+builds every backoff and picks `multiplier=` or `initial=` by the installed constructor's signature, so RM371's
+deprecation warning stays silent on 9.2.1 and newer, and 9.0 and 9.1 get the keyword they take. A test holds that no
+client calls `wait_exponential_jitter` itself, and the floor is the release a run proved: the enricher suite passed
+on tenacity 9.0.0 and on the locked 9.2.1. Backoff timing is unchanged. No public name moves. From S149.
+
 ## 2026-11-12 — RM434: a study's `stat_significance` says whose threshold it is (patch, uncut)
 
 `StudyRow.stat_significance` listed its four levels and stated no threshold behind any of them, so a reporter graded

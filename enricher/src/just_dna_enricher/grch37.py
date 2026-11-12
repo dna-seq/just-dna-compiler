@@ -39,11 +39,12 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 import httpx
-from tenacity import retry, wait_exponential_jitter
+from tenacity import retry
 
 from just_dna_enricher.net import (
     PacingGate,
     Withholding,
+    _jittered_backoff,
     _log_give_up,
     _log_retry,
     attempt_floor,
@@ -125,7 +126,7 @@ class Grch37Client(Withholding):
         before_sleep=_log_retry,
         retry_error_callback=_log_give_up,
         stop=attempt_floor(3),
-        wait=wait_exponential_jitter(multiplier=0.5, max=8.0),
+        wait=_jittered_backoff(base=0.5, cap=8.0),
         retry=retry_if_transient(),
         reraise=True,
     )

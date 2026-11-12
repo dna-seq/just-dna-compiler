@@ -18,6 +18,7 @@ import dataclasses
 import datetime
 import email.utils
 import hashlib
+import inspect
 import itertools
 import logging
 import math
@@ -269,6 +270,25 @@ def _failure(retry_state: RetryCallState) -> str:
     exc = outcome.exception()
     text = str(exc).strip()
     return f"{type(exc).__name__}: {text}" if text else type(exc).__name__
+
+
+#: Whether the installed tenacity's `wait_exponential_jitter` takes `multiplier`, read off its signature (RM436).
+#: 9.2.1 renamed `initial` to `multiplier` and warns on the old name (RM371); 9.1.x and older take `initial`
+#: only. Read from the signature, never a version string: a backport or a fork is judged by what it accepts.
+_JITTER_TAKES_MULTIPLIER = "multiplier" in inspect.signature(wait_exponential_jitter.__init__).parameters
+
+
+def _jittered_backoff(*, base: float, cap: float) -> wait_exponential_jitter:
+    """Exponential backoff with jitter, starting at `base` seconds and capped at `cap` (RM436).
+
+    The one place in the enricher that spells tenacity's first-wait keyword, so the floor can sit below the
+    release that renamed it: google-genai caps `tenacity<9.2.0`, and a consumer depending on both could not
+    resolve an enricher floored at 9.2.1 (S149). `test_retry_wait_keywords.py` holds that no client calls
+    `wait_exponential_jitter` itself.
+    """
+    if _JITTER_TAKES_MULTIPLIER:
+        return wait_exponential_jitter(multiplier=base, max=cap)
+    return wait_exponential_jitter(initial=base, max=cap)
 
 
 def _log_retry(retry_state: RetryCallState) -> None:
@@ -633,7 +653,7 @@ def stream_to_file(
         before_sleep=_log_retry,
         retry_error_callback=_log_give_up,
         stop=attempt_floor(3),
-        wait=wait_exponential_jitter(multiplier=2.0, max=30.0),
+        wait=_jittered_backoff(base=2.0, cap=30.0),
         retry=retry_if_exception_type(httpx.TransportError),
         reraise=True,
         **nap,

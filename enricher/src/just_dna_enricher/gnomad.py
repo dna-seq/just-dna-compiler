@@ -38,15 +38,13 @@ import httpx
 from just_dna_format.gene_metrics import normalize_constraint_flags
 from just_dna_format.vocab import normalize_population, population_sort_key
 from just_dna_format.vrs import in_pseudoautosomal_region, normalize_chrom
-from tenacity import (
-    retry,
-    wait_exponential_jitter,
-)
+from tenacity import retry
 
 from just_dna_enricher.net import (
     UNREACHABLE,
     EndpointRetired,
     PacingGate,
+    _jittered_backoff,
     _log_give_up,
     _log_retry,
     attempt_floor,
@@ -355,7 +353,7 @@ class GnomadClient:
         before_sleep=_log_retry,
         retry_error_callback=_log_give_up,
         stop=attempt_floor(4),
-        wait=wait_exponential_jitter(multiplier=2.0, max=30.0),
+        wait=_jittered_backoff(base=2.0, cap=30.0),
         # A 5xx or a 429 only (RM354): a permanent 4xx answers the same on every attempt.
         retry=retry_if_transient(RateLimitedError),
         reraise=True,

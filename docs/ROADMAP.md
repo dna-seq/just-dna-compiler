@@ -2252,7 +2252,7 @@ one study's, a different claim, left for the pm to size if a reader trips on it.
 
 ## RM436 — the enricher floors `tenacity>=9.2.1`, and google-genai caps it below 9.2.0, so a consumer depending on both cannot resolve the 0.8 trio
 
-**Severity** medium · **Status** open — **a patch, `urgent`** (candidate 1; blocks the 0.8.5 cut) · **Owner** enricher (`pyproject.toml`,
+**Severity** medium · **Status** open — **a patch, built on `main` 2026-11-12, uncut** (candidate 1; for the 0.8.5 cut) · **Owner** enricher (`pyproject.toml`,
 every retried client's wait) · **Motivating case** S149 (CONSUMER_SUGGESTIONS_HISTORY.md) · *related* RM371, RM254
 
 **The defect.** RM371 floored `tenacity>=9.2.1` so the enricher could spell `wait_exponential_jitter(multiplier=…)`.
@@ -2282,6 +2282,17 @@ release accepts. Conditions:
   the floor is the lowest that passes, still below 9.2.
 - **RM371's sentence is corrected** where it says every adopter accepts 9.2.1, and the CHANGELOG and INTEGRATION_0_8
   say the floor moved down and why.
+
+**Built (lead, 2026-11-12), as sized.** `net._jittered_backoff(base=, cap=)` is the one place that builds a
+`wait_exponential_jitter`; it reads `multiplier` off the installed constructor's signature (`_JITTER_TAKES_MULTIPLIER`)
+and passes `multiplier=` or `initial=`. All 22 call sites in 17 modules go through it. The floor is `tenacity>=9.0.0`.
+`enricher/tests/test_retry_wait_keywords.py` replaces RM371's walk: no call outside the shim (mutated on `gwas.py`
+and seen red), the keyword matches the signature with deprecation warnings as errors, and the floor equals the proved
+release and sits below google-genai's cap. The proof: the enricher suite run on tenacity 9.0.0 (`uv run --with
+tenacity==9.0.0`) and on the locked 9.2.1: 3,643 passed and 116 skipped on each, with one failure on each,
+`test_a_regex_locator_matches_the_fulltext`, a load flake (its regex runs in a killable process with a timeout, and the
+machine's load average was 60); it passes alone on both releases, as do the three guard tests. RM371's sentence is corrected in its ROADMAP_HISTORY entry; the CHANGELOG
+and INTEGRATION_0_8 § 4 say the floor moved down and why.
 
 **Residuals** none yet.
 

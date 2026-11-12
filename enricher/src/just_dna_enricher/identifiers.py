@@ -56,7 +56,6 @@ from pydantic import BaseModel
 from tenacity import (
     retry,
     retry_if_exception_type,
-    wait_exponential_jitter,
 )
 
 from just_dna_enricher.eutils import EutilsClient, EutilsError, is_missing
@@ -71,6 +70,7 @@ from just_dna_enricher.net import (
     UNREACHABLE,
     EndpointRetired,
     PacingGate,
+    _jittered_backoff,
     _log_give_up,
     _log_retry,
     attempt_floor,
@@ -633,7 +633,7 @@ class OntologyClient:
         before_sleep=_log_retry,
         retry_error_callback=_log_give_up,
         stop=attempt_floor(3),
-        wait=wait_exponential_jitter(multiplier=1.0, max=10.0),
+        wait=_jittered_backoff(base=1.0, cap=10.0),
         retry=retry_if_exception_type((httpx.TransportError, httpx.TimeoutException)),
         reraise=True,
     )
