@@ -72,13 +72,14 @@ None open.
   `GwasCatalogClient.size_refusals`, also aec2b744 in the CHANGELOG); README and the CLAUDE.md doc map name 0.8.4
   (9c4cf9cc). RELEASE_CYCLE step 10 complete. Desk #258 withdrawn (done); #259's default applied (307a5ae3).
   `wt-cut-084` unlocked; `cut/v0.8.4` handed to the maintainer for `-D` (cherry-picked, `git cherry` shows it on main).
-- **0.8.5 on hold for RM438 (the maintainer: "hold"), 2026-11-12.** RM436 built and pushed (0ccd50fe, the tenacity floor
-  down to 9.0.0 through `net._jittered_backoff`; the maintainer: "no 8.5 wo tenacity pin"). RM438 is being built by an Opus
-  agent on `build/RM438` in the locked scratchpad worktree `wt-rm438` (the pm's decision: one hosting rule for both rsID
-  back-fills; a corrected derivation, declared). Then the cut restarts on `cut/v0.8.5` (`wt-cut-085`, clean; its BEFORE tree
-  of the 22 reference modules under 0.8.4 is reusable at scratchpad `cut085/before.whjM`). Open at the cut: RM434's
-  residuals line fails the residuals test as written; `VariantRow.stat_significance` needs an RM or a won't-fix; the
-  INTEGRATION patches paragraph still says no patch added a public name (0.8.4 added `size_refusals`).
+- **0.8.5 cut, 2026-11-12, waiting on the maintainer's publish** (all three; RM432, RM434, RM436, RM438). Cut commit
+  c036c700 on `main`, pushed (prepared on `cut/v0.8.5` as 2345bd58, cherry-picked). Record: a measured zero over 22
+  modules. Gates: full suite 7406 passed, 180 skipped; prerelease gates 26 passed; sweep covers 0.8.5; strict docs
+  green. Dists in `dist/`, twine 7.0.0 passed; the enricher requires `tenacity>=9.0.0`. Notes: scratchpad
+  `release_notes_0_8_5.md`. RM439, RM440 filed (residuals), reservations released. After the publish: tag `v0.8.5`
+  on c036c700, GitHub release, README + CLAUDE.md doc map; `cut/v0.8.5`, `build/RM438` need `-D` (cherry-picked);
+  `wt-cut-085`, `wt-rm438` unlocked, `wt-rm438-base` left by the builder. RM437's doc half is not in the cut (docs
+  only, lands after).
 - **Next patch on `main`, uncut (after the 0.8.4 cut commit):** RM432 (ac3f1bcc, the lead's, 2026-11-11: two
   snapshot readers raise `FileNotFoundError`; a behaviour change for a direct caller), the GWAS docstring's 15/s budget
   (7a88e10f), RELEASE_CYCLE's floor rule (307a5ae3). Lesson from RM428: it added the public attribute
