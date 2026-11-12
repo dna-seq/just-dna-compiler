@@ -62,6 +62,15 @@ package or clone; its release channel is the news page (read through the 2026-08
 ceiling (500), the legacy 410 and the data release rides with the bump. Its first verdict: the docs now publish a
 15-queries-per-second throttle, which `gwas.py`'s docstring says does not exist; a docstring fix, sent to the lead.
 
+**VCF specification** (`docs/UPSTREAM_VCF_SPEC.md`, since 2026-11-12; the maintainer's word relayed by the pm,
+639790664): hts-specs `master` watched daily, read mark `510c107` (the 4.5 audit's tree, unchanged since). Filing an
+`RMn` myself for a spec change is asked of the person in this session (their word came only through the pm);
+until then a finding goes to triage. Tooling: the kit's `watch-upstream.sh` covers it; no new script.
+
+**AlphaGenome** (not a ledger; the lead checked v2.0.0 on 2026-11-11): Atlas protos byte-identical to the pin
+`aa6fc8f`, no bump owed. Trap for the next pin bump: at v2.0.0 `protos/dna_model.proto` is a shim importing
+`protos/v1/dna_model.proto`, so `atlas_protos.py` must fetch that too. Adopting v2's live service is RM433 (parked).
+
 **Fellow liaison:** just-dna-registry/liaison (seated 2026-11-04) stands on fastapi, huggingface-hub, and polars and
 duckdb through our tiers. A defect in a library under both of us is raised with each other first, so it is filed once. **longevity-loci/liaison** (seated 2026-11-05) stands on us: just-dna-enricher 0.7.3, compiler 0.7.2, format 0.7.1 from PyPI, and the module-creator plugin v0.48.0. It watches our tags, asks us before mapping our 0.8 branches, and polls us before filing a shared defect; answer such a poll in `agent-chat`.
 

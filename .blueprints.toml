@@ -85,6 +85,13 @@ cmd = "sh kit:classes/liaison/watch-upstream.sh polars --tags --tag-pattern '^py
 [seat.liaison.watch.duckdb-python]
 cmd = "sh kit:classes/liaison/watch-upstream.sh duckdb-python --tags"
 
+# The VCF specification (samtools/hts-specs), the format a module's coordinates and fields point at and a
+# consumer reads (the maintainer, 2026-11-12, relayed by the pm). Its master is quiet (5 commits a year,
+# SAM's and VCF's together), so it is watched whole, daily; the clone is sparse without test/ (`aux.*` files
+# that the NTFS mount refuses).
+[seat.liaison.watch.vcf-spec]
+cmd = "sh kit:classes/liaison/watch-upstream.sh vcf-spec --every 86400"
+
 # The weekly dependency bump, this seat's unattended routine (docs/seats/LIAISON.md, "The dependency bump";
 # the person, 2026-11-04): says it due once a week while the person is away.
 [seat.liaison.watch.nightly]
