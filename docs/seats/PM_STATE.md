@@ -1,22 +1,21 @@
-**Where it stands** (2026-11-12). The current release is **0.8.4** (on PyPI since 2026-11-11). `main` holds two fixes
-since then, not yet released. The scope of the next minor, 0.9, is not chosen yet.
+**Where it stands** (2026-11-12, evening). **0.8.5 is cut** and waits only for the maintainer's PyPI upload. The
+current release on PyPI is still 0.8.4. The scope of the next minor, 0.9, is not chosen yet.
 
 **Headline results**
-- ✅ GWAS lookups fill rows again on 0.8.4. The GWAS Catalog started refusing pages above 500 results; we now ask for
-  500 and retry with a smaller page if refused. Checked live on one variant (223 associations).
-- ⛔ The 0.7 line stays without GWAS lookups: the Catalog switched off the old API it reads, and no 0.7 fix will be
-  released (the maintainer's call). Users get them back by moving to 0.8.
+- ✅ 0.8.5 (cut, not yet published): installs beside Google's genai library again (it accepts older `tenacity`); a
+  wrong rsID is no longer filled in at a position several variants share; a mistyped snapshot path fails loudly;
+  "significant" on a study row says it means the study's own test. Full suite 7,406 passed.
+- ✅ Nothing already published moves: the registry measured all 24 production modules for the rsID fix and found 0
+  rows it changes. Three ClinVar panels (about 141,000 rows) still on pre-0.8 tables are where it applies next.
 - ❔ AlphaGenome 2's predicted methylation, first trial: cheap and strong next to the variant, but at nine known
   blood methylation variants its shifts stayed within its own noise. Inconclusive on 9 pairs from one region.
-- ✅ On `main`, unreleased: a mistyped snapshot path now fails loudly instead of reading as "nothing found"; and a
-  study row's "significant" now says it means the study's own test, so a passing replication is not read as a null.
+- ⛔ The 0.7 line stays without GWAS lookups (the maintainer's call); 0.8 has them.
 
 **Next**
-1. ⏸ A second, larger trial of AlphaGenome 2's predicted methylation (30 to 40 known variants across the genome,
-   each against matched controls) — pm, paused for the account's weekly quota; restarts after it resets.
-2. 🔄 Next patch release, 0.8.5 — lead; waits for two fixes: accepting older `tenacity` releases, so a consumer that
-   also uses Google's genai library can install us (the maintainer: no 0.8.5 without it), and a wrong rsID filled at
-   a position with several (if ready in time). The PyPI upload is the maintainer's.
-3. ❓ Should 0.9 read reference snapshots straight from Hugging Face, for the module registry — the maintainer, on
-   the desk.
-4. ⏳ 0.9 scope interview — pm with the maintainer; waits on the second trial.
+1. ⏳ Publish 0.8.5 to PyPI — the maintainer.
+2. ⏳ Three small patches: the Ensembl snapshot's note in the upgrade guide (lead, next), a variant row's
+   "significant" explained, and a log line when a re-derivation drops an rsID — built overnight.
+3. ⏸ Second, larger AlphaGenome methylation trial — pm, waiting for the weekly quota to fall under 80% (90% now).
+4. ❓ Two questions on the maintainer's desk: read snapshots straight from Hugging Face for the registry (0.9), and
+   linking the project's memory to its new folder name.
+5. ⏳ 0.9 scope interview — pm with the maintainer; after the second trial.

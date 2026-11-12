@@ -2167,7 +2167,7 @@ Splitting waits until one ask unparks alone.
 
 ## RM439 — `VariantRow.stat_significance` states no threshold either, and RM434's sentence does not fit it
 
-**Severity** low · **Status** open — **a patch by its likely shape, for the pm to size** (a description only) · **Owner**
+**Severity** low · **Status** open — **a patch, `unattended`** (a description only) · **Owner**
 format (`spec.VariantRow`) · **Motivating case** RM434's build (S147, CONSUMER_SUGGESTIONS_HISTORY.md) · *related*
 RM434, RM148
 
@@ -2183,11 +2183,17 @@ it on purpose. A reader of `variants.csv` meets the same silence S147's reporter
 that the per-study grade and `p_value_num` live in `studies.csv`), as a description-only patch, or waits for a reader
 to trip on it. None has yet.
 
+**Sizing (pm, 2026-11-12): a patch, `unattended`, about 10 minutes, built with no reader's report.** A reader already
+tripped on the same word one table over, and readers meet `variants.csv` first. The sentence says only what is true
+of the row-level field: the module author's verdict across the variant's evidence, with each study's own grade in
+`studies.csv` and the number to threshold in its `p_value_num`. It names no threshold of its own
+(`@field-description-is-a-claim`). It moves no digest.
+
 **Residuals** none yet.
 
 ## RM440 — a re-derivation that drops a back-filled rsID on RM438's no-host arm says nothing at run time
 
-**Severity** low · **Status** open — **a patch if a log line answers it, for the pm to size** (a minor if it wants a warning code) · **Owner** enricher (`enrich/orchestration.py`, the
+**Severity** low · **Status** open — **a patch, `unattended`** (a log line, no warning code) · **Owner** enricher (`enrich/orchestration.py`, the
 position back-fill) · **Motivating case** RM438's build (S151, S152, CONSUMER_SUGGESTIONS_HISTORY.md) · *related*
 RM438, RM393
 
@@ -2201,6 +2207,14 @@ left out of that patch as its residual.
 
 **For the pm.** Whether a re-derivation that removes a recorded rsID on this arm names it, aggregated by reason
 (`@warning-text-is-api`), and whether that fits a patch (a log line with no new code) or wants a warning code.
+
+**Sizing (pm, 2026-11-12): a patch, `unattended`, about 30 minutes, a log line.** A table a re-derivation shortens
+in silence is what `@rederive-never-shortens` exists against. Here the shortening is right, but the reader must still
+be told, and the registry's three ClinVar panels re-derive on 0.8.5 next, about 51,000 back-filled rows. One warning
+per run, aggregated by reason (no allele the row states is hosted at the position), with the count and the first
+few variant keys, and its phrase pinned. No warning code: the enricher's log lines carry none (RM427's ask 3 was
+declined for the same reason), and none is needed to read a count. In the patch after 0.8.5, so the registry
+re-derives its panels on 0.8.5 meanwhile and reads the change from a diff of the table or from RM438's second query.
 
 **Residuals** none yet.
 
