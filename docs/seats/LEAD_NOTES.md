@@ -72,14 +72,12 @@ None open.
   `GwasCatalogClient.size_refusals`, also aec2b744 in the CHANGELOG); README and the CLAUDE.md doc map name 0.8.4
   (9c4cf9cc). RELEASE_CYCLE step 10 complete. Desk #258 withdrawn (done); #259's default applied (307a5ae3).
   `wt-cut-084` unlocked; `cut/v0.8.4` handed to the maintainer for `-D` (cherry-picked, `git cherry` shows it on main).
-- **0.8.5 cut, 2026-11-12, waiting on the maintainer's publish** (all three; RM432, RM434, RM436, RM438). Cut commit
-  c036c700 on `main`, pushed (prepared on `cut/v0.8.5` as 2345bd58, cherry-picked). Record: a measured zero over 22
-  modules. Gates: full suite 7406 passed, 180 skipped; prerelease gates 26 passed; sweep covers 0.8.5; strict docs
-  green. Dists in `dist/`, twine 7.0.0 passed; the enricher requires `tenacity>=9.0.0`. Notes: scratchpad
-  `release_notes_0_8_5.md`. RM439, RM440 filed (residuals), reservations released. After the publish: tag `v0.8.5`
-  on c036c700, GitHub release, README + CLAUDE.md doc map; `cut/v0.8.5`, `build/RM438` need `-D` (cherry-picked);
-  `wt-cut-085`, `wt-rm438` unlocked, `wt-rm438-base` left by the builder. RM437's doc half is not in the cut (docs
-  only, lands after).
+- **0.8.5 released, 2026-11-12** (all three; RM432, RM434, RM436, RM438). On PyPI 22:06 UTC (the maintainer); tag
+  `v0.8.5` on c036c700, pushed; GitHub release up; README and the CLAUDE.md doc map name 0.8.5 (a5308f60). RELEASE_CYCLE
+  step 10 complete. The priming takes the package-index reader and the branch sweep on publish (6fcf74a5, desk #271,
+  the maintainer: "treat builder as my word"); watcher `pypi` running. Merged `worktree-agent-*` branches deleted. For
+  the maintainer: `cut/v0.8.4`, `cut/v0.8.5`, `build/RM438` need `-D` (cherry-picked, on main by `git cherry`) after
+  their worktrees go. Next, unattended: RM437's doc half, RM439, RM440.
 - **Next patch on `main`, uncut (after the 0.8.4 cut commit):** RM432 (ac3f1bcc, the lead's, 2026-11-11: two
   snapshot readers raise `FileNotFoundError`; a behaviour change for a direct caller), the GWAS docstring's 15/s budget
   (7a88e10f), RELEASE_CYCLE's floor rule (307a5ae3). Lesson from RM428: it added the public attribute
