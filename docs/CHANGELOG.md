@@ -41,6 +41,15 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-12 — RM434: a study's `stat_significance` says whose threshold it is (patch, uncut)
+
+`StudyRow.stat_significance` listed its four levels and stated no threshold behind any of them, so a reporter graded
+a look-up replication at P 0.002 against the genome-wide scale and wrote `not_significant`, beside a failed look-up
+at P 0.6. The description now says the level is the authors' verdict at the threshold of the study's own test, that
+a pre-specified look-up which passes is `significant`, and that `p_value_num` is the column to threshold on one
+common scale. A description only: no member, digest or check moves. A fifth member (`nominal`) was declined, since
+`p_value_num` already lets a reader compute it. From S147.
+
 ## 2026-11-11 — RM432: two snapshot readers raise on a reference they cannot read, instead of answering "nothing found" (patch, uncut)
 
 `gene_metrics.lookup_snapshot` returned `{}` and `civic_refutation.civic_snapshot_rows` returned `[]` for a

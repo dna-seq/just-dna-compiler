@@ -1284,7 +1284,14 @@ class StudyRow(CitationPair, AuthoredModel):
     stat_significance: str | None = Field(
         json_schema_extra=since("0.3.0"),
         default=None,
-        description="Per-study statistical significance: significant|suggestive|not_significant|unknown.",
+        description=(
+            "Per-study statistical significance: significant|suggestive|not_significant|unknown. **The "
+            "authors' verdict at the threshold of the study's own test**, never a grade on a scale this "
+            "format picks: a pre-specified look-up of one variant in an independent cohort carries no "
+            "genome-wide multiple-testing burden, so one that passes its test is `significant`, at P 0.002 "
+            "as much as at 5e-8. To compare rows on one common scale, threshold `p_value_num` instead; it "
+            "keeps the number this level summarises."
+        ),
     )
     effect_size: float | None = Field(
         json_schema_extra=since("0.3.0"),

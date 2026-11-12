@@ -95,3 +95,18 @@ def test_non_finite_floats_rejected() -> None:
             VariantRow(rsid="rs1", genotype="A/G", state="risk", conclusion="c", effect_size=bad)
         with pytest.raises(ValidationError):
             StudyRow(rsid="rs1", pmid="12345", effect_size=bad)
+
+
+def test_a_studys_significance_is_the_authors_verdict_at_their_own_tests_threshold() -> None:
+    """RM434 (S147): the description listed the four levels and stated no threshold behind any of them.
+
+    A reporter read `suggestive` on the genome-wide scale and graded a look-up replication at P 0.002 as
+    `not_significant`, beside a failed look-up at P 0.6, so a reader sorting by the column saw a null. The
+    level is the authors' verdict at their own test's threshold, a pre-specified look-up that passes is
+    `significant`, and `p_value_num` is the column to threshold on a common scale.
+    """
+    text = StudyRow.model_fields["stat_significance"].description or ""
+    assert "own test" in text
+    assert "look-up" in text and "`significant`" in text
+    assert "`p_value_num`" in text
+    assert "genome-wide" in text  # names the scale it is NOT graded on, the reading that mis-graded the row

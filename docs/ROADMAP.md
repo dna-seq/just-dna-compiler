@@ -2209,7 +2209,7 @@ read-and-matched-nothing control).
 
 ## RM434 — `stat_significance` states no threshold, so a replication that passed its own test reads as a null
 
-**Severity** low · **Status** open — **a patch, `unattended`** (reading 1, the description; the fifth member declined)
+**Severity** low · **Status** open — **a patch, built on `main` 2026-11-12, uncut** (reading 1, the description; the fifth member declined)
 · **Owner** format (`spec.StudyRow`, `vocab.VALID_SIGNIFICANCE`) · **Motivating case** S147
 (CONSUMER_SUGGESTIONS_HISTORY.md) · *related* RM148, RM150
 
@@ -2241,6 +2241,12 @@ cites what it rests on: the authors' own test, never a scale we pick.
 Reading 2, the fifth member, is **declined, not parked**. It puts a threshold convention into a verdict column (P5)
 and grades what `p_value_num` already lets a reader compute. It comes back only through a new Sn from a reader who
 needs a genome-wide grade and cannot get it from `p_value_num`.
+
+**Built (lead, 2026-11-12), as sized.** `StudyRow.stat_significance`'s description carries the three sentences;
+`schema/tests/test_spec.py::test_a_studys_significance_is_the_authors_verdict_at_their_own_tests_threshold` pins them
+(red before). TABLES.md's `studies.csv` section does not name the column, so it is unchanged. `VariantRow` has a
+`stat_significance` of its own, still the bare list: it is the module author's verdict across the evidence rather than
+one study's, a different claim, left for the pm to size if a reader trips on it.
 
 **Residuals** reading 2 declined (above); nothing else.
 
