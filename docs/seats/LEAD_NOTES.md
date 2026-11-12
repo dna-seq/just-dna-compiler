@@ -72,7 +72,8 @@ None open.
   `GwasCatalogClient.size_refusals`, also aec2b744 in the CHANGELOG); README and the CLAUDE.md doc map name 0.8.4
   (9c4cf9cc). RELEASE_CYCLE step 10 complete. Desk #258 withdrawn (done); #259's default applied (307a5ae3).
   `wt-cut-084` unlocked; `cut/v0.8.4` handed to the maintainer for `-D` (cherry-picked, `git cherry` shows it on main).
-- **0.8.5 cut waits for the weekly quota to reset** (95%, Fri 2026-11-13 03:00 CET): then cut RM432 + RM434 as
+- **0.8.5 cut in preparation, 2026-11-12** (the quota had already reset to 79%; the hold was on a stale line, the
+  maintainer corrected it): `cut/v0.8.5` in the locked scratchpad worktree `wt-cut-085`, by an Opus agent. RM432 + RM434 as
   0.8.5 (format for RM434's description, the enricher for RM432; the compiler follows format's floor). RM434 built
   2026-11-12, 5e124dfb. Desk #271 (the builder's PyPI-reader and branch-sweep change to this priming and table)
   open; its default is no change. `docs/DREAMS.md` (the person's, untracked) fails `test_docs_site_nav` locally.
