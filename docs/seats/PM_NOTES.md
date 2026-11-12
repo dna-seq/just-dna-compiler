@@ -83,7 +83,8 @@ patches right after real use started, so the pm reads an audit sceptically: the 
   enough loci across the genome (GoDMC's API stalled after a 62 MB read: pace it, or use another mQTL source), a fixed
   window, and the live terms page re-saved. Its scripts in the scratchpad or `data/interim/`, never tracked.
   Started 2026-11-12 18:25 CET, stopped at 18:4x when the 7-day quota reached 95% (the base: night jobs wait for
-  the window under 80 %). `waits until` the 7-day window resets (Fri 2026-11-13 03:00 CET) and reads under 80 %;
+  the window under 80 %). `waits until` the person is away and a reading taken at start time (not a held watcher line) shows the
+  7-day window under 80 % (the maintainer, 2026-11-12: "agent deferred work based on stale data");
   the brief is the one in this session (30–40 loci over ≥10 chromosomes, 2 matched null SNVs each, ≤250 calls);
   partial work may sit in `data/interim/ag2-trial/run2/`.
 
