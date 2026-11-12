@@ -1284,8 +1284,9 @@ What 0.8 ships with, known and not fixed. Each line names its item; [RM_TOC.md](
   `ambiguous`, chosen just as blindly. The next patch narrows both by the row's `alts`, else its genotypes.
   `resolve_variants` then withholds (`rsid_ambiguous`) when several rsIDs are left. `enrich` writes a corrected
   `resolution.csv` when a table is next written. Where one rsID hosts the genotype, `ambiguous` becomes `resolved`.
-  Where none does, the row has no rsID, and that also reaches a `resolved` row whose one back-filled rsID the
-  genotype refutes. Until then, treat a back-filled `ambiguous` rsID as unchecked against the genotype, and don't
+  Where none does, that link is a miss and the next is asked, so the row has no rsID or takes ClinVar's (its `source`
+  can move from `cache` to `clinvar`); that also reaches a `resolved` row whose one back-filled rsID the genotype
+  refutes. Until then, treat a back-filled `ambiguous` rsID as unchecked against the genotype, and don't
   rely on `resolve_variants`' rsID at a shared position. The registry measured production: no published row is
   `ambiguous`. The `resolved` arm was not measured. The CHANGELOG entry has both queries.
 - **The 0.8.4 enricher cannot resolve beside google-genai (RM436, on `main` after 0.8.4, for the next patch).**
