@@ -54,3 +54,23 @@ Prose is left byte-for-byte when it is answered and when it is moved, so it stay
 observed rather than of what was decided.
 
 ---
+
+## S152 — RM438's wrong back-filled rsID reaches every catalog module the registry's 0.8 upgrade re-derived
+
+**Reporter:** just-dna-lite (2026-11-12), an addendum to S151 / RM438, which are answered; filed separately so
+their record stays as answered.
+
+**What we know.** RM438: a coordinate-only row whose position holds two rsIDs in the split snapshot is back-filled
+with the first rsID in string order, ignoring the row's genotype, with no warning (S151's CYP2D6*4 case).
+
+**Why this is wider than one consumer.** just-dna-registry's 0.8 upgrade procedure (`registry upgrade`, its
+UPGRADE.md § 0.28) re-derives every stored `resolution.csv` against the split snapshot (`enrich(rederive=True)`)
+and publishes immutable successors. Any catalog module with a coordinate-authored row at a position dbSNP 157 now
+shares between two rsIDs can therefore carry the wrong rsID in a published version, on both instances, and the
+wrong rsID flows into what a reader sees (the dbSNP link, the cited studies joined by rsID, the report text).
+Successors cannot be edited, so once RM438 ships the affected modules need re-deriving and a new successor each:
+in effect a registry rebuild, or a sweep that finds coordinate-only rows at multi-rsID positions and checks the
+back-filled rsID against the genotype first, to size it.
+
+**What we did.** Nothing on the registry (not ours). We have not measured which catalog modules carry such rows.
+On our side we hold off rebuilding or publishing modules on 0.8 until RM438 lands.
