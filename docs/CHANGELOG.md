@@ -49,8 +49,10 @@ read the genotype. dbSNP 157 added a 16 bp insertion (`rs2517910443`) at CYP2D6*
 blind way. One private rule, `resolver._hosting_rsids`, now narrows a position's rsIDs on both paths. It reads the
 row's `alts` when stated (with its `ref`), else every genotype the variant's rows author, and judges them with the
 forward direction's hosting predicate (`site_verdicts`). An undecided verdict keeps a candidate. An allele it cannot
-read (`*`, symbolic, unparseable, no genotype) narrows nothing. A row stating one ALT was already allele-exact and is
-unchanged. No public name and no warning code is added.
+read (`*`, symbolic, unparseable, no genotype) narrows nothing. On the enrich path a row stating one ALT was already
+allele-exact and is unchanged; `resolve_variants` never read `alts` before, so there it now matches the ALT too. A key
+whose rows name different rsIDs (`A/C` and `C/<insertion>` at one coordinate) gets none, since each label is refuted
+by a row. No public name and no warning code is added.
 
 - **`resolve_variants` (deprecated, removed at 1.0; called directly by consumers).** One rsID left is attached. More
   than one is **withheld** with `rsid_ambiguous` naming every one, since this path writes nothing that could mark a

@@ -302,3 +302,46 @@ def test_narrowing_only_ever_removes_candidates(genotype: str) -> None:
     narrowed = resolver._hosting_rsids(cands, REF, None, [genotype])
     assert narrowed == [r for r in cands if r in narrowed]
     assert set(narrowed) == _hosts(S151_ROWS, genotype)
+
+
+def test_enrich_reads_clinvar_when_the_snapshot_candidates_are_all_refuted(
+    tmp_path: Path, no_ambient_caches: Path
+) -> None:
+    """A link whose candidates the row refutes is a miss, as a rejected forward answer is (RM382): the
+    Ensembl snapshot holds only the insertion here, ClinVar holds the SNV, and the `A/G` row takes ClinVar's."""
+    ensembl_rows = [r for r in S151_ROWS if r[4] == INSERTION]
+    clinvar_rows = [r for r in S151_ROWS if r[4] == STAR4]
+    assert _hosts(ensembl_rows, "A/G") == set() and _hosts(clinvar_rows, "A/G") == {STAR4}
+    cv = tmp_path / "cv" / "data"
+    cv.mkdir(parents=True)
+    pl.DataFrame(
+        {
+            "rsid": [r[4] for r in clinvar_rows],
+            "chrom": [r[0] for r in clinvar_rows],
+            "start": [r[1] for r in clinvar_rows],
+            "ref": [r[2] for r in clinvar_rows],
+            "alt": [r[3] for r in clinvar_rows],
+        }
+    ).write_parquet(cv / "clinvar.parquet")
+    spec = _spec(tmp_path, _HEADER, [f"{CHROM},{START},{REF},A/G,risk,c"])
+    result = enrich(
+        spec,
+        offline=True,
+        ensembl_cache=_snapshot(tmp_path / "ens", ensembl_rows),
+        clinvar_cache=tmp_path / "cv",
+        verify_clinsig=False,
+    )
+    [row] = result.rows
+    assert (row.rsid, row.status, row.source) == (STAR4, "resolved", "clinvar")
+
+
+def test_a_key_whose_rows_name_both_rsids_gets_neither(tmp_path: Path) -> None:
+    """Every row's genotype must be hostable, so a key authored `A/C` (only the SNV) and `C/<insertion>`
+    (only the insertion) refutes each rsID with the other row: no rsID, where `enrich` used to write
+    `ambiguous` with both. The rows describe two variants under one coordinate key; neither label fits all."""
+    rows = [_row("A/C"), _row(f"C/{INSERTED}")]
+    assert _hosts(S151_ROWS, "A/C") == {STAR4} and _hosts(S151_ROWS, f"C/{INSERTED}") == {INSERTION}
+    snap = _snapshot(tmp_path / "ens", S151_ROWS)
+    patched, warnings = resolve_variants(rows, ensembl_cache=snap)
+    assert [p.rsid for p in patched] == [None, None]
+    assert _codes(warnings) == ["rsid_without_resolution_label"]

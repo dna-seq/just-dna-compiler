@@ -2393,10 +2393,10 @@ and an unreadable allele narrows nothing. The candidates' loci come from the sam
 under `rsid_without_resolution_label`. The enrich loop takes the first link whose narrowed set is non-empty. **Two
 choices beyond the sizing**, for review. (1) Zero hosting is an answer, so an `ambiguous` row, or a `resolved` row on
 a single refuted rsID, gets no rsID. That arm is outside the measured query; the CHANGELOG names it. The pm kept it (ruling above). (2) Every row's
-genotype narrows, not the first row's, so a `C/C` row authored first does not keep a key ambiguous. RM382's forward
-filter still reads the first row's genotype. Pinned by
-`enricher/tests/test_a_position_rsid_is_narrowed_by_the_genotype.py` (S151's four rows, both paths), red on
-0ccd50fe (29 of 35). `test_resolver_unit`'s ref-less pick is inverted, with its reason. The feature scenario and
+genotype narrows, not the first row's, so a `C/C` row authored first does not keep a key ambiguous; a key whose rows
+name different rsIDs therefore gets none. RM382's forward filter still reads the first row's genotype. Pinned by
+`enricher/tests/test_a_position_rsid_is_narrowed_by_the_genotype.py` (S151's four rows, both paths, and the ClinVar
+fall-through), red on 0ccd50fe (31 of 37). `test_resolver_unit`'s ref-less pick is inverted, with its reason. The feature scenario and
 ENRICHER's back-fill section are rewritten.
 
 **Residuals** none yet.

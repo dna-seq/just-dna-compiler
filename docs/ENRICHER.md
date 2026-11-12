@@ -1535,7 +1535,8 @@ so zero hosting is an answer (`rsid` stays `null`), and a link whose candidates 
 refute is a miss, so the next link (ClinVar) is read. The deprecated `resolve_variants` path asks the same
 rule and **withholds** at ≥2 (`rsid_ambiguous`, naming every one) rather than picking, because it writes
 no table that could mark the pick; at zero it attaches nothing and says no rsID there can host the row.
-A row stating one ALT was already allele-exact and is unchanged.
+On this path a row stating one ALT was already allele-exact and is unchanged; `resolve_variants` never read
+`alts` before RM438, so there it now matches the ALT as this path does.
 
 ### A pseudoautosomal locus is one place, recorded as the X spelling (RM32)
 
