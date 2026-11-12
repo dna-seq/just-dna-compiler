@@ -17,6 +17,13 @@ So beyond the role's strategy, licensing and research list, this seat owns the s
 - **The plans and proposals**: `docs/proposals/PROPOSAL_*.md`, each with its charter check and open questions, as
   `CLAUDE.md` says they are written. They are records, not plans the lead must follow unread: the lead may push
   back on one.
+- **Trials.** Before an item's design rests on a source or a model this repository has not run, the pm has it run
+  on a handful of real cases and writes down what came back: whether the output is usable, what it costs (rate,
+  size), what the terms allow. The person, 2026-11-12: "write down trials as your duty. Nightime normally, unless
+  urgent". So a trial is `unattended` work, run while the person is away, unless they ask for it now. A subagent runs
+  it, its scripts in the scratchpad and never in the repository; the finding goes into the item's entry, or into a
+  probe under `docs/probes/` when it is long. Agreed: nothing checks it. The first was RM433's (AlphaGenome 2's
+  predicted methylation), run at once on the person's word.
 - **Not the build.** Executing a settled scope is the lead's; a patch on `main` is triage's or the lead's.
 
 ## Here
@@ -36,8 +43,8 @@ So beyond the role's strategy, licensing and research list, this seat owns the s
 
 The person, 2026-11-03: "PM does no code" (the whole grant is quoted in `docs/seats/LEAD.md`). Commit and push
 `main`, as a fast-forward: its own records (the scope files, the proposals, `docs/STRATEGY.md`, the research list,
-`docs/DREAMS.md`) and its notes. A tag the kit's tools need. No code, no test, no script; no branch, merge or
-release; no registration or purchase; no post outside the person's own channels.
+`docs/DREAMS.md`) and its notes, and a trial's probe under `docs/probes/`. A tag the kit's tools need. No code, no
+test, no script in the repository (a trial's throwaway script lives in the scratchpad); no branch, merge or release; no registration or purchase; no post outside the person's own channels.
 
 ## Before a reset
 
