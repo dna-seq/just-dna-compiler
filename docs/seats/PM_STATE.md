@@ -11,7 +11,8 @@ since then, not yet released. The scope of the next minor, 0.9, is not chosen ye
 - ✅ On `main`, unreleased: a mistyped snapshot path now fails loudly instead of reading as "nothing found".
 
 **Next**
-1. ⏳ A second, larger trial of AlphaGenome 2's predicted methylation (the first was inconclusive) — pm, at night.
+1. 🔄 A second, larger trial of AlphaGenome 2's predicted methylation (30 to 40 known variants across the genome,
+   each against matched controls) — pm, running now.
 2. ⏳ Wording fix: what "significant" means for a study row — lead, built overnight.
 3. ⏳ Next patch release (the two fixes above) — lead, after item 2; the PyPI upload is the maintainer's.
 4. ❓ Should 0.9 read reference snapshots straight from Hugging Face, for the module registry — the maintainer, on
