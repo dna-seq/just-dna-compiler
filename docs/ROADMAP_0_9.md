@@ -21,7 +21,7 @@ maintainer names, and the pm parks or unparks the rest. So this file keeps only 
 - **The maintainer placed it here by name**: methylation (RM317–RM319), RM350 ("the list in 0.9"), RM385, RM302;
 - **It is in the PacBio zone**: RM56, RM65 and RM66 wait on the same repeat-caller output as RM319;
 - **It is a leftover of longevitymap v2, the last zone named**: RM360, RM358, RM345 (with RM286, the same
-  licence-shape design), RM294;
+  licence-shape design), RM294, and RM435 (added 2026-11-12, from the seat building the v2 module);
 - **A real run hits it**: RM265's warning fires on every compile of just-dna-lite's three ClinVar panel modules (S114); RM399, added 2026-11-07,
   because the registry's 0.8 sweep (S132) heard nothing of a corrected derivation the record cannot declare.
 - **It rides on an item already in**: RM404 opens the `enrich()` signature at the seam RM385 rebuilds (added
@@ -958,3 +958,38 @@ newest release unasked; RM413's gates still read that release off the liaison's 
    `ensure_opentargets_snapshot` beside its siblings, a standalone `opentargets publish` and `clinvar-gkm publish`
    for a snapshot already built (both lanes publish only through a rebuild today), and RM401's and RM403's names,
    which RM404 already plans to expose.
+
+## RM435 — a study row has no direction of its own, so a study that prints its allele and direction but no size puts the direction in free text
+
+**Severity** low · **Status** open — **a minor, 0.9** · **Owner** format
+(`spec.StudyRow`) + compiler (the study parquet) · **Motivating case** S148 (CONSUMER_SUGGESTIONS_HISTORY.md) ·
+*related* RM91, RM148
+
+**The gap.** A replication table often prints the effect allele, the direction and the P with no effect size: a
+look-up in an independent cohort, or a meta-analysis that pools the P and gives each arm's direction without a
+pooled estimate. `StudyRow` has `effect_allele` (RM91), and the direction rides on the sign of `effect_size` read
+through `effect_measure`. With no size there is no sign. `VariantRow.direction` is the module's call over every
+study, not this study's finding. So the study's own direction goes in `conclusion`, free text, which nothing checks
+against `effect_allele` or `effect_size`.
+
+**The precedent is already in the schema.** `GwasEffectRow.effect_direction` (since 0.6) is exactly this field on
+the derived GWAS table: `increase|decrease` (`VALID_EFFECT_DIRECTIONS`), relative to the row's effect allele, and
+"**not clinical direction**". Its description says folding the two together would overload one field with two axes
+(P5). The reporter's candidate takes the variant row's vocabulary (`protective|risk|…`). The precedent says the
+study-level field should instead be `effect_direction` with the same members and the same meaning. A study reports
+which way the allele moves the measured trait. Whether that is protective is the module's call, which
+`VariantRow.direction` already makes. Same name, same vocabulary, one meaning across the two tables.
+
+**The ask, in that shape.** Optional `StudyRow.effect_direction`, meaningful only with `effect_allele`, plus a check
+when `effect_size` is also stated. The check is a sign test for a signed measure (`beta`) and a test against 1 for a
+ratio (`OR`, `HR`, `RR`), and it warns on disagreement. That warning is what the reporter names as making two fields
+that can contradict safe. A new optional column is minor-legal (P3, P8), and on the authored layer it is full cost
+(P9). The case for paying it is that today the value is written anyway, into a cell nothing can read. It reaches the
+study parquet like the other 0.3 columns, through the three touch points `@three-touch-points` names.
+
+**Sizing (pm, 2026-11-12): 0.9.** It is a leftover of longevitymap v2, the last zone the maintainer named: the
+reporter is the seat building that module, and the value is being written today into a cell nothing reads, so the
+cost is paid either way. Built in the precedent's shape only: the name `effect_direction`, `VALID_EFFECT_DIRECTIONS`,
+the warning on a stated size that disagrees, and nothing from `VariantRow.direction`'s vocabulary.
+
+**Residuals** none yet.

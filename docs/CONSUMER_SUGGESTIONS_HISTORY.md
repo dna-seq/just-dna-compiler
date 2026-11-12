@@ -7399,7 +7399,7 @@ disagrees. Against it: two fields that can contradict each other; a warning on d
 safe. A narrower alternative is to let `effect_size` carry a sign alone, which the format does not have a way to
 state without inventing a magnitude, so we would not ask for that.
 
-**Status — filed as [RM435](ROADMAP.md#rm435--a-study-row-has-no-direction-of-its-own-so-a-study-that-prints-its-allele-and-direction-but-no-size-puts-the-direction-in-free-text): a minor; the pm sizes.** Confirmed: a study row has no direction except the sign
+**Status — filed as [RM435](ROADMAP_0_9.md#rm435--a-study-row-has-no-direction-of-its-own-so-a-study-that-prints-its-allele-and-direction-but-no-size-puts-the-direction-in-free-text): a minor; the pm sizes.** Confirmed: a study row has no direction except the sign
 of its `effect_size`. The schema already has this field, one table over. `GwasEffectRow.effect_direction` holds
 `increase|decrease`, relative to the row's effect allele, and its description says it is **not** the clinical
 direction, so the two axes stay apart (our Principle 5). RM435 proposes that field on `StudyRow`: same name, same

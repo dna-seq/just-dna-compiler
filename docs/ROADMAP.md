@@ -2243,7 +2243,7 @@ client is built: if its output cannot be stored, the item is a live check only.
 
 ## RM434 — `stat_significance` states no threshold, so a replication that passed its own test reads as a null
 
-**Severity** low · **Status** open — **a patch (a field description); a fifth member would be a minor; the pm sizes**
+**Severity** low · **Status** open — **a patch, `unattended`** (reading 1, the description; the fifth member declined)
 · **Owner** format (`spec.StudyRow`, `vocab.VALID_SIGNIFICANCE`) · **Motivating case** S147
 (CONSUMER_SUGGESTIONS_HISTORY.md) · *related* RM148, RM150
 
@@ -2265,37 +2265,18 @@ adds nothing a reader cannot compute. (2) also carries the threshold convention 
 axis on one field (P5). That is the shape `VALID_DIRECTIONS`'s comment refuses for a member that respells a state the
 model can already express.
 
-**Residuals** none yet.
+**Sizing (pm, 2026-11-12).** Reading 1 is a patch, `unattended`, about 20 minutes: `StudyRow.stat_significance`'s
+description says the level is the authors' verdict at the threshold of the study's own test, that a pre-specified
+look-up passing its test is `significant`, and that `p_value_num` is the column to threshold on a common scale. The
+same sentence goes in TABLES.md's `studies.csv` section if it names the column. A real row was mis-graded because the
+sentence was missing, and a description moves no digest. It is a claim (`@field-description-is-a-claim`), so it
+cites what it rests on: the authors' own test, never a scale we pick.
 
-## RM435 — a study row has no direction of its own, so a study that prints its allele and direction but no size puts the direction in free text
+Reading 2, the fifth member, is **declined, not parked**. It puts a threshold convention into a verdict column (P5)
+and grades what `p_value_num` already lets a reader compute. It comes back only through a new Sn from a reader who
+needs a genome-wide grade and cannot get it from `p_value_num`.
 
-**Severity** low · **Status** open — **a minor (a new optional authored column); the pm sizes** · **Owner** format
-(`spec.StudyRow`) + compiler (the study parquet) · **Motivating case** S148 (CONSUMER_SUGGESTIONS_HISTORY.md) ·
-*related* RM91, RM148
-
-**The gap.** A replication table often prints the effect allele, the direction and the P with no effect size: a
-look-up in an independent cohort, or a meta-analysis that pools the P and gives each arm's direction without a
-pooled estimate. `StudyRow` has `effect_allele` (RM91), and the direction rides on the sign of `effect_size` read
-through `effect_measure`. With no size there is no sign. `VariantRow.direction` is the module's call over every
-study, not this study's finding. So the study's own direction goes in `conclusion`, free text, which nothing checks
-against `effect_allele` or `effect_size`.
-
-**The precedent is already in the schema.** `GwasEffectRow.effect_direction` (since 0.6) is exactly this field on
-the derived GWAS table: `increase|decrease` (`VALID_EFFECT_DIRECTIONS`), relative to the row's effect allele, and
-"**not clinical direction**". Its description says folding the two together would overload one field with two axes
-(P5). The reporter's candidate takes the variant row's vocabulary (`protective|risk|…`). The precedent says the
-study-level field should instead be `effect_direction` with the same members and the same meaning. A study reports
-which way the allele moves the measured trait. Whether that is protective is the module's call, which
-`VariantRow.direction` already makes. Same name, same vocabulary, one meaning across the two tables.
-
-**The ask, in that shape.** Optional `StudyRow.effect_direction`, meaningful only with `effect_allele`, plus a check
-when `effect_size` is also stated. The check is a sign test for a signed measure (`beta`) and a test against 1 for a
-ratio (`OR`, `HR`, `RR`), and it warns on disagreement. That warning is what the reporter names as making two fields
-that can contradict safe. A new optional column is minor-legal (P3, P8), and on the authored layer it is full cost
-(P9). The case for paying it is that today the value is written anyway, into a cell nothing can read. It reaches the
-study parquet like the other 0.3 columns, through the three touch points `@three-touch-points` names.
-
-**Residuals** none yet.
+**Residuals** reading 2 declined (above); nothing else.
 
 # Not format scope
 
