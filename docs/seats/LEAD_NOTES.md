@@ -72,11 +72,13 @@ None open.
   `GwasCatalogClient.size_refusals`, also aec2b744 in the CHANGELOG); README and the CLAUDE.md doc map name 0.8.4
   (9c4cf9cc). RELEASE_CYCLE step 10 complete. Desk #258 withdrawn (done); #259's default applied (307a5ae3).
   `wt-cut-084` unlocked; `cut/v0.8.4` handed to the maintainer for `-D` (cherry-picked, `git cherry` shows it on main).
-- **0.8.5 cut in preparation, 2026-11-12** (the quota had already reset to 79%; the hold was on a stale line, the
-  maintainer corrected it): `cut/v0.8.5` in the locked scratchpad worktree `wt-cut-085`, by an Opus agent. RM432 + RM434 as
-  0.8.5 (format for RM434's description, the enricher for RM432; the compiler follows format's floor). RM434 built
-  2026-11-12, 5e124dfb. Desk #271 (the builder's PyPI-reader and branch-sweep change to this priming and table)
-  open; its default is no change. `docs/DREAMS.md` (the person's, untracked) fails `test_docs_site_nav` locally.
+- **0.8.5 on hold for RM438 (the maintainer: "hold"), 2026-11-12.** RM436 built and pushed (0ccd50fe, the tenacity floor
+  down to 9.0.0 through `net._jittered_backoff`; the maintainer: "no 8.5 wo tenacity pin"). RM438 is being built by an Opus
+  agent on `build/RM438` in the locked scratchpad worktree `wt-rm438` (the pm's decision: one hosting rule for both rsID
+  back-fills; a corrected derivation, declared). Then the cut restarts on `cut/v0.8.5` (`wt-cut-085`, clean; its BEFORE tree
+  of the 22 reference modules under 0.8.4 is reusable at scratchpad `cut085/before.whjM`). Open at the cut: RM434's
+  residuals line fails the residuals test as written; `VariantRow.stat_significance` needs an RM or a won't-fix; the
+  INTEGRATION patches paragraph still says no patch added a public name (0.8.4 added `size_refusals`).
 - **Next patch on `main`, uncut (after the 0.8.4 cut commit):** RM432 (ac3f1bcc, the lead's, 2026-11-11: two
   snapshot readers raise `FileNotFoundError`; a behaviour change for a direct caller), the GWAS docstring's 15/s budget
   (7a88e10f), RELEASE_CYCLE's floor rule (307a5ae3). Lesson from RM428: it added the public attribute
