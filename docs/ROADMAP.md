@@ -2218,6 +2218,42 @@ re-derives its panels on 0.8.5 meanwhile and reads the change from a diff of the
 
 **Residuals** none yet.
 
+## RM441 — a release record has no axis for a correction to a derived table, so 0.8.5's reads as "nothing moved" although RM438 corrected `resolution.csv`
+
+**Severity** low · **Status** open — **a minor (a new vocabulary member and a routing rule); the pm sizes** · **Owner**
+format (`vocab.VALID_RELEASE_OUTPUT_AXES`, `release_records`) + compiler (`sweep`) · **Motivating case** S153
+(CONSUMER_SUGGESTIONS_HISTORY.md) · *related* RM438, RM201, RM120
+
+**The gap.** `VALID_RELEASE_OUTPUT_AXES` is `parquet_schema`, `parquet_bytes`, `content_signature`,
+`manifest_fields` and `warnings`. Every one is compiled output, and the sweep measures them by compiling the
+reference modules with their committed sidecars. A correction to what the enricher derives (`resolution.csv`, the
+fact sidecars) is invisible on that instrument. 0.8.5's record is a measured zero on every axis, and its commit
+says RM438's correction "is enricher output the record does not measure". The registry decides what a release
+changed by reading the record (`release_records.needs_recompile`), so it reads 0.8.5 as moving nothing, and so does
+every consumer that sweeps by the record. RM438 is the kind of change the record exists for: a published value was
+wrong, and only some modules can carry it.
+
+**The three asks, and the design points under each.**
+1. **An axis for derived tables.** A new member of a closed vocabulary is minor-legal (P3) and not a patch. One
+   catch is in the code: `RECOMPILE_DRIVING_AXES` is the vocabulary minus `NON_RECOMPILE_AXES` ("a new axis joins
+   the driving set unless it is explicitly excluded"). A derived-table axis added naively would tell a consumer to
+   *recompile*, when the action a derived-table correction calls for is to *re-derive* (`enrich(rederive=True)`)
+   and then recompile. It needs its own route, a third set or a field saying the action, and not membership in
+   the recompile set.
+2. **A `requires` that reaches the right modules.** Today's grammar is presence of dotted manifest paths. RM438's
+   reach, a module with a coordinate-authored row and no `rsid`, is not spellable in it, so its honest value is
+   `None` ("the reach could not be stated", which a consumer keeps). Whether the manifest should carry a path that
+   makes it spellable is a second question, priced on its own.
+3. **RM438 declared.** Records ship inside the package, so the declaration goes in the next release's record, not
+   an amended 0.8.5. Until the axis exists, the measured and declared halves of a record must agree
+   (`@a-record-written-in-two-passes-drifts-between-them`). So a `correction` on a compiled axis that the sweep
+   measured as zero is not an honest stopgap.
+
+**Meanwhile.** Nothing published needs it. On registry production no row moves, and the five modules still on
+pre-0.8 tables are being re-derived on 0.8.5 by hand. The gap is for the next derived-table correction.
+
+**Residuals** none yet.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
