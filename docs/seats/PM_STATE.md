@@ -14,8 +14,9 @@ since then, not yet released. The scope of the next minor, 0.9, is not chosen ye
 **Next**
 1. ⏸ A second, larger trial of AlphaGenome 2's predicted methylation (30 to 40 known variants across the genome,
    each against matched controls) — pm, paused for the account's weekly quota; restarts after it resets.
-2. ⏳ Next patch release, 0.8.5 (the two fixes on `main`) — lead, after the account's weekly quota resets; the PyPI
-   upload is the maintainer's.
+2. 🔄 Next patch release, 0.8.5 — lead; waits for two fixes: accepting older `tenacity` releases, so a consumer that
+   also uses Google's genai library can install us (the maintainer: no 0.8.5 without it), and a wrong rsID filled at
+   a position with several (if ready in time). The PyPI upload is the maintainer's.
 3. ❓ Should 0.9 read reference snapshots straight from Hugging Face, for the module registry — the maintainer, on
    the desk.
 4. ⏳ 0.9 scope interview — pm with the maintainer; waits on the second trial.
