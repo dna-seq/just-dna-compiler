@@ -49,8 +49,9 @@ is gone; the lead was told (zulip …638402138). Its new cap is `<2.2`: a polars
 **The dependency bump** (the person, 2026-11-04, relayed by agents-kit/builder, zulip …637618265) is this seat's
 unattended routine, in the grant since fc6e7ca1 (2026-11-09; desk #195 withdrawn as moot once the auto-mode rules
 were current). The watcher `nightly` runs `nightly.py deps` (41e8dced), started in the watchdog 2026-11-09; it says
-the bump due weekly while the person is away (this seat's day: Tuesday). Whether the grant stands on a relayed
-word is desk #246 (default: it stands). **First bump 2026-11-10** (867e8462, 4e30ef46, pushed): 39 moves, duckdb
+the bump due weekly while the person is away (this seat's day: Tuesday). The grant stands: desk #246 (whether a
+relayed word holds) was withdrawn as moot on 2026-11-12 under the kit's D193, the seat-builder's hand being the
+person's word. **First bump 2026-11-10** (867e8462, 4e30ef46, pushed): 39 moves, duckdb
 held at 1.5.5 for RM344; typer 0.29 dropped `Parameter.type`, so `scripts/gen_cli_pages.py` reads `display_type`.
 One test red on main before and after, the fence test's `huggingface_hub` case: hub fetches its agent-harness
 registry from the global endpoint and the test passes only within a day of a real hub call. Fix on
