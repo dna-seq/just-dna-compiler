@@ -54,3 +54,52 @@ Prose is left byte-for-byte when it is answered and when it is moved, so it stay
 observed rather than of what was decided.
 
 ---
+
+## S147 — a replication at p < 0.05 has no `stat_significance` level of its own (wish, from longevity-loci)
+
+Relayed by longevity-loci's liaison for its lead, while building the export of its curated longevity rows into a
+0.8.4 spec directory (`studies.csv`).
+
+**What we have.** Many longevity loci are discovered genome-wide in one study and replicated in another by a
+look-up of the discovery's lead SNP at nominal significance: P 0.002 in CHARGE-EU's 90+ cases (Joshi 2017,
+Table 2) for the LPA locus. Our
+curation rule (longevity-loci's D11, 2026-11-10) counts such a look-up as an independent replication, the "p <
+0.05" of the longevitymap v2 requirements' tier A, and keeps it apart from a look-up that failed.
+
+**What happens on 0.8.4.** `StudyRow.stat_significance` is closed at `significant|suggestive|not_significant|
+unknown`. A replication at P 0.002 can only be written `not_significant`, the same value as a look-up at P 0.6,
+or `unknown`, which it is not. A reader of `studies.csv` sorting the evidence for a variant by
+`stat_significance` sees the replication as a null. `p_value_num` keeps the number, so the information survives,
+but the one column meant to carry the verdict says the opposite of what the study reported.
+
+**Meanwhile.** Our export writes `not_significant`, keeps `p_value` exactly, and says "nominal replication
+look-up (p < 0.05)" in `statistical_test`.
+
+**Candidate.** An added level, `nominal` (p < 0.05 and above the suggestive line), additive to the vocabulary, so
+a 0.8 reader that does not know it treats it as any unknown value would. Against it: if the format keeps
+`stat_significance` derivable from `p_value_num` alone, a fifth level adds nothing a reader cannot compute, and
+the gap is only in the description, which could then say that `not_significant` covers 1e-5 < p < 0.05 and that
+`p_value_num` is the field to read. Either answer settles it for us; what we cannot do is leave a row reading
+"not significant" for a study whose authors call it a replication.
+
+## S148 — a study that states its allele and direction but no effect size has nowhere to put the direction (wish, from longevity-loci)
+
+Relayed by longevity-loci's liaison for its lead, from the same export as S147.
+
+**What we have.** A replication table often prints the effect allele, the direction and the P, and no effect
+size: CHARGE-EU's 90+ look-up for LPA (Joshi 2017, Table 2), and meta-analyses that print a pooled P and the
+direction of each arm without a pooled estimate. Our rule (longevity-loci's D13, the person's answer, 2026-11-10)
+lets such a study support a tier A or B row on its `effect_allele`, its direction and its P.
+
+**What happens on 0.8.4.** `StudyRow` has `effect_allele` but no direction: the direction is carried by the sign
+of `effect_size` relative to `effect_measure`, and with no size there is no sign. The variant row's `direction`
+is the module's call over all studies, not this study's finding. So the study's own direction goes into
+`conclusion`, free text, where nothing checks it against `effect_allele` or against the variant's `direction`.
+
+**Meanwhile.** Our export writes the direction into the study's `conclusion` cell, in words.
+
+**Candidate.** An optional study-level direction (`effect_direction` or `direction`, on the variant row's
+vocabulary), meaningful only with `effect_allele`, and refused, or warned, when `effect_size` is given and its sign
+disagrees. Against it: two fields that can contradict each other; a warning on disagreement is what makes it
+safe. A narrower alternative is to let `effect_size` carry a sign alone, which the format does not have a way to
+state without inventing a magnitude, so we would not ask for that.
