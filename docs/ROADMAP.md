@@ -2368,7 +2368,11 @@ replaced by this one. The patch, still the next on `main` and in 0.8.5 if it lan
 - **The enrich path keeps its pick-and-flag.** A row moves from `ambiguous` to `resolved` only where exactly one rsID
   hosts the genotype; several hosting keep `ambiguous`.
 - **Declared as a corrected derivation** of published `resolution.csv` (P3), in the CHANGELOG and INTEGRATION_0_8,
-  with the exposure query above, so the registry can tell which of its re-derived rows can move.
+  with the exposure query above, so the registry can tell which of its re-derived rows can move. **Measured
+  2026-11-12** by the registry on production, read-only, latest version of all 24 modules: 439,752 rows, 0
+  `ambiguous`, 0 with `rsid_alternates`, so nothing published moves. The exposure ahead is three ClinVar panels
+  (cancer, cardio, pathogenic; about 141,000 coordinate-keyed rows) still on pre-0.8 tables, which the registry
+  re-derives after installing RM438; the test registry was not measured.
 - **Pinned** with S151's four rows on both paths: the `A/G` row resolves to `rs3892097` on each, and a row with no
   genotype and no `alts` stays withheld (`resolve_variants`) or `ambiguous` (enrich).
 
