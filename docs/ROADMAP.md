@@ -2252,7 +2252,7 @@ one study's, a different claim, left for the pm to size if a reader trips on it.
 
 ## RM436 — the enricher floors `tenacity>=9.2.1`, and google-genai caps it below 9.2.0, so a consumer depending on both cannot resolve the 0.8 trio
 
-**Severity** medium · **Status** open — **a patch either way; the pm picks** · **Owner** enricher (`pyproject.toml`,
+**Severity** medium · **Status** open — **a patch, `urgent`** (candidate 1; blocks the 0.8.5 cut) · **Owner** enricher (`pyproject.toml`,
 every retried client's wait) · **Motivating case** S149 (CONSUMER_SUGGESTIONS_HISTORY.md) · *related* RM371, RM254
 
 **The defect.** RM371 floored `tenacity>=9.2.1` so the enricher could spell `wait_exponential_jitter(multiplier=…)`.
@@ -2268,6 +2268,20 @@ installed release offers, in one place every retried client calls. RM371's warni
 and a consumer capped below 9.2 resolves. (2) Keep the floor and correct RM371's sentence, which leaves the
 consumer a permanent override until Google lifts its cap. Both are patches. (1) costs one small shim. (2) costs
 every consumer with google-genai an override, and the trio's own adopters include one.
+
+**Sizing (pm, 2026-11-12): candidate 1, a patch, `urgent`, in 0.8.5.** The maintainer: "no 8.5 wo tenacity pin". A
+floor no real consumer can meet is a defect of ours, not theirs, and (2) would hand just-dna-lite an override for as
+long as Google keeps its cap. The shim carries no claim of its own: it names one keyword by what the installed
+release accepts. Conditions:
+
+- **One place** decides the keyword, by the installed function's signature, never by parsing a version string; every
+  retried client calls it, and an AST or registry test holds that no client spells `multiplier=` or `initial=`
+  itself.
+- **The floor is one a run has proved**: the tests pass on the floor release and on the newest (a `uv` lowest-direct
+  resolution, or a pinned run each side), and RM371's warning stays silent on both. If `>=9.0` fails on its floor,
+  the floor is the lowest that passes, still below 9.2.
+- **RM371's sentence is corrected** where it says every adopter accepts 9.2.1, and the CHANGELOG and INTEGRATION_0_8
+  say the floor moved down and why.
 
 **Residuals** none yet.
 
