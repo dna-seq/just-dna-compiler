@@ -2326,6 +2326,26 @@ decides. Conditions:
 - **Declared** in the CHANGELOG and INTEGRATION_0_8's known-issues list: a row that used to get an rsID may now get
   none and a warning.
 
+**S152 addendum (triage, 2026-11-12): the enrich path's back-fill has the same blind spot, flagged rather than
+silent, and the sizing's shared rule does not read the genotype yet.** just-dna-lite asked whether RM438 reaches
+catalog modules that the registry's 0.8 upgrade re-derived (`enrich(rederive=True)`). Checked on `main`, that path
+is not `_lookup_rsids_by_position`. `_lookup_rsid_candidates` with S151's four rows and no authored ALT returns
+`['rs3892097', 'rs2517910443']`. With `alt="A"` it returns `['rs3892097']`. `orchestration.py` writes the first
+candidate, ordered by ALT, with `status="ambiguous"` and every candidate in `rsid_alternates`. So no catalog row got
+a wrong rsID silently. Here the first by ALT order is also the right one, but only because `A` sorts before `C…`.
+Two facts for the build:
+
+- **`_lookup_rsid_candidates` is allele-aware on the authored ALT (`_authored_alt`: `alts`, single-valued), never on
+  the genotype.** RM382's hosting filter judges the forward direction (an rsID's loci) only. So the sizing's
+  pin, the `A/G` row with no `alts` getting `rs3892097`, needs the genotype read in the shared rule. Asking
+  today's `_lookup_rsid_candidates` returns both candidates and would withhold. The shared function has to take
+  the genotype's alleles when `alts` is absent.
+- **Once the shared rule reads the genotype, the enrich path changes too.** A row now written `ambiguous`
+  becomes `resolved` on the one hosting rsID, or keeps `ambiguous` when several host it. Published `resolution.csv`
+  files move on the next re-derivation. That is a corrected derivation, so it ships in any release but is declared
+  (P3). The registry can size the exposure without a rebuild: published rows with `status=ambiguous`,
+  coordinate-authored, with no single `alts`, are exactly the set this can change.
+
 **Residuals** none yet.
 
 # Not format scope
