@@ -18,7 +18,8 @@ minor' was a policy when we didn't have a dedicated decision maker for this." A 
 maintainer names, and the pm parks or unparks the rest. So this file keeps only items with a reason to be in
 0.9:
 
-- **The maintainer placed it here by name**: methylation (RM317–RM319), RM350 ("the list in 0.9"), RM385, RM302;
+- **The maintainer placed it here by name**: methylation (RM317–RM319, and RM433, AlphaGenome 2's predicted
+  methylation, tied to them on 2026-11-12), RM350 ("the list in 0.9"), RM385, RM302;
 - **It is in the PacBio zone**: RM56, RM65 and RM66 wait on the same repeat-caller output as RM319;
 - **It is a leftover of longevitymap v2, the last zone named**: RM360, RM358, RM345 (with RM286, the same
   licence-shape design), RM294, and RM435 (added 2026-11-12, from the seat building the v2 module);
@@ -48,7 +49,7 @@ Indexed in [RM_TOC.md](RM_TOC.md), which is the complete list and the place to l
 
 **0.9, decided 2026-11-03.** The maintainer deferred methylation to 0.9 when scoping 0.8. The status line below predates that decision.
 
-**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-09-30**, design first · **Owner** format (a `measure_kind` member, the element-rule vocabulary, the host table) + compiler · **Motivating case** the maintainer, 2026-09-30: a beneficiary will soon hold PacBio samples, so methylation is wanted, "just don't build on thin air"; evidence in [METHYLATION_PACBIO §§ 1.1, 3, 4.1](probes/METHYLATION_PACBIO.md) · *related* RM317–RM319, RM66, RM65, RM164
+**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-09-30**, design first · **Owner** format (a `measure_kind` member, the element-rule vocabulary, the host table) + compiler · **Motivating case** the maintainer, 2026-09-30: a beneficiary will soon hold PacBio samples, so methylation is wanted, "just don't build on thin air"; evidence in [METHYLATION_PACBIO §§ 1.1, 3, 4.1](probes/METHYLATION_PACBIO.md) · *related* RM317–RM319, RM433, RM66, RM65, RM164
 
 **What is real.** TRGT, PacBio's tandem-repeat genotyper and part of the HiFi WGS pipeline since at
 least v2.1.0, writes `##FORMAT=<ID=AM,Number=.,Type=Float,Description="Mean methylation level per
@@ -86,7 +87,7 @@ cheap but a one-way door (P5). The selector column is full cost.
 
 **0.9, decided 2026-11-03.** The maintainer deferred methylation to 0.9 when scoping 0.8. The status line below predates that decision.
 
-**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-09-30**, design first · **Owner** format (a new optional region table kind, a non-VCF pointer) + compiler · **Motivating case** the maintainer, 2026-09-30: a beneficiary will soon hold PacBio samples, so methylation is wanted, "just don't build on thin air"; evidence in [METHYLATION_PACBIO §§ 1.2–1.4, 3, 4.2](probes/METHYLATION_PACBIO.md) · *related* RM317–RM319, RM66, RM65, RM164
+**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-09-30**, design first · **Owner** format (a new optional region table kind, a non-VCF pointer) + compiler · **Motivating case** the maintainer, 2026-09-30: a beneficiary will soon hold PacBio samples, so methylation is wanted, "just don't build on thin air"; evidence in [METHYLATION_PACBIO §§ 1.2–1.4, 3, 4.2](probes/METHYLATION_PACBIO.md) · *related* RM317–RM319, RM433, RM66, RM65, RM164
 
 **What is real.** HG002 shows allele-specific methylation at two imprinted regions in public PacBio
 pipeline outputs, and MethBat 1.1.0 run on them reports `PASS`:
@@ -129,7 +130,7 @@ largest addition in the methylation work. The probe prices a separate pointer co
 
 **0.9, decided 2026-11-03.** The maintainer deferred methylation to 0.9 when scoping 0.8. The status line below predates that decision.
 
-**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-09-30**, design first · **Owner** format (the consumer contract, possibly the element-rule vocabulary) + the corpus · **Motivating case** the maintainer, 2026-09-30: a beneficiary will soon hold PacBio samples, so methylation is wanted, "just don't build on thin air"; evidence in [METHYLATION_PACBIO § 4.1, last paragraph](probes/METHYLATION_PACBIO.md) · *related* RM317–RM319, RM66, RM65, RM164
+**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-09-30**, design first · **Owner** format (the consumer contract, possibly the element-rule vocabulary) + the corpus · **Motivating case** the maintainer, 2026-09-30: a beneficiary will soon hold PacBio samples, so methylation is wanted, "just don't build on thin air"; evidence in [METHYLATION_PACBIO § 4.1, last paragraph](probes/METHYLATION_PACBIO.md) · *related* RM317–RM319, RM433, RM66, RM65, RM164
 
 **What was found.** No PacBio file opened in the probe carries `REPCN`, the ExpansionHunter key that
 `fmr1_cgg_repeat` (and the corpus's other repeat examples) point at. TRGT writes the count as `MC`,
@@ -162,6 +163,60 @@ Numbered and triaged on 2026-08-13 from [VCF_4_4_AUDIT.md](probes/VCF_4_4_AUDIT.
 (RM53, RM54, RM56–RM64, and RM65's comment fix) went into 0.6 — see
 [PROPOSAL_0_6.md](proposals/PROPOSAL_0_6.md). The audit remains the evidence document: spec quotations,
 `file:line` references and probe transcripts live there and are not duplicated.
+
+## RM433 — AlphaGenome 2's live model service is unused: the only surface that scores an indel
+
+**Severity** low · **Status** open — **a minor, 0.9** (with the methylation zone, RM317 to RM319) · **Owner** enricher (a new client beside
+`alphagenome_check`) · **Motivating case** the maintainer's ask through the lead, 2026-11-12 ("yes (to pm)"), after
+upstream's v2.0.0 · *related* RM317, RM318, RM319, RM191, RM192, RM193, RM345
+
+**What changed upstream.** AlphaGenome v2.0.0 (2026-11-11) adds `DnaModelServiceV2` (package `v2main`), a
+live-prediction service: `PredictVariant`, `ScoreVariant`, `ScoreInterval`, `ScoreIsmVariant`, expression
+conditioned on a reference or a single-cell profile, `EncodeCells` embeddings and input gradients. Nothing of ours
+uses it. Our Atlas client reads the precomputed `v1main` scores, its three proto files are byte-identical at v2.0.0 to
+our pin, and a live `GetDenseVariantScores` on rs4149056 answered on 2026-11-12 (the lead). So nothing breaks and no
+patch is owed. The pin-bump trap (at v2.0.0 `protos/dna_model.proto` is a shim importing `protos/v1/dna_model.proto`)
+is the liaison's.
+
+**What adopting it would buy.** The Atlas probe's surface table (`docs/probes/ALPHAGENOME_ATLAS.md` § 6.4) has the
+model API as the only one of three surfaces that scores an **indel**: the bulk files carry none and the Atlas API
+answers `UNIMPLEMENTED`. That was already true of the v1 model service, which we never adopted either, so v2 is not
+what opens it. What v2 adds over v1 (read from its protos at the `v2.0.0` tag, 2026-11-12): a **methylation** output
+(per-CpG probabilities) with a variant scorer over a window around the variant, the one addition that meets a named
+0.9 zone (methylation, RM317 to RM319); single-cell expression and ATAC outputs; conditioning on a single-cell
+profile; cell embeddings; and input gradients. PRO-cap is gone. Single-cell outputs, embeddings and gradients have no
+table a module could put them in. The terms are the v1 model service's: non-commercial, no training of other models,
+not for clinical decisions; commercial use only through Google Cloud. Live predictions get a lower query rate than
+Atlas lookups and are meant for small analyses.
+
+**What it costs.** A new client on a different gRPC service with new message types; a decision on what is stored (a
+column on an existing derived table, or a lane of its own); and the service's terms, quota and licence. The Atlas
+probe's § 2 is the precedent: the artifacts there turned out not to be one licence, and § 7 left the daily quota
+unmeasured. A computed prediction is per request, never offline and never reproducible (§ 6.4), so it sits beside
+the house rule that a check over a source records what it read.
+
+**Sizing (pm, 2026-11-12, then the maintainer the same day): 0.9, tied to the methylation zone.** First parked,
+since no named zone held it. The maintainer then tied it to RM317 to RM319 ("tie the v2 to them"), so it joins the
+methylation zone. The tie is complementary, not overlapping. RM317 to RM319 are the **measured** half: a consumer's
+PacBio files hold the sample's own methylation, and the module points at it and bins it. v2's methylation scorer is a
+**predicted** half: per variant, how the alternate allele shifts methylation at the CpGs near it. That is an annotation
+in this format's sense (no sample data), so a module could carry it and a consumer could read it beside their measured
+values.
+
+Built in this order, each step allowed to stop the next:
+
+1. **A terms probe** of the model service, in the shape of the Atlas probe's § 2: what the output may be used for,
+   stored as and published as. If its output may not be stored in a module, the item shrinks to a live check and the
+   methylation half ends there.
+2. **A trial** on a handful of variants with a published methylation effect (an mQTL, an imprinting-region variant),
+   measured against what is known, plus the live query rate. About two hours with the maintainer's API key.
+3. **Only then a design**: where a predicted methylation shift is stored (a derived table or columns, at RM317's
+   design interview, so the measured and the predicted halves share their vocabulary).
+
+Indel scoring rides along only if step 2 shows the model service is usable at our scale; it was never v2's to
+unlock.
+
+**Residuals** none yet.
 
 ## RM56 (policy half) — the rule for a measurement that spans bins
 

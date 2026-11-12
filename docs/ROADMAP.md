@@ -2207,46 +2207,6 @@ read-and-matched-nothing control).
 
 **Residuals** none yet.
 
-## RM433 — AlphaGenome 2's live model service is unused: the only surface that scores an indel
-
-**Severity** low · **Status** open — **a minor, parked** · **Owner** enricher (a new client beside
-`alphagenome_check`) · **Motivating case** the maintainer's ask through the lead, 2026-11-12 ("yes (to pm)"), after
-upstream's v2.0.0 · *related* RM191, RM192, RM193, RM345
-
-**What changed upstream.** AlphaGenome v2.0.0 (2026-11-11) adds `DnaModelServiceV2` (package `v2main`), a
-live-prediction service: `PredictVariant`, `ScoreVariant`, `ScoreInterval`, `ScoreIsmVariant`, expression
-conditioned on a reference or a single-cell profile, `EncodeCells` embeddings and input gradients. Nothing of ours
-uses it. Our Atlas client reads the precomputed `v1main` scores, its three proto files are byte-identical at v2.0.0 to
-our pin, and a live `GetDenseVariantScores` on rs4149056 answered on 2026-11-12 (the lead). So nothing breaks and no
-patch is owed. The pin-bump trap (at v2.0.0 `protos/dna_model.proto` is a shim importing `protos/v1/dna_model.proto`)
-is the liaison's.
-
-**What adopting it would buy.** The Atlas probe's surface table (`docs/probes/ALPHAGENOME_ATLAS.md` § 6.4) has the
-model API as the only one of three surfaces that scores an **indel**: the bulk files carry none and the Atlas API
-answers `UNIMPLEMENTED`. That was already true of the v1 model service, which we never adopted either, so v2 is not
-what opens it. What v2 adds over v1 (read from its protos at the `v2.0.0` tag, 2026-11-12): a **methylation** output
-(per-CpG probabilities) with a variant scorer over a window around the variant, the one addition that meets a named
-0.9 zone (methylation, RM317 to RM319); single-cell expression and ATAC outputs; conditioning on a single-cell
-profile; cell embeddings; and input gradients. PRO-cap is gone. Single-cell outputs, embeddings and gradients have no
-table a module could put them in. The terms are the v1 model service's: non-commercial, no training of other models,
-not for clinical decisions; commercial use only through Google Cloud. Live predictions get a lower query rate than
-Atlas lookups and are meant for small analyses.
-
-**What it costs.** A new client on a different gRPC service with new message types; a decision on what is stored (a
-column on an existing derived table, or a lane of its own); and the service's terms, quota and licence. The Atlas
-probe's § 2 is the precedent: the artifacts there turned out not to be one licence, and § 7 left the daily quota
-unmeasured. A computed prediction is per request, never offline and never reproducible (§ 6.4), so it sits beside
-the house rule that a check over a source records what it read.
-
-**Sizing (pm, 2026-11-12): parked.** It is legal in a minor and costs at least the new client and one stored shape,
-and no zone the maintainer has named for 0.9 contains it. No module or consumer has asked for an indel's AlphaGenome
-score. **Unparks** when the maintainer names it a 0.9 zone, or when a module or consumer asks for an AlphaGenome score
-on an indel, the one thing no surface we read can give. The first step after unparking is a terms probe of the model
-service, the shape of the Atlas probe's § 2 (what the output may be used for, stored as and published as), before any
-client is built: if its output cannot be stored, the item is a live check only.
-
-**Residuals** none yet.
-
 ## RM434 — `stat_significance` states no threshold, so a replication that passed its own test reads as a null
 
 **Severity** low · **Status** open — **a patch, `unattended`** (reading 1, the description; the fifth member declined)
@@ -2808,7 +2768,6 @@ possibly already satisfied, and the rest sound** — the sweep's value is mostly
 | **RM429** — `GwasResult` carries no count of page-size refusals (parked 2026-11-11) | a run that reports a counted refusal, or a consumer that cannot inject its own `GwasCatalogClient` | **Sound.** The client counts refusals today, and the Catalog can lower its ceiling at any time. |
 | **RM430** — snapshot readers take no remote root (parked 2026-11-11) | the maintainer names remote snapshot reads a zone (desk #261) | **Sound.** A decision, answerable now. |
 | **RM431** — keyed readers and an rsID index for remote lookups (parked 2026-11-11) | per ask, a remote lookup through RM430's readers measured too slow or too large; ask 4 with RM405 | **Sound** once RM430 ships, which needs nothing from this item; while RM430 is parked, the gate waits on the maintainer's decision for it, not on this item. |
-| **RM433** — AlphaGenome 2's live model service unused (parked 2026-11-12) | the maintainer names it a 0.9 zone, or a module or consumer asks for an AlphaGenome score on an indel | **Sound.** Both can happen today; the indel gap is measured in the Atlas probe § 6.4. |
 | **RM15** / **RM69** / **RM52** and the 1.0 queue | a major-version bump | **Sound, and not this kind of gate.** A release boundary is a schedule, not a satisfier. |
 
 **What the sweep did not find, stated so it is not re-run for a while.** No gate anywhere is parked on
