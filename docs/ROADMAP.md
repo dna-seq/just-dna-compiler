@@ -2223,8 +2223,14 @@ is the liaison's.
 
 **What adopting it would buy.** The Atlas probe's surface table (`docs/probes/ALPHAGENOME_ATLAS.md` § 6.4) has the
 model API as the only one of three surfaces that scores an **indel**: the bulk files carry none and the Atlas API
-answers `UNIMPLEMENTED`. It also gives per-track matrices where the files keep one maximum per scorer. Everything else
-it offers (embeddings, gradients, single-cell conditioning) has no table a module could put it in.
+answers `UNIMPLEMENTED`. That was already true of the v1 model service, which we never adopted either, so v2 is not
+what opens it. What v2 adds over v1 (read from its protos at the `v2.0.0` tag, 2026-11-12): a **methylation** output
+(per-CpG probabilities) with a variant scorer over a window around the variant, the one addition that meets a named
+0.9 zone (methylation, RM317 to RM319); single-cell expression and ATAC outputs; conditioning on a single-cell
+profile; cell embeddings; and input gradients. PRO-cap is gone. Single-cell outputs, embeddings and gradients have no
+table a module could put them in. The terms are the v1 model service's: non-commercial, no training of other models,
+not for clinical decisions; commercial use only through Google Cloud. Live predictions get a lower query rate than
+Atlas lookups and are meant for small analyses.
 
 **What it costs.** A new client on a different gRPC service with new message types; a decision on what is stored (a
 column on an existing derived table, or a lane of its own); and the service's terms, quota and licence. The Atlas
