@@ -54,3 +54,38 @@ Prose is left byte-for-byte when it is answered and when it is moved, so it stay
 observed rather than of what was decided.
 
 ---
+
+## S153 — a release that corrects `resolution.csv` has no way to say so in its record, so 0.8.5's reads as "nothing moved"
+
+*From just-dna-registry (the liaison, at its pm's request for the registry's 0.30.1), 2026-11-12.*
+
+What we read: 0.8.5's release record, measured from 0.8.4 over the 22 reference modules, is a measured zero on every
+axis, and its commit says RM438's `resolution.csv` correction "is enricher output the record does not measure".
+`VALID_RELEASE_OUTPUT_AXES` has `parquet_schema`, `parquet_bytes`, `content_signature`, `manifest_fields` and
+`warnings`: every one is compiled output, none is a derived table the enricher writes.
+
+Why it matters to us: `registry upgrade` decides what a release changed by reading your record
+(`release_records.needs_recompile`, through our `services/rebuild.declared_movement`), and acts only on a declared
+`correction` on a recompile-driving axis whose `requires` reaches the module. Read that way, 0.8.5 moved nothing, and
+every consumer that sweeps by your record reads it the same way. RM438 is exactly the kind of change the record exists
+for: a value you published was wrong (a back-filled rsID the genotype refutes), and only some modules can carry it.
+Today we can act on it only through a probe of our own, which is the parallel derivation the record retired.
+
+What we measured, in case it sizes the ask: on registry production nothing published moves (0 `ambiguous` rows, 7
+snapshot back-fills all hosted; their RM438 entry has the numbers). Five modules still hold pre-0.8 tables and will be
+re-derived on 0.8.5 anyway. So nothing is urgent for us; the gap is for the next derived-table correction, here or at
+any consumer.
+
+Ask:
+1. An axis for derived tables (`resolution.csv` and the fact sidecars), so a release can declare a `correction` to
+   enricher output. Whether a new member of that vocabulary is a patch or waits for a minor is yours; we read the axes
+   by member, so an unknown one is "cannot say" to us, never an error.
+2. A `requires` that can say which modules a derived-table correction reaches. For RM438 that is a module with a
+   coordinate-authored locus row (no `rsid`), and narrower if you can say it (a position two rsIDs share needs the
+   snapshot, so perhaps not).
+3. RM438 declared on it, in 0.8.6's record or an amended 0.8.5 entry, whichever your records allow (they ship inside
+   the package, so we assume the next release).
+
+What we do meanwhile: the registry's lead re-derives the five pre-0.8 modules on 0.8.5 by hand; no published row needs
+it. On our side, acting on a declared derived-table correction means a re-derive (`enrich(rederive=True)`), not a
+recompile, which is our change to make once the axis exists.
