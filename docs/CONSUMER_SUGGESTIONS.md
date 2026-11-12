@@ -89,3 +89,16 @@ Ask:
 What we do meanwhile: the registry's lead re-derives the five pre-0.8 modules on 0.8.5 by hand; no published row needs
 it. On our side, acting on a declared derived-table correction means a re-derive (`enrich(rederive=True)`), not a
 recompile, which is our change to make once the axis exists.
+
+**Status — filed as [RM441](ROADMAP.md#rm441--a-release-record-has-no-axis-for-a-correction-to-a-derived-table-so-085s-reads-as-nothing-moved-although-rm438-corrected-resolutioncsv): a minor; the pm sizes.** Confirmed: every axis
+is compiled output, and the sweep measures by compiling with the committed sidecars, so a correction to enricher
+output cannot show up. Two points from the code, both now in the entry. First, ask 1 cannot be a plain new member.
+`RECOMPILE_DRIVING_AXES` is the vocabulary minus `warnings`, so a new axis would tell you to recompile, when the
+action is to re-derive and then recompile. It needs its own route, which is the change you name on your side.
+Second, on ask 2: RM438's reach, a coordinate-authored row with no `rsid`, is not a manifest path, so in today's
+`requires` grammar its honest value is `None` (reach not stated, keep the change). On ask 3, records ship in the
+package, so RM438 is declared in the next release's record once the axis exists. A `correction` on a compiled axis
+that the sweep measured as zero would put the record's two halves out of agreement. Your measurement, that
+nothing published moves, is in the entry. A new vocabulary member is a minor, so this waits for one.
+
+<!-- triaged: RM441 filed (minor; re-derive route, requires None) · sha 02b96dce0318 -->
