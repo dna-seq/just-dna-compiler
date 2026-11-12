@@ -34,6 +34,247 @@ up.
 
 Patches on `main` after the 0.8.0 cut (2026-11-05), newest first.
 
+## RM438 — `resolve_variants` back-fills a position-only row with the first rsID at its `(chrom, start, ref)`, whatever the genotype, and warns nothing
+
+**SHIPPED 2026-11-12 on `main`, cut 2026-11-12 as `v0.8.5` — a patch, one hosting rule on both back-fill paths, declared as a corrected derivation of `resolution.csv`.** Severity high · **Owner** enricher (`resolver._lookup_rsids_by_position`, `resolve_variants`) · **Motivating case** S151
+(CONSUMER_SUGGESTIONS_HISTORY.md) · *related* RM382, RM381, RM271
+
+**Residuals** RM440
+
+**The defect.** Reproduced on `main` with an in-memory table holding S151's four rows at `22:42128945` (three SNVs
+under `rs3892097`, the CYP2D6*4 SNP, and one insertion `C→CGGGTAAGGGGGCGTCT` under `rs2517910443`, new in dbSNP
+157). `_lookup_rsids_by_position(con, [("22", 42128945, "C")], w)` returns `{'22:42128945:C': 'rs2517910443'}` with
+`w == []`. The answer is keyed on `(chrom, start, ref)` and filled by `setdefault` over rows ordered `chrom, start,
+ref, id, alt`, so the lexicographically first rsID wins. The row's genotype (`A/G`, which only the SNV can host) is
+never read. A multi-rsID position is warned about only when the row gave no `ref`. A coordinate-only CYP2D6*4 row
+therefore gets the wrong rsID, silently.
+
+**Where it bites.** The enrich path is not this code. It builds `resolution.csv` through `_lookup_rsid_candidates`,
+which is allele-aware: 0 candidates leaves `rsid` empty, 1 attaches, 2 or more picks deterministically and marks the
+row ambiguous (`@rsid-not-per-allele`). `resolve_variants` is the older public function. The compiler reaches it
+only through the deprecated `ensembl_cache` path, which warns at use and goes at 1.0. Consumers also call it
+directly, as just-dna-lite does. That is the reason to fix it rather than wait for the removal, because a wrong
+rsID on a pharmacogene row is the expensive kind of wrong.
+
+**The ask (the reporter's candidate, in the house rule).** Narrow a position's rows to those whose ALT set can host
+the row's genotype (RM382's hosting rule, applied to the back-fill). Attach only when one rsID is left. When more
+than one is left, withhold the rsID with a `rsid_ambiguous` warning naming every one. Rows that state `alts` narrow
+on them first. A behaviour correction with no new name, so a patch. Pin it with S151's four rows.
+
+**Sizing (pm, 2026-11-12): a patch, the next on `main`, about an hour.** A wrong rsID on a pharmacogene row, given
+silently, by a public function consumers call: that is the expensive kind of silent, and the deprecation does not
+make it rarer for them. The 0.8.5 cut is paused for RM436 anyway, so it goes in 0.8.5 if it lands first; the lead
+decides. Conditions:
+
+- **One hosting rule, not two.** The back-fill asks the same allele-aware judgement `_lookup_rsid_candidates` already
+  makes for the enrich path (RM382's rule), through a shared function, never a second copy of it
+  (`@roster-is-as-wide-as-the-tables-it-reads`: grep for the question).
+- **The existing word for the outcome**: more than one rsID left is the `rsid_ambiguous` finding the enrich path
+  already emits (`vocab`, `ambiguous_pick`), naming every candidate; no new code. Unlike the enrich path, the
+  back-fill **withholds** the rsID there rather than picking, since nothing downstream marks its pick.
+- **Pinned** with S151's four rows (the three SNVs and the insertion), the `A/G` row getting `rs3892097`, plus a row
+  with no genotype at the same position getting nothing and the warning.
+- **Declared** in the CHANGELOG and INTEGRATION_0_8's known-issues list: a row that used to get an rsID may now get
+  none and a warning.
+
+**S152 addendum (triage, 2026-11-12): the enrich path's back-fill has the same blind spot, flagged rather than
+silent, and the sizing's shared rule does not read the genotype yet.** just-dna-lite asked whether RM438 reaches
+catalog modules that the registry's 0.8 upgrade re-derived (`enrich(rederive=True)`). Checked on `main`, that path
+is not `_lookup_rsids_by_position`. `_lookup_rsid_candidates` with S151's four rows and no authored ALT returns
+`['rs3892097', 'rs2517910443']`. With `alt="A"` it returns `['rs3892097']`. `orchestration.py` writes the first
+candidate, ordered by ALT, with `status="ambiguous"` and every candidate in `rsid_alternates`. So no catalog row got
+a wrong rsID silently. Here the first by ALT order is also the right one, but only because `A` sorts before `C…`.
+Two facts for the build:
+
+- **`_lookup_rsid_candidates` is allele-aware on the authored ALT (`_authored_alt`: `alts`, single-valued), never on
+  the genotype.** RM382's hosting filter judges the forward direction (an rsID's loci) only. So the sizing's
+  pin, the `A/G` row with no `alts` getting `rs3892097`, needs the genotype read in the shared rule. Asking
+  today's `_lookup_rsid_candidates` returns both candidates and would withhold. The shared function has to take
+  the genotype's alleles when `alts` is absent.
+- **Once the shared rule reads the genotype, the enrich path changes too.** A row now written `ambiguous`
+  becomes `resolved` on the one hosting rsID, or keeps `ambiguous` when several host it. Published `resolution.csv`
+  files move on the next re-derivation. That is a corrected derivation, so it ships in any release but is declared
+  (P3). The registry can size the exposure without a rebuild: published rows with `status=ambiguous`,
+  coordinate-authored, with no single `alts`, are exactly the set this can change.
+
+**Re-sized on the addendum (pm, 2026-11-12): one rule, both paths.** The first sizing's "one hosting rule" condition
+assumed `_lookup_rsid_candidates` already read the genotype; it reads only the authored ALT, so that condition is
+replaced by this one. The patch, still the next on `main` and in 0.8.5 if it lands first:
+
+- **One shared function narrows a position's rsIDs**: by the row's `alts` when stated, else by its genotype's
+  alleles, through RM382's hosting judgement. Both back-fills call it. An allele it cannot read (a missing, symbolic or
+  unparseable genotype) narrows nothing: a candidate is never dropped on an unknown.
+- **`resolve_variants` withholds** on more than one rsID left, with `rsid_ambiguous` naming every one, as sized.
+- **The enrich path keeps its pick-and-flag.** A row moves from `ambiguous` to `resolved` only where exactly one rsID
+  hosts the genotype; several hosting keep `ambiguous`.
+- **Declared as a corrected derivation** of published `resolution.csv` (P3), in the CHANGELOG and INTEGRATION_0_8,
+  with the exposure query above, so the registry can tell which of its re-derived rows can move. **Measured
+  2026-11-12** by the registry on production, read-only, latest version of all 24 modules: 439,752 rows, 0
+  `ambiguous`, 0 with `rsid_alternates`, so nothing published moves. The exposure ahead is three ClinVar panels
+  (cancer, cardio, pathogenic; about 141,000 coordinate-keyed rows) still on pre-0.8 tables, which the registry
+  re-derives after installing RM438; the test registry was not measured. **The resolved arm, measured 2026-11-12**
+  by the registry on production, read-only, with the second query below: 7 coordinate-keyed rows carry a snapshot
+  back-fill (`source=cache`), all in one module (smell 0.1.1), and each row's authored genotypes sit within its own
+  `ref`/`alts`, so none is refuted. Nothing published moves on either arm. 51,249 more rows carry a ClinVar
+  back-fill, all in the three ClinVar panels still on pre-0.8 tables (cancer, cardio, pathogenic 2.0.0); their
+  re-derivation on 0.8.5 is where RM438 applies.
+- **No rsID hosts it (ruled 2026-11-12, on the lead's build question).** Where every candidate's site confidently
+  refutes the genotype, nothing is attached: `resolve_variants` says none can host, and in enrich that link is a miss,
+  so the next link (ClinVar) is asked. That is `@answered-is-not-absent` as written, and attaching a refuted rsID is
+  the defect itself; an unreadable allele still narrows nothing. It can move a **resolved** row too, which the first
+  query does not see, so it is declared beside the ambiguous arm with its own query (a resolved, coordinate-authored
+  row whose genotype carries an allele its single back-filled rsID's site refutes), naming the source moving to
+  ClinVar as a possible effect, and the registry runs it on production before the three panels re-derive.
+- **Pinned** with S151's four rows on both paths: the `A/G` row resolves to `rs3892097` on each, and a row with no
+  genotype and no `alts` stays withheld (`resolve_variants`) or `ambiguous` (enrich).
+
+**Built (2026-11-12).** One private rule, `resolver._hosting_rsids(candidates, ref, alts, genotypes)`. It reads
+the row's `alts` with its `ref` when stated, else every genotype the variant's rows author (a pharm or haplotype
+subject narrows on its own). It keeps each rsID whose loci at the position `site_verdicts` does not refute (Kleene),
+and an unreadable allele narrows nothing. The candidates' loci come from the same query, through an out-parameter on
+`_lookup_rsid_candidates` and the private `resolver._lookup_loci` / `clinvar._lookup_loci` twins, so the public
+`lookup_loci` signatures are unchanged. `_lookup_rsids_by_position` now reads through it, one subject per
+`(chrom, start, ref, alts)`. It attaches one rsID, withholds several with `rsid_ambiguous`, and says none can host
+under `rsid_without_resolution_label`. The enrich loop takes the first link whose narrowed set is non-empty. **Two
+choices beyond the sizing**, for review. (1) Zero hosting is an answer, so an `ambiguous` row, or a `resolved` row on
+a single refuted rsID, gets no rsID. That arm is outside the measured query; the CHANGELOG names it. The pm kept it (ruling above). (2) Every row's
+genotype narrows, not the first row's, so a `C/C` row authored first does not keep a key ambiguous; a key whose rows
+name different rsIDs therefore gets none. RM382's forward filter still reads the first row's genotype. Pinned by
+`enricher/tests/test_a_position_rsid_is_narrowed_by_the_genotype.py` (S151's four rows, both paths, and the ClinVar
+fall-through), red on 0ccd50fe (31 of 37). `test_resolver_unit`'s ref-less pick is inverted, with its reason. The feature scenario and
+ENRICHER's back-fill section are rewritten.
+
+## RM436 — the enricher floors `tenacity>=9.2.1`, and google-genai caps it below 9.2.0, so a consumer depending on both cannot resolve the 0.8 trio
+
+**SHIPPED 2026-11-12 on `main`, cut 2026-11-12 as `v0.8.5` — a patch, candidate 1 (the shim).** Severity medium · **Owner** enricher (`pyproject.toml`,
+every retried client's wait) · **Motivating case** S149 (CONSUMER_SUGGESTIONS_HISTORY.md) · *related* RM371, RM254
+
+**Residuals** none
+
+**The defect.** RM371 floored `tenacity>=9.2.1` so the enricher could spell `wait_exponential_jitter(multiplier=…)`.
+9.2.1 renamed `initial`, and 9.1.4 has only the old name. Its entry says just-dna-lite, just-module-creator and the
+marketplace "all accept 9.2.1". just-dna-lite does not. It depends on `google-genai`, and every release of that
+caps `tenacity<9.2.0`: checked here, 3.2.0, the newest, requires `tenacity<9.2.0,>=8.2.3`. So `uv lock` with
+`just-dna-enricher>=0.8.4` fails. Worse, a relock that does not raise the enricher's floor silently kept
+`just-dna-enricher==0.7.3` beside `just-dna-format==0.8.4`, a mixed trio. The reporter carries a workspace
+override (`tenacity>=9.2.1`) and has checked that google-genai's calls are unchanged under 9.2.1.
+
+**The two candidates.** (1) Accept `tenacity>=9.0` again, and pick `multiplier=` or `initial=` by what the
+installed release offers, in one place every retried client calls. RM371's warning stays fixed without the floor,
+and a consumer capped below 9.2 resolves. (2) Keep the floor and correct RM371's sentence, which leaves the
+consumer a permanent override until Google lifts its cap. Both are patches. (1) costs one small shim. (2) costs
+every consumer with google-genai an override, and the trio's own adopters include one.
+
+**Sizing (pm, 2026-11-12): candidate 1, a patch, `urgent`, in 0.8.5.** The maintainer: "no 8.5 wo tenacity pin". A
+floor no real consumer can meet is a defect of ours, not theirs, and (2) would hand just-dna-lite an override for as
+long as Google keeps its cap. The shim carries no claim of its own: it names one keyword by what the installed
+release accepts. Conditions:
+
+- **One place** decides the keyword, by the installed function's signature, never by parsing a version string; every
+  retried client calls it, and an AST or registry test holds that no client spells `multiplier=` or `initial=`
+  itself.
+- **The floor is one a run has proved**: the tests pass on the floor release and on the newest (a `uv` lowest-direct
+  resolution, or a pinned run each side), and RM371's warning stays silent on both. If `>=9.0` fails on its floor,
+  the floor is the lowest that passes, still below 9.2.
+- **RM371's sentence is corrected** where it says every adopter accepts 9.2.1, and the CHANGELOG and INTEGRATION_0_8
+  say the floor moved down and why.
+
+**Built (lead, 2026-11-12), as sized.** `net._jittered_backoff(base=, cap=)` is the one place that builds a
+`wait_exponential_jitter`; it reads `multiplier` off the installed constructor's signature (`_JITTER_TAKES_MULTIPLIER`)
+and passes `multiplier=` or `initial=`. All 22 call sites in 17 modules go through it. The floor is `tenacity>=9.0.0`.
+`enricher/tests/test_retry_wait_keywords.py` replaces RM371's walk: no call outside the shim (mutated on `gwas.py`
+and seen red), the keyword matches the signature with deprecation warnings as errors, and the floor equals the proved
+release and sits below google-genai's cap. The proof: the enricher suite run on tenacity 9.0.0 (`uv run --with
+tenacity==9.0.0`) and on the locked 9.2.1: 3,643 passed and 116 skipped on each, with one failure on each,
+`test_a_regex_locator_matches_the_fulltext`, a load flake (its regex runs in a killable process with a timeout, and the
+machine's load average was 60); it passes alone on both releases, as do the three guard tests. RM371's sentence is corrected in its ROADMAP_HISTORY entry; the CHANGELOG
+and INTEGRATION_0_8 § 4 say the floor moved down and why.
+
+## RM434 — `stat_significance` states no threshold, so a replication that passed its own test reads as a null
+
+**SHIPPED 2026-11-12 on `main`, cut 2026-11-12 as `v0.8.5` — a patch, reading 1 (the description); the fifth member declined (the pm).** Severity low
+· **Owner** format (`spec.StudyRow`, `vocab.VALID_SIGNIFICANCE`) · **Motivating case** S147
+(CONSUMER_SUGGESTIONS_HISTORY.md) · *related* RM148, RM150
+
+**Residuals** RM439 · won't fix — reading 2, a fifth `nominal` member, declined by the pm: it puts a threshold convention into a verdict column (P5) and grades what `p_value_num` already computes
+
+**The gap.** `StudyRow.stat_significance` is closed at `significant|suggestive|not_significant|unknown`, and its
+description is that list and nothing more. No threshold behind a level is stated anywhere: not in the field, not in
+`vocab.py`, SCHEMAS, TABLES or the FAQ. The reporter read `suggestive` in the GWAS sense (about 1e-5) and so placed
+a look-up replication at P 0.002 (one discovery SNP re-tested in an independent cohort) in `not_significant`, beside
+a failed look-up at P 0.6. A reader sorting a variant's evidence by this column then sees the replication as a null.
+The number survives in `p_value_num`, but the verdict column says the opposite of what the study's authors report.
+
+**Two readings, and why the first is a patch.** (1) The level is the author's verdict at the threshold of the
+study's **own** test. A pre-specified single-SNP look-up has no genome-wide multiple-testing burden, so passing its
+test is `significant`. Under that reading nothing is missing from the vocabulary: the description fails to say so,
+and `p_value_num` is the column a reader thresholds on. A description that says it is a patch, as RM427's rewording
+was. (2) The level is graded on the genome-wide scale, and a fifth member (`nominal`, p < 0.05 above the suggestive
+line) holds a replication. A new member is minor-legal (P3) and lands on the authored layer, so it is full cost
+(P9). The reporter names the cost of (2) themselves: if the level is derivable from `p_value_num`, a fifth member
+adds nothing a reader cannot compute. (2) also carries the threshold convention into the verdict column, a second
+axis on one field (P5). That is the shape `VALID_DIRECTIONS`'s comment refuses for a member that respells a state the
+model can already express.
+
+**Sizing (pm, 2026-11-12).** Reading 1 is a patch, `unattended`, about 20 minutes: `StudyRow.stat_significance`'s
+description says the level is the authors' verdict at the threshold of the study's own test, that a pre-specified
+look-up passing its test is `significant`, and that `p_value_num` is the column to threshold on a common scale. The
+same sentence goes in TABLES.md's `studies.csv` section if it names the column. A real row was mis-graded because the
+sentence was missing, and a description moves no digest. It is a claim (`@field-description-is-a-claim`), so it
+cites what it rests on: the authors' own test, never a scale we pick.
+
+Reading 2, the fifth member, is **declined, not parked**. It puts a threshold convention into a verdict column (P5)
+and grades what `p_value_num` already lets a reader compute. It comes back only through a new Sn from a reader who
+needs a genome-wide grade and cannot get it from `p_value_num`.
+
+**Built (lead, 2026-11-12), as sized.** `StudyRow.stat_significance`'s description carries the three sentences;
+`schema/tests/test_spec.py::test_a_studys_significance_is_the_authors_verdict_at_their_own_tests_threshold` pins them
+(red before). TABLES.md's `studies.csv` section does not name the column, so it is unchanged. `VariantRow` has a
+`stat_significance` of its own, still the bare list: it is the module author's verdict across the evidence rather than
+one study's, a different claim, filed at the 0.8.5 cut as RM439 for the pm to size.
+
+## RM432 — two snapshot readers answer an unreadable reference with an empty result, which reads as "nothing found"
+
+**SHIPPED 2026-11-11 on `main`, cut 2026-11-12 as `v0.8.5` — a patch, a raise of `FileNotFoundError`; no new name.** Severity medium · **Owner** enricher (`gene_metrics`, `civic_refutation`, `civic_citations`) ·
+**Motivating case** S146 (CONSUMER_SUGGESTIONS_HISTORY.md) · *related* RM361, RM430
+
+**Residuals** none
+
+**The defect.** `gene_metrics.lookup_snapshot` returns `{}` when `_snapshot_parquet(reference)` finds no parquet.
+`civic_refutation.civic_snapshot_rows` returns `[]` when the parquet does not exist. Both were checked on `main`. A
+caller handed a reference that cannot be read gets the value of a lookup that ran and found nothing. That is the
+house rule RM361 enforced elsewhere: an unread input is never recorded as a definite answer. Inside the workspace,
+the two passes mostly guard the reference before calling. `resolve_*_reference` answers only for a directory that
+holds a parquet, and `compare_refutations` reads an empty list as "missing or unreadable" and skips, which is right
+only because a real CIViC snapshot is never empty. `civic_citations._snapshot_variant_ids` turns an unreadable given
+reference into an empty map, so every variant falls through to the curated table. Today a misconfigured path reaches
+this. With RM430, a failed remote read would reach it too.
+
+**The ask.** Raise on an unreadable reference (the `*Unavailable` family, or a plain error), and keep `{}`/`[]` for
+a lookup that ran and found nothing. Or, if a raise would break a caller relying on the empty value, add a sibling
+flag saying the snapshot was not read. The reporter calls neither reader directly today, so nothing is blocked.
+
+**Sizing (pm, 2026-11-11): a patch, `unattended`, about an hour.** The failure is silent: given a mistyped
+`--civic-snapshot`, the citations pass falls back to the curated table for every variant and says nothing, so the
+operator believes the snapshot was read. That alone earns a patch, however rare the mistype.
+
+- **Raise, not a flag.** A flag a caller can ignore is the same silence. Raise the built-in `FileNotFoundError`, which
+  names the path and adds no public name, so it stays patch scope. Neither reader has an error type of its own, and
+  minting one would be a minor.
+- **`{}`/`[]` keep meaning "read, and nothing matched".**
+- **The three internal callers catch it and report could-not-read**, never empty: `gene_metrics` at its
+  `lookup_snapshot` call, `compare_refutations`, and `civic_citations._snapshot_variant_ids`. This is the fix's own risk,
+  so a test drives each of the three with a reference that is not there.
+- **Declared** in the CHANGELOG and INTEGRATION_0_8's known-issues list as a behaviour change for a direct caller.
+
+**Built (lead, 2026-11-11), as sized.** Both readers raise `FileNotFoundError` naming the path; the gene-metrics
+pass catches it and sets the reference to unconsulted (offline it had written a `not_found` row stamped with the
+bare lane label for a snapshot it never opened, which the new test showed red), `compare_refutations` skips with a
+could-not-read warning (an empty but readable snapshot keeps its own skip, reworded), and
+`civic_citations._snapshot_variant_ids` warns that variants map from the curated table alone. Tests:
+`enricher/tests/test_unreadable_snapshot_reference.py`, five of six red before the change (the sixth is the
+read-and-matched-nothing control).
+
 ## RM428 — the GWAS pass asks the Catalog v2 for a page of 1000, which it now refuses with 400, so the pass fills nothing on any module
 
 **SHIPPED 2026-11-11 on `main`, cut 2026-11-11 as `v0.8.4` — a patch, asks 1 to 3; ask 4 declined (the maintainer,

@@ -11,10 +11,11 @@ the known issues 0.8 ships with.
 since `v0.7.3`), each intra-workspace floor is `>=0.8.0`, and `polars>=1.42.0` is unchanged, so a polars 1.x
 install still resolves. It is published and tagged `v0.8.0`.
 
-**Four patches followed on the 0.8 line, and the current release is 0.8.4.** 0.8.1 (2026-11-07) moved the
-enricher alone, so format and compiler stayed 0.8.0. 0.8.2 (2026-11-07), 0.8.3 (2026-11-09) and 0.8.4
-(2026-11-11) each moved all three packages (0.8.4's compiler for its floor only), and 0.8.4's floors are
-`>=0.8.4` throughout. No patch adds a public name, field, table, flag
+**Five patches followed on the 0.8 line, and the current release is 0.8.5.** 0.8.1 (2026-11-07) moved the
+enricher alone, so format and compiler stayed 0.8.0. 0.8.2 (2026-11-07), 0.8.3 (2026-11-09), 0.8.4
+(2026-11-11) and 0.8.5 (2026-11-12) each moved all three packages (the compiler in 0.8.4 and 0.8.5 for its floor
+only), and 0.8.5's floors are `>=0.8.5` throughout. One patch added a public name: 0.8.4's
+`GwasCatalogClient.size_refusals` (RM428), which a patch should not have added. No patch adds a field, table, flag
 or warning code, so this file's surface delta is still the whole 0.7 → 0.8 boundary; what each patch
 changed, and what to do after upgrading to it, is its entry in the [CHANGELOG](CHANGELOG.md), and § 4 says
 which known issues each one fixed.
@@ -23,15 +24,15 @@ which known issues each one fixed.
 
 ```toml
 dependencies = [
-    "just-dna-format>=0.8.4",
-    "just-dna-compiler>=0.8.4",
-    "just-dna-enricher>=0.8.4",
+    "just-dna-format>=0.8.5",
+    "just-dna-compiler>=0.8.5",
+    "just-dna-enricher>=0.8.5",
 ]
 ```
 
 A consumer that holds only the format tier pins the first line alone. A git dependency on the `0.8` branch
 (`rev = "1007a26d"` and later), which this file recommended for testing before the cut, goes from your
-tracked files and your lock: `uv lock` against the published `0.8.4`, then run your suite again.
+tracked files and your lock: `uv lock` against the published `0.8.5`, then run your suite again.
 
 **The release record says what a recompile moves.** `release_records.RELEASE_RECORDS["0.8.0"]`, measured at
 the cut against the published compiler 0.7.2, declares each correction and addition (RM363's contig
@@ -42,8 +43,8 @@ lite stays on polars 1.x (polars-bio caps `polars<2`), and this workspace locks 
 by `content_signature`; read a digest mismatch with `compilation.toolchain` beside it (§ 1.11).
 The patches add little to that answer: 0.8.1 left the compiler alone and has no record, and
 `RELEASE_RECORDS["0.8.2"]`, measured from 0.8.0, moves only the text of two warnings, and
-`RELEASE_RECORDS["0.8.3"]`, measured from 0.8.2, and `RELEASE_RECORDS["0.8.4"]`, measured from 0.8.3, move
-nothing, so a module compiled by 0.8.0 needs no recompile.
+`RELEASE_RECORDS["0.8.3"]`, `RELEASE_RECORDS["0.8.4"]` and `RELEASE_RECORDS["0.8.5"]`, each measured from the
+patch before it, move nothing, so a module compiled by 0.8.0 needs no recompile.
 
 **What landed after `1007a26d`**, the pre-cut head this file first named, for a consumer who tested
 there; all of it is in 0.8.0. **First:** RM380, `reverse` carrying every `resolution.csv` column a
@@ -842,7 +843,7 @@ out: being importable does not make it a supported surface. All additive.
 1. **Pins, in tier order: format, then compiler, then enricher.** `just-dna-format` first, because a 0.7
    reader refuses some 0.8 output (§ 1, § 1.13, § 1.18) and drops the new manifest fields (§ 1.2); then
    `just-dna-compiler`; then `just-dna-enricher`. A consumer that holds only the format tier stops after
-   the first. Floor all three on `>=0.8.4`, the current patch.
+   the first. Floor all three on `>=0.8.5`, the current patch.
 2. **`uv lock`**, regenerated and never hand-edited, committed with the floors.
 3. **Move the shared Ensembl cache, once per machine** (§ 1.29): `just-dna-enricher cache pull --only
    ensembl`, or `cache prepare`. The lane now pulls `just-dna-seq/ensembl_variations_split` (dbSNP 157 /
@@ -1278,29 +1279,30 @@ What 0.8 ships with, known and not fixed. Each line names its item; [RM_TOC.md](
   module it ran on since the change. Enricher 0.7.3 fails too, for another reason: it reads the v1 API, which
   now answers 410. It stays broken, since the maintainer declined a `v0.7.4` (desk #252): upgrading to 0.8.4 is
   the only fix.
-- **A coordinate-only row's back-filled rsID ignored its genotype (RM438, on `main` after 0.8.4, for the next
-  patch).** Where two rsIDs share a position, `resolve_variants` gave the first in string order, silently: dbSNP
-  157's insertion `rs2517910443` took CYP2D6*4's `rs3892097` on an `A/G` row. `enrich` flagged the same pick
-  `ambiguous`, chosen just as blindly. The next patch narrows both by the row's `alts`, else its genotypes.
+- **A coordinate-only row's back-filled rsID ignored its genotype (RM438).** Where two rsIDs share a position,
+  `resolve_variants` gave the first in string order, silently: dbSNP 157's insertion `rs2517910443` took
+  CYP2D6*4's `rs3892097` on an `A/G` row. `enrich` flagged the same pick `ambiguous`, chosen just as blindly.
+  **Fixed in enricher 0.8.5** (RM438): both are narrowed by the row's `alts`, else its genotypes.
   `resolve_variants` then withholds (`rsid_ambiguous`) when several rsIDs are left. `enrich` writes a corrected
   `resolution.csv` when a table is next written. Where one rsID hosts the genotype, `ambiguous` becomes `resolved`.
   Where none does, that link is a miss and the next is asked, so the row has no rsID or takes ClinVar's (its `source`
   can move from `cache` to `clinvar`); that also reaches a `resolved` row whose one back-filled rsID the genotype
-  refutes. Until then, treat a back-filled `ambiguous` rsID as unchecked against the genotype, and don't
-  rely on `resolve_variants`' rsID at a shared position. The registry measured production: no published row is
-  `ambiguous`. The `resolved` arm was not measured. The CHANGELOG entry has both queries.
-- **The 0.8.4 enricher cannot resolve beside google-genai (RM436, on `main` after 0.8.4, for the next patch).**
-  Enricher 0.8.1 to 0.8.4 floor `tenacity>=9.2.1`, and every google-genai release caps `tenacity<9.2.0`, so a project
+  refutes. Until a table is re-derived on 0.8.5, treat a back-filled `ambiguous` rsID as unchecked against the
+  genotype. The registry measured production on both arms: no published row is `ambiguous`, and the 7
+  coordinate-keyed rows with a snapshot back-fill (`source=cache`, all in smell 0.1.1) carry genotypes their own
+  `ref`/`alts` hold, so nothing published moves. 51,249 rows with a ClinVar back-fill sit in the three ClinVar panels
+  still on pre-0.8 tables (cancer, cardio, pathogenic 2.0.0), and their re-derivation on 0.8.5 is where the
+  correction applies. The CHANGELOG entry has both queries.
+- **The 0.8.4 enricher cannot resolve beside google-genai (RM436).** Enricher 0.8.1 to 0.8.4 floor `tenacity>=9.2.1`, and every google-genai release caps `tenacity<9.2.0`, so a project
   depending on both fails `uv lock` unless it overrides the cap (`override-dependencies = ["tenacity>=9.2.1"]` works;
   google-genai's calls are unchanged under 9.2.1). Watch for the quieter failure too: a relock that does not raise
-  the enricher's floor can keep an old enricher beside a new format package. The next patch floors `tenacity>=9.0.0`,
-  and the override can then be dropped.
-- **Two snapshot readers answered an unreadable reference as "nothing found" (RM432, on `main` after 0.8.4,
-  for the next patch).** `gene_metrics.lookup_snapshot` returned `{}` and `civic_refutation.civic_snapshot_rows`
+  the enricher's floor can keep an old enricher beside a new format package. **Fixed in enricher 0.8.5** (RM436):
+  it floors `tenacity>=9.0.0`, and the override can be dropped.
+- **Two snapshot readers answered an unreadable reference as "nothing found" (RM432).** `gene_metrics.lookup_snapshot` returned `{}` and `civic_refutation.civic_snapshot_rows`
   returned `[]` for a path with no parquet behind it, so a mistyped `--civic-snapshot` mapped every variant from
   the curated table alone, silently, and an offline gene-metrics run could write `not_found` rows for a snapshot
-  it never opened. The next patch raises `FileNotFoundError` from both; **a direct caller of either must catch
-  it**. The enricher's own passes report could-not-read instead.
+  it never opened. **Fixed in enricher 0.8.5** (RM432): both raise `FileNotFoundError`; **a direct caller of
+  either must catch it**. The enricher's own passes report could-not-read instead.
 - **RM386's publish pinning has no live run yet (RM386).** It shipped with no practice publish to a
   throwaway Hugging Face repo, by the maintainer's decision. The next real snapshot publish is its first
   live run; if that publish fails, suspect this code first, and the fix is a patch.

@@ -1558,4 +1558,26 @@ RELEASE_RECORDS: dict[str, ReleaseRecord] = {
             "manifest_fields 0/22, parquet_bytes 0/22, parquet_schema 0/22, warnings 0/22"
         ),
     ),
+    # Measured at the 0.8.5 cut (2026-11-12). `previous` is 0.8.4, the newest published compiler, and
+    # BEFORE was compiled by it (with format 0.8.4) from this tree's `reference_examples/`, pinned to the
+    # locked polars and Python: every module on both sides records polars 2.1.0 and Python 3.14.8, so
+    # no toolchain sweep. The lock moved since 0.8.4 only in the enricher's tenacity floor (RM436).
+    "0.8.5": ReleaseRecord(
+        version="0.8.5",
+        previous="0.8.4",
+        # A measured zero, with its denominator in `evidence`. The compiler's source did not change
+        # (it moves for its format floor only). RM434 rewords `StudyRow.stat_significance`'s
+        # description: measured, it moves one line of `describe studies.csv` and appears in no
+        # compiled manifest or parquet. RM432, RM436 and RM438 are enricher-only. RM438 corrects the
+        # derivation of `resolution.csv`, an enricher output this record does not measure (the sweep
+        # compiles the injected table as it stands); the CHANGELOG declares it.
+        axes=dict.fromkeys(VALID_RELEASE_OUTPUT_AXES, False),
+        manifest_fields=[],
+        declared=[],
+        evidence=(
+            "22 reference module(s) compiled under 0.8.4 and 0.8.5 from one spec root, so the "
+            "compiler is the only variable; modules moved per axis: content_signature 0/22, "
+            "manifest_fields 0/22, parquet_bytes 0/22, parquet_schema 0/22, warnings 0/22"
+        ),
+    ),
 }

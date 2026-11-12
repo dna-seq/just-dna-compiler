@@ -41,7 +41,44 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
-## 2026-11-12 — RM438: a coordinate-only row's back-filled rsID is narrowed by the row's alleles, on both paths (patch, uncut)
+## 2026-11-12 — `v0.8.5`: format, compiler and enricher 0.8.5 (a patch, cut from `main`)
+
+Format and the enricher move because each changed source since `v0.8.4`: format for RM434, the enricher for RM432,
+RM436 and RM438. The compiler's source did not change. It moves because its floor must name the format's current
+version (`test_workspace_versions`), so its `pyproject.toml` changes, and a published 0.8.4 cannot take a second
+set of metadata. The enricher's floors are `just-dna-format>=0.8.5` and `just-dna-compiler>=0.8.5`, the
+compiler's `just-dna-format>=0.8.5`. One third-party floor moved **down**: the enricher requires `tenacity>=9.0.0`
+where 0.8.1 to 0.8.4 required `>=9.2.1` (RM436). Nothing adds a public name, field, table, flag or warning code.
+Two behaviours change for a direct caller: two snapshot readers raise where they returned an empty value (RM432),
+and `resolve_variants` may now withhold an rsID it used to attach (RM438).
+
+- **What it carries:** RM432 (`gene_metrics.lookup_snapshot` and `civic_refutation.civic_snapshot_rows` raise
+  `FileNotFoundError` on a reference they cannot read; the CIViC refutation skip's log line is reworded, and the
+  citations and gene-metrics passes now say when they could not read a snapshot), RM434
+  (`StudyRow.stat_significance`'s description says whose threshold a level is), RM436 (the enricher accepts tenacity
+  9.0 again, so it resolves beside google-genai), and RM438 (a coordinate-only row's back-filled rsID is narrowed by
+  the row's alleles on both paths, a corrected derivation of `resolution.csv`). Beside them, the GWAS pass's
+  docstrings quote the Catalog v2's published budget of 15 queries a second (no behaviour moves), and RELEASE_CYCLE
+  states that a moved floor moves its package.
+- **Release record** (`RELEASE_RECORDS["0.8.5"]`, measured from 0.8.4, the last published compiler): 22
+  reference modules, nothing moved on any axis. RM434's description reaches `describe studies.csv` and no compiled
+  output. RM438's correction is to `resolution.csv`, an enricher output the record does not measure; its entry
+  below declares it, with the registry's exposure measured on production (nothing published moves on either arm).
+  No recompile is needed.
+- **After upgrading:**
+  1. Raise floors to `>=0.8.5`.
+  2. A project that carried a `tenacity>=9.2.1` override to resolve the enricher beside google-genai can drop it.
+  3. A direct caller of `gene_metrics.lookup_snapshot` or `civic_refutation.civic_snapshot_rows` catches
+     `FileNotFoundError`, raised for a reference with no parquet behind it; `{}` and `[]` now mean only "read, and
+     nothing matched".
+  4. A direct caller of `resolve_variants` expects a coordinate-only row at a position several rsIDs share to come
+     back with no rsID and an `rsid_ambiguous` warning naming every candidate, where it used to get the first in
+     string order; and none, under `rsid_without_resolution_label`, where the row's alleles refute every rsID there.
+  5. Re-derive (`just-dna-enricher enrich <spec-dir> --rederive`) any module whose coordinate-only rows were
+     back-filled from a snapshot, to apply RM438's correction; a recorded row is otherwise kept as it is. The three
+     ClinVar panels still on pre-0.8 tables are where it applies on the registry.
+
+## 2026-11-12 — RM438: a coordinate-only row's back-filled rsID is narrowed by the row's alleles, on both paths (patch, cut as `v0.8.5`)
 
 `resolve_variants` gave a coordinate-only row the first rsID at its `(chrom, start, ref)` in string order and never
 read the genotype. dbSNP 157 added a 16 bp insertion (`rs2517910443`) at CYP2D6*4 (`22:42128945`, `rs3892097`), so an
@@ -69,15 +106,17 @@ by a row. No public name and no warning code is added.
 - **Exposure, measured.** The registry ran the exposure query on production, read-only, over the latest version of
   all 24 published modules: 439,752 `resolution.csv` rows, 0 with `status=ambiguous`, 0 with `rsid_alternates`. So
   no published `ambiguous` row moves. The query, kept for the re-derivation ahead: `status=ambiguous`, a coordinate
-  `variant_key`, and `alts` empty or multi-valued. The second arm was **not** measured: `status=resolved`,
-  `source` `cache` or `clinvar`, a coordinate `variant_key` with `rsid` set, and `alts` empty or multi-valued. Those
-  rows can lose their rsID or change `source`, and only re-deriving against the snapshot says which do. Ahead are three
-  ClinVar panels (cancer, cardio, pathogenic; about 141,000 coordinate-keyed rows) still on pre-0.8 tables, which the
-  registry re-derives after installing this. The test registry was not measured.
+  `variant_key`, and `alts` empty or multi-valued. The registry then ran the second query on production, read-only:
+  `status=resolved`, `source` `cache` or `clinvar`, a coordinate `variant_key` with `rsid` set, and `alts` empty or
+  multi-valued. 7 rows carry a snapshot back-fill (`source=cache`), all in one module (smell 0.1.1), and each row's
+  authored genotypes sit within its own `ref`/`alts`, so none is refuted. **Nothing published moves on either
+  arm.** 51,249 more rows carry a ClinVar back-fill, all in the three ClinVar panels still on pre-0.8 tables
+  (cancer, cardio, pathogenic 2.0.0); their re-derivation on 0.8.5 is where this change applies. The test registry
+  was not measured.
 
 From S151 and S152.
 
-## 2026-11-12 — RM436: the enricher accepts tenacity 9.0 again, so it resolves beside google-genai (patch, uncut)
+## 2026-11-12 — RM436: the enricher accepts tenacity 9.0 again, so it resolves beside google-genai (patch, cut as `v0.8.5`)
 
 RM371 floored `tenacity>=9.2.1` so every retried client could spell `wait_exponential_jitter(multiplier=…)`, the
 keyword 9.2.1 renamed from `initial`. Every google-genai release caps `tenacity<9.2.0`, so a consumer depending on
@@ -88,7 +127,7 @@ deprecation warning stays silent on 9.2.1 and newer, and 9.0 and 9.1 get the key
 client calls `wait_exponential_jitter` itself, and the floor is the release a run proved: the enricher suite passed
 on tenacity 9.0.0 and on the locked 9.2.1. Backoff timing is unchanged. No public name moves. From S149.
 
-## 2026-11-12 — RM434: a study's `stat_significance` says whose threshold it is (patch, uncut)
+## 2026-11-12 — RM434: a study's `stat_significance` says whose threshold it is (patch, cut as `v0.8.5`)
 
 `StudyRow.stat_significance` listed its four levels and stated no threshold behind any of them, so a reporter graded
 a look-up replication at P 0.002 against the genome-wide scale and wrote `not_significant`, beside a failed look-up
@@ -97,7 +136,7 @@ a pre-specified look-up which passes is `significant`, and that `p_value_num` is
 common scale. A description only: no member, digest or check moves. A fifth member (`nominal`) was declined, since
 `p_value_num` already lets a reader compute it. From S147.
 
-## 2026-11-11 — RM432: two snapshot readers raise on a reference they cannot read, instead of answering "nothing found" (patch, uncut)
+## 2026-11-11 — RM432: two snapshot readers raise on a reference they cannot read, instead of answering "nothing found" (patch, cut as `v0.8.5`)
 
 `gene_metrics.lookup_snapshot` returned `{}` and `civic_refutation.civic_snapshot_rows` returned `[]` for a
 reference with no parquet behind it, the value of a lookup that read the snapshot and matched nothing. Both now

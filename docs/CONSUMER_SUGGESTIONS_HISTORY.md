@@ -7329,7 +7329,7 @@ saying the snapshot was not read would also do.
 What we do meanwhile: nothing needed yet. We call neither reader directly today; the keyed lookups that would are
 the ones S145 is for, and they will check the reference themselves until this is answered.
 
-**Status — filed as [RM432](ROADMAP.md#rm432--two-snapshot-readers-answer-an-unreadable-reference-with-an-empty-result-which-reads-as-nothing-found): the pm sizes.** Confirmed on `main`, and it breaks a rule we
+**Status — filed as [RM432](ROADMAP_HISTORY.md#rm432--two-snapshot-readers-answer-an-unreadable-reference-with-an-empty-result-which-reads-as-nothing-found): the pm sizes.** Confirmed on `main`, and it breaks a rule we
 already hold: an input that could not be read is never recorded as a definite answer. Inside the workspace, the
 passes mostly guard the reference first. One spot does not: the CIViC citation lane turns an unreadable reference
 into an empty map, so every variant falls through to the curated table. The pm chooses between your two options. A
@@ -7368,7 +7368,7 @@ the gap is only in the description, which could then say that `not_significant` 
 `p_value_num` is the field to read. Either answer settles it for us; what we cannot do is leave a row reading
 "not significant" for a study whose authors call it a replication.
 
-**Status — filed as [RM434](ROADMAP.md#rm434--stat_significance-states-no-threshold-so-a-replication-that-passed-its-own-test-reads-as-a-null): a patch (the description) or a minor (a fifth member); the pm sizes.** Confirmed,
+**Status — filed as [RM434](ROADMAP_HISTORY.md#rm434--stat_significance-states-no-threshold-so-a-replication-that-passed-its-own-test-reads-as-a-null): a patch (the description) or a minor (a fifth member); the pm sizes.** Confirmed,
 and the gap is wider than one level. No threshold behind any `stat_significance` level is written down: not in the
 field's description, not in `vocab.py`, and in none of our docs. "`not_significant` covers 1e-5 < p < 0.05" is a
 reading of `suggestive` in its GWAS sense, and the format never stated it. So one fix is a patch: say the level is
@@ -7453,7 +7453,7 @@ installed release offers, so the warning RM371 fixed stays fixed without the flo
 correct RM371's sentence, so the next consumer is not told its install works. We have no view on which is
 better for the enricher; (2) costs us a permanent override until Google lifts its cap.
 
-**Status — filed as [RM436](ROADMAP.md#rm436--the-enricher-floors-tenacity921-and-google-genai-caps-it-below-920-so-a-consumer-depending-on-both-cannot-resolve-the-08-trio): a patch either way; the pm picks between your two.** Confirmed. google-genai 3.2.0, its
+**Status — filed as [RM436](ROADMAP_HISTORY.md#rm436--the-enricher-floors-tenacity921-and-google-genai-caps-it-below-920-so-a-consumer-depending-on-both-cannot-resolve-the-08-trio): a patch either way; the pm picks between your two.** Confirmed. google-genai 3.2.0, its
 newest, requires `tenacity<9.2.0,>=8.2.3`, and RM371's sentence that just-dna-lite accepts 9.2.1 was wrong: it read
 your direct dependencies and missed the transitive cap. Your second finding is worse than the first, and it is in
 the entry. A relock that does not raise the enricher's floor silently kept enricher 0.7.3 beside format 0.8.4. Your
@@ -7537,7 +7537,7 @@ was latent until dbSNP 157; we have not checked.
 hosting rule, applied to the back-fill), and withhold with a warning naming every rsID when more than one is
 left. A strict mode would refuse the ambiguous case like any unresolved row.
 
-**Status — filed as [RM438](ROADMAP.md#rm438--resolve_variants-back-fills-a-position-only-row-with-the-first-rsid-at-its-chrom-start-ref-whatever-the-genotype-and-warns-nothing): severity high, a patch; the pm sizes.** Reproduced on `main` with your four rows in an
+**Status — filed as [RM438](ROADMAP_HISTORY.md#rm438--resolve_variants-back-fills-a-position-only-row-with-the-first-rsid-at-its-chrom-start-ref-whatever-the-genotype-and-warns-nothing): severity high, a patch; the pm sizes.** Reproduced on `main` with your four rows in an
 in-memory table: `_lookup_rsids_by_position` returns `rs2517910443` and no warning. The enrich path that builds
 `resolution.csv` is not this code. It uses the allele-aware `_lookup_rsid_candidates`, which never picks
 silently. `resolve_variants` is the older public function: the compiler reaches it only through the deprecated
@@ -7570,7 +7570,7 @@ back-filled rsID against the genotype first, to size it.
 **What we did.** Nothing on the registry (not ours). We have not measured which catalog modules carry such rows.
 On our side we hold off rebuilding or publishing modules on 0.8 until RM438 lands.
 
-**Status — folded into [RM438](ROADMAP.md#rm438--resolve_variants-back-fills-a-position-only-row-with-the-first-rsid-at-its-chrom-start-ref-whatever-the-genotype-and-warns-nothing) as its S152 addendum; the pm decided it the same hour: one rule on both paths.** Your
+**Status — folded into [RM438](ROADMAP_HISTORY.md#rm438--resolve_variants-back-fills-a-position-only-row-with-the-first-rsid-at-its-chrom-start-ref-whatever-the-genotype-and-warns-nothing) as its S152 addendum; the pm decided it the same hour: one rule on both paths.** Your
 worry is right in kind but not in its worst form. The registry's re-derivation runs through `enrich`, not through
 `resolve_variants`, and `enrich` never picked silently. With S151's four rows and no single authored ALT, it gets
 both candidates and writes `rsid=rs3892097`, `status=ambiguous` and `rsid_alternates=rs3892097,rs2517910443`. The
