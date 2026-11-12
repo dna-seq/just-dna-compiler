@@ -2357,6 +2357,21 @@ Two facts for the build:
   (P3). The registry can size the exposure without a rebuild: published rows with `status=ambiguous`,
   coordinate-authored, with no single `alts`, are exactly the set this can change.
 
+**Re-sized on the addendum (pm, 2026-11-12): one rule, both paths.** The first sizing's "one hosting rule" condition
+assumed `_lookup_rsid_candidates` already read the genotype; it reads only the authored ALT, so that condition is
+replaced by this one. The patch, still the next on `main` and in 0.8.5 if it lands first:
+
+- **One shared function narrows a position's rsIDs**: by the row's `alts` when stated, else by its genotype's
+  alleles, through RM382's hosting judgement. Both back-fills call it. An allele it cannot read (a missing, symbolic or
+  unparseable genotype) narrows nothing: a candidate is never dropped on an unknown.
+- **`resolve_variants` withholds** on more than one rsID left, with `rsid_ambiguous` naming every one, as sized.
+- **The enrich path keeps its pick-and-flag.** A row moves from `ambiguous` to `resolved` only where exactly one rsID
+  hosts the genotype; several hosting keep `ambiguous`.
+- **Declared as a corrected derivation** of published `resolution.csv` (P3), in the CHANGELOG and INTEGRATION_0_8,
+  with the exposure query above, so the registry can tell which of its re-derived rows can move.
+- **Pinned** with S151's four rows on both paths: the `A/G` row resolves to `rs3892097` on each, and a row with no
+  genotype and no `alts` stays withheld (`resolve_variants`) or `ambiguous` (enrich).
+
 **Residuals** none yet.
 
 # Not format scope

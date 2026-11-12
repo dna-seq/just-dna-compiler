@@ -78,11 +78,6 @@ patches right after real use started, so the pm reads an audit sceptically: the 
 
 ## Open questions and owed work
 
-- **Owed: RM438's entry gets the S152 decision** (sent in the channel 2026-11-12, reply to 639871207): one shared
-  rule reads `alts`, else the genotype's alleles, via RM382's hosting judgement; an unreadable allele narrows
-  nothing; `resolve_variants` withholds on >1, enrich keeps pick-and-flag and moves `ambiguous` → `resolved` only on
-  one hosting rsID, declared as a corrected derivation with triage's exposure query. Written once the lead's
-  uncommitted RM436 hunk in ROADMAP.md is committed (never sweep it).
 
 - **RM433's second trial, `unattended` (at night).** The first (docs/probes/ALPHAGENOME2_METHYLATION_TRIAL.md) was
   inconclusive: 9 mQTL pairs from one chr1 region, shifts inside the 1 Mb vs 16 kb window noise. The second needs
