@@ -2373,6 +2373,13 @@ replaced by this one. The patch, still the next on `main` and in 0.8.5 if it lan
   `ambiguous`, 0 with `rsid_alternates`, so nothing published moves. The exposure ahead is three ClinVar panels
   (cancer, cardio, pathogenic; about 141,000 coordinate-keyed rows) still on pre-0.8 tables, which the registry
   re-derives after installing RM438; the test registry was not measured.
+- **No rsID hosts it (ruled 2026-11-12, on the lead's build question).** Where every candidate's site confidently
+  refutes the genotype, nothing is attached: `resolve_variants` says none can host, and in enrich that link is a miss,
+  so the next link (ClinVar) is asked. That is `@answered-is-not-absent` as written, and attaching a refuted rsID is
+  the defect itself; an unreadable allele still narrows nothing. It can move a **resolved** row too, which the first
+  query does not see, so it is declared beside the ambiguous arm with its own query (a resolved, coordinate-authored
+  row whose genotype carries an allele its single back-filled rsID's site refutes), naming the source moving to
+  ClinVar as a possible effect, and the registry runs it on production before the three panels re-derive.
 - **Pinned** with S151's four rows on both paths: the `A/G` row resolves to `rs3892097` on each, and a row with no
   genotype and no `alts` stays withheld (`resolve_variants`) or `ambiguous` (enrich).
 
