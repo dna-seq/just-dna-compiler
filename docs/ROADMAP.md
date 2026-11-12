@@ -2250,6 +2250,77 @@ one study's, a different claim, left for the pm to size if a reader trips on it.
 
 **Residuals** reading 2 declined (above); nothing else.
 
+## RM436 — the enricher floors `tenacity>=9.2.1`, and google-genai caps it below 9.2.0, so a consumer depending on both cannot resolve the 0.8 trio
+
+**Severity** medium · **Status** open — **a patch either way; the pm picks** · **Owner** enricher (`pyproject.toml`,
+every retried client's wait) · **Motivating case** S149 (CONSUMER_SUGGESTIONS_HISTORY.md) · *related* RM371, RM254
+
+**The defect.** RM371 floored `tenacity>=9.2.1` so the enricher could spell `wait_exponential_jitter(multiplier=…)`.
+9.2.1 renamed `initial`, and 9.1.4 has only the old name. Its entry says just-dna-lite, just-module-creator and the
+marketplace "all accept 9.2.1". just-dna-lite does not. It depends on `google-genai`, and every release of that
+caps `tenacity<9.2.0`: checked here, 3.2.0, the newest, requires `tenacity<9.2.0,>=8.2.3`. So `uv lock` with
+`just-dna-enricher>=0.8.4` fails. Worse, a relock that does not raise the enricher's floor silently kept
+`just-dna-enricher==0.7.3` beside `just-dna-format==0.8.4`, a mixed trio. The reporter carries a workspace
+override (`tenacity>=9.2.1`) and has checked that google-genai's calls are unchanged under 9.2.1.
+
+**The two candidates.** (1) Accept `tenacity>=9.0` again, and pick `multiplier=` or `initial=` by what the
+installed release offers, in one place every retried client calls. RM371's warning stays fixed without the floor,
+and a consumer capped below 9.2 resolves. (2) Keep the floor and correct RM371's sentence, which leaves the
+consumer a permanent override until Google lifts its cap. Both are patches. (1) costs one small shim. (2) costs
+every consumer with google-genai an override, and the trio's own adopters include one.
+
+**Residuals** none yet.
+
+## RM437 — the split Ensembl snapshot's `groups/` sidecars have no provisioning route, so a consumer who needs a group must write into the lane's directory itself
+
+**Severity** medium · **Status** open — **a minor (a new parameter, CLI flag and public path function); the pm
+sizes** · **Owner** enricher (`download._provision_snapshot`, `locations`, `cache pull`) · **Motivating case** S150
+(CONSUMER_SUGGESTIONS_HISTORY.md) · *related* RM420, RM339, RM381
+
+**The gap.** The `ensembl` lane pulls `data/*.parquet` only. `locations.py` says so on purpose ("Files outside
+`data/` (prepare-annotations' `groups/*`) are the manifest's and not pulled"). The split repo moved every
+annotation value (consequence, clinical flags, frequencies) out of the core and into those groups, so a consumer
+moving onto the lane as INTEGRATION_0_8 § 3 asks gets `id` and `row_idx` and nothing else. A group joins to the
+core on `(chrom, row_idx)`, which holds only within one `release_id`. So the only safe writer is the one that
+pulled the core: it checks the group's files against the same manifest, records them in the pull record, and
+re-pulls them when the release moves (RM420). A consumer's own downloader into the lane's directory is the
+mixed-release shape the lane exists to prevent, and a stale group would join to the wrong variants silently.
+
+**The ask.** An opt-in group selection on the lane (`ensure_snapshot(groups=…)`,
+`cache pull --only ensembl --groups …`), attested by the manifest and recorded in the pull record. Also a public
+path function for a group's directory, so no reader spells it, and a refusal when a present group's files are not
+the core's release. New parameters and a new public name, so a minor.
+
+**Residuals** none yet.
+
+## RM438 — `resolve_variants` back-fills a position-only row with the first rsID at its `(chrom, start, ref)`, whatever the genotype, and warns nothing
+
+**Severity** high · **Status** open — **a patch (a corrected derivation on a deprecated but working path); the pm
+sizes** · **Owner** enricher (`resolver._lookup_rsids_by_position`, `resolve_variants`) · **Motivating case** S151
+(CONSUMER_SUGGESTIONS_HISTORY.md) · *related* RM382, RM381, RM271
+
+**The defect.** Reproduced on `main` with an in-memory table holding S151's four rows at `22:42128945` (three SNVs
+under `rs3892097`, the CYP2D6*4 SNP, and one insertion `C→CGGGTAAGGGGGCGTCT` under `rs2517910443`, new in dbSNP
+157). `_lookup_rsids_by_position(con, [("22", 42128945, "C")], w)` returns `{'22:42128945:C': 'rs2517910443'}` with
+`w == []`. The answer is keyed on `(chrom, start, ref)` and filled by `setdefault` over rows ordered `chrom, start,
+ref, id, alt`, so the lexicographically first rsID wins. The row's genotype (`A/G`, which only the SNV can host) is
+never read. A multi-rsID position is warned about only when the row gave no `ref`. A coordinate-only CYP2D6*4 row
+therefore gets the wrong rsID, silently.
+
+**Where it bites.** The enrich path is not this code. It builds `resolution.csv` through `_lookup_rsid_candidates`,
+which is allele-aware: 0 candidates leaves `rsid` empty, 1 attaches, 2 or more picks deterministically and marks the
+row ambiguous (`@rsid-not-per-allele`). `resolve_variants` is the older public function. The compiler reaches it
+only through the deprecated `ensembl_cache` path, which warns at use and goes at 1.0. Consumers also call it
+directly, as just-dna-lite does. That is the reason to fix it rather than wait for the removal, because a wrong
+rsID on a pharmacogene row is the expensive kind of wrong.
+
+**The ask (the reporter's candidate, in the house rule).** Narrow a position's rows to those whose ALT set can host
+the row's genotype (RM382's hosting rule, applied to the back-fill). Attach only when one rsID is left. When more
+than one is left, withhold the rsID with a `rsid_ambiguous` warning naming every one. Rows that state `alts` narrow
+on them first. A behaviour correction with no new name, so a patch. Pin it with S151's four rows.
+
+**Residuals** none yet.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
