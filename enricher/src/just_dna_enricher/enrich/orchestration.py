@@ -1269,6 +1269,8 @@ def _run_enrichment(
     carried_rows: set[int] = set()
     out: list[ResolutionRow] = []
     unresolved: list[str] = []
+    # Keys whose recorded back-filled rsID a re-derivation drops on RM438's no-host arm (RM440), said once.
+    dropped_rsids: list[str] = []
     # Collected across the loop and reported once. A per-row line here would be one line per variant —
     # ten for the SHOX panel — which buries every other finding a run produces.
     par_twins_dropped: list[tuple[str, str, int]] = []
@@ -1628,6 +1630,17 @@ def _run_enrichment(
                 continue
             if not cands:
                 rsid, status, alternates, src = None, "resolved", None, "authored"
+                # **The table shortens here, rightly, and the reader is told (RM440).** RM438's no-host arm:
+                # the position has rsIDs, but none hosts an allele the row states, so a re-derivation drops
+                # the back-filled rsID a recorded row carried. `@rederive-never-shortens` guards the silent
+                # case; this one is an answer, so it replaces, and the run names it once (below).
+                pt = (v.chrom, v.start, v.ref, _authored_alt(v))
+                if (
+                    rederive
+                    and any(by_position.get(pt) for by_position in rev_loci.values())
+                    and any(r.rsid is not None for r in existing.get(_subject_key(v), ()))
+                ):
+                    dropped_rsids.append(key)
             elif len(cands) == 1:
                 rsid, status, alternates, src = cands[0], "resolved", None, str(cand_link)
             else:
@@ -1671,6 +1684,15 @@ def _run_enrichment(
     # The subject keys the carry-forward below puts back, so the report can leave them out of its own
     # denominator: they are in `out` by then, and a subject nothing asked must not be counted as one
     # that was re-asked.
+    if dropped_rsids:
+        # Aggregated by reason, once per run, the phrase pinned by its test (`@warning-text-is-api`).
+        logger.warning(
+            "%d row(s) lost its back-filled rsID on this re-derivation: no rsID at its position hosts an "
+            "allele the row states (RM438), so the row is written without one. First: %s.",
+            len(dropped_rsids),
+            ", ".join(str(k) for k in dropped_rsids[:5]),
+        )
+
     carried_keys: set[tuple] = set()
     if rederive:
         # **Re-deriving must never be a way to shorten the table.** A recorded subject the sources

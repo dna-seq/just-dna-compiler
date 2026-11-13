@@ -12,6 +12,7 @@ The fixture is the four S151 rows exactly as the reporter quoted them; the oracl
 host this genotype" is the shared predicate itself, asked over the fixture's own rows.
 """
 
+import logging
 from pathlib import Path
 
 import polars as pl
@@ -345,3 +346,40 @@ def test_a_key_whose_rows_name_both_rsids_gets_neither(tmp_path: Path) -> None:
     patched, warnings = resolve_variants(rows, ensembl_cache=snap)
     assert [p.rsid for p in patched] == [None, None]
     assert _codes(warnings) == ["rsid_without_resolution_label"]
+
+
+# ── RM440: a re-derivation that drops a recorded rsID on the no-host arm says so ─────────────────────────
+
+
+def test_a_rederivation_that_drops_a_recorded_rsid_says_so_once(
+    tmp_path: Path, no_ambient_caches: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """RM440: the shortening is right (RM438), but the reader must still be told (`@rederive-never-shortens`).
+
+    The first run records `rs3892097`, the one rsID that hosts `A/G`. The second re-derives against a
+    snapshot whose only rsID at the position is the insertion, which the row refutes: the rsID leaves the
+    table, and one warning per run says how many rows lost theirs and names the first.
+    """
+    spec = _spec(tmp_path, _HEADER, [f"{CHROM},{START},{REF},A/G,risk,c"])
+    first = enrich(
+        spec,
+        offline=True,
+        ensembl_cache=_snapshot(tmp_path / "ens1", [r for r in S151_ROWS if r[4] == STAR4]),
+        clinvar_cache=tmp_path / "no_clinvar",
+    )
+    [recorded] = first.rows
+    assert recorded.rsid == STAR4
+    with caplog.at_level(logging.WARNING, logger="just_dna_enricher.enrich"):
+        second = enrich(
+            spec,
+            offline=True,
+            rederive=True,
+            ensembl_cache=_snapshot(tmp_path / "ens2", [r for r in S151_ROWS if r[4] == INSERTION]),
+            clinvar_cache=tmp_path / "no_clinvar",
+        )
+    [row] = second.rows
+    assert (row.rsid, row.source) == (None, "authored")
+    dropped = [r.getMessage() for r in caplog.records if "lost its back-filled rsID" in r.getMessage()]
+    assert len(dropped) == 1, [r.getMessage() for r in caplog.records]
+    assert "1 row(s)" in dropped[0] and row.variant_key in dropped[0]
+    assert "no rsID at its position hosts an allele the row states" in dropped[0]

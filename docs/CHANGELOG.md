@@ -41,6 +41,15 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-13 — RM440: a re-derivation that drops a back-filled rsID on RM438's no-host arm says so (patch, uncut)
+
+Since RM438 (0.8.5), `enrich --rederive` writes a coordinate-only row with no rsID where every rsID at its position
+is refuted by the row's alleles, which replaces a recorded row that carried one. That is right, and it was silent:
+only a diff of the table showed which rows lost theirs. The run now logs one warning, aggregated over the rows:
+"N row(s) lost its back-filled rsID on this re-derivation: no rsID at its position hosts an allele the row states",
+with the first five variant keys. A log line, no warning code; nothing written to the table changes. The registry's
+re-derivation of its three ClinVar panels is where it will be read. RM438's residual.
+
 ## 2026-11-13 — RM439: a variant's `stat_significance` says it is the module author's verdict across the evidence (patch, uncut)
 
 `VariantRow.stat_significance` listed its four levels and said nothing more, while RM434 had just explained the

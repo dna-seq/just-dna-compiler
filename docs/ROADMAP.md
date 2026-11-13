@@ -2197,7 +2197,7 @@ evidence, no threshold of its own, each study's grade in `studies.csv` and its `
 
 ## RM440 — a re-derivation that drops a back-filled rsID on RM438's no-host arm says nothing at run time
 
-**Severity** low · **Status** open — **a patch, `unattended`** (a log line, no warning code) · **Owner** enricher (`enrich/orchestration.py`, the
+**Severity** low · **Status** open — **a patch, built on `main` 2026-11-13, uncut** (a log line, no warning code) · **Owner** enricher (`enrich/orchestration.py`, the
 position back-fill) · **Motivating case** RM438's build (S151, S152, CONSUMER_SUGGESTIONS_HISTORY.md) · *related*
 RM438, RM393
 
@@ -2219,6 +2219,11 @@ per run, aggregated by reason (no allele the row states is hosted at the positio
 few variant keys, and its phrase pinned. No warning code: the enricher's log lines carry none (RM427's ask 3 was
 declined for the same reason), and none is needed to read a count. In the patch after 0.8.5, so the registry
 re-derives its panels on 0.8.5 meanwhile and reads the change from a diff of the table or from RM438's second query.
+
+**Built (lead, 2026-11-13), as sized.** The assembly loop's no-candidate branch counts a key when the run re-derives,
+some link has rsIDs at the position, and the recorded row carried one; one warning per run after the loop, the first
+five keys named. Pinned by `test_a_rederivation_that_drops_a_recorded_rsid_says_so_once` (red before: the rsID dropped
+and nothing was logged); the re-derive tests and the feature corpus stay green.
 
 **Residuals** none yet.
 
