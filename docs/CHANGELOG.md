@@ -41,7 +41,30 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
-## 2026-11-13 — RM440: a re-derivation that drops a back-filled rsID on RM438's no-host arm says so (patch, uncut)
+## 2026-11-13 — `v0.8.6`: format, compiler and enricher 0.8.6 (a patch, cut from `main`)
+
+Format and the enricher move because each changed source since `v0.8.5`: format for RM439, the enricher for RM440.
+The compiler's source did not change. It moves because its floor must name the format's current version
+(`test_workspace_versions`), so its `pyproject.toml` changes, and a published 0.8.5 cannot take a second set of
+metadata. The enricher's floors are `just-dna-format>=0.8.6` and `just-dna-compiler>=0.8.6`, the compiler's
+`just-dna-format>=0.8.6`. No third-party floor moved. Nothing adds a public name, field, table, flag or warning code,
+and no return value or raise changes for a direct caller: RM440 adds one log line.
+
+- **What it carries:** RM439 (`VariantRow.stat_significance`'s description says the level is the module author's
+  verdict across the variant's evidence, with no threshold of its own), RM440 (`enrich --rederive` logs one warning
+  per run naming the rows that lost a back-filled rsID on RM438's no-host arm), and RM437's doc half
+  (INTEGRATION_0_8 § 3 says the `ensembl` lane carries the core only, to keep the current source for consequence,
+  clinical flags and frequencies until 0.9, and why a hand-fetched `groups/` sidecar is unsafe). RM437 itself, the
+  route that pulls those sidecars, stays open for 0.9.
+- **Release record** (`RELEASE_RECORDS["0.8.6"]`, measured from 0.8.5, the last published compiler): 22
+  reference modules, nothing moved on any axis. RM439's description reaches one line of `describe variants.csv` and
+  no compiled output. RM440 writes nothing to any table. No recompile is needed.
+- **After upgrading:**
+  1. Raise floors to `>=0.8.6`.
+  2. Nothing else is required. RM440's warning appears on `enrich --rederive` only, and only where a recorded row
+     loses its back-filled rsID; its phrase is "lost its back-filled rsID on this re-derivation".
+
+## 2026-11-13 — RM440: a re-derivation that drops a back-filled rsID on RM438's no-host arm says so (patch, cut as `v0.8.6`)
 
 Since RM438 (0.8.5), `enrich --rederive` writes a coordinate-only row with no rsID where every rsID at its position
 is refuted by the row's alleles, which replaces a recorded row that carried one. That is right, and it was silent:
@@ -50,7 +73,7 @@ only a diff of the table showed which rows lost theirs. The run now logs one war
 with the first five variant keys. A log line, no warning code; nothing written to the table changes. The registry's
 re-derivation of its three ClinVar panels is where it will be read. RM438's residual.
 
-## 2026-11-13 — RM439: a variant's `stat_significance` says it is the module author's verdict across the evidence (patch, uncut)
+## 2026-11-13 — RM439: a variant's `stat_significance` says it is the module author's verdict across the evidence (patch, cut as `v0.8.6`)
 
 `VariantRow.stat_significance` listed its four levels and said nothing more, while RM434 had just explained the
 same word on `studies.csv`. The row-level description now says the level is the module author's verdict across the

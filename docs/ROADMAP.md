@@ -2165,68 +2165,6 @@ Splitting waits until one ask unparks alone.
 
 **Residuals** none yet.
 
-## RM439 — `VariantRow.stat_significance` states no threshold either, and RM434's sentence does not fit it
-
-**Severity** low · **Status** open — **a patch, built on `main` 2026-11-13, uncut** (a description only) · **Owner**
-format (`spec.VariantRow`) · **Motivating case** RM434's build (S147, CONSUMER_SUGGESTIONS_HISTORY.md) · *related*
-RM434, RM148
-
-**The gap.** RM434 gave `StudyRow.stat_significance` a description saying whose threshold a level is: the authors'
-verdict at the threshold of the study's own test, with `p_value_num` the column to threshold on one scale.
-`VariantRow` carries a `stat_significance` of its own, and its description is still the bare level list
-(`Statistical significance: significant|suggestive|not_significant|unknown.`). It is the module author's verdict
-across a variant's evidence, not one study's, so RM434's sentence would say the wrong thing there and was left out of
-it on purpose. A reader of `variants.csv` meets the same silence S147's reporter met in `studies.csv`. Filed at the
-0.8.5 cut as RM434's residual.
-
-**For the pm.** Whether the row-level field gets a sentence of its own (whose verdict, across which evidence, and
-that the per-study grade and `p_value_num` live in `studies.csv`), as a description-only patch, or waits for a reader
-to trip on it. None has yet.
-
-**Sizing (pm, 2026-11-12): a patch, `unattended`, about 10 minutes, built with no reader's report.** A reader already
-tripped on the same word one table over, and readers meet `variants.csv` first. The sentence says only what is true
-of the row-level field: the module author's verdict across the variant's evidence, with each study's own grade in
-`studies.csv` and the number to threshold in its `p_value_num`. It names no threshold of its own
-(`@field-description-is-a-claim`). It moves no digest.
-
-**Built (lead, 2026-11-13), as sized.** The description says the module author's verdict across the variant's
-evidence, no threshold of its own, each study's grade in `studies.csv` and its `p_value_num`;
-`schema/tests/test_spec.py::test_a_variants_significance_is_the_module_authors_verdict_across_its_evidence` pins it (red before).
-
-**Residuals** none yet.
-
-## RM440 — a re-derivation that drops a back-filled rsID on RM438's no-host arm says nothing at run time
-
-**Severity** low · **Status** open — **a patch, built on `main` 2026-11-13, uncut** (a log line, no warning code) · **Owner** enricher (`enrich/orchestration.py`, the
-position back-fill) · **Motivating case** RM438's build (S151, S152, CONSUMER_SUGGESTIONS_HISTORY.md) · *related*
-RM438, RM393
-
-**The gap.** Since RM438, where the row's alleles refute every rsID at a coordinate-only row's position, `enrich`
-writes the row with no rsID (`source=authored`), as an allele-exact miss already was. On a `--rederive` that
-replaces a recorded row which carried a back-filled rsID, the rsID leaves `resolution.csv` and the run logs nothing
-about it: the branch that writes the empty row emits no warning. `resolve_variants` says the same outcome aloud
-(`rsid_without_resolution_label`, none there can host the row); the enrich path does not. Today the only ways to see
-it are a diff of the table or the second exposure query RM438's CHANGELOG entry states. Seen by RM438's builder and
-left out of that patch as its residual.
-
-**For the pm.** Whether a re-derivation that removes a recorded rsID on this arm names it, aggregated by reason
-(`@warning-text-is-api`), and whether that fits a patch (a log line with no new code) or wants a warning code.
-
-**Sizing (pm, 2026-11-12): a patch, `unattended`, about 30 minutes, a log line.** A table a re-derivation shortens
-in silence is what `@rederive-never-shortens` exists against. Here the shortening is right, but the reader must still
-be told, and the registry's three ClinVar panels re-derive on 0.8.5 next, about 51,000 back-filled rows. One warning
-per run, aggregated by reason (no allele the row states is hosted at the position), with the count and the first
-few variant keys, and its phrase pinned. No warning code: the enricher's log lines carry none (RM427's ask 3 was
-declined for the same reason), and none is needed to read a count. In the patch after 0.8.5, so the registry
-re-derives its panels on 0.8.5 meanwhile and reads the change from a diff of the table or from RM438's second query.
-
-**Built (lead, 2026-11-13), as sized.** The assembly loop's no-candidate branch counts a key when the run re-derives,
-some link has rsIDs at the position, and the recorded row carried one; one warning per run after the loop, the first
-five keys named. Pinned by `test_a_rederivation_that_drops_a_recorded_rsid_says_so_once` (red before: the rsID dropped
-and nothing was logged); the re-derive tests and the feature corpus stay green.
-
-**Residuals** none yet.
-
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.

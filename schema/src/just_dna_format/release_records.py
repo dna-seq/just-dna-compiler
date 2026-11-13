@@ -1580,4 +1580,25 @@ RELEASE_RECORDS: dict[str, ReleaseRecord] = {
             "manifest_fields 0/22, parquet_bytes 0/22, parquet_schema 0/22, warnings 0/22"
         ),
     ),
+    # Measured at the 0.8.6 cut (2026-11-13). `previous` is 0.8.5, the newest published compiler, and
+    # BEFORE was compiled by it (with format 0.8.5) from this tree's `reference_examples/`, pinned to the
+    # locked polars and Python: every module on both sides records polars 2.1.0 and Python 3.14.8, so
+    # no toolchain sweep. The lock did not move since 0.8.5 beyond the three workspace versions.
+    "0.8.6": ReleaseRecord(
+        version="0.8.6",
+        previous="0.8.5",
+        # A measured zero, with its denominator in `evidence`. The compiler's source did not change
+        # (it moves for its format floor only). RM439 rewords `VariantRow.stat_significance`'s
+        # description: measured, it moves one line of `describe variants.csv` and appears in no
+        # compiled manifest or parquet. RM440 is an enricher log line on `enrich --rederive`, and
+        # writes nothing to any table.
+        axes=dict.fromkeys(VALID_RELEASE_OUTPUT_AXES, False),
+        manifest_fields=[],
+        declared=[],
+        evidence=(
+            "22 reference module(s) compiled under 0.8.5 and 0.8.6 from one spec root, so the "
+            "compiler is the only variable; modules moved per axis: content_signature 0/22, "
+            "manifest_fields 0/22, parquet_bytes 0/22, parquet_schema 0/22, warnings 0/22"
+        ),
+    ),
 }

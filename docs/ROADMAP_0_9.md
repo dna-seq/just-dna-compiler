@@ -1085,7 +1085,7 @@ says that the lane carries the core only, that a consumer needing consequence, c
 its current source for them until 0.9, and why a hand-fetched group is unsafe (a group joins on `row_idx`, which
 holds within one release only). It goes with the next patch on `main`.
 
-**Doc half built (lead, 2026-11-13):** INTEGRATION_0_8 § 3, just-dna-pipelines step 1, says the lane carries the
+**Doc half built (lead, 2026-11-13), cut 2026-11-13 as `v0.8.6`:** INTEGRATION_0_8 § 3, just-dna-pipelines step 1, says the lane carries the
 core only, to keep the current source for the group values until 0.9, and why a hand-fetched group is unsafe.
 
 **Residuals** none yet.
