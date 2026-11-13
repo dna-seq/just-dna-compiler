@@ -77,8 +77,12 @@ None open.
   step 10 complete. The priming takes the package-index reader and the branch sweep on publish (6fcf74a5, desk #271,
   the maintainer: "treat builder as my word"); watcher `pypi` running. Merged `worktree-agent-*` branches deleted. For
   the maintainer: `cut/v0.8.4`, `cut/v0.8.5`, `build/RM438` need `-D` (cherry-picked, on main by `git cherry`) after
-  their worktrees go. RM437's doc half (54545e4a), RM439 (2fe759a0), RM440 (5da19a3b) built 2026-11-13,
-  pushed; on main for the next patch (format, enricher), its timing the pm's.
+  their worktrees go. RM437's doc half, RM439, RM440 built 2026-11-13.
+- **0.8.6 cut, 2026-11-13, waiting on the maintainer's publish** (all three; RM439, RM440, RM437's doc half). Cut commit
+  2f03ab4a on `main`, pushed (prepared on `cut/v0.8.6` as c84edafb). Record: a measured zero over 22 modules. Gates:
+  full suite 7408 passed, 180 skipped; prerelease gates 26; sweep and strict docs green. Dists in `dist/`, twine 7.0.0
+  passed (6). Notes: scratchpad `release_notes_0_8_6.md`. After the publish: tag `v0.8.6` on 2f03ab4a, GitHub release,
+  README + doc map. `cut/v0.8.6` needs `-D` with the others; `wt-cut-086` unlocked.
 - **Next patch on `main`, uncut (after the 0.8.4 cut commit):** RM432 (ac3f1bcc, the lead's, 2026-11-11: two
   snapshot readers raise `FileNotFoundError`; a behaviour change for a direct caller), the GWAS docstring's 15/s budget
   (7a88e10f), RELEASE_CYCLE's floor rule (307a5ae3). Lesson from RM428: it added the public attribute
