@@ -821,7 +821,12 @@ class VariantRow(AuthoredModel):
     stat_significance: str | None = Field(
         json_schema_extra=since("0.3.0"),
         default=None,
-        description="Statistical significance: significant|suggestive|not_significant|unknown.",
+        description=(
+            "Statistical significance: significant|suggestive|not_significant|unknown. **The module "
+            "author's verdict across the variant's evidence**, with no threshold of its own: each study's "
+            "own grade is its `stat_significance` in `studies.csv`, and the number to threshold on one "
+            "scale is that row's `p_value_num`."
+        ),
     )
     effect_size: float | None = Field(
         json_schema_extra=since("0.3.0"),

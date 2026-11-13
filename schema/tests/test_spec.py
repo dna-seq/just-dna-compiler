@@ -110,3 +110,16 @@ def test_a_studys_significance_is_the_authors_verdict_at_their_own_tests_thresho
     assert "look-up" in text and "`significant`" in text
     assert "`p_value_num`" in text
     assert "genome-wide" in text  # names the scale it is NOT graded on, the reading that mis-graded the row
+
+
+def test_a_variants_significance_is_the_module_authors_verdict_across_its_evidence() -> None:
+    """RM439 (RM434's residual): `VariantRow.stat_significance` listed its levels and said whose verdict it was nowhere.
+
+    A reader meets `variants.csv` first and had tripped on the same word one table over (S147). The row-level
+    level is the module author's verdict across the variant's evidence; each study's own grade lives in
+    `studies.csv`, and the number to threshold in its `p_value_num`. It states no threshold of its own.
+    """
+    text = VariantRow.model_fields["stat_significance"].description or ""
+    assert "module author" in text and "across" in text
+    assert "`studies.csv`" in text and "`p_value_num`" in text
+    assert "no threshold of its own" in text

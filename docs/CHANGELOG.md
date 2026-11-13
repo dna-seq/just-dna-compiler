@@ -41,6 +41,13 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-13 — RM439: a variant's `stat_significance` says it is the module author's verdict across the evidence (patch, uncut)
+
+`VariantRow.stat_significance` listed its four levels and said nothing more, while RM434 had just explained the
+same word on `studies.csv`. The row-level description now says the level is the module author's verdict across the
+variant's evidence, with no threshold of its own, and points at each study's own grade in `studies.csv` and its
+`p_value_num` for a common scale. A description only: no digest, member or check moves. RM434's residual.
+
 ## 2026-11-12 — `v0.8.5`: format, compiler and enricher 0.8.5 (a patch, cut from `main`)
 
 Format and the enricher move because each changed source since `v0.8.4`: format for RM434, the enricher for RM432,

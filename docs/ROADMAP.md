@@ -2167,7 +2167,7 @@ Splitting waits until one ask unparks alone.
 
 ## RM439 — `VariantRow.stat_significance` states no threshold either, and RM434's sentence does not fit it
 
-**Severity** low · **Status** open — **a patch, `unattended`** (a description only) · **Owner**
+**Severity** low · **Status** open — **a patch, built on `main` 2026-11-13, uncut** (a description only) · **Owner**
 format (`spec.VariantRow`) · **Motivating case** RM434's build (S147, CONSUMER_SUGGESTIONS_HISTORY.md) · *related*
 RM434, RM148
 
@@ -2188,6 +2188,10 @@ tripped on the same word one table over, and readers meet `variants.csv` first. 
 of the row-level field: the module author's verdict across the variant's evidence, with each study's own grade in
 `studies.csv` and the number to threshold in its `p_value_num`. It names no threshold of its own
 (`@field-description-is-a-claim`). It moves no digest.
+
+**Built (lead, 2026-11-13), as sized.** The description says the module author's verdict across the variant's
+evidence, no threshold of its own, each study's grade in `studies.csv` and its `p_value_num`;
+`schema/tests/test_spec.py::test_a_variants_significance_is_the_module_authors_verdict_across_its_evidence` pins it (red before).
 
 **Residuals** none yet.
 
