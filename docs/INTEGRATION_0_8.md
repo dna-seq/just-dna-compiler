@@ -1118,6 +1118,11 @@ It lives at `just-dna-lite/just-dna-pipelines/` and holds the three floors (`jus
    old repo replaces files the new `manifest.json` attests, and the enricher then resolves nothing ("mixes
    releases", § 1.29). Move the downloader to `just-dna-seq/ensembl_variations_split` in the same deploy,
    or give it a directory of its own.
+   **The lane carries the core only** (RM437): `data/*.parquet`, which holds `id` and `row_idx` and no
+   annotation. The split repository moved consequence, clinical flags and frequencies into its `groups/`
+   sidecars, which no command here pulls until 0.9. Keep your current source for those values until then.
+   Do not fetch a group into the lane's directory yourself: a group joins the core on `(chrom, row_idx)`, which
+   holds within one release only, so a group from another release joins to the wrong variants with no error.
 2. **`clinpgx.load_snapshot` returns `(rows, SnapshotRelease)`**, a model where the second half was a
    `dict`: attribute access instead of `.get` (§ 1.9).
 3. **Strict compile and validate calls:** an escalated finding is in `CompilationResult.errors` only
