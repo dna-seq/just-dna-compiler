@@ -98,6 +98,14 @@ cmd = "sh kit:classes/liaison/watch-upstream.sh duckdb-python --tags"
 [seat.liaison.watch.vcf-spec]
 cmd = "sh kit:classes/liaison/watch-upstream.sh vcf-spec --every 86400"
 
+# The key upstreams' releases from the package index (the kit's L136, L143; the liaison role's upstream-index duty,
+# kit v0.1.195): ga4gh.vrs and polars (docs/UPSTREAM_GA4GH_VRS.md, _POLARS.md). `--upstream` keeps this repo's
+# [on_publish] sweep off their releases. duckdb is left out: it publishes a .devN build to the index almost daily and
+# the watcher says each one (kit #470), so its git tag watcher above says its releases. The git watchers stay for
+# now: vrs-python's trunk is read before a release; the polars tag watcher is judged against this one at the next bump.
+[seat.liaison.watch.upstream-index]
+cmd = "python3 kit:drivers/pypi/watch-pypi.py --upstream ga4gh.vrs polars"
+
 # The weekly dependency bump, this seat's unattended routine (docs/seats/LIAISON.md, "The dependency bump";
 # the person, 2026-11-04): says it due once a week while the person is away.
 [seat.liaison.watch.nightly]

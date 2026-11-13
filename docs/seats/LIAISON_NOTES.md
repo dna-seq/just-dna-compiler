@@ -72,11 +72,11 @@ until then a finding goes to triage. Tooling: the kit's `watch-upstream.sh` cove
 `aa6fc8f`, no bump owed. Trap for the next pin bump: at v2.0.0 `protos/dna_model.proto` is a shim importing
 `protos/v1/dna_model.proto`, so `atlas_protos.py` must fetch that too. Adopting v2's live service is RM433 (parked).
 
-**Role change read (v0.1.195, 2026-11-13):** a new duty, upstream-index: one `watch-pypi.py --upstream` watcher
-over the key upstreams the ledgers name (here ga4gh.vrs, polars, duckdb; huggingface-hub is the registry's). Item,
-`waits until` the kit release carrying L143 (`watch-pypi.py --upstream`; v0.1.196 lacks it, and without it an
-upstream's release would run this repo's `[on_publish.sweep]`): declare it in `.blueprints.toml`, keeping the git tag
-watchers or dropping the ones it duplicates. reflect after 2026-11-20: classes/liaison/LIAISON.md as of v0.1.195.
+**Role change read (v0.1.195, 2026-11-13):** a new duty, upstream-index. Done 2026-11-13 on v0.1.200 (L143 there):
+`[seat.liaison.watch.upstream-index]` over ga4gh.vrs and polars, baselines 2.4.0a6 and 2.1.0. duckdb left out until
+kit #470 (a final-only filter): it publishes a `.devN` to the index almost daily; its git tag watcher stays. At the
+next weekly bump: drop the polars tag watcher if it only duplicates this one. reflect after 2026-11-20:
+classes/liaison/LIAISON.md as of v0.1.195.
 
 **Kit #464 (fixed in v0.1.199, 2026-11-13):** the clone's only install record sat under the old symlinked path at
 0.1.192. `move-to-tag.py v0.1.199 --take` (v0.1.199's own copy) wrote one under the real path at 0.1.199; the stale
