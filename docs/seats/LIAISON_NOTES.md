@@ -73,9 +73,9 @@ until then a finding goes to triage. Tooling: the kit's `watch-upstream.sh` cove
 `protos/v1/dna_model.proto`, so `atlas_protos.py` must fetch that too. Adopting v2's live service is RM433 (parked).
 
 **Role change read (v0.1.195, 2026-11-13):** a new duty, upstream-index. Done 2026-11-13 on v0.1.200 (L143 there):
-`[seat.liaison.watch.upstream-index]` over ga4gh.vrs and polars, baselines 2.4.0a6 and 2.1.0. duckdb left out until
-kit #470 (a final-only filter): it publishes a `.devN` to the index almost daily; its git tag watcher stays. At the
-next weekly bump: drop the polars tag watcher if it only duplicates this one. reflect after 2026-11-20:
+`[seat.liaison.watch.upstream-index]` over ga4gh.vrs, polars and duckdb with `--final` (kit #470, v0.1.201: duckdb
+publishes a `.devN` to the index almost daily). At the next weekly bump: drop the polars and duckdb tag watchers if
+they only duplicate this one. reflect after 2026-11-20:
 classes/liaison/LIAISON.md as of v0.1.195.
 
 **Kit #464 (fixed in v0.1.199, 2026-11-13):** the clone's only install record sat under the old symlinked path at
