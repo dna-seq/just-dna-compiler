@@ -113,6 +113,8 @@ patches right after real use started, so the pm reads an audit sceptically: the 
 - reflect after 2026-11-13: classes/base/BASE.md as of v0.1.136 (commit by path, `git commit --only`; read 2026-11-06, no concern).
 - reflect after 2026-11-17: classes/base/BASE.md as of v0.1.161 (no question dialog for a seat, the watchdog's own
   reaction, quiet seats, the embassy post; read 2026-11-10, no concern: the pm already asks in text).
+- reflect after 2026-11-20: classes/base/BASE.md as of v0.1.199 (a brief change handed by the organisation's
+  seat-builder is the person's word, D193; read 2026-11-13, no concern: no builder handoff is pending for the pm).
 - **0.8's scope, agreed 2026-11-04.**
   - The final run's audit is in `docs/probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md`. The diffs were put to the
     maintainer and decided; the hand-written cost went from about 85 to about 55.
