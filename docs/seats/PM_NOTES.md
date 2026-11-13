@@ -91,6 +91,9 @@ patches right after real use started, so the pm reads an audit sceptically: the 
   7-day window under 80 % (the maintainer, 2026-11-12: "agent deferred work based on stale data");
   the brief is the one in this session (30–40 loci over ≥10 chromosomes, 2 matched null SNVs each, ≤250 calls);
   partial work may sit in `data/interim/ag2-trial/run2/`.
+  **Running since 2026-11-14 00:45 CET** (seat unattended since 2026-11-12 21:42 UTC; 7-day 16%, read 5 min
+  before): an Opus subagent, report to `data/interim/ag2-trial/run2/REPORT2.md`; decision rule fixed in the brief
+  (signal / no signal / inconclusive). On return: fold into the probe doc as §2, update RM433, state, milestone.
 
 - **Desk #261, remote snapshot reads as a 0.9 zone (RM430, the registry's ask)**, filed 2026-11-11, S3.
   Recommended: asks 1 to 3 alone. On silence RM430 and RM431 stay parked; raise it again with RM424 when 0.9's scope

@@ -13,7 +13,8 @@
 - ⛔ The 0.7 line stays without GWAS lookups (the maintainer's call); 0.8 has them.
 
 **Next**
-1. ⏸ Second, larger AlphaGenome methylation trial — pm, waiting for the weekly quota to fall under 80%.
+1. 🔄 Second, larger AlphaGenome methylation trial (30–40 known blood methylation variants on 10+ chromosomes,
+   each against 2 matched non-variants) — pm, running overnight since 2026-11-14 00:45 CET.
 2. ❓ Two questions on the maintainer's desk: read snapshots straight from Hugging Face for the registry (0.9), and
    linking the project's memory to its new folder name.
 3. ⏳ 0.9 scope interview — pm with the maintainer; after the second trial.
