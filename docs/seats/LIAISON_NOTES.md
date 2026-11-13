@@ -74,7 +74,8 @@ until then a finding goes to triage. Tooling: the kit's `watch-upstream.sh` cove
 
 **Role change read (v0.1.195, 2026-11-13):** a new duty, upstream-index: one `watch-pypi.py --upstream` watcher
 over the key upstreams the ledgers name (here ga4gh.vrs, polars, duckdb; huggingface-hub is the registry's). Item,
-`unattended`, after the quota hold lifts (97% on 2026-11-13): declare it in `.blueprints.toml`, keeping the git tag
+`waits until` the kit release carrying L143 (`watch-pypi.py --upstream`; v0.1.196 lacks it, and without it an
+upstream's release would run this repo's `[on_publish.sweep]`): declare it in `.blueprints.toml`, keeping the git tag
 watchers or dropping the ones it duplicates. reflect after 2026-11-20: classes/liaison/LIAISON.md as of v0.1.195.
 
 **Fellow liaison:** just-dna-registry/liaison (seated 2026-11-04) stands on fastapi, huggingface-hub, and polars and
