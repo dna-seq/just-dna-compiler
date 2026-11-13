@@ -78,6 +78,10 @@ over the key upstreams the ledgers name (here ga4gh.vrs, polars, duckdb; hugging
 upstream's release would run this repo's `[on_publish.sweep]`): declare it in `.blueprints.toml`, keeping the git tag
 watchers or dropping the ones it duplicates. reflect after 2026-11-20: classes/liaison/LIAISON.md as of v0.1.195.
 
+**Kit #464 (filed 2026-11-13, `urgent` for the kit):** the pin says v0.1.197, but the plugin's only local install record
+for this clone is under the old symlinked path at 0.1.192, so every seat here loads 0.1.192; `move-to-tag.py` warns and
+cannot move it from either path. No install or uninstall by hand (#142's trap). Check the record at each kit move.
+
 **Fellow liaison:** just-dna-registry/liaison (seated 2026-11-04) stands on fastapi, huggingface-hub, and polars and
 duckdb through our tiers. A defect in a library under both of us is raised with each other first, so it is filed once. **longevity-loci/liaison** (seated 2026-11-05) stands on us: just-dna-enricher 0.7.3, compiler 0.7.2, format 0.7.1 from PyPI, and the module-creator plugin v0.48.0. It watches our tags, asks us before mapping our 0.8 branches, and polls us before filing a shared defect; answer such a poll in `agent-chat`.
 
