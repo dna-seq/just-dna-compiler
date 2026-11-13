@@ -1,7 +1,8 @@
-**Where it stands** (2026-11-13). The current release is **0.8.5** (on PyPI since 2026-11-12). 0.8.6 is cut
-(full suite 7,408 passed) and waits for the maintainer's upload. The scope of the next minor, 0.9, is not chosen yet.
+**Where it stands** (2026-11-13). The current release is **0.8.6** (on PyPI since 2026-11-13). The scope of the next minor, 0.9, is not chosen yet.
 
 **Headline results**
+- ✅ 0.8.6, released: a re-derivation that drops an rsID now says so; the upgrade guide says the Ensembl
+  snapshot carries only its core; a variant row's "significant" is explained. Full suite 7,408 passed.
 - ✅ 0.8.5, released: installs beside Google's genai library again (it accepts older `tenacity`); a
   wrong rsID is no longer filled in at a position several variants share; a mistyped snapshot path fails loudly;
   "significant" on a study row says it means the study's own test. Full suite 7,406 passed.
@@ -12,9 +13,7 @@
 - ⛔ The 0.7 line stays without GWAS lookups (the maintainer's call); 0.8 has them.
 
 **Next**
-1. ⏳ Publish 0.8.6 to PyPI — the maintainer. It is cut: the upgrade guide says the Ensembl snapshot carries
-   only its core, a variant row's "significant" is explained, and a re-derivation that drops an rsID now says so.
-2. ⏸ Second, larger AlphaGenome methylation trial — pm, waiting for the weekly quota to fall under 80%.
-3. ❓ Two questions on the maintainer's desk: read snapshots straight from Hugging Face for the registry (0.9), and
+1. ⏸ Second, larger AlphaGenome methylation trial — pm, waiting for the weekly quota to fall under 80%.
+2. ❓ Two questions on the maintainer's desk: read snapshots straight from Hugging Face for the registry (0.9), and
    linking the project's memory to its new folder name.
-4. ⏳ 0.9 scope interview — pm with the maintainer; after the second trial.
+3. ⏳ 0.9 scope interview — pm with the maintainer; after the second trial.
