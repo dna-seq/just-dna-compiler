@@ -12,10 +12,10 @@ current release on PyPI is still 0.8.4. The scope of the next minor, 0.9, is not
 - ⛔ The 0.7 line stays without GWAS lookups (the maintainer's call); 0.8 has them.
 
 **Next**
-1. ⏳ Publish 0.8.5 to PyPI — the maintainer.
-2. ⏳ Three small patches: the Ensembl snapshot's note in the upgrade guide (lead, next), a variant row's
-   "significant" explained, and a log line when a re-derivation drops an rsID — built overnight.
-3. ⏸ Second, larger AlphaGenome methylation trial — pm, waiting for the weekly quota to fall under 80% (90% now).
+1. ⏳ Publish 0.8.5, then 0.8.6, to PyPI — the maintainer.
+2. 🔄 0.8.6, cut overnight — lead: the upgrade guide says the Ensembl snapshot carries only its core, a variant
+   row's "significant" is explained, and a re-derivation that drops an rsID now says so. Uploaded with 0.8.5.
+3. ⏸ Second, larger AlphaGenome methylation trial — pm, waiting for the weekly quota to fall under 80%.
 4. ❓ Two questions on the maintainer's desk: read snapshots straight from Hugging Face for the registry (0.9), and
    linking the project's memory to its new folder name.
 5. ⏳ 0.9 scope interview — pm with the maintainer; after the second trial.
