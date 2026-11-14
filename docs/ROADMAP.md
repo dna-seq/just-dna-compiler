@@ -2167,7 +2167,7 @@ Splitting waits until one ask unparks alone.
 
 ## RM442 — the two AlphaGenome licence rows misstate the terms they quote: the Atlas row's training bar and date, and the AVI row's prohibition 4
 
-**Severity** low · **Status** open — **a patch, on `main`** · **Owner**
+**Severity** low · **Status** open — **a patch, built on `main` 2026-11-14, uncut** · **Owner**
 enricher (`licensing.py`) · **Motivating case** the liaison's re-vendoring of AlphaGenome's live terms, 26db64cb,
 after the RM433 trial on 2026-11-14 · *related* RM433, RM195, RM191
 
@@ -2203,7 +2203,18 @@ moves, so P3 allows it in a patch. A module re-enriched after the fix carries th
 `sources.csv`, and its digest moves with it. That is the intended effect, not a reason to defer.
 Version by omission: it rides the next patch on `main`.
 
-**Residuals** none yet.
+**Built (lead, 2026-11-14), as sized.** (1) The Atlas notice states restriction 2 by generation date: the June
+2025 bar on training variant-effect models like AlphaGenome, and for Output from 2026-10-09 the bar on training any
+model except an AlphaGenome-like one under the Model Parameters Terms. (2) Its `license` names the Output Terms by
+their own dates, 2025-06-25 and 2026-10-09 from that date. (3) The pm's caution held: a holder of a published AVI
+snapshot has not agreed to the Additional Terms, so the Output Terms bind them (their opening paragraph), at the
+June 2025 version in force when the artifact was generated (2026-08-27), and that text's restriction 2 has no
+Permissive carve-out. So the AVI notice keeps the bar and cites June 2025 restriction 2, naming prohibition 4 only
+as the carve-out it is. The comment on prohibition 1a gives the 2026-11-06 spelling beside the old. Pinned by three
+tests in `test_alphagenome_atlas_terms.py` that read each claim off `docs/vendor/` (red before on all three).
+`_default_terms_file` is untouched.
+
+**Residuals** none.
 
 # Not format scope
 

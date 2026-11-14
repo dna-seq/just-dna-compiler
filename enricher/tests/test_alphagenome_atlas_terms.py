@@ -120,3 +120,73 @@ def test_the_eligibility_bar_is_recorded_in_the_notice_because_no_column_holds_i
     """
     assert "aren't available for any other types of" in ALPHAGENOME_ATLAS_TERMS.notice
     assert "NON-COMMERCIAL USE ONLY" in ALPHAGENOME_ATLAS_TERMS.notice
+
+
+def _flat(name: str) -> str:
+    """A vendored text with its line wrapping folded, so a clause reads as one sentence."""
+    return " ".join((_VENDOR / name).read_text().split())
+
+
+#: Restriction 2 of the Output Terms, in the two texts pinned in `docs/vendor/` (RM442).
+_TRAINING_BAR_2025 = (
+    "To train machine learning models or related technology for predicting the effects of genetic "
+    "variants similar to AlphaGenome"
+)
+_TRAINING_BAR_2026 = (
+    "To train machine learning models or related technology, except that you may use Output and Output "
+    "Derivatives to train models that function in a similar manner to AlphaGenome"
+)
+
+
+def test_the_atlas_notice_states_the_training_bar_of_each_output_terms_version() -> None:
+    """RM442: the Output Terms effective 2026-10-09 bar training ANY model, not only a variant-effect one.
+
+    Which version binds follows the date the Output was generated (both texts say so), and the Atlas
+    lane generates Output on every run, so the notice states both bars with the date that separates
+    them. Saying only the June 2025 bar understated what binds a consumer of Output generated since.
+    """
+    assert _TRAINING_BAR_2025 in _flat("alphagenome_output_terms.txt")
+    assert _TRAINING_BAR_2026 in _flat("alphagenome_output_terms_2026-10-09.txt")
+    assert "Model Parameters Terms" in _flat("alphagenome_output_terms_2026-10-09.txt")
+
+    notice = ALPHAGENOME_ATLAS_TERMS.notice
+    assert "2026-10-09" in notice
+    assert "any machine learning model" in notice
+    assert "Model Parameters Terms" in notice
+    assert "similar to AlphaGenome" in notice
+
+
+def test_the_atlas_license_names_the_output_terms_by_their_own_effective_dates() -> None:
+    """RM442: 2026-09-08 is the Additional Terms' date; the Output Terms' own are 2025-06-25 and 2026-10-09."""
+    assert "Effective: June 25, 2025" in _flat("alphagenome_output_terms.txt")
+    assert "Effective: [October 9, 2026]" in _flat("alphagenome_output_terms_2026-10-09.txt")
+    assert "Last Modified: September 8, 2026" in _flat("alphagenome_additional_tos.txt")
+
+    license_ = ALPHAGENOME_ATLAS_TERMS.license
+    assert "2025-06-25" in license_ and "2026-10-09" in license_
+    assert "Output Terms of Use (2026-09-08)" not in license_
+
+
+def test_the_avi_notice_cites_the_training_bar_that_binds_a_downstream_holder() -> None:
+    """RM442: prohibition 4 of the Additional Terms exempts AVI; the June 2025 Output Terms' restriction 2 does not.
+
+    A holder of a published AVI snapshot has not agreed to the Additional Terms, so the Output Terms are
+    what bind them (their opening paragraph), and the version is the one effective when the artifact was
+    generated (2026-08-27, before the 2026-10-09 text). That text's restriction 2 has no Permissive
+    carve-out, so the bar is kept and cited where it lives rather than dropped: stating a bar that binds
+    nobody is harmless, dropping one that binds is not.
+    """
+    for additional in ("alphagenome_additional_tos.txt", "alphagenome_additional_tos_2026-11-06.txt"):
+        assert (
+            "Except for Permissive Use Downloadable Artifacts for Commercial and Non-Commercial Use, to train "
+            "machine learning models"
+        ) in _flat(additional)
+    june_2025 = _flat("alphagenome_output_terms.txt")
+    assert f"2.​ {_TRAINING_BAR_2025}" in june_2025
+
+    notice = ALPHAGENOME_AVI_TERMS.notice
+    # Prohibition 4 may be named only as the carve-out it is, never cited as the source of the bar.
+    assert "(prohibition 4)" not in notice
+    assert "prohibition 4 exempts Permissive" in notice
+    assert "restriction 2" in notice and "June 2025" in notice
+    assert "similar to AlphaGenome" in notice

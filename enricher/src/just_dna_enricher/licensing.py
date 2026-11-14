@@ -877,7 +877,11 @@ ALPHAGENOME_AVI_TERMS = SourceTerms(
         "provision when the distributor attaches terms of their own, which a module's sources.csv "
         "is — the snapshot's LICENSE.txt carries those bytes and license_sha256 pins them. Two "
         "further bars have no axis on this row and are stated here because they bind anyway: no "
-        "training of variant-effect models (prohibition 4), and Google may demand deletion of "
+        "training of machine learning models for predicting the effects of genetic variants "
+        "similar to AlphaGenome (Output Terms restriction 2, June 2025 text, the version in force "
+        "when the artifact was generated; the Additional Terms' prohibition 4 exempts Permissive "
+        "artifacts, but a holder who has not agreed to the Additional Terms is bound by the Output "
+        "Terms, which carry no such carve-out), and Google may demand deletion of "
         "Output and Derivatives already in your possession on breach, not only on termination. "
         "The applicable version of the terms is the one effective on the date the Output was "
         "generated, which is why release.json records the artifact's own timestamp."
@@ -909,7 +913,9 @@ ALPHAGENOME_AVI_TERMS = SourceTerms(
 # say in their own opening sentence that Output is made available "for non-commercial use only"
 # (`docs/vendor/alphagenome_output_terms.txt`), and the Additional Terms' prohibition 1a says only
 # individuals and non-commercial organizations may use the Assets and only for non-commercial
-# purposes, "except for the AVI Score". So this is a **stated prohibition** rather than an absent
+# purposes, "except for the AVI Score" (the 2026-11-06 text spells the exception "except for the
+# Permissive Use Downloadable Artifacts for Commercial and Non-Commercial Use", the class AVI is in;
+# RM442). So this is a **stated prohibition** rather than an absent
 # grant — the sturdiest of the three kinds of ground a permission axis can rest on here, and the
 # opposite kind from the one holding up the row above.
 #
@@ -927,7 +933,12 @@ ALPHAGENOME_ATLAS_TERMS = SourceTerms(
     source="alphagenome_atlas",
     # Two documents bind, not one, and they are not the same document that binds AVI. The Additional
     # Terms govern *access* to the Services; the Output Terms govern what comes back out of them.
-    license="AlphaGenome Output Terms of Use (2026-09-08), under the AlphaGenome Services Additional Terms",
+    # RM442: the Output Terms' own effective dates. 2026-09-08 is the Additional Terms' date, which this
+    # string once carried; the version that binds is the one in force when the Output was generated.
+    license=(
+        "AlphaGenome Output Terms of Use (2025-06-25; 2026-10-09 for Output generated from that date), "
+        "under the AlphaGenome Services Additional Terms"
+    ),
     license_url="https://deepmind.google.com/science/alphagenome/output-terms",
     # The paper, as on the row above: for a model the credit line the licence requires is its citation.
     attribution=(
@@ -941,8 +952,13 @@ ALPHAGENOME_ATLAS_TERMS = SourceTerms(
         "http://deepmind.google.com/science/alphagenome/output-terms'. Output is available for "
         "NON-COMMERCIAL USE ONLY (Output Terms, opening sentence; Additional Terms prohibition 1a), "
         "and unlike the AVI Score there is no Permissive-class carve-out for this scorer. Three "
-        "further bars have no axis on this row and are stated here because they bind anyway: no "
-        "training of variant-effect models (restriction 2), no use for HIPAA-regulated health "
+        "further bars have no axis on this row and are stated here because they bind anyway: a "
+        "training bar (Output Terms restriction 2) that depends on when the Output was generated, "
+        "under the June 2025 text no training of models for predicting the effects of genetic "
+        "variants similar to AlphaGenome, and for Output generated from 2026-10-09 no training of "
+        "any machine learning model or related technology, except a model similar to AlphaGenome "
+        "whose weights are governed by the AlphaGenome Model Parameters Terms of Use; no use for "
+        "HIPAA-regulated health "
         "information (Additional Terms prohibition 2), and an ELIGIBILITY bar on the holder rather "
         "than on the use — the AlphaGenome Assets 'aren't available for any other types of "
         "organization, even if conducting non-commercial work' (prohibition 1a), which no column "

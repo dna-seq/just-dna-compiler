@@ -41,6 +41,18 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-14 — RM442: the two AlphaGenome licence rows say what the terms they quote say (patch, on `main`)
+
+Three sentences in `licensing.py` misstated the AlphaGenome terms, found when the liaison saved the live texts
+(26db64cb). The Atlas row's `notice` gave only the June 2025 training bar; it now also states the bar in the Output
+Terms effective 2026-10-09, which forbid training any model except an AlphaGenome-like one under the Model
+Parameters Terms, for Output generated from that date. Its `license` dated the Output Terms with the Additional
+Terms' 2026-09-08; it now names 2025-06-25 and 2026-10-09. The AVI row cited the Additional Terms' prohibition 4,
+which exempts Permissive artifacts such as AVI; it now cites the Output Terms' restriction 2 (June 2025 text),
+which binds a holder who has not agreed to the Additional Terms and has no such carve-out. No licence axis moves
+and no gate reads `notice`. A module re-enriched after this carries the new text in `sources.csv`, so its digest
+moves; that is the intended effect.
+
 ## 2026-11-13 — `v0.8.6`: format, compiler and enricher 0.8.6 (a patch, cut from `main`)
 
 Format and the enricher move because each changed source since `v0.8.5`: format for RM439, the enricher for RM440.
