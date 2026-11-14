@@ -2247,6 +2247,15 @@ RELEASE_CYCLE's rule for `main`, the same reading as RM429's field. No schema, m
 additive, P9 not an authored layer). No consumer is blocked: the registry's own loop works and stays until a
 minor ships this.
 
+**Sizing (pm, 2026-11-14): parked for 0.9, proposed to ride with RM430.** A minor needs a zone the
+maintainer names, and none is named yet. It is about an hour of work and near free (one optional parameter, P9 not
+an authored layer). It serves the same consumer and the same need as RM430, the registry reading lanes from
+paths it configures itself, so it goes to the maintainer as part of that zone (desk #261) in the 0.9 scope
+interview. Nothing waits on it meanwhile: the registry's own status loop works. **Unparks** when 0.9 names
+the zone, or on its own when a second host reports the same gap. On `load_dotenv_file`, my default for the build:
+pass it through and have `lane_status` pass `False` for a lane named in `locations`, so a host that configures
+paths explicitly gets no environment write.
+
 **Residuals** none yet.
 
 ## RM444 — `recover_rsid`'s result text over-claims: a `none` beside overlapping records says dbSNP records nothing, and a position-only `recovered` advises authoring whatever record starts there
