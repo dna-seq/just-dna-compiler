@@ -100,8 +100,8 @@ None open.
   enrichments as threads, then the Ensembl pair first.
 - **Cache:** `/data/just-dna-cache/ensembl_variations` is the split release. The old
   `ensembl_variations.pre-0.8` was deleted by the maintainer, 2026-11-08. The just-dna-lite side still to be told.
-- **Desk:** #210 (should the liaison keep `docs/DOWNSTREAM.md`, who waits on us; default: no list) and
-  #211 (the stale-branch script in the scratchpad, `delete_stale_branches.sh`; default: nothing deleted).
+- **Desk:** none open. #210 and #259 withdrawn 2026-11-14 as `default applied:` (no downstream list; the
+  release rule of 307a5ae3), #211 as `moot:` (5 local branches left, the publish sweep takes merged ones).
 - **Not done, the person's:** the worktree `.claude/worktrees/lead-RM372/data/rm372/fence_check`; merge
   commit cb6be8a4 has no Co-Authored-By trailer.
 - **Records gap:** no release records for 0.7.1 or 0.7.2.
