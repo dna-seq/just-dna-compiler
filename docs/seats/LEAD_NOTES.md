@@ -81,7 +81,9 @@ None open.
 - **0.8.6 released, 2026-11-13** (all three; RM439, RM440, RM437's doc half). On PyPI 14:24 UTC (the maintainer); tag
   `v0.8.6` on 2f03ab4a, pushed; GitHub release up; README and the CLAUDE.md doc map name 0.8.6 (48d287ce).
   RELEASE_CYCLE step 10 complete. The publish sweep took the merged cut and build branches; `cut/v0.8.6` stays, held by
-  its worktree `wt-cut-086` (unlocked), for the maintainer to remove. No patch item is waiting on `main`.
+  its worktree `wt-cut-086` (unlocked), for the maintainer to remove. - **Next patch on `main`, uncut (after the 0.8.6 cut):** RM442 (fd9763ee, 2026-11-14: the AlphaGenome licence rows'
+  notice and license strings match the saved terms; the AVI training bar now cited as June 2025 Output Terms
+  restriction 2). Also carried for the liaison: 126070a8, 6f26215b, 26db64cb (watchers, AlphaGenome terms vendored).
 - **Next patch on `main`, uncut (after the 0.8.4 cut commit):** RM432 (ac3f1bcc, the lead's, 2026-11-11: two
   snapshot readers raise `FileNotFoundError`; a behaviour change for a direct caller), the GWAS docstring's 15/s budget
   (7a88e10f), RELEASE_CYCLE's floor rule (307a5ae3). Lesson from RM428: it added the public attribute
