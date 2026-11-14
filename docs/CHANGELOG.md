@@ -41,7 +41,29 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
-## 2026-11-14 — RM444: `recover_rsid` says no more than it matched (patch, on `main`)
+## 2026-11-14 — `v0.8.7`: enricher 0.8.7 (a patch, cut from `main`)
+
+Only the enricher changed source since `v0.8.6`, so it alone moves; format and compiler stay 0.8.6 and are not
+rebuilt. The enricher's floors stay `just-dna-format>=0.8.6` and `just-dna-compiler>=0.8.6`, and no third-party floor
+moved. Both items are text only: nothing adds a public name, field, table, flag or warning code, and no outcome,
+return value or raise changes for a direct caller.
+
+- **What it carries:** RM442 (the two AlphaGenome licence rows' `notice` and `license` say what the saved terms say:
+  the Atlas row states the training bar of the Output Terms effective 2026-10-09 beside June 2025's, and the AVI row
+  cites the Output Terms' restriction 2 instead of the Additional Terms' prohibition 4) and RM444
+  (`grch37.recover_rsid`'s text says no more than it matched: a `none` beside overlapping records counts them and says
+  to retry at a neighbouring anchor, and a position-only `recovered` makes its advice conditional).
+- **Release record:** none, as for 0.8.1. The compiler did not change, so a recompile moves nothing; the release
+  record axes measure compiled output only.
+- **After upgrading:**
+  1. Raise the enricher's floor to `>=0.8.7`; format and compiler stay `>=0.8.6`.
+  2. A module whose AlphaGenome rows were enriched before this carries the old licence text in `sources.csv`.
+     Re-enrich it to take the corrected text; its digest moves, which is the intended effect. No licence axis
+     moves, and no gate reads `notice`.
+  3. A caller that matched `recover_rsid`'s old sentences ("records nothing here" beside overlapping records, the
+     `--ref`/`--alts` flag names) reads the new ones; the `outcome` field is the stable key.
+
+## 2026-11-14 — RM444: `recover_rsid` says no more than it matched (patch, cut as `v0.8.7`)
 
 `grch37.recover_rsid`'s result text over-claimed in four places, reported on CFTR F508del (S155), whose GRCh37
 record is padded at Ensembl's own anchor, one base right of VCF's spelling. A `none` beside overlapping records
@@ -53,7 +75,7 @@ starting there is the anchor base's SNV. The `ambiguous` text names the argument
 flags. The docstring and ENRICHER.md say the anchor may be neither VCF's nor HGVS's. No outcome or field changes;
 the tests replay Ensembl's real answers at the three F508del positions.
 
-## 2026-11-14 — RM442: the two AlphaGenome licence rows say what the terms they quote say (patch, on `main`)
+## 2026-11-14 — RM442: the two AlphaGenome licence rows say what the terms they quote say (patch, cut as `v0.8.7`)
 
 Three sentences in `licensing.py` misstated the AlphaGenome terms, found when the liaison saved the live texts
 (26db64cb). The Atlas row's `notice` gave only the June 2025 training bar; it now also states the bar in the Output

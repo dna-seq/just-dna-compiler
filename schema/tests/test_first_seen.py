@@ -79,8 +79,10 @@ _RELEASES: frozenset[str] = frozenset(
         "0.8.3",
         "0.8.4",
         "0.8.5",
-        # Uncut until its tag: the release `_UNCUT` names while the 0.8.6 cut is on `main`.
         "0.8.6",
+        # Uncut until its tag. 0.8.7 moved the enricher alone, so format's version (`_UNCUT`) stayed 0.8.6:
+        # the guard below adds every workspace package's version, not format's only.
+        "0.8.7",
     }
 )
 
@@ -90,6 +92,14 @@ _RELEASES: frozenset[str] = frozenset(
 _UNCUT = tomllib.loads((_ROOT / "schema" / "pyproject.toml").read_text(encoding="utf-8"))["project"][
     "version"
 ]
+
+#: The version each workspace package's `pyproject.toml` names. A cut that moves the enricher alone (0.8.1,
+#: 0.8.7) leaves format's version, `_UNCUT`, on the previous tag, so the release being cut is named by the
+#: package that moved; under one number per cut, the newest of these is the release.
+_WORKSPACE_VERSIONS = frozenset(
+    tomllib.loads((_ROOT / tier / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+    for tier in ("schema", "compiler", "enricher")
+)
 
 
 # ── the guard ───────────────────────────────────────────────────────────────────────────────────
@@ -256,11 +266,13 @@ def _fields_by_class_at(tag: str) -> dict[str, set[str]]:
 
 
 def test_the_release_list_is_the_tags_and_the_uncut_one() -> None:
-    """`_RELEASES` is a list, so it is held equal to what it lists: it was three patch tags short."""
+    """`_RELEASES` is a list, so it is held equal to what it lists: it was three patch tags short. The
+    uncut release is whichever version a workspace package names that no tag does yet; format's alone missed
+    an enricher-only cut."""
     tags = _release_tags()
     if not tags:
         pytest.skip("no full history with release tags here (shallow clone or no git); nothing to measure")
-    assert _RELEASES == {tag[1:] for tag in tags} | {_UNCUT}
+    assert _RELEASES == {tag[1:] for tag in tags} | _WORKSPACE_VERSIONS
 
 
 def test_every_field_declares_the_first_release_whose_model_carries_it() -> None:

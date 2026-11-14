@@ -7724,7 +7724,7 @@ rather than "records nothing here", or is a separate outcome. (2) The docstring 
 both VCF's and HGVS's spellings, not only that VCF's padding misses an unpadded record. (3) `__str__` names the
 arguments, or leaves the narrowing advice to the caller.
 
-**Status — filed as [RM444](ROADMAP.md#rm444--recover_rsids-result-text-over-claims-a-none-beside-overlapping-records-says-dbsnp-records-nothing-and-a-position-only-recovered-advises-authoring-whatever-record-starts-there): a patch.**
+**Status — filed as [RM444](ROADMAP_HISTORY.md#rm444--recover_rsids-result-text-over-claims-a-none-beside-overlapping-records-says-dbsnp-records-nothing-and-a-position-only-recovered-advises-authoring-whatever-record-starts-there): a patch.**
 All four rows reproduce through `recover_rsid` against GRCh37 REST today, and Ensembl's record is
 `TCTT/T/TCTTCTT` at 117199645, as you say. Points 1 to 3 and candidates 2 and 3 are taken as text fixes. Running
 your rows found one more: at 117199646 with no alleles, the note still says "with the alleles given". Your point 2

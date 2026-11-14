@@ -2165,57 +2165,6 @@ Splitting waits until one ask unparks alone.
 
 **Residuals** none yet.
 
-## RM442 — the two AlphaGenome licence rows misstate the terms they quote: the Atlas row's training bar and date, and the AVI row's prohibition 4
-
-**Severity** low · **Status** open — **a patch, built on `main` 2026-11-14, uncut** · **Owner**
-enricher (`licensing.py`) · **Motivating case** the liaison's re-vendoring of AlphaGenome's live terms, 26db64cb,
-after the RM433 trial on 2026-11-14 · *related* RM433, RM195, RM191
-
-**The gap.** The liaison's ledger (`docs/UPSTREAM_ALPHAGENOME.md`, verdicts and adoption map) found three
-sentences in `licensing.py` that say something the terms do not. The pm checked each against the saved
-texts in `docs/vendor/`:
-
-1. **`ALPHAGENOME_ATLAS_TERMS.notice` understates the training bar for new Output.** It says "no training of
-   variant-effect models (restriction 2)". That is the June 2025 Output Terms' wording. The Output Terms
-   effective 2026-10-09 (`alphagenome_output_terms_2026-10-09.txt`, restriction 2) bar training any model
-   or related technology, except an AlphaGenome-like model under the Model Parameters Terms. A module's
-   consumer has not agreed to the Additional Terms, so the Output Terms are what bind them. Which version
-   applies follows the Output's generation date, which `dataset` carries.
-2. **`ALPHAGENOME_ATLAS_TERMS.license` dates the Output Terms "(2026-09-08)".** That is the Additional
-   Terms' date. The Output Terms' own dates are 2025-06-25 and 2026-10-09.
-3. **`ALPHAGENOME_AVI_TERMS.notice` cites prohibition 4 as binding.** Prohibition 4 of the Additional Terms
-   opens "Except for Permissive Use Downloadable Artifacts" in both the 2026-09-08 and 2026-11-06 texts, and
-   AVI is in that class. Under the Additional Terms it does not bind AVI.
-
-No licence axis moves: `commercial_use`, `redistribution` and `share_alike` stay as they are, and no gate
-reads `notice`. The liaison says no test change is owed.
-
-**The ask.** Correct the three strings. For (3), settle which instrument binds a downstream holder of AVI
-before deleting the bar. The AVI artifact is stamped 2026-08-27, so a holder bound by the Output Terms would
-be under the June 2025 text, whose restriction 2 has no Permissive carve-out. If that reading holds, the fix
-is to cite restriction 2 of the June 2025 Output Terms in place of prohibition 4, not to drop the bar.
-Stating a bar that does not bind is harmless; dropping one that does is not. Also update the comment near
-`licensing.py:912` that quotes prohibition 1a's old "except for the AVI Score" wording. Leave
-`alphagenome_avi_build._default_terms_file` on the undated June 2025 file (ledger check 3).
-
-**Sizing (pm, 2026-11-14): a patch, build now.** These are string constants. No schema, field or vocabulary
-moves, so P3 allows it in a patch. A module re-enriched after the fix carries the new `notice` in
-`sources.csv`, and its digest moves with it. That is the intended effect, not a reason to defer.
-Version by omission: it rides the next patch on `main`.
-
-**Built (lead, 2026-11-14), as sized.** (1) The Atlas notice states restriction 2 by generation date: the June
-2025 bar on training variant-effect models like AlphaGenome, and for Output from 2026-10-09 the bar on training any
-model except an AlphaGenome-like one under the Model Parameters Terms. (2) Its `license` names the Output Terms by
-their own dates, 2025-06-25 and 2026-10-09 from that date. (3) The pm's caution held: a holder of a published AVI
-snapshot has not agreed to the Additional Terms, so the Output Terms bind them (their opening paragraph), at the
-June 2025 version in force when the artifact was generated (2026-08-27), and that text's restriction 2 has no
-Permissive carve-out. So the AVI notice keeps the bar and cites June 2025 restriction 2, naming prohibition 4 only
-as the carve-out it is. The comment on prohibition 1a gives the 2026-11-06 spelling beside the old. Pinned by three
-tests in `test_alphagenome_atlas_terms.py` that read each claim off `docs/vendor/` (red before on all three).
-`_default_terms_file` is untouched.
-
-**Residuals** none.
-
 ## RM443 — `lane_status` resolves every lane from the environment, so a host that passes its lanes' paths explicitly cannot ask it about them
 
 **Severity** low · **Status** open — **a minor; the pm sizes** · **Owner** enricher (`caches.lane_status`) ·
@@ -2257,66 +2206,6 @@ pass it through and have `lane_status` pass `False` for a lane named in `locatio
 paths explicitly gets no environment write.
 
 **Residuals** none yet.
-
-## RM444 — `recover_rsid`'s result text over-claims: a `none` beside overlapping records says dbSNP records nothing, and a position-only `recovered` advises authoring whatever record starts there
-
-**Severity** low · **Status** open — **a patch, built on `main` 2026-11-14, uncut** · **Owner** enricher (`grch37.RsidRecovery.__str__`,
-`grch37.recover_rsid`) · **Motivating case** S155 (just-module-creator, CONSUMER_SUGGESTIONS_HISTORY.md) ·
-*related* RM31, RM361
-
-**The gap.** The anchored match is right and stays: a candidate must start at `start` and carry the given
-alleles. What the result *says* is wrong in four places. All four reproduce through `recover_rsid` itself
-against Ensembl's GRCh37 service (2026-11-14), on CFTR F508del (rs113993960, whose GRCh37 record is
-`TCTT/T/TCTTCTT` at 117199645):
-
-1. **The `none` headline contradicts its own note.** At 117199644 with `ref=ATCT, alts=A` (VCF's left-aligned
-   spelling) the text is "GRCh37 dbSNP records nothing here. 5 dbSNP record(s) overlap the position, none
-   starting at it with the alleles given." dbSNP records this very deletion one base to the right. "Records
-   nothing here" is true only when nothing overlaps.
-2. **The note names alleles that were never given.** At 117199646 with no `ref`/`alts`, the note still ends "none
-   starting at it with the alleles given".
-3. **A position-only `recovered` over-claims.** At 117199644 with no alleles, the outcome is `recovered` with
-   rs1801178, an SNV at the deletion's anchor base. That is a different variant, and the text tells the author to
-   "author that rs-number instead of the coordinate". A match on position alone is only as good as the position.
-   At a padded indel's VCF position, the record starting there is the anchor base's.
-4. **The `ambiguous` text names CLI flags** ("Narrow it with --ref/--alts") in a `__str__` that every library
-   caller passes on. Only `just-dna-enricher hint recover` has those flags. `lookup_old_assembly` (`lookup.py`) and an MCP
-   tool wrapping `recover_rsid` pass arguments named `ref`/`alts`.
-
-The docstring's explanation is also narrower than the case. It says a VCF-padded indel "will not match Ensembl's
-unpadded record". Here both spellings are padded, at different anchors: Ensembl pads a record whose alleles mix a
-deletion and an insertion at its own anchor. So the one spelling that matches can be neither VCF's nor HGVS's.
-
-**The ask.** Text only, no new outcome:
-
-- When features overlap, `none` says that no record starts here (with these alleles, when some were given) and
-  that N overlap. It keeps "records nothing here" for the empty answer.
-- The note drops "with the alleles given" when none were given.
-- A `recovered` with no `ref` says it matched on position alone. Its advice to author the rs-number is
-  conditional on the variant being the one that starts there; at an indel's padded position, that is the anchor
-  base's record.
-- `__str__` names the arguments (`ref`/`alts`). The CLI may add its flag spelling where it prints.
-- The docstring says the anchor may differ from both VCF's and HGVS's spellings, and that a `none` with
-  overlapping records is a reason to retry at a neighbouring anchor, not a statement of absence.
-
-**Declined as part of this item: a separate outcome for "none, but records overlap"** (S155's candidate 1, second
-half). It would add a member to `outcome`, which `lookup_old_assembly` maps to a level and callers branch on. That
-makes it a minor, and the overlap count already sits in the note. Honest text closes the report without it.
-
-**Sizing facts.** Strings and a docstring. No outcome, field or vocabulary moves. Tests pin the four texts
-against a stubbed overlap answer shaped like the F508del one (a padded record one base right of the queried
-position, plus an SNV at it).
-
-**Built (lead, 2026-11-14).** All five asks, text only. `RsidRecovery` gains a private `_overlapping` count, so
-`none` keeps "records nothing here" for an empty answer and otherwise says no record starts here, counting the
-overlaps and naming the retry at a neighbouring anchor. "With the alleles given" appears only when some were. A
-`recovered` with no `ref` says it matched on position alone (or on position and alt) and makes the authoring advice
-conditional on the variant being the one that starts there. `ambiguous` names `ref`/`alts`; `lookup_old_assembly`'s
-docstring too. The docstring and ENRICHER.md § old assembly state the F508del anchors. Seven tests in
-`test_grch37.py::TestWhatTheRecoveryTextClaims` replay Ensembl's real GRCh37 answers at 117199644, 117199645 and
-117199646 (recorded 2026-11-14); four were red on the old text. No outcome, field or vocabulary moved.
-
-**Residuals** none.
 
 # Not format scope
 
