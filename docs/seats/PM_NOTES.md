@@ -82,18 +82,10 @@ patches right after real use started, so the pm reads an audit sceptically: the 
   memory**, filed 2026-11-12, S4, after the checkout swap. Recommended yes; on silence nothing changes.
 
 
-- **RM433's second trial, `unattended` (at night).** The first (docs/probes/ALPHAGENOME2_METHYLATION_TRIAL.md) was
-  inconclusive: 9 mQTL pairs from one chr1 region, shifts inside the 1 Mb vs 16 kb window noise. The second needs
-  enough loci across the genome (GoDMC's API stalled after a 62 MB read: pace it, or use another mQTL source), a fixed
-  window, and the live terms page re-saved. Its scripts in the scratchpad or `data/interim/`, never tracked.
-  Started 2026-11-12 18:25 CET, stopped at 18:4x when the 7-day quota reached 95% (the base: night jobs wait for
-  the window under 80 %). `waits until` the person is away and a reading taken at start time (not a held watcher line) shows the
-  7-day window under 80 % (the maintainer, 2026-11-12: "agent deferred work based on stale data");
-  the brief is the one in this session (30–40 loci over ≥10 chromosomes, 2 matched null SNVs each, ≤250 calls);
-  partial work may sit in `data/interim/ag2-trial/run2/`.
-  **Running since 2026-11-14 00:45 CET** (seat unattended since 2026-11-12 21:42 UTC; 7-day 16%, read 5 min
-  before): an Opus subagent, report to `data/interim/ag2-trial/run2/REPORT2.md`; decision rule fixed in the brief
-  (signal / no signal / inconclusive). On return: fold into the probe doc as §2, update RM433, state, milestone.
+- **RM433's second trial: done 2026-11-14** (8ebe578a): a signal at strong mQTLs, the probe doc's § 7, RM433
+  updated. Next for it: RM317's design interview inside the 0.9 scope interview; a third trial (moderate mQTLs)
+  only if the design needs it. The live AlphaGenome terms changed (training ban wider, carve-out renamed): told
+  the liaison, whose vendored copies these are.
 
 - **Desk #261, remote snapshot reads as a 0.9 zone (RM430, the registry's ask)**, filed 2026-11-11, S3.
   Recommended: asks 1 to 3 alone. On silence RM430 and RM431 stay parked; raise it again with RM424 when 0.9's scope
