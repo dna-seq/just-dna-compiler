@@ -34,10 +34,16 @@ from just_dna_enricher import opentargets_build as ot
 
 #: How long one in-flight unit of work keeps streaming: `TICKS` chunks, `TICK` seconds apart. The bound
 #: an interrupt must meet is a fraction of it, so the old behaviour (wait for the work to finish) fails
-#: by a margin no scheduler jitter closes.
-TICKS = 60
+#: by a margin no scheduler jitter closes. It was 3 s of work against a 1.0 s bound until 2026-11-14,
+#: and the AVI build's stop measured 1.6 to 1.7 s at a load average of 35 to 48 on 16 threads (twice,
+#: at the 0.8.3 and 0.8.7 cuts): the stop itself, slowed, never the wait. 10 s against 4 s keeps the
+#: old behaviour failing by 6 s, and a passing run takes no longer, since it ends at the stop.
+TICKS = 200
 TICK = 0.05
-BOUND = 1.0
+BOUND = 4.0
+#: A failed connection's backoff is two seconds or more, so a stop that ends it must beat that, whatever
+#: `BOUND` allows a stop that kills streaming work.
+BACKOFF_BOUND = 1.0
 WORKERS = 4
 
 
@@ -185,7 +191,7 @@ def test_a_stop_during_a_retry_backoff_is_not_held_until_the_next_attempt(
             what="a part",
             _stop=stop,
         )
-    assert time.monotonic() - began < BOUND, "the backoff slept through the stop"
+    assert time.monotonic() - began < BACKOFF_BOUND, "the backoff slept through the stop"
     assert attempts["n"] == 1, "a stopped download asked the server again"
     assert sorted(p.name for p in tmp_path.iterdir()) == []
 
