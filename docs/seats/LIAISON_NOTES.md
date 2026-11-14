@@ -68,7 +68,7 @@ ceiling (500), the legacy 410 and the data release rides with the bump. Its firs
 `RMn` myself for a spec change is asked of the person in this session (their word came only through the pm);
 until then a finding goes to triage. Tooling: the kit's `watch-upstream.sh` covers it; no new script.
 
-**AlphaGenome** (not a ledger; the lead checked v2.0.0 on 2026-11-11): Atlas protos byte-identical to the pin
+**AlphaGenome** (terms: `docs/UPSTREAM_ALPHAGENOME.md`, opened 2026-11-14 after the pm's RM433 trial read newer pages; the client and protos stay here; the lead checked v2.0.0 on 2026-11-11): Atlas protos byte-identical to the pin
 `aa6fc8f`, no bump owed. Trap for the next pin bump: at v2.0.0 `protos/dna_model.proto` is a shim importing
 `protos/v1/dna_model.proto`, so `atlas_protos.py` must fetch that too. Adopting v2's live service is RM433 (parked).
 
