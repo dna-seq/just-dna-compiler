@@ -225,6 +225,19 @@ from one locus. The vendored terms allow publishing the scores non-commercially 
 Restrictions carried as a term, never under CC0 or CC BY. **So step 3 waits** on a second trial with enough loci,
 spread across the genome, to tell signal from that noise, run at night; and on the live terms page re-read.
 
+**The second trial, run 2026-11-14** ([§ 7](probes/ALPHAGENOME2_METHYLATION_TRIAL.md#7-trial-2-2026-11-14-a-signal-at-strong-mqtls)):
+**a signal at strong mQTLs**, by a rule fixed before scoring. At 42 strong blood mQTLs on 18 chromosomes (ARIES,
+middle age), the predicted shift at the published CpG was 27 times the shift at 84 matched non-mQTL variants
+(median 0.49 against 0.018 logit, p = 3e-12), and 28 of the 31 readable signs agreed (p = 2e-6). It holds within
+about 100 bp of the CpG, likely to 300 bp, and not beyond; trial 1's moderate mQTLs read at the null level, so
+moderate effects are untested. Sizes move with the input window (−44% to +103% at 16 kb), signs do not. So what a
+module could carry is a **predicted direction** for a variant already known as a strong mQTL, at a named CpG within
+300 bp, stamped with model, condition, track and window, never a size and never a score for an arbitrary variant.
+The live terms are newer than the vendored copies (Output Terms 2026-10-09, Additional ToS 2026-11-06): still
+non-commercial with notice and the Use Restrictions as a term, and training any model on the output is now barred
+except AlphaGenome-like ones. **So step 3, the design, is open** and goes to RM317's design interview; a third
+trial on moderate mQTLs is the natural next measurement, wanted only if the design needs more than strong leads.
+
 **Residuals** none yet.
 
 ## RM56 (policy half) — the rule for a measurement that spans bins
