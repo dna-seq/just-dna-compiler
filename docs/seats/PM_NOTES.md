@@ -110,6 +110,10 @@ patches right after real use started, so the pm reads an audit sceptically: the 
   reaction, quiet seats, the embassy post; read 2026-11-10, no concern: the pm already asks in text).
 - reflect after 2026-11-20: classes/base/BASE.md as of v0.1.199 (a brief change handed by the organisation's
   seat-builder is the person's word, D193; read 2026-11-13, no concern: no builder handoff is pending for the pm).
+- reflect after 2026-11-21: classes/base/BASE.md as of v0.1.206 (the `nothing` button closes the wake, not the turn,
+  kit #481; read 2026-11-14, no concern: the pm's pending work is the 0.9 interview, which waits on the person).
+- **RM442 filed 2026-11-14** (0d84b3d6), the lead's ask: the AlphaGenome licence rows' three strings, a patch on
+  `main`; caution sent on the AVI bar (June 2025 Output Terms' restriction 2 may still bind a downstream holder).
 - **0.8's scope, agreed 2026-11-04.**
   - The final run's audit is in `docs/probes/LONGEVITYMAP_V2_SHAPE_AUDIT.md`. The diffs were put to the
     maintainer and decided; the hand-written cost went from about 85 to about 55.
