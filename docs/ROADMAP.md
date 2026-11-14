@@ -2216,6 +2216,90 @@ tests in `test_alphagenome_atlas_terms.py` that read each claim off `docs/vendor
 
 **Residuals** none.
 
+## RM443 — `lane_status` resolves every lane from the environment, so a host that passes its lanes' paths explicitly cannot ask it about them
+
+**Severity** low · **Status** open — **a minor; the pm sizes** · **Owner** enricher (`caches.lane_status`) ·
+**Motivating case** S154 (just-dna-registry, CONSUMER_SUGGESTIONS_HISTORY.md) · *related* RM204, RM176, S91
+
+**The gap.** `lane_status(lanes=None)` calls `lane.resolve()` with no argument and reports `looked_in` from
+`os.getenv(lane.env_var)` or `lane.default_dir()`. Every lane's resolver takes the override as its first
+argument and a `load_dotenv_file` flag (all seventeen in `CACHE_LANES` on 0.8.6, checked with
+`inspect.signature`), so `lane.resolve(path)` is how a host that configures paths in its own settings reaches a
+lane. `lane_status` has no way to pass that path. The registry configures lanes that way and never exports them,
+because its suite runs two apps in one process. For any lane its operator configured, `lane_status()` reports on
+a directory the server never reads: `absent` beside a snapshot the passes use, or `present` for one they do not.
+So the registry keeps its own status loop, the second projection of one registry that RM204 was filed to end.
+
+**A second effect of the same call.** With its default `load_dotenv_file=True`, each resolver calls
+`locations.load_env()`, which exports the whole nearest `.env` into `os.environ`. That is by design for the cache
+resolvers (`load_env`'s docstring says only they call it, RM301), and `lane_status` depends on it: the comment at
+its `os.getenv` line says `resolve()` has loaded `.env` by then. For a host that never configures through the
+environment, a status call is therefore also an environment write it did not ask for.
+
+**The ask.** S154's candidate: `lane_status(lanes=None, locations: Mapping[str, Path | None] | None = None)`. For
+a lane named in `locations`, call `lane.resolve(locations[name])` and report that path as `looked_in`, or the
+default ladder when the value is `None`. Lanes not named keep the environment reading. In the same change,
+decide whether `load_dotenv_file` passes through. The same mapping would suit `prepare_caches` if it ever takes
+one, so the status and provisioning halves read the same directories.
+
+**Sizing facts.** It adds a parameter to a public function, so it is new public surface: a minor under
+RELEASE_CYCLE's rule for `main`, the same reading as RM429's field. No schema, manifest or vocabulary moves (P3
+additive, P9 not an authored layer). No consumer is blocked: the registry's own loop works and stays until a
+minor ships this.
+
+**Residuals** none yet.
+
+## RM444 — `recover_rsid`'s result text over-claims: a `none` beside overlapping records says dbSNP records nothing, and a position-only `recovered` advises authoring whatever record starts there
+
+**Severity** low · **Status** open — **a patch** · **Owner** enricher (`grch37.RsidRecovery.__str__`,
+`grch37.recover_rsid`) · **Motivating case** S155 (just-module-creator, CONSUMER_SUGGESTIONS_HISTORY.md) ·
+*related* RM31, RM361
+
+**The gap.** The anchored match is right and stays: a candidate must start at `start` and carry the given
+alleles. What the result *says* is wrong in four places. All four reproduce through `recover_rsid` itself
+against Ensembl's GRCh37 service (2026-11-14), on CFTR F508del (rs113993960, whose GRCh37 record is
+`TCTT/T/TCTTCTT` at 117199645):
+
+1. **The `none` headline contradicts its own note.** At 117199644 with `ref=ATCT, alts=A` (VCF's left-aligned
+   spelling) the text is "GRCh37 dbSNP records nothing here. 5 dbSNP record(s) overlap the position, none
+   starting at it with the alleles given." dbSNP records this very deletion one base to the right. "Records
+   nothing here" is true only when nothing overlaps.
+2. **The note names alleles that were never given.** At 117199646 with no `ref`/`alts`, the note still ends "none
+   starting at it with the alleles given".
+3. **A position-only `recovered` over-claims.** At 117199644 with no alleles, the outcome is `recovered` with
+   rs1801178, an SNV at the deletion's anchor base. That is a different variant, and the text tells the author to
+   "author that rs-number instead of the coordinate". A match on position alone is only as good as the position.
+   At a padded indel's VCF position, the record starting there is the anchor base's.
+4. **The `ambiguous` text names CLI flags** ("Narrow it with --ref/--alts") in a `__str__` that every library
+   caller passes on. Only `just-dna-enricher hint recover` has those flags. `lookup_old_assembly` (`lookup.py`) and an MCP
+   tool wrapping `recover_rsid` pass arguments named `ref`/`alts`.
+
+The docstring's explanation is also narrower than the case. It says a VCF-padded indel "will not match Ensembl's
+unpadded record". Here both spellings are padded, at different anchors: Ensembl pads a record whose alleles mix a
+deletion and an insertion at its own anchor. So the one spelling that matches can be neither VCF's nor HGVS's.
+
+**The ask.** Text only, no new outcome:
+
+- When features overlap, `none` says that no record starts here (with these alleles, when some were given) and
+  that N overlap. It keeps "records nothing here" for the empty answer.
+- The note drops "with the alleles given" when none were given.
+- A `recovered` with no `ref` says it matched on position alone. Its advice to author the rs-number is
+  conditional on the variant being the one that starts there; at an indel's padded position, that is the anchor
+  base's record.
+- `__str__` names the arguments (`ref`/`alts`). The CLI may add its flag spelling where it prints.
+- The docstring says the anchor may differ from both VCF's and HGVS's spellings, and that a `none` with
+  overlapping records is a reason to retry at a neighbouring anchor, not a statement of absence.
+
+**Declined as part of this item: a separate outcome for "none, but records overlap"** (S155's candidate 1, second
+half). It would add a member to `outcome`, which `lookup_old_assembly` maps to a level and callers branch on. That
+makes it a minor, and the overlap count already sits in the note. Honest text closes the report without it.
+
+**Sizing facts.** Strings and a docstring. No outcome, field or vocabulary moves. Tests pin the four texts
+against a stubbed overlap answer shaped like the F508del one (a padded record one base right of the queried
+position, plus an SNV at it).
+
+**Residuals** none yet.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.

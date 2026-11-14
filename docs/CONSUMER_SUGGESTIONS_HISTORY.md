@@ -192,6 +192,8 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S151** a position-only row back-filled the lexicographically first rsID at its position — RM438 filed
 - **S152** whether RM438's wrong rsID reached the registry's re-derived catalog — folded into RM438 (flagged there, not silent)
 - **S153** a release record had no axis for a derived-table correction, so 0.8.5's read as nothing moved — RM441 filed
+- **S154** `lane_status` could not be handed a lane's configured path, so a host that never exports its paths got a report on other directories — RM443 filed
+- **S155** `recover_rsid` said dbSNP records nothing beside overlapping records, and recovered an indel's anchor-base SNV on position alone — RM444 filed
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -7635,3 +7637,101 @@ that the sweep measured as zero would put the record's two halves out of agreeme
 nothing published moves, is in the entry. A new vocabulary member is a minor, so this waits for one.
 
 <!-- triaged: RM441 filed (minor; re-derive route, requires None) · sha 02b96dce0318 -->
+
+# From just-dna-registry's liaison, for the registry's caches endpoint, 2026-11-14
+
+## S154 — `lane_status()` resolves every lane from its env var or default directory, so a host that configures lane paths itself cannot compose it
+
+**Reporter:** just-dna-registry (enricher 0.8.6, 2026-11-14).
+
+**What we ran.** Tried to replace our own status loop (`services/enrich.lane_status`, behind `GET /caches`)
+with `caches.lane_status()`, the composition S91 asked for and RM204 shipped.
+
+**What we expected.** One call answering for the same directories the server's passes open.
+
+**What happened.** `lane_status(lanes=None)` calls `lane.resolve()` with no argument and reports
+`looked_in` from `os.getenv(lane.env_var)` or `lane.default_dir()`. The registry does not configure lanes
+through the process environment: it reads `REGISTRY_*_CACHE` settings and passes each path explicitly to
+the lane's resolver (`lane.resolve(configured)`), and it never exports them into `os.environ`, because the
+suite runs two apps in one process and the environment is process-wide. So for any lane the operator
+configured, `lane_status()` reports on a directory the server never reads: `absent` beside a snapshot the
+passes are using, or `present` for one they are not. Every resolver already takes the override as its first
+argument (`ensembl_cache=`, `clinvar_cache=`, … all seventeen, checked on 0.8.6); only `lane_status` has no
+way to hand it one.
+
+**What we did meanwhile.** Kept our loop. Nothing is wrong on our side; the cost is the second projection
+of one registry that RM204 exists to end.
+
+**A candidate.** `lane_status(lanes=None, locations: Mapping[str, Path | None] | None = None)`: for a lane
+named in `locations`, call `lane.resolve(locations[name])` and report `looked_in` as that path (or the
+default ladder when the value is `None`), leaving the env-var reading for lanes not named. The same
+mapping `prepare_caches` would want if it ever takes one, so the status and provisioning halves read the
+same directories. Worth deciding in the same change whether `load_dotenv_file` should pass through too:
+`resolve()` loads `.env` by default, which for a host that never configures through the environment is an
+ambient read it did not ask for.
+
+**Status — filed as [RM443](ROADMAP.md#rm443--lane_status-resolves-every-lane-from-the-environment-so-a-host-that-passes-its-lanes-paths-explicitly-cannot-ask-it-about-them): a minor; the pm sizes.**
+Confirmed on 0.8.6: `lane_status` calls `lane.resolve()` bare, and all seventeen lanes' resolvers take the override
+first plus `load_dotenv_file` (checked with `inspect.signature` over `CACHE_LANES`). Your `.env` question has a
+firmer answer than "ambient read": with its default flag, each resolver calls `locations.load_env()`, which exports
+the whole nearest `.env` into `os.environ`. That is by design for the cache resolvers (RM301), and `lane_status`
+relies on it to compute `looked_in`. So today a status call also writes the host's environment, and the entry
+says the flag is to be decided in the same change. A new parameter on a public function is new public surface,
+which RELEASE_CYCLE keeps off `main`, so this waits for a minor. Your loop is the right thing to keep meanwhile.
+
+<!-- triaged: RM443 filed (minor) · sha c5c8a3a3df7e -->
+
+# From just-module-creator's tester, wrapping the GRCh37 recovery as a tool, 2026-11-14
+
+## S155 — `recover_rsid` says "dbSNP records nothing here" for CFTR F508del as VCF spells it; its docstring blames padding against an unpadded record, and the record is padded
+
+**Reporter:** just-module-creator (enricher 0.8.6 installed, 2026-11-14; our tester, wrapping
+`grch37.recover_rsid` as a tool).
+
+**What we ran.** F508del (rs113993960) on GRCh37, asked four ways against Ensembl's GRCh37 REST:
+
+| Asked | Outcome | `str(result)` |
+|---|---|---|
+| `7, 117199644, ref=ATCT, alts=A` (gnomAD v2 / VCF, left-aligned) | `none` | *"GRCh37 dbSNP records nothing here. 5 dbSNP record(s) overlap the position, none starting at it with the alleles given."* |
+| `7, 117199644` (no alleles) | `recovered` | `rs1801178`, an SNV at the anchor base: a different variant |
+| `7, 117199646` (HGVS-style, unpadded) | `none` | *"... records nothing here. 6 dbSNP record(s) overlap ..."* |
+| `7, 117199645, ref=TCTT, alts=T` | `recovered` | `rs113993960` |
+
+**What we expected,** from the docstring: *"an indel authored in VCF's padded spelling (POS on the base before
+the event) will not match Ensembl's unpadded record, and comes back `none` rather than wrong."*
+
+**What happened.** Ensembl's GRCh37 record for rs113993960 is padded too (`TCTT/T` at 117199645), anchored one
+base right of the left-aligned VCF spelling. So the one spelling that finds it is neither VCF's nor HGVS's, and
+the docstring's explanation (padded against unpadded) is not the cause here: it is two padded spellings at
+different anchors. The anchored match itself is right, and we are not asking for overlap matching; an
+overlapping record can be a different event. Three things in what the result *says* mislead:
+
+1. **The `none` headline is false when records overlap.** "dbSNP records nothing here" reads as "no rs-number
+   exists"; here dbSNP records this very deletion one base over. The overlap count in the note is the only clue,
+   and it follows a sentence that contradicts it.
+2. **Without alleles, an indel's VCF position comes back `recovered` with the SNV at the anchor base.** Nothing
+   in the docstring mentions that the anchor base of a padded indel is a different variant.
+3. **The `ambiguous` message names CLI flags** ("Narrow it with --ref/--alts") in `RsidRecovery.__str__`, which
+   every library caller passes on; a caller whose arguments are `ref`/`alts` relays a flag that does not exist
+   for it.
+
+**What we do meanwhile.** Our tool's description is to say that a padded indel is matched only at Ensembl's own
+anchor and may come back `none` or as the anchor base's SNV, and that a `none` with overlapping records is a
+reason to retry rather than absence (our lead's, F152 on our side). We do not re-word your `str()`.
+
+**Candidates.** (1) A `none` with overlapping features says "no record starts here with these alleles; N overlap"
+rather than "records nothing here", or is a separate outcome. (2) The docstring says the anchor may differ from
+both VCF's and HGVS's spellings, not only that VCF's padding misses an unpadded record. (3) `__str__` names the
+arguments, or leaves the narrowing advice to the caller.
+
+**Status — filed as [RM444](ROADMAP.md#rm444--recover_rsids-result-text-over-claims-a-none-beside-overlapping-records-says-dbsnp-records-nothing-and-a-position-only-recovered-advises-authoring-whatever-record-starts-there): a patch.**
+All four rows reproduce through `recover_rsid` against GRCh37 REST today, and Ensembl's record is
+`TCTT/T/TCTTCTT` at 117199645, as you say. Points 1 to 3 and candidates 2 and 3 are taken as text fixes. Running
+your rows found one more: at 117199646 with no alleles, the note still says "with the alleles given". Your point 2
+also goes into the `recovered` text, not only the docstring: a position-only match currently tells the author to
+"author that rs-number instead", and for rs1801178 that is the anchor base's SNV. The narrowing advice will name
+`ref`/`alts`; `--ref/--alts` belongs only to `hint recover`. Declined: a separate outcome for "none, but records
+overlap". It would add an `outcome` member callers branch on, which is a minor, and once the headline is honest
+the overlap count in the note carries it. Your tool description is right as it stands.
+
+<!-- triaged: RM444 filed (patch) · sha 98dea3acc1a6 -->
