@@ -1,6 +1,9 @@
-**Where it stands** (2026-11-14). The current release is **0.8.6** (on PyPI since 2026-11-13). The scope of the next minor, 0.9, is not chosen yet.
+**Where it stands** (2026-11-15). The current release is **0.8.6** (on PyPI since 2026-11-13). **0.8.7** is cut and waits
+for the maintainer to publish it. The scope of the next minor, 0.9, is not chosen yet.
 
 **Headline results**
+- ⏳ 0.8.7, cut, not yet published (enricher only): the AlphaGenome licence notices now say what Google's terms
+  say, and the rsID recovery no longer claims more than dbSNP records. Full suite 7,416 passed.
 - ✅ 0.8.6, released: a re-derivation that drops an rsID now says so; the upgrade guide says the Ensembl
   snapshot carries only its core; a variant row's "significant" is explained. Full suite 7,408 passed.
 - ✅ 0.8.5, released: installs beside Google's genai library again (it accepts older `tenacity`); a
@@ -14,6 +17,7 @@
 - ⛔ The 0.7 line stays without GWAS lookups (the maintainer's call); 0.8 has them.
 
 **Next**
-1. ❓ Two questions on the maintainer's desk: read snapshots straight from Hugging Face for the registry (0.9), and
+1. ⏳ Publish 0.8.7 — the maintainer's; the built files are in `dist/`.
+2. ❓ Two questions on the maintainer's desk: read snapshots straight from Hugging Face for the registry (0.9), and
    linking the project's memory to its new folder name.
-2. ⏳ 0.9 scope interview — pm with the maintainer; the AlphaGenome result goes in with methylation's design.
+3. ⏳ 0.9 scope interview — pm with the maintainer; the AlphaGenome result goes in with methylation's design.
