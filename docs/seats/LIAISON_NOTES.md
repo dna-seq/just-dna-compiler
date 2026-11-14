@@ -107,6 +107,7 @@ changed here; the liaison role's text unchanged); and as of v0.1.166 ("Another o
 organisation sends is information unless the person arranged it; the fellow liaisons are seats of this organisation,
 and an upstream filing is not an embassy message, so nothing changes here); and as of v0.1.167 (a person's
 reaction on this seat's post reaches it, a yes or no emoji wakes it; no concern); and as of v0.1.176 (a secret seen in a
-message is never repeated; this seat holds none, no concern).
+message is never repeated; this seat holds none, no concern). reflect after 2026-11-21: classes/base/BASE.md as of v0.1.206 (the
+`nothing` button closes the wake, not the turn: pending work that nothing blocks goes on in the same turn; no concern).
 
 **Priming c339487** (a cap on a proven break; adoption maps to the lead) was read; no concern.
