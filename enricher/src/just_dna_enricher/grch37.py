@@ -231,23 +231,40 @@ class RsidRecovery:
     rsids: list[str] = field(default_factory=list)
     candidates: list[dict] = field(default_factory=list)
     note: str = ""
+    #: How many dbSNP records the service listed as overlapping the position, whether or not one starts
+    #: there. Private on a patch line (RM444): it decides whether a `none` may say "records nothing".
+    _overlapping: int = 0
 
     def __str__(self) -> str:
         where = f"{GRCH37_BUILD} {self.chrom}:{self.start}"
         if self.outcome == "recovered":
-            return (
-                f"{where} is {self.rsids[0]} — author that rs-number instead of the coordinate: it "
-                f"names the variant without naming a build, so resolution places it on whichever one "
-                f"the module declares and the compiler can then cross-examine the coordinate it "
-                f"produced. A converted position is its own only witness. Reported, never written"
+            advice = (
+                "author that rs-number instead of the coordinate: it names the variant without naming "
+                "a build, so resolution places it on whichever one the module declares and the "
+                "compiler can then cross-examine the coordinate it produced. A converted position is "
+                "its own only witness. Reported, never written"
             )
+            if self.ref is None:
+                # RM444: a match on position alone is only as good as the position. At a padded indel's
+                # VCF position the record starting there is the anchor base's (rs1801178 under F508del).
+                matched_on = "position and alt" if self.alts else "position alone"
+                return (
+                    f"{where} is {self.rsids[0]}, matched on {matched_on}, with no reference allele "
+                    f"given. If the variant you mean is the one that starts here, {advice}. At an "
+                    f"indel's padded position the record starting there is the anchor base's, a "
+                    f"different variant: give `ref` and `alts` to check"
+                )
+            return f"{where} is {self.rsids[0]} — {advice}"
         if self.outcome == "ambiguous":
             return (
                 f"{where} carries {len(self.rsids)} dbSNP records ({', '.join(self.rsids)}) — "
-                f"reported, never picked. Narrow it with --ref/--alts, or take the one your source "
+                f"reported, never picked. Narrow it with `ref`/`alts`, or take the one your source "
                 f"names"
             )
         if self.outcome == "none":
+            if self._overlapping:
+                given = " with the alleles given" if self.ref or self.alts else ""
+                return f"{where}: no {GRCH37_BUILD} dbSNP record starts here{given}. {self.note}".strip()
             return f"{where}: {GRCH37_BUILD} dbSNP records nothing here. {self.note}".strip()
         if self.outcome == "skipped_offline":
             return f"{where}: not looked up — this run is offline, and there is no local GRCh37 data"
@@ -273,10 +290,16 @@ def recover_rsid(
     keeps this honest — a variant that merely *overlaps* the position is a different event, and
     accepting one would hand back an rs-number for a variant the author never meant.
 
-    The consequence to know: an indel authored in VCF's padded spelling (POS on the base *before* the
-    event) will not match Ensembl's unpadded record, and comes back `none` rather than wrong. That is
-    RM31's one-indel-several-spellings problem, and this reports the shorter search rather than
-    reconciling frames it was not given.
+    The consequence to know: an indel is recorded at one anchor, Ensembl's, and that anchor may be
+    neither VCF's left-aligned spelling nor HGVS's first changed base. Ensembl pads a record whose
+    alleles mix a deletion and an insertion at its own anchor: CFTR F508del (rs113993960) is
+    `TCTT/T/TCTTCTT` at GRCh37 7:117199645, one base right of VCF's `ATCT>A` at 117199644 and one left of
+    HGVS's 117199646. Asked at either of those, it comes back `none` rather than wrong. A `none` whose
+    note counts overlapping records is therefore a reason to retry at a neighbouring anchor, never a
+    statement that dbSNP records nothing. And without `ref`, a padded indel's VCF position recovers
+    whatever record starts there, which is the anchor base's (rs1801178 under F508del): the text says
+    so. That is RM31's one-indel-several-spellings problem, and this reports the shorter search rather
+    than reconciling frames it was not given (RM444).
     """
     query = RsidRecovery(chrom=str(chrom), start=int(start), outcome="none", ref=ref, alts=alts)
     if offline:
@@ -322,12 +345,16 @@ def recover_rsid(
         query.outcome = "ambiguous"
     else:
         query.outcome = "none"
+        query._overlapping = len(features)
+        given = " with the alleles given" if wanted_ref is not None or wanted_alts else ""
         query.note = (
-            "The search is anchored on the exact position, so an indel authored in VCF's padded "
-            "spelling (POS on the base before the event) can miss a record that is really there."
+            "The search is anchored on the exact position, and an indel is recorded at Ensembl's anchor "
+            "only, which may be neither VCF's padded spelling nor HGVS's: a record that is really "
+            "there can start a base or more away."
             if not features
-            else f"{len(features)} dbSNP record(s) overlap the position, none starting at it with "
-            f"the alleles given."
+            else f"{len(features)} dbSNP record(s) overlap the position, none starting at it{given}. "
+            f"An indel is recorded at one anchor only: retry at a neighbouring anchor before reading "
+            f"this as absence."
         )
     return query
 

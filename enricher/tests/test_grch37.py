@@ -210,6 +210,110 @@ class TestWhatRecoveryRefusesToMatch:
         assert recover_rsid("7", 140453136, client=_client(_overlap_handler(payload=foreign))).rsids == []
 
 
+def _f508del_feature(rsid: str, start: int, end: int, alleles: list[str], source: str = "dbSNP") -> dict:
+    return {
+        "id": rsid,
+        "start": start,
+        "end": end,
+        "alleles": alleles,
+        "assembly_name": "GRCh37",
+        "source": source,
+    }
+
+
+#: The shared part of the real `/overlap/region/human/7:N-N?feature=variation` answers around CFTR
+#: F508del (rs113993960), recorded 2026-11-14 at N = 117199644, 117199645 and 117199646: four dbSNP
+#: deletions spanning all three positions, none starting at any of them.
+_F508DEL_SPANNING = [
+    _f508del_feature("rs121908745", 117199641, 117199646, ["ATCATC", "ATC"]),
+    _f508del_feature("rs1554384407", 117199642, 117199649, ["TCATCTTT", "T"]),
+    _f508del_feature("rs1554384410", 117199643, 117199646, ["CATC", "-"]),
+    _f508del_feature("rs879896183", 117199643, 117199649, ["CATCTTT", "A", "G"]),
+]
+#: At 117199644, VCF's left-aligned position for the deletion (`ATCT>A`): the record starting there is
+#: rs1801178, an SNV at the anchor base, and the deletion itself does not overlap at all.
+_F508DEL_AT_VCF_ANCHOR = [
+    *_F508DEL_SPANNING,
+    _f508del_feature("CD900275", 117199644, 117199644, ["HGMD_MUTATION"], "HGMD-PUBLIC"),
+    _f508del_feature("CM068683", 117199644, 117199644, ["HGMD_MUTATION"], "HGMD-PUBLIC"),
+    _f508del_feature("rs1801178", 117199644, 117199644, ["A", "G", "T"]),
+]
+#: At 117199645, Ensembl's own anchor: its record for the deletion is padded too (`TCTT/T/TCTTCTT`).
+_F508DEL_AT_ENSEMBL_ANCHOR = [
+    *_F508DEL_SPANNING,
+    _f508del_feature("CM147279", 117199645, 117199645, ["HGMD_MUTATION"], "HGMD-PUBLIC"),
+    _f508del_feature("rs869189980", 117199645, 117199647, ["TCT", "TCTCT"]),
+    _f508del_feature("rs113993960", 117199645, 117199648, ["TCTT", "T", "TCTTCTT"]),
+]
+#: At 117199646, the first deleted base (HGVS's position): no dbSNP record starts there.
+_F508DEL_AT_HGVS_POSITION = [
+    *_F508DEL_SPANNING,
+    _f508del_feature("rs869189980", 117199645, 117199647, ["TCT", "TCTCT"]),
+    _f508del_feature("rs113993960", 117199645, 117199648, ["TCTT", "T", "TCTTCTT"]),
+    _f508del_feature("CD890142", 117199646, 117199646, ["HGMD_MUTATION"], "HGMD-PUBLIC"),
+]
+
+
+class TestWhatTheRecoveryTextClaims:
+    """RM444 (S155): the match is right, and what the result *says* must not claim more than it.
+
+    One deletion, CFTR F508del, asked at the three positions its spellings put it on. Only Ensembl's own
+    anchor, which is neither VCF's left-aligned position nor HGVS's, finds it.
+    """
+
+    def test_the_deletion_is_found_only_at_ensembls_anchor(self) -> None:
+        handler = _overlap_handler(payload=_F508DEL_AT_ENSEMBL_ANCHOR)
+        recovery = recover_rsid("7", 117199645, ref="TCTT", alts="T", client=_client(handler))
+        assert recovery.outcome == "recovered"
+        assert recovery.rsids == ["rs113993960"]
+
+    def test_a_none_beside_overlapping_records_does_not_say_dbsnp_records_nothing(self) -> None:
+        handler = _overlap_handler(payload=_F508DEL_AT_VCF_ANCHOR)
+        recovery = recover_rsid("7", 117199644, ref="ATCT", alts="A", client=_client(handler))
+        assert recovery.outcome == "none"
+        text = str(recovery)
+        assert "records nothing here" not in text
+        assert "no GRCh37 dbSNP record starts here with the alleles given" in text
+        assert "5 dbSNP record(s) overlap the position" in text
+        assert "neighbouring anchor" in text, "an overlap is a reason to retry, not a statement of absence"
+
+    def test_an_empty_answer_still_says_dbsnp_records_nothing(self) -> None:
+        recovery = recover_rsid("7", 117199644, client=_client(_overlap_handler(payload=[])))
+        assert recovery.outcome == "none"
+        assert "records nothing here" in str(recovery)
+
+    def test_the_note_names_no_alleles_when_none_were_given(self) -> None:
+        handler = _overlap_handler(payload=_F508DEL_AT_HGVS_POSITION)
+        recovery = recover_rsid("7", 117199646, client=_client(handler))
+        assert recovery.outcome == "none"
+        assert "alleles given" not in str(recovery)
+        assert "6 dbSNP record(s) overlap the position" in str(recovery)
+
+    def test_a_position_only_recovery_says_it_matched_on_position_alone(self) -> None:
+        handler = _overlap_handler(payload=_F508DEL_AT_VCF_ANCHOR)
+        recovery = recover_rsid("7", 117199644, client=_client(handler))
+        assert recovery.outcome == "recovered"
+        assert recovery.rsids == ["rs1801178"], "the SNV at the deletion's anchor base"
+        text = str(recovery)
+        assert "position alone" in text
+        assert "anchor base" in text
+        # The advice to author it stays, but only on a condition: the old text gave it outright.
+        assert "is rs1801178 — author" not in text
+        assert "If the variant you mean is the one that starts here, author that rs-number" in text
+
+    def test_an_allele_exact_recovery_keeps_its_advice(self) -> None:
+        recovery = recover_rsid("7", 140453136, ref="A", alts="T", client=_client(_overlap_handler()))
+        assert "author that rs-number instead of the coordinate" in str(recovery)
+        assert "position alone" not in str(recovery)
+
+    def test_the_ambiguous_text_names_the_arguments_not_cli_flags(self) -> None:
+        """Every library caller passes `str()` on; only `hint recover` has `--ref`/`--alts`."""
+        recovery = recover_rsid("7", 140453136, client=_client(_overlap_handler()))
+        assert recovery.outcome == "ambiguous"
+        assert "--ref" not in str(recovery)
+        assert "`ref`/`alts`" in str(recovery)
+
+
 class TestTheWrongBuildDiagnosis:
     """Only rows the reference check already rejected, and three tiers of evidence.
 

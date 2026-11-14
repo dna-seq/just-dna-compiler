@@ -2848,9 +2848,15 @@ The match is **anchored on the authored position**: a candidate must start exact
 authored `ref`, and contain every authored alt. Anchoring is what keeps it honest — at
 `7:140453136` seven features overlap the base, two merely span it, one is an HGMD record with no
 rs-number, and four dbSNP records genuinely start there, which is why a position-only query is
-`ambiguous` rather than under-specified. The consequence to know: an indel authored in VCF's padded
-spelling (POS on the base *before* the event) will not match Ensembl's unpadded record and comes back
-`none` with that said, rather than wrong.
+`ambiguous` rather than under-specified. The consequence to know: an indel is recorded at one anchor,
+Ensembl's, which may be neither VCF's left-aligned position nor HGVS's first changed base. CFTR F508del
+(rs113993960) is `TCTT/T/TCTTCTT` at GRCh37 `7:117199645`, one base right of VCF's `ATCT>A` and one left
+of HGVS's position, and asked at either of those it comes back `none` rather than wrong. So the text keeps
+"records nothing here" for an empty answer only: a `none` beside overlapping records says no record
+starts here and counts the overlaps, a reason to retry at a neighbouring anchor. A `recovered` with no
+`ref` says it matched on position alone and makes its advice conditional, because at a padded indel's
+VCF position the record starting there is the anchor base's (rs1801178 under F508del). The text names
+the arguments `ref`/`alts`; `--ref`/`--alts` are only `hint recover`'s spelling of them (RM444).
 
 `diagnose_wrong_build(mismatches, *, client, offline)` runs **only over rows the reference-allele check
 already rejected**, which is the whole cost control — a module whose refs agree makes no request here.

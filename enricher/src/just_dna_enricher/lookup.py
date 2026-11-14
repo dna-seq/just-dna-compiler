@@ -803,7 +803,7 @@ def lookup_old_assembly(
     `identity_bearing`, so a machine filling it would be performing an identity migration by network
     lookup, exactly as `_check_rsid_currency` refuses to do for a merged id.
 
-    Several candidates are **reported, never picked** — `--ref`/`--alts` narrow them, and a pick among
+    Several candidates are **reported, never picked** — `ref`/`alts` narrow them, and a pick among
     equals is not a finding.
     """
     owned = clients is None

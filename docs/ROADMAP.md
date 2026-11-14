@@ -2260,7 +2260,7 @@ paths explicitly gets no environment write.
 
 ## RM444 — `recover_rsid`'s result text over-claims: a `none` beside overlapping records says dbSNP records nothing, and a position-only `recovered` advises authoring whatever record starts there
 
-**Severity** low · **Status** open — **a patch** · **Owner** enricher (`grch37.RsidRecovery.__str__`,
+**Severity** low · **Status** open — **a patch, built on `main` 2026-11-14, uncut** · **Owner** enricher (`grch37.RsidRecovery.__str__`,
 `grch37.recover_rsid`) · **Motivating case** S155 (just-module-creator, CONSUMER_SUGGESTIONS_HISTORY.md) ·
 *related* RM31, RM361
 
@@ -2307,7 +2307,16 @@ makes it a minor, and the overlap count already sits in the note. Honest text cl
 against a stubbed overlap answer shaped like the F508del one (a padded record one base right of the queried
 position, plus an SNV at it).
 
-**Residuals** none yet.
+**Built (lead, 2026-11-14).** All five asks, text only. `RsidRecovery` gains a private `_overlapping` count, so
+`none` keeps "records nothing here" for an empty answer and otherwise says no record starts here, counting the
+overlaps and naming the retry at a neighbouring anchor. "With the alleles given" appears only when some were. A
+`recovered` with no `ref` says it matched on position alone (or on position and alt) and makes the authoring advice
+conditional on the variant being the one that starts there. `ambiguous` names `ref`/`alts`; `lookup_old_assembly`'s
+docstring too. The docstring and ENRICHER.md § old assembly state the F508del anchors. Seven tests in
+`test_grch37.py::TestWhatTheRecoveryTextClaims` replay Ensembl's real GRCh37 answers at 117199644, 117199645 and
+117199646 (recorded 2026-11-14); four were red on the old text. No outcome, field or vocabulary moved.
+
+**Residuals** none.
 
 # Not format scope
 

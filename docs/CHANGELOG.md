@@ -41,6 +41,18 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-14 — RM444: `recover_rsid` says no more than it matched (patch, on `main`)
+
+`grch37.recover_rsid`'s result text over-claimed in four places, reported on CFTR F508del (S155), whose GRCh37
+record is padded at Ensembl's own anchor, one base right of VCF's spelling. A `none` beside overlapping records
+said "dbSNP records nothing here"; it now says no record starts here, counts the overlaps, and says to retry at a
+neighbouring anchor before reading it as absence. "Records nothing here" stays for an empty answer. The note no
+longer says "with the alleles given" when none were. A `recovered` with no `ref` says it matched on position
+alone and makes its advice to author the rs-number conditional, since at a padded indel's VCF position the record
+starting there is the anchor base's SNV. The `ambiguous` text names the arguments `ref`/`alts` instead of the CLI
+flags. The docstring and ENRICHER.md say the anchor may be neither VCF's nor HGVS's. No outcome or field changes;
+the tests replay Ensembl's real answers at the three F508del positions.
+
 ## 2026-11-14 — RM442: the two AlphaGenome licence rows say what the terms they quote say (patch, on `main`)
 
 Three sentences in `licensing.py` misstated the AlphaGenome terms, found when the liaison saved the live texts
