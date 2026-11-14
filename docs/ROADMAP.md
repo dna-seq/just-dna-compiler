@@ -2165,6 +2165,46 @@ Splitting waits until one ask unparks alone.
 
 **Residuals** none yet.
 
+## RM442 — the two AlphaGenome licence rows misstate the terms they quote: the Atlas row's training bar and date, and the AVI row's prohibition 4
+
+**Severity** low · **Status** open — **a patch, on `main`** · **Owner**
+enricher (`licensing.py`) · **Motivating case** the liaison's re-vendoring of AlphaGenome's live terms, 26db64cb,
+after the RM433 trial on 2026-11-14 · *related* RM433, RM195, RM191
+
+**The gap.** The liaison's ledger (`docs/UPSTREAM_ALPHAGENOME.md`, verdicts and adoption map) found three
+sentences in `licensing.py` that say something the terms do not. The pm checked each against the saved
+texts in `docs/vendor/`:
+
+1. **`ALPHAGENOME_ATLAS_TERMS.notice` understates the training bar for new Output.** It says "no training of
+   variant-effect models (restriction 2)". That is the June 2025 Output Terms' wording. The Output Terms
+   effective 2026-10-09 (`alphagenome_output_terms_2026-10-09.txt`, restriction 2) bar training any model
+   or related technology, except an AlphaGenome-like model under the Model Parameters Terms. A module's
+   consumer has not agreed to the Additional Terms, so the Output Terms are what bind them. Which version
+   applies follows the Output's generation date, which `dataset` carries.
+2. **`ALPHAGENOME_ATLAS_TERMS.license` dates the Output Terms "(2026-09-08)".** That is the Additional
+   Terms' date. The Output Terms' own dates are 2025-06-25 and 2026-10-09.
+3. **`ALPHAGENOME_AVI_TERMS.notice` cites prohibition 4 as binding.** Prohibition 4 of the Additional Terms
+   opens "Except for Permissive Use Downloadable Artifacts" in both the 2026-09-08 and 2026-11-06 texts, and
+   AVI is in that class. Under the Additional Terms it does not bind AVI.
+
+No licence axis moves: `commercial_use`, `redistribution` and `share_alike` stay as they are, and no gate
+reads `notice`. The liaison says no test change is owed.
+
+**The ask.** Correct the three strings. For (3), settle which instrument binds a downstream holder of AVI
+before deleting the bar. The AVI artifact is stamped 2026-08-27, so a holder bound by the Output Terms would
+be under the June 2025 text, whose restriction 2 has no Permissive carve-out. If that reading holds, the fix
+is to cite restriction 2 of the June 2025 Output Terms in place of prohibition 4, not to drop the bar.
+Stating a bar that does not bind is harmless; dropping one that does is not. Also update the comment near
+`licensing.py:912` that quotes prohibition 1a's old "except for the AVI Score" wording. Leave
+`alphagenome_avi_build._default_terms_file` on the undated June 2025 file (ledger check 3).
+
+**Sizing (pm, 2026-11-14): a patch, build now.** These are string constants. No schema, field or vocabulary
+moves, so P3 allows it in a patch. A module re-enriched after the fix carries the new `notice` in
+`sources.csv`, and its digest moves with it. That is the intended effect, not a reason to defer.
+Version by omission: it rides the next patch on `main`.
+
+**Residuals** none yet.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
