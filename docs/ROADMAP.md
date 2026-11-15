@@ -2291,6 +2291,18 @@ cache may be one of these.
 because answers are wrong silently, under a label that says they are current. No consumer has reported it; the
 measurement found it.
 
+**Sizing (pm, 2026-11-15): the next patch on `main`, both fix shapes and the sticky caches.** A patch by class, and
+not blocked: by version-by-omission it goes into the next patch unasked. Of the two shapes, the more complete:
+never place the hub's `release.json` over files this pull did not fetch, **and** refetch a kept file when the hub
+states a release the cache cannot attest. The first alone would leave every unrecorded cache withheld until someone
+moves it aside; the second alone leaves the lie possible on the next path nobody thought of. **The caches already
+wrong are in scope**: a pull record without `release_sha256` (written before RM420) is read as unrecorded for the hub
+comparison, so the next `cache pull` repairs this machine's ClinVar cache and any other like it, and no operator has
+to move a cache by hand. The test is the reproduction above on both paths, plus one with a pre-RM420 record. Open for
+the builder to say in the changelog line: an `enrich` run on such a cache between its pull and the fix recorded the
+new label over old ClinVar answers; nothing here knows which modules were enriched on one, so the line says how to
+tell (a pull record without `release_sha256`) rather than claiming none.
+
 **Residuals** none yet.
 
 # Not format scope
