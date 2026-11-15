@@ -2247,6 +2247,52 @@ paths explicitly gets no environment write.
 
 **Residuals** none yet.
 
+## RM445 — a pull keeps an unrecorded cache's old parquet and places the hub's newer `release.json` over it, so old bytes carry the new release's label
+
+**Severity** medium · **Status** open — **a patch; the pm sizes** · **Owner** enricher (`download._provision_snapshot`, `_keep`) ·
+**Motivating case** the pm's remote-read trial, `docs/probes/REMOTE_READS_0_9.md` finding 8 (2026-11-15) · *related* RM339, RM372, RM420
+
+**What was seen.** This machine's ClinVar cache has a `release.json` byte-identical to the one on Hugging Face
+(`clinvar_2026-11-01`, 4,608,075 records) and a pull record naming all 26 files, both written 2026-11-08 19:19. The
+parquet files under `data/` are dated 2026-08-31, hold 4,431,781 rows and differ in size from the published ones
+(`clinvar-chr1.parquet` is 7,038,089 bytes here, 7,302,868 on the hub). `lookup_clin_sig` answers `condition`
+differently from the hub on 12 of 13 alleles. So the cache serves the August release under the November label. The
+pull record has no `release_sha256` key and is older than `release.json` by 0.3 s. That fits a pull that wrote
+its record before the first download, kept every file, then fetched `release.json`, all on RM339's code (`74e0e875`,
+2026-11-04). RM420 (`dd900ff3`) landed an hour after it, at 20:22.
+
+**The mechanism, still on HEAD.** A cache with no pull record is RM339's "unrecorded" case: compared with the listing
+once, missing files fetched, the rest kept. `_keep` keeps any file whose footer reads when the repo publishes no
+`manifest.json`, and only the Ensembl lane publishes one; the ClinVar repo carries `release.json`, `data/` and
+`citations/` and nothing else. The root-file loop then fetches the hub's `release.json` whatever was kept. So an
+August cache pulled before the record existed becomes, after one pull, an August cache stating the November release.
+RM420's hub comparison does not stop it: for an unrecorded cache that states no release, `_follow_hub.local` is
+`None`, so it is not left alone and falls through to the same completion. Reproduced on `main` at `0cbc937c` with
+`test_download.py`'s fake hub, on both paths. One whole `clinvar-chr1.parquet` with an `old_release` column, no
+record, no `release.json`; the hub publishes `clin_sig` and `clinvar_2026-11-01`. After
+`ensure_clinvar_snapshot(cache)` (the `enrich` path) and again after it with a `_FollowHub` (the `cache pull` path),
+the cache's label is `clinvar_2026-11-01` and its file still has `old_release`, with nothing fetched but
+`release.json`.
+
+**Why it matters.** The label is what every reader trusts: `release.json`'s `dataset` is the lane's
+`release_label` (`caches.py`, RM303), which `cache status` reports and `cache pull` compares with the hub's (`_FollowHub`). A wrong label is
+not withheld; it is a confident false answer, the arm the house algebra forbids. It is also **sticky**. The cache is
+now recorded and whole, and its label equals the hub's, so every later `cache pull` reads it as `current` and
+returns. Nothing on HEAD will ever repair this machine's cache; the operator has to move it aside and pull.
+
+**Shape of a fix (the builder decides).** In the completion path, a kept file with no manifest to attest it is of
+unknown release. Either fetch it again when the hub states a release the cache does not (RM420's refresh, applied to
+the unrecorded case), or do not place the hub's `release.json` over files this pull did not fetch, so the cache states
+no release and is withheld. The first repairs; the second at least stops the lie. The sticky caches already out there
+need a word too: a pull record without `release_sha256` was written before RM420, and is the one marker that the
+cache may be one of these.
+
+**Class.** A patch: no public name, schema or vocabulary moves (P3), and nothing authored (P9). Severity is medium
+because answers are wrong silently, under a label that says they are current. No consumer has reported it; the
+measurement found it.
+
+**Residuals** none yet.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
