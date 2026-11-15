@@ -1,6 +1,6 @@
 # Lead notes
 
-The lead's working state, rewritten to the present before each reset. Last rewritten 2026-11-07.
+The lead's working state, rewritten to the present before each reset. Last rewritten 2026-11-15.
 
 ## First seating (2026-11-03): the handout's first work
 
@@ -82,10 +82,9 @@ None open.
   `v0.8.6` on 2f03ab4a, pushed; GitHub release up; README and the CLAUDE.md doc map name 0.8.6 (48d287ce).
   RELEASE_CYCLE step 10 complete. The publish sweep took the merged cut and build branches; `cut/v0.8.6` stays, held by
   its worktree `wt-cut-086` (unlocked), for the maintainer to remove.
-- **0.8.7 cut, 2026-11-14, unpublished** (enricher only; RM442, RM444; sized by the pm). Cut commit 3b65ab7a on
-  `main`, pushed; format and compiler stay 0.8.6. `dist/` holds the enricher 0.8.7 wheel and sdist, twine-checked.
-  After the maintainer publishes: tag `v0.8.7` on 3b65ab7a, GitHub release from the scratchpad's
-  `release_notes_0_8_7.md`, README and the CLAUDE.md doc map name 0.8.7. `test_first_seen`'s release list now
+- **0.8.7 released, 2026-11-15** (enricher only; RM442, RM444; sized by the pm). On PyPI 16:01 UTC (the
+  maintainer); format and compiler stay 0.8.6. Tag `v0.8.7` on 3b65ab7a, pushed; GitHub release up; README and the
+  CLAUDE.md doc map name 0.8.7. RELEASE_CYCLE step 10 complete. `test_first_seen`'s release list now
   takes every package's version (an enricher-only cut left format's on the old tag). The AVI interrupt test's
   load flake recurred and is fixed (d8c0e0f2, 10 s of work against a 4 s bound). `cut/v0.8.7` and worktree
   `wt-cut-087` (unlocked) are the maintainer's to remove.
