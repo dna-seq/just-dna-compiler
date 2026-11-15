@@ -101,6 +101,10 @@ patches right after real use started, so the pm reads an audit sceptically: the 
   RM345/RM286, RM358, RM360. Asked the maintainer two process rules: in-build items go to the next minor; two
   review rounds at most. On the yes: the scope table atop ROADMAP_0_9.md, ROADMAP_0_10.md opened, parked
   entries moved with gates, a message to the lead. Trial owed before the branch: remote reads against disk.
+  **Moved to the desk 2026-11-15 18:10Z (unattended):** #326 the scope (3 items, term 7 days, default yes to all),
+  #327 rule a and #328 rule b (default: a trial on 0.9 only, RELEASE_CYCLE.md unchanged), #329 PacBio (default:
+  methylation undated). `blocked: desk #326`: the scope write waits for it or its term (2026-11-22). The remote-read
+  trial runs tonight (a subagent; report in the scratchpad, then a probe `docs/probes/REMOTE_READS_0_9.md`).
 
 
 - **Re-ask the trust register after the 1.0 cut** (`docs/TRUST.md`, the base rule for a repo whose code can

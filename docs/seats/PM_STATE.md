@@ -13,7 +13,8 @@ the next minor, 0.9, is being chosen with the maintainer; one zone is decided: r
 - ✅ Decided for 0.9: the enricher reads a snapshot from local disk first, then the registry's proxy, then Hugging Face.
 
 **Next**
-1. ❓ 0.9's scope — the maintainer answers the pm's small-minor proposal (in chat).
+1. ❓ 0.9's scope — the maintainer answers the pm's small-minor proposal (desk #326; two process rules #327, #328;
+   the PacBio samples #329).
 2. ⏳ Measure remote snapshot reads (the registry's live proxy, Hugging Face) against local disk — pm, a night
-   trial, before 0.9's design.
+   trial, running since 2026-11-15 18:05Z.
 3. ❓ One question on the maintainer's desk: linking the project's memory to its new folder name.
