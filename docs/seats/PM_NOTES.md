@@ -105,6 +105,11 @@ patches right after real use started, so the pm reads an audit sceptically: the 
   #327 rule a and #328 rule b (default: a trial on 0.9 only, RELEASE_CYCLE.md unchanged), #329 PacBio (default:
   methylation undated). `blocked: desk #326`: the scope write waits for it or its term (2026-11-22). The remote-read
   trial runs tonight (a subagent; report in the scratchpad, then a probe `docs/probes/REMOTE_READS_0_9.md`).
+- **Remote-read trial: done 2026-11-15** (25bbdc6b): disk 0.02-0.1 s, proxy 0.2-0.4 s, HF 2-29 s and bound by its
+  anonymous quota (3,000 requests / 5 min / IP); open the chromosome file, not the glob. Handed on: this machine's
+  ClinVar cache has a new release.json over August parquet (triage, DM 640494788); the polygon's stale ClinPGx copy,
+  an id-only Ensembl key answered 200, the cross-product batch (the registry, 640494791, info). DREAMS.md tracked
+  (f4c7840a, over the lead's 2d87a9f5; the lead pushes both).
 
 
 - **Re-ask the trust register after the 1.0 cut** (`docs/TRUST.md`, the base rule for a repo whose code can

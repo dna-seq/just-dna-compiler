@@ -11,10 +11,10 @@ the next minor, 0.9, is being chosen with the maintainer; one zone is decided: r
 - ✅ AlphaGenome 2's predicted methylation, second trial: at 42 strong blood methylation variants its predicted shift
   was 27 times that at 84 matched non-variants, and 28 of 31 directions agreed. One cohort, no replication.
 - ✅ Decided for 0.9: the enricher reads a snapshot from local disk first, then the registry's proxy, then Hugging Face.
+- ✅ Measured: a lookup takes 0.02-0.1 s from disk, 0.2-0.4 s through the registry's proxy, 2-29 s from Hugging Face,
+  where an anonymous client also runs out of requests after a few large lookups.
 
 **Next**
 1. ❓ 0.9's scope — the maintainer answers the pm's small-minor proposal (desk #326; two process rules #327, #328;
    the PacBio samples #329).
-2. ⏳ Measure remote snapshot reads (the registry's live proxy, Hugging Face) against local disk — pm, a night
-   trial, running since 2026-11-15 18:05Z.
-3. ❓ One question on the maintainer's desk: linking the project's memory to its new folder name.
+2. ❓ One question on the maintainer's desk: linking the project's memory to its new folder name.
