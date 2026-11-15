@@ -284,6 +284,8 @@ not_in_nav: |
   CONSUMER_SUGGESTIONS_HISTORY.md
   CONSUMER_TRIAGE_LOOP.md
   DRAFTING_MATURITY.md
+  # The pm seat's idea book (docs/seats/PM.md), not a reference page.
+  DREAMS.md
   POSTMORTEM_2026_09_27.md
   PUBMIND_ASSESSMENT.md
   RELEASE_CYCLE.md
