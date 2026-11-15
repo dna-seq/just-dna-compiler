@@ -14,6 +14,6 @@ the next minor, 0.9, is being chosen with the maintainer; one zone is decided: r
 
 **Next**
 1. ❓ 0.9's scope — the maintainer answers the pm's small-minor proposal (in chat).
-2. ⏳ Measure remote snapshot reads against local disk — pm, a night trial, before 0.9's design.
-3. ❓ The registry proxy's lookup interface — pm with the registry, before 0.9's build.
-4. ❓ One question on the maintainer's desk: linking the project's memory to its new folder name.
+2. ⏳ Measure remote snapshot reads (the registry's live proxy, Hugging Face) against local disk — pm, a night
+   trial, before 0.9's design.
+3. ❓ One question on the maintainer's desk: linking the project's memory to its new folder name.

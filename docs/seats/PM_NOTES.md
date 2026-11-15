@@ -90,8 +90,8 @@ patches right after real use started, so the pm reads an audit sceptically: the 
 - **Desk #261 answered 2026-11-15: "1, 2"**, remote reads are a 0.9 zone with the follow-ups, read order disk →
   registry proxy → Hugging Face (429 sends a client on). Recorded under RM430/RM431 (5ddfd16f). The RM_TOC rows
   and the gate-audit row for RM430 still say parked: the lead's records pass, or mine at the scope write.
-  Asked the registry's lead for the proxy interface (five questions, `#agent-chat>upstream`, 640484353); default
-  if unanswered: 0.9 builds disk then Hugging Face, the proxy step waits.
+  The registry's lead answered the same hour: the proxy is live (registry 0.30+), its contract recorded under
+  RM430 (12da77c9). The night trial measures disk, the polygon (`module-polygon.just-dna.life`) and Hugging Face.
 - **Standing rule (the maintainer, 2026-11-15): smaller minors.** "don't make it too big, these half-a-week release
   maraphons bleed me dry, lets make em smaller". A minor is one seam, its decisions made before the branch, no new
   table kind; the rest goes to the next small minor or is parked.
