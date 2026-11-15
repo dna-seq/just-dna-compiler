@@ -2172,6 +2172,13 @@ the design, the pm measures steps 2 and 3 against step 1 on real lookups (a tria
   accident.
 - The test server for the trial is `https://module-polygon.just-dna.life` (lane routes live, anonymous).
 
+**The trial (pm, 2026-11-15; `docs/probes/REMOTE_READS_0_9.md`).** Per lookup: local disk 0.02 to 0.1 s, the proxy 0.22
+to 0.37 s whatever the batch, Hugging Face 1.8 to 8 s over the readers' glob (Ensembl by position up to 29 s). What
+binds on Hugging Face is its anonymous quota, 3,000 requests per 5 minutes per IP: one Ensembl lookup over the glob
+cost 1,168 requests, and opening only the chromosome file the key names cut requests 3 to 20 times. Ensembl by rsID
+is slow on every route (9 to 14 s locally) until RM431's index exists. Two routes disagreed under one release label:
+this machine's ClinVar cache (handed to triage) and the test server's ClinPGx copy (told to the registry).
+
 **Residuals** none yet.
 
 ## RM431 — the keyed readers a remote lookup needs: an rsID index for Ensembl, and a key on the whole-table readers
