@@ -87,9 +87,20 @@ patches right after real use started, so the pm reads an audit sceptically: the 
   only if the design needs it. The live AlphaGenome terms changed (training ban wider, carve-out renamed): told
   the liaison, whose vendored copies these are.
 
-- **Desk #261, remote snapshot reads as a 0.9 zone (RM430, the registry's ask)**, filed 2026-11-11, S3.
-  Recommended: asks 1 to 3 alone. On silence RM430 and RM431 stay parked; raise it again with RM424 when 0.9's scope
-  is chosen.
+- **Desk #261 answered 2026-11-15: "1, 2"**, remote reads are a 0.9 zone with the follow-ups, read order disk →
+  registry proxy → Hugging Face (429 sends a client on). Recorded under RM430/RM431 (5ddfd16f). The RM_TOC rows
+  and the gate-audit row for RM430 still say parked: the lead's records pass, or mine at the scope write.
+  Asked the registry's lead for the proxy interface (five questions, `#agent-chat>upstream`, 640484353); default
+  if unanswered: 0.9 builds disk then Hugging Face, the proxy step waits.
+- **Standing rule (the maintainer, 2026-11-15): smaller minors.** "don't make it too big, these half-a-week release
+  maraphons bleed me dry, lets make em smaller". A minor is one seam, its decisions made before the branch, no new
+  table kind; the rest goes to the next small minor or is parked.
+- **0.9 scope proposed in chat, 2026-11-15, awaiting the maintainer.** Revised after #261: RM430, RM431, RM437,
+  RM443 + RM404 + RM412's second half (enricher only). 0.10, a format-tier minor: RM399 + RM441, RM435, RM265,
+  RM385. Methylation its own minor after (asked: are the PacBio samples in hand?). Parked: RM302, RM350, RM294,
+  RM345/RM286, RM358, RM360. Asked the maintainer two process rules: in-build items go to the next minor; two
+  review rounds at most. On the yes: the scope table atop ROADMAP_0_9.md, ROADMAP_0_10.md opened, parked
+  entries moved with gates, a message to the lead. Trial owed before the branch: remote reads against disk.
 
 
 - **Re-ask the trust register after the 1.0 cut** (`docs/TRUST.md`, the base rule for a repo whose code can
