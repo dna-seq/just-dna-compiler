@@ -2107,7 +2107,7 @@ field and rides whichever minor is open.
 
 ## RM430 — no snapshot reader takes a remote root: a URL collapses in `Path`, and every resolve, release read and connector checks the local disk
 
-**Severity** medium · **Status** open — **a minor, parked** (asks 1 to 3; the 0.9 zone is on the desk, #261) · **Owner**
+**Severity** medium · **Status** open — **a minor, 0.9: a zone the maintainer named on desk #261 (2026-11-15)** · **Owner**
 enricher (`locations`, `clinvar`, `resolver`, `gene_metrics`, `cpic`) + format (a bytes-level release parser at most)
 · **Motivating case** S145 asks 1 to 3 (CONSUMER_SUGGESTIONS_HISTORY.md) · *related* RM431, RM432, RM339
 
@@ -2142,11 +2142,25 @@ of our layout, which would break silently on our next layout change). **Unparks*
 snapshot reads a zone. Built, it lands with RM432's patch already in, so a failed remote read raises rather than
 answering empty. On silence it stays parked and returns when 0.9's scope is chosen.
 
+**Unparked into 0.9 by the maintainer, desk #261, 2026-11-15**: "1, 2", so asks 1 to 3 here and RM431's follow-ups
+are one 0.9 zone. With one change to ask 3, in their words: "I don't like 'stop checking the local disk' part. Remote
+reads from hugging would be slow (measure)". The order of reads they set:
+
+1. **The snapshot on local disk**, if one is there (the fastest).
+2. **The registry's proxy**, if it is configured and answers (for clients). Also measured.
+3. **Hugging Face**, the third fallback: only when there is no local snapshot, and the proxy is either not configured
+   or pacing the caller. The registry must answer 429 to send a client on to this step.
+
+So the connectors keep checking the local disk first; a remote root is a fallback, never a replacement for it. Before
+the design, the pm measures steps 2 and 3 against step 1 on real lookups (a trial). Step 2 is a client of a service the
+registry has not built yet, so its interface (the lookup it answers, the 429) is agreed with the registry before it is
+built.
+
 **Residuals** none yet.
 
 ## RM431 — the keyed readers a remote lookup needs: an rsID index for Ensembl, and a key on the whole-table readers
 
-**Severity** low · **Status** open — **a minor, parked** · **Owner** enricher · **Motivating case** S145 asks 4 to 7 (CONSUMER_SUGGESTIONS_HISTORY.md) ·
+**Severity** low · **Status** open — **a minor, 0.9: in RM430's zone by the maintainer's word (desk #261, 2026-11-15)** · **Owner** enricher · **Motivating case** S145 asks 4 to 7 (CONSUMER_SUGGESTIONS_HISTORY.md) ·
 *related* RM430, RM405
 
 **The asks, as the reporter measured and read them.** (4) Ensembl by rsID alone cannot prune: the split repo's `id`
@@ -2162,6 +2176,9 @@ local glob or `Path.stem`. Asks 4 to 7 build on RM430. Each is useful without th
 are speed: each is worth building only once a remote lookup through RM430's readers is measured too slow or too large
 for the registry's proxy. **Unparks**, per ask, on that measurement, which needs RM430 shipped but not this item.
 Splitting waits until one ask unparks alone.
+
+**Unparked into 0.9 by the maintainer, desk #261, 2026-11-15** (option 2, "the follow-ups too"), as RM430's zone.
+The measure-first gate above no longer decides whether these are built; the pm's trial for RM430 still orders them.
 
 **Residuals** none yet.
 
