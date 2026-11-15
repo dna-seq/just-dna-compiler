@@ -2152,9 +2152,25 @@ reads from hugging would be slow (measure)". The order of reads they set:
    or pacing the caller. The registry must answer 429 to send a client on to this step.
 
 So the connectors keep checking the local disk first; a remote root is a fallback, never a replacement for it. Before
-the design, the pm measures steps 2 and 3 against step 1 on real lookups (a trial). Step 2 is a client of a service the
-registry has not built yet, so its interface (the lookup it answers, the 429) is agreed with the registry before it is
-built.
+the design, the pm measures steps 2 and 3 against step 1 on real lookups (a trial).
+
+**Step 2's interface, from the registry's lead (2026-11-15, `#agent-chat>upstream`):** the proxy is already live
+(registry 0.30+, both servers), so step 2 is a client of a service that exists. Its contract is the registry's
+`docs/API-REFERENCE.md` §§ 46–47; in short:
+
+- `GET {base}/api/v1/lanes/{lane}` lists a lane's tables and their key columns. `POST {base}/api/v1/lanes/{lane}/{table}`
+  with `{"keys": {"<column>": [values]}}` (values ORed within a column, columns ANDed) answers `lane`, `table`,
+  `served_from`, `rows`, `truncated`, `terms`, `unpublished`. Rows are the lane's own parquet columns, unchanged.
+- Keys are identifiers only, at most 100 values and 1,000 rows a request. ClinVar by rsID, `variation_id` or
+  chrom + start; Ensembl by chrom + start only (an rsID cannot be bounded remotely: RM431's index).
+- Configured by one base URL; a bearer token is optional and only gives the caller its own rate bucket.
+- **Fall through to Hugging Face** on 429 (`Retry-After`, `X-RateLimit-Bucket`), on 404 `lane_not_available`, on 503
+  or 504, and on a timeout or connection error. **Never on 422** (`unknown_key`, `too_many_keys`,
+  `remote_needs_position`): the request is wrong, and Hugging Face would refuse it too.
+- The server reads its local snapshot, else the lane's published repo, and never calls itself. Their ask: **the proxy
+  setting is an explicit parameter or environment variable, unset by default**, so the server never picks it up by
+  accident.
+- The test server for the trial is `https://module-polygon.just-dna.life` (lane routes live, anonymous).
 
 **Residuals** none yet.
 
