@@ -95,6 +95,10 @@ the plugin in step with us: ledgers `UPSTREAM_COMPILER.md`, `UPSTREAM_REGISTRY.m
 0.8. It is on our triage's `wake_from` (8de1fa80). **just-vcf/upstream-liaison** (seated 2026-11-16, its 6f06b56) watches polars-bio and polars
 from the index too: a polars-bio cap that holds both of us is raised with it first.
 
+**Open with the registry:** S34 in its `docs/CONSUMER_SUGGESTIONS.md` (filed 2026-11-16 for the pm's RM430): the lane
+proxy replies carry no release label or revision. Our 0.9 client withholds the release meanwhile; tell the pm when
+the registry answers.
+
 **Push:** origin/main holds every liaison commit through 5611ea91; the notes commits after it wait for the lead's
 next push (a push of mine was refused by auto mode, kit #332). The liaison pushes only its own ledgers and notes, and only as a fast-forward that carries no other seat's
 commit.
