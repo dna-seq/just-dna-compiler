@@ -92,7 +92,8 @@ both `<2` in its own lock, because the module-creator plugin's server (v0.48.1, 
 shares that machine's enricher cache: the mixed cache RM344 is about. Its cap lifts when the plugin moves; their call. **just-module-creator/liaison** (seated 2026-11-07) keeps
 the plugin in step with us: ledgers `UPSTREAM_COMPILER.md`, `UPSTREAM_REGISTRY.md`, `UPSTREAM_HOSTS.md`; it locks format
 0.7.1 / compiler 0.7.2 / enricher 0.7.3, capped `<0.8`, and polars and duckdb `<2`, until both registry instances serve
-0.8. It is on our triage's `wake_from` (8de1fa80).
+0.8. It is on our triage's `wake_from` (8de1fa80). **just-vcf/upstream-liaison** (seated 2026-11-16, its 6f06b56) watches polars-bio and polars
+from the index too: a polars-bio cap that holds both of us is raised with it first.
 
 **Push:** origin/main holds every liaison commit through 5611ea91; the notes commits after it wait for the lead's
 next push (a push of mine was refused by auto mode, kit #332). The liaison pushes only its own ledgers and notes, and only as a fast-forward that carries no other seat's
@@ -109,6 +110,8 @@ organisation sends is information unless the person arranged it; the fellow liai
 and an upstream filing is not an embassy message, so nothing changes here); and as of v0.1.167 (a person's
 reaction on this seat's post reaches it, a yes or no emoji wakes it; no concern); and as of v0.1.176 (a secret seen in a
 message is never repeated; this seat holds none, no concern). reflect after 2026-11-21: classes/base/BASE.md as of v0.1.206 (the
-`nothing` button closes the wake, not the turn: pending work that nothing blocks goes on in the same turn; no concern).
+`nothing` button closes the wake, not the turn: pending work that nothing blocks goes on in the same turn; no concern). reflect after 2026-11-23: classes/base/BASE.md as of v0.1.224 (only
+a real fork goes to the person: of this seat's asks, none is a fork; the VCF filing grant waits on the rule that a
+seat-relayed brief change is the person's to confirm, the rest are steps only the person can take; no concern).
 
 **Priming c339487** (a cap on a proven break; adoption maps to the lead) was read; no concern.
