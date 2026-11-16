@@ -64,7 +64,24 @@ class _FakeFS:
         dirname = prefix.rstrip("/").rsplit("/", 1)[-1]
         if dirname not in self.tree:
             raise FileNotFoundError(prefix)
-        return [f"{prefix}/{name}" for name in self.tree[dirname]]
+        names = [f"{prefix}/{name}" for name in self.tree[dirname]]
+        if not detail:
+            return names
+        # As `HfFileSystem` lists: each entry's `size`, and its LFS digest under `lfs` → `sha256`
+        # (`huggingface_hub`'s `BlobLfsInfo`), for the bytes `get` would write.
+        return [self._entry(name, self.tree[dirname][name.rsplit("/", 1)[-1]]) for name in names]
+
+    @staticmethod
+    def _entry(name: str, column: str) -> dict:
+        import hashlib
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as scratch:
+            body = Path(scratch) / "body.parquet"
+            _write_parquet(body, column)
+            data = body.read_bytes()
+        digest = hashlib.sha256(data).hexdigest()
+        return {"name": name, "size": len(data), "type": "file", "lfs": {"size": len(data), "sha256": digest}}
 
     def get(self, remote_path: str, local_path: str) -> None:
         parts = remote_path.rstrip("/").split("/")

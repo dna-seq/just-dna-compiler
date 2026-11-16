@@ -82,17 +82,31 @@ did. `enrich` still serves a whole recorded cache without the network, this one 
 record, between its pull and this fix; nothing here knows which modules were enriched on one. The marker is the
 lane's `pull-record.json` with no `release_sha256` key. Read it **before** running `cache pull`, which rewrites it;
 where the key is absent, re-enrich the modules enriched against that lane since the record's date. A cache that 0.8.3
-to 0.8.7 completed from no record at all carries the key and cannot be told on disk from an honest pull: parquet files
-much older than its `pull-record.json` are a hint, not proof, and moving it aside and pulling settles it.
+to 0.8.7 completed from no record at all carries the key, so nothing on disk marks it. That cache, too, is repaired by
+`cache pull`, which now compares a pulled cache whose label equals the hub's with the published listing, as below. Its
+modules enriched since the pull are not identifiable from here either; re-enriching against the lane after `cache
+pull` is the safe move where the timing fits.
+
+**`cache pull` checks a current label against the listing.** For a pulled cache (a pull record of this repo; never a
+local build, which differs from the hub by design) whose label equals the hub's, `cache pull` and `cache prepare` list
+the repo with detail and compare every kept file: its size, and, for a file of at most 256 MiB, the LFS sha256 the
+listing states. A file that differs, or is absent, is fetched again, with the label withdrawn first and placed again
+once the file is the release's. The outcome is `refreshed`, and the note names the files. A listing that cannot be
+read leaves the cache as it is, outcome `unknown`. `enrich` reads no hub for a whole recorded cache and does not run
+this check. Above 256 MiB only sizes are compared: hashing an AlphaGenome AVI shard on every pull would be minutes of
+disk reads, and a release that moved changes a parquet's size in practice. A file stored in git rather than LFS
+carries no digest in the listing and is compared by size.
 
 No public name, field, flag or vocabulary moves. Tests: `test_download.py` (the reproduction on both paths, the
 pre-RM420 record with an equal and with a differing label and on the `enrich` path, a build an `enrich` run passes
 over, a build stating the hub's own label on either path, the label a fetch withdraws and the `cache pull` after it,
-a pull's own label an `enrich` run withdrew, a `release.json` that could not be fetched, a pull killed after placing
-its label, a resume of the same release and one across a release boundary) and
-`test_cache_pull_follows_the_hub.py` (the knots, with and without a `release.json`, and Ensembl's manifest left in
-place when `release.json` could not be asked). Twelve of the sixteen were red on the previous `main`; the other four
-pin what stays, and each arm of the fix reverted on purpose turns at least one red. RM420's tests pass unchanged.
+a pull's own label an `enrich` run withdrew, a build lacking a part on both paths, a `release.json` that could not
+be fetched, a pull killed after placing its label, a resume of the same release on both paths and one across a
+release boundary, each repair's second lap) and `test_cache_pull_follows_the_hub.py` (the knots, with and without a
+`release.json`, Ensembl's manifest left in place when `release.json` could not be asked, STRchive's old label never
+kept over a new catalogue, and the listing check: a size, a digest, the hashing bound, agreement, `enrich` and builds
+untouched, an unreadable listing, a refetch cut short). Each arm of the fix reverted on purpose turns at least one
+red, and RM420's tests pass unchanged.
 
 ## 2026-11-14 — `v0.8.7`: enricher 0.8.7 (a patch, cut from `main`)
 

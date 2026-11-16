@@ -1864,7 +1864,13 @@ with the part, or move it aside and `cache pull`); `cache pull` reports it as le
 `release.json` beside files it no longer vouches for is withdrawn before the first byte, and the next `cache pull`
 re-pulls. The record's `release_sha256` names only a file the pull placed (`null` otherwise). A
 `release.json` that could not be fetched stops the pull before anything in the cache moves (it is asked before the
-manifest is placed), as a manifest that could not be fetched does; a repo that publishes none pulls as before. A download that times out names
+manifest is placed), as a manifest that could not be fetched does; a repo that publishes none pulls as before.
+**A current label is checked against the listing (RM445).** For a pulled cache (never a build) whose label equals
+the hub's, `cache pull` and `cache prepare` compare every kept file with `fs.ls(..., detail=True)`: its `size`, and
+for a file of at most 256 MiB the LFS `sha256` (`lfs` → `sha256`). A contradicted or absent file is fetched again,
+the label withdrawn first; an unreadable listing leaves the cache as it is (`unknown`). Above the bound, and for a
+file stored in git, only the size is compared. `enrich` does not run the check: a whole recorded cache stays
+network-free. A download that times out names
 `HF_HUB_DOWNLOAD_TIMEOUT` (10 s by default, short for a 1 GB file). One snapshot failing does not sink
 the rest — each reports its own line, and the command exits 1 if any failed.
 

@@ -266,8 +266,9 @@ class _FollowHub:
         """The line `cache pull` and `cache prepare` print beside the lane, naming both labels; `None` when quiet."""
         local = self.local or "no release label"
         if self.outcome == "refreshed" and self.unattested:
+            why = f" ({self.detail})" if self.detail else ""
             return (
-                f"re-pulled: nothing attested which release its files were (it stated {local}), and "
+                f"re-pulled: nothing attested which release its files were (it stated {local}){why}, and "
                 f"{self.repo} publishes {self.published}"
             )
         if self.outcome == "refreshed":
@@ -654,6 +655,7 @@ def _provision_snapshot(
     # holds. Only a whole cache, or an unrecorded one, is asked about: an unfinished pull or a switched
     # repo is pulled below as before.
     refreshing = False
+    suspect: frozenset[str] = frozenset()
     if _follow_hub is not None and (whole or unrecorded):
         differs = _compare_with_hub(cache_dir, repo_root, label, _follow_hub)
         if differs and whole and _pulled_by_this_repo(cache_dir, hf_repo_prefix):
@@ -670,7 +672,40 @@ def _provision_snapshot(
             refreshing = True
             _refreshing(cache_dir, label, _follow_hub, unattested=True)
         elif whole:
-            return cache_dir
+            # RM445: a label equal to the hub's is a claim about every file, and a pull from 0.8.3 to 0.8.7
+            # could place it over files it kept. A pulled cache (never a build, which differs from the hub
+            # by design) is compared with the listing's sizes and LFS digests; a file that differs is
+            # fetched again below. `cache pull` only: `enrich` returned a whole cache above, unread.
+            if (
+                _follow_hub.published is None
+                or coverage is not None
+                or not _pulled_by_this_repo(cache_dir, hf_repo_prefix)
+            ):
+                return cache_dir
+            try:
+                suspect = _differs_from_listing(cache_dir, hf_repo_prefix, filename_glob)
+            except OSError as exc:
+                _follow_hub.outcome, _follow_hub.detail = (
+                    "unknown",
+                    f"its files could not be compared ({exc})",
+                )
+                logger.warning(
+                    "%s cache at %s states the release %s publishes, but the listing could not be read to "
+                    "compare its files (%s). Using it as it is.",
+                    label,
+                    cache_dir,
+                    _follow_hub.repo,
+                    exc,
+                )
+                return cache_dir
+            if not suspect:
+                return cache_dir
+            _follow_hub.detail = (
+                f"{len(suspect)} file(s) differ from the listing: "
+                + ", ".join(sorted(suspect)[:5])
+                + (", …" if len(suspect) > 5 else "")
+            )
+            _refreshing(cache_dir, label, _follow_hub, unattested=True)
 
     # A local build: a `release.json` no pull of this repo placed (no record, or one that does not vouch
     # for it). A pull never fetches beside one, on either path (RM445, the pm's call): its builder's
@@ -887,6 +922,8 @@ def _provision_snapshot(
         # file without a manifest entry is.
         replacing = switched or refreshing
         keeps = _plan_keeps(cache_dir, remote_files, remote_sidecars, manifest, replacing, placed_here)
+        # The files the listing contradicts (RM445): fetched again, whatever the record says of them.
+        keeps.update({r: False for r in suspect if r in keeps})
         record_attests = published_release is not None and kept_release == published_release and not replacing
         unattested = [r for r, kept in keeps.items() if kept and not _attested(r, manifest, record_attests)]
         # An unrecorded cache stating a release of its own is a builder's (every builder writes one): its
@@ -921,21 +958,22 @@ def _provision_snapshot(
             record[PULL_RECORD_REPLACING_KEY] = switched_from
         if published_release is not None and not any(
             parquet_footer_ok(cache_dir / r)
-            and not (record_attests or (keeps[r] and _attested(r, manifest, False)))
+            and (r in suspect or not (record_attests or (keeps[r] and _attested(r, manifest, False))))
             for r in keeps
         ):
             # Every whole file already under a planned name is this release's, so whatever an interruption
             # leaves is too, and the resume may keep it.
             record[_PULLING_RELEASE_KEY] = published_release
         atomic_write_text(cache_dir / PULL_RECORD_FILENAME, json.dumps(record, indent=2) + "\n")
-        if refreshing or (withhold and fetching):
+        if refreshing or (withhold and fetching) or suspect:
             # Withdrawn right before the first byte moves, and fetched last below, as a builder's record is
             # (`@snapshot-layout-locations`): a refresh cut short leaves a cache that states no release, which
             # the next pull reads as differing from the hub's and finishes, never old bytes beside new ones
             # described as the old release. A pull that fetches into a cache it keeps unattested files of
             # withdraws it too (RM445): the file there, an earlier pull's (a build never reaches here),
             # described the cache before these bytes arrived, and cannot describe the mixture after. With
-            # nothing to fetch it stays, still describing exactly the bytes it described.
+            # nothing to fetch it stays, still describing exactly the bytes it described. A file the
+            # listing contradicts withdraws it as well: the label was false about that file.
             (cache_dir / RELEASE_FILENAME).unlink(missing_ok=True)
 
         for remote_path in remote_files:
@@ -1073,6 +1111,71 @@ def _provision_snapshot(
     _write_pull_record(cache_dir, hf_repo_prefix, planned, placed_release=placed_release)
     logger.info("Download complete: %s", cache_dir)
     return cache_dir
+
+
+#: The largest kept file whose bytes `cache pull` hashes against the listing's LFS sha256 (RM445). Size
+#: is compared for every file and costs a `stat`; a digest costs reading the file. A ClinVar chromosome
+#: is 1-10 MB and the whole lane about 200 MB, under a second to hash; an AlphaGenome AVI shard runs to
+#: gigabytes, and hashing every shard on every `cache pull` would turn a one-request check into minutes
+#: of disk reads. A release that moved changes a parquet's size in practice (every core file of the two
+#: Ensembl releases did, RM372), so the digest is the second witness where it is cheap, not the only one.
+_LISTING_SHA256_MAX_BYTES = 256 * 1024 * 1024
+
+
+def _listing_sha256(entry: dict) -> str | None:
+    """The LFS sha256 a Hub listing entry states, or `None` (a file stored in git, or no `lfs` key)."""
+    lfs = entry.get("lfs")
+    if isinstance(lfs, dict):
+        digest = lfs.get("sha256")
+        return digest if isinstance(digest, str) else None
+    return None
+
+
+def _differs_from_listing(cache_dir: Path, hf_repo_prefix: str, filename_glob: str) -> frozenset[str]:
+    """The snapshot's files, by path under the cache, that the published listing contradicts (RM445).
+
+    Read from `HfFileSystem.ls(..., detail=True)`, whose entries carry `size` and, for an LFS file,
+    `lfs` (`huggingface_hub`'s `BlobLfsInfo`, a dict whose `sha256` is the file's digest), for `data/`
+    and every sidecar directory. A file differs when it is absent, its size is not the listing's, or,
+    up to `_LISTING_SHA256_MAX_BYTES`, its sha256 is not the listing's. An entry stating no size
+    compares nothing. A listing that cannot be read raises `OSError` (could not ask); a sidecar
+    directory the repo lacks lists nothing.
+    """
+    fs = _hub_filesystem()
+    if fs is None:
+        raise OSError("huggingface_hub is not installed")
+    repo_root = hf_repo_prefix.rsplit("/", 1)[0]
+    listed: list[tuple[str, dict]] = []
+    try:
+        entries = fs.ls(hf_repo_prefix, detail=True)
+    except Exception as exc:
+        raise OSError(f"{type(exc).__name__}: {exc}") from exc
+    listed += [(SNAPSHOT_DATA_DIRNAME, e) for e in entries if isinstance(e, dict)]
+    for sidecar in SNAPSHOT_SIDECAR_DIRNAMES:
+        try:
+            entries = fs.ls(f"{repo_root}/{sidecar}", detail=True)
+        except Exception as exc:
+            if not _hub_says_absent(exc):
+                raise OSError(f"{sidecar}/: {type(exc).__name__}: {exc}") from exc
+            continue
+        listed += [(sidecar, e) for e in entries if isinstance(e, dict)]
+    differs: set[str] = set()
+    for directory, entry in listed:
+        name = str(entry.get("name", "")).rsplit("/", 1)[-1]
+        if not name.endswith(".parquet"):
+            continue
+        if directory == SNAPSHOT_DATA_DIRNAME and not fnmatch(name, filename_glob):
+            continue  # another layout's file, which the pull never takes
+        relative = f"{directory}/{name}"
+        local = cache_dir / relative
+        size = entry.get("size")
+        if not local.is_file() or (isinstance(size, int) and local.stat().st_size != size):
+            differs.add(relative)
+        elif isinstance(size, int) and size <= _LISTING_SHA256_MAX_BYTES:
+            digest = _listing_sha256(entry)
+            if digest is not None and digest != _file_sha256(local):
+                differs.add(relative)
+    return frozenset(differs)
 
 
 def _stage_release(fs, remote_path: str, staged: Path, label: str) -> str | None:

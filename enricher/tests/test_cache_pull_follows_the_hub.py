@@ -84,7 +84,18 @@ class _Hub:
         names = [k for k in self.files if k.rsplit("/", 1)[0] == directory and "/" in k]
         if not names:
             raise FileNotFoundError(prefix)
-        return [f"{self.root}/{k}" for k in names]
+        if not detail:
+            return [f"{self.root}/{k}" for k in names]
+        # As `HfFileSystem` lists: `size`, and the LFS digest under `lfs` → `sha256` (`BlobLfsInfo`).
+        return [
+            {
+                "name": f"{self.root}/{k}",
+                "size": len(self.files[k]),
+                "type": "file",
+                "lfs": {"size": len(self.files[k]), "sha256": hashlib.sha256(self.files[k]).hexdigest()},
+            }
+            for k in names
+        ]
 
     def get(self, remote: str, local: str) -> None:
         relative = self._relative(remote)
@@ -346,6 +357,144 @@ def test_a_hub_that_states_no_release_leaves_the_cache_as_it_is(base: Path, inst
 
     assert _bytes_of(cache) == before and hub.listed == []
     assert (follow.local, follow.published) == (_OLD, None)
+
+
+# ── a current label is checked against the listing (RM445, the pm's 3a) ───────────────────────
+
+
+_CV = ("data/clinvar-chr1.parquet", "data/clinvar-chr2.parquet")
+_CV_LABEL = "clinvar_2026-11-01"
+
+
+def _clinvar_hub(install_hub, **kwargs) -> _Hub:
+    return install_hub(
+        "clinvar",
+        {_CV[0]: _parquet(["A1"]), _CV[1]: _parquet(["B1"]), RELEASE_FILENAME: _release(_CV_LABEL)},
+        **kwargs,
+    )
+
+
+def _pulled_clinvar(tmp_path: Path, install_hub) -> Path:
+    """A whole ClinVar cache this repo's pull placed, its record vouching for the hub's own label."""
+    cache = tmp_path / "clinvar"
+    _clinvar_hub(install_hub)
+    dl.ensure_clinvar_snapshot(cache)
+    record = json.loads((cache / PULL_RECORD_FILENAME).read_text(encoding="utf-8"))
+    assert record[dl._RELEASE_DIGEST_KEY] is not None and snapshot_release_label(cache) == _CV_LABEL
+    return cache
+
+
+def test_cache_pull_refetches_a_file_whose_size_the_listing_contradicts(tmp_path: Path, install_hub) -> None:
+    """A 0.8.3-0.8.7 cache: recorded, whole, the hub's label, and one file another release's bytes."""
+    cache = _pulled_clinvar(tmp_path, install_hub)
+    (cache / _CV[1]).write_bytes(_parquet(["OLD1", "OLD2", "OLD3"]))
+    hub = _clinvar_hub(install_hub)
+    assert len((cache / _CV[1]).read_bytes()) != len(hub.files[_CV[1]])
+
+    follow = dl._FollowHub(snapshot_release_label)
+    dl.ensure_clinvar_snapshot(cache, _follow_hub=follow)
+
+    assert [f for f in hub.fetched if f.startswith("data/")] == [_CV[1]], (
+        "only the file the listing contradicts"
+    )
+    assert (cache / _CV[1]).read_bytes() == hub.files[_CV[1]]
+    assert snapshot_release_label(cache) == _CV_LABEL and follow.outcome == "refreshed"
+    assert _CV[1] in follow.note()
+
+
+def test_cache_pull_refetches_a_file_of_the_same_size_whose_digest_differs(
+    tmp_path: Path, install_hub
+) -> None:
+    cache = _pulled_clinvar(tmp_path, install_hub)
+    (cache / _CV[0]).write_bytes(_parquet(["Z1"]))
+    hub = _clinvar_hub(install_hub)
+    assert len((cache / _CV[0]).read_bytes()) == len(hub.files[_CV[0]]), "the size alone cannot see it"
+
+    follow = dl._FollowHub(snapshot_release_label)
+    dl.ensure_clinvar_snapshot(cache, _follow_hub=follow)
+
+    assert [f for f in hub.fetched if f.startswith("data/")] == [_CV[0]]
+    assert (cache / _CV[0]).read_bytes() == hub.files[_CV[0]] and follow.outcome == "refreshed"
+
+
+def test_a_file_over_the_hashing_bound_is_compared_by_size_alone(
+    tmp_path: Path, install_hub, monkeypatch
+) -> None:
+    """Above the bound no file is read: a same-size difference there is not seen, by design."""
+    cache = _pulled_clinvar(tmp_path, install_hub)
+    (cache / _CV[0]).write_bytes(_parquet(["Z1"]))
+    monkeypatch.setattr(dl, "_LISTING_SHA256_MAX_BYTES", 0)
+    hub = _clinvar_hub(install_hub)
+
+    follow = dl._FollowHub(snapshot_release_label)
+    dl.ensure_clinvar_snapshot(cache, _follow_hub=follow)
+
+    assert follow.outcome == "current" and hub.fetched == [RELEASE_FILENAME]
+
+
+def test_a_cache_the_listing_agrees_with_is_current_and_costs_no_payload(tmp_path: Path, install_hub) -> None:
+    cache = _pulled_clinvar(tmp_path, install_hub)
+    before = _bytes_of(cache)
+    for _ in range(2):
+        hub = _clinvar_hub(install_hub)
+        follow = dl._FollowHub(snapshot_release_label)
+        dl.ensure_clinvar_snapshot(cache, _follow_hub=follow)
+        assert follow.outcome == "current" and hub.fetched == [RELEASE_FILENAME]
+        assert _bytes_of(cache) == before
+
+
+def test_the_listing_check_is_cache_pulls_alone(tmp_path: Path, install_hub, monkeypatch) -> None:
+    """`enrich` reads no hub for a whole recorded cache, contradicted or not; a build is never compared."""
+    cache = _pulled_clinvar(tmp_path, install_hub)
+    (cache / _CV[1]).write_bytes(_parquet(["OLD1", "OLD2", "OLD3"]))
+    monkeypatch.setattr(huggingface_hub, "HfFileSystem", _explode)
+    assert dl.ensure_clinvar_snapshot(cache) == cache
+
+    built = tmp_path / "built"
+    write = begin_snapshot_write(built)
+    (built / "data").mkdir(parents=True)
+    for name in _CV:
+        (built / name).write_bytes(_parquet(["BUILT", "HERE"]))
+    write.commit(SnapshotRelease.model_validate({"dataset": _CV_LABEL, "source": "test"}))
+    hub = _clinvar_hub(install_hub)
+    follow = dl._FollowHub(snapshot_release_label)
+    dl.ensure_clinvar_snapshot(built, _follow_hub=follow)
+    assert not [f for f in hub.fetched if f.startswith("data/")]
+    assert (built / _CV[0]).read_bytes() == _parquet(["BUILT", "HERE"])
+
+
+def test_an_unreadable_listing_leaves_a_current_cache_unknown(
+    tmp_path: Path, install_hub, monkeypatch
+) -> None:
+    cache = _pulled_clinvar(tmp_path, install_hub)
+    before = _bytes_of(cache)
+    hub = _clinvar_hub(install_hub)
+
+    def refuse(prefix: str, detail: bool = True):
+        raise TimeoutError("read timed out")
+
+    monkeypatch.setattr(hub, "ls", refuse)
+    follow = dl._FollowHub(snapshot_release_label)
+    dl.ensure_clinvar_snapshot(cache, _follow_hub=follow)
+    assert follow.outcome == "unknown" and _bytes_of(cache) == before
+
+
+def test_a_refetch_of_a_contradicted_file_cut_short_states_no_release(tmp_path: Path, install_hub) -> None:
+    """The label is withdrawn before the file moves, and the record names no release being pulled."""
+    cache = _pulled_clinvar(tmp_path, install_hub)
+    (cache / _CV[1]).write_bytes(_parquet(["OLD1", "OLD2", "OLD3"]))
+    _clinvar_hub(install_hub, failing={_CV[1]: OSError("connection reset")})
+
+    with pytest.raises(OSError):
+        dl.ensure_clinvar_snapshot(cache, _follow_hub=dl._FollowHub(snapshot_release_label))
+    assert snapshot_release_label(cache) is None
+    record = json.loads((cache / PULL_RECORD_FILENAME).read_text(encoding="utf-8"))
+    assert dl._PULLING_RELEASE_KEY not in record
+
+    hub = _clinvar_hub(install_hub)
+    follow = dl._FollowHub(snapshot_release_label)
+    dl.ensure_clinvar_snapshot(cache, _follow_hub=follow)
+    assert (cache / _CV[1]).read_bytes() == hub.files[_CV[1]] and snapshot_release_label(cache) == _CV_LABEL
 
 
 # ── the other two provisioning shapes: Ensembl's manifest label, STRchive's root file ───────────

@@ -2331,17 +2331,24 @@ not a release) does not. Otherwise:
   same-release resume still fetches only what it lacks, and a pull killed after placing its label is current.
 - **Could-not-ask on `release.json`** (anything but the Hub's absent answer) stops the pull before anything in the
   cache moves, as for the manifest: it is asked before the manifest is placed. A servable cache is used as it is. A
-  repo publishing no `release.json` pulls as before (Ensembl now asks for one on every pull).
+  repo publishing no `release.json` pulls as before (Ensembl now asks for one on every pull). Kept by the pm.
+- **A current label is checked against the listing** (the pm's 3a, `cache pull` only). A whole pulled cache with no
+  manifest whose label equals the hub's is compared with `fs.ls(..., detail=True)` (`_differs_from_listing`): every
+  file's `size`, and its LFS `sha256` (`lfs` → `sha256`, read off `huggingface_hub` 2.4.0's `_cache_info_from_path_info`
+  and `BlobLfsInfo`) up to `_LISTING_SHA256_MAX_BYTES`, 256 MiB. A contradicted or absent file is fetched again, the
+  label withdrawn first and the record naming no release being pulled, so a refetch cut short states no release and
+  the next pull re-pulls. A listing that cannot be read is `unknown`. This closes the 0.8.3-0.8.7 caches no marker on
+  disk names. `enrich` stays network-free for a whole recorded cache; a build is never compared.
 
 STRchive's root-file provisioner keeps no file, so the mechanism does not reach it (class checked); it now withdraws an
-old `release.json` before every catalogue it moves in. Sixteen tests: thirteen in `test_download.py`, three in
-`test_cache_pull_follows_the_hub.py`; twelve red on `051dc276`, and each arm reverted on purpose turned at least one
-red. RM420's eighteen pass unchanged. A high-effort code review of the first build found the two orders (`enrich` then
+old `release.json` before every catalogue it moves in. Tests in `test_download.py` and
+`test_cache_pull_follows_the_hub.py`, each repair with a second lap counted through the fake hub; each arm reverted on
+purpose turned at least one red, and RM420's eighteen pass unchanged. A high-effort code review of the first build found the two orders (`enrich` then
 `cache pull`, and the reverse) disagreeing over an unrecorded build, a withdrawn description turning a build into a
 pull, could-not-ask read as absent, and the knots withheld where no label exists; a second read found the withdrawal
 record catching a pull's own label and `release.json` asked after the manifest had moved. All are fixed and tested.
 
-**Residuals** won't fix — a cache that 0.8.3 to 0.8.7 completed from no record carries `release_sha256` and the hub's label over old bytes, and nothing on disk tells it from an honest pull, so its operator moves it aside and pulls once
+**Residuals** won't fix — a kept file over 256 MiB, or one stored in git rather than LFS, whose size equals the listing's while its bytes differ is not seen by `cache pull`'s listing check, because hashing every large shard on every pull is minutes of disk reads
 
 # Not format scope
 
