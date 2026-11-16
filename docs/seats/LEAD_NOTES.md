@@ -44,8 +44,11 @@ The lead's working state, rewritten to the present before each reset. Last rewri
 - Leftover local branches `build/RM341` and `build/RM343`: cherry-picked onto `main`, so `-d` refuses them;
   `-D` is the person's.
 
-- 0.9 branch (2026-11-16): opened off `main` when the pm's `docs/proposals/PROPOSAL_0_9.md` lands (the pm said: entries
-  plus probe leave decisions open); then the build runs unattended. `after: PROPOSAL_0_9.md`.
+- 0.9 (2026-11-16): no PROPOSAL_0_9; the decisions are the pm's dated blocks in ROADMAP_0_9.md (dcff4010). A
+  fresh critic read them against `main`; findings handed to the pm (classes A–H, 2026-11-16T19:10Z). `unattended`:
+  branch `0.9` off `main`, wave 0 (move `LookupClients` to a leaf module, `lookup.LookupClients` still importable;
+  format's `parse_release`), then RM443 and RM412 (sound as decided). `after: the pm's answers`: RM404 (F), RM437
+  (A, E), RM430 (A–D, H), RM431 asks 6, 5, 7, then 4 (G, and the registry's answer).
 
 ## Open decisions
 
