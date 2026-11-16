@@ -456,6 +456,36 @@ def test_a_strchive_catalogue_with_no_pull_record_is_left_alone(base: Path, inst
     assert "strchive_v2.26.0" in result.output and "strchive_v2.28.0" in result.output
 
 
+@pytest.mark.parametrize("hub_release", [None, "strchive_v2.28.0"], ids=["hub-has-none", "hub-has-one"])
+def test_a_catalogue_moved_in_never_keeps_the_old_label(
+    base: Path, install_hub, hub_release: str | None
+) -> None:
+    """RM445's class check on the root-file provisioner: the old `release.json` goes before the payload.
+
+    A catalogue that does not parse is pulled again; a `release.json` beside it described the broken
+    catalogue, never the new one. Before RM445 it was withdrawn only on a refresh, so with a repo that
+    publishes none the stale label stayed over the fresh catalogue, and the record vouched for it.
+    """
+    cache = LANES_BY_NAME["strchive"].default_dir()
+    cache.mkdir(parents=True)
+    (cache / STRCHIVE_CATALOGUE_FILENAME).write_text('[{"id": "TRUNC', encoding="utf-8")
+    (cache / RELEASE_FILENAME).write_text(_release("strchive_v2.20.0"), encoding="utf-8")
+    files: dict[str, bytes | str] = {STRCHIVE_CATALOGUE_FILENAME: '[{"id": "NEW"}]'}
+    if hub_release is not None:
+        files[RELEASE_FILENAME] = _release(hub_release)
+    hub = install_hub("strchive", files)
+
+    dl.ensure_strchive_snapshot(cache)
+
+    assert (cache / STRCHIVE_CATALOGUE_FILENAME).read_bytes() == hub.files[STRCHIVE_CATALOGUE_FILENAME]
+    assert snapshot_release_label(cache) == hub_release
+    record = json.loads((cache / PULL_RECORD_FILENAME).read_text(encoding="utf-8"))
+    placed = cache / RELEASE_FILENAME
+    expected = hashlib.sha256(placed.read_bytes()).hexdigest() if placed.is_file() else None
+    assert record[dl._RELEASE_DIGEST_KEY] == expected
+    assert (expected is None) == (hub_release is None)
+
+
 def test_enrichs_ensure_never_reads_the_hub_for_a_present_catalogue(
     base: Path, install_hub, monkeypatch
 ) -> None:

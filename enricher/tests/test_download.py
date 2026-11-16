@@ -352,6 +352,37 @@ def test_enrichs_pull_never_labels_an_unrecorded_cache_with_the_hubs_release(
     assert follow.outcome == "refreshed"
 
 
+def _ensure_counting(cache: Path, fake_hub, *, pull: bool) -> tuple[list[str], dl._FollowHub | None]:
+    """One `ensure_clinvar_snapshot` call against a fresh fake hub at November: what it fetched, and its intent."""
+    fs = fake_hub({"clinvar-chr1.parquet": "clin_sig"}, release=_release_body(_NOV))
+    follow = dl._FollowHub(LANES_BY_NAME["clinvar"].release_label) if pull else None
+    dl.ensure_clinvar_snapshot(cache, _follow_hub=follow)
+    return fs.fetched, follow
+
+
+def test_the_withheld_cache_is_stable_on_every_lap_and_repaired_once(fake_hub, tmp_path: Path) -> None:
+    """Lap two of the enrich path asks nothing; the repair happens once; every lap after it is quiet.
+
+    A withheld cache that re-fetched on every `enrich` call, or a repaired one that re-pulled on every
+    `cache pull`, would be a loop no test of a single call can see.
+    """
+    cache = _old_unrecorded_cache(tmp_path)
+
+    fetched, _ = _ensure_counting(cache, fake_hub, pull=False)
+    assert fetched == [RELEASE_FILENAME] and _clinvar_label(cache) is None
+    fetched, _ = _ensure_counting(cache, fake_hub, pull=False)
+    assert fetched == [], "lap two of enrich: a whole recorded cache asks nothing"
+    assert _clinvar_label(cache) is None and _column(cache / _CHR1) == "old_release"
+
+    fetched, follow = _ensure_counting(cache, fake_hub, pull=True)
+    assert follow.outcome == "refreshed" and _CHR1 in fetched and _clinvar_label(cache) == _NOV
+
+    fetched, follow = _ensure_counting(cache, fake_hub, pull=True)
+    assert follow.outcome == "current" and fetched == [RELEASE_FILENAME], "one small read, never the payload"
+    fetched, _ = _ensure_counting(cache, fake_hub, pull=False)
+    assert fetched == [] and _clinvar_label(cache) == _NOV and _column(cache / _CHR1) == "clin_sig"
+
+
 def test_cache_pull_refetches_an_unrecorded_cache_the_hub_labels(fake_hub, tmp_path: Path) -> None:
     """The `cache pull` path repairs in one run: the kept file is fetched again, then the label placed."""
     cache = _old_unrecorded_cache(tmp_path)
@@ -390,11 +421,14 @@ def test_cache_pull_repairs_a_pre_rm420_cache_whose_label_equals_the_hubs(fake_h
     assert _column(cache / _CHR1) == "clin_sig" and _clinvar_label(cache) == _NOV
     assert follow.outcome == "refreshed"
     assert dl._RELEASE_DIGEST_KEY in _record(cache)
-    # Then it is current, and a warm cache asks nothing on the enrich path.
-    fs = fake_hub({"clinvar-chr1.parquet": "clin_sig"}, release=_release_body(_NOV))
-    follow = dl._FollowHub(LANES_BY_NAME["clinvar"].release_label)
-    dl.ensure_clinvar_snapshot(cache, _follow_hub=follow)
-    assert follow.outcome == "current" and fs.fetched == [RELEASE_FILENAME]
+    # Lap two: it is current to `cache pull` (one small read), and a warm cache asks nothing on the
+    # enrich path, its label unchanged.
+    for _ in range(2):
+        fetched, follow = _ensure_counting(cache, fake_hub, pull=True)
+        assert follow.outcome == "current" and fetched == [RELEASE_FILENAME]
+    label_before = (cache / RELEASE_FILENAME).read_bytes()
+    fetched, _ = _ensure_counting(cache, fake_hub, pull=False)
+    assert fetched == [] and (cache / RELEASE_FILENAME).read_bytes() == label_before
 
 
 def test_enrichs_pull_still_trusts_a_whole_pre_rm420_cache_without_the_hub(
@@ -566,8 +600,9 @@ def test_a_pull_killed_after_placing_its_label_is_current_to_the_next_pull(fake_
     assert follow.outcome == "current" and fs.fetched == [RELEASE_FILENAME]
 
 
+@pytest.mark.parametrize("path", ["enrich", "pull"])
 def test_a_resumed_pull_of_the_same_release_fetches_only_what_it_lacks_and_is_labelled(
-    fake_hub, tmp_path: Path
+    fake_hub, tmp_path: Path, path: str
 ) -> None:
     """The record a pull writes first names the release it is pulling, so a resume keeps what it got."""
     cache = tmp_path / "cv"
@@ -575,9 +610,11 @@ def test_a_resumed_pull_of_the_same_release_fetches_only_what_it_lacks_and_is_la
     with pytest.raises(KeyboardInterrupt):
         dl.ensure_clinvar_snapshot(cache)
     assert not list(cache.glob("*.part")), "the staged release.json goes with the pull that stopped"
+    assert dl._PULLING_RELEASE_KEY in _record(cache)
 
     fs = fake_hub(_THREE, release=_release_body(_NOV))
-    dl.ensure_clinvar_snapshot(cache)
+    follow = dl._FollowHub(LANES_BY_NAME["clinvar"].release_label) if path == "pull" else None
+    dl.ensure_clinvar_snapshot(cache, _follow_hub=follow)
     assert sorted(f for f in fs.fetched if f.startswith("data/")) == [
         "data/clinvar-chr2.parquet",
         "data/clinvar-chr3.parquet",
