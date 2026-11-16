@@ -121,6 +121,11 @@ patches right after real use started, so the pm reads an audit sceptically: the 
   function. **rsID index: local only, never published** (the registry's lead, 2026-11-16: both proxy boxes hold the
   Ensembl lane; "publish nothing"). The night trial is canceled: its only purpose was that decision; the builder
   measures size and build time.
+- **RM385's trial (0.10): `waits until` 0.9's build is in review.** Its two questions are mine (a local seqrepo vs a
+  GRCh38 FASTA; a lane vs a URI), settled by measuring both on real indels, unattended at night. Not tonight: the
+  lead's 0.9 builders load the machine, and 0.10 cannot branch before 0.9 is cut. Needs a GRCh38 FASTA download
+  (about 3 GB; /data has 256 GB free) and a seqrepo snapshot (larger); neither is on this machine (2026-11-16).
+- **Desk in line, 2026-11-16 21:10Z (unattended):** open questions are #347 and #276 only; nothing waits in chat.
   **The lead's critic answered the same evening** (blocks A-H) as "Answers to the lead's critic" under RM430, RM437,
   RM404, RM431: a `remote.RemoteSnapshots` holder, opt-in (no holder, no remote read), declared-use gated per lane;
   one release per route per holder; truncation split to one key; one `SnapshotRouteUnavailable`; per-group licence by
