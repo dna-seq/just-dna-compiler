@@ -95,16 +95,19 @@ patches right after real use started, so the pm reads an audit sceptically: the 
 - **Standing rule (the maintainer, 2026-11-15): smaller minors.** "don't make it too big, these half-a-week release
   maraphons bleed me dry, lets make em smaller". A minor is one seam, its decisions made before the branch, no new
   table kind; the rest goes to the next small minor or is parked.
-- **0.9 scope proposed in chat, 2026-11-15, awaiting the maintainer.** Revised after #261: RM430, RM431, RM437,
-  RM443 + RM404 + RM412's second half (enricher only). 0.10, a format-tier minor: RM399 + RM441, RM435, RM265,
-  RM385. Methylation its own minor after (asked: are the PacBio samples in hand?). Parked: RM302, RM350, RM294,
-  RM345/RM286, RM358, RM360. Asked the maintainer two process rules: in-build items go to the next minor; two
-  review rounds at most. On the yes: the scope table atop ROADMAP_0_9.md, ROADMAP_0_10.md opened, parked
-  entries moved with gates, a message to the lead. Trial owed before the branch: remote reads against disk.
-  **Moved to the desk 2026-11-15 18:10Z (unattended):** #326 the scope (3 items, term 7 days, default yes to all),
-  #327 rule a and #328 rule b (default: a trial on 0.9 only, RELEASE_CYCLE.md unchanged), #329 PacBio (default:
-  methylation undated). `blocked: desk #326`: the scope write waits for it or its term (2026-11-22). The remote-read
-  trial runs tonight (a subagent; report in the scratchpad, then a probe `docs/probes/REMOTE_READS_0_9.md`).
+- **0.9 and 0.10 scope: set 2026-11-16 (8076cf54), desk #326 applied on its default** under the base's real-fork rule
+  (v0.1.224, kit #510: a yes-question with no drawback on one side is the seat's; the maintainer: "I'm not a parrot").
+  0.9 = RM430, RM431, RM437, RM443, RM404, RM412's second half (enricher only); 0.10 = RM399 + RM441 (with S156),
+  RM435, RM265, RM385; methylation after 0.10, undated. Parked into ROADMAP.md with gates and gate-audit rows: RM302,
+  RM350, RM294, RM345 + RM286, RM358, RM360. **No ROADMAP_0_10.md**: the file is "0.9 and later minors" already, so
+  0.10 sits under its own heading there and the 0.9 cut opens 0_10 with what is left (fewer files, no nav change).
+  #327/#328 applied as a 0.9 trial, written atop ROADMAP_0_9.md with the blocker definition; RELEASE_CYCLE.md
+  unchanged; **owed: report after 0.9 how both went**. #329 withdrawn (a "when" doubt is no question): methylation
+  `waits until` the maintainer reports the PacBio samples in hand. All four withdrawn `default applied:` with a veto
+  offer. **One fork left for 0.10's opening**: RM265's shape (an authored `panel_provenance:` block, full cost, or the
+  machine-written licence row, half cost; the gene denominator a list or a count). RM385's two questions are mine (a
+  trial: seqrepo vs FASTA; the URI weighs ahead). #276 got an Update (the new-name folder exists since 11-14 with two
+  transcripts); it stays the maintainer's, a change in their settings folder outside any grant.
 - **Remote-read trial: done 2026-11-15** (25bbdc6b): disk 0.02-0.1 s, proxy 0.2-0.4 s, HF 2-29 s and bound by its
   anonymous quota (3,000 requests / 5 min / IP); open the chromosome file, not the glob. Handed on: this machine's
   ClinVar cache has a new release.json over August parquet (triage, DM 640494788); the polygon's stale ClinPGx copy,

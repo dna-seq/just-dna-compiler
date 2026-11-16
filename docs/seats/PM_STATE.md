@@ -1,5 +1,6 @@
-**Where it stands** (2026-11-15). The current release is **0.8.7** (enricher only, on PyPI since 2026-11-15); 0.8.8 is cut. The scope of
-the next minor, 0.9, is being chosen with the maintainer; one zone is decided: reading reference snapshots remotely.
+**Where it stands** (2026-11-16). The current release is **0.8.7** (enricher only, on PyPI since 2026-11-15); 0.8.8 is cut. The next
+two minors are scoped small: 0.9 teaches the enricher to read reference data wherever it lives, and 0.10 is four small
+schema additions right after.
 
 **Headline results**
 - ⏳ 0.8.8, cut and waiting for the maintainer's publish (enricher only): a cache pull no longer keeps old ClinVar files
@@ -12,11 +13,14 @@ the next minor, 0.9, is being chosen with the maintainer; one zone is decided: r
   found 0 rows it changes.
 - ✅ AlphaGenome 2's predicted methylation, second trial: at 42 strong blood methylation variants its predicted shift
   was 27 times that at 84 matched non-variants, and 28 of 31 directions agreed. One cohort, no replication.
+- ✅ Scoped, 2026-11-16: 0.9 is enricher-only, six items; 0.10 is five small schema items; methylation follows, undated
+  until the PacBio samples are in hand; seven other items wait, each with what brings it back.
 - ✅ Decided for 0.9: the enricher reads a snapshot from local disk first, then the registry's proxy, then Hugging Face.
+- ✅ 0.9 tries two rules for shorter releases: work found mid-build waits for the next minor, and review stops after two
+  rounds, except for a defect the release itself introduced.
 - ✅ Measured: a lookup takes 0.02-0.1 s from disk, 0.2-0.4 s through the registry's proxy, 2-29 s from Hugging Face,
   where an anonymous client also runs out of requests after a few large lookups.
 
 **Next**
-1. ❓ 0.9's scope — the maintainer answers the pm's small-minor proposal (desk #326; two process rules #327, #328;
-   the PacBio samples #329).
+1. ⏳ 0.9 — the lead branches and builds the enricher's remote reads, once 0.8.8 is published.
 2. ❓ One question on the maintainer's desk: linking the project's memory to its new folder name.
