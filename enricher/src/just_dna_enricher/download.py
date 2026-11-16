@@ -300,34 +300,20 @@ _RELEASE_DIGEST_KEY = "release_sha256"
 #: Dropped from the record once the pull finishes, where `_RELEASE_DIGEST_KEY` says what was placed.
 _PULLING_RELEASE_KEY = "pulling_release_sha256"
 
-#: The record key naming the sha256 of a `release.json` a pull **withdrew** without placing another
-#: (RM445): one it found beside files it kept and nothing attests, a builder's say, which cannot
-#: describe the mixture once the pull fetches beside them. Its presence while no `release.json` is in
-#: the cache means the cache held someone else's description, so `_pulled_by_this_repo` does not take
-#: it for a pull and `cache pull` leaves it alone rather than putting the published release over a
-#: build. Carried by every later record until a pull places a `release.json` again.
-_WITHDREW_RELEASE_KEY = "withdrew_release_sha256"
-
 
 def _file_sha256(path: Path) -> str | None:
     return hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
 
 
-def _write_pull_record(
-    cache_dir: Path, repo: str, files: list[str], *, placed_release: bool, withdrew: str | None = None
-) -> None:
+def _write_pull_record(cache_dir: Path, repo: str, files: list[str], *, placed_release: bool) -> None:
     """The record of a pull that finished: its repo, its files, and the `release.json` it placed.
 
     `placed_release` is whether this pull put the `release.json` now in the cache there. A file it did
     not place (a builder's, left beside files the pull kept) is not vouched for, so the digest is `None`
-    and `_pulled_by_this_repo` does not take the cache for a pull of that release. `withdrew` is the
-    digest of someone else's `release.json` this pull or an earlier one withdrew
-    (`_WITHDREW_RELEASE_KEY`), dropped once a pull places one.
+    and `_pulled_by_this_repo` does not take the cache for a pull of that release.
     """
     digest = _file_sha256(cache_dir / RELEASE_FILENAME) if placed_release else None
     record: dict[str, object] = {"repo": repo, "files": files, _RELEASE_DIGEST_KEY: digest}
-    if withdrew is not None and not placed_release:
-        record[_WITHDREW_RELEASE_KEY] = withdrew
     atomic_write_text(cache_dir / PULL_RECORD_FILENAME, json.dumps(record, indent=2) + "\n")
 
 
@@ -349,12 +335,9 @@ def _pulled_by_this_repo(cache_dir: Path, repo: str) -> bool:
     payload = _pull_record(cache_dir)
     if payload is None or pulled_from(cache_dir, repo) is not None:
         return False
-    on_disk = _file_sha256(cache_dir / RELEASE_FILENAME)
-    if on_disk is None and isinstance(payload.get(_WITHDREW_RELEASE_KEY), str):
-        return False  # it held someone else's description, which a pull withdrew (RM445)
     if _RELEASE_DIGEST_KEY not in payload:
         return True
-    return payload[_RELEASE_DIGEST_KEY] == on_disk
+    return payload[_RELEASE_DIGEST_KEY] == _file_sha256(cache_dir / RELEASE_FILENAME)
 
 
 def _label_unattested(cache_dir: Path, coverage: ManifestCoverage | None) -> bool:
@@ -611,9 +594,10 @@ def _provision_snapshot(
     moved), except in an unrecorded cache stating a release of its own, a builder's statement about its
     bytes; any other caller keeps it, places no `release.json`, and the cache states no release, so its
     label is withheld rather than false, and the record says no `release.json` was placed, which sends
-    the next `cache pull` down the refresh. A builder's `release.json` stays when nothing is fetched
-    beside it, and is withdrawn before the first byte when something is, recorded as withdrawn so the
-    cache stays a build to `cache pull`.
+    the next `cache pull` down the refresh. **A pull never fetches beside a local build** (a
+    `release.json` no pull of this repo placed), on either path: a complete build is kept as it is, and
+    one lacking a part the repo publishes is left untouched, nothing removed or fetched, with what it
+    lacks reported as could-not-run and the two remedies named (rebuild it, or move it aside and pull).
     Before, an unrecorded August cache came out of one pull labelled with November's release.
 
     A corrupt file left by an interrupted download is removed and refetched rather than skipped
@@ -688,9 +672,17 @@ def _provision_snapshot(
         elif whole:
             return cache_dir
 
-    for p in corrupt:
-        logger.warning("Corrupt/truncated %s parquet %s — removing for re-download", label, p.name)
-        p.unlink()
+    # A local build: a `release.json` no pull of this repo placed (no record, or one that does not vouch
+    # for it). A pull never fetches beside one, on either path (RM445, the pm's call): its builder's
+    # description could not describe the mixture, and putting the published bytes in would be the
+    # silent overwrite RM420 refuses. So nothing in it is removed or fetched; what it lacks is reported.
+    is_build = (cache_dir / RELEASE_FILENAME).is_file() and not _pulled_by_this_repo(
+        cache_dir, hf_repo_prefix
+    )
+    if not is_build:
+        for p in corrupt:
+            logger.warning("Corrupt/truncated %s parquet %s — removing for re-download", label, p.name)
+            p.unlink()
     if switched:
         logger.warning(
             "%s cache at %s was pulled from %s; this snapshot is published at %s now. Re-pulling: a "
@@ -807,6 +799,47 @@ def _provision_snapshot(
             f"the {label} repo's {RELEASE_FILENAME} could not be fetched ({exc}); nothing was downloaded, "
             f"because what a pull keeps and labels depends on it. Re-run the pull."
         ) from exc
+    # The optional parquet **sidecars** beside `data/` — ClinVar's `citations/` today. Fetched here so a
+    # provisioned snapshot is the same artifact a built one is: without the citations table a consumer has
+    # no PMIDs, and `draft-panel` cannot produce a compilable module because `studies.csv` is mandatory.
+    # They go in their own directory, never into `data/`, which is the whole reason the layout has a
+    # sibling: the readers glob `data/*.parquet` and a two-column table there breaks every query.
+    # Listed here, before any download, so the pull record names them with the data (RM339).
+    remote_sidecars: list[tuple[str, str]] = []
+    for sidecar in SNAPSHOT_SIDECAR_DIRNAMES:
+        try:
+            listed = fs.ls(f"{repo_root}/{sidecar}", detail=False)
+        except Exception as exc:
+            logger.debug("No %s/ in the %s repo (%s).", sidecar, label, type(exc).__name__)
+            continue
+        remote_sidecars.extend((sidecar, f) for f in listed if f.endswith(".parquet"))
+
+    planned = [f"{SNAPSHOT_DATA_DIRNAME}/{f.rsplit('/', 1)[-1]}" for f in remote_files] + [
+        f"{sidecar}/{f.rsplit('/', 1)[-1]}" for sidecar, f in remote_sidecars
+    ]
+    lacking = [name for name in planned if not parquet_footer_ok(cache_dir / name)]
+    if is_build and lacking:
+        # Could not run, never absent (`@unreachable-not-absent`): the parts the repo publishes that this
+        # build lacks stay unreachable until someone provides them, and each run says so again.
+        manifest_part.unlink(missing_ok=True)
+        release_part.unlink(missing_ok=True)
+        logger.warning(
+            "%s cache at %s is a local build (its %s was not placed by a pull of %s) and lacks %d part(s) "
+            "the repo publishes (%s). A pull never fetches beside a build, so they were not fetched and "
+            "what reads them could not run: rebuild the lane with them, or move the build aside and run "
+            "`cache pull`.",
+            label,
+            cache_dir,
+            RELEASE_FILENAME,
+            hf_repo_prefix,
+            len(lacking),
+            ", ".join(lacking[:5]) + (", …" if len(lacking) > 5 else ""),
+        )
+        if _follow_hub is not None:
+            if _follow_hub.outcome is None:
+                _compare_with_hub(cache_dir, repo_root, label, _follow_hub)
+            return _left_alone(cache_dir, label, _follow_hub)
+        return cache_dir
     if manifest is not None:
         unnamed = sorted(
             name
@@ -830,24 +863,6 @@ def _provision_snapshot(
         # The repo answered that it publishes none: a manifest already here describes other bytes.
         (cache_dir / SNAPSHOT_MANIFEST_FILENAME).unlink(missing_ok=True)
 
-    # The optional parquet **sidecars** beside `data/` — ClinVar's `citations/` today. Fetched here so a
-    # provisioned snapshot is the same artifact a built one is: without the citations table a consumer has
-    # no PMIDs, and `draft-panel` cannot produce a compilable module because `studies.csv` is mandatory.
-    # They go in their own directory, never into `data/`, which is the whole reason the layout has a
-    # sibling: the readers glob `data/*.parquet` and a two-column table there breaks every query.
-    # Listed here, before any download, so the pull record names them with the data (RM339).
-    remote_sidecars: list[tuple[str, str]] = []
-    for sidecar in SNAPSHOT_SIDECAR_DIRNAMES:
-        try:
-            listed = fs.ls(f"{repo_root}/{sidecar}", detail=False)
-        except Exception as exc:
-            logger.debug("No %s/ in the %s repo (%s).", sidecar, label, type(exc).__name__)
-            continue
-        remote_sidecars.extend((sidecar, f) for f in listed if f.endswith(".parquet"))
-
-    planned = [f"{SNAPSHOT_DATA_DIRNAME}/{f.rsplit('/', 1)[-1]}" for f in remote_files] + [
-        f"{sidecar}/{f.rsplit('/', 1)[-1]}" for sidecar, f in remote_sidecars
-    ]
     try:
         if unrecorded:
             absent = [name for name in planned if not parquet_footer_ok(cache_dir / name)]
@@ -864,13 +879,6 @@ def _provision_snapshot(
         # Read before the record below replaces it: the release this repo's own pull says the files on disk
         # are. Matching the one the repo publishes now is what lets a resumed pull keep what it fetched.
         kept_release = _kept_release(cache_dir, hf_repo_prefix)
-        # Whether the `release.json` here, if any, is one this repo's pull placed: withdrawing that is a
-        # refresh in all but name, and the next `cache pull` must still re-pull the cache. Only someone
-        # else's description (a builder's) is recorded as withdrawn.
-        entered_as_pull = _pulled_by_this_repo(cache_dir, hf_repo_prefix)
-        # And whether a pull already withdrew someone else's description here, carried until one is placed.
-        prior = (_pull_record(cache_dir) or {}).get(_WITHDREW_RELEASE_KEY)
-        withdrew = prior if isinstance(prior, str) else None
         # A file this repo's own pull already placed was checked by sha256 on its way in; only a file of
         # unknown origin (no record, or another repo's) is hashed again. A file an older release's pull
         # placed is of unknown release, so a refresh hashes it too (RM420).
@@ -919,20 +927,15 @@ def _provision_snapshot(
             # Every whole file already under a planned name is this release's, so whatever an interruption
             # leaves is too, and the resume may keep it.
             record[_PULLING_RELEASE_KEY] = published_release
-        if withhold and fetching and not entered_as_pull and (cache_dir / RELEASE_FILENAME).is_file():
-            withdrew = _file_sha256(cache_dir / RELEASE_FILENAME)
-        if withdrew is not None:
-            record[_WITHDREW_RELEASE_KEY] = withdrew
         atomic_write_text(cache_dir / PULL_RECORD_FILENAME, json.dumps(record, indent=2) + "\n")
         if refreshing or (withhold and fetching):
             # Withdrawn right before the first byte moves, and fetched last below, as a builder's record is
             # (`@snapshot-layout-locations`): a refresh cut short leaves a cache that states no release, which
             # the next pull reads as differing from the hub's and finishes, never old bytes beside new ones
             # described as the old release. A pull that fetches into a cache it keeps unattested files of
-            # withdraws it too (RM445): the file there, a builder's say, described the cache before these
-            # bytes arrived, and cannot describe the mixture after. With nothing to fetch it stays, still
-            # describing exactly the bytes it described. The record keeps the withdrawn file's digest
-            # (`_WITHDREW_RELEASE_KEY`), so `cache pull` still treats the cache as a build, not a pull.
+            # withdraws it too (RM445): the file there, an earlier pull's (a build never reaches here),
+            # described the cache before these bytes arrived, and cannot describe the mixture after. With
+            # nothing to fetch it stays, still describing exactly the bytes it described.
             (cache_dir / RELEASE_FILENAME).unlink(missing_ok=True)
 
         for remote_path in remote_files:
@@ -1067,7 +1070,7 @@ def _provision_snapshot(
     # Rewritten now that every file is in place: a switch is no longer under way, and the record states
     # the `release.json` this pull placed, so a builder's release written over it later is not taken
     # for this pull (RM420, `_pulled_by_this_repo`); a file it did not place is not vouched for (RM445).
-    _write_pull_record(cache_dir, hf_repo_prefix, planned, placed_release=placed_release, withdrew=withdrew)
+    _write_pull_record(cache_dir, hf_repo_prefix, planned, placed_release=placed_release)
     logger.info("Download complete: %s", cache_dir)
     return cache_dir
 

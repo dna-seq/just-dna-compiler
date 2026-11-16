@@ -53,11 +53,12 @@ rule. `cache pull` and `cache prepare` fetch an unattested kept file again, as R
 so they repair. `enrich`'s own pull keeps it (no release is downloaded mid-run) and places no label: the cache
 states no release, so its label is withheld rather than false. An unrecorded cache stating a release of its own is
 a builder's and is not refetched on either path: left alone with another label (RM420), kept as it is with the
-hub's. Its `release.json` stays when nothing is fetched beside it and is withdrawn before the first byte when
-something is, and the record then keeps the withdrawn file's digest, so `cache pull` still treats the cache as a
-build (a `release.json` a pull placed is not recorded so, and the next `cache pull` re-pulls). The cost, chosen: a
-build in the live directory that lacks a file the hub publishes, `citations/` say, loses its `release.json` to the
-first `enrich` run and is then left alone by `cache pull`, so its operator rebuilds it or moves it aside. The record states the digest of the `release.json` the pull placed and `null` when it placed none, so an
+hub's. **A pull never fetches beside a local build** (a `release.json` no pull of this repo placed), on either path:
+a build lacking a part the repo publishes, `citations/` say, is left untouched, nothing removed or fetched and its
+`release.json` kept, and every run warns that the part could not be reached, naming the remedies (rebuild it with the
+part, or move it aside and `cache pull`). Before, `enrich` completed such a build from the hub and labelled the
+mixture with the hub's release. A pull's own `release.json` beside files it can no longer vouch for is withdrawn
+before the first byte, and the next `cache pull` re-pulls the cache. The record states the digest of the `release.json` the pull placed and `null` when it placed none, so an
 `enrich` run over a build no longer makes the next `cache pull` take the build for a pull. A pull fetches
 `release.json` first, staged beside the cache, and names it in the record it writes before the first download, so a
 resumed pull keeps what it fetched while the hub still publishes that release and fetches it again past a release

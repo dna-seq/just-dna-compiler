@@ -510,31 +510,39 @@ def test_an_unrecorded_build_stating_the_hubs_own_label_is_kept_on_either_path(
                 assert follow.outcome == "current", (first, path)
 
 
-def test_a_pull_fetching_beside_kept_unattested_files_withdraws_the_label_already_there(
-    fake_hub, tmp_path: Path
+@pytest.mark.parametrize(
+    "hub_label", [_NOV, "clinvar_2026-12-01"], ids=["hub-labels-it-otherwise", "same-label"]
+)
+def test_a_pull_never_fetches_beside_a_build_that_lacks_a_part(
+    fake_hub, tmp_path: Path, caplog, hub_label: str
 ) -> None:
-    """A builder's `release.json` described the cache before the pull; it cannot describe the mixture."""
+    """The pm's call (RM445): a build lacking a part the repo publishes is reported, never completed.
+
+    Nothing is fetched or removed and its `release.json` stays, on both paths; the missing part is
+    could-not-run, named with the two remedies, and every run says so again (no record is written).
+    """
     cache = tmp_path / "cv"
     write = begin_snapshot_write(cache)
     _write_parquet(cache / _CHR1, "built")
     write.commit(SnapshotRelease.model_validate({"dataset": "clinvar_2026-12-01", "source": "test"}))
-    fs = fake_hub(
-        {"clinvar-chr1.parquet": "clin_sig", "clinvar-chr2.parquet": "clin_sig"}, release=_release_body(_NOV)
-    )
+    before = {p.name: p.read_bytes() for p in cache.rglob("*") if p.is_file()}
+    published = {"clinvar-chr1.parquet": "clin_sig", "clinvar-chr2.parquet": "clin_sig"}
 
-    dl.ensure_clinvar_snapshot(cache)
-
-    assert "data/clinvar-chr2.parquet" in fs.fetched and _column(cache / _CHR1) == "built"
-    assert not (cache / RELEASE_FILENAME).exists() and _clinvar_label(cache) is None
-
-    # …and the cache is still a build to `cache pull`: the record keeps the withdrawn file's digest, so
-    # the published release is not put over the built chr1 (the code review's first finding).
-    fake_hub(
-        {"clinvar-chr1.parquet": "clin_sig", "clinvar-chr2.parquet": "clin_sig"}, release=_release_body(_NOV)
-    )
-    follow = dl._FollowHub(LANES_BY_NAME["clinvar"].release_label)
-    dl.ensure_clinvar_snapshot(cache, _follow_hub=follow)
-    assert follow.outcome == "kept" and _column(cache / _CHR1) == "built"
+    for lap in range(2):
+        for follow in (None, dl._FollowHub(LANES_BY_NAME["clinvar"].release_label)):
+            fs = fake_hub(published, release=_release_body(hub_label))
+            caplog.clear()
+            with caplog.at_level("WARNING"):
+                assert dl.ensure_clinvar_snapshot(cache, _follow_hub=follow) == cache
+            assert not [f for f in fs.fetched if f.startswith("data/")], (lap, follow)
+            assert {p.name: p.read_bytes() for p in cache.rglob("*") if p.is_file()} == before, (lap, follow)
+            if follow is not None:
+                assert follow.outcome == "kept", (lap, hub_label)
+            if follow is None or hub_label == "clinvar_2026-12-01":
+                # Where the labels differ `cache pull` leaves a build alone before listing (RM420), and
+                # its note names both labels; everywhere else the missing part is named.
+                assert "data/clinvar-chr2.parquet" in caplog.text and "local build" in caplog.text
+                assert "move the build aside and run `cache pull`" in caplog.text
 
 
 def test_a_pulls_own_label_withdrawn_by_enrich_is_still_re_pulled(fake_hub, tmp_path: Path) -> None:
@@ -553,7 +561,7 @@ def test_a_pulls_own_label_withdrawn_by_enrich_is_still_re_pulled(fake_hub, tmp_
 
     fake_hub(newer, release=_release_body(_NOV))
     dl.ensure_clinvar_snapshot(cache)
-    assert _clinvar_label(cache) is None and dl._WITHDREW_RELEASE_KEY not in _record(cache)
+    assert _clinvar_label(cache) is None and _record(cache)[dl._RELEASE_DIGEST_KEY] is None
 
     fake_hub(newer, release=_release_body(_NOV))
     follow = dl._FollowHub(LANES_BY_NAME["clinvar"].release_label)

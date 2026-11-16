@@ -2319,12 +2319,12 @@ not a release) does not. Otherwise:
   with a manifest is never unattested this way, so no Ensembl cache is re-hashed.
 - **`enrich`** keeps the file, places nothing and states no release. A whole recorded cache still returns before the
   hub is read.
-- **An unrecorded cache stating a release of its own** is a builder's on both paths: left alone with another label
-  (RM420), kept as it is with the hub's. Its `release.json` stays when nothing is fetched beside it and is withdrawn
-  right before the first byte when something is (`@snapshot-layout-locations`); the record then keeps the withdrawn
-  file's digest (`withdrew_release_sha256`, private), which `_pulled_by_this_repo` reads as not a pull, so `cache
-  pull` leaves the mixture alone rather than putting the published release over the build. A `release.json` this
-  repo's pull placed is not recorded so when withdrawn, and the next `cache pull` re-pulls.
+- **A local build** (a `release.json` no pull of this repo placed: no record, or one not vouching for it) is never
+  fetched beside, on either path (the pm's call, 2026-11-16). Complete, it is kept as it is (left alone with another
+  label than the hub's, as RM420). Lacking a part the repo publishes, it is left untouched (nothing removed or
+  fetched, its `release.json` kept, no record written) and every run warns that the part could not be reached,
+  naming the remedies; `cache pull` reports it `kept`. A pull's own `release.json` beside files it no longer vouches
+  for is withdrawn right before the first byte (`@snapshot-layout-locations`) and the next `cache pull` re-pulls.
 - **The record** names the digest of the `release.json` the pull **placed** (`null` when none), so a builder's file
   is never vouched for. The record written before the first download names the release being pulled
   (`pulling_release_sha256`, private) when every whole file under a planned name is already that release's, so a
@@ -2341,7 +2341,7 @@ red. RM420's eighteen pass unchanged. A high-effort code review of the first bui
 pull, could-not-ask read as absent, and the knots withheld where no label exists; a second read found the withdrawal
 record catching a pull's own label and `release.json` asked after the manifest had moved. All are fixed and tested.
 
-**Residuals** won't fix — a cache that 0.8.3 to 0.8.7 completed from no record carries `release_sha256` and the hub's label over old bytes, and nothing on disk tells it from an honest pull, so its operator moves it aside and pulls once · won't fix — a build in the live directory lacking a file the hub publishes (no `citations/`) loses its `release.json` to the first `enrich` run and `cache pull` then leaves it alone, so its operator rebuilds it or moves it aside
+**Residuals** won't fix — a cache that 0.8.3 to 0.8.7 completed from no record carries `release_sha256` and the hub's label over old bytes, and nothing on disk tells it from an honest pull, so its operator moves it aside and pulls once
 
 # Not format scope
 
