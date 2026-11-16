@@ -44,8 +44,8 @@ The lead's working state, rewritten to the present before each reset. Last rewri
 - Leftover local branches `build/RM341` and `build/RM343`: cherry-picked onto `main`, so `-d` refuses them;
   `-D` is the person's.
 
-- 0.9 (2026-11-16): every decision made (ff09d949, the pm's answers to the critic) except RM431 ask 4's publishing
-  (the pm measures tonight). Build plan: `/tmp/claude-1000/-data-sources-just-dna-format/cb39872f-9ac8-49ad-96ce-7354acea34da/scratchpad/BUILD_PLAN_0_9.md`
+- 0.9 (2026-11-16): every decision made (ff09d949, the pm's answers to the critic; RM431 ask 4 local-only, never
+  published, decided the same evening). Build plan: `/tmp/claude-1000/-data-sources-just-dna-format/cb39872f-9ac8-49ad-96ce-7354acea34da/scratchpad/BUILD_PLAN_0_9.md`
   (scratch; this line is the record): branch `0.9` off `main`; wave 0 `LookupClients` leaf module + `parse_release`;
   wave 1 RM443, RM412, RM404, RM437 in parallel; wave 2 RM430; wave 3 RM431 asks 6, 5, then 4. Then one four-leaf
   round (two at most), the pm sorts, the cut. `unattended`: starts when the person is away.
