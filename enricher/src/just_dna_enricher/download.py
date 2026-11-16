@@ -28,6 +28,7 @@ from just_dna_format.layout import atomic_write_text
 
 from just_dna_enricher.clinvar import ClinVarReferenceError
 from just_dna_enricher.locations import (
+    ALPHAGENOME_KNOTS_FILENAME,
     PULL_RECORD_FILENAME,
     PULL_RECORD_REPLACING_KEY,
     RELEASE_FILENAME,
@@ -37,6 +38,7 @@ from just_dna_enricher.locations import (
     SNAPSHOT_ROOT_FILENAMES,
     SNAPSHOT_SIDECAR_DIRNAMES,
     STRCHIVE_CATALOGUE_FILENAME,
+    ManifestCoverage,
     SnapshotManifest,
     default_alphagenome_avi_cache_dir,
     default_civic_cache_dir,
@@ -245,6 +247,10 @@ class _FollowHub:
     (re-pulled to the published release), `kept` (the labels differ and nothing says the cache came
     from a pull of this repo, so it is left alone: a snapshot built here may not be uploaded yet) and
     `unknown` (the hub could not be read, so the cache serves as it is).
+
+    `unattested` marks a refresh taken because nothing attests which release the cache's files are,
+    whatever its label says (RM445): an unrecorded cache, a pull record from before RM420, or a resumed
+    pull whose kept files are another release's than the one the hub now publishes.
     """
 
     release_label: Callable[[Path], str | None]
@@ -253,10 +259,16 @@ class _FollowHub:
     published: str | None = None
     outcome: str | None = None
     detail: str | None = None
+    unattested: bool = False
 
     def note(self) -> str | None:
         """The line `cache pull` and `cache prepare` print beside the lane, naming both labels; `None` when quiet."""
         local = self.local or "no release label"
+        if self.outcome == "refreshed" and self.unattested:
+            return (
+                f"re-pulled: nothing attested which release its files were (it stated {local}), and "
+                f"{self.repo} publishes {self.published}"
+            )
         if self.outcome == "refreshed":
             return f"re-pulled: it held {local}, and {self.repo} publishes {self.published}"
         if self.outcome == "kept":
@@ -270,22 +282,47 @@ class _FollowHub:
         return None
 
 
-#: The pull-record key naming the sha256 of the `release.json` the pull placed, `None` when it placed
-#: none (RM420). A builder pointed at a pulled cache leaves the old record behind and writes its own
-#: `release.json`, so a record whose digest no longer matches is not this cache's origin any more. A
-#: record without the key was written before RM420 and is read as a pull, which is what it was: only
-#: the provisioner writes one.
+#: The pull-record key naming the sha256 of the `release.json` **the pull placed**, `None` when it
+#: placed none (RM420; since RM445 a pull places none over files nothing attests, and then leaves any
+#: `release.json` already there, a builder's, unvouched for). A builder pointed at a pulled cache leaves
+#: the old record behind and writes its own `release.json`, so a record whose digest no longer matches
+#: is not this cache's origin any more. A finished record without the key was written before RM420 and
+#: is read as a pull, which is what it was (only the provisioner writes one), but not as attesting its
+#: label: that pull kept whole files whatever release they were, then placed the hub's `release.json`
+#: over them (RM445), so `cache pull` re-pulls it even when its label equals the hub's.
 _RELEASE_DIGEST_KEY = "release_sha256"
+
+#: The record key a pull writes **before** its first download (RM445): the sha256 of the hub's
+#: `release.json` it is pulling, and only when every whole file already under a planned name is that
+#: release's too. A resumed pull keeps what the interrupted one fetched only while the hub still
+#: publishes that `release.json`; past a release boundary the kept files are the older release's.
+#: Dropped from the record once the pull finishes, where `_RELEASE_DIGEST_KEY` says what was placed.
+_PULLING_RELEASE_KEY = "pulling_release_sha256"
 
 
 def _file_sha256(path: Path) -> str | None:
     return hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
 
 
-def _write_pull_record(cache_dir: Path, repo: str, files: list[str]) -> None:
-    """The record of a pull that finished: its repo, its files, and the `release.json` it placed."""
-    record = {"repo": repo, "files": files, _RELEASE_DIGEST_KEY: _file_sha256(cache_dir / RELEASE_FILENAME)}
+def _write_pull_record(cache_dir: Path, repo: str, files: list[str], *, placed_release: bool) -> None:
+    """The record of a pull that finished: its repo, its files, and the `release.json` it placed.
+
+    `placed_release` is whether this pull put the `release.json` now in the cache there. A file it did
+    not place (a builder's, left beside files the pull kept) is not vouched for, so the digest is `None`
+    and `_pulled_by_this_repo` does not take the cache for a pull of that release.
+    """
+    digest = _file_sha256(cache_dir / RELEASE_FILENAME) if placed_release else None
+    record = {"repo": repo, "files": files, _RELEASE_DIGEST_KEY: digest}
     atomic_write_text(cache_dir / PULL_RECORD_FILENAME, json.dumps(record, indent=2) + "\n")
+
+
+def _pull_record(cache_dir: Path) -> dict | None:
+    """The pull record's payload, or `None` when there is none or it does not read as an object."""
+    try:
+        payload = json.loads((cache_dir / PULL_RECORD_FILENAME).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
 
 
 def _pulled_by_this_repo(cache_dir: Path, repo: str) -> bool:
@@ -294,15 +331,45 @@ def _pulled_by_this_repo(cache_dir: Path, repo: str) -> bool:
     The pull record is the witness, because only the provisioner writes one: a builder never does. A
     record naming no repo is read as this repo's, as `locations.pulled_from` reads it.
     """
-    try:
-        payload = json.loads((cache_dir / PULL_RECORD_FILENAME).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return False
-    if not isinstance(payload, dict) or pulled_from(cache_dir, repo) is not None:
+    payload = _pull_record(cache_dir)
+    if payload is None or pulled_from(cache_dir, repo) is not None:
         return False
     if _RELEASE_DIGEST_KEY not in payload:
         return True
     return payload[_RELEASE_DIGEST_KEY] == _file_sha256(cache_dir / RELEASE_FILENAME)
+
+
+def _label_unattested(cache_dir: Path, coverage: ManifestCoverage | None) -> bool:
+    """Whether a recorded cache's label is one nothing attests describes its files (RM445).
+
+    A record without `_RELEASE_DIGEST_KEY` (written before RM420, or by a pull still under way) does
+    not say the `release.json` beside it was placed over files that pull fetched, and RM339's pull,
+    which wrote such records, placed the hub's over files it kept whatever release they were. A
+    manifest attests the files itself, by size here and by sha256 when a pull keeps one, so a lane that
+    has one (Ensembl, which states its release there) is never unattested this way.
+    """
+    payload = _pull_record(cache_dir)
+    return payload is not None and _RELEASE_DIGEST_KEY not in payload and coverage is None
+
+
+def _kept_release(cache_dir: Path, repo: str) -> str | None:
+    """The sha256 of the `release.json` this repo's pull says the files on disk are, or `None` (RM445).
+
+    A pull under way names the release it is pulling (`_PULLING_RELEASE_KEY`); a finished one names the
+    release it placed, which counts only while that file is still the one in the cache. No record, a
+    record of another repo, one from before RM420, and one whose `release.json` was replaced all answer
+    `None`: nothing on disk says which release a kept file is.
+    """
+    payload = _pull_record(cache_dir)
+    if payload is None or pulled_from(cache_dir, repo) is not None:
+        return None
+    if _PULLING_RELEASE_KEY in payload:
+        pulling = payload[_PULLING_RELEASE_KEY]
+        return pulling if isinstance(pulling, str) else None
+    placed = payload.get(_RELEASE_DIGEST_KEY)
+    if isinstance(placed, str) and placed == _file_sha256(cache_dir / RELEASE_FILENAME):
+        return placed
+    return None
 
 
 def _hub_filesystem():
@@ -381,8 +448,19 @@ def _left_alone(cache_dir: Path, label: str, follow: _FollowHub) -> Path:
     return cache_dir
 
 
-def _refreshing(cache_dir: Path, label: str, follow: _FollowHub) -> None:
-    follow.outcome = "refreshed"
+def _refreshing(cache_dir: Path, label: str, follow: _FollowHub, *, unattested: bool = False) -> None:
+    follow.outcome, follow.unattested = "refreshed", unattested
+    if unattested:
+        logger.warning(
+            "%s cache at %s: nothing on disk attests which release its files are (it states %s), and %s "
+            "publishes %s. Re-pulling: a file is kept only where the release's manifest attests it.",
+            label,
+            cache_dir,
+            follow.local or "no release label",
+            follow.repo,
+            follow.published,
+        )
+        return
     logger.warning(
         "%s cache at %s holds %s; %s publishes %s. Re-pulling: a file is kept only where the new "
         "release's manifest attests it.",
@@ -503,6 +581,16 @@ def _provision_snapshot(
     written. When the listing cannot be read, that cache is used as it is, with a warning that its
     completeness is unknown, because a warm cache must still serve with no network.
 
+    **The repo's `release.json` is placed only over files it may describe** (RM445): every file this
+    pull fetched, or kept because the manifest attests it, or because this repo's own pull recorded
+    that the files on disk are the release the repo still publishes (`_kept_release`). A file kept
+    with no such witness is of unknown release. `cache pull` fetches it again (as a release that
+    moved); any other caller keeps it, places no `release.json`, and the cache states no release, so
+    its label is withheld rather than false, and the record says no `release.json` was placed, which
+    sends the next `cache pull` down the refresh. A `release.json` already there (a builder's) stays
+    when nothing is fetched beside it, and is withdrawn before the first byte when something is.
+    Before, an unrecorded August cache came out of one pull labelled with November's release.
+
     A corrupt file left by an interrupted download is removed and refetched rather than skipped
     forever. The returned directory holds `data/*.parquet`, which the resolver reads directly (no
     prebuilt `.duckdb` required). Shared by every parquet snapshot; they differ only in
@@ -563,9 +651,15 @@ def _provision_snapshot(
             refreshing = True
             _refreshing(cache_dir, label, _follow_hub)
         elif differs and (whole or _follow_hub.local is not None):
-            # Built here, or a builder's release over a stale record. An unrecorded cache stating no
-            # release is no builder's (every builder writes one): it is RM339's case, completed below.
+            # Built here, or a builder's release over a stale record.
             return _left_alone(cache_dir, label, _follow_hub)
+        elif whole and _follow_hub.published is not None and _label_unattested(cache_dir, coverage):
+            # RM445: a record from before RM420 placed the hub's label over whatever it kept, so an
+            # equal label is not a current cache. Re-pulled as a release that moved: `cache pull`
+            # repairs it. (An unrecorded cache needs no case here: its completion below fetches again
+            # what nothing attests when the hub states a release.)
+            refreshing = True
+            _refreshing(cache_dir, label, _follow_hub, unattested=True)
         elif whole:
             return cache_dir
 
@@ -708,124 +802,262 @@ def _provision_snapshot(
     planned = [f"{SNAPSHOT_DATA_DIRNAME}/{f.rsplit('/', 1)[-1]}" for f in remote_files] + [
         f"{sidecar}/{f.rsplit('/', 1)[-1]}" for sidecar, f in remote_sidecars
     ]
-    if unrecorded:
-        absent = [name for name in planned if not parquet_footer_ok(cache_dir / name)]
-        if absent:
-            logger.warning(
-                "%s cache at %s carries no pull record and lacks %d of the %d file(s) published (%s). "
-                "Fetching them.",
-                label,
-                cache_dir,
-                len(absent),
-                len(planned),
-                ", ".join(absent[:5]) + (", …" if len(absent) > 5 else ""),
-            )
-    # A switch is recorded as under way until every file is the new repo's: `pull_record_repo` reads
-    # `replacing` first, so an interrupted switch is still a cache of the old repo on the next call.
-    record: dict[str, object] = {"repo": hf_repo_prefix, "files": planned}
-    if switched_from is not None:
-        record[PULL_RECORD_REPLACING_KEY] = switched_from
-    atomic_write_text(cache_dir / PULL_RECORD_FILENAME, json.dumps(record, indent=2) + "\n")
-    # A file this repo's own pull already placed was checked by sha256 on its way in; only a file of
-    # unknown origin (no record, or another repo's) is hashed again. A file an older release's pull
-    # placed is of unknown release, so a refresh hashes it too (RM420).
-    placed_here = recorded_repo == hf_repo_prefix and not refreshing
-    # A refresh replaces the release whole, as a switch does: nothing on disk says which release a whole
-    # file without a manifest entry is.
-    replacing = switched or refreshing
-    if refreshing:
-        # Withdrawn right before the first byte moves, and fetched last below, as a builder's record is
-        # (`@snapshot-layout-locations`): a refresh cut short leaves a cache that states no release, which
-        # the next pull reads as differing from the hub's and finishes, never old bytes beside new ones
-        # described as the old release.
-        (cache_dir / RELEASE_FILENAME).unlink(missing_ok=True)
-
-    for remote_path in remote_files:
-        filename = remote_path.rsplit("/", 1)[-1]
-        local_path = data_dir / filename
-        relative = f"{SNAPSHOT_DATA_DIRNAME}/{filename}"
-        if _keep(local_path, relative, manifest, switched=replacing, placed_here=placed_here):
-            continue
-        _fetch_parquet(
-            fs,
-            remote_path,
-            local_path,
-            display=filename,
-            label=label,
-            error_cls=error_cls,
-            manifest=manifest,
-            relative=relative,
-        )
-
-    for sidecar, remote_path in remote_sidecars:
-        filename = remote_path.rsplit("/", 1)[-1]
-        target_dir = cache_dir / sidecar
-        target_dir.mkdir(parents=True, exist_ok=True)
-        local_path = target_dir / filename
-        # After a switch or a refresh a whole sidecar may be the old release's, and no manifest names
-        # `citations/`.
-        if parquet_footer_ok(local_path) and not replacing:
-            continue
-        _fetch_parquet(
-            fs, remote_path, local_path, display=f"{sidecar}/{filename}", label=label, error_cls=error_cls
-        )
-
-    # `release.json` too, when the repo has one: the publisher uploads it and this only ever fetched
-    # parquet, so a *provisioned* snapshot could not say which release it was while a *built* one could.
-    # That is the difference between a cache and a pinnable reference — `source_sha256` is what
-    # `GenePanelSpec.reference_sha256` pins against (RM4), and it cannot pin a file that was never
-    # fetched. It also describes the sidecars (the citations builder merges its own block in), which is
-    # what keeps a two-release artifact from being silent about it. Absence is not an error: a repo
-    # published before the builder wrote one is still usable.
-    #
-    # `LICENSE.txt` rides along for the same reason, one step further: a share-alike snapshot's terms
-    # are pinned by `license_sha256`, and a consumer that holds the bytes must be able to read what
-    # governs them without going back to the source archive. The publisher was dropping it; fetching it
-    # here is the other half, so a *provisioned* snapshot is the same artifact a *built* one is.
-    # **Staged through `.part` like every other download here, because a failed one is not a no-op.**
-    # `HfFileSystem.get` creates the local file before it discovers the remote path is missing, so
-    # fetching straight to the real name left a 0-byte `LICENSE.txt` in the cache of every snapshot
-    # whose repo publishes none — four of them today. An empty licence file is worse than no licence
-    # file: the readers guard on `is_file()`, so an absent one withholds (`license_sha256` stays
-    # `None`, with a warning) while an empty one pins the terms to the hash of the empty string. The
-    # same staging also stops a re-pull whose repo has since dropped the file from truncating a good
-    # local copy.
-    #
-    # **Walked from `locations.SNAPSHOT_ROOT_FILENAMES`, never listed here** — the publish half does
-    # the same (`upload.py`), and this half did not. It iterated the pair above by hand, so
-    # `avi_knots.parquet` was published and never pulled: the AVI lane stores no `PHRED`, that file is
-    # what reconstructs it, and `alphagenome check` refuses a snapshot without it. A pulled lane was
-    # therefore unusable while two docstrings here said the file "travels because
-    # `SNAPSHOT_ROOT_FILENAMES` names it, not because this function does" (RM209). A registry beside a
-    # hand-kept copy of itself is the defect shape, not the count (`@registry-completeness`).
-    for optional in SNAPSHOT_ROOT_FILENAMES:
-        target = cache_dir / optional
-        tmp_path = target.with_suffix(target.suffix + ".part")
-        if optional == SNAPSHOT_MANIFEST_FILENAME:
-            continue  # asked for and placed before the data
-        try:
-            fs.get(f"{repo_root}/{optional}", str(tmp_path))
-            tmp_path.replace(target)
-        except Exception as exc:
-            tmp_path.unlink(missing_ok=True)
-            if replacing and target.is_file():
-                # The old repo's or release's file, describing (or licensing) bytes this pull replaced.
-                target.unlink()
-                logger.info(
-                    "Removed %s: it came with %s, and %s has none.",
-                    optional,
-                    switched_from or _follow_hub.local,
-                    hf_repo_prefix,
+    # The repo's `release.json`, fetched **now** and staged beside the cache like the manifest, and
+    # placed with the other root files at the end only if it may describe every file the cache then
+    # holds (RM445). Asked first because what may be kept depends on it: a file kept from an earlier
+    # pull is this release's only when that pull was pulling this same `release.json`.
+    release_part = cache_dir / f"{RELEASE_FILENAME}.part"
+    published_release = _stage_release(fs, f"{repo_root}/{RELEASE_FILENAME}", release_part, label)
+    try:
+        if unrecorded:
+            absent = [name for name in planned if not parquet_footer_ok(cache_dir / name)]
+            if absent:
+                logger.warning(
+                    "%s cache at %s carries no pull record and lacks %d of the %d file(s) published (%s). "
+                    "Fetching them.",
+                    label,
+                    cache_dir,
+                    len(absent),
+                    len(planned),
+                    ", ".join(absent[:5]) + (", …" if len(absent) > 5 else ""),
                 )
-            logger.info(
-                "No %s in the %s repo (%s); the cache carries data only.", optional, label, type(exc).__name__
+        # Read before the record below replaces it: the release this repo's own pull says the files on disk
+        # are. Matching the one the repo publishes now is what lets a resumed pull keep what it fetched.
+        kept_release = None if switched else _kept_release(cache_dir, hf_repo_prefix)
+        # A file this repo's own pull already placed was checked by sha256 on its way in; only a file of
+        # unknown origin (no record, or another repo's) is hashed again. A file an older release's pull
+        # placed is of unknown release, so a refresh hashes it too (RM420).
+        placed_here = recorded_repo == hf_repo_prefix and not refreshing
+        # A refresh replaces the release whole, as a switch does: nothing on disk says which release a whole
+        # file without a manifest entry is.
+        replacing = switched or refreshing
+        keeps = _plan_keeps(cache_dir, remote_files, remote_sidecars, manifest, replacing, placed_here)
+        record_attests = published_release is not None and kept_release == published_release and not replacing
+        unattested = [r for r, kept in keeps.items() if kept and not _attested(r, manifest, record_attests)]
+        if unattested and _follow_hub is not None and published_release is not None:
+            # RM445, the resumed pull: `cache pull` asked for the hub's release, and these files are not
+            # attested to be it (kept from a pull of an earlier release, or from one that recorded none). As
+            # a release that moved, they are fetched again, never kept under the new release's label.
+            if _follow_hub.outcome is None:
+                _compare_with_hub(cache_dir, repo_root, label, _follow_hub)
+            if _follow_hub.published is not None:
+                refreshing = replacing = True
+                placed_here = False
+                _refreshing(cache_dir, label, _follow_hub, unattested=True)
+                record_attests = False
+                keeps = _plan_keeps(
+                    cache_dir, remote_files, remote_sidecars, manifest, replacing, placed_here
+                )
+                unattested = []
+        # The hub's description goes in only over files this pull fetched or a manifest or the record
+        # attests. Otherwise the cache states no release and its label is withheld: a kept file nothing
+        # attests is of unknown release, and stating the hub's would be a confident false answer.
+        place_release = not unattested
+        fetching = [relative for relative, kept in keeps.items() if not kept]
+
+        # A switch is recorded as under way until every file is the new repo's: `pull_record_repo` reads
+        # `replacing` first, so an interrupted switch is still a cache of the old repo on the next call.
+        record: dict[str, object] = {"repo": hf_repo_prefix, "files": planned}
+        if switched_from is not None:
+            record[PULL_RECORD_REPLACING_KEY] = switched_from
+        if published_release is not None and not any(
+            parquet_footer_ok(cache_dir / r) and not _attested(r, manifest, record_attests) for r in keeps
+        ):
+            # Every whole file already under a planned name is this release's, so whatever an interruption
+            # leaves is too, and the resume may keep it.
+            record[_PULLING_RELEASE_KEY] = published_release
+        atomic_write_text(cache_dir / PULL_RECORD_FILENAME, json.dumps(record, indent=2) + "\n")
+        if refreshing or (not place_release and fetching):
+            # Withdrawn right before the first byte moves, and fetched last below, as a builder's record is
+            # (`@snapshot-layout-locations`): a refresh cut short leaves a cache that states no release, which
+            # the next pull reads as differing from the hub's and finishes, never old bytes beside new ones
+            # described as the old release. A pull that fetches into a cache it keeps unattested files of
+            # withdraws it too (RM445): the file there, a builder's say, described the cache before these
+            # bytes arrived, and cannot describe the mixture after. With nothing to fetch it stays, still
+            # describing exactly the bytes it described.
+            (cache_dir / RELEASE_FILENAME).unlink(missing_ok=True)
+
+        for remote_path in remote_files:
+            filename = remote_path.rsplit("/", 1)[-1]
+            relative = f"{SNAPSHOT_DATA_DIRNAME}/{filename}"
+            if keeps[relative]:
+                continue
+            _fetch_parquet(
+                fs,
+                remote_path,
+                data_dir / filename,
+                display=filename,
+                label=label,
+                error_cls=error_cls,
+                manifest=manifest,
+                relative=relative,
             )
+
+        for sidecar, remote_path in remote_sidecars:
+            filename = remote_path.rsplit("/", 1)[-1]
+            # After a switch or a refresh a whole sidecar may be the old release's, and no manifest names
+            # `citations/`.
+            if keeps[f"{sidecar}/{filename}"]:
+                continue
+            target_dir = cache_dir / sidecar
+            target_dir.mkdir(parents=True, exist_ok=True)
+            _fetch_parquet(
+                fs,
+                remote_path,
+                target_dir / filename,
+                display=f"{sidecar}/{filename}",
+                label=label,
+                error_cls=error_cls,
+            )
+
+        # `release.json` too, when the repo has one: the publisher uploads it and this only ever fetched
+        # parquet, so a *provisioned* snapshot could not say which release it was while a *built* one could.
+        # That is the difference between a cache and a pinnable reference — `source_sha256` is what
+        # `GenePanelSpec.reference_sha256` pins against (RM4), and it cannot pin a file that was never
+        # fetched. It also describes the sidecars (the citations builder merges its own block in), which is
+        # what keeps a two-release artifact from being silent about it. Absence is not an error: a repo
+        # published before the builder wrote one is still usable. Staged above; placed here, last, and only
+        # over files it may describe (RM445).
+        #
+        # `LICENSE.txt` rides along for the same reason, one step further: a share-alike snapshot's terms
+        # are pinned by `license_sha256`, and a consumer that holds the bytes must be able to read what
+        # governs them without going back to the source archive. The publisher was dropping it; fetching it
+        # here is the other half, so a *provisioned* snapshot is the same artifact a *built* one is. It
+        # states the source's terms rather than a release, so it is fetched whatever was kept.
+        # **Staged through `.part` like every other download here, because a failed one is not a no-op.**
+        # `HfFileSystem.get` creates the local file before it discovers the remote path is missing, so
+        # fetching straight to the real name left a 0-byte `LICENSE.txt` in the cache of every snapshot
+        # whose repo publishes none — four of them today. An empty licence file is worse than no licence
+        # file: the readers guard on `is_file()`, so an absent one withholds (`license_sha256` stays
+        # `None`, with a warning) while an empty one pins the terms to the hash of the empty string. The
+        # same staging also stops a re-pull whose repo has since dropped the file from truncating a good
+        # local copy.
+        #
+        # **Walked from `locations.SNAPSHOT_ROOT_FILENAMES`, never listed here** — the publish half does
+        # the same (`upload.py`), and this half did not. It iterated the pair above by hand, so
+        # `avi_knots.parquet` was published and never pulled: the AVI lane stores no `PHRED`, that file is
+        # what reconstructs it, and `alphagenome check` refuses a snapshot without it. A pulled lane was
+        # therefore unusable while two docstrings here said the file "travels because
+        # `SNAPSHOT_ROOT_FILENAMES` names it, not because this function does" (RM209). A registry beside a
+        # hand-kept copy of itself is the defect shape, not the count (`@registry-completeness`). The knots
+        # belong to a release as the data does, so they follow `release.json`'s rule: never placed over
+        # kept files nothing attests, where new knots would reconstruct `PHRED` from the wrong release.
+        placed_release = False
+        for optional in SNAPSHOT_ROOT_FILENAMES:
+            target = cache_dir / optional
+            if optional == SNAPSHOT_MANIFEST_FILENAME:
+                continue  # asked for and placed before the data
+            if optional == RELEASE_FILENAME and published_release is not None:
+                if place_release:
+                    release_part.replace(target)
+                    placed_release = True
+                    continue
+                release_part.unlink(missing_ok=True)
+                logger.warning(
+                    "%s cache at %s keeps %d file(s) nothing attests are the release %s publishes (%s), so "
+                    "its %s is not placed and the cache states no release. `cache pull` fetches them again.",
+                    label,
+                    cache_dir,
+                    len(unattested),
+                    repo_root.removeprefix("datasets/"),
+                    ", ".join(unattested[:5]) + (", …" if len(unattested) > 5 else ""),
+                    RELEASE_FILENAME,
+                )
+                continue
+            if optional == ALPHAGENOME_KNOTS_FILENAME and not place_release:
+                continue
+            tmp_path = target.with_suffix(target.suffix + ".part")
+            try:
+                if optional == RELEASE_FILENAME:
+                    # Asked above, and the repo had none: what follows is the old file's removal after a
+                    # switch or a refresh, as for any root file the repo does not publish.
+                    raise FileNotFoundError(f"{repo_root}/{optional}")
+                fs.get(f"{repo_root}/{optional}", str(tmp_path))
+                tmp_path.replace(target)
+            except Exception as exc:
+                tmp_path.unlink(missing_ok=True)
+                if replacing and target.is_file():
+                    # The old repo's or release's file, describing (or licensing) bytes this pull replaced.
+                    target.unlink()
+                    logger.info(
+                        "Removed %s: it came with %s, and %s has none.",
+                        optional,
+                        switched_from or _follow_hub.local,
+                        hf_repo_prefix,
+                    )
+                logger.info(
+                    "No %s in the %s repo (%s); the cache carries data only.",
+                    optional,
+                    label,
+                    type(exc).__name__,
+                )
+    finally:
+        # Placed by now, or never to be: a pull that stopped leaves no staged description behind.
+        release_part.unlink(missing_ok=True)
     # Rewritten now that every file is in place: a switch is no longer under way, and the record states
     # the `release.json` this pull placed, so a builder's release written over it later is not taken
-    # for this pull (RM420, `_pulled_by_this_repo`).
-    _write_pull_record(cache_dir, hf_repo_prefix, planned)
+    # for this pull (RM420, `_pulled_by_this_repo`); a file it did not place is not vouched for (RM445).
+    _write_pull_record(cache_dir, hf_repo_prefix, planned, placed_release=placed_release)
     logger.info("Download complete: %s", cache_dir)
     return cache_dir
+
+
+def _stage_release(fs, remote_path: str, staged: Path, label: str) -> str | None:
+    """Fetch the repo's `release.json` to `staged`, returning its sha256, or `None` when it has none.
+
+    Any failure is "none", as the fetch at the end of a pull always read it: the cache then carries
+    data only and states no release, which withholds, and a pull never places what it could not fetch.
+    """
+    try:
+        fs.get(remote_path, str(staged))
+    except Exception as exc:
+        staged.unlink(missing_ok=True)
+        logger.info(
+            "No %s in the %s repo (%s); the cache carries data only.",
+            RELEASE_FILENAME,
+            label,
+            type(exc).__name__,
+        )
+        return None
+    return _file_sha256(staged)
+
+
+def _plan_keeps(
+    cache_dir: Path,
+    remote_files: list[str],
+    remote_sidecars: list[tuple[str, str]],
+    manifest: SnapshotManifest | None,
+    replacing: bool,
+    placed_here: bool,
+) -> dict[str, bool]:
+    """Every planned file, by its path under the cache, mapped to whether the file already there is kept.
+
+    Decided whole before the first download, so a pull knows what it keeps unattested (RM445) before
+    it withdraws or places anything. A data file follows `_keep`; a sidecar is kept when whole, except
+    after a switch or a refresh, since no manifest names one.
+    """
+    keeps: dict[str, bool] = {}
+    for remote_path in remote_files:
+        relative = f"{SNAPSHOT_DATA_DIRNAME}/{remote_path.rsplit('/', 1)[-1]}"
+        keeps[relative] = _keep(
+            cache_dir / relative, relative, manifest, switched=replacing, placed_here=placed_here
+        )
+    for sidecar, remote_path in remote_sidecars:
+        relative = f"{sidecar}/{remote_path.rsplit('/', 1)[-1]}"
+        keeps[relative] = parquet_footer_ok(cache_dir / relative) and not replacing
+    return keeps
+
+
+def _attested(relative: str, manifest: SnapshotManifest | None, record_attests: bool) -> bool:
+    """Whether a file kept under `relative` is attested to be the release being pulled (RM445).
+
+    Two witnesses. The manifest, for a data file: `_keep` keeps one only where the manifest attests it,
+    so a kept data file of a lane with a manifest is attested by construction. The pull record, for
+    any file: `record_attests` when this repo's own pull says the files on disk are the release whose
+    `release.json` the repo publishes now (`_kept_release`). A sidecar has no manifest entry, so only
+    the record attests it.
+    """
+    return record_attests or (manifest is not None and relative.startswith(f"{SNAPSHOT_DATA_DIRNAME}/"))
 
 
 def _stage_manifest(fs, remote_path: str, staged: Path, label: str) -> SnapshotManifest | None:
@@ -1189,13 +1421,11 @@ def _provision_root_file_snapshot(
     cannot name.
     """
     target = cache_dir / payload
-    refreshing = False
     if _json_parses(target):
         if _follow_hub is None or not _compare_with_hub(cache_dir, hf_repo, label, _follow_hub):
             return cache_dir
         if not _pulled_by_this_repo(cache_dir, hf_repo):
             return _left_alone(cache_dir, label, _follow_hub)
-        refreshing = True
         _refreshing(cache_dir, label, _follow_hub)
 
     logger.info("Provisioning the %s snapshot from HuggingFace Hub ...", label)
@@ -1229,10 +1459,11 @@ def _provision_root_file_snapshot(
     if not _json_parses(tmp_path):
         tmp_path.unlink(missing_ok=True)
         raise error_cls(f"Downloaded {payload} is not readable JSON (interrupted download?)")
-    if refreshing:
-        # Withdrawn right before the payload moves, and fetched last below (`@snapshot-layout-locations`):
-        # the old release's record may not describe the new catalogue for a moment, let alone after a crash.
-        (cache_dir / RELEASE_FILENAME).unlink(missing_ok=True)
+    # Withdrawn right before the payload moves, and fetched last below (`@snapshot-layout-locations`):
+    # the old release's record may not describe the new catalogue for a moment, let alone after a crash.
+    # Whether or not this is a refresh (RM445): a `release.json` beside a catalogue that did not parse
+    # described that catalogue, never the one about to replace it.
+    (cache_dir / RELEASE_FILENAME).unlink(missing_ok=True)
     tmp_path.replace(target)
 
     # **Staged, like the payload two lines up and like every other fetch in this module** (RM219).
@@ -1243,9 +1474,11 @@ def _provision_root_file_snapshot(
     # first into the second on every repo that publishes no description.
     release_target = cache_dir / RELEASE_FILENAME
     release_tmp = release_target.with_suffix(release_target.suffix + ".part")
+    placed_release = False
     try:
         fs.get(f"{hf_repo}/{RELEASE_FILENAME}", str(release_tmp))
         release_tmp.replace(release_target)
+        placed_release = True
     except Exception as exc:
         release_tmp.unlink(missing_ok=True)
         logger.info(
@@ -1258,7 +1491,7 @@ def _provision_root_file_snapshot(
     # files: the payload lands whole by one rename after it parses, so there is no unfinished pull for
     # a file list to describe, and `snapshot_record_missing` judges what a list names by the parquet
     # footer, which a JSON payload never has.
-    _write_pull_record(cache_dir, hf_repo, [])
+    _write_pull_record(cache_dir, hf_repo, [], placed_release=placed_release)
     logger.info("Download complete: %s", cache_dir)
     return cache_dir
 

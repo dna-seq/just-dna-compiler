@@ -10,6 +10,8 @@ The case these tests exist for is real and live: `just-dna-seq/clinvar/data` car
 different schemas.
 """
 
+import hashlib
+import json
 from pathlib import Path
 
 import duckdb
@@ -17,6 +19,7 @@ import httpx
 import huggingface_hub
 import pytest
 from just_dna_enricher import download as dl
+from just_dna_enricher.caches import LANES_BY_NAME
 from just_dna_enricher.cli import app as enricher_app
 from just_dna_enricher.locations import (
     CITATIONS_DIRNAME,
@@ -27,6 +30,7 @@ from just_dna_enricher.locations import (
     resolve_clinvar_reference,
     snapshot_record_missing,
 )
+from just_dna_format.snapshot import SnapshotRelease, begin_snapshot_write
 from typer.testing import CliRunner
 
 
@@ -286,6 +290,241 @@ def test_an_unrecorded_cache_still_serves_when_the_listing_cannot_be_read(
     assert "whether it is complete is unknown" in caplog.text
     assert snapshot_record_missing(cache) is None, "no record is written for a cache nobody checked"
     assert resolve_clinvar_reference(cache, load_dotenv_file=False) == cache
+
+
+# ── a kept file nothing attests never takes the hub's label (RM445) ─────────────────────────────
+
+
+_NOV = "clinvar_2026-11-01"
+_CHR1 = "data/clinvar-chr1.parquet"
+
+
+def _release_body(dataset: str) -> str:
+    return json.dumps({"dataset": dataset, "source": "test"}, indent=2) + "\n"
+
+
+def _clinvar_label(cache: Path) -> str | None:
+    return LANES_BY_NAME["clinvar"].release_label(cache)
+
+
+def _column(path: Path) -> str:
+    con = duckdb.connect(":memory:")
+    try:
+        return con.sql(f"SELECT * FROM read_parquet('{path}')").columns[0]
+    finally:
+        con.close()
+
+
+def _old_unrecorded_cache(tmp_path: Path) -> Path:
+    """The reproduction: one whole August file, no pull record, no `release.json`."""
+    cache = tmp_path / "cv"
+    _write_parquet(cache / _CHR1, "old_release")
+    return cache
+
+
+def _record(cache: Path) -> dict:
+    return json.loads((cache / PULL_RECORD_FILENAME).read_text(encoding="utf-8"))
+
+
+def test_enrichs_pull_never_labels_an_unrecorded_cache_with_the_hubs_release(
+    fake_hub, tmp_path: Path
+) -> None:
+    """The enrich path keeps the old file (no release is downloaded mid-run) and states no release.
+
+    Before RM445 the cache came out labelled `clinvar_2026-11-01` over the August bytes, recorded and
+    whole, so every later `cache pull` read it as current: a confident false label, never repaired.
+    """
+    cache = _old_unrecorded_cache(tmp_path)
+    fs = fake_hub({"clinvar-chr1.parquet": "clin_sig"}, release=_release_body(_NOV))
+
+    dl.ensure_clinvar_snapshot(cache)
+
+    assert _column(cache / _CHR1) == "old_release"
+    assert not (cache / RELEASE_FILENAME).exists() and _clinvar_label(cache) is None
+    assert fs.fetched == [RELEASE_FILENAME], "asked for, and not placed"
+    assert snapshot_record_missing(cache) == [] and _record(cache)[dl._RELEASE_DIGEST_KEY] is None
+
+    # …and the next `cache pull` repairs it: a record stating that no release was placed, and no label.
+    fs = fake_hub({"clinvar-chr1.parquet": "clin_sig"}, release=_release_body(_NOV))
+    follow = dl._FollowHub(LANES_BY_NAME["clinvar"].release_label)
+    dl.ensure_clinvar_snapshot(cache, _follow_hub=follow)
+    assert _column(cache / _CHR1) == "clin_sig" and _clinvar_label(cache) == _NOV
+    assert follow.outcome == "refreshed"
+
+
+def test_cache_pull_refetches_an_unrecorded_cache_the_hub_labels(fake_hub, tmp_path: Path) -> None:
+    """The `cache pull` path repairs in one run: the kept file is fetched again, then the label placed."""
+    cache = _old_unrecorded_cache(tmp_path)
+    fs = fake_hub({"clinvar-chr1.parquet": "clin_sig"}, release=_release_body(_NOV))
+
+    follow = dl._FollowHub(LANES_BY_NAME["clinvar"].release_label)
+    dl.ensure_clinvar_snapshot(cache, _follow_hub=follow)
+
+    assert _CHR1 in fs.fetched
+    assert _column(cache / _CHR1) == "clin_sig" and _clinvar_label(cache) == _NOV
+    assert (follow.local, follow.published, follow.outcome) == (None, _NOV, "refreshed")
+    assert (
+        _record(cache)[dl._RELEASE_DIGEST_KEY]
+        == hashlib.sha256((cache / RELEASE_FILENAME).read_bytes()).hexdigest()
+    )
+
+
+def _pre_rm420(tmp_path: Path, label: str) -> Path:
+    """This machine's ClinVar cache: August bytes, a `release.json`, and RM339's record with no digest."""
+    cache = _old_unrecorded_cache(tmp_path)
+    (cache / RELEASE_FILENAME).write_text(_release_body(label), encoding="utf-8")
+    record = {"repo": dl.SNAPSHOT_REPO_PREFIXES["clinvar"], "files": [_CHR1]}
+    (cache / PULL_RECORD_FILENAME).write_text(json.dumps(record), encoding="utf-8")
+    return cache
+
+
+def test_cache_pull_repairs_a_pre_rm420_cache_whose_label_equals_the_hubs(fake_hub, tmp_path: Path) -> None:
+    """The sticky case: the label already equals the hub's, so RM420 read it as current forever."""
+    cache = _pre_rm420(tmp_path, _NOV)
+    fs = fake_hub({"clinvar-chr1.parquet": "clin_sig"}, release=_release_body(_NOV))
+
+    follow = dl._FollowHub(LANES_BY_NAME["clinvar"].release_label)
+    dl.ensure_clinvar_snapshot(cache, _follow_hub=follow)
+
+    assert _CHR1 in fs.fetched
+    assert _column(cache / _CHR1) == "clin_sig" and _clinvar_label(cache) == _NOV
+    assert follow.outcome == "refreshed"
+    assert dl._RELEASE_DIGEST_KEY in _record(cache)
+    # Then it is current, and a warm cache asks nothing on the enrich path.
+    fs = fake_hub({"clinvar-chr1.parquet": "clin_sig"}, release=_release_body(_NOV))
+    follow = dl._FollowHub(LANES_BY_NAME["clinvar"].release_label)
+    dl.ensure_clinvar_snapshot(cache, _follow_hub=follow)
+    assert follow.outcome == "current" and fs.fetched == [RELEASE_FILENAME]
+
+
+def test_enrichs_pull_still_trusts_a_whole_pre_rm420_cache_without_the_hub(
+    fake_hub, tmp_path: Path, monkeypatch
+) -> None:
+    """A warm cache serves offline: only `cache pull` repairs one, never an enrichment mid-run."""
+    cache = _pre_rm420(tmp_path, _NOV)
+
+    def _explode(token=None):
+        raise AssertionError("the hub was read")
+
+    monkeypatch.setattr(huggingface_hub, "HfFileSystem", _explode)
+    assert dl.ensure_clinvar_snapshot(cache) == cache
+    assert _column(cache / _CHR1) == "old_release"
+
+
+def test_a_pre_rm420_record_with_another_label_is_still_re_pulled(fake_hub, tmp_path: Path) -> None:
+    """RM420's motivating machine: a record with no digest is the pull it was, and follows the hub."""
+    cache = _pre_rm420(tmp_path, "clinvar_2026-08-01")
+    fake_hub({"clinvar-chr1.parquet": "clin_sig"}, release=_release_body(_NOV))
+
+    follow = dl._FollowHub(LANES_BY_NAME["clinvar"].release_label)
+    dl.ensure_clinvar_snapshot(cache, _follow_hub=follow)
+
+    assert _column(cache / _CHR1) == "clin_sig" and _clinvar_label(cache) == _NOV
+    assert (follow.local, follow.outcome) == ("clinvar_2026-08-01", "refreshed")
+
+
+def test_an_enrich_run_over_a_build_does_not_turn_it_into_a_pull(fake_hub, tmp_path: Path) -> None:
+    """A builder's `release.json` stays, and the record does not claim a pull placed it.
+
+    Otherwise the enrich run's record would vouch for the builder's file, and the next `cache pull`
+    would take the build for a pull and put the older published release over it.
+    """
+    cache = tmp_path / "cv"
+    write = begin_snapshot_write(cache)
+    _write_parquet(cache / _CHR1, "built")
+    write.commit(SnapshotRelease.model_validate({"dataset": "clinvar_2026-12-01", "source": "test"}))
+    built = {p.name: p.read_bytes() for p in (cache / "data").iterdir()}
+    built_release = (cache / RELEASE_FILENAME).read_bytes()
+    fake_hub({"clinvar-chr1.parquet": "clin_sig"}, release=_release_body(_NOV))
+
+    dl.ensure_clinvar_snapshot(cache)
+    assert (cache / RELEASE_FILENAME).read_bytes() == built_release
+    assert _record(cache)[dl._RELEASE_DIGEST_KEY] is None
+
+    fake_hub({"clinvar-chr1.parquet": "clin_sig"}, release=_release_body(_NOV))
+    follow = dl._FollowHub(LANES_BY_NAME["clinvar"].release_label)
+    dl.ensure_clinvar_snapshot(cache, _follow_hub=follow)
+    assert follow.outcome == "kept"
+    assert {p.name: p.read_bytes() for p in (cache / "data").iterdir()} == built
+    assert (cache / RELEASE_FILENAME).read_bytes() == built_release
+
+
+def test_cache_pull_refetches_an_unrecorded_build_that_states_the_hubs_own_label(
+    fake_hub, tmp_path: Path
+) -> None:
+    """Equal labels: nothing is newer than the hub, and nothing attests a builder's label from a pull's.
+
+    An unrecorded `release.json` is a builder's or a pull's from before any record, and the two cannot be
+    told apart; refetching costs a download and loses nothing of another release. Only a build stating
+    another label than the hub's is left alone (RM420).
+    """
+    cache = tmp_path / "cv"
+    write = begin_snapshot_write(cache)
+    _write_parquet(cache / _CHR1, "built")
+    write.commit(SnapshotRelease.model_validate({"dataset": _NOV, "source": "test"}))
+    fake_hub({"clinvar-chr1.parquet": "clin_sig"}, release=_release_body(_NOV))
+
+    follow = dl._FollowHub(LANES_BY_NAME["clinvar"].release_label)
+    dl.ensure_clinvar_snapshot(cache, _follow_hub=follow)
+
+    assert _column(cache / _CHR1) == "clin_sig" and _clinvar_label(cache) == _NOV
+    assert follow.outcome == "refreshed" and follow.unattested
+
+
+def test_a_pull_fetching_beside_kept_unattested_files_withdraws_the_label_already_there(
+    fake_hub, tmp_path: Path
+) -> None:
+    """A builder's `release.json` described the cache before the pull; it cannot describe the mixture."""
+    cache = tmp_path / "cv"
+    write = begin_snapshot_write(cache)
+    _write_parquet(cache / _CHR1, "built")
+    write.commit(SnapshotRelease.model_validate({"dataset": "clinvar_2026-12-01", "source": "test"}))
+    fs = fake_hub(
+        {"clinvar-chr1.parquet": "clin_sig", "clinvar-chr2.parquet": "clin_sig"}, release=_release_body(_NOV)
+    )
+
+    dl.ensure_clinvar_snapshot(cache)
+
+    assert "data/clinvar-chr2.parquet" in fs.fetched and _column(cache / _CHR1) == "built"
+    assert not (cache / RELEASE_FILENAME).exists() and _clinvar_label(cache) is None
+
+
+def test_a_resumed_pull_of_the_same_release_fetches_only_what_it_lacks_and_is_labelled(
+    fake_hub, tmp_path: Path
+) -> None:
+    """The record a pull writes first names the release it is pulling, so a resume keeps what it got."""
+    cache = tmp_path / "cv"
+    _interrupting(fake_hub(_THREE, release=_release_body(_NOV)), after=1)
+    with pytest.raises(KeyboardInterrupt):
+        dl.ensure_clinvar_snapshot(cache)
+    assert not list(cache.glob("*.part")), "the staged release.json goes with the pull that stopped"
+
+    fs = fake_hub(_THREE, release=_release_body(_NOV))
+    dl.ensure_clinvar_snapshot(cache)
+    assert sorted(f for f in fs.fetched if f.startswith("data/")) == [
+        "data/clinvar-chr2.parquet",
+        "data/clinvar-chr3.parquet",
+    ]
+    assert _clinvar_label(cache) == _NOV
+
+
+def test_a_resume_across_a_release_boundary_never_labels_the_older_file(fake_hub, tmp_path: Path) -> None:
+    """The hub moved between the interrupted pull and its resume: the file kept is the older release's."""
+    older = {f"clinvar-chr{i}.parquet": "rel_a" for i in (1, 2, 3)}
+    newer = {f"clinvar-chr{i}.parquet": "rel_b" for i in (1, 2, 3)}
+    for path, follow in (("enrich", None), ("pull", dl._FollowHub(LANES_BY_NAME["clinvar"].release_label))):
+        cache = tmp_path / path
+        _interrupting(fake_hub(older, release=_release_body("clinvar_2026-10-01")), after=1)
+        with pytest.raises(KeyboardInterrupt):
+            dl.ensure_clinvar_snapshot(cache)
+
+        fake_hub(newer, release=_release_body(_NOV))
+        dl.ensure_clinvar_snapshot(cache, _follow_hub=follow)
+        if follow is None:
+            assert _column(cache / _CHR1) == "rel_a" and _clinvar_label(cache) is None, path
+        else:
+            assert _column(cache / _CHR1) == "rel_b" and _clinvar_label(cache) == _NOV, path
+            assert follow.outcome == "refreshed"
 
 
 def test_a_read_timeout_names_the_knob_and_leaves_no_part_file(fake_hub, tmp_path: Path, monkeypatch) -> None:

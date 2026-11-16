@@ -41,6 +41,44 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-16 — RM445: a pull never places the hub's `release.json` over files it kept and nothing attests (patch, on `main`)
+
+A pull of a cache with no pull record and no `manifest.json` kept every whole parquet and then fetched the hub's
+`release.json`, so old bytes stated the new release. The cache was then recorded and whole, and every later
+`cache pull` read it as current. This machine's ClinVar cache served August data as `clinvar_2026-11-01` that way
+(the pm's remote-read trial, finding 8). Now the hub's `release.json` is placed only over files the pull fetched, or
+kept because the manifest attests them, or because this repo's own pull recorded that they are the release the repo
+still publishes; AlphaGenome's `avi_knots.parquet`, which reconstructs `PHRED` for one release, follows the same
+rule. `cache pull` and `cache prepare` fetch an unattested kept file again, as RM420 does for a release that moved,
+so they repair. `enrich`'s own pull keeps it (no release is downloaded mid-run) and places no label: the cache
+states no release, so its label is withheld rather than false. A `release.json` already there, a builder's say,
+stays when nothing is fetched beside it and is withdrawn before the first byte when something is. The record now
+states the digest of the `release.json` the pull placed and `null` when it placed none, so an `enrich` run over a
+build no longer makes the next `cache pull` take the build for a pull. A pull fetches `release.json` first, staged
+beside the cache, and names it in the record it writes before the first download, so a resumed pull keeps what it
+fetched while the hub still publishes that release and fetches it again past a release boundary. STRchive's
+provisioner keeps no file, so the mechanism does not reach it; it now withdraws an old `release.json` before every
+catalogue it moves in, not only on a refresh.
+
+**Caches already wrong are repaired by the next `cache pull`.** A finished pull record without `release_sha256` was
+written before RM420 (0.8.3), by RM339's pull, which placed the hub's label over whatever it kept. `cache pull` now
+re-pulls such a cache even when its label equals the hub's, and keeps re-pulling one whose label differs, as RM420
+did. `enrich` still serves a whole recorded cache without the network, this one included, so run `cache pull` once.
+
+**Did an `enrich` run record the new label over old answers?** Possibly, on any machine whose cache carried such a
+record, between its pull and this fix; nothing here knows which modules were enriched on one. The marker is the
+lane's `pull-record.json` with no `release_sha256` key. Read it **before** running `cache pull`, which rewrites it;
+where the key is absent, re-enrich the modules enriched against that lane since the record's date. A cache that 0.8.3
+to 0.8.7 completed from no record at all carries the key and cannot be told on disk from an honest pull: parquet files
+much older than its `pull-record.json` are a hint, not proof, and moving it aside and pulling settles it.
+
+No public name, field, flag or vocabulary moves. Tests: `test_download.py` (the reproduction on both paths, the
+pre-RM420 record with an equal and with a differing label and on the `enrich` path, a build an `enrich` run passes
+over, a build stating the hub's own label, the label a fetch withdraws, a resume of the same release and one across a
+release boundary) and `test_cache_pull_follows_the_hub.py` (the knots). Eight of the eleven were red on the previous
+`main`; the other three pin what stays (`enrich`'s warm trust, RM420's re-pull of a differing label, a same-release
+resume), and each arm of the fix reverted on purpose turns at least one red. RM420's tests pass unchanged.
+
 ## 2026-11-14 — `v0.8.7`: enricher 0.8.7 (a patch, cut from `main`)
 
 Only the enricher changed source since `v0.8.6`, so it alone moves; format and compiler stay 0.8.6 and are not

@@ -3721,6 +3721,22 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   state (built here, or pulled before RM339): compared with the listing once, and used as it is, with
   a warning, when the listing cannot be read.
 
+  **And a label placed over files the pull kept is a claim about each of them (RM445, 2026-11-15).** The
+  same family a third time: RM339 recorded the *set*, RM420 compared the *release*, and the completion
+  path still kept every whole file of an unrecorded cache and then fetched the hub's `release.json`
+  over them, so an August ClinVar cache came out of one pull stating November, recorded and whole, and
+  read as current by every later `cache pull`. Keeping a file is a judgement about which release it
+  is; with no manifest entry and no record of the release the earlier pull was pulling, the answer is
+  unknown, and an unknown withholds the label rather than inheriting the hub's. So the hub's
+  `release.json` is staged first and placed last only when every kept file is attested (manifest, or
+  `_kept_release` equal to what the hub publishes now); `cache pull` fetches an unattested file again,
+  `enrich` leaves the cache stating no release. The record's digest names only a `release.json` the
+  pull **placed**: a digest of "whatever is on disk" vouched for a builder's file the moment a pull
+  kept it, and the next `cache pull` took the build for a pull. Two repairs refused: placing the label
+  when the kept file "looks whole" (the footer says nothing about the release), and refusing to keep
+  any unattested file on the `enrich` path (a warm cache must serve, and no release is downloaded
+  mid-run).
+
 - `@a-lane-with-two-halves-publishes-the-provenance-of-one` — **A snapshot built in two halves on two
   cadences is described by one file, and the half that writes it wins (RM179, 2026-09-03).** A ClinVar
   snapshot is the VCF *and* `var_citations.txt`, which ClinVar publishes separately — the reason

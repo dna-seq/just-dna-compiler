@@ -1839,13 +1839,26 @@ labels, so a pulled cache follows the hub whichever way the labels differ. A cac
 machine** is left alone and printed with both labels, because between a build and its upload the local
 lane is the newer one: a builder writes no pull record, and the record states the sha256 of the
 `release.json` the pull placed, so a builder's release written over an old pull is not taken for it.
-A record from before RM420 carries no digest and is read as the pull it was. A hub that cannot be read
+A record from before RM420 carries no digest and is read as the pull it was, but not as attesting its label
+(RM445): the pull that wrote it placed the hub's `release.json` over whatever it kept, so `cache pull` re-pulls it
+even when its label equals the hub's. A hub that cannot be read
 leaves the cache as it is, with a warning. `enrich`'s own `ensure` call never reads the hub for a whole
 cache: a warm cache serves offline, and no enrichment downloads a release mid-run. STRchive's pull
 writes a record since RM420 too; a catalogue pulled before then carries none, so it is left alone and
 named with both labels until it is moved aside and pulled once. A cache with no record, built here or pulled before the
 record existed, is compared with the published listing once; with no route to the Hub it is used as it
-is, with a warning that its completeness is unknown. A download that times out names
+is, with a warning that its completeness is unknown.
+
+**A pull never places the hub's `release.json` over a file it kept and nothing attests (RM445).** A kept file is
+attested by the release's `manifest.json`, or by this repo's own pull record saying the files on disk are the
+release the repo still publishes; the record written before the first download names the release being pulled, so
+a resumed pull keeps what it fetched only while the hub publishes that same `release.json`. `cache pull` and
+`cache prepare` fetch an unattested file again (reported as re-pulled); `enrich` keeps it, places no
+`release.json`, and the cache states no release, so its label is withheld rather than false.
+`avi_knots.parquet` follows `release.json`; `LICENSE.txt` is fetched either way. A `release.json` already in the
+cache (a builder's) stays when nothing is fetched beside it and is withdrawn before the first byte when something
+is, and the record's `release_sha256` names only a file the pull placed (`null` otherwise), so a build an `enrich`
+run passed over is still left alone by the next `cache pull`. A download that times out names
 `HF_HUB_DOWNLOAD_TIMEOUT` (10 s by default, short for a 1 GB file). One snapshot failing does not sink
 the rest — each reports its own line, and the command exits 1 if any failed.
 

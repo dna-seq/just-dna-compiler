@@ -442,6 +442,47 @@ def test_enrichs_ensure_never_reads_the_hub_for_a_present_catalogue(
     assert dl.ensure_strchive_snapshot(cache) == cache
 
 
+def test_the_knots_follow_release_json_over_kept_files_nothing_attests(tmp_path: Path, install_hub) -> None:
+    """RM445: the AVI knots reconstruct `PHRED` for one release's scores, so they go where its label goes.
+
+    An unrecorded AVI cache on the enrich path keeps its file and states no release; the hub's knots
+    would turn its scores into another release's numbers, so neither they nor the label are placed.
+    """
+    from just_dna_enricher.locations import ALPHAGENOME_KNOTS_FILENAME
+
+    cache = tmp_path / "alphagenome_avi"
+    shard = "data/alphagenome_avi-chr1.parquet"
+    (cache / "data").mkdir(parents=True)
+    (cache / shard).write_bytes(_parquet(["OLD"]))
+    hub = install_hub(
+        "alphagenome_avi",
+        {
+            shard: _parquet(["NEW"]),
+            ALPHAGENOME_KNOTS_FILENAME: _parquet(["KNOTS"]),
+            RELEASE_FILENAME: _release("avi_v2"),
+        },
+    )
+
+    dl.ensure_alphagenome_avi_snapshot(cache)
+
+    assert not (cache / ALPHAGENOME_KNOTS_FILENAME).exists() and snapshot_release_label(cache) is None
+    assert ALPHAGENOME_KNOTS_FILENAME not in hub.fetched
+    # `cache pull` re-pulls it whole, knots and label included.
+    hub = install_hub(
+        "alphagenome_avi",
+        {
+            shard: _parquet(["NEW"]),
+            ALPHAGENOME_KNOTS_FILENAME: _parquet(["KNOTS"]),
+            RELEASE_FILENAME: _release("avi_v2"),
+        },
+    )
+    follow = dl._FollowHub(snapshot_release_label)
+    dl.ensure_alphagenome_avi_snapshot(cache, _follow_hub=follow)
+    assert (cache / shard).read_bytes() == hub.files[shard]
+    assert (cache / ALPHAGENOME_KNOTS_FILENAME).read_bytes() == hub.files[ALPHAGENOME_KNOTS_FILENAME]
+    assert snapshot_release_label(cache) == "avi_v2" and follow.outcome == "refreshed"
+
+
 def test_the_three_provisioning_call_sites_pass_the_intent() -> None:
     """Only `cache pull` and `cache prepare` follow the hub; every other caller keeps the warm trust.
 

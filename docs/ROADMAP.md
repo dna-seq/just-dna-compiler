@@ -2249,7 +2249,7 @@ paths explicitly gets no environment write.
 
 ## RM445 — a pull keeps an unrecorded cache's old parquet and places the hub's newer `release.json` over it, so old bytes carry the new release's label
 
-**Severity** medium · **Status** open — **a patch; the pm sizes** · **Owner** enricher (`download._provision_snapshot`, `_keep`) ·
+**Severity** medium · **Status** open — **a patch, built on `main` 2026-11-16, uncut** · **Owner** enricher (`download._provision_snapshot`, `_keep`) ·
 **Motivating case** the pm's remote-read trial, `docs/probes/REMOTE_READS_0_9.md` finding 8 (2026-11-15) · *related* RM339, RM372, RM420
 
 **What was seen.** This machine's ClinVar cache has a `release.json` byte-identical to the one on Hugging Face
@@ -2303,7 +2303,34 @@ the builder to say in the changelog line: an `enrich` run on such a cache betwee
 new label over old ClinVar answers; nothing here knows which modules were enriched on one, so the line says how to
 tell (a pull record without `release_sha256`) rather than claiming none.
 
-**Residuals** none yet.
+**Built (builder for the lead, 2026-11-16).** Both shapes and the sticky caches, enricher only.
+`_provision_snapshot` decides keep-or-fetch for every planned file before the first download (`_plan_keeps`), and a
+kept file is attested by the manifest (data only, as `_keep` already required) or by the record: `_kept_release`
+reads the release this repo's own pull says the files on disk are, and it counts only while it equals the
+`release.json` the repo publishes now. The hub's `release.json` is fetched first, staged beside the cache like the
+manifest, and placed last only when no kept file is unattested; `avi_knots.parquet` follows it, `LICENSE.txt` (terms,
+not a release) does not. Otherwise:
+
+- **`cache pull` / `cache prepare`** (`_follow_hub`) re-pull, as RM420's refresh with the `refreshed` outcome and a
+  note saying nothing attested the files: an unrecorded cache whose hub states a release (stating no label, or the
+  hub's own; one stating another label is still left alone), a resumed pull past a release boundary, and a whole
+  cache whose finished record has no `release_sha256` (`_label_unattested`), even when its label equals the hub's. A
+  no-digest record with a differing label is re-pulled as before, so RM420's motivating case is unchanged, and a lane
+  with a manifest is never unattested this way, so no Ensembl cache is re-hashed.
+- **`enrich`** keeps the file, places nothing and states no release. A `release.json` already there (a builder's)
+  stays when nothing is fetched and is withdrawn right before the first byte when something is
+  (`@snapshot-layout-locations`). A whole recorded cache still returns before the hub is read.
+- **The record** names the digest of the `release.json` the pull **placed** (`null` when none), so a builder's file
+  is never vouched for; `_pulled_by_this_repo` is unchanged and reads such a cache as built here. The record written
+  before the first download names the release being pulled (`pulling_release_sha256`, private) when every whole file
+  under a planned name is already that release's, so a same-release resume still fetches only what it lacks.
+
+STRchive's root-file provisioner keeps no file, so the mechanism does not reach it (class checked); it now withdraws an
+old `release.json` before every catalogue it moves in. Eleven tests: ten in `test_download.py`, one in
+`test_cache_pull_follows_the_hub.py`; eight red on `051dc276`, and each arm reverted on purpose turned at least one red.
+RM420's eighteen pass unchanged.
+
+**Residuals** won't fix — a cache that 0.8.3 to 0.8.7 completed from no record carries `release_sha256` and the hub's label over old bytes, and nothing on disk tells it from an honest pull, so its operator moves it aside and pulls once
 
 # Not format scope
 
