@@ -118,10 +118,9 @@ patches right after real use started, so the pm reads an audit sceptically: the 
   unset by default (`JUST_DNA_SNAPSHOT_PROXY_URL`), 3 s / 10 s timeouts, HF 429 is could-not-ask with no retry, one
   release pinned per session, the route recorded on every answer; enrich() does not read remotely in 0.9; the session
   is the holder's life; `enrich(clients=, sequences=)`; `parse_release` makes 0.9 touch the schema package by one
-  function. **Open: whether the rsID index is also published** (S145 ask 4 wanted it for a proxy box without the
-  Ensembl lane). **Owed tonight (unattended): the index trial** (size, build time, row-group pruning) and the
-  registry's answer on whether its boxes hold the Ensembl lane; then the decision under RM431 before the lead builds
-  ask 4 (built last).
+  function. **rsID index: local only, never published** (the registry's lead, 2026-11-16: both proxy boxes hold the
+  Ensembl lane; "publish nothing"). The night trial is canceled: its only purpose was that decision; the builder
+  measures size and build time.
   **The lead's critic answered the same evening** (blocks A-H) as "Answers to the lead's critic" under RM430, RM437,
   RM404, RM431: a `remote.RemoteSnapshots` holder, opt-in (no holder, no remote read), declared-use gated per lane;
   one release per route per holder; truncation split to one key; one `SnapshotRouteUnavailable`; per-group licence by

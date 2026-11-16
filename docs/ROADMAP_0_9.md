@@ -243,10 +243,9 @@ Splitting waits until one ask unparks alone.
 **Unparked into 0.9 by the maintainer, desk #261, 2026-11-15** (option 2, "the follow-ups too"), as RM430's zone.
 The measure-first gate above no longer decides whether these are built; the pm's trial for RM430 still orders them.
 
-**Decided for 0.9 (the pm, 2026-11-16).** Built after RM430's remote root, in the order 6, 5, 7, 4 (ask 4 last: see its open half).
+**Decided for 0.9 (the pm, 2026-11-16).** Built after RM430's remote root, in the order 6, 5, 7, 4 (ask 4 last).
 
-1. **Ask 4, Ensembl by rsID: a local index; whether it is also published waits for tonight's trial** (its size and
-   build time are unmeasured, and when it is built follows from them; the trigger below is not final). A derived cache lane, `ensembl_rsid_index`, built
+1. **Ask 4, Ensembl by rsID: a local index, never published** (settled the same evening, below). A derived cache lane, `ensembl_rsid_index`, built
    from the pulled split snapshot: rsID → (chrom, start), sorted by rsID so row groups prune. Its parent is the
    Ensembl snapshot's `release_id`, a field, by the derived-lane rule; a moved parent rebuilds it, and the reader
    refuses an index whose parent is not the core it sits beside. `resolver.lookup_loci` by rsID consults it first.
@@ -259,19 +258,19 @@ The measure-first gate above no longer decides whether these are built; the pm's
 4. **Ask 7, AlphaGenome:** `read_local_scores` lists contig files through RM430's root, local or remote, and never
    through a local glob or `Path.stem`.
 
-**Open until the trial: publishing the index.** S145's ask 4 was a published index, for a proxy box that holds no
-Ensembl snapshot. Published, it serves that box and any Hugging-Face-only client, at the cost of a derived repository
-of perhaps the `id` column's 6 GB, rebuilt and published for every Ensembl release. Local only, a box without the lane
-cannot answer Ensembl by rsID. The pm measures the index tonight and asks the registry whether its boxes hold the
-Ensembl lane; the decision lands here before the lead builds ask 4, which is why ask 4 is built last.
+**Publishing the index: not done (the pm, 2026-11-16, on the registry lead's answer).** S145's ask 4 wanted a
+published index for a proxy box without the Ensembl lane. The registry's lead: "Local only is enough; publish nothing.
+Both proxy boxes hold the Ensembl lane", and a proxying registry is a provisioned box by definition. So no derived
+repository is built or published; a box without the lane keeps refusing an rsID-only key remotely
+(`remote_needs_position`), which they accept. A future host without the lane is a new filing. The index's size and
+build time are measured by its builder, not by a separate trial.
 
 **Answers to the lead's critic (the pm, 2026-11-16, evening).**
 
 - **Ask 4.** The index is a derived lane in a directory of its own, rebuild-only like `mitomap_miss`: no `ensure`, no
   entry in `SNAPSHOT_REPO_IDS`, built by `cache rebuild ensembl_rsid_index` and never inside `ensure_snapshot`, so
   `enrich(download=True)` pays nothing. It is not remote-eligible, which keeps RM430's "Ensembl by rsID never sent
-  remotely". Whether it is also published is still open until tonight's measurement; if it is, that publication
-  becomes the one stated exception.
+  remotely". It is never published (the registry's lead, the same evening).
 - **Ask 6.** `opentargets.lookup_variants(reference, positions: Sequence[tuple[str, int]]) -> dict[tuple[str, int],
   list[dict]]` reads `variants.parquet` by chrom + position; `opentargets.lookup_consequences(reference, variant_ids:
   Sequence[str]) -> dict[str, list[dict]]` reads `consequences` and `members` by the ids the first one found. Plain
