@@ -694,7 +694,7 @@ since that tracker is the procedure P3 turns on.
 holding a local GRCh38 reference still reads every base over REST; the registry measured a re-derivation at 6.9 h
 with `verify_ref=True` against 3.4 h without, the same table. RM404 (0.9) answers the online half with its
 `sequences=` parameter. What stays here: the offline run, where `offline` outranks an injected proxy (RM404's
-answer 4 to the lead's critic), and the lane with three stages the registry would prefer over a passed URI (open
+answer 5 to the lead's critic), and the lane with three stages the registry would prefer over a passed URI (open
 question 2). One fact for open question 1: a local seqrepo needs `biocommons.seqrepo`, which the enricher's core
 dependencies leave out on purpose, so the seqrepo route is a new dependency (or an extra) where a FASTA reader
 would not be.

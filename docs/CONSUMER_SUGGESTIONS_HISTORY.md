@@ -7821,7 +7821,7 @@ left-alignment and the minter all read through a proxy you build with `uri="seqr
 passed URI alone would already serve us", online, in 0.9. Two facts for your side. First, a `seqrepo+file://` URI is
 read by `biocommons.seqrepo`, which the enricher deliberately does not install (core `ga4gh.vrs` only; its
 `pyproject.toml` says why), so your environment carries it. Second, under `offline=True` the `offline` flag outranks
-an injected proxy and warns once (RM404's answer 4 to the lead's critic), so the offline run waits for RM385, which builds the local
+an injected proxy and warns once (RM404's answer 5 to the lead's critic), so the offline run waits for RM385, which builds the local
 reference as its own kind and answers your lane question (its open question 2). A new public parameter is a minor,
 not a patch, so nothing reaches 0.8.x. Your measurement (6.9 h against 3.4 h, the same table) is recorded in both
 entries as the cost.
