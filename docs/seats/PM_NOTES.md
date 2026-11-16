@@ -110,6 +110,11 @@ patches right after real use started, so the pm reads an audit sceptically: the 
   ClinVar cache has a new release.json over August parquet (triage, DM 640494788); the polygon's stale ClinPGx copy,
   an id-only Ensembl key answered 200, the cross-product batch (the registry, 640494791, info). DREAMS.md tracked
   (f4c7840a, over the lead's 2d87a9f5; the lead pushes both).
+- **RM445's three calls (the lead, 2026-11-16), answered:** enrich never fetches beside a local build (could-not-run
+  instead of withdrawing the label); an unfetchable `release.json` refuses (keep); the 0.8.3-0.8.7 sticky case is
+  closed before the cut by comparing kept files with the listing (size, LFS sha256), else its own patch RM. The lead
+  records them in the entry on build/RM445. **S156** folded into RM441 by triage; the pm's call: the enricher holds the
+  per-table "newest release that could change it" (d0e71825); desk #326 updated.
 
 
 - **Re-ask the trust register after the 1.0 cut** (`docs/TRUST.md`, the base rule for a repo whose code can
