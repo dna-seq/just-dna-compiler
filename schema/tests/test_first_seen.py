@@ -80,9 +80,10 @@ _RELEASES: frozenset[str] = frozenset(
         "0.8.4",
         "0.8.5",
         "0.8.6",
-        # Uncut until its tag. 0.8.7 moved the enricher alone, so format's version (`_UNCUT`) stayed 0.8.6:
-        # the guard below adds every workspace package's version, not format's only.
         "0.8.7",
+        # Uncut until its tag. 0.8.7 and 0.8.8 moved the enricher alone, so format's version (`_UNCUT`)
+        # stayed 0.8.6: the guard below adds every workspace package's version, not format's only.
+        "0.8.8",
     }
 )
 

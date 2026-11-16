@@ -41,7 +41,31 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
-## 2026-11-16 — RM445: a pull never places the hub's `release.json` over files it kept and nothing attests (patch, on `main`)
+## 2026-11-16 — `v0.8.8`: enricher 0.8.8 (a patch, cut from `main`)
+
+Only the enricher changed source since `v0.8.7` (`download.py`), so it alone moves; format and compiler stay 0.8.6 and
+are not rebuilt. The enricher's floors stay `just-dna-format>=0.8.6` and `just-dna-compiler>=0.8.6`, and no
+third-party floor moved. Sized by the pm to cut at once and alone: a silent wrong answer under a current-looking
+label, and sticky, so every day uncut is another cache that never repairs.
+
+- **What it carries:** RM445. A pull no longer places the hub's `release.json` over cached files it kept and nothing
+  attests, so old bytes no longer carry the new release's label. `cache pull` and `cache prepare` repair such a cache,
+  including one whose label already equals the hub's: a pull record without `release_sha256` (written before 0.8.3),
+  and any pulled cache whose files the hub's listing contradicts by size or, up to 256 MiB, by LFS sha256. Neither
+  `enrich` nor `cache pull` fetches beside a local build any more; a missing part is reported as could-not-run.
+- **A new refusal for a direct caller:** a `release.json` that could not be fetched (a timeout, a 429, a refused
+  token) stops a fresh or unfinished pull before anything in the cache moves; before, it read as "the repo publishes
+  none". A cache already there is served as it is.
+- **Release record:** none, as for 0.8.1 and 0.8.7. The compiler did not change.
+- **After upgrading:**
+  1. Raise the enricher's floor to `>=0.8.8`; format and compiler stay `>=0.8.6`.
+  2. **Before** the first `cache pull`, read each lane's `pull-record.json`: one with no `release_sha256` key marks a
+     cache that may have served an older release under a newer label, and so may any pulled cache whose parquet files
+     are much older than its record. Modules enriched against such a lane since that record's date may carry old
+     answers; re-enrich them after the pull.
+  3. Run `just-dna-enricher cache pull` once. It repairs every affected pulled cache; a local build is left alone.
+
+## 2026-11-16 — RM445: a pull never places the hub's `release.json` over files it kept and nothing attests (patch, cut as `v0.8.8`)
 
 A pull of a cache with no pull record and no `manifest.json` kept every whole parquet and then fetched the hub's
 `release.json`, so old bytes stated the new release. The cache was then recorded and whole, and every later

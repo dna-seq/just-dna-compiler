@@ -11,11 +11,12 @@ the known issues 0.8 ships with.
 since `v0.7.3`), each intra-workspace floor is `>=0.8.0`, and `polars>=1.42.0` is unchanged, so a polars 1.x
 install still resolves. It is published and tagged `v0.8.0`.
 
-**Seven patches followed on the 0.8 line, and the current release is 0.8.7.** 0.8.1 (2026-11-07) moved the
+**Eight patches followed on the 0.8 line, and the current release is 0.8.8.** 0.8.1 (2026-11-07) moved the
 enricher alone, so format and compiler stayed 0.8.0. 0.8.2 (2026-11-07), 0.8.3 (2026-11-09), 0.8.4
 (2026-11-11), 0.8.5 (2026-11-12) and 0.8.6 (2026-11-13) each moved all three packages (the compiler in 0.8.4,
-0.8.5 and 0.8.6 for its floor only), and 0.8.6's floors are `>=0.8.6` throughout. 0.8.7 (2026-11-14) moved the
-enricher alone again, so format and compiler stay 0.8.6 and the enricher's floors stay `>=0.8.6`. One patch added a public
+0.8.5 and 0.8.6 for its floor only), and 0.8.6's floors are `>=0.8.6` throughout. 0.8.7 (2026-11-14) and 0.8.8
+(2026-11-16) moved the enricher alone again, so format and compiler stay 0.8.6 and the enricher's floors stay
+`>=0.8.6`. 0.8.8 adds one refusal for a direct caller (a `release.json` that could not be fetched stops a pull, RM445). One patch added a public
 name: 0.8.4's `GwasCatalogClient.size_refusals` (RM428), which a patch should not have added. No patch adds a
 field, table, flag or warning code, so this file's surface delta is still the whole 0.7 → 0.8 boundary; what
 each patch changed, and what to do after upgrading to it, is its entry in the [CHANGELOG](CHANGELOG.md), and
@@ -27,13 +28,13 @@ each patch changed, and what to do after upgrading to it, is its entry in the [C
 dependencies = [
     "just-dna-format>=0.8.6",
     "just-dna-compiler>=0.8.6",
-    "just-dna-enricher>=0.8.7",
+    "just-dna-enricher>=0.8.8",
 ]
 ```
 
 A consumer that holds only the format tier pins the first line alone. A git dependency on the `0.8` branch
 (`rev = "1007a26d"` and later), which this file recommended for testing before the cut, goes from your
-tracked files and your lock: `uv lock` against the published `0.8.7` release, then run your suite again.
+tracked files and your lock: `uv lock` against the published `0.8.8` release, then run your suite again.
 
 **The release record says what a recompile moves.** `release_records.RELEASE_RECORDS["0.8.0"]`, measured at
 the cut against the published compiler 0.7.2, declares each correction and addition (RM363's contig
@@ -42,7 +43,7 @@ spelling and RM361's `:None` key are the two corrections), and `needs_recompile(
 lite stays on polars 1.x (polars-bio caps `polars<2`), and this workspace locks polars 2.1.0, so one
 `compiler_version` over one spec writes two `artifact.digest`s and one `content_signature`. Compare content
 by `content_signature`; read a digest mismatch with `compilation.toolchain` beside it (§ 1.11).
-The patches add little to that answer: 0.8.1 and 0.8.7 left the compiler alone and have no record, and
+The patches add little to that answer: 0.8.1, 0.8.7 and 0.8.8 left the compiler alone and have no record, and
 `RELEASE_RECORDS["0.8.2"]`, measured from 0.8.0, moves only the text of two warnings, and
 `RELEASE_RECORDS["0.8.3"]`, `RELEASE_RECORDS["0.8.4"]`, `RELEASE_RECORDS["0.8.5"]` and
 `RELEASE_RECORDS["0.8.6"]`, each measured from the patch before it, move nothing, so a module compiled by 0.8.0
@@ -845,7 +846,7 @@ out: being importable does not make it a supported surface. All additive.
 1. **Pins, in tier order: format, then compiler, then enricher.** `just-dna-format` first, because a 0.7
    reader refuses some 0.8 output (§ 1, § 1.13, § 1.18) and drops the new manifest fields (§ 1.2); then
    `just-dna-compiler`; then `just-dna-enricher`. A consumer that holds only the format tier stops after
-   the first. Floor format and compiler on `>=0.8.6` and the enricher on `>=0.8.7`, the current patch.
+   the first. Floor format and compiler on `>=0.8.6` and the enricher on `>=0.8.8`, the current patch.
 2. **`uv lock`**, regenerated and never hand-edited, committed with the floors.
 3. **Move the shared Ensembl cache, once per machine** (§ 1.29): `just-dna-enricher cache pull --only
    ensembl`, or `cache prepare`. The lane now pulls `just-dna-seq/ensembl_variations_split` (dbSNP 157 /
@@ -1263,6 +1264,15 @@ What 0.8 ships with, known and not fixed. Each line names its item; [RM_TOC.md](
   lane that came from a pull when its repo publishes another release, and leave a lane built here alone with both
   labels. On 0.8.2 the workaround is still needed, and after the fix once more for a STRchive catalogue pulled
   before it, which carries no pull record.
+- **A pull could label an old cache with the hub's newer release (RM445).** A cache with no pull record (built
+  here, or pulled before 0.8.0 kept one) and no `manifest.json` kept its whole parquet files on a
+  pull, and the pull then placed the hub's `release.json` over them. The cache then read as recorded, whole and
+  current, so every later `cache pull` left it, and `cache status` named a release its bytes were not. Seen on a
+  ClinVar cache serving the August release as `clinvar_2026-11-01`. The marker is a `pull-record.json` with no
+  `release_sha256` key; parquet files much older than the record are a hint too. Until the fix: move the lane aside
+  and pull. **Fixed in enricher 0.8.8** (RM445): a pull places a label only over files it fetched or something
+  attests, and `cache pull` repairs every affected pulled cache, checking a current label against the listing's
+  sizes and LFS digests. Re-enrich modules enriched against such a lane (CHANGELOG, the `v0.8.8` entry).
 - **A `resolution.csv` row for a variant the module no longer names is silent (RM422).** A variant removed
   after `enrich` keeps its row, since `enrich` keeps rows it is not asked about, and on 0.8.2 neither `validate`
   nor `compile --strict` says so; the compile ships the file in `manifest.derived` (no parquet carries the row).
