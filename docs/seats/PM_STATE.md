@@ -1,7 +1,9 @@
-**Where it stands** (2026-11-15). The current release is **0.8.7** (enricher only, on PyPI since 2026-11-15). The scope of
+**Where it stands** (2026-11-15). The current release is **0.8.7** (enricher only, on PyPI since 2026-11-15); 0.8.8 is cut. The scope of
 the next minor, 0.9, is being chosen with the maintainer; one zone is decided: reading reference snapshots remotely.
 
 **Headline results**
+- ⏳ 0.8.8, cut and waiting for the maintainer's publish (enricher only): a cache pull no longer keeps old ClinVar files
+  under a new release's label, and the caches already wrong are repaired by the next pull. Full suite 7,446 passed.
 - ✅ 0.8.7, released: the AlphaGenome licence notices now say what Google's terms say, and the rsID recovery no longer
   claims more than dbSNP records. Full suite 7,416 passed.
 - ✅ 0.8.6, released: a re-derivation that drops an rsID now says so; the upgrade guide says the Ensembl snapshot
