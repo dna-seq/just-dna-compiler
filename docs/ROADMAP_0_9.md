@@ -459,11 +459,14 @@ liaison files it upstream, and no proxy of ours wraps it.
 3. Only `BatchResolver` goes public, `runtime_checkable`, with public method names and a public answer type; its
    private names go. `_RestBatchWitness` stays private (one test reads it, and no caller asked). This withdraws the
    decision above that made both public.
-4. Under `offline=True`, `offline` outranks an injected sequence proxy, as it outranks an injected client today
+4. **One proxy per run (S157, the pm):** a passed `sequences` is the only sequence source the run reads: `verify_ref`,
+   left-alignment and the VRS minter all take it, and none builds its own. A test asserts that a run given a proxy
+   makes no sequence read through any other.
+5. Under `offline=True`, `offline` outranks an injected sequence proxy, as it outranks an injected client today
    (`@gated-source-caches`): `enrich` does not use it and warns once. RM385 (0.10) adds a local reference, a
    different object that this rule can let through by its kind. `SequenceProxy`'s memo gains a lock, because shared
    use across parallel `enrich()` calls is the motivating case.
-5. `batch_size` above the 200 ceiling is refused when the settings are built, never clamped silently.
+6. `batch_size` above the 200 ceiling is refused when the settings are built, never clamped silently.
 
 ## RM412 — a dry run cannot rehearse the download, and the 0.8 line's private names wait for their public ones
 
