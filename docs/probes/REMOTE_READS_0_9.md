@@ -75,7 +75,9 @@ Times are per lookup, in seconds. HF bytes are range bytes fetched; proxy bytes 
    `served_from: "local"`. Told to the registry's lead.
 10. **The proxy answered an Ensembl lookup by `id` alone with 200** (21.5 s), where its contract says Ensembl takes
     chrom + start only (`422 remote_needs_position`). The lane listing advertises `id` as a key, presumably because the
-    server reads its own snapshot. Told to the registry's lead.
+    server reads its own snapshot. Told to the registry's lead, who answered the same night that this is by design and
+    registry 0.32.1 documents it: on a box that holds the lane an rsID key works at the cost of a full scan; remotely it
+    stays 422. Their 0.32.1 also matches a chrom + start batch as pairs, which ends finding 11's over-fetch.
 11. **A chrom + start batch over-fetches on the proxy**: it is `chrom IN (…) AND start IN (…)`, so 13 alleles returned
     22 rows; one position returns every allele there. The client-side filter got every answer right.
 12. **Not measured**: the proxy reading Hugging Face itself (every reply was `served_from: "local"`), and the limits a
