@@ -44,6 +44,9 @@ The lead's working state, rewritten to the present before each reset. Last rewri
 - Leftover local branches `build/RM341` and `build/RM343`: cherry-picked onto `main`, so `-d` refuses them;
   `-D` is the person's.
 
+- 0.9 branch (2026-11-16): opened off `main` when the pm's `docs/proposals/PROPOSAL_0_9.md` lands (the pm said: entries
+  plus probe leave decisions open); then the build runs unattended. `after: PROPOSAL_0_9.md`.
+
 ## Open decisions
 
 None open.
