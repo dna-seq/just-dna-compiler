@@ -1,6 +1,6 @@
 # Lead notes
 
-The lead's working state, rewritten to the present before each reset. Last rewritten 2026-11-15.
+The lead's working state, rewritten to the present before each reset. Last rewritten 2026-11-16.
 
 ## First seating (2026-11-03): the handout's first work
 
@@ -88,6 +88,9 @@ None open.
   takes every package's version (an enricher-only cut left format's on the old tag). The AVI interrupt test's
   load flake recurred and is fixed (d8c0e0f2, 10 s of work against a 4 s bound). `cut/v0.8.7` and worktree
   `wt-cut-087` (unlocked) are the maintainer's to remove.
+- **RM445 building, 2026-11-16** (sized by the pm as the next patch: a pull places the hub's `release.json`
+  over an unrecorded cache's old parquet). An Opus builder in worktree `scratchpad/wt-rm445` (locked), branch
+  `build/RM445`; the lead reviews and lands it on `main`.
 - **Next patch on `main`, uncut (after the 0.8.4 cut commit):** RM432 (ac3f1bcc, the lead's, 2026-11-11: two
   snapshot readers raise `FileNotFoundError`; a behaviour change for a direct caller), the GWAS docstring's 15/s budget
   (7a88e10f), RELEASE_CYCLE's floor rule (307a5ae3). Lesson from RM428: it added the public attribute
