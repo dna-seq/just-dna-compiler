@@ -48,6 +48,10 @@ The lead's working state, rewritten to the present before each reset. Last rewri
 
 None open.
 
+reflect after 2026-11-23: classes/base/BASE.md as of v0.1.224 (only a real fork goes to the person; read as its
+adversary 2026-11-16, no concern: the lead's only standing wait is the PyPI publish, a step that is the person's, not
+a choice).
+
 ## Plan
 
 - **0.8.0 released, 2026-11-05.** Published on PyPI by the person; tag `v0.8.0` on e97339a3; GitHub release
