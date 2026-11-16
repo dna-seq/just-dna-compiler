@@ -1163,4 +1163,10 @@ the enricher. A per-table "newest version whose derivation could differ", kept i
 so the build answers S156 from the same place rather than with a second mechanism; which side holds it is the pm's
 call in the design. Public surface either way: a minor, as the rest of the item.
 
+**The pm's call (2026-11-16): the enricher holds it.** The fact is about enricher releases, so it ships in the
+package that moves: a per-table "newest enricher version whose derivation could differ", beside `CACHE_LANES`, read
+offline from the installed enricher. A record in `just_dna_format` would force a format release for every enricher
+patch, the opposite of the small patches the maintainer asked for. The release records in the format stay about
+compiled output. It rides with RM441 and RM399, one design, in the minor desk #326 places them in (0.10 as proposed).
+
 **Residuals** none yet.
