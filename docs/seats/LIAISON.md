@@ -14,6 +14,9 @@ Three to start, sharpest first; the seat adds others as a release or a symptom s
    `variant_key`, VRS, digests"), so a change in how it digests is a change in what a module's ids are.
 2. **polars**, under the compiler: the artifact's tables.
 3. **duckdb**, under the enricher.
+4. **polars-bio**, under no package of ours but under our consumers just-dna-lite and just-vcf: its polars cap
+   decides when they can take the polars our lock moves to, so a polars release is read against it the same day
+   (the person, 2026-11-16: "polars-bio is a key dep"). Its releases reach the upstream-index watcher.
 
 **The data sources behind the cache lanes** are upstreams too (the maintainer, 2026-11-07, relayed by the lead: "Is
 our liaison watching al these releases? I would rather he to keep a table of built/published/available"). One
@@ -27,6 +30,15 @@ packages and written into the ledger once, as the list each release is read agai
 the forge and its clone on this machine is a line of the liaison's state file
 (`$XDG_STATE_HOME/agent-seat-blueprints/liaison/upstreams`, the kit's `watch-upstream.sh`), shared by every
 liaison seat on this machine: add your lines, never edit another's.
+
+## Said from a live read
+
+An upstream's state (its newest release, a PR's state, a consumer's lock) is said from a read made in the same turn,
+with the date it was read; a ledger or the notes say where to look, never what is true now. A fact the seat learns
+goes into that upstream's ledger in the same turn, not into the notes alone. The person, 2026-11-16, after the seat
+told them polars-bio#478 was open and just-dna-lite held on polars 1, nine days after 0.37.0 shipped it, a fact
+the notes held and the ledger did not: "Your seat whole purpose is to watch upstream states, no wait for me to tell
+you stuff s newer than you thought". Agreed: nothing checks it.
 
 ## A new major of an upstream
 

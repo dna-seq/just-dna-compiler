@@ -103,8 +103,10 @@ cmd = "sh kit:classes/liaison/watch-upstream.sh vcf-spec --every 86400"
 # this repo's [on_publish] sweep off their releases; `--final` says final releases only, since duckdb publishes a .devN
 # build to the index almost daily (kit #470). vrs-python's pre-release work reaches the trunk watcher above. The polars
 # and duckdb tag watchers are judged against this one at the next weekly bump.
+# polars-bio is no dependency of ours but of our consumers just-dna-lite and just-vcf: its polars cap decides
+# when they can take the polars our lock moves to (the person, 2026-11-16: "polars-bio is a key dep").
 [seat.liaison.watch.upstream-index]
-cmd = "python3 kit:drivers/pypi/watch-pypi.py --upstream --final ga4gh.vrs polars duckdb"
+cmd = "python3 kit:drivers/pypi/watch-pypi.py --upstream --final ga4gh.vrs polars duckdb polars-bio"
 
 # The weekly dependency bump, this seat's unattended routine (docs/seats/LIAISON.md, "The dependency bump";
 # the person, 2026-11-04): says it due once a week while the person is away.
