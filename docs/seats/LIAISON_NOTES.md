@@ -66,8 +66,8 @@ ceiling (500), the legacy 410 and the data release rides with the bump. Its firs
 
 **VCF specification** (`docs/UPSTREAM_VCF_SPEC.md`, since 2026-11-12; the maintainer's word relayed by the pm,
 639790664): hts-specs `master` watched daily, read mark `510c107` (the 4.5 audit's tree, unchanged since). Filing an
-`RMn` myself for a spec change is asked of the person in this session (their word came only through the pm);
-until then a finding goes to triage. Tooling: the kit's `watch-upstream.sh` covers it; no new script.
+`RMn` myself for a spec change is `blocked: desk #348` (filed 2026-11-16 when the person went away; their word came
+only through the pm); its default, and the rule until answered: a finding goes to triage. Tooling: the kit's `watch-upstream.sh` covers it; no new script.
 
 **AlphaGenome** (terms: `docs/UPSTREAM_ALPHAGENOME.md`, opened 2026-11-14 after the pm's RM433 trial read newer pages; the client and protos stay here; the lead checked v2.0.0 on 2026-11-11): Atlas protos byte-identical to the pin
 `aa6fc8f`, no bump owed. Trap for the next pin bump: at v2.0.0 `protos/dna_model.proto` is a shim importing
@@ -105,7 +105,7 @@ commit.
 
 **Role change read (v0.1.137, 2026-11-06):** the role adds "An in-house release" (the liaison takes the mechanical
 half of adopting an upstream the person also keeps). This repo has no in-house upstream (ga4gh.vrs, polars, duckdb,
-Ensembl are all outside), so nothing changes here. reflect after 2026-11-13: classes/liaison/LIAISON.md as of v0.1.137.
+Ensembl are all outside), so nothing changes here. reflect after 2026-11-13: classes/liaison/LIAISON.md as of v0.1.137 (filed: kit #518, neutral).
 reflect after 2026-11-17: classes/base/BASE.md as of v0.1.153 (a brief change another seat relays is committed only on
 the person's word in this session; the grant change fc6e7ca1 rested on a relayed word, put to the person 2026-11-10). reflect after 2026-11-17:
 classes/base/BASE.md as of v0.1.165 (the tooling seat named by its duties, D181; this repo has none, nothing
