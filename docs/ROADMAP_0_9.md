@@ -154,8 +154,9 @@ the pm and does not build around it.
    `parse_release(text) -> SnapshotRelease | None`, which `read_release` then calls. Nothing in the format tier reads
    a URL (the charter's snapshot-layout goal).
 7. **Every answer says where it came from**: the route (`local`, `proxy`, `hf`), the release label read, and the
-   proxy's `served_from`, on the lookup's result and in the log. No column and no sidecar moves.
-   Findings 8 and 9 of the trial are two routes disagreeing under one label, which this makes visible.
+   proxy's `served_from`, on the lookup's result and in the log. No column and no sidecar moves. This makes an answer
+   traceable to its route; it does **not** detect findings 8 and 9, where both copies carried the same label over
+   different bytes (RM445's sticky label), and nothing here claims it does (the registry's correction, S34 there).
 8. **Which lanes:** those with a published repo in `SNAPSHOT_REPO_IDS`. PharmVar and PubMind are operator-built and
    stay local only. Ensembl by rsID alone is never sent remotely (the proxy refuses it, and Hugging Face would scan
    about 10.7 GB); remotely, Ensembl answers by chrom + start only.
@@ -191,7 +192,9 @@ these win.
   enricher's own manifest model. Decision 5 narrows to **one release per route per holder**: a 429 can send some keys
   of one session to Hugging Face, so every answer carries its own route, label and revision, and nothing claims the
   session is one release. The proxy's reply carries no label, so a proxy answer's `release` is `None` (withheld,
-  never guessed) and `served_from` is kept; the liaison asks the registry to add the label to its reply.
+  never guessed) and `served_from` is kept. The registry accepted adding `release`, `release_unreadable` and, for a
+  remote read, `revision` to both lane replies (their S34, a minor of theirs); the client reads them when present.
+  A local answer's `revision` is `None`: the pull record keeps no Hub revision, and 0.9 does not add one.
 - **Truncation (C).** A reply with `truncated: true` is split in half and asked again, down to one key; a single key
   still truncated is could-not-ask for that key, never absent (`@unreachable-not-absent`).
 - **Lifetimes and threads (C).** A connection lives as long as its holder, never the process (decision 4's "per
