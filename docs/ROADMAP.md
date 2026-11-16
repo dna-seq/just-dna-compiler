@@ -2107,14 +2107,14 @@ field and rides whichever minor is open.
 
 ## RM302 — one `conclusion` serves every place a report shows it; a table cell, a details card and an explanatory mode want different wordings
 
-**Parked, the pm (2026-11-16)**, out of `ROADMAP_0_9.md`, under the maintainer's rule for smaller minors (2026-11-15: "lets make em smaller"), [desk #326](https://github.com/winternewt/desk/issues/326) item 3, applied on its default. **Unparks when** a consumer's report shows a conclusion in a second register (a table cell, a card, an explanation) and asks for the authored wording rather than its own, or an author writes two registers into one `conclusion`, when a scope the maintainer highlights touches it, or when the roadmap is empty.
+**Parked, the pm (2026-11-16)**, out of `ROADMAP_0_9.md`, under the maintainer's rule for smaller minors (2026-11-15: "lets make em smaller"), [desk #326](https://github.com/winternewt/desk/issues/326) item 3, applied on its default. **Unparks when** a consumer's report shows a conclusion in a second register (a table cell, a card, an explanation) and asks for the authored wording rather than its own, or an author writes two registers into one `conclusion`, when a scope the maintainer highlights touches it, or when the roadmap is empty. The maintainer had placed it in 0.9 by name (the next paragraph); [desk #347](https://github.com/winternewt/desk/issues/347) asks whether it stays parked, gets a 0.11 with the other two, or goes into 0.10. Parked is that question's default.
 
 **0.9, decided 2026-11-04 by the maintainer, after the final measuring run.** v2 never uses the two registers, because its `conclusion` is already lay (R-VOICE-1), so they leave 0.8. The shape decided earlier the same day (two columns on four kinds, inside `content_signature`, and `language` reserved) stands for when the item is built.
 
 **Decided 2026-11-04 by the maintainer: two optional columns, `conclusion_lay` and `conclusion_concise`.** They go on `VariantRow`, `DiplotypeRow`, `PharmVariantRow` and the bin kinds, but not `StudyRow`, because a study's finding is not the report's claim. Both are **inside `content_signature`**, as authored claim text. The name `language` is reserved now, as a separate axis from register. Tools never write a register; that was decided on 2026-09-27.
 
 
-**Severity** medium · **Status** open — **a minor, release undecided**; principle decided, shape kept
+**Severity** medium · **Status** open — **a minor, parked**; principle decided, shape kept
 open (see *Decided*) · **Owner** format (the authored models) + compiler (the parquet columns) ·
 **Motivating case** the maintainer, 2026-09-27: a report shows a variant's conclusion in a table, in a details card and in
 an explanatory mode, and one text cannot be right for all three · *related* RM7, RM28, the "not format
@@ -2186,11 +2186,11 @@ rework), which constrains every option below.
 
 ## RM350 — HLA allele names are checked for grammar only; whether the allele exists is IPD-IMGT/HLA's list, and no lane reads it
 
-**Parked, the pm (2026-11-16)**, out of `ROADMAP_0_9.md`, under the maintainer's rule for smaller minors (2026-11-15: "lets make em smaller"), [desk #326](https://github.com/winternewt/desk/issues/326) item 3, applied on its default. **Unparks when** an author or a consumer reports an HLA allele name in a module that IPD-IMGT/HLA never assigned; the licence probe this entry starts with needs nothing built and may run meanwhile, when a scope the maintainer highlights touches it, or when the roadmap is empty.
+**Parked, the pm (2026-11-16)**, out of `ROADMAP_0_9.md`, under the maintainer's rule for smaller minors (2026-11-15: "lets make em smaller"), [desk #326](https://github.com/winternewt/desk/issues/326) item 3, applied on its default. **Unparks when** an author or a consumer reports an HLA allele name in a module that IPD-IMGT/HLA never assigned; the licence probe this entry starts with needs nothing built and may run meanwhile, when a scope the maintainer highlights touches it, or when the roadmap is empty. The maintainer had placed it in 0.9 by name (the next paragraph); [desk #347](https://github.com/winternewt/desk/issues/347) asks whether it stays parked, gets a 0.11 with the other two, or goes into 0.10. Parked is that question's default.
 
 **0.9, filed 2026-11-04 by the lead**: RM334's residual, placed in 0.9 by the maintainer's RM334 decision ("grammar now, the list in 0.9").
 
-**Severity** low · **Status** open — **a minor**, 0.9, licence unprobed · **Owner** enricher (a new lane) · **Motivating case** RM334 · *related* RM334
+**Severity** low · **Status** open — **a minor, parked**, licence unprobed · **Owner** enricher (a new lane) · **Motivating case** RM334 · *related* RM334
 
 RM334 refuses a malformed HLA name on `allele_function.csv`; a well-formed name that IPD-IMGT/HLA never assigned
 passes. The list is the witness. Its terms are unprobed, so the first step is the licence probe
@@ -2200,12 +2200,12 @@ passes. The list is the witness. Its terms are unprobed, so the first step is th
 
 ## RM294 — STRchive's evidence grade has no place in the module, so a Refuted locus is doubted only in a draft note
 
-**Parked, the pm (2026-11-16)**, out of `ROADMAP_0_9.md`, under the maintainer's rule for smaller minors (2026-11-15: "lets make em smaller"), [desk #326](https://github.com/winternewt/desk/issues/326) item 3, applied on its default. **Unparks when** an author or a consumer asks for STRchive's own grade beside the module's tier, or a locus STRchive grades Refuted reaches a published module, when a scope the maintainer highlights touches it, or when the roadmap is empty.
+**Parked, the pm (2026-11-16)**, out of `ROADMAP_0_9.md`, under the maintainer's rule for smaller minors (2026-11-15: "lets make em smaller"), [desk #326](https://github.com/winternewt/desk/issues/326) item 3, applied on its default. **Unparks when** an author or a consumer asks for STRchive's own grade beside the module's tier, or a locus STRchive grades Refuted reaches a published module, when a scope the maintainer highlights touches it, or when the roadmap is empty. The maintainer had placed it in 0.9 by name (the next paragraph); [desk #347](https://github.com/winternewt/desk/issues/347) asks whether it stays parked, gets a 0.11 with the other two, or goes into 0.10. Parked is that question's default.
 
 **0.9, decided 2026-11-04.** The maintainer chose one tier column with the scale declared per module, so a source's own grade cannot sit beside the module's tier. This item waits for 0.9, where a separate home for a source's grade can be weighed (a machine-written side table, or the manifest's provenance block).
 
 
-**Severity** low · **Status** open — **a minor, release undecided** · **Owner** format / enricher ·
+**Severity** low · **Status** open — **a minor, parked** · **Owner** format / enricher ·
 **Motivating case** RM276's minor half, split off when the warning shipped on 2026-09-27 · *related*
 RM276, RM170, RM165
 
@@ -2223,8 +2223,8 @@ shape. Decide on the `0.8` branch.
 
 **Parked, the pm (2026-11-16)**, out of `ROADMAP_0_9.md`, under the maintainer's rule for smaller minors (2026-11-15: "lets make em smaller"), [desk #326](https://github.com/winternewt/desk/issues/326) item 3, applied on its default. **Unparks when** a module drafts rows from a source whose licence takes one of the five shapes and the compile gate or the registry's publish gate decides it wrong, or the registry asks for one of the shapes as data, when a scope the maintainer highlights touches it, or when the roadmap is empty.
 
-**Severity** medium · **Status** open — **a minor** (new optional `sources.csv` columns or a sibling table;
-authored layer, full cost under P9), design first, placed in 0.9 by the pm · **Owner** format + enricher ·
+**Severity** medium · **Status** open — **a minor, parked** (new optional `sources.csv` columns or a sibling table;
+authored layer, full cost under P9), design first, placed in 0.9 by the pm, parked 2026-11-16 · **Owner** format + enricher ·
 **Motivating case** RM333's Open Targets L2G read (`ROADMAP_0_8.md`) and `probes/ALPHAGENOME_ATLAS.md` §2.6 ·
 *related* RM333, RM27, RM191, `@a-hosts-terms-are-not-its-contents-terms`, `@licensing-as-data`
 
@@ -2258,7 +2258,7 @@ are not reopened here.
 
 **Stays in 0.9, the pm (2026-11-05)**: it is the same design question as RM345 (a licence shape `SourceRow` cannot state), which stays for longevitymap v2's Open Targets rows. The status line below predates this.
 
-**Severity** low · **Status** open — **a minor, release undecided** · **Owner** format (`SourceRow`) +
+**Severity** low · **Status** open — **a minor, parked** · **Owner** format (`SourceRow`) +
 enricher (the PharmVar terms constant) · **Motivating case** RM38's *"belongs to the RM27 design
 round"*, a pointer to an item that closed without it, found by the 2026-09-27 postmortem sweep (P13)
 · *related* RM38, RM27, `@pgx-research-only`, `@gated-source-caches`
@@ -2286,7 +2286,7 @@ A new authored-schema column costs the full P9 price, though `sources.csv` is mo
 
 **0.9, filed 2026-11-04 by the lead**: RM349's two residuals, found by its builder.
 
-**Severity** low · **Status** open — **a minor**, 0.9 · **Owner** enricher (`literature`) + compiler (the
+**Severity** low · **Status** open — **a minor, parked** · **Owner** enricher (`literature`) + compiler (the
 `literature.csv` checks) · **Motivating case** the RM349 builder's report, 2026-11-04 · *related* RM349, RM336
 
 **One class: a `pmid=NONE` citation is checked, but the answer goes nowhere a downstream check reads.** Two
@@ -2310,7 +2310,7 @@ its own `SourceRow` and licence probe, not a branch inside an existing client.
 
 **0.9, filed 2026-11-04 by the pm**, from the lead's report on the 0.8 reference examples. None is built in 0.8.
 
-**Severity** low · **Status** open — **a minor**, 0.9, each gap weighed at 0.9's interview · **Owner** format
+**Severity** low · **Status** open — **a minor, parked**, each gap weighed when it unparks · **Owner** format
 (columns) · **Motivating case** the 0.8 reference examples, 2026-11-04 · *for* longevitymap v2 · *related* RM323,
 RM328, RM334, RM335
 
@@ -2820,7 +2820,7 @@ possibly already satisfied, and the rest sound** — the sweep's value is mostly
 
 **Re-sized 2026-11-05, after the 0.8.0 cut (the pm).** 22 items were parked out of [ROADMAP_0_9.md](ROADMAP_0_9.md) into Active items. The 15 rows from RM261 down are new. RM16, RM23, RM28, RM68, RM122, RM164 and RM238 already had rows here; their verdicts stand, and their entries now live in this file.
 
-**Re-sized 2026-11-16 (the pm), for smaller minors ([desk #326](https://github.com/winternewt/desk/issues/326)).** RM430 and RM431 left this table for 0.9's scope, where their gate, the maintainer naming remote reads a zone, was met on desk #261. Seven items were parked out of [ROADMAP_0_9.md](ROADMAP_0_9.md); their six rows (RM345 and RM286 share one) sit above the 1.0 queue's row, all judged Sound.
+**Re-sized 2026-11-16 (the pm), for smaller minors ([desk #326](https://github.com/winternewt/desk/issues/326)).** RM430 and RM431 left this table for 0.9's scope, where their gate, the maintainer naming remote reads a zone, was met on desk #261. Seven items were parked out of [ROADMAP_0_9.md](ROADMAP_0_9.md); their six rows (RM345 and RM286 share one), and one for RM412's parked probe, sit above the 1.0 queue's row, all judged Sound.
 
 | Item | Gate as written | Verdict |
 |---|---|---|
@@ -2862,6 +2862,7 @@ possibly already satisfied, and the rest sound** — the sweep's value is mostly
 | **RM345** + **RM286** — licence shapes `SourceRow` cannot state (parked 2026-11-16) | a gate deciding a real module's licence wrong, or the registry asking for a shape as data | **Sound.** Modules drafting from AlphaGenome, Open Targets and PharmVar exist or can be written today. |
 | **RM358** — a DOI-only citation is never pinned (parked 2026-11-16) | a `pmid=NONE` citation a downstream check needs pinned, or a bioRxiv full text an author cannot reach | **Sound.** Both occur with today's literature tools. |
 | **RM360** — four longevitymap v2 rows without a shape (parked 2026-11-16) | the next v2 version, or another module, needs one of the four rows | **Sound.** An author meets the gap while writing, before any column exists. |
+| **RM412** half 1's per-lane release probe (parked 2026-11-16) | an operator reports a rebuild that downloaded a source only to learn nothing had changed | **Sound.** Every rebuild today downloads first; an operator can meet this before the probe exists. |
 | **RM15** / **RM69** / **RM52** and the 1.0 queue | a major-version bump | **Sound, and not this kind of gate.** A release boundary is a schedule, not a satisfier. |
 
 **What the sweep did not find, stated so it is not re-run for a while.** No gate anywhere is parked on

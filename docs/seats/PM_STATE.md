@@ -22,5 +22,7 @@ schema additions right after.
   where an anonymous client also runs out of requests after a few large lookups.
 
 **Next**
-1. ⏳ 0.9 — the lead branches and builds the enricher's remote reads, once 0.8.8 is published.
-2. ❓ One question on the maintainer's desk: linking the project's memory to its new folder name.
+1. ⏳ 0.9's plan — the pm writes every design decision down (`docs/proposals/PROPOSAL_0_9.md`); the lead branches
+   and builds on it.
+2. ❓ Three items you placed in 0.9 by name were parked by the small cut: parked, a 0.11, or 0.10 (desk #347).
+3. ❓ One question on the maintainer's desk: linking the project's memory to its new folder name.
