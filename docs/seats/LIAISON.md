@@ -34,7 +34,9 @@ liaison seat on this machine: add your lines, never edit another's.
 ## Said from a live read
 
 An upstream's state (its newest release, a PR's state, a consumer's lock) is said from a read made in the same turn,
-with the date it was read; a ledger or the notes say where to look, never what is true now. A fact the seat learns
+with the date it was read; a ledger or the notes say where to look, never what is true now. A clone on this machine is
+not a read either: fetch it and read the remote's branch (a consumer's clone, six days behind, misled the seat the
+same day). A fact the seat learns
 goes into that upstream's ledger in the same turn, not into the notes alone. The person, 2026-11-16, after the seat
 told them polars-bio#478 was open and just-dna-lite held on polars 1, nine days after 0.37.0 shipped it, a fact
 the notes held and the ledger did not: "Your seat whole purpose is to watch upstream states, no wait for me to tell
