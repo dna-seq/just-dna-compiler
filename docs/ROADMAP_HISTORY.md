@@ -4673,7 +4673,7 @@ The `SourceRow` therefore records `commercial_use=True`, `share_alike=False`, `r
 
 **For 0.9:** the host licence defers to the original owners, and an L2G row cannot name its owner
 (`@a-hosts-terms-are-not-its-contents-terms` assumes a record can override). That is a `SourceRow` axis
-gap, filed as [RM345](ROADMAP_0_9.md#rm345--sourcerow-cannot-state-five-licence-shapes-alphagenomes-four-and-a-host-licence-that-defers-to-owners-a-row-cannot-name) with AlphaGenome's four (`probes/ALPHAGENOME_ATLAS.md` §2.6).
+gap, filed as [RM345](ROADMAP.md#rm345--sourcerow-cannot-state-five-licence-shapes-alphagenomes-four-and-a-host-licence-that-defers-to-owners-a-row-cannot-name) with AlphaGenome's four (`probes/ALPHAGENOME_ATLAS.md` §2.6).
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-11-04 on `0.8`, uncut — a minor** (PROPOSAL_0_8_PT2 §5 D2) · **Owner** enricher (a new lane) + format (a derived table's columns) · **Motivating case** longevitymap v2 requirements §4.2 (causal and effector confidence, R-CAUSAL) · *for* longevitymap v2 · *related* RM239, RM238, RM236
 

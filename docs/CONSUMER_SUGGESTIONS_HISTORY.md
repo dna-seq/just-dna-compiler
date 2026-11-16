@@ -7300,7 +7300,7 @@ repository (ours has none).
 What we do meanwhile: nothing remote. The proxy keeps answering from local snapshots only, and the remote half of the
 release waits on these. Several items or one is your call; asks 1 to 3 are the ones that unblock everything else.
 
-**Status — filed as [RM430](ROADMAP.md#rm430--no-snapshot-reader-takes-a-remote-root-a-url-collapses-in-path-and-every-resolve-release-read-and-connector-checks-the-local-disk) (asks 1 to 3) and [RM431](ROADMAP.md#rm431--the-keyed-readers-a-remote-lookup-needs-an-rsid-index-for-ensembl-and-a-key-on-the-whole-table-readers) (asks 4 to 7): both minors; the pm sizes.** Asks 1 to 3 are
+**Status — filed as [RM430](ROADMAP_0_9.md#rm430--no-snapshot-reader-takes-a-remote-root-a-url-collapses-in-path-and-every-resolve-release-read-and-connector-checks-the-local-disk) (asks 1 to 3) and [RM431](ROADMAP_0_9.md#rm431--the-keyed-readers-a-remote-lookup-needs-an-rsid-index-for-ensembl-and-a-key-on-the-whole-table-readers) (asks 4 to 7): both minors; the pm sizes.** Asks 1 to 3 are
 confirmed on `main`. `Path("hf://datasets/a/b")` prints `hf:/datasets/a/b`. `_resolve_parquet_cache` answers by
 `is_dir()` and a glob, `read_release` by `is_file()`, and `clinvar._connect` by local globs. They are one item
 because they unblock the rest. Every reader that takes a new kind of input is a minor, and none goes on `main` as a
@@ -7671,7 +7671,7 @@ same directories. Worth deciding in the same change whether `load_dotenv_file` s
 `resolve()` loads `.env` by default, which for a host that never configures through the environment is an
 ambient read it did not ask for.
 
-**Status — filed as [RM443](ROADMAP.md#rm443--lane_status-resolves-every-lane-from-the-environment-so-a-host-that-passes-its-lanes-paths-explicitly-cannot-ask-it-about-them): a minor; the pm sizes.**
+**Status — filed as [RM443](ROADMAP_0_9.md#rm443--lane_status-resolves-every-lane-from-the-environment-so-a-host-that-passes-its-lanes-paths-explicitly-cannot-ask-it-about-them): a minor; the pm sizes.**
 Confirmed on 0.8.6: `lane_status` calls `lane.resolve()` bare, and all seventeen lanes' resolvers take the override
 first plus `load_dotenv_file` (checked with `inspect.signature` over `CACHE_LANES`). Your `.env` question has a
 firmer answer than "ambient read": with its default flag, each resolver calls `locations.load_env()`, which exports

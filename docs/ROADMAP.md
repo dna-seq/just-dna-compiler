@@ -1213,7 +1213,7 @@ unanswered, and a transcribed table shows the columns without showing the semant
 is the shape, never the demand, so what this instance does is **move the entry from parked-on-demand to
 parked-on-shape** — a smaller and much more answerable place to be parked.
 
-**Register cross-reference (2026-09-27).** [RM302](ROADMAP_0_9.md#rm302--one-conclusion-serves-every-place-a-report-shows-it-a-table-cell-a-details-card-and-an-explanatory-mode-want-different-wordings)
+**Register cross-reference (2026-09-27).** [RM302](#rm302--one-conclusion-serves-every-place-a-report-shows-it-a-table-cell-a-details-card-and-an-explanatory-mode-want-different-wordings)
 gives `conclusion` optional lay and concise wordings, two columns by default. If this item lands a
 separate meta-conclusion table, the maintainer's steer is that the registers may live there instead,
 so the two are decided together.
@@ -2105,145 +2105,230 @@ field and rides whichever minor is open.
 
 **Residuals** none yet.
 
-## RM430 — no snapshot reader takes a remote root: a URL collapses in `Path`, and every resolve, release read and connector checks the local disk
+## RM302 — one `conclusion` serves every place a report shows it; a table cell, a details card and an explanatory mode want different wordings
 
-**Severity** medium · **Status** open — **a minor, 0.9: a zone the maintainer named on desk #261 (2026-11-15)** · **Owner**
-enricher (`locations`, `clinvar`, `resolver`, `gene_metrics`, `cpic`) + format (a bytes-level release parser at most)
-· **Motivating case** S145 asks 1 to 3 (CONSUMER_SUGGESTIONS_HISTORY.md) · *related* RM431, RM432, RM339
+**Parked, the pm (2026-11-16)**, out of `ROADMAP_0_9.md`, under the maintainer's rule for smaller minors (2026-11-15: "lets make em smaller"), [desk #326](https://github.com/winternewt/desk/issues/326) item 3, applied on its default. **Unparks when** a consumer's report shows a conclusion in a second register (a table cell, a card, an explanation) and asks for the authored wording rather than its own, or an author writes two registers into one `conclusion`, when a scope the maintainer highlights touches it, or when the roadmap is empty.
 
-**The gap.** The registry wants its proxy to answer keyed lookups from a lane's published Hugging Face repo when the
-box holds no local snapshot, through these readers rather than a second reader of our layout. Its lead measured
-that the keyed SQL already prunes remote row groups (ClinVar `lookup_clin_sig` 3.1 s and about 2.4 MB;
-`resolver.lookup_loci` by position 3.5 s and about 5.4 MB of 200 MB). What stops it is path handling, checked here on
-`main`. `Path("hf://datasets/a/b")` is `hf:/datasets/a/b`. `locations._resolve_parquet_cache` answers by `is_dir()`
-and a glob, so every `resolve_*_reference` gives `None` for a remote root. `just_dna_format.snapshot.read_release`
-joins a `Path` and tests `is_file()`. The connectors (`clinvar._connect` and the reporter's list: `resolver._connect`,
-`gene_metrics._snapshot_parquet`, `CpicSnapshotClient`) coerce to `Path` and check existence locally.
+**0.9, decided 2026-11-04 by the maintainer, after the final measuring run.** v2 never uses the two registers, because its `conclusion` is already lay (R-VOICE-1), so they leave 0.8. The shape decided earlier the same day (two columns on four kinds, inside `content_signature`, and `language` reserved) stands for when the item is built.
 
-**The asks.** (1) A remote root survives: a URL string handed back unchanged, or a `remote_reference(lane)` built
-from `SNAPSHOT_REPO_IDS`. (2) `release.json` and Ensembl's `manifest.json` are read from a remote root. (3) The
-connectors take `str | Path`, leave a URL scheme uncoerced, and let duckdb raise rather than checking the local
-disk.
+**Decided 2026-11-04 by the maintainer: two optional columns, `conclusion_lay` and `conclusion_concise`.** They go on `VariantRow`, `DiplotypeRow`, `PharmVariantRow` and the bin kinds, but not `StudyRow`, because a study's finding is not the report's claim. Both are **inside `content_signature`**, as authored claim text. The name `language` is reserved now, as a separate axis from register. Tools never write a register; that was decided on 2026-09-27.
 
-**A charter line for ask 2.** The Constitution's Goals put the snapshot layout and `release.json`'s model in
-`just-dna-format`, and say that tier "reads no environment and fetches nothing; where a snapshot lives on a
-machine, and how it is fetched, stay in the network tier". So `read_release` itself cannot read through fsspec. The
-fetch belongs in the enricher, and the format tier at most gains a parser that takes the record's bytes or text.
-Asks 1 to 3 are the ones the reporter says unblock everything else.
 
-**Two facts from the measurement.** The ClinPGx and CPIC mirrors read anonymously. duckdb's `httpfs` must be
-installed ahead of time on a server with no route to the extension repository. A remote read that fails is the
-case RM432 makes visible.
+**Severity** medium · **Status** open — **a minor, release undecided**; principle decided, shape kept
+open (see *Decided*) · **Owner** format (the authored models) + compiler (the parquet columns) ·
+**Motivating case** the maintainer, 2026-09-27: a report shows a variant's conclusion in a table, in a details card and in
+an explanatory mode, and one text cannot be right for all three · *related* RM7, RM28, the "not format
+scope" note on lay-language rendering
 
-**Sizing (pm, 2026-11-11): parked until the maintainer names it a zone.** A minor takes only the zones the maintainer
-names, and a consumer waiting on it is the case for naming it, not a zone by itself. Put to the maintainer on desk #261
-with the recommendation to name asks 1 to 3 alone a 0.9 zone (about a day; it keeps the registry off a second reader
-of our layout, which would break silently on our next layout change). **Unparks** when the maintainer names remote
-snapshot reads a zone. Built, it lands with RM432's patch already in, so a failed remote read raises rather than
-answering empty. On silence it stays parked and returns when 0.9's scope is chosen.
+**For longevitymap v2 (2026-11-03):** v2 writes for three readers (citizen, geneticist, ageing researcher), which is the register question. See [the group](history/ROADMAP_0_8.md#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
 
-**Unparked into 0.9 by the maintainer, desk #261, 2026-11-15**: "1, 2", so asks 1 to 3 here and RM431's follow-ups
-are one 0.9 zone. With one change to ask 3, in their words: "I don't like 'stop checking the local disk' part. Remote
-reads from hugging would be slow (measure)". The order of reads they set:
+**The ask.** Today every annotation carries one `conclusion`, the detailed wording. The report needs up
+to three **registers** of the same claim: **detailed** (today's text), **lay** (a simpler explanation for
+someone without the background), and **concise** (scientifically accurate but very brief, for a table
+cell). They are one claim written three ways, never three claims.
 
-1. **The snapshot on local disk**, if one is there (the fastest).
-2. **The registry's proxy**, if it is configured and answers (for clients). Also measured.
-3. **Hugging Face**, the third fallback: only when there is no local snapshot, and the proxy is either not configured
-   or pacing the caller. The registry must answer 429 to send a client on to this step.
+**Where `conclusion` lives today**, all authored: `VariantRow` (required), every `MeasureBinRow` kind
+(required), `DiplotypeRow` (required), `PharmVariantRow` (required) and `StudyRow` (optional). It is
+also inside `annotations.parquet`'s key, `(variant_key, conclusion, negatives)` (USE_CASES § the S-key
+rework), which constrains every option below.
 
-So the connectors keep checking the local disk first; a remote root is a fallback, never a replacement for it. Before
-the design, the pm measures steps 2 and 3 against step 1 on real lookups (a trial).
+**What the charter already settles.**
 
-**Step 2's interface, from the registry's lead (2026-11-15, `#agent-chat>upstream`):** the proxy is already live
-(registry 0.30+, both servers), so step 2 is a client of a service that exists. Its contract is the registry's
-`docs/API-REFERENCE.md` §§ 46–47; in short:
+- **Legal as a minor** (P3/P8): new optional columns or a new optional table. `conclusion` itself stays
+  what it is and stays required; it becomes the *detailed* register by declaration, not by rename (a
+  rename is a removal plus an addition, major-only).
+- **Not in any key.** A register is a rendering of the claim the key already identifies. Keying on it
+  would split one effect into several rows whenever an author adds a lay text, the dedup failure the
+  annotations key exists to prevent.
+- **Not the refused "lay-language rendering".** That note (§ Not format scope) is about *generating*
+  patient prose from a CURIE, a presentation job. This is text a curator writes and signs, which is
+  annotation data like `conclusion` is. The entry adds a line there so the two are not read as one.
+- **Priced at full** (P9): every option is authored text, the most expensive layer. The argument for
+  paying is that a consumer cannot derive a correct lay or concise wording from the detailed one
+  without an LLM in the loop, which the charter keeps out of every tier.
 
-- `GET {base}/api/v1/lanes/{lane}` lists a lane's tables and their key columns. `POST {base}/api/v1/lanes/{lane}/{table}`
-  with `{"keys": {"<column>": [values]}}` (values ORed within a column, columns ANDed) answers `lane`, `table`,
-  `served_from`, `rows`, `truncated`, `terms`, `unpublished`. Rows are the lane's own parquet columns, unchanged.
-- Keys are identifiers only, at most 100 values and 1,000 rows a request. ClinVar by rsID, `variation_id` or
-  chrom + start; Ensembl by chrom + start only (an rsID cannot be bounded remotely: RM431's index).
-- Configured by one base URL; a bearer token is optional and only gives the caller its own rate bucket.
-- **Fall through to Hugging Face** on 429 (`Retry-After`, `X-RateLimit-Bucket`), on 404 `lane_not_available`, on 503
-  or 504, and on a timeout or connection error. **Never on 422** (`unknown_key`, `too_many_keys`,
-  `remote_needs_position`): the request is wrong, and Hugging Face would refuse it too.
-- The server reads its local snapshot, else the lane's published repo, and never calls itself. Their ask: **the proxy
-  setting is an explicit parameter or environment variable, unset by default**, so the server never picks it up by
-  accident.
-- The test server for the trial is `https://module-polygon.just-dna.life` (lane routes live, anonymous).
+**Decided by the maintainer, 2026-09-27.**
 
-**The trial (pm, 2026-11-15; `docs/probes/REMOTE_READS_0_9.md`).** Per lookup: local disk 0.02 to 0.1 s, the proxy 0.22
-to 0.37 s whatever the batch, Hugging Face 1.8 to 8 s over the readers' glob (Ensembl by position up to 29 s). What
-binds on Hugging Face is its anonymous quota, 3,000 requests per 5 minutes per IP: one Ensembl lookup over the glob
-cost 1,168 requests, and opening only the chromosome file the key names cut requests 3 to 20 times. Ensembl by rsID
-is slow on every route (9 to 14 s locally) until RM431's index exists. Two routes disagreed under one release label:
-this machine's ClinVar cache (handed to triage) and the test server's ClinPGx copy (told to the registry).
+- **Tools never write a register; authors and curators may, if they see fit.** No drafter, enricher
+  pass or compiler step fills, rewrites or derives a lay or concise wording, and none is required: a
+  module with only `conclusion` is complete. This is the line the § Not format scope note on
+  lay-language rendering draws from the other side.
+- **Shape: kept open, with two columns as the default.** Unless something below changes it, the build
+  is option 1: two optional columns on the carrying kinds.
+- **The exception is meta-conclusions.** If [RM28](ROADMAP.md#rm28--meta-conclusions-the-predicate-half)
+  lands its own table, the registers may belong there instead (a meta-conclusion is the claim a report
+  most needs in lay words), and the two items then decide the shape together.
 
-**Residuals** none yet.
+**Design options, as they stood before the decision.**
 
-## RM431 — the keyed readers a remote lookup needs: an rsID index for Ensembl, and a key on the whole-table readers
+1. **Two optional columns on each carrying kind** (`conclusion_lay`, `conclusion_concise`, names to be
+   audited under P5). Simplest to read and to author row by row; costs two columns on five kinds, and
+   every future register is another column on all five.
+2. **One optional side table** (`conclusions.csv`: the row's key, a closed `register` vocabulary, the
+   text). One CSV, one concern: an author who writes no registers never sees it, a new register is a
+   vocabulary member rather than a column, and the key is the carrying row's own. Costs a join for
+   every consumer and a key per carrying kind.
+3. **A register vocabulary with `detailed` implicit** either way, so `conclusion` never has to move.
 
-**Severity** low · **Status** open — **a minor, 0.9: in RM430's zone by the maintainer's word (desk #261, 2026-11-15)** · **Owner** enricher · **Motivating case** S145 asks 4 to 7 (CONSUMER_SUGGESTIONS_HISTORY.md) ·
-*related* RM430, RM405
+**Open questions.**
 
-**The asks, as the reporter measured and read them.** (4) Ensembl by rsID alone cannot prune: the split repo's `id`
-column is about 6.1 GB over 25 files, and each row group spans rs1 to rs9…, so `lookup_loci` by rsID reads nearly
-everything. Ask: an rsID-sorted index (rsID → chrom, start) published beside it, consulted first. This is RM405's
-missing rsID index, met from the remote side. (5) The whole-table readers (`clinpgx.load_snapshot`, the drug-label
-reader, the CIViC row reader, `ClinVarGkmWitness.load`) take a key with pushdown. STRchive's 526 KB catalogue stays
-whole. (6) Open Targets gets a public keyed function joining on chrom + position, not `variant_id` (about 55 MB read
-for one lookup, measured). (7) `alphagenome_check.read_local_scores` lists contig files and reads them without a
-local glob or `Path.stem`. Asks 4 to 7 build on RM430. Each is useful without the others, so the pm may split them.
+- Which of the five kinds need registers. `StudyRow.conclusion` is a study's finding, not the report's
+  claim, and may not.
+- Does `content_signature` include the registers? They are authored claim text, so the default reading
+  is yes; the counter-argument is that a lay rewording does not change what the module asserts
+  (`@provenance-beside-a-claim-is-outside-content-identity` decides it).
+- Language is a **separate axis** from register (P5: no overloaded fields). A lay text in German is
+  register `lay`, language `de`; a design that folds the two into one vocabulary would have to be
+  unwound when a second language arrives. Reserve the language axis's name now if it is expected.
+- Does the reference consumer (just-dna-lite) need all three, or `concise` first? That orders the build.
+- Should drafting ever fill a register? The house answer so far is that a provider fills facts, never
+  prose; a register is prose.
 
-**Sizing (pm, 2026-11-11): parked, not split yet.** Ask 4 is RM405's rsID index and unparks with RM405. Asks 5 to 7
-are speed: each is worth building only once a remote lookup through RM430's readers is measured too slow or too large
-for the registry's proxy. **Unparks**, per ask, on that measurement, which needs RM430 shipped but not this item.
-Splitting waits until one ask unparks alone.
+## RM350 — HLA allele names are checked for grammar only; whether the allele exists is IPD-IMGT/HLA's list, and no lane reads it
 
-**Unparked into 0.9 by the maintainer, desk #261, 2026-11-15** (option 2, "the follow-ups too"), as RM430's zone.
-The measure-first gate above no longer decides whether these are built; the pm's trial for RM430 still orders them.
+**Parked, the pm (2026-11-16)**, out of `ROADMAP_0_9.md`, under the maintainer's rule for smaller minors (2026-11-15: "lets make em smaller"), [desk #326](https://github.com/winternewt/desk/issues/326) item 3, applied on its default. **Unparks when** an author or a consumer reports an HLA allele name in a module that IPD-IMGT/HLA never assigned; the licence probe this entry starts with needs nothing built and may run meanwhile, when a scope the maintainer highlights touches it, or when the roadmap is empty.
+
+**0.9, filed 2026-11-04 by the lead**: RM334's residual, placed in 0.9 by the maintainer's RM334 decision ("grammar now, the list in 0.9").
+
+**Severity** low · **Status** open — **a minor**, 0.9, licence unprobed · **Owner** enricher (a new lane) · **Motivating case** RM334 · *related* RM334
+
+RM334 refuses a malformed HLA name on `allele_function.csv`; a well-formed name that IPD-IMGT/HLA never assigned
+passes. The list is the witness. Its terms are unprobed, so the first step is the licence probe
+(`@probe-the-real-file`), then a lane through CACHE_SURFACE.md's checklist.
 
 **Residuals** none yet.
 
-## RM443 — `lane_status` resolves every lane from the environment, so a host that passes its lanes' paths explicitly cannot ask it about them
+## RM294 — STRchive's evidence grade has no place in the module, so a Refuted locus is doubted only in a draft note
 
-**Severity** low · **Status** open — **a minor; the pm sizes** · **Owner** enricher (`caches.lane_status`) ·
-**Motivating case** S154 (just-dna-registry, CONSUMER_SUGGESTIONS_HISTORY.md) · *related* RM204, RM176, S91
+**Parked, the pm (2026-11-16)**, out of `ROADMAP_0_9.md`, under the maintainer's rule for smaller minors (2026-11-15: "lets make em smaller"), [desk #326](https://github.com/winternewt/desk/issues/326) item 3, applied on its default. **Unparks when** an author or a consumer asks for STRchive's own grade beside the module's tier, or a locus STRchive grades Refuted reaches a published module, when a scope the maintainer highlights touches it, or when the roadmap is empty.
 
-**The gap.** `lane_status(lanes=None)` calls `lane.resolve()` with no argument and reports `looked_in` from
-`os.getenv(lane.env_var)` or `lane.default_dir()`. Every lane's resolver takes the override as its first
-argument and a `load_dotenv_file` flag (all seventeen in `CACHE_LANES` on 0.8.6, checked with
-`inspect.signature`), so `lane.resolve(path)` is how a host that configures paths in its own settings reaches a
-lane. `lane_status` has no way to pass that path. The registry configures lanes that way and never exports them,
-because its suite runs two apps in one process. For any lane its operator configured, `lane_status()` reports on
-a directory the server never reads: `absent` beside a snapshot the passes use, or `present` for one they do not.
-So the registry keeps its own status loop, the second projection of one registry that RM204 was filed to end.
+**0.9, decided 2026-11-04.** The maintainer chose one tier column with the scale declared per module, so a source's own grade cannot sit beside the module's tier. This item waits for 0.9, where a separate home for a source's grade can be weighed (a machine-written side table, or the manifest's provenance block).
 
-**A second effect of the same call.** With its default `load_dotenv_file=True`, each resolver calls
-`locations.load_env()`, which exports the whole nearest `.env` into `os.environ`. That is by design for the cache
-resolvers (`load_env`'s docstring says only they call it, RM301), and `lane_status` depends on it: the comment at
-its `os.getenv` line says `resolve()` has loaded `.env` by then. For a host that never configures through the
-environment, a status call is therefore also an environment write it did not ask for.
 
-**The ask.** S154's candidate: `lane_status(lanes=None, locations: Mapping[str, Path | None] | None = None)`. For
-a lane named in `locations`, call `lane.resolve(locations[name])` and report that path as `looked_in`, or the
-default ladder when the value is `None`. Lanes not named keep the environment reading. In the same change,
-decide whether `load_dotenv_file` passes through. The same mapping would suit `prepare_caches` if it ever takes
-one, so the status and provisioning halves read the same directories.
+**Severity** low · **Status** open — **a minor, release undecided** · **Owner** format / enricher ·
+**Motivating case** RM276's minor half, split off when the warning shipped on 2026-09-27 · *related*
+RM276, RM170, RM165
 
-**Sizing facts.** It adds a parameter to a public function, so it is new public surface: a minor under
-RELEASE_CYCLE's rule for `main`, the same reading as RM429's field. No schema, manifest or vocabulary moves (P3
-additive, P9 not an authored layer). No consumer is blocked: the registry's own loop works and stays until a
-minor ships this.
+**For longevitymap v2 (2026-11-03):** a source's evidence grade travelling into a module is the same column family as RM324's tier. See [the group](history/ROADMAP_0_8.md#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
 
-**Sizing (pm, 2026-11-14): parked for 0.9, proposed to ride with RM430.** A minor needs a zone the
-maintainer names, and none is named yet. It is about an hour of work and near free (one optional parameter, P9 not
-an authored layer). It serves the same consumer and the same need as RM430, the registry reading lanes from
-paths it configures itself, so it goes to the maintainer as part of that zone (desk #261) in the 0.9 scope
-interview. Nothing waits on it meanwhile: the registry's own status loop works. **Unparks** when 0.9 names
-the zone, or on its own when a second host reports the same gap. On `load_dotenv_file`, my default for the build:
-pass it through and have `lane_status` pass `False` for a lane named in `locations`, so a host that configures
-paths explicitly gets no environment write.
+RM276 names a drafted locus STRchive grades `Refuted` or `Disputed`, in a note the drafting run prints
+once. Nothing in the module keeps it, so the next reader of `repeat_alleles.csv` sees `DMD`'s bands
+with no trace of the source's doubt. Carrying it is a minor: an authored column costs full price (P9),
+and STRchive's vocabulary is open upstream (`combobox: true`), so a closed `frozenset` would have to be
+priced against a source that adds members. The alternatives to weigh first are a derived sidecar
+(half price) or the manifest's provenance block, and whether RM170's CIViC answer already fixed the
+shape. Decide on the `0.8` branch.
+
+## RM345 — `SourceRow` cannot state five licence shapes: AlphaGenome's four, and a host licence that defers to owners a row cannot name
+
+**Parked, the pm (2026-11-16)**, out of `ROADMAP_0_9.md`, under the maintainer's rule for smaller minors (2026-11-15: "lets make em smaller"), [desk #326](https://github.com/winternewt/desk/issues/326) item 3, applied on its default. **Unparks when** a module drafts rows from a source whose licence takes one of the five shapes and the compile gate or the registry's publish gate decides it wrong, or the registry asks for one of the shapes as data, when a scope the maintainer highlights touches it, or when the roadmap is empty.
+
+**Severity** medium · **Status** open — **a minor** (new optional `sources.csv` columns or a sibling table;
+authored layer, full cost under P9), design first, placed in 0.9 by the pm · **Owner** format + enricher ·
+**Motivating case** RM333's Open Targets L2G read (`ROADMAP_0_8.md`) and `probes/ALPHAGENOME_ATLAS.md` §2.6 ·
+*related* RM333, RM27, RM191, `@a-hosts-terms-are-not-its-contents-terms`, `@licensing-as-data`
+
+**The gap.** `SourceRow` carries `share_alike`, `commercial_use`, `redistribution` (recorded, gated nowhere) and
+`declared_use`. Five real licence shapes have no field:
+
+1. **Holder eligibility** (AlphaGenome §2.1): "a commercial entity may not hold this at all" is not
+   `commercial_use=False`, which only says the data may not be sold.
+2. **A field-of-use bar** (AlphaGenome §2.4/4): no training of models on it, which binds a non-commercial lab too.
+3. **Revocability with a delete obligation** (AlphaGenome §2.3): every source so far, at worst, stops being
+   fetched. This one can compel deletion of derivatives already distributed, against P4's frozen digests.
+4. **Notice of modification must travel** (AlphaGenome §2.4/5): `notice` carries the terms notice, but a
+   threshold slice is itself a modification the terms ask to be declared.
+5. **A host licence that defers to the original owners** (Open Targets, from RM333): data marked CC0, with "no
+   restrictions other than those provided by the original data owners". `@a-hosts-terms-are-not-its-contents-terms`
+   writes the host's terms as the floor and lets each record override them. An L2G row cannot name its owner,
+   though: it reaches its study only through `studyLocusId`. So the override has nothing to key on, and the
+   floor states less than the terms impose.
+
+**Not decided here.** Whether each shape is a column, a vocabulary member on an existing axis, or a sibling
+table. Which of them a compile gate reads, given that `redistribution` is still ungated (RM27). And how shape 5
+says "deferred to owners not named per row" without claiming a value: a three-valued reading, where unknown is
+withheld rather than written as permissive. AlphaGenome §2.6's (e) and (f) are existing gotchas, not gaps, and
+are not reopened here.
+
+**Residuals** none yet.
+
+## RM286 — PharmVar's research-use-only, personal-key restriction lives in `notice` prose, and RM27 closed without the axis RM38 handed it
+
+**Parked, the pm (2026-11-16)**, out of `ROADMAP_0_9.md`, under the maintainer's rule for smaller minors (2026-11-15: "lets make em smaller"), [desk #326](https://github.com/winternewt/desk/issues/326) item 3, applied on its default. **Unparks when** the same as RM345's, whose design it shares, or a PharmVar-drafted module reaches the registry's publish gate, when a scope the maintainer highlights touches it, or when the roadmap is empty.
+
+**Stays in 0.9, the pm (2026-11-05)**: it is the same design question as RM345 (a licence shape `SourceRow` cannot state), which stays for longevitymap v2's Open Targets rows. The status line below predates this.
+
+**Severity** low · **Status** open — **a minor, release undecided** · **Owner** format (`SourceRow`) +
+enricher (the PharmVar terms constant) · **Motivating case** RM38's *"belongs to the RM27 design
+round"*, a pointer to an item that closed without it, found by the 2026-09-27 postmortem sweep (P13)
+· *related* RM38, RM27, `@pgx-research-only`, `@gated-source-caches`
+
+RM38 declined a `SourceRow` column for PharmVar's restriction (research use only, a non-transferable
+personal key). The restriction is narrower than `commercial_use=False`, so today it lives only in
+`notice` as prose. RM38 handed the axis to *"the RM27 design round, which already owns 'the recorded
+axes do not cover every real restriction'"*. RM27 shipped in 0.6 as a record-only redistribution
+verdict with the registry named as enforcer. It designed no further axis, so the handoff landed
+nowhere.
+
+**One premise to correct before designing.** RM38 sized the column as 1.0 because *"a new column on an
+existing parquet moves every compiled module's digest"*. A digest moving is not by itself a reason to
+defer (the house coding standards say so), and a new optional column is minor-legal under P3 and P8.
+So this is a minor if built.
+
+**What to decide.** Whether research-use-only and personal-key are one axis or two, and whether
+either is tri-state like `share_alike`/`commercial_use` (an unestablished permission is never a
+permission). Also whether the compile gate reads it, or it stays recorded-only like `redistribution`.
+A new authored-schema column costs the full P9 price, though `sources.csv` is mostly machine-written.
+
+## RM358 — a DOI-only literature answer is never pinned, and bioRxiv's own full-text route is unused
+
+**Parked, the pm (2026-11-16)**, out of `ROADMAP_0_9.md`, under the maintainer's rule for smaller minors (2026-11-15: "lets make em smaller"), [desk #326](https://github.com/winternewt/desk/issues/326) item 3, applied on its default. **Unparks when** a module that reaches compile carries a DOI-only (`pmid=NONE`) citation a downstream check needs pinned, or an author asks for a bioRxiv full text the tools cannot reach, when a scope the maintainer highlights touches it, or when the roadmap is empty.
+
+**0.9, filed 2026-11-04 by the lead**: RM349's two residuals, found by its builder.
+
+**Severity** low · **Status** open — **a minor**, 0.9 · **Owner** enricher (`literature`) + compiler (the
+`literature.csv` checks) · **Motivating case** the RM349 builder's report, 2026-11-04 · *related* RM349, RM336
+
+**One class: a `pmid=NONE` citation is checked, but the answer goes nowhere a downstream check reads.** Two
+instances:
+
+1. RM349 checks a DOI-only row's existence and quote, but the answers are not pinned in `literature.csv`, which
+   keys on PubMed ids. The compiler's quote counter, its licence check and its title-as-quote check read
+   `literature.csv`, so none of them ever sees a `pmid=NONE` row.
+2. The quote is matched only where Europe PMC holds the preprint's text. bioRxiv's own API publishes a `jatsxml`
+   link for every bioRxiv and medRxiv preprint, a wider route than Europe PMC's subset, and no client reads it.
+
+**The fix, as one rule.** A DOI-only answer is pinned in `literature.csv` under its DOI, so every check that reads
+the table reads it too; bioRxiv's `jatsxml` becomes a full-text source for the quote check, as a new source with
+its own `SourceRow` and licence probe, not a branch inside an existing client.
+
+**Residuals** none yet.
+
+## RM360 — four longevitymap v2 rows the 0.8 shape cannot hold, found by writing 0.8's reference examples
+
+**Parked, the pm (2026-11-16)**, out of `ROADMAP_0_9.md`, under the maintainer's rule for smaller minors (2026-11-15: "lets make em smaller"), [desk #326](https://github.com/winternewt/desk/issues/326) item 3, applied on its default. **Unparks when** the next version of longevitymap v2, or another module, needs one of the four rows written, when a scope the maintainer highlights touches it, or when the roadmap is empty.
+
+**0.9, filed 2026-11-04 by the pm**, from the lead's report on the 0.8 reference examples. None is built in 0.8.
+
+**Severity** low · **Status** open — **a minor**, 0.9, each gap weighed at 0.9's interview · **Owner** format
+(columns) · **Motivating case** the 0.8 reference examples, 2026-11-04 · *for* longevitymap v2 · *related* RM323,
+RM328, RM334, RM335
+
+**One class: a v2 fact has a value and no cell to put it in.** Four instances:
+
+1. **An allele's odds ratio has no numeric home on `meta.csv`.** A composite row states a direction and a
+   conclusion. It cannot state the number its citation gives for the allele.
+2. **A tag SNP standing for an HLA allele has no column.** `proxy_rsid` points from one variant to another. It
+   cannot point from a variant to an `allele_function.csv` allele such as an HLA type.
+3. **A GenAge entry cannot be cited in `model_organisms.csv`.** The row has `pmid`/`doi` and no slot for a
+   database entry id.
+4. **An r² cannot say which lead allele the proxy allele travels with.** The computed LD pair carries r² and the
+   population, but not the allele phase, so the effect allele cannot be carried across the proxy.
+
+**How to weigh them (the standing rule).** Fewest entities first. Before any new column, check whether an
+existing column or a meta-table row already holds the fact: for (1), a citing table's effect columns joined
+by the member; for (4), a computed field, since the phase comes from the same LD lookup that fills r². A gap
+whose only case is one example row waits for a second case.
 
 **Residuals** none yet.
 
@@ -2735,6 +2820,8 @@ possibly already satisfied, and the rest sound** — the sweep's value is mostly
 
 **Re-sized 2026-11-05, after the 0.8.0 cut (the pm).** 22 items were parked out of [ROADMAP_0_9.md](ROADMAP_0_9.md) into Active items. The 15 rows from RM261 down are new. RM16, RM23, RM28, RM68, RM122, RM164 and RM238 already had rows here; their verdicts stand, and their entries now live in this file.
 
+**Re-sized 2026-11-16 (the pm), for smaller minors ([desk #326](https://github.com/winternewt/desk/issues/326)).** RM430 and RM431 left this table for 0.9's scope, where their gate, the maintainer naming remote reads a zone, was met on desk #261. Seven items were parked out of [ROADMAP_0_9.md](ROADMAP_0_9.md); their six rows (RM345 and RM286 share one) sit above the 1.0 queue's row, all judged Sound.
+
 | Item | Gate as written | Verdict |
 |---|---|---|
 | **RM16** — authored PRS weights | "a real consumer" — one that combines authored weights into a score | **Circular.** No such consumer can exist before the table does. Re-parked on *shape* 2026-09-13. **Restated 2026-11-05 by the pm** as the shape question, which needs nothing built: **Sound** now. |
@@ -2769,8 +2856,12 @@ possibly already satisfied, and the rest sound** — the sweep's value is mostly
 | **RM406** — dbSNP witnesses only REST's subjects (parked 2026-11-07) | RM398's build counts dbSNP-versus-snapshot disagreements on the registry's replay, or a consumer reports a misplacement outside REST's subjects | **Sound.** RM398 is the next patch and its build step produces the count; the `Sn` inbox is S117's and S132's channel. |
 | **RM424** — a verification record carries no binding of its own (parked 2026-11-09) | a reader asks which checks are current without re-running them, or wants the history RM423 drops | **Sound.** Readers of `verification.json` exist today, and S139's reporter already proposes approximating the first from `checked_at`. |
 | **RM429** — `GwasResult` carries no count of page-size refusals (parked 2026-11-11) | a run that reports a counted refusal, or a consumer that cannot inject its own `GwasCatalogClient` | **Sound.** The client counts refusals today, and the Catalog can lower its ceiling at any time. |
-| **RM430** — snapshot readers take no remote root (parked 2026-11-11) | the maintainer names remote snapshot reads a zone (desk #261) | **Sound.** A decision, answerable now. |
-| **RM431** — keyed readers and an rsID index for remote lookups (parked 2026-11-11) | per ask, a remote lookup through RM430's readers measured too slow or too large; ask 4 with RM405 | **Sound** once RM430 ships, which needs nothing from this item; while RM430 is parked, the gate waits on the maintainer's decision for it, not on this item. |
+| **RM302** — one `conclusion` for every register (parked 2026-11-16) | a consumer's report asks for the authored wording of a second register, or an author writes two registers into one `conclusion` | **Sound.** A report already shows one conclusion in a table, a card and an explanatory mode (the entry's motivating case), so a consumer can ask without the columns existing. |
+| **RM350** — HLA names checked for grammar only (parked 2026-11-16) | an HLA name in a module that IPD-IMGT/HLA never assigned, reported | **Sound.** A module can carry such a name now; RM334's grammar check passes it. The licence probe needs nothing built. |
+| **RM294** — STRchive's grade has no place (parked 2026-11-16) | a request for the source's grade beside the tier, or a Refuted locus in a published module | **Sound.** Both can happen with today's tables. |
+| **RM345** + **RM286** — licence shapes `SourceRow` cannot state (parked 2026-11-16) | a gate deciding a real module's licence wrong, or the registry asking for a shape as data | **Sound.** Modules drafting from AlphaGenome, Open Targets and PharmVar exist or can be written today. |
+| **RM358** — a DOI-only citation is never pinned (parked 2026-11-16) | a `pmid=NONE` citation a downstream check needs pinned, or a bioRxiv full text an author cannot reach | **Sound.** Both occur with today's literature tools. |
+| **RM360** — four longevitymap v2 rows without a shape (parked 2026-11-16) | the next v2 version, or another module, needs one of the four rows | **Sound.** An author meets the gap while writing, before any column exists. |
 | **RM15** / **RM69** / **RM52** and the 1.0 queue | a major-version bump | **Sound, and not this kind of gate.** A release boundary is a schedule, not a satisfier. |
 
 **What the sweep did not find, stated so it is not re-run for a while.** No gate anywhere is parked on
