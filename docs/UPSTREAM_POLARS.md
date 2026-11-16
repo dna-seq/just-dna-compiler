@@ -61,6 +61,12 @@ use polars only in builders (`@duckdb-vs-polars`).
   wake this seat through the upstream-index watcher since 2026-11-16. (The 2026-11-04 text here said 0.36.2 with
   #478 open; it went stale for nine days while the notes held the 0.37.0 fact, and the seat answered the person
   from it on 2026-11-16.)
+- **Our own consumers' caps (read live 2026-11-16):** just-module-creator (75586a6) constrains `polars<2` and
+  `duckdb<2` by its lead's decision of 2026-11-10, to keep `artifact.digest` stable and the shared Ensembl cache
+  readable by duckdb-1 tools (RM344); its lock: polars 1.44.2, our 0.8.6/0.8.7. longevity-loci (941bc62) caps `polars<2`,
+  `duckdb<2` and `just-dna-enricher<0.8` until the plugin moves; its lock: polars 1.44.2, our 0.7.x. The plugin is
+  on our 0.8 now, so longevity-loci's `<0.8` condition is met (told to its liaison 2026-11-16). just-dna-registry
+  (d76adff) locks polars 2.1.0 with no cap.
 
 **Sorted: breaks us, in the digest only.** Every 2.x release writes its own version and build into every
 parquet we produce, so from 2.0 on `artifact.digest` changes with every polars release, even a patch. Releases
