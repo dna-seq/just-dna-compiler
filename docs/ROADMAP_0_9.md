@@ -124,6 +124,41 @@ cost 1,168 requests, and opening only the chromosome file the key names cut requ
 is slow on every route (9 to 14 s locally) until RM431's index exists. Two routes disagreed under one release label:
 this machine's ClinVar cache (handed to triage) and the test server's ClinPGx copy (told to the registry).
 
+**Decided for 0.9 (the pm, 2026-11-16), from the trial.** A builder that finds a case these do not cover sends it to
+the pm and does not build around it.
+
+1. **Local disk stays first and unchanged.** `resolve_*_reference` keeps its ladder and its answers. A remote root is
+   asked only where it answers `None`, and never under `--offline` (zero egress stays zero). `enrich(download=True)`
+   still provisions the snapshot locally, as today; the remote routes serve the keyed readers and the `lookup_*`
+   functions, and `enrich(download=False)`.
+2. **The proxy is configured explicitly and is unset by default**, as the registry asked: a `proxy_url` parameter on
+   the remote entry point, else `JUST_DNA_SNAPSHOT_PROXY_URL`, read with `env_value` at the call (never `load_env`),
+   and an optional bearer token in `JUST_DNA_SNAPSHOT_PROXY_TOKEN`. With neither, the proxy step is skipped.
+3. **The proxy client** is one keep-alive `httpx` client, held as a new `LookupClients` field like every other
+   client, with a 3 s connect and a 10 s read timeout. Requests fill up to the 100-value limit, one chromosome per
+   request. It falls through to Hugging Face exactly on the registry's list (429, 404 `lane_not_available`, 503,
+   504, a timeout, a connection error) and raises on 422, which is a wrong request on every route.
+4. **Hugging Face** is read through duckdb `httpfs` on one connection per lane per process, kept and closed by its
+   holder, never one per call (half the time, measured). A key that names a chromosome opens that chromosome's file
+   rather than the glob (3 to 20 times fewer requests). A 429 is could-not-ask, typed as the lane's `*Unavailable`
+   subclass carrying `Retry-After`; there is no retry inside the call. A token is read as the downloader already
+   reads it (`HF_TOKEN`, else `get_token()`), and none is required.
+5. **One release per session.** The first remote read of a lane reads its `release.json` and pins the repository's
+   revision for every later read in the process, so a lookup session cannot mix two releases.
+6. **`release.json` remote (ask 2):** the enricher fetches the bytes; the format tier gains only
+   `parse_release(text) -> SnapshotRelease | None`, which `read_release` then calls. Nothing in the format tier reads
+   a URL (the charter's snapshot-layout goal).
+7. **Every answer says where it came from**: the route (`local`, `proxy`, `hf`), the release label read, and the
+   proxy's `served_from`, on the lookup's result and in the log. No column and no sidecar moves: 0.9 is enricher only.
+   Findings 8 and 9 of the trial are two routes disagreeing under one label, which this makes visible.
+8. **Which lanes:** those with a published repo in `SNAPSHOT_REPO_IDS`. PharmVar and PubMind are operator-built and
+   stay local only. Ensembl by rsID alone is never sent remotely (the proxy refuses it, and Hugging Face would scan
+   about 10.7 GB); remotely, Ensembl answers by chrom + start only.
+
+**Rejected:** a format-tier `read_release` that reads through fsspec (the charter keeps fetching out of that tier); a
+retry loop on a Hugging Face 429 (the quota window is 5 minutes, and a loop burns the caller's share); the proxy on by
+default (the registry's server would call itself).
+
 **Residuals** none yet.
 
 ## RM431 — the keyed readers a remote lookup needs: an rsID index for Ensembl, and a key on the whole-table readers
@@ -149,6 +184,26 @@ Splitting waits until one ask unparks alone.
 
 **Unparked into 0.9 by the maintainer, desk #261, 2026-11-15** (option 2, "the follow-ups too"), as RM430's zone.
 The measure-first gate above no longer decides whether these are built; the pm's trial for RM430 still orders them.
+
+**Decided for 0.9 (the pm, 2026-11-16).** Built after RM430's remote root, in this order:
+
+1. **Ask 4, Ensembl by rsID: a local index, not a published one.** A derived cache lane, `ensembl_rsid_index`, built
+   from the pulled split snapshot: rsID → (chrom, start), sorted by rsID so row groups prune. Its parent is the
+   Ensembl snapshot's `release_id`, a field, by the derived-lane rule; a moved parent rebuilds it, and the reader
+   refuses an index whose parent is not the core it sits beside. `resolver.lookup_loci` by rsID consults it first.
+   It is built after `ensure_snapshot` and by `cache rebuild`, and goes through CACHE_SURFACE.md's checklist. It
+   answers RM405's local half (9 to 14 s per lookup today) and serves the registry's proxy, whose server holds the
+   lane locally.
+2. **Ask 6, Open Targets:** a public keyed function joining on chrom + position, not on `variant_id`.
+3. **Ask 5, the whole-table readers** (ClinPGx, the drug labels, CIViC rows, `ClinVarGkmWitness`): each gains a
+   keyed public function with pushdown beside its loader; the loaders stay as they are.
+4. **Ask 7, AlphaGenome:** `read_local_scores` lists contig files through RM430's root, local or remote, and never
+   through a local glob or `Path.stem`.
+
+**Rejected:** publishing the rsID index to Hugging Face. It would let a client with only Hugging Face look up Ensembl
+by rsID, at the cost of a derived repository of roughly the `id` column's 6 GB, rebuilt and published for every
+Ensembl release. The proxy already serves remote clients from a local index. If a Hugging-Face-only client reports
+the need, that reopens it as its own item.
 
 **Residuals** none yet.
 
@@ -194,6 +249,12 @@ the zone, or on its own when a second host reports the same gap. On `load_dotenv
 pass it through and have `lane_status` pass `False` for a lane named in `locations`, so a host that configures
 paths explicitly gets no environment write.
 
+**Decided for 0.9 (the pm, 2026-11-16):** S154's signature as written, `lane_status(lanes=None, locations:
+Mapping[str, Path | None] | None = None)`. A lane named in `locations` is resolved with that path and
+`load_dotenv_file=False`, and reports that path as `looked_in`; `None` for a named lane means its default ladder,
+still without the environment write. Lanes not named keep today's behaviour. `prepare_caches` does not take the
+mapping in 0.9 (no caller asked); it is the same shape if one does.
+
 **Residuals** none yet.
 
 ## RM437 — the split Ensembl snapshot's `groups/` sidecars have no provisioning route, so a consumer who needs a group must write into the lane's directory itself
@@ -228,6 +289,18 @@ holds within one release only). It goes with the next patch on `main`.
 **Doc half built (lead, 2026-11-13), cut 2026-11-13 as `v0.8.6`:** INTEGRATION_0_8 § 3, just-dna-pipelines step 1, says the lane carries the
 core only, to keep the current source for the group values until 0.9, and why a hand-fetched group is unsafe.
 
+**Decided for 0.9 (the pm, 2026-11-16):**
+
+1. `ensure_snapshot(..., groups: Sequence[str] = ())` and `cache pull --only ensembl --groups NAME[,NAME]`. The valid
+   names are read from the snapshot's `manifest.json`, never from a hand-kept list; an unknown name is refused
+   before any download.
+2. Each group's files are checked against the manifest's sha256, recorded in the pull record beside the core's, and
+   re-pulled when the release moves (RM420's rule, unchanged).
+3. A public `ensembl_group_dir(cache, group) -> Path`, so no reader spells the layout.
+4. A reader of a group refuses, with a typed error, when the group's recorded release is not the core's: a group
+   joins on `row_idx`, which holds within one release only.
+5. Local only in 0.9. Remote reads of a group wait for a caller who asks.
+
 **Residuals** none yet.
 
 ## RM404 — `enrich()` builds its own NCBI client and sequence proxy, so a host cannot pace them with the rest
@@ -260,6 +333,14 @@ repository; a proxy of our own that adds one would be the workaround the house r
 and intervals, parked) unparks when a host needs a second client's pace, which this may meet; that is the pm's
 reading.
 
+**Decided for 0.9 (the pm, 2026-11-16):** `enrich(..., clients: LookupClients | None = None)`, the bundle rather than
+loose parameters. `LookupClients` gains a `sequences` field for the `SequenceProxy`; `eutils` is already a field, and
+`check_rsids` is passed it. The existing `resolver=`, `gnomad_client=` and `grch37_client=` stay and win over the
+bundle's field when both are given (additive; no deprecation in 0.9). RM401's knobs become `EnsemblSettings` fields,
+`batch_size` (default 20, under the existing ceiling) and `batch_timeout` (default 120 s), and `_BatchResolver`
+becomes the public `BatchResolver` protocol. The missing timeout under ga4gh's seqrepo proxy stays vrs-python's: the
+liaison files it upstream, and no proxy of ours wraps it.
+
 ## RM412 — a dry run cannot rehearse the download, and the 0.8 line's private names wait for their public ones
 
 **In 0.9's scope, the pm (2026-11-16)**: [desk #326](https://github.com/winternewt/desk/issues/326), the smaller-minors cut, applied on its default under the rule that only a real fork goes to the maintainer. **Which parts:** half 2 whole (the 0.8 line's private names made public), and from half 1 the `--rehearse-download` flag the maintainer named. Half 1's per-lane probe of the source's newest release without its payload (a new `CacheLane` field) is **parked**: **Unparks when** an operator reports a rebuild that downloaded a source only to learn nothing had changed, or a scope the maintainer highlights touches it, or the roadmap is empty. The status line below predates this.
@@ -284,6 +365,12 @@ newest release unasked; RM413's gates still read that release off the liaison's 
    which RM404 already plans to expose.
 
 ---
+
+**Decided for 0.9 (the pm, 2026-11-16):** `ensure_opentargets_snapshot` public beside its siblings (the private
+name goes: a leading underscore carries no contract);
+`just-dna-enricher opentargets publish` and `clinvar-gkm publish` for a snapshot already built, each with the
+`--dry-run` its siblings have; `cache rebuild --dry-run --rehearse-download` as half 1's flag. RM401's and RM403's
+names are RM404's.
 
 # 0.10's scope — a small schema release right after 0.9
 

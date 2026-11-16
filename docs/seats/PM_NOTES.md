@@ -112,11 +112,12 @@ patches right after real use started, so the pm reads an audit sceptically: the 
   real fork: desk #347 (parked / a 0.11 / into 0.10; default parked, recommend 0.11). RM412 split written (half 2 and
   the flag in 0.9; the per-lane release probe parked with a gate row); RM404 goes first alone, RM385 builds behind its
   parameter in 0.10. Parked entries' status tokens now `a minor, parked`.
-- **PROPOSAL_0_9.md owed (urgent: the lead waits to branch on it, RELEASE_CYCLE step 2).** Every 0.9 design decision
-  written down: RM430's route order, timeouts, could-not-ask on a 429, the recorded route and `served_from`, no
-  rsID-only Ensembl key remotely, the chromosome file over the glob, an optional HF token; RM431's index shape; RM437's
-  provisioning route; RM443's signature; RM404's parameters; RM412's public names and the flag. Input: the six entries
-  and REMOTE_READS_0_9.md. Each decision with what it rejected; a real fork goes to the desk, the rest is the pm's.
+- **0.9's design decisions: written 2026-11-16** as dated "Decided for 0.9 (the pm)" blocks under the six entries in
+  ROADMAP_0_9.md, each with what it rejected. No PROPOSAL_0_9.md from the pm: as with 0.8's PT2, the lead writes the
+  build plan from decisions recorded under the items, and a second copy would drift. Main calls: proxy explicit and
+  unset by default (`JUST_DNA_SNAPSHOT_PROXY_URL`), 3 s / 10 s timeouts, HF 429 is could-not-ask with no retry, one
+  release pinned per session, the route recorded on every answer; the rsID index is a local derived lane, not a
+  published one; `enrich(clients=LookupClients)`.
 - **Remote-read trial: done 2026-11-15** (25bbdc6b): disk 0.02-0.1 s, proxy 0.2-0.4 s, HF 2-29 s and bound by its
   anonymous quota (3,000 requests / 5 min / IP); open the chromosome file, not the glob. Handed on: this machine's
   ClinVar cache has a new release.json over August parquet (triage, DM 640494788); the polygon's stale ClinPGx copy,
