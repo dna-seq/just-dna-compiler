@@ -88,9 +88,13 @@ None open.
   takes every package's version (an enricher-only cut left format's on the old tag). The AVI interrupt test's
   load flake recurred and is fixed (d8c0e0f2, 10 s of work against a 4 s bound). `cut/v0.8.7` and worktree
   `wt-cut-087` (unlocked) are the maintainer's to remove.
-- **RM445 building, 2026-11-16** (sized by the pm as the next patch: a pull places the hub's `release.json`
-  over an unrecorded cache's old parquet). An Opus builder in worktree `scratchpad/wt-rm445` (locked), branch
-  `build/RM445`; the lead reviews and lands it on `main`.
+- **RM445 on `main`, uncut, 2026-11-16** (b78c44aa; the next patch). Built by an Opus builder, two review rounds;
+  the pm's three calls built in (enrich and pull never fetch beside a local build; a `release.json` that could not
+  be asked refuses; `cache pull` checks a current label against the listing's sizes and LFS sha256 up to 256 MiB).
+  Full suite 7446 passed, network gates and a real-hub probe of Ensembl's absent `release.json` green. Residual
+  won't fix: a kept file over 256 MiB of the listing's size with other bytes. Worktree `wt-rm445` unlocked (the
+  maintainer's to remove); `build/RM445` and `land/RM445` were cherry-picked, so `-d` refuses them: `-D` is the
+  maintainer's (main carries them as ae019487-equivalents through b78c44aa).
 - **Next patch on `main`, uncut (after the 0.8.4 cut commit):** RM432 (ac3f1bcc, the lead's, 2026-11-11: two
   snapshot readers raise `FileNotFoundError`; a behaviour change for a direct caller), the GWAS docstring's 15/s budget
   (7a88e10f), RELEASE_CYCLE's floor rule (307a5ae3). Lesson from RM428: it added the public attribute
