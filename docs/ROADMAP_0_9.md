@@ -414,7 +414,7 @@ core only, to keep the current source for the group values until 0.9, and why a 
 
 **Severity** low · **Status** open — **a minor, 0.9** (new public parameters) · **Owner**
 enricher (`enrich()` signature, `identifiers.check_rsids`, `sequences.SequenceProxy`) · **Motivating case** S133
-in CONSUMER_SUGGESTIONS_HISTORY.md · *related* RM396, RM385
+and S157 in CONSUMER_SUGGESTIONS_HISTORY.md · *related* RM396, RM385
 
 **The gap.** `enrich()` takes `resolver=`, `gnomad_client=` and `grch37_client=`, but builds its own eutils client
 for the dbSNP check (`check_rsids` takes `client=`, and `enrich` does not pass one through) and a fresh
@@ -429,6 +429,14 @@ the bundle. **Residuals, to be stated at closure:** the missing timeout is vrs-p
 repository; a proxy of our own that adds one would be the workaround the house rules refuse. RM396 (public gates
 and intervals, parked) unparks when a host needs a second client's pace, which this may meet; that is the pm's
 reading.
+
+**S157, the online case of a local reference (the registry, 2026-11-16; triage).** The registry asks to hand
+`enrich()` a seqrepo URI or a `SequenceProxy`, so `verify_ref`, left-alignment and the minter read a local seqrepo
+with the network up. The `sequences=` parameter decided below answers it as decided, provided the minter takes the
+passed proxy (it shares the run's proxy today, `orchestration.py:794`). The cost it removes, measured by the
+registry's lead: a 57,756-row ClinVar-scale re-derivation took 6.9 h with `verify_ref=True` and 3.4 h without, the
+same table, at about 0.34 s per remote read. A `seqrepo+file://` URI is read by `biocommons.seqrepo`, which the
+enricher does not install, so the host's environment carries it. The offline case and a GRCh38 lane stay RM385's.
 
 **Decided for 0.9 (the pm, 2026-11-16):** `enrich(..., clients: LookupClients | None = None, sequences: SequenceProxy
 | None = None)`: the bundle for the network clients, whose `eutils` field `check_rsids` is then passed, and the
@@ -679,13 +687,22 @@ since that tracker is the procedure P3 turns on.
 
 **RM407's residual (the lead, 2026-11-07).** RM407 (0.8.1) cut an indel's VRS mint to one seqrepo read per locus; a local reference here removes those reads altogether.
 
+**S157 (the registry, 2026-11-16; triage): the online case of the same seam.** With the network up, a deployment
+holding a local GRCh38 reference still reads every base over REST; the registry measured a re-derivation at 6.9 h
+with `verify_ref=True` against 3.4 h without, the same table. RM404 (0.9) answers the online half with its
+`sequences=` parameter. What stays here: the offline run, where `offline` outranks an injected proxy (RM404's
+answer 4 to the lead's critic), and the lane with three stages the registry would prefer over a passed URI (open
+question 2). One fact for open question 1: a local seqrepo needs `biocommons.seqrepo`, which the enricher's core
+dependencies leave out on purpose, so the seqrepo route is a new dependency (or an extra) where a FASTA reader
+would not be.
+
 **0.9, by the maintainer's word (2026-11-05)**, relayed by the lead; entry written by the pm.
 
 **Severity** low · **Status** open — **a minor, 0.9** · **Owner** enricher (`sequences.py`) · **Motivating
 case** the registry's catalog sweep enriches offline by default, so on 0.8 its indels must be enriched online
 (the lead's advice for the registry's M12, 2026-11-05); and S132 (the registry's 0.8 replay, 2026-11-07), where
-an offline re-derivation left 23 subjects `undecided` that a local reference would have turned into `respelled`
-· *related* RM273, RM270, RM381, RM382
+an offline re-derivation left 23 subjects `undecided` that a local reference would have turned into `respelled`;
+and S157 (the registry, 2026-11-16), the online case · *related* RM273, RM270, RM381, RM382, RM404
 
 **The gap.** Every reference base the enricher reads goes through `SequenceProxy`: left-aligning an indel
 (`_left_align`, RM273), minting an indel's VRS id, and the reference-allele check. Its default is the public

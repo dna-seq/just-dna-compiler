@@ -195,6 +195,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S154** `lane_status` could not be handed a lane's configured path, so a host that never exports its paths got a report on other directories — RM443 filed
 - **S155** `recover_rsid` said dbSNP records nothing beside overlapping records, and recovered an indel's anchor-base SNV on position alone — RM444 filed
 - **S156** nothing an installed enricher says which release last changed a derivation, so every enricher patch reads as moving every derived table — folded into RM441
+- **S157** `enrich()` could not be pointed at a local reference, so an online re-derivation spent half its time on remote seqrepo reads — folded into RM404 (online) and RM385 (offline)
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -7782,3 +7783,47 @@ the same place, which is the least new machinery. Either way it is new public su
 over-derive default stays right until it ships.
 
 <!-- triaged: folded into RM441 (minor, 0.9) · sha d388d996952a -->
+
+# From just-dna-registry's liaison, for the registry's re-derivation time, 2026-11-16
+
+## S157 — `enrich()` cannot be pointed at a local reference, so an online re-derivation spends half its time on remote seqrepo reads (from just-dna-registry, 2026-11-16)
+
+**Filed by** just-dna-registry's liaison, at its lead's request (from the registry's desk #330 measurement).
+**Related** RM385 (a local reference for offline runs, in 0.10's scope), RM407 and its residual.
+
+**What we see.** Every reference base `enrich()` reads goes through the one `SequenceProxy` it builds per run,
+`SequenceProxy(offline=offline)` (`enrich/orchestration.py:790` in enricher 0.8.7), so its `uri` is always
+`DEFAULT_SEQREPO_URI` (`seqrepo+https://services.genomicmedlab.org/seqrepo`). `enrich()` takes no URI and no
+proxy, and the `VrsMinter` it builds shares that same proxy, so a caller has no way to hand either a local
+seqrepo, though `create_dataproxy` reads one (`seqrepo+file:///…`) and RM385 notes the same.
+
+**What it costs, measured by the registry's lead on 2026-11-16.** One remote read takes about 0.34 s. On a
+ClinVar-scale re-derivation (the registry's `upgrade --rederive`, online) the reads dominate the run: a cardio
+panel of 57,756 rows took **6.9 h with `verify_ref=True` and 3.4 h without**, with an identical resulting
+table. So the reference check alone doubles the wall time, and it is the network read, not the check.
+
+**What this adds to RM385.** RM385 is framed as the offline case (no network means no reference). This is the
+online case of the same seam: with the network up, a deployment that holds a local GRCh38 reference still
+cannot use it. One design answers both: an offline run reads the local reference when one is configured
+(RM385), and an online run prefers it over the REST service.
+
+**The ask.** A seqrepo URI, or a `SequenceProxy`, passed through `enrich()` (and so to its `VrsMinter`), so
+`verify_ref`, indel left-alignment and VRS minting run locally. Ideally provisioned as a GRCh38 cache lane
+with the three stages a lane owes, which is RM385's open question 2; a passed URI alone would already serve
+us. Not urgent: our upgrade runs either way, slower.
+
+**Status — the online case is answered by [RM404](ROADMAP_0_9.md#rm404--enrich-builds-its-own-ncbi-client-and-sequence-proxy-so-a-host-cannot-pace-them-with-the-rest) in 0.9, the offline case and the lane by
+[RM385](ROADMAP_0_9.md#rm385--offline-enrich-cannot-left-align-an-indel-because---offline-turns-off-the-reference-as-well-as-the-network) in 0.10; folded into both, nothing new filed.**
+Confirmed as you describe: `enrich()` builds `SequenceProxy(offline=offline)` (`enrich/orchestration.py:790`) and hands
+that same proxy to its `VrsMinter` (`:794`), so no caller reaches the URI. RM404, decided for 0.9 by the pm on
+2026-11-16, adds `enrich(..., sequences: SequenceProxy | None = None)` in place of that line, so `verify_ref`, indel
+left-alignment and the minter all read through a proxy you build with `uri="seqrepo+file:///…"`. That is your "a
+passed URI alone would already serve us", online, in 0.9. Two facts for your side. First, a `seqrepo+file://` URI is
+read by `biocommons.seqrepo`, which the enricher deliberately does not install (core `ga4gh.vrs` only; its
+`pyproject.toml` says why), so your environment carries it. Second, under `offline=True` the `offline` flag outranks
+an injected proxy and warns once (RM404's answer 4 to the lead's critic), so the offline run waits for RM385, which builds the local
+reference as its own kind and answers your lane question (its open question 2). A new public parameter is a minor,
+not a patch, so nothing reaches 0.8.x. Your measurement (6.9 h against 3.4 h, the same table) is recorded in both
+entries as the cost.
+
+<!-- triaged: folded into RM404 (minor, 0.9) and RM385 (minor, 0.10) · sha 464aaa9bd77e -->
