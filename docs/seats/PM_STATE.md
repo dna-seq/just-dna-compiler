@@ -13,7 +13,7 @@ schema additions right after.
   found 0 rows it changes.
 - ✅ AlphaGenome 2's predicted methylation, second trial: at 42 strong blood methylation variants its predicted shift
   was 27 times that at 84 matched non-variants, and 28 of 31 directions agreed. One cohort, no replication.
-- ✅ Scoped, 2026-11-16: 0.9 is enricher-only, six items; 0.10 is five small schema items; methylation follows, undated
+- ✅ Scoped, 2026-11-16: 0.9 is six items in the enricher (plus one small parsing function in the schema package); 0.10 is five small schema items; methylation follows, undated
   until the PacBio samples are in hand; seven other items wait, each with what brings it back.
 - ✅ Decided for 0.9: the enricher reads a snapshot from local disk first, then the registry's proxy, then Hugging Face.
 - ✅ 0.9 tries two rules for shorter releases: work found mid-build waits for the next minor, and review stops after two

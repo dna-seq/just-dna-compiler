@@ -13,7 +13,7 @@ day, that only a real fork goes to the maintainer; it stands until they veto a p
 
 | Minor | Theme | Items |
 |---|---|---|
-| **0.9** | the enricher reads its reference data wherever it lives: local disk, then the registry's proxy, then Hugging Face (the order set on desk #261) | RM430, RM431, RM437, RM443, RM404, RM412's second half |
+| **0.9** | the enricher reads its reference data wherever it lives: local disk, then the registry's proxy, then Hugging Face (the order set on desk #261); the schema package gains one parsing function | RM430, RM431, RM437, RM443, RM404, RM412's second half |
 | **0.10** | a small schema release: four optional additions | RM399 + RM441 (with S156), RM435, RM265, RM385 |
 | **methylation** | after 0.10, undated until the PacBio samples are in hand | RM317–RM319, RM433, RM56, RM65, RM66 |
 | *parked* | out of 0.9 into [ROADMAP.md](ROADMAP.md#active-items), each with its gate | RM302, RM350, RM294, RM345 + RM286, RM358, RM360 |
@@ -46,7 +46,7 @@ Indexed in [RM_TOC.md](RM_TOC.md), which is the complete list and the place to l
 
 # 0.9's scope — the enricher reads its reference data wherever it lives
 
-Enricher only; the compiler and the schema package do not move. Six items: RM430, RM431, RM437, RM443, RM404 and RM412's second half. The trial before the design is [REMOTE_READS_0_9](probes/REMOTE_READS_0_9.md).
+The enricher, plus one pure function in the schema package (`parse_release`, RM430 decision 6); the compiler does not move. Six items: RM430, RM431, RM437, RM443, RM404 and RM412's second half. The trial before the design is [REMOTE_READS_0_9](probes/REMOTE_READS_0_9.md).
 
 ## RM430 — no snapshot reader takes a remote root: a URL collapses in `Path`, and every resolve, release read and connector checks the local disk
 
@@ -129,27 +129,32 @@ the pm and does not build around it.
 
 1. **Local disk stays first and unchanged.** `resolve_*_reference` keeps its ladder and its answers. A remote root is
    asked only where it answers `None`, and never under `--offline` (zero egress stays zero). `enrich(download=True)`
-   still provisions the snapshot locally, as today; the remote routes serve the keyed readers and the `lookup_*`
-   functions, and `enrich(download=False)`.
+   still provisions the snapshot locally, as today. The remote routes serve the keyed readers and the `lookup_*`
+   functions only; `enrich()` does not read remotely in 0.9. Its first answering link decides `alts`, so a remote
+   answer would move what a `download=False` run compiles today, and Hugging Face's anonymous quota (about 2 Ensembl
+   or 30 ClinVar lookups per 5 minutes) cannot carry a module's worth of lookups.
 2. **The proxy is configured explicitly and is unset by default**, as the registry asked: a `proxy_url` parameter on
    the remote entry point, else `JUST_DNA_SNAPSHOT_PROXY_URL`, read with `env_value` at the call (never `load_env`),
    and an optional bearer token in `JUST_DNA_SNAPSHOT_PROXY_TOKEN`. With neither, the proxy step is skipped.
 3. **The proxy client** is one keep-alive `httpx` client, held as a new `LookupClients` field like every other
-   client, with a 3 s connect and a 10 s read timeout. Requests fill up to the 100-value limit, one chromosome per
+   client (the `lookup_*` functions read it, which is what that bundle's docstring asks of a field), with a 3 s connect and a 10 s read timeout. Requests fill up to the 100-value limit, one chromosome per
    request. It falls through to Hugging Face exactly on the registry's list (429, 404 `lane_not_available`, 503,
    504, a timeout, a connection error) and raises on 422, which is a wrong request on every route.
 4. **Hugging Face** is read through duckdb `httpfs` on one connection per lane per process, kept and closed by its
    holder, never one per call (half the time, measured). A key that names a chromosome opens that chromosome's file
    rather than the glob (3 to 20 times fewer requests). A 429 is could-not-ask, typed as the lane's `*Unavailable`
-   subclass carrying `Retry-After`; there is no retry inside the call. A token is read as the downloader already
+   subclass; duckdb's exception carries no `Retry-After` (the trial), so the message names Hugging Face's 5-minute
+   quota window instead. There is no retry inside the call. A token is read as the downloader already
    reads it (`HF_TOKEN`, else `get_token()`), and none is required.
-5. **One release per session.** The first remote read of a lane reads its `release.json` and pins the repository's
-   revision for every later read in the process, so a lookup session cannot mix two releases.
+5. **One release per session.** A session is the life of the object that holds the lane's remote connection: its
+   first read reads `release.json` and pins the repository's revision for every later read through it, so a lookup
+   session cannot mix two releases. Its holder ends it by closing it; a long-running server that wants a new release
+   opens a new holder. Nothing pins for a whole process.
 6. **`release.json` remote (ask 2):** the enricher fetches the bytes; the format tier gains only
    `parse_release(text) -> SnapshotRelease | None`, which `read_release` then calls. Nothing in the format tier reads
    a URL (the charter's snapshot-layout goal).
 7. **Every answer says where it came from**: the route (`local`, `proxy`, `hf`), the release label read, and the
-   proxy's `served_from`, on the lookup's result and in the log. No column and no sidecar moves: 0.9 is enricher only.
+   proxy's `served_from`, on the lookup's result and in the log. No column and no sidecar moves.
    Findings 8 and 9 of the trial are two routes disagreeing under one label, which this makes visible.
 8. **Which lanes:** those with a published repo in `SNAPSHOT_REPO_IDS`. PharmVar and PubMind are operator-built and
    stay local only. Ensembl by rsID alone is never sent remotely (the proxy refuses it, and Hugging Face would scan
@@ -185,9 +190,10 @@ Splitting waits until one ask unparks alone.
 **Unparked into 0.9 by the maintainer, desk #261, 2026-11-15** (option 2, "the follow-ups too"), as RM430's zone.
 The measure-first gate above no longer decides whether these are built; the pm's trial for RM430 still orders them.
 
-**Decided for 0.9 (the pm, 2026-11-16).** Built after RM430's remote root, in this order:
+**Decided for 0.9 (the pm, 2026-11-16).** Built after RM430's remote root, in the order 6, 5, 7, 4 (ask 4 last: see its open half).
 
-1. **Ask 4, Ensembl by rsID: a local index, not a published one.** A derived cache lane, `ensembl_rsid_index`, built
+1. **Ask 4, Ensembl by rsID: a local index; whether it is also published waits for tonight's trial** (its size and
+   build time are unmeasured, and when it is built follows from them; the trigger below is not final). A derived cache lane, `ensembl_rsid_index`, built
    from the pulled split snapshot: rsID → (chrom, start), sorted by rsID so row groups prune. Its parent is the
    Ensembl snapshot's `release_id`, a field, by the derived-lane rule; a moved parent rebuilds it, and the reader
    refuses an index whose parent is not the core it sits beside. `resolver.lookup_loci` by rsID consults it first.
@@ -200,10 +206,11 @@ The measure-first gate above no longer decides whether these are built; the pm's
 4. **Ask 7, AlphaGenome:** `read_local_scores` lists contig files through RM430's root, local or remote, and never
    through a local glob or `Path.stem`.
 
-**Rejected:** publishing the rsID index to Hugging Face. It would let a client with only Hugging Face look up Ensembl
-by rsID, at the cost of a derived repository of roughly the `id` column's 6 GB, rebuilt and published for every
-Ensembl release. The proxy already serves remote clients from a local index. If a Hugging-Face-only client reports
-the need, that reopens it as its own item.
+**Open until the trial: publishing the index.** S145's ask 4 was a published index, for a proxy box that holds no
+Ensembl snapshot. Published, it serves that box and any Hugging-Face-only client, at the cost of a derived repository
+of perhaps the `id` column's 6 GB, rebuilt and published for every Ensembl release. Local only, a box without the lane
+cannot answer Ensembl by rsID. The pm measures the index tonight and asks the registry whether its boxes hold the
+Ensembl lane; the decision lands here before the lead builds ask 4, which is why ask 4 is built last.
 
 **Residuals** none yet.
 
@@ -333,12 +340,15 @@ repository; a proxy of our own that adds one would be the workaround the house r
 and intervals, parked) unparks when a host needs a second client's pace, which this may meet; that is the pm's
 reading.
 
-**Decided for 0.9 (the pm, 2026-11-16):** `enrich(..., clients: LookupClients | None = None)`, the bundle rather than
-loose parameters. `LookupClients` gains a `sequences` field for the `SequenceProxy`; `eutils` is already a field, and
-`check_rsids` is passed it. The existing `resolver=`, `gnomad_client=` and `grch37_client=` stay and win over the
+**Decided for 0.9 (the pm, 2026-11-16):** `enrich(..., clients: LookupClients | None = None, sequences: SequenceProxy
+| None = None)`: the bundle for the network clients, whose `eutils` field `check_rsids` is then passed, and the
+sequence proxy beside it, because the bundle holds only clients the `lookup_*` functions read (its docstring), and they
+read no sequence. The existing `resolver=`, `gnomad_client=` and `grch37_client=` stay and win over the
 bundle's field when both are given (additive; no deprecation in 0.9). RM401's knobs become `EnsemblSettings` fields,
-`batch_size` (default 20, under the existing ceiling) and `batch_timeout` (default 120 s), and `_BatchResolver`
-becomes the public `BatchResolver` protocol. The missing timeout under ga4gh's seqrepo proxy stays vrs-python's: the
+`batch_size` (default 20, under the existing ceiling) and `batch_timeout` (default 120 s), and the two capability
+protocols become public, `BatchResolver` and `RestBatchWitness`. `ask_live_witness` is public already. The
+retry-logging helpers (`net._log_retry`, `_log_give_up`) stay private: an injected client logs its own retries, and
+no caller has asked for them. The missing timeout under ga4gh's seqrepo proxy stays vrs-python's: the
 liaison files it upstream, and no proxy of ours wraps it.
 
 ## RM412 — a dry run cannot rehearse the download, and the 0.8 line's private names wait for their public ones

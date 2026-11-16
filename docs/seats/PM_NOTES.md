@@ -116,8 +116,12 @@ patches right after real use started, so the pm reads an audit sceptically: the 
   ROADMAP_0_9.md, each with what it rejected. No PROPOSAL_0_9.md from the pm: as with 0.8's PT2, the lead writes the
   build plan from decisions recorded under the items, and a second copy would drift. Main calls: proxy explicit and
   unset by default (`JUST_DNA_SNAPSHOT_PROXY_URL`), 3 s / 10 s timeouts, HF 429 is could-not-ask with no retry, one
-  release pinned per session, the route recorded on every answer; the rsID index is a local derived lane, not a
-  published one; `enrich(clients=LookupClients)`.
+  release pinned per session, the route recorded on every answer; enrich() does not read remotely in 0.9; the session
+  is the holder's life; `enrich(clients=, sequences=)`; `parse_release` makes 0.9 touch the schema package by one
+  function. **Open: whether the rsID index is also published** (S145 ask 4 wanted it for a proxy box without the
+  Ensembl lane). **Owed tonight (unattended): the index trial** (size, build time, row-group pruning) and the
+  registry's answer on whether its boxes hold the Ensembl lane; then the decision under RM431 before the lead builds
+  ask 4 (built last).
 - **Remote-read trial: done 2026-11-15** (25bbdc6b): disk 0.02-0.1 s, proxy 0.2-0.4 s, HF 2-29 s and bound by its
   anonymous quota (3,000 requests / 5 min / IP); open the chromosome file, not the glob. Handed on: this machine's
   ClinVar cache has a new release.json over August parquet (triage, DM 640494788); the polygon's stale ClinPGx copy,
