@@ -62,12 +62,16 @@ before the first byte, and the next `cache pull` re-pulls the cache. The record 
 `enrich` run over a build no longer makes the next `cache pull` take the build for a pull. A pull fetches
 `release.json` first, staged beside the cache, and names it in the record it writes before the first download, so a
 resumed pull keeps what it fetched while the hub still publishes that release and fetches it again past a release
-boundary. A `release.json` that could not be fetched (a timeout, a 429, a refused token) is no longer read as one
-the repo lacks: the pull stops before anything in the cache moves (it is asked before the manifest is placed), and a
-cache already there serves as it is. Ensembl, which publishes none, now asks for one on every pull.
-A repo that publishes no `release.json` pulls as before. STRchive's
+boundary. A repo that publishes no `release.json` pulls as before. STRchive's
 provisioner keeps no file, so the mechanism does not reach it; it now withdraws an old `release.json` before every
 catalogue it moves in, not only on a refresh.
+
+**A new refusal for a direct caller.** `ensure_*_snapshot` (the parquet lanes) now raises the lane's error when the
+repo's `release.json` could not be fetched (a timeout, a 429, a refused token: anything but the Hub answering that
+nothing is there) and the cache is absent or unfinished; before, that failure was read as "the repo publishes none"
+and the pull went on unlabelled. A cache already there that nothing calls unfinished is served as it is, with a
+warning, and nothing in it moves, since the question is asked before the manifest is placed. Ensembl's lane, which
+publishes no `release.json`, now asks for one on every pull, so an outage of that one request stops its pull too.
 
 **Caches already wrong are repaired by the next `cache pull`.** A finished pull record without `release_sha256` was
 written before RM420 (0.8.3), by RM339's pull, which placed the hub's label over whatever it kept. `cache pull` now
