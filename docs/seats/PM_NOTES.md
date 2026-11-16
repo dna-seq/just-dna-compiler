@@ -122,6 +122,11 @@ patches right after real use started, so the pm reads an audit sceptically: the 
   Ensembl lane). **Owed tonight (unattended): the index trial** (size, build time, row-group pruning) and the
   registry's answer on whether its boxes hold the Ensembl lane; then the decision under RM431 before the lead builds
   ask 4 (built last).
+  **The lead's critic answered the same evening** (blocks A-H) as "Answers to the lead's critic" under RM430, RM437,
+  RM404, RM431: a `remote.RemoteSnapshots` holder, opt-in (no holder, no remote read), declared-use gated per lane;
+  one release per route per holder; truncation split to one key; one `SnapshotRouteUnavailable`; per-group licence by
+  licensor; sticky groups; only `BatchResolver` public; `offline` outranks an injected proxy; the rsID index
+  rebuild-only; ask 7 canceled. Handed to the liaison: ask the registry to put the release label in the proxy reply.
 - **Remote-read trial: done 2026-11-15** (25bbdc6b): disk 0.02-0.1 s, proxy 0.2-0.4 s, HF 2-29 s and bound by its
   anonymous quota (3,000 requests / 5 min / IP); open the chromosome file, not the glob. Handed on: this machine's
   ClinVar cache has a new release.json over August parquet (triage, DM 640494788); the polygon's stale ClinPGx copy,

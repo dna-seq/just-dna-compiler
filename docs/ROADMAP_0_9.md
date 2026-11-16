@@ -164,6 +164,56 @@ the pm and does not build around it.
 retry loop on a Hugging Face 429 (the quota window is 5 minutes, and a loop burns the caller's share); the proxy on by
 default (the registry's server would call itself).
 
+**Answers to the lead's critic (the pm, 2026-11-16, evening).** These amend the decisions above; where they differ,
+these win.
+
+- **The API (B1).** One new public module, `just_dna_enricher.remote`, holds the remote routes. Its holder is
+  `RemoteSnapshots(*, proxy_url=None, proxy_token=None, huggingface=True, declared_use="unstated",
+  hf_base_url=None)`, a context manager and a new `LookupClients` field, `snapshots`, which is what the `lookup_*`
+  functions read. It owns the proxy's `httpx` client (this replaces decision 3's separate field), one duckdb
+  connection per lane, the pins and a lock. Its one query method is
+  `lookup(lane, table, keys: Mapping[str, Sequence]) -> RemoteAnswer`. The existing readers keep `reference: Path`
+  and their return types: each keyed query's SQL is moved to one place that the local reader runs over its glob and
+  the holder runs over the remote root, so there is one copy of each query.
+- **Where the route lands (B2).** `RemoteAnswer(rows, route, release, served_from, revision)` is new, so nothing is
+  retyped. `VariantHint` gains one optional field, `routes: dict[str, RemoteRoute] | None`, keyed by lane and set
+  only for lanes answered remotely (additive). `lookup_loci` and `lookup_clin_sig` stay as they are and stay local.
+- **Off by default (B3).** No holder, no remote read: every existing call behaves exactly as today, egress included.
+  A caller opts in by passing a `LookupClients` whose `snapshots` is set. Within a holder the Hugging Face step is on
+  unless `huggingface=False`. In `lookup_variant` the remote step sits where the local cache sits, before live
+  Ensembl REST: it is the same data.
+- **Licences on the remote routes (A, second half).** A remote read is an acquisition. Before the first remote read
+  of a lane in a session, on any route, the holder runs `check_declared_use(lane.terms, declared_use)`: a refusal
+  raises, a skip reason makes that lane could-not-ask with the reason, and the local snapshot is still read. So
+  `clinpgx`, `cpic` and `drug_labels` stay remote-eligible, gated.
+- **Releases (C).** The pin is the Hugging Face repository's revision (a commit), read once per lane per holder. The
+  label is `release.json`'s, or for Ensembl `manifest.json`'s `release_id`, parsed from fetched bytes by the
+  enricher's own manifest model. Decision 5 narrows to **one release per route per holder**: a 429 can send some keys
+  of one session to Hugging Face, so every answer carries its own route, label and revision, and nothing claims the
+  session is one release. The proxy's reply carries no label, so a proxy answer's `release` is `None` (withheld,
+  never guessed) and `served_from` is kept; the liaison asks the registry to add the label to its reply.
+- **Truncation (C).** A reply with `truncated: true` is split in half and asked again, down to one key; a single key
+  still truncated is could-not-ask for that key, never absent (`@unreachable-not-absent`).
+- **Lifetimes and threads (C).** A connection lives as long as its holder, never the process (decision 4's "per
+  process" is withdrawn). Each query runs on its own `cursor()` from the held connection; opening a connection and
+  reading a pin happen under the holder's lock.
+- **Lanes (D).** Remote-eligible: `ensembl` (chrom + start), `clinvar` (rsID, `variation_id`, chrom + start),
+  `constraint` (gene), `opentargets` (chrom + position, RM431 ask 6), `clinpgx`, `cpic`, `drug_labels`, `civic`,
+  `clinvar_gkm` (each by the keys of its new keyed function). Not eligible: `mitomap` and `strchive` (no keyed
+  reader; STRchive's catalogue is one small file) and `alphagenome_avi` (its one reader is a writing pass, RM431
+  ask 7). "One chromosome per
+  request" applies to position keys only; gene and rsID keys are batched by value alone. Only Ensembl's
+  per-chromosome file names are attested, so only Ensembl opens a chromosome's file; every other lane reads its
+  glob.
+- **The error (D).** Every remote route raises one new type, `remote.SnapshotRouteUnavailable`, could-not-ask,
+  carrying the lane, the route and the cause. The holder translates duckdb's HTTP exception and `httpx`'s errors
+  into it. `lookup.py` catches it before its `duckdb.Error` handlers, and an AST guard holds that order
+  (`@client-exception-contract`).
+- **Tests (H).** The holder builds every remote URL through one function, with `hf_base_url` injectable and
+  pointable at a loopback server that serves parquet with HTTP range requests. The network fence gains a duckdb
+  case: without `JUST_DNA_NETWORK_TESTS`, the conftest makes that URL builder refuse a non-loopback host, and
+  `test_the_network_is_fenced.py` asserts it. The proxy route is tested through an `httpx.MockTransport`.
+
 **Residuals** none yet.
 
 ## RM431 — the keyed readers a remote lookup needs: an rsID index for Ensembl, and a key on the whole-table readers
@@ -211,6 +261,24 @@ Ensembl snapshot. Published, it serves that box and any Hugging-Face-only client
 of perhaps the `id` column's 6 GB, rebuilt and published for every Ensembl release. Local only, a box without the lane
 cannot answer Ensembl by rsID. The pm measures the index tonight and asks the registry whether its boxes hold the
 Ensembl lane; the decision lands here before the lead builds ask 4, which is why ask 4 is built last.
+
+**Answers to the lead's critic (the pm, 2026-11-16, evening).**
+
+- **Ask 4.** The index is a derived lane in a directory of its own, rebuild-only like `mitomap_miss`: no `ensure`, no
+  entry in `SNAPSHOT_REPO_IDS`, built by `cache rebuild ensembl_rsid_index` and never inside `ensure_snapshot`, so
+  `enrich(download=True)` pays nothing. It is not remote-eligible, which keeps RM430's "Ensembl by rsID never sent
+  remotely". Whether it is also published is still open until tonight's measurement; if it is, that publication
+  becomes the one stated exception.
+- **Ask 6.** `opentargets.lookup_variants(reference, positions: Sequence[tuple[str, int]]) -> dict[tuple[str, int],
+  list[dict]]` reads `variants.parquet` by chrom + position; `opentargets.lookup_consequences(reference, variant_ids:
+  Sequence[str]) -> dict[str, list[dict]]` reads `consequences` and `members` by the ids the first one found. Plain
+  dicts, as `lookup_clin_sig` returns.
+- **Ask 5.** The keyed functions run in duckdb (`@duckdb-vs-polars`: a runtime pass), including for the two loaders
+  that read with polars today. CIViC's keyed function takes the raising reader's semantics (`civic_draft.py`): a
+  lookup reports what it could not read, and the refutation pass keeps its own skipping reader.
+- **Ask 7: canceled.** `read_local_scores`' only caller is a writing pass, which stays local (RM430 decision 1), so a
+  remote form would have no caller. It returns as a new item if a lookup ever reads AlphaGenome scores.
+- **RM412, the lead's default agreed:** `--rehearse-download` without `--dry-run` or `--publish` is refused.
 
 **Residuals** none yet.
 
@@ -308,6 +376,26 @@ core only, to keep the current source for the group values until 0.9, and why a 
    joins on `row_idx`, which holds within one release only.
 5. Local only in 0.9. Remote reads of a group wait for a caller who asks.
 
+**Answers to the lead's critic (the pm, 2026-11-16, evening).**
+
+- **Licences per group (A, first half).** Yes: a group selection runs `check_declared_use` per group, through the
+  same declared-use path `cache pull` uses for gated lanes. `SnapshotManifest` types `groups` (name → its record,
+  including `licence`). The enricher maps a licence to terms by its licensor, the text before the colon ("Ensembl
+  data", "CADD"), with one terms constant per licensor in `licensing.py`. On the measured manifest Ensembl's is
+  unrestricted and CADD's forbids sale; a licensor with no constant is unknown terms, skipped with a reason that
+  quotes the licence. So `--groups cadd` downloads under a research use, is refused under a commercial one, and is
+  skipped under an unstated one.
+- **Names (E).** `core` is not a group name: it is always pulled, and naming it is refused with that sentence. A
+  `--groups` beside any lane other than `ensembl` is refused.
+- **The release check (E).** The pull record gains each selected group's `release_id`. `ensembl_group_dir(cache,
+  group)` is the guard: it raises the typed mismatch error when that release is not the core's, so every reader that
+  takes a group's path takes the check with it.
+- **Groups are sticky (E).** The pull record names the selected groups. Every later `ensure` of the lane, with or
+  without `groups` (so `cache prepare`, a plain `cache pull` and `enrich(download=True)` too), re-pulls those
+  groups whenever the core's release moves, so a group cannot go stale behind a new core. Removing a group is not in
+  0.9: deleting the lane's directory does it.
+- **Fact noted:** the `groups` directory name lives in the enricher.
+
 **Residuals** none yet.
 
 ## RM404 — `enrich()` builds its own NCBI client and sequence proxy, so a host cannot pace them with the rest
@@ -350,6 +438,22 @@ protocols become public, `BatchResolver` and `RestBatchWitness`. `ask_live_witne
 retry-logging helpers (`net._log_retry`, `_log_give_up`) stay private: an injected client logs its own retries, and
 no caller has asked for them. The missing timeout under ga4gh's seqrepo proxy stays vrs-python's: the
 liaison files it upstream, and no proxy of ours wraps it.
+
+**Answers to the lead's critic (the pm, 2026-11-16, evening).**
+
+1. Agreed: wave 0 moves `LookupClients` and `CLIENT_FIELDS` to a leaf module, and `lookup.LookupClients` stays
+   importable.
+2. The placement witness and `check_rsids` both use `clients.eutils` when the caller gives one. `enrich` wraps
+   whatever client it uses in its `_RecordedEutils`, so each record is still fetched once (RM398); the wrapper is
+   `enrich`'s and is closed by it, and a caller's client is never closed by `enrich`. The docstring says so.
+3. Only `BatchResolver` goes public, `runtime_checkable`, with public method names and a public answer type; its
+   private names go. `_RestBatchWitness` stays private (one test reads it, and no caller asked). This withdraws the
+   decision above that made both public.
+4. Under `offline=True`, `offline` outranks an injected sequence proxy, as it outranks an injected client today
+   (`@gated-source-caches`): `enrich` does not use it and warns once. RM385 (0.10) adds a local reference, a
+   different object that this rule can let through by its kind. `SequenceProxy`'s memo gains a lock, because shared
+   use across parallel `enrich()` calls is the motivating case.
+5. `batch_size` above the 200 ceiling is refused when the settings are built, never clamped silently.
 
 ## RM412 — a dry run cannot rehearse the download, and the 0.8 line's private names wait for their public ones
 
