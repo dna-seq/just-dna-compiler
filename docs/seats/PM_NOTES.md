@@ -156,13 +156,13 @@ patches right after real use started, so the pm reads an audit sceptically: the 
   derivation; P3 met in prose only; near free). RM398 parked, gated on a planned snapshot move or a second report.
   RM400 the next patch on `main`, both halves; my default for its design half is to filter the recorded side the
   same way, adding no word. S132 noted on RM385 as its second case.
-- reflect after 2026-11-13: classes/base/BASE.md as of v0.1.136 (commit by path, `git commit --only`; read 2026-11-06, no concern).
-- reflect after 2026-11-17: classes/base/BASE.md as of v0.1.161 (no question dialog for a seat, the watchdog's own
-  reaction, quiet seats, the embassy post; read 2026-11-10, no concern: the pm already asks in text).
+- reflected 2026-11-17: v0.1.136 (joined kit #486) and v0.1.161 (a new behavior issue); both neutral to good.
 - reflect after 2026-11-20: classes/base/BASE.md as of v0.1.199 (a brief change handed by the organisation's
   seat-builder is the person's word, D193; read 2026-11-13, no concern: no builder handoff is pending for the pm).
 - reflect after 2026-11-21: classes/base/BASE.md as of v0.1.206 (the `nothing` button closes the wake, not the turn,
   kit #481; read 2026-11-14, no concern: the pm's pending work is the 0.9 interview, which waits on the person).
+- reflect after 2026-11-23: classes/base/BASE.md as of v0.1.224 (only a real fork goes to the person, kit #510; read
+  2026-11-16, applied at once: desk #326-#329 withdrawn under it, #347 filed as the one real fork).
 - **RM442 filed 2026-11-14** (0d84b3d6), the lead's ask: the AlphaGenome licence rows' three strings, a patch on
   `main`; caution sent on the AVI bar (June 2025 Output Terms' restriction 2 may still bind a downstream holder).
 - **0.8's scope, agreed 2026-11-04.**
