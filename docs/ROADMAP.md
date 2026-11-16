@@ -2312,23 +2312,31 @@ manifest, and placed last only when no kept file is unattested; `avi_knots.parqu
 not a release) does not. Otherwise:
 
 - **`cache pull` / `cache prepare`** (`_follow_hub`) re-pull, as RM420's refresh with the `refreshed` outcome and a
-  note saying nothing attested the files: an unrecorded cache whose hub states a release (stating no label, or the
-  hub's own; one stating another label is still left alone), a resumed pull past a release boundary, and a whole
+  note saying nothing attested the files: an unrecorded cache stating no release whose hub states one, a resumed pull
+  past a release boundary, and a whole
   cache whose finished record has no `release_sha256` (`_label_unattested`), even when its label equals the hub's. A
   no-digest record with a differing label is re-pulled as before, so RM420's motivating case is unchanged, and a lane
   with a manifest is never unattested this way, so no Ensembl cache is re-hashed.
-- **`enrich`** keeps the file, places nothing and states no release. A `release.json` already there (a builder's)
-  stays when nothing is fetched and is withdrawn right before the first byte when something is
-  (`@snapshot-layout-locations`). A whole recorded cache still returns before the hub is read.
+- **`enrich`** keeps the file, places nothing and states no release. A whole recorded cache still returns before the
+  hub is read.
+- **An unrecorded cache stating a release of its own** is a builder's on both paths: left alone with another label
+  (RM420), kept as it is with the hub's. Its `release.json` stays when nothing is fetched beside it and is withdrawn
+  right before the first byte when something is (`@snapshot-layout-locations`); the record then keeps the withdrawn
+  file's digest (`withdrew_release_sha256`, private), which `_pulled_by_this_repo` reads as not a pull, so `cache
+  pull` leaves the mixture alone rather than putting the published release over the build.
 - **The record** names the digest of the `release.json` the pull **placed** (`null` when none), so a builder's file
-  is never vouched for; `_pulled_by_this_repo` is unchanged and reads such a cache as built here. The record written
-  before the first download names the release being pulled (`pulling_release_sha256`, private) when every whole file
-  under a planned name is already that release's, so a same-release resume still fetches only what it lacks.
+  is never vouched for. The record written before the first download names the release being pulled
+  (`pulling_release_sha256`, private) when every whole file under a planned name is already that release's, so a
+  same-release resume still fetches only what it lacks, and a pull killed after placing its label is current.
+- **Could-not-ask on `release.json`** (anything but the Hub's absent answer) stops the pull before its record, as for
+  the manifest, and a servable cache is used as it is. A repo publishing no `release.json` pulls as before.
 
 STRchive's root-file provisioner keeps no file, so the mechanism does not reach it (class checked); it now withdraws an
-old `release.json` before every catalogue it moves in. Eleven tests: ten in `test_download.py`, one in
-`test_cache_pull_follows_the_hub.py`; eight red on `051dc276`, and each arm reverted on purpose turned at least one red.
-RM420's eighteen pass unchanged.
+old `release.json` before every catalogue it moves in. Fourteen tests: twelve in `test_download.py`, two in
+`test_cache_pull_follows_the_hub.py`; nine red on `051dc276`, and each arm reverted on purpose turned at least one red.
+RM420's eighteen pass unchanged. A high-effort code review of the first build found the two orders (`enrich` then
+`cache pull`, and the reverse) disagreeing over an unrecorded build, a withdrawn description turning a build into a
+pull, could-not-ask read as absent, and the knots withheld where no label exists; all four are fixed here and tested.
 
 **Residuals** won't fix — a cache that 0.8.3 to 0.8.7 completed from no record carries `release_sha256` and the hub's label over old bytes, and nothing on disk tells it from an honest pull, so its operator moves it aside and pulls once
 

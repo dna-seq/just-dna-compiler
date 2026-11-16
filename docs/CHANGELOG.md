@@ -51,12 +51,17 @@ kept because the manifest attests them, or because this repo's own pull recorded
 still publishes; AlphaGenome's `avi_knots.parquet`, which reconstructs `PHRED` for one release, follows the same
 rule. `cache pull` and `cache prepare` fetch an unattested kept file again, as RM420 does for a release that moved,
 so they repair. `enrich`'s own pull keeps it (no release is downloaded mid-run) and places no label: the cache
-states no release, so its label is withheld rather than false. A `release.json` already there, a builder's say,
-stays when nothing is fetched beside it and is withdrawn before the first byte when something is. The record now
-states the digest of the `release.json` the pull placed and `null` when it placed none, so an `enrich` run over a
-build no longer makes the next `cache pull` take the build for a pull. A pull fetches `release.json` first, staged
-beside the cache, and names it in the record it writes before the first download, so a resumed pull keeps what it
-fetched while the hub still publishes that release and fetches it again past a release boundary. STRchive's
+states no release, so its label is withheld rather than false. An unrecorded cache stating a release of its own is
+a builder's and is not refetched on either path: left alone with another label (RM420), kept as it is with the
+hub's. Its `release.json` stays when nothing is fetched beside it and is withdrawn before the first byte when
+something is, and the record then keeps the withdrawn file's digest, so `cache pull` still treats the cache as a
+build. The record states the digest of the `release.json` the pull placed and `null` when it placed none, so an
+`enrich` run over a build no longer makes the next `cache pull` take the build for a pull. A pull fetches
+`release.json` first, staged beside the cache, and names it in the record it writes before the first download, so a
+resumed pull keeps what it fetched while the hub still publishes that release and fetches it again past a release
+boundary. A `release.json` that could not be fetched (a timeout, a 429, a refused token) is no longer read as one
+the repo lacks: the pull stops before its record, as for the manifest, and a cache already there serves as it is.
+A repo that publishes no `release.json` pulls as before. STRchive's
 provisioner keeps no file, so the mechanism does not reach it; it now withdraws an old `release.json` before every
 catalogue it moves in, not only on a refresh.
 
@@ -74,10 +79,11 @@ much older than its `pull-record.json` are a hint, not proof, and moving it asid
 
 No public name, field, flag or vocabulary moves. Tests: `test_download.py` (the reproduction on both paths, the
 pre-RM420 record with an equal and with a differing label and on the `enrich` path, a build an `enrich` run passes
-over, a build stating the hub's own label, the label a fetch withdraws, a resume of the same release and one across a
-release boundary) and `test_cache_pull_follows_the_hub.py` (the knots). Eight of the eleven were red on the previous
-`main`; the other three pin what stays (`enrich`'s warm trust, RM420's re-pull of a differing label, a same-release
-resume), and each arm of the fix reverted on purpose turns at least one red. RM420's tests pass unchanged.
+over, a build stating the hub's own label on either path, the label a fetch withdraws and the `cache pull` after it,
+a `release.json` that could not be fetched, a pull killed after placing its label, a resume of the same release and
+one across a release boundary) and `test_cache_pull_follows_the_hub.py` (the knots, with and without a
+`release.json`). Nine of the fourteen were red on the previous `main`; the other five pin what stays, and each arm of
+the fix reverted on purpose turns at least one red. RM420's tests pass unchanged.
 
 ## 2026-11-14 — `v0.8.7`: enricher 0.8.7 (a patch, cut from `main`)
 

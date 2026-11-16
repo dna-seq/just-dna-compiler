@@ -483,6 +483,23 @@ def test_the_knots_follow_release_json_over_kept_files_nothing_attests(tmp_path:
     assert snapshot_release_label(cache) == "avi_v2" and follow.outcome == "refreshed"
 
 
+def test_a_repo_with_no_release_json_still_gets_its_knots(tmp_path: Path, install_hub) -> None:
+    """With no label to withhold the pull is as before: the knots arrive, or `alphagenome check` refuses."""
+    from just_dna_enricher.locations import ALPHAGENOME_KNOTS_FILENAME
+
+    cache = tmp_path / "alphagenome_avi"
+    shard = "data/alphagenome_avi-chr1.parquet"
+    (cache / "data").mkdir(parents=True)
+    (cache / shard).write_bytes(_parquet(["KEPT"]))
+    hub = install_hub(
+        "alphagenome_avi", {shard: _parquet(["NEW"]), ALPHAGENOME_KNOTS_FILENAME: _parquet(["K"])}
+    )
+
+    dl.ensure_alphagenome_avi_snapshot(cache)
+
+    assert (cache / ALPHAGENOME_KNOTS_FILENAME).read_bytes() == hub.files[ALPHAGENOME_KNOTS_FILENAME]
+
+
 def test_the_three_provisioning_call_sites_pass_the_intent() -> None:
     """Only `cache pull` and `cache prepare` follow the hub; every other caller keeps the warm trust.
 

@@ -449,26 +449,30 @@ def test_an_enrich_run_over_a_build_does_not_turn_it_into_a_pull(fake_hub, tmp_p
     assert (cache / RELEASE_FILENAME).read_bytes() == built_release
 
 
-def test_cache_pull_refetches_an_unrecorded_build_that_states_the_hubs_own_label(
+def test_an_unrecorded_build_stating_the_hubs_own_label_is_kept_on_either_path(
     fake_hub, tmp_path: Path
 ) -> None:
-    """Equal labels: nothing is newer than the hub, and nothing attests a builder's label from a pull's.
+    """A builder's `release.json` is its statement about its bytes, and nothing here is newer than the hub.
 
-    An unrecorded `release.json` is a builder's or a pull's from before any record, and the two cannot be
-    told apart; refetching costs a download and loses nothing of another release. Only a build stating
-    another label than the hub's is left alone (RM420).
+    Kept as it is whichever path reaches it first, and neither path makes the other change its mind:
+    an `enrich` run records that no `release.json` was placed, and the `cache pull` after it reads the
+    cache as current. (The code review found the two orders disagreeing in an earlier draft.)
     """
-    cache = tmp_path / "cv"
-    write = begin_snapshot_write(cache)
-    _write_parquet(cache / _CHR1, "built")
-    write.commit(SnapshotRelease.model_validate({"dataset": _NOV, "source": "test"}))
-    fake_hub({"clinvar-chr1.parquet": "clin_sig"}, release=_release_body(_NOV))
-
-    follow = dl._FollowHub(LANES_BY_NAME["clinvar"].release_label)
-    dl.ensure_clinvar_snapshot(cache, _follow_hub=follow)
-
-    assert _column(cache / _CHR1) == "clin_sig" and _clinvar_label(cache) == _NOV
-    assert follow.outcome == "refreshed" and follow.unattested
+    for first in ("enrich", "pull"):
+        cache = tmp_path / first
+        write = begin_snapshot_write(cache)
+        _write_parquet(cache / _CHR1, "built")
+        write.commit(SnapshotRelease.model_validate({"dataset": _NOV, "source": "test"}))
+        built_release = (cache / RELEASE_FILENAME).read_bytes()
+        for path in (first, "pull"):
+            fs = fake_hub({"clinvar-chr1.parquet": "clin_sig"}, release=_release_body(_NOV))
+            follow = dl._FollowHub(LANES_BY_NAME["clinvar"].release_label) if path == "pull" else None
+            dl.ensure_clinvar_snapshot(cache, _follow_hub=follow)
+            assert _column(cache / _CHR1) == "built", (first, path)
+            assert (cache / RELEASE_FILENAME).read_bytes() == built_release, (first, path)
+            assert not [f for f in fs.fetched if f.startswith("data/")], (first, path)
+            if follow is not None:
+                assert follow.outcome == "current", (first, path)
 
 
 def test_a_pull_fetching_beside_kept_unattested_files_withdraws_the_label_already_there(
@@ -487,6 +491,53 @@ def test_a_pull_fetching_beside_kept_unattested_files_withdraws_the_label_alread
 
     assert "data/clinvar-chr2.parquet" in fs.fetched and _column(cache / _CHR1) == "built"
     assert not (cache / RELEASE_FILENAME).exists() and _clinvar_label(cache) is None
+
+    # …and the cache is still a build to `cache pull`: the record keeps the withdrawn file's digest, so
+    # the published release is not put over the built chr1 (the code review's first finding).
+    fake_hub(
+        {"clinvar-chr1.parquet": "clin_sig", "clinvar-chr2.parquet": "clin_sig"}, release=_release_body(_NOV)
+    )
+    follow = dl._FollowHub(LANES_BY_NAME["clinvar"].release_label)
+    dl.ensure_clinvar_snapshot(cache, _follow_hub=follow)
+    assert follow.outcome == "kept" and _column(cache / _CHR1) == "built"
+
+
+def test_a_release_json_that_could_not_be_fetched_is_not_one_the_repo_lacks(fake_hub, tmp_path: Path) -> None:
+    """Could-not-ask stops the pull before its record, as for the manifest; a cache already there serves."""
+    fs = fake_hub(_THREE, release=_release_body(_NOV))
+    real_get = fs.get
+
+    def get(remote_path: str, local_path: str) -> None:
+        if remote_path.endswith(RELEASE_FILENAME):
+            Path(local_path).write_bytes(b"")
+            raise httpx.ReadTimeout("The read operation timed out")
+        real_get(remote_path, local_path)
+
+    fs.get = get
+    with pytest.raises(dl.ClinVarReferenceError, match=r"release\.json could not be fetched"):
+        dl.ensure_clinvar_snapshot(tmp_path / "fresh")
+    assert snapshot_record_missing(tmp_path / "fresh") is None
+    assert not list((tmp_path / "fresh").glob("data/*.parquet"))
+
+    cache = _old_unrecorded_cache(tmp_path)
+    assert dl.ensure_clinvar_snapshot(cache) == cache
+    assert _column(cache / _CHR1) == "old_release" and snapshot_record_missing(cache) is None
+
+
+def test_a_pull_killed_after_placing_its_label_is_current_to_the_next_pull(fake_hub, tmp_path: Path) -> None:
+    """The record written first names the release being pulled; it is the one in the cache, so no refetch."""
+    cache = tmp_path / "cv"
+    fake_hub(_THREE, release=_release_body(_NOV))
+    dl.ensure_clinvar_snapshot(cache)
+    record = _record(cache)
+    pulling = record.pop(dl._RELEASE_DIGEST_KEY)
+    record[dl._PULLING_RELEASE_KEY] = pulling  # as it stood before the last rewrite
+    (cache / PULL_RECORD_FILENAME).write_text(json.dumps(record), encoding="utf-8")
+
+    fs = fake_hub(_THREE, release=_release_body(_NOV))
+    follow = dl._FollowHub(LANES_BY_NAME["clinvar"].release_label)
+    dl.ensure_clinvar_snapshot(cache, _follow_hub=follow)
+    assert follow.outcome == "current" and fs.fetched == [RELEASE_FILENAME]
 
 
 def test_a_resumed_pull_of_the_same_release_fetches_only_what_it_lacks_and_is_labelled(

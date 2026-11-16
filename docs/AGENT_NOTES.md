@@ -3732,7 +3732,11 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `_kept_release` equal to what the hub publishes now); `cache pull` fetches an unattested file again,
   `enrich` leaves the cache stating no release. The record's digest names only a `release.json` the
   pull **placed**: a digest of "whatever is on disk" vouched for a builder's file the moment a pull
-  kept it, and the next `cache pull` took the build for a pull. Two repairs refused: placing the label
+  kept it, and the next `cache pull` took the build for a pull; for the same reason a builder's
+  `release.json` the pull withdraws is recorded (`withdrew_release_sha256`), or "no record of a label"
+  reads as "pulled, unlabelled" and the published release goes over the build. Run every such case in
+  both orders (`enrich` then `cache pull`, and the reverse): a review found an early draft where the
+  order decided whether an unrecorded build was refetched. Two repairs refused: placing the label
   when the kept file "looks whole" (the footer says nothing about the release), and refusing to keep
   any unattested file on the `enrich` path (a warm cache must serve, and no release is downloaded
   mid-run).
