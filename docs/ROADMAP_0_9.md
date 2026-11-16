@@ -1107,7 +1107,7 @@ core only, to keep the current source for the group values until 0.9, and why a 
 
 **Severity** low · **Status** open — **a minor, 0.9** (built with RM399, one design) · **Owner**
 format (`vocab.VALID_RELEASE_OUTPUT_AXES`, `release_records`) + compiler (`sweep`) · **Motivating case** S153
-(CONSUMER_SUGGESTIONS_HISTORY.md) · *related* RM399, RM438, RM201, RM120
+(CONSUMER_SUGGESTIONS_HISTORY.md), S156 · *related* RM399, RM438, RM201, RM120
 
 **The gap.** `VALID_RELEASE_OUTPUT_AXES` is `parquet_schema`, `parquet_bytes`, `content_signature`,
 `manifest_fields` and `warnings`. Every one is compiled output, and the sweep measures them by compiling the
@@ -1151,5 +1151,16 @@ cause named (a lane moved, or a derivation corrected) and the items behind it. U
 3. **RM438 is the route's first declaration**, in the record of the release that ships the route, beside RM399's
    0.8 snapshot switch if the build can reach the 0.8.0 entry. Until then the CHANGELOG and INTEGRATION_0_8 carry it
    in prose, and no compiled axis gets a correction the sweep measured as zero.
+
+**A fourth ask, S156 (the registry, 2026-11-16; triage).** The registry's convergence check needs, from the
+installed packages and offline, the newest enricher release whose output for a derived table could differ, so that
+a text-only enricher patch does not send every module with a reason through a re-derivation. Today nothing says it:
+`RELEASE_RECORDS` covers compiled output only, and an enricher-only patch has no record (0.8.1, 0.8.7). One fact
+for the design: the records live in `just_dna_format`, and an enricher-only patch does not release the format, so
+"every enricher release carries a record" needs either a format release per enricher patch or records that live in
+the enricher. A per-table "newest version whose derivation could differ", kept in the enricher beside
+`CACHE_LANES`, is readable from the package that moved. The route this item adds answers "re-derive" across a span,
+so the build answers S156 from the same place rather than with a second mechanism; which side holds it is the pm's
+call in the design. Public surface either way: a minor, as the rest of the item.
 
 **Residuals** none yet.

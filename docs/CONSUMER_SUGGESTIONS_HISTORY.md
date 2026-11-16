@@ -194,6 +194,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S153** a release record had no axis for a derived-table correction, so 0.8.5's read as nothing moved — RM441 filed
 - **S154** `lane_status` could not be handed a lane's configured path, so a host that never exports its paths got a report on other directories — RM443 filed
 - **S155** `recover_rsid` said dbSNP records nothing beside overlapping records, and recovered an indel's anchor-base SNV on position alone — RM444 filed
+- **S156** nothing an installed enricher says which release last changed a derivation, so every enricher patch reads as moving every derived table — folded into RM441
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -7735,3 +7736,49 @@ overlap". It would add an `outcome` member callers branch on, which is a minor, 
 the overlap count in the note carries it. Your tool description is right as it stands.
 
 <!-- triaged: RM444 filed (patch) · sha 98dea3acc1a6 -->
+
+# From just-dna-registry's liaison, for the registry's upgrade sweep, 2026-11-16
+
+## S156 — nothing an installed enricher carries says which release last changed a derivation, so a consumer must treat every enricher patch as a possible change to every derived table
+
+**Reporter:** just-dna-registry (registry 0.32.0, enricher 0.8.7, 2026-11-16).
+
+**What we ran.** `registry upgrade` decides whether a module's stored `resolution.csv` needs re-deriving. When a row
+gives it a reason (no `source_release`, RM373), it first asks whether re-deriving would even change anything: if the
+enricher that wrote the table (`verification.json`'s `producer`) is the installed one or newer, the reason is what
+this enricher writes and must not act, or every sweep re-derives the same table again (the convergence rule we keep
+for compiled output).
+
+**What we expected.** To compare the producer with *the newest enricher release whose output for that table could
+differ*, as we compare compiled output against your release records.
+
+**What happened.** There is nothing to read that from. Release records cover compiled output; a derived table has no
+axis (our S153, your RM441); and an enricher-only patch has no record at all (0.8.1 and 0.8.7, per
+INTEGRATION_0_8). So the only comparison available is producer against *installed* version, and every enricher patch,
+text-only ones like 0.8.7 included, makes the next sweep re-derive every module whose table carries a reason. Online
+that is hours per ClinVar panel, spent to write the identical table. Impact today is zero (a census of both our
+catalogs on 2026-11-15 found no such module written by 0.8.4 or later); it lands at the first enricher patch after a
+module picks up a reason.
+
+**What we did meanwhile.** Nothing to change yet; the rule is right for a release that does move a derivation, and
+we would rather over-derive than carry a stale table.
+
+**A candidate.** Let RM441's design answer this as well as the movement question: either every release that ships
+the enricher carries a record (an enricher-only patch saying *no derived table moved* is the useful case), or the
+installed package exposes, per derived table, the newest enricher version whose derivation of it could differ (a
+constant beside `CACHE_LANES` would do). The first is the more general, since `declared_movement` already reads
+records and a missing record has to read as *cannot say*; the second is cheaper and is all the convergence check
+needs. Either way it should be readable from the installed package, offline.
+
+**Status — taken into [RM441](ROADMAP_0_9.md#rm441--a-release-record-has-no-axis-for-a-correction-to-a-derived-table-so-085s-reads-as-nothing-moved-although-rm438-corrected-resolutioncsv) as a fourth ask: a minor, 0.9, one design with RM399.**
+Confirmed as you describe: `RELEASE_RECORDS` holds compiled-output axes only, and INTEGRATION_0_8 says 0.8.1 and
+0.8.7 "left the compiler alone and have no record". One fact weighs on your two candidates: the records live in
+`just_dna_format.release_records`, and an enricher-only patch does not release the format (0.8.7 left it at 0.8.6).
+So your first candidate, a record for every release that ships the enricher, would need a format release on every
+enricher patch or records that move into the enricher. Your second, a per-table "newest enricher whose derivation
+of it could differ" in the installed enricher, can be read offline from the package that moved. RM441's route
+already answers "re-derive" for a span of releases, so the entry now asks the build to answer your question from
+the same place, which is the least new machinery. Either way it is new public surface, so a minor, not a patch. Your
+over-derive default stays right until it ships.
+
+<!-- triaged: folded into RM441 (minor, 0.9) · sha d388d996952a -->
