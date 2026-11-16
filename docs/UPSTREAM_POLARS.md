@@ -52,12 +52,15 @@ use polars only in builders (`@duckdb-vs-polars`).
   as String, the `.map` namespace, `cut`/`qcut` deprecated) and 2.1's (no mixed string/numeric arithmetic in
   eager) reach nothing we call. Our one `map_elements` (`enricher/src/just_dna_enricher/clinvar_build.py:373`)
   is not the `.map` namespace.
-- **Who else holds polars below 2:** polars-bio 0.36.2, which just-dna-lite stands on, pins `polars<2,>=1.40.0`.
-  Checked again 2026-11-04: 0.36.2 (2026-10-13) is still the latest on PyPI. Upstream has the support written:
-  biodatageeks/polars-bio#478 "feat: support polars 2.x" (open since 2026-10-08, not a draft, CI green on polars 1
-  and 2, last touched 2026-10-08) widens it to `polars>=1.40.0,<3` and starts 0.37.0. It fixes the two things 2.0
-  broke for them: headerless CSV columns are numbered from `column_0`, and IO-plugin errors are no longer wrapped
-  in `ComputeError`. Until it merges and releases, just-dna-lite stays on polars 1.x.
+- **Who else holds polars, and where (re-measured live 2026-11-16):** polars-bio, which just-dna-lite and just-vcf
+  stand on, released **0.37.0 on 2026-11-07** (biodatageeks/polars-bio#478 "feat: support Polars 2.0 and 2.1",
+  merged 2026-11-07), requiring `polars>=1.40.0,<2.2`. The `<2` hold is gone. just-dna-lite took polars 2.1.0 and
+  polars-bio 0.37.0 on 2026-11-12 (its 9d588c2); just-vcf is moving now (its RM288, 2026-11-16; its lock still
+  polars 1.44.2, polars-bio 0.36.0). **Its new cap is `<2.2`:** a polars 2.2 release holds both again until
+  polars-bio widens, so a polars 2.2 is read against polars-bio's cap the day it appears. polars-bio's releases
+  wake this seat through the upstream-index watcher since 2026-11-16. (The 2026-11-04 text here said 0.36.2 with
+  #478 open; it went stale for nine days while the notes held the 0.37.0 fact, and the seat answered the person
+  from it on 2026-11-16.)
 
 **Sorted: breaks us, in the digest only.** Every 2.x release writes its own version and build into every
 parquet we produce, so from 2.0 on `artifact.digest` changes with every polars release, even a patch. Releases
