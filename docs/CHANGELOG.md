@@ -55,12 +55,15 @@ states no release, so its label is withheld rather than false. An unrecorded cac
 a builder's and is not refetched on either path: left alone with another label (RM420), kept as it is with the
 hub's. Its `release.json` stays when nothing is fetched beside it and is withdrawn before the first byte when
 something is, and the record then keeps the withdrawn file's digest, so `cache pull` still treats the cache as a
-build. The record states the digest of the `release.json` the pull placed and `null` when it placed none, so an
+build (a `release.json` a pull placed is not recorded so, and the next `cache pull` re-pulls). The cost, chosen: a
+build in the live directory that lacks a file the hub publishes, `citations/` say, loses its `release.json` to the
+first `enrich` run and is then left alone by `cache pull`, so its operator rebuilds it or moves it aside. The record states the digest of the `release.json` the pull placed and `null` when it placed none, so an
 `enrich` run over a build no longer makes the next `cache pull` take the build for a pull. A pull fetches
 `release.json` first, staged beside the cache, and names it in the record it writes before the first download, so a
 resumed pull keeps what it fetched while the hub still publishes that release and fetches it again past a release
 boundary. A `release.json` that could not be fetched (a timeout, a 429, a refused token) is no longer read as one
-the repo lacks: the pull stops before its record, as for the manifest, and a cache already there serves as it is.
+the repo lacks: the pull stops before anything in the cache moves (it is asked before the manifest is placed), and a
+cache already there serves as it is. Ensembl, which publishes none, now asks for one on every pull.
 A repo that publishes no `release.json` pulls as before. STRchive's
 provisioner keeps no file, so the mechanism does not reach it; it now withdraws an old `release.json` before every
 catalogue it moves in, not only on a refresh.
@@ -80,10 +83,11 @@ much older than its `pull-record.json` are a hint, not proof, and moving it asid
 No public name, field, flag or vocabulary moves. Tests: `test_download.py` (the reproduction on both paths, the
 pre-RM420 record with an equal and with a differing label and on the `enrich` path, a build an `enrich` run passes
 over, a build stating the hub's own label on either path, the label a fetch withdraws and the `cache pull` after it,
-a `release.json` that could not be fetched, a pull killed after placing its label, a resume of the same release and
-one across a release boundary) and `test_cache_pull_follows_the_hub.py` (the knots, with and without a
-`release.json`). Nine of the fourteen were red on the previous `main`; the other five pin what stays, and each arm of
-the fix reverted on purpose turns at least one red. RM420's tests pass unchanged.
+a pull's own label an `enrich` run withdrew, a `release.json` that could not be fetched, a pull killed after placing
+its label, a resume of the same release and one across a release boundary) and
+`test_cache_pull_follows_the_hub.py` (the knots, with and without a `release.json`, and Ensembl's manifest left in
+place when `release.json` could not be asked). Twelve of the sixteen were red on the previous `main`; the other four
+pin what stays, and each arm of the fix reverted on purpose turns at least one red. RM420's tests pass unchanged.
 
 ## 2026-11-14 — `v0.8.7`: enricher 0.8.7 (a patch, cut from `main`)
 

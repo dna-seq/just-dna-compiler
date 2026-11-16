@@ -1858,10 +1858,12 @@ a resumed pull keeps what it fetched only while the hub publishes that same `rel
 `avi_knots.parquet` follows `release.json`; `LICENSE.txt` is fetched either way. An unrecorded cache that states a
 release of its own is a builder's and is never refetched: left alone with another label, kept as it is with the
 hub's. Its `release.json` stays when nothing is fetched beside it and is withdrawn before the first byte when
-something is, and the record then keeps the withdrawn file's digest, so `cache pull` still leaves it alone. The
-record's `release_sha256` names only a file the pull placed (`null` otherwise). A `release.json` that could not be
-fetched stops the pull before its record, as a manifest that could not be fetched does; a repo that publishes none
-pulls as before. A download that times out names
+something is, and the record then keeps the withdrawn file's digest, so `cache pull` still leaves it alone: a build
+lacking a file the hub publishes (one without `citations/`, say) is then rebuilt or moved aside by its operator, a
+cost chosen over putting the published release over it. A `release.json` a pull placed is not recorded so, and the
+next `cache pull` re-pulls. The record's `release_sha256` names only a file the pull placed (`null` otherwise). A
+`release.json` that could not be fetched stops the pull before anything in the cache moves (it is asked before the
+manifest is placed), as a manifest that could not be fetched does; a repo that publishes none pulls as before. A download that times out names
 `HF_HUB_DOWNLOAD_TIMEOUT` (10 s by default, short for a 1 GB file). One snapshot failing does not sink
 the rest — each reports its own line, and the command exits 1 if any failed.
 

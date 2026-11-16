@@ -391,6 +391,32 @@ def test_the_ensembl_lane_follows_its_manifests_release_id_and_keeps_what_it_att
     assert (follow.local, follow.published, follow.outcome) == ("ensembl-115", "ensembl-116", "refreshed")
 
 
+def test_a_release_json_that_could_not_be_asked_leaves_the_manifest_where_it_was(
+    tmp_path: Path, install_hub
+) -> None:
+    """RM445 asks for `release.json` before the manifest moves, so a timeout there changes nothing.
+
+    Ensembl publishes no `release.json` and now asks for one on every pull: a timeout on that ask must
+    not leave the new release's manifest over the old files, which every reader would then withhold.
+    """
+    cache = tmp_path / "ensembl"
+    name = "data/homo_sapiens-chr21.parquet"
+    old = {name: _parquet(["old"])}
+    (cache / "data").mkdir(parents=True)
+    (cache / name).write_bytes(old[name])
+    (cache / SNAPSHOT_MANIFEST_FILENAME).write_text(_manifest(old, "ensembl-115"), encoding="utf-8")
+    before = _bytes_of(cache)
+    new = {name: _parquet(["new"])}
+    install_hub(
+        "ensembl",
+        {**new, SNAPSHOT_MANIFEST_FILENAME: _manifest(new, "ensembl-116")},
+        failing={RELEASE_FILENAME: TimeoutError("read timed out")},
+    )
+
+    assert dl.ensure_snapshot(cache) == cache
+    assert _bytes_of(cache) == before
+
+
 def test_a_pulled_strchive_catalogue_follows_the_hub(base: Path, install_hub) -> None:
     cache = LANES_BY_NAME["strchive"].default_dir()
     install_hub(

@@ -465,7 +465,8 @@ def test_an_unrecorded_build_stating_the_hubs_own_label_is_kept_on_either_path(
         write.commit(SnapshotRelease.model_validate({"dataset": _NOV, "source": "test"}))
         built_release = (cache / RELEASE_FILENAME).read_bytes()
         for path in (first, "pull"):
-            fs = fake_hub({"clinvar-chr1.parquet": "clin_sig"}, release=_release_body(_NOV))
+            hub_body = json.dumps({"dataset": _NOV, "source": "the hub's own build"}) + "\n"
+            fs = fake_hub({"clinvar-chr1.parquet": "clin_sig"}, release=hub_body)
             follow = dl._FollowHub(LANES_BY_NAME["clinvar"].release_label) if path == "pull" else None
             dl.ensure_clinvar_snapshot(cache, _follow_hub=follow)
             assert _column(cache / _CHR1) == "built", (first, path)
@@ -500,6 +501,31 @@ def test_a_pull_fetching_beside_kept_unattested_files_withdraws_the_label_alread
     follow = dl._FollowHub(LANES_BY_NAME["clinvar"].release_label)
     dl.ensure_clinvar_snapshot(cache, _follow_hub=follow)
     assert follow.outcome == "kept" and _column(cache / _CHR1) == "built"
+
+
+def test_a_pulls_own_label_withdrawn_by_enrich_is_still_re_pulled(fake_hub, tmp_path: Path) -> None:
+    """Withdrawing what a pull placed is not withdrawing a builder's: the next `cache pull` re-pulls.
+
+    Pulled at one release, a file truncated, the hub moved on: the `enrich` run fetches the truncated
+    file and withdraws the older label beside the kept one, and `cache pull` must not then take the
+    cache for a build and leave it alone for good.
+    """
+    cache = tmp_path / "cv"
+    older = {"clinvar-chr1.parquet": "rel_a", "clinvar-chr2.parquet": "rel_a"}
+    newer = {"clinvar-chr1.parquet": "rel_b", "clinvar-chr2.parquet": "rel_b"}
+    fake_hub(older, release=_release_body("clinvar_2026-10-01"))
+    dl.ensure_clinvar_snapshot(cache)
+    (cache / "data" / "clinvar-chr2.parquet").write_bytes(b"PAR1truncated")
+
+    fake_hub(newer, release=_release_body(_NOV))
+    dl.ensure_clinvar_snapshot(cache)
+    assert _clinvar_label(cache) is None and dl._WITHDREW_RELEASE_KEY not in _record(cache)
+
+    fake_hub(newer, release=_release_body(_NOV))
+    follow = dl._FollowHub(LANES_BY_NAME["clinvar"].release_label)
+    dl.ensure_clinvar_snapshot(cache, _follow_hub=follow)
+    assert follow.outcome == "refreshed"
+    assert _column(cache / _CHR1) == "rel_b" and _clinvar_label(cache) == _NOV
 
 
 def test_a_release_json_that_could_not_be_fetched_is_not_one_the_repo_lacks(fake_hub, tmp_path: Path) -> None:

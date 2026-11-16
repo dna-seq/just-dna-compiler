@@ -2323,22 +2323,25 @@ not a release) does not. Otherwise:
   (RM420), kept as it is with the hub's. Its `release.json` stays when nothing is fetched beside it and is withdrawn
   right before the first byte when something is (`@snapshot-layout-locations`); the record then keeps the withdrawn
   file's digest (`withdrew_release_sha256`, private), which `_pulled_by_this_repo` reads as not a pull, so `cache
-  pull` leaves the mixture alone rather than putting the published release over the build.
+  pull` leaves the mixture alone rather than putting the published release over the build. A `release.json` this
+  repo's pull placed is not recorded so when withdrawn, and the next `cache pull` re-pulls.
 - **The record** names the digest of the `release.json` the pull **placed** (`null` when none), so a builder's file
   is never vouched for. The record written before the first download names the release being pulled
   (`pulling_release_sha256`, private) when every whole file under a planned name is already that release's, so a
   same-release resume still fetches only what it lacks, and a pull killed after placing its label is current.
-- **Could-not-ask on `release.json`** (anything but the Hub's absent answer) stops the pull before its record, as for
-  the manifest, and a servable cache is used as it is. A repo publishing no `release.json` pulls as before.
+- **Could-not-ask on `release.json`** (anything but the Hub's absent answer) stops the pull before anything in the
+  cache moves, as for the manifest: it is asked before the manifest is placed. A servable cache is used as it is. A
+  repo publishing no `release.json` pulls as before (Ensembl now asks for one on every pull).
 
 STRchive's root-file provisioner keeps no file, so the mechanism does not reach it (class checked); it now withdraws an
-old `release.json` before every catalogue it moves in. Fourteen tests: twelve in `test_download.py`, two in
-`test_cache_pull_follows_the_hub.py`; nine red on `051dc276`, and each arm reverted on purpose turned at least one red.
-RM420's eighteen pass unchanged. A high-effort code review of the first build found the two orders (`enrich` then
+old `release.json` before every catalogue it moves in. Sixteen tests: thirteen in `test_download.py`, three in
+`test_cache_pull_follows_the_hub.py`; twelve red on `051dc276`, and each arm reverted on purpose turned at least one
+red. RM420's eighteen pass unchanged. A high-effort code review of the first build found the two orders (`enrich` then
 `cache pull`, and the reverse) disagreeing over an unrecorded build, a withdrawn description turning a build into a
-pull, could-not-ask read as absent, and the knots withheld where no label exists; all four are fixed here and tested.
+pull, could-not-ask read as absent, and the knots withheld where no label exists; a second read found the withdrawal
+record catching a pull's own label and `release.json` asked after the manifest had moved. All are fixed and tested.
 
-**Residuals** won't fix — a cache that 0.8.3 to 0.8.7 completed from no record carries `release_sha256` and the hub's label over old bytes, and nothing on disk tells it from an honest pull, so its operator moves it aside and pulls once
+**Residuals** won't fix — a cache that 0.8.3 to 0.8.7 completed from no record carries `release_sha256` and the hub's label over old bytes, and nothing on disk tells it from an honest pull, so its operator moves it aside and pulls once · won't fix — a build in the live directory lacking a file the hub publishes (no `citations/`) loses its `release.json` to the first `enrich` run and `cache pull` then leaves it alone, so its operator rebuilds it or moves it aside
 
 # Not format scope
 

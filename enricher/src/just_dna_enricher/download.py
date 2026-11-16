@@ -250,8 +250,8 @@ class _FollowHub:
     `unknown` (the hub could not be read, so the cache serves as it is).
 
     `unattested` marks a refresh taken because nothing attests which release the cache's files are,
-    whatever its label says (RM445): an unrecorded cache, a pull record from before RM420, or a resumed
-    pull whose kept files are another release's than the one the hub now publishes.
+    whatever its label says (RM445): an unrecorded cache stating no release, a pull record from before
+    RM420, or a resumed pull whose kept files are another release's than the one the hub now publishes.
     """
 
     release_label: Callable[[Path], str | None]
@@ -608,10 +608,12 @@ def _provision_snapshot(
     pull fetched, or kept because the manifest attests it, or because this repo's own pull recorded
     that the files on disk are the release the repo still publishes (`_kept_release`). A file kept
     with no such witness is of unknown release. `cache pull` fetches it again (as a release that
-    moved); any other caller keeps it, places no `release.json`, and the cache states no release, so
-    its label is withheld rather than false, and the record says no `release.json` was placed, which
-    sends the next `cache pull` down the refresh. A `release.json` already there (a builder's) stays
-    when nothing is fetched beside it, and is withdrawn before the first byte when something is.
+    moved), except in an unrecorded cache stating a release of its own, a builder's statement about its
+    bytes; any other caller keeps it, places no `release.json`, and the cache states no release, so its
+    label is withheld rather than false, and the record says no `release.json` was placed, which sends
+    the next `cache pull` down the refresh. A builder's `release.json` stays when nothing is fetched
+    beside it, and is withdrawn before the first byte when something is, recorded as withdrawn so the
+    cache stays a build to `cache pull`.
     Before, an unrecorded August cache came out of one pull labelled with November's release.
 
     A corrupt file left by an interrupted download is removed and refetched rather than skipped
@@ -680,7 +682,7 @@ def _provision_snapshot(
             # RM445: a record from before RM420 placed the hub's label over whatever it kept, so an
             # equal label is not a current cache. Re-pulled as a release that moved: `cache pull`
             # repairs it. (An unrecorded cache needs no case here: its completion below fetches again
-            # what nothing attests when the hub states a release.)
+            # what nothing attests when it states no release and the hub states one.)
             refreshing = True
             _refreshing(cache_dir, label, _follow_hub, unattested=True)
         elif whole:
@@ -785,6 +787,26 @@ def _provision_snapshot(
             f"the {label} repo's {SNAPSHOT_MANIFEST_FILENAME} could not be fetched ({exc}); nothing was "
             f"downloaded, because without it no file can be checked. Re-run the pull."
         ) from exc
+    # The repo's `release.json`, fetched **now** and staged beside the cache like the manifest, and
+    # placed with the other root files at the end only if it may describe every file the cache then
+    # holds (RM445). Asked first because what may be kept depends on it: a file kept from an earlier
+    # pull is this release's only when that pull was pulling this same `release.json`. Asked before the
+    # manifest is placed, so a could-not-ask here leaves the cache exactly as it was.
+    release_part = cache_dir / f"{RELEASE_FILENAME}.part"
+    try:
+        published_release = _stage_release(fs, f"{repo_root}/{RELEASE_FILENAME}", release_part, label)
+    except OSError as exc:
+        # Could not ask, which is not "publishes none", as for the manifest: what may be kept and what
+        # may be labelled turn on the answer, so this pull stops before anything in the cache moves.
+        manifest_part.unlink(missing_ok=True)
+        if servable:
+            return _unverified(
+                cache_dir, label, f"its {RELEASE_FILENAME} could not be fetched ({exc})", _follow_hub
+            )
+        raise error_cls(
+            f"the {label} repo's {RELEASE_FILENAME} could not be fetched ({exc}); nothing was downloaded, "
+            f"because what a pull keeps and labels depends on it. Re-run the pull."
+        ) from exc
     if manifest is not None:
         unnamed = sorted(
             name
@@ -793,6 +815,7 @@ def _provision_snapshot(
         )
         if unnamed:
             manifest_part.unlink(missing_ok=True)
+            release_part.unlink(missing_ok=True)
             raise error_cls(
                 f"{hf_repo_prefix} publishes {len(unnamed)} file(s) its own {SNAPSHOT_MANIFEST_FILENAME} "
                 f"does not attest ({', '.join(unnamed[:5])}); a cache holding them would be withheld, "
@@ -825,24 +848,6 @@ def _provision_snapshot(
     planned = [f"{SNAPSHOT_DATA_DIRNAME}/{f.rsplit('/', 1)[-1]}" for f in remote_files] + [
         f"{sidecar}/{f.rsplit('/', 1)[-1]}" for sidecar, f in remote_sidecars
     ]
-    # The repo's `release.json`, fetched **now** and staged beside the cache like the manifest, and
-    # placed with the other root files at the end only if it may describe every file the cache then
-    # holds (RM445). Asked first because what may be kept depends on it: a file kept from an earlier
-    # pull is this release's only when that pull was pulling this same `release.json`.
-    release_part = cache_dir / f"{RELEASE_FILENAME}.part"
-    try:
-        published_release = _stage_release(fs, f"{repo_root}/{RELEASE_FILENAME}", release_part, label)
-    except OSError as exc:
-        # Could not ask, which is not "publishes none", as for the manifest: what may be kept and what
-        # may be labelled turn on the answer, so this pull stops before its record and first byte.
-        if servable:
-            return _unverified(
-                cache_dir, label, f"its {RELEASE_FILENAME} could not be fetched ({exc})", _follow_hub
-            )
-        raise error_cls(
-            f"the {label} repo's {RELEASE_FILENAME} could not be fetched ({exc}); nothing was downloaded, "
-            f"because what a pull keeps and labels depends on it. Re-run the pull."
-        ) from exc
     try:
         if unrecorded:
             absent = [name for name in planned if not parquet_footer_ok(cache_dir / name)]
@@ -859,6 +864,10 @@ def _provision_snapshot(
         # Read before the record below replaces it: the release this repo's own pull says the files on disk
         # are. Matching the one the repo publishes now is what lets a resumed pull keep what it fetched.
         kept_release = _kept_release(cache_dir, hf_repo_prefix)
+        # Whether the `release.json` here, if any, is one this repo's pull placed: withdrawing that is a
+        # refresh in all but name, and the next `cache pull` must still re-pull the cache. Only someone
+        # else's description (a builder's) is recorded as withdrawn.
+        entered_as_pull = _pulled_by_this_repo(cache_dir, hf_repo_prefix)
         # And whether a pull already withdrew someone else's description here, carried until one is placed.
         prior = (_pull_record(cache_dir) or {}).get(_WITHDREW_RELEASE_KEY)
         withdrew = prior if isinstance(prior, str) else None
@@ -910,7 +919,7 @@ def _provision_snapshot(
             # Every whole file already under a planned name is this release's, so whatever an interruption
             # leaves is too, and the resume may keep it.
             record[_PULLING_RELEASE_KEY] = published_release
-        if withhold and fetching and (cache_dir / RELEASE_FILENAME).is_file():
+        if withhold and fetching and not entered_as_pull and (cache_dir / RELEASE_FILENAME).is_file():
             withdrew = _file_sha256(cache_dir / RELEASE_FILENAME)
         if withdrew is not None:
             record[_WITHDREW_RELEASE_KEY] = withdrew
@@ -1014,15 +1023,19 @@ def _provision_snapshot(
                     placed_release = True
                     continue
                 release_part.unlink(missing_ok=True)
+                kept_own = target.is_file()
                 logger.warning(
                     "%s cache at %s keeps %d file(s) nothing attests are the release %s publishes (%s), so "
-                    "its %s is not placed and the cache states no release. `cache pull` fetches them again.",
+                    "its %s is not placed: %s",
                     label,
                     cache_dir,
                     len(unattested),
                     repo_root.removeprefix("datasets/"),
                     ", ".join(unattested[:5]) + (", …" if len(unattested) > 5 else ""),
                     RELEASE_FILENAME,
+                    "the cache keeps its own, which still describes exactly the files it held"
+                    if kept_own
+                    else "the cache states no release, and `cache pull` fetches them again",
                 )
                 continue
             if optional == ALPHAGENOME_KNOTS_FILENAME and withhold:
